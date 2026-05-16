@@ -1,13 +1,46 @@
 .shell {
   display: grid;
   grid-template-columns: 280px 1fr;
+  grid-template-rows: auto 1fr;
   min-height: 100vh;
+}
+
+.tabBar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 20px;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border);
+  height: 40px;
+}
+
+.tab {
+  font-size: 13px;
+  color: var(--text-faint);
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  padding: 0 12px;
+  height: 40px;
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+}
+
+.tab:hover {
+  color: var(--text-muted);
+}
+
+.tabActive {
+  color: var(--text-primary);
+  border-bottom-color: var(--orange);
 }
 
 .sidebar {
   position: sticky;
-  top: 0;
-  height: 100vh;
+  top: 40px;
+  height: calc(100vh - 40px);
   overflow-y: auto;
   background: var(--bg-card);
   border-right: 1px solid var(--border);

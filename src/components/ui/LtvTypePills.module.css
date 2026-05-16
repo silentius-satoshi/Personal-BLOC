@@ -1,0 +1,36 @@
+.pills {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.pill {
+  font-size: 10px;
+  padding: 4px 8px;
+  border-radius: 20px;
+  border: 1px solid var(--border);
+  background: var(--bg-card);
+  color: var(--text-muted);
+  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  cursor: pointer;
+}
+
+.pill:hover {
+  border-color: var(--border-focus);
+  color: var(--text-secondary);
+}
+
+.pill.active {
+  border-color: var(--orange);
+  background: rgba(232, 131, 106, 0.08);
+  color: var(--text-primary);
+}
+
+.rate {
+  color: var(--text-muted);
+  margin-left: 2px;
+}
+
+.pill.active .rate {
+  color: var(--orange);
+}

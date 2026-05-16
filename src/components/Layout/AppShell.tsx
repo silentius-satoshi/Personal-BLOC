@@ -1,15 +1,31 @@
+import { useStore } from '../../store/useStore';
 import { InputsPanel } from '../Inputs/InputsPanel';
-import { SummaryBar } from '../Summary/SummaryBar';
-import { TierCards } from '../Collateral/TierCards';
-import { MonthlyPlaybook } from '../Playbook/MonthlyPlaybook';
-import { BtcStackChart } from '../Charts/BtcStackChart';
-import { NetEquityChart } from '../Charts/NetEquityChart';
-import { LTVSafetyChart } from '../Charts/LTVSafetyChart';
+import { LivingInputsPanel } from '../LivingOnBitcoin/LivingInputsPanel';
+import { SmartBlocMain } from './SmartBlocMain';
+import { LivingOnBitcoin } from '../LivingOnBitcoin/LivingOnBitcoin';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
+  const activeTab    = useStore((s) => s.activeTab);
+  const setActiveTab = useStore((s) => s.setActiveTab);
+
   return (
     <div className={styles.shell}>
+      <div className={styles.tabBar}>
+        <button
+          className={`${styles.tab} ${activeTab === 'living' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('living')}
+        >
+          Living on Bitcoin
+        </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'bloc' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('bloc')}
+        >
+          Smart BLOC
+        </button>
+      </div>
+
       <aside className={styles.sidebar}>
         <div className={styles.sidebarInner}>
           <div className={styles.logo}>
@@ -19,17 +35,12 @@ export function AppShell() {
               <div className={styles.logoSub}>+ Fold CC Advisor</div>
             </div>
           </div>
-          <InputsPanel />
+          {activeTab === 'living' ? <LivingInputsPanel /> : <InputsPanel />}
         </div>
       </aside>
 
       <main className={styles.main}>
-        <SummaryBar />
-        <TierCards />
-        <MonthlyPlaybook />
-        <BtcStackChart />
-        <NetEquityChart />
-        <LTVSafetyChart />
+        {activeTab === 'living' ? <LivingOnBitcoin /> : <SmartBlocMain />}
       </main>
     </div>
   );

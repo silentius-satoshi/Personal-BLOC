@@ -1,0 +1,150 @@
+.section {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.subtitle {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.barSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.barHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.barLabel {
+  font-size: 11px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.barMeta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ltvText {
+  font-size: 10px;
+  color: var(--text-muted);
+}
+
+.badge {
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.badgeSafe {
+  background: rgba(78, 203, 130, 0.12);
+  color: var(--green);
+}
+
+.badgeMargin {
+  background: rgba(240, 160, 48, 0.12);
+  color: var(--amber);
+}
+
+.badgeLiquidated {
+  background: rgba(232, 80, 74, 0.12);
+  color: var(--red);
+}
+
+.barTrack {
+  position: relative;
+  width: 100%;
+  height: 10px;
+  border-radius: 5px;
+  background: var(--bg-input);
+  overflow: visible;
+}
+
+.barFill {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease;
+}
+
+.refLine {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: var(--amber);
+  opacity: 0.6;
+}
+
+.refLineRed {
+  background: var(--red);
+}
+
+.barMarkers {
+  position: relative;
+  height: 14px;
+}
+
+.markerLabel {
+  position: absolute;
+  font-size: 8px;
+  color: var(--text-ghost);
+  transform: translateX(-50%);
+}
+
+.legend {
+  display: flex;
+  gap: 16px;
+  padding-top: 4px;
+  border-top: 1px solid var(--border);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 9px;
+  color: var(--text-muted);
+}
+
+.refDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
