@@ -33,7 +33,8 @@ export function runSmartBLOC_Living(
 
   for (let m = 1; m <= timeHorizonMonths; m++) {
     const btcPrice = getBtcPrice(
-      m, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth
+      m, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
+      inputs.bearPeriodMonths, inputs.annualDecline,
     );
 
     // Step 1: interest capitalizes
@@ -72,7 +73,8 @@ export function runSmartBLOC_Living(
   }
 
   const finalBtcPrice = getBtcPrice(
-    timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth
+    timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
+    inputs.bearPeriodMonths, inputs.annualDecline,
   );
   const finalNetWorthNominal = btc * finalBtcPrice - loc;
   const finalNetWorthReal    = finalNetWorthNominal / cumulativeInflation;

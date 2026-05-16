@@ -33,7 +33,8 @@ export function runMaxLeverage(
 
   for (let m = 1; m <= timeHorizonMonths; m++) {
     const btcPrice = getBtcPrice(
-      m, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth
+      m, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
+      inputs.bearPeriodMonths, inputs.annualDecline,
     );
 
     // Draw expenses FIRST — then interest is calculated on the higher balance
@@ -64,7 +65,8 @@ export function runMaxLeverage(
   }
 
   const finalBtcPrice = getBtcPrice(
-    timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth
+    timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
+    inputs.bearPeriodMonths, inputs.annualDecline,
   );
   const finalNetWorthNominal = btc * finalBtcPrice - loc;
   const finalNetWorthReal    = finalNetWorthNominal / cumulativeInflation;

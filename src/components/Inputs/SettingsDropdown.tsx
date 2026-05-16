@@ -40,7 +40,7 @@ export function SettingsDropdown() {
         <div className={styles.panel}>
           <div className={styles.row}>
             <span className={styles.settingLabel}>Fold CC rewards</span>
-            <Toggle checked={showFoldCC} onChange={setShowFoldCC} />
+            <Toggle value={showFoldCC} onChange={setShowFoldCC} />
           </div>
 
           <div className={styles.divider} />

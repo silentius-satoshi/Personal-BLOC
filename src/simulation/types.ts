@@ -42,6 +42,8 @@ export interface LivingInputs {
   ltvCeiling: number;            // decimal — from ltvType map
   capitalGainsTaxRate: number;   // decimal e.g. 0.15
   bearMarket: boolean;
+  bearPeriodMonths: number;
+  annualDecline: number;   // decimal, e.g. -0.50
 }
 
 export interface StrategyMonthData {

@@ -26,6 +26,8 @@ interface StoreState {
   btcHoldings: number;
   annualBtcGrowth: number;
   bearMarket: boolean;
+  bearPeriodYears: number;
+  annualDecline: number;
   inflationRate: number;
   ltvType: LtvType;
   timeHorizonYears: number;
@@ -48,6 +50,8 @@ interface StoreState {
   setBtcHoldings: (v: number) => void;
   setAnnualBtcGrowth: (v: number) => void;
   setBearMarket: (v: boolean) => void;
+  setBearPeriodYears: (v: number) => void;
+  setAnnualDecline: (v: number) => void;
   setInflationRate: (v: number) => void;
   setLtvType: (v: LtvType) => void;
   setTimeHorizonYears: (v: number) => void;
@@ -70,6 +74,8 @@ export const useStore = create<StoreState>((set) => ({
   btcHoldings: 0.7,
   annualBtcGrowth: 50,
   bearMarket: false,
+  bearPeriodYears: 2,
+  annualDecline: -50,
   inflationRate: 2,
   ltvType: 'target',
   timeHorizonYears: 1,
@@ -89,6 +95,8 @@ export const useStore = create<StoreState>((set) => ({
   setBtcHoldings: (v) => set({ btcHoldings: v }),
   setAnnualBtcGrowth: (v) => set({ annualBtcGrowth: v }),
   setBearMarket: (v) => set({ bearMarket: v }),
+  setBearPeriodYears: (v) => set({ bearPeriodYears: v }),
+  setAnnualDecline: (v) => set({ annualDecline: v }),
   setInflationRate: (v) => set({ inflationRate: v }),
   setLtvType: (v) => set({ ltvType: v }),
   setTimeHorizonYears: (v) => set({ timeHorizonYears: v }),

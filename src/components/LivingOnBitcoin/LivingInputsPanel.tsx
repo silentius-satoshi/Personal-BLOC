@@ -14,6 +14,8 @@ export function LivingInputsPanel() {
   const expenses         = useStore((s) => s.expenses);
   const annualBtcGrowth  = useStore((s) => s.annualBtcGrowth);
   const bearMarket       = useStore((s) => s.bearMarket);
+  const bearPeriodYears  = useStore((s) => s.bearPeriodYears);
+  const annualDecline    = useStore((s) => s.annualDecline);
   const inflationRate    = useStore((s) => s.inflationRate);
   const timeHorizonYears = useStore((s) => s.timeHorizonYears);
 
@@ -23,6 +25,8 @@ export function LivingInputsPanel() {
   const setExpenses         = useStore((s) => s.setExpenses);
   const setAnnualBtcGrowth  = useStore((s) => s.setAnnualBtcGrowth);
   const setBearMarket       = useStore((s) => s.setBearMarket);
+  const setBearPeriodYears  = useStore((s) => s.setBearPeriodYears);
+  const setAnnualDecline    = useStore((s) => s.setAnnualDecline);
   const setInflationRate    = useStore((s) => s.setInflationRate);
   const setTimeHorizonYears = useStore((s) => s.setTimeHorizonYears);
 
@@ -117,14 +121,45 @@ export function LivingInputsPanel() {
         <div className={styles.note}>BTC 10-year avg CAGR: ~84%</div>
 
         <div className={styles.toggleRow}>
-          <span className={styles.toggleLabel}>Bear Market Phase</span>
+          <span className={styles.sectionLabel}>BEAR MARKET PHASE</span>
           <Toggle
-            checked={bearMarket}
+            value={bearMarket}
             onChange={setBearMarket}
-            label=""
           />
-          <span className={styles.toggleState}>{bearMarket ? 'ON' : 'OFF'}</span>
         </div>
+
+        {bearMarket && (
+          <div className={styles.bearMarketBox}>
+            <p className={styles.bearMarketDesc}>
+              Price falls during the bear phase, then recovers at the CAGR above.
+            </p>
+            <SliderInput
+              label="Bear period"
+              value={bearPeriodYears}
+              onChange={setBearPeriodYears}
+              min={1}
+              max={5}
+              step={1}
+              display={`${bearPeriodYears} ${bearPeriodYears === 1 ? 'yr' : 'yrs'}`}
+              minLabel="1yr"
+              maxLabel="5yrs"
+            />
+            <SliderInput
+              label="Annual decline"
+              value={annualDecline}
+              onChange={setAnnualDecline}
+              min={-80}
+              max={-10}
+              step={1}
+              display={`${annualDecline}%`}
+              minLabel="-80%"
+              maxLabel="-10%"
+            />
+            <p className={styles.troughNote}>
+              BTC falls to ~{fmtUSD(btcPrice * Math.pow(1 + annualDecline / 100, bearPeriodYears))} after bear phase
+            </p>
+          </div>
+        )}
 
         <SliderInput
           label="Inflation Rate"

@@ -3,21 +3,21 @@ export function getBtcPrice(
   startPrice: number,
   monthlyGrowthRate: number,
   bearMarket: boolean,
-  timeHorizonMonths: number,
-  annualBtcGrowth: number
+  timeHorizonMonths: number,    // kept for API compatibility, unused
+  annualBtcGrowth: number,      // kept for API compatibility, unused
+  bearPeriodMonths: number,
+  annualDecline: number,        // decimal, e.g. -0.50
 ): number {
   if (!bearMarket) {
     return startPrice * Math.pow(1 + monthlyGrowthRate, month);
   }
 
-  const half = Math.floor(timeHorizonMonths / 2);
-  const bearMonthly = Math.pow(0.70, 1 / 12) - 1;
+  const monthlyDeclineRate = Math.pow(1 + annualDecline, 1 / 12) - 1;
 
-  if (month <= half) {
-    return startPrice * Math.pow(1 + bearMonthly, month);
+  if (month <= bearPeriodMonths) {
+    return startPrice * Math.pow(1 + monthlyDeclineRate, month);
   }
 
-  const priceAtHalf = startPrice * Math.pow(1 + bearMonthly, half);
-  const recoveryRate = Math.pow(1 + annualBtcGrowth + 0.30, 1 / 12) - 1;
-  return priceAtHalf * Math.pow(1 + recoveryRate, month - half);
+  const troughPrice = startPrice * Math.pow(1 + monthlyDeclineRate, bearPeriodMonths);
+  return troughPrice * Math.pow(1 + monthlyGrowthRate, month - bearPeriodMonths);
 }

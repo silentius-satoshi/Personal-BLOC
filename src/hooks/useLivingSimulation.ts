@@ -24,6 +24,8 @@ export function useLivingSimulation() {
   const ltvType          = useStore((s) => s.ltvType);
   const timeHorizonYears = useStore((s) => s.timeHorizonYears);
   const bearMarket       = useStore((s) => s.bearMarket);
+  const bearPeriodYears  = useStore((s) => s.bearPeriodYears);
+  const annualDecline    = useStore((s) => s.annualDecline);
 
   return useMemo(() => {
     const inputs: LivingInputs = {
@@ -38,6 +40,8 @@ export function useLivingSimulation() {
       ltvCeiling:          LTV_TYPE_MAP[ltvType],
       capitalGainsTaxRate: 0.30,
       bearMarket,
+      bearPeriodMonths: bearPeriodYears * 12,
+      annualDecline:    annualDecline / 100,
     };
 
     const noBtcResult = runNoBitcoin(inputs);
@@ -47,5 +51,5 @@ export function useLivingSimulation() {
 
     return { noBtcResult, sellToLive, smartBloc, maxLeverage };
   }, [btcHoldings, btcPrice, income, expenses, annualBtcGrowth, blocApr,
-      inflationRate, ltvType, timeHorizonYears, bearMarket]);
+      inflationRate, ltvType, timeHorizonYears, bearMarket, bearPeriodYears, annualDecline]);
 }

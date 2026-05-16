@@ -32,7 +32,8 @@ export function runSellToLive(
 
   for (let m = 1; m <= timeHorizonMonths; m++) {
     const btcPrice = getBtcPrice(
-      m, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth
+      m, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
+      inputs.bearPeriodMonths, inputs.annualDecline,
     );
 
     // All income buys BTC
@@ -64,7 +65,8 @@ export function runSellToLive(
   }
 
   const finalBtcPrice = getBtcPrice(
-    timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth
+    timeHorizonMonths, startPrice, monthlyGrowthRate, bearMarket, timeHorizonMonths, annualBtcGrowth,
+    inputs.bearPeriodMonths, inputs.annualDecline,
   );
   const totalGains = Math.max(0, cumulativeDollarSold - cumulativeBtcSold * startPrice);
   const finalTaxesPaid = totalGains * capitalGainsTaxRate;

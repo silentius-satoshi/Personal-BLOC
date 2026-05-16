@@ -84,3 +84,35 @@
   border-color: var(--green);
   color: var(--green);
 }
+
+.sectionLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  flex: 1;
+}
+
+.bearMarketBox {
+  border: 1px solid rgba(220, 80, 80, 0.35);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(180, 40, 40, 0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.bearMarketDesc {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.troughNote {
+  font-size: 11px;
+  color: var(--red);
+  margin: 0;
+}
