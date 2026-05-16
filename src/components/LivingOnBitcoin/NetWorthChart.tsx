@@ -45,10 +45,60 @@ const CustomTooltip = ({ active, payload, label }: any) => {
   );
 };
 
+function computeYTicks(minValue: number, maxValue: number): number[] {
+  const niceSteps = [
+    2_000, 5_000, 10_000, 20_000, 50_000, 100_000,
+    200_000, 400_000, 500_000, 1_000_000, 2_000_000, 5_000_000,
+  ];
+
+  const anchorAtZero = minValue < maxValue * 0.25;
+  const effectiveMin = anchorAtZero ? 0 : minValue;
+  const range = maxValue - effectiveMin;
+
+  const step = niceSteps.find((s) => {
+    const count = Math.ceil(range / s);
+    return count >= 5 && count <= 12;
+  }) ?? 5_000_000;
+
+  const minTick = anchorAtZero
+    ? 0
+    : Math.floor(minValue / step) * step;
+  const maxTick = Math.ceil(maxValue / step) * step;
+
+  const ticks: number[] = [];
+  for (let v = minTick; v <= maxTick; v += step) ticks.push(v);
+  return ticks;
+}
+
 export function NetWorthChart({ noBtcResult, sellToLive, smartBloc, maxLeverage, inflationRate }: Props) {
   const data = buildChartData(noBtcResult, sellToLive, smartBloc, maxLeverage);
 
-  const tickFormatter = (m: number) => m === 0 ? 'Start' : `Mo ${m}`;
+  const allStrategies = [noBtcResult, sellToLive, smartBloc, maxLeverage];
+  const minNetWorth = Math.min(
+    ...allStrategies.flatMap((s) => s.monthlyData.map((d) => d.netWorthReal))
+  );
+  const maxNetWorth = Math.max(
+    ...allStrategies.flatMap((s) => s.monthlyData.map((d) => d.netWorthReal))
+  );
+  const yTicks = computeYTicks(minNetWorth, maxNetWorth);
+
+  const timeHorizonMonths = data.length - 1;
+
+  const xInterval =
+    timeHorizonMonths <= 12  ? 0  :
+    timeHorizonMonths <= 24  ? 1  :
+    timeHorizonMonths <= 36  ? 2  :
+    timeHorizonMonths <= 60  ? 5  :
+    timeHorizonMonths <= 96  ? 8  :
+    11;
+
+  const useMoFormat = timeHorizonMonths <= 24;
+
+  const xTickFormatter = (month: number): string => {
+    if (month === 0) return 'Start';
+    if (useMoFormat) return `Mo ${month}`;
+    return `Yr ${(month / 12).toFixed(1)}`;
+  };
 
   return (
     <div className={styles.card}>
@@ -69,17 +119,20 @@ export function NetWorthChart({ noBtcResult, sellToLive, smartBloc, maxLeverage,
           <CartesianGrid strokeDasharray="3 3" stroke="#1E2028" vertical={false} />
           <XAxis
             dataKey="month"
-            tickFormatter={tickFormatter}
+            tickFormatter={xTickFormatter}
+            interval={xInterval}
             tick={{ fontSize: 9, fill: '#555555' }}
             axisLine={false}
             tickLine={false}
           />
           <YAxis
-            tickFormatter={(v: number) => v >= 1_000_000 ? '$' + (v / 1_000_000).toFixed(1) + 'M' : v >= 1_000 ? '$' + Math.round(v / 1_000) + 'k' : '$' + v}
+            ticks={yTicks}
+            domain={[yTicks[0], yTicks[yTicks.length - 1]]}
+            tickFormatter={(v: number) => '$' + Math.round(v).toLocaleString()}
             tick={{ fontSize: 9, fill: '#555555' }}
             axisLine={false}
             tickLine={false}
-            width={48}
+            width={80}
           />
           <Tooltip content={<CustomTooltip />} />
           <Line
