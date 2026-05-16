@@ -3,13 +3,8 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { useSimulation } from '../../hooks/useSimulation';
+import { fmtUSD } from '../../utils/format';
 import styles from './NetEquityChart.module.css';
-
-function fmtK(n: number) {
-  if (Math.abs(n) >= 1_000_000) return `$${(n / 1_000_000).toFixed(1)}M`;
-  if (Math.abs(n) >= 1_000)     return `$${Math.round(n / 1000)}k`;
-  return `$${Math.round(n)}`;
-}
 
 export function NetEquityChart() {
   const { blocData } = useSimulation();
@@ -40,7 +35,7 @@ export function NetEquityChart() {
             tick={{ fontSize: 9, fill: 'var(--text-ghost)' }}
             tickLine={false}
             axisLine={false}
-            tickFormatter={fmtK}
+            tickFormatter={(v: number) => v >= 1_000_000 ? '$' + (v / 1_000_000).toFixed(1) + 'M' : v >= 1_000 ? '$' + Math.round(v / 1_000) + 'k' : '$' + v}
             width={52}
           />
           <Tooltip
@@ -50,7 +45,7 @@ export function NetEquityChart() {
               borderRadius: '8px',
               fontSize: '11px',
             }}
-            formatter={(value: number) => [fmtK(value)]}
+            formatter={(value: number) => [fmtUSD(value)]}
             labelFormatter={(label: number) => `Month ${label}`}
           />
           <Legend wrapperStyle={{ fontSize: '10px', paddingTop: '8px' }} />

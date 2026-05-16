@@ -3,6 +3,7 @@ import {
   Tooltip, ResponsiveContainer,
 } from 'recharts';
 import type { StrategyResult } from '../../simulation/types';
+import { fmtUSD } from '../../utils/format';
 import styles from './NetWorthChart.module.css';
 
 interface Props {
@@ -11,12 +12,6 @@ interface Props {
   smartBloc: StrategyResult;
   maxLeverage: StrategyResult;
   inflationRate: number;
-}
-
-function fmtUSD(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}k`;
-  return `$${v.toFixed(0)}`;
 }
 
 function buildChartData(
@@ -80,7 +75,7 @@ export function NetWorthChart({ noBtcResult, sellToLive, smartBloc, maxLeverage,
             tickLine={false}
           />
           <YAxis
-            tickFormatter={(v) => fmtUSD(v)}
+            tickFormatter={(v: number) => v >= 1_000_000 ? '$' + (v / 1_000_000).toFixed(1) + 'M' : v >= 1_000 ? '$' + Math.round(v / 1_000) + 'k' : '$' + v}
             tick={{ fontSize: 9, fill: '#555555' }}
             axisLine={false}
             tickLine={false}

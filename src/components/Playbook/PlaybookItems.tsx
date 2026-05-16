@@ -1,10 +1,7 @@
 import type { MonthData } from '../../simulation/types';
 import { useStore } from '../../store/useStore';
+import { fmtUSD } from '../../utils/format';
 import styles from './PlaybookItems.module.css';
-
-function fmtUSD(n: number) {
-  return `$${Math.round(n).toLocaleString()}`;
-}
 
 function fmtPct(n: number) {
   return `${Math.round(n * 100)}%`;

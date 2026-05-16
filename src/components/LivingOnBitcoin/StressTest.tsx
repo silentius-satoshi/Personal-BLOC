@@ -1,16 +1,11 @@
 import type { StrategyResult } from '../../simulation/types';
+import { fmtUSD } from '../../utils/format';
 import styles from './StressTest.module.css';
 
 interface Props {
   maxLeverage: StrategyResult;
   smartBloc: StrategyResult;
   finalBtcPrice: number;
-}
-
-function fmtUSD(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (v >= 1_000) return `$${Math.round(v / 1_000)}k`;
-  return `$${Math.round(v).toLocaleString()}`;
 }
 
 function fmtPct(v: number): string {

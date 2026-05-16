@@ -1,4 +1,5 @@
 import type { StrategyResult } from '../../simulation/types';
+import { fmtUSD } from '../../utils/format';
 import styles from './StrategyCards.module.css';
 
 interface Props {
@@ -6,12 +7,6 @@ interface Props {
   smartBloc: StrategyResult;
   sellToLive: StrategyResult;
   noBtcResult: StrategyResult;
-}
-
-function fmtUSD(v: number): string {
-  if (Math.abs(v) >= 1_000_000) return `$${(v / 1_000_000).toFixed(2)}M`;
-  if (Math.abs(v) >= 1_000)     return `$${Math.round(v / 1_000)}k`;
-  return `$${Math.round(v).toLocaleString()}`;
 }
 
 function fmtPct(v: number): string {

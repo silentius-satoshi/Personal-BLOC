@@ -5,16 +5,11 @@ import {
 import { useSimulation } from '../../hooks/useSimulation';
 import { useStore } from '../../store/useStore';
 import { ScenarioPills } from '../ui/ScenarioPills';
+import { fmtUSD } from '../../utils/format';
 import styles from './BtcStackChart.module.css';
 
 function fmtBTC(n: number) {
   return `${n.toFixed(3)} BTC`;
-}
-
-function fmtPrice(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000)     return `$${Math.round(n / 1000)}k`;
-  return `$${Math.round(n)}`;
 }
 
 export function BtcStackChart() {
@@ -104,7 +99,7 @@ export function BtcStackChart() {
         <strong>{fmtBTC(bloc60)}</strong> vs.{' '}
         <strong>{fmtBTC(sts60)}</strong> for Save the Surplus. You're ahead by{' '}
         <strong style={{ color: 'var(--green)' }}>+{fmtBTC(delta)}</strong>{' '}
-        (+{fmtPrice(delta * price60)} at year-5 prices).
+        (+{fmtUSD(delta * price60)} at year-5 prices).
         {showFoldCC && fbtc60 > 0 && (
           <> Fold CC contributes <strong style={{ color: 'var(--green)' }}>+{fmtBTC(fbtc60)}</strong> of that gain at zero cost.</>
         )}

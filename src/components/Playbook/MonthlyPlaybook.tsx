@@ -1,19 +1,10 @@
 import { useSimulation } from '../../hooks/useSimulation';
 import { useStore } from '../../store/useStore';
+import { fmtUSD } from '../../utils/format';
 import { ProgressBar } from './ProgressBar';
 import { PlaybookItems } from './PlaybookItems';
 import { PlaybookScrubber } from './PlaybookScrubber';
 import styles from './MonthlyPlaybook.module.css';
-
-function fmtUSD(n: number) {
-  return `$${Math.round(n).toLocaleString()}`;
-}
-
-function fmtPrice(n: number) {
-  if (n >= 1_000_000) return `$${(n / 1_000_000).toFixed(2)}M`;
-  if (n >= 1_000)     return `$${Math.round(n / 1000)}k`;
-  return `$${Math.round(n)}`;
-}
 
 function buildNarrative(
   month: number,
@@ -58,7 +49,7 @@ export function MonthlyPlaybook() {
         >
           LTV {ltvPct}%{hasPD ? ' — paydown triggered' : ''}
         </span>
-        <span className={styles.priceLabel}>BTC {fmtPrice(btcPrice)}</span>
+        <span className={styles.priceLabel}>BTC {fmtUSD(btcPrice)}</span>
       </div>
 
       <ProgressBar paydown={paydown} income={income} />

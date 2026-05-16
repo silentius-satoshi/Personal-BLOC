@@ -1,16 +1,11 @@
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
+import { fmtUSD } from '../../utils/format';
 import { SliderInput } from '../ui/SliderInput';
 import { GrowthPresetPills } from '../ui/GrowthPresetPills';
 import { LtvTypePills } from '../ui/LtvTypePills';
 import { Toggle } from '../ui/Toggle';
 import styles from './LivingInputsPanel.module.css';
-
-function fmtUSD(v: number): string {
-  if (v >= 1_000_000) return `$${(v / 1_000_000).toFixed(1)}M`;
-  if (v >= 1_000) return `$${(v / 1_000).toFixed(0)}k`;
-  return `$${v.toFixed(0)}`;
-}
 
 export function LivingInputsPanel() {
   const btcHoldings      = useStore((s) => s.btcHoldings);

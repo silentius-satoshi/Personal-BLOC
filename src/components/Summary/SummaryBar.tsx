@@ -1,10 +1,8 @@
 import { useStore } from '../../store/useStore';
 import styles from './SummaryBar.module.css';
 
-function fmtUSD(n: number) {
-  return n < 0
-    ? `-$${Math.abs(n).toLocaleString()}`
-    : `$${n.toLocaleString()}`;
+function fmtUSD(n: number): string {
+  return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).toLocaleString();
 }
 
 function ratioColor(ratio: number) {
