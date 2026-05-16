@@ -1,3 +1,4 @@
+import { useState, useRef, useEffect } from 'react';
 import styles from './SliderInput.module.css';
 
 interface SliderInputProps {
@@ -15,11 +16,47 @@ interface SliderInputProps {
 export function SliderInput({
   label, value, onChange, min, max, step, display, minLabel, maxLabel,
 }: SliderInputProps) {
+  const [editing, setEditing]     = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (editing) inputRef.current?.focus();
+  }, [editing]);
+
+  function commit() {
+    const parsed = parseFloat(editValue);
+    if (!isNaN(parsed)) {
+      onChange(Math.min(max, Math.max(min, parsed)));
+    }
+    setEditing(false);
+  }
+
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
         <span className={styles.label}>{label}</span>
-        <span className={styles.value}>{display}</span>
+        {editing ? (
+          <input
+            ref={inputRef}
+            type="text"
+            className={styles.valueInput}
+            value={editValue}
+            onChange={(e) => setEditValue(e.target.value)}
+            onBlur={commit}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') commit();
+              if (e.key === 'Escape') setEditing(false);
+            }}
+          />
+        ) : (
+          <span
+            className={styles.value}
+            onClick={() => { setEditValue(String(value)); setEditing(true); }}
+          >
+            {display}
+          </span>
+        )}
       </div>
       <input
         type="range"

@@ -21,6 +21,25 @@
   font-size: 12px;
   color: var(--text-primary);
   font-weight: 600;
+  cursor: text;
+  text-decoration-line: underline;
+  text-decoration-style: dotted;
+  text-decoration-color: var(--text-ghost);
+  text-underline-offset: 3px;
+}
+
+.valueInput {
+  font-size: 12px;
+  font-family: inherit;
+  font-weight: 600;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--orange);
+  outline: none;
+  width: 90px;
+  text-align: right;
+  padding: 0;
 }
 
 .slider {
