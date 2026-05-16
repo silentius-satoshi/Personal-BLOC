@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 
-const BTC_API = 'https://api.crypto.com/exchange/v1/public/get-ticker?instrument_name=BTC_USD';
+const BTC_API = 'https://api.coinbase.com/v2/prices/BTC-USD/spot';
 
 interface BtcPriceState {
   price: number | null;
@@ -23,10 +23,9 @@ export function useBtcPrice(): BtcPriceState {
         const res = await fetch(BTC_API);
         if (!res.ok) return;
         const json = await res.json() as {
-          result?: { data?: Array<{ a?: string; b?: string }> };
+          data?: { amount?: string };
         };
-        const raw = json?.result?.data?.[0]?.a ?? json?.result?.data?.[0]?.b;
-        const price = raw ? parseFloat(raw) : NaN;
+        const price = parseFloat(json?.data?.amount ?? '');
         if (!isNaN(price) && price > 0) {
           setBtcPrice(price);
           setState({ price, lastUpdated: new Date(), isLive: true });
