@@ -55,6 +55,6 @@ export function runNoBitcoin(inputs: LivingInputs): StrategyResult {
     finalNetWorthReal,
     finalLtv: 0,
     crashLtv: 0,
-    realReturn: -inflationRate,
+    realReturn: (finalNetWorthReal - finalNetWorthNominal) / finalNetWorthNominal,
   };
 }

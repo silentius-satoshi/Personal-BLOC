@@ -47,7 +47,7 @@ function StrategyCard({ result, dotStyle, costLabel, costValue }: CardProps) {
         <span className={styles.cardTitle}>{result.label}</span>
       </div>
 
-      <div className={styles.netWorth}>{fmtUSD(result.finalNetWorthNominal)}</div>
+      <div className={styles.netWorth}>{fmtUSD(result.finalNetWorthReal)}</div>
       <div className={styles.netWorthSub}>Net Worth</div>
 
       <div className={styles.rows}>

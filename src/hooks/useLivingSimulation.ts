@@ -7,9 +7,9 @@ import { runSmartBLOC_Living } from '../simulation/runSmartBLOC_Living';
 import { runMaxLeverage } from '../simulation/runMaxLeverage';
 
 const LTV_TYPE_MAP = {
-  target:  0.05,
-  current: 0.10,
-  high:    0.15,
+  target:  0.02,
+  current: 0.05,
+  high:    0.10,
   hyper:   0.20,
 };
 

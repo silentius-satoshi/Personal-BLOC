@@ -70,14 +70,16 @@ export function runSellToLive(
   );
   const totalGains = Math.max(0, cumulativeDollarSold - cumulativeBtcSold * startPrice);
   const finalTaxesPaid = totalGains * capitalGainsTaxRate;
-  const finalNetWorthNominal = btc * finalBtcPrice - finalTaxesPaid;
+  const btcSoldForTaxes = finalTaxesPaid / finalBtcPrice;
+  const finalBtcHeld = btc - btcSoldForTaxes;
+  const finalNetWorthNominal = finalBtcHeld * finalBtcPrice;
   const finalNetWorthReal    = finalNetWorthNominal / cumulativeInflation;
 
   return {
     label: 'Sell to Live (No LoC)',
     color: '#888888',
     monthlyData,
-    finalBtcHeld: btc,
+    finalBtcHeld,
     finalLocBalance: 0,
     finalInterestPaid: 0,
     finalTaxesPaid,

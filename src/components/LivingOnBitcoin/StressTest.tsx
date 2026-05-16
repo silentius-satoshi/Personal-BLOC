@@ -8,10 +8,6 @@ interface Props {
   finalBtcPrice: number;
 }
 
-function fmtPct(v: number): string {
-  return `${(v * 100).toFixed(1)}%`;
-}
-
 type BadgeType = 'safe' | 'margin' | 'liquidated';
 
 function getBadge(crashLtv: number): BadgeType {
@@ -23,10 +19,9 @@ function getBadge(crashLtv: number): BadgeType {
 interface BarProps {
   label: string;
   crashLtv: number;
-  finalLtv: number;
 }
 
-function CrashBar({ label, crashLtv, finalLtv }: BarProps) {
+function CrashBar({ label, crashLtv }: BarProps) {
   const badge = getBadge(crashLtv);
   const fillPct = Math.min(crashLtv * 100, 100);
 
@@ -40,7 +35,7 @@ function CrashBar({ label, crashLtv, finalLtv }: BarProps) {
       <div className={styles.barHeader}>
         <span className={styles.barLabel}>{label}</span>
         <div className={styles.barMeta}>
-          <span className={styles.ltvText}>LTV: {fmtPct(finalLtv)}</span>
+          <span className={styles.ltvText}>LTV: {Math.ceil(crashLtv * 100)}%</span>
           <span
             className={`${styles.badge} ${
               badge === 'safe' ? styles.badgeSafe :
@@ -84,12 +79,10 @@ export function StressTest({ maxLeverage, smartBloc, finalBtcPrice }: Props) {
         <CrashBar
           label="Max Leverage"
           crashLtv={maxLeverage.crashLtv}
-          finalLtv={maxLeverage.finalLtv}
         />
         <CrashBar
           label="Smart BLOC"
           crashLtv={smartBloc.crashLtv}
-          finalLtv={smartBloc.finalLtv}
         />
       </div>
 
