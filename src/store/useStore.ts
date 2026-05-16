@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 
-type Tier = 'min' | 'rec' | 'ideal';
+type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
 type ActiveTab = 'living' | 'bloc';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
@@ -39,9 +39,12 @@ interface StoreState {
   setBlocApr: (v: number) => void;
   setFoldRewardRate: (v: number) => void;
 
+  customCollateral: number;
+
   // Setters — Smart BLOC tab
   setShowFoldCC: (v: boolean) => void;
   setActiveTier: (v: Tier) => void;
+  setCustomCollateral: (v: number) => void;
   setScenario: (v: Scenario) => void;
   setScrubMonth: (v: number) => void;
 
@@ -66,6 +69,7 @@ export const useStore = create<StoreState>((set) => ({
 
   showFoldCC: true,
   activeTier: 'rec',
+  customCollateral: 1.0,
   scenario: 'moderate',
   scrubMonth: 30,
 
@@ -88,6 +92,7 @@ export const useStore = create<StoreState>((set) => ({
 
   setShowFoldCC: (v) => set({ showFoldCC: v }),
   setActiveTier: (v) => set({ activeTier: v }),
+  setCustomCollateral: (v) => set({ customCollateral: v }),
   setScenario: (v) => set({ scenario: v }),
   setScrubMonth: (v) => set({ scrubMonth: v }),
 

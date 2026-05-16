@@ -23,7 +23,7 @@
 
 .grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 8px;
 }
 
@@ -74,4 +74,35 @@
 .crashRow {
   font-size: 9px;
   color: var(--text-faint);
+}
+
+.customInputRow {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+
+.customInput {
+  width: 72px;
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--orange);
+  outline: none;
+  padding: 0;
+  -moz-appearance: textfield;
+}
+
+.customInput::-webkit-outer-spin-button,
+.customInput::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.customInputUnit {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
 }

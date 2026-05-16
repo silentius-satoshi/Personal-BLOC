@@ -16,13 +16,16 @@ export function useSimulation() {
   const blocApr       = useStore((s) => s.blocApr);
   const foldRewardRate = useStore((s) => s.foldRewardRate);
   const showFoldCC    = useStore((s) => s.showFoldCC);
-  const activeTier    = useStore((s) => s.activeTier);
-  const scenario      = useStore((s) => s.scenario);
+  const activeTier       = useStore((s) => s.activeTier);
+  const customCollateral = useStore((s) => s.customCollateral);
+  const scenario         = useStore((s) => s.scenario);
   const scrubMonth    = useStore((s) => s.scrubMonth);
 
   return useMemo(() => {
     const tiers = calcTiers(expenses, btcPrice);
-    const startBTC = tiers[activeTier];
+    const startBTC = activeTier === 'custom'
+      ? customCollateral
+      : tiers[activeTier as 'min' | 'rec' | 'ideal'];
     const annualRate = ANNUAL_RATES[scenario];
     const apr = blocApr / 100;
     const foldRate = showFoldCC ? foldRewardRate / 100 : 0;
@@ -46,5 +49,5 @@ export function useSimulation() {
     const currentMonth = blocData[Math.min(scrubMonth, 60)];
 
     return { blocData, stsData, tiers, currentMonth };
-  }, [income, expenses, btcPrice, blocApr, foldRewardRate, showFoldCC, activeTier, scenario, scrubMonth]);
+  }, [income, expenses, btcPrice, blocApr, foldRewardRate, showFoldCC, activeTier, customCollateral, scenario, scrubMonth]);
 }
