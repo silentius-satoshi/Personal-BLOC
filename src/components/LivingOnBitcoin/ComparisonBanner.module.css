@@ -2,27 +2,29 @@
   background: #0D1F15;
   border: 1px solid #1D4A2A;
   border-radius: 8px;
-  padding: 14px 16px;
+  padding: 14px 18px;
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
 
 .label {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
-  color: var(--green);
-  text-transform: uppercase;
   letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--green);
+  margin: 0;
 }
 
 .body {
-  font-size: 12px;
+  font-size: 14px;
   color: var(--text-secondary);
+  margin: 0;
   line-height: 1.5;
 }
 
-.highlight {
+.delta {
   color: var(--green);
   font-weight: 600;
 }

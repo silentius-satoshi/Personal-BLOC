@@ -7,9 +7,7 @@ import { StressTest } from './StressTest';
 import styles from './LivingOnBitcoin.module.css';
 
 export function LivingOnBitcoin() {
-  const inflationRate    = useStore((s) => s.inflationRate);
-  const annualBtcGrowth  = useStore((s) => s.annualBtcGrowth);
-  const timeHorizonYears = useStore((s) => s.timeHorizonYears);
+  const inflationRate = useStore((s) => s.inflationRate);
 
   const { noBtcResult, sellToLive, smartBloc, maxLeverage } = useLivingSimulation();
 
@@ -37,8 +35,6 @@ export function LivingOnBitcoin() {
       <ComparisonBanner
         smartBloc={smartBloc}
         sellToLive={sellToLive}
-        annualBtcGrowth={annualBtcGrowth}
-        timeHorizonYears={timeHorizonYears}
       />
 
       <StrategyCards
