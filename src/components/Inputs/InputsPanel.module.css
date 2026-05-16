@@ -21,3 +21,58 @@
   flex-direction: column;
   gap: 10px;
 }
+
+.btcPriceRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btcPriceLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fieldLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.note {
+  font-size: 9px;
+  color: var(--text-ghost);
+  line-height: 1.4;
+}
+
+.liveBadge {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--orange);
+  background: transparent;
+  color: var(--orange);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.liveBadge:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.liveBadge:disabled {
+  opacity: 0.3;
+  cursor: default;
+  text-decoration: none;
+}
+
+.liveBadgeSynced {
+  border-color: var(--green);
+  color: var(--green);
+}

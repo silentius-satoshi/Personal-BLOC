@@ -69,7 +69,7 @@ export function SliderInput({
         max={max}
         step={step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
+        onChange={(e) => { if (!editing) onChange(Number(e.target.value)); }}
       />
       {(minLabel || maxLabel) && (
         <div className={styles.rangeLabels}>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import styles from './NumberInput.module.css';
 
 interface Props {
@@ -13,28 +13,20 @@ interface Props {
 }
 
 export function NumberInput({ value, onChange, min, max, step = 1, prefix, label, subtext }: Props) {
-  const [localValue, setLocalValue] = useState(String(value));
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const [raw, setRaw] = useState(String(value));
 
   useEffect(() => {
-    setLocalValue(String(value));
+    setRaw(String(value));
   }, [value]);
 
-  function handleChange(raw: string) {
-    setLocalValue(raw);
-    clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => {
-      const n = parseFloat(raw);
-      if (!isNaN(n)) {
-        const clamped = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
-        onChange(clamped);
-      }
-    }, 300);
+  function commit() {
+    const n = parseFloat(raw);
+    if (!isNaN(n)) {
+      onChange(Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n)));
+    } else {
+      setRaw(String(value));
+    }
   }
-
-  useEffect(() => {
-    return () => clearTimeout(timerRef.current);
-  }, []);
 
   return (
     <div className={styles.root}>
@@ -44,11 +36,13 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, label
         <input
           type="number"
           className={styles.input}
-          value={localValue}
+          value={raw}
           min={min}
           max={max}
           step={step}
-          onChange={(e) => handleChange(e.target.value)}
+          onChange={(e) => setRaw(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
         />
       </div>
       {subtext && <span className={styles.subtext}>{subtext}</span>}

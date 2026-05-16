@@ -14,9 +14,7 @@ export function InputsPanel() {
 
   const { livePrice, lastUpdated } = useBtcPrice();
 
-  const liveSubtext = livePrice !== null && lastUpdated
-    ? `Live — just updated`
-    : undefined;
+  const isSynced = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
 
   return (
     <div className={styles.panel}>
@@ -30,7 +28,7 @@ export function InputsPanel() {
           label="Monthly Income"
           value={income}
           onChange={setIncome}
-          min={100}
+          min={0}
           max={500000}
           step={100}
           prefix="$"
@@ -39,21 +37,33 @@ export function InputsPanel() {
           label="Monthly Expenses"
           value={expenses}
           onChange={setExpenses}
-          min={100}
+          min={0}
           max={200000}
           step={100}
           prefix="$"
         />
-        <NumberInput
-          label="BTC Price"
-          value={btcPrice}
-          onChange={setBtcPrice}
-          min={1000}
-          max={5000000}
-          step={1000}
-          prefix="$"
-          subtext={liveSubtext}
-        />
+        <div className={styles.btcPriceRow}>
+          <div className={styles.btcPriceLabelRow}>
+            <span className={styles.fieldLabel}>BTC PRICE</span>
+            <button
+              className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
+              onClick={() => livePrice !== null && setBtcPrice(livePrice)}
+              disabled={livePrice === null}
+              title="Restore live price"
+            >
+              LIVE
+            </button>
+          </div>
+          <NumberInput
+            value={btcPrice}
+            onChange={setBtcPrice}
+            min={1000}
+            max={5000000}
+            step={1000}
+            prefix="$"
+          />
+          {lastUpdated && <div className={styles.note}>Live — just updated</div>}
+        </div>
       </div>
     </div>
   );
