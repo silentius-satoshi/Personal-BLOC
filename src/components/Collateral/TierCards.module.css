@@ -1,0 +1,77 @@
+.cards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sectionHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.sectionTitle {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.sectionSub {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.card:hover {
+  border-color: var(--border-focus);
+  background: var(--bg-hover);
+}
+
+.card.active {
+  border-color: var(--orange);
+  background: var(--bg-hover);
+}
+
+.tierLabel {
+  font-size: 7px;
+  letter-spacing: 2px;
+  font-weight: 600;
+}
+
+.btcAmount {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.ltvRow {
+  font-size: 9px;
+  color: var(--text-faint);
+}
+
+.ltvRow strong {
+  color: var(--text-secondary);
+}
+
+.crashRow {
+  font-size: 9px;
+  color: var(--text-faint);
+}

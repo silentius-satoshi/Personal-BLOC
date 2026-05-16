@@ -1,0 +1,19 @@
+:root {
+  --bg-app:       #09090E;
+  --bg-card:      #111318;
+  --bg-input:     #0D0E14;
+  --bg-hover:     #13141F;
+  --border:       #1E2028;
+  --border-focus: #2A2A3A;
+
+  --orange: #E8836A;
+  --green:  #4ECB82;
+  --amber:  #F0A030;
+  --red:    #E8504A;
+
+  --text-primary:   #E8E8E8;
+  --text-secondary: #D0D0D0;
+  --text-muted:     #888888;
+  --text-faint:     #555555;
+  --text-ghost:     #444444;
+}

@@ -1,0 +1,23 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.title {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
