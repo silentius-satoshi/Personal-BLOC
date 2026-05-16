@@ -10,6 +10,12 @@
   align-items: baseline;
 }
 
+.labelGroup {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
 .label {
   font-size: 10px;
   color: var(--text-muted);

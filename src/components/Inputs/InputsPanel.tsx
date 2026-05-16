@@ -12,9 +12,9 @@ export function InputsPanel() {
   const setExpenses = useStore((s) => s.setExpenses);
   const setBtcPrice = useStore((s) => s.setBtcPrice);
 
-  const { isLive, lastUpdated } = useBtcPrice();
+  const { livePrice, lastUpdated } = useBtcPrice();
 
-  const liveSubtext = isLive && lastUpdated
+  const liveSubtext = livePrice !== null && lastUpdated
     ? `Live — just updated`
     : undefined;
 

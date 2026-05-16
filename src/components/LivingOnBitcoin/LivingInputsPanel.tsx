@@ -26,7 +26,20 @@ export function LivingInputsPanel() {
   const setInflationRate    = useStore((s) => s.setInflationRate);
   const setTimeHorizonYears = useStore((s) => s.setTimeHorizonYears);
 
-  const { isLive } = useBtcPrice();
+  const { livePrice, lastUpdated } = useBtcPrice();
+
+  const isSynced = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
+
+  const liveBadge = (
+    <button
+      className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
+      onClick={() => livePrice !== null && setBtcPrice(livePrice)}
+      disabled={livePrice === null}
+      title="Restore live price"
+    >
+      LIVE
+    </button>
+  );
 
   const horizonLabel = timeHorizonYears === 1 ? '1 year' : `${timeHorizonYears} years`;
 
@@ -46,7 +59,8 @@ export function LivingInputsPanel() {
           maxLabel="100 BTC"
         />
         <SliderInput
-          label={isLive ? 'BTC Price — Live' : 'BTC Price'}
+          label="BTC Price"
+          labelSuffix={liveBadge}
           value={btcPrice}
           onChange={setBtcPrice}
           min={20000}
@@ -56,6 +70,7 @@ export function LivingInputsPanel() {
           minLabel="$20k"
           maxLabel="$1M"
         />
+        {lastUpdated && <div className={styles.note}>Live — just updated</div>}
       </div>
 
       <div className={styles.section}>

@@ -11,10 +11,11 @@ interface SliderInputProps {
   display: string;
   minLabel?: string;
   maxLabel?: string;
+  labelSuffix?: React.ReactNode;
 }
 
 export function SliderInput({
-  label, value, onChange, min, max, step, display, minLabel, maxLabel,
+  label, value, onChange, min, max, step, display, minLabel, maxLabel, labelSuffix,
 }: SliderInputProps) {
   const [editing, setEditing]     = useState(false);
   const [editValue, setEditValue] = useState('');
@@ -35,7 +36,10 @@ export function SliderInput({
   return (
     <div className={styles.wrapper}>
       <div className={styles.header}>
-        <span className={styles.label}>{label}</span>
+        <span className={styles.labelGroup}>
+          <span className={styles.label}>{label}</span>
+          {labelSuffix}
+        </span>
         {editing ? (
           <input
             ref={inputRef}

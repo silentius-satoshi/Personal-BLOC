@@ -54,3 +54,33 @@
   font-weight: 600;
   min-width: 20px;
 }
+
+.liveBadge {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--orange);
+  background: transparent;
+  color: var(--orange);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.liveBadge:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.liveBadge:disabled {
+  opacity: 0.3;
+  cursor: default;
+  text-decoration: none;
+}
+
+.liveBadgeSynced {
+  border-color: var(--green);
+  color: var(--green);
+}
