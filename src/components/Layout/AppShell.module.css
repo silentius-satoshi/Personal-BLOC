@@ -14,7 +14,7 @@
   align-items: center;
   gap: 2px;
   padding: 0 20px;
-  background: var(--bg-base);
+  background: var(--bg-card);
   border-bottom: 1px solid var(--border);
   height: 40px;
 }
@@ -45,7 +45,7 @@
   top: 40px;
   height: calc(100vh - 40px);
   overflow-y: auto;
-  background: var(--bg-base);
+  background: var(--bg-card);
   border-right: 1px solid var(--border);
   padding: 20px 16px;
 }
@@ -63,7 +63,7 @@
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
-  background: var(--bg-base);
+  background: var(--bg-card);
 }
 
 .headerBranding {
