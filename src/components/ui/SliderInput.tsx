@@ -34,34 +34,34 @@ export function SliderInput({
   }
 
   return (
-    <div className={styles.wrapper}>
-      <div className={styles.header}>
-        <span className={styles.labelGroup}>
-          <span className={styles.label}>{label}</span>
-          {labelSuffix}
-        </span>
-        {editing ? (
-          <input
-            ref={inputRef}
-            type="text"
-            className={styles.valueInput}
-            value={editValue}
-            onChange={(e) => setEditValue(e.target.value)}
-            onBlur={commit}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') commit();
-              if (e.key === 'Escape') setEditing(false);
-            }}
-          />
-        ) : (
-          <span
-            className={styles.value}
-            onClick={() => { setEditValue(String(value)); setEditing(true); }}
-          >
-            {display}
-          </span>
-        )}
+    <div className={styles.root}>
+      <div className={styles.labelRow}>
+        <span className={styles.label}>{label}</span>
+        {labelSuffix && <span className={styles.labelSuffix}>{labelSuffix}</span>}
       </div>
+
+      {editing ? (
+        <input
+          ref={inputRef}
+          type="text"
+          className={styles.valueInput}
+          value={editValue}
+          onChange={(e) => setEditValue(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commit();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+        />
+      ) : (
+        <div
+          className={styles.valueDisplay}
+          onClick={() => { setEditValue(String(value)); setEditing(true); }}
+        >
+          {display}
+        </div>
+      )}
+
       <input
         type="range"
         className={styles.slider}
@@ -71,10 +71,11 @@ export function SliderInput({
         value={value}
         onChange={(e) => { if (!editing) onChange(Number(e.target.value)); }}
       />
+
       {(minLabel || maxLabel) && (
-        <div className={styles.rangeLabels}>
-          <span>{minLabel ?? ''}</span>
-          <span>{maxLabel ?? ''}</span>
+        <div className={styles.minMax}>
+          <span className={styles.minLabel}>{minLabel}</span>
+          <span className={styles.maxLabel}>{maxLabel}</span>
         </div>
       )}
     </div>

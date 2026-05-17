@@ -58,7 +58,7 @@ export function LivingInputsPanel() {
           min={0}
           max={100}
           step={0.01}
-          display={`${btcHoldings.toFixed(2)} BTC`}
+          display={`${String(btcHoldings)} BTC`}
           minLabel="0"
           maxLabel="100 BTC"
         />
@@ -113,7 +113,7 @@ export function LivingInputsPanel() {
           min={-50}
           max={100}
           step={1}
-          display={`${annualBtcGrowth}%`}
+          display={`${annualBtcGrowth >= 0 ? '+' : ''}${annualBtcGrowth}%`}
           minLabel="-50%"
           maxLabel="100%"
         />
@@ -168,7 +168,7 @@ export function LivingInputsPanel() {
           min={0}
           max={10}
           step={0.1}
-          display={`${inflationRate.toFixed(1)}%`}
+          display={`${inflationRate}%`}
           minLabel="0%"
           maxLabel="10%"
         />

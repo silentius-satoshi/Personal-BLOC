@@ -20,7 +20,8 @@ export function LtvTypePills() {
           className={`${styles.pill} ${ltvType === p.key ? styles.active : ''}`}
           onClick={() => setLtvType(p.key)}
         >
-          {p.label} <span className={styles.rate}>{p.pct}</span>
+          <span className={styles.pillName}>{p.label}</span>
+          <span className={styles.pillValue}>{p.pct}</span>
         </button>
       ))}
     </div>

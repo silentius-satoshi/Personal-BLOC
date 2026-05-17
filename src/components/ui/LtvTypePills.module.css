@@ -1,36 +1,49 @@
 .pills {
-  display: flex;
-  gap: 5px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  width: 100%;
 }
 
 .pill {
-  font-size: 10px;
-  padding: 4px 8px;
-  border-radius: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 8px 4px;
+  border-radius: 8px;
   border: 1px solid var(--border);
-  background: var(--bg-card);
-  color: var(--text-muted);
-  transition: border-color 0.15s, background 0.15s, color 0.15s;
+  background: var(--bg-input);
   cursor: pointer;
+  gap: 2px;
+  transition: border-color 0.15s;
 }
 
 .pill:hover {
-  border-color: var(--border-focus);
-  color: var(--text-secondary);
+  border-color: var(--text-ghost);
 }
 
 .pill.active {
   border-color: var(--orange);
   background: rgba(232, 131, 106, 0.08);
+}
+
+.pillName {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.pill.active .pillName {
+  color: var(--orange);
+}
+
+.pillValue {
+  font-size: 12px;
+  font-weight: 700;
   color: var(--text-primary);
 }
 
-.rate {
-  color: var(--text-muted);
-  margin-left: 2px;
-}
-
-.pill.active .rate {
+.pill.active .pillValue {
   color: var(--orange);
 }

@@ -4,7 +4,7 @@ import styles from './GrowthPresetPills.module.css';
 const PRESETS = [
   { label: 'Conservative', value: 30 },
   { label: 'Moderate',     value: 50 },
-  { label: 'Historical',   value: 80 },
+  { label: 'Historical Avg', value: 80 },
 ];
 
 export function GrowthPresetPills() {
@@ -19,7 +19,8 @@ export function GrowthPresetPills() {
           className={`${styles.pill} ${annualBtcGrowth === p.value ? styles.active : ''}`}
           onClick={() => setAnnualBtcGrowth(p.value)}
         >
-          {p.label} <span className={styles.rate}>{p.value}%</span>
+          <span className={styles.pillName}>{p.label}</span>
+          <span className={styles.pillValue}>{p.value}%</span>
         </button>
       ))}
     </div>

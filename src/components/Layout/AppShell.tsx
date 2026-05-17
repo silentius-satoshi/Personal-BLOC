@@ -24,17 +24,17 @@ export function AppShell() {
         >
           Smart BLOC
         </button>
+        <div className={styles.headerBranding}>
+          <span className={styles.headerLogo}>₿</span>
+          <div className={styles.headerText}>
+            <span className={styles.headerTitle}>Smart BLOC</span>
+            <span className={styles.headerSub}> + Fold CC Advisor</span>
+          </div>
+        </div>
       </div>
 
       <aside className={styles.sidebar}>
         <div className={styles.sidebarInner}>
-          <div className={styles.logo}>
-            <span className={styles.logoMark}>₿</span>
-            <div>
-              <div className={styles.logoTitle}>Smart BLOC</div>
-              <div className={styles.logoSub}>+ Fold CC Advisor</div>
-            </div>
-          </div>
           {activeTab === 'living' ? <LivingInputsPanel /> : <InputsPanel />}
         </div>
       </aside>
