@@ -36,7 +36,6 @@ export function AppShell() {
           <span className={styles.headerLogo}>₿</span>
           <div className={styles.headerText}>
             <span className={styles.headerTitle}>Smart BLOC</span>
-            <span className={styles.headerSub}> + Fold CC Advisor</span>
           </div>
         </div>
       </div>
