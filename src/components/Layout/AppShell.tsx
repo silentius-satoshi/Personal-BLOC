@@ -5,6 +5,8 @@ import { SmartBlocMain } from './SmartBlocMain';
 import { LivingOnBitcoin } from '../LivingOnBitcoin/LivingOnBitcoin';
 import { PowerLawSidebar } from '../PowerLaw/PowerLawSidebar';
 import { PowerLawMain }    from '../PowerLaw/PowerLawMain';
+import { ConverterSidebar } from '../Converter/ConverterSidebar';
+import { ConverterMain }    from '../Converter/ConverterMain';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
@@ -32,6 +34,12 @@ export function AppShell() {
         >
           Power Law
         </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'converter' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('converter')}
+        >
+          Sats
+        </button>
         <div className={styles.headerBranding}>
           <span className={styles.headerLogo}>₿</span>
           <div className={styles.headerText}>
@@ -42,16 +50,18 @@ export function AppShell() {
 
       <aside className={styles.sidebar}>
         <div className={styles.sidebarInner}>
-          {activeTab === 'living'   ? <LivingInputsPanel /> :
-           activeTab === 'powerlaw' ? <PowerLawSidebar />   :
-                                      <InputsPanel />}
+          {activeTab === 'living'    ? <LivingInputsPanel />  :
+           activeTab === 'powerlaw'  ? <PowerLawSidebar />    :
+           activeTab === 'converter' ? <ConverterSidebar />   :
+                                       <InputsPanel />}
         </div>
       </aside>
 
       <main className={styles.main}>
-        {activeTab === 'living'   ? <LivingOnBitcoin /> :
-         activeTab === 'powerlaw' ? <PowerLawMain />    :
-                                    <SmartBlocMain />}
+        {activeTab === 'living'    ? <LivingOnBitcoin />  :
+         activeTab === 'powerlaw'  ? <PowerLawMain />     :
+         activeTab === 'converter' ? <ConverterMain />    :
+                                     <SmartBlocMain />}
       </main>
     </div>
   );

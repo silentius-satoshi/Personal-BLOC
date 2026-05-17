@@ -1,0 +1,55 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sectionHeader {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--orange);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid var(--border);
+}
+
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.statLabel {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.statValue {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
+}
+
+.note {
+  font-size: 9px;
+  color: var(--text-ghost);
+  line-height: 1.5;
+}
+
+.badge {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  vertical-align: middle;
+}
