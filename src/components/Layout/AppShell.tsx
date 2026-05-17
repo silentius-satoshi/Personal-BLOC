@@ -3,6 +3,8 @@ import { InputsPanel } from '../Inputs/InputsPanel';
 import { LivingInputsPanel } from '../LivingOnBitcoin/LivingInputsPanel';
 import { SmartBlocMain } from './SmartBlocMain';
 import { LivingOnBitcoin } from '../LivingOnBitcoin/LivingOnBitcoin';
+import { PowerLawSidebar } from '../PowerLaw/PowerLawSidebar';
+import { PowerLawMain }    from '../PowerLaw/PowerLawMain';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
@@ -24,6 +26,12 @@ export function AppShell() {
         >
           Smart BLOC
         </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'powerlaw' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('powerlaw')}
+        >
+          Power Law
+        </button>
         <div className={styles.headerBranding}>
           <span className={styles.headerLogo}>₿</span>
           <div className={styles.headerText}>
@@ -35,12 +43,16 @@ export function AppShell() {
 
       <aside className={styles.sidebar}>
         <div className={styles.sidebarInner}>
-          {activeTab === 'living' ? <LivingInputsPanel /> : <InputsPanel />}
+          {activeTab === 'living'   ? <LivingInputsPanel /> :
+           activeTab === 'powerlaw' ? <PowerLawSidebar />   :
+                                      <InputsPanel />}
         </div>
       </aside>
 
       <main className={styles.main}>
-        {activeTab === 'living' ? <LivingOnBitcoin /> : <SmartBlocMain />}
+        {activeTab === 'living'   ? <LivingOnBitcoin /> :
+         activeTab === 'powerlaw' ? <PowerLawMain />    :
+                                    <SmartBlocMain />}
       </main>
     </div>
   );

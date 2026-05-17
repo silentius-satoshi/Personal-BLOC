@@ -2,7 +2,7 @@ import { create } from 'zustand';
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 interface StoreState {
