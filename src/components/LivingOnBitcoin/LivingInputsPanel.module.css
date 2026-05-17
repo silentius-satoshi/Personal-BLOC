@@ -1,5 +1,5 @@
 .panel {
-  padding: 20px 16px;
+  padding: 8px 16px 20px 16px;
   display: flex;
   flex-direction: column;
   gap: 16px;
