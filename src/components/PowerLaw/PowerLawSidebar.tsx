@@ -104,7 +104,7 @@ export function PowerLawSidebar() {
       <div className={styles.note}>
         $100k floor: ~2028<br />
         $1M fair value: ~2033–2035<br />
-        Formula: 1.0117e‑17 × days^5.82
+        Formula: 1.16e‑17 × days^5.82
       </div>
     </div>
   );
