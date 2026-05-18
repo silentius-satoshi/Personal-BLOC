@@ -1,9 +1,10 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import styles from './ConverterMain.module.css';
 
 const SATS_PER_BTC = 100_000_000;
 
+type ActiveField = 'sats' | 'btc' | 'usd';
 
 function fmtSats(n: number): string {
   return Math.round(n).toLocaleString();
@@ -51,10 +52,24 @@ function ConverterField({ label, unit, prefix, active, displayValue, onFocus, on
 
 export function ConverterMain() {
   const btcPrice = useStore((s) => s.btcPrice);
-  const activeField    = useStore((s) => s.converterActiveField);
-  const rawValue       = useStore((s) => s.converterRawValue);
-  const setActiveField = useStore((s) => s.setConverterActiveField);
-  const setRawValue    = useStore((s) => s.setConverterRawValue);
+  const setStoredActiveField = useStore((s) => s.setConverterActiveField);
+  const setStoredRawValue    = useStore((s) => s.setConverterRawValue);
+
+  const [activeField, setActiveField] = useState<ActiveField>(
+    () => useStore.getState().converterActiveField
+  );
+  const [rawValue, setRawValue] = useState<string>(
+    () => useStore.getState().converterRawValue
+  );
+
+  const updateActiveField = (field: ActiveField) => {
+    setActiveField(field);
+    setStoredActiveField(field);
+  };
+  const updateRawValue = (value: string) => {
+    setRawValue(value);
+    setStoredRawValue(value);
+  };
 
   const { sats, btc, usd } = useMemo(() => {
     const n = parseFloat(rawValue) || 0;
@@ -82,8 +97,8 @@ export function ConverterMain() {
           unit="SATS"
           active={activeField === 'sats'}
           displayValue={activeField === 'sats' ? rawValue : fmtSats(sats)}
-          onFocus={() => { setActiveField('sats'); setRawValue(String(Math.round(sats))); }}
-          onChange={(v) => setRawValue(v)}
+          onFocus={() => { updateActiveField('sats'); updateRawValue(String(Math.round(sats))); }}
+          onChange={(v) => updateRawValue(v)}
         />
 
         <div className={styles.divider}><span className={styles.dividerIcon}>⇅</span></div>
@@ -94,8 +109,8 @@ export function ConverterMain() {
           prefix="₿"
           active={activeField === 'btc'}
           displayValue={activeField === 'btc' ? rawValue : fmtBtc(btc)}
-          onFocus={() => { setActiveField('btc'); setRawValue(String(btc)); }}
-          onChange={(v) => setRawValue(v)}
+          onFocus={() => { updateActiveField('btc'); updateRawValue(String(btc)); }}
+          onChange={(v) => updateRawValue(v)}
         />
 
         <div className={styles.divider}><span className={styles.dividerIcon}>⇅</span></div>
@@ -106,8 +121,8 @@ export function ConverterMain() {
           prefix="$"
           active={activeField === 'usd'}
           displayValue={activeField === 'usd' ? rawValue : fmtUsdLocal(usd)}
-          onFocus={() => { setActiveField('usd'); setRawValue(String(usd)); }}
-          onChange={(v) => setRawValue(v)}
+          onFocus={() => { updateActiveField('usd'); updateRawValue(String(usd)); }}
+          onChange={(v) => updateRawValue(v)}
         />
       </div>
 
@@ -123,7 +138,7 @@ export function ConverterMain() {
           </thead>
           <tbody>
             {[1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map((s) => (
-              <tr key={s} onClick={() => { setActiveField('sats'); setRawValue(String(s)); }}>
+              <tr key={s} onClick={() => { updateActiveField('sats'); updateRawValue(String(s)); }}>
                 <td>{s.toLocaleString()} {s === 1 ? 'Satoshi' : 'Satoshis'}</td>
                 <td>{(s / SATS_PER_BTC).toFixed(8)} BTC</td>
                 <td>{fmtUsdLocal((s / SATS_PER_BTC) * btcPrice)}</td>
