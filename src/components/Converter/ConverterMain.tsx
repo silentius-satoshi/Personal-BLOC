@@ -103,6 +103,7 @@ export function ConverterMain() {
         <ConverterField
           label="SATOSHIS"
           unit="SATS"
+          prefix="丰"
           active={activeField === 'sats'}
           rawValue={rawValue}
           displayValue={fmtSats(sats)}
