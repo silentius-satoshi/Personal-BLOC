@@ -131,7 +131,7 @@ export function ConverterMain() {
           prefix="$"
           active={activeField === 'usd'}
           rawValue={rawValue}
-          displayValue={fmtUsdLocal(usd)}
+          displayValue={fmtUsdLocal(usd).replace(/^\$/, '')}
           onFocus={() => { updateActiveField('usd'); updateRawValue(String(usd)); }}
           onChange={(v) => updateRawValue(v)}
         />
