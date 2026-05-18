@@ -7,6 +7,8 @@ import { PowerLawSidebar } from '../PowerLaw/PowerLawSidebar';
 import { PowerLawMain }    from '../PowerLaw/PowerLawMain';
 import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { ConverterMain }    from '../Converter/ConverterMain';
+import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
+import { MiningMain }        from '../Mining/MiningMain';
 import styles from './AppShell.module.css';
 
 export function AppShell() {
@@ -40,6 +42,12 @@ export function AppShell() {
         >
           Sats
         </button>
+        <button
+          className={`${styles.tab} ${activeTab === 'mining' ? styles.tabActive : ''}`}
+          onClick={() => setActiveTab('mining')}
+        >
+          Mining ⛏
+        </button>
         <div className={styles.headerBranding}>
           <span className={styles.headerLogo}>₿</span>
           <div className={styles.headerText}>
@@ -53,6 +61,7 @@ export function AppShell() {
           {activeTab === 'living'    ? <LivingInputsPanel />  :
            activeTab === 'powerlaw'  ? <PowerLawSidebar />    :
            activeTab === 'converter' ? <ConverterSidebar />   :
+           activeTab === 'mining'    ? <MiningInputsPanel />  :
                                        <InputsPanel />}
         </div>
       </aside>
@@ -61,6 +70,7 @@ export function AppShell() {
         {activeTab === 'living'    ? <LivingOnBitcoin />  :
          activeTab === 'powerlaw'  ? <PowerLawMain />     :
          activeTab === 'converter' ? <ConverterMain />    :
+         activeTab === 'mining'    ? <MiningMain />       :
                                      <SmartBlocMain />}
       </main>
     </div>

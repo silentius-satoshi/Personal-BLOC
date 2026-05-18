@@ -1,0 +1,103 @@
+.card {
+  width: 100%;
+  text-align: left;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.card:hover {
+  border-color: var(--text-ghost);
+}
+
+.card.active {
+  border-color: var(--strategy-color, var(--orange));
+  background: color-mix(in srgb, var(--strategy-color, var(--orange)) 8%, var(--bg-card));
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.emoji {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-ghost);
+  letter-spacing: 0.04em;
+  flex: 1;
+}
+
+.activePip {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.desc {
+  font-size: 11px;
+  color: var(--text-ghost);
+  margin-bottom: 12px;
+  line-height: 1.4;
+}
+
+.metrics {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.metric {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+
+.metricLabel {
+  font-size: 12px;
+  color: var(--text-ghost);
+}
+
+.metricValue {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.lottery {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lotteryTitle {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-ghost);
+  letter-spacing: 0.04em;
+  margin-bottom: 2px;
+}
+
+.lotteryRow {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.lotteryNote {
+  font-size: 11px;
+  color: var(--text-ghost);
+  font-weight: 400;
+}

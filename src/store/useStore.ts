@@ -1,10 +1,27 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import type { MiningDevice, MiningPool, MiningInputs, MiningCurrency, MiningStrategy } from '../simulation/types';
+
+export type { MiningDevice, MiningPool, MiningInputs, MiningCurrency, MiningStrategy };
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
+
+const defaultMiningInputs: MiningInputs = {
+  devices: [
+    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true },
+    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true },
+  ],
+  electricityRateCents: 12,
+  btcPriceOverride: null,
+  networkHashrateEH: 1000,
+  selectedStrategy: 'split',
+  currency: 'usd',
+  projectionYears: 5,
+  btcPriceScenarios: [76000, 150000, 300000, 1000000],
+};
 
 interface StoreState {
   // Shared inputs
@@ -65,6 +82,13 @@ interface StoreState {
   converterRawValue:    string;
   setConverterActiveField: (v: 'sats' | 'btc' | 'usd') => void;
   setConverterRawValue:    (v: string) => void;
+
+  // Mining tab state
+  miningInputs: MiningInputs;
+  setMiningInputs: (patch: Partial<MiningInputs>) => void;
+  setMiningDevice: (index: number, patch: Partial<MiningDevice>) => void;
+  setMiningCurrency: (currency: MiningCurrency) => void;
+  setMiningStrategy: (strategy: MiningStrategy) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -119,6 +143,15 @@ export const useStore = create<StoreState>()(
   converterRawValue:    '0',
   setConverterActiveField: (v) => set({ converterActiveField: v }),
   setConverterRawValue:    (v) => set({ converterRawValue: v }),
+
+  miningInputs: defaultMiningInputs,
+  setMiningInputs: (patch) => set((s) => ({ miningInputs: { ...s.miningInputs, ...patch } })),
+  setMiningDevice: (index, patch) => set((s) => {
+    const devices = s.miningInputs.devices.map((d, i) => i === index ? { ...d, ...patch } : d);
+    return { miningInputs: { ...s.miningInputs, devices } };
+  }),
+  setMiningCurrency: (currency) => set((s) => ({ miningInputs: { ...s.miningInputs, currency } })),
+  setMiningStrategy: (strategy) => set((s) => ({ miningInputs: { ...s.miningInputs, selectedStrategy: strategy } })),
     }),
     { name: 'personal-bloc-store' }
   )

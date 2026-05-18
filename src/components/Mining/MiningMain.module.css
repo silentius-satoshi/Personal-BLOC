@@ -1,0 +1,43 @@
+.main {
+  --color-solo:   #FF4444;
+  --color-split:  #F7931A;
+  --color-pooled: #00C896;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  max-width: 960px;
+}
+
+.topBar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.topBarLeft {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-ghost);
+  margin: 0;
+}
+
+.strategyCards {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}

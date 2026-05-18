@@ -1,0 +1,104 @@
+.panel {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.title {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-ghost);
+  letter-spacing: 0.04em;
+}
+
+.note {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.tableWrap {
+  overflow-x: auto;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.table th,
+.table td {
+  padding: 8px 10px;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.table th:first-child,
+.table td:first-child {
+  text-align: left;
+}
+
+.table thead tr {
+  border-bottom: 1px solid var(--border);
+}
+
+.table tbody tr {
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+}
+
+.table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.table tbody tr:hover {
+  background: color-mix(in srgb, var(--orange) 4%, transparent);
+}
+
+.thYear,
+.tdYear {
+  color: var(--text-secondary);
+  font-weight: 600;
+}
+
+.th {
+  color: var(--text-ghost);
+  font-weight: 600;
+}
+
+.thLive {
+  color: var(--orange);
+  font-weight: 700;
+}
+
+.td {
+  color: var(--text-secondary);
+}
+
+.tdLive {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.footer {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-ghost);
+}
+
+.disclaimer {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+  line-height: 1.4;
+}

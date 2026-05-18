@@ -71,3 +71,82 @@ export interface StrategyResult {
   crashLtv: number;
   realReturn: number;
 }
+
+// --- Mining Tab Types ---
+
+export type MiningCurrency = 'usd' | 'sats' | 'btc';
+export type MiningStrategy = 'solo' | 'split' | 'pooled';
+
+export interface MiningDevice {
+  name: string;
+  hashrateTH: number;
+  powerW: number;
+  efficiencyJTH: number;
+  enabled: boolean;
+}
+
+export interface MiningPool {
+  id: string;
+  name: string;
+  feePercent: number;
+  type: 'solo' | 'pooled';
+  lightning: boolean;
+  stratum: string;
+}
+
+export interface MiningInputs {
+  devices: MiningDevice[];
+  electricityRateCents: number;
+  btcPriceOverride: number | null;
+  networkHashrateEH: number;
+  selectedStrategy: MiningStrategy;
+  currency: MiningCurrency;
+  projectionYears: number;
+  btcPriceScenarios: number[];
+}
+
+export interface MiningStrategyResult {
+  id: MiningStrategy;
+  label: string;
+  emoji: string;
+  devices: {
+    device: MiningDevice;
+    pool: MiningPool;
+    dailyEV_usd: number;
+    dailyEV_sats: number;
+    type: 'solo' | 'pooled';
+  }[];
+  totalHashTH: number;
+  soloHashTH: number;
+  pooledHashTH: number;
+  dailyEV_usd: number;
+  dailyEV_sats: number;
+  dailyEV_btc: number;
+  monthlyNet_usd: number;
+  monthlyNet_sats: number;
+  monthlyNet_btc: number;
+  yearlyNet_usd: number;
+  yearlyNet_sats: number;
+  yearlyNet_btc: number;
+  totalPowerW: number;
+  monthlyElecCost_usd: number;
+  lotteryOdds: {
+    dailyProbability: number;
+    annualProbability: number;
+    expectedYearsToBlock: number;
+    jackpotValue_usd: number;
+    jackpotValue_sats: number;
+    jackpotValue_btc: number;
+  } | null;
+  projection: {
+    year: number;
+    satsAccumulated: number;
+    valueByScenario: Record<number, number>;
+  }[];
+  poolSetup: {
+    deviceName: string;
+    hashrateTH: number;
+    pool: MiningPool;
+    type: 'solo' | 'pooled';
+  }[];
+}
