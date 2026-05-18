@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useRef, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import styles from './ConverterMain.module.css';
 
@@ -26,22 +26,30 @@ interface ConverterFieldProps {
   prefix?: string;
   active: boolean;
   displayValue: string;
+  rawValue:     string;
   onFocus: () => void;
+  onBlurField?: () => void;
   onChange: (v: string) => void;
 }
 
-function ConverterField({ label, unit, prefix, active, displayValue, onFocus, onChange }: ConverterFieldProps) {
+function ConverterField({ label, unit, prefix, active, displayValue, rawValue, onFocus, onBlurField, onChange }: ConverterFieldProps) {
+  const [isFocused, setIsFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
   return (
     <div className={`${styles.field} ${active ? styles.fieldActive : ''}`}>
       <div className={styles.fieldLabel}>{label}</div>
       <div className={styles.fieldInputRow}>
         {prefix && <span className={styles.fieldPrefix}>{prefix}</span>}
         <input
+          ref={inputRef}
           type="text"
           inputMode="decimal"
           className={styles.fieldInput}
-          value={displayValue}
-          onFocus={onFocus}
+          value={isFocused ? rawValue : displayValue}
+          onFocus={() => { setIsFocused(true); onFocus(); }}
+          onBlur={() => { setIsFocused(false); onBlurField?.(); }}
+          onKeyDown={(e) => { if (e.key === 'Enter') inputRef.current?.blur(); }}
           onChange={(e) => onChange(e.target.value)}
         />
         <span className={styles.fieldUnit}>{unit}</span>
@@ -96,7 +104,8 @@ export function ConverterMain() {
           label="SATOSHIS"
           unit="SATS"
           active={activeField === 'sats'}
-          displayValue={activeField === 'sats' ? rawValue : fmtSats(sats)}
+          rawValue={rawValue}
+          displayValue={fmtSats(sats)}
           onFocus={() => { updateActiveField('sats'); updateRawValue(String(Math.round(sats))); }}
           onChange={(v) => updateRawValue(v)}
         />
@@ -108,7 +117,8 @@ export function ConverterMain() {
           unit="BTC"
           prefix="₿"
           active={activeField === 'btc'}
-          displayValue={activeField === 'btc' ? rawValue : fmtBtc(btc)}
+          rawValue={rawValue}
+          displayValue={fmtBtc(btc)}
           onFocus={() => { updateActiveField('btc'); updateRawValue(String(btc)); }}
           onChange={(v) => updateRawValue(v)}
         />
@@ -120,7 +130,8 @@ export function ConverterMain() {
           unit="USD"
           prefix="$"
           active={activeField === 'usd'}
-          displayValue={activeField === 'usd' ? rawValue : fmtUsdLocal(usd)}
+          rawValue={rawValue}
+          displayValue={fmtUsdLocal(usd)}
           onFocus={() => { updateActiveField('usd'); updateRawValue(String(usd)); }}
           onChange={(v) => updateRawValue(v)}
         />
