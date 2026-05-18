@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
@@ -58,9 +59,17 @@ interface StoreState {
   setInflationRate: (v: number) => void;
   setLtvType: (v: LtvType) => void;
   setTimeHorizonYears: (v: number) => void;
+
+  // Converter tab state
+  converterActiveField: 'sats' | 'btc' | 'usd';
+  converterRawValue:    string;
+  setConverterActiveField: (v: 'sats' | 'btc' | 'usd') => void;
+  setConverterRawValue:    (v: string) => void;
 }
 
-export const useStore = create<StoreState>((set) => ({
+export const useStore = create<StoreState>()(
+  persist(
+    (set) => ({
   income: 4000,
   expenses: 3500,
   btcPrice: 82000,
@@ -105,4 +114,12 @@ export const useStore = create<StoreState>((set) => ({
   setInflationRate: (v) => set({ inflationRate: v }),
   setLtvType: (v) => set({ ltvType: v }),
   setTimeHorizonYears: (v) => set({ timeHorizonYears: v }),
-}));
+
+  converterActiveField: 'sats',
+  converterRawValue:    '0',
+  setConverterActiveField: (v) => set({ converterActiveField: v }),
+  setConverterRawValue:    (v) => set({ converterRawValue: v }),
+    }),
+    { name: 'personal-bloc-store' }
+  )
+);

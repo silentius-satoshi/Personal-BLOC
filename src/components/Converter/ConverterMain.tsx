@@ -1,10 +1,9 @@
-import { useState, useMemo } from 'react';
+import { useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import styles from './ConverterMain.module.css';
 
 const SATS_PER_BTC = 100_000_000;
 
-type ActiveField = 'sats' | 'btc' | 'usd';
 
 function fmtSats(n: number): string {
   return Math.round(n).toLocaleString();
@@ -52,8 +51,10 @@ function ConverterField({ label, unit, prefix, active, displayValue, onFocus, on
 
 export function ConverterMain() {
   const btcPrice = useStore((s) => s.btcPrice);
-  const [activeField, setActiveField] = useState<ActiveField>('sats');
-  const [rawValue, setRawValue] = useState<string>('1000000');
+  const activeField    = useStore((s) => s.converterActiveField);
+  const rawValue       = useStore((s) => s.converterRawValue);
+  const setActiveField = useStore((s) => s.setConverterActiveField);
+  const setRawValue    = useStore((s) => s.setConverterRawValue);
 
   const { sats, btc, usd } = useMemo(() => {
     const n = parseFloat(rawValue) || 0;
