@@ -14,7 +14,7 @@ function fmtPct(v: number): string {
 }
 
 function fmtBtc(v: number): string {
-  return `${v.toFixed(4)} BTC`;
+  return `₿ ${v.toFixed(4)} BTC`;
 }
 
 type DotStyle = 'orange-fill' | 'green-fill' | 'gray-outline';

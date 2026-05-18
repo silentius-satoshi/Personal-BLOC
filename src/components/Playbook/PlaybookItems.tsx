@@ -103,7 +103,7 @@ export function PlaybookItems({ data }: Props) {
           subtext={`(${foldRewardRate}% on expenses)`}
           right={
             <span className={styles.amount} style={{ color: 'var(--green)' }}>
-              +{data.foldBTCThisMonth.toFixed(5)} BTC
+              +₿ {data.foldBTCThisMonth.toFixed(5)} BTC
             </span>
           }
         />

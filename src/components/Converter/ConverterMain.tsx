@@ -151,8 +151,8 @@ export function ConverterMain() {
           <tbody>
             {[1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map((s) => (
               <tr key={s} onClick={() => { updateActiveField('sats'); updateRawValue(String(s)); }}>
-                <td>{s.toLocaleString()} {s === 1 ? 'Satoshi' : 'Satoshis'}</td>
-                <td>{(s / SATS_PER_BTC).toFixed(8)} BTC</td>
+                <td>丰 {s.toLocaleString()} {s === 1 ? 'Satoshi' : 'Satoshis'}</td>
+                <td>₿ {(s / SATS_PER_BTC).toFixed(8)} BTC</td>
                 <td>{fmtUsdLocal((s / SATS_PER_BTC) * btcPrice)}</td>
               </tr>
             ))}

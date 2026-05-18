@@ -49,7 +49,7 @@ export function ConverterSidebar() {
       <div className={styles.stat}>
         <div className={styles.statLabel}>1 USD =</div>
         <div className={styles.statValue}>
-          {satsPerDollar != null ? Math.round(satsPerDollar).toLocaleString() : '—'} sats
+          {satsPerDollar != null ? `丰 ${Math.round(satsPerDollar).toLocaleString()} sats` : '—'}
         </div>
       </div>
 
@@ -62,8 +62,8 @@ export function ConverterSidebar() {
           <div className={styles.statLabel}>${dollars.toLocaleString()}</div>
           <div className={styles.statValue}>
             {btcPrice > 0
-              ? Math.round((dollars / btcPrice) * SATS_PER_BTC).toLocaleString()
-              : '—'} sats
+              ? `丰 ${Math.round((dollars / btcPrice) * SATS_PER_BTC).toLocaleString()} sats`
+              : '—'}
           </div>
         </div>
       ))}

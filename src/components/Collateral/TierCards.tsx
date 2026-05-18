@@ -64,7 +64,7 @@ export function TierCards() {
               >
                 {label.toUpperCase()}
               </span>
-              <span className={styles.btcAmount}>{btc.toFixed(4)} BTC</span>
+              <span className={styles.btcAmount}>₿ {btc.toFixed(4)} BTC</span>
               <span className={styles.ltvRow}>
                 Day-one LTV: <strong>{(ltv * 100).toFixed(0)}%</strong>
               </span>
@@ -112,7 +112,7 @@ export function TierCards() {
               <span className={styles.customInputUnit}>BTC</span>
             </div>
           ) : (
-            <span className={styles.btcAmount}>{customCollateral.toFixed(4)} BTC</span>
+            <span className={styles.btcAmount}>₿ {customCollateral.toFixed(4)} BTC</span>
           )}
 
           <span className={styles.ltvRow}>

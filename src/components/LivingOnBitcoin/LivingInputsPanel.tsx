@@ -58,9 +58,9 @@ export function LivingInputsPanel() {
           min={0}
           max={100}
           step={0.01}
-          display={`${String(btcHoldings)} BTC`}
+          display={`₿ ${btcHoldings} BTC`}
           minLabel="0"
-          maxLabel="100 BTC"
+          maxLabel="₿ 100 BTC"
         />
         <SliderInput
           label="BTC Price"
