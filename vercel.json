@@ -1,5 +1,10 @@
 {
   "buildCommand": "vite build",
   "outputDirectory": "dist",
-  "framework": "vite"
+  "framework": "vite",
+  "functions": {
+    "api/btc-history.js": {
+      "runtime": "nodejs20.x"
+    }
+  }
 }

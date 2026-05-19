@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { daysSinceGenesis, plFairValue, plFloor, plCeiling, GENESIS } from '../simulation/powerLaw';
 
-const BLOCKCHAIN_URL =
-  'https://api.blockchain.info/charts/market-price?timespan=all&format=json&cors=true';
+const BLOCKCHAIN_URL = import.meta.env.DEV
+  ? 'https://api.blockchain.info/charts/market-price?timespan=all&format=json&cors=true'
+  : '/api/btc-history';
 
 const ONE_WEEK = 7 * 86_400_000;
 
