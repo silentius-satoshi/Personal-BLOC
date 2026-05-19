@@ -252,3 +252,9 @@
   gap: 12px;
   align-items: center;
 }
+
+.toggleSideLabel {
+  font-size: 11px;
+  color: var(--text-ghost);
+  font-weight: 500;
+}

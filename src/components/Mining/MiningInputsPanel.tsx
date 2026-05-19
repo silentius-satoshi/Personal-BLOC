@@ -47,20 +47,25 @@ export function MiningInputsPanel() {
       {minersOpen && (
         <>
           {miningInputs.devices.map((device, i) => (
-            <div key={i} className={styles.deviceBlock}>
+            <div key={i} className={styles.deviceBlock} style={{ opacity: device.enabled ? 1 : 0.4 }}>
               <div className={styles.deviceHeader}>
-                <div className={styles.deviceNameRow}>
+                <div
+                  className={styles.deviceNameRow}
+                  onClick={() => setMiningDevice(i, { enabled: !device.enabled })}
+                  style={{ cursor: 'pointer' }}
+                >
                   <input
                     type="text"
                     className={styles.deviceNameInput}
                     value={device.name}
                     onChange={(e) => setMiningDevice(i, { name: e.target.value })}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    onClick={(e) => e.stopPropagation()}
                     placeholder="Miner name"
                   />
                   <button
                     className={styles.trashBtn}
-                    onClick={() => removeMiningDevice(i)}
+                    onClick={(e) => { e.stopPropagation(); removeMiningDevice(i); }}
                     disabled={miningInputs.devices.length === 1}
                     title="Remove miner"
                   >
@@ -68,16 +73,12 @@ export function MiningInputsPanel() {
                   </button>
                 </div>
                 <div className={styles.deviceToggles}>
-                  <Toggle
-                    value={device.enabled}
-                    onChange={(v) => setMiningDevice(i, { enabled: v })}
-                    label="On"
-                  />
+                  <span className={styles.toggleSideLabel}>Pooled</span>
                   <Toggle
                     value={device.soloMining}
                     onChange={(v) => setMiningDevice(i, { soloMining: v })}
-                    label="Solo"
                   />
+                  <span className={styles.toggleSideLabel}>Solo</span>
                 </div>
               </div>
               <SliderInput
@@ -85,11 +86,17 @@ export function MiningInputsPanel() {
                 value={device.hashrateTH}
                 onChange={(v) => setMiningDevice(i, { hashrateTH: v })}
                 min={0.1}
-                max={5.0}
+                max={1000}
                 step={0.01}
-                display={`${device.hashrateTH.toFixed(2)} TH/s`}
+                display={
+                  device.hashrateTH >= 100
+                    ? `${Math.round(device.hashrateTH)} TH/s`
+                    : device.hashrateTH >= 10
+                      ? `${device.hashrateTH.toFixed(1)} TH/s`
+                      : `${device.hashrateTH.toFixed(2)} TH/s`
+                }
                 minLabel="0.1"
-                maxLabel="5.0 TH/s"
+                maxLabel="1,000 TH/s"
               />
               <SliderInput
                 label="Power"
