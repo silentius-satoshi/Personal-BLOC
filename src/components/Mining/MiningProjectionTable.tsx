@@ -85,7 +85,7 @@ export function MiningProjectionTable() {
         <div className={`${styles.breakdownRow} ${styles.breakdownElec}`}>
           <span className={styles.breakdownLabel}>⚡ Electricity</span>
           <span className={styles.breakdownValueMuted}>
-            ${fmtMiningUSD(selected.monthlyElecCost_usd)}/mo · ${fmtMiningUSD(totalElecCost_usd)} total
+            {fmtMiningUSD(selected.monthlyElecCost_usd)}/mo · {fmtMiningUSD(totalElecCost_usd)} total
           </span>
         </div>
         <div className={`${styles.breakdownRow} ${styles.breakdownNet}`}>
@@ -103,6 +103,7 @@ export function MiningProjectionTable() {
       <div className={styles.stageHeader} style={{ marginTop: 8 }}>
         IF BTC REACHES...
       </div>
+      <div className={styles.stageNote}>USD value of 丰 {netSats.toLocaleString()} sats</div>
 
       <div className={styles.scenarioGrid}>
         {SCENARIOS.map((price, i) => {
@@ -111,7 +112,7 @@ export function MiningProjectionTable() {
             <div key={price} className={styles.scenarioCard}>
               <div className={styles.scenarioLabel}>{SCENARIO_LABELS[i]}</div>
               <div className={styles.scenarioValue}>
-                {fmtMining(value, currency, btcPrice)}
+                {fmtMining(value, 'usd', btcPrice)}
               </div>
             </div>
           );

@@ -202,6 +202,12 @@
   text-align: center;
 }
 
+.stageNote {
+  font-size: 11px;
+  color: var(--text-ghost);
+  margin-top: -6px;
+}
+
 .elecNote {
   font-size: 10px;
   color: var(--text-faint);
