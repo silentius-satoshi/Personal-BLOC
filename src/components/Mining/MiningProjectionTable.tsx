@@ -6,11 +6,8 @@ import styles from './MiningProjectionTable.module.css';
 
 const DAYS_PER_MONTH = 365.25 / 12;
 
-function fmtScenarioHeader(price: number): string {
-  if (price >= 1_000_000) return '$' + (price / 1_000_000).toFixed(0) + 'M';
-  if (price >= 1_000)     return '$' + Math.round(price / 1_000) + 'k';
-  return '$' + Math.round(price).toLocaleString();
-}
+const SCENARIOS       = [150_000, 300_000, 1_000_000];
+const SCENARIO_LABELS = ['$150k', '$300k', '$1M'];
 
 export function MiningProjectionTable() {
   const currency        = useStore((s) => s.miningInputs.currency);
@@ -20,24 +17,26 @@ export function MiningProjectionTable() {
 
   const [selectedMonth, setSelectedMonth] = useState(maxMonths);
 
-  const dailyEV_sats    = selected.dailyEV_sats;
-  const monthlyElecSats = Math.round(
-    (selected.monthlyElecCost_usd / btcPrice) * 100_000_000
-  );
+  const dailyEV_sats = selected.dailyEV_sats;
 
   const grossSats = Math.round(dailyEV_sats * DAYS_PER_MONTH * selectedMonth);
 
-  const scenarios = [btcPrice, 150_000, 300_000, 1_000_000];
-  const headers   = [`${fmtScenarioHeader(btcPrice)} now`, '$150k', '$300k', '$1M'];
+  const monthlyElecSats = Math.round(
+    (selected.monthlyElecCost_usd / btcPrice) * 100_000_000
+  );
+  const totalElecSats = monthlyElecSats * selectedMonth;
 
-  const livePriceNetSats = Math.max(0, grossSats - monthlyElecSats * selectedMonth);
+  const netSats = Math.max(0, grossSats - totalElecSats);
+
+  const dailyEV_btc  = dailyEV_sats / 100_000_000;
+  const breakEvenPrice = dailyEV_btc > 0
+    ? selected.monthlyElecCost_usd / (dailyEV_btc * DAYS_PER_MONTH)
+    : null;
 
   return (
     <div className={styles.panel}>
-      <div className={styles.titleRow}>
-        <span className={styles.title}>SAT ACCUMULATION PROJECTION</span>
-        <span className={styles.note}>constant difficulty assumed</span>
-      </div>
+
+      <div className={styles.stageHeader}>SAT ACCUMULATION</div>
 
       <div>
         <div className={styles.scrubberHeader}>
@@ -45,7 +44,7 @@ export function MiningProjectionTable() {
             Month <strong>{selectedMonth}</strong> of {maxMonths}
           </span>
           <span className={styles.satsLabel}>
-            丰 {livePriceNetSats.toLocaleString()} sats
+            丰 {netSats.toLocaleString()} sats net
           </span>
         </div>
 
@@ -85,18 +84,48 @@ export function MiningProjectionTable() {
         </div>
       </div>
 
-      <div className={styles.grid}>
-        {scenarios.map((price, i) => {
-          const elecSats_at_price = Math.round(
+      <div className={styles.breakdown}>
+        <div className={styles.breakdownRow}>
+          <span className={styles.breakdownLabel}>⛏ Mined</span>
+          <span className={styles.breakdownValue}>
+            丰 {grossSats.toLocaleString()} sats
+          </span>
+        </div>
+        <div className={`${styles.breakdownRow} ${styles.breakdownElec}`}>
+          <span className={styles.breakdownLabel}>⚡ Electricity</span>
+          <span className={styles.breakdownValueMuted}>
+            −丰 {totalElecSats.toLocaleString()} sats
+          </span>
+        </div>
+        <div className={`${styles.breakdownRow} ${styles.breakdownNet}`}>
+          <span className={styles.breakdownLabelBold}>NET ACCUMULATED</span>
+          <span className={styles.breakdownValueBold}>
+            丰 {netSats.toLocaleString()} sats
+          </span>
+        </div>
+      </div>
+
+      {netSats === 0 && breakEvenPrice != null && (
+        <div className={styles.breakEvenNote}>
+          ⚠ Below break-even at current price · profitability begins ~${Math.round(breakEvenPrice / 1000)}k BTC
+        </div>
+      )}
+
+      <div className={styles.stageHeader} style={{ marginTop: 8 }}>
+        IF BTC REACHES...
+      </div>
+
+      <div className={styles.scenarioGrid}>
+        {SCENARIOS.map((price, i) => {
+          const elecSats_at_scenario = Math.round(
             (selected.monthlyElecCost_usd / price) * 100_000_000
           ) * selectedMonth;
-          const netSats_at_price = Math.max(0, grossSats - elecSats_at_price);
-          const value = (netSats_at_price / 100_000_000) * price;
-          const isLive = i === 0;
+          const netSats_at_scenario = Math.max(0, grossSats - elecSats_at_scenario);
+          const value = (netSats_at_scenario / 100_000_000) * price;
           return (
-            <div key={price} className={`${styles.card} ${isLive ? styles.cardLive : ''}`}>
-              <div className={styles.cardHeader}>{headers[i]}</div>
-              <div className={styles.cardValue}>
+            <div key={price} className={styles.scenarioCard}>
+              <div className={styles.scenarioLabel}>{SCENARIO_LABELS[i]}</div>
+              <div className={styles.scenarioValue}>
                 {fmtMining(value, currency, btcPrice)}
               </div>
             </div>
@@ -104,13 +133,10 @@ export function MiningProjectionTable() {
         })}
       </div>
 
-      <div className={styles.summary}>
-        丰 {livePriceNetSats.toLocaleString()} sats at current price
+      <div className={styles.disclaimer}>
+        Constant difficulty assumed · Real earnings decrease as network hashrate rises
       </div>
 
-      <div className={styles.disclaimer}>
-        Constant difficulty assumed. Real earnings decrease as network hashrate rises.
-      </div>
     </div>
   );
 }

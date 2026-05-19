@@ -8,77 +8,15 @@
   gap: 12px;
 }
 
-.titleRow {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.title {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-ghost);
-  letter-spacing: 0.04em;
-}
-
-.note {
-  font-size: 11px;
-  color: var(--text-faint);
-  font-style: italic;
-}
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
-}
-
-.card {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-  padding: 12px;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-
-.card.cardLive {
-  border-color: var(--orange);
-  background: rgba(232, 131, 106, 0.06);
-}
-
-.cardHeader {
+.stageHeader {
   font-size: 10px;
   font-weight: 700;
-  color: var(--text-ghost);
-  letter-spacing: 0.04em;
+  letter-spacing: 0.08em;
+  color: var(--orange);
   text-transform: uppercase;
 }
 
-.cardLive .cardHeader {
-  color: var(--orange);
-}
-
-.cardValue {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.summary {
-  font-size: 12px;
-  color: var(--text-ghost);
-  text-align: center;
-}
-
-.disclaimer {
-  font-size: 11px;
-  color: var(--text-faint);
-  font-style: italic;
-}
-
+/* Scrubber */
 .scrubberHeader {
   display: flex;
   justify-content: space-between;
@@ -124,7 +62,7 @@
   border-radius: 50%;
   background: var(--orange);
   cursor: pointer;
-  box-shadow: 0 0 0 3px rgba(232,131,106,0.25);
+  box-shadow: 0 0 0 3px rgba(232, 131, 106, 0.25);
 }
 
 .scrubberInput::-moz-range-thumb {
@@ -155,4 +93,111 @@
   text-align: center;
   margin-top: 4px;
   font-style: italic;
+}
+
+/* Breakdown rows */
+.breakdown {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.breakdownRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.breakdownRow:last-child {
+  border-bottom: none;
+}
+
+.breakdownElec {
+  background: rgba(255, 255, 255, 0.01);
+}
+
+.breakdownNet {
+  background: rgba(232, 131, 106, 0.06);
+}
+
+.breakdownLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.breakdownLabelBold {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.breakdownValue {
+  font-size: 13px;
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.breakdownValueMuted {
+  font-size: 13px;
+  color: var(--text-ghost);
+}
+
+.breakdownValueBold {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--orange);
+}
+
+/* Break-even note */
+.breakEvenNote {
+  font-size: 11px;
+  color: var(--amber);
+  background: rgba(232, 168, 74, 0.08);
+  border: 1px solid rgba(232, 168, 74, 0.2);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+/* Scenario cards */
+.scenarioGrid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+
+.scenarioCard {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.scenarioLabel {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--text-ghost);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.scenarioValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+/* Disclaimer */
+.disclaimer {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  text-align: center;
 }
