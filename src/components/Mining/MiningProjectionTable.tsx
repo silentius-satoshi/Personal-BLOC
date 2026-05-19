@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useMiningSimulation } from '../../hooks/useMiningSimulation';
-import { fmtMining } from '../../utils/format';
+import { fmtMining, fmtMiningUSD } from '../../utils/format';
 import styles from './MiningProjectionTable.module.css';
 
 const DAYS_PER_MONTH = 365.25 / 12;
@@ -20,18 +20,9 @@ export function MiningProjectionTable() {
   const dailyEV_sats = selected.dailyEV_sats;
 
   const grossSats = Math.round(dailyEV_sats * DAYS_PER_MONTH * selectedMonth);
+  const netSats   = grossSats;
 
-  const monthlyElecSats = Math.round(
-    (selected.monthlyElecCost_usd / btcPrice) * 100_000_000
-  );
-  const totalElecSats = monthlyElecSats * selectedMonth;
-
-  const netSats = Math.max(0, grossSats - totalElecSats);
-
-  const dailyEV_btc  = dailyEV_sats / 100_000_000;
-  const breakEvenPrice = dailyEV_btc > 0
-    ? selected.monthlyElecCost_usd / (dailyEV_btc * DAYS_PER_MONTH)
-    : null;
+  const totalElecCost_usd = selected.monthlyElecCost_usd * selectedMonth;
 
   return (
     <div className={styles.panel}>
@@ -44,7 +35,7 @@ export function MiningProjectionTable() {
             Month <strong>{selectedMonth}</strong> of {maxMonths}
           </span>
           <span className={styles.satsLabel}>
-            丰 {netSats.toLocaleString()} sats net
+            丰 {netSats.toLocaleString()} sats mined
           </span>
         </div>
 
@@ -94,7 +85,7 @@ export function MiningProjectionTable() {
         <div className={`${styles.breakdownRow} ${styles.breakdownElec}`}>
           <span className={styles.breakdownLabel}>⚡ Electricity</span>
           <span className={styles.breakdownValueMuted}>
-            −丰 {totalElecSats.toLocaleString()} sats
+            ${fmtMiningUSD(selected.monthlyElecCost_usd)}/mo · ${fmtMiningUSD(totalElecCost_usd)} total
           </span>
         </div>
         <div className={`${styles.breakdownRow} ${styles.breakdownNet}`}>
@@ -105,11 +96,9 @@ export function MiningProjectionTable() {
         </div>
       </div>
 
-      {netSats === 0 && breakEvenPrice != null && (
-        <div className={styles.breakEvenNote}>
-          ⚠ Below break-even at current price · profitability begins ~${Math.round(breakEvenPrice / 1000)}k BTC
-        </div>
-      )}
+      <div className={styles.elecNote}>
+        Electricity paid in fiat · 100% of mined sats kept
+      </div>
 
       <div className={styles.stageHeader} style={{ marginTop: 8 }}>
         IF BTC REACHES...
@@ -117,11 +106,7 @@ export function MiningProjectionTable() {
 
       <div className={styles.scenarioGrid}>
         {SCENARIOS.map((price, i) => {
-          const elecSats_at_scenario = Math.round(
-            (selected.monthlyElecCost_usd / price) * 100_000_000
-          ) * selectedMonth;
-          const netSats_at_scenario = Math.max(0, grossSats - elecSats_at_scenario);
-          const value = (netSats_at_scenario / 100_000_000) * price;
+          const value = (netSats / 100_000_000) * price;
           return (
             <div key={price} className={styles.scenarioCard}>
               <div className={styles.scenarioLabel}>{SCENARIO_LABELS[i]}</div>

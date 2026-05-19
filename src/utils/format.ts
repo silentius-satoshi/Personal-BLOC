@@ -3,7 +3,7 @@ import type { MiningCurrency } from '../simulation/types';
 export const fmtUSD = (n: number): string =>
   '$' + Math.round(Math.abs(n)).toLocaleString();
 
-function fmtMiningUSD(n: number): string {
+export function fmtMiningUSD(n: number): string {
   if (n < 0.01) return '$' + n.toFixed(4);
   if (n < 100)  return '$' + n.toFixed(2);
   return '$' + Math.round(n).toLocaleString();
