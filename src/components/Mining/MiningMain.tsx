@@ -13,7 +13,6 @@ export function MiningMain() {
   const setMiningDevice       = useStore((s) => s.setMiningDevice);
   const devices               = useStore((s) => s.miningInputs.devices);
   const currency              = useStore((s) => s.miningInputs.currency);
-  const networkHashrateEH     = useStore((s) => s.miningInputs.networkHashrateEH);
   const selectedStrategyId    = useStore((s) => s.miningInputs.selectedStrategy);
   const { strategies, selected, btcPrice } = useMiningSimulation();
 
@@ -53,14 +52,7 @@ export function MiningMain() {
         ))}
       </div>
 
-      {selected.lotteryOdds && (
-        <MiningOddsBar
-          result={selected}
-          currency={currency}
-          btcPrice={btcPrice}
-          networkHashrateEH={networkHashrateEH}
-        />
-      )}
+      <MiningOddsBar currency={currency} btcPrice={btcPrice} />
 
       <PoolSetupPanel result={selected} />
 

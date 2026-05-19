@@ -13,17 +13,27 @@
   margin-bottom: 10px;
 }
 
+.barRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
 .barTrack {
+  flex: 1;
   position: relative;
   height: 12px;
   background: var(--bg-base);
   border-radius: 6px;
-  overflow: visible;
-  margin-bottom: 8px;
+  overflow: hidden;
   border: 1px solid var(--border);
 }
 
 .barFill {
+  position: absolute;
+  left: 0;
+  top: 0;
   height: 100%;
   background: var(--orange);
   border-radius: 6px;
@@ -32,16 +42,11 @@
 }
 
 .barLabel {
-  position: absolute;
-  right: 0;
-  top: 50%;
-  transform: translate(100%, -50%);
-  margin-left: 8px;
+  flex-shrink: 0;
+  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-primary);
-  white-space: nowrap;
-  padding-left: 8px;
 }
 
 .stats {
