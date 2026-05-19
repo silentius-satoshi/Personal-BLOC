@@ -89,6 +89,8 @@ interface StoreState {
   setMiningDevice: (index: number, patch: Partial<MiningDevice>) => void;
   setMiningCurrency: (currency: MiningCurrency) => void;
   setMiningStrategy: (strategy: MiningStrategy) => void;
+  addMiningDevice: () => void;
+  removeMiningDevice: (index: number) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -152,6 +154,21 @@ export const useStore = create<StoreState>()(
   }),
   setMiningCurrency: (currency) => set((s) => ({ miningInputs: { ...s.miningInputs, currency } })),
   setMiningStrategy: (strategy) => set((s) => ({ miningInputs: { ...s.miningInputs, selectedStrategy: strategy } })),
+  addMiningDevice: () => set((s) => ({
+    miningInputs: {
+      ...s.miningInputs,
+      devices: [
+        ...s.miningInputs.devices,
+        { name: 'New Miner', hashrateTH: 1.0, powerW: 20, efficiencyJTH: 20, enabled: true },
+      ],
+    },
+  })),
+  removeMiningDevice: (index) => set((s) => ({
+    miningInputs: {
+      ...s.miningInputs,
+      devices: s.miningInputs.devices.filter((_, i) => i !== index),
+    },
+  })),
     }),
     { name: 'personal-bloc-store' }
   )

@@ -176,3 +176,43 @@
   font-weight: 600;
   color: var(--text-primary);
 }
+
+.trashBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 14px;
+  opacity: 0.5;
+  padding: 2px 4px;
+  transition: opacity 0.15s;
+  line-height: 1;
+}
+
+.trashBtn:hover:not(:disabled) {
+  opacity: 1;
+}
+
+.trashBtn:disabled {
+  opacity: 0.2;
+  pointer-events: none;
+}
+
+.addMinerBtn {
+  background: none;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-ghost);
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 10px;
+  width: 100%;
+  text-align: center;
+  margin-top: 4px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.addMinerBtn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-secondary);
+}

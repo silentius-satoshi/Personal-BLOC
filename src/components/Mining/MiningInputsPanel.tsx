@@ -9,21 +9,25 @@ import { Toggle } from '../ui/Toggle';
 import styles from './MiningInputsPanel.module.css';
 
 export function MiningInputsPanel() {
-  const miningInputs     = useStore((s) => s.miningInputs);
-  const setMiningInputs  = useStore((s) => s.setMiningInputs);
-  const setMiningDevice  = useStore((s) => s.setMiningDevice);
-  const setBtcPrice      = useStore((s) => s.setBtcPrice);
-  const { livePrice }    = useBtcPrice();
+  const miningInputs      = useStore((s) => s.miningInputs);
+  const setMiningInputs   = useStore((s) => s.setMiningInputs);
+  const setMiningDevice   = useStore((s) => s.setMiningDevice);
+  const addMiningDevice   = useStore((s) => s.addMiningDevice);
+  const removeMiningDevice = useStore((s) => s.removeMiningDevice);
+  const { livePrice }     = useBtcPrice();
   const { selected, btcPrice } = useMiningSimulation();
   const currency = miningInputs.currency;
 
-  const [networkOpen, setNetworkOpen] = useState(false);
-  const [priceManual, setPriceManual] = useState(miningInputs.btcPriceOverride !== null);
+  const [minersOpen,      setMinersOpen]      = useState(true);
+  const [electricityOpen, setElectricityOpen] = useState(true);
+  const [networkOpen,     setNetworkOpen]     = useState(false);
+  const [projectionOpen,  setProjectionOpen]  = useState(true);
+  const [priceManual,     setPriceManual]     = useState(miningInputs.btcPriceOverride !== null);
 
-  const enabledDevices  = miningInputs.devices.filter(d => d.enabled);
-  const totalHashTH     = enabledDevices.reduce((s, d) => s + d.hashrateTH, 0);
-  const totalPowerW     = enabledDevices.reduce((s, d) => s + d.powerW, 0);
-  const monthlyElec     = (totalPowerW / 1000) * 24 * 30 * (miningInputs.electricityRateCents / 100);
+  const enabledDevices = miningInputs.devices.filter(d => d.enabled);
+  const totalHashTH    = enabledDevices.reduce((s, d) => s + d.hashrateTH, 0);
+  const totalPowerW    = enabledDevices.reduce((s, d) => s + d.powerW, 0);
+  const monthlyElec    = (totalPowerW / 1000) * 24 * 30 * (miningInputs.electricityRateCents / 100);
 
   function togglePriceMode(manual: boolean) {
     setPriceManual(manual);
@@ -36,71 +40,96 @@ export function MiningInputsPanel() {
 
   return (
     <div className={styles.panel}>
-      {/* YOUR DEVICES */}
-      <div className={styles.sectionHeader}>Your Devices</div>
+      {/* YOUR MINERS */}
+      <button className={styles.collapsibleHeader} onClick={() => setMinersOpen(o => !o)}>
+        <span>{minersOpen ? '▾' : '▸'} YOUR MINERS</span>
+      </button>
 
-      {miningInputs.devices.map((device, i) => (
-        <div key={i} className={styles.deviceBlock}>
-          <div className={styles.deviceRow}>
-            <span className={styles.deviceName}>{device.name}</span>
-            <Toggle
-              value={device.enabled}
-              onChange={(v) => setMiningDevice(i, { enabled: v })}
-            />
+      {minersOpen && (
+        <>
+          {miningInputs.devices.map((device, i) => (
+            <div key={i} className={styles.deviceBlock}>
+              <div className={styles.deviceRow}>
+                <span className={styles.deviceName}>{device.name}</span>
+                <Toggle
+                  value={device.enabled}
+                  onChange={(v) => setMiningDevice(i, { enabled: v })}
+                />
+                <button
+                  className={styles.trashBtn}
+                  onClick={() => removeMiningDevice(i)}
+                  disabled={miningInputs.devices.length === 1}
+                  title="Remove miner"
+                >
+                  🗑
+                </button>
+              </div>
+              <SliderInput
+                label="Hashrate"
+                value={device.hashrateTH}
+                onChange={(v) => setMiningDevice(i, { hashrateTH: v })}
+                min={0.1}
+                max={5.0}
+                step={0.01}
+                display={`${device.hashrateTH.toFixed(2)} TH/s`}
+                minLabel="0.1"
+                maxLabel="5.0 TH/s"
+              />
+              <SliderInput
+                label="Power"
+                value={device.powerW}
+                onChange={(v) => setMiningDevice(i, { powerW: v })}
+                min={5}
+                max={100}
+                step={0.1}
+                display={`${device.powerW.toFixed(1)} W`}
+                minLabel="5W"
+                maxLabel="100W"
+              />
+            </div>
+          ))}
+
+          <div className={styles.totalRow}>
+            <span className={styles.totalLabel}>TOTAL</span>
+            <span className={styles.totalValue}>{totalHashTH.toFixed(2)} TH/s · {totalPowerW.toFixed(1)} W</span>
           </div>
-          <SliderInput
-            label="Hashrate"
-            value={device.hashrateTH}
-            onChange={(v) => setMiningDevice(i, { hashrateTH: v })}
-            min={0.1}
-            max={5.0}
-            step={0.01}
-            display={`${device.hashrateTH.toFixed(2)} TH/s`}
-            minLabel="0.1"
-            maxLabel="5.0 TH/s"
-          />
-          <SliderInput
-            label="Power"
-            value={device.powerW}
-            onChange={(v) => setMiningDevice(i, { powerW: v })}
-            min={5}
-            max={100}
-            step={0.1}
-            display={`${device.powerW.toFixed(1)} W`}
-            minLabel="5W"
-            maxLabel="100W"
-          />
-        </div>
-      ))}
 
-      <div className={styles.totalRow}>
-        <span className={styles.totalLabel}>TOTAL</span>
-        <span className={styles.totalValue}>{totalHashTH.toFixed(2)} TH/s · {totalPowerW.toFixed(1)} W</span>
-      </div>
+          <button className={styles.addMinerBtn} onClick={addMiningDevice}>
+            + Add Miner
+          </button>
+        </>
+      )}
 
       <hr className={styles.divider} />
 
       {/* ELECTRICITY */}
-      <div className={styles.sectionHeader}>Electricity</div>
-      <SliderInput
-        label="Rate"
-        value={miningInputs.electricityRateCents}
-        onChange={(v) => setMiningInputs({ electricityRateCents: v })}
-        min={5}
-        max={50}
-        step={1}
-        display={`${miningInputs.electricityRateCents}¢/kWh`}
-        minLabel="5¢"
-        maxLabel="50¢"
-      />
-      <div className={styles.derivedRow}>
-        <span className={styles.derivedLabel}>Monthly Cost</span>
-        <span className={styles.derivedValue}>${monthlyElec.toFixed(2)}/mo</span>
-      </div>
+      <button className={styles.collapsibleHeader} onClick={() => setElectricityOpen(o => !o)}>
+        <span>{electricityOpen ? '▾' : '▸'} ELECTRICITY</span>
+      </button>
+
+      {electricityOpen && (
+        <>
+          <SliderInput
+            label="Rate"
+            value={miningInputs.electricityRateCents}
+            onChange={(v) => setMiningInputs({ electricityRateCents: v })}
+            min={5}
+            max={50}
+            step={1}
+            display={`${miningInputs.electricityRateCents}¢/kWh`}
+            minLabel="5¢"
+            maxLabel="50¢"
+          />
+          <div className={styles.derivedRow}>
+            <span className={styles.derivedLabel}>Monthly Cost</span>
+            <span className={styles.derivedValue}>${monthlyElec.toFixed(2)}/mo</span>
+          </div>
+        </>
+      )}
 
       <hr className={styles.divider} />
 
-      {/* NETWORK (collapsible) */}
+      {/* NETWORK (collapsible, default closed) */}
       <button className={styles.collapsibleHeader} onClick={() => setNetworkOpen(o => !o)}>
         <span>{networkOpen ? '▾' : '▸'} NETWORK SETTINGS</span>
       </button>
@@ -158,18 +187,23 @@ export function MiningInputsPanel() {
       <hr className={styles.divider} />
 
       {/* PROJECTION */}
-      <div className={styles.sectionHeader}>Projection</div>
-      <SliderInput
-        label="Horizon"
-        value={miningInputs.projectionYears}
-        onChange={(v) => setMiningInputs({ projectionYears: v })}
-        min={1}
-        max={20}
-        step={1}
-        display={`${miningInputs.projectionYears} ${miningInputs.projectionYears === 1 ? 'year' : 'years'}`}
-        minLabel="1 yr"
-        maxLabel="20 yrs"
-      />
+      <button className={styles.collapsibleHeader} onClick={() => setProjectionOpen(o => !o)}>
+        <span>{projectionOpen ? '▾' : '▸'} PROJECTION</span>
+      </button>
+
+      {projectionOpen && (
+        <SliderInput
+          label="Horizon"
+          value={miningInputs.projectionYears}
+          onChange={(v) => setMiningInputs({ projectionYears: v })}
+          min={1}
+          max={20}
+          step={1}
+          display={`${miningInputs.projectionYears} ${miningInputs.projectionYears === 1 ? 'year' : 'years'}`}
+          minLabel="1 yr"
+          maxLabel="20 yrs"
+        />
+      )}
 
       <hr className={styles.divider} />
 
