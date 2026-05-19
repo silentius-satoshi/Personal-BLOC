@@ -214,3 +214,77 @@
   font-style: italic;
   text-align: center;
 }
+
+.allSoloNote {
+  font-size: 12px;
+  color: var(--text-ghost);
+  font-style: italic;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.lotteryBox {
+  background: rgba(255, 68, 68, 0.06);
+  border: 1px solid rgba(255, 68, 68, 0.2);
+  border-radius: 8px;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lotteryTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #FF4444;
+}
+
+.lotteryDevice {
+  font-size: 11px;
+  color: var(--text-ghost);
+}
+
+.lotteryStats {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.lotteryStat {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.lotteryLabel {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.lotteryValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.lotteryNote {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.deviceHint {
+  font-size: 10px;
+  color: var(--text-ghost);
+  font-style: italic;
+}
+
+.scenarioCardJackpot {
+  border-color: rgba(255, 68, 68, 0.3);
+  background: rgba(255, 68, 68, 0.04);
+}
+
+.projectionControl {
+  margin-bottom: 4px;
+}

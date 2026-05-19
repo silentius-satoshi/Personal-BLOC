@@ -83,6 +83,7 @@ export interface MiningDevice {
   powerW: number;
   efficiencyJTH: number;
   enabled: boolean;
+  soloMining: boolean;
 }
 
 export interface MiningPool {

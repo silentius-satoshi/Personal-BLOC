@@ -21,7 +21,6 @@ export function MiningInputsPanel() {
   const [minersOpen,      setMinersOpen]      = useState(true);
   const [electricityOpen, setElectricityOpen] = useState(true);
   const [networkOpen,     setNetworkOpen]     = useState(false);
-  const [projectionOpen,  setProjectionOpen]  = useState(true);
   const [priceManual,     setPriceManual]     = useState(miningInputs.btcPriceOverride !== null);
 
   const enabledDevices = miningInputs.devices.filter(d => d.enabled);
@@ -49,27 +48,37 @@ export function MiningInputsPanel() {
         <>
           {miningInputs.devices.map((device, i) => (
             <div key={i} className={styles.deviceBlock}>
-              <div className={styles.deviceRow}>
-                <input
-                  type="text"
-                  className={styles.deviceNameInput}
-                  value={device.name}
-                  onChange={(e) => setMiningDevice(i, { name: e.target.value })}
-                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                  placeholder="Miner name"
-                />
-                <Toggle
-                  value={device.enabled}
-                  onChange={(v) => setMiningDevice(i, { enabled: v })}
-                />
-                <button
-                  className={styles.trashBtn}
-                  onClick={() => removeMiningDevice(i)}
-                  disabled={miningInputs.devices.length === 1}
-                  title="Remove miner"
-                >
-                  🗑
-                </button>
+              <div className={styles.deviceHeader}>
+                <div className={styles.deviceNameRow}>
+                  <input
+                    type="text"
+                    className={styles.deviceNameInput}
+                    value={device.name}
+                    onChange={(e) => setMiningDevice(i, { name: e.target.value })}
+                    onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                    placeholder="Miner name"
+                  />
+                  <button
+                    className={styles.trashBtn}
+                    onClick={() => removeMiningDevice(i)}
+                    disabled={miningInputs.devices.length === 1}
+                    title="Remove miner"
+                  >
+                    Remove
+                  </button>
+                </div>
+                <div className={styles.deviceToggles}>
+                  <Toggle
+                    value={device.enabled}
+                    onChange={(v) => setMiningDevice(i, { enabled: v })}
+                    label="On"
+                  />
+                  <Toggle
+                    value={device.soloMining}
+                    onChange={(v) => setMiningDevice(i, { soloMining: v })}
+                    label="Solo"
+                  />
+                </div>
               </div>
               <SliderInput
                 label="Hashrate"
@@ -191,26 +200,6 @@ export function MiningInputsPanel() {
         </div>
       )}
 
-      <hr className={styles.divider} />
-
-      {/* PROJECTION */}
-      <button className={styles.collapsibleHeader} onClick={() => setProjectionOpen(o => !o)}>
-        <span>{projectionOpen ? '▾' : '▸'} PROJECTION</span>
-      </button>
-
-      {projectionOpen && (
-        <SliderInput
-          label="Horizon"
-          value={miningInputs.projectionYears}
-          onChange={(v) => setMiningInputs({ projectionYears: v })}
-          min={1}
-          max={20}
-          step={1}
-          display={`${miningInputs.projectionYears} ${miningInputs.projectionYears === 1 ? 'year' : 'years'}`}
-          minLabel="1 yr"
-          maxLabel="20 yrs"
-        />
-      )}
 
       <hr className={styles.divider} />
 

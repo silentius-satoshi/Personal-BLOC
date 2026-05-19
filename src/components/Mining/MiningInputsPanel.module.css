@@ -179,23 +179,21 @@
 
 .trashBtn {
   background: none;
-  border: none;
+  border: 1px solid var(--red);
+  border-radius: 4px;
   cursor: pointer;
-  font-size: 14px;
-  opacity: 0.5;
-  padding: 2px 4px;
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--red);
+  opacity: 0.6;
+  padding: 2px 8px;
   transition: opacity 0.15s;
-  line-height: 1;
+  line-height: 1.4;
+  letter-spacing: 0.04em;
 }
 
-.trashBtn:hover:not(:disabled) {
-  opacity: 1;
-}
-
-.trashBtn:disabled {
-  opacity: 0.2;
-  pointer-events: none;
-}
+.trashBtn:hover:not(:disabled) { opacity: 1; }
+.trashBtn:disabled { opacity: 0.2; pointer-events: none; }
 
 .addMinerBtn {
   background: none;
@@ -233,4 +231,24 @@
 .deviceNameInput:hover,
 .deviceNameInput:focus {
   border-bottom-color: var(--border);
+}
+
+.deviceHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.deviceNameRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.deviceToggles {
+  display: flex;
+  gap: 12px;
+  align-items: center;
 }

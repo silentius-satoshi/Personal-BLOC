@@ -11,8 +11,8 @@ type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
   devices: [
-    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true },
-    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true },
+    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true, soloMining: true  },
+    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true, soloMining: false },
   ],
   electricityRateCents: 12,
   btcPriceOverride: null,
@@ -159,7 +159,7 @@ export const useStore = create<StoreState>()(
       ...s.miningInputs,
       devices: [
         ...s.miningInputs.devices,
-        { name: 'New Miner', hashrateTH: 1.0, powerW: 20, efficiencyJTH: 20, enabled: true },
+        { name: 'New Miner', hashrateTH: 1.0, powerW: 20, efficiencyJTH: 20, enabled: true, soloMining: false },
       ],
     },
   })),
