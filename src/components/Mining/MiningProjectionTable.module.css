@@ -3,6 +3,9 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 .titleRow {
@@ -10,7 +13,6 @@
   align-items: baseline;
   justify-content: space-between;
   gap: 8px;
-  margin-bottom: 12px;
 }
 
 .title {
@@ -26,79 +28,131 @@
   font-style: italic;
 }
 
-.tableWrap {
-  overflow-x: auto;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
 }
 
-.table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 12px;
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 12px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 10px;
 }
 
-.table th,
-.table td {
-  padding: 8px 10px;
-  text-align: right;
-  white-space: nowrap;
+.card.cardLive {
+  border-color: var(--orange);
+  background: rgba(232, 131, 106, 0.06);
 }
 
-.table th:first-child,
-.table td:first-child {
-  text-align: left;
-}
-
-.table thead tr {
-  border-bottom: 1px solid var(--border);
-}
-
-.table tbody tr {
-  border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
-}
-
-.table tbody tr:last-child {
-  border-bottom: none;
-}
-
-.table tbody tr:hover {
-  background: color-mix(in srgb, var(--orange) 4%, transparent);
-}
-
-.thYear,
-.tdYear {
-  color: var(--text-secondary);
-  font-weight: 600;
-}
-
-.th {
-  color: var(--text-ghost);
-  font-weight: 600;
-}
-
-.thLive {
-  color: var(--orange);
+.cardHeader {
+  font-size: 10px;
   font-weight: 700;
-}
-
-.td {
-  color: var(--text-secondary);
-}
-
-.tdLive {
-  color: var(--text-primary);
-  font-weight: 600;
-}
-
-.footer {
-  margin-top: 10px;
-  font-size: 11px;
   color: var(--text-ghost);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.cardLive .cardHeader {
+  color: var(--orange);
+}
+
+.cardValue {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.summary {
+  font-size: 12px;
+  color: var(--text-ghost);
+  text-align: center;
 }
 
 .disclaimer {
-  margin-top: 6px;
   font-size: 11px;
   color: var(--text-faint);
   font-style: italic;
-  line-height: 1.4;
+}
+
+.scrubberHeader {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 8px;
+}
+
+.monthLabel {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.monthLabel strong {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.satsLabel {
+  font-size: 12px;
+  color: var(--text-ghost);
+}
+
+.scrubberTrack {
+  position: relative;
+  margin-bottom: 4px;
+}
+
+.scrubberInput {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+
+.scrubberInput::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--orange);
+  cursor: pointer;
+  box-shadow: 0 0 0 3px rgba(232,131,106,0.25);
+}
+
+.scrubberInput::-moz-range-thumb {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--orange);
+  cursor: pointer;
+  border: none;
+}
+
+.yearTicks {
+  position: relative;
+  height: 16px;
+  margin-top: 4px;
+}
+
+.yearTick {
+  position: absolute;
+  transform: translateX(-50%);
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+.hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  margin-top: 4px;
+  font-style: italic;
 }
