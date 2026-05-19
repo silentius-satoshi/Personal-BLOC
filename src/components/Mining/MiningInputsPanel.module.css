@@ -216,3 +216,21 @@
   border-color: var(--text-secondary);
   color: var(--text-secondary);
 }
+
+.deviceNameInput {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  outline: none;
+  padding: 2px 0;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.deviceNameInput:hover,
+.deviceNameInput:focus {
+  border-bottom-color: var(--border);
+}

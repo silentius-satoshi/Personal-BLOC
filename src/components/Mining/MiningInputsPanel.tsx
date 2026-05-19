@@ -50,7 +50,13 @@ export function MiningInputsPanel() {
           {miningInputs.devices.map((device, i) => (
             <div key={i} className={styles.deviceBlock}>
               <div className={styles.deviceRow}>
-                <span className={styles.deviceName}>{device.name}</span>
+                <input
+                  type="text"
+                  className={styles.deviceNameInput}
+                  value={device.name}
+                  onChange={(e) => setMiningDevice(i, { name: e.target.value })}
+                  placeholder="Miner name"
+                />
                 <Toggle
                   value={device.enabled}
                   onChange={(v) => setMiningDevice(i, { enabled: v })}
