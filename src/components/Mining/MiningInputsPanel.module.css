@@ -21,9 +21,20 @@
   gap: 4px;
   padding: 10px;
   background: var(--bg-card);
-  border: 1px solid var(--border);
   border-radius: 10px;
   margin-bottom: 4px;
+  transition: border-color 0.2s, opacity 0.2s;
+  cursor: pointer;
+}
+
+.deviceBlockOn {
+  border: 1px solid var(--orange);
+  opacity: 1;
+}
+
+.deviceBlockOff {
+  border: 1px solid var(--border);
+  opacity: 0.4;
 }
 
 .deviceRow {

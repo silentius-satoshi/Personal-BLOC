@@ -47,32 +47,44 @@ export function MiningInputsPanel() {
       {minersOpen && (
         <>
           {miningInputs.devices.map((device, i) => (
-            <div key={i} className={styles.deviceBlock} style={{ opacity: device.enabled ? 1 : 0.4 }}>
+            <div
+              key={i}
+              className={`${styles.deviceBlock} ${
+                device.enabled ? styles.deviceBlockOn : styles.deviceBlockOff
+              }`}
+              onClick={(e) => {
+                const target = e.target as HTMLElement;
+                if (
+                  target.closest('input')            ||
+                  target.closest('button')           ||
+                  target.closest('[data-no-toggle]') ||
+                  target.tagName === 'INPUT'         ||
+                  target.tagName === 'BUTTON'
+                ) return;
+                setMiningDevice(i, { enabled: !device.enabled });
+              }}
+              style={{ cursor: 'pointer' }}
+            >
               <div className={styles.deviceHeader}>
-                <div
-                  className={styles.deviceNameRow}
-                  onClick={() => setMiningDevice(i, { enabled: !device.enabled })}
-                  style={{ cursor: 'pointer' }}
-                >
+                <div className={styles.deviceNameRow}>
                   <input
                     type="text"
                     className={styles.deviceNameInput}
                     value={device.name}
                     onChange={(e) => setMiningDevice(i, { name: e.target.value })}
                     onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
-                    onClick={(e) => e.stopPropagation()}
                     placeholder="Miner name"
                   />
                   <button
                     className={styles.trashBtn}
-                    onClick={(e) => { e.stopPropagation(); removeMiningDevice(i); }}
+                    onClick={() => removeMiningDevice(i)}
                     disabled={miningInputs.devices.length === 1}
                     title="Remove miner"
                   >
                     Remove
                   </button>
                 </div>
-                <div className={styles.deviceToggles}>
+                <div className={styles.deviceToggles} data-no-toggle>
                   <span className={styles.toggleSideLabel}>Pooled</span>
                   <Toggle
                     value={device.soloMining}
@@ -81,34 +93,38 @@ export function MiningInputsPanel() {
                   <span className={styles.toggleSideLabel}>Solo</span>
                 </div>
               </div>
-              <SliderInput
-                label="Hashrate"
-                value={device.hashrateTH}
-                onChange={(v) => setMiningDevice(i, { hashrateTH: v })}
-                min={0.1}
-                max={1000}
-                step={0.01}
-                display={
-                  device.hashrateTH >= 100
-                    ? `${Math.round(device.hashrateTH)} TH/s`
-                    : device.hashrateTH >= 10
-                      ? `${device.hashrateTH.toFixed(1)} TH/s`
-                      : `${device.hashrateTH.toFixed(2)} TH/s`
-                }
-                minLabel="0.1"
-                maxLabel="1,000 TH/s"
-              />
-              <SliderInput
-                label="Power"
-                value={device.powerW}
-                onChange={(v) => setMiningDevice(i, { powerW: v })}
-                min={5}
-                max={100}
-                step={0.1}
-                display={`${device.powerW.toFixed(1)} W`}
-                minLabel="5W"
-                maxLabel="100W"
-              />
+              <div data-no-toggle>
+                <SliderInput
+                  label="Hashrate"
+                  value={device.hashrateTH}
+                  onChange={(v) => setMiningDevice(i, { hashrateTH: v })}
+                  min={0.1}
+                  max={1000}
+                  step={0.01}
+                  display={
+                    device.hashrateTH >= 100
+                      ? `${Math.round(device.hashrateTH)} TH/s`
+                      : device.hashrateTH >= 10
+                        ? `${device.hashrateTH.toFixed(1)} TH/s`
+                        : `${device.hashrateTH.toFixed(2)} TH/s`
+                  }
+                  minLabel="0.1"
+                  maxLabel="1,000 TH/s"
+                />
+              </div>
+              <div data-no-toggle>
+                <SliderInput
+                  label="Power"
+                  value={device.powerW}
+                  onChange={(v) => setMiningDevice(i, { powerW: v })}
+                  min={5}
+                  max={100}
+                  step={0.1}
+                  display={`${device.powerW.toFixed(1)} W`}
+                  minLabel="5W"
+                  maxLabel="100W"
+                />
+              </div>
             </div>
           ))}
 
