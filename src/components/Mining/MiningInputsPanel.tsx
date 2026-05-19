@@ -55,6 +55,7 @@ export function MiningInputsPanel() {
                   className={styles.deviceNameInput}
                   value={device.name}
                   onChange={(e) => setMiningDevice(i, { name: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
                   placeholder="Miner name"
                 />
                 <Toggle
