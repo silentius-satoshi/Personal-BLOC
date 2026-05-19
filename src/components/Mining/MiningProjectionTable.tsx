@@ -20,7 +20,7 @@ export function MiningProjectionTable() {
   const maxMonths          = projectionYears * 12;
   const { selected, btcPrice } = useMiningSimulation();
 
-  const [selectedMonth, setSelectedMonth] = useState(maxMonths);
+  const [selectedMonth, setSelectedMonth] = useState(1);
 
   const enabledDevices = devices.filter((d) => d.enabled);
   const soloDevices    = enabledDevices.filter((d) => d.soloMining);
