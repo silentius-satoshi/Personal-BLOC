@@ -6,7 +6,7 @@ export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy };
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'settings';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
@@ -83,6 +83,12 @@ interface StoreState {
   setConverterActiveField: (v: 'sats' | 'btc' | 'usd') => void;
   setConverterRawValue:    (v: string) => void;
 
+  // Settings
+  hiddenTabs:           string[];
+  previousTab:          Exclude<ActiveTab, 'settings'>;
+  toggleTabVisibility:  (tab: string) => void;
+  setPreviousTab:       (tab: Exclude<ActiveTab, 'settings'>) => void;
+
   // Mining tab state
   miningInputs: MiningInputs;
   setMiningInputs: (patch: Partial<MiningInputs>) => void;
@@ -145,6 +151,15 @@ export const useStore = create<StoreState>()(
   converterRawValue:    '0',
   setConverterActiveField: (v) => set({ converterActiveField: v }),
   setConverterRawValue:    (v) => set({ converterRawValue: v }),
+
+  hiddenTabs:  [],
+  previousTab: 'living',
+  toggleTabVisibility: (tab) => set((s) => ({
+    hiddenTabs: s.hiddenTabs.includes(tab)
+      ? s.hiddenTabs.filter((t) => t !== tab)
+      : [...s.hiddenTabs, tab],
+  })),
+  setPreviousTab: (tab) => set({ previousTab: tab }),
 
   miningInputs: defaultMiningInputs,
   setMiningInputs: (patch) => set((s) => ({ miningInputs: { ...s.miningInputs, ...patch } })),

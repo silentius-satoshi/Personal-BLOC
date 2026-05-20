@@ -137,28 +137,6 @@ export function ConverterMain() {
           onChange={(v) => updateRawValue(v)}
         />
       </div>
-
-      <div className={styles.tableCard}>
-        <h3 className={styles.tableTitle}>Satoshi to USD Rates (Live)</h3>
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Satoshis</th>
-              <th>Bitcoin</th>
-              <th>US Dollar</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map((s) => (
-              <tr key={s} onClick={() => { updateActiveField('sats'); updateRawValue(String(s)); }}>
-                <td>丰 {s.toLocaleString()} {s === 1 ? 'Satoshi' : 'Satoshis'}</td>
-                <td>₿ {(s / SATS_PER_BTC).toFixed(8)} BTC</td>
-                <td>{fmtUsdLocal((s / SATS_PER_BTC) * btcPrice)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

@@ -13,8 +13,10 @@ function fmtUsdLocal(n: number): string {
 
 export function ConverterSidebar() {
   const { livePrice } = useBtcPrice();
-  const btcPrice    = useStore((s) => s.btcPrice);
-  const setBtcPrice = useStore((s) => s.setBtcPrice);
+  const btcPrice             = useStore((s) => s.btcPrice);
+  const setBtcPrice          = useStore((s) => s.setBtcPrice);
+  const setStoredActiveField = useStore((s) => s.setConverterActiveField);
+  const setStoredRawValue    = useStore((s) => s.setConverterRawValue);
 
   const satsPerDollar = btcPrice > 0 ? SATS_PER_BTC / btcPrice : null;
 
@@ -25,6 +27,17 @@ export function ConverterSidebar() {
 
   return (
     <div className={styles.panel}>
+      <div className={styles.sectionHeader}>Sats Per Dollar</div>
+
+      <div className={styles.stat}>
+        <div className={styles.statLabel}>1 USD =</div>
+        <div className={styles.statValue}>
+          {satsPerDollar != null ? `丰 ${Math.round(satsPerDollar).toLocaleString()} sats` : '—'}
+        </div>
+      </div>
+
+      <hr className={styles.divider} />
+
       <div className={styles.sectionHeader}>Bitcoin Price</div>
 
       <div className={styles.stat}>
@@ -39,17 +52,6 @@ export function ConverterSidebar() {
           >
             LIVE
           </span>
-        </div>
-      </div>
-
-      <hr className={styles.divider} />
-
-      <div className={styles.sectionHeader}>Sats Per Dollar</div>
-
-      <div className={styles.stat}>
-        <div className={styles.statLabel}>1 USD =</div>
-        <div className={styles.statValue}>
-          {satsPerDollar != null ? `丰 ${Math.round(satsPerDollar).toLocaleString()} sats` : '—'}
         </div>
       </div>
 
@@ -85,6 +87,33 @@ export function ConverterSidebar() {
         A satoshi (sat) is the smallest unit of Bitcoin.<br />
         1 BTC = 100,000,000 sats.<br />
         Named after Bitcoin's creator, Satoshi Nakamoto.
+      </div>
+
+      <hr className={styles.divider} />
+
+      <div className={styles.sectionHeader}>Satoshi Rates</div>
+
+      <div className={styles.tableCard}>
+        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table className={styles.table}>
+            <thead>
+              <tr>
+                <th>Satoshis</th>
+                <th>Bitcoin</th>
+                <th>US Dollar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map((s) => (
+                <tr key={s} onClick={() => { setStoredActiveField('sats'); setStoredRawValue(String(s)); }}>
+                  <td>丰 {s.toLocaleString()} {s === 1 ? 'Satoshi' : 'Satoshis'}</td>
+                  <td>₿ {(s / SATS_PER_BTC).toFixed(8)} BTC</td>
+                  <td>{fmtUsdLocal((s / SATS_PER_BTC) * btcPrice)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );
