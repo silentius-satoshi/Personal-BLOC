@@ -1,0 +1,18 @@
+{
+  "name": "Personal ₿LOC",
+  "short_name": "₿LOC",
+  "description": "Bitcoin accumulation strategy modeler — BLOC, Power Law, Mining, and Sats converter.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0d0d",
+  "theme_color": "#E8836A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

@@ -11,6 +11,15 @@ import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
 import { MiningMain }        from '../Mining/MiningMain';
 import styles from './AppShell.module.css';
 
+function TabLabel({ full, short }: { full: string; short: string }) {
+  return (
+    <>
+      <span className={styles.tabLabelFull}>{full}</span>
+      <span className={styles.tabLabelShort}>{short}</span>
+    </>
+  );
+}
+
 export function AppShell() {
   const activeTab    = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
@@ -22,36 +31,36 @@ export function AppShell() {
           className={`${styles.tab} ${activeTab === 'living' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('living')}
         >
-          Living on Bitcoin
+          <TabLabel full="Living on Bitcoin" short="LO₿" />
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'bloc' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('bloc')}
         >
-          Smart BLOC
+          <TabLabel full="Smart BLOC" short="₿LOC" />
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'powerlaw' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('powerlaw')}
         >
-          Power Law
+          <TabLabel full="Power Law" short="Power Law" />
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'converter' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('converter')}
         >
-          Sats
+          <TabLabel full="Sats" short="丰" />
         </button>
         <button
           className={`${styles.tab} ${activeTab === 'mining' ? styles.tabActive : ''}`}
           onClick={() => setActiveTab('mining')}
         >
-          Mining ⛏
+          <TabLabel full="Mining ⛏" short="⛏" />
         </button>
         <div className={styles.headerBranding}>
           <span className={styles.headerLogo}>₿</span>
           <div className={styles.headerText}>
-            <span className={styles.headerTitle}>Smart BLOC</span>
+            <span className={styles.headerTitle}>Personal ₿LOC</span>
           </div>
         </div>
       </div>

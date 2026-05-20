@@ -95,6 +95,61 @@
   color: var(--text-muted);
 }
 
+/* Tab label visibility — desktop: full, mobile: short */
+.tabLabelShort { display: none; }
+.tabLabelFull  { display: inline; }
+
+@media (max-width: 640px) {
+  .tabLabelFull  { display: none; }
+  .tabLabelShort { display: inline; }
+
+  .tabBar {
+    padding: 0 4px;
+    gap: 0;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+    scroll-snap-type: x mandatory;
+  }
+
+  .tabBar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .tab {
+    font-size: 11px;
+    padding: 10px 6px;
+    flex: 1;
+    text-align: center;
+    white-space: nowrap;
+    scroll-snap-align: start;
+    flex-shrink: 0;
+  }
+
+  .headerBranding {
+    flex-shrink: 0;
+    gap: 4px;
+  }
+
+  .headerLogo {
+    font-size: 14px;
+  }
+
+  .headerTitle {
+    font-size: 11px;
+  }
+
+  .main {
+    overflow-x: hidden;
+    min-width: 0;
+  }
+
+  .sidebar {
+    overflow-x: hidden;
+    min-width: 0;
+  }
+}
+
 @media (max-width: 767px) {
   .shell {
     grid-template-columns: 1fr;
