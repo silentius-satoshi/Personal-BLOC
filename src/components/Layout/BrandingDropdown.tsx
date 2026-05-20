@@ -4,6 +4,7 @@ import styles from './BrandingDropdown.module.css';
 
 export function BrandingDropdown() {
   const [open, setOpen] = useState(false);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
   const ref = useRef<HTMLDivElement>(null);
   const activeTab      = useStore((s) => s.activeTab);
   const setActiveTab   = useStore((s) => s.setActiveTab);
@@ -25,6 +26,14 @@ export function BrandingDropdown() {
     return () => document.removeEventListener('keydown', handler);
   }, [open]);
 
+  const openDropdown = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) {
+      setDropdownPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    }
+    setOpen((o) => !o);
+  };
+
   const openSettings = () => {
     if (activeTab !== 'settings') {
       setPreviousTab(activeTab as Exclude<typeof activeTab, 'settings'>);
@@ -37,7 +46,7 @@ export function BrandingDropdown() {
     <div className={styles.wrapper} ref={ref}>
       <button
         className={styles.brandingBtn}
-        onClick={() => setOpen((o) => !o)}
+        onClick={openDropdown}
         aria-expanded={open}
       >
         <span className={styles.logo}>₿</span>
@@ -45,7 +54,7 @@ export function BrandingDropdown() {
       </button>
 
       {open && (
-        <div className={styles.dropdown}>
+        <div className={styles.dropdown} style={{ top: dropdownPos.top, right: dropdownPos.right }}>
           <button className={styles.dropdownItem} onClick={openSettings}>
             <span className={styles.dropdownIcon}>⚙</span>
             Settings
