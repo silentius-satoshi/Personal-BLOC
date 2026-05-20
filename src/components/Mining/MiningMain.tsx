@@ -4,7 +4,6 @@ import { useMiningSimulation } from '../../hooks/useMiningSimulation';
 import { CurrencyToggle } from './CurrencyToggle';
 import { StrategyCard } from './StrategyCard';
 import { MiningOddsBar } from './MiningOddsBar';
-import { PoolSetupPanel } from './PoolSetupPanel';
 import { MiningProjectionTable } from './MiningProjectionTable';
 import styles from './MiningMain.module.css';
 
@@ -54,9 +53,7 @@ export function MiningMain() {
 
       <MiningOddsBar currency={currency} btcPrice={btcPrice} />
 
-      <PoolSetupPanel result={selected} />
-
-      <MiningProjectionTable />
+<MiningProjectionTable />
     </div>
   );
 }

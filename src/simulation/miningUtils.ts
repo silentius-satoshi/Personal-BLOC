@@ -1,65 +1,9 @@
 import type {
   MiningDevice,
-  MiningPool,
   MiningInputs,
   MiningStrategy,
   MiningStrategyResult,
 } from './types';
-
-export const MINING_POOLS: MiningPool[] = [
-  {
-    id: 'braiins_solo',
-    name: 'Braiins Solo',
-    feePercent: 0.5,
-    type: 'solo',
-    lightning: false,
-    stratum: 'solo.stratum.braiins.com:3333',
-  },
-  {
-    id: 'ckpool',
-    name: 'Solo CKPool',
-    feePercent: 2.0,
-    type: 'solo',
-    lightning: false,
-    stratum: 'solo.ckpool.org:3333',
-  },
-  {
-    id: 'public_pool',
-    name: 'Public Pool',
-    feePercent: 0.0,
-    type: 'solo',
-    lightning: false,
-    stratum: 'public-pool.io:21496',
-  },
-  {
-    id: 'ocean',
-    name: 'OCEAN',
-    feePercent: 2.0,
-    type: 'pooled',
-    lightning: true,
-    stratum: 'mine.ocean.xyz:3334',
-  },
-  {
-    id: 'braiins_pool',
-    name: 'Braiins Pool',
-    feePercent: 2.5,
-    type: 'pooled',
-    lightning: true,
-    stratum: 'stratum.braiins.com:3333',
-  },
-];
-
-const BRAIINS_SOLO = MINING_POOLS.find(p => p.id === 'braiins_solo')!;
-const OCEAN        = MINING_POOLS.find(p => p.id === 'ocean')!;
-
-function getPoolForDevice(strategy: MiningStrategy, deviceIndex: number): { pool: MiningPool; type: 'solo' | 'pooled' } {
-  if (strategy === 'solo')   return { pool: BRAIINS_SOLO, type: 'solo' };
-  if (strategy === 'pooled') return { pool: OCEAN,        type: 'pooled' };
-  // split: first device solo, rest pooled
-  return deviceIndex === 0
-    ? { pool: BRAIINS_SOLO, type: 'solo' }
-    : { pool: OCEAN,        type: 'pooled' };
-}
 
 export function revPerTHPerDay(btcPrice: number): number {
   return (3.125 * 144 * btcPrice) / 1_000_000_000;
@@ -102,11 +46,11 @@ export function calcMiningStrategy(
     pooled: { label: 'Fully Pooled', emoji: '📊' },
   };
 
-  const deviceResults = enabledDevices.map((device, i) => {
-    const { pool, type } = getPoolForDevice(strategyId, i);
-    const ev_usd  = dailyEV_usd(device.hashrateTH, btcPrice, pool.feePercent);
+  const deviceResults = enabledDevices.map((device) => {
+    const type    = device.soloMining ? 'solo' : 'pooled' as const;
+    const ev_usd  = dailyEV_usd(device.hashrateTH, btcPrice, device.poolFee);
     const ev_sats = usdToSats(ev_usd, btcPrice);
-    return { device, pool, dailyEV_usd: ev_usd, dailyEV_sats: ev_sats, type };
+    return { device, dailyEV_usd: ev_usd, dailyEV_sats: ev_sats, type };
   });
 
   const totalHashTH   = enabledDevices.reduce((s, d) => s + d.hashrateTH, 0);
@@ -154,10 +98,13 @@ export function calcMiningStrategy(
     return { year, satsAccumulated: netSats, valueByScenario };
   });
 
-  const poolSetup = enabledDevices.map((device, i) => {
-    const { pool, type } = getPoolForDevice(strategyId, i);
-    return { deviceName: device.name, hashrateTH: device.hashrateTH, pool, type };
-  });
+  const poolSetup = enabledDevices.map((device) => ({
+    deviceName: device.name,
+    hashrateTH: device.hashrateTH,
+    poolName:   device.poolName,
+    poolFee:    device.poolFee,
+    type:       (device.soloMining ? 'solo' : 'pooled') as 'solo' | 'pooled',
+  }));
 
   return {
     id: strategyId,

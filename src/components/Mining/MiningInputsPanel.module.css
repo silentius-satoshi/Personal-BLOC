@@ -269,3 +269,41 @@
   color: var(--text-ghost);
   font-weight: 500;
 }
+
+.poolSection {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.poolLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text-ghost);
+  text-transform: uppercase;
+}
+
+.poolNameInput {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
+  outline: none;
+  padding: 2px 0;
+  width: 100%;
+  transition: border-color 0.15s;
+}
+
+.poolNameInput:hover,
+.poolNameInput:focus {
+  border-bottom-color: var(--border);
+}
+
+.poolNameInput::placeholder {
+  color: var(--text-faint);
+  font-weight: 400;
+}

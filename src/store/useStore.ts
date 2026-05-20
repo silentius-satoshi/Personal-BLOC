@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { MiningDevice, MiningPool, MiningInputs, MiningCurrency, MiningStrategy } from '../simulation/types';
+import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy } from '../simulation/types';
 
-export type { MiningDevice, MiningPool, MiningInputs, MiningCurrency, MiningStrategy };
+export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy };
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
@@ -11,8 +11,8 @@ type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
   devices: [
-    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true, soloMining: true  },
-    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true, soloMining: false },
+    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true, soloMining: true,  poolName: '', poolFee: 0.5 },
+    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true, soloMining: false, poolName: '', poolFee: 2.0 },
   ],
   electricityRateCents: 12,
   btcPriceOverride: null,
@@ -159,7 +159,7 @@ export const useStore = create<StoreState>()(
       ...s.miningInputs,
       devices: [
         ...s.miningInputs.devices,
-        { name: 'New Miner', hashrateTH: 1.0, powerW: 20, efficiencyJTH: 20, enabled: true, soloMining: false },
+        { name: 'New Miner', hashrateTH: 1.0, powerW: 20, efficiencyJTH: 20, enabled: true, soloMining: false, poolName: '', poolFee: 2.0 },
       ],
     },
   })),
@@ -170,6 +170,18 @@ export const useStore = create<StoreState>()(
     },
   })),
     }),
-    { name: 'personal-bloc-store' }
+    {
+      name: 'personal-bloc-store',
+      onRehydrateStorage: () => (state) => {
+        if (state?.miningInputs?.devices) {
+          state.miningInputs.devices = state.miningInputs.devices.map((d) => ({
+            poolName: '',
+            poolFee: 2.0,
+            soloMining: false,
+            ...d,
+          }));
+        }
+      },
+    }
   )
 );

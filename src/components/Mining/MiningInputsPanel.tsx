@@ -93,6 +93,30 @@ export function MiningInputsPanel() {
                   <span className={styles.toggleSideLabel}>Solo</span>
                 </div>
               </div>
+              <div className={styles.poolSection} data-no-toggle>
+                <div className={styles.poolLabel}>POOL</div>
+                <input
+                  type="text"
+                  className={styles.poolNameInput}
+                  value={device.poolName}
+                  onChange={(e) => setMiningDevice(i, { poolName: e.target.value })}
+                  onKeyDown={(e) => { if (e.key === 'Enter') e.currentTarget.blur(); }}
+                  placeholder="e.g. OCEAN, Braiins Solo, F2Pool"
+                />
+              </div>
+              <div data-no-toggle>
+                <SliderInput
+                  label="Pool Fee"
+                  value={device.poolFee}
+                  onChange={(v) => setMiningDevice(i, { poolFee: v })}
+                  min={0}
+                  max={5}
+                  step={0.1}
+                  display={`${device.poolFee.toFixed(1)}%`}
+                  minLabel="0%"
+                  maxLabel="5%"
+                />
+              </div>
               <div data-no-toggle>
                 <SliderInput
                   label="Hashrate"

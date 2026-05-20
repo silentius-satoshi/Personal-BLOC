@@ -36,7 +36,7 @@ export function StrategyCard({ result, currency, btcPrice, active, onClick }: Pr
       </div>
 
       <div className={styles.desc}>
-        {result.poolSetup.map(p => `${p.deviceName} → ${p.pool.name}`).join(' · ')}
+        {result.poolSetup.map(p => `${p.deviceName} → ${p.poolName || '—'}`).join(' · ')}
       </div>
 
       <div className={styles.metrics}>

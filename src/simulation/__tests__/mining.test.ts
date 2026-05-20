@@ -11,8 +11,8 @@ import type { MiningInputs } from '../types';
 
 const defaultMiningInputs: MiningInputs = {
   devices: [
-    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true, soloMining: false },
-    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true, soloMining: false },
+    { name: 'Gamma 601', hashrateTH: 1.07, powerW: 22.3, efficiencyJTH: 20.23, enabled: true, soloMining: false, poolName: '', poolFee: 2.0 },
+    { name: 'Gamma 602', hashrateTH: 1.20, powerW: 18.0, efficiencyJTH: 15.0,  enabled: true, soloMining: false, poolName: '', poolFee: 2.0 },
   ],
   electricityRateCents: 12,
   btcPriceOverride: null,
@@ -68,10 +68,11 @@ describe('calcAllStrategies', () => {
     const results = calcAllStrategies(defaultMiningInputs, 76000);
     expect(results).toHaveLength(3);
   });
-  it('split strategy: 601 is solo, 602 is pooled', () => {
+  it('type reflects device.soloMining', () => {
     const results = calcAllStrategies(defaultMiningInputs, 76000);
     const split = results.find(r => r.id === 'split')!;
-    expect(split.devices[0].type).toBe('solo');
+    // Both fixture devices have soloMining: false
+    expect(split.devices[0].type).toBe('pooled');
     expect(split.devices[1].type).toBe('pooled');
   });
   it('fully pooled: no lottery odds', () => {

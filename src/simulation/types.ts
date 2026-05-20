@@ -84,15 +84,8 @@ export interface MiningDevice {
   efficiencyJTH: number;
   enabled: boolean;
   soloMining: boolean;
-}
-
-export interface MiningPool {
-  id: string;
-  name: string;
-  feePercent: number;
-  type: 'solo' | 'pooled';
-  lightning: boolean;
-  stratum: string;
+  poolName: string;
+  poolFee: number;
 }
 
 export interface MiningInputs {
@@ -112,7 +105,6 @@ export interface MiningStrategyResult {
   emoji: string;
   devices: {
     device: MiningDevice;
-    pool: MiningPool;
     dailyEV_usd: number;
     dailyEV_sats: number;
     type: 'solo' | 'pooled';
@@ -147,7 +139,8 @@ export interface MiningStrategyResult {
   poolSetup: {
     deviceName: string;
     hashrateTH: number;
-    pool: MiningPool;
+    poolName: string;
+    poolFee: number;
     type: 'solo' | 'pooled';
   }[];
 }
