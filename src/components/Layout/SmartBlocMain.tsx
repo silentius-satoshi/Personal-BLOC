@@ -4,6 +4,7 @@ import { MonthlyPlaybook } from '../Playbook/MonthlyPlaybook';
 import { BtcStackChart } from '../Charts/BtcStackChart';
 import { NetEquityChart } from '../Charts/NetEquityChart';
 import { LTVSafetyChart } from '../Charts/LTVSafetyChart';
+import MonthBreakdown from '../MonthBreakdown/MonthBreakdown';
 
 export function SmartBlocMain() {
   return (
@@ -14,6 +15,7 @@ export function SmartBlocMain() {
       <BtcStackChart />
       <NetEquityChart />
       <LTVSafetyChart />
+      <MonthBreakdown />
     </>
   );
 }

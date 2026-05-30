@@ -1,0 +1,180 @@
+.section {
+  margin-top: 32px;
+  padding-top: 24px;
+  border-top: 1px solid var(--border);
+}
+
+.sectionHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+  margin: 0 0 4px;
+}
+
+.subtitle {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-family: 'IBM Plex Mono', monospace;
+  margin: 0;
+}
+
+.sustainGreen {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.sustainOrange {
+  font-size: 11px;
+  color: var(--orange);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  min-width: 700px;
+  border-collapse: collapse;
+  font-family: 'IBM Plex Mono', monospace;
+  font-size: 12px;
+}
+
+.table thead th {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  padding: 0 12px 10px 12px;
+  text-align: right;
+  border-bottom: 1px solid var(--border);
+}
+
+.table thead th:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+
+.table tbody tr {
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+
+.table tbody tr:hover {
+  background: var(--bg-card);
+}
+
+.table td {
+  padding: 12px;
+  text-align: right;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.table td:first-child {
+  text-align: left;
+  padding-left: 0;
+}
+
+.phaseOne td:first-child  { border-left: 3px solid var(--green);  padding-left: 9px; }
+.phaseTwo td:first-child  { border-left: 3px solid var(--amber);  padding-left: 9px; }
+.phaseThree td:first-child { border-left: 3px solid transparent;  padding-left: 12px; }
+
+.cellGreen  { color: var(--green);  font-weight: 500; }
+.cellOrange { color: var(--orange); font-weight: 500; }
+.cellMuted  { color: var(--text-faint); }
+
+.monthLabel {
+  font-weight: 600;
+  color: var(--text-primary);
+  font-size: 12px;
+}
+
+.ndpBadge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border-radius: 3px;
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  vertical-align: middle;
+  cursor: default;
+}
+
+.yearTotal td {
+  padding-top: 14px;
+  padding-bottom: 14px;
+  border-top: 1px solid var(--text-faint);
+  border-bottom: none;
+}
+
+.yearLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.legendItem {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-ghost);
+}
+
+.legendDot {
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  flex-shrink: 0;
+}
+
+.footnote {
+  margin-top: 12px;
+  font-size: 10px;
+  color: var(--text-faint);
+  line-height: 1.6;
+}
+
+.ndpInline {
+  display: inline-block;
+  padding: 1px 4px;
+  font-size: 9px;
+  font-weight: 700;
+  border-radius: 3px;
+  background: rgba(96, 165, 250, 0.12);
+  color: #60a5fa;
+  border: 1px solid rgba(96, 165, 250, 0.25);
+  letter-spacing: 0.05em;
+}
