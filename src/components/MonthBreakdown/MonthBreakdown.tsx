@@ -22,15 +22,6 @@ export default function MonthBreakdown() {
     [collateralBtc, btcPrice, income, expenses, blocApr, creditLine],
   );
 
-  const uncappedResult = useMemo(
-    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine: Infinity }),
-    [collateralBtc, btcPrice, income, expenses, blocApr],
-  );
-
-  const peakBalance = Math.max(...uncappedResult.rows.map((r) => r.strikeBalance));
-  const recommendedCreditLine = Math.ceil((peakBalance * 1.10) / 500) * 500;
-  const creditLineIsAdequate = creditLine >= recommendedCreditLine;
-
   const breakEven = income / (1 + (blocApr / 100) / 12);
   const isSustainable = expenses <= breakEven;
   const anyCreditExceeded = result.rows.some((r) => r.creditExceeded);
@@ -51,17 +42,6 @@ export default function MonthBreakdown() {
         <span className={isSustainable ? styles.sustainGreen : styles.sustainOrange}>
           {isSustainable ? 'BTC buying runs all year' : 'Draw exceeds break-even — balance will drift'}
         </span>
-      </div>
-
-      <div className={styles.creditLineRecommendation}>
-        <span className={styles.recommendedLabel}>Recommended minimum credit line:</span>
-        <span className={`${styles.recommendedValue} ${creditLineIsAdequate ? styles.recommendedOk : styles.recommendedLow}`}>
-          {fmtUSD(recommendedCreditLine)}
-        </span>
-        {creditLineIsAdequate
-          ? <span className={styles.recommendedHint}>· your {fmtUSD(creditLine)} line covers this ✓</span>
-          : <span className={styles.recommendedHint}>· your {fmtUSD(creditLine)} line is below this — increase before starting</span>
-        }
       </div>
 
       {anyCreditExceeded && (
