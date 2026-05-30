@@ -6,7 +6,7 @@ export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy };
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'settings';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'settings';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
@@ -51,6 +51,12 @@ interface StoreState {
   ltvType: LtvType;
   timeHorizonYears: number;
 
+  // CB Loan tab inputs
+  cbLoanBalance:    number;
+  cbCollateralBtc:  number;
+  cbAprPct:         number;
+  cbMonthlyPayment: number;
+
   // Setters — shared
   setIncome: (v: number) => void;
   setExpenses: (v: number) => void;
@@ -78,6 +84,12 @@ interface StoreState {
   setInflationRate: (v: number) => void;
   setLtvType: (v: LtvType) => void;
   setTimeHorizonYears: (v: number) => void;
+
+  // Setters — CB Loan tab
+  setCbLoanBalance:    (v: number) => void;
+  setCbCollateralBtc:  (v: number) => void;
+  setCbAprPct:         (v: number) => void;
+  setCbMonthlyPayment: (v: number) => void;
 
   // Converter tab state
   converterActiveField: 'sats' | 'btc' | 'usd';
@@ -128,6 +140,11 @@ export const useStore = create<StoreState>()(
   ltvType: 'target',
   timeHorizonYears: 1,
 
+  cbLoanBalance:    60000,
+  cbCollateralBtc:  1.48,
+  cbAprPct:         4.77,
+  cbMonthlyPayment: 0,
+
   setIncome: (v) => set({ income: v }),
   setExpenses: (v) => set({ expenses: v }),
   setBtcPrice: (v) => set({ btcPrice: v }),
@@ -151,12 +168,17 @@ export const useStore = create<StoreState>()(
   setLtvType: (v) => set({ ltvType: v }),
   setTimeHorizonYears: (v) => set({ timeHorizonYears: v }),
 
+  setCbLoanBalance:    (v) => set({ cbLoanBalance: v }),
+  setCbCollateralBtc:  (v) => set({ cbCollateralBtc: v }),
+  setCbAprPct:         (v) => set({ cbAprPct: v }),
+  setCbMonthlyPayment: (v) => set({ cbMonthlyPayment: v }),
+
   converterActiveField: 'sats',
   converterRawValue:    '0',
   setConverterActiveField: (v) => set({ converterActiveField: v }),
   setConverterRawValue:    (v) => set({ converterRawValue: v }),
 
-  hiddenTabs:  [],
+  hiddenTabs:  ['coinbase'],
   previousTab: 'living',
   toggleTabVisibility: (tab) => set((s) => ({
     hiddenTabs: s.hiddenTabs.includes(tab)

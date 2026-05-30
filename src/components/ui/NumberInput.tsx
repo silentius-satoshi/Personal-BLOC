@@ -8,15 +8,18 @@ interface Props {
   max?: number;
   step?: number;
   prefix?: string;
+  suffix?: string;
+  decimals?: number;
   label?: string;
   subtext?: string;
 }
 
-export function NumberInput({ value, onChange, min, max, step = 1, prefix, label, subtext }: Props) {
-  const [raw, setRaw] = useState(String(value));
+export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext }: Props) {
+  const fmt = (v: number) => decimals !== undefined ? v.toFixed(decimals) : String(v);
+  const [raw, setRaw] = useState(fmt(value));
 
   useEffect(() => {
-    setRaw(String(value));
+    setRaw(fmt(value));
   }, [value]);
 
   function commit() {
@@ -24,7 +27,7 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, label
     if (!isNaN(n)) {
       onChange(Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n)));
     } else {
-      setRaw(String(value));
+      setRaw(fmt(value));
     }
   }
 
@@ -51,6 +54,7 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, label
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
         />
+        {suffix && <span className={styles.suffix}>{suffix}</span>}
       </div>
       {subtext && <span className={styles.subtext}>{subtext}</span>}
     </div>

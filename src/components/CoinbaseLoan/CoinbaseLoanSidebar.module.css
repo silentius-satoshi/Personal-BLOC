@@ -1,0 +1,113 @@
+.sidebar {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 20px 16px;
+}
+
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.btcPriceLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.label {
+  font-size: 10px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.note {
+  font-size: 9px;
+  color: var(--text-ghost);
+  line-height: 1.4;
+}
+
+.hint {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin: 0;
+  line-height: 1.4;
+}
+
+.liveBadge {
+  font-size: 8px;
+  font-weight: 700;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 10px;
+  border: 1px solid var(--orange);
+  background: transparent;
+  color: var(--orange);
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+
+.liveBadge:hover {
+  text-decoration: underline;
+  opacity: 0.85;
+}
+
+.liveBadge:disabled {
+  opacity: 0.3;
+  cursor: default;
+  text-decoration: none;
+}
+
+.liveBadgeSynced {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.divider {
+  height: 1px;
+  background: var(--border);
+}
+
+.sectionLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.riskNote {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  background: rgba(232, 90, 79, 0.05);
+  border: 1px solid rgba(232, 90, 79, 0.15);
+  border-radius: 8px;
+}
+
+.riskRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.riskLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+.riskValue {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: 'IBM Plex Mono', monospace;
+  text-align: right;
+}

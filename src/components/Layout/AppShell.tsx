@@ -10,6 +10,8 @@ import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { ConverterMain }    from '../Converter/ConverterMain';
 import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
 import { MiningMain }        from '../Mining/MiningMain';
+import { CoinbaseLoanSidebar } from '../CoinbaseLoan/CoinbaseLoanSidebar';
+import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import styles from './AppShell.module.css';
@@ -20,6 +22,7 @@ const ALL_TABS = [
   { key: 'powerlaw',  fullLabel: 'Power Law',         shortLabel: 'Power Law' },
   { key: 'converter', fullLabel: 'Sats',              shortLabel: '丰'        },
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'   },
+  { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'       },
 ] as const;
 
 type TabKey = typeof ALL_TABS[number]['key'];
@@ -57,21 +60,23 @@ export function AppShell() {
 
       <aside className={styles.sidebar}>
         <div className={styles.sidebarInner}>
-          {activeTab === 'settings'   ? null               :
-           activeTab === 'living'     ? <LivingInputsPanel /> :
-           activeTab === 'powerlaw'   ? <PowerLawSidebar />   :
-           activeTab === 'converter'  ? <ConverterSidebar />  :
-           activeTab === 'mining'     ? <MiningInputsPanel /> :
+          {activeTab === 'settings'   ? null                   :
+           activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
+           activeTab === 'living'     ? <LivingInputsPanel />   :
+           activeTab === 'powerlaw'   ? <PowerLawSidebar />     :
+           activeTab === 'converter'  ? <ConverterSidebar />    :
+           activeTab === 'mining'     ? <MiningInputsPanel />   :
                                         <InputsPanel />}
         </div>
       </aside>
 
       <main className={styles.main}>
-        {activeTab === 'settings'   ? <SettingsMain />    :
-         activeTab === 'living'     ? <LivingOnBitcoin /> :
-         activeTab === 'powerlaw'   ? <PowerLawMain />    :
-         activeTab === 'converter'  ? <ConverterMain />   :
-         activeTab === 'mining'     ? <MiningMain />      :
+        {activeTab === 'settings'   ? <SettingsMain />      :
+         activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
+         activeTab === 'living'     ? <LivingOnBitcoin />   :
+         activeTab === 'powerlaw'   ? <PowerLawMain />      :
+         activeTab === 'converter'  ? <ConverterMain />     :
+         activeTab === 'mining'     ? <MiningMain />        :
                                       <SmartBlocMain />}
       </main>
     </div>

@@ -8,6 +8,7 @@ const ALL_TABS = [
   { key: 'powerlaw',  label: 'Power Law'           },
   { key: 'converter', label: 'Sats'                },
   { key: 'mining',    label: 'Miners'              },
+  { key: 'coinbase',  label: 'CB Loan'             },
 ] as const;
 
 export function SettingsMain() {
