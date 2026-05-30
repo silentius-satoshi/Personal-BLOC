@@ -71,7 +71,7 @@
 .tabRow {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 10px;
   padding: 12px 14px;
   border-bottom: 1px solid var(--border);
   transition: background 0.1s;
@@ -90,4 +90,29 @@
 
 .tabLabelHidden {
   color: var(--text-ghost);
+}
+
+.tabLabel {
+  flex: 1;
+}
+
+.dragHandle {
+  font-size: 16px;
+  color: var(--text-faint);
+  cursor: grab;
+  padding: 0 4px 0 0;
+  flex-shrink: 0;
+  user-select: none;
+  transition: color 0.15s;
+}
+
+.dragHandle:hover  { color: var(--text-ghost); }
+.dragHandle:active { cursor: grabbing; }
+
+.tabRowDragging {
+  background: var(--bg-card);
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  opacity: 0.95;
+  z-index: 10;
 }

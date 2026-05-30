@@ -99,8 +99,10 @@ interface StoreState {
 
   // Settings
   hiddenTabs:           string[];
+  tabOrder:             string[];
   previousTab:          Exclude<ActiveTab, 'settings'>;
   toggleTabVisibility:  (tab: string) => void;
+  setTabOrder:          (order: string[]) => void;
   setPreviousTab:       (tab: Exclude<ActiveTab, 'settings'>) => void;
 
   // Mining tab state
@@ -179,12 +181,14 @@ export const useStore = create<StoreState>()(
   setConverterRawValue:    (v) => set({ converterRawValue: v }),
 
   hiddenTabs:  ['coinbase'],
+  tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase'],
   previousTab: 'living',
   toggleTabVisibility: (tab) => set((s) => ({
     hiddenTabs: s.hiddenTabs.includes(tab)
       ? s.hiddenTabs.filter((t) => t !== tab)
       : [...s.hiddenTabs, tab],
   })),
+  setTabOrder: (order) => set({ tabOrder: order }),
   setPreviousTab: (tab) => set({ previousTab: tab }),
 
   miningInputs: defaultMiningInputs,
