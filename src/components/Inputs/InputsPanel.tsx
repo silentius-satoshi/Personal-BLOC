@@ -2,17 +2,24 @@ import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { SettingsDropdown } from './SettingsDropdown';
+import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import styles from './InputsPanel.module.css';
 
 export function InputsPanel() {
-  const income      = useStore((s) => s.income);
-  const expenses    = useStore((s) => s.expenses);
-  const btcPrice    = useStore((s) => s.btcPrice);
-  const creditLine  = useStore((s) => s.creditLine);
-  const setIncome      = useStore((s) => s.setIncome);
-  const setExpenses    = useStore((s) => s.setExpenses);
-  const setBtcPrice    = useStore((s) => s.setBtcPrice);
-  const setCreditLine  = useStore((s) => s.setCreditLine);
+  const income            = useStore((s) => s.income);
+  const expenses          = useStore((s) => s.expenses);
+  const btcPrice          = useStore((s) => s.btcPrice);
+  const creditLine        = useStore((s) => s.creditLine);
+  const activeTier        = useStore((s) => s.activeTier);
+  const customCollateral  = useStore((s) => s.customCollateral);
+  const setIncome           = useStore((s) => s.setIncome);
+  const setExpenses         = useStore((s) => s.setExpenses);
+  const setBtcPrice         = useStore((s) => s.setBtcPrice);
+  const setCreditLine       = useStore((s) => s.setCreditLine);
+  const setActiveTier       = useStore((s) => s.setActiveTier);
+  const setCustomCollateral = useStore((s) => s.setCustomCollateral);
+
+  const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
 
   const { livePrice, lastUpdated } = useBtcPrice();
 
@@ -73,6 +80,17 @@ export function InputsPanel() {
           prefix="$"
           min={0}
           step={500}
+        />
+        <NumberInput
+          label="Collateral (BTC)"
+          value={parseFloat(effectiveCollateral.toFixed(5))}
+          onChange={(v) => {
+            setCustomCollateral(v);
+            setActiveTier('custom');
+          }}
+          min={0.001}
+          step={0.001}
+          prefix="₿"
         />
       </div>
     </div>

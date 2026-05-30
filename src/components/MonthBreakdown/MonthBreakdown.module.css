@@ -201,3 +201,28 @@
   color: var(--red);
   font-weight: 600;
 }
+
+.creditLineRecommendation {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-size: 12px;
+  padding: 8px 12px;
+  margin-bottom: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.recommendedLabel { color: var(--text-ghost); }
+
+.recommendedValue { font-weight: 700; }
+
+.recommendedOk  { color: var(--green); }
+.recommendedLow { color: var(--orange); }
+
+.recommendedHint {
+  color: var(--text-faint);
+  font-style: italic;
+}
