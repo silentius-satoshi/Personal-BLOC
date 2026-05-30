@@ -40,7 +40,14 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, label
           min={min}
           max={max}
           step={step}
-          onChange={(e) => setRaw(e.target.value)}
+          onChange={(e) => {
+            const raw = e.target.value;
+            setRaw(raw);
+            const n = parseFloat(raw);
+            if (!isNaN(n) && n >= 0) {
+              onChange(n);
+            }
+          }}
           onBlur={commit}
           onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
         />
