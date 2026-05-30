@@ -50,6 +50,13 @@ export default function MonthBreakdown() {
         </div>
       )}
 
+      {result.rows.some((r) => r.phase === 4) && (
+        <div className={styles.creditMaxedBanner}>
+          ⬛ Credit line exhausted in Month {result.rows.find((r) => r.phase === 4)!.month} —
+          cover expenses from fiat savings · balance grows from interest only
+        </div>
+      )}
+
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
           <thead>
@@ -69,6 +76,7 @@ export default function MonthBreakdown() {
               const phaseClass =
                 row.phase === 1 ? styles.phaseOne :
                 row.phase === 2 ? styles.phaseTwo :
+                row.phase === 4 ? styles.phaseFour :
                 styles.phaseThree;
 
               const creditCellClass =
@@ -124,15 +132,19 @@ export default function MonthBreakdown() {
       <div className={styles.legend}>
         <div className={styles.legendItem}>
           <div className={styles.legendDot} style={{ background: 'var(--green)' }} />
-          Phase 1 — Full income buys BTC
+          <span className={styles.legendText}>Phase 1 — Full income buys BTC</span>
         </div>
         <div className={styles.legendItem}>
           <div className={styles.legendDot} style={{ background: 'var(--amber)' }} />
-          Phase 2 — First paydown month
+          <span className={styles.legendText}>Phase 2 — First paydown month</span>
         </div>
         <div className={styles.legendItem}>
-          <div className={styles.legendDot} style={{ background: 'var(--border)' }} />
-          Phase 3 — Equilibrium (partial paydown)
+          <div className={styles.legendDot} style={{ background: 'var(--text-faint)' }} />
+          <span className={styles.legendText}>Phase 3 — Equilibrium (partial paydown)</span>
+        </div>
+        <div className={styles.legendItem}>
+          <div className={styles.legendDot} style={{ background: 'var(--red)' }} />
+          <span className={styles.legendText}>Phase 4 — Credit exhausted · cover expenses from fiat</span>
         </div>
       </div>
 

@@ -18,7 +18,7 @@ export interface BlocMonthRow {
   strikeBalance: number;
   strikeCollateral: number;
   strikeLtv: number;
-  phase: 1 | 2 | 3;
+  phase: 1 | 2 | 3 | 4;
   creditExceeded: boolean;
   availableCredit: number;
 }
@@ -86,14 +86,18 @@ export function runBlocYearOne(inputs: BlocYearOneInputs): BlocYearOneResult {
     const ltv = balance / (btcHeld * btcPrice);
     const availableCredit = Math.max(0, creditLine - balance);
 
-    let phase: 1 | 2 | 3;
-    if (paydown === 0) {
-      phase = 1;
-    } else if (!firstPaydownSeen) {
-      phase = 2;
-      firstPaydownSeen = true;
+    let phase: 1 | 2 | 3 | 4;
+    if (creditExceeded) {
+      phase = 4;
+    } else if (paydown > 0) {
+      if (!firstPaydownSeen) {
+        phase = 2;
+        firstPaydownSeen = true;
+      } else {
+        phase = 3;
+      }
     } else {
-      phase = 3;
+      phase = 1;
     }
 
     rows.push({

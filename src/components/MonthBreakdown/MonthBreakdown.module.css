@@ -92,9 +92,10 @@
   padding-left: 0;
 }
 
-.phaseOne td:first-child  { border-left: 3px solid var(--green);  padding-left: 9px; }
-.phaseTwo td:first-child  { border-left: 3px solid var(--amber);  padding-left: 9px; }
-.phaseThree td:first-child { border-left: 3px solid transparent;  padding-left: 12px; }
+.phaseOne td:first-child   { border-left: 3px solid var(--green);  padding-left: 9px; }
+.phaseTwo td:first-child   { border-left: 3px solid var(--amber);  padding-left: 9px; }
+.phaseThree td:first-child { border-left: 3px solid transparent;   padding-left: 12px; }
+.phaseFour td:first-child  { border-left: 3px solid var(--red);    padding-left: 9px; }
 
 .cellGreen  { color: var(--green);  font-weight: 500; }
 .cellOrange { color: var(--orange); font-weight: 500; }
@@ -138,26 +139,27 @@
 
 .legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid var(--border);
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
 }
 
 .legendItem {
   display: flex;
   align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  color: var(--text-ghost);
+  gap: 8px;
 }
 
 .legendDot {
-  width: 3px;
-  height: 14px;
+  width: 10px;
+  height: 10px;
   border-radius: 2px;
   flex-shrink: 0;
+}
+
+.legendText {
+  font-size: 11px;
+  color: var(--text-ghost);
 }
 
 .footnote {
@@ -195,6 +197,16 @@
 
 .creditExceededRow {
   background: rgba(232, 168, 74, 0.05);
+}
+
+.creditMaxedBanner {
+  font-size: 11px;
+  color: var(--red);
+  background: rgba(232, 90, 79, 0.08);
+  border: 1px solid rgba(232, 90, 79, 0.2);
+  border-radius: 6px;
+  padding: 7px 12px;
+  margin-bottom: 16px;
 }
 
 .cellRed {
