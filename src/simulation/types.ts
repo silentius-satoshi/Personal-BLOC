@@ -5,6 +5,7 @@ export interface SimInputs {
   apr: number;
   foldRate: number;
   startBTC: number;
+  creditLine?: number;
 }
 
 export interface MonthData {

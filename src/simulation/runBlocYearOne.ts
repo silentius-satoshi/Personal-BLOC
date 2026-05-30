@@ -7,6 +7,7 @@ export interface BlocYearOneInputs {
   expenses: number;
   apr: number;
   ltvCeiling: number;
+  creditLine: number;
 }
 
 export interface BlocMonthRow {
@@ -18,6 +19,8 @@ export interface BlocMonthRow {
   strikeCollateral: number;
   strikeLtv: number;
   phase: 1 | 2 | 3;
+  creditExceeded: boolean;
+  availableCredit: number;
 }
 
 export interface BlocYearOneResult {
@@ -43,7 +46,7 @@ export function getCollateralForTier(
 }
 
 export function runBlocYearOne(inputs: BlocYearOneInputs): BlocYearOneResult {
-  const { collateralBtc, btcPrice, income, expenses, apr, ltvCeiling } = inputs;
+  const { collateralBtc, btcPrice, income, expenses, apr, ltvCeiling, creditLine } = inputs;
   const monthlyRate = apr / 12;
 
   let balance = 0;
@@ -54,13 +57,18 @@ export function runBlocYearOne(inputs: BlocYearOneInputs): BlocYearOneResult {
   let totalIncomeBtc = 0, totalPaydown = 0, totalBtc = 0, totalInterest = 0;
 
   for (let month = 1; month <= 12; month++) {
-    // Draw first, then interest (spec order — differs from runBLOC.ts)
-    balance += expenses;
+    // Step 1: Draw expenses — capped at available credit
+    const availableToDraw = Math.max(0, creditLine - balance);
+    const actualDraw = Math.min(expenses, availableToDraw);
+    const creditExceeded = actualDraw < expenses;
+    balance += actualDraw;
 
+    // Step 2: Interest accrues on new balance
     const interest = balance * monthlyRate;
     balance += interest;
     totalInterest += interest;
 
+    // Step 3: LTV paydown check
     const colVal = btcHeld * btcPrice;
     const target = colVal * ltvCeiling;
 
@@ -70,11 +78,13 @@ export function runBlocYearOne(inputs: BlocYearOneInputs): BlocYearOneResult {
       balance -= paydown;
     }
 
+    // Step 4: Remaining income buys BTC
     const incomeTowardBtc = income - paydown;
     const btcBought = incomeTowardBtc / btcPrice;
     btcHeld += btcBought;
 
     const ltv = balance / (btcHeld * btcPrice);
+    const availableCredit = Math.max(0, creditLine - balance);
 
     let phase: 1 | 2 | 3;
     if (paydown === 0) {
@@ -86,7 +96,13 @@ export function runBlocYearOne(inputs: BlocYearOneInputs): BlocYearOneResult {
       phase = 3;
     }
 
-    rows.push({ month, incomeTowardBtc, paydown, btcBought, strikeBalance: balance, strikeCollateral: btcHeld, strikeLtv: ltv, phase });
+    rows.push({
+      month, incomeTowardBtc, paydown, btcBought,
+      strikeBalance: balance, strikeCollateral: btcHeld,
+      strikeLtv: ltv, phase,
+      creditExceeded,
+      availableCredit,
+    });
 
     totalIncomeBtc += incomeTowardBtc;
     totalPaydown += paydown;

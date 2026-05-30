@@ -36,6 +36,7 @@ interface StoreState {
   activeTier: Tier;
   scenario: Scenario;
   scrubMonth: number;
+  creditLine: number;
 
   // Tab navigation
   activeTab: ActiveTab;
@@ -65,6 +66,7 @@ interface StoreState {
   setCustomCollateral: (v: number) => void;
   setScenario: (v: Scenario) => void;
   setScrubMonth: (v: number) => void;
+  setCreditLine: (v: number) => void;
 
   // Setters — tab + Living tab
   setActiveTab: (v: ActiveTab) => void;
@@ -113,6 +115,7 @@ export const useStore = create<StoreState>()(
   customCollateral: 1.0,
   scenario: 'moderate',
   scrubMonth: 30,
+  creditLine: 10000,
 
   activeTab: 'living',
 
@@ -136,6 +139,7 @@ export const useStore = create<StoreState>()(
   setCustomCollateral: (v) => set({ customCollateral: v }),
   setScenario: (v) => set({ scenario: v }),
   setScrubMonth: (v) => set({ scrubMonth: v }),
+  setCreditLine: (v) => set({ creditLine: v }),
 
   setActiveTab: (v) => set({ activeTab: v }),
   setBtcHoldings: (v) => set({ btcHoldings: v }),

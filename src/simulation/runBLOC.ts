@@ -43,8 +43,11 @@ export function runBLOC(annualRate: number, inputs: SimInputs): MonthData[] {
     const interest = loc * monthlyRate;
     loc += interest;
 
-    // Step 3: monthly expenses drawn from LoC (post-interest loc)
-    loc += expenses;
+    // Step 3: monthly expenses drawn from LoC (post-interest loc), capped at credit line
+    const cap = inputs.creditLine ?? Infinity;
+    const availableToDraw = Math.max(0, cap - loc);
+    const actualDraw = Math.min(expenses, availableToDraw);
+    loc += actualDraw;
 
     // Step 4: LTV check against post-draw loc
     const collateralValue = btc * btcPrice;

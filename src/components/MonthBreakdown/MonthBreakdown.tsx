@@ -5,24 +5,26 @@ import { fmtUSD } from '../../utils/format';
 import styles from './MonthBreakdown.module.css';
 
 export default function MonthBreakdown() {
-  const income          = useStore((s) => s.income);
-  const expenses        = useStore((s) => s.expenses);
-  const btcPrice        = useStore((s) => s.btcPrice);
-  const activeTier      = useStore((s) => s.activeTier);
+  const income           = useStore((s) => s.income);
+  const expenses         = useStore((s) => s.expenses);
+  const btcPrice         = useStore((s) => s.btcPrice);
+  const activeTier       = useStore((s) => s.activeTier);
   const customCollateral = useStore((s) => s.customCollateral);
-  const blocApr         = useStore((s) => s.blocApr);
+  const blocApr          = useStore((s) => s.blocApr);
+  const creditLine       = useStore((s) => s.creditLine);
 
   const ltvCeiling = 0.15;
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
 
   const result = useMemo(
-    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling }),
-    [collateralBtc, btcPrice, income, expenses, blocApr],
+    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine }),
+    [collateralBtc, btcPrice, income, expenses, blocApr, creditLine],
   );
 
   const breakEven = income / (1 + (blocApr / 100) / 12);
   const isSustainable = expenses <= breakEven;
+  const anyCreditExceeded = result.rows.some((r) => r.creditExceeded);
 
   const ndpInterest = Math.round(result.rows[0].strikeBalance * (blocApr / 100) / 12);
 
@@ -33,12 +35,20 @@ export default function MonthBreakdown() {
           <h3 className={styles.title}>Month-by-Month Breakdown</h3>
           <p className={styles.subtitle}>
             Flat BTC · 15% LTV ceiling · {collateralBtc.toFixed(5)} BTC collateral
+            {' · '}
+            <span className={styles.creditLineLabel}>Credit line: {fmtUSD(creditLine)}</span>
           </p>
         </div>
         <span className={isSustainable ? styles.sustainGreen : styles.sustainOrange}>
           {isSustainable ? 'BTC buying runs all year' : 'Draw exceeds break-even — balance will drift'}
         </span>
       </div>
+
+      {anyCreditExceeded && (
+        <div className={styles.creditWarning}>
+          ⚠ Credit line reached — draws capped at {fmtUSD(creditLine)}. Contact Strike to request a credit line increase.
+        </div>
+      )}
 
       <div className={styles.tableWrapper}>
         <table className={styles.table}>
@@ -51,6 +61,7 @@ export default function MonthBreakdown() {
               <th>Strike Bal.</th>
               <th>Strike Col.</th>
               <th>Strike LTV</th>
+              <th>Avail. Credit</th>
             </tr>
           </thead>
           <tbody>
@@ -60,8 +71,18 @@ export default function MonthBreakdown() {
                 row.phase === 2 ? styles.phaseTwo :
                 styles.phaseThree;
 
+              const creditCellClass =
+                row.availableCredit === 0
+                  ? styles.cellRed
+                  : row.availableCredit < creditLine * 0.1
+                    ? styles.cellOrange
+                    : styles.cellMuted;
+
               return (
-                <tr key={row.month} className={phaseClass}>
+                <tr
+                  key={row.month}
+                  className={`${phaseClass}${row.creditExceeded ? ` ${styles.creditExceededRow}` : ''}`}
+                >
                   <td>
                     <span className={styles.monthLabel}>Mo {row.month}</span>
                     {row.month === 1 && (
@@ -81,6 +102,7 @@ export default function MonthBreakdown() {
                   <td>{fmtUSD(row.strikeBalance)}</td>
                   <td>{row.strikeCollateral.toFixed(5)} BTC</td>
                   <td className={styles.cellGreen}>{(row.strikeLtv * 100).toFixed(2)}%</td>
+                  <td className={creditCellClass}>{fmtUSD(row.availableCredit)}</td>
                 </tr>
               );
             })}
@@ -93,6 +115,7 @@ export default function MonthBreakdown() {
               <td>{fmtUSD(result.finalBalance)}</td>
               <td>{result.finalCollateral.toFixed(5)} BTC</td>
               <td className={styles.cellGreen}>{(result.finalLtv * 100).toFixed(2)}%</td>
+              <td className={styles.cellMuted}>{fmtUSD(Math.max(0, creditLine - result.finalBalance))}</td>
             </tr>
           </tbody>
         </table>
