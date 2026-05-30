@@ -16,22 +16,41 @@ import styles from './AdvisorMain.module.css';
 interface ActionRowProps {
   icon: string;
   label: string;
-  value: string;
   sub: string;
-  highlight?: 'green' | 'orange';
+  value: string;
+  valueColor: string;
+  skipped: boolean;
+  onPay: () => void;
+  onSkip: () => void;
+  styles: Record<string, string>;
 }
 
-function ActionRow({ icon, label, value, sub, highlight }: ActionRowProps) {
+function ActionRow({ icon, label, sub, value, valueColor, skipped, onPay, onSkip, styles }: ActionRowProps) {
   return (
-    <div className={styles.actionRow}>
+    <div className={`${styles.actionRow} ${skipped ? styles.actionRowSkipped : ''}`}>
       <span className={styles.actionIcon}>{icon}</span>
       <div className={styles.actionContent}>
         <span className={styles.actionLabel}>{label}</span>
         <span className={styles.actionSub}>{sub}</span>
       </div>
-      <span className={`${styles.actionValue} ${highlight ? styles[`highlight_${highlight}`] : ''}`}>
-        {value}
-      </span>
+      <div className={styles.actionRight}>
+        <span
+          className={styles.actionValue}
+          style={{ color: skipped ? 'var(--text-faint)' : valueColor, textDecoration: skipped ? 'line-through' : 'none' }}
+        >
+          {value}
+        </span>
+        <div className={styles.paySkipBtns}>
+          <button
+            className={`${styles.paySkipBtn} ${!skipped ? styles.paySkipBtnActive : ''}`}
+            onClick={onPay}
+          >Pay</button>
+          <button
+            className={`${styles.paySkipBtn} ${skipped ? styles.paySkipBtnSkipped : ''}`}
+            onClick={onSkip}
+          >Skip</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -55,6 +74,12 @@ export function AdvisorMain() {
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
+  const advisorSkipBlocDraw      = useStore((s) => s.advisorSkipBlocDraw);
+  const advisorSkipCbPayment     = useStore((s) => s.advisorSkipCbPayment);
+  const advisorSkipBtcBuying     = useStore((s) => s.advisorSkipBtcBuying);
+  const setAdvisorSkipBlocDraw   = useStore((s) => s.setAdvisorSkipBlocDraw);
+  const setAdvisorSkipCbPayment  = useStore((s) => s.setAdvisorSkipCbPayment);
+  const setAdvisorSkipBtcBuying  = useStore((s) => s.setAdvisorSkipBtcBuying);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
@@ -81,6 +106,43 @@ export function AdvisorMain() {
   );
 
   const thisMonth = result.rows[0];
+
+  const overriddenPlan = useMemo(() => {
+    if (!thisMonth) return null;
+
+    const blocPaydown = Math.max(0, income - thisMonth.cbPayment - thisMonth.incomeToBtc);
+
+    const effectiveBlocDraw = advisorSkipBlocDraw ? 0 : thisMonth.blocDraw;
+    const effectiveFiatGap  = expenses - effectiveBlocDraw;
+
+    let availableIncome = income - blocPaydown;
+
+    const effectiveCbPayment = advisorSkipCbPayment ? 0 : thisMonth.cbPayment;
+    availableIncome -= effectiveCbPayment;
+
+    const effectiveBtcIncome   = advisorSkipBtcBuying ? 0 : availableIncome;
+    const effectiveUnallocated = advisorSkipBtcBuying ? availableIncome : 0;
+    const effectiveBtcBought   = effectiveBtcIncome / btcPrice;
+
+    const totalAllocated = blocPaydown + effectiveCbPayment + effectiveBtcIncome;
+
+    return {
+      blocDraw:    effectiveBlocDraw,
+      fiatGap:     effectiveFiatGap,
+      blocPaydown,
+      cbPayment:   effectiveCbPayment,
+      cbSkipped:   advisorSkipCbPayment,
+      cbFreed:     advisorSkipCbPayment ? thisMonth.cbPayment : 0,
+      btcIncome:   effectiveBtcIncome,
+      btcBought:   effectiveBtcBought,
+      unallocated: effectiveUnallocated,
+      totalAllocated,
+      incomeFullyUsed: Math.abs(totalAllocated - income) < 0.01,
+    };
+  }, [
+    thisMonth, income, expenses, btcPrice,
+    advisorSkipBlocDraw, advisorSkipCbPayment, advisorSkipBtcBuying,
+  ]);
 
   return (
     <div className={styles.main}>
@@ -166,42 +228,99 @@ export function AdvisorMain() {
               </div>
               <p className={styles.cardSubtitle}>
                 CB LTV: {(currentCbLtv * 100).toFixed(1)}% ·
-                BLOC balance: {fmtUSD(advisorActualBlocBalance)} ·
-                BTC held: {startingBtcHeld.toFixed(5)}
+                BLOC: {fmtUSD(advisorActualBlocBalance)} ·
+                BTC: {startingBtcHeld.toFixed(5)}
               </p>
 
-              <div className={styles.actionGrid}>
-                <ActionRow
-                  icon="💳"
-                  label="Draw from BLOC"
-                  value={thisMonth.blocDraw > 0 ? fmtUSD(thisMonth.blocDraw) : '$0'}
-                  sub="for monthly expenses"
-                />
-                {thisMonth.fiatGap > 0 && (
-                  <ActionRow
-                    icon="💵"
-                    label="Cover from fiat"
-                    value={fmtUSD(thisMonth.fiatGap)}
-                    sub="expense gap — pay from savings"
-                    highlight="orange"
-                  />
-                )}
-                <ActionRow
-                  icon="🏦"
-                  label="Pay toward CB Loan"
-                  value={fmtUSD(thisMonth.cbPayment)}
-                  sub={thisMonth.cbExtraPayment > 0
-                    ? `min + ${fmtUSD(thisMonth.cbExtraPayment)} extra (tier ${currentTier})`
-                    : 'minimum payment'}
-                />
-                <ActionRow
-                  icon="₿"
-                  label="Buy Bitcoin"
-                  value={fmtUSD(thisMonth.incomeToBtc)}
-                  sub={thisMonth.btcBought > 0 ? `→ ${thisMonth.btcBought.toFixed(5)} BTC` : 'paused this tier'}
-                  highlight={thisMonth.incomeToBtc > 0 ? 'green' : undefined}
-                />
-              </div>
+              {overriddenPlan && (
+                <>
+                  {/* FROM CREDIT LINE */}
+                  <div className={styles.fundingSection}>
+                    <div className={styles.fundingLabel}>FROM CREDIT LINE</div>
+
+                    <ActionRow
+                      icon="💳"
+                      label="Draw from BLOC"
+                      sub="covers monthly expenses"
+                      value={fmtUSD(overriddenPlan.blocDraw)}
+                      valueColor="var(--amber)"
+                      skipped={advisorSkipBlocDraw}
+                      onPay={() => setAdvisorSkipBlocDraw(false)}
+                      onSkip={() => setAdvisorSkipBlocDraw(true)}
+                      styles={styles}
+                    />
+
+                    {(advisorSkipBlocDraw || overriddenPlan.fiatGap > 0) && (
+                      <div className={styles.redirectNote}>
+                        💵 Cover from fiat: <strong>{fmtUSD(overriddenPlan.fiatGap)}</strong>
+                        {advisorSkipBlocDraw && ' (BLOC draw skipped)'}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* FROM MONTHLY INCOME */}
+                  <div className={styles.fundingSection}>
+                    <div className={styles.fundingLabel}>
+                      FROM MONTHLY INCOME
+                      <span className={styles.fundingIncome}>{fmtUSD(income)}/mo</span>
+                    </div>
+
+                    {overriddenPlan.blocPaydown > 0 && (
+                      <div className={styles.mandatoryRow}>
+                        <span className={styles.mandatoryLabel}>⚡ BLOC paydown (LTV triggered)</span>
+                        <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.blocPaydown)}</span>
+                      </div>
+                    )}
+
+                    <ActionRow
+                      icon="🏦"
+                      label="CB Loan payment"
+                      sub={overriddenPlan.cbSkipped
+                        ? `skipped — ${fmtUSD(overriddenPlan.cbFreed)} redirected to BTC`
+                        : thisMonth.cbExtraPayment > 0
+                          ? `min + ${fmtUSD(thisMonth.cbExtraPayment)} extra`
+                          : 'minimum payment'}
+                      value={fmtUSD(overriddenPlan.cbPayment)}
+                      valueColor="var(--red)"
+                      skipped={advisorSkipCbPayment}
+                      onPay={() => setAdvisorSkipCbPayment(false)}
+                      onSkip={() => setAdvisorSkipCbPayment(true)}
+                      styles={styles}
+                    />
+
+                    <ActionRow
+                      icon="₿"
+                      label="Buy Bitcoin"
+                      sub={advisorSkipBtcBuying
+                        ? `skipped — ${fmtUSD(overriddenPlan.unallocated)} unallocated`
+                        : `→ ${overriddenPlan.btcBought.toFixed(5)} BTC`}
+                      value={fmtUSD(overriddenPlan.btcIncome)}
+                      valueColor="var(--green)"
+                      skipped={advisorSkipBtcBuying}
+                      onPay={() => setAdvisorSkipBtcBuying(false)}
+                      onSkip={() => setAdvisorSkipBtcBuying(true)}
+                      styles={styles}
+                    />
+
+                    {advisorSkipBtcBuying && overriddenPlan.unallocated > 0 && (
+                      <div className={styles.unallocatedNote}>
+                        💵 Unallocated cash: <strong>{fmtUSD(overriddenPlan.unallocated)}</strong>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Income allocation summary */}
+                  <div className={`${styles.incomeSummary} ${overriddenPlan.incomeFullyUsed ? styles.incomeSummaryOk : styles.incomeSummaryPartial}`}>
+                    <span>Income allocated:</span>
+                    <span>
+                      <strong>{fmtUSD(overriddenPlan.totalAllocated)}</strong>
+                      {' of '}
+                      <strong>{fmtUSD(income)}</strong>
+                      {overriddenPlan.incomeFullyUsed ? ' ✓' : ''}
+                    </span>
+                  </div>
+                </>
+              )}
 
               {currentTier === 1 && (
                 <div className={styles.emergencyNote}>

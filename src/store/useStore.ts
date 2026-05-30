@@ -101,6 +101,13 @@ interface StoreState {
   setAdvisorActualBlocBalance: (v: number)    => void;
   setAdvisorActualBtcHeld:     (v: number)    => void;
 
+  advisorSkipBlocDraw:  boolean;
+  advisorSkipCbPayment: boolean;
+  advisorSkipBtcBuying: boolean;
+  setAdvisorSkipBlocDraw:  (v: boolean) => void;
+  setAdvisorSkipCbPayment: (v: boolean) => void;
+  setAdvisorSkipBtcBuying: (v: boolean) => void;
+
   // Converter tab state
   converterActiveField: 'sats' | 'btc' | 'usd';
   converterRawValue:    string;
@@ -161,6 +168,10 @@ export const useStore = create<StoreState>()(
   advisorActualBlocBalance: 0,
   advisorActualBtcHeld:     0,
 
+  advisorSkipBlocDraw:  false,
+  advisorSkipCbPayment: false,
+  advisorSkipBtcBuying: false,
+
   setIncome: (v) => set({ income: v }),
   setExpenses: (v) => set({ expenses: v }),
   setBtcPrice: (v) => set({ btcPrice: v }),
@@ -192,6 +203,10 @@ export const useStore = create<StoreState>()(
   setAdvisorStartDate:         (date) => set({ advisorStartDate: date }),
   setAdvisorActualBlocBalance: (v)    => set({ advisorActualBlocBalance: v }),
   setAdvisorActualBtcHeld:     (v)    => set({ advisorActualBtcHeld: v }),
+
+  setAdvisorSkipBlocDraw:  (v) => set({ advisorSkipBlocDraw: v }),
+  setAdvisorSkipCbPayment: (v) => set({ advisorSkipCbPayment: v }),
+  setAdvisorSkipBtcBuying: (v) => set({ advisorSkipBtcBuying: v }),
 
   converterActiveField: 'sats',
   converterRawValue:    '0',

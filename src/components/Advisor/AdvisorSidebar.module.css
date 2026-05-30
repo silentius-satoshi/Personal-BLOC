@@ -126,3 +126,39 @@
   font-style: italic;
   margin: 4px 0 0;
 }
+
+.labelRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.priceDisplay {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  padding: 2px 0;
+}
+
+.liveBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 4px;
+  border: none;
+  cursor: pointer;
+  letter-spacing: 0.05em;
+  background: rgba(255,255,255,0.08);
+  color: var(--text-ghost);
+  transition: background 0.15s, color 0.15s;
+}
+
+.liveBadge:hover:not(:disabled) {
+  background: rgba(255,255,255,0.12);
+  color: var(--text-secondary);
+}
+
+.liveBadgeSynced {
+  background: rgba(78,203,130,0.15);
+  color: var(--green);
+}

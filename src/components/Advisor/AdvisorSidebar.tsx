@@ -1,4 +1,5 @@
 import { useStore } from '../../store/useStore';
+import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getCurrentStrategyMonth, isStrategyComplete } from '../../simulation/runAdvisor';
@@ -20,7 +21,10 @@ export function AdvisorSidebar() {
   const blocApr           = useStore((s) => s.blocApr);
   const creditLine        = useStore((s) => s.creditLine);
   const btcPrice          = useStore((s) => s.btcPrice);
+  const setBtcPrice       = useStore((s) => s.setBtcPrice);
   const activeTier        = useStore((s) => s.activeTier);
+  const { livePrice }     = useBtcPrice();
+  const isSynced          = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
   const customCollateral  = useStore((s) => s.customCollateral);
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
@@ -40,6 +44,23 @@ export function AdvisorSidebar() {
 
   return (
     <div className={styles.sidebar}>
+
+      <div className={styles.section}>
+        <div className={styles.labelRow}>
+          <span className={styles.label}>BTC PRICE</span>
+          <button
+            className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
+            onClick={() => livePrice !== null && setBtcPrice(livePrice)}
+            disabled={livePrice === null}
+            title={isSynced ? 'Live price synced' : 'Click to sync live price'}
+          >
+            {isSynced ? '✓ LIVE' : '↻ SYNC'}
+          </button>
+        </div>
+        <div className={styles.priceDisplay}>${btcPrice.toLocaleString()}</div>
+      </div>
+
+      <div className={styles.divider} />
 
       <div className={styles.sectionLabel}>YOUR PROGRESS</div>
 
