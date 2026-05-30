@@ -27,6 +27,8 @@ import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
 import { MiningMain }        from '../Mining/MiningMain';
 import { CoinbaseLoanSidebar } from '../CoinbaseLoan/CoinbaseLoanSidebar';
 import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
+import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
+import { AdvisorMain }    from '../Advisor/AdvisorMain';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import styles from './AppShell.module.css';
@@ -38,6 +40,7 @@ const ALL_TABS_META = [
   { key: 'converter', fullLabel: 'Sats',              shortLabel: '丰'        },
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'   },
   { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'       },
+  { key: 'advisor',   fullLabel: 'Advisor',           shortLabel: 'Adv'      },
 ] as const;
 
 type TabKey = typeof ALL_TABS_META[number]['key'];
@@ -138,6 +141,7 @@ export function AppShell() {
         <div className={styles.sidebarInner}>
           {activeTab === 'settings'   ? null                   :
            activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
+           activeTab === 'advisor'    ? <AdvisorSidebar />      :
            activeTab === 'living'     ? <LivingInputsPanel />   :
            activeTab === 'powerlaw'   ? <PowerLawSidebar />     :
            activeTab === 'converter'  ? <ConverterSidebar />    :
@@ -149,6 +153,7 @@ export function AppShell() {
       <main className={styles.main}>
         {activeTab === 'settings'   ? <SettingsMain />      :
          activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
+         activeTab === 'advisor'    ? <AdvisorMain />       :
          activeTab === 'living'     ? <LivingOnBitcoin />   :
          activeTab === 'powerlaw'   ? <PowerLawMain />      :
          activeTab === 'converter'  ? <ConverterMain />     :

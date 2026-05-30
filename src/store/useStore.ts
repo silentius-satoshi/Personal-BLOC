@@ -6,7 +6,7 @@ export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy };
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'settings';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'settings';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
@@ -57,6 +57,11 @@ interface StoreState {
   cbAprPct:         number;
   cbMonthlyPayment: number;
 
+  // Advisor tab inputs
+  advisorStartDate:         string;
+  advisorActualBlocBalance: number;
+  advisorActualBtcHeld:     number;
+
   // Setters — shared
   setIncome: (v: number) => void;
   setExpenses: (v: number) => void;
@@ -90,6 +95,11 @@ interface StoreState {
   setCbCollateralBtc:  (v: number) => void;
   setCbAprPct:         (v: number) => void;
   setCbMonthlyPayment: (v: number) => void;
+
+  // Setters — Advisor tab
+  setAdvisorStartDate:         (date: string) => void;
+  setAdvisorActualBlocBalance: (v: number)    => void;
+  setAdvisorActualBtcHeld:     (v: number)    => void;
 
   // Converter tab state
   converterActiveField: 'sats' | 'btc' | 'usd';
@@ -147,6 +157,10 @@ export const useStore = create<StoreState>()(
   cbAprPct:         4.77,
   cbMonthlyPayment: 0,
 
+  advisorStartDate:         new Date().toISOString().split('T')[0],
+  advisorActualBlocBalance: 0,
+  advisorActualBtcHeld:     0,
+
   setIncome: (v) => set({ income: v }),
   setExpenses: (v) => set({ expenses: v }),
   setBtcPrice: (v) => set({ btcPrice: v }),
@@ -175,13 +189,17 @@ export const useStore = create<StoreState>()(
   setCbAprPct:         (v) => set({ cbAprPct: v }),
   setCbMonthlyPayment: (v) => set({ cbMonthlyPayment: v }),
 
+  setAdvisorStartDate:         (date) => set({ advisorStartDate: date }),
+  setAdvisorActualBlocBalance: (v)    => set({ advisorActualBlocBalance: v }),
+  setAdvisorActualBtcHeld:     (v)    => set({ advisorActualBtcHeld: v }),
+
   converterActiveField: 'sats',
   converterRawValue:    '0',
   setConverterActiveField: (v) => set({ converterActiveField: v }),
   setConverterRawValue:    (v) => set({ converterRawValue: v }),
 
-  hiddenTabs:  ['coinbase'],
-  tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase'],
+  hiddenTabs:  ['coinbase', 'advisor'],
+  tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase', 'advisor'],
   previousTab: 'living',
   toggleTabVisibility: (tab) => set((s) => ({
     hiddenTabs: s.hiddenTabs.includes(tab)

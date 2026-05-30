@@ -24,6 +24,7 @@ const ALL_TABS = [
   { key: 'converter', label: 'Sats'                },
   { key: 'mining',    label: 'Miners'              },
   { key: 'coinbase',  label: 'CB Loan'             },
+  { key: 'advisor',   label: 'Advisor'             },
 ] as const;
 
 type TabEntry = typeof ALL_TABS[number];
