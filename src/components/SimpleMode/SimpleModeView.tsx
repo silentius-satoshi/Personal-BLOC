@@ -27,6 +27,27 @@ function SimpleModeCheckItem({ checked, onChange, label, amount, animating }: {
   );
 }
 
+function ModalField({ label, prefix, value, onChange, step = 1 }: {
+  label: string; prefix?: string; value: number;
+  onChange: (v: number) => void; step?: number;
+}) {
+  return (
+    <div className={styles.modalFieldGroup}>
+      <span className={styles.modalFieldLabel}>{label}</span>
+      <div className={styles.modalFieldInput}>
+        {prefix && <span className={styles.modalFieldPrefix}>{prefix}</span>}
+        <input
+          type="number"
+          className={styles.modalNumberInput}
+          value={value}
+          step={step}
+          onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        />
+      </div>
+    </div>
+  );
+}
+
 export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const income    = useStore((s) => s.income);
   const expenses  = useStore((s) => s.expenses);
@@ -40,6 +61,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
+  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
+  const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const advisorChecklist            = useStore((s) => s.advisorChecklist);
   const setAdvisorChecklist         = useStore((s) => s.setAdvisorChecklist);
@@ -48,6 +71,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
+
+  const setIncome     = useStore((s) => s.setIncome);
+  const setExpenses   = useStore((s) => s.setExpenses);
+  const setCreditLine = useStore((s) => s.setCreditLine);
 
   // Feature 2
   const [showTierTip, setShowTierTip] = useState(false);
@@ -58,6 +85,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Feature 6
   const [showMonthBanner, setShowMonthBanner] = useState(false);
   const prevMonth = useRef<number | null>(null);
+  // Change 1 — setup modal
+  const [showSetupModal, setShowSetupModal] = useState(false);
+  const [modalDraft, setModalDraft] = useState({
+    income, expenses, creditLine,
+    blocBalance: advisorActualBlocBalance,
+    btcHeld: advisorActualBtcHeld,
+  });
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone = isStrategyComplete(advisorStartDate);
@@ -82,6 +116,21 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
   const showFiatRow = expectedFiatGap > 0;
 
+  // Change 3 — projections
+  const projectedBlocBalance = advisorChecklist.blocDraw && expectedBlocDraw > 0
+    ? advisorActualBlocBalance + expectedBlocDraw
+    : advisorActualBlocBalance;
+
+  const btcAccumulatedThisMonth = advisorChecklist.btcBuying && expectedBtcBuying > 0
+    ? expectedBtcBuying / btcPrice
+    : 0;
+
+  const projectedBtcHeld = advisorActualBtcHeld + btcAccumulatedThisMonth;
+
+  const hasProjection =
+    projectedBlocBalance !== advisorActualBlocBalance ||
+    btcAccumulatedThisMonth > 0;
+
   const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
   const doneCount  = [
     advisorChecklist.blocDraw,
@@ -94,7 +143,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const tierBadgeClass = styles[`tier${currentTier}`];
   const cardTierClass  = styles[`cardTier${currentTier}`];
 
-  // Feature 1
+  // Change 1 — empty state detection
   const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
 
   // Feature 2
@@ -123,6 +172,21 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setAdvisorChecklist(patch);
   };
 
+  // Change 1 — setup modal helpers
+  const openSetupModal = () => {
+    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: advisorActualBtcHeld });
+    setShowSetupModal(true);
+  };
+
+  const handleSaveSetup = () => {
+    setIncome(modalDraft.income);
+    setExpenses(modalDraft.expenses);
+    setCreditLine(modalDraft.creditLine);
+    setAdvisorActualBlocBalance(modalDraft.blocBalance);
+    setAdvisorActualBtcHeld(modalDraft.btcHeld);
+    setShowSetupModal(false);
+  };
+
   return (
     <div className={styles.root}>
     <div className={styles.content}>
@@ -136,13 +200,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           ⚙
         </button>
       </div>
-
-      {/* Feature 1 — empty state banner */}
-      {isDefaultSetup && (
-        <div className={styles.emptyStateBanner}>
-          Your numbers look like defaults — tap ⚙ to personalize
-        </div>
-      )}
 
       {/* Feature 6 — new month banner */}
       {showMonthBanner && (
@@ -176,7 +233,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>STRIKE BLOC</span>
 
-              {/* Feature 4 — inline balance edit */}
+              {/* Feature 4 + Change 2+3 — inline balance edit with projection */}
               {editingBalance ? (
                 <input
                   type="number"
@@ -201,13 +258,24 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   onClick={() => setEditingBalance(true)}
                   title="Tap to update"
                 >
-                  Balance: {fmtUSD(advisorActualBlocBalance)} ✎
+                  Balance: {fmtUSD(projectedBlocBalance)}
+                  {projectedBlocBalance !== advisorActualBlocBalance && (
+                    <span className={styles.projectedTag}> projected</span>
+                  )}
                 </button>
               )}
 
               <span className={styles.positionStat}>
                 Available: {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}
               </span>
+
+              {/* Change 3 — BTC accumulated */}
+              {btcAccumulatedThisMonth > 0 && (
+                <span className={styles.btcAccumulated}>
+                  +{btcAccumulatedThisMonth.toFixed(5)} ₿ this month
+                </span>
+              )}
+
               <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                 {ndp.status === 'never'    && 'NDP — not recorded'}
                 {ndp.status === 'ok'       && `NDP: ${ndp.daysRemaining}d`}
@@ -339,7 +407,48 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             <div className={styles.progress}>
               {doneCount} of {totalItems} done
             </div>
+
+            {/* Change 3 — apply button */}
+            {hasProjection && !allDone && (
+              <button
+                className={styles.applyBtn}
+                onClick={() => {
+                  setAdvisorActualBlocBalance(projectedBlocBalance);
+                  if (btcAccumulatedThisMonth > 0) setAdvisorActualBtcHeld(projectedBtcHeld);
+                }}
+              >
+                Apply to next month →
+              </button>
+            )}
           </div>
+        )}
+
+        {/* Change 1 — setup prompt + modal */}
+        {isDefaultSetup && (
+          <>
+            <button className={styles.setupPrompt} onClick={openSetupModal}>
+              ⚙ Set up your numbers to personalize this plan
+            </button>
+
+            {showSetupModal && (
+              <div className={styles.modalOverlay} onClick={() => setShowSetupModal(false)}>
+                <div className={styles.modalCard} onClick={(e) => e.stopPropagation()}>
+                  <h3 className={styles.modalTitle}>Quick Setup</h3>
+                  <div className={styles.modalFields}>
+                    <ModalField label="Monthly income"   prefix="$" value={modalDraft.income}      onChange={(v) => setModalDraft(d => ({ ...d, income: v }))} />
+                    <ModalField label="Monthly expenses" prefix="$" value={modalDraft.expenses}    onChange={(v) => setModalDraft(d => ({ ...d, expenses: v }))} />
+                    <ModalField label="Credit line"      prefix="$" value={modalDraft.creditLine}  onChange={(v) => setModalDraft(d => ({ ...d, creditLine: v }))} />
+                    <ModalField label="BLOC balance"     prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
+                    <ModalField label="BTC held"         prefix="₿" value={modalDraft.btcHeld}     onChange={(v) => setModalDraft(d => ({ ...d, btcHeld: v }))} step={0.001} />
+                  </div>
+                  <div className={styles.modalActions}>
+                    <button className={styles.modalCancel} onClick={() => setShowSetupModal(false)}>Cancel</button>
+                    <button className={styles.modalSave}   onClick={handleSaveSetup}>Save</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </>
         )}
 
       </div>
