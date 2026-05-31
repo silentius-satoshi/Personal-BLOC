@@ -62,7 +62,18 @@ interface StoreState {
   advisorActualBlocBalance: number;
   advisorActualBtcHeld:     number;
   ndpLastPaidDate:          string | null;
-  setNdpLastPaidDate:       (date: string) => void;
+  setNdpLastPaidDate:       (date: string | null) => void;
+  advisorChecklist: {
+    month:        number;
+    blocDraw:     boolean;
+    cbPayment:    boolean;
+    btcBuying:    boolean;
+    fiatCoverage: boolean;
+  };
+  setAdvisorChecklist: (patch: Partial<{
+    month: number; blocDraw: boolean; cbPayment: boolean;
+    btcBuying: boolean; fiatCoverage: boolean;
+  }>) => void;
 
   // Setters — shared
   setIncome: (v: number) => void;
@@ -170,6 +181,7 @@ export const useStore = create<StoreState>()(
   advisorActualBlocBalance: 0,
   advisorActualBtcHeld:     0,
   ndpLastPaidDate:          null,
+  advisorChecklist: { month: 0, blocDraw: false, cbPayment: false, btcBuying: false, fiatCoverage: false },
 
   advisorSkipBlocDraw:  false,
   advisorSkipCbPayment: false,
@@ -207,6 +219,9 @@ export const useStore = create<StoreState>()(
   setAdvisorActualBlocBalance: (v)    => set({ advisorActualBlocBalance: v }),
   setAdvisorActualBtcHeld:     (v)    => set({ advisorActualBtcHeld: v }),
   setNdpLastPaidDate:          (date) => set({ ndpLastPaidDate: date }),
+  setAdvisorChecklist: (patch) => set((s) => ({
+    advisorChecklist: { ...s.advisorChecklist, ...patch }
+  })),
 
   setAdvisorSkipBlocDraw:  (v) => set({ advisorSkipBlocDraw: v }),
   setAdvisorSkipCbPayment: (v) => set({ advisorSkipCbPayment: v }),

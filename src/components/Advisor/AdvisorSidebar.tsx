@@ -1,8 +1,9 @@
+import { useEffect } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
-import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
+import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus, getTier } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
 import styles from './AdvisorSidebar.module.css';
 
@@ -39,12 +40,35 @@ export function AdvisorSidebar() {
   const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
   const ndpLastPaidDate    = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate = useStore((s) => s.setNdpLastPaidDate);
+  const advisorChecklist    = useStore((s) => s.advisorChecklist);
+  const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
   const ndp           = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
+
+  const currentCbLtv      = cbCollateralBtc * btcPrice > 0 ? cbLoanBalance / (cbCollateralBtc * btcPrice) : 0;
+  const currentTier       = getTier(currentCbLtv);
+  const expectedBlocDraw  = currentTier === 1 ? 0
+    : currentTier === 2
+      ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
+      : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
+  const expectedFiatGap   = Math.max(0, expenses - expectedBlocDraw);
+  const expectedCbPayment = cbMonthlyPayment;
+  const expectedBtcBuying = currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
+  const showFiatRow       = expectedFiatGap > 0;
+
+  useEffect(() => {
+    if (!strategyDone && currentMonth !== advisorChecklist.month) {
+      setAdvisorChecklist({
+        month: currentMonth,
+        blocDraw: false, cbPayment: false,
+        btcBuying: false, fiatCoverage: false,
+      });
+    }
+  }, [currentMonth, advisorChecklist.month, strategyDone]);
 
   return (
     <div className={styles.sidebar}>
@@ -148,12 +172,92 @@ export function AdvisorSidebar() {
         </button>
 
         {ndpLastPaidDate && (
-          <p className={styles.ndpLastPaid}>
-            Last recorded:{' '}
-            {new Date(ndpLastPaidDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
-          </p>
+          <div className={styles.ndpEditRow}>
+            <input
+              type="date"
+              className={styles.ndpDateInput}
+              value={ndpLastPaidDate}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={(e) => setNdpLastPaidDate(e.target.value)}
+            />
+            <button
+              className={styles.ndpClearBtn}
+              onClick={() => setNdpLastPaidDate(null)}
+              title="Clear payment record"
+            >
+              Clear
+            </button>
+          </div>
         )}
       </div>
+
+      {!strategyDone && (
+        <>
+          <div className={styles.divider} />
+          <div className={styles.sectionLabel}>THIS MONTH — MO {currentMonth}</div>
+
+          <div className={styles.checklist}>
+
+            <label className={`${styles.checkItem} ${advisorChecklist.blocDraw ? styles.checkItemDone : ''}`}>
+              <input type="checkbox" className={styles.checkbox}
+                checked={advisorChecklist.blocDraw}
+                onChange={(e) => setAdvisorChecklist({ blocDraw: e.target.checked })} />
+              <span className={styles.checkLabel}>Draw from BLOC</span>
+              <span className={styles.checkAmount}>
+                {expectedBlocDraw > 0 ? fmtUSD(expectedBlocDraw) : '—'}
+              </span>
+            </label>
+
+            {showFiatRow && (
+              <label className={`${styles.checkItem} ${advisorChecklist.fiatCoverage ? styles.checkItemDone : ''}`}>
+                <input type="checkbox" className={styles.checkbox}
+                  checked={advisorChecklist.fiatCoverage}
+                  onChange={(e) => setAdvisorChecklist({ fiatCoverage: e.target.checked })} />
+                <span className={styles.checkLabel}>Cover from fiat</span>
+                <span className={styles.checkAmount}>{fmtUSD(expectedFiatGap)}</span>
+              </label>
+            )}
+
+            <label className={`${styles.checkItem} ${advisorChecklist.cbPayment ? styles.checkItemDone : ''}`}>
+              <input type="checkbox" className={styles.checkbox}
+                checked={advisorChecklist.cbPayment}
+                onChange={(e) => setAdvisorChecklist({ cbPayment: e.target.checked })} />
+              <span className={styles.checkLabel}>Pay CB Loan</span>
+              <span className={styles.checkAmount}>
+                {expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
+              </span>
+            </label>
+
+            <label className={`${styles.checkItem} ${advisorChecklist.btcBuying ? styles.checkItemDone : ''}`}>
+              <input type="checkbox" className={styles.checkbox}
+                checked={advisorChecklist.btcBuying}
+                onChange={(e) => setAdvisorChecklist({ btcBuying: e.target.checked })} />
+              <span className={styles.checkLabel}>Buy Bitcoin</span>
+              <span className={styles.checkAmount}>
+                {expectedBtcBuying > 0 ? fmtUSD(expectedBtcBuying) : '—'}
+              </span>
+            </label>
+
+          </div>
+
+          {(() => {
+            const total = showFiatRow ? 4 : 3;
+            const done  = [
+              advisorChecklist.blocDraw,
+              showFiatRow && advisorChecklist.fiatCoverage,
+              advisorChecklist.cbPayment,
+              advisorChecklist.btcBuying,
+            ].filter(Boolean).length;
+            return (
+              <p className={`${styles.checkProgress} ${done === total ? styles.checkProgressDone : ''}`}>
+                {done === total
+                  ? `✓ Month ${currentMonth} complete`
+                  : `${done} of ${total} actions completed`}
+              </p>
+            );
+          })()}
+        </>
+      )}
 
       <div className={styles.divider} />
 
