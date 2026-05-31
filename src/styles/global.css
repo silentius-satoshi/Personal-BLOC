@@ -10,6 +10,11 @@ html, body, #root {
   height: 100%;
 }
 
+html,
+body {
+  overscroll-behavior: none;
+}
+
 html {
   overflow-x: hidden;
   max-width: 100vw;
