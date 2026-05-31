@@ -102,3 +102,10 @@
 .green {
   color: var(--green);
 }
+
+@media (max-width: 640px) {
+  .grid {
+    overflow-x: auto;
+    grid-template-columns: repeat(4, minmax(160px, 1fr));
+  }
+}

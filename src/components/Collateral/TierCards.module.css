@@ -106,3 +106,10 @@
   font-weight: 600;
   color: var(--text-secondary);
 }
+
+@media (max-width: 640px) {
+  .grid {
+    overflow-x: auto;
+    grid-template-columns: repeat(4, minmax(140px, 1fr));
+  }
+}

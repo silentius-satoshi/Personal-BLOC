@@ -318,14 +318,93 @@
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
+  flex-wrap: wrap;
+}
+
+.projHeaderRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.priceEstimates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  width: 100%;
+}
+
+.priceEstimateRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.bullet {
+  color: var(--text-faint);
+  font-size: 12px;
+}
+
+.priceEstLabel {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.priceEstValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--orange);
+}
+
+.scenarioToggle {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.scenarioBtn {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-ghost);
+  padding: 5px 10px;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+  white-space: nowrap;
+}
+
+.scenarioBtn:hover {
+  border-color: var(--text-ghost);
+  color: var(--text-secondary);
+}
+
+.scenarioBtnActive {
+  border-color: var(--orange);
+  color: var(--orange);
+  background: rgba(232, 131, 106, 0.08);
+}
+
+.scenarioDisclaimer {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  margin: 0;
 }
 
 .fiatGapSummary {
   display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 2px;
-  flex-shrink: 0;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
 }
 
 .fiatGapLabel {
@@ -349,6 +428,7 @@
 
 .tableWrapper {
   overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .projTable {
@@ -434,4 +514,77 @@
 
 .disclaimer strong {
   color: var(--text-ghost);
+}
+
+@media (max-width: 640px) {
+
+  /* Position cards: 2 columns → single column */
+  .positionGrid {
+    grid-template-columns: 1fr;
+  }
+
+  /* Projection header: side-by-side → stacked */
+  .projectionHeader {
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .projHeaderRight {
+    align-items: flex-start;
+    width: 100%;
+    flex-direction: row;
+    justify-content: space-between;
+    flex-wrap: wrap;
+  }
+
+  .priceEstimates {
+    flex-direction: row;
+    align-items: center;
+    gap: 12px;
+  }
+
+  /* Action rows: wrap value + Pay/Skip below label */
+  .actionRow {
+    flex-wrap: wrap;
+  }
+
+  .actionRight {
+    width: 100%;
+    justify-content: space-between;
+    margin-left: 0;
+    margin-top: 4px;
+    flex-wrap: nowrap;
+  }
+
+  .paySkipBtns {
+    flex-shrink: 0;
+  }
+
+  .actionValue {
+    font-size: 13px;
+  }
+
+  .paySkipBtn {
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+
+  /* Funding section header: stack label and income */
+  .fundingLabel {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+
+  /* Scenario toggle: wrap naturally */
+  .scenarioToggle {
+    gap: 6px;
+  }
+
+  /* Page header padding */
+  .main {
+    padding: 16px;
+    gap: 16px;
+  }
+
 }

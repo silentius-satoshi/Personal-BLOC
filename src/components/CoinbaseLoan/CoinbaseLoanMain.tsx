@@ -139,31 +139,33 @@ export function CoinbaseLoanMain() {
       <div className={styles.card}>
         <h3 className={styles.cardTitle}>Price Alert Thresholds</h3>
         <p className={styles.cardSubtitle}>Reactive — updates with loan balance and collateral inputs</p>
-        <table className={styles.alertTable}>
-          <thead>
-            <tr>
-              <th>BTC Price</th>
-              <th>CB LTV</th>
-              <th>Status</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {thresholds.map((t) => {
-              const isBreach = btcPrice <= t.price;
-              return (
-                <tr key={t.ltvPct} className={isBreach ? styles.alertRowActive : ''}>
-                  <td className={styles.alertPrice}>${Math.round(t.price).toLocaleString()}</td>
-                  <td className={styles.alertLtv}>{t.ltvPct}%</td>
-                  <td>
-                    <span className={`${styles.alertBadge} ${styles[`alert${t.ltvPct}`]}`}>{t.label}</span>
-                  </td>
-                  <td className={styles.alertAction}>{t.action}</td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+        <div className={styles.alertTableWrapper}>
+          <table className={styles.alertTable}>
+            <thead>
+              <tr>
+                <th>BTC Price</th>
+                <th>CB LTV</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {thresholds.map((t) => {
+                const isBreach = btcPrice <= t.price;
+                return (
+                  <tr key={t.ltvPct} className={isBreach ? styles.alertRowActive : ''}>
+                    <td className={styles.alertPrice}>${Math.round(t.price).toLocaleString()}</td>
+                    <td className={styles.alertLtv}>{t.ltvPct}%</td>
+                    <td>
+                      <span className={`${styles.alertBadge} ${styles[`alert${t.ltvPct}`]}`}>{t.label}</span>
+                    </td>
+                    <td className={styles.alertAction}>{t.action}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
         <p className={styles.alertNote}>Set price alerts in your exchange or portfolio tracker at each threshold.</p>
         <p className={styles.alertNote}>
           ⚠ Coinbase/Morpho liquidation is instant with no grace period.
@@ -276,33 +278,35 @@ export function CoinbaseLoanMain() {
       {/* Section 7 — Strike vs Coinbase Comparison */}
       <div className={styles.card}>
         <h3 className={styles.cardTitle}>Strike vs Coinbase — Risk Comparison</h3>
-        <table className={styles.compareTable}>
-          <thead>
-            <tr>
-              <th>Feature</th>
-              <th>Coinbase (Morpho)</th>
-              <th>Strike BLOC</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[
-              ['Liquidation threshold', '86% LLTV — instant',           '85% — after failed margin call'],
-              ['Margin call / grace',   'None',                          '70% LTV — 72-hour cure window'],
-              ['Liquidation scope',     'Up to 100% of position',       'Only enough to restore 65% LTV'],
-              ['Liquidation penalty',   '4.38%',                        'None'],
-              ['Warning system',        'None — self-monitor',          'Push + email notification'],
-              ['Interest rate',         'Variable (Morpho market)',     'Variable (Prime + 6.25%)'],
-              ['Collateral type',       'cbBTC on Base (smart contract)', 'Custodial BTC'],
-              ['Collateral retrieval',  'Any time, post-withdrawal < 86%', 'LTV ≤ 40%, loan > 60 days'],
-            ].map(([feature, cb, strike]) => (
-              <tr key={feature}>
-                <td className={styles.compareFeature}>{feature}</td>
-                <td className={styles.compareCb}>{cb}</td>
-                <td className={styles.compareStrike}>{strike}</td>
+        <div className={styles.compareTableWrapper}>
+          <table className={styles.compareTable}>
+            <thead>
+              <tr>
+                <th>Feature</th>
+                <th>Coinbase (Morpho)</th>
+                <th>Strike BLOC</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {[
+                ['Liquidation threshold', '86% LLTV — instant',           '85% — after failed margin call'],
+                ['Margin call / grace',   'None',                          '70% LTV — 72-hour cure window'],
+                ['Liquidation scope',     'Up to 100% of position',       'Only enough to restore 65% LTV'],
+                ['Liquidation penalty',   '4.38%',                        'None'],
+                ['Warning system',        'None — self-monitor',          'Push + email notification'],
+                ['Interest rate',         'Variable (Morpho market)',     'Variable (Prime + 6.25%)'],
+                ['Collateral type',       'cbBTC on Base (smart contract)', 'Custodial BTC'],
+                ['Collateral retrieval',  'Any time, post-withdrawal < 86%', 'LTV ≤ 40%, loan > 60 days'],
+              ].map(([feature, cb, strike]) => (
+                <tr key={feature}>
+                  <td className={styles.compareFeature}>{feature}</td>
+                  <td className={styles.compareCb}>{cb}</td>
+                  <td className={styles.compareStrike}>{strike}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
 
     </div>

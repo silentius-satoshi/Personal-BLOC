@@ -36,6 +36,14 @@ button {
   background: none;
 }
 
+img, video, canvas, svg {
+  max-width: 100%;
+}
+
+table {
+  border-collapse: collapse;
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 4px;

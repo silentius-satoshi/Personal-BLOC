@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import {
   runAdvisor,
@@ -10,6 +10,7 @@ import {
   type AdvisorTier,
 } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { PL_B, GENESIS } from '../../simulation/powerLaw';
 import { fmtUSD } from '../../utils/format';
 import styles from './AdvisorMain.module.css';
 
@@ -81,6 +82,24 @@ export function AdvisorMain() {
   const setAdvisorSkipCbPayment  = useStore((s) => s.setAdvisorSkipCbPayment);
   const setAdvisorSkipBtcBuying  = useStore((s) => s.setAdvisorSkipBtcBuying);
 
+  type GrowthScenario = 'bear' | 'flat' | 'powerlaw' | 'bull';
+  const [growthScenario, setGrowthScenario] = useState<GrowthScenario>('flat');
+
+  const plGrowthRate = useMemo(() => {
+    const daysNow  = (Date.now() - GENESIS.getTime()) / (1000 * 60 * 60 * 24);
+    const daysNext = daysNow + 365.25;
+    return Math.pow(daysNext / daysNow, PL_B) - 1;
+  }, []);
+
+  const plGrowthPct = Math.round(plGrowthRate * 100);
+
+  const btcGrowthRate = growthScenario === 'bear'     ? -0.30
+                      : growthScenario === 'powerlaw'  ? plGrowthRate
+                      : growthScenario === 'bull'      ? 0.80
+                      : 0;
+
+  const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
+
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
@@ -97,11 +116,13 @@ export function AdvisorMain() {
       startingBlocBalance: advisorActualBlocBalance,
       startingBtcHeld,
       startingMonth: currentMonth,
+      btcGrowthRate,
     }),
     [
       btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
       advisorActualBlocBalance, startingBtcHeld, currentMonth,
+      btcGrowthRate,
     ],
   );
 
@@ -338,18 +359,52 @@ export function AdvisorMain() {
                   {currentMonth > 1 ? `Months ${currentMonth}–12 Projection` : '12-Month Projection'}
                 </h3>
                 <p className={styles.cardSubtitle}>
-                  Flat BTC ·
+                  {growthScenario === 'flat' ? 'Flat BTC' : growthScenario === 'bear' ? '−30%/yr bear' : growthScenario === 'powerlaw' ? `Power Law ~${plGrowthPct}%/yr` : '+80%/yr bull'} ·
                   Combined interest: {fmtUSD(result.totalInterestPaid)} ·
                   BTC accumulated: +{result.totalBtcBought.toFixed(5)}
                 </p>
               </div>
-              {result.totalFiatGap > 0 && (
-                <div className={styles.fiatGapSummary}>
-                  <span className={styles.fiatGapLabel}>Total fiat coverage needed</span>
-                  <span className={styles.fiatGapValue}>{fmtUSD(result.totalFiatGap)}</span>
+              <div className={styles.projHeaderRight}>
+                {result.totalFiatGap > 0 && (
+                  <div className={styles.fiatGapSummary}>
+                    <span className={styles.fiatGapLabel}>Total fiat coverage needed</span>
+                    <span className={styles.fiatGapValue}>{fmtUSD(result.totalFiatGap)}</span>
+                  </div>
+                )}
+                <div className={styles.priceEstimates}>
+                  <div className={styles.priceEstimateRow}>
+                    <span className={styles.bullet}>·</span>
+                    <span className={styles.priceEstLabel}>12-mo est.</span>
+                    <span className={styles.priceEstValue}>${projectedPrice.toLocaleString()}</span>
+                  </div>
+                  <div className={styles.priceEstimateRow}>
+                    <span className={styles.bullet}>·</span>
+                    <span className={styles.priceEstLabel}>Live</span>
+                    <span className={styles.priceEstValue}>${Math.round(btcPrice).toLocaleString()}</span>
+                  </div>
                 </div>
-              )}
+              </div>
             </div>
+
+            <div className={styles.scenarioToggle}>
+              {([
+                { key: 'bear',     label: 'Bear −30%'                },
+                { key: 'flat',     label: 'Flat'                     },
+                { key: 'powerlaw', label: `Power Law ~${plGrowthPct}%` },
+                { key: 'bull',     label: 'Bull +80%'                },
+              ] as const).map(({ key, label }) => (
+                <button
+                  key={key}
+                  className={`${styles.scenarioBtn} ${growthScenario === key ? styles.scenarioBtnActive : ''}`}
+                  onClick={() => setGrowthScenario(key)}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <p className={styles.scenarioDisclaimer}>
+              Directional model only
+            </p>
 
             {currentMonth > 1 && (
               <div className={styles.pastMonthsNote}>

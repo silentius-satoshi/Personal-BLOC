@@ -39,6 +39,7 @@ export interface AdvisorInputs {
   startingBlocBalance: number;
   startingBtcHeld:     number;
   startingMonth:       number;
+  btcGrowthRate:       number;  // annualized decimal (e.g. 0.33), 0 = flat
 }
 
 export interface AdvisorMonthRow {
@@ -78,7 +79,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     blocApr, creditLine, blocLtvCeiling,
     cbBalance: initialCbBalance, cbCollateralBtc,
     cbAprPct, cbMonthlyPayment,
-    startingBlocBalance, startingBtcHeld, startingMonth,
+    startingBlocBalance, startingBtcHeld, startingMonth, btcGrowthRate,
   } = inputs;
 
   const blocMonthlyRate = blocApr / 100 / 12;
@@ -94,7 +95,10 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
   let totalFiatGap      = 0;
 
   for (let month = startingMonth; month <= 12; month++) {
-    const cbLtvStart = cbCollateralBtc * btcPrice > 0 ? cbBal / (cbCollateralBtc * btcPrice) : 0;
+    const monthsElapsed = month - startingMonth;
+    const btcPriceThisMonth = btcPrice * Math.pow(1 + btcGrowthRate, monthsElapsed / 12);
+
+    const cbLtvStart = cbCollateralBtc * btcPriceThisMonth > 0 ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
     const tier = getTier(cbLtvStart);
 
     // CB interest accrues on opening balance
@@ -116,7 +120,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     blocBalance += blocInterest;
 
     // BLOC LTV paydown check — funded from income
-    const blocTarget = btcHeld * btcPrice * blocLtvCeiling;
+    const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
     let blocPaydown  = 0;
     if (blocBalance > blocTarget) {
       blocPaydown = Math.min(income * 0.3, blocBalance - blocTarget);
@@ -144,11 +148,11 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
 
     // Buy BTC with remaining income
     const incomeToBtc = remainingIncome;
-    const btcBought   = btcPrice > 0 ? incomeToBtc / btcPrice : 0;
+    const btcBought   = btcPriceThisMonth > 0 ? incomeToBtc / btcPriceThisMonth : 0;
     btcHeld += btcBought;
 
-    const blocLtv     = btcHeld * btcPrice > 0 ? blocBalance / (btcHeld * btcPrice) : 0;
-    const cbLtv       = cbCollateralBtc * btcPrice > 0 ? cbBal / (cbCollateralBtc * btcPrice) : 0;
+    const blocLtv     = btcHeld * btcPriceThisMonth > 0 ? blocBalance / (btcHeld * btcPriceThisMonth) : 0;
+    const cbLtv       = cbCollateralBtc * btcPriceThisMonth > 0 ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
     const totalInterest = blocInterest + cbInterest;
 
     totalBtcBought    += btcBought;

@@ -293,3 +293,10 @@
 .projectionControl {
   margin-bottom: 4px;
 }
+
+@media (max-width: 640px) {
+  .scenarioGrid {
+    overflow-x: auto;
+    grid-template-columns: repeat(3, minmax(150px, 1fr));
+  }
+}
