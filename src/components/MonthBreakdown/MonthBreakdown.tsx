@@ -1,6 +1,7 @@
-import { useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { runBlocYearOne, getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { PL_B, GENESIS } from '../../simulation/powerLaw';
 import { fmtUSD } from '../../utils/format';
 import styles from './MonthBreakdown.module.css';
 
@@ -15,11 +16,27 @@ export default function MonthBreakdown() {
 
   const ltvCeiling = 0.15;
 
+  type GrowthScenario = 'bear' | 'flat' | 'powerlaw' | 'bull';
+  const [growthScenario, setGrowthScenario] = useState<GrowthScenario>('flat');
+
+  const plGrowthRate = useMemo(() => {
+    const daysNow  = (Date.now() - GENESIS.getTime()) / (1000 * 60 * 60 * 24);
+    const daysNext = daysNow + 365.25;
+    return Math.pow(daysNext / daysNow, PL_B) - 1;
+  }, []);
+
+  const plGrowthPct = Math.round(plGrowthRate * 100);
+
+  const btcGrowthRate = growthScenario === 'bear'     ? -0.30
+                      : growthScenario === 'powerlaw'  ? plGrowthRate
+                      : growthScenario === 'bull'      ? 0.80
+                      : 0;
+
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
 
   const result = useMemo(
-    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine }),
-    [collateralBtc, btcPrice, income, expenses, blocApr, creditLine],
+    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine, btcGrowthRate }),
+    [collateralBtc, btcPrice, income, expenses, blocApr, creditLine, btcGrowthRate],
   );
 
   const breakEven = income / (1 + (blocApr / 100) / 12);
@@ -34,7 +51,16 @@ export default function MonthBreakdown() {
         <div>
           <h3 className={styles.title}>Month-by-Month Breakdown</h3>
           <p className={styles.subtitle}>
-            Flat BTC · 15% LTV ceiling · {collateralBtc.toFixed(5)} BTC collateral
+            {growthScenario === 'flat'
+              ? 'Flat BTC (stress test)'
+              : growthScenario === 'bear'
+                ? '−30%/yr bear scenario'
+                : growthScenario === 'powerlaw'
+                  ? `Power Law ~${plGrowthPct}%/yr`
+                  : '+80%/yr bull cycle'
+            }
+            {' · 15% LTV ceiling · '}
+            {collateralBtc.toFixed(5)} BTC collateral
             {' · '}
             <span className={styles.creditLineLabel}>Credit line: {fmtUSD(creditLine)}</span>
           </p>
@@ -43,6 +69,26 @@ export default function MonthBreakdown() {
           {isSustainable ? 'BTC buying runs all year' : 'Draw exceeds break-even — balance will drift'}
         </span>
       </div>
+
+      <div className={styles.scenarioToggle}>
+        {([
+          { key: 'bear',     label: 'Bear −30%'                  },
+          { key: 'flat',     label: 'Flat'                       },
+          { key: 'powerlaw', label: `Power Law ~${plGrowthPct}%` },
+          { key: 'bull',     label: 'Bull +80%'                  },
+        ] as const).map(({ key, label }) => (
+          <button
+            key={key}
+            className={`${styles.scenarioBtn} ${growthScenario === key ? styles.scenarioBtnActive : ''}`}
+            onClick={() => setGrowthScenario(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <p className={styles.scenarioDisclaimer}>
+        Directional models only — Bitcoin's actual monthly price varies significantly
+      </p>
 
       {anyCreditExceeded && (
         <div className={styles.creditWarning}>
