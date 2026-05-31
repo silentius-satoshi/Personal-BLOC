@@ -84,6 +84,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   return (
     <div className={styles.root}>
+    <div className={styles.content}>
 
       <div className={styles.header}>
         <div className={styles.headerLeft}>
@@ -229,6 +230,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         Full App →
       </button>
 
+    </div>
     </div>
   );
 }
