@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import styles from './BrandingDropdown.module.css';
 
@@ -53,13 +54,14 @@ export function BrandingDropdown() {
         <span className={styles.title}>Personal ₿LOC</span>
       </button>
 
-      {open && (
+      {open && createPortal(
         <div className={styles.dropdown} style={{ top: dropdownPos.top, right: dropdownPos.right }}>
           <button className={styles.dropdownItem} onClick={openSettings}>
             <span className={styles.dropdownIcon}>⚙</span>
             Settings
           </button>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

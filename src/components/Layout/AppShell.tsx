@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef, createPortal } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -131,7 +131,7 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps
       >
         Tools ▾
       </button>
-      {open && (
+      {open && createPortal(
         <div className={styles.toolsDropdown} style={{ top: pos.top, left: pos.left }}>
           {tabs.map((tab) => (
             <button
@@ -142,7 +142,8 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps
               {tab.fullLabel}
             </button>
           ))}
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
