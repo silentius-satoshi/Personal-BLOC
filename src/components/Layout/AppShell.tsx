@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -46,6 +46,8 @@ const ALL_TABS_META = [
 type TabKey = typeof ALL_TABS_META[number]['key'];
 type ActiveTab = TabKey | 'settings';
 
+const TOOL_KEYS = ['powerlaw', 'converter', 'mining'] as const;
+
 interface SortableTabProps {
   tab: { key: string; fullLabel: string; shortLabel: string };
   isActive: boolean;
@@ -80,12 +82,83 @@ function SortableTab({ tab, isActive, onClick, styles }: SortableTabProps) {
   );
 }
 
+interface ToolsDropdownProps {
+  tabs:      typeof ALL_TABS_META[number][];
+  activeTab: string;
+  onSelect:  (key: string) => void;
+  styles:    Record<string, string>;
+}
+
+function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const [pos, setPos]   = useState({ top: 0, left: 0 });
+  const ref = useRef<HTMLDivElement>(null);
+  const isActive = tabs.some((t) => t.key === activeTab);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+  }, [open]);
+
+  if (tabs.length === 0) return null;
+
+  const openDropdown = () => {
+    const rect = ref.current?.getBoundingClientRect();
+    if (rect) setPos({ top: rect.bottom + 4, left: rect.left });
+    setOpen((o) => !o);
+  };
+
+  return (
+    <div ref={ref} className={styles.toolsWrapper}>
+      <button
+        className={`${styles.toolsBtn} ${isActive ? styles.toolsBtnActive : ''}`}
+        onClick={openDropdown}
+        aria-expanded={open}
+      >
+        Tools ▾
+      </button>
+      {open && (
+        <div className={styles.toolsDropdown} style={{ top: pos.top, left: pos.left }}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.key}
+              className={`${styles.toolsItem} ${activeTab === tab.key ? styles.toolsItemActive : ''}`}
+              onClick={() => { onSelect(tab.key); setOpen(false); }}
+            >
+              {tab.fullLabel}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function AppShell() {
   const activeTab    = useStore((s) => s.activeTab);
   const setActiveTab = useStore((s) => s.setActiveTab);
   const hiddenTabs   = useStore((s) => s.hiddenTabs);
   const tabOrder     = useStore((s) => s.tabOrder);
   const setTabOrder  = useStore((s) => s.setTabOrder);
+  const toolTabs     = useStore((s) => s.toolTabs);
+
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
+  useEffect(() => {
+    const handler = () => setIsMobile(window.innerWidth <= 640);
+    window.addEventListener('resize', handler);
+    return () => window.removeEventListener('resize', handler);
+  }, []);
 
   const allKeys = ALL_TABS_META.map((t) => t.key);
   const orderedKeys = [
@@ -96,6 +169,15 @@ export function AppShell() {
   const visibleTabs = orderedKeys
     .map((key) => ALL_TABS_META.find((t) => t.key === key))
     .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined && !hiddenTabs.includes(t.key));
+
+  const effectiveToolKeys: readonly string[] = isMobile ? TOOL_KEYS : toolTabs;
+
+  const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key));
+
+  const toolTabsList = orderedKeys
+    .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k))
+    .map((k) => ALL_TABS_META.find((t) => t.key === k))
+    .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -122,8 +204,8 @@ export function AppShell() {
     <div className={styles.shell} data-active-tab={activeTab}>
       <div className={styles.tabBar}>
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
-          <SortableContext items={visibleTabs.map((t) => t.key)} strategy={horizontalListSortingStrategy}>
-            {visibleTabs.map((tab) => (
+          <SortableContext items={mainTabs.map((t) => t.key)} strategy={horizontalListSortingStrategy}>
+            {mainTabs.map((tab) => (
               <SortableTab
                 key={tab.key}
                 tab={tab}
@@ -134,6 +216,14 @@ export function AppShell() {
             ))}
           </SortableContext>
         </DndContext>
+
+        <ToolsDropdown
+          tabs={toolTabsList}
+          activeTab={activeTab}
+          onSelect={(key) => setActiveTab(key as ActiveTab)}
+          styles={styles}
+        />
+
         <BrandingDropdown />
       </div>
 

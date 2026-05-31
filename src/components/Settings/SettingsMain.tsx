@@ -27,17 +27,22 @@ const ALL_TABS = [
   { key: 'advisor',   label: 'Advisor'             },
 ] as const;
 
+const MOVEABLE_KEYS = ['powerlaw', 'converter', 'mining'];
+
 type TabEntry = typeof ALL_TABS[number];
 
 interface SortableTabRowProps {
-  tab: TabEntry;
-  isVisible: boolean;
-  isLastVisible: boolean;
-  onToggle: () => void;
-  styles: Record<string, string>;
+  tab:             TabEntry;
+  isVisible:       boolean;
+  isLastVisible:   boolean;
+  isToolTab:       boolean;
+  isMoveable:      boolean;
+  onToggle:        () => void;
+  onLocationToggle: () => void;
+  styles:          Record<string, string>;
 }
 
-function SortableTabRow({ tab, isVisible, isLastVisible, onToggle, styles }: SortableTabRowProps) {
+function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, onToggle, onLocationToggle, styles }: SortableTabRowProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
     useSortable({ id: tab.key });
 
@@ -60,6 +65,15 @@ function SortableTabRow({ tab, isVisible, isLastVisible, onToggle, styles }: Sor
       <span className={`${styles.tabLabel} ${!isVisible ? styles.tabLabelHidden : ''}`}>
         {tab.label}
       </span>
+      {isMoveable && (
+        <button
+          className={`${styles.locationToggle} ${isToolTab ? styles.locationTools : styles.locationMain}`}
+          onClick={(e) => { e.stopPropagation(); onLocationToggle(); }}
+          title={isToolTab ? 'Move to main bar' : 'Move to Tools dropdown'}
+        >
+          {isToolTab ? 'Tools' : 'Main'}
+        </button>
+      )}
       <Toggle value={isVisible} onChange={onToggle} disabled={isLastVisible} />
     </div>
   );
@@ -72,8 +86,18 @@ export function SettingsMain() {
   const setActiveTab        = useStore((s) => s.setActiveTab);
   const tabOrder            = useStore((s) => s.tabOrder);
   const setTabOrder         = useStore((s) => s.setTabOrder);
+  const toolTabs            = useStore((s) => s.toolTabs);
+  const setToolTabs         = useStore((s) => s.setToolTabs);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
+
+  const toggleToolLocation = (key: string) => {
+    if (toolTabs.includes(key)) {
+      setToolTabs(toolTabs.filter((k) => k !== key));
+    } else {
+      setToolTabs([...toolTabs, key]);
+    }
+  };
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -107,16 +131,17 @@ export function SettingsMain() {
       <div className={styles.section}>
         <div className={styles.sectionTitle}>TAB VISIBILITY & ORDER</div>
         <div className={styles.sectionDescription}>
-          Drag ⠿ to reorder tabs. Toggle to show or hide.
-          At least one tab must remain visible.
+          Drag ⠿ to reorder. Toggle visibility. Use Main/Tools to move between bar and dropdown.
         </div>
 
         <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
           <SortableContext items={tabOrder} strategy={verticalListSortingStrategy}>
             <div className={styles.tabList}>
               {orderedTabs.map((tab) => {
-                const isVisible     = !hiddenTabs.includes(tab.key);
-                const isLastVisible = isVisible && visibleCount === 1;
+                const isVisible      = !hiddenTabs.includes(tab.key);
+                const isLastVisible  = isVisible && visibleCount === 1;
+                const isToolTab      = toolTabs.includes(tab.key);
+                const isMoveable     = MOVEABLE_KEYS.includes(tab.key);
 
                 return (
                   <SortableTabRow
@@ -124,7 +149,10 @@ export function SettingsMain() {
                     tab={tab}
                     isVisible={isVisible}
                     isLastVisible={isLastVisible}
+                    isToolTab={isToolTab}
+                    isMoveable={isMoveable}
                     onToggle={() => { if (!isLastVisible) toggleTabVisibility(tab.key); }}
+                    onLocationToggle={() => toggleToolLocation(tab.key)}
                     styles={styles}
                   />
                 );

@@ -130,9 +130,11 @@ interface StoreState {
   // Settings
   hiddenTabs:           string[];
   tabOrder:             string[];
+  toolTabs:             string[];
   previousTab:          Exclude<ActiveTab, 'settings'>;
   toggleTabVisibility:  (tab: string) => void;
   setTabOrder:          (order: string[]) => void;
+  setToolTabs:          (tabs: string[]) => void;
   setPreviousTab:       (tab: Exclude<ActiveTab, 'settings'>) => void;
 
   // Mining tab state
@@ -232,8 +234,9 @@ export const useStore = create<StoreState>()(
   setConverterActiveField: (v) => set({ converterActiveField: v }),
   setConverterRawValue:    (v) => set({ converterRawValue: v }),
 
-  hiddenTabs:  ['coinbase', 'advisor'],
+  hiddenTabs:  [],
   tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase', 'advisor'],
+  toolTabs:    ['powerlaw', 'converter', 'mining'],
   previousTab: 'living',
   toggleTabVisibility: (tab) => set((s) => ({
     hiddenTabs: s.hiddenTabs.includes(tab)
@@ -241,6 +244,7 @@ export const useStore = create<StoreState>()(
       : [...s.hiddenTabs, tab],
   })),
   setTabOrder: (order) => set({ tabOrder: order }),
+  setToolTabs: (tabs) => set({ toolTabs: tabs }),
   setPreviousTab: (tab) => set({ previousTab: tab }),
 
   miningInputs: defaultMiningInputs,
@@ -269,6 +273,12 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
+      version: 2,
+      migrate: (persistedState: any) => ({
+        ...persistedState,
+        hiddenTabs: [],
+        toolTabs: persistedState.toolTabs ?? ['powerlaw', 'converter', 'mining'],
+      }),
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {
           state.miningInputs.devices = state.miningInputs.devices.map((d) => ({
