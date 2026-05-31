@@ -1,5 +1,6 @@
+import { useState, useEffect, useRef } from 'react';
 import { useStore } from '../../store/useStore';
-import { getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus } from '../../simulation/runAdvisor';
+import { getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 import styles from './SimpleModeView.module.css';
@@ -8,12 +9,12 @@ interface SimpleModeViewProps {
   onOpenSettings: () => void;
 }
 
-function SimpleModeCheckItem({ checked, onChange, label, amount }: {
+function SimpleModeCheckItem({ checked, onChange, label, amount, animating }: {
   checked: boolean; onChange: (v: boolean) => void;
-  label: string; amount: string;
+  label: string; amount: string; animating?: boolean;
 }) {
   return (
-    <label className={`${styles.checkItem} ${checked ? styles.checkItemDone : ''}`}>
+    <label className={`${styles.checkItem} ${checked ? styles.checkItemDone : ''} ${animating ? styles.checkItemPop : ''}`}>
       <input
         type="checkbox"
         className={styles.checkbox}
@@ -37,15 +38,26 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);
   const cbMonthlyPayment = useStore((s) => s.cbMonthlyPayment);
 
-  const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
-  const advisorStartDate         = useStore((s) => s.advisorStartDate);
-  const advisorChecklist         = useStore((s) => s.advisorChecklist);
-  const setAdvisorChecklist      = useStore((s) => s.setAdvisorChecklist);
-  const ndpLastPaidDate          = useStore((s) => s.ndpLastPaidDate);
+  const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
+  const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
+  const advisorStartDate            = useStore((s) => s.advisorStartDate);
+  const advisorChecklist            = useStore((s) => s.advisorChecklist);
+  const setAdvisorChecklist         = useStore((s) => s.setAdvisorChecklist);
+  const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
 
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
+
+  // Feature 2
+  const [showTierTip, setShowTierTip] = useState(false);
+  // Feature 4
+  const [editingBalance, setEditingBalance] = useState(false);
+  // Feature 5
+  const [justChecked, setJustChecked] = useState<string | null>(null);
+  // Feature 6
+  const [showMonthBanner, setShowMonthBanner] = useState(false);
+  const prevMonth = useRef<number | null>(null);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone = isStrategyComplete(advisorStartDate);
@@ -82,6 +94,35 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const tierBadgeClass = styles[`tier${currentTier}`];
   const cardTierClass  = styles[`cardTier${currentTier}`];
 
+  // Feature 1
+  const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
+
+  // Feature 2
+  const tierTip: Record<AdvisorTier, string> = {
+    4: 'Safe — full BTC buying strategy active',
+    3: 'Watch — CB LTV elevated, extra payment directed there',
+    2: 'Warning — BLOC draw halved, 50% income to CB paydown',
+    1: 'Emergency — stop BLOC draws, all income to CB paydown',
+  };
+
+  // Feature 6
+  useEffect(() => {
+    if (prevMonth.current !== null && prevMonth.current !== advisorChecklist.month) {
+      setShowMonthBanner(true);
+      const t = setTimeout(() => setShowMonthBanner(false), 4000);
+      return () => clearTimeout(t);
+    }
+    prevMonth.current = advisorChecklist.month;
+  }, [advisorChecklist.month]);
+
+  const fireCheck = (key: string, patch: Parameters<typeof setAdvisorChecklist>[0], value: boolean) => {
+    if (value) {
+      setJustChecked(key);
+      setTimeout(() => setJustChecked(null), 350);
+    }
+    setAdvisorChecklist(patch);
+  };
+
   return (
     <div className={styles.root}>
     <div className={styles.content}>
@@ -95,6 +136,21 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           ⚙
         </button>
       </div>
+
+      {/* Feature 1 — empty state banner */}
+      {isDefaultSetup && (
+        <div className={styles.emptyStateBanner}>
+          Your numbers look like defaults — tap ⚙ to personalize
+        </div>
+      )}
+
+      {/* Feature 6 — new month banner */}
+      {showMonthBanner && (
+        <div className={styles.newMonthBanner}>
+          ✦ New month — here's your plan for{' '}
+          {new Date().toLocaleDateString('en-US', { month: 'long' })}
+        </div>
+      )}
 
       {!strategyDone && (
         <div className={styles.progressRow}>
@@ -119,9 +175,36 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           <div className={styles.positionRow}>
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>STRIKE BLOC</span>
-              <span className={styles.positionStat}>
-                Balance: {fmtUSD(advisorActualBlocBalance)}
-              </span>
+
+              {/* Feature 4 — inline balance edit */}
+              {editingBalance ? (
+                <input
+                  type="number"
+                  className={styles.balanceInput}
+                  defaultValue={advisorActualBlocBalance}
+                  autoFocus
+                  onBlur={(e) => {
+                    setAdvisorActualBlocBalance(parseFloat(e.target.value) || 0);
+                    setEditingBalance(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      setAdvisorActualBlocBalance(parseFloat((e.target as HTMLInputElement).value) || 0);
+                      setEditingBalance(false);
+                    }
+                    if (e.key === 'Escape') setEditingBalance(false);
+                  }}
+                />
+              ) : (
+                <button
+                  className={styles.balanceEditBtn}
+                  onClick={() => setEditingBalance(true)}
+                  title="Tap to update"
+                >
+                  Balance: {fmtUSD(advisorActualBlocBalance)} ✎
+                </button>
+              )}
+
               <span className={styles.positionStat}>
                 Available: {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}
               </span>
@@ -146,6 +229,27 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             )}
           </div>
         </div>
+
+        {/* Feature 3 — NDP urgency card */}
+        {(ndp.status === 'soon' || ndp.status === 'overdue') && (
+          <div className={`${styles.ndpUrgentCard} ${ndp.status === 'overdue' ? styles.ndpUrgentOverdue : styles.ndpUrgentSoon}`}>
+            <span className={styles.ndpUrgentIcon}>
+              {ndp.status === 'overdue' ? '⛔' : '⚠'}
+            </span>
+            <div className={styles.ndpUrgentText}>
+              <span className={styles.ndpUrgentTitle}>
+                {ndp.status === 'overdue'
+                  ? 'NDP overdue — pay Strike immediately'
+                  : `NDP due in ${ndp.daysRemaining} days`}
+              </span>
+              {ndp.estimatedAmount > 0 && (
+                <span className={styles.ndpUrgentSub}>
+                  ~{fmtUSD(ndp.estimatedAmount)} minimum to keep your line active
+                </span>
+              )}
+            </div>
+          </div>
+        )}
 
         {/* Plan / completion card */}
         {allDone ? (
@@ -175,23 +279,35 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <h3 className={styles.planTitle}>
                 {new Date().toLocaleDateString('en-US', { month: 'long' })} — Your Plan
               </h3>
-              <span className={`${styles.tierBadge} ${tierBadgeClass}`}>
+              {/* Feature 2 — tappable tier badge */}
+              <button
+                className={`${styles.tierBadge} ${tierBadgeClass}`}
+                onClick={() => setShowTierTip((v) => !v)}
+              >
                 T{currentTier}
-              </span>
+              </button>
             </div>
+            {/* Feature 2 — tier tip */}
+            {showTierTip && (
+              <p className={styles.tierTip}>
+                {hasCbLoan ? tierTip[currentTier] : 'BLOC strategy running normally'}
+              </p>
+            )}
 
             <div className={styles.planSection}>
               <span className={styles.planSectionLabel}>FROM STRIKE BLOC</span>
               <SimpleModeCheckItem
                 checked={advisorChecklist.blocDraw}
-                onChange={(v) => setAdvisorChecklist({ blocDraw: v })}
+                animating={justChecked === 'blocDraw'}
+                onChange={(v) => fireCheck('blocDraw', { blocDraw: v }, v)}
                 label="Draw for expenses"
                 amount={expectedBlocDraw > 0 ? fmtUSD(expectedBlocDraw) : '—'}
               />
               {showFiatRow && (
                 <SimpleModeCheckItem
                   checked={advisorChecklist.fiatCoverage}
-                  onChange={(v) => setAdvisorChecklist({ fiatCoverage: v })}
+                  animating={justChecked === 'fiatCoverage'}
+                  onChange={(v) => fireCheck('fiatCoverage', { fiatCoverage: v }, v)}
                   label="Cover from savings"
                   amount={fmtUSD(expectedFiatGap)}
                 />
@@ -205,14 +321,16 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               {hasCbLoan && (
                 <SimpleModeCheckItem
                   checked={advisorChecklist.cbPayment}
-                  onChange={(v) => setAdvisorChecklist({ cbPayment: v })}
+                  animating={justChecked === 'cbPayment'}
+                  onChange={(v) => fireCheck('cbPayment', { cbPayment: v }, v)}
                   label="Pay CB Loan"
                   amount={advisorSkipCbPayment ? 'Skipped' : expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
                 />
               )}
               <SimpleModeCheckItem
                 checked={advisorChecklist.btcBuying}
-                onChange={(v) => setAdvisorChecklist({ btcBuying: v })}
+                animating={justChecked === 'btcBuying'}
+                onChange={(v) => fireCheck('btcBuying', { btcBuying: v }, v)}
                 label="Buy Bitcoin"
                 amount={advisorSkipBtcBuying ? 'Skipped' : expectedBtcBuying > 0 ? fmtUSD(expectedBtcBuying) : '—'}
               />

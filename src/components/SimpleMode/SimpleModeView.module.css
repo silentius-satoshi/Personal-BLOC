@@ -136,6 +136,9 @@
   font-weight: 700;
   padding: 3px 8px;
   border-radius: 4px;
+  cursor: pointer;
+  border: none;
+  font-family: inherit;
 }
 
 .tier1 { background: rgba(232,90,79,0.15);   color: var(--red); }
@@ -225,3 +228,63 @@
   transition: color 0.12s;
 }
 .undoBtn:hover { color: var(--text-ghost); }
+
+/* Feature 1 — empty state banner */
+.emptyStateBanner {
+  font-size: 12px;
+  color: var(--amber);
+  background: rgba(232,168,74,0.08);
+  border: 1px solid rgba(232,168,74,0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+  text-align: center;
+}
+
+/* Feature 2 — tier tip */
+.tierTip {
+  font-size: 11px;
+  color: var(--text-ghost);
+  font-style: italic;
+  margin: -8px 0 0;
+  line-height: 1.4;
+}
+
+/* Feature 3 — NDP urgency card */
+.ndpUrgentCard    { display: flex; align-items: flex-start; gap: 10px; border-radius: 10px; padding: 12px 14px; border: 1px solid; }
+.ndpUrgentSoon    { background: rgba(232,131,106,0.08); border-color: rgba(232,131,106,0.3); }
+.ndpUrgentOverdue { background: rgba(232,90,79,0.10);  border-color: rgba(232,90,79,0.4); }
+.ndpUrgentIcon    { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.ndpUrgentText    { display: flex; flex-direction: column; gap: 2px; }
+.ndpUrgentTitle   { font-size: 13px; font-weight: 600; color: var(--text-primary); }
+.ndpUrgentSub     { font-size: 11px; color: var(--text-ghost); }
+
+/* Feature 4 — quick balance edit */
+.balanceEditBtn { background: none; border: none; color: var(--text-secondary); cursor: pointer; font-size: 13px; padding: 0; text-align: left; font-family: inherit; transition: color 0.12s; }
+.balanceEditBtn:hover { color: var(--orange); }
+.balanceInput { background: var(--bg-base); border: 1px solid var(--orange); border-radius: 6px; color: var(--text-primary); font-size: 13px; font-weight: 600; outline: none; padding: 3px 8px; width: 100%; font-family: inherit; }
+
+/* Feature 5 — check animation */
+@keyframes checkPop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.025); background: rgba(78,203,130,0.12); }
+  100% { transform: scale(1); }
+}
+.checkItemPop { animation: checkPop 0.35s ease; }
+
+/* Feature 6 — new month banner */
+.newMonthBanner {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--green);
+  background: rgba(78,203,130,0.08);
+  border: 1px solid rgba(78,203,130,0.2);
+  border-radius: 8px;
+  padding: 10px 14px;
+  text-align: center;
+  animation: fadeIn 0.4s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
