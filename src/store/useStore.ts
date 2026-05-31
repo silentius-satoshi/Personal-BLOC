@@ -61,6 +61,8 @@ interface StoreState {
   advisorStartDate:         string;
   advisorActualBlocBalance: number;
   advisorActualBtcHeld:     number;
+  ndpLastPaidDate:          string | null;
+  setNdpLastPaidDate:       (date: string) => void;
 
   // Setters — shared
   setIncome: (v: number) => void;
@@ -167,6 +169,7 @@ export const useStore = create<StoreState>()(
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,
   advisorActualBtcHeld:     0,
+  ndpLastPaidDate:          null,
 
   advisorSkipBlocDraw:  false,
   advisorSkipCbPayment: false,
@@ -203,6 +206,7 @@ export const useStore = create<StoreState>()(
   setAdvisorStartDate:         (date) => set({ advisorStartDate: date }),
   setAdvisorActualBlocBalance: (v)    => set({ advisorActualBlocBalance: v }),
   setAdvisorActualBtcHeld:     (v)    => set({ advisorActualBtcHeld: v }),
+  setNdpLastPaidDate:          (date) => set({ ndpLastPaidDate: date }),
 
   setAdvisorSkipBlocDraw:  (v) => set({ advisorSkipBlocDraw: v }),
   setAdvisorSkipCbPayment: (v) => set({ advisorSkipCbPayment: v }),

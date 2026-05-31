@@ -179,3 +179,35 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     finalCbBalance:   cbBal,
   };
 }
+
+export type NdpStatus = 'never' | 'ok' | 'upcoming' | 'soon' | 'overdue';
+
+export interface NdpInfo {
+  status:          NdpStatus;
+  daysRemaining:   number | null;
+  nextDueDate:     Date | null;
+  estimatedAmount: number;
+}
+
+export function getNdpStatus(
+  lastPaidDate: string | null,
+  balance: number,
+  aprPct: number,
+): NdpInfo {
+  const estimatedAmount = Math.round(balance * (aprPct / 100 / 12));
+
+  if (!lastPaidDate) {
+    return { status: 'never', daysRemaining: null, nextDueDate: null, estimatedAmount };
+  }
+
+  const nextDue = new Date(new Date(lastPaidDate).getTime() + 365 * 24 * 60 * 60 * 1000);
+  const daysRemaining = Math.ceil((nextDue.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+
+  const status: NdpStatus =
+    daysRemaining < 0   ? 'overdue'
+    : daysRemaining <= 30 ? 'soon'
+    : daysRemaining <= 60 ? 'upcoming'
+    : 'ok';
+
+  return { status, daysRemaining, nextDueDate: nextDue, estimatedAmount };
+}

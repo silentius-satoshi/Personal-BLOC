@@ -2,7 +2,7 @@ import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
-import { getCurrentStrategyMonth, isStrategyComplete } from '../../simulation/runAdvisor';
+import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
 import styles from './AdvisorSidebar.module.css';
 
@@ -37,10 +37,13 @@ export function AdvisorSidebar() {
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
+  const ndpLastPaidDate    = useStore((s) => s.ndpLastPaidDate);
+  const setNdpLastPaidDate = useStore((s) => s.setNdpLastPaidDate);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
+  const ndp           = getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance, blocApr);
 
   return (
     <div className={styles.sidebar}>
@@ -104,6 +107,51 @@ export function AdvisorSidebar() {
           step={0.001}
         />
         <p className={styles.hint}>Collateral + accumulated BTC</p>
+      </div>
+
+      <div className={styles.divider} />
+      <div className={styles.sectionLabel}>ANNUAL NON-DRAW PAYMENT</div>
+
+      <div className={`${styles.ndpCard} ${styles[`ndp_${ndp.status}`]}`}>
+        <div className={styles.ndpTop}>
+          <span className={styles.ndpStatusLabel}>
+            {ndp.status === 'never'    && 'No payment recorded'}
+            {ndp.status === 'ok'       && `Due in ${ndp.daysRemaining} days`}
+            {ndp.status === 'upcoming' && `Due in ${ndp.daysRemaining} days`}
+            {ndp.status === 'soon'     && `Due in ${ndp.daysRemaining} days`}
+            {ndp.status === 'overdue'  && 'Overdue — pay immediately'}
+          </span>
+          {ndp.estimatedAmount > 0 && (
+            <span className={styles.ndpAmount}>~{fmtUSD(ndp.estimatedAmount)}</span>
+          )}
+        </div>
+
+        {ndp.status === 'never' && (
+          <p className={styles.ndpHint}>Strike requires 1 payment/yr to keep your line active.</p>
+        )}
+        {ndp.status === 'overdue' && (
+          <p className={styles.ndpHint}>Log in to Strike and make a payment now to avoid losing your line.</p>
+        )}
+        {(ndp.status === 'soon' || ndp.status === 'upcoming') && (
+          <p className={styles.ndpHint}>
+            Make at least {fmtUSD(ndp.estimatedAmount)} in Strike before{' '}
+            {ndp.nextDueDate?.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}.
+          </p>
+        )}
+
+        <button
+          className={styles.ndpButton}
+          onClick={() => setNdpLastPaidDate(new Date().toISOString().split('T')[0])}
+        >
+          {ndp.status === 'never' ? 'Record first payment' : 'Mark as paid today'}
+        </button>
+
+        {ndpLastPaidDate && (
+          <p className={styles.ndpLastPaid}>
+            Last recorded:{' '}
+            {new Date(ndpLastPaidDate).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+          </p>
+        )}
       </div>
 
       <div className={styles.divider} />

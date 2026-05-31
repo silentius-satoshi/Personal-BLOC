@@ -162,3 +162,72 @@
   background: rgba(78,203,130,0.15);
   color: var(--green);
 }
+
+.ndpCard {
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ndp_never    { border-color: var(--border);         background: var(--bg-card); }
+.ndp_ok       { border-color: rgba(78,203,130,0.3);  background: rgba(78,203,130,0.06); }
+.ndp_upcoming { border-color: rgba(232,168,74,0.3);  background: rgba(232,168,74,0.06); }
+.ndp_soon     { border-color: rgba(232,131,106,0.3); background: rgba(232,131,106,0.06); }
+.ndp_overdue  { border-color: rgba(232,90,79,0.4);   background: rgba(232,90,79,0.08); }
+
+.ndpTop {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.ndpStatusLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.ndpAmount {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--orange);
+  flex-shrink: 0;
+}
+
+.ndpHint {
+  font-size: 10px;
+  color: var(--text-ghost);
+  line-height: 1.5;
+  margin: 0;
+}
+
+.ndpButton {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 6px 10px;
+  text-align: center;
+  transition: border-color 0.12s, color 0.12s;
+  margin-top: 2px;
+}
+
+.ndpButton:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.ndpLastPaid {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  margin: 0;
+  text-align: center;
+}

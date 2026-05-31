@@ -4,6 +4,7 @@ import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { SettingsDropdown } from './SettingsDropdown';
 import { runBlocYearOne, getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { getNdpStatus } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
 import styles from './InputsPanel.module.css';
 
@@ -21,6 +22,9 @@ export function InputsPanel() {
   const setCreditLine       = useStore((s) => s.setCreditLine);
   const setActiveTier       = useStore((s) => s.setActiveTier);
   const setCustomCollateral = useStore((s) => s.setCustomCollateral);
+  const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
+  const ndpLastPaidDate          = useStore((s) => s.ndpLastPaidDate);
+  const setNdpLastPaidDate       = useStore((s) => s.setNdpLastPaidDate);
 
   const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
 
@@ -42,6 +46,9 @@ export function InputsPanel() {
 
   const breakEven = income / (1 + (blocApr / 100) / 12);
   const isSustainable = expenses <= breakEven;
+
+  const ndpBalance = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
+  const ndp = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
 
   return (
     <div className={styles.panel}>
@@ -154,6 +161,26 @@ export function InputsPanel() {
         {!isSustainable && (
           <div className={styles.recHint}>Draw exceeds break-even — balance will drift</div>
         )}
+
+        <div className={styles.recDivider} />
+
+        <div className={`${styles.ndpRow} ${styles[`ndpRow_${ndp.status}`]}`}>
+          <span className={styles.ndpRowLabel}>
+            {ndp.status === 'never'    && '⚡ NDP — not recorded'}
+            {ndp.status === 'ok'       && `⚡ NDP due in ${ndp.daysRemaining}d`}
+            {ndp.status === 'upcoming' && `⚠ NDP due in ${ndp.daysRemaining}d`}
+            {ndp.status === 'soon'     && `⚠ NDP due in ${ndp.daysRemaining}d`}
+            {ndp.status === 'overdue'  && '✗ NDP overdue'}
+          </span>
+          {ndp.status !== 'ok' && (
+            <button
+              className={styles.ndpRowBtn}
+              onClick={() => setNdpLastPaidDate(new Date().toISOString().split('T')[0])}
+            >
+              Paid
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

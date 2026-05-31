@@ -145,3 +145,39 @@
   margin-top: -2px;
   margin-bottom: 2px;
 }
+
+.ndpRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 4px 0;
+}
+
+.ndpRow_never .ndpRowLabel,
+.ndpRow_ok .ndpRowLabel       { color: var(--text-faint); }
+.ndpRow_upcoming .ndpRowLabel { color: var(--amber); }
+.ndpRow_soon .ndpRowLabel     { color: var(--orange); }
+.ndpRow_overdue .ndpRowLabel  { color: var(--red); font-weight: 600; }
+
+.ndpRowLabel {
+  font-size: 10px;
+}
+
+.ndpRowBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 9px;
+  font-weight: 600;
+  padding: 2px 7px;
+  transition: border-color 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.ndpRowBtn:hover {
+  border-color: var(--green);
+  color: var(--green);
+}
