@@ -109,6 +109,10 @@ interface StoreState {
   setLtvType: (v: LtvType) => void;
   setTimeHorizonYears: (v: number) => void;
 
+  // CB Loan toggle
+  hasCbLoan:    boolean;
+  setHasCbLoan: (v: boolean) => void;
+
   // Setters — CB Loan tab
   setCbLoanBalance:    (v: number) => void;
   setCbCollateralBtc:  (v: number) => void;
@@ -179,6 +183,9 @@ export const useStore = create<StoreState>()(
   inflationRate: 2,
   ltvType: 'target',
   timeHorizonYears: 1,
+
+  hasCbLoan:    false,
+  setHasCbLoan: (v) => set({ hasCbLoan: v }),
 
   cbLoanBalance:    60000,
   cbCollateralBtc:  1.48,
@@ -284,11 +291,12 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 2,
+      version: 3,
       migrate: (persistedState: any) => ({
         ...persistedState,
         hiddenTabs: [],
-        toolTabs: persistedState.toolTabs ?? ['powerlaw', 'converter', 'mining'],
+        toolTabs:  persistedState.toolTabs  ?? ['powerlaw', 'converter', 'mining'],
+        hasCbLoan: persistedState.hasCbLoan ?? (persistedState.cbLoanBalance > 0),
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {

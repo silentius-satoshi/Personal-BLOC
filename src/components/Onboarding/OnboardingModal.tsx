@@ -48,6 +48,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const setCbLoanBalance    = useStore((s) => s.setCbLoanBalance);
   const setCbCollateralBtc  = useStore((s) => s.setCbCollateralBtc);
   const setCbAprPct         = useStore((s) => s.setCbAprPct);
+  const storeSetHasCbLoan   = useStore((s) => s.setHasCbLoan);
 
   const handleDone = (enableSimple: boolean) => {
     setIncome(draft.income);
@@ -61,6 +62,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
       setCbLoanBalance(draft.cbLoanBalance);
       setCbCollateralBtc(draft.cbCollateralBtc);
       setCbAprPct(draft.cbAprPct);
+      storeSetHasCbLoan(true);
     }
     onComplete(enableSimple);
   };

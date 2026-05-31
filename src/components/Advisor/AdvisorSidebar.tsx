@@ -44,6 +44,7 @@ export function AdvisorSidebar() {
   const skipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
   const skipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const skipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
+  const hasCbLoan     = useStore((s) => s.hasCbLoan);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
@@ -213,15 +214,17 @@ export function AdvisorSidebar() {
               </label>
             )}
 
-            <label className={`${styles.checkItem} ${advisorChecklist.cbPayment ? styles.checkItemDone : ''}`}>
-              <input type="checkbox" className={styles.checkbox}
-                checked={advisorChecklist.cbPayment}
-                onChange={(e) => setAdvisorChecklist({ cbPayment: e.target.checked })} />
-              <span className={styles.checkLabel}>Pay CB Loan</span>
-              <span className={styles.checkAmount}>
-                {skipCbPayment ? 'Skipped' : effectiveCbPayment > 0 ? fmtUSD(effectiveCbPayment) : '—'}
-              </span>
-            </label>
+            {hasCbLoan && (
+              <label className={`${styles.checkItem} ${advisorChecklist.cbPayment ? styles.checkItemDone : ''}`}>
+                <input type="checkbox" className={styles.checkbox}
+                  checked={advisorChecklist.cbPayment}
+                  onChange={(e) => setAdvisorChecklist({ cbPayment: e.target.checked })} />
+                <span className={styles.checkLabel}>Pay CB Loan</span>
+                <span className={styles.checkAmount}>
+                  {skipCbPayment ? 'Skipped' : effectiveCbPayment > 0 ? fmtUSD(effectiveCbPayment) : '—'}
+                </span>
+              </label>
+            )}
 
             <label className={`${styles.checkItem} ${advisorChecklist.btcBuying ? styles.checkItemDone : ''}`}>
               <input type="checkbox" className={styles.checkbox}
@@ -243,11 +246,11 @@ export function AdvisorSidebar() {
           </div>
 
           {(() => {
-            const total = showFiatRow ? 4 : 3;
+            const total = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
             const done  = [
               advisorChecklist.blocDraw,
               showFiatRow && advisorChecklist.fiatCoverage,
-              advisorChecklist.cbPayment,
+              hasCbLoan && advisorChecklist.cbPayment,
               advisorChecklist.btcBuying,
             ].filter(Boolean).length;
             return (
@@ -270,39 +273,47 @@ export function AdvisorSidebar() {
       <SummaryRow label="Credit line"      value={fmtUSD(creditLine)} />
       <SummaryRow label="Collateral"       value={`${collateralBtc.toFixed(5)} BTC`} />
 
-      <div className={styles.divider} />
+      {hasCbLoan && (
+        <>
+          <div className={styles.divider} />
+          <div className={styles.sectionLabel}>FROM CB LOAN</div>
+          <SummaryRow label="Loan balance" value={fmtUSD(cbLoanBalance)} />
+          <SummaryRow label="Collateral"   value={`${cbCollateralBtc} BTC`} />
+          <SummaryRow label="APR"          value={`${cbAprPct}%`} />
+          <SummaryRow label="Min. payment" value={cbMonthlyPayment > 0 ? fmtUSD(cbMonthlyPayment) : 'Interest-only'} />
+        </>
+      )}
 
-      <div className={styles.sectionLabel}>FROM CB LOAN</div>
-      <SummaryRow label="Loan balance" value={fmtUSD(cbLoanBalance)} />
-      <SummaryRow label="Collateral"   value={`${cbCollateralBtc} BTC`} />
-      <SummaryRow label="APR"          value={`${cbAprPct}%`} />
-      <SummaryRow label="Min. payment" value={cbMonthlyPayment > 0 ? fmtUSD(cbMonthlyPayment) : 'Interest-only'} />
-
-      <div className={styles.divider} />
-
-      <div className={styles.sectionLabel}>PRIORITY RULES</div>
-      <div className={styles.ruleList}>
-        <div className={styles.ruleRow}>
-          <span className={styles.ruleDot} style={{ background: 'var(--green)' }} />
-          <span className={styles.ruleText}>CB &lt; 55% — Normal strategy</span>
-        </div>
-        <div className={styles.ruleRow}>
-          <span className={styles.ruleDot} style={{ background: 'var(--amber)' }} />
-          <span className={styles.ruleText}>CB 55–65% — +25% to CB paydown</span>
-        </div>
-        <div className={styles.ruleRow}>
-          <span className={styles.ruleDot} style={{ background: 'var(--orange)' }} />
-          <span className={styles.ruleText}>CB 65–70% — Halve BLOC draw</span>
-        </div>
-        <div className={styles.ruleRow}>
-          <span className={styles.ruleDot} style={{ background: 'var(--red)' }} />
-          <span className={styles.ruleText}>CB ≥ 70% — Stop BLOC, all income to CB</span>
-        </div>
-      </div>
+      {hasCbLoan && (
+        <>
+          <div className={styles.divider} />
+          <div className={styles.sectionLabel}>PRIORITY RULES</div>
+          <div className={styles.ruleList}>
+            <div className={styles.ruleRow}>
+              <span className={styles.ruleDot} style={{ background: 'var(--green)' }} />
+              <span className={styles.ruleText}>CB &lt; 55% — Normal strategy</span>
+            </div>
+            <div className={styles.ruleRow}>
+              <span className={styles.ruleDot} style={{ background: 'var(--amber)' }} />
+              <span className={styles.ruleText}>CB 55–65% — +25% to CB paydown</span>
+            </div>
+            <div className={styles.ruleRow}>
+              <span className={styles.ruleDot} style={{ background: 'var(--orange)' }} />
+              <span className={styles.ruleText}>CB 65–70% — Halve BLOC draw</span>
+            </div>
+            <div className={styles.ruleRow}>
+              <span className={styles.ruleDot} style={{ background: 'var(--red)' }} />
+              <span className={styles.ruleText}>CB ≥ 70% — Stop BLOC, all income to CB</span>
+            </div>
+          </div>
+        </>
+      )}
 
       <div className={styles.divider} />
       <p className={styles.editHint}>
-        Edit loan inputs in Smart BLOC and CB Loan tabs.
+        {hasCbLoan
+          ? 'Edit loan inputs in Smart BLOC and CB Loan tabs.'
+          : 'Edit loan inputs in the Smart BLOC tab.'}
       </p>
 
     </div>

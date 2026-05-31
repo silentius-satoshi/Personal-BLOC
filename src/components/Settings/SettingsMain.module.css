@@ -3,7 +3,9 @@
   flex-direction: column;
   gap: 24px;
   padding: 24px;
-  max-width: 480px;
+  max-width: 600px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .header {
@@ -132,7 +134,7 @@
 .simpleModeTitle { font-size: 14px; font-weight: 600; color: var(--text-primary); }
 .simpleModeDesc  { font-size: 11px; color: var(--text-ghost); }
 
-.setupGroup      { display: flex; flex-direction: column; gap: 10px; }
+.setupGroup      { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 
 .setupGroupLabel {
   font-size: 9px;
@@ -198,3 +200,8 @@
   color: var(--orange);
   background: rgba(232,131,106,0.06);
 }
+
+.cbLoanToggleRow   { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; width: 100%; box-sizing: border-box; }
+.cbLoanToggleLabel { display: flex; flex-direction: column; gap: 2px; }
+.cbLoanToggleTitle { font-size: 13px; font-weight: 500; color: var(--text-secondary); }
+.cbLoanToggleDesc  { font-size: 10px; color: var(--text-faint); }

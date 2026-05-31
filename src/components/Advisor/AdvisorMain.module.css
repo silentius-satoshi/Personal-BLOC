@@ -52,6 +52,12 @@
   gap: 12px;
 }
 
+.positionGridSingle {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 12px;
+}
+
 .positionCard {
   background: var(--bg-card);
   border: 1px solid var(--border);

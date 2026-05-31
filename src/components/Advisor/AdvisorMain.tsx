@@ -78,6 +78,7 @@ export function AdvisorMain() {
   const advisorSkipBlocDraw      = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment     = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying     = useStore((s) => s.advisorSkipBtcBuying);
+  const hasCbLoan                = useStore((s) => s.hasCbLoan);
   const setAdvisorSkipBlocDraw   = useStore((s) => s.setAdvisorSkipBlocDraw);
   const setAdvisorSkipCbPayment  = useStore((s) => s.setAdvisorSkipCbPayment);
   const setAdvisorSkipBtcBuying  = useStore((s) => s.setAdvisorSkipBtcBuying);
@@ -103,7 +104,8 @@ export function AdvisorMain() {
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
-  const currentCbLtv  = cbCollateralBtc * btcPrice > 0 ? cbLoanBalance / (cbCollateralBtc * btcPrice) : 0;
+  const effectiveCbBalance = hasCbLoan ? cbLoanBalance : 0;
+  const currentCbLtv  = cbCollateralBtc * btcPrice > 0 ? effectiveCbBalance / (cbCollateralBtc * btcPrice) : 0;
   const currentTier   = getTier(currentCbLtv);
 
   const startingBtcHeld = advisorActualBtcHeld || collateralBtc;
@@ -112,7 +114,10 @@ export function AdvisorMain() {
     () => runAdvisor({
       btcPrice, income, expenses,
       blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
-      cbBalance: cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+      cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
+      cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
+      cbAprPct:         hasCbLoan ? cbAprPct        : 0,
+      cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
       startingBlocBalance: advisorActualBlocBalance,
       startingBtcHeld,
       startingMonth: currentMonth,
@@ -203,7 +208,7 @@ export function AdvisorMain() {
       ) : (
         <>
           {/* Section 2 — Current Position */}
-          <div className={styles.positionGrid}>
+          <div className={hasCbLoan ? styles.positionGrid : styles.positionGridSingle}>
             <div className={styles.positionCard}>
               <div className={styles.positionCardTitle}>SMART BLOC</div>
               <div className={styles.positionStat}>
@@ -219,23 +224,25 @@ export function AdvisorMain() {
                 <span className={styles.positionValue}>{fmtUSD(Math.round(advisorActualBlocBalance * blocApr / 100 / 12))}</span>
               </div>
             </div>
-            <div className={styles.positionCard}>
-              <div className={styles.positionCardTitle}>COINBASE LOAN</div>
-              <div className={styles.positionStat}>
-                <span className={styles.positionLabel}>Balance</span>
-                <span className={styles.positionValue}>{fmtUSD(cbLoanBalance)}</span>
+            {hasCbLoan && (
+              <div className={styles.positionCard}>
+                <div className={styles.positionCardTitle}>COINBASE LOAN</div>
+                <div className={styles.positionStat}>
+                  <span className={styles.positionLabel}>Balance</span>
+                  <span className={styles.positionValue}>{fmtUSD(cbLoanBalance)}</span>
+                </div>
+                <div className={styles.positionStat}>
+                  <span className={styles.positionLabel}>Current LTV</span>
+                  <span className={styles.positionValue} style={{ color: getTierColor(currentTier) }}>
+                    {(currentCbLtv * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className={styles.positionStat}>
+                  <span className={styles.positionLabel}>Monthly interest</span>
+                  <span className={styles.positionValue}>{fmtUSD(Math.round(cbLoanBalance * cbAprPct / 100 / 12))}</span>
+                </div>
               </div>
-              <div className={styles.positionStat}>
-                <span className={styles.positionLabel}>Current LTV</span>
-                <span className={styles.positionValue} style={{ color: getTierColor(currentTier) }}>
-                  {(currentCbLtv * 100).toFixed(1)}%
-                </span>
-              </div>
-              <div className={styles.positionStat}>
-                <span className={styles.positionLabel}>Monthly interest</span>
-                <span className={styles.positionValue}>{fmtUSD(Math.round(cbLoanBalance * cbAprPct / 100 / 12))}</span>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* Section 3 — This Month's Plan */}
@@ -248,7 +255,7 @@ export function AdvisorMain() {
                 </span>
               </div>
               <p className={styles.cardSubtitle}>
-                CB LTV: {(currentCbLtv * 100).toFixed(1)}% ·
+                {hasCbLoan && `CB LTV: ${(currentCbLtv * 100).toFixed(1)}% · `}
                 BLOC: {fmtUSD(advisorActualBlocBalance)} ·
                 BTC: {startingBtcHeld.toFixed(5)}
               </p>
@@ -293,21 +300,23 @@ export function AdvisorMain() {
                       </div>
                     )}
 
-                    <ActionRow
-                      icon="🏦"
-                      label="CB Loan payment"
-                      sub={overriddenPlan.cbSkipped
-                        ? `skipped — ${fmtUSD(overriddenPlan.cbFreed)} redirected to BTC`
-                        : thisMonth.cbExtraPayment > 0
-                          ? `min + ${fmtUSD(thisMonth.cbExtraPayment)} extra`
-                          : 'minimum payment'}
-                      value={fmtUSD(overriddenPlan.cbPayment)}
-                      valueColor="var(--red)"
-                      skipped={advisorSkipCbPayment}
-                      onPay={() => setAdvisorSkipCbPayment(false)}
-                      onSkip={() => setAdvisorSkipCbPayment(true)}
-                      styles={styles}
-                    />
+                    {hasCbLoan && (
+                      <ActionRow
+                        icon="🏦"
+                        label="CB Loan payment"
+                        sub={overriddenPlan.cbSkipped
+                          ? `skipped — ${fmtUSD(overriddenPlan.cbFreed)} redirected to BTC`
+                          : thisMonth.cbExtraPayment > 0
+                            ? `min + ${fmtUSD(thisMonth.cbExtraPayment)} extra`
+                            : 'minimum payment'}
+                        value={fmtUSD(overriddenPlan.cbPayment)}
+                        valueColor="var(--red)"
+                        skipped={advisorSkipCbPayment}
+                        onPay={() => setAdvisorSkipCbPayment(false)}
+                        onSkip={() => setAdvisorSkipCbPayment(true)}
+                        styles={styles}
+                      />
+                    )}
 
                     <ActionRow
                       icon="₿"
@@ -419,10 +428,10 @@ export function AdvisorMain() {
                     <th>Mo</th>
                     <th>Tier</th>
                     <th>BLOC Draw</th>
-                    <th>CB Payment</th>
+                    {hasCbLoan && <th>CB Payment</th>}
                     <th>BTC Bought</th>
                     <th>BLOC Bal</th>
-                    <th>CB LTV</th>
+                    {hasCbLoan && <th>CB LTV</th>}
                     <th>Interest</th>
                   </tr>
                 </thead>
@@ -442,12 +451,12 @@ export function AdvisorMain() {
                         </span>
                       </td>
                       <td>{row.blocDraw > 0 ? fmtUSD(row.blocDraw) : <span className={styles.muted}>—</span>}</td>
-                      <td className={styles.paymentCell}>{fmtUSD(row.cbPayment)}</td>
+                      {hasCbLoan && <td className={styles.paymentCell}>{fmtUSD(row.cbPayment)}</td>}
                       <td className={styles.btcCell}>
                         {row.btcBought > 0 ? `+${row.btcBought.toFixed(5)}` : <span className={styles.muted}>—</span>}
                       </td>
                       <td>{fmtUSD(row.blocBalance)}</td>
-                      <td style={{ color: getTierColor(row.tier) }}>{(row.cbLtv * 100).toFixed(1)}%</td>
+                      {hasCbLoan && <td style={{ color: getTierColor(row.tier) }}>{(row.cbLtv * 100).toFixed(1)}%</td>}
                       <td className={styles.interestCell}>{fmtUSD(row.totalInterest)}</td>
                     </tr>
                   ))}
@@ -457,14 +466,18 @@ export function AdvisorMain() {
                     <td>Total</td>
                     <td />
                     <td />
-                    <td className={styles.paymentCell}>
-                      {fmtUSD(result.rows.reduce((s, r) => s + r.cbPayment, 0))}
-                    </td>
+                    {hasCbLoan && (
+                      <td className={styles.paymentCell}>
+                        {fmtUSD(result.rows.reduce((s, r) => s + r.cbPayment, 0))}
+                      </td>
+                    )}
                     <td className={styles.btcCell}>+{result.totalBtcBought.toFixed(5)}</td>
                     <td>{fmtUSD(result.finalBlocBalance)}</td>
-                    <td style={{ color: getTierColor(getTier(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) : 0)) }}>
-                      {(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) * 100 : 0).toFixed(1)}%
-                    </td>
+                    {hasCbLoan && (
+                      <td style={{ color: getTierColor(getTier(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) : 0)) }}>
+                        {(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) * 100 : 0).toFixed(1)}%
+                      </td>
+                    )}
                     <td className={styles.interestCell}>{fmtUSD(result.totalInterestPaid)}</td>
                   </tr>
                 </tfoot>

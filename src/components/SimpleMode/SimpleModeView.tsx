@@ -45,6 +45,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
+  const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone = isStrategyComplete(advisorStartDate);
@@ -69,11 +70,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
   const showFiatRow = expectedFiatGap > 0;
 
-  const totalItems = showFiatRow ? 4 : 3;
+  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
   const doneCount  = [
     advisorChecklist.blocDraw,
     showFiatRow && advisorChecklist.fiatCoverage,
-    advisorChecklist.cbPayment,
+    hasCbLoan && advisorChecklist.cbPayment,
     advisorChecklist.btcBuying,
   ].filter(Boolean).length;
   const allDone = doneCount === totalItems;
@@ -131,7 +132,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 {ndp.status === 'overdue'  && '⛔ NDP overdue'}
               </span>
             </div>
-            {cbLoanBalance > 0 && (
+            {hasCbLoan && cbLoanBalance > 0 && (
               <div className={styles.positionCol}>
                 <span className={styles.positionTitle}>CB LOAN</span>
                 <span className={styles.positionStat}>
@@ -200,12 +201,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.planSectionLabel}>
                 FROM INCOME · {fmtUSD(income)}/mo
               </span>
-              <SimpleModeCheckItem
-                checked={advisorChecklist.cbPayment}
-                onChange={(v) => setAdvisorChecklist({ cbPayment: v })}
-                label="Pay CB Loan"
-                amount={advisorSkipCbPayment ? 'Skipped' : expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
-              />
+              {hasCbLoan && (
+                <SimpleModeCheckItem
+                  checked={advisorChecklist.cbPayment}
+                  onChange={(v) => setAdvisorChecklist({ cbPayment: v })}
+                  label="Pay CB Loan"
+                  amount={advisorSkipCbPayment ? 'Skipped' : expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
+                />
+              )}
               <SimpleModeCheckItem
                 checked={advisorChecklist.btcBuying}
                 onChange={(v) => setAdvisorChecklist({ btcBuying: v })}

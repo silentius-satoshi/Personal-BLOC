@@ -155,6 +155,7 @@ export function AppShell() {
   const tabOrder     = useStore((s) => s.tabOrder);
   const setTabOrder  = useStore((s) => s.setTabOrder);
   const toolTabs     = useStore((s) => s.toolTabs);
+  const hasCbLoan    = useStore((s) => s.hasCbLoan);
 
   const simpleMode            = useStore((s) => s.simpleMode);
   const onboardingComplete    = useStore((s) => s.onboardingComplete);
@@ -193,14 +194,16 @@ export function AppShell() {
 
   const visibleTabs = orderedKeys
     .map((key) => ALL_TABS_META.find((t) => t.key === key))
-    .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined && !hiddenTabs.includes(t.key));
+    .filter((t): t is typeof ALL_TABS_META[number] =>
+      t !== undefined && !hiddenTabs.includes(t.key) && (t.key !== 'coinbase' || hasCbLoan)
+    );
 
   const effectiveToolKeys: readonly string[] = isMobile ? TOOL_KEYS : toolTabs;
 
   const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key));
 
   const toolTabsList = orderedKeys
-    .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k))
+    .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k) && (k !== 'coinbase' || hasCbLoan))
     .map((k) => ALL_TABS_META.find((t) => t.key === k))
     .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined);
 

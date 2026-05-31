@@ -95,6 +95,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setToolTabs         = useStore((s) => s.setToolTabs);
   const simpleMode          = useStore((s) => s.simpleMode);
   const setSimpleMode       = useStore((s) => s.setSimpleMode);
+  const hasCbLoan           = useStore((s) => s.hasCbLoan);
+  const setHasCbLoan        = useStore((s) => s.setHasCbLoan);
 
   const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
@@ -207,9 +209,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>COINBASE LOAN</div>
-          <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
-          <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
-          <NumberInput label="APR"            value={cbAprPct}        onChange={setCbAprPct}         min={0} step={0.01} />
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>I have a Coinbase loan</span>
+              <span className={styles.cbLoanToggleDesc}>
+                Shows CB Loan tab and includes loan in Advisor calculations
+              </span>
+            </div>
+            <Toggle value={hasCbLoan} onChange={setHasCbLoan} />
+          </div>
+          {hasCbLoan && (
+            <>
+              <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
+              <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
+              <NumberInput label="APR"            value={cbAprPct}        onChange={setCbAprPct}                    min={0} step={0.01} />
+            </>
+          )}
         </div>
       </div>
 
