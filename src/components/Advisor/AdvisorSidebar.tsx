@@ -99,10 +99,9 @@ export function AdvisorSidebar() {
         <NumberInput
           value={advisorActualBtcHeld}
           onChange={setAdvisorActualBtcHeld}
+          prefix="₿"
           min={0}
           step={0.001}
-          decimals={5}
-          suffix=" BTC"
         />
         <p className={styles.hint}>Collateral + accumulated BTC</p>
       </div>
