@@ -1,4 +1,5 @@
-import { useEffect, useState, useRef, createPortal } from 'react';
+import { useEffect, useState, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import {
   DndContext,
   closestCenter,
@@ -132,7 +133,7 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps
         Tools ▾
       </button>
       {open && createPortal(
-        <div className={styles.toolsDropdown} style={{ top: pos.top, left: pos.left }}>
+        <div className={styles.toolsDropdown} style={{ top: pos.top, left: pos.left }} onMouseDown={(e) => e.stopPropagation()}>
           {tabs.map((tab) => (
             <button
               key={tab.key}

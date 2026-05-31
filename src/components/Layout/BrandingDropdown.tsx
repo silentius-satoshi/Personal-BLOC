@@ -55,7 +55,7 @@ export function BrandingDropdown() {
       </button>
 
       {open && createPortal(
-        <div className={styles.dropdown} style={{ top: dropdownPos.top, right: dropdownPos.right }}>
+        <div className={styles.dropdown} style={{ top: dropdownPos.top, right: dropdownPos.right }} onMouseDown={(e) => e.stopPropagation()}>
           <button className={styles.dropdownItem} onClick={openSettings}>
             <span className={styles.dropdownIcon}>⚙</span>
             Settings
