@@ -80,7 +80,11 @@ function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, 
   );
 }
 
-export function SettingsMain() {
+interface SettingsMainProps {
+  hideHeader?: boolean;
+}
+
+export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const hiddenTabs          = useStore((s) => s.hiddenTabs);
   const toggleTabVisibility = useStore((s) => s.toggleTabVisibility);
   const previousTab         = useStore((s) => s.previousTab);
@@ -143,12 +147,14 @@ export function SettingsMain() {
 
   return (
     <div className={styles.main}>
-      <div className={styles.header}>
-        <button className={styles.backBtn} onClick={() => setActiveTab(previousTab)}>
-          ← Back
-        </button>
-        <h2 className={styles.title}>Settings</h2>
-      </div>
+      {!hideHeader && (
+        <div className={styles.header}>
+          <button className={styles.backBtn} onClick={() => setActiveTab(previousTab)}>
+            ← Back
+          </button>
+          <h2 className={styles.title}>Settings</h2>
+        </div>
+      )}
 
       <div className={styles.simpleModeToggle}>
         <div className={styles.simpleModeLabel}>

@@ -160,6 +160,7 @@ export function AppShell() {
   const onboardingComplete    = useStore((s) => s.onboardingComplete);
   const setSimpleMode         = useStore((s) => s.setSimpleMode);
   const setOnboardingComplete = useStore((s) => s.setOnboardingComplete);
+  const previousTab           = useStore((s) => s.previousTab);
 
   const advisorChecklist    = useStore((s) => s.advisorChecklist);
   const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
@@ -235,7 +236,20 @@ export function AppShell() {
         />
       )}
 
-      {simpleMode && activeTab !== 'settings' ? (
+      {simpleMode && activeTab === 'settings' ? (
+        <div className={styles.simpleModeSettings}>
+          <div className={styles.simpleModeSettingsHeader}>
+            <button
+              className={styles.simpleModeBackBtn}
+              onClick={() => setActiveTab(previousTab)}
+            >
+              ← Back
+            </button>
+            <span className={styles.simpleModeSettingsTitle}>Settings</span>
+          </div>
+          <SettingsMain hideHeader />
+        </div>
+      ) : simpleMode && activeTab !== 'settings' ? (
         <div className={styles.simpleModeRoot}>
           <SimpleModeView onOpenSettings={() => setActiveTab('settings')} />
         </div>

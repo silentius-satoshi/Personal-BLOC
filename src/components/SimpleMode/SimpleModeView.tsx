@@ -156,6 +156,16 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 : `Come back next month`
               }
             </p>
+            <button
+              className={styles.undoBtn}
+              onClick={() => setAdvisorChecklist({
+                month: currentMonth,
+                blocDraw: false, cbPayment: false,
+                btcBuying: false, fiatCoverage: false,
+              })}
+            >
+              ← Undo
+            </button>
           </div>
         ) : (
           <div className={`${styles.card} ${cardTierClass}`}>

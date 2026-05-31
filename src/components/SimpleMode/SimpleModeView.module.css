@@ -204,3 +204,15 @@
 }
 
 .fullAppLink:hover { color: var(--text-ghost); }
+
+.undoBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 0;
+  transition: color 0.12s;
+}
+.undoBtn:hover { color: var(--text-ghost); }
