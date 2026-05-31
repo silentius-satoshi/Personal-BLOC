@@ -43,7 +43,8 @@ export function AdvisorSidebar() {
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
-  const ndp           = getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance, blocApr);
+  const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
+  const ndp           = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
 
   return (
     <div className={styles.sidebar}>
@@ -116,10 +117,10 @@ export function AdvisorSidebar() {
         <div className={styles.ndpTop}>
           <span className={styles.ndpStatusLabel}>
             {ndp.status === 'never'    && 'No payment recorded'}
-            {ndp.status === 'ok'       && `Due in ${ndp.daysRemaining} days`}
-            {ndp.status === 'upcoming' && `Due in ${ndp.daysRemaining} days`}
-            {ndp.status === 'soon'     && `Due in ${ndp.daysRemaining} days`}
-            {ndp.status === 'overdue'  && 'Overdue — pay immediately'}
+            {ndp.status === 'ok'       && `✓ Due in ${ndp.daysRemaining} days`}
+            {ndp.status === 'upcoming' && `⚠ Due in ${ndp.daysRemaining} days`}
+            {ndp.status === 'soon'     && `⚠ Due in ${ndp.daysRemaining} days`}
+            {ndp.status === 'overdue'  && '⛔ Overdue — pay immediately'}
           </span>
           {ndp.estimatedAmount > 0 && (
             <span className={styles.ndpAmount}>~{fmtUSD(ndp.estimatedAmount)}</span>
