@@ -214,6 +214,39 @@
   font-weight: 600;
 }
 
+.headerRight {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+.priceEstimates {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.priceEstimateRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.priceLabel {
+  font-size: 10px;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.priceValue {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--orange);
+}
+
 /* Growth scenario toggle */
 .scenarioToggle {
   display: flex;

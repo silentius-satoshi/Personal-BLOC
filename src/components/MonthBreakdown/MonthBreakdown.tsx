@@ -32,6 +32,8 @@ export default function MonthBreakdown() {
                       : growthScenario === 'bull'      ? 0.80
                       : 0;
 
+  const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
+
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
 
   const result = useMemo(
@@ -65,9 +67,21 @@ export default function MonthBreakdown() {
             <span className={styles.creditLineLabel}>Credit line: {fmtUSD(creditLine)}</span>
           </p>
         </div>
-        <span className={isSustainable ? styles.sustainGreen : styles.sustainOrange}>
-          {isSustainable ? 'BTC buying runs all year' : 'Draw exceeds break-even — balance will drift'}
-        </span>
+        <div className={styles.headerRight}>
+          <span className={isSustainable ? styles.sustainGreen : styles.sustainOrange}>
+            {isSustainable ? 'BTC buying runs all year' : 'Draw exceeds break-even — balance will drift'}
+          </span>
+          <div className={styles.priceEstimates}>
+            <span className={styles.priceEstimateRow}>
+              <span className={styles.priceLabel}>12-mo est.</span>
+              <span className={styles.priceValue}>${projectedPrice.toLocaleString()}</span>
+            </span>
+            <span className={styles.priceEstimateRow}>
+              <span className={styles.priceLabel}>Live</span>
+              <span className={styles.priceValue}>${Math.round(btcPrice).toLocaleString()}</span>
+            </span>
+          </div>
+        </div>
       </div>
 
       <div className={styles.scenarioToggle}>
@@ -87,7 +101,7 @@ export default function MonthBreakdown() {
         ))}
       </div>
       <p className={styles.scenarioDisclaimer}>
-        Directional models only — Bitcoin's actual monthly price varies significantly
+        Directional model only
       </p>
 
       {anyCreditExceeded && (
@@ -185,7 +199,7 @@ export default function MonthBreakdown() {
           <span className={styles.legendText}>Phase 2 — First paydown month</span>
         </div>
         <div className={styles.legendItem}>
-          <div className={styles.legendDot} style={{ background: 'var(--text-faint)' }} />
+          <div className={styles.legendDot} style={{ background: '#60a5fa' }} />
           <span className={styles.legendText}>Phase 3 — Equilibrium (partial paydown)</span>
         </div>
         <div className={styles.legendItem}>
