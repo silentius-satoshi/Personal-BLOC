@@ -15,6 +15,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../../store/useStore';
+import { getCurrentStrategyMonth, isStrategyComplete } from '../../simulation/runAdvisor';
 import { InputsPanel } from '../Inputs/InputsPanel';
 import { LivingInputsPanel } from '../LivingOnBitcoin/LivingInputsPanel';
 import { SmartBlocMain } from './SmartBlocMain';
@@ -31,6 +32,8 @@ import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
+import { OnboardingModal }   from '../Onboarding/OnboardingModal';
+import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import styles from './AppShell.module.css';
 
 const ALL_TABS_META = [
@@ -153,12 +156,33 @@ export function AppShell() {
   const setTabOrder  = useStore((s) => s.setTabOrder);
   const toolTabs     = useStore((s) => s.toolTabs);
 
+  const simpleMode            = useStore((s) => s.simpleMode);
+  const onboardingComplete    = useStore((s) => s.onboardingComplete);
+  const setSimpleMode         = useStore((s) => s.setSimpleMode);
+  const setOnboardingComplete = useStore((s) => s.setOnboardingComplete);
+
+  const advisorChecklist    = useStore((s) => s.advisorChecklist);
+  const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
+  const advisorStartDate    = useStore((s) => s.advisorStartDate);
+
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth <= 640);
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
+
+  useEffect(() => {
+    const currentMonth = getCurrentStrategyMonth(advisorStartDate);
+    const done = isStrategyComplete(advisorStartDate);
+    if (!done && currentMonth !== advisorChecklist.month) {
+      setAdvisorChecklist({
+        month: currentMonth,
+        blocDraw: false, cbPayment: false,
+        btcBuying: false, fiatCoverage: false,
+      });
+    }
+  }, [advisorStartDate, advisorChecklist.month]);
 
   const allKeys = ALL_TABS_META.map((t) => t.key);
   const orderedKeys = [
@@ -201,55 +225,72 @@ export function AppShell() {
   }, [hiddenTabs, activeTab]);
 
   return (
-    <div className={styles.shell} data-active-tab={activeTab}>
-      <div className={styles.tabBar}>
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
-          <SortableContext items={mainTabs.map((t) => t.key)} strategy={horizontalListSortingStrategy}>
-            {mainTabs.map((tab) => (
-              <SortableTab
-                key={tab.key}
-                tab={tab}
-                isActive={activeTab === tab.key}
-                onClick={() => setActiveTab(tab.key as ActiveTab)}
-                styles={styles}
-              />
-            ))}
-          </SortableContext>
-        </DndContext>
-
-        <ToolsDropdown
-          tabs={toolTabsList}
-          activeTab={activeTab}
-          onSelect={(key) => setActiveTab(key as ActiveTab)}
-          styles={styles}
+    <>
+      {!onboardingComplete && (
+        <OnboardingModal
+          onComplete={(enableSimple) => {
+            setOnboardingComplete(true);
+            if (enableSimple) setSimpleMode(true);
+          }}
         />
+      )}
 
-        <BrandingDropdown />
-      </div>
-
-      <aside className={styles.sidebar}>
-        <div className={styles.sidebarInner}>
-          {activeTab === 'settings'   ? null                   :
-           activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
-           activeTab === 'advisor'    ? <AdvisorSidebar />      :
-           activeTab === 'living'     ? <LivingInputsPanel />   :
-           activeTab === 'powerlaw'   ? <PowerLawSidebar />     :
-           activeTab === 'converter'  ? <ConverterSidebar />    :
-           activeTab === 'mining'     ? <MiningInputsPanel />   :
-                                        <InputsPanel />}
+      {simpleMode && activeTab !== 'settings' ? (
+        <div className={styles.simpleModeRoot}>
+          <SimpleModeView onOpenSettings={() => setActiveTab('settings')} />
         </div>
-      </aside>
+      ) : (
+        <div className={styles.shell} data-active-tab={activeTab}>
+          <div className={styles.tabBar}>
+            <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleTabDragEnd}>
+              <SortableContext items={mainTabs.map((t) => t.key)} strategy={horizontalListSortingStrategy}>
+                {mainTabs.map((tab) => (
+                  <SortableTab
+                    key={tab.key}
+                    tab={tab}
+                    isActive={activeTab === tab.key}
+                    onClick={() => setActiveTab(tab.key as ActiveTab)}
+                    styles={styles}
+                  />
+                ))}
+              </SortableContext>
+            </DndContext>
 
-      <main className={styles.main}>
-        {activeTab === 'settings'   ? <SettingsMain />      :
-         activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
-         activeTab === 'advisor'    ? <AdvisorMain />       :
-         activeTab === 'living'     ? <LivingOnBitcoin />   :
-         activeTab === 'powerlaw'   ? <PowerLawMain />      :
-         activeTab === 'converter'  ? <ConverterMain />     :
-         activeTab === 'mining'     ? <MiningMain />        :
-                                      <SmartBlocMain />}
-      </main>
-    </div>
+            <ToolsDropdown
+              tabs={toolTabsList}
+              activeTab={activeTab}
+              onSelect={(key) => setActiveTab(key as ActiveTab)}
+              styles={styles}
+            />
+
+            <BrandingDropdown />
+          </div>
+
+          <aside className={styles.sidebar}>
+            <div className={styles.sidebarInner}>
+              {activeTab === 'settings'   ? null                   :
+               activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
+               activeTab === 'advisor'    ? <AdvisorSidebar />      :
+               activeTab === 'living'     ? <LivingInputsPanel />   :
+               activeTab === 'powerlaw'   ? <PowerLawSidebar />     :
+               activeTab === 'converter'  ? <ConverterSidebar />    :
+               activeTab === 'mining'     ? <MiningInputsPanel />   :
+                                            <InputsPanel />}
+            </div>
+          </aside>
+
+          <main className={styles.main}>
+            {activeTab === 'settings'   ? <SettingsMain />      :
+             activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
+             activeTab === 'advisor'    ? <AdvisorMain />       :
+             activeTab === 'living'     ? <LivingOnBitcoin />   :
+             activeTab === 'powerlaw'   ? <PowerLawMain />      :
+             activeTab === 'converter'  ? <ConverterMain />     :
+             activeTab === 'mining'     ? <MiningMain />        :
+                                          <SmartBlocMain />}
+          </main>
+        </div>
+      )}
+    </>
   );
 }

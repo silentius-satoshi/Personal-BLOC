@@ -117,6 +117,58 @@
   z-index: 10;
 }
 
+.simpleModeToggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.simpleModeLabel { display: flex; flex-direction: column; gap: 3px; }
+.simpleModeTitle { font-size: 14px; font-weight: 600; color: var(--text-primary); }
+.simpleModeDesc  { font-size: 11px; color: var(--text-ghost); }
+
+.setupGroup      { display: flex; flex-direction: column; gap: 10px; }
+
+.setupGroupLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
+.setupFieldGroup { display: flex; flex-direction: column; gap: 4px; }
+
+.setupFieldLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+
+.setupDateInput {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+  padding: 8px 12px;
+  color-scheme: dark;
+  width: 100%;
+  transition: border-color 0.12s;
+}
+
+.setupDateInput:focus { border-color: var(--orange); }
+
 .locationToggle {
   background: none;
   border: 1px solid var(--border);

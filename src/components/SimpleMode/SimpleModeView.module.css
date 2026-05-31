@@ -1,0 +1,206 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg-base);
+  padding: 0 16px 32px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  flex-shrink: 0;
+}
+
+.headerLeft { display: flex; align-items: center; gap: 8px; }
+
+.brandMark {
+  font-size: 18px;
+  color: var(--orange);
+}
+
+.brandName {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.settingsBtn {
+  background: none;
+  border: none;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 8px;
+  transition: color 0.12s;
+}
+
+.settingsBtn:hover { color: var(--text-secondary); }
+
+.progressRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 0 16px;
+  flex-wrap: wrap;
+}
+
+.progressDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dotDone     { background: var(--green); opacity: 0.5; }
+.dotCurrent  { background: var(--orange); }
+.dotFuture   { background: var(--border); }
+
+.progressLabel {
+  font-size: 11px;
+  color: var(--text-ghost);
+  margin-left: 6px;
+  white-space: nowrap;
+}
+
+.cards { display: flex; flex-direction: column; gap: 12px; flex: 1; }
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.cardTier1 { border-color: rgba(232,90,79,0.4); }
+.cardTier2 { border-color: rgba(232,131,106,0.4); }
+.cardTier3 { border-color: rgba(232,168,74,0.3); }
+.cardTier4 { border-color: var(--border); }
+
+.cardDone {
+  align-items: center;
+  text-align: center;
+  border-color: rgba(78,203,130,0.3);
+  background: rgba(78,203,130,0.04);
+}
+
+/* Position card */
+.positionRow { display: flex; gap: 16px; }
+.positionCol { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+
+.positionTitle {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-ghost);
+  text-transform: uppercase;
+}
+
+.positionStat { font-size: 13px; color: var(--text-secondary); }
+
+.ndpBadge { font-size: 10px; font-weight: 600; margin-top: 2px; }
+.ndp_never    { color: var(--text-faint); }
+.ndp_ok       { color: var(--green); }
+.ndp_upcoming { color: var(--amber); }
+.ndp_soon     { color: var(--orange); }
+.ndp_overdue  { color: var(--red); }
+
+.cbBadge { font-size: 10px; font-weight: 700; margin-top: 4px; }
+.cb_safe       { color: var(--green); }
+.cb_watch      { color: var(--amber); }
+.cb_warning    { color: var(--orange); }
+.cb_emergency  { color: var(--orange); font-weight: 700; }
+.cb_critical   { color: var(--red); }
+.cb_liquidated { color: var(--red); font-weight: 700; }
+
+/* Plan card */
+.planHeader { display: flex; align-items: center; justify-content: space-between; }
+
+.planTitle {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.tierBadge {
+  font-size: 10px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 4px;
+}
+
+.tier1 { background: rgba(232,90,79,0.15);   color: var(--red); }
+.tier2 { background: rgba(232,131,106,0.15); color: var(--orange); }
+.tier3 { background: rgba(232,168,74,0.15);  color: var(--amber); }
+.tier4 { background: rgba(78,203,130,0.12);  color: var(--green); }
+
+.planSection  { display: flex; flex-direction: column; gap: 6px; }
+
+.planSectionLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+/* Checklist items */
+.checkItem {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.checkItem:hover { background: rgba(255,255,255,0.04); }
+
+.checkItemDone {
+  background: rgba(78,203,130,0.06);
+  border-color: rgba(78,203,130,0.15);
+}
+
+.checkItemDone .checkLabel  { color: var(--text-faint); text-decoration: line-through; }
+.checkItemDone .checkAmount { color: var(--text-faint); }
+
+.checkbox {
+  accent-color: var(--green);
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+
+.checkLabel  { flex: 1; font-size: 14px; color: var(--text-primary); }
+.checkAmount { font-size: 14px; font-weight: 700; color: var(--orange); white-space: nowrap; }
+
+.progress {
+  font-size: 11px;
+  color: var(--text-ghost);
+  text-align: center;
+  font-style: italic;
+}
+
+/* Done card */
+.doneIcon  { font-size: 40px; color: var(--green); }
+.doneTitle { font-size: 20px; font-weight: 700; color: var(--green); margin: 0; }
+.doneSub   { font-size: 13px; color: var(--text-ghost); margin: 0; }
+
+/* Full App link */
+.fullAppLink {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 16px 0 0;
+  text-align: center;
+  width: 100%;
+  transition: color 0.12s;
+}
+
+.fullAppLink:hover { color: var(--text-ghost); }

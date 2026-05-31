@@ -57,6 +57,12 @@ interface StoreState {
   cbAprPct:         number;
   cbMonthlyPayment: number;
 
+  // App mode
+  simpleMode:            boolean;
+  onboardingComplete:    boolean;
+  setSimpleMode:         (v: boolean) => void;
+  setOnboardingComplete: (v: boolean) => void;
+
   // Advisor tab inputs
   advisorStartDate:         string;
   advisorActualBlocBalance: number;
@@ -178,6 +184,11 @@ export const useStore = create<StoreState>()(
   cbCollateralBtc:  1.48,
   cbAprPct:         4.77,
   cbMonthlyPayment: 0,
+
+  simpleMode:         false,
+  onboardingComplete: false,
+  setSimpleMode:         (v) => set({ simpleMode: v }),
+  setOnboardingComplete: (v) => set({ onboardingComplete: v }),
 
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,

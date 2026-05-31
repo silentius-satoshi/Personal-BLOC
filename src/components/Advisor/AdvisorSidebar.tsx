@@ -1,4 +1,3 @@
-import { useEffect } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
@@ -65,16 +64,6 @@ export function AdvisorSidebar() {
   const effectiveBtcBuying = skipBtcBuying ? 0 : expectedBtcBuying;
   const effectiveFiatGap   = Math.max(0, expenses - effectiveBlocDraw);
   const showFiatRow        = effectiveFiatGap > 0;
-
-  useEffect(() => {
-    if (!strategyDone && currentMonth !== advisorChecklist.month) {
-      setAdvisorChecklist({
-        month: currentMonth,
-        blocDraw: false, cbPayment: false,
-        btcBuying: false, fiatCoverage: false,
-      });
-    }
-  }, [currentMonth, advisorChecklist.month, strategyDone]);
 
   return (
     <div className={styles.sidebar}>

@@ -15,6 +15,7 @@ import {
 import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../../store/useStore';
 import { Toggle } from '../ui/Toggle';
+import { NumberInput } from '../ui/NumberInput';
 import styles from './SettingsMain.module.css';
 
 const ALL_TABS = [
@@ -88,6 +89,27 @@ export function SettingsMain() {
   const setTabOrder         = useStore((s) => s.setTabOrder);
   const toolTabs            = useStore((s) => s.toolTabs);
   const setToolTabs         = useStore((s) => s.setToolTabs);
+  const simpleMode          = useStore((s) => s.simpleMode);
+  const setSimpleMode       = useStore((s) => s.setSimpleMode);
+
+  const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
+  const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
+  const creditLine  = useStore((s) => s.creditLine);   const setCreditLine  = useStore((s) => s.setCreditLine);
+  const blocApr     = useStore((s) => s.blocApr);      const setBlocApr     = useStore((s) => s.setBlocApr);
+  const customCollateral   = useStore((s) => s.customCollateral);
+  const setCustomCollateral = useStore((s) => s.setCustomCollateral);
+  const setActiveTier       = useStore((s) => s.setActiveTier);
+
+  const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
+  const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
+  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
+  const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
+  const advisorStartDate            = useStore((s) => s.advisorStartDate);
+  const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
+
+  const cbLoanBalance    = useStore((s) => s.cbLoanBalance);    const setCbLoanBalance    = useStore((s) => s.setCbLoanBalance);
+  const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);  const setCbCollateralBtc  = useStore((s) => s.setCbCollateralBtc);
+  const cbAprPct         = useStore((s) => s.cbAprPct);         const setCbAprPct         = useStore((s) => s.setCbAprPct);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
 
@@ -126,6 +148,63 @@ export function SettingsMain() {
           ← Back
         </button>
         <h2 className={styles.title}>Settings</h2>
+      </div>
+
+      <div className={styles.simpleModeToggle}>
+        <div className={styles.simpleModeLabel}>
+          <span className={styles.simpleModeTitle}>Simple Mode</span>
+          <span className={styles.simpleModeDesc}>
+            Shows only your monthly plan — hides all charts and details
+          </span>
+        </div>
+        <Toggle value={simpleMode} onChange={setSimpleMode} />
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>SETUP</div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>BUDGET</div>
+          <NumberInput label="Monthly income"   value={income}   onChange={setIncome}   prefix="$" min={0} step={100} />
+          <NumberInput label="Monthly expenses" value={expenses} onChange={setExpenses} prefix="$" min={0} step={100} />
+        </div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>STRIKE BLOC</div>
+          <NumberInput label="Credit line"     value={creditLine}       onChange={setCreditLine}       prefix="$" min={0} step={500} />
+          <NumberInput
+            label="BTC collateral"
+            value={parseFloat(customCollateral.toFixed(5))}
+            onChange={(v) => { setCustomCollateral(v); setActiveTier('custom'); }}
+            prefix="₿"
+            min={0}
+            step={0.001}
+          />
+          <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
+          <NumberInput label="Current balance" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
+          <div className={styles.setupFieldGroup}>
+            <span className={styles.setupFieldLabel}>Strategy start date</span>
+            <input
+              type="date"
+              className={styles.setupDateInput}
+              value={advisorStartDate}
+              max={new Date().toISOString().split('T')[0]}
+              onChange={(e) => setAdvisorStartDate(e.target.value)}
+            />
+          </div>
+        </div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>YOUR BITCOIN</div>
+          <NumberInput label="BTC held" value={advisorActualBtcHeld} onChange={setAdvisorActualBtcHeld} prefix="₿" min={0} step={0.001} />
+        </div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>COINBASE LOAN</div>
+          <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
+          <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
+          <NumberInput label="APR"            value={cbAprPct}        onChange={setCbAprPct}         min={0} step={0.01} />
+        </div>
       </div>
 
       <div className={styles.section}>

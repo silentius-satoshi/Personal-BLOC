@@ -132,6 +132,11 @@
   [data-active-tab="converter"] .sidebar { order: 2; }
 }
 
+.simpleModeRoot {
+  min-height: 100vh;
+  background: var(--bg-base);
+}
+
 .toolsWrapper {
   position: relative;
   flex-shrink: 0;
