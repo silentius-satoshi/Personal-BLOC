@@ -346,3 +346,24 @@
   font-style: normal;
   font-weight: 600;
 }
+
+.unallocatedRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 8px 3px 30px;
+  gap: 8px;
+}
+
+.unallocatedLabel {
+  font-size: 11px;
+  color: var(--text-faint);
+  font-style: italic;
+}
+
+.unallocatedAmount {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-ghost);
+  white-space: nowrap;
+}

@@ -42,6 +42,9 @@ export function AdvisorSidebar() {
   const setNdpLastPaidDate = useStore((s) => s.setNdpLastPaidDate);
   const advisorChecklist    = useStore((s) => s.advisorChecklist);
   const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
+  const skipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
+  const skipCbPayment = useStore((s) => s.advisorSkipCbPayment);
+  const skipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
@@ -55,10 +58,13 @@ export function AdvisorSidebar() {
     : currentTier === 2
       ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
       : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
-  const expectedFiatGap   = Math.max(0, expenses - expectedBlocDraw);
-  const expectedCbPayment = cbMonthlyPayment;
-  const expectedBtcBuying = currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
-  const showFiatRow       = expectedFiatGap > 0;
+  const expectedCbPayment  = cbMonthlyPayment;
+  const expectedBtcBuying  = currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
+  const effectiveBlocDraw  = skipBlocDraw  ? 0 : expectedBlocDraw;
+  const effectiveCbPayment = skipCbPayment ? 0 : expectedCbPayment;
+  const effectiveBtcBuying = skipBtcBuying ? 0 : expectedBtcBuying;
+  const effectiveFiatGap   = Math.max(0, expenses - effectiveBlocDraw);
+  const showFiatRow        = effectiveFiatGap > 0;
 
   useEffect(() => {
     if (!strategyDone && currentMonth !== advisorChecklist.month) {
@@ -204,7 +210,7 @@ export function AdvisorSidebar() {
                 onChange={(e) => setAdvisorChecklist({ blocDraw: e.target.checked })} />
               <span className={styles.checkLabel}>Draw from BLOC</span>
               <span className={styles.checkAmount}>
-                {expectedBlocDraw > 0 ? fmtUSD(expectedBlocDraw) : '—'}
+                {skipBlocDraw ? 'Skipped' : effectiveBlocDraw > 0 ? fmtUSD(effectiveBlocDraw) : '—'}
               </span>
             </label>
 
@@ -214,7 +220,7 @@ export function AdvisorSidebar() {
                   checked={advisorChecklist.fiatCoverage}
                   onChange={(e) => setAdvisorChecklist({ fiatCoverage: e.target.checked })} />
                 <span className={styles.checkLabel}>Cover from fiat</span>
-                <span className={styles.checkAmount}>{fmtUSD(expectedFiatGap)}</span>
+                <span className={styles.checkAmount}>{fmtUSD(effectiveFiatGap)}</span>
               </label>
             )}
 
@@ -224,7 +230,7 @@ export function AdvisorSidebar() {
                 onChange={(e) => setAdvisorChecklist({ cbPayment: e.target.checked })} />
               <span className={styles.checkLabel}>Pay CB Loan</span>
               <span className={styles.checkAmount}>
-                {expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
+                {skipCbPayment ? 'Skipped' : effectiveCbPayment > 0 ? fmtUSD(effectiveCbPayment) : '—'}
               </span>
             </label>
 
@@ -234,9 +240,16 @@ export function AdvisorSidebar() {
                 onChange={(e) => setAdvisorChecklist({ btcBuying: e.target.checked })} />
               <span className={styles.checkLabel}>Buy Bitcoin</span>
               <span className={styles.checkAmount}>
-                {expectedBtcBuying > 0 ? fmtUSD(expectedBtcBuying) : '—'}
+                {skipBtcBuying ? 'Skipped' : effectiveBtcBuying > 0 ? fmtUSD(effectiveBtcBuying) : '—'}
               </span>
             </label>
+
+            {skipBtcBuying && expectedBtcBuying > 0 && (
+              <div className={styles.unallocatedRow}>
+                <span className={styles.unallocatedLabel}>↳ Unallocated cash</span>
+                <span className={styles.unallocatedAmount}>{fmtUSD(expectedBtcBuying)}</span>
+              </div>
+            )}
 
           </div>
 
