@@ -106,6 +106,11 @@
 
 .positionStat { font-size: 13px; color: var(--text-secondary); }
 
+/* Change 2 — THIS MONTH column stat colours */
+.statGreen { color: var(--green); font-weight: 600; }
+.statAmber { color: var(--amber); font-weight: 600; }
+.statMuted { color: var(--text-faint); }
+
 .ndpBadge { font-size: 10px; font-weight: 600; margin-top: 2px; }
 .ndp_never    { color: var(--text-faint); }
 .ndp_ok       { color: var(--green); }
@@ -189,6 +194,29 @@
 .checkLabel  { flex: 1; font-size: 14px; color: var(--text-primary); }
 .checkAmount { font-size: 14px; font-weight: 700; color: var(--orange); white-space: nowrap; }
 
+/* Change 3 — editable check amount */
+.editableCheckAmount {
+  border-bottom: 1px dashed var(--text-faint);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.editableCheckAmount:hover {
+  border-bottom-color: var(--orange);
+  color: var(--orange);
+}
+.amountInput {
+  background: var(--bg-base);
+  border: 1px solid var(--orange);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 700;
+  outline: none;
+  padding: 2px 6px;
+  width: 72px;
+  text-align: right;
+}
+
 .progress {
   font-size: 11px;
   color: var(--text-ghost);
@@ -247,21 +275,25 @@
 .ndpUrgentTitle   { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .ndpUrgentSub     { font-size: 11px; color: var(--text-ghost); }
 
-/* Feature 4 + Change 2 — quick balance edit, dotted underline */
+/* Feature 4 + Change 1 — balance edit, dotted underline on amount span only */
 .balanceEditBtn {
   background: none;
   border: none;
-  border-bottom: 1px dashed var(--text-faint);
   color: var(--text-secondary);
   cursor: pointer;
   font-size: 13px;
-  padding: 0 0 1px;
+  padding: 0;
   text-align: left;
   font-family: inherit;
-  transition: border-color 0.12s, color 0.12s;
   display: inline;
 }
-.balanceEditBtn:hover {
+
+.editableAmount {
+  border-bottom: 1px dashed var(--text-faint);
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.balanceEditBtn:hover .editableAmount {
   border-bottom-color: var(--orange);
   color: var(--orange);
 }
@@ -277,6 +309,15 @@
   padding: 3px 8px;
   width: 100%;
   font-family: inherit;
+}
+
+/* Change 3 — projected tag */
+.projectedTag {
+  font-size: 9px;
+  color: var(--text-faint);
+  font-style: italic;
+  font-weight: 400;
+  margin-left: 4px;
 }
 
 /* Feature 5 — check animation */
@@ -305,7 +346,7 @@
   to   { opacity: 1; transform: translateY(0); }
 }
 
-/* Change 1 — setup prompt + modal */
+/* Change 1 (iter 2) — setup prompt + modal */
 .setupPrompt {
   background: rgba(232,168,74,0.08);
   border: 1px dashed rgba(232,168,74,0.4);
@@ -410,21 +451,7 @@
 }
 .modalSave:hover { opacity: 0.9; }
 
-/* Change 3 — projection tags + apply button */
-.projectedTag {
-  font-size: 9px;
-  color: var(--text-faint);
-  font-style: italic;
-  font-weight: 400;
-  margin-left: 4px;
-}
-
-.btcAccumulated {
-  font-size: 12px;
-  color: var(--green);
-  font-weight: 600;
-}
-
+/* Apply button + confirmation */
 .applyBtn {
   background: rgba(78,203,130,0.10);
   border: 1px solid rgba(78,203,130,0.25);
@@ -439,3 +466,12 @@
   transition: background 0.12s;
 }
 .applyBtn:hover { background: rgba(78,203,130,0.15); }
+
+.applyConfirm {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+  text-align: center;
+  margin: 0;
+  animation: fadeIn 0.3s ease;
+}

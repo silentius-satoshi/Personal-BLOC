@@ -9,10 +9,12 @@ interface SimpleModeViewProps {
   onOpenSettings: () => void;
 }
 
-function SimpleModeCheckItem({ checked, onChange, label, amount, animating }: {
+function SimpleModeCheckItem({ checked, onChange, label, amount, animating, editableAmount, defaultAmount, onAmountSave }: {
   checked: boolean; onChange: (v: boolean) => void;
   label: string; amount: string; animating?: boolean;
+  editableAmount?: boolean; defaultAmount?: number; onAmountSave?: (v: number) => void;
 }) {
+  const [editing, setEditing] = useState(false);
   return (
     <label className={`${styles.checkItem} ${checked ? styles.checkItemDone : ''} ${animating ? styles.checkItemPop : ''}`}>
       <input
@@ -22,7 +24,29 @@ function SimpleModeCheckItem({ checked, onChange, label, amount, animating }: {
         onChange={(e) => onChange(e.target.checked)}
       />
       <span className={styles.checkLabel}>{label}</span>
-      <span className={styles.checkAmount}>{amount}</span>
+      <span className={styles.checkAmount}>
+        {editableAmount && editing ? (
+          <input
+            type="number"
+            className={styles.amountInput}
+            defaultValue={defaultAmount}
+            autoFocus
+            onClick={(e) => e.preventDefault()}
+            onBlur={(e) => { onAmountSave?.(parseFloat(e.target.value) || 0); setEditing(false); }}
+            onKeyDown={(e) => {
+              e.stopPropagation();
+              if (e.key === 'Enter') { onAmountSave?.(parseFloat((e.target as HTMLInputElement).value) || 0); setEditing(false); }
+              if (e.key === 'Escape') setEditing(false);
+            }}
+          />
+        ) : editableAmount ? (
+          <span className={styles.editableCheckAmount} onClick={(e) => { e.preventDefault(); setEditing(true); }}>
+            {amount}
+          </span>
+        ) : (
+          amount
+        )}
+      </span>
     </label>
   );
 }
@@ -68,6 +92,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const setAdvisorChecklist         = useStore((s) => s.setAdvisorChecklist);
   const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
 
+  const advisorSkipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
@@ -85,13 +110,18 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Feature 6
   const [showMonthBanner, setShowMonthBanner] = useState(false);
   const prevMonth = useRef<number | null>(null);
-  // Change 1 — setup modal
+  // Change 1 (iter 2) — setup modal
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [modalDraft, setModalDraft] = useState({
     income, expenses, creditLine,
     blocBalance: advisorActualBlocBalance,
     btcHeld: advisorActualBtcHeld,
   });
+  // Change 3 — custom amounts
+  const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
+  const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null);
+  // Change 4 — one-shot apply
+  const [projectionApplied, setProjectionApplied] = useState(false);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone = isStrategyComplete(advisorStartDate);
@@ -116,13 +146,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
   const showFiatRow = expectedFiatGap > 0;
 
-  // Change 3 — projections
-  const projectedBlocBalance = advisorChecklist.blocDraw && expectedBlocDraw > 0
-    ? advisorActualBlocBalance + expectedBlocDraw
+  // Change 3 — effective amounts (override when user enters custom)
+  const effectiveDrawAmount = customBlocDraw  ?? expectedBlocDraw;
+  const effectiveBtcBuying  = customBtcBuying ?? expectedBtcBuying;
+
+  // Change 3 — projections use effective amounts
+  const projectedBlocBalance = advisorChecklist.blocDraw && effectiveDrawAmount > 0
+    ? advisorActualBlocBalance + effectiveDrawAmount
     : advisorActualBlocBalance;
 
-  const btcAccumulatedThisMonth = advisorChecklist.btcBuying && expectedBtcBuying > 0
-    ? expectedBtcBuying / btcPrice
+  const btcAccumulatedThisMonth = advisorChecklist.btcBuying && effectiveBtcBuying > 0
+    ? effectiveBtcBuying / btcPrice
     : 0;
 
   const projectedBtcHeld = advisorActualBtcHeld + btcAccumulatedThisMonth;
@@ -130,6 +164,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const hasProjection =
     projectedBlocBalance !== advisorActualBlocBalance ||
     btcAccumulatedThisMonth > 0;
+
+  // Change 2 — THIS MONTH column
+  const cashBalanceThisMonth = advisorChecklist.btcBuying ? 0 : expectedBtcBuying;
 
   const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
   const doneCount  = [
@@ -143,10 +180,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const tierBadgeClass = styles[`tier${currentTier}`];
   const cardTierClass  = styles[`cardTier${currentTier}`];
 
-  // Change 1 — empty state detection
   const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
 
-  // Feature 2
   const tierTip: Record<AdvisorTier, string> = {
     4: 'Safe — full BTC buying strategy active',
     3: 'Watch — CB LTV elevated, extra payment directed there',
@@ -154,7 +189,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     1: 'Emergency — stop BLOC draws, all income to CB paydown',
   };
 
-  // Feature 6
+  // Feature 6 — new month banner
   useEffect(() => {
     if (prevMonth.current !== null && prevMonth.current !== advisorChecklist.month) {
       setShowMonthBanner(true);
@@ -164,6 +199,18 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     prevMonth.current = advisorChecklist.month;
   }, [advisorChecklist.month]);
 
+  // Change 4 — reset applied flag when checklist or custom amounts change
+  useEffect(() => {
+    setProjectionApplied(false);
+  }, [advisorChecklist.blocDraw, advisorChecklist.btcBuying, customBlocDraw, customBtcBuying]);
+
+  // Change 4 — auto-dismiss confirmation after 2s
+  useEffect(() => {
+    if (!projectionApplied) return;
+    const t = setTimeout(() => setProjectionApplied(false), 2000);
+    return () => clearTimeout(t);
+  }, [projectionApplied]);
+
   const fireCheck = (key: string, patch: Parameters<typeof setAdvisorChecklist>[0], value: boolean) => {
     if (value) {
       setJustChecked(key);
@@ -172,7 +219,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setAdvisorChecklist(patch);
   };
 
-  // Change 1 — setup modal helpers
   const openSetupModal = () => {
     setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: advisorActualBtcHeld });
     setShowSetupModal(true);
@@ -185,6 +231,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setAdvisorActualBlocBalance(modalDraft.blocBalance);
     setAdvisorActualBtcHeld(modalDraft.btcHeld);
     setShowSetupModal(false);
+  };
+
+  // Change 4 — one-shot apply handler
+  const handleApply = () => {
+    setAdvisorActualBlocBalance(projectedBlocBalance);
+    if (btcAccumulatedThisMonth > 0) setAdvisorActualBtcHeld(projectedBtcHeld);
+    setCustomBlocDraw(null);
+    setCustomBtcBuying(null);
+    setProjectionApplied(true);
   };
 
   return (
@@ -230,10 +285,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         {/* Position card */}
         <div className={styles.card}>
           <div className={styles.positionRow}>
+
+            {/* Left — STRIKE BLOC */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>STRIKE BLOC</span>
 
-              {/* Feature 4 + Change 2+3 — inline balance edit with projection */}
               {editingBalance ? (
                 <input
                   type="number"
@@ -253,12 +309,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   }}
                 />
               ) : (
+                /* Change 1 — dotted underline on amount span only */
                 <button
                   className={styles.balanceEditBtn}
                   onClick={() => setEditingBalance(true)}
                   title="Tap to update"
                 >
-                  Balance: {fmtUSD(projectedBlocBalance)}
+                  Balance: <span className={styles.editableAmount}>{fmtUSD(projectedBlocBalance)}</span>
                   {projectedBlocBalance !== advisorActualBlocBalance && (
                     <span className={styles.projectedTag}> projected</span>
                   )}
@@ -268,14 +325,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.positionStat}>
                 Available: {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}
               </span>
-
-              {/* Change 3 — BTC accumulated */}
-              {btcAccumulatedThisMonth > 0 && (
-                <span className={styles.btcAccumulated}>
-                  +{btcAccumulatedThisMonth.toFixed(5)} ₿ this month
-                </span>
-              )}
-
               <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                 {ndp.status === 'never'    && 'NDP — not recorded'}
                 {ndp.status === 'ok'       && `NDP: ${ndp.daysRemaining}d`}
@@ -284,6 +333,19 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 {ndp.status === 'overdue'  && '⛔ NDP overdue'}
               </span>
             </div>
+
+            {/* Center — THIS MONTH (Change 2) */}
+            <div className={styles.positionCol}>
+              <span className={styles.positionTitle}>THIS MONTH</span>
+              <span className={`${styles.positionStat} ${btcAccumulatedThisMonth > 0 ? styles.statGreen : styles.statMuted}`}>
+                ₿ {btcAccumulatedThisMonth > 0 ? `+${btcAccumulatedThisMonth.toFixed(5)}` : '—'}
+              </span>
+              <span className={`${styles.positionStat} ${cashBalanceThisMonth > 0 ? styles.statAmber : styles.statMuted}`}>
+                Cash: {cashBalanceThisMonth > 0 ? fmtUSD(cashBalanceThisMonth) : '—'}
+              </span>
+            </div>
+
+            {/* Right — CB LOAN */}
             {hasCbLoan && cbLoanBalance > 0 && (
               <div className={styles.positionCol}>
                 <span className={styles.positionTitle}>CB LOAN</span>
@@ -347,7 +409,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <h3 className={styles.planTitle}>
                 {new Date().toLocaleDateString('en-US', { month: 'long' })} — Your Plan
               </h3>
-              {/* Feature 2 — tappable tier badge */}
               <button
                 className={`${styles.tierBadge} ${tierBadgeClass}`}
                 onClick={() => setShowTierTip((v) => !v)}
@@ -355,7 +416,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 T{currentTier}
               </button>
             </div>
-            {/* Feature 2 — tier tip */}
             {showTierTip && (
               <p className={styles.tierTip}>
                 {hasCbLoan ? tierTip[currentTier] : 'BLOC strategy running normally'}
@@ -364,12 +424,16 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
             <div className={styles.planSection}>
               <span className={styles.planSectionLabel}>FROM STRIKE BLOC</span>
+              {/* Change 3 — editable draw amount */}
               <SimpleModeCheckItem
                 checked={advisorChecklist.blocDraw}
                 animating={justChecked === 'blocDraw'}
                 onChange={(v) => fireCheck('blocDraw', { blocDraw: v }, v)}
                 label="Draw for expenses"
-                amount={expectedBlocDraw > 0 ? fmtUSD(expectedBlocDraw) : '—'}
+                amount={advisorSkipBlocDraw ? 'Skipped' : effectiveDrawAmount > 0 ? fmtUSD(effectiveDrawAmount) : '—'}
+                editableAmount={!advisorSkipBlocDraw}
+                defaultAmount={effectiveDrawAmount}
+                onAmountSave={(v) => setCustomBlocDraw(v)}
               />
               {showFiatRow && (
                 <SimpleModeCheckItem
@@ -395,12 +459,16 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   amount={advisorSkipCbPayment ? 'Skipped' : expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
                 />
               )}
+              {/* Change 3 — editable BTC buying amount */}
               <SimpleModeCheckItem
                 checked={advisorChecklist.btcBuying}
                 animating={justChecked === 'btcBuying'}
                 onChange={(v) => fireCheck('btcBuying', { btcBuying: v }, v)}
                 label="Buy Bitcoin"
-                amount={advisorSkipBtcBuying ? 'Skipped' : expectedBtcBuying > 0 ? fmtUSD(expectedBtcBuying) : '—'}
+                amount={advisorSkipBtcBuying ? 'Skipped' : effectiveBtcBuying > 0 ? fmtUSD(effectiveBtcBuying) : '—'}
+                editableAmount={!advisorSkipBtcBuying}
+                defaultAmount={effectiveBtcBuying}
+                onAmountSave={(v) => setCustomBtcBuying(v)}
               />
             </div>
 
@@ -408,22 +476,19 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               {doneCount} of {totalItems} done
             </div>
 
-            {/* Change 3 — apply button */}
-            {hasProjection && !allDone && (
-              <button
-                className={styles.applyBtn}
-                onClick={() => {
-                  setAdvisorActualBlocBalance(projectedBlocBalance);
-                  if (btcAccumulatedThisMonth > 0) setAdvisorActualBtcHeld(projectedBtcHeld);
-                }}
-              >
+            {/* Change 4 — one-shot apply with confirmation */}
+            {hasProjection && !projectionApplied && (
+              <button className={styles.applyBtn} onClick={handleApply}>
                 Apply to next month →
               </button>
+            )}
+            {projectionApplied && (
+              <p className={styles.applyConfirm}>✓ Applied to next month</p>
             )}
           </div>
         )}
 
-        {/* Change 1 — setup prompt + modal */}
+        {/* Change 1 (iter 2) — setup prompt + modal */}
         {isDefaultSetup && (
           <>
             <button className={styles.setupPrompt} onClick={openSetupModal}>
