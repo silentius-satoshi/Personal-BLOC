@@ -29,7 +29,9 @@ export function useStrikeData(): void {
         const rateData: any[]    = await rateRes.json();
 
         const usdEntry   = balanceData.find((b: any) => b.currency === 'USD');
-        const usdBalance = usdEntry ? parseFloat(usdEntry.current?.amount ?? '0') : null;
+        const usdBalance = usdEntry
+          ? parseFloat(usdEntry.current?.amount ?? usdEntry.current ?? '0')
+          : null;
 
         // rates/ticker returns an array — find the BTC→USD pair
         const rateEntry  = Array.isArray(rateData)
