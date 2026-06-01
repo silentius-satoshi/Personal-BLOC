@@ -155,6 +155,16 @@ interface StoreState {
   setMiningStrategy: (strategy: MiningStrategy) => void;
   addMiningDevice: () => void;
   removeMiningDevice: (index: number) => void;
+
+  // Strike API display fields (excluded from persist — always re-fetched)
+  strikeUsdBalance:   number | null;
+  strikeRate:         number | null;
+  strikeApiConnected: boolean;
+  strikeLastFetched:  number | null;
+  setStrikeUsdBalance:   (v: number | null) => void;
+  setStrikeRate:         (v: number | null) => void;
+  setStrikeApiConnected: (v: boolean) => void;
+  setStrikeLastFetched:  (v: number | null) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -288,10 +298,23 @@ export const useStore = create<StoreState>()(
       devices: s.miningInputs.devices.filter((_, i) => i !== index),
     },
   })),
+
+  strikeUsdBalance:   null,
+  strikeRate:         null,
+  strikeApiConnected: false,
+  strikeLastFetched:  null,
+  setStrikeUsdBalance:   (v) => set({ strikeUsdBalance: v }),
+  setStrikeRate:         (v) => set({ strikeRate: v }),
+  setStrikeApiConnected: (v) => set({ strikeApiConnected: v }),
+  setStrikeLastFetched:  (v) => set({ strikeLastFetched: v }),
     }),
     {
       name: 'personal-bloc-store',
       version: 3,
+      partialize: (state) => {
+        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, ...rest } = state;
+        return rest;
+      },
       migrate: (persistedState: any) => ({
         ...persistedState,
         hiddenTabs: [],

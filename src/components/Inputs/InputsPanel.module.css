@@ -181,3 +181,89 @@
   border-color: var(--green);
   color: var(--green);
 }
+
+/* Strike balance widget */
+.strikeWidget {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.strikeWidgetHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.strikeWidgetLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+
+.strikeDotConnected {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 4px var(--green);
+  flex-shrink: 0;
+}
+
+.strikeDotDisconnected {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-faint);
+  flex-shrink: 0;
+}
+
+.strikeBalanceValue {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  line-height: 1.2;
+}
+
+.strikePlaceholder {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.strikeNetDraw {
+  font-size: 11px;
+  color: var(--green);
+  font-weight: 600;
+  margin: 0;
+}
+
+.strikeNetDrawSub {
+  color: var(--text-faint);
+  font-weight: 400;
+}
+
+.strikeLastUpdated {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin: 0;
+}
+
+.strikeRateDelta {
+  font-size: 10px;
+  color: var(--text-ghost);
+  margin: 4px 0 0;
+}
+
+.strikeRateDelta span {
+  color: var(--amber);
+}

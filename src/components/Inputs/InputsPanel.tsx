@@ -26,6 +26,11 @@ export function InputsPanel() {
   const ndpLastPaidDate          = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate       = useStore((s) => s.setNdpLastPaidDate);
 
+  const strikeUsdBalance   = useStore((s) => s.strikeUsdBalance);
+  const strikeRate         = useStore((s) => s.strikeRate);
+  const strikeApiConnected = useStore((s) => s.strikeApiConnected);
+  const strikeLastFetched  = useStore((s) => s.strikeLastFetched);
+
   const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
 
   const { livePrice, lastUpdated } = useBtcPrice();
@@ -50,9 +55,49 @@ export function InputsPanel() {
   const ndpBalance = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
   const ndp = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
 
+  const netBlocDraw = strikeUsdBalance !== null && strikeUsdBalance > 0
+    ? Math.max(0, expenses - strikeUsdBalance)
+    : null;
+
   return (
     <div className={styles.panel}>
       <div className={styles.scrollArea}>
+        <div className={styles.strikeWidget}>
+          <div className={styles.strikeWidgetHeader}>
+            <span className={styles.strikeWidgetLabel}>STRIKE USD BALANCE</span>
+            <span className={strikeApiConnected ? styles.strikeDotConnected : styles.strikeDotDisconnected} />
+          </div>
+
+          {!strikeApiConnected ? (
+            <p className={styles.strikePlaceholder}>—</p>
+          ) : (
+            <>
+              <p className={styles.strikeBalanceValue}>{fmtUSD(strikeUsdBalance ?? 0)}</p>
+              {netBlocDraw !== null && netBlocDraw < expenses && (
+                <p className={styles.strikeNetDraw}>
+                  Draw only {fmtUSD(netBlocDraw)} this month
+                  <span className={styles.strikeNetDrawSub}> (expenses − Strike balance)</span>
+                </p>
+              )}
+              {strikeLastFetched && (
+                <p className={styles.strikeLastUpdated}>
+                  updated {Math.round((Date.now() - strikeLastFetched) / 1000)}s ago
+                </p>
+              )}
+            </>
+          )}
+
+          {strikeRate !== null && Math.abs((strikeRate - btcPrice) / btcPrice) > 0.005 && (
+            <p className={styles.strikeRateDelta}>
+              Strike BTC: {fmtUSD(strikeRate)}
+              {' '}
+              <span>
+                ({strikeRate > btcPrice ? '+' : ''}{((strikeRate - btcPrice) / btcPrice * 100).toFixed(2)}% vs Coinbase)
+              </span>
+            </p>
+          )}
+        </div>
+
         <div className={styles.header}>
           <span className={styles.title}>Inputs</span>
           <SettingsDropdown />

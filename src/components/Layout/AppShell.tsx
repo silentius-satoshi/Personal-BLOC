@@ -31,6 +31,7 @@ import { CoinbaseLoanSidebar } from '../CoinbaseLoan/CoinbaseLoanSidebar';
 import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
 import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
+import { useStrikeData }     from '../../hooks/useStrikeData';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
@@ -168,6 +169,8 @@ export function AppShell() {
   const advisorChecklist    = useStore((s) => s.advisorChecklist);
   const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
   const advisorStartDate    = useStore((s) => s.advisorStartDate);
+
+  useStrikeData();
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
