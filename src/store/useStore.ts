@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy } from '../simulation/types';
+import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy };
 
@@ -181,6 +182,11 @@ interface StoreState {
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
   setIsAuthenticated: (v: boolean) => void;
+
+  // Nostr signer (excluded from persist — in-memory only)
+  nostrSigner:         NostrSigner | null;
+  setNostrSigner:      (v: NostrSigner | null) => void;
+  syncSettingsToNostr: () => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -233,10 +239,10 @@ export const useStore = create<StoreState>()(
   advisorSkipCbPayment: false,
   advisorSkipBtcBuying: false,
 
-  setIncome: (v) => set({ income: v }),
-  setExpenses: (v) => set({ expenses: v }),
+  setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
+  setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); },
   setBtcPrice: (v) => set({ btcPrice: v }),
-  setBlocApr: (v) => set({ blocApr: v }),
+  setBlocApr:  (v) => { set({ blocApr: v });  useStore.getState().syncSettingsToNostr(); },
   setFoldRewardRate: (v) => set({ foldRewardRate: v }),
 
   setShowFoldCC: (v) => set({ showFoldCC: v }),
@@ -244,7 +250,7 @@ export const useStore = create<StoreState>()(
   setCustomCollateral: (v) => set({ customCollateral: v }),
   setScenario: (v) => set({ scenario: v }),
   setScrubMonth: (v) => set({ scrubMonth: v }),
-  setCreditLine: (v) => set({ creditLine: v }),
+  setCreditLine: (v) => { set({ creditLine: v }); useStore.getState().syncSettingsToNostr(); },
 
   setActiveTab: (v) => set({ activeTab: v }),
   setBtcHoldings: (v) => set({ btcHoldings: v }),
@@ -262,8 +268,8 @@ export const useStore = create<StoreState>()(
   setCbMonthlyPayment: (v) => set({ cbMonthlyPayment: v }),
 
   setAdvisorStartDate:         (date) => set({ advisorStartDate: date }),
-  setAdvisorActualBlocBalance: (v)    => set({ advisorActualBlocBalance: v }),
-  setAdvisorActualBtcHeld:     (v)    => set({ advisorActualBtcHeld: v }),
+  setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
+  setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    useStore.getState().syncSettingsToNostr(); },
   setNdpLastPaidDate:          (date) => set({ ndpLastPaidDate: date }),
   setAdvisorChecklist: (patch) => set((s) => ({
     advisorChecklist: { ...s.advisorChecklist, ...patch }
@@ -337,12 +343,25 @@ export const useStore = create<StoreState>()(
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
+
+  nostrSigner:    null,
+  setNostrSigner: (v) => set({ nostrSigner: v }),
+
+  syncSettingsToNostr: () => {
+    const { nostrSigner, nostrPubkey, nostrRelays } = useStore.getState();
+    if (!nostrSigner || !nostrPubkey) return;
+    import('../lib/nostr/publish').then(({ publishSettings }) =>
+      publishSettings(nostrSigner, nostrPubkey, nostrRelays).catch(
+        (e) => console.warn('[Nostr] publish settings failed:', e)
+      )
+    );
+  },
     }),
     {
       name: 'personal-bloc-store',
       version: 3,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, ...rest } = state;
+        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => ({

@@ -46,6 +46,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     try {
       const { signer, pubkey } = await connectNip07();
       setSigner(signer);
+      useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
       setIsAuthenticated(true);
@@ -71,6 +72,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         (url) => setAuthUrl(url),
       );
       setSigner(signer);
+      useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
@@ -119,6 +121,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         if (controller.signal.aborted) return;
         const signer = NUser.fromBunkerLogin(login, nostr).signer;
         setSigner(signer as unknown as NostrSigner);
+        useStore.getState().setNostrSigner(signer as unknown as NostrSigner);
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
         setIsAuthenticated(true);
