@@ -1,6 +1,11 @@
 export default async function handler(req, res) {
   const apiKey = process.env.STRIKE_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'Strike API not configured' });
+  const appSecret    = process.env.APP_PROXY_SECRET;
+  const clientSecret = req.headers['x-app-secret'];
+  if (!appSecret || clientSecret !== appSecret) {
+    return res.status(401).json({ error: 'Unauthorized' });
+  }
   try {
     const response = await fetch(
       'https://api.strike.me/v1/rates/ticker?sourceCurrency=BTC&targetCurrency=USD',

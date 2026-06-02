@@ -3,7 +3,8 @@
     "allow": [
       "Bash(npx tsc *)",
       "Bash(npx vitest *)",
-      "Bash(npm install *)"
+      "Bash(npm install *)",
+      "Bash(openssl rand *)"
     ]
   }
 }

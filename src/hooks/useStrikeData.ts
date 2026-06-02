@@ -11,10 +11,12 @@ export function useStrikeData(): void {
 
   useEffect(() => {
     const fetchAll = async () => {
+      const SECRET = import.meta.env.VITE_APP_PROXY_SECRET;
+      const secretHeader = { 'x-app-secret': SECRET ?? '' };
       try {
         const [balanceRes, rateRes] = await Promise.all([
-          fetch('/api/strike-balances'),
-          fetch('/api/strike-rates'),
+          fetch('/api/strike-balances', { headers: secretHeader }),
+          fetch('/api/strike-rates',    { headers: secretHeader }),
         ]);
 
         // 503 = key not configured — silent, no error state
