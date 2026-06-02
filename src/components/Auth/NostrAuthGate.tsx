@@ -1,10 +1,6 @@
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { BunkerSigner, createNostrConnectURI } from 'nostr-tools/nip46';
-import { getConversationKey, decrypt } from 'nostr-tools/nip44';
-import { SimplePool } from 'nostr-tools/pool';
-import { generateSecretKey, getPublicKey } from 'nostr-tools/pure';
-import { connectNip07, connectNip46 } from '../../lib/nostr/signers';
+import { connectNip07, connectNip46, connectNip46QR } from '../../lib/nostr/signers';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useSigner } from '../../lib/nostr/SignerContext';
 import { useStore } from '../../store/useStore';
@@ -75,74 +71,17 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const handleShowQR = async () => {
     setLoading(true);
     setError(null);
-    let parallelSub: { close(): void } | null = null;
     try {
-      const localKey     = generateSecretKey();
-      const clientPubkey = getPublicKey(localKey);
-      const relays = ['wss://relay.primal.net'];
-      const uri = createNostrConnectURI({
-        clientPubkey,
-        relays,
-        secret: crypto.randomUUID(),
-        name:   'Personal ₿LOC',
-      });
-      setQrUri(uri);
-      setShowQR(true);
-      setLoading(false);
-
-      const pool = new SimplePool();
-
-      let capturedPubkey: string | null = null;
-
-      parallelSub = pool.subscribeMany(relays, [{ kinds: [24133], '#p': [clientPubkey] }] as any, {
-        onevent(event: any) {
-          try {
-            const key = getConversationKey(localKey, event.pubkey);
-            const plain = decrypt(key, event.content);
-            const msg = JSON.parse(plain);
-            if (msg.result && /^[0-9a-f]{64}$/.test(msg.result)) {
-              capturedPubkey = msg.result;
-            }
-          } catch { /* ignore decrypt failures */ }
-        }
-      });
-
-      const signer = await BunkerSigner.fromURI(
-        localKey,
-        uri,
-        {
-          pool,
-          onauth: (url) => {
-            setAuthUrl(url);
-            window.open(url, '_blank', 'noopener,noreferrer');
-          },
-        },
-        60_000,
+      const { signer, pubkey } = await connectNip46QR(
+        (uri) => { setQrUri(uri); setShowQR(true); setLoading(false); },
+        (url)  => { setAuthUrl(url); },
       );
-
-      const pubkey = await Promise.race([
-        signer.getPublicKey(),
-        new Promise<string>((resolve, reject) => {
-          const interval = setInterval(() => {
-            if (capturedPubkey) { clearInterval(interval); resolve(capturedPubkey); }
-          }, 200);
-          setTimeout(() => {
-            clearInterval(interval);
-            if (capturedPubkey) resolve(capturedPubkey);
-            else reject(new Error('Could not get public key from signer'));
-          }, 10_000);
-        })
-      ]);
-
-      parallelSub.close();
-
       setSigner(signer as unknown as NostrSigner);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setIsAuthenticated(true);
       onSuccess();
     } catch {
-      parallelSub?.close();
       setError('QR connection failed or timed out — try again');
       setShowQR(false);
     } finally {

@@ -1,7 +1,8 @@
 import type { NostrSigner } from '@nostrify/nostrify';
-import { BunkerSigner, parseBunkerInput } from 'nostr-tools/nip46';
+import { BunkerSigner, parseBunkerInput, createNostrConnectURI } from 'nostr-tools/nip46';
+import { encrypt, decrypt, getConversationKey } from 'nostr-tools/nip44';
 import { SimplePool } from 'nostr-tools/pool';
-import { generateSecretKey } from 'nostr-tools/pure';
+import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 
 export type { NostrSigner };
 
@@ -48,4 +49,73 @@ export async function connectNip46(
 
   const pubkey = await bunker.getPublicKey();
   return { signer: bunker as unknown as NostrSigner, pubkey };
+}
+
+export async function connectNip46QR(
+  onUri: (uri: string) => void,
+  onAuthUrl?: (url: string) => void,
+): Promise<{ signer: NostrSigner; pubkey: string }> {
+  const localKey     = generateSecretKey();
+  const clientPubkey = getPublicKey(localKey);
+  const relays       = ['wss://relay.primal.net'];
+
+  const uri = createNostrConnectURI({ clientPubkey, relays, name: 'Personal ₿LOC' });
+  onUri(uri);
+
+  const pool = new SimplePool();
+
+  return new Promise((resolve, reject) => {
+    let signerPubkey: string | null = null;
+    let ackSent = false;
+
+    const timer = setTimeout(() => {
+      sub.close();
+      reject(new Error('QR connection timed out — try again'));
+    }, 60_000);
+
+    const sub = pool.subscribeMany(relays, [{ kinds: [24133], '#p': [clientPubkey] }] as any, {
+      onevent(event: any) {
+        try {
+          const convKey = getConversationKey(localKey, event.pubkey);
+          const msg     = JSON.parse(decrypt(convKey, event.content));
+
+          if (msg.method === 'connect' && !ackSent) {
+            ackSent      = true;
+            signerPubkey = event.pubkey;
+            const ackConvKey = getConversationKey(localKey, signerPubkey);
+
+            pool.publish(relays, finalizeEvent({
+              kind: 24133,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: [['p', signerPubkey]],
+              content: encrypt(ackConvKey, JSON.stringify({ id: msg.id, result: 'ack', error: '' })),
+            }, localKey));
+
+            pool.publish(relays, finalizeEvent({
+              kind: 24133,
+              created_at: Math.floor(Date.now() / 1000),
+              tags: [['p', signerPubkey]],
+              content: encrypt(ackConvKey, JSON.stringify({ id: crypto.randomUUID(), method: 'get_public_key', params: [] })),
+            }, localKey));
+          }
+
+          if (msg.result && /^[0-9a-f]{64}$/.test(msg.result) && signerPubkey) {
+            clearTimeout(timer);
+            sub.close();
+            const bunker = BunkerSigner.fromBunker(
+              localKey,
+              { pubkey: signerPubkey, relays },
+              { pool },
+            );
+            resolve({ signer: bunker as unknown as NostrSigner, pubkey: msg.result });
+          }
+
+          if (typeof msg.error === 'string' && msg.error.startsWith('https://')) {
+            onAuthUrl?.(msg.error);
+            window.open(msg.error, '_blank', 'noopener,noreferrer');
+          }
+        } catch { /* ignore decrypt/parse failures */ }
+      },
+    });
+  });
 }
