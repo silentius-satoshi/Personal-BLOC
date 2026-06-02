@@ -239,3 +239,30 @@
     padding: 0 8px;
   }
 }
+
+.nostrSyncing {
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  z-index: 9999;
+  font-size: 11px;
+  color: var(--text-ghost);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  pointer-events: none;
+}
+
+.nostrSyncingDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--orange);
+  animation: nostrPulse 1.5s ease-in-out infinite;
+  flex-shrink: 0;
+}
+
+@keyframes nostrPulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.3; }
+}

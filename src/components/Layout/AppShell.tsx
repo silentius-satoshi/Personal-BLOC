@@ -173,6 +173,7 @@ export function AppShell() {
 
   const nostrAuthEnabled  = useStore((s) => s.nostrAuthEnabled);
   const isAuthenticated   = useStore((s) => s.isAuthenticated);
+  const nostrSyncing      = useStore((s) => s.nostrSyncing);
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
 
   useStrikeData();
@@ -318,6 +319,13 @@ export function AppShell() {
              activeTab === 'mining'     ? <MiningMain />        :
                                           <SmartBlocMain />}
           </main>
+        </div>
+      )}
+
+      {nostrAuthEnabled && nostrSyncing && (
+        <div className={styles.nostrSyncing}>
+          <span className={styles.nostrSyncingDot} />
+          Syncing…
         </div>
       )}
     </>

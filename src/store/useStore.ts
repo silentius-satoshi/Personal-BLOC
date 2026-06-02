@@ -183,10 +183,12 @@ interface StoreState {
   isAuthenticated:    boolean;
   setIsAuthenticated: (v: boolean) => void;
 
-  // Nostr signer (excluded from persist — in-memory only)
+  // Nostr signer + sync state (excluded from persist — in-memory only)
   nostrSigner:         NostrSigner | null;
   setNostrSigner:      (v: NostrSigner | null) => void;
   syncSettingsToNostr: () => void;
+  nostrSyncing:        boolean;
+  setNostrSyncing:     (v: boolean) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -356,12 +358,15 @@ export const useStore = create<StoreState>()(
       )
     );
   },
+
+  nostrSyncing:    false,
+  setNostrSyncing: (v) => set({ nostrSyncing: v }),
     }),
     {
       name: 'personal-bloc-store',
       version: 3,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, ...rest } = state;
+        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => ({

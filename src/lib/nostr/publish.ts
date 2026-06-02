@@ -1,5 +1,6 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
+import { useStore } from '../store/useStore';
 
 export const NOSTR_RELAYS = [
   'wss://relay.damus.io',
@@ -15,6 +16,7 @@ export async function publishEncrypted(
   data:    unknown,
   relays:  string[] = NOSTR_RELAYS,
 ): Promise<void> {
+  useStore.getState().setNostrSyncing(true);
   const plaintext  = JSON.stringify(data);
   const ciphertext = await signer.nip44.encrypt(pubkey, plaintext);
 
@@ -30,6 +32,7 @@ export async function publishEncrypted(
     await Promise.any(pool.publish(relays, signed));
   } finally {
     pool.close(relays);
+    useStore.getState().setNostrSyncing(false);
   }
 }
 
