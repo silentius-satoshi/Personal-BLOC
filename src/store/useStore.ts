@@ -189,6 +189,11 @@ interface StoreState {
   syncSettingsToNostr: () => void;
   nostrSyncing:        boolean;
   setNostrSyncing:     (v: boolean) => void;
+
+  // Nostr cross-device sync (persisted)
+  lastSettingsSyncAt:    number | null;
+  setLastSettingsSyncAt: (ts: number) => void;
+  hydrateSettings:       (data: Record<string, unknown>) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -379,6 +384,25 @@ export const useStore = create<StoreState>()(
 
   nostrSyncing:    false,
   setNostrSyncing: (v) => set({ nostrSyncing: v }),
+
+  lastSettingsSyncAt: null,
+  setLastSettingsSyncAt: (ts) => set({ lastSettingsSyncAt: ts }),
+
+  hydrateSettings: (data) => {
+    const SETTINGS_FIELDS = [
+      'income', 'expenses', 'blocApr', 'creditLine',
+      'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBtcHeld',
+      'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
+      'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode',
+    ] as const;
+    const update: Partial<StoreState> = {};
+    for (const field of SETTINGS_FIELDS) {
+      if (field in data && data[field] !== undefined) {
+        (update as Record<string, unknown>)[field] = data[field];
+      }
+    }
+    set(update);
+  },
     }),
     {
       name: 'personal-bloc-store',
