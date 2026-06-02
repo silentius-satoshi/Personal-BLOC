@@ -50,8 +50,10 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
+      useStore.getState().setNostrSyncing(true);
       fetchAndSync(signer, pubkey, useStore.getState().nostrRelays)
-        .catch((e) => console.warn('[Nostr] fetchAndSync failed:', e));
+        .catch((e) => console.warn('[Nostr] sync failed:', e))
+        .finally(() => useStore.getState().setNostrSyncing(false));
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
@@ -79,8 +81,10 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
+      useStore.getState().setNostrSyncing(true);
       fetchAndSync(signer, pubkey, useStore.getState().nostrRelays)
-        .catch((e) => console.warn('[Nostr] fetchAndSync failed:', e));
+        .catch((e) => console.warn('[Nostr] sync failed:', e))
+        .finally(() => useStore.getState().setNostrSyncing(false));
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
@@ -129,8 +133,10 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         useStore.getState().setNostrSigner(signer as unknown as NostrSigner);
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
+        useStore.getState().setNostrSyncing(true);
         fetchAndSync(signer as unknown as NostrSigner, login.pubkey, useStore.getState().nostrRelays)
-          .catch((e) => console.warn('[Nostr] fetchAndSync failed:', e));
+          .catch((e) => console.warn('[Nostr] sync failed:', e))
+          .finally(() => useStore.getState().setNostrSyncing(false));
         setIsAuthenticated(true);
         onSuccess();
       } catch (e) {
