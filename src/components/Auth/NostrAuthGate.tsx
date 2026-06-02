@@ -23,6 +23,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const [qrUri, setQrUri]           = useState('');
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
+  const [authUrl, setAuthUrl]       = useState<string | null>(null);
 
   const hasNip07 = typeof window !== 'undefined' && !!(window as any).nostr;
 
@@ -50,16 +51,21 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     }
     setLoading(true);
     setError(null);
+    setAuthUrl(null);
     try {
-      const { signer, pubkey } = await connectNip46(bunkerUri);
+      const { signer, pubkey } = await connectNip46(
+        bunkerUri,
+        (url) => setAuthUrl(url),
+      );
       setSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
       setIsAuthenticated(true);
       onSuccess();
-    } catch {
-      setError('Bunker connection failed — check URI and try again');
+    } catch (err: any) {
+      setError(`Connection error: ${err?.message || String(err)}`);
+      setAuthUrl(null);
     } finally {
       setLoading(false);
     }
@@ -82,7 +88,18 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setLoading(false);
 
       const pool   = new SimplePool();
-      const signer = await BunkerSigner.fromURI(localKey, uri, { pool });
+      const signer = await BunkerSigner.fromURI(
+        localKey,
+        uri,
+        {
+          pool,
+          onauth: (url) => {
+            setAuthUrl(url);
+            window.open(url, '_blank', 'noopener,noreferrer');
+          },
+        },
+        60_000,
+      );
       const pubkey = await signer.getPublicKey();
 
       setSigner(signer as unknown as NostrSigner);
@@ -110,7 +127,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             <p className={styles.hint}>Scan with nsec.app or any NIP-46 signer</p>
             <QRCodeSVG value={qrUri} size={200} />
             <p className={styles.qrWaiting}>Waiting for connection…</p>
-            <button className={styles.ghostBtn} onClick={() => { setShowQR(false); setError(null); }}>
+            <button className={styles.ghostBtn} onClick={() => { setShowQR(false); setError(null); setAuthUrl(null); }}>
               ← Cancel
             </button>
           </div>
@@ -153,7 +170,12 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             >
               {loading ? 'Connecting… (this can take up to 30s)' : 'Connect'}
             </button>
-            <button className={styles.ghostBtn} onClick={() => { setShowBunker(false); setError(null); }}>
+            {loading && authUrl && (
+              <p className={styles.hint}>
+                ✅ Auth page opened — confirm in the popup, then wait here
+              </p>
+            )}
+            <button className={styles.ghostBtn} onClick={() => { setShowBunker(false); setError(null); setAuthUrl(null); }}>
               ← Back
             </button>
           </>

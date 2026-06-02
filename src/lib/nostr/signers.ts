@@ -1,5 +1,6 @@
-import { NConnectSigner, NSecSigner, NRelay1 } from '@nostrify/nostrify';
 import type { NostrSigner } from '@nostrify/nostrify';
+import { BunkerSigner, parseBunkerInput } from 'nostr-tools/nip46';
+import { SimplePool } from 'nostr-tools/pool';
 import { generateSecretKey } from 'nostr-tools/pure';
 
 export type { NostrSigner };
@@ -12,25 +13,39 @@ export async function connectNip07(): Promise<{ signer: NostrSigner; pubkey: str
   return { signer: (window as any).nostr as NostrSigner, pubkey };
 }
 
-export async function connectNip46(bunkerUri: string): Promise<{ signer: NostrSigner; pubkey: string }> {
-  const url          = new URL(bunkerUri.replace('bunker://', 'https://'));
-  const remotePubkey = url.hostname;
-  const relayHint    = url.searchParams.get('relay') ?? 'wss://relay.damus.io';
-  const secret       = url.searchParams.get('secret') ?? undefined;
+export async function connectNip46(
+  bunkerUri: string,
+  onAuthUrl?: (url: string) => void,
+): Promise<{ signer: NostrSigner; pubkey: string }> {
+  const localKey = generateSecretKey();
+  const pool     = new SimplePool();
 
-  const localSigner = new NSecSigner(generateSecretKey());
-  const relay       = new NRelay1(relayHint);
+  const authHandler = (authUrl: string) => {
+    onAuthUrl?.(authUrl);
+    window.open(authUrl, '_blank', 'noopener,noreferrer');
+  };
 
-  const signer = new NConnectSigner({
-    pubkey: remotePubkey,
-    signer: localSigner,
-    relay,
-    timeout: 30_000,
-    encryption: 'nip44',
-  });
+  let bunker: BunkerSigner;
 
-  await signer.connect(secret);
+  if (bunkerUri.startsWith('nostrconnect://')) {
+    bunker = await BunkerSigner.fromURI(
+      localKey,
+      bunkerUri.trim(),
+      { pool, onauth: authHandler },
+      60_000,
+    );
+  } else {
+    const pointer = await parseBunkerInput(bunkerUri.trim());
+    if (!pointer) throw new Error('Invalid bunker URI or NIP-05 identifier');
 
-  const pubkey = await signer.getPublicKey();
-  return { signer, pubkey };
+    bunker = BunkerSigner.fromBunker(localKey, pointer, {
+      pool,
+      onauth: authHandler,
+    });
+
+    await bunker.connect();
+  }
+
+  const pubkey = await bunker.getPublicKey();
+  return { signer: bunker as unknown as NostrSigner, pubkey };
 }
