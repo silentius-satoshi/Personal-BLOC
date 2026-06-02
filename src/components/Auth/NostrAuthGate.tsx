@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { BunkerSigner, createNostrConnectURI } from 'nostr-tools/nip46';
+import { getConversationKey, decrypt } from 'nostr-tools/nip44';
 import { SimplePool } from 'nostr-tools/pool';
 import { generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import { connectNip07, connectNip46 } from '../../lib/nostr/signers';
@@ -74,12 +75,14 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const handleShowQR = async () => {
     setLoading(true);
     setError(null);
+    let parallelSub: { close(): void } | null = null;
     try {
       const localKey     = generateSecretKey();
       const clientPubkey = getPublicKey(localKey);
+      const relays = ['wss://relay.primal.net'];
       const uri = createNostrConnectURI({
         clientPubkey,
-        relays: ['wss://relay.damus.io', 'wss://relay.primal.net'],
+        relays,
         secret: crypto.randomUUID(),
         name:   'Personal ₿LOC',
       });
@@ -87,7 +90,23 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setShowQR(true);
       setLoading(false);
 
-      const pool   = new SimplePool();
+      const pool = new SimplePool();
+
+      let capturedPubkey: string | null = null;
+
+      parallelSub = pool.subscribeMany(relays, [{ kinds: [24133], '#p': [clientPubkey] }] as any, {
+        onevent(event: any) {
+          try {
+            const key = getConversationKey(localKey, event.pubkey);
+            const plain = decrypt(key, event.content);
+            const msg = JSON.parse(plain);
+            if (msg.result && /^[0-9a-f]{64}$/.test(msg.result)) {
+              capturedPubkey = msg.result;
+            }
+          } catch { /* ignore decrypt failures */ }
+        }
+      });
+
       const signer = await BunkerSigner.fromURI(
         localKey,
         uri,
@@ -100,7 +119,22 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         },
         60_000,
       );
-      const pubkey = await signer.getPublicKey();
+
+      const pubkey = await Promise.race([
+        signer.getPublicKey(),
+        new Promise<string>((resolve, reject) => {
+          const interval = setInterval(() => {
+            if (capturedPubkey) { clearInterval(interval); resolve(capturedPubkey); }
+          }, 200);
+          setTimeout(() => {
+            clearInterval(interval);
+            if (capturedPubkey) resolve(capturedPubkey);
+            else reject(new Error('Could not get public key from signer'));
+          }, 10_000);
+        })
+      ]);
+
+      parallelSub.close();
 
       setSigner(signer as unknown as NostrSigner);
       setNostrPubkey(pubkey);
@@ -108,6 +142,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setIsAuthenticated(true);
       onSuccess();
     } catch {
+      parallelSub?.close();
       setError('QR connection failed or timed out — try again');
       setShowQR(false);
     } finally {
