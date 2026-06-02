@@ -1,9 +1,18 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { connectNip07, connectNip46, connectNip46QR } from '../../lib/nostr/signers';
+import { connectNip07, connectNip46 } from '../../lib/nostr/signers';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useSigner } from '../../lib/nostr/SignerContext';
 import { useStore } from '../../store/useStore';
+import { useNostr } from '@nostrify/react';
+import {
+  NLogin,
+  NUser,
+  generateNostrConnectParams,
+  generateNostrConnectURI,
+  type NostrConnectParams,
+  type NostrConnectStatus,
+} from '@nostrify/react/login';
 import styles from './NostrAuthGate.module.css';
 
 export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
@@ -13,14 +22,21 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const setNostrBunkerUri     = useStore((s) => s.setNostrBunkerUri);
 
   const { setSigner } = useSigner();
+  const { nostr }     = useNostr();
 
-  const [showBunker, setShowBunker] = useState(false);
-  const [showQR, setShowQR]         = useState(false);
-  const [bunkerUri, setBunkerUri]   = useState('');
-  const [qrUri, setQrUri]           = useState('');
-  const [loading, setLoading]       = useState(false);
-  const [error, setError]           = useState<string | null>(null);
-  const [authUrl, setAuthUrl]       = useState<string | null>(null);
+  const [showBunker, setShowBunker]           = useState(false);
+  const [bunkerUri, setBunkerUri]             = useState('');
+  const [loading, setLoading]                 = useState(false);
+  const [error, setError]                     = useState<string | null>(null);
+  const [authUrl, setAuthUrl]                 = useState<string | null>(null);
+
+  const [connectParams, setConnectParams]     = useState<NostrConnectParams | null>(null);
+  const [connectUri, setConnectUri]           = useState('');
+  const [connectStatus, setConnectStatus]     = useState<NostrConnectStatus | null>(null);
+  const [hasOpenedSigner, setHasOpenedSigner] = useState(false);
+  const abortRef                              = useRef<AbortController | null>(null);
+
+  const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const hasNip07 = typeof window !== 'undefined' && !!(window as any).nostr;
 
@@ -68,26 +84,77 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     }
   };
 
-  const handleShowQR = async () => {
-    setLoading(true);
+  const generateSession = () => {
+    const params = generateNostrConnectParams(['wss://relay.primal.net']);
+    const uri = generateNostrConnectURI(params, {
+      name: 'Personal ₿LOC',
+      callback: isMobile
+        ? `${window.location.origin}/remoteloginsuccess`
+        : undefined,
+    });
+    setConnectParams(params);
+    setConnectUri(uri);
+    setConnectStatus(null);
+    setHasOpenedSigner(false);
     setError(null);
-    try {
-      const { signer, pubkey } = await connectNip46QR(
-        (uri) => { setQrUri(uri); setShowQR(true); setLoading(false); },
-        (url)  => { setAuthUrl(url); },
-      );
-      setSigner(signer as unknown as NostrSigner);
-      setNostrPubkey(pubkey);
-      setNostrSigningMethod('nip46');
-      setIsAuthenticated(true);
-      onSuccess();
-    } catch {
-      setError('QR connection failed or timed out — try again');
-      setShowQR(false);
-    } finally {
-      setLoading(false);
-    }
   };
+
+  const handleOpenSignerApp = () => {
+    setHasOpenedSigner(true);
+    window.location.href = connectUri;
+  };
+
+  useEffect(() => {
+    if (!connectParams) return;
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const run = async () => {
+      try {
+        const login = await NLogin.fromNostrConnect(
+          connectParams,
+          nostr,
+          { signal: controller.signal, onStatus: setConnectStatus },
+        );
+        if (controller.signal.aborted) return;
+        const signer = NUser.fromBunkerLogin(login, nostr).signer;
+        setSigner(signer as unknown as NostrSigner);
+        setNostrPubkey(login.pubkey);
+        setNostrSigningMethod('nip46');
+        setIsAuthenticated(true);
+        onSuccess();
+      } catch (e) {
+        if (e instanceof Error && e.name === 'AbortError') return;
+        if (controller.signal.aborted) return;
+        setError('Remote signer connection failed — try again');
+        setConnectParams(null);
+        setConnectUri('');
+        setConnectStatus(null);
+      }
+    };
+
+    run();
+  }, [connectParams]);
+
+  useEffect(() => {
+    return () => { abortRef.current?.abort(); };
+  }, []);
+
+  const cancelQR = () => {
+    abortRef.current?.abort();
+    setConnectParams(null);
+    setConnectUri('');
+    setConnectStatus(null);
+    setHasOpenedSigner(false);
+    setError(null);
+  };
+
+  const showSpinner =
+    connectStatus === 'getting-public-key' ||
+    (isMobile && hasOpenedSigner);
+
+  const statusText =
+    connectStatus === 'getting-public-key' ? 'Getting public key…' : 'Waiting for signer…';
 
   return (
     <div className={styles.overlay}>
@@ -96,14 +163,37 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         <h1 className={styles.title}>Personal ₿LOC</h1>
         <p className={styles.subtitle}>Connect your Nostr identity to continue</p>
 
-        {showQR ? (
+        {connectUri ? (
           <div className={styles.qrView}>
-            <p className={styles.hint}>Scan with nsec.app or any NIP-46 signer</p>
-            <QRCodeSVG value={qrUri} size={200} />
-            <p className={styles.qrWaiting}>Waiting for connection…</p>
-            <button className={styles.ghostBtn} onClick={() => { setShowQR(false); setError(null); setAuthUrl(null); }}>
-              ← Cancel
-            </button>
+            {showSpinner ? (
+              <>
+                <p className={styles.qrWaiting}>{statusText}</p>
+                <button className={styles.ghostBtn} onClick={cancelQR}>
+                  ← Cancel
+                </button>
+              </>
+            ) : isMobile ? (
+              <>
+                <p className={styles.hint}>Tap to open your signer app</p>
+                <button className={styles.primaryBtn} onClick={handleOpenSignerApp}>
+                  Open Signer App
+                </button>
+                <button className={styles.ghostBtn} onClick={cancelQR}>
+                  ← Cancel
+                </button>
+              </>
+            ) : (
+              <>
+                <p className={styles.hint}>Scan with nsec.app or any NIP-46 signer</p>
+                <QRCodeSVG value={connectUri} size={200} />
+                <p className={styles.qrWaiting}>
+                  {connectStatus === 'awaiting-connect' ? 'Waiting for signer…' : 'Connecting…'}
+                </p>
+                <button className={styles.ghostBtn} onClick={cancelQR}>
+                  ← Cancel
+                </button>
+              </>
+            )}
           </div>
         ) : !showBunker ? (
           <>
@@ -113,7 +203,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
               </button>
             )}
             {hasNip07 && <div className={styles.divider} />}
-            <button className={styles.secondaryBtn} onClick={handleShowQR} disabled={loading}>
+            <button className={styles.secondaryBtn} onClick={generateSession} disabled={loading}>
               📷 Scan QR Code
             </button>
             <button
