@@ -4,7 +4,8 @@
       "Bash(npx tsc *)",
       "Bash(npx vitest *)",
       "Bash(npm install *)",
-      "Bash(openssl rand *)"
+      "Bash(openssl rand *)",
+      "Bash(npx vite *)"
     ]
   }
 }

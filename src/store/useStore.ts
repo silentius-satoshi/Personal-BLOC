@@ -350,11 +350,28 @@ export const useStore = create<StoreState>()(
   setNostrSigner: (v) => set({ nostrSigner: v }),
 
   syncSettingsToNostr: () => {
-    const { nostrSigner, nostrPubkey, nostrRelays } = useStore.getState();
-    if (!nostrSigner || !nostrPubkey) return;
+    const s = useStore.getState();
+    if (!s.nostrSigner || !s.nostrPubkey) return;
+    const settings = {
+      income:                   s.income,
+      expenses:                 s.expenses,
+      blocApr:                  s.blocApr,
+      creditLine:               s.creditLine,
+      advisorStartDate:         s.advisorStartDate,
+      advisorActualBlocBalance: s.advisorActualBlocBalance,
+      advisorActualBtcHeld:     s.advisorActualBtcHeld,
+      cbLoanBalance:            s.cbLoanBalance,
+      cbCollateralBtc:          s.cbCollateralBtc,
+      cbAprPct:                 s.cbAprPct,
+      hasCbLoan:                s.hasCbLoan,
+      ndpLastPaidDate:          s.ndpLastPaidDate,
+      tabOrder:                 s.tabOrder,
+      hiddenTabs:               s.hiddenTabs,
+      simpleMode:               s.simpleMode,
+    };
     useStore.getState().setNostrSyncing(true);
     import('../lib/nostr/publish').then(({ publishSettings }) =>
-      publishSettings(nostrSigner, nostrPubkey, nostrRelays)
+      publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings)
         .catch((e) => console.warn('[Nostr] publish settings failed:', e))
         .finally(() => useStore.getState().setNostrSyncing(false))
     );
