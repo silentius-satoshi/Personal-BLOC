@@ -117,7 +117,7 @@ export async function connectNip46QR(
             onAuthUrl?.(msg.error);
             window.open(msg.error, '_blank', 'noopener,noreferrer');
           }
-        } catch { /* ignore decrypt/parse failures */ }
+        } catch (e) { console.error('[QR onevent error]', e); }
       },
     });
   });
