@@ -1,5 +1,10 @@
 import { AppShell } from './components/Layout/AppShell';
+import { SignerProvider } from './lib/nostr/SignerContext';
 
 export default function App() {
-  return <AppShell />;
+  return (
+    <SignerProvider>
+      <AppShell />
+    </SignerProvider>
+  );
 }

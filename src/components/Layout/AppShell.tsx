@@ -32,6 +32,7 @@ import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
 import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
 import { useStrikeData }     from '../../hooks/useStrikeData';
+import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
@@ -170,6 +171,10 @@ export function AppShell() {
   const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
   const advisorStartDate    = useStore((s) => s.advisorStartDate);
 
+  const nostrAuthEnabled  = useStore((s) => s.nostrAuthEnabled);
+  const isAuthenticated   = useStore((s) => s.isAuthenticated);
+  const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
+
   useStrikeData();
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
@@ -244,7 +249,9 @@ export function AppShell() {
         />
       )}
 
-      {simpleMode && activeTab === 'settings' ? (
+      {onboardingComplete && nostrAuthEnabled && !isAuthenticated ? (
+        <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
+      ) : simpleMode && activeTab === 'settings' ? (
         <div className={styles.simpleModeSettings}>
           <div className={styles.simpleModeSettingsHeader}>
             <button

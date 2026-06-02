@@ -1,0 +1,129 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 40px 32px;
+  max-width: 420px;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  text-align: center;
+}
+
+.logo {
+  font-size: 48px;
+  line-height: 1;
+  margin-bottom: 4px;
+}
+
+.title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-ghost);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+.primaryBtn {
+  width: 100%;
+  padding: 13px 20px;
+  background: var(--orange);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  font-family: inherit;
+  margin-top: 8px;
+}
+
+.primaryBtn:hover:not(:disabled) { opacity: 0.88; }
+.primaryBtn:disabled { opacity: 0.45; cursor: default; }
+
+.secondaryBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 11px 20px;
+  width: 100%;
+  transition: border-color 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.secondaryBtn:hover { border-color: var(--text-ghost); color: var(--text-primary); }
+
+.ghostBtn {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 8px 0;
+  transition: color 0.12s;
+  font-family: inherit;
+}
+
+.ghostBtn:hover { color: var(--text-secondary); }
+
+.hint {
+  font-size: 12px;
+  color: var(--text-ghost);
+  margin: 0 0 4px;
+  line-height: 1.5;
+}
+
+.input {
+  width: 100%;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-family: monospace;
+  outline: none;
+  padding: 10px 12px;
+  transition: border-color 0.12s;
+  box-sizing: border-box;
+}
+
+.input:focus { border-color: var(--orange); }
+.input::placeholder { color: var(--text-faint); }
+
+.error {
+  font-size: 12px;
+  color: var(--red);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+.divider {
+  width: 100%;
+  height: 1px;
+  background: var(--border);
+  margin: 8px 0;
+}

@@ -98,6 +98,15 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const hasCbLoan           = useStore((s) => s.hasCbLoan);
   const setHasCbLoan        = useStore((s) => s.setHasCbLoan);
 
+  const nostrAuthEnabled    = useStore((s) => s.nostrAuthEnabled);
+  const nostrPubkey         = useStore((s) => s.nostrPubkey);
+  const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
+  const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
+  const setNostrPubkey      = useStore((s) => s.setNostrPubkey);
+  const setNostrSigningMethod = useStore((s) => s.setNostrSigningMethod);
+  const setNostrBunkerUri   = useStore((s) => s.setNostrBunkerUri);
+  const setIsAuthenticated  = useStore((s) => s.setIsAuthenticated);
+
   const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
   const creditLine  = useStore((s) => s.creditLine);   const setCreditLine  = useStore((s) => s.setCreditLine);
@@ -166,6 +175,45 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </span>
         </div>
         <Toggle value={simpleMode} onChange={setSimpleMode} />
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>NOSTR IDENTITY</div>
+
+        <div className={styles.cbLoanToggleRow}>
+          <div className={styles.cbLoanToggleLabel}>
+            <span className={styles.cbLoanToggleTitle}>Enable Nostr Lock</span>
+            <span className={styles.cbLoanToggleDesc}>Require Nostr sign-in on every page load</span>
+          </div>
+          <Toggle value={nostrAuthEnabled} onChange={setNostrAuthEnabled} />
+        </div>
+
+        {nostrPubkey && (
+          <div className={styles.nostrIdentityRow}>
+            <span className={styles.nostrPubkey}>
+              {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
+            </span>
+            <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : 'NIP-46'}</span>
+            <button
+              className={styles.nostrDisconnectBtn}
+              onClick={() => {
+                setNostrPubkey(null);
+                setNostrSigningMethod(null);
+                setNostrBunkerUri(null);
+                setNostrAuthEnabled(false);
+                setIsAuthenticated(false);
+              }}
+            >
+              Disconnect
+            </button>
+          </div>
+        )}
+
+        {nostrAuthEnabled && !nostrPubkey && (
+          <p className={styles.nostrWarning}>
+            ⚠ Back up your nsec — losing it means permanent loss of encrypted relay data.
+          </p>
+        )}
       </div>
 
       <div className={styles.section}>

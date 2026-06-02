@@ -165,6 +165,22 @@ interface StoreState {
   setStrikeRate:         (v: number | null) => void;
   setStrikeApiConnected: (v: boolean) => void;
   setStrikeLastFetched:  (v: number | null) => void;
+
+  // Nostr identity (persisted)
+  nostrAuthEnabled:   boolean;
+  nostrPubkey:        string | null;
+  nostrSigningMethod: 'nip07' | 'nip46' | null;
+  nostrBunkerUri:     string | null;
+  nostrRelays:        string[];
+  setNostrAuthEnabled:   (v: boolean) => void;
+  setNostrPubkey:        (v: string | null) => void;
+  setNostrSigningMethod: (v: 'nip07' | 'nip46' | null) => void;
+  setNostrBunkerUri:     (v: string | null) => void;
+  setNostrRelays:        (v: string[]) => void;
+
+  // Nostr session (excluded from persist — always re-auth on load)
+  isAuthenticated:    boolean;
+  setIsAuthenticated: (v: boolean) => void;
 }
 
 export const useStore = create<StoreState>()(
@@ -307,12 +323,26 @@ export const useStore = create<StoreState>()(
   setStrikeRate:         (v) => set({ strikeRate: v }),
   setStrikeApiConnected: (v) => set({ strikeApiConnected: v }),
   setStrikeLastFetched:  (v) => set({ strikeLastFetched: v }),
+
+  nostrAuthEnabled:   false,
+  nostrPubkey:        null,
+  nostrSigningMethod: null,
+  nostrBunkerUri:     null,
+  nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'],
+  setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
+  setNostrPubkey:        (v) => set({ nostrPubkey: v }),
+  setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
+  setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
+  setNostrRelays:        (v) => set({ nostrRelays: v }),
+
+  isAuthenticated:    false,
+  setIsAuthenticated: (v) => set({ isAuthenticated: v }),
     }),
     {
       name: 'personal-bloc-store',
       version: 3,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, ...rest } = state;
+        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => ({
