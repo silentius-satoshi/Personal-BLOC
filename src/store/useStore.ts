@@ -352,10 +352,11 @@ export const useStore = create<StoreState>()(
   syncSettingsToNostr: () => {
     const { nostrSigner, nostrPubkey, nostrRelays } = useStore.getState();
     if (!nostrSigner || !nostrPubkey) return;
+    useStore.getState().setNostrSyncing(true);
     import('../lib/nostr/publish').then(({ publishSettings }) =>
-      publishSettings(nostrSigner, nostrPubkey, nostrRelays).catch(
-        (e) => console.warn('[Nostr] publish settings failed:', e)
-      )
+      publishSettings(nostrSigner, nostrPubkey, nostrRelays)
+        .catch((e) => console.warn('[Nostr] publish settings failed:', e))
+        .finally(() => useStore.getState().setNostrSyncing(false))
     );
   },
 
