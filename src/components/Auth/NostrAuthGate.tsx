@@ -1,5 +1,10 @@
 import { useState } from 'react';
+import { QRCodeSVG } from 'qrcode.react';
+import { BunkerSigner, createNostrConnectURI } from 'nostr-tools/nip46';
+import { SimplePool } from 'nostr-tools/pool';
+import { generateSecretKey, getPublicKey } from 'nostr-tools/pure';
 import { connectNip07, connectNip46 } from '../../lib/nostr/signers';
+import type { NostrSigner } from '../../lib/nostr/signers';
 import { useSigner } from '../../lib/nostr/SignerContext';
 import { useStore } from '../../store/useStore';
 import styles from './NostrAuthGate.module.css';
@@ -13,7 +18,9 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const { setSigner } = useSigner();
 
   const [showBunker, setShowBunker] = useState(false);
+  const [showQR, setShowQR]         = useState(false);
   const [bunkerUri, setBunkerUri]   = useState('');
+  const [qrUri, setQrUri]           = useState('');
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
 
@@ -58,6 +65,39 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     }
   };
 
+  const handleShowQR = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const localKey     = generateSecretKey();
+      const clientPubkey = getPublicKey(localKey);
+      const uri = createNostrConnectURI({
+        clientPubkey,
+        relays: ['wss://relay.damus.io', 'wss://relay.primal.net'],
+        secret: crypto.randomUUID(),
+        name:   'Personal ₿LOC',
+      });
+      setQrUri(uri);
+      setShowQR(true);
+      setLoading(false);
+
+      const pool   = new SimplePool();
+      const signer = await BunkerSigner.fromURI(localKey, uri, { pool });
+      const pubkey = await signer.getPublicKey();
+
+      setSigner(signer as unknown as NostrSigner);
+      setNostrPubkey(pubkey);
+      setNostrSigningMethod('nip46');
+      setIsAuthenticated(true);
+      onSuccess();
+    } catch {
+      setError('QR connection failed or timed out — try again');
+      setShowQR(false);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className={styles.overlay}>
       <div className={styles.card}>
@@ -65,7 +105,16 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         <h1 className={styles.title}>Personal ₿LOC</h1>
         <p className={styles.subtitle}>Connect your Nostr identity to continue</p>
 
-        {!showBunker ? (
+        {showQR ? (
+          <div className={styles.qrView}>
+            <p className={styles.hint}>Scan with nsec.app or any NIP-46 signer</p>
+            <QRCodeSVG value={qrUri} size={200} />
+            <p className={styles.qrWaiting}>Waiting for connection…</p>
+            <button className={styles.ghostBtn} onClick={() => { setShowQR(false); setError(null); }}>
+              ← Cancel
+            </button>
+          </div>
+        ) : !showBunker ? (
           <>
             {hasNip07 && (
               <button className={styles.primaryBtn} onClick={handleNip07} disabled={loading}>
@@ -73,6 +122,9 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
               </button>
             )}
             {hasNip07 && <div className={styles.divider} />}
+            <button className={styles.secondaryBtn} onClick={handleShowQR} disabled={loading}>
+              📷 Scan QR Code
+            </button>
             <button
               className={styles.secondaryBtn}
               onClick={() => { setShowBunker(true); setError(null); }}
