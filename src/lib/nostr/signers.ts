@@ -2,6 +2,7 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import { BunkerSigner, parseBunkerInput, createNostrConnectURI } from 'nostr-tools/nip46';
 import { encrypt, decrypt, getConversationKey } from 'nostr-tools/nip44';
 import { SimplePool } from 'nostr-tools/pool';
+import { Relay } from 'nostr-tools';
 import { generateSecretKey, getPublicKey, finalizeEvent } from 'nostr-tools/pure';
 
 export type { NostrSigner };
@@ -62,7 +63,7 @@ export async function connectNip46QR(
   const uri = createNostrConnectURI({ clientPubkey, relays, name: 'Personal ₿LOC' });
   onUri(uri);
 
-  const pool = new SimplePool();
+  const relay = await Relay.connect('wss://relay.primal.net');
 
   return new Promise((resolve, reject) => {
     let signerPubkey: string | null = null;
@@ -70,10 +71,11 @@ export async function connectNip46QR(
 
     const timer = setTimeout(() => {
       sub.close();
+      relay.close();
       reject(new Error('QR connection timed out — try again'));
     }, 60_000);
 
-    const sub = pool.subscribeMany(relays, [{ kinds: [24133], '#p': [clientPubkey] }] as any, {
+    const sub = relay.subscribe([{ kinds: [24133], '#p': [clientPubkey] }] as any, {
       onevent(event: any) {
         try {
           const convKey = getConversationKey(localKey, event.pubkey);
@@ -84,14 +86,14 @@ export async function connectNip46QR(
             signerPubkey = event.pubkey;
             const ackConvKey = getConversationKey(localKey, signerPubkey);
 
-            pool.publish(relays, finalizeEvent({
+            relay.publish(finalizeEvent({
               kind: 24133,
               created_at: Math.floor(Date.now() / 1000),
               tags: [['p', signerPubkey]],
               content: encrypt(ackConvKey, JSON.stringify({ id: msg.id, result: 'ack', error: '' })),
             }, localKey));
 
-            pool.publish(relays, finalizeEvent({
+            relay.publish(finalizeEvent({
               kind: 24133,
               created_at: Math.floor(Date.now() / 1000),
               tags: [['p', signerPubkey]],
@@ -102,10 +104,11 @@ export async function connectNip46QR(
           if (msg.result && /^[0-9a-f]{64}$/.test(msg.result) && signerPubkey) {
             clearTimeout(timer);
             sub.close();
+            relay.close();
             const bunker = BunkerSigner.fromBunker(
               localKey,
               { pubkey: signerPubkey, relays },
-              { pool },
+              {},
             );
             resolve({ signer: bunker as unknown as NostrSigner, pubkey: msg.result });
           }
