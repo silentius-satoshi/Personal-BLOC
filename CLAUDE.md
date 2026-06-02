@@ -424,6 +424,86 @@ npx vitest run && git add . && git commit -m "..." && git push && vercel --prod
 
 ---
 
+## Nostr Integration (Step 1 — Auth Gate — Complete)
+
+### Status
+
+| Step | Description | Status |
+|---|---|---|
+| Step 1 | Auth gate — Nostr identity login | ✅ Complete |
+| Step 2 | Encrypted event publishing | ⬜ Not started |
+| Step 3 | Cross-device sync | ⬜ Not started |
+
+---
+
+### Login Paths
+
+Three fully working login methods:
+
+| Method | Path | Notes |
+|---|---|---|
+| NIP-07 browser extension | `NLogin.fromExtension()` | Desktop; requires Ditto or compatible extension |
+| Remote signer QR | `NLogin.fromNostrConnect()` | Desktop QR scanned with Primal iOS |
+| Remote signer deep link | `NLogin.fromNostrConnect()` | Mobile Safari → Primal → approve → callback → return |
+
+---
+
+### Dependency Stack (version pins are hard requirements)
+
+```json
+"nostr-tools": "^2.13.0",
+"@nostrify/nostrify": "^0.52.2",
+"@nostrify/react": "^0.6.2"
+```
+
+**DO NOT upgrade nostr-tools above ^2.13.0.** v2.14+ breaks NIP-44 decrypt
+against Primal with a silent `"payload must be a valid string"` error.
+
+---
+
+### Key Files Added
+
+```
+src/
+  providers/
+    NostrProvider.tsx           # NPool + NRelay1 context provider; wrap root in main.tsx
+  pages/
+    RemoteLoginSuccessPage.tsx  # Callback page Primal opens after approval
+  components/Auth/
+    NostrAuthGate.tsx           # Auth gate — NLogin.fromNostrConnect() wiring
+
+vercel.json                     # Catch-all rewrite → index.html (required for /remoteloginsuccess)
+```
+
+---
+
+### Zustand Store Fields (Nostr)
+
+| Field | Type | Persisted | Notes |
+|---|---|---|---|
+| `nostrAuthEnabled` | boolean | ✅ | Whether the gate is active |
+| `nostrPubkey` | string | ✅ | Hex pubkey of logged-in user |
+| `nostrSigningMethod` | `'nip07' \| 'nip46'` | ✅ | Which path was used |
+| `nostrBunkerUri` | string | ✅ | Stored for reconnect |
+| `nostrRelays` | string[] | ✅ | Relay list |
+| `isAuthenticated` | boolean | ❌ | In-memory only; reset on reload |
+| `nostrSigner` | NostrSigner | ❌ | In-memory only; recreated on reload |
+
+---
+
+### Architecture Notes
+
+- `NostrProvider` wraps the root in `main.tsx` — provides `useNostr()` context
+- `NLogin.fromNostrConnect(params, nostr, { signal, onStatus })` handles the
+  entire NIP-46 handshake; never implement this manually
+- Mobile: `window.location.href = nostrConnectUri` triggers iOS deep link to Primal
+- Desktop: `<QRCodeCanvas value={connectUri} />` scanned from phone
+- Callback URL (`/remoteloginsuccess`) only set on mobile
+- `NostrConnectStatus`: `'awaiting-connect'` → `'getting-public-key'` → resolved
+- AbortController used for cancel/retry — always abort on component unmount
+
+---
+
 ## Critical Constraints
 
 | Constraint | Rule |
