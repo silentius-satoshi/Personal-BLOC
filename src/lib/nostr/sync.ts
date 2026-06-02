@@ -1,12 +1,12 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
-import { NOSTR_RELAYS } from './publish';
+import { FALLBACK_RELAYS } from './publish';
 
 export async function fetchAndSync(
   signer: NostrSigner,
   pubkey: string,
-  relays: string[] = NOSTR_RELAYS,
+  relays: string[] = FALLBACK_RELAYS,
 ): Promise<void> {
   const pool = new SimplePool();
 

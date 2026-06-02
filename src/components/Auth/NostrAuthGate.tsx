@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { connectNip07, connectNip46 } from '../../lib/nostr/signers';
 import { fetchAndSync } from '../../lib/nostr/sync';
+import { fetchUserRelays } from '../../lib/nostr/relays';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useSigner } from '../../lib/nostr/SignerContext';
 import { useStore } from '../../store/useStore';
@@ -50,10 +51,13 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
-      useStore.getState().setNostrSyncing(true);
-      fetchAndSync(signer, pubkey, useStore.getState().nostrRelays)
-        .catch((e) => console.warn('[Nostr] sync failed:', e))
-        .finally(() => useStore.getState().setNostrSyncing(false));
+      fetchUserRelays(pubkey).then((relays) => {
+        useStore.getState().setNostrRelays(relays);
+        useStore.getState().setNostrSyncing(true);
+        fetchAndSync(signer, pubkey, relays)
+          .catch((e) => console.warn('[Nostr] sync failed:', e))
+          .finally(() => useStore.getState().setNostrSyncing(false));
+      });
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
@@ -81,10 +85,13 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
-      useStore.getState().setNostrSyncing(true);
-      fetchAndSync(signer, pubkey, useStore.getState().nostrRelays)
-        .catch((e) => console.warn('[Nostr] sync failed:', e))
-        .finally(() => useStore.getState().setNostrSyncing(false));
+      fetchUserRelays(pubkey).then((relays) => {
+        useStore.getState().setNostrRelays(relays);
+        useStore.getState().setNostrSyncing(true);
+        fetchAndSync(signer, pubkey, relays)
+          .catch((e) => console.warn('[Nostr] sync failed:', e))
+          .finally(() => useStore.getState().setNostrSyncing(false));
+      });
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
@@ -133,10 +140,14 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         useStore.getState().setNostrSigner(signer as unknown as NostrSigner);
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
-        useStore.getState().setNostrSyncing(true);
-        fetchAndSync(signer as unknown as NostrSigner, login.pubkey, useStore.getState().nostrRelays)
-          .catch((e) => console.warn('[Nostr] sync failed:', e))
-          .finally(() => useStore.getState().setNostrSyncing(false));
+        const castSigner = signer as unknown as NostrSigner;
+        fetchUserRelays(login.pubkey).then((relays) => {
+          useStore.getState().setNostrRelays(relays);
+          useStore.getState().setNostrSyncing(true);
+          fetchAndSync(castSigner, login.pubkey, relays)
+            .catch((e) => console.warn('[Nostr] sync failed:', e))
+            .finally(() => useStore.getState().setNostrSyncing(false));
+        });
         setIsAuthenticated(true);
         onSuccess();
       } catch (e) {

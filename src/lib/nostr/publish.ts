@@ -1,7 +1,7 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 
-export const NOSTR_RELAYS = [
+export const FALLBACK_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.primal.net',
   'wss://nos.lol',
@@ -13,7 +13,7 @@ export async function publishEncrypted(
   pubkey:  string,
   dTag:    string,
   data:    unknown,
-  relays:  string[] = NOSTR_RELAYS,
+  relays:  string[] = FALLBACK_RELAYS,
 ): Promise<void> {
   const plaintext  = JSON.stringify(data);
   const ciphertext = await signer.nip44.encrypt(pubkey, plaintext);
