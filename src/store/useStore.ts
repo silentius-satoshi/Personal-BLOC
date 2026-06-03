@@ -196,8 +196,6 @@ interface StoreState {
   // Nostr cross-device sync (persisted)
   lastSettingsSyncAt:    number | null;
   setLastSettingsSyncAt: (ts: number) => void;
-  lastLocalChangedAt:    number;
-  setLastLocalChangedAt: (ts: number) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
 }
 
@@ -365,7 +363,6 @@ export const useStore = create<StoreState>()(
   setNostrSigner: (v) => set({ nostrSigner: v }),
 
   syncSettingsToNostr: () => {
-    set({ lastLocalChangedAt: Math.floor(Date.now() / 1000) });
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(() => {
       const s = useStore.getState();
@@ -402,9 +399,6 @@ export const useStore = create<StoreState>()(
 
   lastSettingsSyncAt: null,
   setLastSettingsSyncAt: (ts) => set({ lastSettingsSyncAt: ts }),
-
-  lastLocalChangedAt: 0,
-  setLastLocalChangedAt: (ts) => set({ lastLocalChangedAt: ts }),
 
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [

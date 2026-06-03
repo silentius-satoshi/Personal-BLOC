@@ -40,14 +40,13 @@ export async function fetchAndSync(
       const remoteTs  = event.created_at;
 
       if (dTag === 'personal-bloc:settings:v1') {
-        const { lastSettingsSyncAt, lastLocalChangedAt } = useStore.getState();
+        const { lastSettingsSyncAt } = useStore.getState();
         console.log('[Sync] checking settings:', {
           remoteTs,
           lastSettingsSyncAt,
-          lastLocalChangedAt,
-          willHydrate: remoteTs > (lastSettingsSyncAt ?? 0) && remoteTs > (lastLocalChangedAt ?? 0),
+          willHydrate: remoteTs > (lastSettingsSyncAt ?? 0),
         });
-        if (remoteTs > (lastSettingsSyncAt ?? 0) && remoteTs > (lastLocalChangedAt ?? 0)) {
+        if (remoteTs > (lastSettingsSyncAt ?? 0)) {
           useStore.getState().hydrateSettings(data);
           useStore.getState().setLastSettingsSyncAt(remoteTs);
           console.log('[Sync] hydrated settings');
