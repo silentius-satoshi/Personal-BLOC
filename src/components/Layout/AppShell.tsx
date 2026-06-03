@@ -249,6 +249,14 @@ export function AppShell() {
     }
   }, [hiddenTabs, activeTab]);
 
+  const PULL_THRESHOLD = 70;
+  const INDICATOR_HEIGHT = 72;
+  const isReadyToRelease = pullDistance >= PULL_THRESHOLD * 0.8;
+  const pullProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
+  const arrowRotation = pullProgress * 180;
+  const translateY = pullDistance - INDICATOR_HEIGHT;
+  const opacity = Math.min(pullDistance / (INDICATOR_HEIGHT * 0.6), 1);
+
   return (
     <>
       {!onboardingComplete && (
@@ -341,14 +349,41 @@ export function AppShell() {
 
       {nostrAuthEnabled && (pullDistance > 0 || isPullRefreshing) && (
         <div
-          className={styles.pullIndicator}
+          className={styles.pullContainer}
           style={{
-            transform: `translateY(${Math.min(pullDistance, 35) - 40}px)`,
-            transition: isPullRefreshing ? 'transform 0.2s ease' : 'none',
-            opacity: isPullRefreshing ? 1 : pullDistance / 35,
+            transform: `translateY(${isPullRefreshing ? 0 : translateY}px)`,
+            opacity: isPullRefreshing ? 1 : opacity,
+            transition: isPullRefreshing
+              ? 'transform 0.25s ease, opacity 0.25s ease'
+              : 'none',
           }}
         >
-          <div className={`${styles.pullDot} ${isPullRefreshing ? styles.pullDotPulsing : ''}`} />
+          <div className={`${styles.pullCircle} ${isReadyToRelease || isPullRefreshing ? styles.pullCircleReady : ''}`}>
+            {isPullRefreshing ? (
+              <div className={styles.pullSpinner} />
+            ) : (
+              <svg
+                className={styles.pullArrow}
+                style={{ transform: `rotate(${arrowRotation}deg)` }}
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth={2.5}
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <polyline points="19 12 12 19 5 12" />
+              </svg>
+            )}
+          </div>
+          <span className={styles.pullLabel}>
+            {isPullRefreshing
+              ? 'Syncing…'
+              : isReadyToRelease
+              ? 'Release to sync'
+              : 'Pull to sync'}
+          </span>
         </div>
       )}
     </>
