@@ -78,10 +78,11 @@ interface StoreState {
     cbPayment:    boolean;
     btcBuying:    boolean;
     fiatCoverage: boolean;
+    ndpPayment:   boolean;
   };
   setAdvisorChecklist: (patch: Partial<{
     month: number; blocDraw: boolean; cbPayment: boolean;
-    btcBuying: boolean; fiatCoverage: boolean;
+    btcBuying: boolean; fiatCoverage: boolean; ndpPayment: boolean;
   }>) => void;
 
   // Setters — shared
@@ -247,7 +248,7 @@ export const useStore = create<StoreState>()(
   advisorActualBlocBalance: 0,
   advisorActualBtcHeld:     0,
   ndpLastPaidDate:          null,
-  advisorChecklist: { month: 0, blocDraw: false, cbPayment: false, btcBuying: false, fiatCoverage: false },
+  advisorChecklist: { month: 0, blocDraw: false, cbPayment: false, btcBuying: false, fiatCoverage: false, ndpPayment: false },
 
   advisorSkipBlocDraw:  false,
   advisorSkipCbPayment: false,

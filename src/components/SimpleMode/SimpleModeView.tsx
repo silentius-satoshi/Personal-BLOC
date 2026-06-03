@@ -91,6 +91,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const advisorChecklist            = useStore((s) => s.advisorChecklist);
   const setAdvisorChecklist         = useStore((s) => s.setAdvisorChecklist);
   const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
+  const setNdpLastPaidDate          = useStore((s) => s.setNdpLastPaidDate);
 
   const advisorSkipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
@@ -181,13 +182,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   // Change 2 — THIS MONTH column
   const cashBalanceThisMonth = advisorChecklist.btcBuying ? 0 : expectedBtcBuying;
+  const ndpMinimum = advisorActualBlocBalance > 0
+    ? advisorActualBlocBalance * (blocApr / 100 / 12)
+    : 0;
 
-  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
+  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 3;
   const doneCount  = [
     advisorChecklist.blocDraw,
     showFiatRow && advisorChecklist.fiatCoverage,
     hasCbLoan && advisorChecklist.cbPayment,
     advisorChecklist.btcBuying,
+    advisorChecklist.ndpPayment,
   ].filter(Boolean).length;
   const allDone = doneCount === totalItems;
 
@@ -257,6 +262,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const handleApply = () => {
     setAdvisorActualBlocBalance(projectedBlocBalance);
     if (btcAccumulatedThisMonth > 0) setAdvisorActualBtcHeld(projectedBtcHeld);
+    if (advisorChecklist.ndpPayment) {
+      setNdpLastPaidDate(new Date().toISOString().split('T')[0]);
+    }
     setCustomBlocDraw(null);
     setCustomBtcBuying(null);
     setProjectionApplied(true);
@@ -525,6 +533,39 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 )}
               </label>
             </div>
+
+            {/* NDP row */}
+            {(() => {
+              const ndpRowClass =
+                ndp.status === 'overdue' || ndp.status === 'never' ? styles.ndpRowOverdue :
+                ndp.status === 'soon'     ? styles.ndpRowSoon :
+                ndp.status === 'upcoming' ? styles.ndpRowUpcoming :
+                '';
+              return (
+                <label className={`${styles.checkItem} ${advisorChecklist.ndpPayment ? styles.checkItemDone : ''} ${justChecked === 'ndpPayment' ? styles.checkItemPop : ''} ${ndpRowClass}`}>
+                  <input
+                    type="checkbox"
+                    className={styles.checkbox}
+                    checked={advisorChecklist.ndpPayment}
+                    onChange={(e) => fireCheck('ndpPayment', { ndpPayment: e.target.checked }, e.target.checked)}
+                  />
+                  <span className={styles.checkLabel}>
+                    Non-Draw Payment
+                    {ndp.status !== 'ok' && (
+                      <span className={styles.ndpStatusLine}>
+                        {ndp.status === 'never'    ? 'Never recorded' :
+                         ndp.status === 'overdue'  ? '⛔ Overdue' :
+                         ndp.status === 'soon'     ? `⚠ ${ndp.daysRemaining} days remaining` :
+                                                     `${ndp.daysRemaining} days remaining`}
+                      </span>
+                    )}
+                  </span>
+                  {ndpMinimum > 0 && (
+                    <span className={styles.checkAmount}>{fmtUSD(ndpMinimum)} min.</span>
+                  )}
+                </label>
+              );
+            })()}
 
             <div className={styles.progress}>
               {doneCount} of {totalItems} done

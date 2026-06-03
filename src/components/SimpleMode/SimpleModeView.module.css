@@ -526,3 +526,24 @@
   font-size: 11px;
   color: var(--text-ghost);
 }
+
+.ndpRowOverdue {
+  border-left: 2px solid var(--orange);
+  background: color-mix(in srgb, var(--orange) 6%, transparent);
+}
+
+.ndpRowSoon {
+  border-left: 2px solid var(--orange);
+  background: color-mix(in srgb, var(--orange) 4%, transparent);
+}
+
+.ndpRowUpcoming {
+  border-left: 2px solid var(--text-ghost);
+}
+
+.ndpStatusLine {
+  display: block;
+  font-size: 11px;
+  color: var(--text-ghost);
+  margin-top: 2px;
+}
