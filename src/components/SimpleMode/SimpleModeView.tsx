@@ -97,6 +97,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
+  const btcBuyingUnit    = useStore((s) => s.btcBuyingUnit);
+  const setBtcBuyingUnit = useStore((s) => s.setBtcBuyingUnit);
+
   const setIncome     = useStore((s) => s.setIncome);
   const setExpenses   = useStore((s) => s.setExpenses);
   const setCreditLine = useStore((s) => s.setCreditLine);
@@ -117,9 +120,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     blocBalance: advisorActualBlocBalance,
     btcHeld: advisorActualBtcHeld,
   });
+  const SATS_PER_BTC = 100_000_000;
+
   // Change 3 — custom amounts
   const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
-  const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null);
+  const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null); // stored as BTC
   // Change 4 — one-shot apply
   const [projectionApplied, setProjectionApplied] = useState(false);
 
@@ -147,16 +152,25 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const showFiatRow = expectedFiatGap > 0;
 
   // Change 3 — effective amounts (override when user enters custom)
-  const effectiveDrawAmount = customBlocDraw  ?? expectedBlocDraw;
-  const effectiveBtcBuying  = customBtcBuying ?? expectedBtcBuying;
+  const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
+
+  // BTC buying: default is (income − CB payment) ÷ price; custom override stored as BTC
+  const defaultBtcAmount =
+    btcPrice > 0 ? Math.max(0, expectedBtcBuying / btcPrice) : 0;
+  const effectiveBtcAmount    = customBtcBuying ?? defaultBtcAmount;
+  const btcBuyingUsdEquivalent = effectiveBtcAmount * btcPrice;
+  const btcBuyingDisplayValue  =
+    btcBuyingUnit === 'sats'
+      ? Math.round(effectiveBtcAmount * SATS_PER_BTC)
+      : effectiveBtcAmount;
 
   // Change 3 — projections use effective amounts
   const projectedBlocBalance = advisorChecklist.blocDraw && effectiveDrawAmount > 0
     ? advisorActualBlocBalance + effectiveDrawAmount
     : advisorActualBlocBalance;
 
-  const btcAccumulatedThisMonth = advisorChecklist.btcBuying && effectiveBtcBuying > 0
-    ? effectiveBtcBuying / btcPrice
+  const btcAccumulatedThisMonth = advisorChecklist.btcBuying && effectiveBtcAmount > 0
+    ? effectiveBtcAmount  // BTC directly — no price conversion
     : 0;
 
   const projectedBtcHeld = advisorActualBtcHeld + btcAccumulatedThisMonth;
@@ -231,6 +245,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setAdvisorActualBlocBalance(modalDraft.blocBalance);
     setAdvisorActualBtcHeld(modalDraft.btcHeld);
     setShowSetupModal(false);
+  };
+
+  const handleBtcBuyingChange = (raw: string) => {
+    const n = parseFloat(raw);
+    if (isNaN(n) || n < 0) { setCustomBtcBuying(null); return; }
+    setCustomBtcBuying(btcBuyingUnit === 'sats' ? n / SATS_PER_BTC : n);
   };
 
   // Change 4 — one-shot apply handler
@@ -459,17 +479,51 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   amount={advisorSkipCbPayment ? 'Skipped' : expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
                 />
               )}
-              {/* Change 3 — editable BTC buying amount */}
-              <SimpleModeCheckItem
-                checked={advisorChecklist.btcBuying}
-                animating={justChecked === 'btcBuying'}
-                onChange={(v) => fireCheck('btcBuying', { btcBuying: v }, v)}
-                label="Buy Bitcoin"
-                amount={advisorSkipBtcBuying ? 'Skipped' : effectiveBtcBuying > 0 ? fmtUSD(effectiveBtcBuying) : '—'}
-                editableAmount={!advisorSkipBtcBuying}
-                defaultAmount={effectiveBtcBuying}
-                onAmountSave={(v) => setCustomBtcBuying(v)}
-              />
+              {/* BTC buying row — BTC/sats input */}
+              <label className={`${styles.checkItem} ${advisorChecklist.btcBuying ? styles.checkItemDone : ''} ${justChecked === 'btcBuying' ? styles.checkItemPop : ''}`}>
+                <input
+                  type="checkbox"
+                  className={styles.checkbox}
+                  checked={advisorChecklist.btcBuying}
+                  onChange={(e) => fireCheck('btcBuying', { btcBuying: e.target.checked }, e.target.checked)}
+                />
+                <span className={styles.checkLabel}>Buy Bitcoin</span>
+                {advisorSkipBtcBuying ? (
+                  <span className={styles.checkAmount}>Skipped</span>
+                ) : (
+                  <div className={styles.btcBuyingInput}>
+                    <div className={styles.btcUnitToggle}>
+                      <button
+                        className={`${styles.unitBtn} ${btcBuyingUnit === 'btc' ? styles.unitBtnActive : ''}`}
+                        onClick={(e) => { e.preventDefault(); setBtcBuyingUnit('btc'); }}
+                        type="button"
+                      >
+                        ₿ BTC
+                      </button>
+                      <button
+                        className={`${styles.unitBtn} ${btcBuyingUnit === 'sats' ? styles.unitBtnActive : ''}`}
+                        onClick={(e) => { e.preventDefault(); setBtcBuyingUnit('sats'); }}
+                        type="button"
+                      >
+                        丰 sats
+                      </button>
+                    </div>
+                    <input
+                      type="number"
+                      className={styles.btcAmountInput}
+                      value={btcBuyingDisplayValue}
+                      step={btcBuyingUnit === 'sats' ? 1 : 0.00000001}
+                      min={0}
+                      placeholder={btcBuyingUnit === 'sats' ? '0' : '0.00000000'}
+                      onClick={(e) => e.preventDefault()}
+                      onChange={(e) => handleBtcBuyingChange(e.target.value)}
+                    />
+                    <span className={styles.btcBuyingUsdRef}>
+                      ≈ {fmtUSD(btcBuyingUsdEquivalent)} at current price
+                    </span>
+                  </div>
+                )}
+              </label>
             </div>
 
             <div className={styles.progress}>

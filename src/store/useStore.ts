@@ -61,8 +61,10 @@ interface StoreState {
   // App mode
   simpleMode:            boolean;
   onboardingComplete:    boolean;
+  btcBuyingUnit:         'btc' | 'sats';
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
+  setBtcBuyingUnit:      (v: 'btc' | 'sats') => void;
 
   // Advisor tab inputs
   advisorStartDate:         string;
@@ -238,8 +240,10 @@ export const useStore = create<StoreState>()(
 
   simpleMode:         false,
   onboardingComplete: false,
+  btcBuyingUnit:      'btc',
   setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
+  setBtcBuyingUnit:      (v) => { set({ btcBuyingUnit: v }); useStore.getState().syncSettingsToNostr(); },
 
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,
@@ -382,6 +386,7 @@ export const useStore = create<StoreState>()(
         tabOrder:                 s.tabOrder,
         hiddenTabs:               s.hiddenTabs,
         simpleMode:               s.simpleMode,
+        btcBuyingUnit:            s.btcBuyingUnit,
       };
       s.setNostrSyncing(true);
       import('../lib/nostr/publish').then(({ publishSettings }) =>
@@ -406,7 +411,7 @@ export const useStore = create<StoreState>()(
       'income', 'expenses', 'blocApr', 'creditLine',
       'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBtcHeld',
       'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
-      'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode',
+      'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {
