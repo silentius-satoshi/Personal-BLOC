@@ -63,7 +63,7 @@
   flex-direction: column;
   gap: 16px;
   overflow-y: auto;
-  background: var(--bg-card);
+  background: var(--bg-base);
 }
 
 /* Settings: hide sidebar, span main full width */
