@@ -17,6 +17,7 @@ export async function fetchAndSync(
   });
 
   pool.close(relays);
+  console.log('[Sync] events found:', events.length);
 
   const latestByDTag = new Map<string, typeof events[0]>();
   for (const event of events) {
@@ -27,6 +28,9 @@ export async function fetchAndSync(
       latestByDTag.set(dTag, event);
     }
   }
+  console.log('[Sync] latest events by dTag:',
+    [...latestByDTag.entries()].map(([d, e]) => ({ d, created_at: e.created_at }))
+  );
 
   for (const event of latestByDTag.values()) {
     try {
@@ -37,9 +41,16 @@ export async function fetchAndSync(
 
       if (dTag === 'personal-bloc:settings:v1') {
         const { lastSettingsSyncAt, lastLocalChangedAt } = useStore.getState();
+        console.log('[Sync] checking settings:', {
+          remoteTs,
+          lastSettingsSyncAt,
+          lastLocalChangedAt,
+          willHydrate: remoteTs > (lastSettingsSyncAt ?? 0) && remoteTs > (lastLocalChangedAt ?? 0),
+        });
         if (remoteTs > (lastSettingsSyncAt ?? 0) && remoteTs > (lastLocalChangedAt ?? 0)) {
           useStore.getState().hydrateSettings(data);
           useStore.getState().setLastSettingsSyncAt(remoteTs);
+          console.log('[Sync] hydrated settings');
         }
       }
     } catch {
