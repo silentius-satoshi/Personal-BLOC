@@ -240,6 +240,21 @@
   }
 }
 
+.simpleModeBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-ghost);
+  padding: 0 12px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.15s;
+}
+
+.simpleModeBtn:hover { color: var(--text-secondary); }
+
 .nostrSyncing {
   position: fixed;
   bottom: 16px;

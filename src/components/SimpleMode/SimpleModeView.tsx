@@ -101,6 +101,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const btcBuyingUnit    = useStore((s) => s.btcBuyingUnit);
   const setBtcBuyingUnit = useStore((s) => s.setBtcBuyingUnit);
 
+  const setSimpleMode = useStore((s) => s.setSimpleMode);
+
   const setIncome     = useStore((s) => s.setIncome);
   const setExpenses   = useStore((s) => s.setExpenses);
   const setCreditLine = useStore((s) => s.setCreditLine);
@@ -279,9 +281,23 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           <span className={styles.brandMark}>₿</span>
           <span className={styles.brandName}>Personal ₿LOC</span>
         </div>
-        <button className={styles.settingsBtn} onClick={onOpenSettings} title="Settings">
-          ⚙
-        </button>
+        <div className={styles.headerRight}>
+          <button
+            className={styles.modeToggleBtn}
+            onClick={() => setSimpleMode(false)}
+            aria-label="Switch to full app"
+          >
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+              <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
+              <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
+              <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
+              <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/>
+            </svg>
+          </button>
+          <button className={styles.settingsBtn} onClick={onOpenSettings} title="Settings">
+            ⚙
+          </button>
+        </div>
       </div>
 
       {/* Feature 6 — new month banner */}
@@ -613,7 +629,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
       </div>
 
-      <button className={styles.fullAppLink} onClick={onOpenSettings}>
+      <button className={styles.fullAppLink} onClick={() => setSimpleMode(false)}>
         Full App →
       </button>
 

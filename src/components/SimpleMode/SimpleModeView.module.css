@@ -36,6 +36,8 @@
   color: var(--text-primary);
 }
 
+.headerRight { display: flex; align-items: center; gap: 4px; }
+
 .settingsBtn {
   background: none;
   border: none;
@@ -47,6 +49,19 @@
 }
 
 .settingsBtn:hover { color: var(--text-secondary); }
+
+.modeToggleBtn {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 13px 10px;
+  display: flex;
+  align-items: center;
+  transition: color 0.12s;
+}
+
+.modeToggleBtn:hover { color: var(--text-primary); }
 
 .progressRow {
   display: flex;
