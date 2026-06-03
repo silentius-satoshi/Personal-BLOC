@@ -27,7 +27,16 @@ export async function publishEncrypted(
 
   const pool = new SimplePool();
   try {
-    await Promise.any(pool.publish(relays, signed));
+    const results = await Promise.allSettled(pool.publish(relays, signed));
+    const anyAccepted = results.some(r => r.status === 'fulfilled');
+    if (!anyAccepted) {
+      throw new AggregateError(
+        results
+          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
+          .map(r => r.reason),
+        'All relays rejected the event'
+      );
+    }
   } finally {
     pool.close(relays);
   }

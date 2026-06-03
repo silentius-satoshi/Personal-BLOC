@@ -18,7 +18,17 @@ export async function fetchAndSync(
 
   pool.close(relays);
 
+  const latestByDTag = new Map<string, typeof events[0]>();
   for (const event of events) {
+    const dTag = event.tags.find(([t]) => t === 'd')?.[1];
+    if (!dTag) continue;
+    const existing = latestByDTag.get(dTag);
+    if (!existing || event.created_at > existing.created_at) {
+      latestByDTag.set(dTag, event);
+    }
+  }
+
+  for (const event of latestByDTag.values()) {
     try {
       const plaintext = await signer.nip44.decrypt(pubkey, event.content);
       const data      = JSON.parse(plaintext);
