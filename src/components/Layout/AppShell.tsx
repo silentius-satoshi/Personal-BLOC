@@ -31,7 +31,8 @@ import { CoinbaseLoanSidebar } from '../CoinbaseLoan/CoinbaseLoanSidebar';
 import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
 import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
-import { useStrikeData }     from '../../hooks/useStrikeData';
+import { useStrikeData }          from '../../hooks/useStrikeData';
+import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -177,6 +178,7 @@ export function AppShell() {
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
 
   useStrikeData();
+  const isRestoringSession = useNostrAutoRestore();
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
@@ -238,6 +240,8 @@ export function AppShell() {
       if (first) setActiveTab(first.key);
     }
   }, [hiddenTabs, activeTab]);
+
+  if (isRestoringSession) return null;
 
   return (
     <>
