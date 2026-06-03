@@ -144,6 +144,7 @@ interface StoreState {
   toolTabs:             string[];
   previousTab:          Exclude<ActiveTab, 'settings'>;
   toggleTabVisibility:  (tab: string) => void;
+  setHiddenTabs:        (v: string[]) => void;
   setTabOrder:          (order: string[]) => void;
   setToolTabs:          (tabs: string[]) => void;
   setPreviousTab:       (tab: Exclude<ActiveTab, 'settings'>) => void;
@@ -226,7 +227,7 @@ export const useStore = create<StoreState>()(
   timeHorizonYears: 1,
 
   hasCbLoan:    false,
-  setHasCbLoan: (v) => set({ hasCbLoan: v }),
+  setHasCbLoan: (v) => { set({ hasCbLoan: v }); useStore.getState().syncSettingsToNostr(); },
 
   cbLoanBalance:    60000,
   cbCollateralBtc:  1.48,
@@ -235,7 +236,7 @@ export const useStore = create<StoreState>()(
 
   simpleMode:         false,
   onboardingComplete: false,
-  setSimpleMode:         (v) => set({ simpleMode: v }),
+  setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
 
   advisorStartDate:         new Date().toISOString().split('T')[0],
@@ -271,15 +272,15 @@ export const useStore = create<StoreState>()(
   setLtvType: (v) => set({ ltvType: v }),
   setTimeHorizonYears: (v) => set({ timeHorizonYears: v }),
 
-  setCbLoanBalance:    (v) => set({ cbLoanBalance: v }),
-  setCbCollateralBtc:  (v) => set({ cbCollateralBtc: v }),
-  setCbAprPct:         (v) => set({ cbAprPct: v }),
+  setCbLoanBalance:    (v) => { set({ cbLoanBalance: v });    useStore.getState().syncSettingsToNostr(); },
+  setCbCollateralBtc:  (v) => { set({ cbCollateralBtc: v });  useStore.getState().syncSettingsToNostr(); },
+  setCbAprPct:         (v) => { set({ cbAprPct: v });         useStore.getState().syncSettingsToNostr(); },
   setCbMonthlyPayment: (v) => set({ cbMonthlyPayment: v }),
 
-  setAdvisorStartDate:         (date) => set({ advisorStartDate: date }),
+  setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    useStore.getState().syncSettingsToNostr(); },
-  setNdpLastPaidDate:          (date) => set({ ndpLastPaidDate: date }),
+  setNdpLastPaidDate:          (v) => { set({ ndpLastPaidDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorChecklist: (patch) => set((s) => ({
     advisorChecklist: { ...s.advisorChecklist, ...patch }
   })),
@@ -302,7 +303,8 @@ export const useStore = create<StoreState>()(
       ? s.hiddenTabs.filter((t) => t !== tab)
       : [...s.hiddenTabs, tab],
   })),
-  setTabOrder: (order) => set({ tabOrder: order }),
+  setHiddenTabs: (v) => { set({ hiddenTabs: v }); useStore.getState().syncSettingsToNostr(); },
+  setTabOrder:   (v) => { set({ tabOrder: v });   useStore.getState().syncSettingsToNostr(); },
   setToolTabs: (tabs) => set({ toolTabs: tabs }),
   setPreviousTab: (tab) => set({ previousTab: tab }),
 
