@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useEffect } from 'react';
 import { NPool, NRelay1 } from '@nostrify/nostrify';
 import { NostrContext } from '@nostrify/react';
 
@@ -20,6 +20,10 @@ export function NostrProvider({ children }: { children: React.ReactNode }) {
       },
     });
   }
+
+  useEffect(() => {
+    return () => { pool.current?.close(); };
+  }, []);
 
   return (
     <NostrContext.Provider value={{ nostr: pool.current }}>

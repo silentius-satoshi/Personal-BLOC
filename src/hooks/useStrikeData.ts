@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import { useStore } from '../store/useStore';
+import { usePageVisibility } from './usePageVisibility';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -8,9 +9,9 @@ export function useStrikeData(): void {
   const setStrikeRate         = useStore((s) => s.setStrikeRate);
   const setStrikeApiConnected = useStore((s) => s.setStrikeApiConnected);
   const setStrikeLastFetched  = useStore((s) => s.setStrikeLastFetched);
+  const isVisible = usePageVisibility();
 
-  useEffect(() => {
-    const fetchAll = async () => {
+  const fetchAll = async () => {
       const SECRET = import.meta.env.VITE_APP_PROXY_SECRET;
       const secretHeader = { 'x-app-secret': SECRET ?? '' };
       try {
@@ -48,10 +49,12 @@ export function useStrikeData(): void {
       } catch {
         setStrikeApiConnected(false);
       }
-    };
+  };
 
+  useEffect(() => {
+    if (!isVisible) return;
     fetchAll();
     const interval = setInterval(fetchAll, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 }
