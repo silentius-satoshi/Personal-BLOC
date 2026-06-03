@@ -178,7 +178,7 @@ export function AppShell() {
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
 
   useStrikeData();
-  const isRestoringSession = useNostrAutoRestore();
+  useNostrAutoRestore();
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
@@ -240,8 +240,6 @@ export function AppShell() {
       if (first) setActiveTab(first.key);
     }
   }, [hiddenTabs, activeTab]);
-
-  if (isRestoringSession) return null;
 
   return (
     <>
