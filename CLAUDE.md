@@ -424,56 +424,95 @@ npx vitest run && git add . && git commit -m "..." && git push && vercel --prod
 
 ---
 
-## Nostr Integration (Step 1 — Auth Gate — Complete)
+## Nostr Integration (Steps 1–3 ✅ Complete)
 
 ### Status
 
 | Step | Description | Status |
 |---|---|---|
 | Step 1 | Auth gate — Nostr identity login | ✅ Complete |
-| Step 2 | Encrypted event publishing | ⬜ Not started |
-| Step 3 | Cross-device sync | ⬜ Not started |
+| Step 2 | Encrypted relay publishing | ✅ Complete |
+| Step 3 | Cross-device sync | ✅ Complete |
+| Deferred | publishRecords (monthlyLog) | ⬜ Pending monthlyLog feature |
 
 ---
 
 ### Login Paths
 
-Three fully working login methods:
-
-| Method | Path | Notes |
+| Method | Function | Notes |
 |---|---|---|
-| NIP-07 browser extension | `NLogin.fromExtension()` | Desktop; requires Ditto or compatible extension |
-| Remote signer QR | `NLogin.fromNostrConnect()` | Desktop QR scanned with Primal iOS |
-| Remote signer deep link | `NLogin.fromNostrConnect()` | Mobile Safari → Primal → approve → callback → return |
+| NIP-07 browser extension | NLogin.fromExtension() | Desktop; auto-restores on reload |
+| Remote signer QR | NLogin.fromNostrConnect() | Desktop QR scanned with Primal iOS |
+| Remote signer deep link | NLogin.fromNostrConnect() | Mobile Safari → Primal → approve → callback |
 
 ---
 
 ### Dependency Stack (version pins are hard requirements)
 
-```json
-"nostr-tools": "^2.13.0",
-"@nostrify/nostrify": "^0.52.2",
-"@nostrify/react": "^0.6.2"
-```
-
-**DO NOT upgrade nostr-tools above ^2.13.0.** v2.14+ breaks NIP-44 decrypt
-against Primal with a silent `"payload must be a valid string"` error.
+nostr-tools: ^2.13.0   ← DO NOT upgrade; v2.14+ breaks NIP-44 decrypt against Primal
+@nostrify/nostrify: ^0.52.2
+@nostrify/react: ^0.6.2
 
 ---
 
-### Key Files Added
+### Key Files
 
 ```
 src/
   providers/
-    NostrProvider.tsx           # NPool + NRelay1 context provider; wrap root in main.tsx
+    NostrProvider.tsx               # NPool + NRelay1 context; wrap root in main.tsx
   pages/
-    RemoteLoginSuccessPage.tsx  # Callback page Primal opens after approval
+    RemoteLoginSuccessPage.tsx      # Callback page Primal opens after approval
   components/Auth/
-    NostrAuthGate.tsx           # Auth gate — NLogin.fromNostrConnect() wiring
+    NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring
+  hooks/
+    useNostrAutoRestore.ts          # Optimistic NIP-07 session restore on reload
+  lib/nostr/
+    publish.ts                      # publishEncrypted, publishSettings; pure utility
+    sync.ts                         # fetchAndSync; queries relay, deduplicates, hydrates
+    relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
 
-vercel.json                     # Catch-all rewrite → index.html (required for /remoteloginsuccess)
+vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```
+
+---
+
+### Publishing Architecture
+
+- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → `Promise.allSettled`
+  (pushes to ALL relays, not just first willing one)
+- `syncSettingsToNostr()` — debounced 5s; stamps `lastLocalChangedAt` immediately
+  on every setter call; dynamic imports `publish.ts` to avoid circular dep
+- `FALLBACK_RELAYS`: damus, primal, nos.lol (used if NIP-65 discovery fails)
+- NIP-65 relay discovery: fetches user's kind:10002 on every login, updates
+  `nostrRelays` in store; subsequent publishes go to user's own relays
+
+---
+
+### Sync Architecture
+
+- `fetchAndSync()` fires after every login (non-blocking, fire-and-forget)
+- Deduplicates relay events: takes highest `created_at` per d-tag before
+  decrypting (prevents stale relay copies from overwriting fresh data)
+- Race condition protection: only hydrates if `remoteTs > lastSettingsSyncAt`
+  AND `remoteTs > lastLocalChangedAt` (prevents in-flight fetch from
+  overwriting local edits made after the query started)
+- Orange dot (`nostrSyncing`) shows during both publish and sync operations
+
+---
+
+### Published Event Types
+
+| d-tag | Contents | Trigger |
+|---|---|---|
+| `personal-bloc:settings:v1` | All 15 settings fields | Any of 15 setters (debounced 5s) |
+| `personal-bloc:records:v1` | monthLog array | Deferred — pending monthlyLog feature |
+
+### All 15 Synced Settings Fields
+`income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
+`advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
+`cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
+`tabOrder`, `hiddenTabs`, `simpleMode`
 
 ---
 
@@ -481,26 +520,16 @@ vercel.json                     # Catch-all rewrite → index.html (required for
 
 | Field | Type | Persisted | Notes |
 |---|---|---|---|
-| `nostrAuthEnabled` | boolean | ✅ | Whether the gate is active |
-| `nostrPubkey` | string | ✅ | Hex pubkey of logged-in user |
-| `nostrSigningMethod` | `'nip07' \| 'nip46'` | ✅ | Which path was used |
-| `nostrBunkerUri` | string | ✅ | Stored for reconnect |
-| `nostrRelays` | string[] | ✅ | Relay list |
-| `isAuthenticated` | boolean | ❌ | In-memory only; reset on reload |
-| `nostrSigner` | NostrSigner | ❌ | In-memory only; recreated on reload |
-
----
-
-### Architecture Notes
-
-- `NostrProvider` wraps the root in `main.tsx` — provides `useNostr()` context
-- `NLogin.fromNostrConnect(params, nostr, { signal, onStatus })` handles the
-  entire NIP-46 handshake; never implement this manually
-- Mobile: `window.location.href = nostrConnectUri` triggers iOS deep link to Primal
-- Desktop: `<QRCodeCanvas value={connectUri} />` scanned from phone
-- Callback URL (`/remoteloginsuccess`) only set on mobile
-- `NostrConnectStatus`: `'awaiting-connect'` → `'getting-public-key'` → resolved
-- AbortController used for cancel/retry — always abort on component unmount
+| `nostrAuthEnabled` | boolean | ✅ | Gate toggle |
+| `nostrPubkey` | string | ✅ | Hex pubkey |
+| `nostrSigningMethod` | `'nip07' \| 'nip46' \| null` | ✅ | Login path used |
+| `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
+| `nostrRelays` | string[] | ✅ | From NIP-65 discovery |
+| `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
+| `lastLocalChangedAt` | number | ✅ | Unix ts of last local setter call |
+| `nostrSigner` | NostrSigner | ❌ | In-memory; recreated on restore |
+| `isAuthenticated` | boolean | ❌ | In-memory; reset on reload |
+| `nostrSyncing` | boolean | ❌ | In-memory; UI loading state |
 
 ---
 
