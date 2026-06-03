@@ -250,7 +250,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             step={0.001}
           />
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
-          <NumberInput label="Current balance" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
+          <NumberInput label="Amount Drawn"    value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
           <div className={styles.setupFieldGroup}>
             <span className={styles.setupFieldLabel}>Strategy start date</span>
             <input

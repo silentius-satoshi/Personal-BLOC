@@ -53,7 +53,7 @@ function StrategyCard({ result, dotStyle, costLabel, costValue }: CardProps) {
       <div className={styles.rows}>
         <Row label="BTC Held" value={fmtBtc(result.finalBtcHeld)} />
         {ltvVisible && (
-          <Row label="LoC Balance" value={fmtUSD(result.finalLocBalance)} valueClass={styles.red} />
+          <Row label="Amount Drawn" value={fmtUSD(result.finalLocBalance)} valueClass={styles.red} />
         )}
         <Row label={costLabel} value={costValue} valueClass={styles.amber} />
         {ltvVisible && (

@@ -125,7 +125,7 @@ export default function MonthBreakdown() {
               <th>Income → BTC</th>
               <th>Paydown</th>
               <th>BTC Bought</th>
-              <th>Strike Bal.</th>
+              <th>Strike USD</th>
               <th>Strike Col.</th>
               <th>Strike LTV</th>
               <th>Avail. Credit</th>

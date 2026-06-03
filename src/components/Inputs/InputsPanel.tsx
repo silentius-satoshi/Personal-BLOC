@@ -64,7 +64,7 @@ export function InputsPanel() {
       <div className={styles.scrollArea}>
         <div className={styles.strikeWidget}>
           <div className={styles.strikeWidgetHeader}>
-            <span className={styles.strikeWidgetLabel}>STRIKE USD BALANCE</span>
+            <span className={styles.strikeWidgetLabel}>STRIKE USD HOLDINGS</span>
             <span className={strikeApiConnected ? styles.strikeDotConnected : styles.strikeDotDisconnected} />
           </div>
 
@@ -76,7 +76,7 @@ export function InputsPanel() {
               {netBlocDraw !== null && netBlocDraw < expenses && (
                 <p className={styles.strikeNetDraw}>
                   Draw only {fmtUSD(netBlocDraw)} this month
-                  <span className={styles.strikeNetDrawSub}> (expenses − Strike balance)</span>
+                  <span className={styles.strikeNetDrawSub}> (expenses − Strike holdings)</span>
                 </p>
               )}
               {strikeLastFetched && (

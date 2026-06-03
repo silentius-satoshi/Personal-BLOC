@@ -335,7 +335,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   onClick={() => setEditingBalance(true)}
                   title="Tap to update"
                 >
-                  Balance: <span className={styles.editableAmount}>{fmtUSD(projectedBlocBalance)}</span>
+                  Amount Drawn: <span className={styles.editableAmount}>{fmtUSD(projectedBlocBalance)}</span>
                   {projectedBlocBalance !== advisorActualBlocBalance && (
                     <span className={styles.projectedTag}> projected</span>
                   )}
@@ -343,7 +343,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               )}
 
               <span className={styles.positionStat}>
-                Available: {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}
+                Available Credit: {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}
               </span>
               <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                 {ndp.status === 'never'    && 'NDP — not recorded'}
@@ -557,7 +557,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     <ModalField label="Monthly income"   prefix="$" value={modalDraft.income}      onChange={(v) => setModalDraft(d => ({ ...d, income: v }))} />
                     <ModalField label="Monthly expenses" prefix="$" value={modalDraft.expenses}    onChange={(v) => setModalDraft(d => ({ ...d, expenses: v }))} />
                     <ModalField label="Credit line"      prefix="$" value={modalDraft.creditLine}  onChange={(v) => setModalDraft(d => ({ ...d, creditLine: v }))} />
-                    <ModalField label="BLOC balance"     prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
+                    <ModalField label="Amount Drawn"      prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
                     <ModalField label="BTC held"         prefix="₿" value={modalDraft.btcHeld}     onChange={(v) => setModalDraft(d => ({ ...d, btcHeld: v }))} step={0.001} />
                   </div>
                   <div className={styles.modalActions}>

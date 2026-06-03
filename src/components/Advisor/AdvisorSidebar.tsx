@@ -107,7 +107,7 @@ export function AdvisorSidebar() {
       </div>
 
       <div className={styles.section}>
-        <span className={styles.label}>CURRENT BLOC BALANCE</span>
+        <span className={styles.label}>CURRENT AMOUNT DRAWN</span>
         <NumberInput
           value={advisorActualBlocBalance}
           onChange={setAdvisorActualBlocBalance}

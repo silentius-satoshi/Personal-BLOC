@@ -212,11 +212,11 @@ export function AdvisorMain() {
             <div className={styles.positionCard}>
               <div className={styles.positionCardTitle}>SMART BLOC</div>
               <div className={styles.positionStat}>
-                <span className={styles.positionLabel}>Current balance</span>
+                <span className={styles.positionLabel}>Amount Drawn</span>
                 <span className={styles.positionValue}>{fmtUSD(advisorActualBlocBalance)}</span>
               </div>
               <div className={styles.positionStat}>
-                <span className={styles.positionLabel}>Credit available</span>
+                <span className={styles.positionLabel}>Available Credit</span>
                 <span className={styles.positionValue}>{fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
               </div>
               <div className={styles.positionStat}>
@@ -430,7 +430,7 @@ export function AdvisorMain() {
                     <th>BLOC Draw</th>
                     {hasCbLoan && <th>CB Payment</th>}
                     <th>BTC Bought</th>
-                    <th>BLOC Bal</th>
+                    <th>Drawn</th>
                     {hasCbLoan && <th>CB LTV</th>}
                     <th>Interest</th>
                   </tr>
