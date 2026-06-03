@@ -501,6 +501,30 @@ vercel.json                         # Catch-all rewrite → index.html (required
 
 ---
 
+### Sync Triggers
+Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
+
+| Trigger | When |
+|---|---|
+| Login | Every successful auth (NIP-07, QR, deep link) |
+| Tab visibility | Every time the browser tab becomes visible |
+| Pull-to-refresh | User pulls down on mobile (70px threshold) |
+| Manual button | "↻ Sync now" in Settings tab (desktop) |
+
+### Pull-to-Refresh
+- Hook: src/hooks/usePullToRefresh.ts
+- Only active when nostrAuthEnabled is true
+- Visual: circular card with rotating arrow → orange spinner on release
+- Label: "Pull to sync" → "Release to sync" → "Syncing…"
+- Indicator: src/components/Layout/AppShell.tsx + AppShell.module.css
+
+### Visibility Sync
+- Hook: src/hooks/useNostrSync.ts
+- Fires on visibilitychange → visible
+- Also exposes triggerSync() used by pull-to-refresh and sync button
+
+---
+
 ### Published Event Types
 
 | d-tag | Contents | Trigger |
