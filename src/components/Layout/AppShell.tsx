@@ -33,6 +33,8 @@ import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
 import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
+import { useNostrSync }           from '../../hooks/useNostrSync';
+import { usePullToRefresh }       from '../../hooks/usePullToRefresh';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -179,6 +181,12 @@ export function AppShell() {
 
   useStrikeData();
   useNostrAutoRestore();
+
+  const { triggerSync } = useNostrSync();
+  const { pullDistance, isRefreshing: isPullRefreshing } = usePullToRefresh({
+    onRefresh: triggerSync,
+    enabled: nostrAuthEnabled,
+  });
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
@@ -328,6 +336,19 @@ export function AppShell() {
         <div className={styles.nostrSyncing}>
           <span className={styles.nostrSyncingDot} />
           Syncing…
+        </div>
+      )}
+
+      {nostrAuthEnabled && (pullDistance > 0 || isPullRefreshing) && (
+        <div
+          className={styles.pullIndicator}
+          style={{
+            transform: `translateY(${Math.min(pullDistance, 35) - 40}px)`,
+            transition: isPullRefreshing ? 'transform 0.2s ease' : 'none',
+            opacity: isPullRefreshing ? 1 : pullDistance / 35,
+          }}
+        >
+          <div className={`${styles.pullDot} ${isPullRefreshing ? styles.pullDotPulsing : ''}`} />
         </div>
       )}
     </>

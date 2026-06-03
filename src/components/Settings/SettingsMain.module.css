@@ -255,3 +255,25 @@
   margin: 0;
   line-height: 1.5;
 }
+
+.syncButton {
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: color 0.15s, border-color 0.15s;
+  font-family: inherit;
+}
+
+.syncButton:hover:not(:disabled) {
+  color: var(--orange);
+  border-color: var(--orange);
+}
+
+.syncButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

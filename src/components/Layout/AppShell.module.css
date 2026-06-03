@@ -266,3 +266,25 @@
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
 }
+
+.pullIndicator {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 40px;
+  pointer-events: none;
+  z-index: 9998;
+  padding-bottom: 8px;
+}
+
+.pullDot {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--orange);
+}
+
+.pullDotPulsing {
+  animation: nostrPulse 1.5s ease-in-out infinite;
+}

@@ -14,6 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../../store/useStore';
+import { useNostrSync } from '../../hooks/useNostrSync';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import styles from './SettingsMain.module.css';
@@ -100,6 +101,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
   const nostrAuthEnabled    = useStore((s) => s.nostrAuthEnabled);
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
+  const nostrSyncing        = useStore((s) => s.nostrSyncing);
+  const { triggerSync }     = useNostrSync();
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
   const setNostrPubkey      = useStore((s) => s.setNostrPubkey);
@@ -207,6 +210,16 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               Disconnect
             </button>
           </div>
+        )}
+
+        {nostrAuthEnabled && (
+          <button
+            onClick={triggerSync}
+            disabled={nostrSyncing}
+            className={styles.syncButton}
+          >
+            {nostrSyncing ? 'Syncing…' : '↻ Sync now'}
+          </button>
         )}
 
         {nostrAuthEnabled && !nostrPubkey && (
