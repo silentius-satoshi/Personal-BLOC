@@ -6,6 +6,7 @@ import { deriveAdvisorStart } from '../../simulation/logUtils';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
+import { MonthlyLogSection } from '../Advisor/MonthlyLogSection';
 import styles from './SimpleModeView.module.css';
 
 interface SimpleModeViewProps {
@@ -99,6 +100,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const advisorSkipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
+  const setAdvisorSkipBlocDraw  = useStore((s) => s.setAdvisorSkipBlocDraw);
+  const setAdvisorSkipCbPayment = useStore((s) => s.setAdvisorSkipCbPayment);
+  const setAdvisorSkipBtcBuying = useStore((s) => s.setAdvisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
   const btcBuyingUnit    = useStore((s) => s.btcBuyingUnit);
@@ -141,7 +145,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
-  const [logExpanded, setLogExpanded] = useState(true);
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
@@ -223,6 +226,18 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const ndpMinimum = advisorActualBlocBalance > 0
     ? advisorActualBlocBalance * (blocApr / 100 / 12)
     : 0;
+
+  const currentRow         = advisorRows.find((r) => r.month === currentMonth) ?? null;
+  const expectedPaydown    = currentRow
+    ? Math.max(0, income - (hasCbLoan ? currentRow.cbPayment : 0) - currentRow.incomeToBtc)
+    : 0;
+  const allocatedFromIncome = expectedPaydown
+    + (advisorSkipBtcBuying ? 0 : expectedBtcBuying)
+    + (hasCbLoan && !advisorSkipCbPayment ? expectedCbPayment : 0);
+  const isFullyAllocated   = income > 0 && Math.abs(income - allocatedFromIncome) < 1;
+  const tierStatusText: Record<AdvisorTier, string> = {
+    4: 'SAFE', 3: 'WATCH', 2: 'WARNING', 1: 'EMERGENCY',
+  };
 
   const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 3;
   const doneCount  = [
@@ -486,15 +501,19 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </div>
         ) : (
           <div className={`${styles.card} ${cardTierClass}`}>
-            <div className={styles.planHeader}>
-              <h3 className={styles.planTitle}>
-                {new Date().toLocaleDateString('en-US', { month: 'long' })} — Your Plan
-              </h3>
+            {/* Header */}
+            <div className={styles.planTitleRow}>
+              <div>
+                <h3 className={styles.planTitle}>Month {currentMonth} — This Month's Plan</h3>
+                <div className={styles.planSubtitle}>
+                  BLOC: {fmtUSD(advisorActualBlocBalance)} · BTC: {slmBtcHeld.toFixed(5)}
+                </div>
+              </div>
               <button
-                className={`${styles.tierBadge} ${tierBadgeClass}`}
+                className={`${styles.tierBadgeFull} ${tierBadgeClass}`}
                 onClick={() => setShowTierTip((v) => !v)}
               >
-                T{currentTier}
+                TIER {currentTier} — {tierStatusText[currentTier]}
               </button>
             </div>
             {showTierTip && (
@@ -503,88 +522,114 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               </p>
             )}
 
-            <div className={styles.planSection}>
-              <span className={styles.planSectionLabel}>FROM STRIKE BLOC</span>
-              {/* Change 3 — editable draw amount */}
-              <SimpleModeCheckItem
-                checked={advisorChecklist.blocDraw}
-                animating={justChecked === 'blocDraw'}
-                onChange={(v) => fireCheck('blocDraw', { blocDraw: v }, v)}
-                label="Draw for expenses"
-                amount={advisorSkipBlocDraw ? 'Skipped' : effectiveDrawAmount > 0 ? fmtUSD(effectiveDrawAmount) : '—'}
-                editableAmount={!advisorSkipBlocDraw}
-                defaultAmount={effectiveDrawAmount}
-                onAmountSave={(v) => setCustomBlocDraw(v)}
-              />
-              {showFiatRow && (
-                <SimpleModeCheckItem
-                  checked={advisorChecklist.fiatCoverage}
-                  animating={justChecked === 'fiatCoverage'}
-                  onChange={(v) => fireCheck('fiatCoverage', { fiatCoverage: v }, v)}
-                  label="Cover from savings"
-                  amount={fmtUSD(expectedFiatGap)}
-                />
-              )}
-            </div>
-
-            <div className={styles.planSection}>
-              <span className={styles.planSectionLabel}>
-                FROM INCOME · {fmtUSD(income)}/mo
-              </span>
-              {hasCbLoan && (
-                <SimpleModeCheckItem
-                  checked={advisorChecklist.cbPayment}
-                  animating={justChecked === 'cbPayment'}
-                  onChange={(v) => fireCheck('cbPayment', { cbPayment: v }, v)}
-                  label="Pay CB Loan"
-                  amount={advisorSkipCbPayment ? 'Skipped' : expectedCbPayment > 0 ? fmtUSD(expectedCbPayment) : '—'}
-                />
-              )}
-              {/* BTC buying row — BTC/sats input */}
-              <label className={`${styles.checkItem} ${advisorChecklist.btcBuying ? styles.checkItemDone : ''} ${justChecked === 'btcBuying' ? styles.checkItemPop : ''}`}>
-                <input
-                  type="checkbox"
-                  className={styles.checkbox}
-                  checked={advisorChecklist.btcBuying}
-                  onChange={(e) => fireCheck('btcBuying', { btcBuying: e.target.checked }, e.target.checked)}
-                />
-                <span className={styles.checkLabel}>Buy Bitcoin</span>
-                {advisorSkipBtcBuying ? (
-                  <span className={styles.checkAmount}>Skipped</span>
-                ) : (
-                  <div className={styles.btcBuyingInput}>
-                    <div className={styles.btcUnitToggle}>
-                      <button
-                        className={`${styles.unitBtn} ${btcBuyingUnit === 'btc' ? styles.unitBtnActive : ''}`}
-                        onClick={(e) => { e.preventDefault(); setBtcBuyingUnit('btc'); }}
-                        type="button"
-                      >
-                        ₿ BTC
-                      </button>
-                      <button
-                        className={`${styles.unitBtn} ${btcBuyingUnit === 'sats' ? styles.unitBtnActive : ''}`}
-                        onClick={(e) => { e.preventDefault(); setBtcBuyingUnit('sats'); }}
-                        type="button"
-                      >
-                        丰 sats
-                      </button>
+            {/* Section 1: FROM CREDIT LINE */}
+            {expectedBlocDraw > 0 && (
+              <div className={styles.planSection}>
+                <div className={styles.sectionLabelRow}>
+                  <span className={styles.sectionLabel}>FROM CREDIT LINE</span>
+                </div>
+                <div className={styles.actionRow}>
+                  <span className={styles.actionIcon}>▤</span>
+                  <div className={styles.actionLabelGroup}>
+                    <span className={styles.actionLabel}>Draw from BLOC</span>
+                    <span className={styles.actionSub}>covers monthly expenses</span>
+                  </div>
+                  <span className={styles.actionAmount}>
+                    {advisorSkipBlocDraw ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(effectiveDrawAmount)}
+                  </span>
+                  <div className={styles.paySkipGroup}>
+                    <button
+                      className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`}
+                      onClick={() => { setAdvisorSkipBlocDraw(false); fireCheck('blocDraw', { blocDraw: true }, true); }}
+                    >Pay</button>
+                    <button
+                      className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`}
+                      onClick={() => { setAdvisorSkipBlocDraw(true); fireCheck('blocDraw', { blocDraw: true }, true); }}
+                    >Skip</button>
+                  </div>
+                </div>
+                {showFiatRow && (
+                  <div className={styles.actionRow}>
+                    <span className={styles.actionIcon}>≡</span>
+                    <div className={styles.actionLabelGroup}>
+                      <span className={styles.actionLabel}>Cover from savings</span>
                     </div>
-                    <input
-                      type="number"
-                      className={styles.btcAmountInput}
-                      value={btcBuyingDisplayValue}
-                      step={btcBuyingUnit === 'sats' ? 1 : 0.00000001}
-                      min={0}
-                      placeholder={btcBuyingUnit === 'sats' ? '0' : '0.00000000'}
-                      onClick={(e) => e.preventDefault()}
-                      onChange={(e) => handleBtcBuyingChange(e.target.value)}
-                    />
-                    <span className={styles.btcBuyingUsdRef}>
-                      ≈ {fmtUSD(btcBuyingUsdEquivalent)} at current price
-                    </span>
+                    <span className={styles.actionAmount}>{fmtUSD(expectedFiatGap)}</span>
+                    <div className={styles.paySkipGroup}>
+                      <button
+                        className={`${styles.actionPill} ${advisorChecklist.fiatCoverage ? styles.pillPay : ''}`}
+                        onClick={() => fireCheck('fiatCoverage', { fiatCoverage: !advisorChecklist.fiatCoverage }, !advisorChecklist.fiatCoverage)}
+                      >Pay</button>
+                    </div>
                   </div>
                 )}
-              </label>
+              </div>
+            )}
+
+            {/* Section 2: FROM MONTHLY INCOME */}
+            <div className={styles.planSection}>
+              <div className={styles.sectionLabelRow}>
+                <span className={styles.sectionLabel}>FROM MONTHLY INCOME</span>
+                <span className={styles.sectionIncome}>{fmtUSD(income)}/mo</span>
+              </div>
+              {expectedPaydown > 0 && (
+                <div className={styles.actionRow}>
+                  <span className={styles.actionIcon}>⚡</span>
+                  <div className={styles.actionLabelGroup}>
+                    <span className={styles.actionLabel}>BLOC paydown (LTV triggered)</span>
+                  </div>
+                  <span className={styles.actionAmount}>{fmtUSD(expectedPaydown)}</span>
+                </div>
+              )}
+              {hasCbLoan && (
+                <div className={styles.actionRow}>
+                  <span className={styles.actionIcon}>◎</span>
+                  <div className={styles.actionLabelGroup}>
+                    <span className={styles.actionLabel}>Pay CB Loan</span>
+                  </div>
+                  <span className={styles.actionAmount}>
+                    {advisorSkipCbPayment ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(expectedCbPayment)}
+                  </span>
+                  <div className={styles.paySkipGroup}>
+                    <button
+                      className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`}
+                      onClick={() => { setAdvisorSkipCbPayment(false); fireCheck('cbPayment', { cbPayment: true }, true); }}
+                    >Pay</button>
+                    <button
+                      className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`}
+                      onClick={() => { setAdvisorSkipCbPayment(true); fireCheck('cbPayment', { cbPayment: true }, true); }}
+                    >Skip</button>
+                  </div>
+                </div>
+              )}
+              <div className={styles.actionRow}>
+                <span className={styles.actionIcon}>₿</span>
+                <div className={styles.actionLabelGroup}>
+                  <span className={styles.actionLabel}>Buy Bitcoin</span>
+                  <span className={styles.actionSub}>→ {effectiveBtcAmount.toFixed(5)} BTC</span>
+                </div>
+                <span className={styles.actionAmount}>
+                  {advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(expectedBtcBuying)}
+                </span>
+                <div className={styles.paySkipGroup}>
+                  <button
+                    className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`}
+                    onClick={() => { setAdvisorSkipBtcBuying(false); fireCheck('btcBuying', { btcBuying: true }, true); }}
+                  >Pay</button>
+                  <button
+                    className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`}
+                    onClick={() => { setAdvisorSkipBtcBuying(true); fireCheck('btcBuying', { btcBuying: true }, true); }}
+                  >Skip</button>
+                </div>
+              </div>
+            </div>
+
+            {/* Income allocated banner */}
+            <div className={`${styles.incomeAllocBanner} ${isFullyAllocated ? styles.allocGreen : styles.allocAmber}`}>
+              <span className={styles.allocLabel}>Income allocated:</span>
+              <span className={`${styles.allocValue} ${isFullyAllocated ? styles.allocValueGreen : styles.allocValueAmber}`}>
+                {fmtUSD(allocatedFromIncome)} of {fmtUSD(income)}{isFullyAllocated ? ' ✓' : ''}
+              </span>
             </div>
 
             {/* NDP row */}
@@ -592,39 +637,34 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               const ndpRowClass =
                 ndp.status === 'overdue' || ndp.status === 'never' ? styles.ndpRowOverdue :
                 ndp.status === 'soon'     ? styles.ndpRowSoon :
-                ndp.status === 'upcoming' ? styles.ndpRowUpcoming :
-                '';
+                ndp.status === 'upcoming' ? styles.ndpRowUpcoming : '';
               return (
-                <label className={`${styles.checkItem} ${advisorChecklist.ndpPayment ? styles.checkItemDone : ''} ${justChecked === 'ndpPayment' ? styles.checkItemPop : ''} ${ndpRowClass}`}>
-                  <input
-                    type="checkbox"
-                    className={styles.checkbox}
-                    checked={advisorChecklist.ndpPayment}
-                    onChange={(e) => fireCheck('ndpPayment', { ndpPayment: e.target.checked }, e.target.checked)}
-                  />
-                  <span className={styles.checkLabel}>
-                    Non-Draw Payment
+                <div className={`${styles.actionRow} ${ndpRowClass}`}>
+                  <span className={styles.actionIcon}>◇</span>
+                  <div className={styles.actionLabelGroup}>
+                    <span className={styles.actionLabel}>Non-Draw Payment</span>
                     {ndp.status !== 'ok' && (
-                      <span className={styles.ndpStatusLine}>
-                        {ndp.status === 'never'    ? 'Never recorded' :
-                         ndp.status === 'overdue'  ? '⛔ Overdue' :
-                         ndp.status === 'soon'     ? `⚠ ${ndp.daysRemaining} days remaining` :
-                                                     `${ndp.daysRemaining} days remaining`}
+                      <span className={styles.actionSub}>
+                        {ndp.status === 'never'   ? 'Never recorded' :
+                         ndp.status === 'overdue' ? '⛔ Overdue' :
+                         ndp.status === 'soon'    ? `⚠ ${ndp.daysRemaining}d remaining` :
+                                                    `${ndp.daysRemaining}d remaining`}
                       </span>
                     )}
-                  </span>
-                  {ndpMinimum > 0 && (
-                    <span className={styles.checkAmount}>{fmtUSD(ndpMinimum)} min.</span>
-                  )}
-                </label>
+                  </div>
+                  {ndpMinimum > 0 && <span className={styles.actionAmount}>{fmtUSD(ndpMinimum)} min.</span>}
+                  <div className={styles.paySkipGroup}>
+                    <button
+                      className={`${styles.actionPill} ${advisorChecklist.ndpPayment ? styles.pillPay : ''}`}
+                      onClick={() => fireCheck('ndpPayment', { ndpPayment: !advisorChecklist.ndpPayment }, !advisorChecklist.ndpPayment)}
+                    >Pay</button>
+                  </div>
+                </div>
               );
             })()}
 
-            <div className={styles.progress}>
-              {doneCount} of {totalItems} done
-            </div>
+            <div className={styles.progress}>{doneCount} of {totalItems} done</div>
 
-            {/* Change 4 — one-shot apply with confirmation */}
             {hasProjection && !projectionApplied && (
               <button className={styles.applyBtn} onClick={handleApply}>
                 Apply to next month →
@@ -636,7 +676,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
             {!strategyDone && (
               <button
-                className={styles.logThisMonthSimpleBtn}
+                className={styles.logThisMonthOutlineBtn}
                 onClick={() => {
                   setLogOverlayInitialMonth(currentMonth - 1);
                   setLogOverlayOpen(true);
@@ -649,58 +689,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         )}
 
         {/* Monthly Log section */}
-        {(() => {
-          const recentLogged = [...monthlyLog].sort((a, b) => b.month - a.month).slice(0, 3);
-          return (
-            <div className={styles.logSection}>
-              <button className={styles.logSectionHeader} onClick={() => setLogExpanded((v) => !v)}>
-                <span className={styles.logLabel}>MONTHLY LOG</span>
-                <span className={styles.logBadge}>{monthlyLog.length} / 12</span>
-                <span className={styles.logChevron}>{logExpanded ? '▲' : '▼'}</span>
-              </button>
-
-              {logExpanded && (
-                <>
-                  {recentLogged.map((entry) => (
-                    <button
-                      key={entry.month}
-                      className={styles.logEntryRow}
-                      onClick={() => {
-                        setLogOverlayInitialMonth(entry.month - 1);
-                        setLogOverlayOpen(true);
-                      }}
-                    >
-                      <span className={styles.logDot} />
-                      <span className={styles.logEntryMeta}>Mo {entry.month} · {entry.date}</span>
-                      <span className={styles.logEntryBtc}>+{entry.btcBought.toFixed(5)} ₿</span>
-                    </button>
-                  ))}
-
-                  <div className={styles.logFooter}>
-                    <button
-                      className={styles.logThisMonthFooterBtn}
-                      onClick={() => {
-                        setLogOverlayInitialMonth(currentMonth - 1);
-                        setLogOverlayOpen(true);
-                      }}
-                    >
-                      Log this month
-                    </button>
-                    <button
-                      className={styles.viewAllBtn}
-                      onClick={() => {
-                        setLogOverlayInitialMonth(currentMonth - 1);
-                        setLogOverlayOpen(true);
-                      }}
-                    >
-                      View all 12 →
-                    </button>
-                  </div>
-                </>
-              )}
-            </div>
-          );
-        })()}
+        <MonthlyLogSection
+          months={advisorRows}
+          onOpenOverlay={(idx) => {
+            setLogOverlayInitialMonth(idx);
+            setLogOverlayOpen(true);
+          }}
+        />
 
         {/* Change 1 (iter 2) — setup prompt + modal */}
         {isDefaultSetup && (
