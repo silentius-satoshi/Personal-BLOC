@@ -31,19 +31,20 @@
   flex-shrink: 0;
 }
 
-.viewAllBtn {
-  margin-left: auto;
+.removeBtn {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 6px;
+  border: 1px solid rgba(232,90,79,0.35);
+  color: var(--red);
   background: none;
-  border: none;
-  color: var(--orange);
   cursor: pointer;
-  font-size: 12px;
   font-family: inherit;
-  padding: 0;
+  transition: background 0.12s;
   flex-shrink: 0;
-  transition: opacity 0.15s;
 }
-.viewAllBtn:hover { opacity: 0.75; }
+.removeBtn:hover { background: rgba(232,90,79,0.07); }
 
 /* Carousel */
 .carousel {
@@ -216,6 +217,77 @@
   font-style: italic;
   font-weight: 400;
 }
+
+/* Unlog confirmation */
+.unlogConfirmRow { display: flex; align-items: center; gap: 8px; padding: 8px 0; }
+.unlogConfirmText { font-size: 12px; color: var(--text-secondary); flex: 1; }
+.confirmBtn { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 4px; border: 1px solid rgba(232,90,79,0.5); color: var(--red); background: rgba(232,90,79,0.08); cursor: pointer; font-family: inherit; }
+.cancelConfirmBtn { font-size: 11px; padding: 3px 10px; border-radius: 4px; border: 1px solid var(--border); color: var(--text-ghost); background: none; cursor: pointer; font-family: inherit; }
+
+/* Inline edit form */
+.editFormGrid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+  padding-top: 10px;
+}
+
+.inlineFieldGroup { display: flex; flex-direction: column; gap: 3px; }
+
+.inlineFieldRow {
+  display: flex;
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 0 8px;
+  height: 36px;
+  gap: 4px;
+  transition: border-color 0.12s;
+}
+.inlineFieldRow:focus-within { border-color: var(--orange); }
+
+.inlinePrefix { font-size: 13px; color: var(--text-ghost); flex-shrink: 0; }
+.inlineSuffix { font-size: 13px; color: var(--text-ghost); flex-shrink: 0; }
+
+.inlineInput {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  outline: none;
+  min-width: 0;
+}
+
+.editFormActions { display: flex; gap: 8px; padding-top: 4px; }
+
+.saveBtn {
+  background: var(--orange);
+  border: none;
+  border-radius: 6px;
+  color: #000;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 7px 18px;
+  transition: opacity 0.15s;
+}
+.saveBtn:hover { opacity: 0.88; }
+
+.cancelEditBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 7px 14px;
+  transition: border-color 0.12s;
+}
+.cancelEditBtn:hover { border-color: var(--text-secondary); }
 
 @media (max-width: 640px) {
   .fieldGrid {

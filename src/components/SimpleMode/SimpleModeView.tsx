@@ -6,7 +6,7 @@ import { deriveAdvisorStart } from '../../simulation/logUtils';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
-import { MonthlyLogSection } from '../Advisor/MonthlyLogSection';
+import { MonthlyLogSection, type MonthlyLogSectionHandle } from '../Advisor/MonthlyLogSection';
 import styles from './SimpleModeView.module.css';
 
 interface SimpleModeViewProps {
@@ -121,8 +121,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   // Feature 2
   const [showTierTip, setShowTierTip] = useState(false);
-  // Feature 4
-  const [editingBalance, setEditingBalance] = useState(false);
   // Feature 5
   const [justChecked, setJustChecked] = useState<string | null>(null);
   // Feature 6
@@ -145,6 +143,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
+  const logSectionRef    = useRef<MonthlyLogSectionHandle>(null);
+  const logSectionDivRef = useRef<HTMLDivElement>(null);
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
@@ -206,20 +206,20 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       ? Math.round(effectiveBtcAmount * SATS_PER_BTC)
       : effectiveBtcAmount;
 
-  // Change 3 — projections use effective amounts
-  const projectedBlocBalance = advisorChecklist.blocDraw && effectiveDrawAmount > 0
-    ? advisorActualBlocBalance + effectiveDrawAmount
-    : advisorActualBlocBalance;
-
   const btcAccumulatedThisMonth = advisorChecklist.btcBuying && effectiveBtcAmount > 0
-    ? effectiveBtcAmount  // BTC directly — no price conversion
+    ? effectiveBtcAmount
     : 0;
 
-  const projectedBtcHeld = advisorActualBtcHeld + btcAccumulatedThisMonth;
+  // True end-of-month projections from AdvisorMonthRow + skip flags
+  const eomBlocBalance: number = currentRow
+    ? slmBlocBal + (advisorSkipBlocDraw ? 0 : currentRow.blocDraw) + currentRow.blocInterest - expectedPaydown
+    : advisorActualBlocBalance;
+  const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
+  const eomLtv: number     = eomBtcHeld * btcPrice > 0 ? eomBlocBalance / (eomBtcHeld * btcPrice) : 0;
 
   const hasProjection =
-    projectedBlocBalance !== advisorActualBlocBalance ||
-    btcAccumulatedThisMonth > 0;
+    Math.abs(eomBlocBalance - advisorActualBlocBalance) > 0.01 ||
+    Math.abs(eomBtcHeld - slmBtcHeld) > 1e-9;
 
   // Change 2 — THIS MONTH column
   const cashBalanceThisMonth = advisorChecklist.btcBuying ? 0 : expectedBtcBuying;
@@ -239,13 +239,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     4: 'SAFE', 3: 'WATCH', 2: 'WARNING', 1: 'EMERGENCY',
   };
 
-  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 3;
+  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
   const doneCount  = [
     advisorChecklist.blocDraw,
     showFiatRow && advisorChecklist.fiatCoverage,
     hasCbLoan && advisorChecklist.cbPayment,
     advisorChecklist.btcBuying,
-    advisorChecklist.ndpPayment,
   ].filter(Boolean).length;
   const allDone = doneCount === totalItems;
 
@@ -311,10 +310,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setCustomBtcBuying(btcBuyingUnit === 'sats' ? n / SATS_PER_BTC : n);
   };
 
-  // Change 4 — one-shot apply handler
   const handleApply = () => {
-    setAdvisorActualBlocBalance(projectedBlocBalance);
-    if (btcAccumulatedThisMonth > 0) setAdvisorActualBtcHeld(projectedBtcHeld);
+    setAdvisorActualBlocBalance(eomBlocBalance);
+    if (Math.abs(eomBtcHeld - slmBtcHeld) > 1e-9) setAdvisorActualBtcHeld(eomBtcHeld);
     if (advisorChecklist.ndpPayment) {
       setNdpLastPaidDate(new Date().toISOString().split('T')[0]);
     }
@@ -385,42 +383,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             {/* Left — STRIKE BLOC */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>STRIKE BLOC</span>
-
-              {editingBalance ? (
-                <input
-                  type="number"
-                  className={styles.balanceInput}
-                  defaultValue={advisorActualBlocBalance}
-                  autoFocus
-                  onBlur={(e) => {
-                    setAdvisorActualBlocBalance(parseFloat(e.target.value) || 0);
-                    setEditingBalance(false);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') {
-                      setAdvisorActualBlocBalance(parseFloat((e.target as HTMLInputElement).value) || 0);
-                      setEditingBalance(false);
-                    }
-                    if (e.key === 'Escape') setEditingBalance(false);
-                  }}
-                />
-              ) : (
-                /* Change 1 — dotted underline on amount span only */
-                <button
-                  className={styles.balanceEditBtn}
-                  onClick={() => setEditingBalance(true)}
-                  title="Tap to update"
-                >
-                  Amount Drawn: <span className={styles.editableAmount}>{fmtUSD(projectedBlocBalance)}</span>
-                  {projectedBlocBalance !== advisorActualBlocBalance && (
-                    <span className={styles.projectedTag}> projected</span>
-                  )}
-                </button>
-              )}
-
               <span className={styles.positionStat}>
-                Available Credit: {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}
+                {fmtUSD(eomBlocBalance)}<span className={styles.projectedLabel}> end of mo</span>
               </span>
+              <span className={styles.positionStat}>LTV: {(eomLtv * 100).toFixed(1)}%</span>
+              <span className={styles.positionStat}>₿ {eomBtcHeld.toFixed(5)}</span>
+              <span className={styles.positionStat}>Avail: {fmtUSD(Math.max(0, creditLine - eomBlocBalance))}</span>
               <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                 {ndp.status === 'never'    && 'NDP — not recorded'}
                 {ndp.status === 'ok'       && `NDP: ${ndp.daysRemaining}d`}
@@ -506,7 +474,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <div>
                 <h3 className={styles.planTitle}>Month {currentMonth} — This Month's Plan</h3>
                 <div className={styles.planSubtitle}>
-                  BLOC: {fmtUSD(advisorActualBlocBalance)} · BTC: {slmBtcHeld.toFixed(5)}
+                  BLOC: {fmtUSD(eomBlocBalance)} · BTC: {eomBtcHeld.toFixed(5)}
                 </div>
               </div>
               <button
@@ -632,37 +600,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               </span>
             </div>
 
-            {/* NDP row */}
-            {(() => {
-              const ndpRowClass =
-                ndp.status === 'overdue' || ndp.status === 'never' ? styles.ndpRowOverdue :
-                ndp.status === 'soon'     ? styles.ndpRowSoon :
-                ndp.status === 'upcoming' ? styles.ndpRowUpcoming : '';
-              return (
-                <div className={`${styles.actionRow} ${ndpRowClass}`}>
-                  <span className={styles.actionIcon}>◇</span>
-                  <div className={styles.actionLabelGroup}>
-                    <span className={styles.actionLabel}>Non-Draw Payment</span>
-                    {ndp.status !== 'ok' && (
-                      <span className={styles.actionSub}>
-                        {ndp.status === 'never'   ? 'Never recorded' :
-                         ndp.status === 'overdue' ? '⛔ Overdue' :
-                         ndp.status === 'soon'    ? `⚠ ${ndp.daysRemaining}d remaining` :
-                                                    `${ndp.daysRemaining}d remaining`}
-                      </span>
-                    )}
-                  </div>
-                  {ndpMinimum > 0 && <span className={styles.actionAmount}>{fmtUSD(ndpMinimum)} min.</span>}
-                  <div className={styles.paySkipGroup}>
-                    <button
-                      className={`${styles.actionPill} ${advisorChecklist.ndpPayment ? styles.pillPay : ''}`}
-                      onClick={() => fireCheck('ndpPayment', { ndpPayment: !advisorChecklist.ndpPayment }, !advisorChecklist.ndpPayment)}
-                    >Pay</button>
-                  </div>
-                </div>
-              );
-            })()}
-
             <div className={styles.progress}>{doneCount} of {totalItems} done</div>
 
             {hasProjection && !projectionApplied && (
@@ -678,8 +615,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <button
                 className={styles.logThisMonthOutlineBtn}
                 onClick={() => {
-                  setLogOverlayInitialMonth(currentMonth - 1);
-                  setLogOverlayOpen(true);
+                  logSectionDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                  logSectionRef.current?.focusMonth(currentMonth - 1);
                 }}
               >
                 Log this month
@@ -689,13 +626,44 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         )}
 
         {/* Monthly Log section */}
-        <MonthlyLogSection
-          months={advisorRows}
-          onOpenOverlay={(idx) => {
-            setLogOverlayInitialMonth(idx);
-            setLogOverlayOpen(true);
-          }}
-        />
+        <div ref={logSectionDivRef}>
+          <MonthlyLogSection
+            ref={logSectionRef}
+            months={advisorRows}
+            onOpenOverlay={(idx) => {
+              setLogOverlayInitialMonth(idx);
+              setLogOverlayOpen(true);
+            }}
+          />
+        </div>
+
+        {/* Standalone NDP card */}
+        {ndp.status !== 'ok' && (
+          <div className={`${styles.ndpStatusCard} ${
+            ndp.status === 'overdue' ? styles.ndpStatusOverdue :
+            ndp.status === 'soon'    ? styles.ndpStatusSoon    :
+                                       styles.ndpStatusUpcoming
+          }`}>
+            <span className={styles.ndpStatusIcon}>
+              {ndp.status === 'overdue' ? '⛔' : '⚠'}
+            </span>
+            <div className={styles.actionLabelGroup}>
+              <span className={styles.actionLabel}>Non-Draw Payment</span>
+              <span className={styles.actionSub}>
+                {ndp.status === 'never'   ? 'Never recorded' :
+                 ndp.status === 'overdue' ? 'Overdue — pay Strike now' :
+                                            `Due in ${ndp.daysRemaining} days`}
+              </span>
+            </div>
+            {ndpMinimum > 0 && <span className={styles.actionAmount}>{fmtUSD(ndpMinimum)} min.</span>}
+            <div className={styles.paySkipGroup}>
+              <button
+                className={`${styles.actionPill} ${advisorChecklist.ndpPayment ? styles.pillPay : ''}`}
+                onClick={() => fireCheck('ndpPayment', { ndpPayment: !advisorChecklist.ndpPayment }, !advisorChecklist.ndpPayment)}
+              >Pay</button>
+            </div>
+          </div>
+        )}
 
         {/* Change 1 (iter 2) — setup prompt + modal */}
         {isDefaultSetup && (

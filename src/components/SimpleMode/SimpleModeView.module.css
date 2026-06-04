@@ -632,6 +632,23 @@
   margin-top: 2px;
 }
 
+/* Projected label (ghost suffix on position stats) */
+.projectedLabel { font-size: 11px; color: var(--text-ghost); font-weight: 400; }
+
+/* Standalone NDP status card */
+.ndpStatusCard {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid;
+}
+.ndpStatusOverdue  { background: rgba(232,90,79,0.08);   border-color: rgba(232,90,79,0.35); }
+.ndpStatusSoon     { background: rgba(232,131,106,0.07); border-color: rgba(232,131,106,0.3); }
+.ndpStatusUpcoming { background: rgba(255,255,255,0.03); border-color: var(--border); }
+.ndpStatusIcon     { font-size: 16px; flex-shrink: 0; }
+
 /* Log this month — outlined orange CTA */
 .logThisMonthOutlineBtn {
   width: 100%;
