@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { runCoinbaseLoan, classifyLtv, type CbLtvStatus } from '../../simulation/runCoinbaseLoan';
+import { LiquidationModeler } from './LiquidationModeler';
 import { fmtUSD } from '../../utils/format';
 import styles from './CoinbaseLoanMain.module.css';
 
@@ -62,7 +63,8 @@ export function CoinbaseLoanMain() {
   const cbLoanBalance    = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);
   const cbAprPct         = useStore((s) => s.cbAprPct);
-  const cbMonthlyPayment = useStore((s) => s.cbMonthlyPayment);
+  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
+  const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
 
   const monthlyInterest = cbLoanBalance * (cbAprPct / 100 / 12);
   const currentLtv      = cbLoanBalance / (cbCollateralBtc * btcPrice);
@@ -174,6 +176,14 @@ export function CoinbaseLoanMain() {
           A full liquidation permanently closes your position.
         </p>
       </div>
+
+      {/* Liquidation Modeler */}
+      <LiquidationModeler
+        loanBalance={cbLoanBalance}
+        collateralBtc={cbCollateralBtc}
+        btcPrice={btcPrice}
+        liquidationPrice={cbLiquidationPrice}
+      />
 
       {/* Section 5 — 12-Month Projection */}
       <div className={styles.card}>

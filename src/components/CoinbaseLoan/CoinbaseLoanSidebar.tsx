@@ -9,11 +9,13 @@ export function CoinbaseLoanSidebar() {
   const cbLoanBalance    = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);
   const cbAprPct         = useStore((s) => s.cbAprPct);
-  const cbMonthlyPayment = useStore((s) => s.cbMonthlyPayment);
+  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
+  const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
   const setCbLoanBalance    = useStore((s) => s.setCbLoanBalance);
   const setCbCollateralBtc  = useStore((s) => s.setCbCollateralBtc);
   const setCbAprPct         = useStore((s) => s.setCbAprPct);
-  const setCbMonthlyPayment = useStore((s) => s.setCbMonthlyPayment);
+  const setCbMonthlyPayment   = useStore((s) => s.setCbMonthlyPayment);
+  const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
 
   const { livePrice, lastUpdated } = useBtcPrice();
   const isSynced = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
@@ -56,6 +58,19 @@ export function CoinbaseLoanSidebar() {
           min={0}
           step={500}
         />
+      </div>
+
+      <div className={styles.section}>
+        <span className={styles.label}>COINBASE LIQUIDATION PRICE</span>
+        <NumberInput
+          value={cbLiquidationPrice}
+          onChange={setCbLiquidationPrice}
+          prefix="$"
+          decimals={0}
+          min={0}
+          step={1000}
+        />
+        <p className={styles.hint}>Enter the exact figure Coinbase shows in your Loan Center.</p>
       </div>
 
       <div className={styles.section}>

@@ -54,10 +54,11 @@ interface StoreState {
   timeHorizonYears: number;
 
   // CB Loan tab inputs
-  cbLoanBalance:    number;
-  cbCollateralBtc:  number;
-  cbAprPct:         number;
-  cbMonthlyPayment: number;
+  cbLoanBalance:       number;
+  cbCollateralBtc:     number;
+  cbAprPct:            number;
+  cbMonthlyPayment:    number;
+  cbLiquidationPrice:  number;
 
   // App mode
   simpleMode:            boolean;
@@ -130,7 +131,8 @@ interface StoreState {
   setCbLoanBalance:    (v: number) => void;
   setCbCollateralBtc:  (v: number) => void;
   setCbAprPct:         (v: number) => void;
-  setCbMonthlyPayment: (v: number) => void;
+  setCbMonthlyPayment:    (v: number) => void;
+  setCbLiquidationPrice:  (v: number) => void;
 
   // Setters — Advisor tab
   setAdvisorStartDate:         (date: string) => void;
@@ -267,7 +269,8 @@ export const useStore = create<StoreState>()(
   cbLoanBalance:    60000,
   cbCollateralBtc:  1.48,
   cbAprPct:         4.77,
-  cbMonthlyPayment: 0,
+  cbMonthlyPayment:   0,
+  cbLiquidationPrice: 0,
 
   simpleMode:         false,
   onboardingComplete: false,
@@ -315,7 +318,8 @@ export const useStore = create<StoreState>()(
   setCbLoanBalance:    (v) => { set({ cbLoanBalance: v });    useStore.getState().syncSettingsToNostr(); },
   setCbCollateralBtc:  (v) => { set({ cbCollateralBtc: v });  useStore.getState().syncSettingsToNostr(); },
   setCbAprPct:         (v) => { set({ cbAprPct: v });         useStore.getState().syncSettingsToNostr(); },
-  setCbMonthlyPayment: (v) => set({ cbMonthlyPayment: v }),
+  setCbMonthlyPayment:   (v) => set({ cbMonthlyPayment: v }),
+  setCbLiquidationPrice: (v) => set({ cbLiquidationPrice: v }),
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -465,7 +469,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 4,
+      version: 5,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
@@ -476,7 +480,8 @@ export const useStore = create<StoreState>()(
         toolTabs:        persistedState.toolTabs        ?? ['powerlaw', 'converter', 'mining'],
         hasCbLoan:       persistedState.hasCbLoan       ?? (persistedState.cbLoanBalance > 0),
         monthlyLog:      persistedState.monthlyLog      ?? [],
-        showMiningInLog: persistedState.showMiningInLog ?? false,
+        showMiningInLog:    persistedState.showMiningInLog    ?? false,
+        cbLiquidationPrice: persistedState.cbLiquidationPrice ?? 0,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {

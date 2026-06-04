@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (59 tests — all must pass before every commit)
+- Vitest (65 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -121,11 +121,13 @@ src/
 
     CoinbaseLoan/
       CoinbaseLoanMain.tsx      # 7 sections: header, emergency banner, stat cards, LTV bar,
-                                # alert thresholds, 12-month projection, emergency protocol,
-                                # Strike vs Coinbase comparison
+                                # alert thresholds, liquidation modeler, 12-month projection,
+                                # emergency protocol, Strike vs Coinbase comparison
       CoinbaseLoanMain.module.css
       CoinbaseLoanSidebar.tsx
       CoinbaseLoanSidebar.module.css
+      LiquidationModeler.tsx    # 4-scenario liquidation math; gated by cbLiquidationPrice > 0
+      LiquidationModeler.module.css
 
     Advisor/
       AdvisorMain.tsx           # Progress bar, position cards, This Month's Plan (Pay/Skip),
@@ -213,10 +215,11 @@ miningInputs: {
 
 ### CB Loan Tab
 ```typescript
-cbLoanBalance:    number;   // default 60000
-cbCollateralBtc:  number;   // default 1.48
-cbAprPct:         number;   // default 4.77
-cbMonthlyPayment: number;   // default 0
+cbLoanBalance:       number;   // default 60000
+cbCollateralBtc:     number;   // default 1.48
+cbAprPct:            number;   // default 4.77
+cbMonthlyPayment:    number;   // default 0
+cbLiquidationPrice:  number;   // default 0 (0 = not set by user; guard before calling compute fn)
 ```
 
 ### Advisor Tab
@@ -578,7 +581,7 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
 | `deriveAdvisorStart` | Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
-| Zustand v4 migration | Only adds `monthlyLog/showMiningInLog`; nothing else reset |
+| Zustand v5 migration | Only adds `cbLiquidationPrice`; nothing else reset |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |
@@ -590,3 +593,5 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | Skip fields | Persisted in store — reset only when user toggles back to Pay |
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
+| `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
+| `cbLiquidationPrice` | Not synced to Nostr; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
