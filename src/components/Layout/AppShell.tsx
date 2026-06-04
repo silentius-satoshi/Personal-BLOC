@@ -40,6 +40,7 @@ import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
+import { LiqSimulator }     from '../Tools/LiqSimulator';
 import styles from './AppShell.module.css';
 
 const ALL_TABS_META = [
@@ -96,9 +97,11 @@ interface ToolsDropdownProps {
   activeTab: string;
   onSelect:  (key: string) => void;
   styles:    Record<string, string>;
+  hasCbLoan: boolean;
+  onLiqSim:  () => void;
 }
 
-function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps) {
+function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan, onLiqSim }: ToolsDropdownProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos]   = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
@@ -120,7 +123,7 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps
     return () => document.removeEventListener('keydown', handler);
   }, [open]);
 
-  if (tabs.length === 0) return null;
+  if (tabs.length === 0 && !hasCbLoan) return null;
 
   const openDropdown = () => {
     const rect = ref.current?.getBoundingClientRect();
@@ -148,6 +151,14 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps
               {tab.fullLabel}
             </button>
           ))}
+          {hasCbLoan && (
+            <button
+              className={styles.toolsItem}
+              onClick={() => { onLiqSim(); setOpen(false); }}
+            >
+              Liq Price Simulator
+            </button>
+          )}
         </div>,
         document.body
       )}
@@ -188,7 +199,8 @@ export function AppShell() {
     enabled: nostrAuthEnabled,
   });
 
-  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
+  const [isMobile, setIsMobile]     = useState(() => window.innerWidth <= 640);
+  const [liqSimOpen, setLiqSimOpen] = useState(false);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth <= 640);
     window.addEventListener('resize', handler);
@@ -309,6 +321,8 @@ export function AppShell() {
               activeTab={activeTab}
               onSelect={(key) => setActiveTab(key as ActiveTab)}
               styles={styles}
+              hasCbLoan={hasCbLoan}
+              onLiqSim={() => setLiqSimOpen(true)}
             />
 
             <button
@@ -354,6 +368,25 @@ export function AppShell() {
           <span className={styles.nostrSyncingDot} />
           Syncing…
         </div>
+      )}
+
+      {liqSimOpen && createPortal(
+        <div className={styles.liqSimOverlay}>
+          <div className={styles.liqSimHeader}>
+            <span className={styles.liqSimTitle}>LIQ PRICE SIMULATOR</span>
+            <button
+              className={styles.liqSimClose}
+              onClick={() => setLiqSimOpen(false)}
+              aria-label="Close"
+            >
+              ✕
+            </button>
+          </div>
+          <div className={styles.liqSimBody}>
+            <LiqSimulator />
+          </div>
+        </div>,
+        document.body
       )}
 
       {nostrAuthEnabled && (pullDistance > 0 || isPullRefreshing) && (

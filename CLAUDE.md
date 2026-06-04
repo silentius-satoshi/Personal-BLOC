@@ -63,6 +63,10 @@ src/
                                 # hiddenTabs guard useEffect, [data-active-tab] on shell div
       AppShell.module.css
 
+    Tools/
+      LiqSimulator.tsx          # Liq Price Simulator overlay content; reads store directly, no props
+      LiqSimulator.module.css
+
     ui/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
       NumberInput.tsx           # prefix/suffix/decimals props (avoid suffix inside input)
