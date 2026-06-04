@@ -15,7 +15,7 @@ const REPAY_LABELS = ['25% REPAID', '50% REPAID', '75% REPAID', '100% REPAID ←
 export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liquidationPrice }: LiquidationModelerProps) {
   const [showDetail, setShowDetail] = useState(false);
 
-  if (liquidationPrice === 0) {
+  if (liquidationPrice === 0 || btcPrice === 0) {
     return (
       <div className={styles.emptyCard}>
         <span className={styles.emptyTitle}>LIQUIDATION MATH</span>
