@@ -26,6 +26,7 @@ const ALL_TABS = [
   { key: 'converter', label: 'Sats'                },
   { key: 'mining',    label: 'Miners'              },
   { key: 'coinbase',  label: 'CB Loan'             },
+  { key: 'liqsim',   label: 'Liq Sim'             },
   { key: 'advisor',   label: 'Advisor'             },
 ] as const;
 

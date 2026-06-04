@@ -50,7 +50,8 @@ const ALL_TABS_META = [
   { key: 'converter', fullLabel: 'Sats',              shortLabel: '丰'        },
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'   },
   { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'       },
-  { key: 'advisor',   fullLabel: 'Advisor',           shortLabel: 'Adv'      },
+  { key: 'liqsim',   fullLabel: 'Liq Sim',           shortLabel: 'Liq'      },
+  { key: 'advisor',  fullLabel: 'Advisor',            shortLabel: 'Adv'      },
 ] as const;
 
 type TabKey = typeof ALL_TABS_META[number]['key'];
@@ -98,10 +99,9 @@ interface ToolsDropdownProps {
   onSelect:  (key: string) => void;
   styles:    Record<string, string>;
   hasCbLoan: boolean;
-  onLiqSim:  () => void;
 }
 
-function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan, onLiqSim }: ToolsDropdownProps) {
+function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan }: ToolsDropdownProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos]   = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
@@ -154,7 +154,7 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan, onLiqSim 
           {hasCbLoan && (
             <button
               className={styles.toolsItem}
-              onClick={() => { onLiqSim(); setOpen(false); }}
+              onClick={() => { onSelect('liqsim'); setOpen(false); }}
             >
               Liq Price Simulator
             </button>
@@ -199,8 +199,7 @@ export function AppShell() {
     enabled: nostrAuthEnabled,
   });
 
-  const [isMobile, setIsMobile]     = useState(() => window.innerWidth <= 640);
-  const [liqSimOpen, setLiqSimOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
     const handler = () => setIsMobile(window.innerWidth <= 640);
     window.addEventListener('resize', handler);
@@ -228,7 +227,7 @@ export function AppShell() {
   const visibleTabs = orderedKeys
     .map((key) => ALL_TABS_META.find((t) => t.key === key))
     .filter((t): t is typeof ALL_TABS_META[number] =>
-      t !== undefined && !hiddenTabs.includes(t.key) && (t.key !== 'coinbase' || hasCbLoan)
+      t !== undefined && !hiddenTabs.includes(t.key) && (t.key !== 'coinbase' || hasCbLoan) && (t.key !== 'liqsim' || hasCbLoan)
     );
 
   const effectiveToolKeys: readonly string[] = isMobile ? TOOL_KEYS : toolTabs;
@@ -236,7 +235,7 @@ export function AppShell() {
   const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key));
 
   const toolTabsList = orderedKeys
-    .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k) && (k !== 'coinbase' || hasCbLoan))
+    .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k) && (k !== 'coinbase' || hasCbLoan) && (k !== 'liqsim' || hasCbLoan))
     .map((k) => ALL_TABS_META.find((t) => t.key === k))
     .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined);
 
@@ -322,7 +321,6 @@ export function AppShell() {
               onSelect={(key) => setActiveTab(key as ActiveTab)}
               styles={styles}
               hasCbLoan={hasCbLoan}
-              onLiqSim={() => setLiqSimOpen(true)}
             />
 
             <button
@@ -340,6 +338,7 @@ export function AppShell() {
           <aside className={styles.sidebar}>
             <div className={styles.sidebarInner}>
               {activeTab === 'settings'   ? null                   :
+               activeTab === 'liqsim'     ? null                   :
                activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
                activeTab === 'advisor'    ? <AdvisorSidebar />      :
                activeTab === 'living'     ? <LivingInputsPanel />   :
@@ -358,6 +357,7 @@ export function AppShell() {
              activeTab === 'powerlaw'   ? <PowerLawMain />      :
              activeTab === 'converter'  ? <ConverterMain />     :
              activeTab === 'mining'     ? <MiningMain />        :
+             activeTab === 'liqsim'     ? <LiqSimulator />     :
                                           <SmartBlocMain />}
           </main>
         </div>
@@ -368,25 +368,6 @@ export function AppShell() {
           <span className={styles.nostrSyncingDot} />
           Syncing…
         </div>
-      )}
-
-      {liqSimOpen && createPortal(
-        <div className={styles.liqSimOverlay}>
-          <div className={styles.liqSimHeader}>
-            <span className={styles.liqSimTitle}>LIQ PRICE SIMULATOR</span>
-            <button
-              className={styles.liqSimClose}
-              onClick={() => setLiqSimOpen(false)}
-              aria-label="Close"
-            >
-              ✕
-            </button>
-          </div>
-          <div className={styles.liqSimBody}>
-            <LiqSimulator />
-          </div>
-        </div>,
-        document.body
       )}
 
       {nostrAuthEnabled && (pullDistance > 0 || isPullRefreshing) && (
