@@ -210,6 +210,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     ? effectiveBtcAmount
     : 0;
 
+  const currentRow         = advisorRows.find((r) => r.month === currentMonth) ?? null;
+  const expectedPaydown    = currentRow
+    ? Math.max(0, income - (hasCbLoan ? currentRow.cbPayment : 0) - currentRow.incomeToBtc)
+    : 0;
+
   // True end-of-month projections from AdvisorMonthRow + skip flags
   const eomBlocBalance: number = currentRow
     ? slmBlocBal + (advisorSkipBlocDraw ? 0 : currentRow.blocDraw) + currentRow.blocInterest - expectedPaydown
@@ -227,10 +232,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     ? advisorActualBlocBalance * (blocApr / 100 / 12)
     : 0;
 
-  const currentRow         = advisorRows.find((r) => r.month === currentMonth) ?? null;
-  const expectedPaydown    = currentRow
-    ? Math.max(0, income - (hasCbLoan ? currentRow.cbPayment : 0) - currentRow.incomeToBtc)
-    : 0;
   const allocatedFromIncome = expectedPaydown
     + (advisorSkipBtcBuying ? 0 : expectedBtcBuying)
     + (hasCbLoan && !advisorSkipCbPayment ? expectedCbPayment : 0);
