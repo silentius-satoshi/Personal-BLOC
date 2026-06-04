@@ -1,0 +1,349 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 200;
+  background: var(--bg-base);
+  display: flex;
+  flex-direction: column;
+  overscroll-behavior: contain;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border);
+  flex-shrink: 0;
+}
+
+.headerTitle {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
+.headerSub {
+  font-size: 12px;
+  color: var(--text-ghost);
+  flex: 1;
+}
+
+.closeBtn {
+  background: none;
+  border: none;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 18px;
+  padding: 4px 8px;
+  line-height: 1;
+  transition: color 0.12s;
+  flex-shrink: 0;
+}
+.closeBtn:hover { color: var(--text-primary); }
+
+/* Nav + card area */
+.navArea {
+  display: flex;
+  align-items: flex-start;
+  flex: 1;
+  overflow: hidden;
+}
+
+.navBtn {
+  background: none;
+  border: none;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 28px;
+  padding: 24px 12px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+  line-height: 1;
+  align-self: center;
+}
+.navBtn:hover:not(:disabled) { color: var(--text-primary); }
+.navBtn:disabled { color: var(--border); cursor: default; }
+
+.cardScroll {
+  flex: 1;
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+  padding: 16px 4px;
+}
+
+/* Card */
+.card {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cardHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.cardHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.cardDate {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* Status badges */
+.badgeLogged  { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(78,203,130,0.12);  color: var(--green);  letter-spacing: 0.04em; }
+.badgeCurrent { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(232,131,106,0.12); color: var(--orange); letter-spacing: 0.04em; }
+.badgeFuture  { font-size: 10px; font-weight: 700; padding: 3px 8px; border-radius: 4px; background: rgba(255,255,255,0.06); color: var(--text-ghost); letter-spacing: 0.04em; }
+
+/* Edit button */
+.editBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 10px;
+  transition: border-color 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.editBtn:hover { border-color: var(--orange); color: var(--orange); }
+
+/* BTC Bought highlight (current month) */
+.btcBoughtHighlight {
+  background: rgba(78,203,130,0.06);
+  border: 1px solid rgba(78,203,130,0.2);
+  border-radius: 10px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.btcBoughtLabel {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.btcBoughtInput {
+  background: none;
+  border: none;
+  border-bottom: 1px solid var(--green);
+  color: var(--green);
+  font-size: 22px;
+  font-weight: 700;
+  font-family: 'IBM Plex Mono', monospace;
+  outline: none;
+  padding: 4px 0;
+  width: 100%;
+}
+
+/* Form grid */
+.formGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 16px;
+}
+
+.formField {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.formLabel {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.formInputRow {
+  display: flex;
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 0 10px;
+  height: 38px;
+  gap: 4px;
+}
+.formInputRow:focus-within { border-color: var(--orange); }
+
+.formPrefix { font-size: 13px; color: var(--text-ghost); flex-shrink: 0; }
+.formSuffix { font-size: 13px; color: var(--text-ghost); flex-shrink: 0; }
+
+.formInput {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  min-width: 0;
+  font-family: inherit;
+}
+
+/* Card actions (edit mode) */
+.cardActions {
+  display: flex;
+  gap: 8px;
+}
+
+.cancelBtn {
+  flex: 1;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  height: 42px;
+  transition: border-color 0.12s;
+}
+.cancelBtn:hover { border-color: var(--text-ghost); }
+
+.saveBtn {
+  flex: 2;
+  background: rgba(78,203,130,0.15);
+  border: 1px solid rgba(78,203,130,0.3);
+  border-radius: 8px;
+  color: var(--green);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 700;
+  font-family: inherit;
+  height: 42px;
+  transition: background 0.12s;
+}
+.saveBtn:hover { background: rgba(78,203,130,0.22); }
+
+/* Log now button (full-width, current month) */
+.logNowBtn {
+  background: var(--orange);
+  border: none;
+  border-radius: 10px;
+  color: #000;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  height: 48px;
+  width: 100%;
+  letter-spacing: 0.04em;
+  transition: opacity 0.15s;
+}
+.logNowBtn:hover { opacity: 0.88; }
+
+.savedNote {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+  text-align: center;
+  margin: 0;
+}
+
+/* View mode (read-only rows) */
+.viewGrid {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.viewRow {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+.viewRow:last-child { border-bottom: none; }
+
+.viewLabel {
+  font-size: 11px;
+  color: var(--text-ghost);
+}
+
+.viewValue {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.viewGreen { color: var(--green); }
+.viewProj  { color: var(--text-ghost); }
+
+.projTag {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  font-weight: 400;
+}
+
+.noData {
+  font-size: 12px;
+  color: var(--text-faint);
+  font-style: italic;
+  text-align: center;
+  margin: 8px 0;
+}
+
+/* Dot indicator */
+.dots {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 10px 16px 24px;
+  flex-shrink: 0;
+}
+
+.dot {
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dot::after {
+  content: '';
+  display: block;
+  border-radius: 3px;
+  transition: background 0.15s, width 0.15s;
+}
+
+.dotActive::after  { width: 18px; height: 6px; background: var(--orange); }
+.dotLogged::after  { width: 6px;  height: 6px; border-radius: 50%; background: var(--green); }
+.dotEmpty::after   { width: 6px;  height: 6px; border-radius: 50%; background: var(--border); }
+
+@media (max-width: 640px) {
+  .formGrid { grid-template-columns: 1fr; }
+  .navBtn { padding: 20px 8px; font-size: 24px; }
+}

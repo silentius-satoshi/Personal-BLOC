@@ -562,3 +562,142 @@
   color: var(--text-ghost);
   margin-top: 2px;
 }
+
+/* Log this month button (inside plan card) */
+.logThisMonthSimpleBtn {
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 12px 14px;
+  width: 100%;
+  text-align: left;
+  margin: 0 -20px;
+  width: calc(100% + 40px);
+  transition: background 0.12s;
+}
+.logThisMonthSimpleBtn:hover { background: rgba(232,131,106,0.06); }
+
+/* Monthly Log section card */
+.logSection {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.logSectionHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.logSectionHeader:hover { background: rgba(255,255,255,0.03); }
+
+.logLabel {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--orange);
+}
+
+.logBadge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(78,203,130,0.10);
+  border: 1px solid rgba(78,203,130,0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+}
+
+.logChevron {
+  margin-left: auto;
+  font-size: 10px;
+  color: var(--text-ghost);
+}
+
+.logEntryRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 16px;
+  background: none;
+  border: none;
+  border-top: 1px solid var(--border);
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.logEntryRow:hover { background: rgba(255,255,255,0.03); }
+
+.logDot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--green);
+  flex-shrink: 0;
+}
+
+.logEntryMeta {
+  font-size: 12px;
+  color: var(--text-ghost);
+  flex: 1;
+}
+
+.logEntryBtc {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--green);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
+.logFooter {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.logThisMonthFooterBtn {
+  background: var(--orange);
+  border: none;
+  border-radius: 6px;
+  color: #000;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 5px 12px;
+  transition: opacity 0.15s;
+}
+.logThisMonthFooterBtn:hover { opacity: 0.85; }
+
+.viewAllBtn {
+  background: none;
+  border: none;
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 4px 0;
+  transition: opacity 0.15s;
+}
+.viewAllBtn:hover { opacity: 0.75; }

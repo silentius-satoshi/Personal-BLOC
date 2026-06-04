@@ -10,8 +10,11 @@ import {
   type AdvisorTier,
 } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { deriveAdvisorStart } from '../../simulation/logUtils';
 import { PL_B, GENESIS } from '../../simulation/powerLaw';
 import { fmtUSD } from '../../utils/format';
+import { MonthlyLogSection } from './MonthlyLogSection';
+import { MonthlyLogOverlay } from './MonthlyLogOverlay';
 import styles from './AdvisorMain.module.css';
 
 interface ActionRowProps {
@@ -79,9 +82,13 @@ export function AdvisorMain() {
   const advisorSkipCbPayment     = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying     = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan                = useStore((s) => s.hasCbLoan);
+  const monthlyLog               = useStore((s) => s.monthlyLog);
   const setAdvisorSkipBlocDraw   = useStore((s) => s.setAdvisorSkipBlocDraw);
   const setAdvisorSkipCbPayment  = useStore((s) => s.setAdvisorSkipCbPayment);
   const setAdvisorSkipBtcBuying  = useStore((s) => s.setAdvisorSkipBtcBuying);
+
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayInitialMonth, setOverlayInitialMonth] = useState(0);
 
   type GrowthScenario = 'bear' | 'flat' | 'powerlaw' | 'bull';
   const [growthScenario, setGrowthScenario] = useState<GrowthScenario>('flat');
@@ -108,7 +115,15 @@ export function AdvisorMain() {
   const currentCbLtv  = cbCollateralBtc * btcPrice > 0 ? effectiveCbBalance / (cbCollateralBtc * btcPrice) : 0;
   const currentTier   = getTier(currentCbLtv);
 
-  const startingBtcHeld = advisorActualBtcHeld || collateralBtc;
+  const { startingBlocBalance, startingBtcHeld, startingMonth } = useMemo(
+    () => deriveAdvisorStart(
+      monthlyLog,
+      advisorActualBtcHeld || collateralBtc,
+      advisorActualBlocBalance,
+      currentMonth,
+    ),
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, collateralBtc, currentMonth],
+  );
 
   const result = useMemo(
     () => runAdvisor({
@@ -118,15 +133,15 @@ export function AdvisorMain() {
       cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
       cbAprPct:         hasCbLoan ? cbAprPct        : 0,
       cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
-      startingBlocBalance: advisorActualBlocBalance,
+      startingBlocBalance,
       startingBtcHeld,
-      startingMonth: currentMonth,
+      startingMonth,
       btcGrowthRate,
     }),
     [
       btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
-      advisorActualBlocBalance, startingBtcHeld, currentMonth,
+      startingBlocBalance, startingBtcHeld, startingMonth,
       btcGrowthRate,
     ],
   );
@@ -357,8 +372,29 @@ export function AdvisorMain() {
                   ⚠ Emergency active — BTC buying paused until CB LTV drops below 70%
                 </div>
               )}
+
+              {!strategyDone && (
+                <button
+                  className={styles.logThisMonthBtn}
+                  onClick={() => {
+                    setOverlayInitialMonth(currentMonth - 1);
+                    setOverlayOpen(true);
+                  }}
+                >
+                  Log this month
+                </button>
+              )}
             </div>
           )}
+
+          {/* Monthly Log section */}
+          <MonthlyLogSection
+            months={result.rows}
+            onOpenOverlay={(m) => {
+              setOverlayInitialMonth(m);
+              setOverlayOpen(true);
+            }}
+          />
 
           {/* Section 4 — Projection Table */}
           <div className={styles.card}>
@@ -495,6 +531,15 @@ export function AdvisorMain() {
         decisions depend on your full financial situation. Consult a qualified financial
         advisor before making any borrowing decisions.
       </div>
+
+      {overlayOpen && (
+        <MonthlyLogOverlay
+          initialMonth={overlayInitialMonth}
+          months={result.rows}
+          collateralBtc={collateralBtc}
+          onClose={() => setOverlayOpen(false)}
+        />
+      )}
 
     </div>
   );

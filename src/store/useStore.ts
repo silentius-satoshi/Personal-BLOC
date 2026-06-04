@@ -1,9 +1,10 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy } from '../simulation/types';
+import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
+import { upsertEntry } from '../simulation/logUtils';
 import type { NostrSigner } from '@nostrify/nostrify';
 
-export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy };
+export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
@@ -84,6 +85,14 @@ interface StoreState {
     month: number; blocDraw: boolean; cbPayment: boolean;
     btcBuying: boolean; fiatCoverage: boolean; ndpPayment: boolean;
   }>) => void;
+
+  // Monthly log
+  monthlyLog:         MonthlyLogEntry[];
+  showMiningInLog:    boolean;
+  setMonthlyLog:      (entries: MonthlyLogEntry[]) => void;
+  upsertLogEntry:     (entry: MonthlyLogEntry) => void;
+  deleteLogEntry:     (month: number) => void;
+  setShowMiningInLog: (v: boolean) => void;
 
   // Setters — shared
   setIncome: (v: number) => void;
@@ -201,6 +210,29 @@ interface StoreState {
 }
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let recordsSyncTimer:  ReturnType<typeof setTimeout> | null = null;
+
+function syncRecordsToNostr() {
+  if (recordsSyncTimer) clearTimeout(recordsSyncTimer);
+  recordsSyncTimer = setTimeout(async () => {
+    const state = useStore.getState();
+    if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return;
+    useStore.getState().setNostrSyncing(true);
+    try {
+      const { publishRecords } = await import('../lib/nostr/publish');
+      await publishRecords(
+        state.nostrSigner,
+        state.nostrPubkey,
+        state.monthlyLog,
+        state.nostrRelays.length ? state.nostrRelays : undefined,
+      );
+    } catch (e) {
+      console.warn('[Nostr] publish records failed:', e);
+    } finally {
+      useStore.getState().setNostrSyncing(false);
+    }
+  }, 3000);
+}
 
 export const useStore = create<StoreState>()(
   persist(
@@ -254,6 +286,9 @@ export const useStore = create<StoreState>()(
   advisorSkipCbPayment: false,
   advisorSkipBtcBuying: false,
 
+  monthlyLog:      [],
+  showMiningInLog: false,
+
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); },
   setBtcPrice: (v) => set({ btcPrice: v }),
@@ -293,6 +328,17 @@ export const useStore = create<StoreState>()(
   setAdvisorSkipBlocDraw:  (v) => set({ advisorSkipBlocDraw: v }),
   setAdvisorSkipCbPayment: (v) => set({ advisorSkipCbPayment: v }),
   setAdvisorSkipBtcBuying: (v) => set({ advisorSkipBtcBuying: v }),
+
+  setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
+  upsertLogEntry: (entry) => {
+    set((state) => ({ monthlyLog: upsertEntry(state.monthlyLog, entry) }));
+    syncRecordsToNostr();
+  },
+  deleteLogEntry: (month) => {
+    set((state) => ({ monthlyLog: state.monthlyLog.filter((e) => e.month !== month) }));
+    syncRecordsToNostr();
+  },
+  setShowMiningInLog: (v) => set({ showMiningInLog: v }),
 
   converterActiveField: 'sats',
   converterRawValue:    '0',
@@ -419,16 +465,18 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 3,
+      version: 4,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => ({
         ...persistedState,
-        hiddenTabs: [],
-        toolTabs:  persistedState.toolTabs  ?? ['powerlaw', 'converter', 'mining'],
-        hasCbLoan: persistedState.hasCbLoan ?? (persistedState.cbLoanBalance > 0),
+        hiddenTabs:      [],
+        toolTabs:        persistedState.toolTabs        ?? ['powerlaw', 'converter', 'mining'],
+        hasCbLoan:       persistedState.hasCbLoan       ?? (persistedState.cbLoanBalance > 0),
+        monthlyLog:      persistedState.monthlyLog      ?? [],
+        showMiningInLog: persistedState.showMiningInLog ?? false,
       }),
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {

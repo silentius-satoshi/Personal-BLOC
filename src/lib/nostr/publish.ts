@@ -1,5 +1,6 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
+import type { MonthlyLogEntry } from '../../simulation/types';
 
 export const FALLBACK_RELAYS = [
   'wss://relay.damus.io',
@@ -49,4 +50,13 @@ export async function publishSettings(
   settings: Record<string, unknown>,
 ): Promise<void> {
   await publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays);
+}
+
+export async function publishRecords(
+  signer:  NostrSigner,
+  pubkey:  string,
+  entries: MonthlyLogEntry[],
+  relays?: string[],
+): Promise<void> {
+  await publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', entries, relays);
 }

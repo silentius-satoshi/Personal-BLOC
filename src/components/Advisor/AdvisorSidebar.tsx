@@ -34,6 +34,7 @@ export function AdvisorSidebar() {
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
+  const monthlyLog               = useStore((s) => s.monthlyLog);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
@@ -115,11 +116,28 @@ export function AdvisorSidebar() {
           min={0}
           step={100}
         />
-        <p className={styles.hint}>Check your Strike app</p>
+        <p className={styles.hint}>
+          {monthlyLog.length > 0 ? 'Starting BLOC balance (before log)' : 'Check your Strike app'}
+        </p>
       </div>
 
+      {monthlyLog.length > 0 && (() => {
+        const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
+        const last = sorted[sorted.length - 1];
+        const projFrom = Math.min(last.month + 1, 12);
+        return (
+          <div className={styles.section}>
+            <p className={styles.hint} style={{ fontStyle: 'normal' }}>
+              From log: Mo {last.month} logged → projecting from Mo {projFrom}
+            </p>
+          </div>
+        );
+      })()}
+
       <div className={styles.section}>
-        <span className={styles.label}>CURRENT BTC HELD</span>
+        <span className={styles.label}>
+          {monthlyLog.length > 0 ? 'STARTING COLLATERAL BTC' : 'CURRENT BTC HELD'}
+        </span>
         <NumberInput
           value={advisorActualBtcHeld}
           onChange={setAdvisorActualBtcHeld}
@@ -127,7 +145,9 @@ export function AdvisorSidebar() {
           min={0}
           step={0.001}
         />
-        <p className={styles.hint}>Collateral + accumulated BTC</p>
+        <p className={styles.hint}>
+          {monthlyLog.length > 0 ? 'Starting collateral BTC' : 'Collateral + accumulated BTC'}
+        </p>
       </div>
 
       <div className={styles.divider} />

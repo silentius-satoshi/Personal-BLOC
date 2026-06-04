@@ -124,6 +124,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
+  const showMiningInLog             = useStore((s) => s.showMiningInLog);
+  const setShowMiningInLog          = useStore((s) => s.setShowMiningInLog);
 
   const cbLoanBalance    = useStore((s) => s.cbLoanBalance);    const setCbLoanBalance    = useStore((s) => s.setCbLoanBalance);
   const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);  const setCbCollateralBtc  = useStore((s) => s.setCbCollateralBtc);
@@ -267,6 +269,18 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           <div className={styles.setupGroupLabel}>YOUR BITCOIN</div>
           <NumberInput label="BTC held" value={advisorActualBtcHeld} onChange={setAdvisorActualBtcHeld} prefix="₿" min={0} step={0.001} />
         </div>
+
+        {!hiddenTabs.includes('mining') && (
+          <div className={styles.setupGroup}>
+            <div className={styles.setupGroupLabel}>MONTHLY LOG</div>
+            <div className={styles.cbLoanToggleRow}>
+              <div className={styles.cbLoanToggleLabel}>
+                <span className={styles.cbLoanToggleTitle}>Include mining sats in monthly log</span>
+              </div>
+              <Toggle value={showMiningInLog} onChange={setShowMiningInLog} />
+            </div>
+          </div>
+        )}
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>COINBASE LOAN</div>

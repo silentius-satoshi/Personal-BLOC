@@ -1,8 +1,11 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
-import { getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
+import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
+import { getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { deriveAdvisorStart } from '../../simulation/logUtils';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
+import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import styles from './SimpleModeView.module.css';
 
 interface SimpleModeViewProps {
@@ -107,6 +110,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const setExpenses   = useStore((s) => s.setExpenses);
   const setCreditLine = useStore((s) => s.setCreditLine);
 
+  const activeTier       = useStore((s) => s.activeTier);
+  const customCollateral = useStore((s) => s.customCollateral);
+  const cbAprPct         = useStore((s) => s.cbAprPct);
+  const monthlyLog       = useStore((s) => s.monthlyLog);
+
   // Feature 2
   const [showTierTip, setShowTierTip] = useState(false);
   // Feature 4
@@ -130,9 +138,37 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null); // stored as BTC
   // Change 4 — one-shot apply
   const [projectionApplied, setProjectionApplied] = useState(false);
+  // Monthly log overlay
+  const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
+  const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
+  const [logExpanded, setLogExpanded] = useState(true);
 
-  const currentMonth = getCurrentStrategyMonth(advisorStartDate);
-  const strategyDone = isStrategyComplete(advisorStartDate);
+  const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
+  const strategyDone    = isStrategyComplete(advisorStartDate);
+  const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
+
+  const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
+    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld || collateralBtc, advisorActualBlocBalance, currentMonth),
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, collateralBtc, currentMonth],
+  );
+
+  const advisorRows = useMemo(
+    () => runAdvisor({
+      btcPrice, income, expenses,
+      blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
+      cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
+      cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
+      cbAprPct:         hasCbLoan ? cbAprPct         : 0,
+      cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
+      startingBlocBalance: slmBlocBal,
+      startingBtcHeld:     slmBtcHeld,
+      startingMonth:       slmStartMonth,
+      btcGrowthRate: 0,
+    }).rows,
+    [btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
+     cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+     slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan],
+  );
   const currentCbLtv = cbCollateralBtc * btcPrice > 0
     ? cbLoanBalance / (cbCollateralBtc * btcPrice)
     : 0;
@@ -273,6 +309,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   };
 
   return (
+    <>
     <div className={styles.root}>
     <div className={styles.content}>
 
@@ -596,8 +633,74 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             {projectionApplied && (
               <p className={styles.applyConfirm}>✓ Applied to next month</p>
             )}
+
+            {!strategyDone && (
+              <button
+                className={styles.logThisMonthSimpleBtn}
+                onClick={() => {
+                  setLogOverlayInitialMonth(currentMonth - 1);
+                  setLogOverlayOpen(true);
+                }}
+              >
+                Log this month
+              </button>
+            )}
           </div>
         )}
+
+        {/* Monthly Log section */}
+        {(() => {
+          const recentLogged = [...monthlyLog].sort((a, b) => b.month - a.month).slice(0, 3);
+          return (
+            <div className={styles.logSection}>
+              <button className={styles.logSectionHeader} onClick={() => setLogExpanded((v) => !v)}>
+                <span className={styles.logLabel}>MONTHLY LOG</span>
+                <span className={styles.logBadge}>{monthlyLog.length} / 12</span>
+                <span className={styles.logChevron}>{logExpanded ? '▲' : '▼'}</span>
+              </button>
+
+              {logExpanded && (
+                <>
+                  {recentLogged.map((entry) => (
+                    <button
+                      key={entry.month}
+                      className={styles.logEntryRow}
+                      onClick={() => {
+                        setLogOverlayInitialMonth(entry.month - 1);
+                        setLogOverlayOpen(true);
+                      }}
+                    >
+                      <span className={styles.logDot} />
+                      <span className={styles.logEntryMeta}>Mo {entry.month} · {entry.date}</span>
+                      <span className={styles.logEntryBtc}>+{entry.btcBought.toFixed(5)} ₿</span>
+                    </button>
+                  ))}
+
+                  <div className={styles.logFooter}>
+                    <button
+                      className={styles.logThisMonthFooterBtn}
+                      onClick={() => {
+                        setLogOverlayInitialMonth(currentMonth - 1);
+                        setLogOverlayOpen(true);
+                      }}
+                    >
+                      Log this month
+                    </button>
+                    <button
+                      className={styles.viewAllBtn}
+                      onClick={() => {
+                        setLogOverlayInitialMonth(currentMonth - 1);
+                        setLogOverlayOpen(true);
+                      }}
+                    >
+                      View all 12 →
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
+          );
+        })()}
 
         {/* Change 1 (iter 2) — setup prompt + modal */}
         {isDefaultSetup && (
@@ -635,5 +738,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
     </div>
     </div>
+
+    {logOverlayOpen && (
+      <MonthlyLogOverlay
+        initialMonth={logOverlayInitialMonth}
+        months={advisorRows}
+        collateralBtc={collateralBtc}
+        onClose={() => setLogOverlayOpen(false)}
+      />
+    )}
+    </>
   );
 }

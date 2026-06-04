@@ -2,6 +2,7 @@ import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { FALLBACK_RELAYS } from './publish';
+import type { MonthlyLogEntry } from '../../simulation/types';
 
 export async function fetchAndSync(
   signer: NostrSigner,
@@ -13,7 +14,7 @@ export async function fetchAndSync(
   const events = await pool.querySync(relays, {
     kinds:   [30078],
     authors: [pubkey],
-    '#d':    ['personal-bloc:settings:v1'],
+    '#d':    ['personal-bloc:settings:v1', 'personal-bloc:records:v1'],
   });
 
   pool.close(relays);
@@ -38,6 +39,14 @@ export async function fetchAndSync(
         const { lastSettingsSyncAt } = useStore.getState();
         if (remoteTs > (lastSettingsSyncAt ?? 0)) {
           useStore.getState().hydrateSettings(data);
+          useStore.getState().setLastSettingsSyncAt(remoteTs);
+        }
+      }
+
+      if (dTag === 'personal-bloc:records:v1') {
+        const { lastSettingsSyncAt } = useStore.getState();
+        if (remoteTs > (lastSettingsSyncAt ?? 0)) {
+          useStore.getState().setMonthlyLog(data as MonthlyLogEntry[]);
           useStore.getState().setLastSettingsSyncAt(remoteTs);
         }
       }

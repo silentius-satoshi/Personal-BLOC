@@ -1,0 +1,224 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Header */
+.header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.title {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--orange);
+  flex-shrink: 0;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--green);
+  background: rgba(78,203,130,0.10);
+  border: 1px solid rgba(78,203,130,0.25);
+  border-radius: 4px;
+  padding: 1px 6px;
+  flex-shrink: 0;
+}
+
+.viewAllBtn {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 0;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+.viewAllBtn:hover { opacity: 0.75; }
+
+/* Carousel */
+.carousel {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 4px;
+  scrollbar-width: none;
+}
+.carousel::-webkit-scrollbar { display: none; }
+
+.miniCard {
+  width: 86px;
+  flex-shrink: 0;
+  scroll-snap-align: start;
+  border-radius: 8px;
+  padding: 8px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  background: var(--bg-card);
+  border: 1.5px solid var(--border);
+  cursor: pointer;
+  text-align: left;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.miniCardLogged  { border-color: rgba(78,203,130,0.35); }
+.miniCardCurrent { border-color: rgba(232,131,106,0.35); }
+.miniCardFuture  { border-color: var(--border); }
+
+.miniCardSelLogged  { border-color: var(--green);  background: rgba(78,203,130,0.05); }
+.miniCardSelCurrent { border-color: var(--orange); background: rgba(232,131,106,0.05); }
+.miniCardSelFuture  { border-color: var(--text-ghost); background: rgba(255,255,255,0.03); }
+
+.miniMonth {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.miniBtc {
+  font-size: 10px;
+  color: var(--green);
+  font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.miniLabel {
+  font-size: 9px;
+  color: var(--text-ghost);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.miniCardLogged  .miniLabel { color: var(--green); }
+.miniCardCurrent .miniLabel { color: var(--orange); }
+
+/* Detail panel */
+.detail {
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.detailHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detailHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.detailBadge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 3px;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.detailBadgeLogged  { background: rgba(78,203,130,0.12);  color: var(--green); }
+.detailBadgeCurrent { background: rgba(232,131,106,0.12); color: var(--orange); }
+.detailBadgeFuture  { background: rgba(255,255,255,0.06); color: var(--text-ghost); }
+
+.detailTitle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.editBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 10px;
+  transition: border-color 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+.editBtn:hover { border-color: var(--orange); color: var(--orange); }
+
+.logNowBtn {
+  background: var(--orange);
+  border: none;
+  border-radius: 6px;
+  color: #000;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 700;
+  font-family: inherit;
+  padding: 5px 12px;
+  transition: opacity 0.15s;
+  flex-shrink: 0;
+}
+.logNowBtn:hover { opacity: 0.85; }
+
+/* Field grid */
+.fieldGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px 12px;
+}
+
+.fieldCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.fieldLabel {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
+.fieldValue {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+.fieldGreen { color: var(--green); }
+
+.proj { color: var(--text-secondary); }
+.projTag {
+  font-size: 10px;
+  color: var(--text-faint);
+  font-style: italic;
+  font-weight: 400;
+}
+
+@media (max-width: 640px) {
+  .fieldGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}

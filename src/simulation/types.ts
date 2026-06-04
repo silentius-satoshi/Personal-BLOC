@@ -73,6 +73,22 @@ export interface StrategyResult {
   realReturn: number;
 }
 
+// --- Monthly Log ---
+
+export interface MonthlyLogEntry {
+  month:      number;    // 1–12, relative to advisorStartDate
+  date:       string;    // ISO date string (first day of that month)
+  btcBought:  number;
+  income:     number;    // income allocated to BTC (after paydown)
+  paydown:    number;    // BLOC paydown amount
+  strikeBal:  number;    // BLOC balance end-of-month
+  strikeLtv:  number;    // stored as decimal, e.g. 0.1483 = 14.83%
+  cbBal?:     number;    // omit if !hasCbLoan
+  cbLtv?:     number;    // omit if !hasCbLoan
+  miningSats?: number;   // omit if !showMiningInLog
+  loggedAt:   number;    // Unix ms timestamp
+}
+
 // --- Mining Tab Types ---
 
 export type MiningCurrency = 'usd' | 'sats' | 'btc';

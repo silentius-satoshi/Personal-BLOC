@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (51 tests — all must pass before every commit)
+- Vitest (59 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -37,10 +37,12 @@ src/
     runBlocYearOne.ts           # Month-by-Month 12-month simulation + getCollateralForTier
     runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
+    logUtils.ts                 # deriveAdvisorStart, upsertEntry — standalone, no cross-sim imports
     __tests__/
       smartBloc.test.ts
       living.test.ts
       mining.test.ts
+      monthlyLog.test.ts
 
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval, init-once store seed
@@ -127,11 +129,15 @@ src/
 
     Advisor/
       AdvisorMain.tsx           # Progress bar, position cards, This Month's Plan (Pay/Skip),
-                                # 12-month projection with BTC growth scenarios
+                                # MonthlyLogSection, 12-month projection with BTC growth scenarios
       AdvisorMain.module.css
       AdvisorSidebar.tsx        # BTC LIVE badge, YOUR PROGRESS (start date, BLOC balance,
                                 # BTC held), read-only summaries, priority rules
       AdvisorSidebar.module.css
+      MonthlyLogSection.tsx     # Horizontal carousel + detail panel (full mode)
+      MonthlyLogSection.module.css
+      MonthlyLogOverlay.tsx     # Portal overlay (full-screen, both modes), keyboard + swipe nav
+      MonthlyLogOverlay.module.css
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -217,10 +223,12 @@ cbMonthlyPayment: number;   // default 0
 ```typescript
 advisorStartDate:         string;   // ISO date, default today
 advisorActualBlocBalance: number;   // default 0
-advisorActualBtcHeld:     number;   // default 0
+advisorActualBtcHeld:     number;   // default 0 (starting collateral BTC; log accumulates on top)
 advisorSkipBlocDraw:      boolean;  // default false (persisted)
 advisorSkipCbPayment:     boolean;  // default false (persisted)
 advisorSkipBtcBuying:     boolean;  // default false (persisted)
+monthlyLog:               MonthlyLogEntry[];  // default []
+showMiningInLog:          boolean;            // default false
 ```
 
 ---
@@ -433,7 +441,7 @@ npx vitest run && git add . && git commit -m "..." && git push && vercel --prod
 | Step 1 | Auth gate — Nostr identity login | ✅ Complete |
 | Step 2 | Encrypted relay publishing | ✅ Complete |
 | Step 3 | Cross-device sync | ✅ Complete |
-| Deferred | publishRecords (monthlyLog) | ⬜ Pending monthlyLog feature |
+| Step 4 | publishRecords (monthlyLog) | ✅ Complete |
 
 ---
 
@@ -530,7 +538,7 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | d-tag | Contents | Trigger |
 |---|---|---|
 | `personal-bloc:settings:v1` | All 15 settings fields | Any of 15 setters (debounced 5s) |
-| `personal-bloc:records:v1` | monthLog array | Deferred — pending monthlyLog feature |
+| `personal-bloc:records:v1` | monthlyLog array | After every upsert/delete (debounced 3s) |
 
 ### All 15 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
@@ -568,6 +576,11 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `MiningOddsBar` | Reads store directly — not props |
 | `fmtMining` | Inlined in `format.ts` — no circular import |
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
+| `deriveAdvisorStart` | Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
+| `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
+| Zustand v4 migration | Only adds `monthlyLog/showMiningInLog`; nothing else reset |
+| `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
+| `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |
 | BLOC draw order | Draw → interest → LTV paydown (not interest → draw) |
 | `runAdvisor` | Standalone — no imports from `runBLOC` or `runCoinbaseLoan` |

@@ -507,6 +507,22 @@
 .interestCell { color: var(--orange); }
 .muted        { color: var(--text-faint); }
 
+/* Log this month button */
+.logThisMonthBtn {
+  background: none;
+  border: 1px solid var(--orange);
+  border-radius: 8px;
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  padding: 8px 14px;
+  width: 100%;
+  transition: background 0.12s;
+}
+.logThisMonthBtn:hover { background: rgba(232,131,106,0.08); }
+
 /* Disclaimer */
 .disclaimer {
   font-size: 11px;
