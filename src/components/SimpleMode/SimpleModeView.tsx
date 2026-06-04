@@ -606,10 +606,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 <span className={styles.actionIcon}>₿</span>
                 <div className={styles.actionLabelGroup}>
                   <span className={styles.actionLabel}>Buy Bitcoin</span>
-                  <span className={styles.actionSub}>→ {effectiveBtcAmount.toFixed(5)} BTC</span>
+                  <span className={styles.actionSub}>→ ~{fmtUSD(expectedBtcBuying)} est.</span>
                 </div>
                 <span className={styles.actionAmount}>
-                  {advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(expectedBtcBuying)}
+                  {advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${effectiveBtcAmount.toFixed(5)} ₿`}
                 </span>
                 <div className={styles.paySkipGroup}>
                   <button
