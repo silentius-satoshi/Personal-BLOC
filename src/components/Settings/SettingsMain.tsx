@@ -30,7 +30,7 @@ const ALL_TABS = [
   { key: 'advisor',   label: 'Advisor'             },
 ] as const;
 
-const MOVEABLE_KEYS = ['powerlaw', 'converter', 'mining'];
+const MOVEABLE_KEYS = ['powerlaw', 'converter', 'mining', 'liqsim'];
 
 type TabEntry = typeof ALL_TABS[number];
 

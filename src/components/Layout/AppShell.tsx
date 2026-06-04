@@ -57,7 +57,7 @@ const ALL_TABS_META = [
 type TabKey = typeof ALL_TABS_META[number]['key'];
 type ActiveTab = TabKey | 'settings';
 
-const TOOL_KEYS = ['powerlaw', 'converter', 'mining'] as const;
+const TOOL_KEYS = ['powerlaw', 'converter', 'mining', 'liqsim'] as const;
 
 interface SortableTabProps {
   tab: { key: string; fullLabel: string; shortLabel: string };

@@ -351,7 +351,7 @@ export const useStore = create<StoreState>()(
 
   hiddenTabs:  [],
   tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase', 'advisor'],
-  toolTabs:    ['powerlaw', 'converter', 'mining'],
+  toolTabs:    ['powerlaw', 'converter', 'mining', 'liqsim'],
   previousTab: 'living',
   toggleTabVisibility: (tab) => set((s) => ({
     hiddenTabs: s.hiddenTabs.includes(tab)
