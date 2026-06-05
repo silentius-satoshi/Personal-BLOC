@@ -98,10 +98,9 @@ interface ToolsDropdownProps {
   activeTab: string;
   onSelect:  (key: string) => void;
   styles:    Record<string, string>;
-  hasCbLoan: boolean;
 }
 
-function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan }: ToolsDropdownProps) {
+function ToolsDropdown({ tabs, activeTab, onSelect, styles }: ToolsDropdownProps) {
   const [open, setOpen] = useState(false);
   const [pos, setPos]   = useState({ top: 0, left: 0 });
   const ref = useRef<HTMLDivElement>(null);
@@ -123,7 +122,7 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan }: ToolsDr
     return () => document.removeEventListener('keydown', handler);
   }, [open]);
 
-  if (tabs.length === 0 && !hasCbLoan) return null;
+  if (tabs.length === 0) return null;
 
   const openDropdown = () => {
     const rect = ref.current?.getBoundingClientRect();
@@ -151,14 +150,6 @@ function ToolsDropdown({ tabs, activeTab, onSelect, styles, hasCbLoan }: ToolsDr
               {tab.fullLabel}
             </button>
           ))}
-          {hasCbLoan && (
-            <button
-              className={styles.toolsItem}
-              onClick={() => { onSelect('liqsim'); setOpen(false); }}
-            >
-              Liq Price Simulator
-            </button>
-          )}
         </div>,
         document.body
       )}
@@ -320,7 +311,6 @@ export function AppShell() {
               activeTab={activeTab}
               onSelect={(key) => setActiveTab(key as ActiveTab)}
               styles={styles}
-              hasCbLoan={hasCbLoan}
             />
 
             <button

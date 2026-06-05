@@ -22,6 +22,7 @@ export function LiqSimulator() {
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
   const blocApr                  = useStore((s) => s.blocApr);
   const storePrice               = useStore((s) => s.btcPrice);
+  const monthlyLog               = useStore((s) => s.monthlyLog);
 
   const [btcSlider,  setBtcSlider]  = useState(() => storePrice || 80_000);
   const [drawSlider, setDrawSlider] = useState(0);
@@ -34,14 +35,19 @@ export function LiqSimulator() {
     );
   }
 
+  // Derive true current Strike position from monthly log
+  const sorted        = [...monthlyLog].sort((a, b) => a.month - b.month);
+  const sk_collateral = advisorActualBtcHeld + sorted.reduce((sum, e) => sum + e.btcBought, 0);
+  const sk_drawn      = sorted.length > 0 ? sorted[sorted.length - 1].strikeBal : advisorActualBlocBalance;
+
   // Derived constants
   const cb_div    = cbCollateralBtc * CB_LLTV;
-  const sk_factor = advisorActualBtcHeld * (SK_CEILING / 100);
+  const sk_factor = sk_collateral * (SK_CEILING / 100);
 
   // Live derived values
-  const sk_value         = advisorActualBtcHeld * btcSlider;
+  const sk_value         = sk_collateral * btcSlider;
   const sk_credit_limit  = sk_value * (SK_CEILING / 100);
-  const available_credit = Math.max(0, sk_credit_limit - advisorActualBlocBalance);
+  const available_credit = Math.max(0, sk_credit_limit - sk_drawn);
   const effective_draw   = Math.min(drawSlider, available_credit);
 
   const cb_value_now   = cbCollateralBtc * btcSlider;
@@ -52,7 +58,7 @@ export function LiqSimulator() {
   const cb_ltv_new     = cb_value_now > 0 ? cb_balance_new / cb_value_now : 0;
   const cb_liq_new     = cb_div > 0 ? cb_balance_new / cb_div : 0;
 
-  const sk_drawn_new   = advisorActualBlocBalance + effective_draw;
+  const sk_drawn_new   = sk_drawn + effective_draw;
   const sk_ltv_new     = sk_value > 0 ? sk_drawn_new / sk_value : 0;
 
   const liq_drop         = cb_liq_now - cb_liq_new;
@@ -63,7 +69,7 @@ export function LiqSimulator() {
 
   const handleBtcSlider = (v: number) => {
     setBtcSlider(v);
-    const newAvail = Math.max(0, advisorActualBtcHeld * v * (SK_CEILING / 100) - advisorActualBlocBalance);
+    const newAvail = Math.max(0, sk_collateral * v * (SK_CEILING / 100) - sk_drawn);
     if (drawSlider > newAvail) setDrawSlider(newAvail);
   };
 
@@ -198,7 +204,7 @@ export function LiqSimulator() {
           <div className={styles.posRow}>
             <span className={styles.posKey}>Drawn</span>
             <span className={styles.posValue}>
-              {fmtUSD(advisorActualBlocBalance)}
+              {fmtUSD(sk_drawn)}
               {effective_draw > 0 && <span className={styles.posArrow}> → {fmtUSD(sk_drawn_new)}</span>}
             </span>
           </div>
@@ -258,8 +264,8 @@ export function LiqSimulator() {
               {TARGETS.map((T) => {
                 const paydown_needed = cbLoanBalance - T * cb_div;
                 if (paydown_needed <= 0) return null;
-                const sk_ltv_at_T  = sk_value > 0 ? (advisorActualBlocBalance + paydown_needed) / sk_value : 0;
-                const btc_needed   = sk_factor > 0 ? (paydown_needed + advisorActualBlocBalance) / sk_factor : 0;
+                const sk_ltv_at_T  = sk_value > 0 ? (sk_drawn + paydown_needed) / sk_value : 0;
+                const btc_needed   = sk_factor > 0 ? (paydown_needed + sk_drawn) / sk_factor : 0;
                 const is_available = available_credit >= paydown_needed;
                 return (
                   <tr key={T}>
