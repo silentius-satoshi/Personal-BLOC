@@ -223,6 +223,19 @@
   color: var(--orange);
 }
 
+.posValueStack {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 1px;
+}
+
+.posValueSub {
+  font-size: 11px;
+  color: var(--text-ghost);
+  font-family: 'IBM Plex Mono', monospace;
+}
+
 .posHint {
   font-size: 10px;
   color: var(--text-faint);

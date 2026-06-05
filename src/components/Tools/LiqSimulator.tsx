@@ -199,7 +199,10 @@ export function LiqSimulator() {
           <span className={styles.posLabel}>STRIKE LOC</span>
           <div className={styles.posRow}>
             <span className={styles.posKey}>Collateral</span>
-            <span className={styles.posValue}>{fmtUSD(sk_value)}</span>
+            <div className={styles.posValueStack}>
+              <span className={styles.posValue}>{sk_collateral.toFixed(5)} ₿</span>
+              <span className={styles.posValueSub}>{fmtUSD(sk_value)}</span>
+            </div>
           </div>
           <div className={styles.posRow}>
             <span className={styles.posKey}>Drawn</span>
