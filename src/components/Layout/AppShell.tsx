@@ -270,7 +270,7 @@ export function AppShell() {
         />
       )}
 
-      {onboardingComplete && nostrAuthEnabled && !isAuthenticated ? (
+      {onboardingComplete && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
       ) : simpleMode && activeTab === 'settings' ? (
         <div className={styles.simpleModeSettings}>

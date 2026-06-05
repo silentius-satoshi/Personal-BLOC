@@ -155,18 +155,21 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   );
 
   const advisorRows = useMemo(
-    () => runAdvisor({
-      btcPrice, income, expenses,
-      blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
-      cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
-      cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
-      cbAprPct:         hasCbLoan ? cbAprPct         : 0,
-      cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
-      startingBlocBalance: slmBlocBal,
-      startingBtcHeld:     slmBtcHeld,
-      startingMonth:       slmStartMonth,
-      btcGrowthRate: 0,
-    }).rows,
+    () => {
+      const rows = runAdvisor({
+        btcPrice, income, expenses,
+        blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
+        cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
+        cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
+        cbAprPct:         hasCbLoan ? cbAprPct         : 0,
+        cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
+        startingBlocBalance: slmBlocBal,
+        startingBtcHeld:     slmBtcHeld,
+        startingMonth:       slmStartMonth,
+        btcGrowthRate: 0,
+      }).rows;
+      return rows;
+    },
     [btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
      cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
      slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan],

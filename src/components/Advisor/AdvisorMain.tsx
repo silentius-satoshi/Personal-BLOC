@@ -125,18 +125,21 @@ export function AdvisorMain() {
   );
 
   const result = useMemo(
-    () => runAdvisor({
-      btcPrice, income, expenses,
-      blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
-      cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
-      cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
-      cbAprPct:         hasCbLoan ? cbAprPct        : 0,
-      cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
-      startingBlocBalance,
-      startingBtcHeld,
-      startingMonth,
-      btcGrowthRate,
-    }),
+    () => {
+      const r = runAdvisor({
+        btcPrice, income, expenses,
+        blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
+        cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
+        cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
+        cbAprPct:         hasCbLoan ? cbAprPct        : 0,
+        cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
+        startingBlocBalance,
+        startingBtcHeld,
+        startingMonth,
+        btcGrowthRate,
+      });
+      return r;
+    },
     [
       btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
