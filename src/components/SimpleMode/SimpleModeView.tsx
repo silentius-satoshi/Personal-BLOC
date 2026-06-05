@@ -185,12 +185,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     blocApr,
   );
 
+  const currentRow        = advisorRows.find((r) => r.month === currentMonth) ?? null;
+
   const expectedBlocDraw = currentTier === 1 ? 0
     : currentTier === 2
       ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
       : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
   const expectedFiatGap   = Math.max(0, expenses - expectedBlocDraw);
-  const expectedCbPayment = advisorSkipCbPayment ? 0 : cbMonthlyPayment;
+  const expectedCbPayment = advisorSkipCbPayment ? 0 : (currentRow?.cbPayment ?? 0);
   const expectedBtcBuying = advisorSkipBtcBuying ? 0
     : currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
   const showFiatRow = expectedFiatGap > 0;
@@ -212,7 +214,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     ? effectiveBtcAmount
     : 0;
 
-  const currentRow         = advisorRows.find((r) => r.month === currentMonth) ?? null;
   const expectedPaydown    = currentRow
     ? Math.max(0, income - (hasCbLoan ? currentRow.cbPayment : 0) - currentRow.incomeToBtc)
     : 0;
