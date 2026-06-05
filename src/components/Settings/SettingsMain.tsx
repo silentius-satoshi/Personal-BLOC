@@ -305,7 +305,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           {hasCbLoan && (
             <>
               <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
-              <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
+              <div className={styles.setupFieldGroup}>
+                <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
+                <span className={styles.fieldHint}>BTC pledged to your Coinbase/Morpho loan.</span>
+              </div>
               <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} />
               <NumberInput label="Monthly payment" value={cbMonthlyPayment}    onChange={setCbMonthlyPayment}   prefix="$" min={0} step={100} />
               <div className={styles.setupFieldGroup}>
