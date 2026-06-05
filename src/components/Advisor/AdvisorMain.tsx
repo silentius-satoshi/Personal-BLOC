@@ -73,7 +73,10 @@ export function AdvisorMain() {
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
-  const cbMonthlyPayment  = useStore((s) => s.cbMonthlyPayment);
+  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
+  const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
+  const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
+  const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
@@ -132,7 +135,10 @@ export function AdvisorMain() {
         cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
         cbAprPct:         hasCbLoan ? cbAprPct        : 0,
-        cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
+        cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment  : 0,
+        cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
+        cbLtvTriggerPct,
+        cbLtvTargetPct,
         startingBlocBalance,
         startingBtcHeld,
         startingMonth,
@@ -143,6 +149,7 @@ export function AdvisorMain() {
     [
       btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
       startingBlocBalance, startingBtcHeld, startingMonth,
       btcGrowthRate,
     ],
@@ -160,7 +167,9 @@ export function AdvisorMain() {
 
     let availableIncome = income - blocPaydown;
 
-    const effectiveCbPayment = advisorSkipCbPayment ? 0 : thisMonth.cbPayment;
+    // In ltvTriggered mode, CB payment from income is always 0
+    const effectiveCbPayment = cbPaymentStrategy === 'ltvTriggered' ? 0
+      : advisorSkipCbPayment ? 0 : thisMonth.cbPayment;
     availableIncome -= effectiveCbPayment;
 
     const effectiveBtcIncome   = advisorSkipBtcBuying ? 0 : availableIncome;
@@ -170,20 +179,23 @@ export function AdvisorMain() {
     const totalAllocated = blocPaydown + effectiveCbPayment + effectiveBtcIncome;
 
     return {
-      blocDraw:    effectiveBlocDraw,
-      fiatGap:     effectiveFiatGap,
+      blocDraw:       effectiveBlocDraw,
+      fiatGap:        effectiveFiatGap,
       blocPaydown,
-      cbPayment:   effectiveCbPayment,
-      cbSkipped:   advisorSkipCbPayment,
-      cbFreed:     advisorSkipCbPayment ? thisMonth.cbPayment : 0,
-      btcIncome:   effectiveBtcIncome,
-      btcBought:   effectiveBtcBought,
-      unallocated: effectiveUnallocated,
+      cbPayment:      effectiveCbPayment,
+      cbSkipped:      advisorSkipCbPayment,
+      cbFreed:        advisorSkipCbPayment ? thisMonth.cbPayment : 0,
+      cbPaydownDraw:  thisMonth.cbPaydownDraw,
+      cbLtvTriggered: thisMonth.cbLtvTriggered,
+      btcIncome:      effectiveBtcIncome,
+      btcBought:      effectiveBtcBought,
+      unallocated:    effectiveUnallocated,
       totalAllocated,
       incomeFullyUsed: Math.abs(totalAllocated - income) < 0.01,
     };
   }, [
     thisMonth, income, expenses, btcPrice,
+    cbPaymentStrategy,
     advisorSkipBlocDraw, advisorSkipCbPayment, advisorSkipBtcBuying,
   ]);
 
@@ -295,6 +307,13 @@ export function AdvisorMain() {
                       styles={styles}
                     />
 
+                    {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan.cbLtvTriggered && (
+                      <div className={styles.mandatoryRow}>
+                        <span className={styles.mandatoryLabel}>⚠ CB LTV alert — BLOC draws to pay down CB</span>
+                        <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.cbPaydownDraw)}</span>
+                      </div>
+                    )}
+
                     {(advisorSkipBlocDraw || overriddenPlan.fiatGap > 0) && (
                       <div className={styles.redirectNote}>
                         💵 Cover from fiat: <strong>{fmtUSD(overriddenPlan.fiatGap)}</strong>
@@ -317,7 +336,7 @@ export function AdvisorMain() {
                       </div>
                     )}
 
-                    {hasCbLoan && (
+                    {hasCbLoan && cbPaymentStrategy === 'monthly' && (
                       <ActionRow
                         icon="🏦"
                         label="CB Loan payment"
@@ -466,7 +485,7 @@ export function AdvisorMain() {
                     <th>Mo</th>
                     <th>Tier</th>
                     <th>BLOC Draw</th>
-                    {hasCbLoan && <th>CB Payment</th>}
+                    {hasCbLoan && <th>{cbPaymentStrategy === 'ltvTriggered' ? 'CB Paydown' : 'CB Payment'}</th>}
                     <th>BTC Bought</th>
                     <th>Drawn</th>
                     {hasCbLoan && <th>CB LTV</th>}
@@ -489,7 +508,14 @@ export function AdvisorMain() {
                         </span>
                       </td>
                       <td>{row.blocDraw > 0 ? fmtUSD(row.blocDraw) : <span className={styles.muted}>—</span>}</td>
-                      {hasCbLoan && <td className={styles.paymentCell}>{fmtUSD(row.cbPayment)}</td>}
+                      {hasCbLoan && (
+                        <td className={`${styles.paymentCell} ${row.cbLtvTriggered ? styles.triggerCell : ''}`}>
+                          {cbPaymentStrategy === 'ltvTriggered'
+                            ? (row.cbPaydownDraw > 0 ? fmtUSD(row.cbPaydownDraw) : <span className={styles.muted}>—</span>)
+                            : fmtUSD(row.cbPayment)
+                          }
+                        </td>
+                      )}
                       <td className={styles.btcCell}>
                         {row.btcBought > 0 ? `+${row.btcBought.toFixed(5)}` : <span className={styles.muted}>—</span>}
                       </td>
@@ -506,7 +532,10 @@ export function AdvisorMain() {
                     <td />
                     {hasCbLoan && (
                       <td className={styles.paymentCell}>
-                        {fmtUSD(result.rows.reduce((s, r) => s + r.cbPayment, 0))}
+                        {cbPaymentStrategy === 'ltvTriggered'
+                          ? fmtUSD(result.rows.reduce((s, r) => s + r.cbPaydownDraw, 0))
+                          : fmtUSD(result.rows.reduce((s, r) => s + r.cbPayment, 0))
+                        }
                       </td>
                     )}
                     <td className={styles.btcCell}>+{result.totalBtcBought.toFixed(5)}</td>

@@ -36,6 +36,9 @@ export interface AdvisorInputs {
   cbCollateralBtc:  number;
   cbAprPct:         number;
   cbMonthlyPayment: number;
+  cbPaymentStrategy: 'monthly' | 'ltvTriggered';
+  cbLtvTriggerPct:   number;
+  cbLtvTargetPct:    number;
   startingBlocBalance: number;
   startingBtcHeld:     number;
   startingMonth:       number;
@@ -51,6 +54,8 @@ export interface AdvisorMonthRow {
   fiatGap:        number;
   cbPayment:      number;
   cbExtraPayment: number;
+  cbPaydownDraw:  number;   // BLOC draw used to pay down CB this month (0 if not triggered)
+  cbLtvTriggered: boolean;  // true when CB LTV trigger fired this month
   btcBought:      number;
   incomeToBtc:    number;
   blocBalance:    number;
@@ -79,6 +84,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     blocApr, creditLine, blocLtvCeiling,
     cbBalance: initialCbBalance, cbCollateralBtc,
     cbAprPct, cbMonthlyPayment,
+    cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
     startingBlocBalance, startingBtcHeld, startingMonth, btcGrowthRate,
   } = inputs;
 
@@ -101,55 +107,107 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     const cbLtvStart = cbCollateralBtc * btcPriceThisMonth > 0 ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
     const tier = getTier(cbLtvStart);
 
-    // CB interest accrues on opening balance
+    // Shared per-month variables — declared before branch so both paths can access them
+    let blocDraw:        number;
+    let fiatGap:         number;
+    let blocInterest:    number;
+    let blocPaydown:     number;
+    let cbTotalPayment:  number;
+    let cbExtraPayment:  number;
+    let incomeToBtc:     number;
+    let btcBought:       number;
+    let cbPaydownDraw:   number = 0;
+    let cbLtvTriggered:  boolean = false;
+
+    // CB interest accrues on opening balance (both paths)
     const cbInterest = cbBal * cbMonthlyRate;
     cbBal += cbInterest;
 
-    // BLOC draw by tier
-    let blocDraw = 0;
-    if (tier === 4 || tier === 3) {
+    if (cbPaymentStrategy === 'ltvTriggered') {
+      // Check trigger AFTER interest accrual
+      const cbLtvNow = cbCollateralBtc * btcPriceThisMonth > 0
+        ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
+      if (cbLtvNow >= cbLtvTriggerPct / 100) {
+        const targetBal = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
+        cbPaydownDraw   = Math.max(0, cbBal - targetBal);
+        cbBal          -= cbPaydownDraw;
+        blocBalance    += cbPaydownDraw;  // Strike LOC funds the CB paydown
+        cbLtvTriggered  = true;
+      }
+
+      // Full expense BLOC draw regardless of tier (CB priority rules suspended)
       blocDraw = Math.min(expenses, Math.max(0, creditLine - blocBalance));
-    } else if (tier === 2) {
-      blocDraw = Math.min(expenses * 0.5, Math.max(0, creditLine - blocBalance));
+      fiatGap  = expenses - blocDraw;
+
+      // BLOC: draw then interest
+      blocBalance  += blocDraw;
+      blocInterest  = blocBalance * blocMonthlyRate;
+      blocBalance  += blocInterest;
+
+      // BLOC LTV paydown check — funded from income
+      const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
+      blocPaydown = blocBalance > blocTarget
+        ? Math.min(income * 0.3, blocBalance - blocTarget)
+        : 0;
+
+      // No CB payment from income in ltvTriggered mode
+      cbTotalPayment = 0;
+      cbExtraPayment = 0;
+
+      blocBalance -= blocPaydown;
+      incomeToBtc  = income - blocPaydown;
+
+    } else {
+      // Monthly payment strategy (original logic)
+      cbPaydownDraw  = 0;
+      cbLtvTriggered = false;
+
+      // BLOC draw by tier
+      if (tier === 4 || tier === 3) {
+        blocDraw = Math.min(expenses, Math.max(0, creditLine - blocBalance));
+      } else if (tier === 2) {
+        blocDraw = Math.min(expenses * 0.5, Math.max(0, creditLine - blocBalance));
+      } else {
+        blocDraw = 0;
+      }
+      fiatGap = expenses - blocDraw;
+
+      // BLOC: draw then interest
+      blocBalance  += blocDraw;
+      blocInterest  = blocBalance * blocMonthlyRate;
+      blocBalance  += blocInterest;
+
+      // BLOC LTV paydown check — funded from income
+      const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
+      blocPaydown = blocBalance > blocTarget
+        ? Math.min(income * 0.3, blocBalance - blocTarget)
+        : 0;
+
+      // Income allocation by tier
+      let remainingIncome = income - blocPaydown;
+      cbExtraPayment = 0;
+      if (tier === 1) {
+        cbExtraPayment  = remainingIncome;
+        remainingIncome = 0;
+      } else if (tier === 2) {
+        cbExtraPayment  = remainingIncome * 0.5;
+        remainingIncome = remainingIncome * 0.5;
+      } else if (tier === 3) {
+        cbExtraPayment  = remainingIncome * 0.25;
+        remainingIncome = remainingIncome * 0.75;
+      }
+
+      // Apply payments
+      cbTotalPayment = Math.min(cbMonthlyPayment + cbExtraPayment, cbBal);
+      cbBal       -= cbTotalPayment;
+      blocBalance -= blocPaydown;
+
+      incomeToBtc = remainingIncome;
     }
-    const fiatGap = expenses - blocDraw;
 
-    // BLOC: draw then interest
-    blocBalance += blocDraw;
-    const blocInterest = blocBalance * blocMonthlyRate;
-    blocBalance += blocInterest;
-
-    // BLOC LTV paydown check — funded from income
-    const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
-    let blocPaydown  = 0;
-    if (blocBalance > blocTarget) {
-      blocPaydown = Math.min(income * 0.3, blocBalance - blocTarget);
-    }
-
-    // Income allocation
-    let remainingIncome = income - blocPaydown;
-    let cbExtraPayment  = 0;
-
-    if (tier === 1) {
-      cbExtraPayment  = remainingIncome;
-      remainingIncome = 0;
-    } else if (tier === 2) {
-      cbExtraPayment  = remainingIncome * 0.5;
-      remainingIncome = remainingIncome * 0.5;
-    } else if (tier === 3) {
-      cbExtraPayment  = remainingIncome * 0.25;
-      remainingIncome = remainingIncome * 0.75;
-    }
-
-    // Apply payments
-    const cbTotalPayment = Math.min(cbMonthlyPayment + cbExtraPayment, cbBal);
-    cbBal       -= cbTotalPayment;
-    blocBalance -= blocPaydown;
-
-    // Buy BTC with remaining income
-    const incomeToBtc = remainingIncome;
-    const btcBought   = btcPriceThisMonth > 0 ? incomeToBtc / btcPriceThisMonth : 0;
-    btcHeld += btcBought;
+    // Buy BTC with remaining income (both paths)
+    btcBought = btcPriceThisMonth > 0 ? incomeToBtc / btcPriceThisMonth : 0;
+    btcHeld  += btcBought;
 
     const blocLtv     = btcHeld * btcPriceThisMonth > 0 ? blocBalance / (btcHeld * btcPriceThisMonth) : 0;
     const cbLtv       = cbCollateralBtc * btcPriceThisMonth > 0 ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
@@ -162,8 +220,10 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     rows.push({
       month, tier, tierLabel: getTierLabel(tier),
       isCurrentMonth: month === startingMonth,
-      blocDraw, fiatGap, cbPayment: cbTotalPayment,
-      cbExtraPayment, btcBought, incomeToBtc,
+      blocDraw, fiatGap,
+      cbPayment: cbTotalPayment, cbExtraPayment,
+      cbPaydownDraw, cbLtvTriggered,
+      btcBought, incomeToBtc,
       blocBalance, blocLtv, cbBalance: cbBal, cbLtv, btcHeld,
       blocInterest, cbInterest, totalInterest,
     });

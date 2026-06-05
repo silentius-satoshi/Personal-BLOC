@@ -54,11 +54,14 @@ interface StoreState {
   timeHorizonYears: number;
 
   // CB Loan tab inputs
-  cbLoanBalance:       number;
-  cbCollateralBtc:     number;
-  cbAprPct:            number;
-  cbMonthlyPayment:    number;
-  cbLiquidationPrice:  number;
+  cbLoanBalance:        number;
+  cbCollateralBtc:      number;
+  cbAprPct:             number;
+  cbMonthlyPayment:     number;
+  cbLiquidationPrice:   number;
+  cbPaymentStrategy:    'monthly' | 'ltvTriggered';
+  cbLtvTriggerPct:      number;
+  cbLtvTargetPct:       number;
 
   // App mode
   simpleMode:            boolean;
@@ -125,11 +128,14 @@ interface StoreState {
   setHasCbLoan: (v: boolean) => void;
 
   // Setters — CB Loan tab
-  setCbLoanBalance:    (v: number) => void;
-  setCbCollateralBtc:  (v: number) => void;
-  setCbAprPct:         (v: number) => void;
+  setCbLoanBalance:       (v: number) => void;
+  setCbCollateralBtc:     (v: number) => void;
+  setCbAprPct:            (v: number) => void;
   setCbMonthlyPayment:    (v: number) => void;
   setCbLiquidationPrice:  (v: number) => void;
+  setCbPaymentStrategy:   (v: 'monthly' | 'ltvTriggered') => void;
+  setCbLtvTriggerPct:     (v: number) => void;
+  setCbLtvTargetPct:      (v: number) => void;
 
   // Setters — Advisor tab
   setAdvisorStartDate:         (date: string) => void;
@@ -262,11 +268,14 @@ export const useStore = create<StoreState>()(
   hasCbLoan:    false,
   setHasCbLoan: (v) => { set({ hasCbLoan: v }); useStore.getState().syncSettingsToNostr(); },
 
-  cbLoanBalance:    60000,
-  cbCollateralBtc:  1.48,
-  cbAprPct:         4.77,
-  cbMonthlyPayment:   0,
-  cbLiquidationPrice: 0,
+  cbLoanBalance:       60000,
+  cbCollateralBtc:     1.48,
+  cbAprPct:            4.77,
+  cbMonthlyPayment:    0,
+  cbLiquidationPrice:  0,
+  cbPaymentStrategy:   'monthly' as const,
+  cbLtvTriggerPct:     75,
+  cbLtvTargetPct:      65,
 
   simpleMode:         false,
   onboardingComplete: false,
@@ -315,6 +324,9 @@ export const useStore = create<StoreState>()(
   setCbAprPct:         (v) => { set({ cbAprPct: v });         useStore.getState().syncSettingsToNostr(); },
   setCbMonthlyPayment:   (v) => set({ cbMonthlyPayment: v }),
   setCbLiquidationPrice: (v) => set({ cbLiquidationPrice: v }),
+  setCbPaymentStrategy:  (v) => set({ cbPaymentStrategy: v }),
+  setCbLtvTriggerPct:    (v) => set({ cbLtvTriggerPct: v }),
+  setCbLtvTargetPct:     (v) => set({ cbLtvTargetPct: v }),
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -464,7 +476,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 6,
+      version: 7,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
@@ -474,6 +486,9 @@ export const useStore = create<StoreState>()(
         return {
           ...rest,
           advisorActualBtcHeld: persistedState.advisorActualBtcHeld ?? customCollateral ?? 0,
+          cbPaymentStrategy:    persistedState.cbPaymentStrategy    ?? 'monthly',
+          cbLtvTriggerPct:      persistedState.cbLtvTriggerPct      ?? 75,
+          cbLtvTargetPct:       persistedState.cbLtvTargetPct       ?? 65,
         };
       },
       onRehydrateStorage: () => (state) => {

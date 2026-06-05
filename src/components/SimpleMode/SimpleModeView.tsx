@@ -83,9 +83,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const blocApr   = useStore((s) => s.blocApr);
   const creditLine = useStore((s) => s.creditLine);
 
-  const cbLoanBalance    = useStore((s) => s.cbLoanBalance);
-  const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);
-  const cbMonthlyPayment = useStore((s) => s.cbMonthlyPayment);
+  const cbLoanBalance      = useStore((s) => s.cbLoanBalance);
+  const cbCollateralBtc    = useStore((s) => s.cbCollateralBtc);
+  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
+  const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
+  const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
+  const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
@@ -162,7 +165,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
         cbAprPct:         hasCbLoan ? cbAprPct         : 0,
-        cbMonthlyPayment: hasCbLoan ? cbMonthlyPayment : 0,
+        cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment  : 0,
+        cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
+        cbLtvTriggerPct,
+        cbLtvTargetPct,
         startingBlocBalance: slmBlocBal,
         startingBtcHeld:     slmBtcHeld,
         startingMonth:       slmStartMonth,
@@ -172,6 +178,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     },
     [btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
      cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+     cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
      slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan],
   );
   const currentCbLtv = cbCollateralBtc * btcPrice > 0
@@ -237,7 +244,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const allocatedFromIncome = expectedPaydown
     + (advisorSkipBtcBuying ? 0 : expectedBtcBuying)
-    + (hasCbLoan && !advisorSkipCbPayment ? expectedCbPayment : 0);
+    + (hasCbLoan && cbPaymentStrategy === 'monthly' && !advisorSkipCbPayment ? expectedCbPayment : 0);
+
+  const cbPaydownBuffer    = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
+    ? Math.max(0, cbLoanBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100))
+    : 0;
+  const cbBufferAffordable = cbPaydownBuffer <= Math.max(0, creditLine - advisorActualBlocBalance);
   const isFullyAllocated   = income > 0 && Math.abs(income - allocatedFromIncome) < 1;
   const tierStatusText: Record<AdvisorTier, string> = {
     4: 'SAFE', 3: 'WATCH', 2: 'WARNING', 1: 'EMERGENCY',
@@ -393,6 +405,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.positionStat}>LTV: {(eomLtv * 100).toFixed(1)}%</span>
               <span className={styles.positionStat}>₿ {eomBtcHeld.toFixed(5)}</span>
               <span className={styles.positionStat}>Avail: {fmtUSD(Math.max(0, creditLine - eomBlocBalance))}</span>
+              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (
+                <>
+                  <span className={styles.positionStat} style={{ color: cbBufferAffordable ? 'var(--green)' : 'var(--red)' }}>
+                    CB buffer: {fmtUSD(cbPaydownBuffer)}
+                  </span>
+                  <span className={styles.positionStatHint}>to reach {cbLtvTargetPct}% LTV</span>
+                </>
+              )}
               <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                 {ndp.status === 'never'    && 'NDP — not recorded'}
                 {ndp.status === 'ok'       && `NDP: ${ndp.daysRemaining}d`}
@@ -520,6 +540,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     >Skip</button>
                   </div>
                 </div>
+                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.cbLtvTriggered && (
+                  <div className={styles.actionRow}>
+                    <span className={styles.actionIcon}>⚠</span>
+                    <div className={styles.actionLabelGroup}>
+                      <span className={styles.actionLabel}>CB LTV alert — draw from BLOC to pay down CB</span>
+                    </div>
+                    <span className={styles.actionAmount} style={{ color: 'var(--amber)' }}>
+                      {fmtUSD(currentRow.cbPaydownDraw)}
+                    </span>
+                  </div>
+                )}
                 {showFiatRow && (
                   <div className={styles.actionRow}>
                     <span className={styles.actionIcon}>≡</span>
@@ -553,7 +584,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   <span className={styles.actionAmount}>{fmtUSD(expectedPaydown)}</span>
                 </div>
               )}
-              {hasCbLoan && (
+              {hasCbLoan && cbPaymentStrategy === 'monthly' && (
                 <div className={styles.actionRow}>
                   <span className={styles.actionIcon}>◎</span>
                   <div className={styles.actionLabelGroup}>

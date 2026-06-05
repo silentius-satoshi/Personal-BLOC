@@ -283,3 +283,33 @@
   color: var(--text-faint);
   line-height: 1.4;
 }
+
+.strategyPills {
+  display: flex;
+  gap: 6px;
+}
+
+.strategyPill {
+  flex: 1;
+  padding: 6px 0;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: none;
+  color: var(--text-ghost);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.strategyPill:hover {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+
+.strategyPillActive {
+  border-color: var(--orange);
+  background: rgba(232, 131, 106, 0.12);
+  color: var(--orange);
+}

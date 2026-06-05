@@ -131,6 +131,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const cbAprPct              = useStore((s) => s.cbAprPct);              const setCbAprPct              = useStore((s) => s.setCbAprPct);
   const cbMonthlyPayment      = useStore((s) => s.cbMonthlyPayment);      const setCbMonthlyPayment      = useStore((s) => s.setCbMonthlyPayment);
   const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);    const setCbLiquidationPrice    = useStore((s) => s.setCbLiquidationPrice);
+  const cbPaymentStrategy     = useStore((s) => s.cbPaymentStrategy);     const setCbPaymentStrategy     = useStore((s) => s.setCbPaymentStrategy);
+  const cbLtvTriggerPct       = useStore((s) => s.cbLtvTriggerPct);       const setCbLtvTriggerPct       = useStore((s) => s.setCbLtvTriggerPct);
+  const cbLtvTargetPct        = useStore((s) => s.cbLtvTargetPct);        const setCbLtvTargetPct        = useStore((s) => s.setCbLtvTargetPct);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
 
@@ -297,13 +300,39 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </div>
           {hasCbLoan && (
             <>
+              <div className={styles.setupFieldGroup}>
+                <span className={styles.setupFieldLabel}>CB PAYMENT STRATEGY</span>
+                <div className={styles.strategyPills}>
+                  <button
+                    className={`${styles.strategyPill} ${cbPaymentStrategy === 'monthly' ? styles.strategyPillActive : ''}`}
+                    onClick={() => setCbPaymentStrategy('monthly')}
+                  >Monthly</button>
+                  <button
+                    className={`${styles.strategyPill} ${cbPaymentStrategy === 'ltvTriggered' ? styles.strategyPillActive : ''}`}
+                    onClick={() => setCbPaymentStrategy('ltvTriggered')}
+                  >LTV-Triggered</button>
+                </div>
+              </div>
               <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
               <div className={styles.setupFieldGroup}>
                 <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
                 <span className={styles.fieldHint}>BTC pledged to your Coinbase/Morpho loan.</span>
               </div>
               <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} />
-              <NumberInput label="Monthly payment" value={cbMonthlyPayment}    onChange={setCbMonthlyPayment}   prefix="$" min={0} step={100} />
+              {cbPaymentStrategy === 'monthly' && (
+                <NumberInput label="Monthly payment" value={cbMonthlyPayment} onChange={setCbMonthlyPayment} prefix="$" min={0} step={100} />
+              )}
+              {cbPaymentStrategy === 'ltvTriggered' && (
+                <>
+                  <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} step={1} />
+                  <NumberInput label="Pay down to LTV"  value={cbLtvTargetPct}  onChange={setCbLtvTargetPct}  min={0} step={1} />
+                  {cbLtvTriggerPct <= cbLtvTargetPct && (
+                    <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
+                      Trigger must be above target LTV
+                    </span>
+                  )}
+                </>
+              )}
               <div className={styles.setupFieldGroup}>
                 <NumberInput label="Liquidation price" value={cbLiquidationPrice} onChange={setCbLiquidationPrice} prefix="$" min={0} step={100} />
                 <span className={styles.fieldHint}>Enter the exact figure Coinbase shows in your Loan Center.</span>

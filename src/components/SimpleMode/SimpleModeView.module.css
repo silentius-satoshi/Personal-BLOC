@@ -120,6 +120,7 @@
 }
 
 .positionStat { font-size: 13px; color: var(--text-secondary); }
+.positionStatHint { font-size: 11px; color: var(--text-ghost); }
 
 /* Change 2 — THIS MONTH column stat colours */
 .statGreen { color: var(--green); font-weight: 600; }

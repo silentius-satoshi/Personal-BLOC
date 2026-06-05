@@ -218,11 +218,14 @@ miningInputs: {
 
 ### CB Loan Tab
 ```typescript
-cbLoanBalance:       number;   // default 60000
-cbCollateralBtc:     number;   // default 1.48
-cbAprPct:            number;   // default 4.77
-cbMonthlyPayment:    number;   // default 0
-cbLiquidationPrice:  number;   // default 0 (0 = not set by user; guard before calling compute fn)
+cbLoanBalance:       number;                       // default 60000
+cbCollateralBtc:     number;                       // default 1.48
+cbAprPct:            number;                       // default 4.77
+cbMonthlyPayment:    number;                       // default 0
+cbLiquidationPrice:  number;                       // default 0 (0 = not set; guard before calling compute fn)
+cbPaymentStrategy:   'monthly' | 'ltvTriggered';  // default 'monthly'
+cbLtvTriggerPct:     number;                       // default 75 (percent, e.g. 75 = 75%)
+cbLtvTargetPct:      number;                       // default 65 (percent, pay down to this LTV)
 ```
 
 ### Advisor Tab
@@ -334,9 +337,16 @@ interface AdvisorInputs {
   btcPrice: number; income: number; expenses: number;
   blocApr: number; creditLine: number; collateralBtc: number; blocLtvCeiling: number;
   cbBalance: number; cbCollateralBtc: number; cbAprPct: number; cbMonthlyPayment: number;
+  cbPaymentStrategy: 'monthly' | 'ltvTriggered';
+  cbLtvTriggerPct: number;   // percent, e.g. 75
+  cbLtvTargetPct:  number;   // percent, e.g. 65
   startingBlocBalance: number; startingBtcHeld: number; startingMonth: number;
   btcGrowthRate: number;
 }
+
+// AdvisorMonthRow key fields (defined in runAdvisor.ts, not types.ts):
+// cbPaydownDraw:  number  — BLOC draw used for CB paydown this month (0 if not triggered)
+// cbLtvTriggered: boolean — true when CB LTV trigger fired this month
 ```
 
 Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth) / 12)`
@@ -584,7 +594,8 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
 | `deriveAdvisorStart` | Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
-| Zustand v6 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; nothing else reset |
+| Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
+| `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |
