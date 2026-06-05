@@ -128,9 +128,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
   const setShowMiningInLog          = useStore((s) => s.setShowMiningInLog);
 
-  const cbLoanBalance    = useStore((s) => s.cbLoanBalance);    const setCbLoanBalance    = useStore((s) => s.setCbLoanBalance);
-  const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);  const setCbCollateralBtc  = useStore((s) => s.setCbCollateralBtc);
-  const cbAprPct         = useStore((s) => s.cbAprPct);         const setCbAprPct         = useStore((s) => s.setCbAprPct);
+  const cbLoanBalance         = useStore((s) => s.cbLoanBalance);         const setCbLoanBalance         = useStore((s) => s.setCbLoanBalance);
+  const cbCollateralBtc       = useStore((s) => s.cbCollateralBtc);       const setCbCollateralBtc       = useStore((s) => s.setCbCollateralBtc);
+  const cbAprPct              = useStore((s) => s.cbAprPct);              const setCbAprPct              = useStore((s) => s.setCbAprPct);
+  const cbMonthlyPayment      = useStore((s) => s.cbMonthlyPayment);      const setCbMonthlyPayment      = useStore((s) => s.setCbMonthlyPayment);
+  const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);    const setCbLiquidationPrice    = useStore((s) => s.setCbLiquidationPrice);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
 
@@ -253,7 +255,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             step={0.001}
           />
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
-          <NumberInput label="Amount Drawn"    value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
+          <div className={styles.setupFieldGroup}>
+            <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
+            <span className={styles.fieldHint}>Current outstanding BLOC draw balance.</span>
+          </div>
           <div className={styles.setupFieldGroup}>
             <span className={styles.setupFieldLabel}>Strategy start date</span>
             <input
@@ -268,7 +273,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>YOUR BITCOIN</div>
-          <NumberInput label="BTC held" value={advisorActualBtcHeld} onChange={setAdvisorActualBtcHeld} prefix="₿" min={0} step={0.001} />
+          <div className={styles.setupFieldGroup}>
+            <NumberInput label="BTC held" value={advisorActualBtcHeld} onChange={setAdvisorActualBtcHeld} prefix="₿" min={0} step={0.001} />
+            <span className={styles.fieldHint}>Total BTC locked in Strike as collateral.</span>
+          </div>
         </div>
 
         {!hiddenTabs.includes('mining') && (
@@ -298,7 +306,12 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             <>
               <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
               <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
-              <NumberInput label="APR"            value={cbAprPct}        onChange={setCbAprPct}                    min={0} step={0.01} />
+              <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} />
+              <NumberInput label="Monthly payment" value={cbMonthlyPayment}    onChange={setCbMonthlyPayment}   prefix="$" min={0} step={100} />
+              <div className={styles.setupFieldGroup}>
+                <NumberInput label="Liquidation price" value={cbLiquidationPrice} onChange={setCbLiquidationPrice} prefix="$" min={0} step={100} />
+                <span className={styles.fieldHint}>Enter the exact figure Coinbase shows in your Loan Center.</span>
+              </div>
             </>
           )}
         </div>
