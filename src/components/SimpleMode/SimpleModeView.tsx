@@ -115,7 +115,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const setCreditLine = useStore((s) => s.setCreditLine);
 
   const activeTier       = useStore((s) => s.activeTier);
-  const customCollateral = useStore((s) => s.customCollateral);
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const monthlyLog       = useStore((s) => s.monthlyLog);
 
@@ -148,7 +147,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
-  const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
+  const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
     () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld || collateralBtc, advisorActualBlocBalance, currentMonth),

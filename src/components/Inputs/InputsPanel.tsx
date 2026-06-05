@@ -15,13 +15,13 @@ export function InputsPanel() {
   const creditLine        = useStore((s) => s.creditLine);
   const blocApr           = useStore((s) => s.blocApr);
   const activeTier        = useStore((s) => s.activeTier);
-  const customCollateral  = useStore((s) => s.customCollateral);
+  const advisorActualBtcHeld = useStore((s) => s.advisorActualBtcHeld);
   const setIncome           = useStore((s) => s.setIncome);
   const setExpenses         = useStore((s) => s.setExpenses);
   const setBtcPrice         = useStore((s) => s.setBtcPrice);
   const setCreditLine       = useStore((s) => s.setCreditLine);
   const setActiveTier       = useStore((s) => s.setActiveTier);
-  const setCustomCollateral = useStore((s) => s.setCustomCollateral);
+  const setAdvisorActualBtcHeld = useStore((s) => s.setAdvisorActualBtcHeld);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const ndpLastPaidDate          = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate       = useStore((s) => s.setNdpLastPaidDate);
@@ -31,7 +31,7 @@ export function InputsPanel() {
   const strikeApiConnected = useStore((s) => s.strikeApiConnected);
   const strikeLastFetched  = useStore((s) => s.strikeLastFetched);
 
-  const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
+  const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
 
   const { livePrice, lastUpdated } = useBtcPrice();
 
@@ -156,7 +156,7 @@ export function InputsPanel() {
             label="Collateral (BTC)"
             value={parseFloat(effectiveCollateral.toFixed(5))}
             onChange={(v) => {
-              setCustomCollateral(v);
+              setAdvisorActualBtcHeld(v);
               setActiveTier('custom');
             }}
             min={0.001}

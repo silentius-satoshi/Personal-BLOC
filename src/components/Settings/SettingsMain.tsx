@@ -115,8 +115,6 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
   const creditLine  = useStore((s) => s.creditLine);   const setCreditLine  = useStore((s) => s.setCreditLine);
   const blocApr     = useStore((s) => s.blocApr);      const setBlocApr     = useStore((s) => s.setBlocApr);
-  const customCollateral   = useStore((s) => s.customCollateral);
-  const setCustomCollateral = useStore((s) => s.setCustomCollateral);
   const setActiveTier       = useStore((s) => s.setActiveTier);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
@@ -246,14 +244,17 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>STRIKE BLOC</div>
           <NumberInput label="Credit line"     value={creditLine}       onChange={setCreditLine}       prefix="$" min={0} step={500} />
-          <NumberInput
-            label="BTC collateral"
-            value={parseFloat(customCollateral.toFixed(5))}
-            onChange={(v) => { setCustomCollateral(v); setActiveTier('custom'); }}
-            prefix="₿"
-            min={0}
-            step={0.001}
-          />
+          <div className={styles.setupFieldGroup}>
+            <NumberInput
+              label="BTC collateral"
+              value={parseFloat(advisorActualBtcHeld.toFixed(5))}
+              onChange={(v) => { setAdvisorActualBtcHeld(v); setActiveTier('custom'); }}
+              prefix="₿"
+              min={0}
+              step={0.001}
+            />
+            <span className={styles.fieldHint}>Your BTC in Strike. Feeds BLOC calculations, Advisor projections, and Liq Sim.</span>
+          </div>
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
           <div className={styles.setupFieldGroup}>
             <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
@@ -268,14 +269,6 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               max={new Date().toISOString().split('T')[0]}
               onChange={(e) => setAdvisorStartDate(e.target.value)}
             />
-          </div>
-        </div>
-
-        <div className={styles.setupGroup}>
-          <div className={styles.setupGroupLabel}>YOUR BITCOIN</div>
-          <div className={styles.setupFieldGroup}>
-            <NumberInput label="BTC held" value={advisorActualBtcHeld} onChange={setAdvisorActualBtcHeld} prefix="₿" min={0} step={0.001} />
-            <span className={styles.fieldHint}>Total BTC locked in Strike as collateral.</span>
           </div>
         </div>
 

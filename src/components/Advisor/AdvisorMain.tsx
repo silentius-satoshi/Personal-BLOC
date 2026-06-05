@@ -70,7 +70,6 @@ export function AdvisorMain() {
   const creditLine        = useStore((s) => s.creditLine);
   const btcPrice          = useStore((s) => s.btcPrice);
   const activeTier        = useStore((s) => s.activeTier);
-  const customCollateral  = useStore((s) => s.customCollateral);
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
@@ -108,7 +107,7 @@ export function AdvisorMain() {
 
   const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
 
-  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
+  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const effectiveCbBalance = hasCbLoan ? cbLoanBalance : 0;

@@ -16,18 +16,19 @@ export function TierCards() {
   const setActiveTier       = useStore((s) => s.setActiveTier);
   const btcPrice            = useStore((s) => s.btcPrice);
   const expenses            = useStore((s) => s.expenses);
-  const customCollateral    = useStore((s) => s.customCollateral);
-  const setCustomCollateral = useStore((s) => s.setCustomCollateral);
+  const advisorActualBtcHeld    = useStore((s) => s.advisorActualBtcHeld);
+  const setAdvisorActualBtcHeld = useStore((s) => s.setAdvisorActualBtcHeld);
+
   const { tiers } = useSimulation();
 
-  const [customRaw, setCustomRaw] = useState(customCollateral.toFixed(2));
+  const [customRaw, setCustomRaw] = useState(advisorActualBtcHeld.toFixed(2));
 
   useEffect(() => {
-    setCustomRaw(customCollateral.toFixed(2));
-  }, [customCollateral]);
+    setCustomRaw(advisorActualBtcHeld.toFixed(2));
+  }, [advisorActualBtcHeld]);
 
-  const customDayOneLtv = customCollateral > 0 && btcPrice > 0
-    ? expenses / (customCollateral * btcPrice)
+  const customDayOneLtv = advisorActualBtcHeld > 0 && btcPrice > 0
+    ? expenses / (advisorActualBtcHeld * btcPrice)
     : 0;
   const customCrashLtv = customDayOneLtv / 0.20;
   const customCrashLabel =
@@ -98,21 +99,21 @@ export function TierCards() {
                 onChange={(e) => setCustomRaw(e.target.value)}
                 onBlur={() => {
                   const v = parseFloat(customRaw);
-                  if (!isNaN(v) && v > 0) setCustomCollateral(v);
-                  else setCustomRaw(customCollateral.toFixed(2));
+                  if (!isNaN(v) && v > 0) setAdvisorActualBtcHeld(v);
+                  else setCustomRaw(advisorActualBtcHeld.toFixed(2));
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const v = parseFloat(customRaw);
-                    if (!isNaN(v) && v > 0) setCustomCollateral(v);
-                    else setCustomRaw(customCollateral.toFixed(2));
+                    if (!isNaN(v) && v > 0) setAdvisorActualBtcHeld(v);
+                    else setCustomRaw(advisorActualBtcHeld.toFixed(2));
                   }
                 }}
               />
               <span className={styles.customInputUnit}>BTC</span>
             </div>
           ) : (
-            <span className={styles.btcAmount}>₿ {customCollateral.toFixed(4)} BTC</span>
+            <span className={styles.btcAmount}>₿ {advisorActualBtcHeld.toFixed(4)} BTC</span>
           )}
 
           <span className={styles.ltvRow}>

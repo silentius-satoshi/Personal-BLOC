@@ -40,7 +40,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
   const setIncome           = useStore((s) => s.setIncome);
   const setExpenses         = useStore((s) => s.setExpenses);
-  const setCustomCollateral = useStore((s) => s.setCustomCollateral);
+  const setAdvisorActualBtcHeld = useStore((s) => s.setAdvisorActualBtcHeld);
   const setActiveTier       = useStore((s) => s.setActiveTier);
   const setCreditLine       = useStore((s) => s.setCreditLine);
   const setBlocApr          = useStore((s) => s.setBlocApr);
@@ -53,7 +53,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const handleDone = (enableSimple: boolean) => {
     setIncome(draft.income);
     setExpenses(draft.expenses);
-    setCustomCollateral(draft.collateralBtc);
+    setAdvisorActualBtcHeld(draft.collateralBtc);
     setActiveTier('custom');
     setCreditLine(draft.creditLine);
     setBlocApr(draft.blocApr);

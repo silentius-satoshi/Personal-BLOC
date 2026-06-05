@@ -40,10 +40,10 @@ export function getCollateralForTier(
   tier: Tier,
   expenses: number,
   btcPrice: number,
-  customCollateral: number,
+  advisorActualBtcHeld: number,
 ): number {
   const ltvMap = { min: 0.15, rec: 0.05, ideal: 0.02 };
-  if (tier === 'custom') return customCollateral;
+  if (tier === 'custom') return advisorActualBtcHeld;
   return expenses / (ltvMap[tier] * btcPrice);
 }
 

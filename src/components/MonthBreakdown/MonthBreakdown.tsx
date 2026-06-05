@@ -10,7 +10,7 @@ export default function MonthBreakdown() {
   const expenses         = useStore((s) => s.expenses);
   const btcPrice         = useStore((s) => s.btcPrice);
   const activeTier       = useStore((s) => s.activeTier);
-  const customCollateral = useStore((s) => s.customCollateral);
+  const advisorActualBtcHeld = useStore((s) => s.advisorActualBtcHeld);
   const blocApr          = useStore((s) => s.blocApr);
   const creditLine       = useStore((s) => s.creditLine);
 
@@ -34,7 +34,7 @@ export default function MonthBreakdown() {
 
   const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
 
-  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
+  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
 
   const result = useMemo(
     () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine, btcGrowthRate }),

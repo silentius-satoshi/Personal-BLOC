@@ -25,7 +25,6 @@ export function AdvisorSidebar() {
   const activeTier        = useStore((s) => s.activeTier);
   const { livePrice }     = useBtcPrice();
   const isSynced          = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
-  const customCollateral  = useStore((s) => s.customCollateral);
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
@@ -47,7 +46,7 @@ export function AdvisorSidebar() {
   const skipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan     = useStore((s) => s.hasCbLoan);
 
-  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, customCollateral);
+  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;

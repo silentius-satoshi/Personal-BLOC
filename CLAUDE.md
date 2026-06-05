@@ -172,7 +172,6 @@ income:           number;   // default 4000
 expenses:         number;   // default 3500
 btcPrice:         number;   // seeded from Coinbase API on first fetch
 activeTier:       'min' | 'rec' | 'ideal' | 'custom';  // default 'rec'
-customCollateral: number;   // default 1.0
 blocApr:          number;   // default 13 (percent)
 foldEnabled:      boolean;  // default true
 foldRate:         number;   // default 1.5 (percent)
@@ -268,7 +267,7 @@ Flex-column panel with two sections:
   - Recommended min credit line: `Math.ceil(peakBalance × 1.10 / 500) × 500` where `peakBalance = max(uncapped runBlocYearOne rows)`. Green ✓ / orange ↑.
   - Break-even draw: `income / (1 + blocApr/100/12)`. Green ✓ when `expenses ≤ breakEven`.
 
-Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, customCollateral)`. Editing auto-switches to Custom tier.
+Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld)`. Editing auto-switches to Custom tier. `advisorActualBtcHeld` is the single canonical BTC collateral field (formerly `customCollateral`, removed in store v6).
 
 ---
 
@@ -585,7 +584,7 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
 | `deriveAdvisorStart` | Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
-| Zustand v5 migration | Only adds `cbLiquidationPrice`; nothing else reset |
+| Zustand v6 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; nothing else reset |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |

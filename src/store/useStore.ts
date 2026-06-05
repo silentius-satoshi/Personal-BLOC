@@ -102,12 +102,9 @@ interface StoreState {
   setBlocApr: (v: number) => void;
   setFoldRewardRate: (v: number) => void;
 
-  customCollateral: number;
-
   // Setters — Smart BLOC tab
   setShowFoldCC: (v: boolean) => void;
   setActiveTier: (v: Tier) => void;
-  setCustomCollateral: (v: number) => void;
   setScenario: (v: Scenario) => void;
   setScrubMonth: (v: number) => void;
   setCreditLine: (v: number) => void;
@@ -247,7 +244,6 @@ export const useStore = create<StoreState>()(
 
   showFoldCC: true,
   activeTier: 'rec',
-  customCollateral: 1.0,
   scenario: 'moderate',
   scrubMonth: 30,
   creditLine: 10000,
@@ -300,7 +296,6 @@ export const useStore = create<StoreState>()(
 
   setShowFoldCC: (v) => set({ showFoldCC: v }),
   setActiveTier: (v) => set({ activeTier: v }),
-  setCustomCollateral: (v) => set({ customCollateral: v }),
   setScenario: (v) => set({ scenario: v }),
   setScrubMonth: (v) => set({ scrubMonth: v }),
   setCreditLine: (v) => { set({ creditLine: v }); useStore.getState().syncSettingsToNostr(); },
@@ -469,20 +464,18 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 5,
+      version: 6,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
       },
-      migrate: (persistedState: any) => ({
-        ...persistedState,
-        hiddenTabs:      [],
-        toolTabs:        persistedState.toolTabs        ?? ['powerlaw', 'converter', 'mining'],
-        hasCbLoan:       persistedState.hasCbLoan       ?? (persistedState.cbLoanBalance > 0),
-        monthlyLog:      persistedState.monthlyLog      ?? [],
-        showMiningInLog:    persistedState.showMiningInLog    ?? false,
-        cbLiquidationPrice: persistedState.cbLiquidationPrice ?? 0,
-      }),
+      migrate: (persistedState: any) => {
+        const { customCollateral, ...rest } = persistedState;
+        return {
+          ...rest,
+          advisorActualBtcHeld: persistedState.advisorActualBtcHeld ?? customCollateral ?? 0,
+        };
+      },
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {
           state.miningInputs.devices = state.miningInputs.devices.map((d) => ({
