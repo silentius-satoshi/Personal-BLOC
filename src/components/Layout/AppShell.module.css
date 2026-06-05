@@ -70,6 +70,10 @@
 [data-active-tab="settings"] .sidebar { display: none; }
 [data-active-tab="settings"] .main    { grid-column: 1 / -1; }
 
+/* Liq Sim: no sidebar — main fills full width */
+[data-active-tab="liqsim"] .sidebar { display: none; }
+[data-active-tab="liqsim"] .main    { grid-column: 1 / -1; }
+
 /* Bloc tab: scrollArea inside InputsPanel handles overflow — sidebar is a flex column */
 [data-active-tab="bloc"] .sidebar     { overflow: hidden; padding: 0; }
 [data-active-tab="bloc"] .sidebarInner { flex: 1; height: 100%; overflow: hidden; }
