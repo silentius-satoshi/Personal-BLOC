@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (65 tests — all must pass before every commit)
+- Vitest (71 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -45,7 +45,7 @@ src/
       monthlyLog.test.ts
 
   hooks/
-    useBtcPrice.ts              # Coinbase API, 60s interval, init-once store seed
+    useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick)
     useSimulation.ts            # Smart BLOC tab simulation hook
     useLivingSimulation.ts      # Living on Bitcoin tab hook
     usePowerLawData.ts          # Blockchain.com historical price (via Vercel proxy in prod)
@@ -170,7 +170,8 @@ previousTab: Exclude<ActiveTab, 'settings'>;
 ```typescript
 income:           number;   // default 4000
 expenses:         number;   // default 3500
-btcPrice:         number;   // seeded from Coinbase API on first fetch
+btcPrice:         number;   // updated every 60s fetch when btcPriceMode === 'live'
+btcPriceMode:     'live' | 'manual';   // default 'live'; 'manual' suppresses live overwrites
 activeTier:       'min' | 'rec' | 'ideal' | 'custom';  // default 'rec'
 blocApr:          number;   // default 13 (percent)
 foldEnabled:      boolean;  // default true
@@ -595,6 +596,7 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `deriveAdvisorStart` | Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
+| Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |

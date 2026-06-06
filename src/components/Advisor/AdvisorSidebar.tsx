@@ -22,8 +22,9 @@ export function AdvisorSidebar() {
   const creditLine        = useStore((s) => s.creditLine);
   const btcPrice          = useStore((s) => s.btcPrice);
   const setBtcPrice       = useStore((s) => s.setBtcPrice);
+  const setBtcPriceMode   = useStore((s) => s.setBtcPriceMode);
   const activeTier        = useStore((s) => s.activeTier);
-  const { livePrice }     = useBtcPrice();
+  const { livePrice, isStale } = useBtcPrice();
   const isSynced          = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
@@ -72,14 +73,26 @@ export function AdvisorSidebar() {
       <div className={styles.section}>
         <div className={styles.labelRow}>
           <span className={styles.label}>BTC PRICE</span>
-          <button
-            className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
-            onClick={() => livePrice !== null && setBtcPrice(livePrice)}
-            disabled={livePrice === null}
-            title={isSynced ? 'Live price synced' : 'Click to sync live price'}
-          >
-            {isSynced ? '✓ LIVE' : '↻ SYNC'}
-          </button>
+          {isStale ? (
+            <button
+              className={styles.liveBadge}
+              style={{ color: 'var(--amber)', borderColor: 'var(--amber)' }}
+              disabled={livePrice === null}
+              onClick={() => { if (livePrice !== null) setBtcPrice(livePrice); }}
+              title="Price may be stale — click to use last known live price"
+            >
+              ⚠ stale
+            </button>
+          ) : (
+            <button
+              className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
+              onClick={() => { if (livePrice !== null) setBtcPrice(livePrice); setBtcPriceMode('live'); }}
+              disabled={livePrice === null}
+              title={isSynced ? 'Live price synced' : 'Click to sync live price'}
+            >
+              {isSynced ? '✓ LIVE' : '↻ SYNC'}
+            </button>
+          )}
         </div>
         <div className={styles.priceDisplay}>${btcPrice.toLocaleString()}</div>
       </div>

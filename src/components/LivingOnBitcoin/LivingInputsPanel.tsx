@@ -21,6 +21,8 @@ export function LivingInputsPanel() {
 
   const setBtcHoldings      = useStore((s) => s.setBtcHoldings);
   const setBtcPrice         = useStore((s) => s.setBtcPrice);
+  const btcPriceMode        = useStore((s) => s.btcPriceMode);
+  const setBtcPriceMode     = useStore((s) => s.setBtcPriceMode);
   const setIncome           = useStore((s) => s.setIncome);
   const setExpenses         = useStore((s) => s.setExpenses);
   const setAnnualBtcGrowth  = useStore((s) => s.setAnnualBtcGrowth);
@@ -30,11 +32,30 @@ export function LivingInputsPanel() {
   const setInflationRate    = useStore((s) => s.setInflationRate);
   const setTimeHorizonYears = useStore((s) => s.setTimeHorizonYears);
 
-  const { livePrice, lastUpdated } = useBtcPrice();
+  const { livePrice, lastUpdated, isStale } = useBtcPrice();
 
   const isSynced = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
 
-  const liveBadge = (
+  const liveBadge = btcPriceMode === 'manual' ? (
+    <button
+      className={styles.liveBadge}
+      style={{ color: 'var(--amber)', borderColor: 'var(--amber)' }}
+      onClick={() => { if (livePrice !== null) setBtcPrice(livePrice); setBtcPriceMode('live'); }}
+      title="Manual price — click to restore live"
+    >
+      Manual
+    </button>
+  ) : isStale ? (
+    <button
+      className={styles.liveBadge}
+      style={{ color: 'var(--amber)', borderColor: 'var(--amber)' }}
+      disabled={livePrice === null}
+      onClick={() => { if (livePrice !== null) setBtcPrice(livePrice); }}
+      title="Price may be stale — click to use last known live price"
+    >
+      ⚠ stale
+    </button>
+  ) : (
     <button
       className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
       onClick={() => livePrice !== null && setBtcPrice(livePrice)}
@@ -66,7 +87,7 @@ export function LivingInputsPanel() {
           label="BTC Price"
           labelSuffix={liveBadge}
           value={btcPrice}
-          onChange={setBtcPrice}
+          onChange={(v) => { setBtcPrice(v); setBtcPriceMode('manual'); }}
           min={20000}
           max={1000000}
           step={1000}
@@ -74,7 +95,7 @@ export function LivingInputsPanel() {
           minLabel="$20k"
           maxLabel="$1M"
         />
-        {lastUpdated && <div className={styles.note}>Live — just updated</div>}
+        {lastUpdated && btcPriceMode === 'live' && <div className={styles.note}>Live — just updated</div>}
       </div>
 
       <div className={styles.section}>

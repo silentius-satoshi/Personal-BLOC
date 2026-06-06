@@ -6,6 +6,8 @@ import styles from './CoinbaseLoanSidebar.module.css';
 export function CoinbaseLoanSidebar() {
   const btcPrice         = useStore((s) => s.btcPrice);
   const setBtcPrice      = useStore((s) => s.setBtcPrice);
+  const btcPriceMode     = useStore((s) => s.btcPriceMode);
+  const setBtcPriceMode  = useStore((s) => s.setBtcPriceMode);
   const cbLoanBalance    = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);
   const cbAprPct         = useStore((s) => s.cbAprPct);
@@ -17,7 +19,7 @@ export function CoinbaseLoanSidebar() {
   const setCbMonthlyPayment   = useStore((s) => s.setCbMonthlyPayment);
   const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
 
-  const { livePrice, lastUpdated } = useBtcPrice();
+  const { livePrice, lastUpdated, isStale } = useBtcPrice();
   const isSynced = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
 
   return (
@@ -25,24 +27,45 @@ export function CoinbaseLoanSidebar() {
       <div className={styles.section}>
         <div className={styles.btcPriceLabelRow}>
           <span className={styles.label}>BTC PRICE</span>
-          <button
-            className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
-            onClick={() => livePrice !== null && setBtcPrice(livePrice)}
-            disabled={livePrice === null}
-            title="Restore live price"
-          >
-            LIVE
-          </button>
+          {btcPriceMode === 'manual' ? (
+            <button
+              className={styles.liveBadge}
+              style={{ color: 'var(--amber)', borderColor: 'var(--amber)' }}
+              onClick={() => { if (livePrice !== null) setBtcPrice(livePrice); setBtcPriceMode('live'); }}
+              title="Manual price — click to restore live"
+            >
+              Manual
+            </button>
+          ) : isStale ? (
+            <button
+              className={styles.liveBadge}
+              style={{ color: 'var(--amber)', borderColor: 'var(--amber)' }}
+              disabled={livePrice === null}
+              onClick={() => { if (livePrice !== null) setBtcPrice(livePrice); }}
+              title="Price may be stale — click to use last known live price"
+            >
+              ⚠ stale
+            </button>
+          ) : (
+            <button
+              className={`${styles.liveBadge} ${isSynced ? styles.liveBadgeSynced : ''}`}
+              onClick={() => livePrice !== null && setBtcPrice(livePrice)}
+              disabled={livePrice === null}
+              title="Restore live price"
+            >
+              LIVE
+            </button>
+          )}
         </div>
         <NumberInput
           value={btcPrice}
-          onChange={setBtcPrice}
+          onChange={(v) => { setBtcPrice(v); setBtcPriceMode('manual'); }}
           min={1000}
           max={5000000}
           step={1000}
           prefix="$"
         />
-        {lastUpdated && <div className={styles.note}>Live — just updated</div>}
+        {lastUpdated && btcPriceMode === 'live' && <div className={styles.note}>Live — just updated</div>}
       </div>
 
       <div className={styles.divider} />

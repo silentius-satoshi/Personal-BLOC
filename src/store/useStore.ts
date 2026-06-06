@@ -30,6 +30,7 @@ interface StoreState {
   income: number;
   expenses: number;
   btcPrice: number;
+  btcPriceMode: 'live' | 'manual';
   blocApr: number;
   foldRewardRate: number;
 
@@ -102,6 +103,7 @@ interface StoreState {
   setIncome: (v: number) => void;
   setExpenses: (v: number) => void;
   setBtcPrice: (v: number) => void;
+  setBtcPriceMode: (v: 'live' | 'manual') => void;
   setBlocApr: (v: number) => void;
   setFoldRewardRate: (v: number) => void;
 
@@ -245,6 +247,7 @@ export const useStore = create<StoreState>()(
   income: 4000,
   expenses: 3500,
   btcPrice: 82000,
+  btcPriceMode: 'live' as const,
   blocApr: 13,
   foldRewardRate: 1.5,
 
@@ -300,6 +303,7 @@ export const useStore = create<StoreState>()(
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); },
   setBtcPrice: (v) => set({ btcPrice: v }),
+  setBtcPriceMode: (v) => set({ btcPriceMode: v }),
   setBlocApr:  (v) => { set({ blocApr: v });  useStore.getState().syncSettingsToNostr(); },
   setFoldRewardRate: (v) => set({ foldRewardRate: v }),
 
@@ -476,7 +480,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 7,
+      version: 8,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
@@ -489,6 +493,7 @@ export const useStore = create<StoreState>()(
           cbPaymentStrategy:    persistedState.cbPaymentStrategy    ?? 'monthly',
           cbLtvTriggerPct:      persistedState.cbLtvTriggerPct      ?? 75,
           cbLtvTargetPct:       persistedState.cbLtvTargetPct       ?? 65,
+          btcPriceMode:         persistedState.btcPriceMode         ?? 'live',
         };
       },
       onRehydrateStorage: () => (state) => {

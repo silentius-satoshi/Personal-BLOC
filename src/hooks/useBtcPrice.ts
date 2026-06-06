@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { usePageVisibility } from './usePageVisibility';
 
@@ -9,11 +9,16 @@ interface BtcPriceState {
   lastUpdated: Date   | null;
 }
 
-export function useBtcPrice(): BtcPriceState {
-  const setBtcPrice    = useStore((s) => s.setBtcPrice);
-  const hasInitialized = useRef(false);
+export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
+  const setBtcPrice = useStore((s) => s.setBtcPrice);
   const [state, setState] = useState<BtcPriceState>({ livePrice: null, lastUpdated: null });
   const isVisible = usePageVisibility();
+
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(id);
+  }, []);
 
   async function fetchPrice() {
     try {
@@ -22,10 +27,7 @@ export function useBtcPrice(): BtcPriceState {
       const json  = await res.json() as { data?: { amount?: string } };
       const price = parseFloat(json?.data?.amount ?? '');
       if (!isNaN(price) && price > 0) {
-        if (!hasInitialized.current) {
-          setBtcPrice(price);
-          hasInitialized.current = true;
-        }
+        if (useStore.getState().btcPriceMode === 'live') setBtcPrice(price);
         setState({ livePrice: price, lastUpdated: new Date() });
       }
     } catch {
@@ -40,5 +42,10 @@ export function useBtcPrice(): BtcPriceState {
     return () => clearInterval(id);
   }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  return state;
+  const STALE_MS = 5 * 60 * 1000;
+  const isStale = state.lastUpdated
+    ? (now - state.lastUpdated.getTime()) > STALE_MS
+    : false;
+
+  return { ...state, isStale };
 }
