@@ -189,6 +189,8 @@ export function AdvisorMain() {
       cbLtvTriggered:     thisMonth.cbLtvTriggered,
       cbPaydownCapped:    thisMonth.cbPaydownCapped,
       cbPaydownShortfall: thisMonth.cbPaydownShortfall,
+      strikeRepayDraw:    thisMonth.strikeRepayDraw,
+      strikeRepayFired:   thisMonth.strikeRepayFired,
       btcIncome:      effectiveBtcIncome,
       btcBought:      effectiveBtcBought,
       unallocated:    effectiveUnallocated,
@@ -318,6 +320,12 @@ export function AdvisorMain() {
                     {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan.cbLtvTriggered && overriddenPlan.cbPaydownCapped && (
                       <div className={styles.mandatoryRow} style={{ color: 'var(--amber)', fontSize: '0.8rem' }}>
                         ⚠ Paydown capped — Strike credit line reached · {fmtUSD(overriddenPlan.cbPaydownShortfall)} shortfall
+                      </div>
+                    )}
+                    {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan.strikeRepayFired && (
+                      <div className={styles.mandatoryRow}>
+                        <span className={styles.mandatoryLabel}>↺ Rotating to Coinbase — Strike repaid</span>
+                        <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.strikeRepayDraw)}</span>
                       </div>
                     )}
 
@@ -520,7 +528,9 @@ export function AdvisorMain() {
                           {cbPaymentStrategy === 'ltvTriggered'
                             ? (row.cbPaydownDraw > 0
                                 ? <>{row.cbPaydownCapped && <span title={`$${Math.round(row.cbPaydownShortfall).toLocaleString()} shortfall`}>⚠ </span>}{fmtUSD(row.cbPaydownDraw)}</>
-                                : <span className={styles.muted}>—</span>)
+                                : row.strikeRepayFired
+                                  ? <>↺ {fmtUSD(row.strikeRepayDraw)}</>
+                                  : <span className={styles.muted}>—</span>)
                             : fmtUSD(row.cbPayment)
                           }
                         </td>

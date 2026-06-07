@@ -58,6 +58,8 @@ export interface AdvisorMonthRow {
   cbLtvTriggered:    boolean;  // true when CB LTV trigger fired this month
   cbPaydownCapped:   boolean;  // true when paydown hit the credit ceiling
   cbPaydownShortfall: number;  // desired - actual (0 when not capped)
+  strikeRepayDraw:  number;    // amount rotated from Strike to CB (0 if not fired)
+  strikeRepayFired: boolean;   // true when the reverse trigger fired this month
   btcBought:      number;
   incomeToBtc:    number;
   blocBalance:    number;
@@ -122,6 +124,8 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     let cbLtvTriggered:    boolean = false;
     let cbPaydownCapped:   boolean = false;
     let cbPaydownShortfall: number = 0;
+    let strikeRepayDraw:  number  = 0;
+    let strikeRepayFired: boolean = false;
 
     // CB interest accrues on opening balance (both paths)
     const cbInterest = cbBal * cbMonthlyRate;
@@ -142,6 +146,16 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
         if (cbPaydownDraw < desiredPaydown) {
           cbPaydownCapped    = true;
           cbPaydownShortfall = desiredPaydown - cbPaydownDraw;
+        }
+      } else if (cbLtvNow < cbLtvTargetPct / 100 && blocBalance > 0) {
+        const cbRoom = Math.max(0,
+          cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100) - cbBal
+        );
+        strikeRepayDraw = Math.min(blocBalance, cbRoom);
+        if (strikeRepayDraw > 0) {
+          cbBal        += strikeRepayDraw;   // draw from CB to repay Strike
+          blocBalance  -= strikeRepayDraw;   // Strike balance reduced
+          strikeRepayFired = true;
         }
       }
 
@@ -233,6 +247,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       blocDraw, fiatGap,
       cbPayment: cbTotalPayment, cbExtraPayment,
       cbPaydownDraw, cbLtvTriggered, cbPaydownCapped, cbPaydownShortfall,
+      strikeRepayDraw, strikeRepayFired,
       btcBought, incomeToBtc,
       blocBalance, blocLtv, cbBalance: cbBal, cbLtv, btcHeld,
       blocInterest, cbInterest, totalInterest,

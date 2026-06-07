@@ -561,6 +561,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     </div>
                   </div>
                 )}
+                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
+                  <div className={styles.actionRow}>
+                    <span className={styles.actionIcon}>↺</span>
+                    <div className={styles.actionLabelGroup}>
+                      <span className={styles.actionLabel}>Rotating to Coinbase — Strike repaid</span>
+                    </div>
+                    <span className={styles.actionAmount}>{fmtUSD(currentRow.strikeRepayDraw)}</span>
+                  </div>
+                )}
                 {showFiatRow && (
                   <div className={styles.actionRow}>
                     <span className={styles.actionIcon}>≡</span>

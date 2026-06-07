@@ -143,3 +143,39 @@ describe('ltvTriggered — credit cap', () => {
     expect(m1.cbPaydownShortfall).toBe(0);
   });
 });
+
+describe('reverse trigger (rotate Strike → CB)', () => {
+  // cbBalance = 50_000, cbCollateralBtc = 1.0, btcPrice = 100_000
+  // After 1 month interest at 4.77%/12: cbBal ≈ 50_199; LTV ≈ 50.2% → below 65% target
+  // cbRoom = 65_000 − 50_199 ≈ 14_801
+  const REV_BASE: AdvisorInputs = {
+    ...BASE,
+    cbPaymentStrategy: 'ltvTriggered',
+    cbCollateralBtc:   1.0,
+    cbLtvTriggerPct:   75,
+    cbLtvTargetPct:    65,
+  };
+
+  it('a) fires when CB LTV < target and Strike has balance — bounded by Strike balance', () => {
+    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 5_000 });
+    const m1 = rows[0];
+    expect(m1.strikeRepayFired).toBe(true);
+    expect(m1.strikeRepayDraw).toBeCloseTo(5_000, 0);  // bounded by Strike balance
+    expect(m1.cbPaydownDraw).toBe(0);                   // forward trigger did NOT fire
+    expect(m1.cbLtvTriggered).toBe(false);
+  });
+
+  it('b) does not fire when Strike balance is zero', () => {
+    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 0 });
+    expect(rows[0].strikeRepayFired).toBe(false);
+    expect(rows[0].strikeRepayDraw).toBe(0);
+  });
+
+  it('c) does not fire when CB LTV is in the quiet band (between target and trigger)', () => {
+    // cbBalance = 70_000 → LTV ≈ 70%; between 65% target and 75% trigger
+    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 70_000, startingBlocBalance: 10_000 });
+    const m1 = rows[0];
+    expect(m1.cbLtvTriggered).toBe(false);
+    expect(m1.strikeRepayFired).toBe(false);
+  });
+});
