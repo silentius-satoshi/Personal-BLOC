@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { connectNip07, connectNip46 } from '../../lib/nostr/signers';
+import { connectNip07 } from '../../lib/nostr/signers';
 import { fetchAndSync } from '../../lib/nostr/sync';
 import { fetchUserRelays } from '../../lib/nostr/relays';
 import type { NostrSigner } from '../../lib/nostr/signers';
@@ -30,7 +30,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const [bunkerUri, setBunkerUri]             = useState('');
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState<string | null>(null);
-  const [authUrl, setAuthUrl]                 = useState<string | null>(null);
 
   const [connectParams, setConnectParams]     = useState<NostrConnectParams | null>(null);
   const [connectUri, setConnectUri]           = useState('');
@@ -74,17 +73,17 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     }
     setLoading(true);
     setError(null);
-    setAuthUrl(null);
     try {
-      const { signer, pubkey } = await connectNip46(
-        bunkerUri,
-        (url) => setAuthUrl(url),
-      );
+      const login  = await NLogin.fromBunker(bunkerUri, nostr);
+      const user   = NUser.fromBunkerLogin(login, nostr);
+      const signer = user.signer as unknown as NostrSigner;
+      const pubkey = user.pubkey;
       setSigner(signer);
       useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
+      useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey }));
       fetchUserRelays(pubkey).then((relays) => {
         useStore.getState().setNostrRelays(relays);
         useStore.getState().setNostrSyncing(true);
@@ -96,7 +95,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       onSuccess();
     } catch (err: any) {
       setError(`Connection error: ${err?.message || String(err)}`);
-      setAuthUrl(null);
     } finally {
       setLoading(false);
     }
@@ -140,6 +138,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         useStore.getState().setNostrSigner(signer as unknown as NostrSigner);
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
+        useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey: login.pubkey }));
         const castSigner = signer as unknown as NostrSigner;
         fetchUserRelays(login.pubkey).then((relays) => {
           useStore.getState().setNostrRelays(relays);
@@ -261,12 +260,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             >
               {loading ? 'Connecting… (this can take up to 30s)' : 'Connect'}
             </button>
-            {loading && authUrl && (
-              <p className={styles.hint}>
-                ✅ Auth page opened — confirm in the popup, then wait here
-              </p>
-            )}
-            <button className={styles.ghostBtn} onClick={() => { setShowBunker(false); setError(null); setAuthUrl(null); }}>
+            <button className={styles.ghostBtn} onClick={() => { setShowBunker(false); setError(null); }}>
               ← Back
             </button>
           </>

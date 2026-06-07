@@ -214,6 +214,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                 setNostrBunkerUri(null);
                 setNostrAuthEnabled(false);
                 setIsAuthenticated(false);
+                useStore.getState().setNostrLogin(null);
               }}
             >
               Disconnect

@@ -193,11 +193,13 @@ interface StoreState {
   nostrSigningMethod: 'nip07' | 'nip46' | null;
   nostrBunkerUri:     string | null;
   nostrRelays:        string[];
+  nostrLogin:         string | null;
   setNostrAuthEnabled:   (v: boolean) => void;
   setNostrPubkey:        (v: string | null) => void;
   setNostrSigningMethod: (v: 'nip07' | 'nip46' | null) => void;
   setNostrBunkerUri:     (v: string | null) => void;
   setNostrRelays:        (v: string[]) => void;
+  setNostrLogin:         (v: string | null) => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -418,11 +420,13 @@ export const useStore = create<StoreState>()(
   nostrSigningMethod: null,
   nostrBunkerUri:     null,
   nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'],
+  nostrLogin:         null,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),
+  setNostrLogin:         (v) => set({ nostrLogin: v }),
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
@@ -492,7 +496,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 9,
+      version: 10,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
@@ -508,6 +512,7 @@ export const useStore = create<StoreState>()(
           btcPriceMode:         persistedState.btcPriceMode         ?? 'live',
           lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? persistedState.lastSettingsSyncAt ?? null,
           lastLocalChangedAt:   persistedState.lastLocalChangedAt ?? null,
+          nostrLogin:           persistedState.nostrLogin         ?? null,
         };
       },
       onRehydrateStorage: () => (state) => {
