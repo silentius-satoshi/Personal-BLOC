@@ -10,7 +10,8 @@ import {
   type AdvisorTier,
 } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
-import { deriveAdvisorStart } from '../../simulation/logUtils';
+import { deriveAdvisorStart, deriveCurrentPosition } from '../../simulation/logUtils';
+import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { PL_B, GENESIS } from '../../simulation/powerLaw';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogSection } from './MonthlyLogSection';
@@ -111,6 +112,8 @@ export function AdvisorMain() {
   const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
+  const position      = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance);
+  const availCredit   = strikeAvailableCredit(creditLine, position.btcHeld, btcPrice, position.blocBalance);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const effectiveCbBalance = hasCbLoan ? cbLoanBalance : 0;
@@ -250,7 +253,12 @@ export function AdvisorMain() {
               </div>
               <div className={styles.positionStat}>
                 <span className={styles.positionLabel}>Available Credit</span>
-                <span className={styles.positionValue}>{fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
+                <span className={styles.positionValue}>{fmtUSD(availCredit.available)}</span>
+              </div>
+              <div className={styles.positionSub} style={{ color: availCredit.binding === 'collateral' ? 'var(--amber)' : 'var(--text-ghost)' }}>
+                {availCredit.binding === 'line'
+                  ? `limited by credit line · fully backed above ${fmtUSD(availCredit.fullyBackedPrice)}`
+                  : 'limited by collateral value (50% LTV)'}
               </div>
               <div className={styles.positionStat}>
                 <span className={styles.positionLabel}>Monthly interest</span>

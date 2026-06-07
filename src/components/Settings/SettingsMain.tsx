@@ -18,6 +18,7 @@ import { useNostrSync } from '../../hooks/useNostrSync';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { fmtUSD } from '../../utils/format';
 import styles from './SettingsMain.module.css';
 
@@ -248,7 +249,13 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>STRIKE BLOC</div>
-          <NumberInput label="Credit line"     value={creditLine}       onChange={setCreditLine}       prefix="$" min={0} step={500} />
+          <div className={styles.setupFieldGroup}>
+            <NumberInput label="Initial credit line" value={creditLine} onChange={setCreditLine} prefix="$" min={0} step={500} />
+            <span className={styles.fieldHint}>
+              Your approved max draw — available credit adjusts with BTC price below{' '}
+              {advisorActualBtcHeld > 0 ? fmtUSD(creditLine / (advisorActualBtcHeld * STRIKE_MAX_DRAW_LTV)) : '—'}
+            </span>
+          </div>
           <div className={styles.setupFieldGroup}>
             <NumberInput
               label="BTC collateral"

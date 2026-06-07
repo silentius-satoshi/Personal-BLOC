@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart } from '../../simulation/logUtils';
+import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
@@ -231,6 +232,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : advisorActualBlocBalance;
   const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
   const eomLtv: number     = eomBtcHeld * btcPrice > 0 ? eomBlocBalance / (eomBtcHeld * btcPrice) : 0;
+  const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
 
   const hasProjection =
     Math.abs(eomBlocBalance - advisorActualBlocBalance) > 0.01 ||
@@ -404,7 +406,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               </span>
               <span className={styles.positionStat}>LTV: {(eomLtv * 100).toFixed(1)}%</span>
               <span className={styles.positionStat}>₿ {eomBtcHeld.toFixed(5)}</span>
-              <span className={styles.positionStat}>Avail: {fmtUSD(Math.max(0, creditLine - eomBlocBalance))}</span>
+              <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
+              <span className={styles.positionStatHint} style={{ color: availCredit.binding === 'collateral' ? 'var(--amber)' : 'var(--text-ghost)' }}>
+                {availCredit.binding === 'line'
+                  ? `fully backed above ${fmtUSD(availCredit.fullyBackedPrice)}`
+                  : 'collateral-limited (50% LTV)'}
+              </span>
               {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (
                 <>
                   <span className={styles.positionStat} style={{ color: cbBufferAffordable ? 'var(--green)' : 'var(--red)' }}>
