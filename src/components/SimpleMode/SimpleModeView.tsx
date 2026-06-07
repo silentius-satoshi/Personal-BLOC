@@ -153,15 +153,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld || collateralBtc, advisorActualBlocBalance, currentMonth),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, collateralBtc, currentMonth],
+    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth),
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth],
   );
 
   const advisorRows = useMemo(
     () => {
       const rows = runAdvisor({
         btcPrice, income, expenses,
-        blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
+        blocApr, creditLine, blocLtvCeiling: 0.15,
         cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
         cbAprPct:         hasCbLoan ? cbAprPct         : 0,
@@ -176,7 +176,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       }).rows;
       return rows;
     },
-    [btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
+    [btcPrice, income, expenses, blocApr, creditLine,
      cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
      slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan],
@@ -502,10 +502,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 </div>
               </div>
               <button
-                className={`${styles.tierBadgeFull} ${tierBadgeClass}`}
+                className={`${styles.tierBadgeFull} ${hasCbLoan && cbPaymentStrategy === 'ltvTriggered' ? styles.tier4 : tierBadgeClass}`}
                 onClick={() => setShowTierTip((v) => !v)}
               >
-                TIER {currentTier} — {tierStatusText[currentTier]}
+                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
+                  ? `LTV-TRIGGERED — ${cbLtvTriggerPct}% TRIGGER / ${cbLtvTargetPct}% TARGET`
+                  : `TIER ${currentTier} — ${tierStatusText[currentTier]}`}
               </button>
             </div>
             {showTierTip && (
@@ -575,6 +577,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     <span className={styles.actionIcon}>≡</span>
                     <div className={styles.actionLabelGroup}>
                       <span className={styles.actionLabel}>Cover from savings</span>
+                      <span className={styles.actionSub}>
+                        {advisorSkipBlocDraw
+                          ? '(BLOC draw skipped)'
+                          : hasCbLoan && cbPaymentStrategy === 'monthly' && (currentTier === 1 || currentTier === 2)
+                            ? '(BLOC draw limited by CB priority rules)'
+                            : '(credit line fully drawn)'}
+                      </span>
                     </div>
                     <span className={styles.actionAmount}>{fmtUSD(expectedFiatGap)}</span>
                     <div className={styles.paySkipGroup}>

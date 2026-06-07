@@ -3,6 +3,7 @@ import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus, getTier } from '../../simulation/runAdvisor';
+import { deriveCurrentPosition } from '../../simulation/logUtils';
 import { fmtUSD } from '../../utils/format';
 import styles from './AdvisorSidebar.module.css';
 
@@ -134,13 +135,12 @@ export function AdvisorSidebar() {
       </div>
 
       {monthlyLog.length > 0 && (() => {
-        const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
-        const last = sorted[sorted.length - 1];
-        const projFrom = Math.min(last.month + 1, 12);
+        const { lastLoggedMonth } = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance);
+        const projFrom = Math.min((lastLoggedMonth ?? 0) + 1, 12);
         return (
           <div className={styles.section}>
             <p className={styles.hint} style={{ fontStyle: 'normal' }}>
-              From log: Mo {last.month} logged → projecting from Mo {projFrom}
+              From log: Mo {lastLoggedMonth} logged → projecting from Mo {projFrom}
             </p>
           </div>
         );

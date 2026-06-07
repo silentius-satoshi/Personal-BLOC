@@ -30,7 +30,6 @@ export interface AdvisorInputs {
   expenses:       number;
   blocApr:        number;
   creditLine:     number;
-  collateralBtc:  number;
   blocLtvCeiling: number;
   cbBalance:        number;
   cbCollateralBtc:  number;

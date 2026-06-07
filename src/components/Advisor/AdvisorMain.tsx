@@ -120,18 +120,18 @@ export function AdvisorMain() {
   const { startingBlocBalance, startingBtcHeld, startingMonth } = useMemo(
     () => deriveAdvisorStart(
       monthlyLog,
-      advisorActualBtcHeld || collateralBtc,
+      advisorActualBtcHeld,
       advisorActualBlocBalance,
       currentMonth,
     ),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, collateralBtc, currentMonth],
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth],
   );
 
   const result = useMemo(
     () => {
       const r = runAdvisor({
         btcPrice, income, expenses,
-        blocApr, creditLine, collateralBtc, blocLtvCeiling: 0.15,
+        blocApr, creditLine, blocLtvCeiling: 0.15,
         cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
         cbAprPct:         hasCbLoan ? cbAprPct        : 0,
@@ -147,7 +147,7 @@ export function AdvisorMain() {
       return r;
     },
     [
-      btcPrice, income, expenses, blocApr, creditLine, collateralBtc,
+      btcPrice, income, expenses, blocApr, creditLine,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
       cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
       startingBlocBalance, startingBtcHeld, startingMonth,
@@ -283,8 +283,10 @@ export function AdvisorMain() {
             <div className={`${styles.card} ${styles[`cardTier${currentTier}`]}`}>
               <div className={styles.cardTitleRow}>
                 <h3 className={styles.cardTitle}>Month {currentMonth} — This Month's Plan</h3>
-                <span className={`${styles.tierBadge} ${tierBadgeClass(currentTier)}`}>
-                  TIER {currentTier} — {getTierLabel(currentTier).toUpperCase()}
+                <span className={`${styles.tierBadge} ${hasCbLoan && cbPaymentStrategy === 'ltvTriggered' ? tierBadgeClass(4) : tierBadgeClass(currentTier)}`}>
+                  {hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
+                    ? `LTV-TRIGGERED — ${cbLtvTriggerPct}% TRIGGER / ${cbLtvTargetPct}% TARGET`
+                    : `TIER ${currentTier} — ${getTierLabel(currentTier).toUpperCase()}`}
                 </span>
               </div>
               <p className={styles.cardSubtitle}>
@@ -332,7 +334,14 @@ export function AdvisorMain() {
                     {(advisorSkipBlocDraw || overriddenPlan.fiatGap > 0) && (
                       <div className={styles.redirectNote}>
                         💵 Cover from fiat: <strong>{fmtUSD(overriddenPlan.fiatGap)}</strong>
-                        {advisorSkipBlocDraw && ' (BLOC draw skipped)'}
+                        {' '}
+                        <span className={styles.muted}>
+                          {advisorSkipBlocDraw
+                            ? '(BLOC draw skipped)'
+                            : hasCbLoan && cbPaymentStrategy === 'monthly' && (currentTier === 1 || currentTier === 2)
+                              ? '(BLOC draw limited by CB priority rules)'
+                              : '(credit line fully drawn)'}
+                        </span>
                       </div>
                     )}
                   </div>

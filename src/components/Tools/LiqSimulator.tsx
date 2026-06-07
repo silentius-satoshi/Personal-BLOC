@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { deriveCurrentPosition } from '../../simulation/logUtils';
 import { fmtUSD } from '../../utils/format';
 import styles from './LiqSimulator.module.css';
 
@@ -36,9 +37,8 @@ export function LiqSimulator() {
   }
 
   // Derive true current Strike position from monthly log
-  const sorted        = [...monthlyLog].sort((a, b) => a.month - b.month);
-  const sk_collateral = advisorActualBtcHeld + sorted.reduce((sum, e) => sum + e.btcBought, 0);
-  const sk_drawn      = sorted.length > 0 ? sorted[sorted.length - 1].strikeBal : advisorActualBlocBalance;
+  const { btcHeld: sk_collateral, blocBalance: sk_drawn } =
+    deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance);
 
   // Derived constants
   const cb_div    = cbCollateralBtc * CB_LLTV;

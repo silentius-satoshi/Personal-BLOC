@@ -7,7 +7,6 @@ const BASE: AdvisorInputs = {
   expenses:       3_500,
   blocApr:        13,
   creditLine:     20_000,
-  collateralBtc:  1.0,
   blocLtvCeiling: 0.15,
   cbBalance:      60_000,
   cbCollateralBtc: 1.48,

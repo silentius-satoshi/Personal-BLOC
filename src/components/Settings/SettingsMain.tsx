@@ -17,6 +17,8 @@ import { useStore } from '../../store/useStore';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
+import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { fmtUSD } from '../../utils/format';
 import styles from './SettingsMain.module.css';
 
 const ALL_TABS = [
@@ -336,6 +338,16 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               <div className={styles.setupFieldGroup}>
                 <NumberInput label="Liquidation price" value={cbLiquidationPrice} onChange={setCbLiquidationPrice} prefix="$" min={0} step={100} />
                 <span className={styles.fieldHint}>Enter the exact figure Coinbase shows in your Loan Center.</span>
+                {(() => {
+                  const implied = cbCollateralBtc > 0 ? cbLoanBalance / (cbCollateralBtc * CB_LLTV) : 0;
+                  const deviation = cbLiquidationPrice > 0 && implied > 0
+                    ? Math.abs(cbLiquidationPrice - implied) / implied : 0;
+                  return implied > 0 ? (
+                    <span className={styles.fieldHint} style={{ color: deviation > 0.02 ? 'var(--amber)' : undefined }}>
+                      Implied from balance ÷ (collateral × 86%): {fmtUSD(implied)}
+                    </span>
+                  ) : null;
+                })()}
               </div>
             </>
           )}

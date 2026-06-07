@@ -1,6 +1,8 @@
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
+import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { fmtUSD } from '../../utils/format';
 import styles from './CoinbaseLoanSidebar.module.css';
 
 export function CoinbaseLoanSidebar() {
@@ -94,6 +96,16 @@ export function CoinbaseLoanSidebar() {
           step={1000}
         />
         <p className={styles.hint}>Enter the exact figure Coinbase shows in your Loan Center.</p>
+        {(() => {
+          const implied = cbCollateralBtc > 0 ? cbLoanBalance / (cbCollateralBtc * CB_LLTV) : 0;
+          const deviation = cbLiquidationPrice > 0 && implied > 0
+            ? Math.abs(cbLiquidationPrice - implied) / implied : 0;
+          return implied > 0 ? (
+            <p className={styles.hint} style={{ color: deviation > 0.02 ? 'var(--amber)' : undefined }}>
+              Implied from balance ÷ (collateral × 86%): {fmtUSD(implied)}
+            </p>
+          ) : null;
+        })()}
       </div>
 
       <div className={styles.section}>

@@ -27,6 +27,23 @@ export function deriveAdvisorStart(
   };
 }
 
+export function deriveCurrentPosition(
+  monthlyLog: MonthlyLogEntry[],
+  baseBtcHeld: number,
+  baseBlocBalance: number,
+): { btcHeld: number; blocBalance: number; lastLoggedMonth: number | null } {
+  if (monthlyLog.length === 0) {
+    return { btcHeld: baseBtcHeld, blocBalance: baseBlocBalance, lastLoggedMonth: null };
+  }
+  const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
+  const last   = sorted[sorted.length - 1];
+  return {
+    btcHeld:         baseBtcHeld + sorted.reduce((sum, e) => sum + e.btcBought, 0),
+    blocBalance:     last.strikeBal,
+    lastLoggedMonth: last.month,
+  };
+}
+
 export function upsertEntry(
   entries: MonthlyLogEntry[],
   newEntry: MonthlyLogEntry,
