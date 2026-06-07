@@ -1,0 +1,159 @@
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { mockStoreState, mockPool } = vi.hoisted(() => ({
+  mockStoreState: {} as Record<string, any>,
+  mockPool: {
+    querySync: vi.fn(),
+    publish:   vi.fn(),
+    close:     vi.fn(),
+  },
+}));
+
+vi.mock('nostr-tools/pool', () => ({
+  // eslint-disable-next-line prefer-arrow-callback
+  SimplePool: vi.fn(function() { return mockPool; }),
+}));
+
+vi.mock('../../../store/useStore', () => ({
+  useStore: { getState: () => mockStoreState },
+}));
+
+function resetStore(overrides: Partial<Record<string, any>> = {}) {
+  Object.assign(mockStoreState, {
+    lastSettingsSyncAt:    null,
+    lastRecordsSyncAt:     null,
+    lastLocalChangedAt:    null,
+    hydrateSettings:       vi.fn(),
+    setMonthlyLog:         vi.fn(),
+    setLastSettingsSyncAt: vi.fn(),
+    setLastRecordsSyncAt:  vi.fn(),
+    ...overrides,
+  });
+}
+
+function makeEvent(dTag: string, createdAt: number, payload: unknown = {}) {
+  return {
+    kind:       30078,
+    pubkey:     'pk',
+    created_at: createdAt,
+    content:    JSON.stringify(payload),
+    tags:       [['d', dTag]],
+    id:         'id',
+    sig:        'sig',
+  };
+}
+
+function makeSigner() {
+  return {
+    nip44: {
+      encrypt: vi.fn().mockResolvedValue('cipher'),
+      decrypt: vi.fn((_pk: string, ct: string) => Promise.resolve(ct)),
+    },
+    signEvent: vi.fn((e: any) => Promise.resolve({ ...e, id: 'signed', sig: 'sig' })),
+  } as any;
+}
+
+describe('fetchAndSync', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+    mockPool.close.mockReturnValue(undefined);
+  });
+
+  it('uses independent watermarks — records:v1 hydrates even when settings:v1 is stale', async () => {
+    resetStore({
+      lastSettingsSyncAt: 1000,
+      lastRecordsSyncAt:  500,
+      lastLocalChangedAt: null,
+    });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 900),
+      makeEvent('personal-bloc:records:v1',  700),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+    expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
+    expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);
+  });
+
+  it('local guard blocks hydration when remote is older than last local edit', async () => {
+    resetStore({
+      lastSettingsSyncAt: 500,
+      lastLocalChangedAt: 1000,
+    });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+  });
+
+  it('local guard allows hydration when remote is newer than last local edit', async () => {
+    resetStore({
+      lastSettingsSyncAt: 500,
+      lastLocalChangedAt: 600,
+    });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
+    expect(mockStoreState.setLastSettingsSyncAt).toHaveBeenCalledWith(800);
+  });
+
+  it('force=true bypasses local guard but still respects per-d-tag watermark', async () => {
+    resetStore({
+      lastSettingsSyncAt: 500,
+      lastLocalChangedAt: 1000,
+    });
+
+    // Event newer than watermark (500) but older than local guard (1000) — force should allow it
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r'], true);
+
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
+
+    // Reset and test that watermark (500) is still enforced even with force
+    vi.clearAllMocks();
+    resetStore({
+      lastSettingsSyncAt: 500,
+      lastLocalChangedAt: 1000,
+    });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 400),
+    ]);
+
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r'], true);
+
+    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+  });
+});
+
+describe('publishEncrypted', () => {
+  it('resolves to a number (the created_at timestamp)', async () => {
+    mockPool.publish.mockReturnValue([Promise.resolve('ok')]);
+    const signer = makeSigner();
+
+    const { publishEncrypted } = await import('../publish');
+    const before = Math.floor(Date.now() / 1000);
+    const result = await publishEncrypted(signer, 'pk', 'd-tag', { x: 1 });
+    const after  = Math.floor(Date.now() / 1000);
+
+    expect(typeof result).toBe('number');
+    expect(result).toBeGreaterThanOrEqual(before);
+    expect(result).toBeLessThanOrEqual(after);
+  });
+});

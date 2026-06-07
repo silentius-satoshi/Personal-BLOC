@@ -54,7 +54,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       fetchUserRelays(pubkey).then((relays) => {
         useStore.getState().setNostrRelays(relays);
         useStore.getState().setNostrSyncing(true);
-        fetchAndSync(signer, pubkey, relays)
+        fetchAndSync(signer, pubkey, relays, true)
           .catch((e) => console.warn('[Nostr] sync failed:', e))
           .finally(() => useStore.getState().setNostrSyncing(false));
       });
@@ -88,7 +88,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       fetchUserRelays(pubkey).then((relays) => {
         useStore.getState().setNostrRelays(relays);
         useStore.getState().setNostrSyncing(true);
-        fetchAndSync(signer, pubkey, relays)
+        fetchAndSync(signer, pubkey, relays, true)
           .catch((e) => console.warn('[Nostr] sync failed:', e))
           .finally(() => useStore.getState().setNostrSyncing(false));
       });
@@ -144,7 +144,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         fetchUserRelays(login.pubkey).then((relays) => {
           useStore.getState().setNostrRelays(relays);
           useStore.getState().setNostrSyncing(true);
-          fetchAndSync(castSigner, login.pubkey, relays)
+          fetchAndSync(castSigner, login.pubkey, relays, true)
             .catch((e) => console.warn('[Nostr] sync failed:', e))
             .finally(() => useStore.getState().setNostrSyncing(false));
         });

@@ -15,13 +15,14 @@ export async function publishEncrypted(
   dTag:    string,
   data:    unknown,
   relays:  string[] = FALLBACK_RELAYS,
-): Promise<void> {
+): Promise<number> {
   const plaintext  = JSON.stringify(data);
   const ciphertext = await signer.nip44.encrypt(pubkey, plaintext);
+  const createdAt  = Math.floor(Date.now() / 1000);
 
   const signed = await signer.signEvent({
     kind:       30078,
-    created_at: Math.floor(Date.now() / 1000),
+    created_at: createdAt,
     tags:       [['d', dTag]],
     content:    ciphertext,
   });
@@ -38,6 +39,7 @@ export async function publishEncrypted(
         'All relays rejected the event'
       );
     }
+    return createdAt;
   } finally {
     pool.close(relays);
   }
@@ -48,8 +50,8 @@ export async function publishSettings(
   pubkey:   string,
   relays:   string[],
   settings: Record<string, unknown>,
-): Promise<void> {
-  await publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays);
+): Promise<number> {
+  return publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays);
 }
 
 export async function publishRecords(
@@ -57,6 +59,6 @@ export async function publishRecords(
   pubkey:  string,
   entries: MonthlyLogEntry[],
   relays?: string[],
-): Promise<void> {
-  await publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', entries, relays);
+): Promise<number> {
+  return publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', entries, relays);
 }

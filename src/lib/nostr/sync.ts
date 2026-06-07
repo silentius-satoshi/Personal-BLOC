@@ -8,6 +8,7 @@ export async function fetchAndSync(
   signer: NostrSigner,
   pubkey: string,
   relays: string[] = FALLBACK_RELAYS,
+  force  = false,
 ): Promise<void> {
   const pool = new SimplePool();
 
@@ -28,6 +29,10 @@ export async function fetchAndSync(
       latestByDTag.set(dTag, event);
     }
   }
+
+  const { lastSettingsSyncAt, lastRecordsSyncAt, lastLocalChangedAt } = useStore.getState();
+  const localGuard = force ? 0 : (lastLocalChangedAt ?? 0);
+
   for (const event of latestByDTag.values()) {
     try {
       const plaintext = await signer.nip44.decrypt(pubkey, event.content);
@@ -36,18 +41,16 @@ export async function fetchAndSync(
       const remoteTs  = event.created_at;
 
       if (dTag === 'personal-bloc:settings:v1') {
-        const { lastSettingsSyncAt } = useStore.getState();
-        if (remoteTs > (lastSettingsSyncAt ?? 0)) {
+        if (remoteTs > (lastSettingsSyncAt ?? 0) && remoteTs > localGuard) {
           useStore.getState().hydrateSettings(data);
           useStore.getState().setLastSettingsSyncAt(remoteTs);
         }
       }
 
       if (dTag === 'personal-bloc:records:v1') {
-        const { lastSettingsSyncAt } = useStore.getState();
-        if (remoteTs > (lastSettingsSyncAt ?? 0)) {
+        if (remoteTs > (lastRecordsSyncAt ?? 0) && remoteTs > localGuard) {
           useStore.getState().setMonthlyLog(data as MonthlyLogEntry[]);
-          useStore.getState().setLastSettingsSyncAt(remoteTs);
+          useStore.getState().setLastRecordsSyncAt(remoteTs);
         }
       }
     } catch {

@@ -213,6 +213,10 @@ interface StoreState {
   // Nostr cross-device sync (persisted)
   lastSettingsSyncAt:    number | null;
   setLastSettingsSyncAt: (ts: number) => void;
+  lastRecordsSyncAt:     number | null;
+  setLastRecordsSyncAt:  (ts: number) => void;
+  lastLocalChangedAt:    number | null;
+  setLastLocalChangedAt: (ts: number) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
 }
 
@@ -220,6 +224,7 @@ let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let recordsSyncTimer:  ReturnType<typeof setTimeout> | null = null;
 
 function syncRecordsToNostr() {
+  useStore.getState().setLastLocalChangedAt(Math.floor(Date.now() / 1000));
   if (recordsSyncTimer) clearTimeout(recordsSyncTimer);
   recordsSyncTimer = setTimeout(async () => {
     const state = useStore.getState();
@@ -227,12 +232,13 @@ function syncRecordsToNostr() {
     useStore.getState().setNostrSyncing(true);
     try {
       const { publishRecords } = await import('../lib/nostr/publish');
-      await publishRecords(
+      const createdAt = await publishRecords(
         state.nostrSigner,
         state.nostrPubkey,
         state.monthlyLog,
         state.nostrRelays.length ? state.nostrRelays : undefined,
       );
+      useStore.getState().setLastRecordsSyncAt(createdAt);
     } catch (e) {
       console.warn('[Nostr] publish records failed:', e);
     } finally {
@@ -425,6 +431,7 @@ export const useStore = create<StoreState>()(
   setNostrSigner: (v) => set({ nostrSigner: v }),
 
   syncSettingsToNostr: () => {
+    set({ lastLocalChangedAt: Math.floor(Date.now() / 1000) });
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(() => {
       const s = useStore.getState();
@@ -450,6 +457,7 @@ export const useStore = create<StoreState>()(
       s.setNostrSyncing(true);
       import('../lib/nostr/publish').then(({ publishSettings }) =>
         publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings)
+          .then((createdAt) => useStore.getState().setLastSettingsSyncAt(createdAt))
           .catch((e) => console.warn('[Nostr] publish settings failed:', e))
           .finally(() => useStore.getState().setNostrSyncing(false))
       );
@@ -461,6 +469,10 @@ export const useStore = create<StoreState>()(
 
   lastSettingsSyncAt: null,
   setLastSettingsSyncAt: (ts) => set({ lastSettingsSyncAt: ts }),
+  lastRecordsSyncAt: null,
+  setLastRecordsSyncAt: (ts) => set({ lastRecordsSyncAt: ts }),
+  lastLocalChangedAt: null,
+  setLastLocalChangedAt: (ts) => set({ lastLocalChangedAt: ts }),
 
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [
@@ -480,7 +492,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 8,
+      version: 9,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
@@ -494,6 +506,8 @@ export const useStore = create<StoreState>()(
           cbLtvTriggerPct:      persistedState.cbLtvTriggerPct      ?? 75,
           cbLtvTargetPct:       persistedState.cbLtvTargetPct       ?? 65,
           btcPriceMode:         persistedState.btcPriceMode         ?? 'live',
+          lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? persistedState.lastSettingsSyncAt ?? null,
+          lastLocalChangedAt:   persistedState.lastLocalChangedAt ?? null,
         };
       },
       onRehydrateStorage: () => (state) => {

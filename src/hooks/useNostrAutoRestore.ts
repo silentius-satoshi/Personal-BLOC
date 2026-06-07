@@ -37,7 +37,7 @@ export function useNostrAutoRestore(): boolean {
         const relays = await fetchUserRelays(nostrPubkey);
         useStore.getState().setNostrRelays(relays);
         useStore.getState().setNostrSyncing(true);
-        fetchAndSync(signer, nostrPubkey, relays)
+        fetchAndSync(signer, nostrPubkey, relays, true)
           .catch(e => console.warn('[Nostr] auto-restore sync failed:', e))
           .finally(() => useStore.getState().setNostrSyncing(false));
 
