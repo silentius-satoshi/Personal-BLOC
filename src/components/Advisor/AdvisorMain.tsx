@@ -548,17 +548,26 @@ export function AdvisorMain() {
                   <tr>
                     <td>Total</td>
                     <td />
-                    <td />
+                    <td>{fmtUSD(result.rows.reduce((s, r) => s + r.blocDraw, 0))}</td>
                     {hasCbLoan && (
                       <td className={styles.paymentCell}>
                         {cbPaymentStrategy === 'ltvTriggered'
-                          ? fmtUSD(result.rows.reduce((s, r) => s + r.cbPaydownDraw, 0))
+                          ? (() => {
+                              const paydown = result.rows.reduce((s, r) => s + r.cbPaydownDraw, 0);
+                              const rotated = result.rows.reduce((s, r) => s + r.strikeRepayDraw, 0);
+                              return (
+                                <>
+                                  {fmtUSD(paydown)}
+                                  {rotated > 0 && <span className={styles.muted}> · ↺ {fmtUSD(rotated)}</span>}
+                                </>
+                              );
+                            })()
                           : fmtUSD(result.rows.reduce((s, r) => s + r.cbPayment, 0))
                         }
                       </td>
                     )}
                     <td className={styles.btcCell}>+{result.totalBtcBought.toFixed(5)}</td>
-                    <td>{fmtUSD(result.finalBlocBalance)}</td>
+                    <td>→ {fmtUSD(result.finalBlocBalance)} <span className={styles.muted}>end</span></td>
                     {hasCbLoan && (
                       <td style={{ color: getTierColor(getTier(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) : 0)) }}>
                         {(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) * 100 : 0).toFixed(1)}%
