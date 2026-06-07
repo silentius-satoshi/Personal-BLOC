@@ -551,6 +551,16 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     </span>
                   </div>
                 )}
+                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.cbLtvTriggered && currentRow.cbPaydownCapped && (
+                  <div className={styles.actionRow}>
+                    <span className={styles.actionIcon}>⚠</span>
+                    <div className={styles.actionLabelGroup}>
+                      <span className={styles.actionLabel} style={{ color: 'var(--amber)' }}>
+                        Paydown capped — Strike credit line reached · {fmtUSD(currentRow.cbPaydownShortfall)} shortfall
+                      </span>
+                    </div>
+                  </div>
+                )}
                 {showFiatRow && (
                   <div className={styles.actionRow}>
                     <span className={styles.actionIcon}>≡</span>

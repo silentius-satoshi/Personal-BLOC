@@ -54,8 +54,10 @@ export interface AdvisorMonthRow {
   fiatGap:        number;
   cbPayment:      number;
   cbExtraPayment: number;
-  cbPaydownDraw:  number;   // BLOC draw used to pay down CB this month (0 if not triggered)
-  cbLtvTriggered: boolean;  // true when CB LTV trigger fired this month
+  cbPaydownDraw:     number;   // BLOC draw used to pay down CB this month (0 if not triggered)
+  cbLtvTriggered:    boolean;  // true when CB LTV trigger fired this month
+  cbPaydownCapped:   boolean;  // true when paydown hit the credit ceiling
+  cbPaydownShortfall: number;  // desired - actual (0 when not capped)
   btcBought:      number;
   incomeToBtc:    number;
   blocBalance:    number;
@@ -116,8 +118,10 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     let cbExtraPayment:  number;
     let incomeToBtc:     number;
     let btcBought:       number;
-    let cbPaydownDraw:   number = 0;
-    let cbLtvTriggered:  boolean = false;
+    let cbPaydownDraw:      number  = 0;
+    let cbLtvTriggered:    boolean = false;
+    let cbPaydownCapped:   boolean = false;
+    let cbPaydownShortfall: number = 0;
 
     // CB interest accrues on opening balance (both paths)
     const cbInterest = cbBal * cbMonthlyRate;
@@ -128,11 +132,17 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       const cbLtvNow = cbCollateralBtc * btcPriceThisMonth > 0
         ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
       if (cbLtvNow >= cbLtvTriggerPct / 100) {
-        const targetBal = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
-        cbPaydownDraw   = Math.max(0, cbBal - targetBal);
+        const targetBal       = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
+        const desiredPaydown  = Math.max(0, cbBal - targetBal);
+        const availableCredit = Math.max(0, creditLine - blocBalance);
+        cbPaydownDraw   = Math.min(desiredPaydown, availableCredit);
         cbBal          -= cbPaydownDraw;
         blocBalance    += cbPaydownDraw;  // Strike LOC funds the CB paydown
         cbLtvTriggered  = true;
+        if (cbPaydownDraw < desiredPaydown) {
+          cbPaydownCapped    = true;
+          cbPaydownShortfall = desiredPaydown - cbPaydownDraw;
+        }
       }
 
       // Full expense BLOC draw regardless of tier (CB priority rules suspended)
@@ -222,7 +232,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       isCurrentMonth: month === startingMonth,
       blocDraw, fiatGap,
       cbPayment: cbTotalPayment, cbExtraPayment,
-      cbPaydownDraw, cbLtvTriggered,
+      cbPaydownDraw, cbLtvTriggered, cbPaydownCapped, cbPaydownShortfall,
       btcBought, incomeToBtc,
       blocBalance, blocLtv, cbBalance: cbBal, cbLtv, btcHeld,
       blocInterest, cbInterest, totalInterest,

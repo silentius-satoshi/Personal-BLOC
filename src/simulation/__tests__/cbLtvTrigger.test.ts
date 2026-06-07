@@ -99,3 +99,47 @@ describe('ltvTriggered mode', () => {
     }
   });
 });
+
+describe('ltvTriggered — credit cap', () => {
+  // 1 BTC collateral, btcPrice = 100_000, cbBalance = 80_000 → LTV = 80% (above 75% trigger)
+  // After 1 month interest at 4.77%/12 ≈ +$318, cbBal ≈ 80_318
+  // targetBal = 1.0 * 100_000 * 0.65 = 65_000
+  // desiredPaydown ≈ 80_318 - 65_000 ≈ 15_318
+  const TRIGGER_BASE: AdvisorInputs = {
+    ...BASE,
+    cbPaymentStrategy:   'ltvTriggered',
+    cbBalance:           80_000,
+    cbCollateralBtc:     1.0,
+    cbLtvTriggerPct:     75,
+    cbLtvTargetPct:      65,
+    startingBlocBalance: 0,
+  };
+
+  it('a) capped: desiredPaydown exceeds availableCredit', () => {
+    const { rows } = runAdvisor({ ...TRIGGER_BASE, creditLine: 10_000 });
+    const m1 = rows[0];
+    expect(m1.cbLtvTriggered).toBe(true);
+    expect(m1.cbPaydownDraw).toBe(10_000);   // capped at creditLine
+    expect(m1.cbPaydownCapped).toBe(true);
+    expect(m1.cbPaydownShortfall).toBeGreaterThan(0);
+  });
+
+  it('b) not capped: desiredPaydown within availableCredit', () => {
+    const { rows } = runAdvisor({ ...TRIGGER_BASE, creditLine: 50_000 });
+    const m1 = rows[0];
+    expect(m1.cbLtvTriggered).toBe(true);
+    expect(m1.cbPaydownDraw).toBeGreaterThan(0);
+    expect(m1.cbPaydownDraw).toBeLessThan(50_000);
+    expect(m1.cbPaydownCapped).toBe(false);
+    expect(m1.cbPaydownShortfall).toBe(0);
+  });
+
+  it('c) below trigger: all cap fields zero/false', () => {
+    // BASE: cbBalance = 60_000, cbCollateralBtc = 1.48 → LTV ≈ 40.5%, below 75%
+    const { rows } = runAdvisor({ ...BASE, cbPaymentStrategy: 'ltvTriggered' });
+    const m1 = rows[0];
+    expect(m1.cbPaydownDraw).toBe(0);
+    expect(m1.cbPaydownCapped).toBe(false);
+    expect(m1.cbPaydownShortfall).toBe(0);
+  });
+});

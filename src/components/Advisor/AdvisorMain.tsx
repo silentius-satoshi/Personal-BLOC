@@ -185,8 +185,10 @@ export function AdvisorMain() {
       cbPayment:      effectiveCbPayment,
       cbSkipped:      advisorSkipCbPayment,
       cbFreed:        advisorSkipCbPayment ? thisMonth.cbPayment : 0,
-      cbPaydownDraw:  thisMonth.cbPaydownDraw,
-      cbLtvTriggered: thisMonth.cbLtvTriggered,
+      cbPaydownDraw:      thisMonth.cbPaydownDraw,
+      cbLtvTriggered:     thisMonth.cbLtvTriggered,
+      cbPaydownCapped:    thisMonth.cbPaydownCapped,
+      cbPaydownShortfall: thisMonth.cbPaydownShortfall,
       btcIncome:      effectiveBtcIncome,
       btcBought:      effectiveBtcBought,
       unallocated:    effectiveUnallocated,
@@ -311,6 +313,11 @@ export function AdvisorMain() {
                       <div className={styles.mandatoryRow}>
                         <span className={styles.mandatoryLabel}>⚠ CB LTV alert — BLOC draws to pay down CB</span>
                         <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.cbPaydownDraw)}</span>
+                      </div>
+                    )}
+                    {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan.cbLtvTriggered && overriddenPlan.cbPaydownCapped && (
+                      <div className={styles.mandatoryRow} style={{ color: 'var(--amber)', fontSize: '0.8rem' }}>
+                        ⚠ Paydown capped — Strike credit line reached · {fmtUSD(overriddenPlan.cbPaydownShortfall)} shortfall
                       </div>
                     )}
 
@@ -511,7 +518,9 @@ export function AdvisorMain() {
                       {hasCbLoan && (
                         <td className={`${styles.paymentCell} ${row.cbLtvTriggered ? styles.triggerCell : ''}`}>
                           {cbPaymentStrategy === 'ltvTriggered'
-                            ? (row.cbPaydownDraw > 0 ? fmtUSD(row.cbPaydownDraw) : <span className={styles.muted}>—</span>)
+                            ? (row.cbPaydownDraw > 0
+                                ? <>{row.cbPaydownCapped && <span title={`$${Math.round(row.cbPaydownShortfall).toLocaleString()} shortfall`}>⚠ </span>}{fmtUSD(row.cbPaydownDraw)}</>
+                                : <span className={styles.muted}>—</span>)
                             : fmtUSD(row.cbPayment)
                           }
                         </td>
