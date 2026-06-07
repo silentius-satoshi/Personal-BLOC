@@ -1,8 +1,12 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
 import { usePageVisibility } from './usePageVisibility';
 
 const BTC_API = 'https://api.coinbase.com/v2/prices/BTC-USD/spot';
+
+const POLL_MS              = 10_000;   // display refresh cadence
+const STORE_SYNC_MS        = 60_000;   // max store staleness on a quiet market
+const STORE_SYNC_THRESHOLD = 0.001;    // 0.1% move forces immediate store push
 
 interface BtcPriceState {
   livePrice:   number | null;
@@ -13,6 +17,9 @@ export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
   const setBtcPrice = useStore((s) => s.setBtcPrice);
   const [state, setState] = useState<BtcPriceState>({ livePrice: null, lastUpdated: null });
   const isVisible = usePageVisibility();
+
+  const lastStorePrice  = useRef<number | null>(null);
+  const lastStorePushAt = useRef<number>(0);
 
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -27,8 +34,18 @@ export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
       const json  = await res.json() as { data?: { amount?: string } };
       const price = parseFloat(json?.data?.amount ?? '');
       if (!isNaN(price) && price > 0) {
-        if (useStore.getState().btcPriceMode === 'live') setBtcPrice(price);
         setState({ livePrice: price, lastUpdated: new Date() });
+        if (useStore.getState().btcPriceMode === 'live') {
+          const moved = lastStorePrice.current == null
+            ? true
+            : Math.abs(price - lastStorePrice.current) / lastStorePrice.current >= STORE_SYNC_THRESHOLD;
+          const elapsed = Date.now() - lastStorePushAt.current >= STORE_SYNC_MS;
+          if (moved || elapsed) {
+            setBtcPrice(price);
+            lastStorePrice.current  = price;
+            lastStorePushAt.current = Date.now();
+          }
+        }
       }
     } catch {
       // silent fallback
@@ -38,7 +55,7 @@ export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
   useEffect(() => {
     if (!isVisible) return;
     void fetchPrice();
-    const id = setInterval(() => void fetchPrice(), 60_000);
+    const id = setInterval(() => void fetchPrice(), POLL_MS);
     return () => clearInterval(id);
   }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
 
