@@ -4,7 +4,6 @@ import { connectNip07 } from '../../lib/nostr/signers';
 import { fetchAndSync } from '../../lib/nostr/sync';
 import { fetchUserRelays } from '../../lib/nostr/relays';
 import type { NostrSigner } from '../../lib/nostr/signers';
-import { useSigner } from '../../lib/nostr/SignerContext';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
 import {
@@ -23,7 +22,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const setIsAuthenticated    = useStore((s) => s.setIsAuthenticated);
   const setNostrBunkerUri     = useStore((s) => s.setNostrBunkerUri);
 
-  const { setSigner } = useSigner();
   const { nostr }     = useNostr();
 
   const [showBunker, setShowBunker]           = useState(false);
@@ -46,7 +44,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
     try {
       const { signer, pubkey } = await connectNip07();
-      setSigner(signer);
       useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
@@ -78,7 +75,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       const user   = NUser.fromBunkerLogin(login, nostr);
       const signer = user.signer as unknown as NostrSigner;
       const pubkey = user.pubkey;
-      setSigner(signer);
       useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
@@ -134,7 +130,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         );
         if (controller.signal.aborted) return;
         const signer = NUser.fromBunkerLogin(login, nostr).signer;
-        setSigner(signer as unknown as NostrSigner);
         useStore.getState().setNostrSigner(signer as unknown as NostrSigner);
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');

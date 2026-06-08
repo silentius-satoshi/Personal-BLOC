@@ -1,5 +1,4 @@
 import { AppShell } from './components/Layout/AppShell';
-import { SignerProvider } from './lib/nostr/SignerContext';
 import { RemoteLoginSuccessPage } from './pages/RemoteLoginSuccessPage';
 
 export default function App() {
@@ -7,9 +6,5 @@ export default function App() {
     return <RemoteLoginSuccessPage />;
   }
 
-  return (
-    <SignerProvider>
-      <AppShell />
-    </SignerProvider>
-  );
+  return <AppShell />;
 }
