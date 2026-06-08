@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (71 tests — all must pass before every commit)
+- Vitest (87 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -37,12 +37,15 @@ src/
     runBlocYearOne.ts           # Month-by-Month 12-month simulation + getCollateralForTier
     runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
-    logUtils.ts                 # deriveAdvisorStart, upsertEntry — standalone, no cross-sim imports
+    strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn
+    logUtils.ts                 # deriveAdvisorStart, deriveCurrentPosition, upsertEntry — standalone, no cross-sim imports
     __tests__/
       smartBloc.test.ts
       living.test.ts
       mining.test.ts
       monthlyLog.test.ts
+      aprAnchors.test.ts
+      strikeCredit.test.ts
 
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick)
@@ -144,6 +147,9 @@ src/
       MonthlyLogSection.module.css
       MonthlyLogOverlay.tsx     # Portal overlay (full-screen, both modes), keyboard + swipe nav
       MonthlyLogOverlay.module.css
+
+    SimpleMode/
+      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); mirrors Advisor layout
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -336,7 +342,7 @@ Morpho/Coinbase: 86% LLTV instant liquidation, no grace period, 4.38% penalty.
 ```typescript
 interface AdvisorInputs {
   btcPrice: number; income: number; expenses: number;
-  blocApr: number; creditLine: number; collateralBtc: number; blocLtvCeiling: number;
+  blocApr: number; creditLine: number; blocLtvCeiling: number;
   cbBalance: number; cbCollateralBtc: number; cbAprPct: number; cbMonthlyPayment: number;
   cbPaymentStrategy: 'monthly' | 'ltvTriggered';
   cbLtvTriggerPct: number;   // percent, e.g. 75
@@ -346,8 +352,12 @@ interface AdvisorInputs {
 }
 
 // AdvisorMonthRow key fields (defined in runAdvisor.ts, not types.ts):
-// cbPaydownDraw:  number  — BLOC draw used for CB paydown this month (0 if not triggered)
-// cbLtvTriggered: boolean — true when CB LTV trigger fired this month
+// cbPaydownDraw:      number  — BLOC draw used for CB paydown this month (0 if not triggered)
+// cbLtvTriggered:     boolean — true when CB LTV trigger fired this month
+// cbPaydownCapped:    boolean — paydown capped by remaining credit line (cb-paydown-cap)
+// cbPaydownShortfall: number  — desired paydown minus capped paydown
+// strikeRepayDraw:    number  — CB draw used to repay Strike on recovery (reverse rotation)
+// strikeRepayFired:   boolean — true when Strike→CB reverse rotation fired
 ```
 
 Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth) / 12)`
@@ -430,10 +440,14 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-51 tests — `npx vitest run` before every commit.
+87 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
+- `monthlyLog.test.ts`
+- `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
+- `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
+- `src/lib/nostr/__tests__/sync.test.ts` — independent watermarks, local guard, force, publishEncrypted return
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -442,7 +456,7 @@ When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowt
 ## Build & Deploy
 
 ```bash
-npx vitest run && git add . && git commit -m "..." && git push && vercel --prod
+npx vitest run && git add . && git commit -m "..." && git push   # Vercel auto-deploys on push (local vercel CLI removed)
 ```
 
 `vercel.json`: `{ "buildCommand": "vite build", "outputDirectory": "dist", "framework": "vite" }`
@@ -467,8 +481,8 @@ npx vitest run && git add . && git commit -m "..." && git push && vercel --prod
 | Method | Function | Notes |
 |---|---|---|
 | NIP-07 browser extension | NLogin.fromExtension() | Desktop; auto-restores on reload |
-| Remote signer QR | NLogin.fromNostrConnect() | Desktop QR scanned with Primal iOS |
-| Remote signer deep link | NLogin.fromNostrConnect() | Mobile Safari → Primal → approve → callback |
+| Remote signer QR | NLogin.fromNostrConnect() | Desktop QR scanned with Primal iOS; persists across reload (nostrLogin) |
+| Remote signer deep link | NLogin.fromNostrConnect() | Mobile two-step: warm relay → tap Open Signer App → approve → callback; persists across reload |
 
 ---
 
@@ -491,11 +505,13 @@ src/
   components/Auth/
     NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring
   hooks/
-    useNostrAutoRestore.ts          # Optimistic NIP-07 session restore on reload
+    useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin)
   lib/nostr/
-    publish.ts                      # publishEncrypted, publishSettings; pure utility
-    sync.ts                         # fetchAndSync; queries relay, deduplicates, hydrates
+    publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords
+    sync.ts                         # fetchAndSync(force?); independent watermarks + local-edit guard
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
+    disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
+    signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
 
 vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```
@@ -504,8 +520,9 @@ vercel.json                         # Catch-all rewrite → index.html (required
 
 ### Publishing Architecture
 
-- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → `Promise.allSettled`
-  (pushes to ALL relays, not just first willing one)
+- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → `Promise.allSettled` (pushes to ALL
+  relays); returns the published `created_at` (Promise<number>); throws AggregateError if NO relay
+  accepted (watermark must not be stamped for a lost event)
 - `syncSettingsToNostr()` — debounced 5s; stamps `lastLocalChangedAt` immediately
   on every setter call; dynamic imports `publish.ts` to avoid circular dep
 - `FALLBACK_RELAYS`: damus, primal, nos.lol (used if NIP-65 discovery fails)
@@ -519,9 +536,12 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - `fetchAndSync()` fires after every login (non-blocking, fire-and-forget)
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)
-- Race condition protection: only hydrates if `remoteTs > lastSettingsSyncAt`
-  AND `remoteTs > lastLocalChangedAt` (prevents in-flight fetch from
-  overwriting local edits made after the query started)
+- Independent per-d-tag watermarks: settings hydrate only if `remoteTs > lastSettingsSyncAt`,
+  records only if `remoteTs > lastRecordsSyncAt` — neither blocks the other
+- Local-edit guard: also requires `remoteTs > lastLocalChangedAt` (an in-flight fetch can't
+  overwrite local edits made after the query started)
+- `force` flag: post-auth syncs pass force=true to bypass the local guard (adopt cloud state on a
+  fresh device); per-d-tag watermarks are still enforced
 - Orange dot (`nostrSyncing`) shows during both publish and sync operations
 
 ---
@@ -533,20 +553,13 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 |---|---|
 | Login | Every successful auth (NIP-07, QR, deep link) |
 | Tab visibility | Every time the browser tab becomes visible |
-| Pull-to-refresh | User pulls down on mobile (70px threshold) |
 | Manual button | "↻ Sync now" in Settings tab (desktop) |
-
-### Pull-to-Refresh
-- Hook: src/hooks/usePullToRefresh.ts
-- Only active when nostrAuthEnabled is true
-- Visual: circular card with rotating arrow → orange spinner on release
-- Label: "Pull to sync" → "Release to sync" → "Syncing…"
-- Indicator: src/components/Layout/AppShell.tsx + AppShell.module.css
 
 ### Visibility Sync
 - Hook: src/hooks/useNostrSync.ts
 - Fires on visibilitychange → visible
-- Also exposes triggerSync() used by pull-to-refresh and sync button
+- Exposes triggerSync() used by the Settings "Sync now" button
+- (Pull-to-refresh was removed — gesture + usePullToRefresh.ts deleted)
 
 ---
 
@@ -554,14 +567,16 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 15 settings fields | Any of 15 setters (debounced 5s) |
+| `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (debounced 5s) |
 | `personal-bloc:records:v1` | monthlyLog array | After every upsert/delete (debounced 3s) |
 
-### All 15 Synced Settings Fields
+### All 21 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
-`tabOrder`, `hiddenTabs`, `simpleMode`
+`tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
+`cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
+`cbLtvTriggerPct`, `cbLtvTargetPct`
 
 ---
 
@@ -575,7 +590,9 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
 | `nostrRelays` | string[] | ✅ | From NIP-65 discovery |
 | `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
+| `lastRecordsSyncAt` | number | ✅ | Unix ts of last records:v1 hydration (independent watermark) |
 | `lastLocalChangedAt` | number | ✅ | Unix ts of last local setter call |
+| `nostrLogin` | string | ✅ | JSON NIP-46 login (bunkerPubkey/clientNsec/relays/pubkey) — reconnect-free restore |
 | `nostrSigner` | NostrSigner | ❌ | In-memory; recreated on restore |
 | `isAuthenticated` | boolean | ❌ | In-memory; reset on reload |
 | `nostrSyncing` | boolean | ❌ | In-memory; UI loading state |
@@ -597,6 +614,8 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
+| Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
+| Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload. Current store version = 10 |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
@@ -611,3 +630,7 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
 | `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
+| `disconnectNostr` | Clears all nostr state then `window.location.reload()` to rebuild NPool clean (fixes NIP-46 reconnect hang); in lib/nostr/disconnect.ts |
+| nostr-tools pin | EXACT 2.23.5 — verified with Primal NIP-44; do NOT downgrade to 2.13 (breaks @nostrify peer compat) |
+| NIP-46 mobile login | Two-step manual launch — relay warms in foreground BEFORE the deep-link; auto-firing breaks the handshake |
+| `STRIKE_MAX_DRAW_LTV` | 0.50 in strikeCredit.ts; available = min(creditLine, collateral×price×0.50) − drawn |
