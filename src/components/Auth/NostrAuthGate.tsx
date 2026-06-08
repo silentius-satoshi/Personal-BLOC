@@ -115,6 +115,20 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
   };
 
+  const openSignerApp = () => {
+    const params = generateNostrConnectParams(['wss://relay.primal.net']);
+    const uri = generateNostrConnectURI(params, {
+      name: 'Personal ₿LOC',
+      callback: `${window.location.origin}/remoteloginsuccess`,
+    });
+    setConnectParams(params);
+    setConnectUri(uri);
+    setConnectStatus(null);
+    setHasOpenedSigner(true);
+    setError(null);
+    window.location.href = uri;
+  };
+
   const handleOpenSignerApp = () => {
     setHasOpenedSigner(true);
     window.location.href = connectUri;
@@ -194,16 +208,11 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             {showSpinner ? (
               <>
                 <p className={styles.qrWaiting}>{statusText}</p>
-                <button className={styles.ghostBtn} onClick={cancelQR}>
-                  ← Cancel
-                </button>
-              </>
-            ) : isMobile ? (
-              <>
-                <p className={styles.hint}>Tap to open your signer app</p>
-                <button className={styles.primaryBtn} onClick={handleOpenSignerApp}>
-                  Open Signer App
-                </button>
+                {isMobile && (
+                  <button className={styles.primaryBtn} onClick={handleOpenSignerApp}>
+                    Open Signer App
+                  </button>
+                )}
                 <button className={styles.ghostBtn} onClick={cancelQR}>
                   ← Cancel
                 </button>
@@ -229,8 +238,12 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
               </button>
             )}
             {hasNip07 && <div className={styles.divider} />}
-            <button className={styles.secondaryBtn} onClick={generateSession} disabled={loading}>
-              📷 Scan QR Code
+            <button
+              className={styles.secondaryBtn}
+              onClick={isMobile ? openSignerApp : generateSession}
+              disabled={loading}
+            >
+              {isMobile ? 'Open Signer App' : 'Scan QR Code'}
             </button>
             <button
               className={styles.secondaryBtn}
