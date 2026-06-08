@@ -18,6 +18,7 @@ import { useNostrSync } from '../../hooks/useNostrSync';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { disconnectNostr } from '../../lib/nostr/disconnect';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { fmtUSD } from '../../utils/format';
 import styles from './SettingsMain.module.css';
@@ -109,10 +110,6 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const { triggerSync }     = useNostrSync();
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
-  const setNostrPubkey      = useStore((s) => s.setNostrPubkey);
-  const setNostrSigningMethod = useStore((s) => s.setNostrSigningMethod);
-  const setNostrBunkerUri   = useStore((s) => s.setNostrBunkerUri);
-  const setIsAuthenticated  = useStore((s) => s.setIsAuthenticated);
 
   const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
@@ -208,14 +205,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : 'NIP-46'}</span>
             <button
               className={styles.nostrDisconnectBtn}
-              onClick={() => {
-                setNostrPubkey(null);
-                setNostrSigningMethod(null);
-                setNostrBunkerUri(null);
-                setNostrAuthEnabled(false);
-                setIsAuthenticated(false);
-                useStore.getState().setNostrLogin(null);
-              }}
+              onClick={() => disconnectNostr()}
             >
               Disconnect
             </button>
