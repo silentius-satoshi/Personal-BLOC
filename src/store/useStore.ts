@@ -334,11 +334,11 @@ export const useStore = create<StoreState>()(
   setCbLoanBalance:    (v) => { set({ cbLoanBalance: v });    useStore.getState().syncSettingsToNostr(); },
   setCbCollateralBtc:  (v) => { set({ cbCollateralBtc: v });  useStore.getState().syncSettingsToNostr(); },
   setCbAprPct:         (v) => { set({ cbAprPct: v });         useStore.getState().syncSettingsToNostr(); },
-  setCbMonthlyPayment:   (v) => set({ cbMonthlyPayment: v }),
-  setCbLiquidationPrice: (v) => set({ cbLiquidationPrice: v }),
-  setCbPaymentStrategy:  (v) => set({ cbPaymentStrategy: v }),
-  setCbLtvTriggerPct:    (v) => set({ cbLtvTriggerPct: v }),
-  setCbLtvTargetPct:     (v) => set({ cbLtvTargetPct: v }),
+  setCbMonthlyPayment:   (v) => { set({ cbMonthlyPayment: v });   useStore.getState().syncSettingsToNostr(); },
+  setCbLiquidationPrice: (v) => { set({ cbLiquidationPrice: v }); useStore.getState().syncSettingsToNostr(); },
+  setCbPaymentStrategy:  (v) => { set({ cbPaymentStrategy: v });  useStore.getState().syncSettingsToNostr(); },
+  setCbLtvTriggerPct:    (v) => { set({ cbLtvTriggerPct: v });    useStore.getState().syncSettingsToNostr(); },
+  setCbLtvTargetPct:     (v) => { set({ cbLtvTargetPct: v });     useStore.getState().syncSettingsToNostr(); },
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -457,6 +457,11 @@ export const useStore = create<StoreState>()(
         hiddenTabs:               s.hiddenTabs,
         simpleMode:               s.simpleMode,
         btcBuyingUnit:            s.btcBuyingUnit,
+        cbLiquidationPrice:       s.cbLiquidationPrice,
+        cbMonthlyPayment:         s.cbMonthlyPayment,
+        cbPaymentStrategy:        s.cbPaymentStrategy,
+        cbLtvTriggerPct:          s.cbLtvTriggerPct,
+        cbLtvTargetPct:           s.cbLtvTargetPct,
       };
       s.setNostrSyncing(true);
       import('../lib/nostr/publish').then(({ publishSettings }) =>
@@ -484,6 +489,8 @@ export const useStore = create<StoreState>()(
       'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBtcHeld',
       'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
+      'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
+      'cbLtvTriggerPct', 'cbLtvTargetPct',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {

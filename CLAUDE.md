@@ -610,4 +610,4 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
-| `cbLiquidationPrice` | Not synced to Nostr; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
+| `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
