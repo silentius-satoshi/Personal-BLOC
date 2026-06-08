@@ -1,5 +1,17 @@
 import type { MonthlyLogEntry } from './types';
 
+export function recomputeBtcHeld(
+  log: MonthlyLogEntry[],
+  baseBtcHeld: number,
+): MonthlyLogEntry[] {
+  const sorted = [...log].sort((a, b) => a.month - b.month);
+  let running = baseBtcHeld;
+  return sorted.map(e => {
+    running += (e.btcBought ?? 0);
+    return { ...e, btcHeld: running };
+  });
+}
+
 export function deriveAdvisorStart(
   monthlyLog: MonthlyLogEntry[],
   advisorActualBtcHeld: number,
@@ -19,10 +31,9 @@ export function deriveAdvisorStart(
   }
   const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
   const last = sorted[sorted.length - 1];
-  const accumulatedBtc = sorted.reduce((sum, e) => sum + e.btcBought, 0);
   return {
     startingBlocBalance: last.strikeBal,
-    startingBtcHeld:     advisorActualBtcHeld + accumulatedBtc,
+    startingBtcHeld:     last.btcHeld,
     startingMonth:       Math.min(last.month + 1, 12),
   };
 }
@@ -38,7 +49,7 @@ export function deriveCurrentPosition(
   const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
   const last   = sorted[sorted.length - 1];
   return {
-    btcHeld:         baseBtcHeld + sorted.reduce((sum, e) => sum + e.btcBought, 0),
+    btcHeld:         last.btcHeld,
     blocBalance:     last.strikeBal,
     lastLoggedMonth: last.month,
   };

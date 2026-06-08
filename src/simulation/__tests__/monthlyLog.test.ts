@@ -1,17 +1,19 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAdvisorStart, upsertEntry } from '../logUtils';
+import { deriveAdvisorStart, upsertEntry, recomputeBtcHeld } from '../logUtils';
 import type { MonthlyLogEntry } from '../types';
 
 function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): MonthlyLogEntry {
   return {
     month,
-    date:      `2026-0${month}-01`,
-    btcBought: 0.05,
-    income:    500,
-    paydown:   0,
-    strikeBal: month * 3500,
-    strikeLtv: 0.15,
-    loggedAt:  Date.now(),
+    date:           `2026-0${month}-01`,
+    btcBought:      0.05,
+    income:         500,
+    paydown:        0,
+    strikeBal:      month * 3500,
+    strikeLtv:      0.15,
+    loggedAt:       Date.now(),
+    btcHeld:        0,
+    expensesActual: 3500,
     ...overrides,
   };
 }
@@ -30,10 +32,14 @@ describe('deriveAdvisorStart', () => {
     expect(result.startingBlocBalance).toBe(9180);
   });
 
-  it('accumulates btcBought from all entries and adds to advisorActualBtcHeld', () => {
-    const log = [makeEntry(1, { btcBought: 0.05 }), makeEntry(2, { btcBought: 0.03 }), makeEntry(3, { btcBought: 0.02 })];
+  it('uses last entry btcHeld as startingBtcHeld', () => {
+    const log = [
+      makeEntry(1, { btcBought: 0.05, btcHeld: 0.75 }),
+      makeEntry(2, { btcBought: 0.03, btcHeld: 0.78 }),
+      makeEntry(3, { btcBought: 0.02, btcHeld: 0.80 }),
+    ];
     const result = deriveAdvisorStart(log, 0.70, 0, 4);
-    expect(result.startingBtcHeld).toBeCloseTo(0.70 + 0.05 + 0.03 + 0.02);
+    expect(result.startingBtcHeld).toBeCloseTo(0.80);
   });
 
   it('sets startingMonth to last.month + 1', () => {
@@ -69,5 +75,70 @@ describe('upsertEntry', () => {
     const entries = [makeEntry(3), makeEntry(1)];
     const result = upsertEntry(entries, makeEntry(2));
     expect(result.map((e) => e.month)).toEqual([1, 2, 3]);
+  });
+});
+
+describe('recomputeBtcHeld', () => {
+  it('gap-tolerant: months 5 & 7 (skip 6) → startingBtcHeld === month 7 btcHeld', () => {
+    const base = 1.0;
+    const log = recomputeBtcHeld([
+      makeEntry(5, { btcBought: 0.01 }),
+      makeEntry(7, { btcBought: 0.02 }),
+    ], base);
+    const result = deriveAdvisorStart(log, base, 0, 8);
+    expect(result.startingBtcHeld).toBeCloseTo(log.find((e) => e.month === 7)!.btcHeld);
+    expect(result.startingBtcHeld).toBeCloseTo(1.03);
+  });
+
+  it('no double-count: base=1, buys=[0.001, 0.002] → latest.btcHeld === 1.003', () => {
+    const log = recomputeBtcHeld([
+      makeEntry(1, { btcBought: 0.001 }),
+      makeEntry(2, { btcBought: 0.002 }),
+    ], 1.0);
+    expect(log[1].btcHeld).toBeCloseTo(1.003);
+  });
+
+  it('commit trio: strikeBal, btcHeld anchored to prev+buy, expensesActual preserved', () => {
+    const base = 1.0;
+    const entry = makeEntry(1, { btcBought: 0.005, strikeBal: 12000, btcHeld: 0, expensesActual: 3500 });
+    const [committed] = recomputeBtcHeld([entry], base);
+    expect(committed.strikeBal).toBe(12000);
+    expect(committed.btcHeld).toBeCloseTo(base + 0.005);
+    expect(committed.expensesActual).toBe(3500);
+  });
+
+  it('edit re-derives: editing an earlier btcBought updates the latest entry btcHeld', () => {
+    const base = 1.0;
+    const original = recomputeBtcHeld([
+      makeEntry(1, { btcBought: 0.001 }),
+      makeEntry(2, { btcBought: 0.002 }),
+    ], base);
+    expect(original[1].btcHeld).toBeCloseTo(1.003);
+
+    const edited = recomputeBtcHeld(
+      upsertEntry(original, makeEntry(1, { btcBought: 0.010, btcHeld: 0, expensesActual: 3500 })),
+      base,
+    );
+    expect(edited[0].btcHeld).toBeCloseTo(1.010);
+    expect(edited[1].btcHeld).toBeCloseTo(1.012);
+  });
+
+  it('migration backfill: latest.btcHeld === pre-migration advisorActualBtcHeld, baseline reset', () => {
+    const preMigrationBtcHeld = 1.10;
+    const sorted = [
+      makeEntry(1, { btcBought: 0.05, btcHeld: undefined as any }),
+      makeEntry(2, { btcBought: 0.05, btcHeld: undefined as any }),
+    ];
+    const cumBought = sorted.reduce((s, e) => s + (e.btcBought ?? 0), 0);
+    const month0Baseline = preMigrationBtcHeld - cumBought;
+
+    let running = month0Baseline;
+    for (const e of sorted) {
+      running += (e.btcBought ?? 0);
+      if (e.btcHeld == null) e.btcHeld = running;
+    }
+
+    expect(sorted[sorted.length - 1].btcHeld).toBeCloseTo(preMigrationBtcHeld);
+    expect(month0Baseline).toBeCloseTo(1.0);
   });
 });

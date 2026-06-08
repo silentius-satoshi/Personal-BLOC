@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
-import { upsertEntry } from '../simulation/logUtils';
+import { upsertEntry, recomputeBtcHeld } from '../simulation/logUtils';
 import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
@@ -354,7 +354,12 @@ export const useStore = create<StoreState>()(
 
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
-    set((state) => ({ monthlyLog: upsertEntry(state.monthlyLog, entry) }));
+    set((state) => ({
+      monthlyLog: recomputeBtcHeld(
+        upsertEntry(state.monthlyLog, entry),
+        state.advisorActualBtcHeld,
+      ),
+    }));
     syncRecordsToNostr();
   },
   deleteLogEntry: (month) => {
@@ -503,20 +508,33 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 10,
+      version: 11,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {
         const { customCollateral, ...rest } = persistedState;
+        const sorted = [...(persistedState.monthlyLog ?? [])]
+          .sort((a: any, b: any) => a.month - b.month);
+        const cumBought = sorted.reduce((s: number, e: any) => s + (e.btcBought ?? 0), 0);
+        const month0Baseline = (persistedState.advisorActualBtcHeld ?? customCollateral ?? 0) - cumBought;
+        let running = month0Baseline;
+        for (const e of sorted) {
+          running += (e.btcBought ?? 0);
+          if (e.btcHeld == null) e.btcHeld = running;
+        }
+        for (const e of sorted) {
+          if (e.expensesActual == null) e.expensesActual = persistedState.expenses ?? 0;
+        }
         return {
           ...rest,
-          advisorActualBtcHeld: persistedState.advisorActualBtcHeld ?? customCollateral ?? 0,
-          cbPaymentStrategy:    persistedState.cbPaymentStrategy    ?? 'monthly',
-          cbLtvTriggerPct:      persistedState.cbLtvTriggerPct      ?? 75,
-          cbLtvTargetPct:       persistedState.cbLtvTargetPct       ?? 65,
-          btcPriceMode:         persistedState.btcPriceMode         ?? 'live',
+          advisorActualBtcHeld: month0Baseline,
+          monthlyLog:           sorted,
+          cbPaymentStrategy:    persistedState.cbPaymentStrategy ?? 'monthly',
+          cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
+          cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
+          btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
           lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? persistedState.lastSettingsSyncAt ?? null,
           lastLocalChangedAt:   persistedState.lastLocalChangedAt ?? null,
           nostrLogin:           persistedState.nostrLogin         ?? null,

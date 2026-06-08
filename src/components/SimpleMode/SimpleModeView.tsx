@@ -121,6 +121,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const activeTier       = useStore((s) => s.activeTier);
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const monthlyLog       = useStore((s) => s.monthlyLog);
+  const upsertLogEntry   = useStore((s) => s.upsertLogEntry);
 
   // Feature 2
   const [showTierTip, setShowTierTip] = useState(false);
@@ -329,8 +330,21 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   };
 
   const handleApply = () => {
-    setAdvisorActualBlocBalance(eomBlocBalance);
-    if (Math.abs(eomBtcHeld - slmBtcHeld) > 1e-9) setAdvisorActualBtcHeld(eomBtcHeld);
+    const [ey, em] = advisorStartDate.split('-').map(Number);
+    const entryDate = new Date(ey, em - 1 + (currentMonth - 1), 1).toISOString().split('T')[0];
+    upsertLogEntry({
+      month:          currentMonth,
+      date:           entryDate,
+      btcBought:      advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0),
+      income:         currentRow?.incomeToBtc ?? 0,
+      paydown:        expectedPaydown,
+      strikeBal:      eomBlocBalance,
+      strikeLtv:      eomLtv,
+      ...(hasCbLoan ? { cbBal: currentRow?.cbBalance ?? 0, cbLtv: currentRow?.cbLtv ?? 0 } : {}),
+      loggedAt:       Date.now(),
+      btcHeld:        0,
+      expensesActual: expenses,
+    });
     if (advisorChecklist.ndpPayment) {
       setNdpLastPaidDate(new Date().toISOString().split('T')[0]);
     }

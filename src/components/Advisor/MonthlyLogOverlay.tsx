@@ -83,6 +83,7 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
   const showMiningInLog = useStore((s) => s.showMiningInLog);
   const btcPrice        = useStore((s) => s.btcPrice);
   const income          = useStore((s) => s.income);
+  const expenses        = useStore((s) => s.expenses);
 
   const [currentIdx, setCurrentIdx] = useState(Math.min(Math.max(initialMonth, 0), 11));
   const [editing, setEditing] = useState(false);
@@ -170,7 +171,9 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
         cbLtv: (parseFloat(form.cbLtvPct) || 0) / 100,
       } : {}),
       ...(showMiningInLog ? { miningSats: parseFloat(form.miningSats) || 0 } : {}),
-      loggedAt: Date.now(),
+      loggedAt:       Date.now(),
+      btcHeld:        0,
+      expensesActual: monthlyLog.find((e) => e.month === monthNum)?.expensesActual ?? expenses,
     };
     upsertLogEntry(entry);
     setEditing(false);

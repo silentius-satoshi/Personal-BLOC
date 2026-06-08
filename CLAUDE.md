@@ -38,7 +38,7 @@ src/
     runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn
-    logUtils.ts                 # deriveAdvisorStart, deriveCurrentPosition, upsertEntry — standalone, no cross-sim imports
+    logUtils.ts                 # recomputeBtcHeld, deriveAdvisorStart, deriveCurrentPosition, upsertEntry — standalone, no cross-sim imports
     __tests__/
       smartBloc.test.ts
       living.test.ts
@@ -238,8 +238,8 @@ cbLtvTargetPct:      number;                       // default 65 (percent, pay d
 ### Advisor Tab
 ```typescript
 advisorStartDate:         string;   // ISO date, default today
-advisorActualBlocBalance: number;   // default 0
-advisorActualBtcHeld:     number;   // default 0 (starting collateral BTC; log accumulates on top)
+advisorActualBlocBalance: number;   // default 0 — month-0 baseline BLOC balance (empty-log fallback)
+advisorActualBtcHeld:     number;   // default 0 — month-0 baseline BTC (empty-log fallback); current holdings = latest entry.btcHeld
 advisorSkipBlocDraw:      boolean;  // default false (persisted)
 advisorSkipCbPayment:     boolean;  // default false (persisted)
 advisorSkipBtcBuying:     boolean;  // default false (persisted)
@@ -568,7 +568,7 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | d-tag | Contents | Trigger |
 |---|---|---|
 | `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (debounced 5s) |
-| `personal-bloc:records:v1` | monthlyLog array | After every upsert/delete (debounced 3s) |
+| `personal-bloc:records:v1` | monthlyLog array (incl. btcHeld + expensesActual per entry) | After every upsert/delete (debounced 3s) |
 
 ### All 21 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
@@ -610,12 +610,13 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `MiningOddsBar` | Reads store directly — not props |
 | `fmtMining` | Inlined in `format.ts` — no circular import |
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
-| `deriveAdvisorStart` | Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
+| `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
-| Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload. Current store version = 10 |
+| Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
+| Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline; current holdings = latest entry.btcHeld. Current store version = 11 |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
