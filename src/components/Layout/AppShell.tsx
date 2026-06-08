@@ -34,7 +34,6 @@ import { AdvisorMain }    from '../Advisor/AdvisorMain';
 import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
-import { usePullToRefresh }       from '../../hooks/usePullToRefresh';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -184,11 +183,7 @@ export function AppShell() {
   useStrikeData();
   useNostrAutoRestore();
 
-  const { triggerSync } = useNostrSync();
-  const { pullDistance, isRefreshing: isPullRefreshing } = usePullToRefresh({
-    onRefresh: triggerSync,
-    enabled: nostrAuthEnabled,
-  });
+  useNostrSync();
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
@@ -250,14 +245,6 @@ export function AppShell() {
       if (first) setActiveTab(first.key);
     }
   }, [hiddenTabs, activeTab]);
-
-  const PULL_THRESHOLD = 70;
-  const INDICATOR_HEIGHT = 72;
-  const isReadyToRelease = pullDistance >= PULL_THRESHOLD * 0.8;
-  const pullProgress = Math.min(pullDistance / PULL_THRESHOLD, 1);
-  const arrowRotation = pullProgress * 180;
-  const translateY = pullDistance - INDICATOR_HEIGHT;
-  const opacity = Math.min(pullDistance / (INDICATOR_HEIGHT * 0.6), 1);
 
   return (
     <>
@@ -360,45 +347,6 @@ export function AppShell() {
         </div>
       )}
 
-      {nostrAuthEnabled && (pullDistance > 0 || isPullRefreshing) && (
-        <div
-          className={styles.pullContainer}
-          style={{
-            transform: `translateY(${isPullRefreshing ? 0 : translateY}px)`,
-            opacity: isPullRefreshing ? 1 : opacity,
-            transition: isPullRefreshing
-              ? 'transform 0.25s ease, opacity 0.25s ease'
-              : 'none',
-          }}
-        >
-          <div className={`${styles.pullCircle} ${isReadyToRelease || isPullRefreshing ? styles.pullCircleReady : ''}`}>
-            {isPullRefreshing ? (
-              <div className={styles.pullSpinner} />
-            ) : (
-              <svg
-                className={styles.pullArrow}
-                style={{ transform: `rotate(${arrowRotation}deg)` }}
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth={2.5}
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="12" y1="5" x2="12" y2="19" />
-                <polyline points="19 12 12 19 5 12" />
-              </svg>
-            )}
-          </div>
-          <span className={styles.pullLabel}>
-            {isPullRefreshing
-              ? 'Syncing…'
-              : isReadyToRelease
-              ? 'Release to sync'
-              : 'Pull to sync'}
-          </span>
-        </div>
-      )}
     </>
   );
 }
