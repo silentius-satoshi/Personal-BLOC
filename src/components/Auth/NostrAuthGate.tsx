@@ -166,13 +166,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     return () => { abortRef.current?.abort(); };
   }, []);
 
-  useEffect(() => {
-    if (isMobile && connectUri && connectStatus === 'awaiting-connect' && !hasOpenedSigner) {
-      setHasOpenedSigner(true);
-      window.location.href = connectUri;
-    }
-  }, [isMobile, connectUri, connectStatus, hasOpenedSigner]);
-
   const cancelQR = () => {
     abortRef.current?.abort();
     setConnectParams(null);
@@ -184,7 +177,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
 
   const showSpinner =
     connectStatus === 'getting-public-key' ||
-    (isMobile && !!connectUri);
+    (isMobile && hasOpenedSigner);
 
   const statusText =
     connectStatus === 'getting-public-key' ? 'Getting public key…' : 'Waiting for signer…';
@@ -206,6 +199,16 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
                     Open Signer App
                   </button>
                 )}
+                <button className={styles.ghostBtn} onClick={cancelQR}>
+                  ← Cancel
+                </button>
+              </>
+            ) : isMobile ? (
+              <>
+                <p className={styles.hint}>Connecting to relay… then tap to open your signer</p>
+                <button className={styles.primaryBtn} onClick={handleOpenSignerApp}>
+                  Open Signer App
+                </button>
                 <button className={styles.ghostBtn} onClick={cancelQR}>
                   ← Cancel
                 </button>
