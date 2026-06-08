@@ -115,20 +115,6 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     setError(null);
   };
 
-  const openSignerApp = () => {
-    const params = generateNostrConnectParams(['wss://relay.primal.net']);
-    const uri = generateNostrConnectURI(params, {
-      name: 'Personal ₿LOC',
-      callback: `${window.location.origin}/remoteloginsuccess`,
-    });
-    setConnectParams(params);
-    setConnectUri(uri);
-    setConnectStatus(null);
-    setHasOpenedSigner(true);
-    setError(null);
-    window.location.href = uri;
-  };
-
   const handleOpenSignerApp = () => {
     setHasOpenedSigner(true);
     window.location.href = connectUri;
@@ -180,6 +166,13 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     return () => { abortRef.current?.abort(); };
   }, []);
 
+  useEffect(() => {
+    if (isMobile && connectUri && connectStatus === 'awaiting-connect' && !hasOpenedSigner) {
+      setHasOpenedSigner(true);
+      window.location.href = connectUri;
+    }
+  }, [isMobile, connectUri, connectStatus, hasOpenedSigner]);
+
   const cancelQR = () => {
     abortRef.current?.abort();
     setConnectParams(null);
@@ -191,7 +184,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
 
   const showSpinner =
     connectStatus === 'getting-public-key' ||
-    (isMobile && hasOpenedSigner);
+    (isMobile && !!connectUri);
 
   const statusText =
     connectStatus === 'getting-public-key' ? 'Getting public key…' : 'Waiting for signer…';
@@ -240,7 +233,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             {hasNip07 && <div className={styles.divider} />}
             <button
               className={styles.secondaryBtn}
-              onClick={isMobile ? openSignerApp : generateSession}
+              onClick={generateSession}
               disabled={loading}
             >
               {isMobile ? 'Open Signer App' : 'Scan QR Code'}
