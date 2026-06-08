@@ -19,7 +19,7 @@
     "@simplewebauthn/server": "^13.3.1",
     "@vercel/kv": "^3.0.0",
     "lucide-react": "^1.17.0",
-    "nostr-tools": "^2.13.0",
+    "nostr-tools": "2.23.5",
     "qrcode.react": "^4.2.0",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",

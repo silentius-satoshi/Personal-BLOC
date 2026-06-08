@@ -474,7 +474,7 @@ npx vitest run && git add . && git commit -m "..." && git push && vercel --prod
 
 ### Dependency Stack (version pins are hard requirements)
 
-nostr-tools: ^2.13.0   ← DO NOT upgrade; v2.14+ breaks NIP-44 decrypt against Primal
+nostr-tools: 2.23.5    ← pinned exact; NIP-44 + Primal decrypt verified working at this version
 @nostrify/nostrify: ^0.52.2
 @nostrify/react: ^0.6.2
 
