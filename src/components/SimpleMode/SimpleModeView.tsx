@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
@@ -7,11 +8,95 @@ import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
-import { MonthlyLogSection, type MonthlyLogSectionHandle } from '../Advisor/MonthlyLogSection';
+import { MonthlyLogSection } from '../Advisor/MonthlyLogSection';
 import styles from './SimpleModeView.module.css';
 
 interface SimpleModeViewProps {
   onOpenSettings: () => void;
+}
+
+function getMonthLabel(advisorStartDate: string, monthNum: number): string {
+  const [y, m] = advisorStartDate.split('-').map(Number);
+  const d = new Date(y, m - 1 + (monthNum - 1), 1);
+  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+function ConfirmLogSheet({
+  monthNum, monthLabel,
+  drawAmount, skipDraw,
+  cbPayment, skipCb, hasCbLoan,
+  btcBought, btcPrice, skipBtc,
+  confirmExpenses, onExpensesChange,
+  isFullyAllocated,
+  ndpDone, ndpAmount,
+  onConfirm, onCancel,
+}: {
+  monthNum: number; monthLabel: string;
+  drawAmount: number; skipDraw: boolean;
+  cbPayment: number; skipCb: boolean; hasCbLoan: boolean;
+  btcBought: number; btcPrice: number; skipBtc: boolean;
+  confirmExpenses: number; onExpensesChange: (v: number) => void;
+  isFullyAllocated: boolean;
+  ndpDone: boolean; ndpAmount: number;
+  onConfirm: () => void; onCancel: () => void;
+}) {
+  return createPortal(
+    <div className={styles.confirmOverlay} onClick={onCancel}>
+      <div className={styles.confirmSheet} onClick={(e) => e.stopPropagation()}>
+        <div className={styles.confirmHeader}>
+          <span className={styles.confirmTitle}>Confirm Month {monthNum}</span>
+          <span className={styles.confirmSub}>{monthLabel}</span>
+        </div>
+        <div className={styles.confirmRows}>
+          <div className={styles.confirmRow}>
+            <span>BLOC draw</span>
+            <span>{skipDraw ? 'Skipped' : fmtUSD(drawAmount)}</span>
+          </div>
+          {hasCbLoan && (
+            <div className={styles.confirmRow}>
+              <span>CB payment</span>
+              <span>{skipCb ? 'Skipped' : fmtUSD(cbPayment)}</span>
+            </div>
+          )}
+          <div className={styles.confirmRow}>
+            <span>BTC bought</span>
+            <span>
+              {skipBtc ? 'Skipped' : `${btcBought.toFixed(5)} ₿ (~${fmtUSD(btcBought * btcPrice)})`}
+            </span>
+          </div>
+          {ndpDone && ndpAmount > 0 && (
+            <div className={styles.confirmRow}>
+              <span>NDP</span>
+              <span>paid {fmtUSD(ndpAmount)}</span>
+            </div>
+          )}
+          <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
+            <span>Expenses this month</span>
+            <div className={styles.confirmExpensesField}>
+              <span className={styles.confirmExpensesPrefix}>$</span>
+              <input
+                type="number"
+                className={styles.confirmExpensesInput}
+                value={confirmExpenses}
+                step={100}
+                onChange={(e) => onExpensesChange(parseFloat(e.target.value) || 0)}
+              />
+            </div>
+          </div>
+          {isFullyAllocated && (
+            <div className={`${styles.confirmRow} ${styles.confirmRowAlloc}`}>
+              Income fully allocated ✓
+            </div>
+          )}
+        </div>
+        <div className={styles.confirmActions}>
+          <button className={styles.confirmCancelBtn} onClick={onCancel}>Cancel</button>
+          <button className={styles.confirmPrimaryBtn} onClick={onConfirm}>Confirm & advance</button>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
 }
 
 function SimpleModeCheckItem({ checked, onChange, label, amount, animating, editableAmount, defaultAmount, onAmountSave }: {
@@ -142,13 +227,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Change 3 — custom amounts
   const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
   const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null); // stored as BTC
-  // Change 4 — one-shot apply
-  const [projectionApplied, setProjectionApplied] = useState(false);
+  // Confirm sheet
+  const [showConfirmSheet, setShowConfirmSheet] = useState(false);
+  const [confirmExpenses, setConfirmExpenses]   = useState(expenses);
+  const [commitSuccess, setCommitSuccess]       = useState(false);
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
-  const logSectionRef    = useRef<MonthlyLogSectionHandle>(null);
-  const logSectionDivRef = useRef<HTMLDivElement>(null);
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
@@ -235,10 +320,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const eomLtv: number     = eomBtcHeld * btcPrice > 0 ? eomBlocBalance / (eomBtcHeld * btcPrice) : 0;
   const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
 
-  const hasProjection =
-    Math.abs(eomBlocBalance - advisorActualBlocBalance) > 0.01 ||
-    Math.abs(eomBtcHeld - slmBtcHeld) > 1e-9;
-
   // Change 2 — THIS MONTH column
   const cashBalanceThisMonth = advisorChecklist.btcBuying ? 0 : expectedBtcBuying;
   const ndpMinimum = advisorActualBlocBalance > 0
@@ -258,12 +339,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     4: 'SAFE', 3: 'WATCH', 2: 'WARNING', 1: 'EMERGENCY',
   };
 
-  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
+  const ndpActionActive = ndp.status !== 'ok';
+  const totalItems = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2 + (ndpActionActive ? 1 : 0);
   const doneCount  = [
     advisorChecklist.blocDraw,
     showFiatRow && advisorChecklist.fiatCoverage,
     hasCbLoan && advisorChecklist.cbPayment,
     advisorChecklist.btcBuying,
+    ndpActionActive && advisorChecklist.ndpPayment,
   ].filter(Boolean).length;
   const allDone = doneCount === totalItems;
 
@@ -289,17 +372,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     prevMonth.current = advisorChecklist.month;
   }, [advisorChecklist.month]);
 
-  // Change 4 — reset applied flag when checklist or custom amounts change
+  // Auto-dismiss commit success message after 3s
   useEffect(() => {
-    setProjectionApplied(false);
-  }, [advisorChecklist.blocDraw, advisorChecklist.btcBuying, customBlocDraw, customBtcBuying]);
-
-  // Change 4 — auto-dismiss confirmation after 2s
-  useEffect(() => {
-    if (!projectionApplied) return;
-    const t = setTimeout(() => setProjectionApplied(false), 2000);
+    if (!commitSuccess) return;
+    const t = setTimeout(() => setCommitSuccess(false), 3000);
     return () => clearTimeout(t);
-  }, [projectionApplied]);
+  }, [commitSuccess]);
 
   const fireCheck = (key: string, patch: Parameters<typeof setAdvisorChecklist>[0], value: boolean) => {
     if (value) {
@@ -329,7 +407,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setCustomBtcBuying(btcBuyingUnit === 'sats' ? n / SATS_PER_BTC : n);
   };
 
-  const handleApply = () => {
+  const handleApply = (confirmedExpenses: number) => {
     const [ey, em] = advisorStartDate.split('-').map(Number);
     const entryDate = new Date(ey, em - 1 + (currentMonth - 1), 1).toISOString().split('T')[0];
     upsertLogEntry({
@@ -343,14 +421,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       ...(hasCbLoan ? { cbBal: currentRow?.cbBalance ?? 0, cbLtv: currentRow?.cbLtv ?? 0 } : {}),
       loggedAt:       Date.now(),
       btcHeld:        0,
-      expensesActual: expenses,
+      expensesActual: confirmedExpenses,
     });
     if (advisorChecklist.ndpPayment) {
       setNdpLastPaidDate(new Date().toISOString().split('T')[0]);
     }
     setCustomBlocDraw(null);
     setCustomBtcBuying(null);
-    setProjectionApplied(true);
+    setShowConfirmSheet(false);
+    setCommitSuccess(true);
   };
 
   return (
@@ -615,6 +694,31 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     </div>
                   </div>
                 )}
+                {ndpActionActive && (
+                  <div className={styles.actionRow}>
+                    <span className={styles.actionIcon}>⚡</span>
+                    <div className={styles.actionLabelGroup}>
+                      <span className={styles.actionLabel}>
+                        {ndp.status === 'never'
+                          ? '⚠ Non-draw payment — not yet recorded'
+                          : ndp.status === 'overdue'
+                            ? '⚠ NDP overdue — pay Strike now'
+                            : `⚠ Non-draw payment due in ${ndp.daysRemaining}d`}
+                      </span>
+                      {ndpMinimum > 0 && <span className={styles.actionSub}>~{fmtUSD(ndpMinimum)} minimum</span>}
+                    </div>
+                    <div className={styles.paySkipGroup}>
+                      <button
+                        className={`${styles.actionPill} ${advisorChecklist.ndpPayment ? styles.pillPay : ''}`}
+                        onClick={() => fireCheck('ndpPayment', { ndpPayment: true }, true)}
+                      >Done</button>
+                      <button
+                        className={styles.actionPill}
+                        onClick={() => fireCheck('ndpPayment', { ndpPayment: false }, false)}
+                      >Skip</button>
+                    </div>
+                  </div>
+                )}
               </div>
             )}
 
@@ -686,68 +790,29 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
             <div className={styles.progress}>{doneCount} of {totalItems} done</div>
 
-            {hasProjection && !projectionApplied && (
-              <button className={styles.applyBtn} onClick={handleApply}>
-                Apply to next month →
-              </button>
-            )}
-            {projectionApplied && (
-              <p className={styles.applyConfirm}>✓ Applied to next month</p>
-            )}
-
             {!strategyDone && (
               <button
-                className={styles.logThisMonthOutlineBtn}
-                onClick={() => {
-                  logSectionDivRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                  logSectionRef.current?.focusMonth(currentMonth - 1);
-                }}
+                className={styles.logThisMonthBtn}
+                onClick={() => { setConfirmExpenses(expenses); setShowConfirmSheet(true); }}
               >
-                Log this month
+                Log this month &amp; continue
               </button>
+            )}
+            {commitSuccess && (
+              <p className={styles.commitSuccessMsg}>✓ Logged — month {currentMonth} recorded</p>
             )}
           </div>
         )}
 
         {/* Monthly Log section */}
-        <div ref={logSectionDivRef}>
-          <MonthlyLogSection
-            ref={logSectionRef}
-            months={advisorRows}
-            onOpenOverlay={(idx) => {
-              setLogOverlayInitialMonth(idx);
-              setLogOverlayOpen(true);
-            }}
-          />
-        </div>
-
-        {/* Standalone NDP card */}
-        {ndp.status !== 'ok' && (
-          <div className={`${styles.ndpStatusCard} ${
-            ndp.status === 'overdue' ? styles.ndpStatusOverdue :
-            ndp.status === 'soon'    ? styles.ndpStatusSoon    :
-                                       styles.ndpStatusUpcoming
-          }`}>
-            <span className={styles.ndpStatusIcon}>
-              {ndp.status === 'overdue' ? '⛔' : '⚠'}
-            </span>
-            <div className={styles.actionLabelGroup}>
-              <span className={styles.actionLabel}>Non-Draw Payment</span>
-              <span className={styles.actionSub}>
-                {ndp.status === 'never'   ? 'Never recorded' :
-                 ndp.status === 'overdue' ? 'Overdue — pay Strike now' :
-                                            `Due in ${ndp.daysRemaining} days`}
-              </span>
-            </div>
-            {ndpMinimum > 0 && <span className={styles.actionAmount}>{fmtUSD(ndpMinimum)} min.</span>}
-            <div className={styles.paySkipGroup}>
-              <button
-                className={`${styles.actionPill} ${advisorChecklist.ndpPayment ? styles.pillPay : ''}`}
-                onClick={() => fireCheck('ndpPayment', { ndpPayment: !advisorChecklist.ndpPayment }, !advisorChecklist.ndpPayment)}
-              >Pay</button>
-            </div>
-          </div>
-        )}
+        <MonthlyLogSection
+          allowInlineLog={false}
+          months={advisorRows}
+          onOpenOverlay={(idx) => {
+            setLogOverlayInitialMonth(idx);
+            setLogOverlayOpen(true);
+          }}
+        />
 
         {/* Change 1 (iter 2) — setup prompt + modal */}
         {isDefaultSetup && (
@@ -792,6 +857,28 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         months={advisorRows}
         collateralBtc={collateralBtc}
         onClose={() => setLogOverlayOpen(false)}
+      />
+    )}
+
+    {showConfirmSheet && (
+      <ConfirmLogSheet
+        monthNum={currentMonth}
+        monthLabel={getMonthLabel(advisorStartDate, currentMonth)}
+        drawAmount={effectiveDrawAmount}
+        skipDraw={advisorSkipBlocDraw}
+        cbPayment={expectedCbPayment}
+        skipCb={advisorSkipCbPayment}
+        hasCbLoan={hasCbLoan}
+        btcBought={currentRow?.btcBought ?? 0}
+        btcPrice={btcPrice}
+        skipBtc={advisorSkipBtcBuying}
+        confirmExpenses={confirmExpenses}
+        onExpensesChange={setConfirmExpenses}
+        isFullyAllocated={isFullyAllocated}
+        ndpDone={!!advisorChecklist.ndpPayment && ndpActionActive}
+        ndpAmount={ndpMinimum}
+        onConfirm={() => handleApply(confirmExpenses)}
+        onCancel={() => setShowConfirmSheet(false)}
       />
     )}
     </>

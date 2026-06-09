@@ -142,3 +142,33 @@ describe('recomputeBtcHeld', () => {
     expect(month0Baseline).toBeCloseTo(1.0);
   });
 });
+
+describe('badge status logic', () => {
+  function getBadgeStatus(
+    mn: number,
+    currentMonth: number,
+    log: { month: number }[],
+  ): 'logged' | 'current' | 'unlogged' | 'future' {
+    const logged = log.some((e) => e.month === mn);
+    if (logged)              return 'logged';
+    if (mn === currentMonth) return 'current';
+    if (mn < currentMonth)   return 'unlogged';
+    return 'future';
+  }
+
+  it('logged entry → logged', () => {
+    expect(getBadgeStatus(3, 5, [{ month: 3 }])).toBe('logged');
+  });
+
+  it('current month with no entry → current', () => {
+    expect(getBadgeStatus(5, 5, [])).toBe('current');
+  });
+
+  it('past month with no entry → unlogged', () => {
+    expect(getBadgeStatus(2, 5, [])).toBe('unlogged');
+  });
+
+  it('future month → future', () => {
+    expect(getBadgeStatus(8, 5, [])).toBe('future');
+  });
+});

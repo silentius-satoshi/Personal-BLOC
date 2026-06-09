@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (87 tests — all must pass before every commit)
+- Vitest (96 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -149,7 +149,11 @@ src/
       MonthlyLogOverlay.module.css
 
     SimpleMode/
-      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); mirrors Advisor layout
+      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); single-commit model:
+                                # "Log this month & continue" → ConfirmLogSheet portal (summary + editable
+                                # expensesActual) → handleApply(confirmedExpenses). NDP as action line inside
+                                # FROM CREDIT LINE when ndp.status !== 'ok'. Log carousel = 4-state badges
+                                # (logged/current/unlogged/future). MonthlyLogSection allowInlineLog=false.
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -440,11 +444,11 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-87 tests — `npx vitest run` before every commit.
+96 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
-- `monthlyLog.test.ts`
+- `monthlyLog.test.ts` — includes recomputeBtcHeld suite + 4 badge status tests
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
 - `src/lib/nostr/__tests__/sync.test.ts` — independent watermarks, local guard, force, publishEncrypted return

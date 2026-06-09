@@ -74,13 +74,15 @@
   transition: border-color 0.15s, background 0.15s;
 }
 
-.miniCardLogged  { border-color: rgba(78,203,130,0.35); }
-.miniCardCurrent { border-color: rgba(232,131,106,0.35); }
-.miniCardFuture  { border-color: var(--border); }
+.miniCardLogged   { border-color: rgba(78,203,130,0.35); }
+.miniCardCurrent  { border-color: rgba(232,131,106,0.35); }
+.miniCardUnlogged { border-color: rgba(232,90,79,0.35); }
+.miniCardFuture   { border-color: var(--border); }
 
-.miniCardSelLogged  { border-color: var(--green);  background: rgba(78,203,130,0.05); }
-.miniCardSelCurrent { border-color: var(--orange); background: rgba(232,131,106,0.05); }
-.miniCardSelFuture  { border-color: var(--text-ghost); background: rgba(255,255,255,0.03); }
+.miniCardSelLogged   { border-color: var(--green);  background: rgba(78,203,130,0.05); }
+.miniCardSelCurrent  { border-color: var(--orange); background: rgba(232,131,106,0.05); }
+.miniCardSelUnlogged { border-color: var(--red);    background: rgba(232,90,79,0.05); }
+.miniCardSelFuture   { border-color: var(--text-ghost); background: rgba(255,255,255,0.03); }
 
 .miniMonth {
   font-size: 11px;
@@ -104,8 +106,9 @@
   letter-spacing: 0.04em;
 }
 
-.miniCardLogged  .miniLabel { color: var(--green); }
-.miniCardCurrent .miniLabel { color: var(--orange); }
+.miniCardLogged   .miniLabel { color: var(--green); }
+.miniCardCurrent  .miniLabel { color: var(--orange); }
+.miniCardUnlogged .miniLabel { color: var(--red); }
 
 /* Detail panel */
 .detail {
