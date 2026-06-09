@@ -250,7 +250,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           <div className={styles.setupFieldGroup}>
             <NumberInput
               label="BTC collateral"
-              value={parseFloat(advisorActualBtcHeld.toFixed(5))}
+              value={advisorActualBtcHeld}
               onChange={(v) => { setAdvisorActualBtcHeld(v); setActiveTier('custom'); }}
               prefix="₿"
               min={0}

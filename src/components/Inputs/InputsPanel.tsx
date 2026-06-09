@@ -177,7 +177,7 @@ export function InputsPanel() {
           />
           <NumberInput
             label="Collateral (BTC)"
-            value={parseFloat(effectiveCollateral.toFixed(5))}
+            value={parseFloat(effectiveCollateral.toFixed(8))}
             onChange={(v) => {
               setAdvisorActualBtcHeld(v);
               setActiveTier('custom');
