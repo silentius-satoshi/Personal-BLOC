@@ -162,6 +162,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const monthlyLog       = useStore((s) => s.monthlyLog);
   const upsertLogEntry   = useStore((s) => s.upsertLogEntry);
+  const deleteLogEntry   = useStore((s) => s.deleteLogEntry);
 
   // Feature 2
   const [showTierTip, setShowTierTip] = useState(false);
@@ -184,13 +185,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Confirm sheet
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
   const [confirmExpenses, setConfirmExpenses]   = useState(expenses);
-  const [commitSuccess, setCommitSuccess]       = useState(false);
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
+  const isLogged        = monthlyLog.some((e) => e.month === currentMonth);
   const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
@@ -321,13 +322,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     prevMonth.current = advisorChecklist.month;
   }, [advisorChecklist.month]);
 
-  // Auto-dismiss commit success message after 3s
-  useEffect(() => {
-    if (!commitSuccess) return;
-    const t = setTimeout(() => setCommitSuccess(false), 3000);
-    return () => clearTimeout(t);
-  }, [commitSuccess]);
-
   const fireCheck = (key: string, patch: Parameters<typeof setAdvisorChecklist>[0], value: boolean) => {
     if (value) {
       setJustChecked(key);
@@ -372,7 +366,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setCustomBlocDraw(null);
     setCustomBtcBuying(null);
     setShowConfirmSheet(false);
-    setCommitSuccess(true);
   };
 
   return (
@@ -513,10 +506,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         )}
 
         {/* Plan / completion card */}
-        {allDone ? (
+        {isLogged ? (
           <div className={`${styles.card} ${styles.cardDone}`}>
             <div className={styles.doneIcon}>✓</div>
-            <h3 className={styles.doneTitle}>Month {currentMonth} complete</h3>
+            <h3 className={styles.doneTitle}>Month {currentMonth} logged ✓</h3>
             <p className={styles.doneSub}>
               {strategyDone
                 ? 'Year complete — update your start date in Settings to begin Year 2'
@@ -525,11 +518,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             </p>
             <button
               className={styles.undoBtn}
-              onClick={() => setAdvisorChecklist({
-                month: currentMonth,
-                blocDraw: false, cbPayment: false,
-                btcBuying: false, fiatCoverage: false,
-              })}
+              onClick={() => deleteLogEntry(currentMonth)}
             >
               ← Undo
             </button>
@@ -735,14 +724,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
             {!strategyDone && (
               <button
-                className={styles.logThisMonthBtn}
+                className={`${styles.logThisMonthBtn} ${allDone ? styles.logThisMonthBtnReady : ''}`}
                 onClick={() => { setConfirmExpenses(expenses); setShowConfirmSheet(true); }}
               >
-                Log this month &amp; continue
+                {allDone ? `✓ All set — log month ${currentMonth}` : 'Log this month & continue'}
               </button>
-            )}
-            {commitSuccess && (
-              <p className={styles.commitSuccessMsg}>✓ Logged — month {currentMonth} recorded</p>
             )}
           </div>
         )}

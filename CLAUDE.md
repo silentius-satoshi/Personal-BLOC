@@ -154,6 +154,11 @@ src/
                                 # expensesActual) → handleApply(confirmedExpenses). NDP as action line inside
                                 # FROM CREDIT LINE when ndp.status !== 'ok'. Log carousel = 4-state badges
                                 # (logged/current/unlogged/future). MonthlyLogSection allowInlineLog=false.
+                                # Completion = LOGGED, not checklist tally: card keys on isLogged
+                                # (monthlyLog.some(e => e.month === currentMonth)), NOT allDone. Log button
+                                # stays available all active year (gated !strategyDone); emphasized
+                                # (.logThisMonthBtnReady) once allDone. Completion card Undo UNLOGS via
+                                # deleteLogEntry (pills left intact for one-tap re-log). No store change (v11).
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)

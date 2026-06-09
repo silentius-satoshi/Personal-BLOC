@@ -682,13 +682,9 @@
 }
 .logThisMonthBtn:hover { background: rgba(78,203,130,0.20); }
 
-.commitSuccessMsg {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--green);
-  text-align: center;
-  margin: 4px 0 0;
-}
+/* All actions decided — emphasize the log CTA with a solid fill */
+.logThisMonthBtnReady { background: var(--green); color: var(--bg-app); }
+.logThisMonthBtnReady:hover { background: var(--green); opacity: 0.9; }
 
 /* Confirm log sheet — portal overlay */
 .confirmOverlay {
