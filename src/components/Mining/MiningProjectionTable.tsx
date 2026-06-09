@@ -12,7 +12,6 @@ const SCENARIOS       = [150_000, 300_000, 1_000_000];
 const SCENARIO_LABELS = ['$150k', '$300k', '$1M'];
 
 export function MiningProjectionTable() {
-  const currency           = useStore((s) => s.miningInputs.currency);
   const projectionYears    = useStore((s) => s.miningInputs.projectionYears);
   const setMiningInputs    = useStore((s) => s.setMiningInputs);
   const devices            = useStore((s) => s.miningInputs.devices);

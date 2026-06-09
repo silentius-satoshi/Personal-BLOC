@@ -3,9 +3,7 @@ import { useStore } from '../../store/useStore';
 import { useSimulation } from '../../hooks/useSimulation';
 import styles from './TierCards.module.css';
 
-type Tier = 'min' | 'rec' | 'ideal' | 'custom';
-
-const TIERS: { key: Tier; label: string; ltv: number }[] = [
+const TIERS: { key: 'min' | 'rec' | 'ideal'; label: string; ltv: number }[] = [
   { key: 'min',   label: 'Minimum',     ltv: 0.15 },
   { key: 'rec',   label: 'Recommended', ltv: 0.05 },
   { key: 'ideal', label: 'Ideal',       ltv: 0.02 },

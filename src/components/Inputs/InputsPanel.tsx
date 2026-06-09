@@ -43,7 +43,7 @@ export function InputsPanel() {
   const collateralBtc = effectiveCollateral;
 
   const uncappedResult = useMemo(
-    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine: Infinity }),
+    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine: Infinity, btcGrowthRate: 0 }),
     [collateralBtc, btcPrice, income, expenses, blocApr],
   );
 

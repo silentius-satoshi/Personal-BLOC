@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
-import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { fmtUSD } from '../../utils/format';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import styles from './MonthlyLogOverlay.module.css';

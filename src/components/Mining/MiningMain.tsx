@@ -13,7 +13,7 @@ export function MiningMain() {
   const devices               = useStore((s) => s.miningInputs.devices);
   const currency              = useStore((s) => s.miningInputs.currency);
   const selectedStrategyId    = useStore((s) => s.miningInputs.selectedStrategy);
-  const { strategies, selected, btcPrice } = useMiningSimulation();
+  const { strategies, btcPrice } = useMiningSimulation();
 
   function handleStrategySelect(strategy: MiningStrategy) {
     setMiningStrategy(strategy);

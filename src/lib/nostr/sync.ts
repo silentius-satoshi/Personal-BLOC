@@ -35,6 +35,7 @@ export async function fetchAndSync(
 
   for (const event of latestByDTag.values()) {
     try {
+      if (!signer.nip44) throw new Error('signer missing NIP-44 support');
       const plaintext = await signer.nip44.decrypt(pubkey, event.content);
       const data      = JSON.parse(plaintext);
       const dTag      = event.tags.find(([t]) => t === 'd')?.[1];

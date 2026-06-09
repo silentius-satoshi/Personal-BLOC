@@ -99,48 +99,6 @@ function ConfirmLogSheet({
   );
 }
 
-function SimpleModeCheckItem({ checked, onChange, label, amount, animating, editableAmount, defaultAmount, onAmountSave }: {
-  checked: boolean; onChange: (v: boolean) => void;
-  label: string; amount: string; animating?: boolean;
-  editableAmount?: boolean; defaultAmount?: number; onAmountSave?: (v: number) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  return (
-    <label className={`${styles.checkItem} ${checked ? styles.checkItemDone : ''} ${animating ? styles.checkItemPop : ''}`}>
-      <input
-        type="checkbox"
-        className={styles.checkbox}
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-      />
-      <span className={styles.checkLabel}>{label}</span>
-      <span className={styles.checkAmount}>
-        {editableAmount && editing ? (
-          <input
-            type="number"
-            className={styles.amountInput}
-            defaultValue={defaultAmount}
-            autoFocus
-            onClick={(e) => e.preventDefault()}
-            onBlur={(e) => { onAmountSave?.(parseFloat(e.target.value) || 0); setEditing(false); }}
-            onKeyDown={(e) => {
-              e.stopPropagation();
-              if (e.key === 'Enter') { onAmountSave?.(parseFloat((e.target as HTMLInputElement).value) || 0); setEditing(false); }
-              if (e.key === 'Escape') setEditing(false);
-            }}
-          />
-        ) : editableAmount ? (
-          <span className={styles.editableCheckAmount} onClick={(e) => { e.preventDefault(); setEditing(true); }}>
-            {amount}
-          </span>
-        ) : (
-          amount
-        )}
-      </span>
-    </label>
-  );
-}
-
 function ModalField({ label, prefix, value, onChange, step = 1 }: {
   label: string; prefix?: string; value: number;
   onChange: (v: number) => void; step?: number;
@@ -194,9 +152,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const setAdvisorSkipBtcBuying = useStore((s) => s.setAdvisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
-  const btcBuyingUnit    = useStore((s) => s.btcBuyingUnit);
-  const setBtcBuyingUnit = useStore((s) => s.setBtcBuyingUnit);
-
   const setSimpleMode = useStore((s) => s.setSimpleMode);
 
   const setIncome     = useStore((s) => s.setIncome);
@@ -211,7 +166,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Feature 2
   const [showTierTip, setShowTierTip] = useState(false);
   // Feature 5
-  const [justChecked, setJustChecked] = useState<string | null>(null);
+  const [, setJustChecked] = useState<string | null>(null);
   // Feature 6
   const [showMonthBanner, setShowMonthBanner] = useState(false);
   const prevMonth = useRef<number | null>(null);
@@ -222,7 +177,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     blocBalance: advisorActualBlocBalance,
     btcHeld: advisorActualBtcHeld,
   });
-  const SATS_PER_BTC = 100_000_000;
 
   // Change 3 — custom amounts
   const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
@@ -298,11 +252,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const defaultBtcAmount =
     btcPrice > 0 ? Math.max(0, expectedBtcBuying / btcPrice) : 0;
   const effectiveBtcAmount    = customBtcBuying ?? defaultBtcAmount;
-  const btcBuyingUsdEquivalent = effectiveBtcAmount * btcPrice;
-  const btcBuyingDisplayValue  =
-    btcBuyingUnit === 'sats'
-      ? Math.round(effectiveBtcAmount * SATS_PER_BTC)
-      : effectiveBtcAmount;
 
   const btcAccumulatedThisMonth = advisorChecklist.btcBuying && effectiveBtcAmount > 0
     ? effectiveBtcAmount
@@ -399,12 +348,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setAdvisorActualBlocBalance(modalDraft.blocBalance);
     setAdvisorActualBtcHeld(modalDraft.btcHeld);
     setShowSetupModal(false);
-  };
-
-  const handleBtcBuyingChange = (raw: string) => {
-    const n = parseFloat(raw);
-    if (isNaN(n) || n < 0) { setCustomBtcBuying(null); return; }
-    setCustomBtcBuying(btcBuyingUnit === 'sats' ? n / SATS_PER_BTC : n);
   };
 
   const handleApply = (confirmedExpenses: number) => {

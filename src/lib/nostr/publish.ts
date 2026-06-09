@@ -17,6 +17,7 @@ export async function publishEncrypted(
   relays:  string[] = FALLBACK_RELAYS,
 ): Promise<number> {
   const plaintext  = JSON.stringify(data);
+  if (!signer.nip44) throw new Error('signer missing NIP-44 support');
   const ciphertext = await signer.nip44.encrypt(pubkey, plaintext);
   const createdAt  = Math.floor(Date.now() / 1000);
 

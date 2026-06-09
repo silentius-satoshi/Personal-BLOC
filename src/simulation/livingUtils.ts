@@ -3,8 +3,8 @@ export function getBtcPrice(
   startPrice: number,
   monthlyGrowthRate: number,
   bearMarket: boolean,
-  timeHorizonMonths: number,    // kept for API compatibility, unused
-  annualBtcGrowth: number,      // kept for API compatibility, unused
+  _timeHorizonMonths: number,   // kept for API compatibility, unused
+  _annualBtcGrowth: number,     // kept for API compatibility, unused
   bearPeriodMonths: number,
   annualDecline: number,        // decimal, e.g. -0.50
 ): number {

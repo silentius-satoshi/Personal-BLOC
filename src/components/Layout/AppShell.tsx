@@ -204,7 +204,7 @@ export function AppShell() {
     }
   }, [advisorStartDate, advisorChecklist.month]);
 
-  const allKeys = ALL_TABS_META.map((t) => t.key);
+  const allKeys: string[] = ALL_TABS_META.map((t) => t.key);
   const orderedKeys = [
     ...tabOrder.filter((k) => allKeys.includes(k)),
     ...allKeys.filter((k) => !tabOrder.includes(k)),

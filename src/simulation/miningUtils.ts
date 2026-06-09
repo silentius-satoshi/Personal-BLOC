@@ -47,7 +47,7 @@ export function calcMiningStrategy(
   };
 
   const deviceResults = enabledDevices.map((device) => {
-    const type    = device.soloMining ? 'solo' : 'pooled' as const;
+    const type    = (device.soloMining ? 'solo' : 'pooled') as 'solo' | 'pooled';
     const ev_usd  = dailyEV_usd(device.hashrateTH, btcPrice, device.poolFee);
     const ev_sats = usdToSats(ev_usd, btcPrice);
     return { device, dailyEV_usd: ev_usd, dailyEV_sats: ev_sats, type };

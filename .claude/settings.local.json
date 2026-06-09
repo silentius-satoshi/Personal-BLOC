@@ -7,7 +7,9 @@
       "Bash(openssl rand *)",
       "Bash(npx vite *)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(ls)",
+      "Bash(cat MEMORY.md)"
     ]
   }
 }

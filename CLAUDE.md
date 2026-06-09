@@ -460,8 +460,12 @@ When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowt
 ## Build & Deploy
 
 ```bash
-npx vitest run && git add . && git commit -m "..." && git push   # Vercel auto-deploys on push (local vercel CLI removed)
+npm run build && npx vitest run && git add . && git commit -m "..." && git push   # Vercel auto-deploys on push (local vercel CLI removed)
 ```
+
+`npm run build` = `tsc -b && vite build` — this is the REAL typecheck gate. Run it (not bare `tsc`) before every commit.
+
+**⚠️ The typecheck gate:** root `tsconfig.json` is references-only (`"files": []`), so `tsc` / `tsc --noEmit` is a NO-OP that compiles nothing and always reports 0 — it never catches type errors. The real typecheck is **`npx tsc -b`** (build mode, what `npm run build` runs). Vercel's `vite build` strips types with esbuild and does **not** typecheck, so type errors only surface via `tsc -b` locally.
 
 `vercel.json`: `{ "buildCommand": "vite build", "outputDirectory": "dist", "framework": "vite" }`
 

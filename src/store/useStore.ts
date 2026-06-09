@@ -8,7 +8,7 @@ export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, Monthl
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'settings';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'liqsim' | 'settings';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
@@ -543,10 +543,10 @@ export const useStore = create<StoreState>()(
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {
           state.miningInputs.devices = state.miningInputs.devices.map((d) => ({
-            poolName: '',
-            poolFee: 2.0,
-            soloMining: false,
             ...d,
+            poolName:   d.poolName   ?? '',
+            poolFee:    d.poolFee     ?? 2.0,
+            soloMining: d.soloMining ?? false,
           }));
         }
       },

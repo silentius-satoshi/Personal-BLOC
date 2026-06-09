@@ -18,6 +18,8 @@ const INPUTS: LivingInputs = {
   ltvCeiling: 0.05,           // Target 5% — only affects Max Leverage initial borrow
   capitalGainsTaxRate: 0.30,  // 30% verified: produces ~$2,070 tax
   bearMarket: false,
+  bearPeriodMonths: 0,
+  annualDecline: 0,
 };
 
 describe('Living on Bitcoin — all four strategies', () => {
