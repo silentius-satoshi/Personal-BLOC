@@ -1,0 +1,112 @@
+.panel {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  font-size: 11px;
+}
+
+.sectionTitle {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.10em;
+  color: var(--text-ghost);
+  margin-top: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sectionTitle:first-child { margin-top: 0; }
+
+.grid {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 3px 12px;
+  align-items: start;
+}
+
+.key {
+  color: var(--text-ghost);
+  white-space: nowrap;
+}
+
+.val {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.probeRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.probeStatus {
+  color: var(--text-secondary);
+  word-break: break-all;
+}
+
+.btn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 10px;
+  flex-shrink: 0;
+  transition: border-color 0.12s, color 0.12s;
+}
+.btn:hover { border-color: var(--orange); color: var(--orange); }
+.btn:disabled { opacity: 0.5; cursor: default; }
+
+.btnGhost {
+  background: none;
+  border: none;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 10px;
+  font-family: inherit;
+  padding: 0;
+  letter-spacing: normal;
+  font-weight: 500;
+}
+.btnGhost:hover { color: var(--text-secondary); }
+
+.logList {
+  max-height: 240px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 8px;
+}
+
+.logEmpty { color: var(--text-faint); }
+
+.logRow {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  align-items: baseline;
+}
+
+.logTime  { color: var(--text-faint); flex-shrink: 0; }
+.logInfo  { color: var(--text-ghost); flex-shrink: 0; }
+.logWarn  { color: var(--orange); flex-shrink: 0; }
+.logError { color: var(--red); flex-shrink: 0; }
+.logMsg   { color: var(--text-secondary); }
+
+.logData {
+  flex-basis: 100%;
+  color: var(--text-faint);
+  font-size: 10px;
+  word-break: break-all;
+  padding-left: 64px;
+}

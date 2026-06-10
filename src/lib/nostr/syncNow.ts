@@ -1,5 +1,6 @@
 import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
+import { nostrLog } from './log';
 import { useStore, publishRecordsNow } from '../../store/useStore';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
@@ -32,9 +33,10 @@ export async function syncNow(nostr: NostrParam): Promise<boolean> {
     await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
     if (useStore.getState().recordsDirty) await publishRecordsNow();
     useStore.getState().setNostrReconnectNeeded(false);
+    nostrLog('info', 'sync ok');
     return true;
   } catch (e) {
-    console.warn('[Nostr] sync failed:', e);
+    nostrLog('error', 'sync failed', e);
     useStore.getState().setNostrReconnectNeeded(true);
     return false;
   } finally {

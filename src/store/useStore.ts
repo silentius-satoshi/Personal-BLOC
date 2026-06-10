@@ -3,6 +3,7 @@ import { persist } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
 import { upsertEntry, recomputeBtcHeld } from '../simulation/logUtils';
 import { signerOpTimeout } from '../lib/nostr/timeout';
+import { nostrLog } from '../lib/nostr/log';
 import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
@@ -69,9 +70,11 @@ interface StoreState {
   simpleMode:            boolean;
   onboardingComplete:    boolean;
   btcBuyingUnit:         'btc' | 'sats';
+  devMode:               boolean;   // persisted, DEVICE-LOCAL — never synced (not in SETTINGS_FIELDS/payload)
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setBtcBuyingUnit:      (v: 'btc' | 'sats') => void;
+  setDevMode:            (v: boolean) => void;
 
   // Advisor tab inputs
   advisorStartDate:         string;
@@ -245,8 +248,9 @@ export async function publishRecordsNow() {
     useStore.getState().setLastRecordsSyncAt(createdAt);
     useStore.getState().setRecordsDirty(false);
     useStore.getState().setNostrReconnectNeeded(false);
+    nostrLog('info', 'records published');
   } catch (e) {
-    console.warn('[Nostr] publish records failed:', e);
+    nostrLog('error', 'records publish failed', e);
     useStore.getState().setNostrReconnectNeeded(true);   // dirty stays true
   } finally {
     useStore.getState().setNostrSyncing(false);
@@ -295,9 +299,11 @@ export const useStore = create<StoreState>()(
   simpleMode:         false,
   onboardingComplete: false,
   btcBuyingUnit:      'btc',
+  devMode:            false,
   setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
   setBtcBuyingUnit:      (v) => { set({ btcBuyingUnit: v }); useStore.getState().syncSettingsToNostr(); },
+  setDevMode:            (v) => set({ devMode: v }),
 
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,
@@ -485,8 +491,8 @@ export const useStore = create<StoreState>()(
       s.setNostrSyncing(true);
       import('../lib/nostr/publish').then(({ publishSettings }) =>
         publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings, signerOpTimeout(s.nostrSigningMethod))
-          .then((createdAt) => { useStore.getState().setLastSettingsSyncAt(createdAt); useStore.getState().setNostrReconnectNeeded(false); })
-          .catch((e) => { console.warn('[Nostr] publish settings failed:', e); useStore.getState().setNostrReconnectNeeded(true); })
+          .then((createdAt) => { useStore.getState().setLastSettingsSyncAt(createdAt); useStore.getState().setNostrReconnectNeeded(false); nostrLog('info', 'settings published'); })
+          .catch((e) => { nostrLog('error', 'settings publish failed', e); useStore.getState().setNostrReconnectNeeded(true); })
           .finally(() => useStore.getState().setNostrSyncing(false))
       );
     }, 2000);

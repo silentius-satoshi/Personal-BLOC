@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (111 tests — all must pass before every commit)
+- Vitest (114 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -84,8 +84,12 @@ src/
       InputsPanel.module.css
 
     Settings/
-      SettingsMain.tsx          # Tab visibility toggles + drag-to-reorder (⠿ handles only)
+      SettingsMain.tsx          # Tab visibility toggles + drag-to-reorder (⠿ handles only);
+                                # Build row (5 taps toggles devMode) + DevPanel mount
       SettingsMain.module.css
+      DevPanel.tsx              # Dev diagnostics (devMode only): sync state, signer probe, Nostr log ring,
+                                # copy-diagnostics. METADATA ONLY — never balances/amounts/log contents
+      DevPanel.module.css
 
     Summary/
       SummaryBar.tsx            # Smart BLOC summary (local sign-preserving fmtUSD)
@@ -450,7 +454,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-111 tests — `npx vitest run` before every commit.
+114 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -459,6 +463,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, publishEncrypted first-ACK
+- `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -482,7 +487,16 @@ declarations in `src/vite-env.d.ts`, rendered at the bottom of Settings (`.build
 
 **⚠️ Cross-device testing:** before ANY cross-device smoke test, confirm both devices show the same
 Build SHA in Settings — iOS home-screen PWAs are known to serve stale bundles after deploys; kill +
-relaunch (or reinstall) the PWA until the SHA matches the latest deploy.
+relaunch (or reinstall) the PWA until the SHA matches the latest deploy. With dev mode on, smoke-test
+reports should include the Copy Diagnostics output from the failing device.
+
+**Dev mode:** 5 taps on the Settings Build row toggles `devMode` (persisted, DEVICE-LOCAL — never synced,
+not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe
+(nip44 encrypt→decrypt round-trip — on nip46 may surface a Primal approval), the Nostr log ring
+(sessionStorage `'bloc-nostr-log'`, 50 entries, survives reloads, dies with the PWA), and copy-diagnostics.
+**Privacy rule:** diagnostics/log contain sync metadata only — never balances, amounts, incomes, expenses,
+or log-entry contents. `nostrLog()` (lib/nostr/log.ts) is the standard for Nostr-layer logging (console
+mirror + ring) — new code uses it instead of bare console.warn.
 
 ---
 
@@ -538,6 +552,9 @@ src/
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2)
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam
+    log.ts                          # nostrLog ring buffer — pure; console mirror + sessionStorage 'bloc-nostr-log'
+                                    # (50 entries, survives reloads, dies with the PWA); the STANDARD for
+                                    # Nostr-layer logging — use it instead of bare console.warn
     timeout.ts                      # withTimeout + signerOpTimeout — pure (store-free); method-aware signer-op
                                     # timeouts: nip46 20s / nip07 60s (human approval popup)
     sync.ts                         # fetchAndSync; settings watermark + records per-month MERGE (mergeRecords) + decrypt-failure surfacing (breaks loop on first decrypt fail)

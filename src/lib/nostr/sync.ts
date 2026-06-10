@@ -3,6 +3,7 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { FALLBACK_RELAYS } from './publish';
 import { withTimeout, signerOpTimeout } from './timeout';
+import { nostrLog } from './log';
 import { mergeRecords, type RecordsState } from '../../simulation/mergeRecords';
 import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry } from '../../simulation/types';
@@ -42,7 +43,7 @@ export async function fetchAndSync(
       if (!signer.nip44) throw new Error('signer missing NIP-44 support');
       plaintext = await withTimeout(signer.nip44.decrypt(pubkey, event.content), opTimeoutMs, 'nip44 decrypt');
       anyDecryptOk = true;
-    } catch { decryptFailed = true; break; }               // signer unreachable — rest would fail identically
+    } catch (e) { nostrLog('warn', 'decrypt failed — signer unreachable', e); decryptFailed = true; break; }   // rest would fail identically
     try {
       const data = JSON.parse(plaintext);
       const dTag = event.tags.find(([t]) => t === 'd')?.[1];
@@ -50,6 +51,7 @@ export async function fetchAndSync(
       if (dTag === 'personal-bloc:settings:v1' && remoteTs > (lastSettingsSyncAt ?? 0)) {
         useStore.getState().hydrateSettings(data);
         useStore.getState().setLastSettingsSyncAt(remoteTs);
+        nostrLog('info', 'settings hydrated');
       }
       if (dTag === 'personal-bloc:records:v1') {
         const remote: RecordsState = Array.isArray(data)
@@ -63,13 +65,14 @@ export async function fetchAndSync(
         if (norm(merged) !== norm(local)) {
           useStore.getState().setMonthlyLog(recomputeBtcHeld(merged.entries, s.advisorActualBtcHeld));
           useStore.getState().setDeletedMonths(merged.deletions);
+          nostrLog('info', `records merged (${merged.entries.length} entries)`);
         }
         if (norm(merged) !== norm(remoteNorm)) {
           useStore.getState().setRecordsDirty(true);     // relay is missing something we have → publish needed
         }
         useStore.getState().setLastRecordsSyncAt(remoteTs);  // observability ONLY — no longer a gate
       }
-    } catch { /* corrupt/foreign payload — skip */ }
+    } catch { nostrLog('warn', 'payload parse failed (skipped)'); }   // corrupt/foreign payload
   }
   if (decryptFailed) useStore.getState().setNostrReconnectNeeded(true);
   else if (anyDecryptOk) useStore.getState().setNostrReconnectNeeded(false);

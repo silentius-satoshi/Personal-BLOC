@@ -1,5 +1,6 @@
 import { NLogin, NUser } from '@nostrify/react/login';
 import { useStore } from '../../store/useStore';
+import { nostrLog } from './log';
 import type { NostrSigner } from './signers';
 
 // Matches the value useNostr() returns (the 2nd arg to NUser.fromBunkerLogin) without a fragile import.
@@ -37,5 +38,5 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
       return signer;
     }
     return null;
-  } catch { return null; }
+  } catch (e) { nostrLog('warn', 'restoreSigner failed', e); return null; }
 }

@@ -13,7 +13,9 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useRef } from 'react';
 import { useStore } from '../../store/useStore';
+import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
@@ -101,6 +103,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setToolTabs         = useStore((s) => s.setToolTabs);
   const simpleMode          = useStore((s) => s.simpleMode);
   const setSimpleMode       = useStore((s) => s.setSimpleMode);
+  const devMode             = useStore((s) => s.devMode);
+  const setDevMode          = useStore((s) => s.setDevMode);
+
+  // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
+  const tapCount  = useRef(0);
+  const lastTapAt = useRef(0);
+  const handleBuildTap = () => {
+    const now = Date.now();
+    if (now - lastTapAt.current > 2500) tapCount.current = 0;
+    lastTapAt.current = now;
+    tapCount.current += 1;
+    if (tapCount.current >= 5) {
+      tapCount.current = 0;
+      setDevMode(!devMode);
+    }
+  };
   const hasCbLoan           = useStore((s) => s.hasCbLoan);
   const setHasCbLoan        = useStore((s) => s.setHasCbLoan);
 
@@ -392,9 +410,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
         </DndContext>
       </div>
 
-      <p className={styles.buildInfo}>
+      <p className={styles.buildInfo} onClick={handleBuildTap}>
         Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </p>
+
+      {devMode && <DevPanel />}
     </div>
   );
 }

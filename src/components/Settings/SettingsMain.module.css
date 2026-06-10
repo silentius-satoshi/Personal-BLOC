@@ -335,4 +335,6 @@
   text-align: center;
   margin: 24px 0 0;
   font-family: inherit;
+  cursor: default;   /* 5-tap dev-mode trigger stays undiscoverable */
+  user-select: none;
 }
