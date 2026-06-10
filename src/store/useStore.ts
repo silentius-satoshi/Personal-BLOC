@@ -232,9 +232,9 @@ interface StoreState {
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function publishRecordsNow() {
+export async function publishRecordsNow(): Promise<boolean> {
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return;
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;   // publish didn't happen
   useStore.getState().setNostrSyncing(true);
   try {
     const { publishRecords } = await import('../lib/nostr/publish');
@@ -249,9 +249,11 @@ export async function publishRecordsNow() {
     useStore.getState().setRecordsDirty(false);
     useStore.getState().setNostrReconnectNeeded(false);
     nostrLog('info', 'records published');
+    return true;
   } catch (e) {
     nostrLog('error', 'records publish failed', e);
     useStore.getState().setNostrReconnectNeeded(true);   // dirty stays true
+    return false;
   } finally {
     useStore.getState().setNostrSyncing(false);
   }

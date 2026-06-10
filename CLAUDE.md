@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (114 tests — all must pass before every commit)
+- Vitest (115 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -454,7 +454,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-114 tests — `npx vitest run` before every commit.
+115 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -462,7 +462,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
-- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, publishEncrypted first-ACK
+- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
@@ -557,8 +557,8 @@ src/
                                     # Nostr-layer logging — use it instead of bare console.warn
     timeout.ts                      # withTimeout + signerOpTimeout — pure (store-free); method-aware signer-op
                                     # timeouts: nip46 20s / nip07 60s (human approval popup)
-    sync.ts                         # fetchAndSync; settings watermark + records per-month MERGE (mergeRecords) + decrypt-failure surfacing (breaks loop on first decrypt fail)
-    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty)
+    sync.ts                         # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail); settings watermark + records per-month MERGE (mergeRecords); does NOT manage the reconnect flag
+    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
@@ -576,7 +576,8 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - `syncSettingsToNostr()` — settings publish debounced (verify value in code); dynamic imports `publish.ts`
   to avoid circular dep; on success/failure toggles `nostrReconnectNeeded` false/true
 - `publishRecordsNow()` — exported from the store; immediate (no debounce); publishes the v2
-  `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths }`; clears `recordsDirty` +
+  `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths }`; returns boolean and STILL
+  manages the flag itself (the log mutators call it standalone, outside syncNow): clears `recordsDirty` +
   `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure (dirty stays true)
 - `FALLBACK_RELAYS`: damus, primal, nos.lol (used if NIP-65 discovery fails)
 - NIP-65 relay discovery: `syncNow` fetches the user's kind:10002 when `nostrRelays` is empty and
@@ -589,7 +590,11 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - **All entry points call the single `syncNow(nostr)`** (lib/nostr/syncNow.ts): restore-signer-if-needed
   (NIP-46 rebuild throttled ~20s, also covers cold-mount restore) → relays-if-empty → fetch+merge →
   publish-if-dirty. Pull-merge-THEN-push — with merge-based receive this is safe and publishes the
-  merged superset. Returns boolean (auto-restore reverts optimistic auth only if it failed with no signer).
+  merged superset. **Honest result**: returns true ONLY when the pull and (if `recordsDirty`) the push
+  both succeeded; `nostrReconnectNeeded` is cleared only on full success and set on any
+  signer-attributable failure; logs `'sync ok'` only on true success, `'sync incomplete (pull …, push …)'`
+  otherwise. Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
+  double-mount races share one promise). Auto-restore reverts optimistic auth only if it failed with no signer.
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)
 - **Records receive is MERGE-based and unconditionally safe** (`mergeRecords`, per month): newest
@@ -598,8 +603,10 @@ vercel.json                         # Catch-all rewrite → index.html (required
   90-day tombstone GC. After merge: apply only if merged ≠ local (re-chained via `recomputeBtcHeld`);
   set `recordsDirty` if relay is missing something we have. NO receive gates.
 - Settings hydrate on watermark only: `remoteTs > lastSettingsSyncAt` (whole-object LWW)
-- Decrypt-failure surfacing: if an event fails to decrypt (signer unreachable) `nostrReconnectNeeded`
-  is set; a successful decrypt clears it
+- Decrypt-failure surfacing: `fetchAndSync` returns false when an event fails to decrypt (signer
+  unreachable) and no longer touches the flag itself — `syncNow` (its sole caller) sets
+  `nostrReconnectNeeded` from the boolean; the flag clears only on a fully successful sync.
+  Parse failures are data-level skips (logged, no effect on the result)
 - Signer-op timeouts are METHOD-AWARE via `signerOpTimeout()` (`src/lib/nostr/timeout.ts`, pure/store-free):
   nip46 20s (automated — rides out one capped relay-backoff window) / nip07 60s (human approval popup per op;
   a short timeout races the user's click). Wraps `nip44` decrypt/encrypt + `signEvent`; the decrypt loop

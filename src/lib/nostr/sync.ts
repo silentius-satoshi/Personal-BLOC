@@ -8,11 +8,12 @@ import { mergeRecords, type RecordsState } from '../../simulation/mergeRecords';
 import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
+/** Returns true if no decrypt failure occurred (parse failures are data-level skips, not signer failures). */
 export async function fetchAndSync(
   signer: NostrSigner,
   pubkey: string,
   relays: string[] = FALLBACK_RELAYS,
-): Promise<void> {
+): Promise<boolean> {
   const pool = new SimplePool();
 
   const events = await pool.querySync(relays, {
@@ -36,13 +37,12 @@ export async function fetchAndSync(
   const { lastSettingsSyncAt } = useStore.getState();
   const opTimeoutMs = signerOpTimeout(useStore.getState().nostrSigningMethod);
 
-  let decryptFailed = false, anyDecryptOk = false;
+  let decryptFailed = false;
   for (const event of latestByDTag.values()) {
     let plaintext: string;
     try {
       if (!signer.nip44) throw new Error('signer missing NIP-44 support');
       plaintext = await withTimeout(signer.nip44.decrypt(pubkey, event.content), opTimeoutMs, 'nip44 decrypt');
-      anyDecryptOk = true;
     } catch (e) { nostrLog('warn', 'decrypt failed — signer unreachable', e); decryptFailed = true; break; }   // rest would fail identically
     try {
       const data = JSON.parse(plaintext);
@@ -74,6 +74,5 @@ export async function fetchAndSync(
       }
     } catch { nostrLog('warn', 'payload parse failed (skipped)'); }   // corrupt/foreign payload
   }
-  if (decryptFailed) useStore.getState().setNostrReconnectNeeded(true);
-  else if (anyDecryptOk) useStore.getState().setNostrReconnectNeeded(false);
+  return !decryptFailed;   // reconnect-flag management lives in syncNow (sole caller)
 }

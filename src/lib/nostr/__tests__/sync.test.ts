@@ -82,7 +82,7 @@ describe('fetchAndSync', () => {
     ]);
 
     const { fetchAndSync } = await import('../sync');
-    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toBe(true);
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
@@ -154,6 +154,24 @@ describe('fetchAndSync', () => {
 
     expect(mockStoreState.setRecordsDirty).toHaveBeenCalledWith(true);
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();   // merged === local
+  });
+
+  it('decrypt failure → resolves false, nothing applied', async () => {
+    const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});   // silence the nostrLog mirror
+    resetStore();
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800),
+      makeEvent('personal-bloc:records:v1',  700, { entries: [makeLogEntry(1)], deletions: {} }),
+    ]);
+    const signer = makeSigner();
+    signer.nip44.decrypt = vi.fn().mockRejectedValue(new Error('signer offline'));
+
+    const { fetchAndSync } = await import('../sync');
+    await expect(fetchAndSync(signer, 'pk', ['wss://r'])).resolves.toBe(false);
+
+    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+    expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
+    warnSpy.mockRestore();
   });
 
   it('remote payload identical to local state → no apply, no dirty', async () => {
