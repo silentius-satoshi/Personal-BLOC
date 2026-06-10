@@ -211,42 +211,42 @@ interface StoreState {
   syncSettingsToNostr: () => void;
   nostrSyncing:        boolean;
   setNostrSyncing:     (v: boolean) => void;
+  nostrReconnectNeeded:    boolean;
+  setNostrReconnectNeeded: (v: boolean) => void;
 
   // Nostr cross-device sync (persisted)
   lastSettingsSyncAt:    number | null;
   setLastSettingsSyncAt: (ts: number) => void;
   lastRecordsSyncAt:     number | null;
   setLastRecordsSyncAt:  (ts: number) => void;
-  lastLocalChangedAt:    number | null;
-  setLastLocalChangedAt: (ts: number) => void;
+  recordsDirty:          boolean;
+  setRecordsDirty:       (v: boolean) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
 }
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let recordsSyncTimer:  ReturnType<typeof setTimeout> | null = null;
 
-function syncRecordsToNostr() {
-  useStore.getState().setLastLocalChangedAt(Math.floor(Date.now() / 1000));
-  if (recordsSyncTimer) clearTimeout(recordsSyncTimer);
-  recordsSyncTimer = setTimeout(async () => {
-    const state = useStore.getState();
-    if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return;
-    useStore.getState().setNostrSyncing(true);
-    try {
-      const { publishRecords } = await import('../lib/nostr/publish');
-      const createdAt = await publishRecords(
-        state.nostrSigner,
-        state.nostrPubkey,
-        state.monthlyLog,
-        state.nostrRelays.length ? state.nostrRelays : undefined,
-      );
-      useStore.getState().setLastRecordsSyncAt(createdAt);
-    } catch (e) {
-      console.warn('[Nostr] publish records failed:', e);
-    } finally {
-      useStore.getState().setNostrSyncing(false);
-    }
-  }, 3000);
+export async function publishRecordsNow() {
+  const state = useStore.getState();
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return;
+  useStore.getState().setNostrSyncing(true);
+  try {
+    const { publishRecords } = await import('../lib/nostr/publish');
+    const createdAt = await publishRecords(
+      state.nostrSigner,
+      state.nostrPubkey,
+      state.monthlyLog,
+      state.nostrRelays.length ? state.nostrRelays : undefined,
+    );
+    useStore.getState().setLastRecordsSyncAt(createdAt);
+    useStore.getState().setRecordsDirty(false);
+    useStore.getState().setNostrReconnectNeeded(false);
+  } catch (e) {
+    console.warn('[Nostr] publish records failed:', e);
+    useStore.getState().setNostrReconnectNeeded(true);   // dirty stays true
+  } finally {
+    useStore.getState().setNostrSyncing(false);
+  }
 }
 
 export const useStore = create<StoreState>()(
@@ -359,12 +359,13 @@ export const useStore = create<StoreState>()(
         upsertEntry(state.monthlyLog, entry),
         state.advisorActualBtcHeld,
       ),
+      recordsDirty: true,
     }));
-    syncRecordsToNostr();
+    publishRecordsNow();
   },
   deleteLogEntry: (month) => {
-    set((state) => ({ monthlyLog: state.monthlyLog.filter((e) => e.month !== month) }));
-    syncRecordsToNostr();
+    set((state) => ({ monthlyLog: state.monthlyLog.filter((e) => e.month !== month), recordsDirty: true }));
+    publishRecordsNow();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
 
@@ -440,7 +441,6 @@ export const useStore = create<StoreState>()(
   setNostrSigner: (v) => set({ nostrSigner: v }),
 
   syncSettingsToNostr: () => {
-    set({ lastLocalChangedAt: Math.floor(Date.now() / 1000) });
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(() => {
       const s = useStore.getState();
@@ -471,8 +471,8 @@ export const useStore = create<StoreState>()(
       s.setNostrSyncing(true);
       import('../lib/nostr/publish').then(({ publishSettings }) =>
         publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings)
-          .then((createdAt) => useStore.getState().setLastSettingsSyncAt(createdAt))
-          .catch((e) => console.warn('[Nostr] publish settings failed:', e))
+          .then((createdAt) => { useStore.getState().setLastSettingsSyncAt(createdAt); useStore.getState().setNostrReconnectNeeded(false); })
+          .catch((e) => { console.warn('[Nostr] publish settings failed:', e); useStore.getState().setNostrReconnectNeeded(true); })
           .finally(() => useStore.getState().setNostrSyncing(false))
       );
     }, 2000);
@@ -480,13 +480,15 @@ export const useStore = create<StoreState>()(
 
   nostrSyncing:    false,
   setNostrSyncing: (v) => set({ nostrSyncing: v }),
+  nostrReconnectNeeded:    false,
+  setNostrReconnectNeeded: (v) => set({ nostrReconnectNeeded: v }),
 
   lastSettingsSyncAt: null,
   setLastSettingsSyncAt: (ts) => set({ lastSettingsSyncAt: ts }),
   lastRecordsSyncAt: null,
   setLastRecordsSyncAt: (ts) => set({ lastRecordsSyncAt: ts }),
-  lastLocalChangedAt: null,
-  setLastLocalChangedAt: (ts) => set({ lastLocalChangedAt: ts }),
+  recordsDirty: false,
+  setRecordsDirty: (v) => set({ recordsDirty: v }),
 
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [
@@ -510,7 +512,7 @@ export const useStore = create<StoreState>()(
       name: 'personal-bloc-store',
       version: 11,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, ...rest } = state;
+        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {
@@ -535,8 +537,7 @@ export const useStore = create<StoreState>()(
           cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
           cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
           btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
-          lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? persistedState.lastSettingsSyncAt ?? null,
-          lastLocalChangedAt:   persistedState.lastLocalChangedAt ?? null,
+          lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
           nostrLogin:           persistedState.nostrLogin         ?? null,
         };
       },

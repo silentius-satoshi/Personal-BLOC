@@ -20,13 +20,14 @@ vi.mock('../../../store/useStore', () => ({
 
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
   Object.assign(mockStoreState, {
-    lastSettingsSyncAt:    null,
-    lastRecordsSyncAt:     null,
-    lastLocalChangedAt:    null,
-    hydrateSettings:       vi.fn(),
-    setMonthlyLog:         vi.fn(),
-    setLastSettingsSyncAt: vi.fn(),
-    setLastRecordsSyncAt:  vi.fn(),
+    lastSettingsSyncAt:      null,
+    lastRecordsSyncAt:       null,
+    recordsDirty:            false,
+    hydrateSettings:         vi.fn(),
+    setMonthlyLog:           vi.fn(),
+    setLastSettingsSyncAt:   vi.fn(),
+    setLastRecordsSyncAt:    vi.fn(),
+    setNostrReconnectNeeded: vi.fn(),
     ...overrides,
   });
 }
@@ -64,7 +65,6 @@ describe('fetchAndSync', () => {
     resetStore({
       lastSettingsSyncAt: 1000,
       lastRecordsSyncAt:  500,
-      lastLocalChangedAt: null,
     });
     mockPool.querySync.mockResolvedValue([
       makeEvent('personal-bloc:settings:v1', 900),
@@ -79,13 +79,10 @@ describe('fetchAndSync', () => {
     expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);
   });
 
-  it('local guard blocks hydration when remote is older than last local edit', async () => {
-    resetStore({
-      lastSettingsSyncAt: 500,
-      lastLocalChangedAt: 1000,
-    });
+  it('settings watermark blocks hydration when remote is older', async () => {
+    resetStore({ lastSettingsSyncAt: 500 });
     mockPool.querySync.mockResolvedValue([
-      makeEvent('personal-bloc:settings:v1', 800),
+      makeEvent('personal-bloc:settings:v1', 400),
     ]);
 
     const { fetchAndSync } = await import('../sync');
@@ -94,11 +91,8 @@ describe('fetchAndSync', () => {
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
   });
 
-  it('local guard allows hydration when remote is newer than last local edit', async () => {
-    resetStore({
-      lastSettingsSyncAt: 500,
-      lastLocalChangedAt: 600,
-    });
+  it('settings watermark allows hydration when remote is newer', async () => {
+    resetStore({ lastSettingsSyncAt: 500 });
     mockPool.querySync.mockResolvedValue([
       makeEvent('personal-bloc:settings:v1', 800),
     ]);
@@ -110,35 +104,29 @@ describe('fetchAndSync', () => {
     expect(mockStoreState.setLastSettingsSyncAt).toHaveBeenCalledWith(800);
   });
 
-  it('force=true bypasses local guard but still respects per-d-tag watermark', async () => {
-    resetStore({
-      lastSettingsSyncAt: 500,
-      lastLocalChangedAt: 1000,
-    });
-
-    // Event newer than watermark (500) but older than local guard (1000) — force should allow it
+  it('records dirty flag blocks hydration even when remote is newer', async () => {
+    resetStore({ recordsDirty: true, lastRecordsSyncAt: 500 });
     mockPool.querySync.mockResolvedValue([
-      makeEvent('personal-bloc:settings:v1', 800),
+      makeEvent('personal-bloc:records:v1', 700),
     ]);
 
     const { fetchAndSync } = await import('../sync');
-    await fetchAndSync(makeSigner(), 'pk', ['wss://r'], true);
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
 
-    expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
+    expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
+  });
 
-    // Reset and test that watermark (500) is still enforced even with force
-    vi.clearAllMocks();
-    resetStore({
-      lastSettingsSyncAt: 500,
-      lastLocalChangedAt: 1000,
-    });
+  it('records dirty=false allows hydration when remote is newer', async () => {
+    resetStore({ recordsDirty: false, lastRecordsSyncAt: 500 });
     mockPool.querySync.mockResolvedValue([
-      makeEvent('personal-bloc:settings:v1', 400),
+      makeEvent('personal-bloc:records:v1', 700),
     ]);
 
-    await fetchAndSync(makeSigner(), 'pk', ['wss://r'], true);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
 
-    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+    expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
+    expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);
   });
 });
 
@@ -155,5 +143,13 @@ describe('publishEncrypted', () => {
     expect(typeof result).toBe('number');
     expect(result).toBeGreaterThanOrEqual(before);
     expect(result).toBeLessThanOrEqual(after);
+  });
+
+  it('rejects when every relay rejects', async () => {
+    mockPool.publish.mockReturnValue([Promise.reject(new Error('x'))]);
+    const signer = makeSigner();
+
+    const { publishEncrypted } = await import('../publish');
+    await expect(publishEncrypted(signer, 'pk', 'd-tag', { x: 1 })).rejects.toThrow();
   });
 });

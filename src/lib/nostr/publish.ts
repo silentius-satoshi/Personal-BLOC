@@ -29,21 +29,17 @@ export async function publishEncrypted(
   });
 
   const pool = new SimplePool();
-  try {
-    const results = await Promise.allSettled(pool.publish(relays, signed));
-    const anyAccepted = results.some(r => r.status === 'fulfilled');
-    if (!anyAccepted) {
-      throw new AggregateError(
-        results
-          .filter((r): r is PromiseRejectedResult => r.status === 'rejected')
-          .map(r => r.reason),
-        'All relays rejected the event'
-      );
+  const pubs = pool.publish(relays, signed);                 // Promise[] (one per relay)
+  Promise.allSettled(pubs).finally(() => pool.close(relays)); // close after all settle; do NOT block the return
+  return await new Promise<number>((resolve, reject) => {
+    let settled = false, rejections = 0;
+    const timer = setTimeout(() => { if (!settled) { settled = true; reject(new Error('publish timeout — no relay accepted')); } }, 12000);
+    if (pubs.length === 0) { clearTimeout(timer); reject(new Error('no relays')); return; }
+    for (const p of pubs) {
+      p.then(() => { if (!settled) { settled = true; clearTimeout(timer); resolve(createdAt); } })
+       .catch((err) => { rejections++; if (!settled && rejections === pubs.length) { settled = true; clearTimeout(timer); reject(new AggregateError([err], 'All relays rejected the event')); } });
     }
-    return createdAt;
-  } finally {
-    pool.close(relays);
-  }
+  });
 }
 
 export async function publishSettings(

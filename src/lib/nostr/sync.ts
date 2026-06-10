@@ -8,7 +8,6 @@ export async function fetchAndSync(
   signer: NostrSigner,
   pubkey: string,
   relays: string[] = FALLBACK_RELAYS,
-  force  = false,
 ): Promise<void> {
   const pool = new SimplePool();
 
@@ -30,32 +29,30 @@ export async function fetchAndSync(
     }
   }
 
-  const { lastSettingsSyncAt, lastRecordsSyncAt, lastLocalChangedAt } = useStore.getState();
-  const localGuard = force ? 0 : (lastLocalChangedAt ?? 0);
+  const { lastSettingsSyncAt, lastRecordsSyncAt, recordsDirty } = useStore.getState();
 
+  let decryptFailed = false, anyDecryptOk = false;
   for (const event of latestByDTag.values()) {
+    let plaintext: string;
     try {
       if (!signer.nip44) throw new Error('signer missing NIP-44 support');
-      const plaintext = await signer.nip44.decrypt(pubkey, event.content);
-      const data      = JSON.parse(plaintext);
-      const dTag      = event.tags.find(([t]) => t === 'd')?.[1];
-      const remoteTs  = event.created_at;
-
-      if (dTag === 'personal-bloc:settings:v1') {
-        if (remoteTs > (lastSettingsSyncAt ?? 0) && remoteTs > localGuard) {
-          useStore.getState().hydrateSettings(data);
-          useStore.getState().setLastSettingsSyncAt(remoteTs);
-        }
+      plaintext = await signer.nip44.decrypt(pubkey, event.content);
+      anyDecryptOk = true;
+    } catch { decryptFailed = true; continue; }            // signer unreachable
+    try {
+      const data = JSON.parse(plaintext);
+      const dTag = event.tags.find(([t]) => t === 'd')?.[1];
+      const remoteTs = event.created_at;
+      if (dTag === 'personal-bloc:settings:v1' && remoteTs > (lastSettingsSyncAt ?? 0)) {
+        useStore.getState().hydrateSettings(data);
+        useStore.getState().setLastSettingsSyncAt(remoteTs);
       }
-
-      if (dTag === 'personal-bloc:records:v1') {
-        if (remoteTs > (lastRecordsSyncAt ?? 0) && remoteTs > localGuard) {
-          useStore.getState().setMonthlyLog(data as MonthlyLogEntry[]);
-          useStore.getState().setLastRecordsSyncAt(remoteTs);
-        }
+      if (dTag === 'personal-bloc:records:v1' && !recordsDirty && remoteTs > (lastRecordsSyncAt ?? 0)) {
+        useStore.getState().setMonthlyLog(data as MonthlyLogEntry[]);
+        useStore.getState().setLastRecordsSyncAt(remoteTs);
       }
-    } catch {
-      // Decryption failure or parse error — skip silently
-    }
+    } catch { /* corrupt/foreign payload — skip */ }
   }
+  if (decryptFailed) useStore.getState().setNostrReconnectNeeded(true);
+  else if (anyDecryptOk) useStore.getState().setNostrReconnectNeeded(false);
 }

@@ -40,6 +40,7 @@ import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
+import { disconnectNostr }  from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
 
 const ALL_TABS_META = [
@@ -178,6 +179,7 @@ export function AppShell() {
   const nostrAuthEnabled  = useStore((s) => s.nostrAuthEnabled);
   const isAuthenticated   = useStore((s) => s.isAuthenticated);
   const nostrSyncing      = useStore((s) => s.nostrSyncing);
+  const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
 
   useStrikeData();
@@ -345,6 +347,12 @@ export function AppShell() {
           <span className={styles.nostrSyncingDot} />
           Syncing…
         </div>
+      )}
+
+      {nostrAuthEnabled && nostrReconnectNeeded && (
+        <button className={styles.nostrReconnect} onClick={() => disconnectNostr()}>
+          ⚠ Reconnect
+        </button>
       )}
 
     </>

@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (96 tests — all must pass before every commit)
+- Vitest (98 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -449,14 +449,14 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-96 tests — `npx vitest run` before every commit.
+98 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite + 4 badge status tests
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
-- `src/lib/nostr/__tests__/sync.test.ts` — independent watermarks, local guard, force, publishEncrypted return
+- `src/lib/nostr/__tests__/sync.test.ts` — independent watermarks, records dirty-flag, publishEncrypted first-ACK
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -521,7 +521,8 @@ src/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin)
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords
-    sync.ts                         # fetchAndSync(force?); independent watermarks + local-edit guard
+    session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync)
+    sync.ts                         # fetchAndSync; independent watermarks + records dirty-flag + decrypt-failure surfacing
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
@@ -533,11 +534,13 @@ vercel.json                         # Catch-all rewrite → index.html (required
 
 ### Publishing Architecture
 
-- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → `Promise.allSettled` (pushes to ALL
-  relays); returns the published `created_at` (Promise<number>); throws AggregateError if NO relay
-  accepted (watermark must not be stamped for a lost event)
-- `syncSettingsToNostr()` — debounced 5s; stamps `lastLocalChangedAt` immediately
-  on every setter call; dynamic imports `publish.ts` to avoid circular dep
+- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → returns the published `created_at` on the
+  FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
+  rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
+- `syncSettingsToNostr()` — settings publish debounced (verify value in code); dynamic imports `publish.ts`
+  to avoid circular dep; on success/failure toggles `nostrReconnectNeeded` false/true
+- `publishRecordsNow()` — exported from the store; immediate (no debounce); clears `recordsDirty` +
+  `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure (dirty stays true)
 - `FALLBACK_RELAYS`: damus, primal, nos.lol (used if NIP-65 discovery fails)
 - NIP-65 relay discovery: fetches user's kind:10002 on every login, updates
   `nostrRelays` in store; subsequent publishes go to user's own relays
@@ -551,10 +554,11 @@ vercel.json                         # Catch-all rewrite → index.html (required
   decrypting (prevents stale relay copies from overwriting fresh data)
 - Independent per-d-tag watermarks: settings hydrate only if `remoteTs > lastSettingsSyncAt`,
   records only if `remoteTs > lastRecordsSyncAt` — neither blocks the other
-- Local-edit guard: also requires `remoteTs > lastLocalChangedAt` (an in-flight fetch can't
-  overwrite local edits made after the query started)
-- `force` flag: post-auth syncs pass force=true to bypass the local guard (adopt cloud state on a
-  fresh device); per-d-tag watermarks are still enforced
+- Watermark-only receive + records dirty-flag: no local-edit guard, no force flag. `recordsDirty`
+  (persisted) protects the active device's unpublished log — records hydrate only when `!recordsDirty`;
+  it also drives foreground re-publish. Settings always hydrate on a newer watermark.
+- Decrypt-failure surfacing: if an event fails to decrypt (signer unreachable) `nostrReconnectNeeded`
+  is set; a successful decrypt clears it
 - Orange dot (`nostrSyncing`) shows during both publish and sync operations
 
 ---
@@ -571,6 +575,9 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 ### Visibility Sync
 - Hook: src/hooks/useNostrSync.ts
 - Fires on visibilitychange → visible
+- On foreground, NIP-46 rebuilds the signer from `nostrLogin` via `restoreSigner` (throttled ~20s) before
+  syncing; push-before-pull — any unpublished records (`recordsDirty`) are re-published first
+- `useNostrAutoRestore` mirrors the same push-before-pull on cold launch
 - Exposes triggerSync() used by the Settings "Sync now" button
 - (Pull-to-refresh was removed — gesture + usePullToRefresh.ts deleted)
 
@@ -580,8 +587,8 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (debounced 5s) |
-| `personal-bloc:records:v1` | monthlyLog array (incl. btcHeld + expensesActual per entry) | After every upsert/delete (debounced 3s) |
+| `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (debounced — verify value in code) |
+| `personal-bloc:records:v1` | monthlyLog array (incl. btcHeld + expensesActual per entry) | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
 ### All 21 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
@@ -604,11 +611,12 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `nostrRelays` | string[] | ✅ | From NIP-65 discovery |
 | `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
 | `lastRecordsSyncAt` | number | ✅ | Unix ts of last records:v1 hydration (independent watermark) |
-| `lastLocalChangedAt` | number | ✅ | Unix ts of last local setter call |
+| `recordsDirty` | boolean | ✅ | Local log has unpublished edits; blocks remote records hydration + drives foreground re-publish; cleared on successful publish |
 | `nostrLogin` | string | ✅ | JSON NIP-46 login (bunkerPubkey/clientNsec/relays/pubkey) — reconnect-free restore |
 | `nostrSigner` | NostrSigner | ❌ | In-memory; recreated on restore |
 | `isAuthenticated` | boolean | ❌ | In-memory; reset on reload |
 | `nostrSyncing` | boolean | ❌ | In-memory; UI loading state |
+| `nostrReconnectNeeded` | boolean | ❌ | In-memory; set on decrypt/publish failure → shows ⚠ Reconnect affordance (AppShell) |
 
 ---
 
@@ -624,7 +632,9 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `fmtMining` | Inlined in `format.ts` — no circular import |
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
 | `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
-| `publishRecords` debounce | 3s — separate from settings 5s; NOT triggered by `setMonthlyLog` |
+| `publishRecords` cadence | Immediate via `publishRecordsNow` (no debounce); NOT triggered by `setMonthlyLog` |
+| Records LWW | Records sync is whole-log last-write-wins (`setMonthlyLog` replaces the array); `recordsDirty` protects the active device's unpublished log but does NOT merge two devices' concurrent edits to different months |
+| Nostr reliability fix | Foreground/launch NIP-46 signer rebuild (`restoreSigner`, throttled ~20s) + watermark-only receive + records dirty-flag + immediate records publish + decrypt-failure `nostrReconnectNeeded`; store stays v11 (no migration) |
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
