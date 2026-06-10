@@ -391,6 +391,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </SortableContext>
         </DndContext>
       </div>
+
+      <p className={styles.buildInfo}>
+        Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+      </p>
     </div>
   );
 }

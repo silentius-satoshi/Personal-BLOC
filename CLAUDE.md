@@ -476,6 +476,14 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 
 `vercel.json`: `{ "buildCommand": "vite build", "outputDirectory": "dist", "framework": "vite" }`
 
+**Build-version display:** `__BUILD_SHA__` / `__BUILD_TIME__` vite `define` constants (vite.config.ts:
+Vercel `VERCEL_GIT_COMMIT_SHA` → local `git rev-parse --short HEAD` fallback → `'dev'`), ambient
+declarations in `src/vite-env.d.ts`, rendered at the bottom of Settings (`.buildInfo`).
+
+**⚠️ Cross-device testing:** before ANY cross-device smoke test, confirm both devices show the same
+Build SHA in Settings — iOS home-screen PWAs are known to serve stale bundles after deploys; kill +
+relaunch (or reinstall) the PWA until the SHA matches the latest deploy.
+
 ---
 
 ## Nostr Integration (Steps 1–3 ✅ Complete)

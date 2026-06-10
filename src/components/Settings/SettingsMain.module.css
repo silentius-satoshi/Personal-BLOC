@@ -328,3 +328,11 @@
   background: rgba(232, 131, 106, 0.12);
   color: var(--orange);
 }
+
+.buildInfo {
+  font-size: 10px;
+  color: var(--text-ghost);
+  text-align: center;
+  margin: 24px 0 0;
+  font-family: inherit;
+}
