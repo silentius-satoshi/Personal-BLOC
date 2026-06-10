@@ -522,7 +522,8 @@ src/
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync)
-    sync.ts                         # fetchAndSync; independent watermarks + records dirty-flag + decrypt-failure surfacing
+    timeout.ts                      # withTimeout — pure (store-free) ~10s bound for signer ops
+    sync.ts                         # fetchAndSync; independent watermarks + records dirty-flag + decrypt-failure surfacing (breaks loop on first decrypt fail)
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
@@ -559,6 +560,10 @@ vercel.json                         # Catch-all rewrite → index.html (required
   it also drives foreground re-publish. Settings always hydrate on a newer watermark.
 - Decrypt-failure surfacing: if an event fails to decrypt (signer unreachable) `nostrReconnectNeeded`
   is set; a successful decrypt clears it
+- Signer-op timeout: `nip44` decrypt/encrypt + `signEvent` are wrapped with a ~10s `withTimeout`
+  (`src/lib/nostr/timeout.ts`, pure/store-free), and the decrypt loop **breaks on the first decrypt
+  failure** (remaining events would fail identically) — a dead/revoked/offline signer surfaces reconnect
+  within ~10s instead of @nostrify's 1–2 min internal timeout
 - Orange dot (`nostrSyncing`) shows during both publish and sync operations
 
 ---
@@ -587,16 +592,17 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (debounced — verify value in code) |
+| `personal-bloc:settings:v1` | All 22 settings fields (incl. `advisorChecklist`) | Any synced setter (debounced — verify value in code) |
 | `personal-bloc:records:v1` | monthlyLog array (incl. btcHeld + expensesActual per entry) | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 21 Synced Settings Fields
+### All 22 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
-`advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
+`advisorActualBlocBalance`, `advisorActualBtcHeld`, `advisorChecklist`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`
+(`advisorChecklist` syncs the monthly Pay/Skip state so Simple Mode "THIS MONTH" ₿ matches across devices.)
 
 ---
 
@@ -654,7 +660,8 @@ Three ways fetchAndSync is called — all non-blocking, fire-and-forget:
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
 | `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
-| `disconnectNostr` | Clears all nostr state then `window.location.reload()` to rebuild NPool clean (fixes NIP-46 reconnect hang); in lib/nostr/disconnect.ts |
+| `disconnectNostr` | Full sign-out — clears all nostr state INCL. `nostrAuthEnabled` (disables the lock), then `window.location.reload()` to rebuild NPool clean; in lib/nostr/disconnect.ts |
+| `reconnectNostr` | Revoke-recovery — clears the session but KEEPS `nostrAuthEnabled`, then reloads → auth gate lands on the NIP-46 login (open signer app → re-approve); the bottom-right `⚠ Reconnect` affordance AND the Settings "Reconnect" button both call it; in lib/nostr/disconnect.ts |
 | nostr-tools pin | EXACT 2.23.5 — verified with Primal NIP-44; do NOT downgrade to 2.13 (breaks @nostrify peer compat) |
 | NIP-46 mobile login | Two-step manual launch — relay warms in foreground BEFORE the deep-link; auto-firing breaks the handshake |
 | `STRIKE_MAX_DRAW_LTV` | 0.50 in strikeCredit.ts; available = min(creditLine, collateral×price×0.50) − drawn |

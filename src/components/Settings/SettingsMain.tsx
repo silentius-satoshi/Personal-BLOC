@@ -18,7 +18,7 @@ import { useNostrSync } from '../../hooks/useNostrSync';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { disconnectNostr } from '../../lib/nostr/disconnect';
+import { disconnectNostr, reconnectNostr } from '../../lib/nostr/disconnect';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { fmtUSD } from '../../utils/format';
 import styles from './SettingsMain.module.css';
@@ -203,6 +203,12 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
             </span>
             <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : 'NIP-46'}</span>
+            <button
+              className={styles.nostrReconnectBtn}
+              onClick={() => reconnectNostr()}
+            >
+              Reconnect
+            </button>
             <button
               className={styles.nostrDisconnectBtn}
               onClick={() => disconnectNostr()}

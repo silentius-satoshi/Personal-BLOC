@@ -40,7 +40,7 @@ import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
-import { disconnectNostr }  from '../../lib/nostr/disconnect';
+import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
 
 const ALL_TABS_META = [
@@ -350,7 +350,7 @@ export function AppShell() {
       )}
 
       {nostrAuthEnabled && nostrReconnectNeeded && (
-        <button className={styles.nostrReconnect} onClick={() => disconnectNostr()}>
+        <button className={styles.nostrReconnect} onClick={() => reconnectNostr()}>
           ⚠ Reconnect
         </button>
       )}

@@ -1,6 +1,7 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import type { MonthlyLogEntry } from '../../simulation/types';
+import { withTimeout } from './timeout';
 
 export const FALLBACK_RELAYS = [
   'wss://relay.damus.io',
@@ -18,15 +19,15 @@ export async function publishEncrypted(
 ): Promise<number> {
   const plaintext  = JSON.stringify(data);
   if (!signer.nip44) throw new Error('signer missing NIP-44 support');
-  const ciphertext = await signer.nip44.encrypt(pubkey, plaintext);
+  const ciphertext = await withTimeout(signer.nip44.encrypt(pubkey, plaintext), 10000, 'nip44 encrypt');
   const createdAt  = Math.floor(Date.now() / 1000);
 
-  const signed = await signer.signEvent({
+  const signed = await withTimeout(signer.signEvent({
     kind:       30078,
     created_at: createdAt,
     tags:       [['d', dTag]],
     content:    ciphertext,
-  });
+  }), 10000, 'signEvent');
 
   const pool = new SimplePool();
   const pubs = pool.publish(relays, signed);                 // Promise[] (one per relay)

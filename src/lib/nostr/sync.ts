@@ -2,6 +2,7 @@ import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { FALLBACK_RELAYS } from './publish';
+import { withTimeout } from './timeout';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
 export async function fetchAndSync(
@@ -36,9 +37,9 @@ export async function fetchAndSync(
     let plaintext: string;
     try {
       if (!signer.nip44) throw new Error('signer missing NIP-44 support');
-      plaintext = await signer.nip44.decrypt(pubkey, event.content);
+      plaintext = await withTimeout(signer.nip44.decrypt(pubkey, event.content), 10000, 'nip44 decrypt');
       anyDecryptOk = true;
-    } catch { decryptFailed = true; continue; }            // signer unreachable
+    } catch { decryptFailed = true; break; }               // signer unreachable — rest would fail identically
     try {
       const data = JSON.parse(plaintext);
       const dTag = event.tags.find(([t]) => t === 'd')?.[1];
