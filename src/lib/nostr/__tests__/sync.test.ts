@@ -23,8 +23,13 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     lastSettingsSyncAt:      null,
     lastRecordsSyncAt:       null,
     recordsDirty:            false,
+    monthlyLog:              [],
+    deletedMonths:           {},
+    advisorActualBtcHeld:    0,
     hydrateSettings:         vi.fn(),
     setMonthlyLog:           vi.fn(),
+    setDeletedMonths:        vi.fn(),
+    setRecordsDirty:         vi.fn(),
     setLastSettingsSyncAt:   vi.fn(),
     setLastRecordsSyncAt:    vi.fn(),
     setNostrReconnectNeeded: vi.fn(),
@@ -44,6 +49,11 @@ function makeEvent(dTag: string, createdAt: number, payload: unknown = {}) {
   };
 }
 
+// Minimal log entry for merge flows (fields beyond these have safe fallbacks in recomputeBtcHeld/merge).
+function makeLogEntry(month: number, overrides: Partial<Record<string, any>> = {}) {
+  return { month, btcBought: 0.01, loggedAt: 1000 + month, btcHeld: 0, expensesActual: 3500, ...overrides };
+}
+
 function makeSigner() {
   return {
     nip44: {
@@ -61,14 +71,14 @@ describe('fetchAndSync', () => {
     mockPool.close.mockReturnValue(undefined);
   });
 
-  it('uses independent watermarks — records:v1 hydrates even when settings:v1 is stale', async () => {
+  it('uses independent watermarks — records merge-applies even when settings:v1 is stale', async () => {
     resetStore({
       lastSettingsSyncAt: 1000,
       lastRecordsSyncAt:  500,
     });
     mockPool.querySync.mockResolvedValue([
       makeEvent('personal-bloc:settings:v1', 900),
-      makeEvent('personal-bloc:records:v1',  700),
+      makeEvent('personal-bloc:records:v1',  700, { entries: [makeLogEntry(1)], deletions: {} }),
     ]);
 
     const { fetchAndSync } = await import('../sync');
@@ -104,29 +114,61 @@ describe('fetchAndSync', () => {
     expect(mockStoreState.setLastSettingsSyncAt).toHaveBeenCalledWith(800);
   });
 
-  it('records dirty flag blocks hydration even when remote is newer', async () => {
-    resetStore({ recordsDirty: true, lastRecordsSyncAt: 500 });
+  it('legacy bare-array records payload still applies (v1 read)', async () => {
+    resetStore();
     mockPool.querySync.mockResolvedValue([
-      makeEvent('personal-bloc:records:v1', 700),
-    ]);
-
-    const { fetchAndSync } = await import('../sync');
-    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
-
-    expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
-  });
-
-  it('records dirty=false allows hydration when remote is newer', async () => {
-    resetStore({ recordsDirty: false, lastRecordsSyncAt: 500 });
-    mockPool.querySync.mockResolvedValue([
-      makeEvent('personal-bloc:records:v1', 700),
+      makeEvent('personal-bloc:records:v1', 700, [makeLogEntry(2)]),
     ]);
 
     const { fetchAndSync } = await import('../sync');
     await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
 
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
-    expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);
+    const applied = mockStoreState.setMonthlyLog.mock.calls[0][0];
+    expect(applied.map((e: any) => e.month)).toEqual([2]);
+  });
+
+  it('remote-only month merges in alongside an existing local month (sorted)', async () => {
+    resetStore({ monthlyLog: [makeLogEntry(1)] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:records:v1', 700, { entries: [makeLogEntry(2)], deletions: {} }),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
+    const applied = mockStoreState.setMonthlyLog.mock.calls[0][0];
+    expect(applied.map((e: any) => e.month)).toEqual([1, 2]);
+  });
+
+  it('local month the relay lacks → setRecordsDirty(true), no local apply', async () => {
+    const e1 = makeLogEntry(1);
+    resetStore({ monthlyLog: [e1, makeLogEntry(2)] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:records:v1', 700, { entries: [e1], deletions: {} }),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.setRecordsDirty).toHaveBeenCalledWith(true);
+    expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();   // merged === local
+  });
+
+  it('remote payload identical to local state → no apply, no dirty', async () => {
+    const e1 = makeLogEntry(1);
+    resetStore({ monthlyLog: [e1] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:records:v1', 700, { entries: [e1], deletions: {} }),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
+    expect(mockStoreState.setRecordsDirty).not.toHaveBeenCalled();
+    expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);   // observability stamp still fires
   });
 });
 

@@ -52,11 +52,15 @@ export async function publishSettings(
   return publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays);
 }
 
+// Records payload schema v2 — same d-tag; the replaceable event's next publish supersedes old payloads.
+// Readers must also accept the legacy v1 bare MonthlyLogEntry[] array.
+export type RecordsPayload = { entries: MonthlyLogEntry[]; deletions: Record<number, number> };
+
 export async function publishRecords(
   signer:  NostrSigner,
   pubkey:  string,
-  entries: MonthlyLogEntry[],
+  payload: RecordsPayload,
   relays?: string[],
 ): Promise<number> {
-  return publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', entries, relays);
+  return publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', payload, relays);
 }

@@ -185,7 +185,11 @@ export function AppShell() {
   useStrikeData();
   useNostrAutoRestore();
 
-  useNostrSync();
+  const { triggerSync } = useNostrSync();
+
+  // Two-stage reconnect affordance: retry sync first; escalate to full re-auth only if the retry fails.
+  const [retryFailed, setRetryFailed] = useState(false);
+  useEffect(() => { if (!nostrReconnectNeeded) setRetryFailed(false); }, [nostrReconnectNeeded]);
 
   const [isMobile, setIsMobile] = useState(() => window.innerWidth <= 640);
   useEffect(() => {
@@ -350,9 +354,21 @@ export function AppShell() {
       )}
 
       {nostrAuthEnabled && nostrReconnectNeeded && (
-        <button className={styles.nostrReconnect} onClick={() => reconnectNostr()}>
-          ⚠ Reconnect
-        </button>
+        retryFailed ? (
+          <button className={styles.nostrReconnect} onClick={() => reconnectNostr()}>
+            ⚠ Re-authorize
+          </button>
+        ) : (
+          <button
+            className={styles.nostrReconnect}
+            onClick={async () => {
+              await triggerSync();
+              if (useStore.getState().nostrReconnectNeeded) setRetryFailed(true);
+            }}
+          >
+            ⚠ Reconnect
+          </button>
+        )
       )}
 
     </>

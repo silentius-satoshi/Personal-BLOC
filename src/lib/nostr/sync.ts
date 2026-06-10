@@ -3,6 +3,8 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { FALLBACK_RELAYS } from './publish';
 import { withTimeout } from './timeout';
+import { mergeRecords, type RecordsState } from '../../simulation/mergeRecords';
+import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
 export async function fetchAndSync(
@@ -30,7 +32,7 @@ export async function fetchAndSync(
     }
   }
 
-  const { lastSettingsSyncAt, lastRecordsSyncAt, recordsDirty } = useStore.getState();
+  const { lastSettingsSyncAt } = useStore.getState();
 
   let decryptFailed = false, anyDecryptOk = false;
   for (const event of latestByDTag.values()) {
@@ -48,9 +50,23 @@ export async function fetchAndSync(
         useStore.getState().hydrateSettings(data);
         useStore.getState().setLastSettingsSyncAt(remoteTs);
       }
-      if (dTag === 'personal-bloc:records:v1' && !recordsDirty && remoteTs > (lastRecordsSyncAt ?? 0)) {
-        useStore.getState().setMonthlyLog(data as MonthlyLogEntry[]);
-        useStore.getState().setLastRecordsSyncAt(remoteTs);
+      if (dTag === 'personal-bloc:records:v1') {
+        const remote: RecordsState = Array.isArray(data)
+          ? { entries: data as MonthlyLogEntry[], deletions: {} }            // legacy v1 bare-array payload
+          : data as RecordsState;
+        const s = useStore.getState();
+        const local: RecordsState = { entries: s.monthlyLog, deletions: s.deletedMonths };
+        const merged = mergeRecords(local, remote, { preferLocalOnTie: s.recordsDirty });
+        const norm = (r: RecordsState) => JSON.stringify({ e: r.entries, d: r.deletions });
+        const remoteNorm: RecordsState = { entries: [...remote.entries].sort((a, b) => a.month - b.month), deletions: remote.deletions };
+        if (norm(merged) !== norm(local)) {
+          useStore.getState().setMonthlyLog(recomputeBtcHeld(merged.entries, s.advisorActualBtcHeld));
+          useStore.getState().setDeletedMonths(merged.deletions);
+        }
+        if (norm(merged) !== norm(remoteNorm)) {
+          useStore.getState().setRecordsDirty(true);     // relay is missing something we have → publish needed
+        }
+        useStore.getState().setLastRecordsSyncAt(remoteTs);  // observability ONLY — no longer a gate
       }
     } catch { /* corrupt/foreign payload — skip */ }
   }

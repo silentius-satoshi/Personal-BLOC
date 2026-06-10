@@ -89,6 +89,7 @@ export interface MonthlyLogEntry {
   loggedAt:       number;    // Unix ms timestamp
   btcHeld:        number;    // absolute BTC at end of this logged month
   expensesActual: number;    // actual expenses recorded for this month
+  updatedAt?:     number;    // Unix ms; stamped by upsertLogEntry on every save. Legacy entries lack it — merge falls back to loggedAt.
 }
 
 // --- Mining Tab Types ---

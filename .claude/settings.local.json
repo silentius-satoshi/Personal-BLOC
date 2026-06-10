@@ -11,7 +11,8 @@
       "Bash(ls)",
       "Bash(cat MEMORY.md)",
       "Bash(npm run *)",
-      "Bash(grep -n \"All 21\\\\|21 settings fields\\\\|cbLtvTargetPct\\\\`\\\\|disconnectNostr\\\\|reconnectNostr\\\\|decrypt-failure\\\\|first relay ACK\\\\|Decrypt-failure\\\\|withTimeout\\\\|All 22\" CLAUDE.md)"
+      "Bash(grep -n \"All 21\\\\|21 settings fields\\\\|cbLtvTargetPct\\\\`\\\\|disconnectNostr\\\\|reconnectNostr\\\\|decrypt-failure\\\\|first relay ACK\\\\|Decrypt-failure\\\\|withTimeout\\\\|All 22\" CLAUDE.md)",
+      "Bash(echo \"TS ERRORS: $\\(npx tsc -b 2>&1)"
     ]
   }
 }

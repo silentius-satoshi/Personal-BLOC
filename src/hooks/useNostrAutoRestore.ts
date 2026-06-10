@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 import { useNostr } from '@nostrify/react';
-import { useStore, publishRecordsNow } from '../store/useStore';
-import { restoreSigner } from '../lib/nostr/session';
+import { useStore } from '../store/useStore';
+import { syncNow } from '../lib/nostr/syncNow';
 
 export function useNostrAutoRestore(): void {
   const { nostr } = useNostr();
@@ -13,27 +13,11 @@ export function useNostrAutoRestore(): void {
     useStore.getState().setIsAuthenticated(true);  // optimistic
 
     const restore = async () => {
-      const signer = await restoreSigner(nostr);
-      if (!signer) {
+      const ok = await syncNow(nostr);
+      if (!ok && useStore.getState().nostrSigner === null) {
+        // Restore genuinely failed — a failed sync with a live signer is NOT an auth failure.
         useStore.getState().setIsAuthenticated(false);
-        useStore.getState().setNostrSigner(null);
-        return;
       }
-      const { fetchUserRelays } = await import('../lib/nostr/relays');
-      const { fetchAndSync }    = await import('../lib/nostr/sync');
-      const pk = useStore.getState().nostrPubkey!;
-      const relays = await fetchUserRelays(pk);
-      useStore.getState().setNostrRelays(relays);
-
-      // Push-before-pull: a records publish that failed before a cold close re-propagates on launch.
-      if (useStore.getState().recordsDirty) {
-        try { await publishRecordsNow(); } catch { /* publishRecordsNow already sets the reconnect flag on failure */ }
-      }
-
-      useStore.getState().setNostrSyncing(true);
-      fetchAndSync(signer, pk, relays)
-        .catch(e => console.warn('[Nostr] auto-restore sync failed:', e))
-        .finally(() => useStore.getState().setNostrSyncing(false));
     };
 
     restore();

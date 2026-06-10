@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import type { NostrSigner } from './signers';
 
 // Matches the value useNostr() returns (the 2nd arg to NUser.fromBunkerLogin) without a fragile import.
-type NostrParam = Parameters<typeof NUser.fromBunkerLogin>[1];
+export type NostrParam = Parameters<typeof NUser.fromBunkerLogin>[1];
 
 /**
  * Rebuild the signer from the persisted login and store it. Single responsibility:

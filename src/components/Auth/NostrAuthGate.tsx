@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { connectNip07 } from '../../lib/nostr/signers';
-import { fetchAndSync } from '../../lib/nostr/sync';
-import { fetchUserRelays } from '../../lib/nostr/relays';
+import { syncNow } from '../../lib/nostr/syncNow';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -47,13 +46,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       useStore.getState().setNostrSigner(signer);
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
-      fetchUserRelays(pubkey).then((relays) => {
-        useStore.getState().setNostrRelays(relays);
-        useStore.getState().setNostrSyncing(true);
-        fetchAndSync(signer, pubkey, relays)
-          .catch((e) => console.warn('[Nostr] sync failed:', e))
-          .finally(() => useStore.getState().setNostrSyncing(false));
-      });
+      syncNow(nostr);
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
@@ -80,13 +73,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
       useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey }));
-      fetchUserRelays(pubkey).then((relays) => {
-        useStore.getState().setNostrRelays(relays);
-        useStore.getState().setNostrSyncing(true);
-        fetchAndSync(signer, pubkey, relays)
-          .catch((e) => console.warn('[Nostr] sync failed:', e))
-          .finally(() => useStore.getState().setNostrSyncing(false));
-      });
+      syncNow(nostr);
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
@@ -134,14 +121,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
         useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey: login.pubkey }));
-        const castSigner = signer as unknown as NostrSigner;
-        fetchUserRelays(login.pubkey).then((relays) => {
-          useStore.getState().setNostrRelays(relays);
-          useStore.getState().setNostrSyncing(true);
-          fetchAndSync(castSigner, login.pubkey, relays)
-            .catch((e) => console.warn('[Nostr] sync failed:', e))
-            .finally(() => useStore.getState().setNostrSyncing(false));
-        });
+        syncNow(nostr);
         setIsAuthenticated(true);
         onSuccess();
       } catch (e) {

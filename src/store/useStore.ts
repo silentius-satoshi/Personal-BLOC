@@ -221,6 +221,8 @@ interface StoreState {
   setLastRecordsSyncAt:  (ts: number) => void;
   recordsDirty:          boolean;
   setRecordsDirty:       (v: boolean) => void;
+  deletedMonths:         Record<number, number>;   // month → deletedAt (Unix ms); tombstones for synced deletes
+  setDeletedMonths:      (v: Record<number, number>) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
 }
 
@@ -235,7 +237,7 @@ export async function publishRecordsNow() {
     const createdAt = await publishRecords(
       state.nostrSigner,
       state.nostrPubkey,
-      state.monthlyLog,
+      { entries: state.monthlyLog, deletions: state.deletedMonths },
       state.nostrRelays.length ? state.nostrRelays : undefined,
     );
     useStore.getState().setLastRecordsSyncAt(createdAt);
@@ -357,17 +359,23 @@ export const useStore = create<StoreState>()(
 
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
-    set((state) => ({
-      monthlyLog: recomputeBtcHeld(
-        upsertEntry(state.monthlyLog, entry),
-        state.advisorActualBtcHeld,
-      ),
-      recordsDirty: true,
-    }));
+    const stamped = { ...entry, updatedAt: Date.now() };
+    set((state) => {
+      const { [entry.month]: _gone, ...restDel } = state.deletedMonths;   // re-log clears the tombstone
+      return {
+        monthlyLog: recomputeBtcHeld(upsertEntry(state.monthlyLog, stamped), state.advisorActualBtcHeld),
+        deletedMonths: restDel,
+        recordsDirty: true,
+      };
+    });
     publishRecordsNow();
   },
   deleteLogEntry: (month) => {
-    set((state) => ({ monthlyLog: state.monthlyLog.filter((e) => e.month !== month), recordsDirty: true }));
+    set((state) => ({
+      monthlyLog: state.monthlyLog.filter((e) => e.month !== month),
+      deletedMonths: { ...state.deletedMonths, [month]: Date.now() },
+      recordsDirty: true,
+    }));
     publishRecordsNow();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
@@ -493,6 +501,8 @@ export const useStore = create<StoreState>()(
   setLastRecordsSyncAt: (ts) => set({ lastRecordsSyncAt: ts }),
   recordsDirty: false,
   setRecordsDirty: (v) => set({ recordsDirty: v }),
+  deletedMonths: {},
+  setDeletedMonths: (v) => set({ deletedMonths: v }),
 
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [
