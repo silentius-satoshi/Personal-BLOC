@@ -506,6 +506,8 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 nostr-tools: 2.23.5    ← pinned exact; NIP-44 + Primal decrypt verified working at this version
 @nostrify/nostrify: ^0.52.2
 @nostrify/react: ^0.6.2
+websocket-ts: 2.3.0    ← pinned exact as a DIRECT dep at the tree-resolved version (no dupe copy);
+                         used to cap NRelay1's reconnect backoff (see NostrProvider)
 
 ---
 
@@ -514,17 +516,22 @@ nostr-tools: 2.23.5    ← pinned exact; NIP-44 + Primal decrypt verified workin
 ```
 src/
   providers/
-    NostrProvider.tsx               # NPool + NRelay1 context; wrap root in main.tsx
+    NostrProvider.tsx               # NPool + NRelay1 context; wrap root in main.tsx. Reconnect backoff capped
+                                    # via ExponentialBackoff(1000, 4) → max 16s between attempts (nostrify
+                                    # default is UNBOUNDED doubling — strands NIP-46 after an offline period)
   pages/
     RemoteLoginSuccessPage.tsx      # Callback page Primal opens after approval
   components/Auth/
-    NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring
+    NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring; calls markSignerFresh()
+                                    # after setting the signer so syncNow doesn't rebuild a duplicate
+                                    # NConnectSigner session post-login
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin)
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2)
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam
-    timeout.ts                      # withTimeout — pure (store-free) ~10s bound for signer ops
+    timeout.ts                      # withTimeout + signerOpTimeout — pure (store-free); method-aware signer-op
+                                    # timeouts: nip46 20s / nip07 60s (human approval popup)
     sync.ts                         # fetchAndSync; settings watermark + records per-month MERGE (mergeRecords) + decrypt-failure surfacing (breaks loop on first decrypt fail)
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty)
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
@@ -568,11 +575,13 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - Settings hydrate on watermark only: `remoteTs > lastSettingsSyncAt` (whole-object LWW)
 - Decrypt-failure surfacing: if an event fails to decrypt (signer unreachable) `nostrReconnectNeeded`
   is set; a successful decrypt clears it
-- Signer-op timeout: `nip44` decrypt/encrypt + `signEvent` are wrapped with a ~10s `withTimeout`
-  (`src/lib/nostr/timeout.ts`, pure/store-free), and the decrypt loop **breaks on the first decrypt
-  failure** (remaining events would fail identically) — a dead/revoked/offline signer surfaces reconnect
-  within ~10s instead of @nostrify's 1–2 min internal timeout
-- Orange dot (`nostrSyncing`) shows during both publish and sync operations
+- Signer-op timeouts are METHOD-AWARE via `signerOpTimeout()` (`src/lib/nostr/timeout.ts`, pure/store-free):
+  nip46 20s (automated — rides out one capped relay-backoff window) / nip07 60s (human approval popup per op;
+  a short timeout races the user's click). Wraps `nip44` decrypt/encrypt + `signEvent`; the decrypt loop
+  **breaks on the first decrypt failure** (remaining events would fail identically). The nip07 RESTORE race
+  in session.ts is also 60s. The 12s relay-publish timeout in publishEncrypted is separate and unchanged.
+- Orange dot (`nostrSyncing`) shows during both publish and sync operations — hidden while
+  `nostrReconnectNeeded` (the reconnect/re-authorize button replaces it at bottom-right)
 
 ---
 

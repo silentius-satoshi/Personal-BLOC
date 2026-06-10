@@ -15,9 +15,11 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
   try {
     if (nostrSigningMethod === 'nip07') {
       if (!(window as any).nostr) throw new Error('no extension');
+      // 60s, not 5s: the extension may show an approval popup; a short race beats the user's
+      // click and an abandoned prompt can wedge the extension's request queue.
       const login = await Promise.race([
         NLogin.fromExtension(),
-        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('extension timeout')), 5000)),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('extension timeout')), 60000)),
       ]);
       if (login.pubkey !== nostrPubkey) throw new Error('pubkey mismatch');
       const signer = NUser.fromExtensionLogin(login).signer as unknown as NostrSigner;

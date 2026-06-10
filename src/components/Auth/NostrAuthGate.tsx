@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { connectNip07 } from '../../lib/nostr/signers';
-import { syncNow } from '../../lib/nostr/syncNow';
+import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -44,6 +44,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     try {
       const { signer, pubkey } = await connectNip07();
       useStore.getState().setNostrSigner(signer);
+      markSignerFresh();
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
       syncNow(nostr);
@@ -69,6 +70,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       const signer = user.signer as unknown as NostrSigner;
       const pubkey = user.pubkey;
       useStore.getState().setNostrSigner(signer);
+      markSignerFresh();
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
@@ -118,6 +120,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
         if (controller.signal.aborted) return;
         const signer = NUser.fromBunkerLogin(login, nostr).signer;
         useStore.getState().setNostrSigner(signer as unknown as NostrSigner);
+        markSignerFresh();
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
         useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey: login.pubkey }));

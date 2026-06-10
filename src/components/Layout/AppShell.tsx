@@ -346,7 +346,7 @@ export function AppShell() {
         </div>
       )}
 
-      {nostrAuthEnabled && nostrSyncing && (
+      {nostrAuthEnabled && nostrSyncing && !nostrReconnectNeeded && (
         <div className={styles.nostrSyncing}>
           <span className={styles.nostrSyncingDot} />
           Syncing…

@@ -16,10 +16,11 @@ export async function publishEncrypted(
   dTag:    string,
   data:    unknown,
   relays:  string[] = FALLBACK_RELAYS,
+  opTimeoutMs: number = 20000,
 ): Promise<number> {
   const plaintext  = JSON.stringify(data);
   if (!signer.nip44) throw new Error('signer missing NIP-44 support');
-  const ciphertext = await withTimeout(signer.nip44.encrypt(pubkey, plaintext), 10000, 'nip44 encrypt');
+  const ciphertext = await withTimeout(signer.nip44.encrypt(pubkey, plaintext), opTimeoutMs, 'nip44 encrypt');
   const createdAt  = Math.floor(Date.now() / 1000);
 
   const signed = await withTimeout(signer.signEvent({
@@ -27,7 +28,7 @@ export async function publishEncrypted(
     created_at: createdAt,
     tags:       [['d', dTag]],
     content:    ciphertext,
-  }), 10000, 'signEvent');
+  }), opTimeoutMs, 'signEvent');
 
   const pool = new SimplePool();
   const pubs = pool.publish(relays, signed);                 // Promise[] (one per relay)
@@ -48,8 +49,9 @@ export async function publishSettings(
   pubkey:   string,
   relays:   string[],
   settings: Record<string, unknown>,
+  opTimeoutMs?: number,
 ): Promise<number> {
-  return publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays);
+  return publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays, opTimeoutMs);
 }
 
 // Records payload schema v2 — same d-tag; the replaceable event's next publish supersedes old payloads.
@@ -61,6 +63,7 @@ export async function publishRecords(
   pubkey:  string,
   payload: RecordsPayload,
   relays?: string[],
+  opTimeoutMs?: number,
 ): Promise<number> {
-  return publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', payload, relays);
+  return publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', payload, relays, opTimeoutMs);
 }

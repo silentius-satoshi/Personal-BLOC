@@ -4,6 +4,9 @@ import { useStore, publishRecordsNow } from '../../store/useStore';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
 
+/** Stamp the rebuild throttle so syncNow doesn't immediately rebuild a signer that was just created (e.g. by the auth gate). */
+export function markSignerFresh(): void { lastReconnectAt = Date.now(); }
+
 /**
  * The single unified sync sequence — all entry points (auth gate, mount auto-restore,
  * foreground visibilitychange, manual "Sync now") call this.

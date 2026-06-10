@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
 import { upsertEntry, recomputeBtcHeld } from '../simulation/logUtils';
+import { signerOpTimeout } from '../lib/nostr/timeout';
 import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
@@ -239,6 +240,7 @@ export async function publishRecordsNow() {
       state.nostrPubkey,
       { entries: state.monthlyLog, deletions: state.deletedMonths },
       state.nostrRelays.length ? state.nostrRelays : undefined,
+      signerOpTimeout(state.nostrSigningMethod),
     );
     useStore.getState().setLastRecordsSyncAt(createdAt);
     useStore.getState().setRecordsDirty(false);
@@ -482,7 +484,7 @@ export const useStore = create<StoreState>()(
       };
       s.setNostrSyncing(true);
       import('../lib/nostr/publish').then(({ publishSettings }) =>
-        publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings)
+        publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings, signerOpTimeout(s.nostrSigningMethod))
           .then((createdAt) => { useStore.getState().setLastSettingsSyncAt(createdAt); useStore.getState().setNostrReconnectNeeded(false); })
           .catch((e) => { console.warn('[Nostr] publish settings failed:', e); useStore.getState().setNostrReconnectNeeded(true); })
           .finally(() => useStore.getState().setNostrSyncing(false))
