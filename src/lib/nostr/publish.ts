@@ -3,6 +3,9 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { withTimeout } from './timeout';
 
+export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
+export const RECORDS_DTAG  = 'personal-bloc:records:v1';
+
 export const FALLBACK_RELAYS = [
   'wss://relay.damus.io',
   'wss://relay.primal.net',
@@ -51,7 +54,7 @@ export async function publishSettings(
   settings: Record<string, unknown>,
   opTimeoutMs?: number,
 ): Promise<number> {
-  return publishEncrypted(signer, pubkey, 'personal-bloc:settings:v1', settings, relays, opTimeoutMs);
+  return publishEncrypted(signer, pubkey, SETTINGS_DTAG, settings, relays, opTimeoutMs);
 }
 
 // Records payload schema v2 — same d-tag; the replaceable event's next publish supersedes old payloads.
@@ -65,5 +68,5 @@ export async function publishRecords(
   relays?: string[],
   opTimeoutMs?: number,
 ): Promise<number> {
-  return publishEncrypted(signer, pubkey, 'personal-bloc:records:v1', payload, relays, opTimeoutMs);
+  return publishEncrypted(signer, pubkey, RECORDS_DTAG, payload, relays, opTimeoutMs);
 }

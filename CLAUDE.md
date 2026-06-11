@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (120 tests — all must pass before every commit)
+- Vitest (123 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -459,7 +459,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-120 tests — `npx vitest run` before every commit.
+123 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -470,6 +470,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
+- `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -585,7 +586,13 @@ src/
     deviceTag.ts                    # getDeviceTag/getDeviceLabel — pure; stable per-device 4-hex tag
                                     # (localStorage 'bloc-device-tag', NEVER synced) → 'iOS-a3f2' etc.;
                                     # used in the nostrconnect name + DevPanel/diagnostics
-    sync.ts                         # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail); settings watermark + records per-month MERGE (mergeRecords); does NOT manage the reconnect flag
+    sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
+                                    # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail);
+                                    # settings watermark (read FRESH per event) + records per-month MERGE (mergeRecords);
+                                    # does NOT manage the reconnect flag
+    liveSync.ts                     # foreground-only live relay subscription — module singleton (openLiveSync/
+                                    # closeLiveSync); transport only, every event → applyRemoteEvent; opened on
+                                    # visible, torn down on hidden, fresh since−60s each open
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
@@ -656,8 +663,28 @@ vercel.json                         # Catch-all rewrite → index.html (required
 
 ---
 
+### Live Sync (`liveSync.ts`)
+
+Foreground-only relay subscription so the other device's publishes apply in ~seconds. Principles:
+- **Durable state, ephemeral connections** — the sub is disposable: created on foreground, torn down on
+  hidden, recreated with a fresh `since` every time. No keepalives, no reconnect state machines.
+- **One apply path, two feeds** — every event goes through `applyRemoteEvent` (sync.ts), same as the
+  batch pull; batch and live are transports only, zero new semantics.
+- **Overlap is free, gaps are expensive** — `since = now − 60s` deliberately overlaps the batch path;
+  appliers are idempotent/monotonic, and self-echo of our own publishes no-ops naturally (settings echo
+  fails the watermark, records echo merges to identity).
+- **Don't ring a dead phone** — the live handler skips decrypt attempts while `nostrReconnectNeeded` is
+  set; the post-re-auth batch sync catches up.
+
+Module singleton (`openLiveSync` idempotent / `closeLiveSync`); opt-in via `useNostrSync({ live: true })`
+— ONLY AppShell mounts it live (SettingsMain stays batch-only). EOSE ignored (batch path owns history).
+NOTE: at nostr-tools 2.23.5 `SimplePool.subscribeMany(relays, filter, params)` takes a SINGLE Filter,
+not an array. D-tag constants `SETTINGS_DTAG`/`RECORDS_DTAG` are exported from publish.ts.
+
+---
+
 ### Sync Triggers
-Five entry points — all funnel into `syncNow()`:
+Five entry points — all funnel into `syncNow()` — plus a receive-only live subscription:
 
 | Trigger | Path |
 |---|---|
@@ -665,6 +692,7 @@ Five entry points — all funnel into `syncNow()`:
 | Cold launch | `useNostrAutoRestore` (optimistic auth, reverts only if restore failed with no signer) |
 | Tab visibility | `useNostrSync` visibilitychange → visible |
 | Window focus | `useNostrSync` window `'focus'` → triggerSync — a visible desktop tab never fires visibilitychange; focus covers app/window switches |
+| Live subscription | `liveSync.ts` while visible — receive-only transport (no syncNow); applies the other device's publishes in ≈1s desktop / 2–3s iOS (NIP-46 decrypt) |
 | Manual button | "↻ Sync now" in Settings (via `useNostrSync().triggerSync`) |
 
 - Reconnect affordance is **two-stage**: first tap retries (`triggerSync`); only if the retry still

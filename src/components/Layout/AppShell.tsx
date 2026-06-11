@@ -180,7 +180,7 @@ export function AppShell() {
   useStrikeData();
   useNostrAutoRestore();
 
-  const { triggerSync } = useNostrSync();
+  const { triggerSync } = useNostrSync({ live: true });   // single live mount — SettingsMain stays batch-only
 
   // Two-stage reconnect affordance: retry sync first; escalate to full re-auth only if the retry fails.
   const [retryFailed, setRetryFailed] = useState(false);
