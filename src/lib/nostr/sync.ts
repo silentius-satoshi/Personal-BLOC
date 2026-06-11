@@ -48,7 +48,11 @@ export async function fetchAndSync(
       const data = JSON.parse(plaintext);
       const dTag = event.tags.find(([t]) => t === 'd')?.[1];
       const remoteTs = event.created_at;
-      if (dTag === 'personal-bloc:settings:v1' && remoteTs > (lastSettingsSyncAt ?? 0)) {
+      // While local settings changes are unpublished (settingsDirty), an older/foreign remote
+      // whole-object must not clobber them; syncNow pushes local first, then the watermark governs.
+      if (dTag === 'personal-bloc:settings:v1'
+          && !useStore.getState().settingsDirty
+          && remoteTs > (lastSettingsSyncAt ?? 0)) {
         useStore.getState().hydrateSettings(data);
         useStore.getState().setLastSettingsSyncAt(remoteTs);
         nostrLog('info', 'settings hydrated');

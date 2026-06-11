@@ -225,6 +225,8 @@ interface StoreState {
   setLastRecordsSyncAt:  (ts: number) => void;
   recordsDirty:          boolean;
   setRecordsDirty:       (v: boolean) => void;
+  settingsDirty:         boolean;   // per-device publish state — persisted, never synced (not in SETTINGS_FIELDS/payload)
+  setSettingsDirty:      (v: boolean) => void;
   deletedMonths:         Record<number, number>;   // month → deletedAt (Unix ms); tombstones for synced deletes
   setDeletedMonths:      (v: Record<number, number>) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
@@ -253,6 +255,58 @@ export async function publishRecordsNow(): Promise<boolean> {
   } catch (e) {
     nostrLog('error', 'records publish failed', e);
     useStore.getState().setNostrReconnectNeeded(true);   // dirty stays true
+    return false;
+  } finally {
+    useStore.getState().setNostrSyncing(false);
+  }
+}
+
+export async function publishSettingsNow(): Promise<boolean> {
+  const state = useStore.getState();
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;   // publish didn't happen
+  useStore.getState().setNostrSyncing(true);
+  try {
+    const s = useStore.getState();
+    const settings = {
+      income:                   s.income,
+      expenses:                 s.expenses,
+      blocApr:                  s.blocApr,
+      creditLine:               s.creditLine,
+      advisorStartDate:         s.advisorStartDate,
+      advisorActualBlocBalance: s.advisorActualBlocBalance,
+      advisorActualBtcHeld:     s.advisorActualBtcHeld,
+      advisorChecklist:         s.advisorChecklist,
+      cbLoanBalance:            s.cbLoanBalance,
+      cbCollateralBtc:          s.cbCollateralBtc,
+      cbAprPct:                 s.cbAprPct,
+      hasCbLoan:                s.hasCbLoan,
+      ndpLastPaidDate:          s.ndpLastPaidDate,
+      tabOrder:                 s.tabOrder,
+      hiddenTabs:               s.hiddenTabs,
+      simpleMode:               s.simpleMode,
+      btcBuyingUnit:            s.btcBuyingUnit,
+      cbLiquidationPrice:       s.cbLiquidationPrice,
+      cbMonthlyPayment:         s.cbMonthlyPayment,
+      cbPaymentStrategy:        s.cbPaymentStrategy,
+      cbLtvTriggerPct:          s.cbLtvTriggerPct,
+      cbLtvTargetPct:           s.cbLtvTargetPct,
+    };
+    const { publishSettings } = await import('../lib/nostr/publish');
+    const createdAt = await publishSettings(
+      state.nostrSigner,
+      state.nostrPubkey,
+      state.nostrRelays,
+      settings,
+      signerOpTimeout(state.nostrSigningMethod),
+    );
+    useStore.getState().setLastSettingsSyncAt(createdAt);
+    useStore.getState().setSettingsDirty(false);
+    useStore.getState().setNostrReconnectNeeded(false);
+    nostrLog('info', 'settings published');
+    return true;
+  } catch (e) {
+    nostrLog('error', 'settings publish failed', e);   // dirty stays true → retried by syncNow
+    useStore.getState().setNostrReconnectNeeded(true);
     return false;
   } finally {
     useStore.getState().setNostrSyncing(false);
@@ -461,43 +515,16 @@ export const useStore = create<StoreState>()(
   nostrSigner:    null,
   setNostrSigner: (v) => set({ nostrSigner: v }),
 
+  // Mark-dirty + debounce wrapper around publishSettingsNow. Dirty is set SYNCHRONOUSLY so an app
+  // close mid-debounce still retries next launch (syncNow publishes-if-dirty). Accepted micro-race:
+  // a setter firing DURING an in-flight publish re-marks dirty and re-schedules, so its change
+  // publishes ~2s later; the only loss window is the app fully closing inside that ~2s — negligible.
   syncSettingsToNostr: () => {
+    const s = useStore.getState();
+    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;   // pre-login edits must NOT mark dirty (would block first hydrate)
+    set({ settingsDirty: true });
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
-    syncDebounceTimer = setTimeout(() => {
-      const s = useStore.getState();
-      if (!s.nostrSigner || !s.nostrPubkey) return;
-      const settings = {
-        income:                   s.income,
-        expenses:                 s.expenses,
-        blocApr:                  s.blocApr,
-        creditLine:               s.creditLine,
-        advisorStartDate:         s.advisorStartDate,
-        advisorActualBlocBalance: s.advisorActualBlocBalance,
-        advisorActualBtcHeld:     s.advisorActualBtcHeld,
-        advisorChecklist:         s.advisorChecklist,
-        cbLoanBalance:            s.cbLoanBalance,
-        cbCollateralBtc:          s.cbCollateralBtc,
-        cbAprPct:                 s.cbAprPct,
-        hasCbLoan:                s.hasCbLoan,
-        ndpLastPaidDate:          s.ndpLastPaidDate,
-        tabOrder:                 s.tabOrder,
-        hiddenTabs:               s.hiddenTabs,
-        simpleMode:               s.simpleMode,
-        btcBuyingUnit:            s.btcBuyingUnit,
-        cbLiquidationPrice:       s.cbLiquidationPrice,
-        cbMonthlyPayment:         s.cbMonthlyPayment,
-        cbPaymentStrategy:        s.cbPaymentStrategy,
-        cbLtvTriggerPct:          s.cbLtvTriggerPct,
-        cbLtvTargetPct:           s.cbLtvTargetPct,
-      };
-      s.setNostrSyncing(true);
-      import('../lib/nostr/publish').then(({ publishSettings }) =>
-        publishSettings(s.nostrSigner!, s.nostrPubkey!, s.nostrRelays, settings, signerOpTimeout(s.nostrSigningMethod))
-          .then((createdAt) => { useStore.getState().setLastSettingsSyncAt(createdAt); useStore.getState().setNostrReconnectNeeded(false); nostrLog('info', 'settings published'); })
-          .catch((e) => { nostrLog('error', 'settings publish failed', e); useStore.getState().setNostrReconnectNeeded(true); })
-          .finally(() => useStore.getState().setNostrSyncing(false))
-      );
-    }, 2000);
+    syncDebounceTimer = setTimeout(() => { publishSettingsNow(); }, 2000);
   },
 
   nostrSyncing:    false,
@@ -511,6 +538,8 @@ export const useStore = create<StoreState>()(
   setLastRecordsSyncAt: (ts) => set({ lastRecordsSyncAt: ts }),
   recordsDirty: false,
   setRecordsDirty: (v) => set({ recordsDirty: v }),
+  settingsDirty: false,
+  setSettingsDirty: (v) => set({ settingsDirty: v }),
   deletedMonths: {},
   setDeletedMonths: (v) => set({ deletedMonths: v }),
 

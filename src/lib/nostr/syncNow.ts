@@ -1,7 +1,7 @@
 import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
 import { nostrLog } from './log';
-import { useStore, publishRecordsNow } from '../../store/useStore';
+import { useStore, publishRecordsNow, publishSettingsNow } from '../../store/useStore';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
 
@@ -25,19 +25,17 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
       useStore.getState().setNostrRelays(relays);
     }
     const pullOk = await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
-    let pushOk = true;
-    let pushLabel = 'skipped';   // not dirty → no push attempted
-    if (useStore.getState().recordsDirty) {
-      pushOk = await publishRecordsNow();
-      pushLabel = pushOk ? 'ok' : 'FAILED';
-    }
-    const ok = pullOk && pushOk;
+    let recOk = true, setOk = true;
+    let recLabel = 'skipped', setLabel = 'skipped';   // not dirty → no push attempted
+    if (useStore.getState().recordsDirty)  { recOk = await publishRecordsNow();  recLabel = recOk ? 'ok' : 'FAILED'; }
+    if (useStore.getState().settingsDirty) { setOk = await publishSettingsNow(); setLabel = setOk ? 'ok' : 'FAILED'; }
+    const ok = pullOk && recOk && setOk;
     if (ok) {
       useStore.getState().setNostrReconnectNeeded(false);
       nostrLog('info', 'sync ok');
     } else {
       useStore.getState().setNostrReconnectNeeded(true);
-      nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, push ${pushLabel}) — signer unreachable?`);
+      nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, records ${recLabel}, settings ${setLabel}) — signer unreachable?`);
     }
     return ok;
   } catch (e) {

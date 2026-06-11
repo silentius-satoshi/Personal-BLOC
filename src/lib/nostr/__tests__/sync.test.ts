@@ -23,6 +23,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     lastSettingsSyncAt:      null,
     lastRecordsSyncAt:       null,
     recordsDirty:            false,
+    settingsDirty:           false,
     monthlyLog:              [],
     deletedMonths:           {},
     advisorActualBtcHeld:    0,
@@ -30,6 +31,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     setMonthlyLog:           vi.fn(),
     setDeletedMonths:        vi.fn(),
     setRecordsDirty:         vi.fn(),
+    setSettingsDirty:        vi.fn(),
     setLastSettingsSyncAt:   vi.fn(),
     setLastRecordsSyncAt:    vi.fn(),
     setNostrReconnectNeeded: vi.fn(),
@@ -112,6 +114,31 @@ describe('fetchAndSync', () => {
 
     expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
     expect(mockStoreState.setLastSettingsSyncAt).toHaveBeenCalledWith(800);
+  });
+
+  it('settingsDirty blocks hydration even when remote is newer (unpublished local toggles win)', async () => {
+    resetStore({ settingsDirty: true, lastSettingsSyncAt: 500 });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 700),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+  });
+
+  it('settingsDirty false → same newer remote hydrates + stamps the watermark', async () => {
+    resetStore({ settingsDirty: false, lastSettingsSyncAt: 500 });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 700),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
+    expect(mockStoreState.setLastSettingsSyncAt).toHaveBeenCalledWith(700);
   });
 
   it('legacy bare-array records payload still applies (v1 read)', async () => {

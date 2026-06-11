@@ -14,7 +14,8 @@
       "Bash(grep -n \"All 21\\\\|21 settings fields\\\\|cbLtvTargetPct\\\\`\\\\|disconnectNostr\\\\|reconnectNostr\\\\|decrypt-failure\\\\|first relay ACK\\\\|Decrypt-failure\\\\|withTimeout\\\\|All 22\" CLAUDE.md)",
       "Bash(echo \"TS ERRORS: $\\(npx tsc -b 2>&1)",
       "Bash(npm ls *)",
-      "Bash(grep -n \"114 tests\\\\|decrypt-failure surfacing\\\\|Decrypt-failure surfacing\\\\|THE single unified sync sequence\\\\|publishRecordsNow\\(\\)\\\\` —\\\\|All entry points call the single\\\\|sync.test.ts\\\\` —\" \"/Users/Brooks/Desktop/Projects/PERSONAL BLOC/Personal-BLOC/CLAUDE.md\")"
+      "Bash(grep -n \"114 tests\\\\|decrypt-failure surfacing\\\\|Decrypt-failure surfacing\\\\|THE single unified sync sequence\\\\|publishRecordsNow\\(\\)\\\\` —\\\\|All entry points call the single\\\\|sync.test.ts\\\\` —\" \"/Users/Brooks/Desktop/Projects/PERSONAL BLOC/Personal-BLOC/CLAUDE.md\")",
+      "Bash(grep -n \"recordsDirty\\\\`\\\\| recordsDirty \\\\|syncSettingsToNostr\\\\|Settings hydrate on watermark\\\\|POISON-ENTRY\\\\|Any synced setter\" \"/Users/Brooks/Desktop/Projects/PERSONAL BLOC/Personal-BLOC/CLAUDE.md\")"
     ]
   }
 }

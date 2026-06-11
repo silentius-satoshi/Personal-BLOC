@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (118 tests — all must pass before every commit)
+- Vitest (120 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -454,7 +454,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-118 tests — `npx vitest run` before every commit.
+120 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -462,7 +462,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
-- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
+- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 
@@ -530,10 +530,11 @@ mirror + ring) — new code uses it instead of bare console.warn.
   NIP-46 session on Primal's side; foregrounding Primal does NOT revive it; only a fresh NostrConnect
   handshake (the ⚠ Re-authorize stage of the affordance) restores service. Routine recovery cost:
   retry tap (~20s, fails) → Re-authorize → approve in Primal.
-- **POISON-ENTRY WEDGE**: a metadata-less session in Primal (created bunker://-style, shows blank name /
-  "unknown url") causes NEW nostrconnect handshakes for the same pubkey to hang at "getting public key…"
-  until that session is removed in Primal. Per-device connect names make the list legible for pruning;
-  the wedge itself is Primal-side (worth an upstream report).
+- **POISON-ENTRY WEDGE**: ANY lingering dead pre-drop session for the same pubkey in Primal (not only
+  metadata-less bunker://-style ones with blank name / "unknown url") blocks NEW nostrconnect handshakes,
+  which hang at "getting public key…" until the dead session is removed in Primal BEFORE re-authorizing.
+  Per-device connect names make it a confident prune; the auth gate shows a stuck-hint after ~15s on
+  'getting-public-key'. The wedge itself is Primal-side (worth an upstream report).
 - **DESKTOP SIGNER**: desktop uses a LOCAL-key NIP-07 extension (Alby) — out of Primal's session table
   entirely; signer probe ~27ms local vs ~2s over NIP-46. Only iOS uses NIP-46.
 - **Connect identity**: nostrconnect name = `Personal ₿LOC · <platform>-<tag>` (e.g. `iOS-a3f2`) via
@@ -595,8 +596,15 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → returns the published `created_at` on the
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
-- `syncSettingsToNostr()` — settings publish debounced (verify value in code); dynamic imports `publish.ts`
-  to avoid circular dep; on success/failure toggles `nostrReconnectNeeded` false/true
+- `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
+  returns boolean — mirrors `publishRecordsNow`): builds the 22-field payload from current state, dynamic
+  imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
+  `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
+  retried by `syncNow` exactly like records)
+- `syncSettingsToNostr()` — thin wrapper called by every synced setter: marks `settingsDirty`
+  SYNCHRONOUSLY (app close mid-debounce still retries next launch), then 2s debounce →
+  `publishSettingsNow()`. Accepted micro-race: a setter firing during an in-flight publish re-marks
+  dirty + re-schedules (~2s later); only loss window is full app close inside that ~2s
 - `publishRecordsNow()` — exported from the store; immediate (no debounce); publishes the v2
   `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths }`; returns boolean and STILL
   manages the flag itself (the log mutators call it standalone, outside syncNow): clears `recordsDirty` +
@@ -612,11 +620,12 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - **All entry points call the single `syncNow(nostr)`** (lib/nostr/syncNow.ts): restore-signer-if-needed
   (NIP-46 rebuild throttled ~20s, also covers cold-mount restore) → relays-if-empty → fetch+merge →
   publish-if-dirty. Pull-merge-THEN-push — with merge-based receive this is safe and publishes the
-  merged superset. **Honest result**: returns true ONLY when the pull and (if `recordsDirty`) the push
-  both succeeded; `nostrReconnectNeeded` is cleared only on full success and set on any
+  merged superset. The push step covers BOTH dirty records (`publishRecordsNow`) AND dirty settings
+  (`publishSettingsNow`). **Honest result**: returns true ONLY when the pull and every attempted push
+  succeeded; `nostrReconnectNeeded` is cleared only on full success and set on any
   signer-attributable failure; logs `'sync ok'` only on true success,
-  `'sync incomplete (pull ok|FAILED, push ok|FAILED|skipped)'` otherwise (push `skipped` when not dirty —
-  never reported `ok` when nothing was pushed). Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
+  `'sync incomplete (pull ok|FAILED, records ok|FAILED|skipped, settings ok|FAILED|skipped)'` otherwise
+  (`skipped` = not dirty — never reported `ok` when nothing was pushed). Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
   double-mount races share one promise). Auto-restore reverts optimistic auth only if it failed with no signer.
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)
@@ -625,7 +634,9 @@ vercel.json                         # Catch-all rewrite → index.html (required
   (`deletedMonths`) beat older entries; entry newer than tombstone survives (re-log) and drops it;
   90-day tombstone GC. After merge: apply only if merged ≠ local (re-chained via `recomputeBtcHeld`);
   set `recordsDirty` if relay is missing something we have. NO receive gates.
-- Settings hydrate on watermark only: `remoteTs > lastSettingsSyncAt` (whole-object LWW)
+- Settings hydrate on watermark AND `!settingsDirty` (mirrors records): `remoteTs > lastSettingsSyncAt`
+  (whole-object LWW) — while local changes are unpublished, an older/foreign remote must not clobber
+  them; `syncNow` pushes local first, then the watermark governs normally
 - Decrypt-failure surfacing: `fetchAndSync` returns false when an event fails to decrypt (signer
   unreachable) and no longer touches the flag itself — `syncNow` (its sole caller) sets
   `nostrReconnectNeeded` from the boolean; the flag clears only on a fully successful sync.
@@ -661,7 +672,7 @@ Four entry points — all funnel into `syncNow()`:
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 22 settings fields (incl. `advisorChecklist`) | Any synced setter (debounced — verify value in code) |
+| `personal-bloc:settings:v1` | All 22 settings fields (incl. `advisorChecklist`) | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
 ### All 22 Synced Settings Fields
@@ -687,6 +698,7 @@ Four entry points — all funnel into `syncNow()`:
 | `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
 | `lastRecordsSyncAt` | number | ✅ | Unix ts of last records:v1 event seen — observability ONLY, not a gate |
 | `recordsDirty` | boolean | ✅ | Publish-needed marker + merge tie-breaker ONLY (NOT a receive gate); set on local edit or when the relay is behind; cleared on successful publish |
+| `settingsDirty` | boolean | ✅ | Per-device publish state — never synced (not in SETTINGS_FIELDS/payload); settings publish-needed marker AND settings receive gate; set synchronously by every synced setter; cleared on successful settings publish |
 | `deletedMonths` | Record<number, number> | ✅ | month → deletedAt (Unix ms) tombstones for synced deletes; cleared per-month on re-log; 90-day GC in merge |
 | `nostrLogin` | string | ✅ | JSON NIP-46 login (bunkerPubkey/clientNsec/relays/pubkey) — reconnect-free restore |
 | `nostrSigner` | NostrSigner | ❌ | In-memory; recreated on restore |

@@ -33,6 +33,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const [connectUri, setConnectUri]           = useState('');
   const [connectStatus, setConnectStatus]     = useState<NostrConnectStatus | null>(null);
   const [hasOpenedSigner, setHasOpenedSigner] = useState(false);
+  const [showStuckHint, setShowStuckHint]     = useState(false);
   const abortRef                              = useRef<AbortController | null>(null);
 
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -145,6 +146,14 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     return () => { abortRef.current?.abort(); };
   }, []);
 
+  // Primal poison-session legibility: a lingering dead session for the same pubkey wedges new
+  // handshakes at "getting public key…" — surface the fix after 15s instead of spinning forever.
+  useEffect(() => {
+    if (connectStatus !== 'getting-public-key') { setShowStuckHint(false); return; }
+    const t = setTimeout(() => setShowStuckHint(true), 15000);
+    return () => clearTimeout(t);   // status change / retry / unmount
+  }, [connectStatus]);
+
   const cancelQR = () => {
     abortRef.current?.abort();
     setConnectParams(null);
@@ -173,6 +182,11 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             {showSpinner ? (
               <>
                 <p className={styles.qrWaiting}>{statusText}</p>
+                {showStuckHint && (
+                  <p className={styles.hint}>
+                    Stuck here? In Primal: Settings → Connected apps — remove old Personal ₿LOC sessions, then retry. A lingering dead session blocks new connections.
+                  </p>
+                )}
                 {isMobile && (
                   <button className={styles.primaryBtn} onClick={handleOpenSignerApp}>
                     Open Signer App
