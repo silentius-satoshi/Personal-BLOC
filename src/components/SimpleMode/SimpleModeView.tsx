@@ -707,11 +707,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           }}
         />
 
-        {/* Change 1 (iter 2) — setup prompt + modal */}
-        {isDefaultSetup && (
-          <>
+        {/* Change 1 (iter 2) — setup prompt + modal (always reachable; first-run copy when defaults) */}
+        <>
             <button className={styles.setupPrompt} onClick={openSetupModal}>
-              ⚙ Set up your numbers to personalize this plan
+              {isDefaultSetup ? '⚙ Set up your numbers to personalize this plan' : '⚙ Edit your numbers'}
             </button>
 
             {showSetupModal && (
@@ -732,8 +731,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 </div>
               </div>
             )}
-          </>
-        )}
+        </>
 
       </div>
 

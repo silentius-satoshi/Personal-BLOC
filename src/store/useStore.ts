@@ -276,6 +276,9 @@ export async function publishSettingsNow(): Promise<boolean> {
       cbPaymentStrategy:        s.cbPaymentStrategy,
       cbLtvTriggerPct:          s.cbLtvTriggerPct,
       cbLtvTargetPct:           s.cbLtvTargetPct,
+      advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
+      advisorSkipCbPayment:     s.advisorSkipCbPayment,
+      advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
     };
     const { publishSettings } = await import('../lib/nostr/publish');
     const createdAt = await publishSettings(
@@ -396,9 +399,9 @@ export const useStore = create<StoreState>()(
   setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    useStore.getState().syncSettingsToNostr(); },
   setNdpLastPaidDate:          (v) => { set({ ndpLastPaidDate: v }); useStore.getState().syncSettingsToNostr(); },
 
-  setAdvisorSkipBlocDraw:  (v) => set({ advisorSkipBlocDraw: v }),
-  setAdvisorSkipCbPayment: (v) => set({ advisorSkipCbPayment: v }),
-  setAdvisorSkipBtcBuying: (v) => set({ advisorSkipBtcBuying: v }),
+  setAdvisorSkipBlocDraw:  (v) => { set({ advisorSkipBlocDraw: v });  useStore.getState().syncSettingsToNostr(); },
+  setAdvisorSkipCbPayment: (v) => { set({ advisorSkipCbPayment: v }); useStore.getState().syncSettingsToNostr(); },
+  setAdvisorSkipBtcBuying: (v) => { set({ advisorSkipBtcBuying: v }); useStore.getState().syncSettingsToNostr(); },
 
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
@@ -530,6 +533,7 @@ export const useStore = create<StoreState>()(
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
       'cbLtvTriggerPct', 'cbLtvTargetPct',
+      'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {

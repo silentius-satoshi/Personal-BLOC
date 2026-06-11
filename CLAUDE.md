@@ -167,6 +167,8 @@ src/
                                 # Completion card keys on isLogged (monthlyLog.some(e => e.month ===
                                 # currentMonth)); log button all active year (gated !strategyDone); Undo
                                 # UNLOGS via deleteLogEntry. No checklist (removed; see Synced Settings).
+                                # Quick Setup modal ALWAYS reachable ("⚙ Edit your numbers" once
+                                # established, first-run copy while isDefaultSetup).
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -600,7 +602,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 21-field payload from current state, dynamic
+  returns boolean — mirrors `publishRecordsNow`): builds the 24-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
   `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
   retried by `syncNow` exactly like records)
@@ -676,19 +678,22 @@ Five entry points — all funnel into `syncNow()`:
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 24 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 21 Synced Settings Fields
+### All 24 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
-`cbLtvTriggerPct`, `cbLtvTargetPct`
-(`advisorChecklist` was REMOVED — multi-writer ephemeral state is incompatible with whole-object LWW
-settings; the log is the only multi-writer state and it merges. Old remote events still carrying the
-field hydrate cleanly: the `SETTINGS_FIELDS` whitelist ignores it.)
+`cbLtvTriggerPct`, `cbLtvTargetPct`,
+`advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`
+(The three skips are STANDING plan-shaping preferences with a settings-like write pattern — whole-object
+LWW handles them like income or APR. `advisorChecklist` was REMOVED — per-month ritual ticking is
+multi-writer ephemeral state, incompatible with LWW settings; that's why the skips sync and the
+checklist was deleted. Old remote events missing/carrying extra fields hydrate cleanly: the
+`SETTINGS_FIELDS` whitelist skips absent fields and ignores unknown ones.)
 
 ---
 
@@ -744,7 +749,7 @@ field hydrate cleanly: the `SETTINGS_FIELDS` whitelist ignores it.)
 | `getCollateralForTier` | Uses starting `btcPrice` — not per-month price |
 | Chart Y-axis | Always abbreviated — exact format causes label overlap |
 | `NumberInput` suffix | Avoid inside input — cursor issues; use external label |
-| Skip fields | Persisted in store — reset only when user toggles back to Pay |
+| Skip fields | Persisted + SYNCED via settings (standing plan-shaping prefs) — reset only when user toggles back to Pay |
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
