@@ -16,7 +16,6 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useStore } from '../../store/useStore';
-import { getCurrentStrategyMonth, isStrategyComplete } from '../../simulation/runAdvisor';
 import { InputsPanel } from '../Inputs/InputsPanel';
 import { LivingInputsPanel } from '../LivingOnBitcoin/LivingInputsPanel';
 import { SmartBlocMain } from './SmartBlocMain';
@@ -172,10 +171,6 @@ export function AppShell() {
   const setOnboardingComplete = useStore((s) => s.setOnboardingComplete);
   const previousTab           = useStore((s) => s.previousTab);
 
-  const advisorChecklist    = useStore((s) => s.advisorChecklist);
-  const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
-  const advisorStartDate    = useStore((s) => s.advisorStartDate);
-
   const nostrAuthEnabled  = useStore((s) => s.nostrAuthEnabled);
   const isAuthenticated   = useStore((s) => s.isAuthenticated);
   const nostrSyncing      = useStore((s) => s.nostrSyncing);
@@ -197,18 +192,6 @@ export function AppShell() {
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
-
-  useEffect(() => {
-    const currentMonth = getCurrentStrategyMonth(advisorStartDate);
-    const done = isStrategyComplete(advisorStartDate);
-    if (!done && currentMonth !== advisorChecklist.month) {
-      setAdvisorChecklist({
-        month: currentMonth,
-        blocDraw: false, cbPayment: false,
-        btcBuying: false, fiatCoverage: false,
-      });
-    }
-  }, [advisorStartDate, advisorChecklist.month]);
 
   const allKeys: string[] = ALL_TABS_META.map((t) => t.key);
   const orderedKeys = [

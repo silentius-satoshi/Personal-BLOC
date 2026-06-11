@@ -126,6 +126,7 @@
 .statGreen { color: var(--green); font-weight: 600; }
 .statAmber { color: var(--amber); font-weight: 600; }
 .statMuted { color: var(--text-faint); }
+.projSuffix { font-size: 10px; color: var(--text-ghost); font-weight: 400; }
 
 .ndpBadge { font-size: 10px; font-weight: 600; margin-top: 2px; }
 .ndp_never    { color: var(--text-faint); }
@@ -302,13 +303,6 @@
   text-align: right;
 }
 
-.progress {
-  font-size: 11px;
-  color: var(--text-ghost);
-  text-align: center;
-  font-style: italic;
-}
-
 /* Done card */
 .doneIcon  { font-size: 40px; color: var(--green); }
 .doneTitle { font-size: 20px; font-weight: 700; color: var(--green); margin: 0; }
@@ -403,27 +397,6 @@
   font-style: italic;
   font-weight: 400;
   margin-left: 4px;
-}
-
-/* Feature 5 — check animation */
-@keyframes checkPop {
-  0%   { transform: scale(1); }
-  40%  { transform: scale(1.025); background: rgba(78,203,130,0.12); }
-  100% { transform: scale(1); }
-}
-.checkItemPop { animation: checkPop 0.35s ease; }
-
-/* Feature 6 — new month banner */
-.newMonthBanner {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--green);
-  background: rgba(78,203,130,0.08);
-  border: 1px solid rgba(78,203,130,0.2);
-  border-radius: 8px;
-  padding: 10px 14px;
-  text-align: center;
-  animation: fadeIn 0.4s ease;
 }
 
 @keyframes fadeIn {
@@ -681,10 +654,6 @@
   transition: background 0.15s;
 }
 .logThisMonthBtn:hover { background: rgba(78,203,130,0.20); }
-
-/* All actions decided — emphasize the log CTA with a solid fill */
-.logThisMonthBtnReady { background: var(--green); color: var(--bg-app); }
-.logThisMonthBtnReady:hover { background: var(--green); opacity: 0.9; }
 
 /* Confirm log sheet — portal overlay */
 .confirmOverlay {

@@ -11,8 +11,14 @@ export function useNostrSync() {
     const handler = () => {
       if (document.visibilityState === 'visible') triggerSync();
     };
+    // A visible desktop tab never fires visibilitychange — focus covers app/window switches.
+    const onFocus = () => triggerSync();
     document.addEventListener('visibilitychange', handler);
-    return () => document.removeEventListener('visibilitychange', handler);
+    window.addEventListener('focus', onFocus);
+    return () => {
+      document.removeEventListener('visibilitychange', handler);
+      window.removeEventListener('focus', onFocus);
+    };
   }, [triggerSync]);
 
   return { triggerSync };

@@ -82,19 +82,6 @@ interface StoreState {
   advisorActualBtcHeld:     number;
   ndpLastPaidDate:          string | null;
   setNdpLastPaidDate:       (date: string | null) => void;
-  advisorChecklist: {
-    month:        number;
-    blocDraw:     boolean;
-    cbPayment:    boolean;
-    btcBuying:    boolean;
-    fiatCoverage: boolean;
-    ndpPayment:   boolean;
-  };
-  setAdvisorChecklist: (patch: Partial<{
-    month: number; blocDraw: boolean; cbPayment: boolean;
-    btcBuying: boolean; fiatCoverage: boolean; ndpPayment: boolean;
-  }>) => void;
-
   // Monthly log
   monthlyLog:         MonthlyLogEntry[];
   showMiningInLog:    boolean;
@@ -275,7 +262,6 @@ export async function publishSettingsNow(): Promise<boolean> {
       advisorStartDate:         s.advisorStartDate,
       advisorActualBlocBalance: s.advisorActualBlocBalance,
       advisorActualBtcHeld:     s.advisorActualBtcHeld,
-      advisorChecklist:         s.advisorChecklist,
       cbLoanBalance:            s.cbLoanBalance,
       cbCollateralBtc:          s.cbCollateralBtc,
       cbAprPct:                 s.cbAprPct,
@@ -365,7 +351,6 @@ export const useStore = create<StoreState>()(
   advisorActualBlocBalance: 0,
   advisorActualBtcHeld:     0,
   ndpLastPaidDate:          null,
-  advisorChecklist: { month: 0, blocDraw: false, cbPayment: false, btcBuying: false, fiatCoverage: false, ndpPayment: false },
 
   advisorSkipBlocDraw:  false,
   advisorSkipCbPayment: false,
@@ -410,12 +395,6 @@ export const useStore = create<StoreState>()(
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    useStore.getState().syncSettingsToNostr(); },
   setNdpLastPaidDate:          (v) => { set({ ndpLastPaidDate: v }); useStore.getState().syncSettingsToNostr(); },
-  setAdvisorChecklist: (patch) => {
-    set((s) => ({
-      advisorChecklist: { ...s.advisorChecklist, ...patch }
-    }));
-    useStore.getState().syncSettingsToNostr();
-  },
 
   setAdvisorSkipBlocDraw:  (v) => set({ advisorSkipBlocDraw: v }),
   setAdvisorSkipCbPayment: (v) => set({ advisorSkipCbPayment: v }),
@@ -546,7 +525,7 @@ export const useStore = create<StoreState>()(
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [
       'income', 'expenses', 'blocApr', 'creditLine',
-      'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBtcHeld', 'advisorChecklist',
+      'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBtcHeld',
       'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',

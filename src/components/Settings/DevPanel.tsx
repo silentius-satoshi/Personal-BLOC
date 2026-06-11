@@ -21,17 +21,12 @@ export function DevPanel() {
   const nostrSyncing         = useStore((s) => s.nostrSyncing);
   const monthlyLogCount      = useStore((s) => s.monthlyLog.length);
   const tombstoneCount       = useStore((s) => Object.keys(s.deletedMonths).length);
-  const advisorChecklist     = useStore((s) => s.advisorChecklist);
 
   const log = useSyncExternalStore(subscribeNostrLog, getNostrLog);
 
   const [probing, setProbing]         = useState(false);
   const [probeStatus, setProbeStatus] = useState('');
   const [copied, setCopied]           = useState(false);
-
-  const checklistFlags = (['blocDraw', 'cbPayment', 'btcBuying', 'fiatCoverage', 'ndpPayment'] as const)
-    .filter((k) => advisorChecklist[k]);
-  const checklistSummary = `month ${advisorChecklist.month} · ${checklistFlags.length ? checklistFlags.join(', ') : 'none'}`;
 
   const syncState = {
     method:        nostrSigningMethod ?? '—',
@@ -44,7 +39,6 @@ export function DevPanel() {
     syncing:       nostrSyncing,
     logEntries:    monthlyLogCount,
     tombstones:    tombstoneCount,
-    checklist:     checklistSummary,
     device:        getDeviceLabel(),
     build:         __BUILD_SHA__,
   };
@@ -104,7 +98,6 @@ export function DevPanel() {
         <span className={styles.key}>syncing</span><span className={styles.val}>{String(nostrSyncing)}</span>
         <span className={styles.key}>log entries</span><span className={styles.val}>{monthlyLogCount}</span>
         <span className={styles.key}>tombstones</span><span className={styles.val}>{tombstoneCount}</span>
-        <span className={styles.key}>checklist</span><span className={styles.val}>{checklistSummary}</span>
         <span className={styles.key}>device</span><span className={styles.val}>{syncState.device}</span>
         <span className={styles.key}>build</span><span className={styles.val}>{__BUILD_SHA__}</span>
       </div>

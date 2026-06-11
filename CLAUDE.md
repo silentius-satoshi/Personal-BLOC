@@ -155,15 +155,18 @@ src/
 
     SimpleMode/
       SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); single-commit model:
-                                # "Log this month & continue" → ConfirmLogSheet portal (summary + editable
-                                # expensesActual) → handleApply(confirmedExpenses). NDP as action line inside
-                                # FROM CREDIT LINE when ndp.status !== 'ok'. Log carousel = 4-state badges
-                                # (logged/current/unlogged/future). MonthlyLogSection allowInlineLog=false.
-                                # Completion = LOGGED, not checklist tally: card keys on isLogged
-                                # (monthlyLog.some(e => e.month === currentMonth)), NOT allDone. Log button
-                                # stays available all active year (gated !strategyDone); emphasized
-                                # (.logThisMonthBtnReady) once allDone. Completion card Undo UNLOGS via
-                                # deleteLogEntry (pills left intact for one-tap re-log). No store change (v11).
+                                # "Log this month & continue" → ConfirmLogSheet portal (inline component:
+                                # summary + editable expensesActual + optional NDP toggle row when
+                                # ndp.status !== 'ok' — checking it stamps ndpLastPaidDate at log time) →
+                                # handleApply(confirmedExpenses). Plan card = read-only amounts + pure
+                                # Pay/Skip toggles on advisorSkip* (same semantics as AdvisorMain); fiat +
+                                # NDP rows informational (no pills). THIS MONTH = entry actuals when logged
+                                # (currentEntry.btcBought), (proj)-labeled projections otherwise — never
+                                # tap state. Log carousel = 4-state badges (logged/current/unlogged/future);
+                                # it is the interaction center. MonthlyLogSection allowInlineLog=false.
+                                # Completion card keys on isLogged (monthlyLog.some(e => e.month ===
+                                # currentMonth)); log button all active year (gated !strategyDone); Undo
+                                # UNLOGS via deleteLogEntry. No checklist (removed; see Synced Settings).
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -597,7 +600,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 22-field payload from current state, dynamic
+  returns boolean — mirrors `publishRecordsNow`): builds the 21-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
   `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
   retried by `syncNow` exactly like records)
@@ -652,13 +655,14 @@ vercel.json                         # Catch-all rewrite → index.html (required
 ---
 
 ### Sync Triggers
-Four entry points — all funnel into `syncNow()`:
+Five entry points — all funnel into `syncNow()`:
 
 | Trigger | Path |
 |---|---|
 | Login | NostrAuthGate ×3 (NIP-07, bunker URI, NostrConnect QR/deep link) → fire-and-forget `syncNow(nostr)` |
 | Cold launch | `useNostrAutoRestore` (optimistic auth, reverts only if restore failed with no signer) |
 | Tab visibility | `useNostrSync` visibilitychange → visible |
+| Window focus | `useNostrSync` window `'focus'` → triggerSync — a visible desktop tab never fires visibilitychange; focus covers app/window switches |
 | Manual button | "↻ Sync now" in Settings (via `useNostrSync().triggerSync`) |
 
 - Reconnect affordance is **two-stage**: first tap retries (`triggerSync`); only if the retry still
@@ -672,17 +676,19 @@ Four entry points — all funnel into `syncNow()`:
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 22 settings fields (incl. `advisorChecklist`) | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 21 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 22 Synced Settings Fields
+### All 21 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
-`advisorActualBlocBalance`, `advisorActualBtcHeld`, `advisorChecklist`, `cbLoanBalance`,
+`advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`
-(`advisorChecklist` syncs the monthly Pay/Skip state so Simple Mode "THIS MONTH" ₿ matches across devices.)
+(`advisorChecklist` was REMOVED — multi-writer ephemeral state is incompatible with whole-object LWW
+settings; the log is the only multi-writer state and it merges. Old remote events still carrying the
+field hydrate cleanly: the `SETTINGS_FIELDS` whitelist ignores it.)
 
 ---
 
@@ -722,7 +728,7 @@ Four entry points — all funnel into `syncNow()`:
 | `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` cadence | Immediate via `publishRecordsNow` (no debounce); NOT triggered by `setMonthlyLog` |
 | Records merge | Records receive is MERGE-based and unconditionally safe (`mergeRecords`); `recordsDirty` = publish-needed marker + merge tie-breaker ONLY (not a receive gate); `lastRecordsSyncAt` = observability only |
-| Settings LWW | Settings remain whole-object last-write-wins — last publisher wins the FULL object, incl. `advisorChecklist` |
+| Settings LWW | Settings remain whole-object last-write-wins — last publisher wins the FULL object; only single-writer prefs belong in the payload (the checklist died for this) |
 | Nostr reliability fix | Foreground/launch NIP-46 signer rebuild (`restoreSigner`, throttled ~20s inside `syncNow`) + merge-based receive + immediate records publish + decrypt-failure `nostrReconnectNeeded`; store stays v11 (no migration — `updatedAt?` optional, `deletedMonths` defaults `{}`) |
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |

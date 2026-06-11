@@ -2,7 +2,7 @@ import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
-import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus, getTier } from '../../simulation/runAdvisor';
+import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
 import { deriveCurrentPosition } from '../../simulation/logUtils';
 import { fmtUSD } from '../../utils/format';
 import styles from './AdvisorSidebar.module.css';
@@ -41,11 +41,6 @@ export function AdvisorSidebar() {
   const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
   const ndpLastPaidDate    = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate = useStore((s) => s.setNdpLastPaidDate);
-  const advisorChecklist    = useStore((s) => s.advisorChecklist);
-  const setAdvisorChecklist = useStore((s) => s.setAdvisorChecklist);
-  const skipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
-  const skipCbPayment = useStore((s) => s.advisorSkipCbPayment);
-  const skipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
   const hasCbLoan     = useStore((s) => s.hasCbLoan);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
@@ -53,20 +48,6 @@ export function AdvisorSidebar() {
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
   const ndp           = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
-
-  const currentCbLtv      = cbCollateralBtc * btcPrice > 0 ? cbLoanBalance / (cbCollateralBtc * btcPrice) : 0;
-  const currentTier       = getTier(currentCbLtv);
-  const expectedBlocDraw  = currentTier === 1 ? 0
-    : currentTier === 2
-      ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
-      : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
-  const expectedCbPayment  = cbMonthlyPayment;
-  const expectedBtcBuying  = currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
-  const effectiveBlocDraw  = skipBlocDraw  ? 0 : expectedBlocDraw;
-  const effectiveCbPayment = skipCbPayment ? 0 : expectedCbPayment;
-  const effectiveBtcBuying = skipBtcBuying ? 0 : expectedBtcBuying;
-  const effectiveFiatGap   = Math.max(0, expenses - effectiveBlocDraw);
-  const showFiatRow        = effectiveFiatGap > 0;
 
   return (
     <div className={styles.sidebar}>
@@ -218,83 +199,6 @@ export function AdvisorSidebar() {
           </div>
         )}
       </div>
-
-      {!strategyDone && (
-        <>
-          <div className={styles.divider} />
-          <div className={styles.sectionLabel}>THIS MONTH — MO {currentMonth}</div>
-
-          <div className={styles.checklist}>
-
-            <label className={`${styles.checkItem} ${advisorChecklist.blocDraw ? styles.checkItemDone : ''}`}>
-              <input type="checkbox" className={styles.checkbox}
-                checked={advisorChecklist.blocDraw}
-                onChange={(e) => setAdvisorChecklist({ blocDraw: e.target.checked })} />
-              <span className={styles.checkLabel}>Draw from BLOC</span>
-              <span className={styles.checkAmount}>
-                {skipBlocDraw ? 'Skipped' : effectiveBlocDraw > 0 ? fmtUSD(effectiveBlocDraw) : '—'}
-              </span>
-            </label>
-
-            {showFiatRow && (
-              <label className={`${styles.checkItem} ${advisorChecklist.fiatCoverage ? styles.checkItemDone : ''}`}>
-                <input type="checkbox" className={styles.checkbox}
-                  checked={advisorChecklist.fiatCoverage}
-                  onChange={(e) => setAdvisorChecklist({ fiatCoverage: e.target.checked })} />
-                <span className={styles.checkLabel}>Cover from fiat</span>
-                <span className={styles.checkAmount}>{fmtUSD(effectiveFiatGap)}</span>
-              </label>
-            )}
-
-            {hasCbLoan && (
-              <label className={`${styles.checkItem} ${advisorChecklist.cbPayment ? styles.checkItemDone : ''}`}>
-                <input type="checkbox" className={styles.checkbox}
-                  checked={advisorChecklist.cbPayment}
-                  onChange={(e) => setAdvisorChecklist({ cbPayment: e.target.checked })} />
-                <span className={styles.checkLabel}>Pay CB Loan</span>
-                <span className={styles.checkAmount}>
-                  {skipCbPayment ? 'Skipped' : effectiveCbPayment > 0 ? fmtUSD(effectiveCbPayment) : '—'}
-                </span>
-              </label>
-            )}
-
-            <label className={`${styles.checkItem} ${advisorChecklist.btcBuying ? styles.checkItemDone : ''}`}>
-              <input type="checkbox" className={styles.checkbox}
-                checked={advisorChecklist.btcBuying}
-                onChange={(e) => setAdvisorChecklist({ btcBuying: e.target.checked })} />
-              <span className={styles.checkLabel}>Buy Bitcoin</span>
-              <span className={styles.checkAmount}>
-                {skipBtcBuying ? 'Skipped' : effectiveBtcBuying > 0 ? fmtUSD(effectiveBtcBuying) : '—'}
-              </span>
-            </label>
-
-            {skipBtcBuying && expectedBtcBuying > 0 && (
-              <div className={styles.unallocatedRow}>
-                <span className={styles.unallocatedLabel}>↳ Unallocated cash</span>
-                <span className={styles.unallocatedAmount}>{fmtUSD(expectedBtcBuying)}</span>
-              </div>
-            )}
-
-          </div>
-
-          {(() => {
-            const total = (showFiatRow ? 1 : 0) + (hasCbLoan ? 1 : 0) + 2;
-            const done  = [
-              advisorChecklist.blocDraw,
-              showFiatRow && advisorChecklist.fiatCoverage,
-              hasCbLoan && advisorChecklist.cbPayment,
-              advisorChecklist.btcBuying,
-            ].filter(Boolean).length;
-            return (
-              <p className={`${styles.checkProgress} ${done === total ? styles.checkProgressDone : ''}`}>
-                {done === total
-                  ? `✓ Month ${currentMonth} complete`
-                  : `${done} of ${total} actions completed`}
-              </p>
-            );
-          })()}
-        </>
-      )}
 
       <div className={styles.divider} />
 
