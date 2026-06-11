@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { connectNip07 } from '../../lib/nostr/signers';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
+import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -88,7 +89,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const generateSession = () => {
     const params = generateNostrConnectParams(['wss://relay.primal.net']);
     const uri = generateNostrConnectURI(params, {
-      name: 'Personal ₿LOC',
+      name: `Personal ₿LOC · ${getDeviceLabel()}`,   // per-device — makes the session prunable in Primal's connected-apps list
       callback: isMobile
         ? `${window.location.origin}/remoteloginsuccess`
         : undefined,

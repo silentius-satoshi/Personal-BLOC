@@ -2,6 +2,7 @@ import { useState, useSyncExternalStore } from 'react';
 import { useStore } from '../../store/useStore';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
+import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import styles from './DevPanel.module.css';
 
 // PRIVACY RULE: everything rendered or copied here is sync METADATA only —
@@ -44,6 +45,7 @@ export function DevPanel() {
     logEntries:    monthlyLogCount,
     tombstones:    tombstoneCount,
     checklist:     checklistSummary,
+    device:        getDeviceLabel(),
     build:         __BUILD_SHA__,
   };
 
@@ -103,6 +105,7 @@ export function DevPanel() {
         <span className={styles.key}>log entries</span><span className={styles.val}>{monthlyLogCount}</span>
         <span className={styles.key}>tombstones</span><span className={styles.val}>{tombstoneCount}</span>
         <span className={styles.key}>checklist</span><span className={styles.val}>{checklistSummary}</span>
+        <span className={styles.key}>device</span><span className={styles.val}>{syncState.device}</span>
         <span className={styles.key}>build</span><span className={styles.val}>{__BUILD_SHA__}</span>
       </div>
 

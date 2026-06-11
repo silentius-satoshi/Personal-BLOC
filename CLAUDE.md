@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (115 tests — all must pass before every commit)
+- Vitest (118 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -454,7 +454,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-115 tests — `npx vitest run` before every commit.
+118 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -464,6 +464,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
+- `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -523,6 +524,24 @@ mirror + ring) — new code uses it instead of bare console.warn.
 
 ---
 
+### Known NIP-46/Primal Properties
+
+- **SESSION DEATH ON NETWORK DROP** (proven via dev-panel diagnostics): a network drop kills the existing
+  NIP-46 session on Primal's side; foregrounding Primal does NOT revive it; only a fresh NostrConnect
+  handshake (the ⚠ Re-authorize stage of the affordance) restores service. Routine recovery cost:
+  retry tap (~20s, fails) → Re-authorize → approve in Primal.
+- **POISON-ENTRY WEDGE**: a metadata-less session in Primal (created bunker://-style, shows blank name /
+  "unknown url") causes NEW nostrconnect handshakes for the same pubkey to hang at "getting public key…"
+  until that session is removed in Primal. Per-device connect names make the list legible for pruning;
+  the wedge itself is Primal-side (worth an upstream report).
+- **DESKTOP SIGNER**: desktop uses a LOCAL-key NIP-07 extension (Alby) — out of Primal's session table
+  entirely; signer probe ~27ms local vs ~2s over NIP-46. Only iOS uses NIP-46.
+- **Connect identity**: nostrconnect name = `Personal ₿LOC · <platform>-<tag>` (e.g. `iOS-a3f2`) via
+  `src/lib/nostr/deviceTag.ts` (`'bloc-device-tag'` in localStorage, never synced) — each device's
+  session is distinguishable in Primal's connected-apps list.
+
+---
+
 ### Dependency Stack (version pins are hard requirements)
 
 nostr-tools: 2.23.5    ← pinned exact; NIP-44 + Primal decrypt verified working at this version
@@ -557,6 +576,9 @@ src/
                                     # Nostr-layer logging — use it instead of bare console.warn
     timeout.ts                      # withTimeout + signerOpTimeout — pure (store-free); method-aware signer-op
                                     # timeouts: nip46 20s / nip07 60s (human approval popup)
+    deviceTag.ts                    # getDeviceTag/getDeviceLabel — pure; stable per-device 4-hex tag
+                                    # (localStorage 'bloc-device-tag', NEVER synced) → 'iOS-a3f2' etc.;
+                                    # used in the nostrconnect name + DevPanel/diagnostics
     sync.ts                         # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail); settings watermark + records per-month MERGE (mergeRecords); does NOT manage the reconnect flag
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
@@ -592,8 +614,9 @@ vercel.json                         # Catch-all rewrite → index.html (required
   publish-if-dirty. Pull-merge-THEN-push — with merge-based receive this is safe and publishes the
   merged superset. **Honest result**: returns true ONLY when the pull and (if `recordsDirty`) the push
   both succeeded; `nostrReconnectNeeded` is cleared only on full success and set on any
-  signer-attributable failure; logs `'sync ok'` only on true success, `'sync incomplete (pull …, push …)'`
-  otherwise. Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
+  signer-attributable failure; logs `'sync ok'` only on true success,
+  `'sync incomplete (pull ok|FAILED, push ok|FAILED|skipped)'` otherwise (push `skipped` when not dirty —
+  never reported `ok` when nothing was pushed). Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
   double-mount races share one promise). Auto-restore reverts optimistic auth only if it failed with no signer.
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)

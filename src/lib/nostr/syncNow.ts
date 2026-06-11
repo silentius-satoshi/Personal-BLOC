@@ -26,14 +26,18 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
     }
     const pullOk = await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
     let pushOk = true;
-    if (useStore.getState().recordsDirty) pushOk = await publishRecordsNow();
+    let pushLabel = 'skipped';   // not dirty → no push attempted
+    if (useStore.getState().recordsDirty) {
+      pushOk = await publishRecordsNow();
+      pushLabel = pushOk ? 'ok' : 'FAILED';
+    }
     const ok = pullOk && pushOk;
     if (ok) {
       useStore.getState().setNostrReconnectNeeded(false);
       nostrLog('info', 'sync ok');
     } else {
       useStore.getState().setNostrReconnectNeeded(true);
-      nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, push ${pushOk ? 'ok' : 'FAILED'}) — signer unreachable?`);
+      nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, push ${pushLabel}) — signer unreachable?`);
     }
     return ok;
   } catch (e) {
