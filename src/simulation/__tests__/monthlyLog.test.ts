@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAdvisorStart, upsertEntry, recomputeBtcHeld } from '../logUtils';
+import { deriveAdvisorStart, deriveCurrentPosition, upsertEntry, recomputeBtcHeld } from '../logUtils';
 import type { MonthlyLogEntry } from '../types';
 
 function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): MonthlyLogEntry {
@@ -20,7 +20,7 @@ function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): Mon
 
 describe('deriveAdvisorStart', () => {
   it('returns manual store fields unchanged when log is empty', () => {
-    const result = deriveAdvisorStart([], 0.70, 5000, 4);
+    const result = deriveAdvisorStart([], 0.70, 5000, 4, 0);
     expect(result.startingBlocBalance).toBe(5000);
     expect(result.startingBtcHeld).toBe(0.70);
     expect(result.startingMonth).toBe(4);
@@ -28,7 +28,7 @@ describe('deriveAdvisorStart', () => {
 
   it('uses most recent entry strikeBal as startingBlocBalance', () => {
     const log = [makeEntry(1, { strikeBal: 3500 }), makeEntry(2, { strikeBal: 7000 }), makeEntry(3, { strikeBal: 9180 })];
-    const result = deriveAdvisorStart(log, 0.70, 0, 4);
+    const result = deriveAdvisorStart(log, 0.70, 0, 4, 0);
     expect(result.startingBlocBalance).toBe(9180);
   });
 
@@ -38,19 +38,19 @@ describe('deriveAdvisorStart', () => {
       makeEntry(2, { btcBought: 0.03, btcHeld: 0.78 }),
       makeEntry(3, { btcBought: 0.02, btcHeld: 0.80 }),
     ];
-    const result = deriveAdvisorStart(log, 0.70, 0, 4);
+    const result = deriveAdvisorStart(log, 0.70, 0, 4, 0);
     expect(result.startingBtcHeld).toBeCloseTo(0.80);
   });
 
   it('sets startingMonth to last.month + 1', () => {
     const log = [makeEntry(3)];
-    const result = deriveAdvisorStart(log, 0, 0, 1);
+    const result = deriveAdvisorStart(log, 0, 0, 1, 0);
     expect(result.startingMonth).toBe(4);
   });
 
   it('clamps startingMonth to 12 when last entry is month 12', () => {
     const log = [makeEntry(12)];
-    const result = deriveAdvisorStart(log, 0, 0, 12);
+    const result = deriveAdvisorStart(log, 0, 0, 12, 0);
     expect(result.startingMonth).toBe(12);
   });
 });
@@ -85,7 +85,7 @@ describe('recomputeBtcHeld', () => {
       makeEntry(5, { btcBought: 0.01 }),
       makeEntry(7, { btcBought: 0.02 }),
     ], base);
-    const result = deriveAdvisorStart(log, base, 0, 8);
+    const result = deriveAdvisorStart(log, base, 0, 8, 0);
     expect(result.startingBtcHeld).toBeCloseTo(log.find((e) => e.month === 7)!.btcHeld);
     expect(result.startingBtcHeld).toBeCloseTo(1.03);
   });
@@ -170,5 +170,39 @@ describe('badge status logic', () => {
 
   it('future month → future', () => {
     expect(getBadgeStatus(8, 5, [])).toBe('future');
+  });
+});
+
+describe('dated collateral adjustments (spec v4)', () => {
+  it('recomputeBtcHeld includes collateralAdjustment in the running chain', () => {
+    const log = [
+      makeEntry(1, { btcBought: 0.05, collateralAdjustment: 0.10 }),
+      makeEntry(2, { btcBought: 0.05 }),
+    ];
+    const result = recomputeBtcHeld(log, 0.50);
+    expect(result[0].btcHeld).toBeCloseTo(0.65);   // 0.50 + 0.05 + 0.10
+    expect(result[1].btcHeld).toBeCloseTo(0.70);
+  });
+
+  it('entries WITHOUT the field chain identically to pre-v4 (?? 0)', () => {
+    const log = [makeEntry(1, { btcBought: 0.05 }), makeEntry(2, { btcBought: 0.03 })];
+    const result = recomputeBtcHeld(log, 0.70);
+    expect(result[0].btcHeld).toBeCloseTo(0.75);
+    expect(result[1].btcHeld).toBeCloseTo(0.78);
+  });
+
+  it('deriveCurrentPosition adds pending on top of last.btcHeld', () => {
+    const log = [makeEntry(1, { btcHeld: 0.80 })];
+    expect(deriveCurrentPosition(log, 0.70, 0, 0.05).btcHeld).toBeCloseTo(0.85);
+  });
+
+  it('deriveCurrentPosition empty log → baseline + pending', () => {
+    expect(deriveCurrentPosition([], 0.70, 0, -0.10).btcHeld).toBeCloseTo(0.60);
+  });
+
+  it('deriveAdvisorStart adds pending to startingBtcHeld (logged and empty)', () => {
+    const log = [makeEntry(3, { btcHeld: 0.80 })];
+    expect(deriveAdvisorStart(log, 0.70, 0, 4, 0.05).startingBtcHeld).toBeCloseTo(0.85);
+    expect(deriveAdvisorStart([], 0.70, 0, 4, 0.05).startingBtcHeld).toBeCloseTo(0.75);
   });
 });

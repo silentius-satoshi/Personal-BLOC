@@ -13,7 +13,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
@@ -133,12 +133,14 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
   const creditLine  = useStore((s) => s.creditLine);   const setCreditLine  = useStore((s) => s.setCreditLine);
   const blocApr     = useStore((s) => s.blocApr);      const setBlocApr     = useStore((s) => s.setBlocApr);
-  const setActiveTier       = useStore((s) => s.setActiveTier);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
-  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
-  const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
+  const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
+  const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
+  // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
+  // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
+  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
@@ -268,19 +270,25 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             <NumberInput label="Initial credit line" value={creditLine} onChange={setCreditLine} prefix="$" min={0} step={500} />
             <span className={styles.fieldHint}>
               Your approved max draw — available credit adjusts with BTC price below{' '}
-              {advisorActualBtcHeld > 0 ? fmtUSD(creditLine / (advisorActualBtcHeld * STRIKE_MAX_DRAW_LTV)) : '—'}
+              {currentBtcHeld > 0 ? fmtUSD(creditLine / (currentBtcHeld * STRIKE_MAX_DRAW_LTV)) : '—'}
             </span>
           </div>
-          <div className={styles.setupFieldGroup}>
+          <div
+            className={styles.setupFieldGroup}
+            onBlur={() => {
+              if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) adjustCurrentCollateral(btcHeldDraft);
+              setBtcHeldDraft(null);
+            }}
+          >
             <NumberInput
               label="BTC collateral"
-              value={advisorActualBtcHeld}
-              onChange={(v) => { setAdvisorActualBtcHeld(v); setActiveTier('custom'); }}
+              value={btcHeldDraft ?? currentBtcHeld}
+              onChange={setBtcHeldDraft}
               prefix="₿"
               min={0}
               step={0.001}
             />
-            <span className={styles.fieldHint}>Your BTC in Strike. Feeds BLOC calculations, Advisor projections, and Liq Sim.</span>
+            <span className={styles.fieldHint}>Your current BTC in Strike. Edits record a dated adjustment this month — feeds Advisor projections and Liq Sim.</span>
           </div>
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
           <div className={styles.setupFieldGroup}>

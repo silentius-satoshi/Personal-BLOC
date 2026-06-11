@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (123 tests — all must pass before every commit)
+- Vitest (139 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -38,7 +38,9 @@ src/
     runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn
-    logUtils.ts                 # recomputeBtcHeld, deriveAdvisorStart, deriveCurrentPosition, upsertEntry — standalone, no cross-sim imports
+    logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
+                                # deriveCurrentPosition (both take pendingCollateralAdjustment as a REQUIRED param),
+                                # upsertEntry — standalone, no cross-sim imports
     mergeRecords.ts             # PURE per-month records merge (RecordsState, mergeRecords) — newest updatedAt/loggedAt wins, tombstones, 90-day GC
     __tests__/
       smartBloc.test.ts
@@ -258,13 +260,53 @@ cbLtvTargetPct:      number;                       // default 65 (percent, pay d
 ```typescript
 advisorStartDate:         string;   // ISO date, default today
 advisorActualBlocBalance: number;   // default 0 — month-0 baseline BLOC balance (empty-log fallback)
-advisorActualBtcHeld:     number;   // default 0 — month-0 baseline BTC (empty-log fallback); current holdings = latest entry.btcHeld
-advisorSkipBlocDraw:      boolean;  // default false (persisted)
-advisorSkipCbPayment:     boolean;  // default false (persisted)
-advisorSkipBtcBuying:     boolean;  // default false (persisted)
+advisorActualBtcHeld:     number;   // default 0 — TRUE month-0 baseline BTC, NEVER back-solved; current = derives + pending
+pendingCollateralAdjustment: number;  // default 0 — un-graduated collateral delta; SYNCED; folds into the current month's entry on log
+sandboxCollateralBtc:     number | null;  // default null — Smart BLOC what-if collateral; IN-MEMORY only (partialize-excluded, never synced); null = tracks current
+advisorSkipBlocDraw:      boolean;  // default false (persisted + synced)
+advisorSkipCbPayment:     boolean;  // default false (persisted + synced)
+advisorSkipBtcBuying:     boolean;  // default false (persisted + synced)
 monthlyLog:               MonthlyLogEntry[];  // default []
 showMiningInLog:          boolean;            // default false
 ```
+
+---
+
+## Dated Collateral Model (spec v4 — store stays v11)
+
+```
+btcHeld[i] = baseline + Σ_{j≤i} (btcBought[j] + (collateralAdjustment[j] ?? 0))
+current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment
+```
+
+- `MonthlyLogEntry.collateralAdjustment?: number` — OPTIONAL; net BTC deposited(+)/withdrawn(−) that
+  month, separate from btcBought. **STORE-OWNED**: written only by graduation in `upsertLogEntry`
+  (UI log handlers untouched). Remote pre-v4 entries lack it — `?? 0` everywhere; merges pass winner
+  objects through whole. **No store bump** (v3's v12 cancelled: optional field + shallow-merge default,
+  no transform; Spec B stays v12).
+- **Graduation** (`upsertLogEntry`): the CURRENT month's upsert folds `pendingCollateralAdjustment`
+  into the entry's adjustment and zeroes pending; past-month edits preserve the stored adjustment and
+  never graduate; re-editing a logged current month with pending=0 keeps the graduated value (read off
+  the LOGGED entry). Both commit paths (Simple Mode confirm + Advisor inline) hit the same upsert.
+  When graduation zeroes a non-zero pending it ALSO calls `syncSettingsToNostr()` — pending→0 must
+  reach the relay or the other device shows inflated current.
+- **`deleteLogEntry`**: recomputes the surviving chain (`recomputeBtcHeld` — fixes the old stale-chain
+  gap) and, for the CURRENT month only, restores the deleted entry's adjustment to pending (un-logging
+  must not erase a real deposit; it re-graduates on the next log; publishes settings when restored).
+  Past-month deletes do NOT restore. Tombstone + dirty + records publish unchanged.
+- **Reality reads/writes**: `getCurrentBtcHeld()` (store getter) and `adjustCurrentCollateral(target)`
+  (delta lands in pending; publishes settings). `deriveCurrentPosition` AND `deriveAdvisorStart` take
+  `pendingCollateralAdjustment` as a REQUIRED param — the compiler flags any unthreaded surface.
+  Baseline feeds to `recomputeBtcHeld` stay `advisorActualBtcHeld` everywhere (store upsert/delete,
+  applyRemoteEvent merge apply, migrate).
+
+| Surface | Role |
+|---|---|
+| Settings "BTC collateral" | REALITY — shows current; blur-commit → `adjustCurrentCollateral` |
+| Advisor "CURRENT BTC HELD" | REALITY — same pattern |
+| Simple Mode Quick Setup "BTC held" | REALITY — seeds current; save routes through adjust |
+| Simple Mode displays / Liq Sim | REALITY — derives + pending |
+| Smart BLOC tab (InputsPanel, TierCards, MonthBreakdown, useSimulation) | SANDBOX — `sandboxCollateralBtc ?? current`, ephemeral, no write-back |
 
 ---
 
@@ -296,7 +338,11 @@ Flex-column panel with two sections:
   - Recommended min credit line: `Math.ceil(peakBalance × 1.10 / 500) × 500` where `peakBalance = max(uncapped runBlocYearOne rows)`. Green ✓ / orange ↑.
   - Break-even draw: `income / (1 + blocApr/100/12)`. Green ✓ when `expenses ≤ breakEven`.
 
-Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld)`. Editing auto-switches to Custom tier. `advisorActualBtcHeld` is the single canonical BTC collateral field (formerly `customCollateral`, removed in store v6).
+Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, sandboxBtc)` where
+`sandboxBtc = sandboxCollateralBtc ?? getCurrentBtcHeld()` — the Smart BLOC tab is a SANDBOX
+(what-if collateral, in-memory, no write-back; see Dated Collateral Model). Editing auto-switches to
+Custom tier. `advisorActualBtcHeld` is the month-0 BASELINE only (formerly `customCollateral`,
+removed in store v6); the real position is edited in Settings/Advisor via `adjustCurrentCollateral`.
 
 ---
 
@@ -459,11 +505,12 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-123 tests — `npx vitest run` before every commit.
+139 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
-- `monthlyLog.test.ts` — includes recomputeBtcHeld suite + 4 badge status tests
+- `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
+- `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
@@ -536,11 +583,12 @@ mirror + ring) — new code uses it instead of bare console.warn.
   NIP-46 session on Primal's side; foregrounding Primal does NOT revive it; only a fresh NostrConnect
   handshake (the ⚠ Re-authorize stage of the affordance) restores service. Routine recovery cost:
   retry tap (~20s, fails) → Re-authorize → approve in Primal.
-- **POISON-ENTRY WEDGE**: ANY lingering dead pre-drop session for the same pubkey in Primal (not only
-  metadata-less bunker://-style ones with blank name / "unknown url") blocks NEW nostrconnect handshakes,
-  which hang at "getting public key…" until the dead session is removed in Primal BEFORE re-authorizing.
-  Per-device connect names make it a confident prune; the auth gate shows a stuck-hint after ~15s on
-  'getting-public-key'. The wedge itself is Primal-side (worth an upstream report).
+- **POISON-ENTRY WEDGE** (refined): the DETERMINISTIC blocker is a metadata-less (bunker-style) session
+  in Primal (blank name / "unknown url") — it reliably hangs NEW nostrconnect handshakes for the same
+  pubkey at "getting public key…" until removed. Dead but WELL-FORMED labeled sessions are at worst an
+  INTERMITTENT blocker (re-auth observed succeeding with two lingering labeled iOS sessions; Primal is
+  also actively patching nostrconnect). Per-device connect names make pruning confident; the auth gate
+  shows a stuck-hint after ~15s on 'getting-public-key'. Primal-side (worth an upstream report).
 - **DESKTOP SIGNER**: desktop uses a LOCAL-key NIP-07 extension (Alby) — out of Primal's session table
   entirely; signer probe ~27ms local vs ~2s over NIP-46. Only iOS uses NIP-46.
 - **Connect identity**: nostrconnect name = `Personal ₿LOC · <platform>-<tag>` (e.g. `iOS-a3f2`) via
@@ -609,7 +657,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 24-field payload from current state, dynamic
+  returns boolean — mirrors `publishRecordsNow`): builds the 25-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
   `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
   retried by `syncNow` exactly like records)
@@ -706,18 +754,19 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 24 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 25 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 24 Synced Settings Fields
+### All 25 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`,
-`advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`
-(The three skips are STANDING plan-shaping preferences with a settings-like write pattern — whole-object
+`advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
+`pendingCollateralAdjustment`
+(The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
 LWW handles them like income or APR. `advisorChecklist` was REMOVED — per-month ritual ticking is
 multi-writer ephemeral state, incompatible with LWW settings; that's why the skips sync and the
 checklist was deleted. Old remote events missing/carrying extra fields hydrate cleanly: the
@@ -758,7 +807,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `MiningOddsBar` | Reads store directly — not props |
 | `fmtMining` | Inlined in `format.ts` — no circular import |
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
-| `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
+| `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute) + `pendingCollateralAdjustment` as a REQUIRED param (never default it — the compiler must flag unthreaded surfaces); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
 | `publishRecords` cadence | Immediate via `publishRecordsNow` (no debounce); NOT triggered by `setMonthlyLog` |
 | Records merge | Records receive is MERGE-based and unconditionally safe (`mergeRecords`); `recordsDirty` = publish-needed marker + merge tie-breaker ONLY (not a receive gate); `lastRecordsSyncAt` = observability only |
 | Settings LWW | Settings remain whole-object last-write-wins — last publisher wins the FULL object; only single-writer prefs belong in the payload (the checklist died for this) |
@@ -767,7 +816,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
-| Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline; current holdings = latest entry.btcHeld. Current store version = 11 |
+| Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. Current store version = 11 — the dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge (no transform; Spec B stays v12) |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |

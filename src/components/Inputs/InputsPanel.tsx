@@ -15,13 +15,14 @@ export function InputsPanel() {
   const creditLine        = useStore((s) => s.creditLine);
   const blocApr           = useStore((s) => s.blocApr);
   const activeTier        = useStore((s) => s.activeTier);
-  const advisorActualBtcHeld = useStore((s) => s.advisorActualBtcHeld);
+  // Smart BLOC is a SANDBOX — what-if collateral, no write-back to the real position
+  const sandboxBtc              = useStore((s) => s.sandboxCollateralBtc ?? s.getCurrentBtcHeld());
+  const setSandboxCollateralBtc = useStore((s) => s.setSandboxCollateralBtc);
   const setIncome           = useStore((s) => s.setIncome);
   const setExpenses         = useStore((s) => s.setExpenses);
   const setBtcPrice         = useStore((s) => s.setBtcPrice);
   const setCreditLine       = useStore((s) => s.setCreditLine);
   const setActiveTier       = useStore((s) => s.setActiveTier);
-  const setAdvisorActualBtcHeld = useStore((s) => s.setAdvisorActualBtcHeld);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const ndpLastPaidDate          = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate       = useStore((s) => s.setNdpLastPaidDate);
@@ -33,7 +34,7 @@ export function InputsPanel() {
   const strikeApiConnected = useStore((s) => s.strikeApiConnected);
   const strikeLastFetched  = useStore((s) => s.strikeLastFetched);
 
-  const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
+  const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, sandboxBtc);
 
   const { livePrice, lastUpdated, isStale } = useBtcPrice();
 
@@ -179,12 +180,13 @@ export function InputsPanel() {
             label="Collateral (BTC)"
             value={parseFloat(effectiveCollateral.toFixed(8))}
             onChange={(v) => {
-              setAdvisorActualBtcHeld(v);
+              setSandboxCollateralBtc(v);
               setActiveTier('custom');
             }}
             min={0.001}
             step={0.001}
             prefix="₿"
+            subtext="What-if only — your real position lives in Settings"
           />
         </div>
       </div>

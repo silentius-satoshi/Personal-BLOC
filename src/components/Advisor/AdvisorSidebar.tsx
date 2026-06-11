@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
@@ -35,15 +36,20 @@ export function AdvisorSidebar() {
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
+  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());
+  const adjustCurrentCollateral  = useStore((s) => s.adjustCurrentCollateral);
   const monthlyLog               = useStore((s) => s.monthlyLog);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
-  const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
   const ndpLastPaidDate    = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate = useStore((s) => s.setNdpLastPaidDate);
   const hasCbLoan     = useStore((s) => s.hasCbLoan);
 
-  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
+  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
+  // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; a draft keeps
+  // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
+  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
@@ -116,7 +122,7 @@ export function AdvisorSidebar() {
       </div>
 
       {monthlyLog.length > 0 && (() => {
-        const { lastLoggedMonth } = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance);
+        const { lastLoggedMonth } = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
         const projFrom = Math.min((lastLoggedMonth ?? 0) + 1, 12);
         return (
           <div className={styles.section}>
@@ -127,19 +133,23 @@ export function AdvisorSidebar() {
         );
       })()}
 
-      <div className={styles.section}>
-        <span className={styles.label}>
-          {monthlyLog.length > 0 ? 'STARTING COLLATERAL BTC' : 'CURRENT BTC HELD'}
-        </span>
+      <div
+        className={styles.section}
+        onBlur={() => {
+          if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) adjustCurrentCollateral(btcHeldDraft);
+          setBtcHeldDraft(null);
+        }}
+      >
+        <span className={styles.label}>CURRENT BTC HELD</span>
         <NumberInput
-          value={advisorActualBtcHeld}
-          onChange={setAdvisorActualBtcHeld}
+          value={btcHeldDraft ?? currentBtcHeld}
+          onChange={setBtcHeldDraft}
           prefix="₿"
           min={0}
           step={0.001}
         />
         <p className={styles.hint}>
-          {monthlyLog.length > 0 ? 'Starting collateral BTC' : 'Collateral + accumulated BTC'}
+          Edits record a dated collateral adjustment for this month
         </p>
       </div>
 

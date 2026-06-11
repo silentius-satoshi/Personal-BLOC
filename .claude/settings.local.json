@@ -18,7 +18,13 @@
       "Bash(grep -n \"recordsDirty\\\\`\\\\| recordsDirty \\\\|syncSettingsToNostr\\\\|Settings hydrate on watermark\\\\|POISON-ENTRY\\\\|Any synced setter\" \"/Users/Brooks/Desktop/Projects/PERSONAL BLOC/Personal-BLOC/CLAUDE.md\")",
       "Bash(sed -n '676,690p' CLAUDE.md)",
       "Bash(sed -n '118,130p' CLAUDE.md)",
-      "Bash(echo \"grep exit: $?\")"
+      "Bash(echo \"grep exit: $?\")",
+      "Bash(sed -n '405,425p' src/store/useStore.ts)",
+      "Bash(sed -n '80,86p' src/store/useStore.ts)",
+      "Bash(sed -n '80,90p' src/components/Advisor/AdvisorMain.tsx)",
+      "Bash(sed -n '20,28p' src/components/Tools/LiqSimulator.tsx)",
+      "Bash(sed -n '38,48p' src/components/Tools/LiqSimulator.tsx)",
+      "Bash(grep -n \"123 tests\\\\|All 24\\\\|24-field\\\\|single canonical\\\\|deriveAdvisorStart\\\\` /\\\\|Anchor to\\\\|month-0 baseline BTC\\\\|monthlyLog.test.ts\\\\` —\\\\|POISON-ENTRY\" CLAUDE.md)"
     ]
   }
 }

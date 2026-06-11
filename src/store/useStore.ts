@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
-import { upsertEntry, recomputeBtcHeld } from '../simulation/logUtils';
+import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulation/logUtils';
+import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -79,7 +80,12 @@ interface StoreState {
   // Advisor tab inputs
   advisorStartDate:         string;
   advisorActualBlocBalance: number;
-  advisorActualBtcHeld:     number;
+  advisorActualBtcHeld:     number;   // TRUE month-0 baseline — never back-solved; current holdings derive from the log + pending
+  pendingCollateralAdjustment: number;   // un-graduated collateral delta (deposit/withdrawal); SYNCED via settings; folds into the current month's entry on log
+  sandboxCollateralBtc:     number | null;   // Smart BLOC what-if collateral — in-memory ONLY (not persisted/synced); null = tracks current
+  setSandboxCollateralBtc:  (v: number | null) => void;
+  getCurrentBtcHeld:        () => number;   // (last.btcHeld ?? baseline) + pending — THE reality read
+  adjustCurrentCollateral:  (targetTotal: number) => void;   // dated-adjustment write: delta lands in pending
   ndpLastPaidDate:          string | null;
   setNdpLastPaidDate:       (date: string | null) => void;
   // Monthly log
@@ -279,6 +285,7 @@ export async function publishSettingsNow(): Promise<boolean> {
       advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
       advisorSkipCbPayment:     s.advisorSkipCbPayment,
       advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
+      pendingCollateralAdjustment: s.pendingCollateralAdjustment,
     };
     const { publishSettings } = await import('../lib/nostr/publish');
     const createdAt = await publishSettings(
@@ -353,6 +360,20 @@ export const useStore = create<StoreState>()(
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,
   advisorActualBtcHeld:     0,
+  pendingCollateralAdjustment: 0,   // default via shallow merge — no migration, store stays v11
+  sandboxCollateralBtc:     null,
+  setSandboxCollateralBtc:  (v) => set({ sandboxCollateralBtc: v }),
+  getCurrentBtcHeld: (): number => {
+    const s: StoreState = useStore.getState();
+    return deriveCurrentPosition(s.monthlyLog, s.advisorActualBtcHeld, s.advisorActualBlocBalance, s.pendingCollateralAdjustment).btcHeld;
+  },
+  adjustCurrentCollateral: (targetTotal: number): void => {
+    const delta = targetTotal - useStore.getState().getCurrentBtcHeld();
+    if (delta === 0) return;
+    // No recompute needed — pending is additive in the derives, so current/LTV/liq are instantly right.
+    set((s) => ({ pendingCollateralAdjustment: s.pendingCollateralAdjustment + delta }));
+    useStore.getState().syncSettingsToNostr();   // pending is SYNCED state — must publish
+  },
   ndpLastPaidDate:          null,
 
   advisorSkipBlocDraw:  false,
@@ -405,24 +426,45 @@ export const useStore = create<StoreState>()(
 
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
-    const stamped = { ...entry, updatedAt: Date.now() };
+    let graduated = false;
     set((state) => {
+      // Graduation: fold pending into the CURRENT month's entry only. Past-month edits preserve the
+      // stored adjustment and never graduate. Re-editing a logged current month with pending=0 reads
+      // existingAdj off the LOGGED entry — never wipes a graduated deposit. Both commit paths
+      // (Simple Mode confirm + Advisor inline) land here.
+      const isCurrent   = entry.month === getCurrentStrategyMonth(state.advisorStartDate);
+      const existingAdj = state.monthlyLog.find((e) => e.month === entry.month)?.collateralAdjustment ?? 0;
+      const collateralAdjustment = isCurrent ? existingAdj + state.pendingCollateralAdjustment : existingAdj;
+      graduated = isCurrent && state.pendingCollateralAdjustment !== 0;
+      const stamped = { ...entry, updatedAt: Date.now(), collateralAdjustment };
       const { [entry.month]: _gone, ...restDel } = state.deletedMonths;   // re-log clears the tombstone
       return {
         monthlyLog: recomputeBtcHeld(upsertEntry(state.monthlyLog, stamped), state.advisorActualBtcHeld),
         deletedMonths: restDel,
         recordsDirty: true,
+        pendingCollateralAdjustment: isCurrent ? 0 : state.pendingCollateralAdjustment,
       };
     });
     publishRecordsNow();
+    if (graduated) useStore.getState().syncSettingsToNostr();   // pending→0 must reach the relay or the other device shows inflated current
   },
   deleteLogEntry: (month) => {
-    set((state) => ({
-      monthlyLog: state.monthlyLog.filter((e) => e.month !== month),
-      deletedMonths: { ...state.deletedMonths, [month]: Date.now() },
-      recordsDirty: true,
-    }));
+    let restoredAdj = 0;
+    set((state) => {
+      // Un-logging the CURRENT month must NOT erase a real deposit — its adjustment returns to
+      // pending and re-graduates on the next log. Past-month deletes do NOT restore (the dated
+      // record is gone — consistent). Recompute fixes the surviving chain (stale-btcHeld gap).
+      const isCurrent = month === getCurrentStrategyMonth(state.advisorStartDate);
+      restoredAdj = isCurrent ? (state.monthlyLog.find((e) => e.month === month)?.collateralAdjustment ?? 0) : 0;
+      return {
+        monthlyLog: recomputeBtcHeld(state.monthlyLog.filter((e) => e.month !== month), state.advisorActualBtcHeld),
+        deletedMonths: { ...state.deletedMonths, [month]: Date.now() },
+        recordsDirty: true,
+        pendingCollateralAdjustment: state.pendingCollateralAdjustment + restoredAdj,
+      };
+    });
     publishRecordsNow();
+    if (restoredAdj !== 0) useStore.getState().syncSettingsToNostr();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
 
@@ -534,6 +576,7 @@ export const useStore = create<StoreState>()(
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
       'cbLtvTriggerPct', 'cbLtvTargetPct',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
+      'pendingCollateralAdjustment',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {
@@ -548,7 +591,7 @@ export const useStore = create<StoreState>()(
       name: 'personal-bloc-store',
       version: 11,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, ...rest } = state;
+        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {

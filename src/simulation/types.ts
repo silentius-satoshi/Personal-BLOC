@@ -90,6 +90,8 @@ export interface MonthlyLogEntry {
   btcHeld:        number;    // absolute BTC at end of this logged month
   expensesActual: number;    // actual expenses recorded for this month
   updatedAt?:     number;    // Unix ms; stamped by upsertLogEntry on every save. Legacy entries lack it — merge falls back to loggedAt.
+  collateralAdjustment?: number;  // OPTIONAL — net BTC deposited(+)/withdrawn(−) that month, separate from btcBought.
+                                  // STORE-OWNED: written only by graduation in upsertLogEntry. Remote pre-v4 entries lack it (?? 0 everywhere).
 }
 
 // --- Mining Tab Types ---

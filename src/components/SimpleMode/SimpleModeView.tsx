@@ -149,7 +149,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
-  const setAdvisorActualBtcHeld     = useStore((s) => s.setAdvisorActualBtcHeld);
+  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
+  const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
+  const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate          = useStore((s) => s.setNdpLastPaidDate);
@@ -181,7 +183,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const [modalDraft, setModalDraft] = useState({
     income, expenses, creditLine,
     blocBalance: advisorActualBlocBalance,
-    btcHeld: advisorActualBtcHeld,
+    btcHeld: currentBtcHeld,
   });
 
   // Change 3 — custom amounts
@@ -197,11 +199,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
   const isLogged        = monthlyLog.some((e) => e.month === currentMonth);
-  const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
+  const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth],
+    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment),
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment],
   );
 
   const advisorRows = useMemo(
@@ -307,7 +309,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   };
 
   const openSetupModal = () => {
-    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: advisorActualBtcHeld });
+    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: currentBtcHeld });
     setShowSetupModal(true);
   };
 
@@ -316,7 +318,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setExpenses(modalDraft.expenses);
     setCreditLine(modalDraft.creditLine);
     setAdvisorActualBlocBalance(modalDraft.blocBalance);
-    setAdvisorActualBtcHeld(modalDraft.btcHeld);
+    // btcHeld edits are reality edits — a dated adjustment, never the baseline
+    if (modalDraft.btcHeld !== useStore.getState().getCurrentBtcHeld()) {
+      adjustCurrentCollateral(modalDraft.btcHeld);
+    }
     setShowSetupModal(false);
   };
 

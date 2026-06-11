@@ -14,19 +14,20 @@ export function TierCards() {
   const setActiveTier       = useStore((s) => s.setActiveTier);
   const btcPrice            = useStore((s) => s.btcPrice);
   const expenses            = useStore((s) => s.expenses);
-  const advisorActualBtcHeld    = useStore((s) => s.advisorActualBtcHeld);
-  const setAdvisorActualBtcHeld = useStore((s) => s.setAdvisorActualBtcHeld);
+  // Smart BLOC is a SANDBOX — what-if collateral, no write-back to the real position
+  const sandboxBtc              = useStore((s) => s.sandboxCollateralBtc ?? s.getCurrentBtcHeld());
+  const setSandboxCollateralBtc = useStore((s) => s.setSandboxCollateralBtc);
 
   const { tiers } = useSimulation();
 
-  const [customRaw, setCustomRaw] = useState(advisorActualBtcHeld.toFixed(2));
+  const [customRaw, setCustomRaw] = useState(sandboxBtc.toFixed(2));
 
   useEffect(() => {
-    setCustomRaw(advisorActualBtcHeld.toFixed(2));
-  }, [advisorActualBtcHeld]);
+    setCustomRaw(sandboxBtc.toFixed(2));
+  }, [sandboxBtc]);
 
-  const customDayOneLtv = advisorActualBtcHeld > 0 && btcPrice > 0
-    ? expenses / (advisorActualBtcHeld * btcPrice)
+  const customDayOneLtv = sandboxBtc > 0 && btcPrice > 0
+    ? expenses / (sandboxBtc * btcPrice)
     : 0;
   const customCrashLtv = customDayOneLtv / 0.20;
   const customCrashLabel =
@@ -97,21 +98,21 @@ export function TierCards() {
                 onChange={(e) => setCustomRaw(e.target.value)}
                 onBlur={() => {
                   const v = parseFloat(customRaw);
-                  if (!isNaN(v) && v > 0) setAdvisorActualBtcHeld(v);
-                  else setCustomRaw(advisorActualBtcHeld.toFixed(2));
+                  if (!isNaN(v) && v > 0) setSandboxCollateralBtc(v);
+                  else setCustomRaw(sandboxBtc.toFixed(2));
                 }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {
                     const v = parseFloat(customRaw);
-                    if (!isNaN(v) && v > 0) setAdvisorActualBtcHeld(v);
-                    else setCustomRaw(advisorActualBtcHeld.toFixed(2));
+                    if (!isNaN(v) && v > 0) setSandboxCollateralBtc(v);
+                    else setCustomRaw(sandboxBtc.toFixed(2));
                   }
                 }}
               />
               <span className={styles.customInputUnit}>BTC</span>
             </div>
           ) : (
-            <span className={styles.btcAmount}>₿ {advisorActualBtcHeld.toFixed(4)} BTC</span>
+            <span className={styles.btcAmount}>₿ {sandboxBtc.toFixed(4)} BTC</span>
           )}
 
           <span className={styles.ltvRow}>

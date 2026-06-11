@@ -81,6 +81,8 @@ export function AdvisorMain() {
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
+  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());
   const advisorSkipBlocDraw      = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment     = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying     = useStore((s) => s.advisorSkipBtcBuying);
@@ -111,8 +113,8 @@ export function AdvisorMain() {
 
   const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
 
-  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, advisorActualBtcHeld);
-  const position      = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance);
+  const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
+  const position      = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
   const availCredit   = strikeAvailableCredit(creditLine, position.btcHeld, btcPrice, position.blocBalance);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
@@ -126,8 +128,9 @@ export function AdvisorMain() {
       advisorActualBtcHeld,
       advisorActualBlocBalance,
       currentMonth,
+      pendingCollateralAdjustment,
     ),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth],
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment],
   );
 
   const result = useMemo(
