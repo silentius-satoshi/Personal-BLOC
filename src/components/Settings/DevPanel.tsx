@@ -21,6 +21,11 @@ export function DevPanel() {
   const nostrSyncing         = useStore((s) => s.nostrSyncing);
   const monthlyLogCount      = useStore((s) => s.monthlyLog.length);
   const tombstoneCount       = useStore((s) => Object.keys(s.deletedMonths).length);
+  // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
+  // they must NOT enter syncState / Copy Diagnostics (paste-safe rule).
+  const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
+  const pendingAdj           = useStore((s) => s.pendingCollateralAdjustment);
+  const currentBtcHeld       = useStore((s) => s.getCurrentBtcHeld());
 
   const log = useSyncExternalStore(subscribeNostrLog, getNostrLog);
 
@@ -71,7 +76,7 @@ export function DevPanel() {
       build:   __BUILD_SHA__,
       builtAt: __BUILD_TIME__,
       now:     new Date().toISOString(),
-      state:   syncState,
+      state:   { ...syncState, pendingNonZero: pendingAdj !== 0 },   // boolean only — amounts stay out
       log:     getNostrLog(),
     };
     try {
@@ -100,6 +105,16 @@ export function DevPanel() {
         <span className={styles.key}>tombstones</span><span className={styles.val}>{tombstoneCount}</span>
         <span className={styles.key}>device</span><span className={styles.val}>{syncState.device}</span>
         <span className={styles.key}>build</span><span className={styles.val}>{__BUILD_SHA__}</span>
+      </div>
+
+      <div className={styles.sectionTitle}>COLLATERAL</div>
+      <div className={styles.grid}>
+        <span className={styles.key}>baseline</span><span className={styles.val}>{baselineBtc.toFixed(5)} ₿</span>
+        <span className={styles.key}>pending</span>
+        <span className={styles.val} style={pendingAdj !== 0 ? { color: 'var(--orange)' } : undefined}>
+          {pendingAdj === 0 ? '0' : `${pendingAdj > 0 ? '+' : ''}${pendingAdj.toFixed(5)}`} ₿
+        </span>
+        <span className={styles.key}>current</span><span className={styles.val}>{currentBtcHeld.toFixed(5)} ₿</span>
       </div>
 
       <div className={styles.sectionTitle}>SIGNER PROBE</div>

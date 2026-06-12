@@ -176,6 +176,11 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
             >
               <span className={styles.miniMonth}>Mo {mn}</span>
               {logged && <span className={styles.miniBtc}>+{entry.btcBought.toFixed(4)} ₿</span>}
+              {logged && (entry.collateralAdjustment ?? 0) !== 0 && (
+                <span className={styles.miniBtc}>
+                  adj {(entry.collateralAdjustment ?? 0) > 0 ? '+' : ''}{entry.collateralAdjustment!.toFixed(4)} ₿
+                </span>
+              )}
               <span className={styles.miniLabel}>
                 {status === 'logged'   ? '✓ logged'   :
                  status === 'current'  ? 'CURRENT'    :
@@ -267,6 +272,14 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
                     : '—'}
               </span>
             </div>
+            {(loggedEntry?.collateralAdjustment ?? 0) !== 0 && (
+              <div className={styles.fieldCell}>
+                <span className={styles.fieldLabel}>ADJ</span>
+                <span className={styles.fieldValue}>
+                  {loggedEntry!.collateralAdjustment! > 0 ? '+' : ''}{loggedEntry!.collateralAdjustment!.toFixed(5)} ₿
+                </span>
+              </div>
+            )}
             <div className={styles.fieldCell}>
               <span className={styles.fieldLabel}>Income → BTC</span>
               <span className={styles.fieldValue}>

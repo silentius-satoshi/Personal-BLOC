@@ -225,6 +225,9 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
           ) : (
             <div className={styles.viewGrid}>
               <ViewRow label="BTC Bought"     value={`+${loggedEntry.btcBought.toFixed(5)} ₿`} green />
+              {(loggedEntry.collateralAdjustment ?? 0) !== 0 && (
+                <ViewRow label="ADJ" value={`${loggedEntry.collateralAdjustment! > 0 ? '+' : ''}${loggedEntry.collateralAdjustment!.toFixed(5)} ₿`} />
+              )}
               <ViewRow label="Income → BTC"   value={fmtUSD(loggedEntry.income)} />
               <ViewRow label="BLOC Paydown"   value={fmtUSD(loggedEntry.paydown)} />
               <ViewRow label="Strike Balance" value={fmtUSD(loggedEntry.strikeBal)} />

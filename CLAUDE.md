@@ -89,8 +89,10 @@ src/
       SettingsMain.tsx          # Tab visibility toggles + drag-to-reorder (⠿ handles only);
                                 # Build row (5 taps toggles devMode) + DevPanel mount
       SettingsMain.module.css
-      DevPanel.tsx              # Dev diagnostics (devMode only): sync state, signer probe, Nostr log ring,
-                                # copy-diagnostics. METADATA ONLY — never balances/amounts/log contents
+      DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
+                                # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics.
+                                # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
+                                # never balances/amounts/log contents); the panel itself may show position figures
       DevPanel.module.css
 
     Summary/
@@ -307,6 +309,13 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment
 | Simple Mode Quick Setup "BTC held" | REALITY — seeds current; save routes through adjust |
 | Simple Mode displays / Liq Sim | REALITY — derives + pending |
 | Smart BLOC tab (InputsPanel, TierCards, MonthBreakdown, useSimulation) | SANDBOX — `sandboxCollateralBtc ?? current`, ephemeral, no write-back |
+
+**Observability** (added post-v4 for smoke verification): DevPanel COLLATERAL section (baseline/pending/
+current — ON-DEVICE only; Copy Diagnostics gets a `pendingNonZero` boolean, never the amounts); an
+orange pending hint under both reality inputs incl. the graduation month ("+0.05000 ₿ pending — dates
+to Month N when logged"); an ADJ stat on log entries with a non-zero adjustment (carousel mini-card,
+detail panel, overlay — absent when zero); `adjustCurrentCollateral` logs 'collateral adjustment
+recorded' (no amounts — the log ring stays paste-safe).
 
 ---
 
@@ -548,9 +557,12 @@ reports should include the Copy Diagnostics output from the failing device.
 not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe
 (nip44 encrypt→decrypt round-trip — on nip46 may surface a Primal approval), the Nostr log ring
 (sessionStorage `'bloc-nostr-log'`, 50 entries, survives reloads, dies with the PWA), and copy-diagnostics.
-**Privacy rule:** diagnostics/log contain sync metadata only — never balances, amounts, incomes, expenses,
-or log-entry contents. `nostrLog()` (lib/nostr/log.ts) is the standard for Nostr-layer logging (console
-mirror + ring) — new code uses it instead of bare console.warn.
+**Privacy rule (refined):** anything that LEAVES the device must stay amount-free — Copy Diagnostics and
+the log ring contain sync metadata only (never balances, amounts, incomes, expenses, or log-entry
+contents; collateral is represented by a `pendingNonZero` boolean). The on-device PANEL may show position
+figures in its COLLATERAL section — that's the point of on-device verification. `nostrLog()`
+(lib/nostr/log.ts) is the standard for Nostr-layer logging (console mirror + ring) — new code uses it
+instead of bare console.warn, and log messages never include amounts.
 
 ---
 

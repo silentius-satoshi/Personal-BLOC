@@ -22,6 +22,7 @@ import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { disconnectNostr, reconnectNostr } from '../../lib/nostr/disconnect';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
+import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
 import styles from './SettingsMain.module.css';
 
@@ -138,6 +139,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
+  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
   // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
   // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
   const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
@@ -289,6 +291,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               step={0.001}
             />
             <span className={styles.fieldHint}>Your current BTC in Strike. Edits record a dated adjustment this month — feeds Advisor projections and Liq Sim.</span>
+            {pendingCollateralAdjustment !== 0 && (
+              <span className={styles.fieldHint} style={{ color: 'var(--orange)' }}>
+                {pendingCollateralAdjustment > 0 ? '+' : ''}{pendingCollateralAdjustment.toFixed(5)} ₿ pending — dates to Month {getCurrentStrategyMonth(advisorStartDate)} when logged
+              </span>
+            )}
           </div>
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
           <div className={styles.setupFieldGroup}>

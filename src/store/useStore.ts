@@ -372,6 +372,7 @@ export const useStore = create<StoreState>()(
     if (delta === 0) return;
     // No recompute needed — pending is additive in the derives, so current/LTV/liq are instantly right.
     set((s) => ({ pendingCollateralAdjustment: s.pendingCollateralAdjustment + delta }));
+    nostrLog('info', 'collateral adjustment recorded');   // NO amounts — the LOG ring must stay paste-safe
     useStore.getState().syncSettingsToNostr();   // pending is SYNCED state — must publish
   },
   ndpLastPaidDate:          null,

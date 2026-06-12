@@ -151,6 +151,11 @@ export function AdvisorSidebar() {
         <p className={styles.hint}>
           Edits record a dated collateral adjustment for this month
         </p>
+        {pendingCollateralAdjustment !== 0 && (
+          <p className={styles.hint} style={{ color: 'var(--orange)' }}>
+            {pendingCollateralAdjustment > 0 ? '+' : ''}{pendingCollateralAdjustment.toFixed(5)} ₿ pending — dates to Month {currentMonth} when logged
+          </p>
+        )}
       </div>
 
       <div className={styles.divider} />
