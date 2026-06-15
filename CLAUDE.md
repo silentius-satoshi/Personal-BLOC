@@ -147,8 +147,15 @@ src/
 
     Advisor/
       AdvisorMain.tsx           # Progress bar, position cards, This Month's Plan (Pay/Skip),
-                                # MonthlyLogSection, 12-month projection with BTC growth scenarios
+                                # MonthlyLogSection, <OutlookProjection>. Its OWN runAdvisor call is the
+                                # FLAT operating plan (drives This Month's Plan + carousel + overlay);
+                                # the scenario projection is the separate OutlookProjection call
       AdvisorMain.module.css
+      OutlookProjection.tsx     # SHARED scenario projection (bear/flat/powerlaw/bull table) — owns the
+                                # growthScenario picker + scenario→rate + its OWN runAdvisor; rendered by
+                                # BOTH AdvisorMain (Section 4) and Simple Mode's Outlook segment. Starting
+                                # position arrives as props (each host threads pending via deriveAdvisorStart).
+                                # Imports AdvisorMain.module.css for styling
       AdvisorSidebar.tsx        # BTC LIVE badge, YOUR PROGRESS (start date, BLOC balance,
                                 # BTC held), read-only summaries, priority rules
       AdvisorSidebar.module.css
@@ -172,7 +179,11 @@ src/
                                 # currentMonth)); log button all active year (gated !strategyDone); Undo
                                 # UNLOGS via deleteLogEntry. No checklist (removed; see Synced Settings).
                                 # Quick Setup modal ALWAYS reachable ("⚙ Edit your numbers" once
-                                # established, first-run copy while isDefaultSetup).
+                                # established, first-run copy while isDefaultSetup). This Month / Outlook
+                                # segmented control (gated !strategyDone): This Month = console + a
+                                # next-month preview line (advisorRows month currentMonth+1, hidden at Mo 12);
+                                # Outlook = shared <OutlookProjection> (same props/numbers as the Advisor
+                                # tab). Re-anchor nudge = Phase 4 (not built).
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -442,7 +453,9 @@ Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth
 
 **Income constraint:** `blocPaydown + cbPayment + btcIncome = income` always.
 
-**Growth scenarios:** same 4 presets as MonthBreakdown — affects both BLOC LTV and CB LTV each month, can auto-resolve emergency tiers in Bull scenario.
+**Growth scenarios:** same 4 presets as MonthBreakdown — affects both BLOC LTV and CB LTV each month, can auto-resolve emergency tiers in Bull scenario. The scenario picker + its runAdvisor live ENTIRELY in `OutlookProjection` (shared with Simple Mode's Outlook segment). AdvisorMain keeps a SEPARATE runAdvisor pinned to `btcGrowthRate: 0` for the operating plan.
+
+**Projection extraction (Phase 3) — conscious behavior shift:** the Advisor tab's carousel + log overlay months 2–12 previously followed the scenario toggle (they read the same scenario-driven `result`); they now render FLAT because AdvisorMain's retained call is fixed-flat and only `OutlookProjection` responds to the scenario picker. Operating console = assumption-light; scenario picker = Outlook only. Simple Mode was already flat (`advisorRows` btcGrowthRate:0) — no change there. This Month's Plan is unchanged either way (row[0] price is rate-independent: exponent 0).
 
 ---
 

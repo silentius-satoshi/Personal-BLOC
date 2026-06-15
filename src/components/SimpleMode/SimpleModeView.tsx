@@ -9,6 +9,7 @@ import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { MonthlyLogSection } from '../Advisor/MonthlyLogSection';
+import { OutlookProjection } from '../Advisor/OutlookProjection';
 import styles from './SimpleModeView.module.css';
 
 interface SimpleModeViewProps {
@@ -195,6 +196,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
+  // This Month (operating console) / Outlook (shared scenario projection)
+  const [simpleSegment, setSimpleSegment] = useState<'thisMonth' | 'outlook'>('thisMonth');
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
@@ -242,6 +245,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   );
 
   const currentRow        = advisorRows.find((r) => r.month === currentMonth) ?? null;
+  const nextRow           = advisorRows.find((r) => r.month === currentMonth + 1);   // month after current; undefined at Mo 12
 
   const expectedBlocDraw = currentTier === 1 ? 0
     : currentTier === 2
@@ -395,6 +399,44 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         </div>
       )}
 
+      {!strategyDone && (
+        <div className={styles.segmentControl}>
+          <button
+            className={`${styles.segmentBtn} ${simpleSegment === 'thisMonth' ? styles.segmentBtnActive : ''}`}
+            onClick={() => setSimpleSegment('thisMonth')}
+          >This Month</button>
+          <button
+            className={`${styles.segmentBtn} ${simpleSegment === 'outlook' ? styles.segmentBtnActive : ''}`}
+            onClick={() => setSimpleSegment('outlook')}
+          >Outlook</button>
+        </div>
+      )}
+
+      {!strategyDone && simpleSegment === 'outlook' && (
+        <div className={styles.cards}>
+          <OutlookProjection
+            startingBlocBalance={slmBlocBal}
+            startingBtcHeld={slmBtcHeld}
+            startingMonth={slmStartMonth}
+            currentMonth={currentMonth}
+            btcPrice={btcPrice}
+            income={income}
+            expenses={expenses}
+            blocApr={blocApr}
+            creditLine={creditLine}
+            hasCbLoan={hasCbLoan}
+            cbLoanBalance={cbLoanBalance}
+            cbCollateralBtc={cbCollateralBtc}
+            cbAprPct={cbAprPct}
+            cbMonthlyPayment={cbMonthlyPayment}
+            cbPaymentStrategy={cbPaymentStrategy}
+            cbLtvTriggerPct={cbLtvTriggerPct}
+            cbLtvTargetPct={cbLtvTargetPct}
+          />
+        </div>
+      )}
+
+      {(strategyDone || simpleSegment === 'thisMonth') && (
       <div className={styles.cards}>
 
         {/* Position card */}
@@ -702,6 +744,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </div>
         )}
 
+        {/* Next-month preview (§8) */}
+        {!strategyDone && nextRow && (
+          <p className={styles.nextMonthPreview}>
+            Next month: draw ~{fmtUSD(nextRow.blocDraw)} · buy ~{nextRow.btcBought.toFixed(5)} ₿
+          </p>
+        )}
+
         {/* Monthly Log section */}
         <MonthlyLogSection
           allowInlineLog={false}
@@ -739,6 +788,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         </>
 
       </div>
+      )}
 
       <button className={styles.fullAppLink} onClick={() => setSimpleMode(false)}>
         Full App →
