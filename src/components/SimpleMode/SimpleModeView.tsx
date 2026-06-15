@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
-import { deriveAdvisorStart } from '../../simulation/logUtils';
+import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { classifyLtv } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
@@ -169,6 +169,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const setIncome     = useStore((s) => s.setIncome);
   const setExpenses   = useStore((s) => s.setExpenses);
+  const expenseReanchorDismissedAt    = useStore((s) => s.expenseReanchorDismissedAt);
+  const setExpenseReanchorDismissedAt = useStore((s) => s.setExpenseReanchorDismissedAt);
   const setCreditLine = useStore((s) => s.setCreditLine);
 
   const activeTier       = useStore((s) => s.activeTier);
@@ -246,6 +248,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const currentRow        = advisorRows.find((r) => r.month === currentMonth) ?? null;
   const nextRow           = advisorRows.find((r) => r.month === currentMonth + 1);   // month after current; undefined at Mo 12
+  const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(monthlyLog, expenses, expenseReanchorDismissedAt);
 
   const expectedBlocDraw = currentTier === 1 ? 0
     : currentTier === 2
@@ -414,6 +417,23 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
       {!strategyDone && simpleSegment === 'outlook' && (
         <div className={styles.cards}>
+          {showReanchor && (
+            <div className={styles.reanchorBanner}>
+              <span className={styles.reanchorText}>
+                Your last 3 months averaged {fmtUSD(Math.round(reanchorAvg))} vs your {fmtUSD(expenses)} assumption — update?
+              </span>
+              <div className={styles.reanchorBtns}>
+                <button
+                  className={`${styles.reanchorBtn} ${styles.reanchorBtnPrimary}`}
+                  onClick={() => setExpenses(Math.round(reanchorAvg))}
+                >Update</button>
+                <button
+                  className={styles.reanchorBtn}
+                  onClick={() => setExpenseReanchorDismissedAt(Math.round(reanchorAvg))}
+                >Dismiss</button>
+              </div>
+            </div>
+          )}
           <OutlookProjection
             startingBlocBalance={slmBlocBal}
             startingBtcHeld={slmBtcHeld}

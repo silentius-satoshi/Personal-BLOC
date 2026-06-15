@@ -59,6 +59,26 @@ export function deriveCurrentPosition(
   };
 }
 
+/**
+ * Forward-expenditure re-anchor nudge (Simple Mode Outlook, spec §9). Compares the trailing 3-entry
+ * average of expensesActual against the static `expenses` assumption. Fires at >5% drift; once
+ * dismissed at avg=D, stays hidden until the average moves >5% (of the assumption) past D.
+ * Pure — needs 3 logged entries to average (fewer → no nudge).
+ */
+export function computeExpenseReanchor(
+  monthlyLog: MonthlyLogEntry[],
+  expenses: number,
+  dismissedAt: number,
+): { show: boolean; avg: number } {
+  const recent = [...monthlyLog].sort((a, b) => b.month - a.month).slice(0, 3);
+  if (recent.length < 3) return { show: false, avg: 0 };
+  const avg   = recent.reduce((s, e) => s + (e.expensesActual ?? 0), 0) / recent.length;
+  const drift = expenses > 0 ? Math.abs(avg - expenses) / expenses : 0;
+  const materialSinceDismissal =
+    dismissedAt === 0 || (expenses > 0 && Math.abs(avg - dismissedAt) / expenses > 0.05);
+  return { show: drift > 0.05 && materialSinceDismissal, avg };
+}
+
 export function upsertEntry(
   entries: MonthlyLogEntry[],
   newEntry: MonthlyLogEntry,

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAdvisorStart, deriveCurrentPosition, upsertEntry, recomputeBtcHeld } from '../logUtils';
+import { deriveAdvisorStart, deriveCurrentPosition, upsertEntry, recomputeBtcHeld, computeExpenseReanchor } from '../logUtils';
 import type { MonthlyLogEntry } from '../types';
 
 function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): MonthlyLogEntry {
@@ -204,5 +204,48 @@ describe('dated collateral adjustments (spec v4)', () => {
     const log = [makeEntry(3, { btcHeld: 0.80 })];
     expect(deriveAdvisorStart(log, 0.70, 0, 4, 0.05).startingBtcHeld).toBeCloseTo(0.85);
     expect(deriveAdvisorStart([], 0.70, 0, 4, 0.05).startingBtcHeld).toBeCloseTo(0.75);
+  });
+});
+
+describe('computeExpenseReanchor (spec §9)', () => {
+  // makeEntry defaults expensesActual: 3500; override per-entry below.
+  const threeAt = (a: number, b: number, c: number) => [
+    makeEntry(1, { expensesActual: a }),
+    makeEntry(2, { expensesActual: b }),
+    makeEntry(3, { expensesActual: c }),
+  ];
+
+  it('no banner when fewer than 3 logged entries, regardless of drift', () => {
+    const log = [makeEntry(1, { expensesActual: 9000 }), makeEntry(2, { expensesActual: 9000 })];
+    expect(computeExpenseReanchor(log, 3500, 0).show).toBe(false);
+  });
+
+  it('no banner when avg is within 5% of the assumption', () => {
+    const r = computeExpenseReanchor(threeAt(3600, 3600, 3600), 3500, 0);   // ~2.9% drift
+    expect(r.avg).toBeCloseTo(3600);
+    expect(r.show).toBe(false);
+  });
+
+  it('fires when avg drifts >5% from the assumption', () => {
+    const r = computeExpenseReanchor(threeAt(4000, 4000, 4000), 3500, 0);   // ~14% drift
+    expect(r.show).toBe(true);
+    expect(r.avg).toBeCloseTo(4000);
+  });
+
+  it('averages only the trailing 3 entries (newest by month)', () => {
+    const log = [
+      makeEntry(1, { expensesActual: 3500 }),
+      makeEntry(2, { expensesActual: 4000 }),
+      makeEntry(3, { expensesActual: 4000 }),
+      makeEntry(4, { expensesActual: 4000 }),
+    ];
+    expect(computeExpenseReanchor(log, 3500, 0).avg).toBeCloseTo(4000);   // months 4,3,2 — not month 1
+  });
+
+  it('dismissal durability: hidden at the dismissed avg, resurfaces when avg moves >5% past it', () => {
+    const log = threeAt(4000, 4000, 4000);   // avg 4000, drifts from 3500
+    expect(computeExpenseReanchor(log, 3500, 4000).show).toBe(false);     // dismissed at 4000 → hidden
+    const moved = threeAt(4200, 4200, 4200);                              // avg 4200; |4200-4000|/3500 ≈ 5.7% > 5%
+    expect(computeExpenseReanchor(moved, 3500, 4000).show).toBe(true);
   });
 });

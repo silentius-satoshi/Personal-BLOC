@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (139 tests — all must pass before every commit)
+- Vitest (145 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -183,7 +183,11 @@ src/
                                 # segmented control (gated !strategyDone): This Month = console + a
                                 # next-month preview line (advisorRows month currentMonth+1, hidden at Mo 12);
                                 # Outlook = shared <OutlookProjection> (same props/numbers as the Advisor
-                                # tab). Re-anchor nudge = Phase 4 (not built).
+                                # tab) + an Outlook re-anchor nudge (§9): when the trailing 3-entry avg of
+                                # expensesActual drifts >5% from the `expenses` assumption, a dismissible
+                                # banner offers Update (setExpenses(round(avg))) / Dismiss (persists the avg
+                                # to device-local expenseReanchorDismissedAt; resurfaces only when drift
+                                # moves >5% past it). computeExpenseReanchor (logUtils, pure) is the predicate.
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -527,7 +531,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-139 tests — `npx vitest run` before every commit.
+145 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -565,6 +569,12 @@ declarations in `src/vite-env.d.ts`, rendered at the bottom of Settings (`.build
 Build SHA in Settings — iOS home-screen PWAs are known to serve stale bundles after deploys; kill +
 relaunch (or reinstall) the PWA until the SHA matches the latest deploy. With dev mode on, smoke-test
 reports should include the Copy Diagnostics output from the failing device.
+
+**Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS / the
+publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
+publish or clobber across devices): `devMode` and `expenseReanchorDismissedAt` (the Outlook re-anchor
+dismissal watermark, spec §9). New per-device prefs follow this pattern, NOT the in-memory exclusion
+list (which is for transient fields like `nostrSyncing`/`sandboxCollateralBtc`).
 
 **Dev mode:** 5 taps on the Settings Build row toggles `devMode` (persisted, DEVICE-LOCAL — never synced,
 not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe

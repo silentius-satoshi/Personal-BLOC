@@ -184,3 +184,17 @@ describe('dated collateral — store actions (spec v4)', () => {
     await new Promise((r) => setTimeout(r, 10));   // flush publishRecordsNow's rejected publish chain
   });
 });
+
+describe('expense re-anchor reset hook (spec §9)', () => {
+  beforeEach(() => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    resetStore();
+  });
+
+  it('setExpenses re-anchors AND clears expenseReanchorDismissedAt (covers Update + manual edits)', () => {
+    useStore.setState({ expenseReanchorDismissedAt: 4000 } as never);
+    useStore.getState().setExpenses(4200);   // the Update button calls this with Math.round(avg)
+    expect(useStore.getState().expenses).toBe(4200);
+    expect(useStore.getState().expenseReanchorDismissedAt).toBe(0);
+  });
+});

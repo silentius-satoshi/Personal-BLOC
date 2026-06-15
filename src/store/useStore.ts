@@ -72,6 +72,8 @@ interface StoreState {
   onboardingComplete:    boolean;
   btcBuyingUnit:         'btc' | 'sats';
   devMode:               boolean;   // persisted, DEVICE-LOCAL — never synced (not in SETTINGS_FIELDS/payload)
+  expenseReanchorDismissedAt: number;   // avg dismissed against (0 = not dismissed); persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
+  setExpenseReanchorDismissedAt: (v: number) => void;
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setBtcBuyingUnit:      (v: 'btc' | 'sats') => void;
@@ -352,10 +354,12 @@ export const useStore = create<StoreState>()(
   onboardingComplete: false,
   btcBuyingUnit:      'btc',
   devMode:            false,
+  expenseReanchorDismissedAt: 0,
   setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
   setOnboardingComplete: (v) => set({ onboardingComplete: v }),
   setBtcBuyingUnit:      (v) => { set({ btcBuyingUnit: v }); useStore.getState().syncSettingsToNostr(); },
   setDevMode:            (v) => set({ devMode: v }),
+  setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no syncSettingsToNostr
 
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,
@@ -385,7 +389,7 @@ export const useStore = create<StoreState>()(
   showMiningInLog: false,
 
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
-  setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); },
+  setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
   setBtcPrice: (v) => set({ btcPrice: v }),
   setBtcPriceMode: (v) => set({ btcPriceMode: v }),
   setBlocApr:  (v) => { set({ blocApr: v });  useStore.getState().syncSettingsToNostr(); },
