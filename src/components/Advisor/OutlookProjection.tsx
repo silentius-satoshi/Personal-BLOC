@@ -33,6 +33,7 @@ interface OutlookProjectionProps {
   cbPaymentStrategy:   'monthly' | 'ltvTriggered';
   cbLtvTriggerPct:     number;
   cbLtvTargetPct:      number;
+  cbRotateBackPct:     number;
 }
 
 function tierBadgeClass(tier: AdvisorTier): string {
@@ -45,7 +46,7 @@ export function OutlookProjection({
   startingBlocBalance, startingBtcHeld, startingMonth, currentMonth,
   btcPrice, income, expenses, blocApr, creditLine,
   hasCbLoan, cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
-  cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
+  cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
 }: OutlookProjectionProps) {
   const [growthScenario, setGrowthScenario] = useState<GrowthScenario>('flat');
 
@@ -75,6 +76,7 @@ export function OutlookProjection({
       cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
       cbLtvTriggerPct,
       cbLtvTargetPct,
+      cbRotateBackPct,
       startingBlocBalance,
       startingBtcHeld,
       startingMonth,
@@ -83,7 +85,7 @@ export function OutlookProjection({
     [
       btcPrice, income, expenses, blocApr, creditLine,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
-      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
+      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
       startingBlocBalance, startingBtcHeld, startingMonth,
       btcGrowthRate, hasCbLoan,
     ],
@@ -190,7 +192,7 @@ export function OutlookProjection({
                       ? (row.cbPaydownDraw > 0
                           ? <>{row.cbPaydownCapped && <span title={`$${Math.round(row.cbPaydownShortfall).toLocaleString()} shortfall`}>⚠ </span>}{fmtUSD(row.cbPaydownDraw)}</>
                           : row.strikeRepayFired
-                            ? <>↺ {fmtUSD(row.strikeRepayDraw)}</>
+                            ? <span className={styles.rotateCell}>↩ {fmtUSD(row.strikeRepayDraw)}</span>
                             : <span className={styles.muted}>—</span>)
                       : fmtUSD(row.cbPayment)
                     }
@@ -225,7 +227,7 @@ export function OutlookProjection({
                         return (
                           <>
                             {fmtUSD(paydown)}
-                            {rotated > 0 && <span className={styles.muted}> · ↺ {fmtUSD(rotated)}</span>}
+                            {rotated > 0 && <span className={styles.rotateCell}> · ↩ {fmtUSD(rotated)}</span>}
                           </>
                         );
                       })()

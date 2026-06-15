@@ -66,6 +66,7 @@ interface StoreState {
   cbPaymentStrategy:    'monthly' | 'ltvTriggered';
   cbLtvTriggerPct:      number;
   cbLtvTargetPct:       number;
+  cbRotateBackPct:      number;
 
   // App mode
   simpleMode:            boolean;
@@ -137,6 +138,7 @@ interface StoreState {
   setCbPaymentStrategy:   (v: 'monthly' | 'ltvTriggered') => void;
   setCbLtvTriggerPct:     (v: number) => void;
   setCbLtvTargetPct:      (v: number) => void;
+  setCbRotateBackPct:     (v: number) => void;
 
   // Setters — Advisor tab
   setAdvisorStartDate:         (date: string) => void;
@@ -284,6 +286,7 @@ export async function publishSettingsNow(): Promise<boolean> {
       cbPaymentStrategy:        s.cbPaymentStrategy,
       cbLtvTriggerPct:          s.cbLtvTriggerPct,
       cbLtvTargetPct:           s.cbLtvTargetPct,
+      cbRotateBackPct:          s.cbRotateBackPct,
       advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
       advisorSkipCbPayment:     s.advisorSkipCbPayment,
       advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
@@ -349,6 +352,7 @@ export const useStore = create<StoreState>()(
   cbPaymentStrategy:   'monthly' as const,
   cbLtvTriggerPct:     75,
   cbLtvTargetPct:      65,
+  cbRotateBackPct:     55,
 
   simpleMode:         false,
   onboardingComplete: false,
@@ -419,6 +423,7 @@ export const useStore = create<StoreState>()(
   setCbPaymentStrategy:  (v) => { set({ cbPaymentStrategy: v });  useStore.getState().syncSettingsToNostr(); },
   setCbLtvTriggerPct:    (v) => { set({ cbLtvTriggerPct: v });    useStore.getState().syncSettingsToNostr(); },
   setCbLtvTargetPct:     (v) => { set({ cbLtvTargetPct: v });     useStore.getState().syncSettingsToNostr(); },
+  setCbRotateBackPct:    (v) => { set({ cbRotateBackPct: v });    useStore.getState().syncSettingsToNostr(); },
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -579,7 +584,7 @@ export const useStore = create<StoreState>()(
       'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
-      'cbLtvTriggerPct', 'cbLtvTargetPct',
+      'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
     ] as const;
@@ -594,7 +599,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 11,
+      version: 12,
       partialize: (state) => {
         const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
@@ -620,6 +625,7 @@ export const useStore = create<StoreState>()(
           cbPaymentStrategy:    persistedState.cbPaymentStrategy ?? 'monthly',
           cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
           cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
+          cbRotateBackPct:      persistedState.cbRotateBackPct  ?? 55,
           btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
           lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
           nostrLogin:           persistedState.nostrLogin         ?? null,

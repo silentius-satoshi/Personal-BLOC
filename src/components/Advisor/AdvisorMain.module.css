@@ -511,6 +511,7 @@
 
 .paymentCell  { color: var(--green); }
 .triggerCell  { color: var(--amber); }
+.rotateCell   { color: var(--green); }  /* reverse rotation — cost-saving, distinct from amber forward defense */
 .btcCell      { color: var(--green); font-family: 'IBM Plex Mono', monospace; }
 .interestCell { color: var(--orange); }
 .muted        { color: var(--text-faint); }

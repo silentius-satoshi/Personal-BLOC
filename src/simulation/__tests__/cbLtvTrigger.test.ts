@@ -15,6 +15,7 @@ const BASE: AdvisorInputs = {
   cbPaymentStrategy: 'monthly',
   cbLtvTriggerPct: 75,
   cbLtvTargetPct:  65,
+  cbRotateBackPct: 55,
   startingBlocBalance: 0,
   startingBtcHeld: 1.0,
   startingMonth:   1,
@@ -143,38 +144,95 @@ describe('ltvTriggered — credit cap', () => {
   });
 });
 
-describe('reverse trigger (rotate Strike → CB)', () => {
-  // cbBalance = 50_000, cbCollateralBtc = 1.0, btcPrice = 100_000
-  // After 1 month interest at 4.77%/12: cbBal ≈ 50_199; LTV ≈ 50.2% → below 65% target
-  // cbRoom = 65_000 − 50_199 ≈ 14_801
+describe('reverse rotation (rotate-back band: trigger 75 / target 65 / rotate-back 55)', () => {
+  // cbCollateralBtc = 1.0, btcPrice = 100_000 → LTV = cbBalance / 100_000 (before interest).
+  // Reverse rotation fires only when CB LTV ≤ rotate-back (55%); it FILLS the CB loan up to
+  // target (65%), capped at the available Strike balance. The neutral zone 55–75 fires nothing.
   const REV_BASE: AdvisorInputs = {
     ...BASE,
     cbPaymentStrategy: 'ltvTriggered',
     cbCollateralBtc:   1.0,
     cbLtvTriggerPct:   75,
     cbLtvTargetPct:    65,
+    cbRotateBackPct:   55,
   };
 
-  it('a) fires when CB LTV < target and Strike has balance — bounded by Strike balance', () => {
+  it('1) fires only below rotate-back — bounded by Strike balance', () => {
+    // cbBalance 50_000 → LTV ≈ 50.2% after interest, ≤ 55% rotate-back; Strike has 5_000
     const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 5_000 });
     const m1 = rows[0];
     expect(m1.strikeRepayFired).toBe(true);
+    expect(m1.strikeRepayDraw).toBeGreaterThan(0);
     expect(m1.strikeRepayDraw).toBeCloseTo(5_000, 0);  // bounded by Strike balance
     expect(m1.cbPaydownDraw).toBe(0);                   // forward trigger did NOT fire
     expect(m1.cbLtvTriggered).toBe(false);
   });
 
-  it('b) does not fire when Strike balance is zero', () => {
+  it('2) neutral zone — NO fire between rotate-back and trigger (the anti-oscillation property)', () => {
+    // cbBalance 60_000 → LTV ≈ 60.2% after interest; strictly between 55% rotate-back and 75% trigger
+    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 60_000, startingBlocBalance: 10_000 });
+    const m1 = rows[0];
+    expect(m1.strikeRepayFired).toBe(false);
+    expect(m1.cbLtvTriggered).toBe(false);
+  });
+
+  it('3) capped at Strike balance (large CB headroom, small Strike)', () => {
+    // cbBalance 40_000 → LTV ≈ 40% ≤ 55%; headroom to 65% target ≈ 24_800 ≫ Strike 3_000
+    const startingStrikeBalance = 3_000;
+    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 40_000, startingBlocBalance: startingStrikeBalance });
+    const m1 = rows[0];
+    expect(m1.strikeRepayFired).toBe(true);
+    expect(m1.strikeRepayDraw).toBeCloseTo(startingStrikeBalance, 0);
+  });
+
+  it('4) capped at CB headroom — fills UP TO target (not to rotate-back, not beyond)', () => {
+    // cbBalance 50_000 (LTV ≈ 50.2%), large Strike → rotation fills CB to 65% target
+    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 100_000 });
+    const m1 = rows[0];
+    expect(m1.strikeRepayFired).toBe(true);
+    // post-rotation CB balance ≈ target LTV × collateral value = 0.65 × 100_000 = 65_000
+    expect(m1.cbBalance).toBeCloseTo(65_000, -2);  // within $100
+    expect(m1.cbLtv).toBeCloseTo(0.65, 2);
+    // did not over-repay: drew less than the full Strike balance
+    expect(m1.strikeRepayDraw).toBeLessThan(100_000);
+  });
+
+  it('5) does not fire when Strike balance is zero', () => {
     const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 0 });
     expect(rows[0].strikeRepayFired).toBe(false);
     expect(rows[0].strikeRepayDraw).toBe(0);
   });
 
-  it('c) does not fire when CB LTV is in the quiet band (between target and trigger)', () => {
-    // cbBalance = 70_000 → LTV ≈ 70%; between 65% target and 75% trigger
-    const { rows } = runAdvisor({ ...REV_BASE, cbBalance: 70_000, startingBlocBalance: 10_000 });
-    const m1 = rows[0];
-    expect(m1.cbLtvTriggered).toBe(false);
-    expect(m1.strikeRepayFired).toBe(false);
+  it('6) debt-neutral at fire — CB gains exactly what Strike loses (no debt created)', () => {
+    // CB interest accrues on the opening balance (independent of rotation), so the CB end balance
+    // in the firing run exceeds the no-rotation control by EXACTLY the drawn amount.
+    const fire    = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 8_000 }).rows[0];
+    const control = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 0 }).rows[0];
+    expect(fire.strikeRepayFired).toBe(true);
+    expect(control.strikeRepayFired).toBe(false);
+    expect(fire.cbBalance - control.cbBalance).toBeCloseTo(fire.strikeRepayDraw, 0);
+  });
+
+  it('7) no oscillation under growth — does NOT fire every month (regression for the reported bug)', () => {
+    // Properly-spread band 75/65/55 under +50%/yr BTC growth: month 1 fires (LTV ≤ 55%), fills to
+    // 65% target, then the loan sits in the neutral zone and growth only pulls LTV down slowly.
+    const { rows } = runAdvisor({
+      ...REV_BASE,
+      cbBalance:           50_000,   // LTV ≈ 50% → month 1 rotates
+      startingBlocBalance: 100_000,  // ample Strike balance to rotate every month if mis-gated
+      creditLine:          200_000,
+      btcGrowthRate:       0.5,
+    });
+    const fireMonths = rows.filter((r) => r.strikeRepayFired).length;
+    expect(fireMonths).toBeLessThanOrEqual(2);          // NOT a wall of rotations
+    expect(rows[1].strikeRepayFired).toBe(false);        // month after the first fire sits in neutral
+  });
+
+  it('8) monthly mode never rotates', () => {
+    const { rows } = runAdvisor({ ...REV_BASE, cbPaymentStrategy: 'monthly', cbBalance: 50_000, startingBlocBalance: 8_000 });
+    for (const r of rows) {
+      expect(r.strikeRepayDraw).toBe(0);
+      expect(r.strikeRepayFired).toBe(false);
+    }
   });
 });

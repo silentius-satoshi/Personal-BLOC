@@ -156,6 +156,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const cbPaymentStrategy     = useStore((s) => s.cbPaymentStrategy);     const setCbPaymentStrategy     = useStore((s) => s.setCbPaymentStrategy);
   const cbLtvTriggerPct       = useStore((s) => s.cbLtvTriggerPct);       const setCbLtvTriggerPct       = useStore((s) => s.setCbLtvTriggerPct);
   const cbLtvTargetPct        = useStore((s) => s.cbLtvTargetPct);        const setCbLtvTargetPct        = useStore((s) => s.setCbLtvTargetPct);
+  const cbRotateBackPct       = useStore((s) => s.cbRotateBackPct);       const setCbRotateBackPct       = useStore((s) => s.setCbRotateBackPct);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
 
@@ -365,9 +366,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                 <>
                   <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} step={1} />
                   <NumberInput label="Pay down to LTV"  value={cbLtvTargetPct}  onChange={setCbLtvTargetPct}  min={0} step={1} />
-                  {cbLtvTriggerPct <= cbLtvTargetPct && (
+                  <NumberInput label="Rotate-back LTV"  value={cbRotateBackPct} onChange={setCbRotateBackPct} min={0} step={1} />
+                  <span className={styles.fieldHint}>When CB LTV falls below this, shift expensive Strike debt back to the cheaper CB loan.</span>
+                  {!(cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct) && (
                     <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
-                      Trigger must be above target LTV
+                      Must satisfy: rotate-back &lt; pay-down &lt; trigger
                     </span>
                   )}
                 </>

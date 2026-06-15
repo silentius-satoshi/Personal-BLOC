@@ -24,7 +24,12 @@
       "Bash(sed -n '80,90p' src/components/Advisor/AdvisorMain.tsx)",
       "Bash(sed -n '20,28p' src/components/Tools/LiqSimulator.tsx)",
       "Bash(sed -n '38,48p' src/components/Tools/LiqSimulator.tsx)",
-      "Bash(grep -n \"123 tests\\\\|All 24\\\\|24-field\\\\|single canonical\\\\|deriveAdvisorStart\\\\` /\\\\|Anchor to\\\\|month-0 baseline BTC\\\\|monthlyLog.test.ts\\\\` —\\\\|POISON-ENTRY\" CLAUDE.md)"
+      "Bash(grep -n \"123 tests\\\\|All 24\\\\|24-field\\\\|single canonical\\\\|deriveAdvisorStart\\\\` /\\\\|Anchor to\\\\|month-0 baseline BTC\\\\|monthlyLog.test.ts\\\\` —\\\\|POISON-ENTRY\" CLAUDE.md)",
+      "Bash(echo \"exit: $?\")",
+      "Bash(grep -n \"145 tests\\\\|cbLtvTriggerPct\\\\`, \\\\`cbLtvTargetPct\" /home/anonymius/Personal-BLOC/CLAUDE.md)",
+      "Bash(echo \"build exit: $?\")",
+      "Read(//tmp/**)",
+      "Bash(echo \"tests exit: $?\")"
     ]
   }
 }

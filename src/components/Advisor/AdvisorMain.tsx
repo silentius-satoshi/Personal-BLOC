@@ -78,6 +78,7 @@ export function AdvisorMain() {
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
+  const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
@@ -127,6 +128,7 @@ export function AdvisorMain() {
         cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
         cbLtvTriggerPct,
         cbLtvTargetPct,
+        cbRotateBackPct,
         startingBlocBalance,
         startingBtcHeld,
         startingMonth,
@@ -137,7 +139,7 @@ export function AdvisorMain() {
     [
       btcPrice, income, expenses, blocApr, creditLine,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
-      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
+      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
       startingBlocBalance, startingBtcHeld, startingMonth,
     ],
   );
@@ -248,6 +250,11 @@ export function AdvisorMain() {
                 <span className={styles.positionLabel}>Monthly interest</span>
                 <span className={styles.positionValue}>{fmtUSD(Math.round(advisorActualBlocBalance * blocApr / 100 / 12))}</span>
               </div>
+              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan?.strikeRepayFired && (
+                <div className={styles.positionSub} style={{ color: 'var(--green)' }}>
+                  ↩ Rotation ready — shift this balance to the cheaper CB loan
+                </div>
+              )}
             </div>
             {hasCbLoan && (
               <div className={styles.positionCard}>
@@ -317,8 +324,13 @@ export function AdvisorMain() {
                       </div>
                     )}
                     {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan.strikeRepayFired && (
-                      <div className={styles.mandatoryRow}>
-                        <span className={styles.mandatoryLabel}>↺ Rotating to Coinbase — Strike repaid</span>
+                      <div className={styles.mandatoryRow} style={{ color: 'var(--green)' }}>
+                        <span className={styles.mandatoryLabel}>
+                          ↩ Rotate to cheap debt — Strike repaid
+                          <span className={styles.muted} style={{ display: 'block', fontSize: '0.8rem' }}>
+                            saves ~{fmtUSD(overriddenPlan.strikeRepayDraw * (blocApr - cbAprPct) / 100)}/yr
+                          </span>
+                        </span>
                         <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.strikeRepayDraw)}</span>
                       </div>
                     )}
@@ -452,6 +464,7 @@ export function AdvisorMain() {
             cbPaymentStrategy={cbPaymentStrategy}
             cbLtvTriggerPct={cbLtvTriggerPct}
             cbLtvTargetPct={cbLtvTargetPct}
+            cbRotateBackPct={cbRotateBackPct}
           />
         </>
       )}

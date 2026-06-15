@@ -146,6 +146,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
+  const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
@@ -223,6 +224,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
         cbLtvTriggerPct,
         cbLtvTargetPct,
+        cbRotateBackPct,
         startingBlocBalance: slmBlocBal,
         startingBtcHeld:     slmBtcHeld,
         startingMonth:       slmStartMonth,
@@ -232,7 +234,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     },
     [btcPrice, income, expenses, blocApr, creditLine,
      cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
-     cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
+     cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
      slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan],
   );
   const currentCbLtv = cbCollateralBtc * btcPrice > 0
@@ -452,6 +454,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             cbPaymentStrategy={cbPaymentStrategy}
             cbLtvTriggerPct={cbLtvTriggerPct}
             cbLtvTargetPct={cbLtvTargetPct}
+            cbRotateBackPct={cbRotateBackPct}
           />
         </div>
       )}
@@ -484,6 +487,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   </span>
                   <span className={styles.positionStatHint}>to reach {cbLtvTargetPct}% LTV</span>
                 </>
+              )}
+              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
+                <span className={styles.positionStatHint} style={{ color: 'var(--green)' }}>
+                  ↩ Rotation ready — shift to the cheaper CB loan
+                </span>
               )}
               <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                 {ndp.status === 'never'    && 'NDP — not recorded'}
@@ -645,10 +653,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   </div>
                 )}
                 {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
-                  <div className={styles.actionRow}>
-                    <span className={styles.actionIcon}>↺</span>
+                  <div className={styles.actionRow} style={{ color: 'var(--green)' }}>
+                    <span className={styles.actionIcon}>↩</span>
                     <div className={styles.actionLabelGroup}>
-                      <span className={styles.actionLabel}>Rotating to Coinbase — Strike repaid</span>
+                      <span className={styles.actionLabel}>Rotate to cheap debt — Strike repaid</span>
+                      <span className={styles.actionSub}>saves ~{fmtUSD(currentRow.strikeRepayDraw * (blocApr - cbAprPct) / 100)}/yr</span>
                     </div>
                     <span className={styles.actionAmount}>{fmtUSD(currentRow.strikeRepayDraw)}</span>
                   </div>

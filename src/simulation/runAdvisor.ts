@@ -38,6 +38,7 @@ export interface AdvisorInputs {
   cbPaymentStrategy: 'monthly' | 'ltvTriggered';
   cbLtvTriggerPct:   number;
   cbLtvTargetPct:    number;
+  cbRotateBackPct:   number;
   startingBlocBalance: number;
   startingBtcHeld:     number;
   startingMonth:       number;
@@ -87,7 +88,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     blocApr, creditLine, blocLtvCeiling,
     cbBalance: initialCbBalance, cbCollateralBtc,
     cbAprPct, cbMonthlyPayment,
-    cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct,
+    cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
     startingBlocBalance, startingBtcHeld, startingMonth, btcGrowthRate,
   } = inputs;
 
@@ -146,11 +147,14 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
           cbPaydownCapped    = true;
           cbPaydownShortfall = desiredPaydown - cbPaydownDraw;
         }
-      } else if (cbLtvNow < cbLtvTargetPct / 100 && blocBalance > 0) {
-        const cbRoom = Math.max(0,
-          cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100) - cbBal
-        );
-        strikeRepayDraw = Math.min(blocBalance, cbRoom);
+      } else if (cbLtvNow <= cbRotateBackPct / 100 && blocBalance > 0) {
+        // REVERSE rotation: draw cheap CB debt UP TO target, repay expensive Strike.
+        // Gated to start only when CB LTV ≤ rotate-back; fills the loan back up TO target
+        // (not to rotate-back) — the neutral zone between rotate-back and trigger prevents
+        // month-to-month oscillation.
+        const cbCeiling  = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
+        const cbHeadroom = Math.max(0, cbCeiling - cbBal);   // fill to TARGET, not to rotate-back
+        strikeRepayDraw  = Math.min(blocBalance, cbHeadroom); // capped: no over-repay, no target breach
         if (strikeRepayDraw > 0) {
           cbBal        += strikeRepayDraw;   // draw from CB to repay Strike
           blocBalance  -= strikeRepayDraw;   // Strike balance reduced

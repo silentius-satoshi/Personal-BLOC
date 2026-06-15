@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (145 tests — all must pass before every commit)
+- Vitest (150 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -276,6 +276,7 @@ cbLiquidationPrice:  number;                       // default 0 (0 = not set; gu
 cbPaymentStrategy:   'monthly' | 'ltvTriggered';  // default 'monthly'
 cbLtvTriggerPct:     number;                       // default 75 (percent, e.g. 75 = 75%)
 cbLtvTargetPct:      number;                       // default 65 (percent, pay down to this LTV)
+cbRotateBackPct:     number;                       // default 55 (percent, reverse-rotation gate; synced in SETTINGS_FIELDS/payload like trigger/target)
 ```
 
 ### Advisor Tab
@@ -536,7 +537,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-145 tests — `npx vitest run` before every commit.
+150 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `living.test.ts`
 - `mining.test.ts`
@@ -697,7 +698,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 25-field payload from current state, dynamic
+  returns boolean — mirrors `publishRecordsNow`): builds the 26-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
   `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
   retried by `syncNow` exactly like records)
@@ -794,16 +795,16 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 25 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 26 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 25 Synced Settings Fields
+### All 26 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
-`cbLtvTriggerPct`, `cbLtvTargetPct`,
+`cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
 `pendingCollateralAdjustment`
 (The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
@@ -856,8 +857,10 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
-| Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. Current store version = 11 — the dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge (no transform; Spec B stays v12) |
+| Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
+| Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target). Current store version = 12. Spec B shifts to v13 |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
+| `ltvTriggered` band | Three-threshold band: `cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct` (defaults 55/65/75). Forward rescue (Strike→CB) at/above trigger pays CB down to target; reverse rotation (CB draw→repay Strike) at/below rotate-back fills CB UP TO target; the neutral zone between rotate-back and trigger fires nothing. Reverse rotation is debt-neutral at the instant it fires and capped at `min(Strike balance, CB headroom-to-target)`. The 10-point default buffers prevent month-to-month oscillation. HISTORICAL FIX (v12): the reverse branch was previously mis-keyed to `cbLtvTargetPct` (collapsed the neutral zone → every-month rotation under growth); v12 added the proper `cbRotateBackPct` gate. Projection renders reverse rotation as green `↩` (`.rotateCell`), distinct from amber forward paydown and EXCLUDED from the Option-A trigger row-wash |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |
@@ -870,7 +873,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
-| `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
+| `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct/cbRotateBackPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
 | `disconnectNostr` | Full sign-out — clears all nostr state INCL. `nostrAuthEnabled` (disables the lock), then `window.location.reload()` to rebuild NPool clean; in lib/nostr/disconnect.ts |
 | `reconnectNostr` | Revoke-recovery — clears the session but KEEPS `nostrAuthEnabled`, then reloads → auth gate lands on the NIP-46 login (open signer app → re-approve); the bottom-right `⚠ Reconnect` affordance AND the Settings "Reconnect" button both call it; in lib/nostr/disconnect.ts |
 | nostr-tools pin | EXACT 2.23.5 — verified with Primal NIP-44; do NOT downgrade to 2.13 (breaks @nostrify peer compat) |
