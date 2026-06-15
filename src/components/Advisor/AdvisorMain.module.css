@@ -484,6 +484,7 @@
 .rowTier2 { background: rgba(232, 131, 106, 0.03); }
 .rowTier3 { background: rgba(232, 168, 74, 0.02); }
 .rowCurrent { outline: 1px solid var(--orange); outline-offset: -1px; }
+.rowTrigger { background: rgba(232, 168, 74, 0.07); }  /* amber wash — CB acted this month (ltvTriggered) */
 
 .tierPill {
   display: inline-block;

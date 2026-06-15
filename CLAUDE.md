@@ -155,7 +155,12 @@ src/
                                 # growthScenario picker + scenario→rate + its OWN runAdvisor; rendered by
                                 # BOTH AdvisorMain (Section 4) and Simple Mode's Outlook segment. Starting
                                 # position arrives as props (each host threads pending via deriveAdvisorStart).
-                                # Imports AdvisorMain.module.css for styling
+                                # Imports AdvisorMain.module.css for styling. In ltvTriggered CB mode the CB
+                                # columns go QUIET between triggers: CB LTV muted (.muted) on non-trigger
+                                # months, amber (.triggerCell) on the fired month, + a faint amber row wash
+                                # (.rowTrigger); CB Paydown cell already muted-between-triggers. monthly mode
+                                # unchanged (CB-every-month, tier-colored CB LTV). Reflects the engine's
+                                # event-driven CB (cbTotalPayment=0; paydown only at cbLtvTriggerPct)
       AdvisorSidebar.tsx        # BTC LIVE badge, YOUR PROGRESS (start date, BLOC balance,
                                 # BTC held), read-only summaries, priority rules
       AdvisorSidebar.module.css

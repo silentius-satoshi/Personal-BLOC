@@ -168,7 +168,11 @@ export function OutlookProjection({
             {result.rows.map((row) => (
               <tr
                 key={row.month}
-                className={`${styles[`rowTier${row.tier}`]} ${row.isCurrentMonth ? styles.rowCurrent : ''}`}
+                className={[
+                  styles[`rowTier${row.tier}`],
+                  row.isCurrentMonth ? styles.rowCurrent : '',
+                  (cbPaymentStrategy === 'ltvTriggered' && row.cbLtvTriggered) ? styles.rowTrigger : '',
+                ].filter(Boolean).join(' ')}
               >
                 <td className={styles.moCell}>
                   Mo {row.month}
@@ -196,7 +200,13 @@ export function OutlookProjection({
                   {row.btcBought > 0 ? `+${row.btcBought.toFixed(5)}` : <span className={styles.muted}>—</span>}
                 </td>
                 <td>{fmtUSD(row.blocBalance)}</td>
-                {hasCbLoan && <td style={{ color: getTierColor(row.tier) }}>{(row.cbLtv * 100).toFixed(1)}%</td>}
+                {hasCbLoan && (
+                  cbPaymentStrategy === 'ltvTriggered'
+                    ? <td className={row.cbLtvTriggered ? styles.triggerCell : styles.muted}>
+                        {(row.cbLtv * 100).toFixed(1)}%
+                      </td>
+                    : <td style={{ color: getTierColor(row.tier) }}>{(row.cbLtv * 100).toFixed(1)}%</td>
+                )}
                 <td className={styles.interestCell}>{fmtUSD(row.totalInterest)}</td>
               </tr>
             ))}
