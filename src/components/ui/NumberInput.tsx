@@ -12,9 +12,11 @@ interface Props {
   decimals?: number;
   label?: string;
   subtext?: string;
+  readOnly?: boolean;
+  valueColor?: string;
 }
 
-export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext }: Props) {
+export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext, readOnly, valueColor }: Props) {
   const fmt = (v: number) => decimals !== undefined ? v.toFixed(decimals) : String(v);
   const [raw, setRaw] = useState(fmt(value));
 
@@ -39,11 +41,14 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffi
         <input
           type="number"
           className={styles.input}
+          style={valueColor ? { color: valueColor } : undefined}
           value={raw}
           min={min}
           max={max}
           step={step}
+          readOnly={readOnly}
           onChange={(e) => {
+            if (readOnly) return;
             const raw = e.target.value;
             setRaw(raw);
             const n = parseFloat(raw);
@@ -51,8 +56,8 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffi
               onChange(n);
             }
           }}
-          onBlur={commit}
-          onKeyDown={(e) => { if (e.key === 'Enter') commit(); }}
+          onBlur={() => { if (!readOnly) commit(); }}
+          onKeyDown={(e) => { if (!readOnly && e.key === 'Enter') commit(); }}
         />
         {suffix && <span className={styles.suffix}>{suffix}</span>}
       </div>

@@ -278,10 +278,15 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             </span>
           </div>
           <div className={styles.setupFieldGroup}>
-            <div className={styles.readonlyFieldRow}>
-              <span className={styles.readonlyFieldLabel}>Initial BTC collateral</span>
-              <span className={styles.readonlyFieldValue}>{advisorActualBtcHeld.toFixed(5)} ₿</span>
-            </div>
+            <NumberInput
+              label="Initial BTC collateral"
+              value={advisorActualBtcHeld}
+              onChange={() => {}}          // no-op; read-only
+              prefix="₿"
+              decimals={8}                 // 8-dp sat precision — matches the actual pledged amount (was toFixed(5))
+              readOnly
+              valueColor="var(--orange)"   // static orange text, distinct from the editable current field
+            />
             <span className={styles.fieldHint}>
               What you started with at month 0 — the fixed baseline. Current collateral grows from here via logged buys and dated adjustments.
             </span>
@@ -290,7 +295,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               if (Math.abs(delta) < 1e-8) return null;   // hide when no movement yet
               return (
                 <span className={styles.fieldHint} style={{ color: 'var(--green)' }}>
-                  {delta > 0 ? '+' : ''}{delta.toFixed(5)} ₿ since start
+                  {delta > 0 ? '+' : ''}{delta.toFixed(8)} ₿ since start
                 </span>
               );
             })()}
