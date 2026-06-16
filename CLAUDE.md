@@ -345,10 +345,15 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment
 **Strike Dry-Powder (spendable BTC) — DISPLAY-ONLY, never collateral:** `useStrikeData.ts` reads the BTC
 balance's `available` field from `/api/strike-balances` (same array as the USD `current` parse) into
 `strikeBtcAvailable` — live-fetched, in-memory, NOT persisted/synced (excluded from partialize like
-`strikeUsdBalance`/`strikeRate`; store v12 unchanged). Shown in **Settings → STRIKE BLOC** as a read-only
-"Spendable BTC (dry powder)" row BENEATH Initial/Current collateral (completing the Initial → Current →
-Spendable trio), in a neutral muted color (distinct from the orange baseline + green delta), gated on
-`strikeApiConnected && strikeBtcAvailable !== null`. Reuses the `readOnly`/`valueColor` NumberInput props.
+`strikeUsdBalance`/`strikeRate`; store v12 unchanged). Shown in TWO places, both display-only: (1)
+**Settings → STRIKE BLOC** as a read-only "Spendable BTC (dry powder)" row BENEATH Initial/Current
+collateral (completing the Initial → Current → Spendable trio), in a neutral muted color (distinct from
+the orange baseline + green delta), gated on `strikeApiConnected && strikeBtcAvailable !== null`, reusing
+the `readOnly`/`valueColor` NumberInput props; and (2) the Smart BLOC tab's **`InputsPanel` Strike widget**
+as a secondary "X ₿ dry powder · ~$USD" line beneath the USD holdings (gated `!== null` inside the already-
+`strikeApiConnected` block, sharing the widget's "updated Ns ago" timestamp; distinct from the
+`strikeRateDelta` "Strike BTC: $price" RATE line). InputsPanel renders only on the Smart BLOC/default tab
+— not Simple Mode; Settings remains the cross-mode home.
 It NEVER enters LTV/collateral/projection math (`strikeBtcAvailable` appears only in the store, the fetch
 hook, and the Settings display block). **API constraint:** Strike's balances endpoint exposes no
 collateral/pledged field and the public API has no BLOC/loan endpoints, so collateral stays manually

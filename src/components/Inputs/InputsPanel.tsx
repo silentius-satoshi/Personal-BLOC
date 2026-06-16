@@ -30,6 +30,7 @@ export function InputsPanel() {
   const setBtcPriceMode = useStore((s) => s.setBtcPriceMode);
 
   const strikeUsdBalance   = useStore((s) => s.strikeUsdBalance);
+  const strikeBtcAvailable = useStore((s) => s.strikeBtcAvailable);
   const strikeRate         = useStore((s) => s.strikeRate);
   const strikeApiConnected = useStore((s) => s.strikeApiConnected);
   const strikeLastFetched  = useStore((s) => s.strikeLastFetched);
@@ -76,6 +77,14 @@ export function InputsPanel() {
           ) : (
             <>
               <p className={styles.strikeBalanceValue}>{fmtUSD(strikeUsdBalance ?? 0)}</p>
+              {strikeBtcAvailable !== null && (
+                <p className={styles.strikeBtcDryPowder}>
+                  {strikeBtcAvailable.toFixed(8)} ₿ <span className={styles.strikeBtcDryPowderSub}>dry powder</span>
+                  {btcPrice > 0 && (
+                    <span className={styles.strikeBtcDryPowderUsd}> · ~{fmtUSD(strikeBtcAvailable * btcPrice)}</span>
+                  )}
+                </p>
+              )}
               {netBlocDraw !== null && netBlocDraw < expenses && (
                 <p className={styles.strikeNetDraw}>
                   Draw only {fmtUSD(netBlocDraw)} this month
