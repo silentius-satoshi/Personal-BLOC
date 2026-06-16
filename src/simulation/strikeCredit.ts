@@ -1,5 +1,10 @@
 export const STRIKE_MAX_DRAW_LTV = 0.50;
 
+/** Strike BLOC LTV = drawn balance ÷ collateral value. Guards a zero/empty collateral → 0. */
+export function computeStrikeLtv(blocBalance: number, btcHeld: number, price: number): number {
+  return btcHeld * price > 0 ? blocBalance / (btcHeld * price) : 0;
+}
+
 export function strikeAvailableCredit(
   creditLine:    number,
   collateralBtc: number,

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { NumberInput } from '../ui/NumberInput';
 import { fmtUSD } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
@@ -43,7 +44,7 @@ export function SafetyDashboard() {
   const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
 
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
-  const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reality read (baseline + logged buys + pending)
   const creditLine               = useStore((s) => s.creditLine);
   const strikeLiquidationLtvPct  = useStore((s) => s.strikeLiquidationLtvPct);
 
@@ -54,24 +55,6 @@ export function SafetyDashboard() {
 
   // ── Price chart slot (Spec C fills this) ─────────────────────────────
   const priceSlot = <div className={styles.priceSlot} aria-hidden="true" />;
-
-  // ── First-run funnel ─────────────────────────────────────────────────
-  if (!hasCbLoan) {
-    return (
-      <div className={styles.dashboard}>
-        {priceSlot}
-        <div className={styles.setupCard}>
-          <span className={styles.setupTitle}>Safety dashboard</span>
-          <span className={styles.setupHint}>
-            Track a Coinbase/Morpho loan to watch your liquidation cushion here.
-          </span>
-          <button className={styles.setupBtn} onClick={() => setHasCbLoan(true)}>
-            Set up CB monitoring
-          </button>
-        </div>
-      </div>
-    );
-  }
 
   // ── CB bar math (shared cbMetrics — same numbers as the CB Loan tab) ──
   const accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
@@ -92,16 +75,15 @@ export function SafetyDashboard() {
   // ── Strike bar math ──────────────────────────────────────────────────
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
   const capacityUsed  = creditLine > 0 ? advisorActualBlocBalance / creditLine : 0;
-  const strikeLtv     = advisorActualBtcHeld * btcPrice > 0
-    ? advisorActualBlocBalance / (advisorActualBtcHeld * btcPrice) : 0;
+  const strikeLtv     = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
   const strikeLevel   = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82); // ≈65% warn / 70% margin call
   const strikeFillPct = strikeView === 'capacity'
     ? Math.max(0, Math.min(100, capacityUsed * 100))
     : Math.max(0, Math.min(100, (strikeLtv / strikeLiqLtv) * 100));
   const strikeFillColor = strikeView === 'capacity' ? 'var(--green)' : LEVEL_COLOR[strikeLevel];
 
-  // ── State line (nearer / worse bar drives it) ────────────────────────
-  const state: SafetyLevel = worseLevel(cbLevel, strikeLevel);
+  // ── State line (nearer / worse bar drives it; Strike-only when no CB loan) ──
+  const state: SafetyLevel = hasCbLoan ? worseLevel(cbLevel, strikeLevel) : strikeLevel;
   const stateCopy = state === 'safe'
     ? 'Safe — nothing to do today.'
     : state === 'watch'
@@ -126,7 +108,8 @@ export function SafetyDashboard() {
     <div className={styles.dashboard}>
       {priceSlot}
 
-      {/* ── CB bar (primary) ───────────────────────────────────────── */}
+      {/* ── CB bar (primary) — or CB-setup prompt in the CB slot when no loan ── */}
+      {hasCbLoan ? (
       <div className={styles.barCard}>
         <div className={styles.barHeader}>
           <span className={styles.barLabel}>COINBASE LOAN</span>
@@ -174,6 +157,17 @@ export function SafetyDashboard() {
           </div>
         )}
       </div>
+      ) : (
+        <div className={styles.setupCard}>
+          <span className={styles.setupTitle}>COINBASE LOAN</span>
+          <span className={styles.setupHint}>
+            Track a Coinbase/Morpho loan to watch your liquidation cushion here.
+          </span>
+          <button className={styles.setupBtn} onClick={() => setHasCbLoan(true)}>
+            Set up CB monitoring
+          </button>
+        </div>
+      )}
 
       {/* ── Strike bar (secondary; tap to flip) ────────────────────── */}
       <button className={styles.barCard} onClick={() => setStrikeView((v) => (v === 'capacity' ? 'liquidation' : 'capacity'))}>

@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest';
-import { strikeAvailableCredit } from '../strikeCredit';
+import { strikeAvailableCredit, computeStrikeLtv } from '../strikeCredit';
+
+describe('computeStrikeLtv', () => {
+  it('is drawn balance ÷ collateral value', () => {
+    expect(computeStrikeLtv(10_000, 1, 100_000)).toBeCloseTo(0.10);
+    expect(computeStrikeLtv(30_000, 0.5, 100_000)).toBeCloseTo(0.60);
+  });
+
+  it('guards zero collateral → 0', () => {
+    expect(computeStrikeLtv(10_000, 0, 100_000)).toBe(0);
+  });
+
+  it('guards zero price → 0', () => {
+    expect(computeStrikeLtv(10_000, 1, 0)).toBe(0);
+  });
+});
 
 describe('strikeAvailableCredit', () => {
   it('line-bound: creditLine is the binding constraint', () => {

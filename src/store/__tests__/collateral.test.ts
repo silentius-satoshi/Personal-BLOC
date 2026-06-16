@@ -12,6 +12,7 @@ vi.hoisted(() => {
 });
 
 import { useStore } from '../useStore';
+import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
 const monthsAgo = (n: number) =>
@@ -72,6 +73,23 @@ describe('dated collateral — store actions (spec v4)', () => {
     const log = useStore.getState().monthlyLog;
     expect(log[0].btcHeld).toBeCloseTo(0.55);   // entries do NOT move until graduation
     expect(log[1].btcHeld).toBeCloseTo(0.60);
+  });
+
+  it('Strike LTV tracks current position (getCurrentBtcHeld), not the frozen baseline', () => {
+    // baseline 0.50; log a buy + a pending adjustment so current diverges from the baseline.
+    useStore.getState().upsertLogEntry(makeEntry(1, { btcBought: 0.10 }));   // → 0.60
+    useStore.getState().adjustCurrentCollateral(0.80);                       // +0.20 pending → 0.80
+    const s = useStore.getState();
+    const bloc = 30_000, price = 100_000;
+
+    expect(s.getCurrentBtcHeld()).toBeCloseTo(0.80);
+    expect(s.getCurrentBtcHeld()).not.toBeCloseTo(s.advisorActualBtcHeld);   // current ≠ baseline
+
+    const ltvCurrent  = computeStrikeLtv(bloc, s.getCurrentBtcHeld(), price);     // 30k / 80k
+    const ltvBaseline = computeStrikeLtv(bloc, s.advisorActualBtcHeld, price);    // 30k / 50k (stale)
+    expect(ltvCurrent).toBeCloseTo(0.375);
+    expect(ltvBaseline).toBeCloseTo(0.60);
+    expect(ltvCurrent).toBeLessThan(ltvBaseline);   // more BTC (current) → lower, healthier LTV
   });
 
   it('graduation: current-month upsert folds pending into the entry, pending → 0', () => {

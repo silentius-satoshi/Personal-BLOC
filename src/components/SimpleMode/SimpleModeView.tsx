@@ -4,7 +4,7 @@ import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
-import { strikeAvailableCredit } from '../../simulation/strikeCredit';
+import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
 import { classifyLtv, CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { deriveForMonth, isOperatingMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { fmtUSD } from '../../utils/format';
@@ -312,7 +312,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     ? slmBlocBal + (advisorSkipBlocDraw ? 0 : currentRow.blocDraw) + currentRow.blocInterest - expectedPaydown
     : advisorActualBlocBalance;
   const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
-  const eomLtv: number     = eomBtcHeld * btcPrice > 0 ? eomBlocBalance / (eomBtcHeld * btcPrice) : 0;
+  const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
+  // Current-actuals Strike LTV (reality read) for the position-card headline — NOT the EoM projection.
+  const currentStrikeLtv   = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
   const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
 
   // Change 2 — THIS MONTH column: actuals from the log entry when logged, projections otherwise
@@ -573,11 +575,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             {/* Left — STRIKE BLOC */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>STRIKE BLOC</span>
-              <span className={styles.positionStat}>
-                {fmtUSD(eomBlocBalance)}<span className={styles.projectedLabel}> end of mo</span>
+              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)}</span>
+              <span className={styles.positionStat}>LTV: {(currentStrikeLtv * 100).toFixed(1)}%</span>
+              <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)}</span>
+              <span className={styles.positionStatHint}>
+                → after this month: ~{fmtUSD(eomBlocBalance)} · {(eomLtv * 100).toFixed(1)}% · {eomBtcHeld.toFixed(5)} ₿
               </span>
-              <span className={styles.positionStat}>LTV: {(eomLtv * 100).toFixed(1)}%</span>
-              <span className={styles.positionStat}>₿ {eomBtcHeld.toFixed(5)}</span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
               <span className={styles.positionStatHint} style={{ color: availCredit.binding === 'collateral' ? 'var(--amber)' : 'var(--text-ghost)' }}>
                 {availCredit.binding === 'line'
@@ -747,6 +750,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.loggedNoteText}>
                 Month {currentMonth} logged — {strategyDone ? 'year complete' : 'come back next month'}
               </span>
+              <button className={styles.undoBtn} onClick={() => { setLogOverlayInitialMonth(currentMonth); setLogOverlayOpen(true); }}>
+                ✎ Edit this month
+              </button>
               <button className={styles.undoBtn} onClick={() => deleteLogEntry(currentMonth)}>← Undo</button>
             </div>
           ) : (

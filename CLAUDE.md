@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (179 tests — all must pass before every commit)
+- Vitest (183 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -40,7 +40,7 @@ src/
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
-    strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn
+    strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar)
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
                                 # deriveCurrentPosition (both take pendingCollateralAdjustment as a REQUIRED param),
                                 # upsertEntry — standalone, no cross-sim imports
@@ -183,11 +183,15 @@ src/
                                 # price-chart slot (Spec C) → CB bar (primary; fill = ltv/CB_LLTV, trigger +
                                 # 86% liq markers w/ "Coinbase"/"~est." source tag, ↓drop-to-trigger/liq cushion,
                                 # Safe/Fair/Poor badge, no-grace note in amber/red) → Strike bar (tap to flip
-                                # capacity-used ↔ liquidation gauge vs strikeLiquidationLtvPct) → Safe/Watch/Act
-                                # state line (worseLevel of the two bars). Freshness labels + amber nudge when
-                                # asOf null or >30d; tap the CB bar → inline re-anchor (balance + liq price →
-                                # both set…AsOf today). !hasCbLoan → setup funnel. Evergreen (past month 12).
-                                # All CB math via cbMetrics — same numbers as the CB Loan tab
+                                # capacity-used ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
+                                # computeStrikeLtv(advisorActualBlocBalance, getCurrentBtcHeld(), price) — the
+                                # CURRENT position, not the frozen baseline) → Safe/Watch/Act state line
+                                # (hasCbLoan ? worseLevel(cb,strike) : strikeLevel). Freshness labels + amber
+                                # nudge when asOf null or >30d; tap the CB bar → inline re-anchor (balance + liq
+                                # price → both set…AsOf today). Strike bar is DECOUPLED from hasCbLoan — only the
+                                # CB bar gates on it: !hasCbLoan → CB-setup prompt in the CB slot, Strike bar +
+                                # Strike-only state line still render. Evergreen (past month 12). All CB math via
+                                # cbMetrics — same numbers as the CB Loan tab
       SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); mounts <SafetyDashboard/>
                                 # at top. handleApply re-anchors store cbLoanBalance by the month's CB paydown
                                 # (ltvTriggered → cbPaydownDraw, monthly → cbPayment) + stamps cbLoanBalanceAsOf
@@ -212,8 +216,15 @@ src/
                                 # on advisorSkip*); other months → read-only preview of the UNSKIPPED
                                 # deriveForMonth projection (logged → actuals + "✎ Edit this month" overlay;
                                 # "← back to current month"). Log button gated isCurrent && !strategyDone;
-                                # a logged current month shows a ✓ note + Undo (deleteLogEntry). MonthlyLog-
-                                # Section kept for the Advisor tab. No checklist (removed; see Synced Settings).
+                                # a logged current month shows a ✓ note + "✎ Edit this month" (opens the overlay
+                                # for currentMonth) + Undo (deleteLogEntry). MonthlyLogSection kept for the
+                                # Advisor tab. The POSITION card's STRIKE BLOC column headlines CURRENT ACTUALS
+                                # (advisorActualBlocBalance / getCurrentBtcHeld() / currentStrikeLtv =
+                                # computeStrikeLtv(actualBloc, currentBtcHeld, price)) with the skip-aware EoM
+                                # projection demoted to one muted "→ after this month: $… · …% · … ₿" hint —
+                                # so editing Amount Drawn / BTC collateral in Settings moves the headline cleanly
+                                # (was EoM-headlined, which conflated current state with projected outcome). No
+                                # checklist (removed; see Synced Settings).
                                 # Quick Setup modal ALWAYS reachable ("⚙ Edit your numbers" once
                                 # established, first-run copy while isDefaultSetup). This Month / Outlook
                                 # segmented control (gated !strategyDone): This Month = console + a
@@ -607,7 +618,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-179 tests — `npx vitest run` before every commit.
+183 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -615,10 +626,10 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `living.test.ts`
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
-- `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking
+- `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
-- `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn
+- `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
