@@ -67,6 +67,9 @@ interface StoreState {
   cbLtvTriggerPct:      number;
   cbLtvTargetPct:       number;
   cbRotateBackPct:      number;
+  cbLoanBalanceAsOf:      string | null;   // ISO date — when cbLoanBalance was last re-anchored (interest accrues daily from here)
+  cbLiquidationPriceAsOf: string | null;   // ISO date — when cbLiquidationPrice was last re-entered (drifts up as interest accrues)
+  strikeLiquidationLtvPct: number;         // Strike partial-liquidation LTV (published terms: 85%)
 
   // App mode
   simpleMode:            boolean;
@@ -139,6 +142,9 @@ interface StoreState {
   setCbLtvTriggerPct:     (v: number) => void;
   setCbLtvTargetPct:      (v: number) => void;
   setCbRotateBackPct:     (v: number) => void;
+  setCbLoanBalanceAsOf:      (v: string | null) => void;
+  setCbLiquidationPriceAsOf: (v: string | null) => void;
+  setStrikeLiquidationLtvPct: (v: number) => void;
 
   // Setters — Advisor tab
   setAdvisorStartDate:         (date: string) => void;
@@ -289,6 +295,9 @@ export async function publishSettingsNow(): Promise<boolean> {
       cbLtvTriggerPct:          s.cbLtvTriggerPct,
       cbLtvTargetPct:           s.cbLtvTargetPct,
       cbRotateBackPct:          s.cbRotateBackPct,
+      cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
+      cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
+      strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
       advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
       advisorSkipCbPayment:     s.advisorSkipCbPayment,
       advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
@@ -355,6 +364,9 @@ export const useStore = create<StoreState>()(
   cbLtvTriggerPct:     75,
   cbLtvTargetPct:      65,
   cbRotateBackPct:     55,
+  cbLoanBalanceAsOf:      null,
+  cbLiquidationPriceAsOf: null,
+  strikeLiquidationLtvPct: 85,
 
   simpleMode:         false,
   onboardingComplete: false,
@@ -426,6 +438,9 @@ export const useStore = create<StoreState>()(
   setCbLtvTriggerPct:    (v) => { set({ cbLtvTriggerPct: v });    useStore.getState().syncSettingsToNostr(); },
   setCbLtvTargetPct:     (v) => { set({ cbLtvTargetPct: v });     useStore.getState().syncSettingsToNostr(); },
   setCbRotateBackPct:    (v) => { set({ cbRotateBackPct: v });    useStore.getState().syncSettingsToNostr(); },
+  setCbLoanBalanceAsOf:      (v) => { set({ cbLoanBalanceAsOf: v });      useStore.getState().syncSettingsToNostr(); },
+  setCbLiquidationPriceAsOf: (v) => { set({ cbLiquidationPriceAsOf: v }); useStore.getState().syncSettingsToNostr(); },
+  setStrikeLiquidationLtvPct: (v) => { set({ strikeLiquidationLtvPct: v }); useStore.getState().syncSettingsToNostr(); },
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -589,6 +604,7 @@ export const useStore = create<StoreState>()(
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
       'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct',
+      'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
     ] as const;
@@ -603,7 +619,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 12,
+      version: 13,
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
@@ -630,6 +646,9 @@ export const useStore = create<StoreState>()(
           cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
           cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
           cbRotateBackPct:      persistedState.cbRotateBackPct  ?? 55,
+          cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,
+          cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
+          strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
           btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
           lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
           nostrLogin:           persistedState.nostrLogin         ?? null,

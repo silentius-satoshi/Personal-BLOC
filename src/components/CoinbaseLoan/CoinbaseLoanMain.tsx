@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { runCoinbaseLoan, classifyLtv, type CbLtvStatus } from '../../simulation/runCoinbaseLoan';
+import { cbMetrics, accruedCbBalance } from '../../simulation/cbMetrics';
 import { LiquidationModeler } from './LiquidationModeler';
 import { fmtUSD } from '../../utils/format';
 import styles from './CoinbaseLoanMain.module.css';
@@ -65,10 +66,17 @@ export function CoinbaseLoanMain() {
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
+  const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
+  const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
 
+  // accrue the stored balance to today, then derive LTV/liq price via the shared helper
+  // (single source of truth — same numbers as the Simple Mode SafetyDashboard)
+  const accruedBalance  = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
+  const m               = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
   const monthlyInterest = cbLoanBalance * (cbAprPct / 100 / 12);
-  const currentLtv      = cbLoanBalance / (cbCollateralBtc * btcPrice);
-  const autoLiqPrice    = cbLoanBalance / (cbCollateralBtc * 0.86);
+  const currentLtv      = m.ltv;
+  const autoLiqPrice    = m.liqPrice;
+  const activeLiqPrice  = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
   const dropToLiqPct    = Math.max(0, (1 - autoLiqPrice / btcPrice) * 100);
   const currentStatus   = classifyLtv(currentLtv);
 
@@ -182,7 +190,8 @@ export function CoinbaseLoanMain() {
         loanBalance={cbLoanBalance}
         collateralBtc={cbCollateralBtc}
         btcPrice={btcPrice}
-        liquidationPrice={cbLiquidationPrice}
+        liquidationPrice={activeLiqPrice}
+        isEstimated={cbLiquidationPrice <= 0}
       />
 
       {/* Section 5 — 12-Month Projection */}

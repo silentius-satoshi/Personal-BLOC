@@ -8,11 +8,12 @@ interface LiquidationModelerProps {
   collateralBtc:    number;
   btcPrice:         number;
   liquidationPrice: number;
+  isEstimated:      boolean;   // true = computed fallback (no Coinbase figure entered); false = entered oracle price
 }
 
 const REPAY_LABELS = ['25% REPAID', '50% REPAID', '75% REPAID', '100% REPAID ← full wipe'] as const;
 
-export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liquidationPrice }: LiquidationModelerProps) {
+export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liquidationPrice, isEstimated }: LiquidationModelerProps) {
   const [showDetail, setShowDetail] = useState(false);
 
   if (liquidationPrice === 0 || btcPrice === 0) {
@@ -35,6 +36,13 @@ export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liqui
         <span className={styles.lifPill}>LIF {analysis.lifPct.toFixed(2)}%</span>
       </div>
 
+      {/* Estimated-price nudge — only when running on the computed fallback */}
+      {isEstimated && (
+        <p className={styles.estimateBanner}>
+          ~estimated price — enter your Coinbase liquidation price in the sidebar for exact scenarios
+        </p>
+      )}
+
       {/* Context line */}
       {analysis.isAlreadyLiquidatable ? (
         <p className={styles.contextWarning}>
@@ -42,7 +50,7 @@ export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liqui
         </p>
       ) : (
         <p className={styles.contextLine}>
-          At your Coinbase liquidation price of {fmtUSD(liquidationPrice)} — a {dropPct}% drop from current
+          At {isEstimated ? 'the estimated' : 'your Coinbase'} liquidation price of {fmtUSD(liquidationPrice)} — a {dropPct}% drop from current
         </p>
       )}
 
@@ -124,7 +132,10 @@ export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liqui
 
       {/* Footnote */}
       <p className={styles.footnote}>
-        Liquidation price supplied by Coinbase. Effective price used: {fmtUSD(analysis.effectivePrice)}.{' '}
+        {isEstimated
+          ? <>~estimated from balance ÷ (collateral × 86%) — enter your Coinbase price for the exact figure.</>
+          : <>Liquidation price supplied by Coinbase.</>}{' '}
+        Effective price used: {fmtUSD(analysis.effectivePrice)}.{' '}
         CB_LIF = {CB_LIF.toFixed(5)} (Morpho formula at 86% LLTV).
       </p>
     </div>

@@ -10,6 +10,8 @@ import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { MonthlyLogSection } from '../Advisor/MonthlyLogSection';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
+import { SafetyDashboard } from './SafetyDashboard';
+import { accruedCbBalance } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
 
 interface SimpleModeViewProps {
@@ -160,6 +162,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const cbCollateralBtc    = useStore((s) => s.cbCollateralBtc);
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
+  const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
+  const setCbLoanBalance      = useStore((s) => s.setCbLoanBalance);
+  const setCbLoanBalanceAsOf  = useStore((s) => s.setCbLoanBalanceAsOf);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
@@ -367,6 +372,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       btcHeld:        0,
       expensesActual: confirmedExpenses,
     });
+    // Re-anchor the store CB balance by this month's actual paydown (ltvTriggered → BLOC-funded
+    // cbPaydownDraw, monthly → income-funded cbPayment). Liq price is NOT auto-updated (needs the
+    // Coinbase oracle figure re-entered manually via the dashboard).
+    const cbPaymentThisMonth = cbPaymentStrategy === 'ltvTriggered'
+      ? (currentRow?.cbPaydownDraw ?? 0)
+      : (currentRow?.cbPayment ?? 0);
+    if (hasCbLoan && cbPaymentThisMonth > 0) {
+      const accrued = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
+      setCbLoanBalance(Math.max(0, accrued - cbPaymentThisMonth));
+      setCbLoanBalanceAsOf(new Date().toISOString().split('T')[0]);
+    }
     if (ndpPayThisMonth) {
       setNdpLastPaidDate(new Date().toISOString().split('T')[0]);
     }
@@ -404,6 +420,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </button>
         </div>
       </div>
+
+      <SafetyDashboard />
 
       {!strategyDone && (
         <div className={styles.progressRow}>

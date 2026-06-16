@@ -30,7 +30,10 @@
       "Bash(echo \"build exit: $?\")",
       "Read(//tmp/**)",
       "Bash(echo \"tests exit: $?\")",
-      "Bash(grep -n \"btcBought\\\\|upsertLogEntry\\\\|upsertEntry\" /home/anonymius/Personal-BLOC/src/simulation/__tests__/monthlyLog.test.ts | head; echo \"=== build ===\"; npm run build >/tmp/b3.log 2>&1; echo \"build exit: $?\"; tail -3 /tmp/b3.log)"
+      "Bash(grep -n \"btcBought\\\\|upsertLogEntry\\\\|upsertEntry\" /home/anonymius/Personal-BLOC/src/simulation/__tests__/monthlyLog.test.ts | head; echo \"=== build ===\"; npm run build >/tmp/b3.log 2>&1; echo \"build exit: $?\"; tail -3 /tmp/b3.log)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(awk '/\\\\.ltvBarWrapper|\\\\.ltvBarTrack|\\\\.ltvBarFill|\\\\.ltvMarker|\\\\.ltvBarLabels|\\\\.ltvBarCurrent/{p=1} p{print} /^\\\\}/{if\\(p\\)c++; if\\(c>=12\\)exit}' src/components/CoinbaseLoan/CoinbaseLoanMain.module.css)",
+      "Bash(grep -n \"## CB Loan \\(\\\\`runCoinbaseLoan\\\\|runCoinbaseLoan.ts            #\\\\|cbMetrics\\\\|computeLiquidationAnalysis\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -1,0 +1,266 @@
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+/* Spec C fills this; reserved so the layout doesn't jump when the chart lands */
+.priceSlot {
+  min-height: 0;
+}
+
+/* ── First-run funnel ─────────────────────────────────────────── */
+.setupCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 16px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+}
+
+.setupTitle {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.setupHint {
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+
+.setupBtn {
+  margin-top: 4px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bg-base);
+  background: var(--orange);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* ── Bar cards ────────────────────────────────────────────────── */
+.barCard {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-card);
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.barHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.barLabel {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  font-weight: 700;
+}
+
+.badge {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 2px 8px;
+  border: 1px solid;
+  border-radius: 999px;
+}
+
+.flipHint {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* track + fill + markers (mirrors the CB Loan tab's LTV bar) */
+.barTrackBtn {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 4px 0 18px;
+  background: none;
+  border: none;
+  cursor: pointer;
+}
+
+.barTrack {
+  position: relative;
+  height: 10px;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 5px;
+  margin: 4px 0 18px;
+}
+
+.barTrackBtn .barTrack {
+  margin: 0;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 5px;
+  transition: width 0.3s ease, background 0.3s ease;
+}
+
+.marker {
+  position: absolute;
+  top: -4px;
+  width: 2px;
+  height: 18px;
+  background: var(--text-ghost);
+  transform: translateX(-50%);
+}
+
+.markerLabel,
+.markerLabelRight {
+  position: absolute;
+  top: 20px;
+  font-size: 10px;
+  color: var(--text-ghost);
+  white-space: nowrap;
+}
+
+.markerLabel {
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.markerLabelRight {
+  right: 0;
+  transform: translateX(0);
+}
+
+.markerLabelRight em {
+  font-style: normal;
+  color: var(--text-faint);
+}
+
+.cushionRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ltvNow {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.cushion {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.graceNote {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--red);
+}
+
+/* ── Freshness ────────────────────────────────────────────────── */
+.freshRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.fresh {
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+.freshStale {
+  font-size: 10px;
+  color: var(--amber);
+  font-weight: 600;
+}
+
+.staleWarn {
+  margin: 0;
+  font-size: 10px;
+  color: var(--amber);
+}
+
+/* ── Inline re-anchor edit ────────────────────────────────────── */
+.editBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-base);
+}
+
+.editHint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+.editBtns {
+  display: flex;
+  gap: 8px;
+}
+
+.saveBtn {
+  flex: 1;
+  padding: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--bg-base);
+  background: var(--green);
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.cancelBtn {
+  padding: 8px 14px;
+  font-size: 12px;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+/* ── State line ───────────────────────────────────────────────── */
+.stateLine {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 2px 2px;
+}
+
+.stateDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}

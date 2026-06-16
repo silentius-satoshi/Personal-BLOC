@@ -77,6 +77,14 @@
   margin: 0;
 }
 
+.estimateBanner {
+  font-size: 12px;
+  font-family: 'IBM Plex Mono', monospace;
+  font-weight: 600;
+  color: var(--amber);
+  margin: 0;
+}
+
 /* Scenario cards */
 .scenarioRow {
   display: flex;

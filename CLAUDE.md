@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (150 tests — all must pass before every commit)
+- Vitest (163 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -35,7 +35,10 @@ src/
     runMaxLeverage.ts
     runBLOC.ts                  # Smart BLOC 5-year simulation (respects creditLine ?? Infinity)
     runBlocYearOne.ts           # Month-by-Month 12-month simulation + getCollateralForTier
-    runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus
+    runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus + CB_LLTV/CB_LIF + computeLiquidationAnalysis
+    cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
+                                # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
+                                # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
@@ -176,7 +179,19 @@ src/
       MonthlyLogOverlay.module.css
 
     SimpleMode/
-      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); single-commit model:
+      SafetyDashboard.tsx       # Top-of-SimpleMode safety read (reads store directly, recomputes on price tick):
+                                # price-chart slot (Spec C) → CB bar (primary; fill = ltv/CB_LLTV, trigger +
+                                # 86% liq markers w/ "Coinbase"/"~est." source tag, ↓drop-to-trigger/liq cushion,
+                                # Safe/Fair/Poor badge, no-grace note in amber/red) → Strike bar (tap to flip
+                                # capacity-used ↔ liquidation gauge vs strikeLiquidationLtvPct) → Safe/Watch/Act
+                                # state line (worseLevel of the two bars). Freshness labels + amber nudge when
+                                # asOf null or >30d; tap the CB bar → inline re-anchor (balance + liq price →
+                                # both set…AsOf today). !hasCbLoan → setup funnel. Evergreen (past month 12).
+                                # All CB math via cbMetrics — same numbers as the CB Loan tab
+      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); mounts <SafetyDashboard/>
+                                # at top. handleApply re-anchors store cbLoanBalance by the month's CB paydown
+                                # (ltvTriggered → cbPaydownDraw, monthly → cbPayment) + stamps cbLoanBalanceAsOf
+                                # today (liq price NOT auto-updated — manual oracle re-entry). single-commit model:
                                 # "Log this month & continue" → ConfirmLogSheet portal (inline component:
                                 # summary + editable expensesActual + editable BTC-bought (seeds to the
                                 # plan's projected buy, or 0 if Buy row skipped; user overrides with the
@@ -287,6 +302,9 @@ cbPaymentStrategy:   'monthly' | 'ltvTriggered';  // default 'monthly'
 cbLtvTriggerPct:     number;                       // default 75 (percent, e.g. 75 = 75%)
 cbLtvTargetPct:      number;                       // default 65 (percent, pay down to this LTV)
 cbRotateBackPct:     number;                       // default 55 (percent, reverse-rotation gate; synced in SETTINGS_FIELDS/payload like trigger/target)
+cbLoanBalanceAsOf:      string | null;             // v13 — ISO date cbLoanBalance was last re-anchored (interest accrues daily from here); synced
+cbLiquidationPriceAsOf: string | null;             // v13 — ISO date cbLiquidationPrice was last re-entered (drifts up with interest); synced
+strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liquidation LTV, default 85 (published terms); synced
 ```
 
 ### Advisor Tab
@@ -452,6 +470,22 @@ type CbLtvStatus = 'safe'|'watch'|'warning'|'emergency'|'critical'|'liquidated';
 
 Morpho/Coinbase: 86% LLTV instant liquidation, no grace period, 4.38% penalty.
 
+### `cbMetrics.ts` — shared CB LTV / liq-price source of truth (v13)
+
+`cbMetrics(loanBalance, collateralBtc, price, triggerPct)` → `{ ltv, liqPrice, triggerPrice,
+pctToTrigger, pctToLiq }` (`liqPrice = balance/(collateral×CB_LLTV)`; `triggerPrice =
+balance/(collateral×triggerPct%)`; `pctTo*` are price-relative — NEGATIVE when safe, i.e. the
+trigger/liq price sits below the current price). `accruedCbBalance(balance, aprPct, asOf)` compounds
+the balance daily from its `asOf` ISO date to now (`null` → unchanged) — feed it in as `loanBalance`
+so LTV reflects accrued debt. Plus `barLevel(ltv, warnAt, actAt)` / `worseLevel(a,b)` for the
+Safe/Watch/Act state line. **Single source** consumed by the Simple Mode `SafetyDashboard` AND the CB
+Loan tab (`CoinbaseLoanMain` `currentLtv`/`autoLiqPrice`, `CoinbaseLoanSidebar` implied liq) — their
+old inline formulas were removed so the figures can't disagree. `LiquidationModeler` keeps its own
+`computeLiquidationAnalysis` (distinct post-repayment *scenario* math, not the current-LTV
+duplication) but now receives `activeLiqPrice` (entered `cbLiquidationPrice` when > 0, else the
+computed `cbMetrics.liqPrice`) as its `liquidationPrice` prop. Imports `CB_LLTV` from `runCoinbaseLoan`
+(no circular dep — runCoinbaseLoan never imports back).
+
 ---
 
 ## Advisor (`runAdvisor.ts`)
@@ -567,8 +601,9 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-150 tests — `npx vitest run` before every commit.
+163 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
+- `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
 - `living.test.ts`
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
@@ -728,7 +763,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 26-field payload from current state, dynamic
+  returns boolean — mirrors `publishRecordsNow`): builds the 29-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
   `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
   retried by `syncNow` exactly like records)
@@ -825,19 +860,21 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 26 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 29 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 26 Synced Settings Fields
+### All 29 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
+`cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
 `pendingCollateralAdjustment`
-(The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
+(The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
+The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
 LWW handles them like income or APR. `advisorChecklist` was REMOVED — per-month ritual ticking is
 multi-writer ephemeral state, incompatible with LWW settings; that's why the skips sync and the
 checklist was deleted. Old remote events missing/carrying extra fields hydrate cleanly: the
@@ -888,7 +925,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
-| Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target). Current store version = 12. Spec B shifts to v13 |
+| Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
+| Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `ltvTriggered` band | Three-threshold band: `cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct` (defaults 55/65/75). Forward rescue (Strike→CB) at/above trigger pays CB down to target; reverse rotation (CB draw→repay Strike) at/below rotate-back fills CB UP TO target; the neutral zone between rotate-back and trigger fires nothing. Reverse rotation is debt-neutral at the instant it fires and capped at `min(Strike balance, CB headroom-to-target)`. The 10-point default buffers prevent month-to-month oscillation. HISTORICAL FIX (v12): the reverse branch was previously mis-keyed to `cbLtvTargetPct` (collapsed the neutral zone → every-month rotation under growth); v12 added the proper `cbRotateBackPct` gate. Projection renders reverse rotation as green `↩` (`.rotateCell`), distinct from amber forward paydown and EXCLUDED from the Option-A trigger row-wash |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
