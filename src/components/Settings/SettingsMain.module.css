@@ -154,6 +154,10 @@
   color: var(--text-ghost);
 }
 
+.readonlyFieldRow   { display: flex; justify-content: space-between; align-items: baseline; }
+.readonlyFieldLabel { font-size: 12px; color: var(--text-muted); }
+.readonlyFieldValue { font-family: monospace; color: var(--text-primary); }
+
 .setupDateInput {
   background: var(--bg-base);
   border: 1px solid var(--border);

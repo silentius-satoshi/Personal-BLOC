@@ -138,6 +138,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
+  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
   const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
   const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
   // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
@@ -276,6 +277,24 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               {currentBtcHeld > 0 ? fmtUSD(creditLine / (currentBtcHeld * STRIKE_MAX_DRAW_LTV)) : '—'}
             </span>
           </div>
+          <div className={styles.setupFieldGroup}>
+            <div className={styles.readonlyFieldRow}>
+              <span className={styles.readonlyFieldLabel}>Initial BTC collateral</span>
+              <span className={styles.readonlyFieldValue}>{advisorActualBtcHeld.toFixed(5)} ₿</span>
+            </div>
+            <span className={styles.fieldHint}>
+              What you started with at month 0 — the fixed baseline. Current collateral grows from here via logged buys and dated adjustments.
+            </span>
+            {(() => {
+              const delta = currentBtcHeld - advisorActualBtcHeld;
+              if (Math.abs(delta) < 1e-8) return null;   // hide when no movement yet
+              return (
+                <span className={styles.fieldHint} style={{ color: 'var(--green)' }}>
+                  {delta > 0 ? '+' : ''}{delta.toFixed(5)} ₿ since start
+                </span>
+              );
+            })()}
+          </div>
           <div
             className={styles.setupFieldGroup}
             onBlur={() => {
@@ -284,7 +303,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             }}
           >
             <NumberInput
-              label="BTC collateral"
+              label="Current BTC collateral"
               value={btcHeldDraft ?? currentBtcHeld}
               onChange={setBtcHeldDraft}
               prefix="₿"

@@ -335,7 +335,7 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment
 
 | Surface | Role |
 |---|---|
-| Settings "BTC collateral" | REALITY — shows current; blur-commit → `adjustCurrentCollateral` |
+| Settings "Current BTC collateral" | REALITY — shows current; blur-commit → `adjustCurrentCollateral`. A read-only "Initial BTC collateral" line (`advisorActualBtcHeld`, the fixed month-0 baseline) sits ABOVE it, plus a green "+X ₿ since start" delta (current − initial, hidden when equal). Initial is read-only BY DESIGN — editing it would re-chain logged history (v4 "never back-solved"); current edits stay dated adjustments. Display-only, store v12 unchanged |
 | Advisor "CURRENT BTC HELD" | REALITY — same pattern |
 | Simple Mode Quick Setup "BTC held" | REALITY — seeds current; save routes through adjust |
 | Simple Mode displays / Liq Sim | REALITY — derives + pending |
