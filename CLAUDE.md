@@ -160,7 +160,13 @@ src/
                                 # months, amber (.triggerCell) on the fired month, + a faint amber row wash
                                 # (.rowTrigger); CB Paydown cell already muted-between-triggers. monthly mode
                                 # unchanged (CB-every-month, tier-colored CB LTV). Reflects the engine's
-                                # event-driven CB (cbTotalPayment=0; paydown only at cbLtvTriggerPct)
+                                # event-driven CB (cbTotalPayment=0; paydown only at cbLtvTriggerPct).
+                                # A LEGEND sits beneath the table (.projLegend, shared → both Advisor tab
+                                # and Simple Mode Outlook): always shows tier pills (T1 red → T4 green) +
+                                # NOW; CB signal entries (amber forward paydown, green ↩ rotation, ⚠ capped,
+                                # amber row-wash swatch) gated on hasCbLoan && cbPaymentStrategy ===
+                                # 'ltvTriggered' (Option B). Swatches reuse the table's own classes so
+                                # colors never drift; only the layout wrappers are new
       AdvisorSidebar.tsx        # BTC LIVE badge, YOUR PROGRESS (start date, BLOC balance,
                                 # BTC held), read-only summaries, priority rules
       AdvisorSidebar.module.css

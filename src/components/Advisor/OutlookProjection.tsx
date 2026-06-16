@@ -247,6 +247,41 @@ export function OutlookProjection({
           </tfoot>
         </table>
       </div>
+
+      <div className={styles.projLegend}>
+        <span className={styles.legendItem}>
+          <span className={`${styles.tierPill} ${styles.tier1}`}>T1</span>
+          <span className={`${styles.tierPill} ${styles.tier2}`}>T2</span>
+          <span className={`${styles.tierPill} ${styles.tier3}`}>T3</span>
+          <span className={`${styles.tierPill} ${styles.tier4}`}>T4</span>
+          <span className={styles.legendLabel}>CB-LTV risk tier (T1 highest → T4 safest)</span>
+        </span>
+        <span className={styles.legendItem}>
+          <span className={styles.nowPill}>NOW</span>
+          <span className={styles.legendLabel}>current month</span>
+        </span>
+
+        {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (
+          <>
+            <span className={styles.legendItem}>
+              <span className={styles.triggerCell}>$0</span>
+              <span className={styles.legendLabel}>CB paydown — Strike defends CB LTV (forward rescue)</span>
+            </span>
+            <span className={styles.legendItem}>
+              <span className={styles.rotateCell}>↩</span>
+              <span className={styles.legendLabel}>rotation — debt shifted to cheaper CB loan</span>
+            </span>
+            <span className={styles.legendItem}>
+              <span className={styles.triggerCell}>⚠</span>
+              <span className={styles.legendLabel}>paydown capped at Strike credit line</span>
+            </span>
+            <span className={styles.legendItem}>
+              <span className={`${styles.legendSwatch} ${styles.rowTrigger}`} />
+              <span className={styles.legendLabel}>row highlighted = CB acted this month</span>
+            </span>
+          </>
+        )}
+      </div>
     </div>
   );
 }

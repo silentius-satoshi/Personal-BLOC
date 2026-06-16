@@ -512,6 +512,12 @@
 .paymentCell  { color: var(--green); }
 .triggerCell  { color: var(--amber); }
 .rotateCell   { color: var(--green); }  /* reverse rotation — cost-saving, distinct from amber forward defense */
+
+/* Projection legend — key beneath the OutlookProjection table (layout-only; swatches reuse table classes) */
+.projLegend   { display: flex; flex-wrap: wrap; gap: 6px 16px; margin-top: 10px; font-size: 11px; color: var(--text-muted); }
+.legendItem   { display: inline-flex; align-items: center; gap: 6px; }
+.legendLabel  { color: var(--text-muted); }
+.legendSwatch { display: inline-block; width: 18px; height: 12px; border-radius: 3px; }  /* .rowTrigger supplies the amber bg when composed */
 .btcCell      { color: var(--green); font-family: 'IBM Plex Mono', monospace; }
 .interestCell { color: var(--orange); }
 .muted        { color: var(--text-faint); }
