@@ -874,3 +874,127 @@
   transition: opacity 0.15s;
 }
 .confirmPrimaryBtn:hover { opacity: 0.88; }
+
+/* ── Monthly Playbook plan card (scrubber + bars + dot-rows + summary) ───────────────────── */
+
+/* Scrubber header */
+.scrubHeader { display: flex; flex-direction: column; gap: 8px; }
+.scrubHeaderTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.scrubTitleGroup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scrubMonthNum { color: var(--orange); }
+.scrubBadge {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  padding: 2px 7px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.scrubBadgeCurrent   { color: var(--green);  border-color: rgba(78,203,130,0.4); }
+.scrubBadgeLogged    { color: var(--text-ghost); border-color: var(--border); }
+.scrubBadgeProjected { color: var(--amber);  border-color: rgba(232,168,74,0.35); }
+.scrubReadout { font-size: 11px; color: var(--text-ghost); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.scrubSlider { width: 100%; accent-color: var(--orange); cursor: pointer; }
+.scrubCaption { font-size: 10px; color: var(--text-faint); text-align: center; }
+
+/* Stacked status bars */
+.planBars { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.planBar { display: flex; flex-direction: column; gap: 4px; }
+.planBarHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.planBarLabel { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+.planBarVal { font-size: 11px; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; }
+.planBarTrack {
+  position: relative;
+  height: 6px;
+  background: rgba(255,255,255,0.06);
+  border-radius: 3px;
+  overflow: hidden;
+}
+.planBarFill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px; transition: width 0.3s, background 0.3s; }
+.planBarMarker {
+  position: absolute;
+  top: -2px;
+  width: 2px;
+  height: 10px;
+  background: var(--text-ghost);
+  transform: translateX(-50%);
+}
+
+/* Three core dot-rows */
+.dotRows { display: flex; flex-direction: column; margin-top: 14px; }
+.dotRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 0;
+  border-top: 1px solid rgba(255,255,255,0.05);
+}
+.dotRow:first-child { border-top: none; }
+.dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.dotGreen { background: var(--green); }
+.dotAmber { background: var(--amber); }
+.dotRed   { background: var(--red); }
+.dotBlue  { background: var(--orange); }
+.dotLabelGroup { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+.dotLabel { font-size: 14px; color: var(--text-primary); }
+.dotSub { font-size: 11px; color: var(--text-ghost); }
+.dotAmount { font-size: 15px; font-weight: 700; color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+
+/* Demoted "this month also" strip */
+.alsoStrip {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 12px;
+  padding: 10px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+}
+.alsoLabel { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
+.alsoRow { display: flex; align-items: center; gap: 8px; }
+.alsoIcon { width: 16px; text-align: center; flex-shrink: 0; font-size: 12px; }
+.alsoText { font-size: 12px; color: var(--text-secondary); flex: 1; min-width: 0; }
+.alsoAmt { font-size: 13px; font-weight: 600; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+
+/* Logged completion note (current month) */
+.loggedNote {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  background: rgba(78,203,130,0.08);
+  border-radius: 8px;
+}
+.loggedNoteIcon { font-size: 16px; color: var(--green); flex-shrink: 0; }
+.loggedNoteText { font-size: 13px; color: var(--text-primary); flex: 1; min-width: 0; }
+
+/* Preview affordances (non-current months) */
+.previewActions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+.previewEditBtn, .backToCurrentBtn {
+  flex: 1;
+  padding: 9px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, color 0.15s;
+}
+.previewEditBtn:hover, .backToCurrentBtn:hover { border-color: var(--orange); color: var(--orange); }
+
+/* Summary paragraph */
+.planSummary {
+  margin: 14px 0 0;
+  padding: 10px 12px;
+  background: rgba(255,255,255,0.03);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}

@@ -150,6 +150,12 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
   const setShowMiningInLog          = useStore((s) => s.setShowMiningInLog);
+  const showPlanIncomeBar           = useStore((s) => s.showPlanIncomeBar);
+  const setShowPlanIncomeBar        = useStore((s) => s.setShowPlanIncomeBar);
+  const showPlanStrikeBar           = useStore((s) => s.showPlanStrikeBar);
+  const setShowPlanStrikeBar        = useStore((s) => s.setShowPlanStrikeBar);
+  const showPlanCbBar               = useStore((s) => s.showPlanCbBar);
+  const setShowPlanCbBar            = useStore((s) => s.setShowPlanCbBar);
 
   const cbLoanBalance         = useStore((s) => s.cbLoanBalance);         const setCbLoanBalance         = useStore((s) => s.setCbLoanBalance);
   const cbCollateralBtc       = useStore((s) => s.cbCollateralBtc);       const setCbCollateralBtc       = useStore((s) => s.setCbCollateralBtc);
@@ -368,6 +374,31 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             </div>
           </div>
         )}
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>MONTHLY PLAN</div>
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>Show income-allocation bar</span>
+              <span className={styles.cbLoanToggleDesc}>In the monthly plan card</span>
+            </div>
+            <Toggle value={showPlanIncomeBar} onChange={setShowPlanIncomeBar} />
+          </div>
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>Show Strike BLOC bar</span>
+              <span className={styles.cbLoanToggleDesc}>In the monthly plan card</span>
+            </div>
+            <Toggle value={showPlanStrikeBar} onChange={setShowPlanStrikeBar} />
+          </div>
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>Show Coinbase loan bar</span>
+              <span className={styles.cbLoanToggleDesc}>In the monthly plan card</span>
+            </div>
+            <Toggle value={showPlanCbBar} onChange={setShowPlanCbBar} />
+          </div>
+        </div>
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>COINBASE LOAN</div>

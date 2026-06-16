@@ -102,6 +102,14 @@ interface StoreState {
   deleteLogEntry:     (month: number) => void;
   setShowMiningInLog: (v: boolean) => void;
 
+  // Simple Mode plan-card status bars — device-local display prefs (NOT synced, like devMode)
+  showPlanIncomeBar:    boolean;
+  showPlanStrikeBar:    boolean;
+  showPlanCbBar:        boolean;
+  setShowPlanIncomeBar: (v: boolean) => void;
+  setShowPlanStrikeBar: (v: boolean) => void;
+  setShowPlanCbBar:     (v: boolean) => void;
+
   // Setters — shared
   setIncome: (v: number) => void;
   setExpenses: (v: number) => void;
@@ -406,6 +414,10 @@ export const useStore = create<StoreState>()(
   monthlyLog:      [],
   showMiningInLog: false,
 
+  showPlanIncomeBar: true,
+  showPlanStrikeBar: true,
+  showPlanCbBar:     true,
+
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
   setBtcPrice: (v) => set({ btcPrice: v }),
@@ -494,6 +506,11 @@ export const useStore = create<StoreState>()(
     if (restoredAdj !== 0) useStore.getState().syncSettingsToNostr();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
+
+  // Device-local display prefs — plain set, NO syncSettingsToNostr (like devMode)
+  setShowPlanIncomeBar: (v) => set({ showPlanIncomeBar: v }),
+  setShowPlanStrikeBar: (v) => set({ showPlanStrikeBar: v }),
+  setShowPlanCbBar:     (v) => set({ showPlanCbBar: v }),
 
   converterActiveField: 'sats',
   converterRawValue:    '0',
@@ -619,7 +636,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 13,
+      version: 14,
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
@@ -652,6 +669,9 @@ export const useStore = create<StoreState>()(
           btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
           lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
           nostrLogin:           persistedState.nostrLogin         ?? null,
+          showPlanIncomeBar:    persistedState.showPlanIncomeBar ?? true,
+          showPlanStrikeBar:    persistedState.showPlanStrikeBar ?? true,
+          showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
         };
       },
       onRehydrateStorage: () => (state) => {

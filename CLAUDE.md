@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (163 tests — all must pass before every commit)
+- Vitest (179 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -199,15 +199,21 @@ src/
                                 # when ndp.status !== 'ok' — checking it stamps ndpLastPaidDate at log time)
                                 # → handleApply(confirmedExpenses, confirmedBtcBought) writes the confirmed
                                 # bought value to MonthlyLogEntry.btcBought (not the hardwired projection).
-                                # Plan card = read-only amounts + pure
-                                # Pay/Skip toggles on advisorSkip* (same semantics as AdvisorMain); fiat +
-                                # NDP rows informational (no pills). THIS MONTH = entry actuals when logged
-                                # (currentEntry.btcBought), (proj)-labeled projections otherwise — never
-                                # tap state. Log carousel = 4-state badges (logged/current/unlogged/future);
-                                # it is the interaction center. MonthlyLogSection allowInlineLog=false.
-                                # Completion card keys on isLogged (monthlyLog.some(e => e.month ===
-                                # currentMonth)); log button all active year (gated !strategyDone); Undo
-                                # UNLOGS via deleteLogEntry. No checklist (removed; see Synced Settings).
+                                # Plan card = "Monthly Playbook": a month SCRUBBER (1–12, selectedMonth,
+                                # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
+                                # carousel) in the header, three stacked status bars (Income / Strike / CB —
+                                # toggle-gated by showPlan*Bar), a colored-dot 3-row action layout (Buy
+                                # Bitcoin / Monthly Draw / Interest; + a Pay-Coinbase row in monthly CB
+                                # mode), a demoted "this month also" strip (CB alert / capped / rotation /
+                                # fiat-gap / NDP), and a plain-English summary paragraph. PROJECTION-VS-
+                                # REALITY SPLIT (simpleModePlan.ts): isCurrent (selectedMonth === currentMonth)
+                                # → operate console (Pay/Skip pills + Log active; SKIP-ADJUSTED reality — bars
+                                # read allocatedFromIncome/eomLtv + a skip-aware EoM CB LTV, summary branches
+                                # on advisorSkip*); other months → read-only preview of the UNSKIPPED
+                                # deriveForMonth projection (logged → actuals + "✎ Edit this month" overlay;
+                                # "← back to current month"). Log button gated isCurrent && !strategyDone;
+                                # a logged current month shows a ✓ note + Undo (deleteLogEntry). MonthlyLog-
+                                # Section kept for the Advisor tab. No checklist (removed; see Synced Settings).
                                 # Quick Setup modal ALWAYS reachable ("⚙ Edit your numbers" once
                                 # established, first-run copy while isDefaultSetup). This Month / Outlook
                                 # segmented control (gated !strategyDone): This Month = console + a
@@ -601,8 +607,10 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-163 tests — `npx vitest run` before every commit.
+179 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
+- `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
+- `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
 - `living.test.ts`
 - `mining.test.ts`
@@ -643,9 +651,10 @@ reports should include the Copy Diagnostics output from the failing device.
 
 **Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS / the
 publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
-publish or clobber across devices): `devMode` and `expenseReanchorDismissedAt` (the Outlook re-anchor
-dismissal watermark, spec §9). New per-device prefs follow this pattern, NOT the in-memory exclusion
-list (which is for transient fields like `nostrSyncing`/`sandboxCollateralBtc`).
+publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
+dismissal watermark, spec §9), and `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
+plan-card status-bar visibility, default true). New per-device prefs follow this pattern, NOT the
+in-memory exclusion list (which is for transient fields like `nostrSyncing`/`sandboxCollateralBtc`).
 
 **Dev mode:** 5 taps on the Settings Build row toggles `devMode` (persisted, DEVICE-LOCAL — never synced,
 not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe
@@ -925,6 +934,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
+| Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |

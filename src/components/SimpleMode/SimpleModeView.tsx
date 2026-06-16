@@ -1,18 +1,24 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
-import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus, type AdvisorTier } from '../../simulation/runAdvisor';
+import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
-import { classifyLtv } from '../../simulation/runCoinbaseLoan';
+import { classifyLtv, CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { deriveForMonth, isOperatingMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
-import { MonthlyLogSection } from '../Advisor/MonthlyLogSection';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
-import { accruedCbBalance } from '../../simulation/cbMetrics';
+import { accruedCbBalance, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
+
+const LEVEL_COLOR: Record<SafetyLevel, string> = {
+  safe:  'var(--green)',
+  watch: 'var(--amber)',
+  act:   'var(--red)',
+};
 
 interface SimpleModeViewProps {
   onOpenSettings: () => void;
@@ -187,6 +193,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const setAdvisorSkipBtcBuying = useStore((s) => s.setAdvisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
+  const strikeLiquidationLtvPct = useStore((s) => s.strikeLiquidationLtvPct);
+  const showPlanIncomeBar       = useStore((s) => s.showPlanIncomeBar);
+  const showPlanStrikeBar       = useStore((s) => s.showPlanStrikeBar);
+  const showPlanCbBar           = useStore((s) => s.showPlanCbBar);
+
   const setSimpleMode = useStore((s) => s.setSimpleMode);
 
   const setIncome     = useStore((s) => s.setIncome);
@@ -201,8 +212,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const upsertLogEntry   = useStore((s) => s.upsertLogEntry);
   const deleteLogEntry   = useStore((s) => s.deleteLogEntry);
 
-  // Feature 2
-  const [showTierTip, setShowTierTip] = useState(false);
   // Change 1 (iter 2) — setup modal
   const [showSetupModal, setShowSetupModal] = useState(false);
   const [modalDraft, setModalDraft] = useState({
@@ -223,6 +232,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
   // This Month (operating console) / Outlook (shared scenario projection)
   const [simpleSegment, setSimpleSegment] = useState<'thisMonth' | 'outlook'>('thisMonth');
+  // Plan-card month scrubber — defaults to "now"; snaps to currentMonth when the real month advances,
+  // free scrubbing within a session (see effect below).
+  const [selectedMonth, setSelectedMonth] = useState(() => getCurrentStrategyMonth(advisorStartDate));
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
@@ -282,7 +294,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const expectedCbPayment = advisorSkipCbPayment ? 0 : (currentRow?.cbPayment ?? 0);
   const expectedBtcBuying = advisorSkipBtcBuying ? 0
     : currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
-  const showFiatRow = expectedFiatGap > 0;
 
   // Change 3 — effective amounts (override when user enters custom)
   const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
@@ -319,25 +330,83 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : 0;
   const cbBufferAffordable = cbPaydownBuffer <= Math.max(0, creditLine - advisorActualBlocBalance);
   const isFullyAllocated   = income > 0 && Math.abs(income - allocatedFromIncome) < 1;
-  const tierStatusText: Record<AdvisorTier, string> = {
-    4: 'SAFE', 3: 'WATCH', 2: 'WARNING', 1: 'EMERGENCY',
-  };
+
+  // ── Month scrubber — projection-vs-reality split (spec v2) ─────────────────────────────────
+  // Snap the selection to "now" whenever the real month advances; free scrubbing within a session.
+  useEffect(() => { setSelectedMonth(currentMonth); }, [currentMonth]);
+
+  const isCurrent     = isOperatingMonth(selectedMonth, currentMonth);
+  const selectedRow   = advisorRows.find((r) => r.month === selectedMonth) ?? currentRow;
+  const selectedEntry = monthlyLog.find((e) => e.month === selectedMonth);
+  const selectedPlan  = selectedRow ? deriveForMonth(selectedRow, income, hasCbLoan, cbPaymentStrategy) : null;
+
+  // Skip-aware EoM CB LTV for the CURRENT month: in monthly mode a skipped payment leaves the balance
+  // un-paid → use the start-of-month CB LTV; otherwise the advisor's post-payment cbLtv stands.
+  // (ltvTriggered CB is event-driven, never income-skipped.)
+  const eomCbLtv = !hasCbLoan ? 0
+    : (cbPaymentStrategy === 'monthly' && advisorSkipCbPayment)
+      ? currentCbLtv
+      : (currentRow?.cbLtv ?? currentCbLtv);
+
+  // Bar inputs for the SELECTED month — current = skip-adjusted reality; other = projection / actuals.
+  const barStrikeLtv = isCurrent ? eomLtv
+    : selectedEntry ? selectedEntry.strikeLtv
+    : (selectedRow?.blocLtv ?? 0);
+  const barCbLtv = isCurrent ? eomCbLtv
+    : selectedEntry ? (selectedEntry.cbLtv ?? 0)
+    : (selectedRow?.cbLtv ?? 0);
+  const barAllocated = isCurrent ? allocatedFromIncome : (selectedPlan?.allocatedFromIncome ?? 0);
+  const barAllocFull = isCurrent ? isFullyAllocated   : (selectedPlan?.isFullyAllocated ?? false);
+  const selectedBtcHeld = isCurrent ? eomBtcHeld
+    : selectedEntry ? selectedEntry.btcHeld
+    : (selectedRow?.btcHeld ?? eomBtcHeld);
+
+  // Action-row display values for the SELECTED month.
+  const rowDrawUsd  = isCurrent ? effectiveDrawAmount : (selectedPlan?.blocDraw ?? 0);
+  const rowBtcAmt   = isCurrent ? effectiveBtcAmount
+    : selectedEntry ? selectedEntry.btcBought
+    : (selectedPlan?.btcBought ?? 0);
+  const rowBtcUsd   = isCurrent ? expectedBtcBuying
+    : selectedEntry ? selectedEntry.btcBought * btcPrice
+    : (selectedPlan?.btcBoughtUsd ?? 0);
+  const rowInterest = isCurrent ? (currentRow?.blocInterest ?? 0) : (selectedRow?.blocInterest ?? 0);
+  const rowCbPayUsd = isCurrent ? expectedCbPayment : (selectedPlan?.cbPayment ?? 0);
+
+  // Demoted "this month also" strip reads the SELECTED row's flags (scrubbing shows that month's alerts).
+  const sCbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.cbLtvTriggered;
+  const sCapped      = sCbTriggered && !!selectedRow?.cbPaydownCapped;
+  const sRepayFired  = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.strikeRepayFired;
+  const sFiatGap     = isCurrent ? expectedFiatGap : (selectedRow?.fiatGap ?? 0);
+
+  const summaryText = composeMonthSummary({
+    month: selectedMonth, isCurrent, isLogged: !!selectedEntry, hasCbLoan,
+    cbLtv: barCbLtv, triggerPct: cbLtvTriggerPct,
+    draw: rowDrawUsd, btcBoughtUsd: rowBtcUsd, cbPayment: rowCbPayUsd,
+    rotationFired: sRepayFired, rotationAmount: selectedRow?.strikeRepayDraw ?? 0,
+    interest: rowInterest,
+    skipDraw: advisorSkipBlocDraw,
+    skipBtc:  advisorSkipBtcBuying,
+    skipCb:   advisorSkipCbPayment && cbPaymentStrategy === 'monthly',
+    unallocated: Math.max(0, income - allocatedFromIncome),
+  });
+
+  // Bar fill % + shared barLevel color language.
+  const clampPct = (frac: number) => Math.max(0, Math.min(100, frac * 100));
+  const strikeLiqFrac = strikeLiquidationLtvPct / 100;
+  const cbTriggerFrac = cbLtvTriggerPct / 100;
+  const incomeFillPct = income > 0 ? clampPct(barAllocated / income) : 0;
+  const strikeFillPct = strikeLiqFrac > 0 ? clampPct(barStrikeLtv / strikeLiqFrac) : 0;
+  const cbFillPct     = clampPct(barCbLtv / CB_LLTV);
+  const strikeLevel   = barLevel(barStrikeLtv, strikeLiqFrac * 0.6, strikeLiqFrac * 0.8);
+  const cbLevel       = barLevel(barCbLtv, cbTriggerFrac * 0.85, cbTriggerFrac);
 
   const ndpActionActive = ndp.status !== 'ok';
   // NDP recording happens at log time via the confirm sheet (no stored intent flag)
   const [ndpPayThisMonth, setNdpPayThisMonth] = useState(false);
 
-  const tierBadgeClass = styles[`tier${currentTier}`];
   const cardTierClass  = styles[`cardTier${currentTier}`];
 
   const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
-
-  const tierTip: Record<AdvisorTier, string> = {
-    4: 'Safe — full BTC buying strategy active',
-    3: 'Watch — CB LTV elevated, extra payment directed there',
-    2: 'Warning — BLOC draw halved, 50% income to CB paydown',
-    1: 'Emergency — stop BLOC draws, all income to CB paydown',
-  };
 
   const openSetupModal = () => {
     setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: currentBtcHeld });
@@ -597,216 +666,243 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </div>
         )}
 
-        {/* Plan / completion card */}
-        {isLogged ? (
-          <div className={`${styles.card} ${styles.cardDone}`}>
-            <div className={styles.doneIcon}>✓</div>
-            <h3 className={styles.doneTitle}>Month {currentMonth} logged ✓</h3>
-            <p className={styles.doneSub}>
-              {strategyDone
-                ? 'Year complete — update your start date in Settings to begin Year 2'
-                : `Come back next month`
-              }
-            </p>
-            <button
-              className={styles.undoBtn}
-              onClick={() => deleteLogEntry(currentMonth)}
-            >
-              ← Undo
-            </button>
-          </div>
-        ) : (
-          <div className={`${styles.card} ${cardTierClass}`}>
-            {/* Header */}
-            <div className={styles.planTitleRow}>
-              <div>
-                <h3 className={styles.planTitle}>Month {currentMonth} — This Month's Plan</h3>
-                <div className={styles.planSubtitle}>
-                  BLOC: {fmtUSD(eomBlocBalance)} · BTC: {eomBtcHeld.toFixed(5)}
-                </div>
-              </div>
-              <button
-                className={`${styles.tierBadgeFull} ${hasCbLoan && cbPaymentStrategy === 'ltvTriggered' ? styles.tier4 : tierBadgeClass}`}
-                onClick={() => setShowTierTip((v) => !v)}
-              >
-                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
-                  ? `LTV-TRIGGERED — ${cbLtvTriggerPct}% TRIGGER / ${cbLtvTargetPct}% TARGET`
-                  : `TIER ${currentTier} — ${tierStatusText[currentTier]}`}
-              </button>
-            </div>
-            {showTierTip && (
-              <p className={styles.tierTip}>
-                {hasCbLoan ? tierTip[currentTier] : 'BLOC strategy running normally'}
-              </p>
-            )}
+        {/* Plan card — Monthly Playbook with month scrubber (projection-vs-reality split) */}
+        <div className={`${styles.card} ${isCurrent && !isLogged ? cardTierClass : ''}`}>
 
-            {/* Section 1: FROM CREDIT LINE */}
-            {expectedBlocDraw > 0 && (
-              <div className={styles.planSection}>
-                <div className={styles.sectionLabelRow}>
-                  <span className={styles.sectionLabel}>FROM CREDIT LINE</span>
-                </div>
-                <div className={styles.actionRow}>
-                  <span className={styles.actionIcon}>▤</span>
-                  <div className={styles.actionLabelGroup}>
-                    <span className={styles.actionLabel}>Draw from BLOC</span>
-                    <span className={styles.actionSub}>covers monthly expenses</span>
+          {/* Scrubber header */}
+          <div className={styles.scrubHeader}>
+            <div className={styles.scrubHeaderTop}>
+              <div className={styles.scrubTitleGroup}>
+                <h3 className={styles.planTitle}>
+                  Month <span className={styles.scrubMonthNum}>{selectedMonth}</span> of 12
+                </h3>
+                <span className={`${styles.scrubBadge} ${
+                  isCurrent ? styles.scrubBadgeCurrent
+                  : selectedEntry ? styles.scrubBadgeLogged
+                  : styles.scrubBadgeProjected
+                }`}>
+                  {isCurrent ? 'CURRENT' : selectedEntry ? '✓ LOGGED' : 'PROJECTED'}
+                </span>
+              </div>
+              <div className={styles.scrubReadout}>
+                LTV {(barStrikeLtv * 100).toFixed(1)}% · ₿ {selectedBtcHeld.toFixed(5)}
+              </div>
+            </div>
+            <input
+              type="range"
+              className={styles.scrubSlider}
+              min={1} max={12} step={1}
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(Number(e.target.value))}
+              aria-label="Scrub through months"
+            />
+            <span className={styles.scrubCaption}>Drag to scrub through any month</span>
+          </div>
+
+          {/* Stacked status bars — selected month's projection; current = skip-adjusted reality */}
+          {(showPlanIncomeBar || showPlanStrikeBar || (showPlanCbBar && hasCbLoan)) && (
+            <div className={styles.planBars}>
+              {showPlanIncomeBar && (
+                <div className={styles.planBar}>
+                  <div className={styles.planBarHead}>
+                    <span className={styles.planBarLabel}>INCOME ALLOCATION</span>
+                    <span className={styles.planBarVal}>{fmtUSD(barAllocated)} / {fmtUSD(income)}{barAllocFull ? ' ✓' : ''}</span>
                   </div>
-                  <span className={styles.actionAmount}>
-                    {advisorSkipBlocDraw ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(effectiveDrawAmount)}
-                  </span>
-                  <div className={styles.paySkipGroup}>
-                    <button
-                      className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`}
-                      onClick={() => setAdvisorSkipBlocDraw(false)}
-                    >Pay</button>
-                    <button
-                      className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`}
-                      onClick={() => setAdvisorSkipBlocDraw(true)}
-                    >Skip</button>
+                  <div className={styles.planBarTrack}>
+                    <div className={styles.planBarFill} style={{ width: `${incomeFillPct}%`, background: barAllocFull ? 'var(--green)' : 'var(--amber)' }} />
                   </div>
                 </div>
-                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.cbLtvTriggered && (
-                  <div className={styles.actionRow}>
-                    <span className={styles.actionIcon}>⚠</span>
-                    <div className={styles.actionLabelGroup}>
-                      <span className={styles.actionLabel}>CB LTV alert — draw from BLOC to pay down CB</span>
-                    </div>
-                    <span className={styles.actionAmount} style={{ color: 'var(--amber)' }}>
-                      {fmtUSD(currentRow.cbPaydownDraw)}
+              )}
+              {showPlanStrikeBar && (
+                <div className={styles.planBar}>
+                  <div className={styles.planBarHead}>
+                    <span className={styles.planBarLabel}>STRIKE BLOC</span>
+                    <span className={styles.planBarVal}>{(barStrikeLtv * 100).toFixed(1)}% LTV</span>
+                  </div>
+                  <div className={styles.planBarTrack}>
+                    <div className={styles.planBarFill} style={{ width: `${strikeFillPct}%`, background: LEVEL_COLOR[strikeLevel] }} />
+                    <div className={styles.planBarMarker} style={{ left: '100%' }} />
+                  </div>
+                </div>
+              )}
+              {showPlanCbBar && hasCbLoan && (
+                <div className={styles.planBar}>
+                  <div className={styles.planBarHead}>
+                    <span className={styles.planBarLabel}>COINBASE LOAN</span>
+                    <span className={styles.planBarVal}>{(barCbLtv * 100).toFixed(1)}% LTV</span>
+                  </div>
+                  <div className={styles.planBarTrack}>
+                    <div className={styles.planBarFill} style={{ width: `${cbFillPct}%`, background: LEVEL_COLOR[cbLevel] }} />
+                    <div className={styles.planBarMarker} style={{ left: `${clampPct(cbTriggerFrac / CB_LLTV)}%` }} />
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Body — logged completion (current), else action rows (operate or preview) */}
+          {isCurrent && isLogged ? (
+            <div className={styles.loggedNote}>
+              <span className={styles.loggedNoteIcon}>✓</span>
+              <span className={styles.loggedNoteText}>
+                Month {currentMonth} logged — {strategyDone ? 'year complete' : 'come back next month'}
+              </span>
+              <button className={styles.undoBtn} onClick={() => deleteLogEntry(currentMonth)}>← Undo</button>
+            </div>
+          ) : (
+            <>
+              <div className={styles.dotRows}>
+                {/* Buy Bitcoin */}
+                <div className={styles.dotRow}>
+                  <span className={`${styles.dot} ${styles.dotGreen}`} />
+                  <div className={styles.dotLabelGroup}>
+                    <span className={styles.dotLabel}>Buy Bitcoin</span>
+                    <span className={styles.dotSub}>
+                      {isCurrent && advisorSkipBtcBuying ? 'skipped this month' : `~${fmtUSD(rowBtcUsd)} of income`}
                     </span>
                   </div>
-                )}
-                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.cbLtvTriggered && currentRow.cbPaydownCapped && (
-                  <div className={styles.actionRow}>
-                    <span className={styles.actionIcon}>⚠</span>
-                    <div className={styles.actionLabelGroup}>
-                      <span className={styles.actionLabel} style={{ color: 'var(--amber)' }}>
-                        Paydown capped — Strike credit line reached · {fmtUSD(currentRow.cbPaydownShortfall)} shortfall
-                      </span>
-                    </div>
-                  </div>
-                )}
-                {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
-                  <div className={styles.actionRow} style={{ color: 'var(--green)' }}>
-                    <span className={styles.actionIcon}>↩</span>
-                    <div className={styles.actionLabelGroup}>
-                      <span className={styles.actionLabel}>Rotate to cheap debt — Strike repaid</span>
-                      <span className={styles.actionSub}>saves ~{fmtUSD(currentRow.strikeRepayDraw * (blocApr - cbAprPct) / 100)}/yr</span>
-                    </div>
-                    <span className={styles.actionAmount}>{fmtUSD(currentRow.strikeRepayDraw)}</span>
-                  </div>
-                )}
-                {showFiatRow && (
-                  <div className={styles.actionRow}>
-                    <span className={styles.actionIcon}>≡</span>
-                    <div className={styles.actionLabelGroup}>
-                      <span className={styles.actionLabel}>Cover from savings</span>
-                      <span className={styles.actionSub}>
-                        {advisorSkipBlocDraw
-                          ? '(BLOC draw skipped)'
-                          : hasCbLoan && cbPaymentStrategy === 'monthly' && (currentTier === 1 || currentTier === 2)
-                            ? '(BLOC draw limited by CB priority rules)'
-                            : '(credit line fully drawn)'}
-                      </span>
-                    </div>
-                    <span className={styles.actionAmount}>{fmtUSD(expectedFiatGap)}</span>
-                  </div>
-                )}
-                {ndpActionActive && (
-                  <div className={styles.actionRow}>
-                    <span className={styles.actionIcon}>⚡</span>
-                    <div className={styles.actionLabelGroup}>
-                      <span className={styles.actionLabel}>
-                        {ndp.status === 'never'
-                          ? '⚠ Non-draw payment — not yet recorded'
-                          : ndp.status === 'overdue'
-                            ? '⚠ NDP overdue — pay Strike now'
-                            : `⚠ Non-draw payment due in ${ndp.daysRemaining}d`}
-                      </span>
-                      {ndpMinimum > 0 && <span className={styles.actionSub}>~{fmtUSD(ndpMinimum)} minimum</span>}
-                    </div>
-                  </div>
-                )}
-              </div>
-            )}
-
-            {/* Section 2: FROM MONTHLY INCOME */}
-            <div className={styles.planSection}>
-              <div className={styles.sectionLabelRow}>
-                <span className={styles.sectionLabel}>FROM MONTHLY INCOME</span>
-                <span className={styles.sectionIncome}>{fmtUSD(income)}/mo</span>
-              </div>
-              {expectedPaydown > 0 && (
-                <div className={styles.actionRow}>
-                  <span className={styles.actionIcon}>⚡</span>
-                  <div className={styles.actionLabelGroup}>
-                    <span className={styles.actionLabel}>BLOC paydown (LTV triggered)</span>
-                  </div>
-                  <span className={styles.actionAmount}>{fmtUSD(expectedPaydown)}</span>
-                </div>
-              )}
-              {hasCbLoan && cbPaymentStrategy === 'monthly' && (
-                <div className={styles.actionRow}>
-                  <span className={styles.actionIcon}>◎</span>
-                  <div className={styles.actionLabelGroup}>
-                    <span className={styles.actionLabel}>Pay CB Loan</span>
-                  </div>
-                  <span className={styles.actionAmount}>
-                    {advisorSkipCbPayment ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(expectedCbPayment)}
+                  <span className={styles.dotAmount}>
+                    {isCurrent && advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${rowBtcAmt.toFixed(5)} ₿`}
                   </span>
-                  <div className={styles.paySkipGroup}>
-                    <button
-                      className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`}
-                      onClick={() => setAdvisorSkipCbPayment(false)}
-                    >Pay</button>
-                    <button
-                      className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`}
-                      onClick={() => setAdvisorSkipCbPayment(true)}
-                    >Skip</button>
+                  {isCurrent && (
+                    <div className={styles.paySkipGroup}>
+                      <button className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBtcBuying(false)}>Pay</button>
+                      <button className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBtcBuying(true)}>Skip</button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Monthly Draw */}
+                {rowDrawUsd > 0 && (
+                  <div className={styles.dotRow}>
+                    <span className={`${styles.dot} ${styles.dotAmber}`} />
+                    <div className={styles.dotLabelGroup}>
+                      <span className={styles.dotLabel}>Monthly Draw</span>
+                      <span className={styles.dotSub}>living expenses, from BLOC</span>
+                    </div>
+                    <span className={styles.dotAmount}>
+                      {isCurrent && advisorSkipBlocDraw ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowDrawUsd)}
+                    </span>
+                    {isCurrent && (
+                      <div className={styles.paySkipGroup}>
+                        <button className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBlocDraw(false)}>Pay</button>
+                        <button className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBlocDraw(true)}>Skip</button>
+                      </div>
+                    )}
                   </div>
+                )}
+
+                {/* Pay Coinbase loan — monthly CB mode only (preserves the Skip-CB control) */}
+                {hasCbLoan && cbPaymentStrategy === 'monthly' && rowCbPayUsd > 0 && (
+                  <div className={styles.dotRow}>
+                    <span className={`${styles.dot} ${styles.dotBlue}`} />
+                    <div className={styles.dotLabelGroup}>
+                      <span className={styles.dotLabel}>Pay Coinbase loan</span>
+                      <span className={styles.dotSub}>from monthly income</span>
+                    </div>
+                    <span className={styles.dotAmount}>
+                      {isCurrent && advisorSkipCbPayment ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowCbPayUsd)}
+                    </span>
+                    {isCurrent && (
+                      <div className={styles.paySkipGroup}>
+                        <button className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipCbPayment(false)}>Pay</button>
+                        <button className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipCbPayment(true)}>Skip</button>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Interest /mo — informational, no pill */}
+                {rowInterest > 0 && (
+                  <div className={styles.dotRow}>
+                    <span className={`${styles.dot} ${styles.dotRed}`} />
+                    <div className={styles.dotLabelGroup}>
+                      <span className={styles.dotLabel}>Interest /mo</span>
+                      <span className={styles.dotSub}>capitalizes onto your BLOC balance</span>
+                    </div>
+                    <span className={styles.dotAmount}>{fmtUSD(rowInterest)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Demoted "this month also" strip */}
+              {(sCbTriggered || sCapped || sRepayFired || sFiatGap > 0 || (isCurrent && ndpActionActive)) && (
+                <div className={styles.alsoStrip}>
+                  <span className={styles.alsoLabel}>THIS MONTH ALSO</span>
+                  {sCbTriggered && (
+                    <div className={styles.alsoRow}>
+                      <span className={styles.alsoIcon}>⚠</span>
+                      <span className={styles.alsoText}>CB LTV alert — draw from BLOC to pay down CB</span>
+                      <span className={styles.alsoAmt} style={{ color: 'var(--amber)' }}>{fmtUSD(selectedRow?.cbPaydownDraw ?? 0)}</span>
+                    </div>
+                  )}
+                  {sCapped && (
+                    <div className={styles.alsoRow}>
+                      <span className={styles.alsoIcon}>⚠</span>
+                      <span className={styles.alsoText} style={{ color: 'var(--amber)' }}>
+                        Paydown capped — credit line reached · {fmtUSD(selectedRow?.cbPaydownShortfall ?? 0)} shortfall
+                      </span>
+                    </div>
+                  )}
+                  {sRepayFired && (
+                    <div className={styles.alsoRow} style={{ color: 'var(--green)' }}>
+                      <span className={styles.alsoIcon}>↩</span>
+                      <span className={styles.alsoText}>
+                        Rotate to cheap debt — saves ~{fmtUSD((selectedRow?.strikeRepayDraw ?? 0) * (blocApr - cbAprPct) / 100)}/yr
+                      </span>
+                      <span className={styles.alsoAmt}>{fmtUSD(selectedRow?.strikeRepayDraw ?? 0)}</span>
+                    </div>
+                  )}
+                  {sFiatGap > 0 && (
+                    <div className={styles.alsoRow}>
+                      <span className={styles.alsoIcon}>≡</span>
+                      <span className={styles.alsoText}>Cover from savings</span>
+                      <span className={styles.alsoAmt}>{fmtUSD(sFiatGap)}</span>
+                    </div>
+                  )}
+                  {isCurrent && ndpActionActive && (
+                    <div className={styles.alsoRow}>
+                      <span className={styles.alsoIcon}>⚡</span>
+                      <span className={styles.alsoText}>
+                        {ndp.status === 'never' ? 'Non-draw payment — not yet recorded'
+                          : ndp.status === 'overdue' ? 'NDP overdue — pay Strike now'
+                          : `Non-draw payment due in ${ndp.daysRemaining}d`}
+                        {ndpMinimum > 0 ? ` · ~${fmtUSD(ndpMinimum)} min` : ''}
+                      </span>
+                    </div>
+                  )}
                 </div>
               )}
-              <div className={styles.actionRow}>
-                <span className={styles.actionIcon}>₿</span>
-                <div className={styles.actionLabelGroup}>
-                  <span className={styles.actionLabel}>Buy Bitcoin</span>
-                  <span className={styles.actionSub}>→ ~{fmtUSD(expectedBtcBuying)} est.</span>
-                </div>
-                <span className={styles.actionAmount}>
-                  {advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${effectiveBtcAmount.toFixed(5)} ₿`}
-                </span>
-                <div className={styles.paySkipGroup}>
-                  <button
-                    className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`}
-                    onClick={() => setAdvisorSkipBtcBuying(false)}
-                  >Pay</button>
-                  <button
-                    className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`}
-                    onClick={() => setAdvisorSkipBtcBuying(true)}
-                  >Skip</button>
-                </div>
-              </div>
-            </div>
 
-            {/* Income allocated banner */}
-            <div className={`${styles.incomeAllocBanner} ${isFullyAllocated ? styles.allocGreen : styles.allocAmber}`}>
-              <span className={styles.allocLabel}>Income allocated:</span>
-              <span className={`${styles.allocValue} ${isFullyAllocated ? styles.allocValueGreen : styles.allocValueAmber}`}>
-                {fmtUSD(allocatedFromIncome)} of {fmtUSD(income)}{isFullyAllocated ? ' ✓' : ''}
-              </span>
-            </div>
+              {/* Log button — current month only */}
+              {isCurrent && !strategyDone && (
+                <button
+                  className={styles.logThisMonthBtn}
+                  onClick={() => { setConfirmExpenses(expenses); setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setShowConfirmSheet(true); }}
+                >
+                  Log this month & continue
+                </button>
+              )}
 
-            {!strategyDone && (
-              <button
-                className={styles.logThisMonthBtn}
-                onClick={() => { setConfirmExpenses(expenses); setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setShowConfirmSheet(true); }}
-              >
-                Log this month & continue
-              </button>
-            )}
-          </div>
-        )}
+              {/* Preview affordances — non-current months */}
+              {!isCurrent && (
+                <div className={styles.previewActions}>
+                  {selectedEntry && (
+                    <button className={styles.previewEditBtn} onClick={() => { setLogOverlayInitialMonth(selectedMonth); setLogOverlayOpen(true); }}>
+                      ✎ Edit this month
+                    </button>
+                  )}
+                  <button className={styles.backToCurrentBtn} onClick={() => setSelectedMonth(currentMonth)}>
+                    ← Back to current month
+                  </button>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Summary paragraph */}
+          <p className={styles.planSummary}>{summaryText}</p>
+        </div>
 
         {/* Next-month preview (§8) */}
         {!strategyDone && nextRow && (
@@ -814,16 +910,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             Next month: draw ~{fmtUSD(nextRow.blocDraw)} · buy ~{nextRow.btcBought.toFixed(5)} ₿
           </p>
         )}
-
-        {/* Monthly Log section */}
-        <MonthlyLogSection
-          allowInlineLog={false}
-          months={advisorRows}
-          onOpenOverlay={(idx) => {
-            setLogOverlayInitialMonth(idx);
-            setLogOverlayOpen(true);
-          }}
-        />
 
         {/* Change 1 (iter 2) — setup prompt + modal (always reachable; first-run copy when defaults) */}
         <>
