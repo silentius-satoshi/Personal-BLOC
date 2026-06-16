@@ -77,14 +77,6 @@ export function InputsPanel() {
           ) : (
             <>
               <p className={styles.strikeBalanceValue}>{fmtUSD(strikeUsdBalance ?? 0)}</p>
-              {strikeBtcAvailable !== null && (
-                <p className={styles.strikeBtcDryPowder}>
-                  {strikeBtcAvailable.toFixed(8)} ₿ <span className={styles.strikeBtcDryPowderSub}>dry powder</span>
-                  {btcPrice > 0 && (
-                    <span className={styles.strikeBtcDryPowderUsd}> · ~{fmtUSD(strikeBtcAvailable * btcPrice)}</span>
-                  )}
-                </p>
-              )}
               {netBlocDraw !== null && netBlocDraw < expenses && (
                 <p className={styles.strikeNetDraw}>
                   Draw only {fmtUSD(netBlocDraw)} this month
@@ -107,6 +99,30 @@ export function InputsPanel() {
                 ({strikeRate > btcPrice ? '+' : ''}{((strikeRate - btcPrice) / btcPrice * 100).toFixed(2)}% vs Coinbase)
               </span>
             </p>
+          )}
+        </div>
+
+        <div className={styles.strikeWidget}>
+          <div className={styles.strikeWidgetHeader}>
+            <span className={styles.strikeWidgetLabel}>STRIKE BTC DRY POWDER</span>
+            <span className={strikeApiConnected ? styles.strikeDotConnected : styles.strikeDotDisconnected} />
+          </div>
+
+          {!strikeApiConnected || strikeBtcAvailable === null ? (
+            <p className={styles.strikePlaceholder}>—</p>
+          ) : (
+            <>
+              <p className={styles.strikeBalanceValue}>{strikeBtcAvailable.toFixed(8)} ₿</p>
+              {btcPrice > 0 && (
+                <p className={styles.strikeBtcDryPowderUsd}>~{fmtUSD(strikeBtcAvailable * btcPrice)}</p>
+              )}
+              <p className={styles.strikeDryPowderNote}>spendable — not collateral</p>
+              {strikeLastFetched && (
+                <p className={styles.strikeLastUpdated}>
+                  updated {Math.round((Date.now() - strikeLastFetched) / 1000)}s ago
+                </p>
+              )}
+            </>
           )}
         </div>
 

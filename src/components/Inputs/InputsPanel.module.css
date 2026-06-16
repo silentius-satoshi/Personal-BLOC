@@ -240,22 +240,17 @@
   margin: 0;
 }
 
-.strikeBtcDryPowder {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-secondary);
-  margin: 2px 0 0;
-}
-
-.strikeBtcDryPowderSub {
+.strikeBtcDryPowderUsd {
   font-size: 11px;
   font-weight: 400;
   color: var(--text-faint);
+  margin: 2px 0 0;
 }
 
-.strikeBtcDryPowderUsd {
-  font-weight: 400;
+.strikeDryPowderNote {
+  font-size: 11px;
   color: var(--text-faint);
+  margin-top: 2px;
 }
 
 .strikeNetDraw {
