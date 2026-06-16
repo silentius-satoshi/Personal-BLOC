@@ -750,7 +750,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.loggedNoteText}>
                 Month {currentMonth} logged — {strategyDone ? 'year complete' : 'come back next month'}
               </span>
-              <button className={styles.undoBtn} onClick={() => { setLogOverlayInitialMonth(currentMonth); setLogOverlayOpen(true); }}>
+              <button className={styles.undoBtn} onClick={() => { setLogOverlayInitialMonth(currentMonth - 1); setLogOverlayOpen(true); }}>
                 ✎ Edit this month
               </button>
               <button className={styles.undoBtn} onClick={() => deleteLogEntry(currentMonth)}>← Undo</button>
@@ -894,7 +894,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               {!isCurrent && (
                 <div className={styles.previewActions}>
                   {selectedEntry && (
-                    <button className={styles.previewEditBtn} onClick={() => { setLogOverlayInitialMonth(selectedMonth); setLogOverlayOpen(true); }}>
+                    <button className={styles.previewEditBtn} onClick={() => { setLogOverlayInitialMonth(selectedMonth - 1); setLogOverlayOpen(true); }}>
                       ✎ Edit this month
                     </button>
                   )}
@@ -958,6 +958,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         initialMonth={logOverlayInitialMonth}
         months={advisorRows}
         collateralBtc={collateralBtc}
+        openInEditMode
         onClose={() => setLogOverlayOpen(false)}
       />
     )}

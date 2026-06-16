@@ -13,6 +13,7 @@ interface MonthlyLogOverlayProps {
   initialMonth:   number;          // 0-indexed (0–11)
   months:         AdvisorMonthRow[];
   collateralBtc:  number;
+  openInEditMode?: boolean;        // open a logged month straight in the edit form (default: view-first)
   onClose:        () => void;
 }
 
@@ -74,7 +75,7 @@ function FormField({ label, value, onChange, step = 'any', prefix, suffix }: For
   );
 }
 
-export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose }: MonthlyLogOverlayProps) {
+export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInEditMode, onClose }: MonthlyLogOverlayProps) {
   const monthlyLog      = useStore((s) => s.monthlyLog);
   const upsertLogEntry  = useStore((s) => s.upsertLogEntry);
   const advisorStartDate = useStore((s) => s.advisorStartDate);
@@ -85,11 +86,12 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
   const expenses        = useStore((s) => s.expenses);
 
   const [currentIdx, setCurrentIdx] = useState(Math.min(Math.max(initialMonth, 0), 11));
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(!!openInEditMode);   // honored on mount; nav resets it (see didInit)
   const [form, setForm] = useState<OverlayForm>(emptyForm);
   const [saved, setSaved] = useState(false);
 
   const touchStartX = useRef<number | null>(null);
+  const didInit = useRef(false);   // first effect run is the initial mount — don't clobber the seeded editing state
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
 
@@ -128,7 +130,8 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
     } else {
       setForm(emptyForm());
     }
-    setEditing(false);
+    if (didInit.current) setEditing(false);   // navigating to another month exits edit-mode (mount keeps the seed)
+    didInit.current = true;
     setSaved(false);
   }, [currentIdx]);
 
@@ -302,7 +305,13 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
   }
 
   return createPortal(
-    <div className={styles.overlay} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div className={styles.overlay} onClick={onClose}>
+      <div
+        className={styles.modalCard}
+        onClick={(e) => e.stopPropagation()}
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
       {/* Header */}
       <div className={styles.header}>
         <span className={styles.headerTitle}>MONTHLY LOG</span>
@@ -353,6 +362,7 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, onClose
             />
           );
         })}
+      </div>
       </div>
     </div>,
     document.body,

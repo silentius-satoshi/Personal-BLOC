@@ -2,10 +2,24 @@
   position: fixed;
   inset: 0;
   z-index: 200;
-  background: var(--bg-base);
+  background: rgba(0, 0, 0, 0.6);   /* dim backdrop — click-outside closes */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  overscroll-behavior: contain;
+}
+
+.modalCard {
+  background: var(--bg-base);        /* opaque card — fixes the floating/transparent header */
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  width: 100%;
+  max-width: 440px;
+  max-height: 90vh;
   display: flex;
   flex-direction: column;
-  overscroll-behavior: contain;
+  overflow: hidden;
 }
 
 /* Header */
@@ -71,7 +85,7 @@
 .cardScroll {
   flex: 1;
   overflow-y: auto;
-  max-height: calc(100vh - 120px);
+  max-height: none;   /* bounded by the modal's max-height; nav is flex:1 between pinned header + dots */
   padding: 16px 4px;
 }
 

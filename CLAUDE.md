@@ -175,7 +175,14 @@ src/
       AdvisorSidebar.module.css
       MonthlyLogSection.tsx     # Horizontal carousel + detail panel (full mode)
       MonthlyLogSection.module.css
-      MonthlyLogOverlay.tsx     # Portal overlay (full-screen, both modes), keyboard + swipe nav
+      MonthlyLogOverlay.tsx     # Portal CENTERED MODAL (.overlay dim backdrop → .modalCard; was
+                                # full-screen) with header/✕/‹›arrows/dots INSIDE the card; ✕ or
+                                # click-outside closes; keyboard + swipe nav (handlers on .modalCard).
+                                # initialMonth is 0-INDEXED (0–11) — Simple Mode passes currentMonth-1 /
+                                # selectedMonth-1; Advisor passes currentMonth-1. Optional openInEditMode
+                                # opens a LOGGED month straight in the edit form (a didInit ref keeps the
+                                # per-month nav-reset from clobbering the seeded `editing`); Simple Mode's
+                                # "Edit this month" sets it, the Advisor multi-month browser omits it
       MonthlyLogOverlay.module.css
 
     SimpleMode/
@@ -950,7 +957,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |
 | `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income |
 | `ltvTriggered` band | Three-threshold band: `cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct` (defaults 55/65/75). Forward rescue (Strike→CB) at/above trigger pays CB down to target; reverse rotation (CB draw→repay Strike) at/below rotate-back fills CB UP TO target; the neutral zone between rotate-back and trigger fires nothing. Reverse rotation is debt-neutral at the instant it fires and capped at `min(Strike balance, CB headroom-to-target)`. The 10-point default buffers prevent month-to-month oscillation. HISTORICAL FIX (v12): the reverse branch was previously mis-keyed to `cbLtvTargetPct` (collapsed the neutral zone → every-month rotation under growth); v12 added the proper `cbRotateBackPct` gate. Projection renders reverse rotation as green `↩` (`.rotateCell`), distinct from amber forward paydown and EXCLUDED from the Option-A trigger row-wash |
-| `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown |
+| `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown; centered modal (`.overlay` dim backdrop + `.modalCard`), header/arrows/dots inside the card; `initialMonth` 0-indexed; `openInEditMode` opens a logged month in the edit form |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |
 | BLOC draw order | Draw → interest → LTV paydown (not interest → draw) |
