@@ -180,10 +180,12 @@ interface StoreState {
 
   // Strike API display fields (excluded from persist — always re-fetched)
   strikeUsdBalance:   number | null;
+  strikeBtcAvailable: number | null;
   strikeRate:         number | null;
   strikeApiConnected: boolean;
   strikeLastFetched:  number | null;
   setStrikeUsdBalance:   (v: number | null) => void;
+  setStrikeBtcAvailable: (v: number | null) => void;
   setStrikeRate:         (v: number | null) => void;
   setStrikeApiConnected: (v: boolean) => void;
   setStrikeLastFetched:  (v: number | null) => void;
@@ -522,10 +524,12 @@ export const useStore = create<StoreState>()(
   })),
 
   strikeUsdBalance:   null,
+  strikeBtcAvailable: null,
   strikeRate:         null,
   strikeApiConnected: false,
   strikeLastFetched:  null,
   setStrikeUsdBalance:   (v) => set({ strikeUsdBalance: v }),
+  setStrikeBtcAvailable: (v) => set({ strikeBtcAvailable: v }),
   setStrikeRate:         (v) => set({ strikeRate: v }),
   setStrikeApiConnected: (v) => set({ strikeApiConnected: v }),
   setStrikeLastFetched:  (v) => set({ strikeLastFetched: v }),
@@ -601,7 +605,7 @@ export const useStore = create<StoreState>()(
       name: 'personal-bloc-store',
       version: 12,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
+        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {

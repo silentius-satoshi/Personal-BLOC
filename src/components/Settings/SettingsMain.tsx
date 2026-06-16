@@ -141,6 +141,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
   const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
   const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
+  const strikeBtcAvailable          = useStore((s) => s.strikeBtcAvailable);
+  const strikeApiConnected          = useStore((s) => s.strikeApiConnected);
   // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
   // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
   const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
@@ -322,6 +324,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               </span>
             )}
           </div>
+          {strikeApiConnected && strikeBtcAvailable !== null && (
+            <div className={styles.setupFieldGroup}>
+              <NumberInput
+                label="Spendable BTC (dry powder)"
+                value={strikeBtcAvailable}
+                onChange={() => {}}            // no-op; read-only, live-fetched from Strike
+                prefix="₿"
+                decimals={8}                   // sat precision, matches the collateral fields
+                readOnly
+                valueColor="var(--text-muted)" // muted/neutral — NOT collateral, NOT the orange baseline, NOT green delta
+              />
+              <span className={styles.fieldHint}>
+                Spendable BTC held in Strike — NOT pledged as collateral, does not affect your LTV. Live from the Strike API.
+              </span>
+            </div>
+          )}
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
           <div className={styles.setupFieldGroup}>
             <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />

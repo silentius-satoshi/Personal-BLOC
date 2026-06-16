@@ -6,6 +6,7 @@ const POLL_INTERVAL_MS = 60_000;
 
 export function useStrikeData(): void {
   const setStrikeUsdBalance   = useStore((s) => s.setStrikeUsdBalance);
+  const setStrikeBtcAvailable = useStore((s) => s.setStrikeBtcAvailable);
   const setStrikeRate         = useStore((s) => s.setStrikeRate);
   const setStrikeApiConnected = useStore((s) => s.setStrikeApiConnected);
   const setStrikeLastFetched  = useStore((s) => s.setStrikeLastFetched);
@@ -36,6 +37,12 @@ export function useStrikeData(): void {
           ? parseFloat(usdEntry.current?.amount ?? usdEntry.current ?? '0')
           : null;
 
+        // dry powder — spendable (NOT collateral; Strike's API exposes no pledged field)
+        const btcEntry     = balanceData.find((b: any) => b.currency === 'BTC');
+        const btcAvailable = btcEntry
+          ? parseFloat(btcEntry.available?.amount ?? btcEntry.available ?? '0')
+          : null;
+
         // rates/ticker returns an array — find the BTC→USD pair
         const rateEntry  = Array.isArray(rateData)
           ? rateData.find((r: any) => r.sourceCurrency === 'BTC' && r.targetCurrency === 'USD')
@@ -43,6 +50,7 @@ export function useStrikeData(): void {
         const strikeRate = rateEntry?.amount ? parseFloat(rateEntry.amount) : null;
 
         setStrikeUsdBalance(usdBalance);
+        setStrikeBtcAvailable(btcAvailable);
         setStrikeRate(strikeRate);
         setStrikeApiConnected(true);
         setStrikeLastFetched(Date.now());

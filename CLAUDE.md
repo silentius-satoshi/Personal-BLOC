@@ -340,6 +340,19 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment
 | Simple Mode Quick Setup "BTC held" | REALITY — seeds current; save routes through adjust |
 | Simple Mode displays / Liq Sim | REALITY — derives + pending |
 | Smart BLOC tab (InputsPanel, TierCards, MonthBreakdown, useSimulation) | SANDBOX — `sandboxCollateralBtc ?? current`, ephemeral, no write-back |
+| Settings "Spendable BTC (dry powder)" | NOT collateral — read-only live figure from the Strike API (`strikeBtcAvailable`); see Strike Dry-Powder note below |
+
+**Strike Dry-Powder (spendable BTC) — DISPLAY-ONLY, never collateral:** `useStrikeData.ts` reads the BTC
+balance's `available` field from `/api/strike-balances` (same array as the USD `current` parse) into
+`strikeBtcAvailable` — live-fetched, in-memory, NOT persisted/synced (excluded from partialize like
+`strikeUsdBalance`/`strikeRate`; store v12 unchanged). Shown in **Settings → STRIKE BLOC** as a read-only
+"Spendable BTC (dry powder)" row BENEATH Initial/Current collateral (completing the Initial → Current →
+Spendable trio), in a neutral muted color (distinct from the orange baseline + green delta), gated on
+`strikeApiConnected && strikeBtcAvailable !== null`. Reuses the `readOnly`/`valueColor` NumberInput props.
+It NEVER enters LTV/collateral/projection math (`strikeBtcAvailable` appears only in the store, the fetch
+hook, and the Settings display block). **API constraint:** Strike's balances endpoint exposes no
+collateral/pledged field and the public API has no BLOC/loan endpoints, so collateral stays manually
+tracked (`advisorActualBtcHeld` + `collateralAdjustment`); the fetched BTC is spendable-only by construction.
 
 **Observability** (added post-v4 for smoke verification): DevPanel COLLATERAL section (baseline/pending/
 current — ON-DEVICE only; Copy Diagnostics gets a `pendingNonZero` boolean, never the amounts); an
