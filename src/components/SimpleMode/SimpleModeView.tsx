@@ -26,8 +26,9 @@ function ConfirmLogSheet({
   monthNum, monthLabel,
   drawAmount, skipDraw,
   cbPayment, skipCb, hasCbLoan,
-  btcBought, btcPrice, skipBtc,
+  btcPrice, skipBtc,
   confirmExpenses, onExpensesChange,
+  confirmBtcBought, onBtcBoughtChange,
   isFullyAllocated,
   ndpDone, ndpAmount,
   showNdpRow, ndpChecked, onNdpChange,
@@ -36,8 +37,9 @@ function ConfirmLogSheet({
   monthNum: number; monthLabel: string;
   drawAmount: number; skipDraw: boolean;
   cbPayment: number; skipCb: boolean; hasCbLoan: boolean;
-  btcBought: number; btcPrice: number; skipBtc: boolean;
+  btcPrice: number; skipBtc: boolean;
   confirmExpenses: number; onExpensesChange: (v: number) => void;
+  confirmBtcBought: number; onBtcBoughtChange: (v: number) => void;
   isFullyAllocated: boolean;
   ndpDone: boolean; ndpAmount: number;
   showNdpRow?: boolean; ndpChecked?: boolean; onNdpChange?: (v: boolean) => void;
@@ -61,12 +63,26 @@ function ConfirmLogSheet({
               <span>{skipCb ? 'Skipped' : fmtUSD(cbPayment)}</span>
             </div>
           )}
-          <div className={styles.confirmRow}>
-            <span>BTC bought</span>
-            <span>
-              {skipBtc ? 'Skipped' : `${btcBought.toFixed(5)} ₿ (~${fmtUSD(btcBought * btcPrice)})`}
-            </span>
-          </div>
+          {skipBtc ? (
+            <div className={styles.confirmRow}>
+              <span>BTC bought</span>
+              <span>Skipped</span>
+            </div>
+          ) : (
+            <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
+              <span>BTC bought this month <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>(~{fmtUSD(confirmBtcBought * btcPrice)})</span></span>
+              <div className={styles.confirmExpensesField}>
+                <span className={styles.confirmExpensesPrefix}>₿</span>
+                <input
+                  type="number"
+                  className={styles.confirmExpensesInput}
+                  value={confirmBtcBought}
+                  step={0.00000001}
+                  onChange={(e) => onBtcBoughtChange(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+          )}
           {ndpDone && ndpAmount > 0 && (
             <div className={styles.confirmRow}>
               <span>NDP</span>
@@ -196,6 +212,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Confirm sheet
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
   const [confirmExpenses, setConfirmExpenses]   = useState(expenses);
+  const [confirmBtcBought, setConfirmBtcBought] = useState(0);
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
@@ -334,13 +351,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setShowSetupModal(false);
   };
 
-  const handleApply = (confirmedExpenses: number) => {
+  const handleApply = (confirmedExpenses: number, confirmedBtcBought: number) => {
     const [ey, em] = advisorStartDate.split('-').map(Number);
     const entryDate = new Date(ey, em - 1 + (currentMonth - 1), 1).toISOString().split('T')[0];
     upsertLogEntry({
       month:          currentMonth,
       date:           entryDate,
-      btcBought:      advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0),
+      btcBought:      confirmedBtcBought,
       income:         currentRow?.incomeToBtc ?? 0,
       paydown:        expectedPaydown,
       strikeBal:      eomBlocBalance,
@@ -765,7 +782,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             {!strategyDone && (
               <button
                 className={styles.logThisMonthBtn}
-                onClick={() => { setConfirmExpenses(expenses); setShowConfirmSheet(true); }}
+                onClick={() => { setConfirmExpenses(expenses); setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setShowConfirmSheet(true); }}
               >
                 Log this month & continue
               </button>
@@ -844,18 +861,19 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         cbPayment={expectedCbPayment}
         skipCb={advisorSkipCbPayment}
         hasCbLoan={hasCbLoan}
-        btcBought={currentRow?.btcBought ?? 0}
         btcPrice={btcPrice}
         skipBtc={advisorSkipBtcBuying}
         confirmExpenses={confirmExpenses}
         onExpensesChange={setConfirmExpenses}
+        confirmBtcBought={confirmBtcBought}
+        onBtcBoughtChange={setConfirmBtcBought}
         isFullyAllocated={isFullyAllocated}
         ndpDone={ndpPayThisMonth && ndpActionActive}
         ndpAmount={ndpMinimum}
         showNdpRow={ndpActionActive}
         ndpChecked={ndpPayThisMonth}
         onNdpChange={setNdpPayThisMonth}
-        onConfirm={() => handleApply(confirmExpenses)}
+        onConfirm={() => handleApply(confirmExpenses, confirmBtcBought)}
         onCancel={() => setShowConfirmSheet(false)}
       />
     )}

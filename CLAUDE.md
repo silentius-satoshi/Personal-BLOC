@@ -178,9 +178,13 @@ src/
     SimpleMode/
       SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); single-commit model:
                                 # "Log this month & continue" → ConfirmLogSheet portal (inline component:
-                                # summary + editable expensesActual + optional NDP toggle row when
-                                # ndp.status !== 'ok' — checking it stamps ndpLastPaidDate at log time) →
-                                # handleApply(confirmedExpenses). Plan card = read-only amounts + pure
+                                # summary + editable expensesActual + editable BTC-bought (seeds to the
+                                # plan's projected buy, or 0 if Buy row skipped; user overrides with the
+                                # actual; shows "Skipped" read-only when skipped) + optional NDP toggle row
+                                # when ndp.status !== 'ok' — checking it stamps ndpLastPaidDate at log time)
+                                # → handleApply(confirmedExpenses, confirmedBtcBought) writes the confirmed
+                                # bought value to MonthlyLogEntry.btcBought (not the hardwired projection).
+                                # Plan card = read-only amounts + pure
                                 # Pay/Skip toggles on advisorSkip* (same semantics as AdvisorMain); fiat +
                                 # NDP rows informational (no pills). THIS MONTH = entry actuals when logged
                                 # (currentEntry.btcBought), (proj)-labeled projections otherwise — never

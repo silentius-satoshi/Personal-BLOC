@@ -29,7 +29,11 @@
       "Bash(grep -n \"145 tests\\\\|cbLtvTriggerPct\\\\`, \\\\`cbLtvTargetPct\" /home/anonymius/Personal-BLOC/CLAUDE.md)",
       "Bash(echo \"build exit: $?\")",
       "Read(//tmp/**)",
-      "Bash(echo \"tests exit: $?\")"
+      "Bash(echo \"tests exit: $?\")",
+      "Bash(grep -n \"btcBought\\\\|upsertLogEntry\\\\|upsertEntry\" /home/anonymius/Personal-BLOC/src/simulation/__tests__/monthlyLog.test.ts | head; echo \"=== build ===\"; npm run build >/tmp/b3.log 2>&1; echo \"build exit: $?\"; tail -3 /tmp/b3.log)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }
