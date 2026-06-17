@@ -92,26 +92,12 @@
 }
 
 /* track + fill + markers (mirrors the CB Loan tab's LTV bar) */
-.barTrackBtn {
-  display: block;
-  width: 100%;
-  padding: 0;
-  margin: 4px 0 18px;
-  background: none;
-  border: none;
-  cursor: pointer;
-}
-
 .barTrack {
   position: relative;
   height: 10px;
   background: rgba(255, 255, 255, 0.06);
   border-radius: 5px;
   margin: 4px 0 18px;
-}
-
-.barTrackBtn .barTrack {
-  margin: 0;
 }
 
 .barFill {
@@ -168,6 +154,20 @@
 }
 
 .cushion {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* Threshold prices + source, moved off the bar markers (Fix 2) */
+.priceNote {
+  margin: 0;
+  font-size: 10px;
+  color: var(--text-faint);
+}
+
+/* Calm never-anchored nudge (Fix 3) — muted, NOT amber-alarm */
+.anchorNudge {
+  margin: 0;
   font-size: 11px;
   color: var(--text-muted);
 }

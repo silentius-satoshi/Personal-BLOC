@@ -197,15 +197,21 @@ src/
                                 # "price history unavailable" states. Owns its own range state + useBtcHistory
                                 # (no props). Data ephemeral (never stored). PriceChart.module.css alongside
       SafetyDashboard.tsx       # Top-of-SimpleMode safety read (reads store directly, recomputes on price tick):
-                                # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/CB_LLTV, trigger +
-                                # 86% liq markers w/ "Coinbase"/"~est." source tag, ↓drop-to-trigger/liq cushion,
-                                # Safe/Fair/Poor badge, no-grace note in amber/red) → Strike bar (tap to flip
-                                # capacity-used ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
+                                # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/CB_LLTV, bare
+                                # 75%/86% marker TICKS — trigger/liq prices + "Coinbase"/"~est." source moved to a
+                                # .priceNote subtext, no label collision; ↓drop-to-trigger/liq cushion, Safe/Fair/
+                                # Poor badge, no-grace note in amber/red) → Strike bar (tap to flip capacity-used ↔
+                                # liquidation gauge vs strikeLiquidationLtvPct; LTV via
                                 # computeStrikeLtv(advisorActualBlocBalance, getCurrentBtcHeld(), price) — the
                                 # CURRENT position, not the frozen baseline) → Safe/Watch/Act state line
-                                # (hasCbLoan ? worseLevel(cb,strike) : strikeLevel). Freshness labels + amber
-                                # nudge when asOf null or >30d; tap the CB bar → inline re-anchor (balance + liq
-                                # price → both set…AsOf today). Strike bar is DECOUPLED from hasCbLoan — only the
+                                # (hasCbLoan ? worseLevel(cb,strike) : strikeLevel). The WHOLE CB card is tap-to-
+                                # anchor: a <div role=button onClick={toggleEdit}/onKeyDown> (guarded e.target===
+                                # currentTarget so typing in a field can't toggle) with .flipHint "tap to set/update"
+                                # cue + stopPropagation on the .editBox — mirrors the Strike whole-card tap (the thin
+                                # barTrackBtn is gone). Save → balance + liq price, both set…AsOf today. neverAnchored
+                                # (both asOf null) → ONE calm .anchorNudge (not three amber warnings); freshness "as
+                                # of N days"/stale "may be low" (>30d) lines apply only once anchored. Strike bar is
+                                # DECOUPLED from hasCbLoan — only the
                                 # CB bar gates on it: !hasCbLoan → CB-setup prompt in the CB slot, Strike bar +
                                 # Strike-only state line still render. Evergreen (past month 12). All CB math via
                                 # cbMetrics — same numbers as the CB Loan tab

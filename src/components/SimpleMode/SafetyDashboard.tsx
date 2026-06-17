@@ -102,6 +102,13 @@ export function SafetyDashboard() {
     setEditing(false);
   };
 
+  // Whole-CB-card tap-to-anchor (mirrors the Strike card's whole-container tap).
+  const toggleEdit = () => {
+    if (!editing) { setDraftBal(cbLoanBalance); setDraftLiq(cbLiquidationPrice); }   // seed drafts on open
+    setEditing((v) => !v);
+  };
+  const neverAnchored = !cbLoanBalanceAsOf && !cbLiquidationPriceAsOf;
+
   // positive drop = room to fall (↓X%); negative = price already at/past the threshold
   const pct = (n: number) => n > 0 ? `↓${(n * 100).toFixed(1)}%` : `${(Math.abs(n) * 100).toFixed(1)}% over`;
 
@@ -111,43 +118,57 @@ export function SafetyDashboard() {
 
       {/* ── CB bar (primary) — or CB-setup prompt in the CB slot when no loan ── */}
       {hasCbLoan ? (
-      <div className={styles.barCard}>
+      <div
+        className={styles.barCard}
+        onClick={toggleEdit}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleEdit(); } }}
+      >
         <div className={styles.barHeader}>
           <span className={styles.barLabel}>COINBASE LOAN</span>
           <span className={styles.badge} style={{ color: cbFillColor, borderColor: cbFillColor }}>{cbBadge}</span>
         </div>
+        <span className={styles.flipHint}>
+          {editing ? 'editing…' : neverAnchored ? 'tap to set your balance & liquidation price' : 'tap to update'}
+        </span>
 
-        <button className={styles.barTrackBtn} onClick={() => { setDraftBal(cbLoanBalance); setDraftLiq(cbLiquidationPrice); setEditing((v) => !v); }} title="Tap to re-anchor balance + liquidation price">
-          <div className={styles.barTrack}>
-            <div className={styles.barFill} style={{ width: `${cbFillPct}%`, background: cbFillColor }} />
-            <div className={styles.marker} style={{ left: `${trigMarker}%` }}>
-              <span className={styles.markerLabel}>{cbLtvTriggerPct}% · {fmtUSD(m.triggerPrice)}</span>
-            </div>
-            <div className={styles.marker} style={{ left: '100%' }}>
-              <span className={styles.markerLabelRight}>86% · {fmtUSD(activeLiqPrice)} <em>{liqSource}</em></span>
-            </div>
+        <div className={styles.barTrack}>
+          <div className={styles.barFill} style={{ width: `${cbFillPct}%`, background: cbFillColor }} />
+          <div className={styles.marker} style={{ left: `${trigMarker}%` }}>
+            <span className={styles.markerLabel}>{cbLtvTriggerPct}%</span>
           </div>
-        </button>
+          <div className={styles.marker} style={{ left: '100%' }}>
+            <span className={styles.markerLabelRight}>86%</span>
+          </div>
+        </div>
 
         <div className={styles.cushionRow}>
           <span className={styles.ltvNow}>{(cbLtv * 100).toFixed(1)}% LTV</span>
           <span className={styles.cushion}>{pct(dropToTrigger)} to trigger · {pct(dropToLiq)} to liquidation</span>
         </div>
+        <p className={styles.priceNote}>trigger {fmtUSD(m.triggerPrice)} · liq {fmtUSD(activeLiqPrice)} ({liqSource})</p>
 
         {cbLevel !== 'safe' && (
           <p className={styles.graceNote}>Morpho liquidates instantly — no margin-call window</p>
         )}
 
-        <div className={styles.freshRow}>
-          <span className={balFresh.stale ? styles.freshStale : styles.fresh}>{balFresh.text}</span>
-          <span className={liqFresh.stale ? styles.freshStale : styles.fresh}>{liqFresh.text}</span>
-        </div>
-        {liqFresh.stale && (
-          <p className={styles.staleWarn}>liq price may be low — BTC drop to liquidation is smaller than shown</p>
+        {neverAnchored ? (
+          <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
+        ) : (
+          <>
+            <div className={styles.freshRow}>
+              <span className={balFresh.stale ? styles.freshStale : styles.fresh}>{balFresh.text}</span>
+              <span className={liqFresh.stale ? styles.freshStale : styles.fresh}>{liqFresh.text}</span>
+            </div>
+            {liqFresh.stale && (
+              <p className={styles.staleWarn}>liq price may be low — BTC drop to liquidation is smaller than shown</p>
+            )}
+          </>
         )}
 
         {editing && (
-          <div className={styles.editBox}>
+          <div className={styles.editBox} onClick={(e) => e.stopPropagation()}>
             <span className={styles.editHint}>Read both from your Coinbase Loan Center, then save.</span>
             <NumberInput label="CB loan balance" value={draftBal} onChange={setDraftBal} prefix="$" min={0} step={100} />
             <NumberInput label="Liquidation price (Coinbase)" value={draftLiq} onChange={setDraftLiq} prefix="$" min={0} step={1000} />
