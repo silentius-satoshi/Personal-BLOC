@@ -142,6 +142,12 @@ export function SafetyDashboard() {
 
   return (
     <div className={styles.dashboard}>
+      {/* ── State line (headline verdict) ──────────────────────────── */}
+      <div className={styles.stateLine} style={{ color: LEVEL_COLOR[state] }}>
+        <span className={styles.stateDot} style={{ background: LEVEL_COLOR[state] }} />
+        {stateCopy}
+      </div>
+
       {priceSlot}
 
       {/* ── CB bar (primary) — or CB-setup prompt in the CB slot when no loan ── */}
@@ -288,12 +294,6 @@ export function SafetyDashboard() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* ── State line ─────────────────────────────────────────────── */}
-      <div className={styles.stateLine} style={{ color: LEVEL_COLOR[state] }}>
-        <span className={styles.stateDot} style={{ background: LEVEL_COLOR[state] }} />
-        {stateCopy}
       </div>
     </div>
   );

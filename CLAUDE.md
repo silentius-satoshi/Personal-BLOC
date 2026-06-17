@@ -198,6 +198,9 @@ src/
                                 # "price history unavailable" states. Owns its own range state + useBtcHistory
                                 # (no props). Data ephemeral (never stored). PriceChart.module.css alongside
       SafetyDashboard.tsx       # Top-of-SimpleMode safety read (reads store directly, recomputes on price tick):
+                                # the Safe/Watch/Act .stateLine VERDICT is the FIRST child — a prominent 15px/700
+                                # headline at the very top (moved up from the buried last child; render-position +
+                                # style only, state/stateCopy derivation unchanged) → then
                                 # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/CB_LLTV, bare
                                 # 75%/86% marker TICKS — trigger/liq prices + "Coinbase"/"~est." source moved to a
                                 # .priceNote subtext, no label collision; ↓drop-to-trigger/liq cushion, Safe/Fair/
@@ -207,8 +210,9 @@ src/
                                 # CURRENT position, not the frozen baseline. Card is a <div role=button> (was
                                 # <button>) with a view-aware inline EDIT control (.editLink, stopPropagation so it
                                 # doesn't flip): capacity edits BLOC balance + credit line, liquidation edits BLOC
-                                # balance + liq LTV %; Save → synced setters, no Settings trip) → Safe/Watch/Act state line
-                                # (hasCbLoan ? worseLevel(cb,strike) : strikeLevel). The WHOLE CB card is tap-to-
+                                # balance + liq LTV %; Save → synced setters, no Settings trip). The state line
+                                # (hasCbLoan ? worseLevel(cb,strike) : strikeLevel) is the top headline (see above).
+                                # The WHOLE CB card is tap-to-
                                 # anchor: a <div role=button onClick={toggleEdit}/onKeyDown> (guarded e.target===
                                 # currentTarget so typing in a field can't toggle) with .flipHint "tap to set/update"
                                 # cue + stopPropagation on the .editBox — mirrors the Strike whole-card tap (the thin
@@ -286,16 +290,22 @@ src/
                                 # for currentMonth) + Undo (deleteLogEntry). MonthlyLogSection kept for the
                                 # Advisor tab. The POSITION block is TWO CARDED BOXES (STRIKE BLOC | THIS MONTH —
                                 # .positionRow is a 1fr/1fr grid that stacks <560px; the outer .card wrapper was
-                                # dropped to avoid card-in-card). STRIKE box headlines CURRENT ACTUALS
-                                # (advisorActualBlocBalance / getCurrentBtcHeld()) + the skip-aware EoM projection
-                                # as a labeled .eomProjection mini-block ("After this month" → balance · LTV (orange
-                                # when hasPaydown) · ₿; replaced the old run-on "→ after this month" hint) — so
+                                # dropped to avoid card-in-card). The STRIKE box (titled "CURRENT STRIKE BLOC")
+                                # headlines CURRENT ACTUALS as a parallel debt/collateral pair — "credit line
+                                # used: $balance · Z% LTV" (Z = currentBlocLtv via computeStrikeLtv — the CURRENT
+                                # Strike LTV, matches the dashboard Strike bar) + "collateral: ₿ held · $usd"
+                                # (usd = ₿ × live btcPrice) — followed by the skip-aware EoM projection as a labeled
+                                # .eomProjection mini-block ("After this month" → same "credit line used: $… · …% LTV"
+                                # (orange when hasPaydown) + "collateral: ₿ … · $…" framing; the .usedLabel prefix +
+                                # live-USD collateral are shared by both; replaced the old run-on hint) — so
                                 # editing Amount Drawn / BTC collateral in
                                 # Settings moves it cleanly. STRIKE was de-noised: the "fully backed above $X"
                                 # binding line was removed (only the amber "collateral-limited (50% LTV)" branch
                                 # remains, shown at the 50% ceiling); the ltvTriggered CB-buffer line is gated on
                                 # cbPaydownBuffer > 0; and the NDP badge moved OUT to the THIS MONTH box (shown only
-                                # when ndp.status !== 'ok' — hidden when paid/far-off, resurfaces when due). In the
+                                # when ndp.status !== 'ok' — hidden when paid/far-off, resurfaces when due). THIS
+                                # MONTH folded its mislabeled "Cash: $X" line INTO the ₿ line as a ~$ cost sub-label
+                                # (it was the BTC budget = income−CB, not cash) → one "₿ +X · ~$Y (proj)" line. In the
                                 # dot-rows the Pay/Skip pills sit BEFORE the amount so the amount anchors right
                                 # across current/projected/logged months. The Strike LTV line AND the whole CB LOAN column were
                                 # REMOVED (both LTVs now read from the SafetyDashboard bars above — de-duped;

@@ -144,7 +144,8 @@
 .eomRow { display: flex; align-items: baseline; gap: 6px; }
 .eomVal { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
 .eomSep { color: var(--text-faint); }
-.eomBtc { font-size: 11px; color: var(--text-ghost); }
+.eomBtc { font-size: 13px; color: var(--text-secondary); }
+.usedLabel { font-size: 11px; color: var(--text-ghost); }
 
 /* Change 2 — THIS MONTH column stat colours */
 .statGreen { color: var(--green); font-weight: 600; }

@@ -378,6 +378,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : advisorActualBlocBalance;
   const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
   const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
+  const currentBlocLtv: number = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);   // matches the Strike dashboard bar
   const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
 
   // Logged Strike balance/LTV reflect the EDITED draw + interest (effectiveDrawAmount/effectiveInterest)
@@ -568,21 +569,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
       <SafetyDashboard />
 
-      {!strategyDone && (
-        <div className={styles.progressRow}>
-          {Array.from({ length: 12 }, (_, i) => (
-            <div
-              key={i}
-              className={`${styles.progressDot} ${
-                i + 1 < currentMonth  ? styles.dotDone :
-                i + 1 === currentMonth ? styles.dotCurrent :
-                                          styles.dotFuture
-              }`}
-            />
-          ))}
-          <span className={styles.progressLabel}>Month {currentMonth} of 12</span>
-        </div>
-      )}
 
       {!strategyDone && (
         <div className={styles.segmentControl}>
@@ -647,17 +633,24 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
             {/* Left — STRIKE BLOC */}
             <div className={styles.positionCol}>
-              <span className={styles.positionTitle}>STRIKE BLOC</span>
-              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)}</span>
-              <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)}</span>
+              <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
+              <span className={styles.positionStat}>
+                <span className={styles.usedLabel}>credit line used: </span>{fmtUSD(advisorActualBlocBalance)} · {(currentBlocLtv * 100).toFixed(1)}% LTV
+              </span>
+              <span className={styles.positionStat}>
+                <span className={styles.usedLabel}>collateral: </span>₿ {currentBtcHeld.toFixed(5)} · {fmtUSD(currentBtcHeld * btcPrice)}
+              </span>
               <div className={styles.eomProjection}>
                 <span className={styles.eomLabel}>After this month</span>
                 <div className={styles.eomRow}>
+                  <span className={styles.usedLabel}>credit line used: </span>
                   <span className={styles.eomVal}>{fmtUSD(eomBlocBalance)}</span>
                   <span className={styles.eomSep}>·</span>
                   <span className={styles.eomVal} style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
                 </div>
-                <span className={styles.eomBtc}>₿ {eomBtcHeld.toFixed(5)}</span>
+                <span className={styles.eomBtc}>
+                  <span className={styles.usedLabel}>collateral: </span>₿ {eomBtcHeld.toFixed(5)} · {fmtUSD(eomBtcHeld * btcPrice)}
+                </span>
               </div>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
               {availCredit.binding === 'collateral' && (
@@ -684,23 +677,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>THIS MONTH</span>
               {currentEntry ? (
-                <>
-                  <span className={`${styles.positionStat} ${currentEntry.btcBought > 0 ? styles.statGreen : styles.statMuted}`}>
-                    ₿ {currentEntry.btcBought > 0 ? `+${currentEntry.btcBought.toFixed(5)}` : '—'}
-                  </span>
-                  <span className={`${styles.positionStat} ${styles.statMuted}`}>Cash: —</span>
-                </>
+                <span className={`${styles.positionStat} ${currentEntry.btcBought > 0 ? styles.statGreen : styles.statMuted}`}>
+                  ₿ {currentEntry.btcBought > 0 ? `+${currentEntry.btcBought.toFixed(5)}` : '—'}
+                  {currentEntry.btcBought > 0 && <span className={styles.projSuffix}> · ~{fmtUSD(currentEntry.btcBought * btcPrice)}</span>}
+                </span>
               ) : (
-                <>
-                  <span className={`${styles.positionStat} ${!advisorSkipBtcBuying && effectiveBtcAmount > 0 ? styles.statGreen : styles.statMuted}`}>
-                    ₿ {advisorSkipBtcBuying || effectiveBtcAmount <= 0 ? '—' : `+${effectiveBtcAmount.toFixed(5)}`}
-                    <span className={styles.projSuffix}> (proj)</span>
+                <span className={`${styles.positionStat} ${!advisorSkipBtcBuying && effectiveBtcAmount > 0 ? styles.statGreen : styles.statMuted}`}>
+                  ₿ {advisorSkipBtcBuying || effectiveBtcAmount <= 0 ? '—' : `+${effectiveBtcAmount.toFixed(5)}`}
+                  <span className={styles.projSuffix}>
+                    {!advisorSkipBtcBuying && effectiveBtcAmount > 0 && expectedBtcBuying > 0 ? ` · ~${fmtUSD(expectedBtcBuying)} (proj)` : ' (proj)'}
                   </span>
-                  <span className={`${styles.positionStat} ${expectedBtcBuying > 0 ? styles.statAmber : styles.statMuted}`}>
-                    Cash: {expectedBtcBuying > 0 ? fmtUSD(expectedBtcBuying) : '—'}
-                    <span className={styles.projSuffix}> (proj)</span>
-                  </span>
-                </>
+                </span>
               )}
               {ndp.status !== 'ok' && (
                 <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
