@@ -249,16 +249,20 @@ src/
                                 # labeled per mode ("CB payment" monthly / "CB paydown" ltvTriggered) and, in
                                 # ltvTriggered mode, HIDDEN until currentRow.cbLtvTriggered fires (showCbRow).
                                 # Plan card = "Monthly Playbook" (polished toward Smart BLOC's restraint):
-                                # a SINGLE inline header "Month X of 12 · [de-boxed state badge] · LTV Z%
-                                # — paydown triggered" (LTV + flag coral when hasPaydown; BTC price right);
+                                # a TWO-LINE header — top "Month X of 12 · [de-boxed state badge]", second
+                                # line (.scrubMeta, above the scrubber) "LTV Z% — paydown triggered" (LTV +
+                                # flag coral when hasPaydown) left + "BTC $price" right;
                                 # a month SCRUBBER (1–12, selectedMonth,
                                 # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
                                 # carousel) with a TWO-TONE fill (red paydown share / green rest, keyed to
                                 # the --paydownPct = barPaydownPct CSS var) + month-tick markers
-                                # (M1·M3·M6·M9·M12, replaced the "drag to scrub" caption); three stacked status bars (Income / Strike / CB —
-                                # toggle-gated by showPlan*Bar; the INCOME bar shows a distinct orange
-                                # paydown SEGMENT — barPaydownPct — when paydown fires, STRIKE/CB bars
-                                # untouched), a colored-dot action layout borrowing the Smart BLOC playbook
+                                # (M1·M3·M6·M9·M12, replaced the "drag to scrub" caption); TWO stacked status
+                                # bars (Strike / CB — toggle-gated by showPlanStrikeBar/showPlanCbBar). The
+                                # INCOME ALLOCATION bar was REMOVED (redundant — the two-tone scrubber already
+                                # encodes the per-month paydown/buy split; allocation-complete ✓ is always true
+                                # in projected months + still surfaces in the confirm sheet) along with its dead
+                                # Settings toggle (the showPlanIncomeBar store field is kept, vestigial/device-
+                                # local). A colored-dot action layout borrowing the Smart BLOC playbook
                                 # structure on the REALITY engine: Buy Bitcoin (now with % allocation +
                                 # "(after paydown)/(100% of income)" subtext) → a conditional LoC Paydown
                                 # row (orange, % + $, no pill; rowPaydownUsd = isCurrent ? expectedPaydown :

@@ -890,6 +890,7 @@
 .scrubHeader { display: flex; flex-direction: column; gap: 8px; }
 .scrubHeaderTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
 .scrubTitleGroup { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+.scrubMeta { display: flex; align-items: baseline; gap: 8px; }
 .scrubMonthNum { color: var(--orange); }
 .scrubBadge {
   font-size: 9px;

@@ -247,7 +247,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
   const strikeLiquidationLtvPct = useStore((s) => s.strikeLiquidationLtvPct);
-  const showPlanIncomeBar       = useStore((s) => s.showPlanIncomeBar);
   const showPlanStrikeBar       = useStore((s) => s.showPlanStrikeBar);
   const showPlanCbBar           = useStore((s) => s.showPlanCbBar);
 
@@ -428,8 +427,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const barCbLtv = isCurrent ? eomCbLtv
     : selectedEntry ? (selectedEntry.cbLtv ?? 0)
     : (selectedRow?.cbLtv ?? 0);
-  const barAllocated = isCurrent ? allocatedFromIncome : (selectedPlan?.allocatedFromIncome ?? 0);
-  const barAllocFull = isCurrent ? isFullyAllocated   : (selectedPlan?.isFullyAllocated ?? false);
 
   // Action-row display values for the SELECTED month.
   const rowDrawUsd  = isCurrent ? effectiveDrawAmount : (selectedPlan?.blocDraw ?? 0);
@@ -472,8 +469,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const clampPct = (frac: number) => Math.max(0, Math.min(100, frac * 100));
   const strikeLiqFrac = strikeLiquidationLtvPct / 100;
   const cbTriggerFrac = cbLtvTriggerPct / 100;
-  const incomeFillPct = income > 0 ? clampPct(barAllocated / income) : 0;
-  const barPaydownPct = income > 0 ? clampPct(rowPaydownUsd / income) : 0;   // paydown segment within the income fill
+  const barPaydownPct = income > 0 ? clampPct(rowPaydownUsd / income) : 0;   // scrubber paydown segment (red share)
   const strikeFillPct = strikeLiqFrac > 0 ? clampPct(barStrikeLtv / strikeLiqFrac) : 0;
   const cbFillPct     = clampPct(barCbLtv / CB_LLTV);
   const strikeLevel   = barLevel(barStrikeLtv, strikeLiqFrac * 0.6, strikeLiqFrac * 0.8);
@@ -749,11 +745,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 }`}>
                   {isCurrent ? 'CURRENT' : selectedEntry ? '✓ LOGGED' : 'PROJECTED'}
                 </span>
-                <span className={styles.scrubLtv}>
-                  · LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}%</span>
-                  {hasPaydown && <span className={styles.scrubPaydownFlag}> — paydown triggered</span>}
-                </span>
               </div>
+            </div>
+            <div className={styles.scrubMeta}>
+              <span className={styles.scrubLtv}>
+                LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}%</span>
+                {hasPaydown && <span className={styles.scrubPaydownFlag}> — paydown triggered</span>}
+              </span>
               <span className={styles.scrubPrice}>BTC {fmtUSD(btcPrice)}</span>
             </div>
             <input
@@ -773,22 +771,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </div>
 
           {/* Stacked status bars — selected month's projection; current = skip-adjusted reality */}
-          {(showPlanIncomeBar || showPlanStrikeBar || (showPlanCbBar && hasCbLoan)) && (
+          {(showPlanStrikeBar || (showPlanCbBar && hasCbLoan)) && (
             <div className={styles.planBars}>
-              {showPlanIncomeBar && (
-                <div className={styles.planBar}>
-                  <div className={styles.planBarHead}>
-                    <span className={styles.planBarLabel}>INCOME ALLOCATION</span>
-                    <span className={styles.planBarVal}>{fmtUSD(barAllocated)} / {fmtUSD(income)}{barAllocFull ? ' ✓' : ''}</span>
-                  </div>
-                  <div className={styles.planBarTrack}>
-                    <div className={styles.planBarFill} style={{ width: `${incomeFillPct}%`, background: barAllocFull ? 'var(--green)' : 'var(--amber)' }} />
-                    {barPaydownPct > 0 && (
-                      <div className={styles.planBarFill} style={{ width: `${barPaydownPct}%`, background: 'var(--orange)' }} />
-                    )}
-                  </div>
-                </div>
-              )}
               {showPlanStrikeBar && (
                 <div className={styles.planBar}>
                   <div className={styles.planBarHead}>
