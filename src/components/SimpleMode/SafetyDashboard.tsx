@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { computeStrikeLtv } from '../../simulation/strikeCredit';
+import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
 import { fmtUSD } from '../../utils/format';
@@ -35,6 +36,7 @@ export function SafetyDashboard() {
   const cbLoanBalance          = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc        = useStore((s) => s.cbCollateralBtc);
   const cbAprPct               = useStore((s) => s.cbAprPct);
+  const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const cbLiquidationPrice     = useStore((s) => s.cbLiquidationPrice);
   const cbLtvTriggerPct        = useStore((s) => s.cbLtvTriggerPct);
   const cbLoanBalanceAsOf      = useStore((s) => s.cbLoanBalanceAsOf);
@@ -198,6 +200,20 @@ export function SafetyDashboard() {
             <span className={styles.editHint}>Read both from your Coinbase Loan Center, then save.</span>
             <NumberInput label="CB loan balance" value={draftBal} onChange={setDraftBal} prefix="$" min={0} step={100} />
             <NumberInput label="Liquidation price (Coinbase)" value={draftLiq} onChange={setDraftLiq} prefix="$" min={0} step={1000} />
+            {morphoRate.borrowApy !== null ? (
+              <>
+                <span className={styles.editHint}>
+                  Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live)
+                </span>
+                {Math.abs(morphoRate.borrowApy - cbAprPct) > 1 && (
+                  <span className={styles.editHint}>Your APR differs — Coinbase may add a margin.</span>
+                )}
+              </>
+            ) : (
+              <span className={styles.editHint}>
+                {morphoLoading ? 'checking Morpho rate…' : 'Morpho market rate unavailable'}
+              </span>
+            )}
             <div className={styles.editBtns}>
               <button className={styles.saveBtn} onClick={saveReanchor}>Save — anchors to today</button>
               <button className={styles.cancelBtn} onClick={() => setEditing(false)}>Cancel</button>

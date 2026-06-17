@@ -60,7 +60,7 @@ src/
     useLivingSimulation.ts      # Living on Bitcoin tab hook
     usePowerLawData.ts          # Blockchain.com historical price (via Vercel proxy in prod)
     useMempoolData.ts           # mempool.space block height (halving computed from it)
-    useMorphoRate.ts            # Live Morpho borrow APY for the confirmed cbBTC/USDC Base market via same-origin /api/morpho-rate; usePageVisibility gate + slow 5-min refresh; ephemeral, NEVER stored/synced; pure parseMorphoRate (GraphQL state.borrowApy/netBorrowApy fraction → percent ×100, null on malformed). Display-only reference beside the manual cbAprPct — never feeds CB math
+    useMorphoRate.ts            # Live Morpho borrow APY for the confirmed cbBTC/USDC Base market via same-origin /api/morpho-rate; usePageVisibility gate + slow 5-min refresh; ephemeral, NEVER stored/synced; pure parseMorphoRate (GraphQL state.borrowApy/netBorrowApy fraction → percent ×100, null on malformed). Display-only reference beside the manual cbAprPct (Settings APR field AND the SafetyDashboard CB anchor editBox) — never feeds CB math
 
   store/
     useStore.ts                 # Zustand store — all state, persisted to localStorage
@@ -212,7 +212,9 @@ src/
                                 # anchor: a <div role=button onClick={toggleEdit}/onKeyDown> (guarded e.target===
                                 # currentTarget so typing in a field can't toggle) with .flipHint "tap to set/update"
                                 # cue + stopPropagation on the .editBox — mirrors the Strike whole-card tap (the thin
-                                # barTrackBtn is gone). Save → balance + liq price, both set…AsOf today. neverAnchored
+                                # barTrackBtn is gone). The .editBox also shows a read-only live Morpho rate
+                                # reference line (via useMorphoRate, same as the Settings APR field; cbAprPct
+                                # untouched). Save → balance + liq price, both set…AsOf today. neverAnchored
                                 # (both asOf null) → ONE calm .anchorNudge (not three amber warnings); freshness "as
                                 # of N days"/stale "may be low" (>30d) lines apply only once anchored. Strike bar is
                                 # DECOUPLED from hasCbLoan — only the
