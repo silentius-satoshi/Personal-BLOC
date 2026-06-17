@@ -294,20 +294,24 @@ src/
                                 # avoid card-in-card). Split from the old lopsided 2-box layout — the left box used to
                                 # cram CURRENT + the embedded AFTER projection + Avail, wrapping "credit line used · LTV"
                                 # onto two lines, while THIS MONTH sat ~85% empty; three full-width-each boxes fix both.
-                                # Box1 CURRENT + Box3 AFTER show the SAME two lines in the same order for line-for-line
-                                # comparison: "credit line used: $balance · Z% LTV" (CURRENT Z = currentBlocLtv via
-                                # computeStrikeLtv — matches the dashboard Strike bar; AFTER = eomLtv, orange when
-                                # hasPaydown) + "collateral: ₿ held · $usd" (usd = ₿ × live btcPrice). The .usedLabel
-                                # prefix + live-USD collateral are shared. AFTER was promoted from the embedded
-                                # .eomProjection sub-section (retired; .eom* CSS removed) to a peer box. So
+                                # Box1 CURRENT + Box3 AFTER show the SAME three lines in the same order for line-for-line
+                                # comparison (asset → debt → avail, NO inline labels — titles carry the meaning, fixes
+                                # ⅓-width wrapping): "₿ held ($usd)" / "$balance (Z% LTV)" / "Avail: $A". CURRENT Z =
+                                # currentBlocLtv via computeStrikeLtv (matches the dashboard Strike bar); AFTER Z = eomLtv
+                                # (orange span when hasPaydown). usd = ₿ × live btcPrice. PER-BOX AVAIL CORRECTNESS:
+                                # CURRENT uses currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, price,
+                                # advisorActualBlocBalance) (current basis); AFTER uses availCredit (eom basis) — fixed a
+                                # latent mislabel where the eom Avail was shown as current. The collateral-limited binding
+                                # hint (availCredit.binding) lives with AFTER (eom-based). Box2 THIS MONTH is a two-line
+                                # action card "Buy: ₿ +X" (₿-only) / "Draw: $Y" (both labeled — bare values would be
+                                # ambiguous), "(proj)" consolidated to the box title; NDP badge below (gated ndp.status
+                                # !== 'ok'). AFTER was promoted from the embedded .eomProjection sub-section (retired;
+                                # .eom*/.usedLabel CSS removed) to a peer box. So
                                 # editing Amount Drawn / BTC collateral in
                                 # Settings moves it cleanly. STRIKE was de-noised: the "fully backed above $X"
                                 # binding line was removed (only the amber "collateral-limited (50% LTV)" branch
                                 # remains, shown at the 50% ceiling); the ltvTriggered CB-buffer line is gated on
-                                # cbPaydownBuffer > 0; and the NDP badge moved OUT to the THIS MONTH box (shown only
-                                # when ndp.status !== 'ok' — hidden when paid/far-off, resurfaces when due). THIS
-                                # MONTH folded its mislabeled "Cash: $X" line INTO the ₿ line as a ~$ cost sub-label
-                                # (it was the BTC budget = income−CB, not cash) → one "₿ +X · ~$Y (proj)" line. In the
+                                # cbPaydownBuffer > 0; and the NDP badge moved to the THIS MONTH box. In the
                                 # dot-rows the Pay/Skip pills sit BEFORE the amount so the amount anchors right
                                 # across current/projected/logged months. The Strike LTV line AND the whole CB LOAN column were
                                 # REMOVED (both LTVs now read from the SafetyDashboard bars above — de-duped;

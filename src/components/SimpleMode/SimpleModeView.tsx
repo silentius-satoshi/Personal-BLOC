@@ -379,7 +379,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
   const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
   const currentBlocLtv: number = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);   // matches the Strike dashboard bar
-  const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
+  const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);   // AFTER-this-month basis
+  const currentAvail       = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);   // CURRENT basis
 
   // Logged Strike balance/LTV reflect the EDITED draw + interest (effectiveDrawAmount/effectiveInterest)
   // — what the user confirms in the sheet — substituting them for the projected currentRow values.
@@ -631,21 +632,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         {/* Position — two carded boxes (STRIKE BLOC | THIS MONTH) */}
         <div className={styles.positionRow}>
 
-            {/* Box 1 — CURRENT STRIKE BLOC (where you are now) */}
+            {/* Box 1 — CURRENT STRIKE BLOC (where you are now): asset → debt → avail */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
-              <span className={styles.positionStat}>
-                <span className={styles.usedLabel}>credit line used: </span>{fmtUSD(advisorActualBlocBalance)} · {(currentBlocLtv * 100).toFixed(1)}% LTV
-              </span>
-              <span className={styles.positionStat}>
-                <span className={styles.usedLabel}>collateral: </span>₿ {currentBtcHeld.toFixed(5)} · {fmtUSD(currentBtcHeld * btcPrice)}
-              </span>
-              <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
-              {availCredit.binding === 'collateral' && (
-                <span className={styles.positionStatHint} style={{ color: 'var(--amber)' }}>
-                  collateral-limited (50% LTV)
-                </span>
-              )}
+              <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)} ({fmtUSD(currentBtcHeld * btcPrice)})</span>
+              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} ({(currentBlocLtv * 100).toFixed(1)}% LTV)</span>
+              <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
               {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && cbPaydownBuffer > 0 && (
                 <>
                   <span className={styles.positionStat} style={{ color: cbBufferAffordable ? 'var(--green)' : 'var(--red)' }}>
@@ -661,22 +653,21 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               )}
             </div>
 
-            {/* Box 2 — THIS MONTH (the action): entry actuals when logged, (proj) otherwise */}
+            {/* Box 2 — THIS MONTH (the action): Buy + Draw; entry actuals when logged, (proj) otherwise */}
             <div className={styles.positionCol}>
-              <span className={styles.positionTitle}>THIS MONTH</span>
+              <span className={styles.positionTitle}>
+                THIS MONTH{!currentEntry && <span className={styles.projSuffix}> (proj)</span>}
+              </span>
               {currentEntry ? (
                 <span className={`${styles.positionStat} ${currentEntry.btcBought > 0 ? styles.statGreen : styles.statMuted}`}>
-                  ₿ {currentEntry.btcBought > 0 ? `+${currentEntry.btcBought.toFixed(5)}` : '—'}
-                  {currentEntry.btcBought > 0 && <span className={styles.projSuffix}> · ~{fmtUSD(currentEntry.btcBought * btcPrice)}</span>}
+                  Buy: ₿ {currentEntry.btcBought > 0 ? `+${currentEntry.btcBought.toFixed(5)}` : '—'}
                 </span>
               ) : (
                 <span className={`${styles.positionStat} ${!advisorSkipBtcBuying && effectiveBtcAmount > 0 ? styles.statGreen : styles.statMuted}`}>
-                  ₿ {advisorSkipBtcBuying || effectiveBtcAmount <= 0 ? '—' : `+${effectiveBtcAmount.toFixed(5)}`}
-                  <span className={styles.projSuffix}>
-                    {!advisorSkipBtcBuying && effectiveBtcAmount > 0 && expectedBtcBuying > 0 ? ` · ~${fmtUSD(expectedBtcBuying)} (proj)` : ' (proj)'}
-                  </span>
+                  Buy: ₿ {advisorSkipBtcBuying || effectiveBtcAmount <= 0 ? '—' : `+${effectiveBtcAmount.toFixed(5)}`}
                 </span>
               )}
+              <span className={styles.positionStat}>Draw: {advisorSkipBlocDraw ? '—' : fmtUSD(effectiveDrawAmount)}</span>
               {ndp.status !== 'ok' && (
                 <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                   {ndp.status === 'never'    && 'NDP — not recorded'}
@@ -687,15 +678,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               )}
             </div>
 
-            {/* Box 3 — AFTER THIS MONTH (where it leaves you) — mirrors Box 1's two lines */}
+            {/* Box 3 — AFTER THIS MONTH (where it leaves you) — mirrors Box 1 line-for-line */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>AFTER THIS MONTH</span>
-              <span className={styles.positionStat}>
-                <span className={styles.usedLabel}>credit line used: </span>{fmtUSD(eomBlocBalance)} · <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
-              </span>
-              <span className={styles.positionStat}>
-                <span className={styles.usedLabel}>collateral: </span>₿ {eomBtcHeld.toFixed(5)} · {fmtUSD(eomBtcHeld * btcPrice)}
-              </span>
+              <span className={styles.positionStat}>₿ {eomBtcHeld.toFixed(5)} ({fmtUSD(eomBtcHeld * btcPrice)})</span>
+              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} (<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span>
+              <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
+              {availCredit.binding === 'collateral' && (
+                <span className={styles.positionStatHint} style={{ color: 'var(--amber)' }}>
+                  collateral-limited (50% LTV)
+                </span>
+              )}
             </div>
 
           </div>
