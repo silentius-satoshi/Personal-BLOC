@@ -10,7 +10,6 @@ const BASE_INPUTS = {
   expenses: 3500,
   startPrice: 82000,
   apr: 0.13,
-  foldRate: 0.015,
   startBTC: REC_TIER_BTC,
 };
 

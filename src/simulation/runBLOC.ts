@@ -9,26 +9,22 @@ export function calcTiers(expenses: number, btcPrice: number) {
 }
 
 export function runBLOC(annualRate: number, inputs: SimInputs): MonthData[] {
-  const { income, expenses, startPrice, apr, foldRate, startBTC } = inputs;
+  const { income, expenses, startPrice, apr, startBTC } = inputs;
   const monthlyRate = apr / 12;
   const monthlyGrowthRate = Math.pow(1 + annualRate, 1 / 12) - 1;
   const LTV_CEILING = 0.15;
 
   let btc = startBTC;
   let loc = 0;
-  let fbtc = 0;
 
   const rows: MonthData[] = [{
     month: 0,
     btcPrice: startPrice,
     btc,
     loc,
-    fbtc,
-    comb: startBTC,
     ltv: 0,
     paydown: 0,
     btcPurchased: 0,
-    foldBTCThisMonth: 0,
     interest: 0,
     portfolioValue: startBTC * startPrice,
     netEquity: startBTC * startPrice,
@@ -61,25 +57,17 @@ export function runBLOC(annualRate: number, inputs: SimInputs): MonthData[] {
     btc += btcPurchased;
     loc -= paydown;
 
-    // Step 6: Fold CC rewards
-    const foldBTCThisMonth = foldRate > 0 ? (expenses * foldRate) / btcPrice : 0;
-    fbtc += foldBTCThisMonth;
-
-    const comb = btc + fbtc;
     const ltv = btc * btcPrice > 0 ? loc / (btc * btcPrice) : 0;
-    const portfolioValue = comb * btcPrice;
+    const portfolioValue = btc * btcPrice;
 
     rows.push({
       month: m,
       btcPrice,
       btc,
       loc,
-      fbtc,
-      comb,
       ltv,
       paydown,
       btcPurchased,
-      foldBTCThisMonth,
       interest,
       portfolioValue,
       netEquity: portfolioValue - loc,

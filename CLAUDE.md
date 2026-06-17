@@ -294,8 +294,6 @@ btcPrice:         number;   // updated every 60s fetch when btcPriceMode === 'li
 btcPriceMode:     'live' | 'manual';   // default 'live'; 'manual' suppresses live overwrites
 activeTier:       'min' | 'rec' | 'ideal' | 'custom';  // default 'rec'
 blocApr:          number;   // default 13 (percent)
-foldEnabled:      boolean;  // default true
-foldRate:         number;   // default 1.5 (percent)
 scenarioGrowth:   number;   // default 50
 creditLine:       number;   // default 10000
 ```
@@ -457,7 +455,7 @@ Visible tabs = `tabOrder` ordered → filtered by `hiddenTabs`. Tab bar uses `Dn
 ## Smart BLOC Sidebar (`InputsPanel.tsx`)
 
 Flex-column panel with two sections:
-- **`.scrollArea`** — scrollable inputs (income, expenses, BTC price, credit line, collateral, APR, Fold settings)
+- **`.scrollArea`** — scrollable inputs (income, expenses, BTC price, credit line, collateral, APR)
 - **`.recommendations`** — sticky bottom panel:
   - Recommended min credit line: `Math.ceil(peakBalance × 1.10 / 500) × 500` where `peakBalance = max(uncapped runBlocYearOne rows)`. Green ✓ / orange ↑.
   - Break-even draw: `income / (1 + blocApr/100/12)`. Green ✓ when `expenses ≤ breakEven`.

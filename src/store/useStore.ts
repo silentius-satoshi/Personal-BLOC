@@ -35,10 +35,8 @@ interface StoreState {
   btcPrice: number;
   btcPriceMode: 'live' | 'manual';
   blocApr: number;
-  foldRewardRate: number;
 
   // Smart BLOC tab state
-  showFoldCC: boolean;
   activeTier: Tier;
   scenario: Scenario;
   scrubMonth: number;
@@ -116,10 +114,8 @@ interface StoreState {
   setBtcPrice: (v: number) => void;
   setBtcPriceMode: (v: 'live' | 'manual') => void;
   setBlocApr: (v: number) => void;
-  setFoldRewardRate: (v: number) => void;
 
   // Setters — Smart BLOC tab
-  setShowFoldCC: (v: boolean) => void;
   setActiveTier: (v: Tier) => void;
   setScenario: (v: Scenario) => void;
   setScrubMonth: (v: number) => void;
@@ -341,9 +337,7 @@ export const useStore = create<StoreState>()(
   btcPrice: 82000,
   btcPriceMode: 'live' as const,
   blocApr: 13,
-  foldRewardRate: 1.5,
 
-  showFoldCC: true,
   activeTier: 'rec',
   scenario: 'moderate',
   scrubMonth: 30,
@@ -423,9 +417,7 @@ export const useStore = create<StoreState>()(
   setBtcPrice: (v) => set({ btcPrice: v }),
   setBtcPriceMode: (v) => set({ btcPriceMode: v }),
   setBlocApr:  (v) => { set({ blocApr: v });  useStore.getState().syncSettingsToNostr(); },
-  setFoldRewardRate: (v) => set({ foldRewardRate: v }),
 
-  setShowFoldCC: (v) => set({ showFoldCC: v }),
   setActiveTier: (v) => set({ activeTier: v }),
   setScenario: (v) => set({ scenario: v }),
   setScrubMonth: (v) => set({ scrubMonth: v }),

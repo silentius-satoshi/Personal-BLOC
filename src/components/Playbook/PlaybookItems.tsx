@@ -40,8 +40,6 @@ interface Props {
 export function PlaybookItems({ data }: Props) {
   const income         = useStore((s) => s.income);
   const expenses       = useStore((s) => s.expenses);
-  const showFoldCC     = useStore((s) => s.showFoldCC);
-  const foldRewardRate = useStore((s) => s.foldRewardRate);
 
   const hasPD   = data.paydown > 0;
   const buyAmt  = income - data.paydown;
@@ -85,7 +83,7 @@ export function PlaybookItems({ data }: Props) {
       <Row
         dot="var(--amber)"
         label="Monthly Draw"
-        subtext="(Fold CC → Strike Bill Pay)"
+        subtext="(via Strike Bill Pay)"
         right={<span className={styles.amount}>{fmtUSD(expenses)}</span>}
       />
 
@@ -95,19 +93,6 @@ export function PlaybookItems({ data }: Props) {
         subtext="(capitalizes onto LoC balance)"
         right={<span className={styles.amount} style={{ color: 'var(--red)' }}>{fmtUSD(data.interest)}</span>}
       />
-
-      {showFoldCC && (
-        <Row
-          dot="var(--green)"
-          label="Fold CC Rewards"
-          subtext={`(${foldRewardRate}% on expenses)`}
-          right={
-            <span className={styles.amount} style={{ color: 'var(--green)' }}>
-              +₿ {data.foldBTCThisMonth.toFixed(5)} BTC
-            </span>
-          }
-        />
-      )}
     </div>
   );
 }

@@ -3,7 +3,6 @@ import {
   ResponsiveContainer, Legend,
 } from 'recharts';
 import { useSimulation } from '../../hooks/useSimulation';
-import { useStore } from '../../store/useStore';
 import { ScenarioPills } from '../ui/ScenarioPills';
 import { fmtUSD } from '../../utils/format';
 import styles from './BtcStackChart.module.css';
@@ -14,11 +13,10 @@ function fmtBTC(n: number) {
 
 export function BtcStackChart() {
   const { blocData, stsData } = useSimulation();
-  const showFoldCC = useStore((s) => s.showFoldCC);
 
   const chartData = blocData.map((b, i) => ({
     month: b.month,
-    bloc: showFoldCC ? b.comb : b.btc,
+    bloc: b.btc,
     sts: stsData[i]?.btc ?? 0,
   }));
 
@@ -26,13 +24,10 @@ export function BtcStackChart() {
   const sts60  = chartData[60]?.sts  ?? 0;
   const delta  = bloc60 - sts60;
   const price60 = blocData[60]?.btcPrice ?? 0;
-  const fbtc60  = blocData[60]?.fbtc ?? 0;
 
-  const title = showFoldCC
-    ? '5-Year BTC Stack: Smart BLOC + Fold CC vs Save the Surplus'
-    : '5-Year BTC Stack: Smart BLOC vs Save the Surplus';
+  const title = '5-Year BTC Stack: Smart BLOC vs Save the Surplus';
 
-  const blocLabel = showFoldCC ? 'Smart BLOC + Fold CC' : 'Smart BLOC';
+  const blocLabel = 'Smart BLOC';
 
   return (
     <div className={styles.container}>
@@ -100,9 +95,6 @@ export function BtcStackChart() {
         <strong>{fmtBTC(sts60)}</strong> for Save the Surplus. You're ahead by{' '}
         <strong style={{ color: 'var(--green)' }}>+{fmtBTC(delta)}</strong>{' '}
         (+{fmtUSD(delta * price60)} at year-5 prices).
-        {showFoldCC && fbtc60 > 0 && (
-          <> Fold CC contributes <strong style={{ color: 'var(--green)' }}>+{fmtBTC(fbtc60)}</strong> of that gain at zero cost.</>
-        )}
       </div>
     </div>
   );

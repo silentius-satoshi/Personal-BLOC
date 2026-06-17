@@ -3,7 +3,6 @@ export interface SimInputs {
   expenses: number;
   startPrice: number;
   apr: number;
-  foldRate: number;
   startBTC: number;
   creditLine?: number;
 }
@@ -13,12 +12,9 @@ export interface MonthData {
   btcPrice: number;
   btc: number;
   loc: number;
-  fbtc: number;
-  comb: number;
   ltv: number;
   paydown: number;
   btcPurchased: number;
-  foldBTCThisMonth: number;
   interest: number;
   portfolioValue: number;
   netEquity: number;
