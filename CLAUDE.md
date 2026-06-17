@@ -182,7 +182,11 @@ src/
                                 # selectedMonth-1; Advisor passes currentMonth-1. Optional openInEditMode
                                 # opens a LOGGED month straight in the edit form (a didInit ref keeps the
                                 # per-month nav-reset from clobbering the seeded `editing`); Simple Mode's
-                                # "Edit this month" sets it, the Advisor multi-month browser omits it
+                                # "Edit this month" sets it, the Advisor multi-month browser omits it.
+                                # The inner month card sits FLUSH on the .modalCard surface (.card chrome
+                                # stripped — transparent/no-border/no-radius; the shell is the only card,
+                                # one inset via .cardScroll padding) — no card-in-card. Edit .formGrid is
+                                # SINGLE-COLUMN (1fr) so long decimals fit; .viewGrid is a label/value column
       MonthlyLogOverlay.module.css
 
     SimpleMode/

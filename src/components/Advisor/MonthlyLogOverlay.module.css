@@ -86,15 +86,15 @@
   flex: 1;
   overflow-y: auto;
   max-height: none;   /* bounded by the modal's max-height; nav is flex:1 between pinned header + dots */
-  padding: 16px 4px;
+  padding: 16px 20px 20px;   /* single inset for the flush content (aligns with the header) */
 }
 
-/* Card */
+/* Card — flush content on the .modalCard surface (the shell provides the single card chrome) */
 .card {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 20px;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -172,11 +172,11 @@
   width: 100%;
 }
 
-/* Form grid */
+/* Form grid — single column so long decimal values fit the full modal width */
 .formGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px 16px;
+  grid-template-columns: 1fr;
+  gap: 12px;
 }
 
 .formField {
@@ -358,6 +358,5 @@
 .dotEmpty::after   { width: 6px;  height: 6px; border-radius: 50%; background: var(--border); }
 
 @media (max-width: 640px) {
-  .formGrid { grid-template-columns: 1fr; }
   .navBtn { padding: 20px 8px; font-size: 24px; }
 }
