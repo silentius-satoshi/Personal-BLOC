@@ -11,7 +11,7 @@
 }
 
 .modalCard {
-  background: var(--bg-base);        /* opaque card — fixes the floating/transparent header */
+  background: var(--bg-card);        /* opaque card (#111318) — --bg-base is an undefined token */
   border: 1px solid var(--border);
   border-radius: 14px;
   width: 100%;
