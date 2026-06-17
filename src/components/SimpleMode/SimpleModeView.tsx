@@ -32,8 +32,8 @@ function getMonthLabel(advisorStartDate: string, monthNum: number): string {
 
 function ConfirmLogSheet({
   monthNum, monthLabel,
-  drawAmount, skipDraw,
-  cbPayment, skipCb, hasCbLoan,
+  drawAmount, skipDraw, onBlocDrawChange,
+  cbPayment, skipCb, showCbRow, cbRowLabel, onCbPaymentChange,
   btcPrice, skipBtc,
   confirmExpenses, onExpensesChange,
   confirmBtcBought, onBtcBoughtChange,
@@ -43,8 +43,8 @@ function ConfirmLogSheet({
   onConfirm, onCancel,
 }: {
   monthNum: number; monthLabel: string;
-  drawAmount: number; skipDraw: boolean;
-  cbPayment: number; skipCb: boolean; hasCbLoan: boolean;
+  drawAmount: number; skipDraw: boolean; onBlocDrawChange: (v: number) => void;
+  cbPayment: number; skipCb: boolean; showCbRow: boolean; cbRowLabel: string; onCbPaymentChange: (v: number) => void;
   btcPrice: number; skipBtc: boolean;
   confirmExpenses: number; onExpensesChange: (v: number) => void;
   confirmBtcBought: number; onBtcBoughtChange: (v: number) => void;
@@ -61,15 +61,47 @@ function ConfirmLogSheet({
           <span className={styles.confirmSub}>{monthLabel}</span>
         </div>
         <div className={styles.confirmRows}>
-          <div className={styles.confirmRow}>
-            <span>BLOC draw</span>
-            <span>{skipDraw ? 'Skipped' : fmtUSD(drawAmount)}</span>
-          </div>
-          {hasCbLoan && (
+          {skipDraw ? (
             <div className={styles.confirmRow}>
-              <span>CB payment</span>
-              <span>{skipCb ? 'Skipped' : fmtUSD(cbPayment)}</span>
+              <span>BLOC draw</span>
+              <span>Skipped</span>
             </div>
+          ) : (
+            <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
+              <span>BLOC draw</span>
+              <div className={styles.confirmExpensesField}>
+                <span className={styles.confirmExpensesPrefix}>$</span>
+                <input
+                  type="number"
+                  className={styles.confirmExpensesInput}
+                  value={drawAmount}
+                  step={100}
+                  onChange={(e) => onBlocDrawChange(parseFloat(e.target.value) || 0)}
+                />
+              </div>
+            </div>
+          )}
+          {showCbRow && (
+            skipCb ? (
+              <div className={styles.confirmRow}>
+                <span>{cbRowLabel}</span>
+                <span>Skipped</span>
+              </div>
+            ) : (
+              <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
+                <span>{cbRowLabel}</span>
+                <div className={styles.confirmExpensesField}>
+                  <span className={styles.confirmExpensesPrefix}>$</span>
+                  <input
+                    type="number"
+                    className={styles.confirmExpensesInput}
+                    value={cbPayment}
+                    step={100}
+                    onChange={(e) => onCbPaymentChange(parseFloat(e.target.value) || 0)}
+                  />
+                </div>
+              </div>
+            )
           )}
           {skipBtc ? (
             <div className={styles.confirmRow}>
@@ -222,6 +254,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   // Change 3 — custom amounts
   const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
+  const [customCbPayment, setCustomCbPayment] = useState<number | null>(null);
   const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null); // stored as BTC
   // Confirm sheet
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
@@ -297,6 +330,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Change 3 — effective amounts (override when user enters custom)
   const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
 
+  // CB payment: per-mode projected seed (ltvTriggered → BLOC-funded cbPaydownDraw, monthly →
+  // income-funded cbPayment), overridable in the confirm sheet. Matches the re-anchor source exactly.
+  const projectedCbAmount = advisorSkipCbPayment ? 0
+    : cbPaymentStrategy === 'ltvTriggered' ? (currentRow?.cbPaydownDraw ?? 0)
+    : (currentRow?.cbPayment ?? 0);
+  const effectiveCbPayment = customCbPayment ?? projectedCbAmount;
+
+  // CB row shows when there's a payment in play: always in monthly mode; ltvTriggered only once fired.
+  const showCbRow = hasCbLoan && (cbPaymentStrategy === 'monthly'
+    || (cbPaymentStrategy === 'ltvTriggered' && !!currentRow?.cbLtvTriggered));
+
   // BTC buying: default is (income − CB payment) ÷ price; custom override stored as BTC
   const defaultBtcAmount =
     btcPrice > 0 ? Math.max(0, expectedBtcBuying / btcPrice) : 0;
@@ -313,6 +357,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
   const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
   const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
+
+  // Logged Strike balance/LTV reflect the EDITED draw (effectiveDrawAmount) — what the user confirms in
+  // the sheet — substituting it for the projected currentRow.blocDraw used by the eomBlocBalance display.
+  const loggedStrikeBal: number = currentRow
+    ? slmBlocBal + (advisorSkipBlocDraw ? 0 : effectiveDrawAmount) + currentRow.blocInterest - expectedPaydown
+    : advisorActualBlocBalance;
+  const loggedStrikeLtv: number = computeStrikeLtv(loggedStrikeBal, eomBtcHeld, btcPrice);
 
   // Change 2 — THIS MONTH column: actuals from the log entry when logged, projections otherwise
   const currentEntry = monthlyLog.find((e) => e.month === currentMonth);
@@ -433,8 +484,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       btcBought:      confirmedBtcBought,
       income:         currentRow?.incomeToBtc ?? 0,
       paydown:        expectedPaydown,
-      strikeBal:      eomBlocBalance,
-      strikeLtv:      eomLtv,
+      strikeBal:      loggedStrikeBal,
+      strikeLtv:      loggedStrikeLtv,
       ...(hasCbLoan ? { cbBal: currentRow?.cbBalance ?? 0, cbLtv: currentRow?.cbLtv ?? 0 } : {}),
       loggedAt:       Date.now(),
       btcHeld:        0,
@@ -443,9 +494,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     // Re-anchor the store CB balance by this month's actual paydown (ltvTriggered → BLOC-funded
     // cbPaydownDraw, monthly → income-funded cbPayment). Liq price is NOT auto-updated (needs the
     // Coinbase oracle figure re-entered manually via the dashboard).
-    const cbPaymentThisMonth = cbPaymentStrategy === 'ltvTriggered'
-      ? (currentRow?.cbPaydownDraw ?? 0)
-      : (currentRow?.cbPayment ?? 0);
+    const cbPaymentThisMonth = effectiveCbPayment;   // edited amount (defaults to the per-mode projection)
     if (hasCbLoan && cbPaymentThisMonth > 0) {
       const accrued = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
       setCbLoanBalance(Math.max(0, accrued - cbPaymentThisMonth));
@@ -456,6 +505,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     }
     setNdpPayThisMonth(false);
     setCustomBlocDraw(null);
+    setCustomCbPayment(null);
     setCustomBtcBuying(null);
     setShowConfirmSheet(false);
   };
@@ -951,9 +1001,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         monthLabel={getMonthLabel(advisorStartDate, currentMonth)}
         drawAmount={effectiveDrawAmount}
         skipDraw={advisorSkipBlocDraw}
-        cbPayment={expectedCbPayment}
+        onBlocDrawChange={setCustomBlocDraw}
+        cbPayment={effectiveCbPayment}
         skipCb={advisorSkipCbPayment}
-        hasCbLoan={hasCbLoan}
+        showCbRow={showCbRow}
+        cbRowLabel={cbPaymentStrategy === 'ltvTriggered' ? 'CB paydown' : 'CB payment'}
+        onCbPaymentChange={setCustomCbPayment}
         btcPrice={btcPrice}
         skipBtc={advisorSkipBtcBuying}
         confirmExpenses={confirmExpenses}

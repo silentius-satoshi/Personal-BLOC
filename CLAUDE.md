@@ -226,10 +226,20 @@ src/
                                 # "Log this month & continue" → ConfirmLogSheet portal (inline component:
                                 # summary + editable expensesActual + editable BTC-bought (seeds to the
                                 # plan's projected buy, or 0 if Buy row skipped; user overrides with the
-                                # actual; shows "Skipped" read-only when skipped) + optional NDP toggle row
+                                # actual; shows "Skipped" read-only when skipped) + editable BLOC draw +
+                                # editable CB payment (both authoritative over the projection — "Skipped"
+                                # read-only when skipped) + optional NDP toggle row
                                 # when ndp.status !== 'ok' — checking it stamps ndpLastPaidDate at log time)
                                 # → handleApply(confirmedExpenses, confirmedBtcBought) writes the confirmed
                                 # bought value to MonthlyLogEntry.btcBought (not the hardwired projection).
+                                # The EDITED BLOC draw (effectiveDrawAmount via customBlocDraw) recomputes the
+                                # logged Strike balance/LTV (loggedStrikeBal/loggedStrikeLtv — substitutes the
+                                # edited draw for the projected currentRow.blocDraw); the EDITED CB payment
+                                # (effectiveCbPayment via customCbPayment, seeded per-mode: ltvTriggered →
+                                # cbPaydownDraw, monthly → cbPayment) drives the CB-balance re-anchor (un-edited
+                                # = today's projected behavior; both customs reset to null on apply). CB row is
+                                # labeled per mode ("CB payment" monthly / "CB paydown" ltvTriggered) and, in
+                                # ltvTriggered mode, HIDDEN until currentRow.cbLtvTriggered fires (showCbRow).
                                 # Plan card = "Monthly Playbook": a month SCRUBBER (1–12, selectedMonth,
                                 # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
                                 # carousel) in the header, three stacked status bars (Income / Strike / CB —
