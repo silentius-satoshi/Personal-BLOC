@@ -1,5 +1,6 @@
 :root {
   --bg-app:       #09090E;
+  --bg-base:      #09090E;   /* = --bg-app (darkest); was referenced in 25 places but never defined → resolved transparent */
   --bg-card:      #111318;
   --bg-input:     #0D0E14;
   --bg-hover:     #13141F;

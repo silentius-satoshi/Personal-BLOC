@@ -616,9 +616,12 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ```css
 --orange: #E8836A  --green: #4ECB82  --red: #E85A4F  --amber: #E8A84A
---bg-base (darkest)  --bg-card (slightly lighter)
+--bg-app / --bg-base (both #09090E, darkest)  --bg-card #111318 (slightly lighter)  --bg-input  --bg-hover
 --text-primary / secondary / ghost / muted / faint  --border
 ```
+`--bg-base: #09090E` (= `--bg-app`) is defined in `tokens.css` — it had been referenced in 25 places across
+15 files but never defined (resolved transparent: 23 `background:` uses masked by the dark app bg, 2
+`color:` uses = invisible dark-on-bright button text in SafetyDashboard, both fixed by the one definition).
 
 ---
 
