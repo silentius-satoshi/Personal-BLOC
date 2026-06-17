@@ -251,9 +251,17 @@ src/
                                 # Plan card = "Monthly Playbook": a month SCRUBBER (1–12, selectedMonth,
                                 # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
                                 # carousel) in the header, three stacked status bars (Income / Strike / CB —
-                                # toggle-gated by showPlan*Bar), a colored-dot 3-row action layout (Buy
-                                # Bitcoin / Monthly Draw / Interest; + a Pay-Coinbase row in monthly CB
-                                # mode), a demoted "this month also" strip (CB alert / capped / rotation /
+                                # toggle-gated by showPlan*Bar; the INCOME bar shows a distinct orange
+                                # paydown SEGMENT — barPaydownPct — when paydown fires, STRIKE/CB bars
+                                # untouched), a colored-dot action layout borrowing the Smart BLOC playbook
+                                # structure on the REALITY engine: Buy Bitcoin (now with % allocation +
+                                # "(after paydown)/(100% of income)" subtext) → a conditional LoC Paydown
+                                # row (orange, % + $, no pill; rowPaydownUsd = isCurrent ? expectedPaydown :
+                                # selectedPlan.paydown — appears only in months where paydown fires) → a
+                                # "Line of Credit (funds your lifestyle)" separator → Monthly Draw / Interest
+                                # (+ a Pay-Coinbase row in monthly CB
+                                # mode); the scrub LTV readout tints orange when paydown fires. A demoted
+                                # "this month also" strip (CB alert / capped / rotation /
                                 # fiat-gap / NDP), and a plain-English summary paragraph. PROJECTION-VS-
                                 # REALITY SPLIT (simpleModePlan.ts): isCurrent (selectedMonth === currentMonth)
                                 # → operate console (Pay/Skip pills + Log active; SKIP-ADJUSTED reality — bars

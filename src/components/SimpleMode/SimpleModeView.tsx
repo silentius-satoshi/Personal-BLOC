@@ -30,6 +30,8 @@ function getMonthLabel(advisorStartDate: string, monthNum: number): string {
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
 
+const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
+
 function ConfirmLogSheet({
   monthNum, monthLabel,
   drawAmount, skipDraw, onBlocDrawChange,
@@ -443,6 +445,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const rowInterest = isCurrent ? (currentRow?.blocInterest ?? 0) : (selectedRow?.blocInterest ?? 0);
   const rowCbPayUsd = isCurrent ? expectedCbPayment : (selectedPlan?.cbPayment ?? 0);
 
+  // Income→BLOC paydown (Smart BLOC structure on the reality engine): current = skip-adjusted
+  // expectedPaydown, selected = clean selectedPlan.paydown. Drives the conditional LoC Paydown row,
+  // the Buy Bitcoin %/(after paydown) subtext, and the INCOME bar's paydown segment.
+  const rowPaydownUsd = isCurrent ? expectedPaydown : (selectedPlan?.paydown ?? 0);
+  const hasPaydown    = rowPaydownUsd > 0;
+  const rowBuyPct     = income > 0 ? rowBtcUsd / income : 1;
+  const rowPaydownPct = income > 0 ? rowPaydownUsd / income : 0;
+
   // Demoted "this month also" strip reads the SELECTED row's flags (scrubbing shows that month's alerts).
   const sCbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.cbLtvTriggered;
   const sCapped      = sCbTriggered && !!selectedRow?.cbPaydownCapped;
@@ -466,6 +476,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const strikeLiqFrac = strikeLiquidationLtvPct / 100;
   const cbTriggerFrac = cbLtvTriggerPct / 100;
   const incomeFillPct = income > 0 ? clampPct(barAllocated / income) : 0;
+  const barPaydownPct = income > 0 ? clampPct(rowPaydownUsd / income) : 0;   // paydown segment within the income fill
   const strikeFillPct = strikeLiqFrac > 0 ? clampPct(barStrikeLtv / strikeLiqFrac) : 0;
   const cbFillPct     = clampPct(barCbLtv / CB_LLTV);
   const strikeLevel   = barLevel(barStrikeLtv, strikeLiqFrac * 0.6, strikeLiqFrac * 0.8);
@@ -743,7 +754,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 </span>
               </div>
               <div className={styles.scrubReadout}>
-                LTV {(barStrikeLtv * 100).toFixed(1)}% · ₿ {selectedBtcHeld.toFixed(5)}
+                LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}%</span> · ₿ {selectedBtcHeld.toFixed(5)}
               </div>
             </div>
             <input
@@ -768,6 +779,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   </div>
                   <div className={styles.planBarTrack}>
                     <div className={styles.planBarFill} style={{ width: `${incomeFillPct}%`, background: barAllocFull ? 'var(--green)' : 'var(--amber)' }} />
+                    {barPaydownPct > 0 && (
+                      <div className={styles.planBarFill} style={{ width: `${barPaydownPct}%`, background: 'var(--orange)' }} />
+                    )}
                   </div>
                 </div>
               )}
@@ -819,7 +833,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   <div className={styles.dotLabelGroup}>
                     <span className={styles.dotLabel}>Buy Bitcoin</span>
                     <span className={styles.dotSub}>
-                      {isCurrent && advisorSkipBtcBuying ? 'skipped this month' : `~${fmtUSD(rowBtcUsd)} of income`}
+                      {isCurrent && advisorSkipBtcBuying
+                        ? 'skipped this month'
+                        : `~${fmtUSD(rowBtcUsd)} · ${fmtPct(rowBuyPct)} ${hasPaydown ? '(after paydown)' : '(100% of income)'}`}
                     </span>
                   </div>
                   <span className={styles.dotAmount}>
@@ -831,6 +847,23 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                       <button className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBtcBuying(true)}>Skip</button>
                     </div>
                   )}
+                </div>
+
+                {/* LoC Paydown — income-driven, no pill (months where paydown fires) */}
+                {hasPaydown && (
+                  <div className={styles.dotRow}>
+                    <span className={`${styles.dot} ${styles.dotOrange}`} />
+                    <div className={styles.dotLabelGroup}>
+                      <span className={styles.dotLabel}>LoC Paydown</span>
+                      <span className={styles.dotSub}>{fmtPct(rowPaydownPct)} · reducing your BLOC LTV</span>
+                    </div>
+                    <span className={styles.dotAmount}>{fmtUSD(rowPaydownUsd)}</span>
+                  </div>
+                )}
+
+                {/* Line of Credit section separator (Smart BLOC structure) */}
+                <div className={styles.separator}>
+                  <span className={styles.separatorLabel}>Line of Credit (funds your lifestyle)</span>
                 </div>
 
                 {/* Monthly Draw */}

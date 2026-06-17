@@ -945,10 +945,13 @@
 .dotAmber { background: var(--amber); }
 .dotRed   { background: var(--red); }
 .dotBlue  { background: var(--orange); }
+.dotOrange { background: var(--orange); }
 .dotLabelGroup { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .dotLabel { font-size: 14px; color: var(--text-primary); }
 .dotSub { font-size: 11px; color: var(--text-ghost); }
 .dotAmount { font-size: 15px; font-weight: 700; color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.separator { margin: 4px 0; padding-top: 6px; border-top: 1px solid var(--border); }
+.separatorLabel { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-ghost); }
 
 /* Demoted "this month also" strip */
 .alsoStrip {
