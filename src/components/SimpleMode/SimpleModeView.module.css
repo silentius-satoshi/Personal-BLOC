@@ -888,24 +888,51 @@
 
 /* Scrubber header */
 .scrubHeader { display: flex; flex-direction: column; gap: 8px; }
-.scrubHeaderTop { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
-.scrubTitleGroup { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.scrubHeaderTop { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.scrubTitleGroup { display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
 .scrubMonthNum { color: var(--orange); }
 .scrubBadge {
   font-size: 9px;
   font-weight: 700;
-  letter-spacing: 0.06em;
-  padding: 2px 7px;
-  border-radius: 10px;
-  border: 1px solid var(--border);
+  letter-spacing: 0.08em;
   white-space: nowrap;
 }
-.scrubBadgeCurrent   { color: var(--green);  border-color: rgba(78,203,130,0.4); }
-.scrubBadgeLogged    { color: var(--text-ghost); border-color: var(--border); }
-.scrubBadgeProjected { color: var(--amber);  border-color: rgba(232,168,74,0.35); }
-.scrubReadout { font-size: 11px; color: var(--text-ghost); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-.scrubSlider { width: 100%; accent-color: var(--orange); cursor: pointer; }
-.scrubCaption { font-size: 10px; color: var(--text-faint); text-align: center; }
+.scrubBadgeCurrent   { color: var(--green); }
+.scrubBadgeLogged    { color: var(--text-ghost); }
+.scrubBadgeProjected { color: var(--amber); }
+.scrubLtv { font-size: 12px; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.scrubPaydownFlag { color: var(--orange); }
+.scrubPrice { margin-left: auto; font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.scrubSlider {
+  width: 100%;
+  height: 6px;
+  -webkit-appearance: none;
+  appearance: none;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+  background: linear-gradient(90deg, var(--red) 0 calc(var(--paydownPct, 0) * 1%), var(--green) calc(var(--paydownPct, 0) * 1%) 100%);
+}
+.scrubSlider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--orange);
+  cursor: pointer;
+  border: 2px solid var(--bg-app);
+}
+.scrubSlider::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--orange);
+  cursor: pointer;
+  border: 2px solid var(--bg-app);
+}
+.scrubMonthLabels { display: flex; justify-content: space-between; padding: 0 2px; }
+.scrubMonthTick { font-size: 8px; color: var(--text-ghost); letter-spacing: 0.5px; }
 
 /* Stacked status bars */
 .planBars { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
@@ -936,20 +963,22 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 0;
-  border-top: 1px solid rgba(255,255,255,0.05);
+  padding: 8px 0;
+  border-top: 1px solid rgba(255,255,255,0.03);
 }
 .dotRow:first-child { border-top: none; }
-.dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
 .dotGreen { background: var(--green); }
 .dotAmber { background: var(--amber); }
 .dotRed   { background: var(--red); }
 .dotBlue  { background: var(--orange); }
 .dotOrange { background: var(--orange); }
 .dotLabelGroup { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.dotLabel { font-size: 14px; color: var(--text-primary); }
+.dotLabel { font-size: 13px; color: var(--text-secondary); }
 .dotSub { font-size: 11px; color: var(--text-ghost); }
-.dotAmount { font-size: 15px; font-weight: 700; color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+.dotRightInner { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
+.dotPct { font-size: 11px; color: var(--text-muted); }
+.dotAmount { font-size: 15px; font-weight: 600; color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
 .separator { margin: 4px 0; padding-top: 6px; border-top: 1px solid var(--border); }
 .separatorLabel { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-ghost); }
 

@@ -430,9 +430,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : (selectedRow?.cbLtv ?? 0);
   const barAllocated = isCurrent ? allocatedFromIncome : (selectedPlan?.allocatedFromIncome ?? 0);
   const barAllocFull = isCurrent ? isFullyAllocated   : (selectedPlan?.isFullyAllocated ?? false);
-  const selectedBtcHeld = isCurrent ? eomBtcHeld
-    : selectedEntry ? selectedEntry.btcHeld
-    : (selectedRow?.btcHeld ?? eomBtcHeld);
 
   // Action-row display values for the SELECTED month.
   const rowDrawUsd  = isCurrent ? effectiveDrawAmount : (selectedPlan?.blocDraw ?? 0);
@@ -752,20 +749,27 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 }`}>
                   {isCurrent ? 'CURRENT' : selectedEntry ? '✓ LOGGED' : 'PROJECTED'}
                 </span>
+                <span className={styles.scrubLtv}>
+                  · LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}%</span>
+                  {hasPaydown && <span className={styles.scrubPaydownFlag}> — paydown triggered</span>}
+                </span>
               </div>
-              <div className={styles.scrubReadout}>
-                LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}%</span> · ₿ {selectedBtcHeld.toFixed(5)}
-              </div>
+              <span className={styles.scrubPrice}>BTC {fmtUSD(btcPrice)}</span>
             </div>
             <input
               type="range"
               className={styles.scrubSlider}
+              style={{ ['--paydownPct' as string]: barPaydownPct }}
               min={1} max={12} step={1}
               value={selectedMonth}
               onChange={(e) => setSelectedMonth(Number(e.target.value))}
               aria-label="Scrub through months"
             />
-            <span className={styles.scrubCaption}>Drag to scrub through any month</span>
+            <div className={styles.scrubMonthLabels}>
+              {[1, 3, 6, 9, 12].map((m) => (
+                <span key={m} className={styles.scrubMonthTick}>M{m}</span>
+              ))}
+            </div>
           </div>
 
           {/* Stacked status bars — selected month's projection; current = skip-adjusted reality */}
@@ -835,12 +839,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     <span className={styles.dotSub}>
                       {isCurrent && advisorSkipBtcBuying
                         ? 'skipped this month'
-                        : `~${fmtUSD(rowBtcUsd)} · ${fmtPct(rowBuyPct)} ${hasPaydown ? '(after paydown)' : '(100% of income)'}`}
+                        : `~${fmtUSD(rowBtcUsd)} ${hasPaydown ? '(after paydown)' : '(100% of income)'}`}
                     </span>
                   </div>
-                  <span className={styles.dotAmount}>
-                    {isCurrent && advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${rowBtcAmt.toFixed(5)} ₿`}
-                  </span>
+                  <div className={styles.dotRightInner}>
+                    {!(isCurrent && advisorSkipBtcBuying) && <span className={styles.dotPct}>{fmtPct(rowBuyPct)}</span>}
+                    <span className={styles.dotAmount}>
+                      {isCurrent && advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${rowBtcAmt.toFixed(5)} ₿`}
+                    </span>
+                  </div>
                   {isCurrent && (
                     <div className={styles.paySkipGroup}>
                       <button className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBtcBuying(false)}>Pay</button>
@@ -855,9 +862,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     <span className={`${styles.dot} ${styles.dotOrange}`} />
                     <div className={styles.dotLabelGroup}>
                       <span className={styles.dotLabel}>LoC Paydown</span>
-                      <span className={styles.dotSub}>{fmtPct(rowPaydownPct)} · reducing your BLOC LTV</span>
+                      <span className={styles.dotSub}>reducing your BLOC LTV</span>
                     </div>
-                    <span className={styles.dotAmount}>{fmtUSD(rowPaydownUsd)}</span>
+                    <div className={styles.dotRightInner}>
+                      <span className={styles.dotPct}>{fmtPct(rowPaydownPct)}</span>
+                      <span className={styles.dotAmount}>{fmtUSD(rowPaydownUsd)}</span>
+                    </div>
                   </div>
                 )}
 
@@ -914,7 +924,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                       <span className={styles.dotLabel}>Interest /mo</span>
                       <span className={styles.dotSub}>capitalizes onto your BLOC balance</span>
                     </div>
-                    <span className={styles.dotAmount}>{fmtUSD(rowInterest)}</span>
+                    <span className={styles.dotAmount} style={{ color: 'var(--red)' }}>{fmtUSD(rowInterest)}</span>
                   </div>
                 )}
               </div>

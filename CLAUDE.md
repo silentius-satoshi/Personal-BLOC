@@ -248,9 +248,14 @@ src/
                                 # = today's projected behavior; all customs reset to null on apply). CB row is
                                 # labeled per mode ("CB payment" monthly / "CB paydown" ltvTriggered) and, in
                                 # ltvTriggered mode, HIDDEN until currentRow.cbLtvTriggered fires (showCbRow).
-                                # Plan card = "Monthly Playbook": a month SCRUBBER (1–12, selectedMonth,
+                                # Plan card = "Monthly Playbook" (polished toward Smart BLOC's restraint):
+                                # a SINGLE inline header "Month X of 12 · [de-boxed state badge] · LTV Z%
+                                # — paydown triggered" (LTV + flag coral when hasPaydown; BTC price right);
+                                # a month SCRUBBER (1–12, selectedMonth,
                                 # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
-                                # carousel) in the header, three stacked status bars (Income / Strike / CB —
+                                # carousel) with a TWO-TONE fill (red paydown share / green rest, keyed to
+                                # the --paydownPct = barPaydownPct CSS var) + month-tick markers
+                                # (M1·M3·M6·M9·M12, replaced the "drag to scrub" caption); three stacked status bars (Income / Strike / CB —
                                 # toggle-gated by showPlan*Bar; the INCOME bar shows a distinct orange
                                 # paydown SEGMENT — barPaydownPct — when paydown fires, STRIKE/CB bars
                                 # untouched), a colored-dot action layout borrowing the Smart BLOC playbook
@@ -260,7 +265,11 @@ src/
                                 # selectedPlan.paydown — appears only in months where paydown fires) → a
                                 # "Line of Credit (funds your lifestyle)" separator → Monthly Draw / Interest
                                 # (+ a Pay-Coinbase row in monthly CB
-                                # mode); the scrub LTV readout tints orange when paydown fires. A demoted
+                                # mode). Each allocation row's % sits ABOVE the amount (right-aligned
+                                # .dotRightInner/.dotPct — Buy Bitcoin/LoC Paydown only), the Interest
+                                # amount is red, and the rows are dialed back to Smart BLOC's restraint
+                                # (8px dots, --text-secondary labels, lighter dividers, weight-600 amounts).
+                                # A demoted
                                 # "this month also" strip (CB alert / capped / rotation /
                                 # fiat-gap / NDP), and a plain-English summary paragraph. PROJECTION-VS-
                                 # REALITY SPLIT (simpleModePlan.ts): isCurrent (selectedMonth === currentMonth)
