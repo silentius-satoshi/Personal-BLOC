@@ -288,16 +288,18 @@ src/
                                 # "← back to current month"). Log button gated isCurrent && !strategyDone;
                                 # a logged current month shows a ✓ note + "✎ Edit this month" (opens the overlay
                                 # for currentMonth) + Undo (deleteLogEntry). MonthlyLogSection kept for the
-                                # Advisor tab. The POSITION block is TWO CARDED BOXES (STRIKE BLOC | THIS MONTH —
-                                # .positionRow is a 1fr/1fr grid that stacks <560px; the outer .card wrapper was
-                                # dropped to avoid card-in-card). The STRIKE box (titled "CURRENT STRIKE BLOC")
-                                # headlines CURRENT ACTUALS as a parallel debt/collateral pair — "credit line
-                                # used: $balance · Z% LTV" (Z = currentBlocLtv via computeStrikeLtv — the CURRENT
-                                # Strike LTV, matches the dashboard Strike bar) + "collateral: ₿ held · $usd"
-                                # (usd = ₿ × live btcPrice) — followed by the skip-aware EoM projection as a labeled
-                                # .eomProjection mini-block ("After this month" → same "credit line used: $… · …% LTV"
-                                # (orange when hasPaydown) + "collateral: ₿ … · $…" framing; the .usedLabel prefix +
-                                # live-USD collateral are shared by both; replaced the old run-on hint) — so
+                                # Advisor tab. The POSITION block is THREE CARDED BOXES in a row — CURRENT STRIKE
+                                # BLOC | THIS MONTH | AFTER THIS MONTH (now → action → projected; .positionRow is a
+                                # 1fr/1fr/1fr grid that stacks to 1col ≤760px; the outer .card wrapper was dropped to
+                                # avoid card-in-card). Split from the old lopsided 2-box layout — the left box used to
+                                # cram CURRENT + the embedded AFTER projection + Avail, wrapping "credit line used · LTV"
+                                # onto two lines, while THIS MONTH sat ~85% empty; three full-width-each boxes fix both.
+                                # Box1 CURRENT + Box3 AFTER show the SAME two lines in the same order for line-for-line
+                                # comparison: "credit line used: $balance · Z% LTV" (CURRENT Z = currentBlocLtv via
+                                # computeStrikeLtv — matches the dashboard Strike bar; AFTER = eomLtv, orange when
+                                # hasPaydown) + "collateral: ₿ held · $usd" (usd = ₿ × live btcPrice). The .usedLabel
+                                # prefix + live-USD collateral are shared. AFTER was promoted from the embedded
+                                # .eomProjection sub-section (retired; .eom* CSS removed) to a peer box. So
                                 # editing Amount Drawn / BTC collateral in
                                 # Settings moves it cleanly. STRIKE was de-noised: the "fully backed above $X"
                                 # binding line was removed (only the amber "collateral-limited (50% LTV)" branch

@@ -631,7 +631,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         {/* Position — two carded boxes (STRIKE BLOC | THIS MONTH) */}
         <div className={styles.positionRow}>
 
-            {/* Left — STRIKE BLOC */}
+            {/* Box 1 — CURRENT STRIKE BLOC (where you are now) */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
               <span className={styles.positionStat}>
@@ -640,18 +640,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.positionStat}>
                 <span className={styles.usedLabel}>collateral: </span>₿ {currentBtcHeld.toFixed(5)} · {fmtUSD(currentBtcHeld * btcPrice)}
               </span>
-              <div className={styles.eomProjection}>
-                <span className={styles.eomLabel}>After this month</span>
-                <div className={styles.eomRow}>
-                  <span className={styles.usedLabel}>credit line used: </span>
-                  <span className={styles.eomVal}>{fmtUSD(eomBlocBalance)}</span>
-                  <span className={styles.eomSep}>·</span>
-                  <span className={styles.eomVal} style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
-                </div>
-                <span className={styles.eomBtc}>
-                  <span className={styles.usedLabel}>collateral: </span>₿ {eomBtcHeld.toFixed(5)} · {fmtUSD(eomBtcHeld * btcPrice)}
-                </span>
-              </div>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
               {availCredit.binding === 'collateral' && (
                 <span className={styles.positionStatHint} style={{ color: 'var(--amber)' }}>
@@ -673,7 +661,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               )}
             </div>
 
-            {/* Center — THIS MONTH: entry actuals when logged, (proj)-labeled projections otherwise */}
+            {/* Box 2 — THIS MONTH (the action): entry actuals when logged, (proj) otherwise */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>THIS MONTH</span>
               {currentEntry ? (
@@ -697,6 +685,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   {ndp.status === 'overdue'  && '⛔ NDP overdue'}
                 </span>
               )}
+            </div>
+
+            {/* Box 3 — AFTER THIS MONTH (where it leaves you) — mirrors Box 1's two lines */}
+            <div className={styles.positionCol}>
+              <span className={styles.positionTitle}>AFTER THIS MONTH</span>
+              <span className={styles.positionStat}>
+                <span className={styles.usedLabel}>credit line used: </span>{fmtUSD(eomBlocBalance)} · <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
+              </span>
+              <span className={styles.positionStat}>
+                <span className={styles.usedLabel}>collateral: </span>₿ {eomBtcHeld.toFixed(5)} · {fmtUSD(eomBtcHeld * btcPrice)}
+              </span>
             </div>
 
           </div>

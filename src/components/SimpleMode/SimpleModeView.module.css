@@ -108,8 +108,8 @@
 }
 
 /* Position card */
-.positionRow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-@media (max-width: 560px) { .positionRow { grid-template-columns: 1fr; } }
+.positionRow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+@media (max-width: 760px) { .positionRow { grid-template-columns: 1fr; } }
 .positionCol {
   display: flex;
   flex-direction: column;
@@ -131,20 +131,6 @@
 .positionStat { font-size: 13px; color: var(--text-secondary); }
 .positionStatHint { font-size: 11px; color: var(--text-ghost); }
 
-/* "After this month" projection mini-block (STRIKE BLOC box anchor) */
-.eomProjection {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  margin-top: 4px;
-  padding-top: 8px;
-  border-top: 1px solid var(--border);
-}
-.eomLabel { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-ghost); }
-.eomRow { display: flex; align-items: baseline; gap: 6px; }
-.eomVal { font-size: 13px; font-weight: 600; color: var(--text-secondary); }
-.eomSep { color: var(--text-faint); }
-.eomBtc { font-size: 13px; color: var(--text-secondary); }
 .usedLabel { font-size: 11px; color: var(--text-ghost); }
 
 /* Change 2 — THIS MONTH column stat colours */
