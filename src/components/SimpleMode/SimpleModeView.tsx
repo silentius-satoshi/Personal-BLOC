@@ -650,16 +650,22 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.positionTitle}>STRIKE BLOC</span>
               <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)}</span>
               <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)}</span>
-              <span className={styles.positionStatHint}>
-                → after this month: ~{fmtUSD(eomBlocBalance)} · {(eomLtv * 100).toFixed(1)}% · {eomBtcHeld.toFixed(5)} ₿
-              </span>
+              <div className={styles.eomProjection}>
+                <span className={styles.eomLabel}>After this month</span>
+                <div className={styles.eomRow}>
+                  <span className={styles.eomVal}>{fmtUSD(eomBlocBalance)}</span>
+                  <span className={styles.eomSep}>·</span>
+                  <span className={styles.eomVal} style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
+                </div>
+                <span className={styles.eomBtc}>₿ {eomBtcHeld.toFixed(5)}</span>
+              </div>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
-              <span className={styles.positionStatHint} style={{ color: availCredit.binding === 'collateral' ? 'var(--amber)' : 'var(--text-ghost)' }}>
-                {availCredit.binding === 'line'
-                  ? `fully backed above ${fmtUSD(availCredit.fullyBackedPrice)}`
-                  : 'collateral-limited (50% LTV)'}
-              </span>
-              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (
+              {availCredit.binding === 'collateral' && (
+                <span className={styles.positionStatHint} style={{ color: 'var(--amber)' }}>
+                  collateral-limited (50% LTV)
+                </span>
+              )}
+              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && cbPaydownBuffer > 0 && (
                 <>
                   <span className={styles.positionStat} style={{ color: cbBufferAffordable ? 'var(--green)' : 'var(--red)' }}>
                     CB buffer: {fmtUSD(cbPaydownBuffer)}
@@ -672,13 +678,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   ↩ Rotation ready — shift to the cheaper CB loan
                 </span>
               )}
-              <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
-                {ndp.status === 'never'    && 'NDP — not recorded'}
-                {ndp.status === 'ok'       && `NDP: ${ndp.daysRemaining}d`}
-                {ndp.status === 'upcoming' && `⚠ NDP: ${ndp.daysRemaining}d`}
-                {ndp.status === 'soon'     && `⚠ NDP: ${ndp.daysRemaining}d`}
-                {ndp.status === 'overdue'  && '⛔ NDP overdue'}
-              </span>
             </div>
 
             {/* Center — THIS MONTH: entry actuals when logged, (proj)-labeled projections otherwise */}
@@ -702,6 +701,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     <span className={styles.projSuffix}> (proj)</span>
                   </span>
                 </>
+              )}
+              {ndp.status !== 'ok' && (
+                <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
+                  {ndp.status === 'never'    && 'NDP — not recorded'}
+                  {ndp.status === 'upcoming' && `⚠ NDP: ${ndp.daysRemaining}d`}
+                  {ndp.status === 'soon'     && `⚠ NDP: ${ndp.daysRemaining}d`}
+                  {ndp.status === 'overdue'  && '⛔ NDP overdue'}
+                </span>
               )}
             </div>
 
@@ -826,18 +833,18 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                         : `~${fmtUSD(rowBtcUsd)} ${hasPaydown ? '(after paydown)' : '(100% of income)'}`}
                     </span>
                   </div>
-                  <div className={styles.dotRightInner}>
-                    {!(isCurrent && advisorSkipBtcBuying) && <span className={styles.dotPct}>{fmtPct(rowBuyPct)}</span>}
-                    <span className={styles.dotAmount}>
-                      {isCurrent && advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${rowBtcAmt.toFixed(5)} ₿`}
-                    </span>
-                  </div>
                   {isCurrent && (
                     <div className={styles.paySkipGroup}>
                       <button className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBtcBuying(false)}>Pay</button>
                       <button className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBtcBuying(true)}>Skip</button>
                     </div>
                   )}
+                  <div className={styles.dotRightInner}>
+                    {!(isCurrent && advisorSkipBtcBuying) && <span className={styles.dotPct}>{fmtPct(rowBuyPct)}</span>}
+                    <span className={styles.dotAmount}>
+                      {isCurrent && advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${rowBtcAmt.toFixed(5)} ₿`}
+                    </span>
+                  </div>
                 </div>
 
                 {/* LoC Paydown — income-driven, no pill (months where paydown fires) */}
@@ -868,15 +875,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                       <span className={styles.dotLabel}>Monthly Draw</span>
                       <span className={styles.dotSub}>living expenses, from BLOC</span>
                     </div>
-                    <span className={styles.dotAmount}>
-                      {isCurrent && advisorSkipBlocDraw ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowDrawUsd)}
-                    </span>
                     {isCurrent && (
                       <div className={styles.paySkipGroup}>
                         <button className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBlocDraw(false)}>Pay</button>
                         <button className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBlocDraw(true)}>Skip</button>
                       </div>
                     )}
+                    <span className={styles.dotAmount}>
+                      {isCurrent && advisorSkipBlocDraw ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowDrawUsd)}
+                    </span>
                   </div>
                 )}
 
@@ -888,15 +895,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                       <span className={styles.dotLabel}>Pay Coinbase loan</span>
                       <span className={styles.dotSub}>from monthly income</span>
                     </div>
-                    <span className={styles.dotAmount}>
-                      {isCurrent && advisorSkipCbPayment ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowCbPayUsd)}
-                    </span>
                     {isCurrent && (
                       <div className={styles.paySkipGroup}>
                         <button className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipCbPayment(false)}>Pay</button>
                         <button className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipCbPayment(true)}>Skip</button>
                       </div>
                     )}
+                    <span className={styles.dotAmount}>
+                      {isCurrent && advisorSkipCbPayment ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowCbPayUsd)}
+                    </span>
                   </div>
                 )}
 
