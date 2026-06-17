@@ -34,7 +34,8 @@
       "Bash(echo \"EXIT: $?\")",
       "Bash(awk '/\\\\.ltvBarWrapper|\\\\.ltvBarTrack|\\\\.ltvBarFill|\\\\.ltvMarker|\\\\.ltvBarLabels|\\\\.ltvBarCurrent/{p=1} p{print} /^\\\\}/{if\\(p\\)c++; if\\(c>=12\\)exit}' src/components/CoinbaseLoan/CoinbaseLoanMain.module.css)",
       "Bash(grep -n \"## CB Loan \\(\\\\`runCoinbaseLoan\\\\|runCoinbaseLoan.ts            #\\\\|cbMetrics\\\\|computeLiquidationAnalysis\" CLAUDE.md)",
-      "Bash(grep -nA8 \"^\\\\.dots \" src/components/Advisor/MonthlyLogOverlay.module.css)"
+      "Bash(grep -nA8 \"^\\\\.dots \" src/components/Advisor/MonthlyLogOverlay.module.css)",
+      "Bash(grep -nA6 \"strategyPillActive\\\\|\\\\.strategyPill \" src/components/Settings/SettingsMain.module.css)"
     ],
     "additionalDirectories": [
       "/tmp"

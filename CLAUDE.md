@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (183 tests — all must pass before every commit)
+- Vitest (188 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -55,6 +55,7 @@ src/
 
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick)
+    useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); ephemeral, NEVER written to store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG
     useSimulation.ts            # Smart BLOC tab simulation hook
     useLivingSimulation.ts      # Living on Bitcoin tab hook
     usePowerLawData.ts          # Blockchain.com historical price (via Vercel proxy in prod)
@@ -190,8 +191,13 @@ src/
       MonthlyLogOverlay.module.css
 
     SimpleMode/
+      PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
+                                # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
+                                # (green/red), auto padded Y-domain (intraday visible), graceful loading/
+                                # "price history unavailable" states. Owns its own range state + useBtcHistory
+                                # (no props). Data ephemeral (never stored). PriceChart.module.css alongside
       SafetyDashboard.tsx       # Top-of-SimpleMode safety read (reads store directly, recomputes on price tick):
-                                # price-chart slot (Spec C) → CB bar (primary; fill = ltv/CB_LLTV, trigger +
+                                # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/CB_LLTV, trigger +
                                 # 86% liq markers w/ "Coinbase"/"~est." source tag, ↓drop-to-trigger/liq cushion,
                                 # Safe/Fair/Poor badge, no-grace note in amber/red) → Strike bar (tap to flip
                                 # capacity-used ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
@@ -249,6 +255,7 @@ src/
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
+  btc-candles.js               # Vercel serverless proxy for Coinbase Exchange candles (api.exchange.coinbase.com; granularity whitelist, s-maxage=60) — same-origin so the browser avoids CORS; feeds useBtcHistory
 
 public/
   manifest.json                # PWA: name "Personal ₿LOC", theme #E8836A
@@ -629,7 +636,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-183 tests — `npx vitest run` before every commit.
+188 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -641,6 +648,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
+- `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix

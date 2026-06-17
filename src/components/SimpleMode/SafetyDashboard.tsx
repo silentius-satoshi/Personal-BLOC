@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { computeStrikeLtv } from '../../simulation/strikeCredit';
+import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
 import { fmtUSD } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
@@ -53,8 +54,8 @@ export function SafetyDashboard() {
   const [draftBal, setDraftBal]     = useState(cbLoanBalance);
   const [draftLiq, setDraftLiq]     = useState(cbLiquidationPrice);
 
-  // ── Price chart slot (Spec C fills this) ─────────────────────────────
-  const priceSlot = <div className={styles.priceSlot} aria-hidden="true" />;
+  // ── Price chart slot — BTC candles (1H/1D/1W), top of the dashboard ──
+  const priceSlot = <PriceChart />;
 
   // ── CB bar math (shared cbMetrics — same numbers as the CB Loan tab) ──
   const accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
