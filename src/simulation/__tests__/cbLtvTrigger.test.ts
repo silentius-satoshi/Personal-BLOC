@@ -74,7 +74,7 @@ describe('ltvTriggered mode', () => {
     expect(month1.cbBalance).toBeCloseTo(expectedCbBal, -2);  // within $100
   });
 
-  it('blocBalance increases by cbPaydownDraw in trigger month', () => {
+  it('trigger month: CB draw fires and income defends the 15% BLOC ceiling', () => {
     const { rows } = runAdvisor({
       ...BASE,
       cbPaymentStrategy: 'ltvTriggered',
@@ -84,8 +84,9 @@ describe('ltvTriggered mode', () => {
     });
     const month1 = rows[0];
     expect(month1.cbLtvTriggered).toBe(true);
-    // blocBalance must be ≥ cbPaydownDraw (it starts at 0, gets the paydown draw + expense draw)
-    expect(month1.blocBalance).toBeGreaterThanOrEqual(month1.cbPaydownDraw);
+    // The CB paydown draw lands on Strike, then income (up to 100%) defends the 15% ceiling — so the
+    // trigger month's BLOC LTV snaps back to ≤15% (was ≈17.8% under the old 30%-of-income paydown cap).
+    expect(month1.blocLtv).toBeLessThanOrEqual(0.151);
   });
 
   it('no CB payment from income in ltvTriggered mode', () => {

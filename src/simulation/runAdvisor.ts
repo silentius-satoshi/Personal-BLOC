@@ -174,7 +174,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       // BLOC LTV paydown check — funded from income
       const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
       blocPaydown = blocBalance > blocTarget
-        ? Math.min(income * 0.3, blocBalance - blocTarget)
+        ? Math.min(income, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
 
       // No CB payment from income in ltvTriggered mode
@@ -207,7 +207,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       // BLOC LTV paydown check — funded from income
       const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
       blocPaydown = blocBalance > blocTarget
-        ? Math.min(income * 0.3, blocBalance - blocTarget)
+        ? Math.min(income, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
 
       // Income allocation by tier
