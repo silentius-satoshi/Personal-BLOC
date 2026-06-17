@@ -1,6 +1,6 @@
 # Personal ₿LOC — Master Spec Index
 
-**Current shipped baseline: store v14 · 191/191 tests · HEAD `a99b0cd` (branch `main`).**
+**Current shipped baseline: store v14 · 191/191 tests · HEAD `f6ff5c6` (branch `main`).**
 **Last rebuilt:** after the confirm-sheet / paydown-ceiling / playbook-polish arc (the Simple Mode +
 rate-integration work is essentially complete — this is a historical record of what shipped, not a
 forward queue).
@@ -50,6 +50,7 @@ Chronological (oldest → newest). All committed to `main`, all at store v14.
 | `simple-mode-playbook-polish-spec-v1` | `edc0fcc` | **The styling polish** (matches Smart BLOC's restraint). Single inline header ("Month X of 12 · [state] · LTV Z% — paydown triggered", coral when `hasPaydown`, de-boxed state badge + BTC price right); **two-tone scrubber** fill (red paydown / green rest, keyed to `barPaydownPct`) + **M1–M12 tick markers**; dot-row **`%` moved above the amount**; **red Interest** amount; calmer rows (8px dots, `--text-secondary` labels, lighter dividers, weight-600). 3 bars + pills + state badge kept. |
 | `playbook-remove-income-bar-header-restructure-spec-v1` | `caa614d` | **Polish the polish.** Removed the now-**redundant INCOME ALLOCATION bar** (the two-tone scrubber already encodes the per-month paydown/buy split; its "$X / $X ✓" is always true in projected months + still surfaced in the confirm sheet for the current month) + its dead Settings toggle (store field `showPlanIncomeBar` kept — vestigial, `planBars.test.ts` asserts it). Header restructured to **two lines**: Month + state badge on top; LTV/paydown-flag + BTC price on their own `.scrubMeta` line above the scrubber. STRIKE/COINBASE bars + scrubber (`barPaydownPct`) unchanged. |
 | `position-boxes-polish-spec-v1` | `a99b0cd` | **Position-box rebalance.** STRIKE BLOC (overloaded) de-noised + THIS MONTH (~80% empty) filled: removed "fully backed above $X" (kept only the amber collateral-limited line), gated the CB-buffer line on `> $0`, restructured the cramped "after this month" run-on into a clean labeled `.eomProjection` block (balance · LTV · ₿), **relocated the NDP reminder to THIS MONTH** gated on `ndp.status !== 'ok'` (hidden when paid/far-off, resurfaces when close), and moved the Pay/Skip pills **before** the amount (`flex:1` label pins the amount right → no x-shift across current/projected/logged). |
+| `position-boxes-clarity-pass-spec-v1` | `f6ff5c6` | **Position-box clarity pass** (6 changes). Safety status moved to the **top of SafetyDashboard** as its prominent headline (render-position + style only; derivation unchanged). Removed the redundant **dot-pips "Month X of 12" progress row** (scrubber shows position). THIS MONTH: mislabeled redundant **"Cash:" folded into the ₿ line** as a `~$` cost sub-label (the value was the income→BTC budget, not cash). Both position blocks: **"credit line used: $X · Y% LTV"** (STRIKE retitled "CURRENT STRIKE BLOC", current LTV via `currentBlocLtv = computeStrikeLtv(...)` — matches the Strike bar) + **"collateral: ₿ X · $Y"** with live USD (₿ × `btcPrice`, both at flat live price = `eomLtv`'s basis). Projection ₿ un-faded. |
 
 ---
 
