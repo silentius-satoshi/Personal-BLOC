@@ -82,6 +82,7 @@ export interface MonthlyLogEntry {
   cbBal?:         number;    // omit if !hasCbLoan
   cbLtv?:         number;    // omit if !hasCbLoan
   miningSats?:    number;    // omit if !showMiningInLog
+  ndpPaid?:       number;    // OPTIONAL — actual NDP (non-draw payment) recorded this month; omit when no NDP paid
   loggedAt:       number;    // Unix ms timestamp
   btcHeld:        number;    // absolute BTC at end of this logged month
   expensesActual: number;    // actual expenses recorded for this month

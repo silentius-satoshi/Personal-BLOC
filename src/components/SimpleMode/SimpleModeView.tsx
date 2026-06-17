@@ -35,22 +35,24 @@ function ConfirmLogSheet({
   drawAmount, skipDraw, onBlocDrawChange,
   cbPayment, skipCb, showCbRow, cbRowLabel, onCbPaymentChange,
   btcPrice, skipBtc,
-  confirmExpenses, onExpensesChange,
+  interest, onInterestChange,
   confirmBtcBought, onBtcBoughtChange,
   isFullyAllocated,
   ndpDone, ndpAmount,
   showNdpRow, ndpChecked, onNdpChange,
+  ndpAmountPaid, onNdpAmountChange,
   onConfirm, onCancel,
 }: {
   monthNum: number; monthLabel: string;
   drawAmount: number; skipDraw: boolean; onBlocDrawChange: (v: number) => void;
   cbPayment: number; skipCb: boolean; showCbRow: boolean; cbRowLabel: string; onCbPaymentChange: (v: number) => void;
   btcPrice: number; skipBtc: boolean;
-  confirmExpenses: number; onExpensesChange: (v: number) => void;
+  interest: number; onInterestChange: (v: number) => void;
   confirmBtcBought: number; onBtcBoughtChange: (v: number) => void;
   isFullyAllocated: boolean;
   ndpDone: boolean; ndpAmount: number;
   showNdpRow?: boolean; ndpChecked?: boolean; onNdpChange?: (v: boolean) => void;
+  ndpAmountPaid: number; onNdpAmountChange?: (v: number) => void;
   onConfirm: () => void; onCancel: () => void;
 }) {
   return createPortal(
@@ -130,15 +132,15 @@ function ConfirmLogSheet({
             </div>
           )}
           <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
-            <span>Expenses this month</span>
+            <span>Interest /mo</span>
             <div className={styles.confirmExpensesField}>
               <span className={styles.confirmExpensesPrefix}>$</span>
               <input
                 type="number"
                 className={styles.confirmExpensesInput}
-                value={confirmExpenses}
-                step={100}
-                onChange={(e) => onExpensesChange(parseFloat(e.target.value) || 0)}
+                value={interest}
+                step={1}
+                onChange={(e) => onInterestChange(parseFloat(e.target.value) || 0)}
               />
             </div>
           </div>
@@ -148,14 +150,31 @@ function ConfirmLogSheet({
             </div>
           )}
           {showNdpRow && (
-            <label className={styles.confirmRow}>
-              <span>NDP payment made this month</span>
-              <input
-                type="checkbox"
-                checked={!!ndpChecked}
-                onChange={(e) => onNdpChange?.(e.target.checked)}
-              />
-            </label>
+            <>
+              <label className={styles.confirmRow}>
+                <span>NDP payment made this year</span>
+                <input
+                  type="checkbox"
+                  checked={!!ndpChecked}
+                  onChange={(e) => onNdpChange?.(e.target.checked)}
+                />
+              </label>
+              {ndpChecked && (
+                <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
+                  <span>NDP amount</span>
+                  <div className={styles.confirmExpensesField}>
+                    <span className={styles.confirmExpensesPrefix}>$</span>
+                    <input
+                      type="number"
+                      className={styles.confirmExpensesInput}
+                      value={ndpAmountPaid}
+                      step={1}
+                      onChange={(e) => onNdpAmountChange?.(parseFloat(e.target.value) || 0)}
+                    />
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
         <div className={styles.confirmActions}>
@@ -255,11 +274,12 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Change 3 — custom amounts
   const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
   const [customCbPayment, setCustomCbPayment] = useState<number | null>(null);
+  const [customInterest,  setCustomInterest]  = useState<number | null>(null);
   const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null); // stored as BTC
   // Confirm sheet
   const [showConfirmSheet, setShowConfirmSheet] = useState(false);
-  const [confirmExpenses, setConfirmExpenses]   = useState(expenses);
   const [confirmBtcBought, setConfirmBtcBought] = useState(0);
+  const [ndpAmountPaid, setNdpAmountPaid]       = useState(0);
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
@@ -329,6 +349,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   // Change 3 — effective amounts (override when user enters custom)
   const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
+  const effectiveInterest   = customInterest ?? (currentRow?.blocInterest ?? 0);
 
   // CB payment: per-mode projected seed (ltvTriggered → BLOC-funded cbPaydownDraw, monthly →
   // income-funded cbPayment), overridable in the confirm sheet. Matches the re-anchor source exactly.
@@ -358,10 +379,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
   const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
 
-  // Logged Strike balance/LTV reflect the EDITED draw (effectiveDrawAmount) — what the user confirms in
-  // the sheet — substituting it for the projected currentRow.blocDraw used by the eomBlocBalance display.
+  // Logged Strike balance/LTV reflect the EDITED draw + interest (effectiveDrawAmount/effectiveInterest)
+  // — what the user confirms in the sheet — substituting them for the projected currentRow values.
   const loggedStrikeBal: number = currentRow
-    ? slmBlocBal + (advisorSkipBlocDraw ? 0 : effectiveDrawAmount) + currentRow.blocInterest - expectedPaydown
+    ? slmBlocBal + (advisorSkipBlocDraw ? 0 : effectiveDrawAmount) + effectiveInterest - expectedPaydown
     : advisorActualBlocBalance;
   const loggedStrikeLtv: number = computeStrikeLtv(loggedStrikeBal, eomBtcHeld, btcPrice);
 
@@ -475,7 +496,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setShowSetupModal(false);
   };
 
-  const handleApply = (confirmedExpenses: number, confirmedBtcBought: number) => {
+  const handleApply = (confirmedBtcBought: number) => {
     const [ey, em] = advisorStartDate.split('-').map(Number);
     const entryDate = new Date(ey, em - 1 + (currentMonth - 1), 1).toISOString().split('T')[0];
     upsertLogEntry({
@@ -487,9 +508,10 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       strikeBal:      loggedStrikeBal,
       strikeLtv:      loggedStrikeLtv,
       ...(hasCbLoan ? { cbBal: currentRow?.cbBalance ?? 0, cbLtv: currentRow?.cbLtv ?? 0 } : {}),
+      ...(ndpPayThisMonth && ndpActionActive ? { ndpPaid: ndpAmountPaid } : {}),
       loggedAt:       Date.now(),
       btcHeld:        0,
-      expensesActual: confirmedExpenses,
+      expensesActual: effectiveDrawAmount,
     });
     // Re-anchor the store CB balance by this month's actual paydown (ltvTriggered → BLOC-funded
     // cbPaydownDraw, monthly → income-funded cbPayment). Liq price is NOT auto-updated (needs the
@@ -506,6 +528,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setNdpPayThisMonth(false);
     setCustomBlocDraw(null);
     setCustomCbPayment(null);
+    setCustomInterest(null);
     setCustomBtcBuying(null);
     setShowConfirmSheet(false);
   };
@@ -916,7 +939,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               {isCurrent && !strategyDone && (
                 <button
                   className={styles.logThisMonthBtn}
-                  onClick={() => { setConfirmExpenses(expenses); setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setShowConfirmSheet(true); }}
+                  onClick={() => { setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setNdpAmountPaid(ndpMinimum); setShowConfirmSheet(true); }}
                 >
                   Log this month & continue
                 </button>
@@ -1009,17 +1032,19 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
         onCbPaymentChange={setCustomCbPayment}
         btcPrice={btcPrice}
         skipBtc={advisorSkipBtcBuying}
-        confirmExpenses={confirmExpenses}
-        onExpensesChange={setConfirmExpenses}
+        interest={effectiveInterest}
+        onInterestChange={setCustomInterest}
         confirmBtcBought={confirmBtcBought}
         onBtcBoughtChange={setConfirmBtcBought}
         isFullyAllocated={isFullyAllocated}
         ndpDone={ndpPayThisMonth && ndpActionActive}
-        ndpAmount={ndpMinimum}
+        ndpAmount={ndpAmountPaid}
         showNdpRow={ndpActionActive}
         ndpChecked={ndpPayThisMonth}
         onNdpChange={setNdpPayThisMonth}
-        onConfirm={() => handleApply(confirmExpenses, confirmBtcBought)}
+        ndpAmountPaid={ndpAmountPaid}
+        onNdpAmountChange={setNdpAmountPaid}
+        onConfirm={() => handleApply(confirmBtcBought)}
         onCancel={() => setShowConfirmSheet(false)}
       />
     )}
