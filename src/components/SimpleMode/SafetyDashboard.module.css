@@ -91,6 +91,26 @@
   color: var(--text-faint);
 }
 
+.barHeaderRight {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.editLink {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--orange);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.editLink:hover { color: var(--text-primary); }
+
 /* track + fill + markers (mirrors the CB Loan tab's LTV bar) */
 .barTrack {
   position: relative;

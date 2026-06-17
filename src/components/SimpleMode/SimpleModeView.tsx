@@ -5,7 +5,7 @@ import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNd
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
-import { classifyLtv, CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { deriveForMonth, isOperatingMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
@@ -275,7 +275,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     ? cbLoanBalance / (cbCollateralBtc * btcPrice)
     : 0;
   const currentTier = getTier(currentCbLtv);
-  const cbStatus    = classifyLtv(currentCbLtv);
   const ndp         = getNdpStatus(
     ndpLastPaidDate,
     advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15,
@@ -313,8 +312,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     : advisorActualBlocBalance;
   const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
   const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
-  // Current-actuals Strike LTV (reality read) for the position-card headline — NOT the EoM projection.
-  const currentStrikeLtv   = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
   const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
 
   // Change 2 — THIS MONTH column: actuals from the log entry when logged, projections otherwise
@@ -568,15 +565,13 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
       {(strategyDone || simpleSegment === 'thisMonth') && (
       <div className={styles.cards}>
 
-        {/* Position card */}
-        <div className={styles.card}>
-          <div className={styles.positionRow}>
+        {/* Position — two carded boxes (STRIKE BLOC | THIS MONTH) */}
+        <div className={styles.positionRow}>
 
             {/* Left — STRIKE BLOC */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>STRIKE BLOC</span>
               <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)}</span>
-              <span className={styles.positionStat}>LTV: {(currentStrikeLtv * 100).toFixed(1)}%</span>
               <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)}</span>
               <span className={styles.positionStatHint}>
                 → after this month: ~{fmtUSD(eomBlocBalance)} · {(eomLtv * 100).toFixed(1)}% · {eomBtcHeld.toFixed(5)} ₿
@@ -633,20 +628,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               )}
             </div>
 
-            {/* Right — CB LOAN */}
-            {hasCbLoan && cbLoanBalance > 0 && (
-              <div className={styles.positionCol}>
-                <span className={styles.positionTitle}>CB LOAN</span>
-                <span className={styles.positionStat}>
-                  LTV: {(currentCbLtv * 100).toFixed(1)}%
-                </span>
-                <span className={`${styles.cbBadge} ${styles[`cb_${cbStatus}`]}`}>
-                  {cbStatus.toUpperCase()}
-                </span>
-              </div>
-            )}
           </div>
-        </div>
 
         {/* Feature 3 — NDP urgency card */}
         {(ndp.status === 'soon' || ndp.status === 'overdue') && (

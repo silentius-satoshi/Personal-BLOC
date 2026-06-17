@@ -200,10 +200,13 @@ src/
                                 # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/CB_LLTV, bare
                                 # 75%/86% marker TICKS — trigger/liq prices + "Coinbase"/"~est." source moved to a
                                 # .priceNote subtext, no label collision; ↓drop-to-trigger/liq cushion, Safe/Fair/
-                                # Poor badge, no-grace note in amber/red) → Strike bar (tap to flip capacity-used ↔
-                                # liquidation gauge vs strikeLiquidationLtvPct; LTV via
+                                # Poor badge, no-grace note in amber/red) → Strike bar (body tap flips capacity-used
+                                # ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
                                 # computeStrikeLtv(advisorActualBlocBalance, getCurrentBtcHeld(), price) — the
-                                # CURRENT position, not the frozen baseline) → Safe/Watch/Act state line
+                                # CURRENT position, not the frozen baseline. Card is a <div role=button> (was
+                                # <button>) with a view-aware inline EDIT control (.editLink, stopPropagation so it
+                                # doesn't flip): capacity edits BLOC balance + credit line, liquidation edits BLOC
+                                # balance + liq LTV %; Save → synced setters, no Settings trip) → Safe/Watch/Act state line
                                 # (hasCbLoan ? worseLevel(cb,strike) : strikeLevel). The WHOLE CB card is tap-to-
                                 # anchor: a <div role=button onClick={toggleEdit}/onKeyDown> (guarded e.target===
                                 # currentTarget so typing in a field can't toggle) with .flipHint "tap to set/update"
@@ -241,13 +244,15 @@ src/
                                 # "← back to current month"). Log button gated isCurrent && !strategyDone;
                                 # a logged current month shows a ✓ note + "✎ Edit this month" (opens the overlay
                                 # for currentMonth) + Undo (deleteLogEntry). MonthlyLogSection kept for the
-                                # Advisor tab. The POSITION card's STRIKE BLOC column headlines CURRENT ACTUALS
-                                # (advisorActualBlocBalance / getCurrentBtcHeld() / currentStrikeLtv =
-                                # computeStrikeLtv(actualBloc, currentBtcHeld, price)) with the skip-aware EoM
-                                # projection demoted to one muted "→ after this month: $… · …% · … ₿" hint —
-                                # so editing Amount Drawn / BTC collateral in Settings moves the headline cleanly
-                                # (was EoM-headlined, which conflated current state with projected outcome). No
-                                # checklist (removed; see Synced Settings).
+                                # Advisor tab. The POSITION block is TWO CARDED BOXES (STRIKE BLOC | THIS MONTH —
+                                # .positionRow is a 1fr/1fr grid that stacks <560px; the outer .card wrapper was
+                                # dropped to avoid card-in-card). STRIKE box headlines CURRENT ACTUALS
+                                # (advisorActualBlocBalance / getCurrentBtcHeld()) + the skip-aware EoM "→ after
+                                # this month: $… · …% · … ₿" hint — so editing Amount Drawn / BTC collateral in
+                                # Settings moves it cleanly. The Strike LTV line AND the whole CB LOAN column were
+                                # REMOVED (both LTVs now read from the SafetyDashboard bars above — de-duped;
+                                # currentStrikeLtv/cbStatus/classifyLtv dropped as orphaned). No checklist
+                                # (removed; see Synced Settings).
                                 # Quick Setup modal ALWAYS reachable ("⚙ Edit your numbers" once
                                 # established, first-run copy while isDefaultSetup). This Month / Outlook
                                 # segmented control (gated !strategyDone): This Month = console + a

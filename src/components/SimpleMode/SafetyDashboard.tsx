@@ -44,15 +44,24 @@ export function SafetyDashboard() {
   const setCbLoanBalanceAsOf      = useStore((s) => s.setCbLoanBalanceAsOf);
   const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
 
-  const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
+  const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
+  const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reality read (baseline + logged buys + pending)
   const creditLine               = useStore((s) => s.creditLine);
+  const setCreditLine            = useStore((s) => s.setCreditLine);
   const strikeLiquidationLtvPct  = useStore((s) => s.strikeLiquidationLtvPct);
+  const setStrikeLiquidationLtvPct = useStore((s) => s.setStrikeLiquidationLtvPct);
 
   const [strikeView, setStrikeView] = useState<'capacity' | 'liquidation'>('capacity');
   const [editing, setEditing]       = useState(false);
   const [draftBal, setDraftBal]     = useState(cbLoanBalance);
   const [draftLiq, setDraftLiq]     = useState(cbLiquidationPrice);
+
+  // Strike inline editor — own state (CB's editing/draftBal/draftLiq are CB-specific)
+  const [strikeEditing, setStrikeEditing]   = useState(false);
+  const [draftStrikeBal, setDraftStrikeBal] = useState(advisorActualBlocBalance);
+  const [draftCreditLine, setDraftCreditLine] = useState(creditLine);
+  const [draftLiqLtv, setDraftLiqLtv]       = useState(strikeLiquidationLtvPct);
 
   // ── Price chart slot — BTC candles (1H/1D/1W), top of the dashboard ──
   const priceSlot = <PriceChart />;
@@ -108,6 +117,23 @@ export function SafetyDashboard() {
     setEditing((v) => !v);
   };
   const neverAnchored = !cbLoanBalanceAsOf && !cbLiquidationPriceAsOf;
+
+  // Strike card: body tap flips the view; the edit control opens a view-aware inline editor.
+  const flipStrike = () => setStrikeView((v) => (v === 'capacity' ? 'liquidation' : 'capacity'));
+  const openStrikeEdit = () => {
+    if (!strikeEditing) {
+      setDraftStrikeBal(advisorActualBlocBalance);
+      setDraftCreditLine(creditLine);
+      setDraftLiqLtv(strikeLiquidationLtvPct);
+    }
+    setStrikeEditing((v) => !v);
+  };
+  const saveStrike = () => {
+    setAdvisorActualBlocBalance(draftStrikeBal);
+    if (strikeView === 'capacity') setCreditLine(draftCreditLine);
+    else setStrikeLiquidationLtvPct(draftLiqLtv);
+    setStrikeEditing(false);
+  };
 
   // positive drop = room to fall (↓X%); negative = price already at/past the threshold
   const pct = (n: number) => n > 0 ? `↓${(n * 100).toFixed(1)}%` : `${(Math.abs(n) * 100).toFixed(1)}% over`;
@@ -191,11 +217,27 @@ export function SafetyDashboard() {
         </div>
       )}
 
-      {/* ── Strike bar (secondary; tap to flip) ────────────────────── */}
-      <button className={styles.barCard} onClick={() => setStrikeView((v) => (v === 'capacity' ? 'liquidation' : 'capacity'))}>
+      {/* ── Strike bar (secondary; body tap flips, edit control opens inline editor) ── */}
+      <div
+        className={styles.barCard}
+        onClick={flipStrike}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); flipStrike(); } }}
+      >
         <div className={styles.barHeader}>
           <span className={styles.barLabel}>STRIKE BLOC</span>
-          <span className={styles.flipHint}>{strikeView === 'capacity' ? 'tap for liquidation view' : 'tap for capacity view'}</span>
+          <span className={styles.barHeaderRight}>
+            <span className={styles.flipHint}>
+              {strikeEditing ? 'editing…' : strikeView === 'capacity' ? 'tap for liquidation view' : 'tap for capacity view'}
+            </span>
+            <button
+              className={styles.editLink}
+              onClick={(e) => { e.stopPropagation(); openStrikeEdit(); }}
+            >
+              edit
+            </button>
+          </span>
         </div>
         <div className={styles.barTrack}>
           <div className={styles.barFill} style={{ width: `${strikeFillPct}%`, background: strikeFillColor }} />
@@ -212,7 +254,25 @@ export function SafetyDashboard() {
             <span className={styles.ltvNow}>{(strikeLtv * 100).toFixed(1)}% LTV · liquidation at {strikeLiquidationLtvPct}%</span>
           )}
         </div>
-      </button>
+
+        {strikeEditing && (
+          <div className={styles.editBox} onClick={(e) => e.stopPropagation()}>
+            <span className={styles.editHint}>
+              {strikeView === 'capacity' ? 'Adjust your drawn balance & approved credit line.' : 'Adjust your drawn balance & liquidation LTV.'}
+            </span>
+            <NumberInput label="BLOC balance" value={draftStrikeBal} onChange={setDraftStrikeBal} prefix="$" min={0} step={100} />
+            {strikeView === 'capacity' ? (
+              <NumberInput label="Credit line" value={draftCreditLine} onChange={setDraftCreditLine} prefix="$" min={0} step={1000} />
+            ) : (
+              <NumberInput label="Liquidation LTV" value={draftLiqLtv} onChange={setDraftLiqLtv} suffix="%" min={0} max={100} step={1} />
+            )}
+            <div className={styles.editBtns}>
+              <button className={styles.saveBtn} onClick={saveStrike}>Save</button>
+              <button className={styles.cancelBtn} onClick={() => setStrikeEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
 
       {/* ── State line ─────────────────────────────────────────────── */}
       <div className={styles.stateLine} style={{ color: LEVEL_COLOR[state] }}>

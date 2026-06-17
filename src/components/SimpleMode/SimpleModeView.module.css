@@ -108,8 +108,17 @@
 }
 
 /* Position card */
-.positionRow { display: flex; gap: 16px; }
-.positionCol { flex: 1; display: flex; flex-direction: column; gap: 4px; }
+.positionRow { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+@media (max-width: 560px) { .positionRow { grid-template-columns: 1fr; } }
+.positionCol {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+}
 
 .positionTitle {
   font-size: 9px;
