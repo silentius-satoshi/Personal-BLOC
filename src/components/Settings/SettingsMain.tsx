@@ -17,6 +17,7 @@ import { useRef, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
+import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
@@ -127,6 +128,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
   const nostrSyncing        = useStore((s) => s.nostrSyncing);
   const { triggerSync }     = useNostrSync();
+  const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
 
@@ -431,7 +433,23 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                 <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
                 <span className={styles.fieldHint}>BTC pledged to your Coinbase/Morpho loan.</span>
               </div>
-              <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} />
+              <div className={styles.setupFieldGroup}>
+                <NumberInput label="APR"             value={cbAprPct}           onChange={setCbAprPct}           min={0} step={0.01} />
+                {morphoRate.borrowApy !== null ? (
+                  <>
+                    <span className={styles.fieldHint}>
+                      Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live)
+                    </span>
+                    {Math.abs(morphoRate.borrowApy - cbAprPct) > 1 && (
+                      <span className={styles.fieldHint}>Your APR differs — Coinbase may add a margin.</span>
+                    )}
+                  </>
+                ) : (
+                  <span className={styles.fieldHint}>
+                    {morphoLoading ? 'checking Morpho rate…' : 'Morpho market rate unavailable'}
+                  </span>
+                )}
+              </div>
               {cbPaymentStrategy === 'monthly' && (
                 <NumberInput label="Monthly payment" value={cbMonthlyPayment} onChange={setCbMonthlyPayment} prefix="$" min={0} step={100} />
               )}
