@@ -234,19 +234,40 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             <span className={styles.nostrPubkey}>
               {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
             </span>
-            <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : 'NIP-46'}</span>
-            <button
-              className={styles.nostrReconnectBtn}
-              onClick={() => reconnectNostr()}
-            >
-              Reconnect
-            </button>
-            <button
-              className={styles.nostrDisconnectBtn}
-              onClick={() => disconnectNostr()}
-            >
-              Disconnect
-            </button>
+            <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : nostrSigningMethod === 'local' ? 'Local · Face ID' : 'NIP-46'}</span>
+            {nostrSigningMethod !== 'local' && (
+              <button
+                className={styles.nostrReconnectBtn}
+                onClick={() => reconnectNostr()}
+              >
+                Reconnect
+              </button>
+            )}
+            {nostrSigningMethod === 'local' ? (
+              <button
+                className={styles.nostrDisconnectBtn}
+                onClick={() => {
+                  if (!window.confirm('Remove the encrypted key from this device? Make sure your nsec is backed up — you’ll need it to log in again.')) return;
+                  const s = useStore.getState();
+                  s.setWriterKeyWrapped(null);
+                  s.setWriterKeyWrapMeta(null);
+                  s.setNostrSigningMethod(null);
+                  s.setNostrPubkey(null);
+                  s.setNostrSigner(null);
+                  s.setIsAuthenticated(false);
+                  window.location.reload();
+                }}
+              >
+                Remove local key
+              </button>
+            ) : (
+              <button
+                className={styles.nostrDisconnectBtn}
+                onClick={() => disconnectNostr()}
+              >
+                Disconnect
+              </button>
+            )}
           </div>
         )}
 

@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (191 tests — all must pass before every commit)
+- Vitest (197 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -715,7 +715,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-191 tests — `npx vitest run` before every commit.
+197 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -728,6 +728,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
 - `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
+- `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
@@ -762,9 +763,11 @@ reports should include the Copy Diagnostics output from the failing device.
 **Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS / the
 publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
-dismissal watermark, spec §9), and `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
-plan-card status-bar visibility, default true). New per-device prefs follow this pattern, NOT the
-in-memory exclusion list (which is for transient fields like `nostrSyncing`/`sandboxCollateralBtc`).
+dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
+plan-card status-bar visibility, default true), and `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
+local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device). New per-device
+prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
+`nostrSyncing`/`sandboxCollateralBtc`).
 
 **Dev mode:** 5 taps on the Settings Build row toggles `devMode` (persisted, DEVICE-LOCAL — never synced,
 not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe
@@ -799,6 +802,28 @@ instead of bare console.warn, and log messages never include amounts.
 | NIP-07 browser extension | NLogin.fromExtension() | Desktop; auto-restores on reload |
 | Remote signer QR | NLogin.fromNostrConnect() | Desktop QR scanned with Primal iOS; persists across reload (nostrLogin) |
 | Remote signer deep link | NLogin.fromNostrConnect() | Mobile two-step: warm relay → tap Open Signer App → approve → callback; persists across reload |
+| Local key (Face ID) | `NSecSigner` + `keyVault` | **iOS-only** (Step 4); encrypted local nsec, Face-ID(PRF)/PIN unlock. Import behind a HARD BACKUP GATE; on relaunch an "authenticated-but-locked" `LocalUnlockGate` (gesture-driven unlock), NOT the full login. nip07/nip46 keep optimistic auto-restore |
+
+### Writer local-key signer (Nostr Step 4) — `keyVault` + `'local'` method
+
+Third auth option (additive; NIP-07/46 untouched): an **encrypted local nsec, iOS-only, Face-ID-unlocked**,
+to give iOS one-tap reliability without the NIP-46 deeplink/QR race. Built on a NEW **identity-agnostic
+`src/lib/nostr/keyVault.ts`** (PRF primary / PIN fallback, client-side, no server: PBKDF2→HKDF→AES-GCM via
+WebCrypto; `wrapSecretKey`/`unwrapSecretKey`/`probeKeyVaultCapability`; unwrapped key in MEMORY ONLY,
+never persisted) — shared infra the queued viewer-access phase reuses.
+- **HARD BACKUP GATE (load-bearing):** the device copy is convenience, never the only copy — the wrap path
+  is structurally unreachable until the user checks "I have my nsec backed up outside this device"
+  (`NostrAuthGate` local flow, iOS-gated via `isIOS`). Losing the only copy = permanent data loss.
+- **Launch-unlock gate (the wrinkle):** `useNostrAutoRestore` does NOT optimistically auth for `'local'`
+  (Face ID needs a user gesture); `AppShell` renders `LocalUnlockGate` (a NEW branch BEFORE `NostrAuthGate`,
+  gated `nostrSigningMethod==='local' && nostrPubkey && !nostrSigner && !isAuthenticated`) — tap to unlock →
+  `restoreSigner` (`unwrapSecretKey` → Face ID) → signer set → `isAuthenticated`. Escape ("Use a different
+  login") sets a local `unlockEscape` → falls through to `NostrAuthGate`. nip07/nip46 keep optimistic auth.
+- `restoreSigner` gains a `'local'` branch (unwrap → `new NSecSigner(sk)` → pubkey-match → `sk.fill(0)`);
+  `NSecSigner` is a drop-in `NostrSigner` so the whole publish/sync path is unchanged. `signerOpTimeout`
+  treats `'local'` like nip07 (60s — human-in-the-loop). Settings shows a "Local · Face ID" badge +
+  "Remove local key" (clears the wrapped key + signs out; reinforces backup). Switch semantics: setting up
+  local makes `'local'` the singular method (a prior NIP-46 session is simply unused, no silent fallback).
 
 ---
 
@@ -845,17 +870,26 @@ src/
   components/Auth/
     NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring; calls markSignerFresh()
                                     # after setting the signer so syncNow doesn't rebuild a duplicate
-                                    # NConnectSigner session post-login
+                                    # NConnectSigner session post-login. + the iOS-only "Use a local key
+                                    # (Face ID)" flow (hard backup gate → nsec decode → keyVault wrap → NSecSigner)
+    LocalUnlockGate.tsx             # "Authenticated-but-locked" relaunch screen for the 'local' method —
+                                    # gesture-driven "Unlock with Face ID" (restoreSigner→unwrap) + Retry +
+                                    # "Use a different login" escape; reuses NostrAuthGate.module.css
   hooks/
-    useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin)
+    useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
+                                    # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2)
-    session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam
+    keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
+                                    # PBKDF2→HKDF→AES-GCM via WebCrypto; wrap/unwrap/probe; key in MEMORY only,
+                                    # never persisted). Shared infra: writer local-key now, viewer key later
+    session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
+                                    # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match → sk.fill(0)
     log.ts                          # nostrLog ring buffer — pure; console mirror + sessionStorage 'bloc-nostr-log'
                                     # (50 entries, survives reloads, dies with the PWA); the STANDARD for
                                     # Nostr-layer logging — use it instead of bare console.warn
     timeout.ts                      # withTimeout + signerOpTimeout — pure (store-free); method-aware signer-op
-                                    # timeouts: nip46 20s / nip07 60s (human approval popup)
+                                    # timeouts: nip46 20s / nip07 + local 60s (human approval popup / Face ID)
     deviceTag.ts                    # getDeviceTag/getDeviceLabel — pure; stable per-device 4-hex tag
                                     # (localStorage 'bloc-device-tag', NEVER synced) → 'iOS-a3f2' etc.;
                                     # used in the nostrconnect name + DevPanel/diagnostics
@@ -1007,7 +1041,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 |---|---|---|---|
 | `nostrAuthEnabled` | boolean | ✅ | Gate toggle |
 | `nostrPubkey` | string | ✅ | Hex pubkey |
-| `nostrSigningMethod` | `'nip07' \| 'nip46' \| null` | ✅ | Login path used |
+| `nostrSigningMethod` | `'nip07' \| 'nip46' \| 'local' \| null` | ✅ | Login path used (`'local'` = iOS Face-ID signer) |
+| `writerKeyWrapped` / `writerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Encrypted writer nsec + wrap meta — **NEVER synced** (not in SETTINGS_FIELDS) |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
 | `nostrRelays` | string[] | ✅ | From NIP-65 discovery |
 | `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
@@ -1044,6 +1079,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
+| Zustand v15 migration | Adds `writerKeyWrapped`/`writerKeyWrapMeta` (writer local-key signer — AES-GCM ciphertext + WrapMeta, default `?? null`); additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload). `nostrSigningMethod` gains `'local'`. Current store version = 15 |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |

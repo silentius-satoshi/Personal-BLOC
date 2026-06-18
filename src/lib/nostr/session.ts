@@ -1,6 +1,8 @@
 import { NLogin, NUser } from '@nostrify/react/login';
+import { NSecSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { nostrLog } from './log';
+import { unwrapSecretKey } from './keyVault';
 import type { NostrSigner } from './signers';
 
 // Matches the value useNostr() returns (the 2nd arg to NUser.fromBunkerLogin) without a fragile import.
@@ -34,6 +36,16 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
       catch { useStore.getState().setNostrLogin(null); throw new Error('corrupt stored login'); }
       if (login.pubkey !== nostrPubkey) { useStore.getState().setNostrLogin(null); throw new Error('pubkey mismatch'); }
       const signer = NUser.fromBunkerLogin(login, nostr).signer as unknown as NostrSigner;
+      useStore.getState().setNostrSigner(signer);
+      return signer;
+    }
+    if (nostrSigningMethod === 'local') {
+      const { writerKeyWrapped, writerKeyWrapMeta } = useStore.getState();
+      if (!writerKeyWrapped || !writerKeyWrapMeta) throw new Error('no local key');
+      const sk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta);   // → triggers Face ID / PIN
+      const signer = new NSecSigner(sk) as unknown as NostrSigner;
+      if (await signer.getPublicKey() !== nostrPubkey) throw new Error('pubkey mismatch');
+      sk.fill(0);   // best-effort zero after the signer holds its own copy
       useStore.getState().setNostrSigner(signer);
       return signer;
     }

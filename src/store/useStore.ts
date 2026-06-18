@@ -5,6 +5,7 @@ import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulat
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
+import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
@@ -203,16 +204,21 @@ interface StoreState {
   // Nostr identity (persisted)
   nostrAuthEnabled:   boolean;
   nostrPubkey:        string | null;
-  nostrSigningMethod: 'nip07' | 'nip46' | null;
+  nostrSigningMethod: 'nip07' | 'nip46' | 'local' | null;
   nostrBunkerUri:     string | null;
   nostrRelays:        string[];
   nostrLogin:         string | null;
+  // Writer local-key (iOS Face-ID signer) — device-local, NEVER synced (excluded from any relay payload).
+  writerKeyWrapped:   string | null;      // AES-GCM ciphertext (base64) of the writer nsec
+  writerKeyWrapMeta:  WrapMeta | null;    // { iv, scheme, credentialId?, salt }
   setNostrAuthEnabled:   (v: boolean) => void;
   setNostrPubkey:        (v: string | null) => void;
-  setNostrSigningMethod: (v: 'nip07' | 'nip46' | null) => void;
+  setNostrSigningMethod: (v: 'nip07' | 'nip46' | 'local' | null) => void;
   setNostrBunkerUri:     (v: string | null) => void;
   setNostrRelays:        (v: string[]) => void;
   setNostrLogin:         (v: string | null) => void;
+  setWriterKeyWrapped:   (v: string | null) => void;
+  setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -564,12 +570,16 @@ export const useStore = create<StoreState>()(
   nostrBunkerUri:     null,
   nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'],
   nostrLogin:         null,
+  writerKeyWrapped:   null,
+  writerKeyWrapMeta:  null,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),
   setNostrLogin:         (v) => set({ nostrLogin: v }),
+  setWriterKeyWrapped:   (v) => set({ writerKeyWrapped: v }),
+  setWriterKeyWrapMeta:  (v) => set({ writerKeyWrapMeta: v }),
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
@@ -628,7 +638,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 14,
+      version: 15,
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
@@ -664,6 +674,8 @@ export const useStore = create<StoreState>()(
           showPlanIncomeBar:    persistedState.showPlanIncomeBar ?? true,
           showPlanStrikeBar:    persistedState.showPlanStrikeBar ?? true,
           showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
+          writerKeyWrapped:     persistedState.writerKeyWrapped  ?? null,   // v15 — device-local, never synced
+          writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? null,   // v15
         };
       },
       onRehydrateStorage: () => (state) => {

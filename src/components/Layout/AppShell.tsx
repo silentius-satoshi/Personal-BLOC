@@ -34,6 +34,7 @@ import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
+import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
@@ -173,9 +174,13 @@ export function AppShell() {
 
   const nostrAuthEnabled  = useStore((s) => s.nostrAuthEnabled);
   const isAuthenticated   = useStore((s) => s.isAuthenticated);
+  const nostrSigningMethod = useStore((s) => s.nostrSigningMethod);
+  const nostrPubkey       = useStore((s) => s.nostrPubkey);
+  const nostrSigner       = useStore((s) => s.nostrSigner);
   const nostrSyncing      = useStore((s) => s.nostrSyncing);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
+  const [unlockEscape, setUnlockEscape] = useState(false);
 
   useStrikeData();
   useNostrAutoRestore();
@@ -246,7 +251,9 @@ export function AppShell() {
         />
       )}
 
-      {onboardingComplete && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
+      {onboardingComplete && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
+        <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
+      ) : onboardingComplete && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
       ) : simpleMode && activeTab === 'settings' ? (
         <div className={styles.simpleModeSettings}>

@@ -1,8 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import { nip19, getPublicKey } from 'nostr-tools';
+import { NSecSigner } from '@nostrify/nostrify';
 import { connectNip07 } from '../../lib/nostr/signers';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
+import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -37,8 +40,71 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const abortRef                              = useRef<AbortController | null>(null);
 
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+  const isIOS    = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const hasNip07 = typeof window !== 'undefined' && !!(window as any).nostr;
+
+  // ── Local-key (iOS Face-ID signer) flow ──────────────────────────────────────
+  const [showLocal, setShowLocal]         = useState(false);
+  const [backupConfirmed, setBackupConfirmed] = useState(false);
+  const [nsecInput, setNsecInput]         = useState('');
+  const [localMethod, setLocalMethod]     = useState<WrapMethod | null>(null);
+  const [pin, setPin]                     = useState('');
+  const [pinConfirm, setPinConfirm]       = useState('');
+
+  useEffect(() => {
+    if (!showLocal) return;
+    let cancelled = false;
+    probeKeyVaultCapability().then((m) => { if (!cancelled) setLocalMethod(m); });
+    return () => { cancelled = true; };
+  }, [showLocal]);
+
+  const openLocal = () => {
+    setShowLocal(true);
+    setBackupConfirmed(false);
+    setNsecInput('');
+    setLocalMethod(null);
+    setPin('');
+    setPinConfirm('');
+    setError(null);
+  };
+
+  const handleLocal = async () => {
+    setLoading(true);
+    setError(null);
+    let sk: Uint8Array | null = null;
+    try {
+      let decoded;
+      try { decoded = nip19.decode(nsecInput.trim()); }
+      catch { setError('Not a valid nsec'); setLoading(false); return; }
+      if (decoded.type !== 'nsec') { setError('That key is not an nsec'); setLoading(false); return; }
+      sk = decoded.data as Uint8Array;
+
+      const method = localMethod ?? await probeKeyVaultCapability();
+      const { ciphertext, meta } = await wrapSecretKey(sk, method, method === 'pin' ? pin : undefined);
+      useStore.getState().setWriterKeyWrapped(ciphertext);
+      useStore.getState().setWriterKeyWrapMeta(meta);
+
+      const pubkey = getPublicKey(sk);
+      const signer = new NSecSigner(sk) as unknown as NostrSigner;
+      useStore.getState().setNostrSigner(signer);
+      markSignerFresh();
+      setNostrPubkey(pubkey);
+      setNostrSigningMethod('local');
+      syncNow(nostr);
+      setIsAuthenticated(true);
+      onSuccess();
+    } catch (err: any) {
+      setError(err?.message ?? 'Could not set up the local key');
+    } finally {
+      sk?.fill(0);   // best-effort zero (the NSecSigner holds its own copy for the session)
+      setLoading(false);
+    }
+  };
+
+  const localCanContinue =
+    backupConfirmed && !!nsecInput.trim() &&
+    (localMethod !== 'pin' || (pin.length >= 4 && pin === pinConfirm));
 
   const handleNip07 = async () => {
     setLoading(true);
@@ -219,6 +285,41 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
               </>
             )}
           </div>
+        ) : showLocal ? (
+          <>
+            <label className={styles.hint} style={{ display: 'flex', gap: 8, textAlign: 'left', alignItems: 'flex-start' }}>
+              <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
+              <span>
+                <strong>⚠ Back up your nsec first — this is not a backup.</strong> This stores an <em>encrypted copy</em>
+                on this device, unlocked by Face ID, for convenience. If this device is lost, reset, or Face ID
+                enrollment changes, this copy can be gone — and without your nsec saved elsewhere, all your
+                encrypted data is permanently unrecoverable. I have my nsec backed up somewhere safe outside this device.
+              </span>
+            </label>
+            <input
+              className={styles.input}
+              type="password"
+              placeholder="nsec1…"
+              value={nsecInput}
+              onChange={(e) => setNsecInput(e.target.value)}
+              disabled={loading || !backupConfirmed}
+            />
+            {localMethod === 'pin' && (
+              <>
+                <p className={styles.hint}>Face ID unavailable — set a PIN to encrypt the key (min 4 digits).</p>
+                <input className={styles.input} type="password" inputMode="numeric" placeholder="PIN"
+                  value={pin} onChange={(e) => setPin(e.target.value)} disabled={loading || !backupConfirmed} />
+                <input className={styles.input} type="password" inputMode="numeric" placeholder="Confirm PIN"
+                  value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value)} disabled={loading || !backupConfirmed} />
+              </>
+            )}
+            <button className={styles.primaryBtn} onClick={handleLocal} disabled={loading || !localCanContinue}>
+              {loading ? 'Setting up…' : localMethod === 'pin' ? 'Encrypt & continue' : 'Continue with Face ID'}
+            </button>
+            <button className={styles.ghostBtn} onClick={() => { setShowLocal(false); setError(null); }} disabled={loading}>
+              ← Back
+            </button>
+          </>
         ) : !showBunker ? (
           <>
             {hasNip07 && (
@@ -241,6 +342,11 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             >
               Connect Bunker (iOS / Remote Signer)
             </button>
+            {isIOS && (
+              <button className={styles.secondaryBtn} onClick={openLocal} disabled={loading}>
+                Use a local key (Face ID)
+              </button>
+            )}
           </>
         ) : (
           <>

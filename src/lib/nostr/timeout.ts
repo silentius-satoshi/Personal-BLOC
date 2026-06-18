@@ -1,8 +1,9 @@
 // Pure, store-free utility — keeps publish.ts dependency-light (no circular dep).
 
-/** Signer-op timeout policy: nip07 has a human approving popups (60s); nip46 is automated (20s — rides out one capped relay-backoff window). */
+/** Signer-op timeout policy: nip07 + local have a human in the loop (60s — extension popup / Face ID
+ *  unlock); nip46 is automated (20s — rides out one capped relay-backoff window). */
 export function signerOpTimeout(method: string | null | undefined): number {
-  return method === 'nip07' ? 60000 : 20000;
+  return method === 'nip07' || method === 'local' ? 60000 : 20000;
 }
 
 export function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise<T> {
