@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (201 tests — all must pass before every commit)
+- Vitest (215 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -332,6 +332,11 @@ api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
   btc-candles.js               # Vercel serverless proxy for Coinbase Exchange candles (api.exchange.coinbase.com; granularity whitelist, s-maxage=60) — same-origin so the browser avoids CORS; feeds useBtcHistory
   morpho-rate.js               # Vercel serverless proxy — POST GraphQL to api.morpho.org/graphql, marketById for the on-chain-confirmed cbBTC/USDC Base market 0x9103c3b4… (chainId 8453, 86% LLTV), s-maxage=300; feeds useMorphoRate. Schema note: this endpoint's Market uses `marketId`, NOT `uniqueKey`
+  strike-balances.js           # Strike balances proxy (STRIKE_API_KEY server-only). NIP-98 gated: validateOwnerRequest(Authorization, PUBLIC_ORIGIN+req.url, method, OWNER_PUBKEY) → 401/403 (see NIP-98 Proxy Auth)
+  strike-rates.js              # Strike BTC→USD rate proxy — same NIP-98 gate as strike-balances
+  strike-invoices.js           # Strike invoices proxy — same NIP-98 gate (no client calls it today; gated for parity / fail-closed)
+  _lib/
+    ownerAuth.js               # SHARED NIP-98 validator (validateOwnerRequest) for all three Strike proxies — _-prefixed so Vercel does NOT route it; plain ESM .js (imports in Vercel node AND vitest). validateToken (kind/ts/url/method + verifyEvent) → handles BOTH false-return AND throw → unpack → pubkey===OWNER_PUBKEY else 403. Co-located ownerAuth.d.ts so the TS test imports it under tsc -b
 
 public/
   manifest.json                # PWA: name "Personal ₿LOC", theme #E8836A
@@ -715,7 +720,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-201 tests — `npx vitest run` before every commit.
+215 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -730,6 +735,8 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
 - `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom)
 - `src/lib/nostr/__tests__/ownerGate.test.ts` — `isOwnerPubkey`: matches the owner, rejects a non-owner/null key when configured, unset/empty env → true (no lockout)
+- `src/lib/nostr/__tests__/proxyAuth.test.ts` — `getProxyAuthHeader` token cache: caches within ~50s (signs once), re-signs after expiry / on url change / on method change, returns the `"Nostr "` scheme prefix (mock signer, stubbed `Date.now`, `resetProxyAuthCache` per case)
+- `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
@@ -839,7 +846,7 @@ import.meta.env.VITE_OWNER_PUBKEY)` (`src/lib/nostr/ownerGate.ts`, pure) gates b
   un-authenticated visitor or a non-owner key (closes a prior unconditional-fetch leak where the proxy
   response landed in any visitor's devtools).
 - **`VITE_OWNER_PUBKEY`** = the owner's **hex** pubkey (matches stored `nostrPubkey`; not the npub), a
-  build-time env var (like `VITE_APP_PROXY_SECRET`; set in Vercel, never committed). **Unset-env fallback
+  build-time client env var (set in Vercel, never committed). **Unset-env fallback
   (load-bearing):** when unset (local dev / fork / misconfigured deploy) `isOwnerPubkey` returns true →
   degrades to "any authenticated key" (no lockout — a forgotten env var can't brick the app). Lockdown is
   active only when the var is set. Store v15 (no bump — env var, not state).
@@ -847,9 +854,39 @@ import.meta.env.VITE_OWNER_PUBKEY)` (`src/lib/nostr/ownerGate.ts`, pure) gates b
   branch to `isAuthenticated && !isOwner && !viewerMode` so a provisioned `viewerMode` viewer (a different
   pubkey) passes into the **read-only** render. The viewer's live Strike balances arrive via the encrypted
   `viewer:v1` snapshot (Option B — owner's device seals `strikeUsdBalance`/`strikeBtcAvailable` to the
-  viewer's pubkey); the viewer renders them read-only with `useStrikeData(false)` and **never fetches** (the
-  build-time proxy secret must never ship to an untrusted device). The owner-only fetch gate is correct
-  as-is for the viewer — do NOT add a viewer Strike-fetch path.
+  viewer's pubkey); the viewer renders them read-only with `useStrikeData(false)` and **never fetches**. The
+  owner-only fetch gate is correct as-is for the viewer — do NOT add a viewer Strike-fetch path (and per
+  NIP-98 the proxy 403s any non-owner key anyway).
+
+---
+
+### NIP-98 Proxy Auth — Strike proxies gated by owner-signed requests (the bundle holds NO secret)
+
+The owner-gate controls *when the client fetches*; **NIP-98 is the server-side enforcement beneath it** — it
+closes the deeper gap that `VITE_APP_PROXY_SECRET` used to be **embedded in the deployed bundle** (extractable
+from devtools → anyone could `curl /api/strike-balances` with the secret and read the owner's balances; the
+`STRIKE_API_KEY` itself never left the server). **`VITE_APP_PROXY_SECRET` / `APP_PROXY_SECRET` are REMOVED.**
+- **Client** signs every Strike request with the authenticated Nostr key: `getProxyAuthHeader(url, 'GET',
+  signer)` (`src/lib/nostr/proxyAuth.ts`) → `nip98.getToken` builds + signs a kind-27235 event →
+  `Authorization: Nostr <base64>`. `useStrikeData.fetchAll` reads `useStore.getState().nostrSigner` (bails if
+  null), builds **absolute** URLs from `window.location.origin` (the NIP-98 `u` tag must equal the request URL
+  exactly), and sends the header. **Short-lived token cache (~50s, per url+method, in-memory):** NIP-98 events
+  are valid ±60s and `useStrikeData` polls every 60s — on **NIP-46** signing is a remote round-trip, so the
+  cache makes it ~1 sign per ~50s per URL instead of per-fetch prompt-spam (local/NIP-07 sign instantly).
+- **Server** (`api/_lib/ownerAuth.js` → `validateOwnerRequest(authHeader, url, method, OWNER_PUBKEY)`, shared
+  by all three Strike proxies — balances, rates, invoices): `validateToken` (kind/ts/url/method + `verifyEvent`
+  schnorr sig) — handles BOTH the
+  false-return AND the throw — then `unpackEventFromToken` → `pubkey === OWNER_PUBKEY` else **403**; missing/
+  expired/bad-sig/url-mismatch → **401**. The `STRIKE_API_KEY` 503-guard stays first; the Strike fetch is
+  unchanged. `_lib/` is `_`-prefixed so Vercel does NOT route it (bundled into each function's import graph);
+  plain ESM `.js` so it imports in both the Vercel node runtime AND vitest.
+- **The `u`-tag gotcha (get right on first deploy):** server validates against **`PUBLIC_ORIGIN` + req.url**
+  (a configured env, robust over header reconstruction behind Vercel's edge). `PUBLIC_ORIGIN` must equal the
+  deployment origin **exactly** (trailing-slash-sensitive) — a mismatch → 401 on every fetch. Client uses
+  `window.location.origin`, which equals `PUBLIC_ORIGIN` on the real deploy.
+- **Server env (new):** `OWNER_PUBKEY` (hex — the proxy's owner gate) + `PUBLIC_ORIGIN` (exact deploy origin).
+  `OWNER_PUBKEY` (server proxy gate) and `VITE_OWNER_PUBKEY` (client UI gate) hold the **same** hex pubkey,
+  two scopes. Store v15 (no bump — env + in-memory cache, no state).
 
 ---
 
@@ -919,6 +956,10 @@ src/
     deviceTag.ts                    # getDeviceTag/getDeviceLabel — pure; stable per-device 4-hex tag
                                     # (localStorage 'bloc-device-tag', NEVER synced) → 'iOS-a3f2' etc.;
                                     # used in the nostrconnect name + DevPanel/diagnostics
+    proxyAuth.ts                    # NIP-98 client token cache for the Strike proxies — getProxyAuthHeader(url,
+                                    # method, signer) → nip98.getToken (kind-27235, Authorization: Nostr <base64>),
+                                    # cached ~50s per (url,method) in-memory so NIP-46 doesn't round-trip per 60s
+                                    # poll. resetProxyAuthCache() is test-only. See NIP-98 Proxy Auth
     sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
                                     # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail);
                                     # settings watermark (read FRESH per event) + records per-month MERGE (mergeRecords);

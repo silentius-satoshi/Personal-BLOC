@@ -1,10 +1,14 @@
+import { validateOwnerRequest } from './_lib/ownerAuth.js';
+
 export default async function handler(req, res) {
   const apiKey = process.env.STRIKE_API_KEY;
   if (!apiKey) return res.status(503).json({ error: 'Strike API not configured' });
-  const appSecret    = process.env.APP_PROXY_SECRET;
-  const clientSecret = req.headers['x-app-secret'];
-  if (!appSecret || clientSecret !== appSecret) {
-    return res.status(401).json({ error: 'Unauthorized' });
+  // NIP-98 owner-signed request (replaces the old shared x-app-secret). PUBLIC_ORIGIN + req.url must equal
+  // the client's `u` tag exactly (the absolute deploy URL — trailing-slash-sensitive).
+  const url  = `${process.env.PUBLIC_ORIGIN}${req.url}`;
+  const auth = await validateOwnerRequest(req.headers['authorization'], url, req.method, process.env.OWNER_PUBKEY);
+  if (!auth.ok) {
+    return res.status(auth.status).json({ error: auth.status === 403 ? 'Forbidden' : 'Unauthorized' });
   }
   try {
     const response = await fetch(

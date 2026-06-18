@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { usePageVisibility } from './usePageVisibility';
+import { getProxyAuthHeader } from '../lib/nostr/proxyAuth';
 
 const POLL_INTERVAL_MS = 60_000;
 
@@ -15,12 +16,20 @@ export function useStrikeData(enabled: boolean): void {
   const isVisible = usePageVisibility();
 
   const fetchAll = async () => {
-      const SECRET = import.meta.env.VITE_APP_PROXY_SECRET;
-      const secretHeader = { 'x-app-secret': SECRET ?? '' };
+      // NIP-98: each request is signed with the owner's Nostr key (Authorization: Nostr <base64>) — no bundle
+      // secret. The owner-gate (enabled) means the signer is normally present; bail safely if it isn't.
+      const signer = useStore.getState().nostrSigner;
+      if (!signer) return;
+      const balancesUrl = `${window.location.origin}/api/strike-balances`;
+      const ratesUrl    = `${window.location.origin}/api/strike-rates`;
       try {
+        const [balanceAuth, rateAuth] = await Promise.all([
+          getProxyAuthHeader(balancesUrl, 'GET', signer),
+          getProxyAuthHeader(ratesUrl,    'GET', signer),
+        ]);
         const [balanceRes, rateRes] = await Promise.all([
-          fetch('/api/strike-balances', { headers: secretHeader }),
-          fetch('/api/strike-rates',    { headers: secretHeader }),
+          fetch(balancesUrl, { headers: { Authorization: balanceAuth } }),
+          fetch(ratesUrl,    { headers: { Authorization: rateAuth } }),
         ]);
 
         // 503 = key not configured — silent, no error state
