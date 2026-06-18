@@ -658,7 +658,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             {/* Box 1 — CURRENT STRIKE BLOC (where you are now): asset → debt → avail */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
-              <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)} ({fmtUSD(currentBtcHeld * btcPrice)})</span>
+              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
               <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} ({(currentBlocLtv * 100).toFixed(1)}% LTV)</span>
               <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
               {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
@@ -704,7 +704,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   ) : (
                     <>
                       <span className={styles.positionStat} style={{ color: 'var(--text-secondary)' }}>
-                        CB runway: {fmtUSD(cbRunwayToTrigger)}
+                        CB runway: {(cbLtvTriggerPct - currentCbLtv * 100).toFixed(1)}%
                       </span>
                       <span className={styles.positionStatHint}>before {cbLtvTriggerPct}% trigger</span>
                     </>
@@ -716,14 +716,9 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             {/* Box 3 — AFTER THIS MONTH (where it leaves you) — mirrors Box 1 line-for-line */}
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>AFTER THIS MONTH</span>
-              <span className={styles.positionStat}>₿ {eomBtcHeld.toFixed(5)} ({fmtUSD(eomBtcHeld * btcPrice)})</span>
+              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
               <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} (<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
-              {availCredit.binding === 'collateral' && (
-                <span className={styles.positionStatHint} style={{ color: 'var(--amber)' }}>
-                  collateral-limited (50% LTV)
-                </span>
-              )}
             </div>
 
           </div>

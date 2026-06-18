@@ -37,7 +37,9 @@
       "Bash(grep -nA8 \"^\\\\.dots \" src/components/Advisor/MonthlyLogOverlay.module.css)",
       "Bash(grep -nA6 \"strategyPillActive\\\\|\\\\.strategyPill \" src/components/Settings/SettingsMain.module.css)",
       "Bash(grep -n \"colored-dot 3-row\\\\|Buy\\\\s*$\\\\|Bitcoin / Monthly Draw / Interest\\\\|a colored-dot\" CLAUDE.md)",
-      "Bash(grep -n 'THIS MONTH is a two-line\\\\|Box2 THIS MONTH\\\\|Draw: $Y' CLAUDE.md)"
+      "Bash(grep -n 'THIS MONTH is a two-line\\\\|Box2 THIS MONTH\\\\|Draw: $Y' CLAUDE.md)",
+      "Bash(grep -n '₿ held \\($usd\\)\\\\|collateral-limited\\\\|asset → debt → avail\\\\|line-for-line' CLAUDE.md)",
+      "Bash(grep -n 'CB runway: $X\\\\|CB runway' CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"

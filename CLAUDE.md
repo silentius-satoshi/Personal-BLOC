@@ -296,13 +296,15 @@ src/
                                 # onto two lines, while THIS MONTH sat ~85% empty; three full-width-each boxes fix both.
                                 # Box1 CURRENT + Box3 AFTER show the SAME three lines in the same order for line-for-line
                                 # comparison (asset → debt → avail, NO inline labels — titles carry the meaning, fixes
-                                # ⅓-width wrapping): "₿ held ($usd)" / "$balance (Z% LTV)" / "Avail: $A". CURRENT Z =
+                                # ⅓-width wrapping): "₿ held ($usd)" / "$balance (Z% LTV)" / "Avail: $A". The ₿ amount
+                                # is ORANGE (.btcAmt) and the ($usd) paren is a smaller ghost SUBTEXT (.parenSub, 11px)
+                                # — not same size/color as the ₿. CURRENT Z =
                                 # currentBlocLtv via computeStrikeLtv (matches the dashboard Strike bar); AFTER Z = eomLtv
                                 # (orange span when hasPaydown). usd = ₿ × live btcPrice. PER-BOX AVAIL CORRECTNESS:
                                 # CURRENT uses currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, price,
                                 # advisorActualBlocBalance) (current basis); AFTER uses availCredit (eom basis) — fixed a
-                                # latent mislabel where the eom Avail was shown as current. The collateral-limited binding
-                                # hint (availCredit.binding) lives with AFTER (eom-based). Box2 THIS MONTH is a two-line
+                                # latent mislabel where the eom Avail was shown as current. (The AFTER collateral-limited
+                                # binding hint was REMOVED — de-noised.) Box2 THIS MONTH is a two-line
                                 # action card "Buy: ₿ +X" (₿-only) / "Draw: $Y" (both labeled — bare values would be
                                 # ambiguous), "(proj)" consolidated to the box title; NDP badge below (gated ndp.status
                                 # !== 'ok'). THIS MONTH's "Draw" shows the REMAINING draw (remainingDraw =
@@ -318,9 +320,11 @@ src/
                                 # remains, shown at the 50% ceiling). The ltvTriggered CB indicator was RELOCATED from
                                 # the CURRENT STRIKE BLOC box (category error — a CB metric in the Strike box) into
                                 # THIS MONTH (Box 2), after the NDP badge behind a .positionDivider, and REFRAMED by
-                                # band to match the engine: below the 75% trigger → neutral "CB runway: $X / before
-                                # 75% trigger" (collateral×price×trigger% − balance = headroom in the deliberately-idle
-                                # band); at/above trigger → "CB paydown: $X / to reach 65% LTV" (balance −
+                                # band to match the engine: below the 75% trigger → neutral "CB runway: Z% / before
+                                # 75% trigger" (Z = cbLtvTriggerPct − currentCbLtv×100, the LTV gap to the trigger as a
+                                # PERCENTAGE; the cbRunwayToTrigger dollar derivation still gates the block's >0
+                                # visibility but the displayed value is the % gap); at/above trigger →
+                                # "CB paydown: $X / to reach 65% LTV" (balance −
                                 # collateral×price×target%, the engine's draw; green/red by Strike-credit
                                 # affordability). cbTriggered reuses currentCbLtv; the old single cbPaydownBuffer/
                                 # cbBufferAffordable + the 65%-keyed CURRENT-box line are gone. The NDP badge moved to
