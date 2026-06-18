@@ -97,7 +97,7 @@ async function prfRegister(): Promise<{ credentialId: string; ikm: ArrayBuffer }
       user: { id: userId, name: 'local-key', displayName: 'Personal ₿LOC local key' },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
-      extensions: { prf: { eval: { first: bufferToBase64URLString(PRF_EVAL.buffer as ArrayBuffer) } } } as any,
+      extensions: { prf: { eval: { first: PRF_EVAL.buffer } } } as any,
     } as any,
   });
   // Registration confirms PRF is enabled; the PRF OUTPUT itself only comes from an assertion → do one now.
@@ -114,7 +114,7 @@ async function prfAuthenticate(credentialId: string): Promise<ArrayBuffer> {
       rpId: window.location.hostname,
       allowCredentials: [{ id: credentialId, type: 'public-key' }],
       userVerification: 'required',
-      extensions: { prf: { eval: { first: bufferToBase64URLString(PRF_EVAL.buffer as ArrayBuffer) } } } as any,
+      extensions: { prf: { eval: { first: PRF_EVAL.buffer } } } as any,
     } as any,
   });
   return extractPrfFirst(resp);
