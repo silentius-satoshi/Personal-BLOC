@@ -4,7 +4,9 @@ import { usePageVisibility } from './usePageVisibility';
 
 const POLL_INTERVAL_MS = 60_000;
 
-export function useStrikeData(): void {
+/** `enabled` gates the fetch on the authenticated OWNER (AppShell passes `isAuthenticated && isOwner`) —
+ *  an un-authenticated visitor or a non-owner key never triggers the Strike proxy. */
+export function useStrikeData(enabled: boolean): void {
   const setStrikeUsdBalance   = useStore((s) => s.setStrikeUsdBalance);
   const setStrikeBtcAvailable = useStore((s) => s.setStrikeBtcAvailable);
   const setStrikeRate         = useStore((s) => s.setStrikeRate);
@@ -60,9 +62,9 @@ export function useStrikeData(): void {
   };
 
   useEffect(() => {
-    if (!isVisible) return;
+    if (!isVisible || !enabled) return;   // owner-only — no fetch/poll for non-owner or un-authenticated
     fetchAll();
     const interval = setInterval(fetchAll, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
-  }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isVisible, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 }

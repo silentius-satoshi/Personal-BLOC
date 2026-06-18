@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (197 tests — all must pass before every commit)
+- Vitest (201 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -715,7 +715,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-197 tests — `npx vitest run` before every commit.
+201 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -729,6 +729,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
 - `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
 - `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom)
+- `src/lib/nostr/__tests__/ownerGate.test.ts` — `isOwnerPubkey`: matches the owner, rejects a non-owner/null key when configured, unset/empty env → true (no lockout)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
@@ -824,6 +825,31 @@ never persisted) — shared infra the queued viewer-access phase reuses.
   treats `'local'` like nip07 (60s — human-in-the-loop). Settings shows a "Local · Face ID" badge +
   "Remove local key" (clears the wrapped key + signs out; reinforces backup). Switch semantics: setting up
   local makes `'local'` the singular method (a prior NIP-46 session is simply unused, no silent fallback).
+
+### Owner-pubkey gate — app render + Strike fetch locked to the owner
+
+The auth gate isn't just "authenticated" — it's **authenticated AS the owner**. `isOwnerPubkey(nostrPubkey,
+import.meta.env.VITE_OWNER_PUBKEY)` (`src/lib/nostr/ownerGate.ts`, pure) gates both:
+- **App render** (`AppShell`): the ternary is LocalUnlockGate → `<NostrAuthGate>` (`!isAuthenticated`) →
+  **`<PrivateAppNotice>`** (`isAuthenticated && !isOwner`) → app. A foreign valid nsec sees "This app is
+  private to its owner." + a "Use a different key" button (`reconnectNostr` — clears session, keeps the lock,
+  reloads to the login). `!import.meta.env.DEV` preserved on the gate branches (dev bypass intact).
+- **Strike fetch** (`useStrikeData(enabled)`): the effect early-returns unless `enabled` — AppShell passes
+  `isAuthenticated && isOwner`, so `/api/strike-balances`/`/api/strike-rates` NEVER fire for an
+  un-authenticated visitor or a non-owner key (closes a prior unconditional-fetch leak where the proxy
+  response landed in any visitor's devtools).
+- **`VITE_OWNER_PUBKEY`** = the owner's **hex** pubkey (matches stored `nostrPubkey`; not the npub), a
+  build-time env var (like `VITE_APP_PROXY_SECRET`; set in Vercel, never committed). **Unset-env fallback
+  (load-bearing):** when unset (local dev / fork / misconfigured deploy) `isOwnerPubkey` returns true →
+  degrades to "any authenticated key" (no lockout — a forgotten env var can't brick the app). Lockdown is
+  active only when the var is set. Store v15 (no bump — env var, not state).
+- **Viewer carve-out (DOCUMENTED, not built):** the queued viewer-access spec will change the non-owner
+  branch to `isAuthenticated && !isOwner && !viewerMode` so a provisioned `viewerMode` viewer (a different
+  pubkey) passes into the **read-only** render. The viewer's live Strike balances arrive via the encrypted
+  `viewer:v1` snapshot (Option B — owner's device seals `strikeUsdBalance`/`strikeBtcAvailable` to the
+  viewer's pubkey); the viewer renders them read-only with `useStrikeData(false)` and **never fetches** (the
+  build-time proxy secret must never ship to an untrusted device). The owner-only fetch gate is correct
+  as-is for the viewer — do NOT add a viewer Strike-fetch path.
 
 ---
 

@@ -35,6 +35,8 @@ import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
+import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
+import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
@@ -182,7 +184,9 @@ export function AppShell() {
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
   const [unlockEscape, setUnlockEscape] = useState(false);
 
-  useStrikeData();
+  const isOwner = isOwnerPubkey(nostrPubkey, import.meta.env.VITE_OWNER_PUBKEY as string | undefined);
+
+  useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners
   useNostrAutoRestore();
 
   const { triggerSync } = useNostrSync({ live: true });   // single live mount — SettingsMain stays batch-only
@@ -255,6 +259,8 @@ export function AppShell() {
         <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
       ) : onboardingComplete && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
+      ) : onboardingComplete && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
+        <PrivateAppNotice />
       ) : simpleMode && activeTab === 'settings' ? (
         <div className={styles.simpleModeSettings}>
           <div className={styles.simpleModeSettingsHeader}>
