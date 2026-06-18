@@ -416,10 +416,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     + (advisorSkipBtcBuying ? 0 : expectedBtcBuying)
     + (hasCbLoan && cbPaymentStrategy === 'monthly' && !advisorSkipCbPayment ? expectedCbPayment : 0);
 
-  const cbPaydownBuffer    = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
-    ? Math.max(0, cbLoanBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100))
-    : 0;
-  const cbBufferAffordable = cbPaydownBuffer <= Math.max(0, creditLine - advisorActualBlocBalance);
+  // CB runway/paydown indicator (ltvTriggered only), banded to match the engine: below the 75% trigger we're
+  // deliberately idle → show RUNWAY (headroom before the trigger); at/above it the engine draws → show the
+  // PAYDOWN to the 65% target. Reuses currentCbLtv (:332).
+  const cbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentCbLtv >= cbLtvTriggerPct / 100;
+  const cbRunwayToTrigger = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
+    ? Math.max(0, cbCollateralBtc * btcPrice * (cbLtvTriggerPct / 100) - cbLoanBalance) : 0;
+  const cbPaydownToTarget = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
+    ? Math.max(0, cbLoanBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100)) : 0;
+  const cbPaydownAffordable = cbPaydownToTarget <= Math.max(0, creditLine - advisorActualBlocBalance);
   const isFullyAllocated   = income > 0 && Math.abs(income - allocatedFromIncome) < 1;
 
   // ── Month scrubber — projection-vs-reality split (spec v2) ─────────────────────────────────
@@ -656,14 +661,6 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               <span className={styles.positionStat}>₿ {currentBtcHeld.toFixed(5)} ({fmtUSD(currentBtcHeld * btcPrice)})</span>
               <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} ({(currentBlocLtv * 100).toFixed(1)}% LTV)</span>
               <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
-              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && cbPaydownBuffer > 0 && (
-                <>
-                  <span className={styles.positionStat} style={{ color: cbBufferAffordable ? 'var(--green)' : 'var(--red)' }}>
-                    CB buffer: {fmtUSD(cbPaydownBuffer)}
-                  </span>
-                  <span className={styles.positionStatHint}>to reach {cbLtvTargetPct}% LTV</span>
-                </>
-              )}
               {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
                 <span className={styles.positionStatHint} style={{ color: 'var(--green)' }}>
                   ↩ Rotation ready — shift to the cheaper CB loan
@@ -693,6 +690,26 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   {ndp.status === 'soon'     && `⚠ NDP: ${ndp.daysRemaining}d`}
                   {ndp.status === 'overdue'  && '⛔ NDP overdue'}
                 </span>
+              )}
+              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (cbTriggered ? cbPaydownToTarget > 0 : cbRunwayToTrigger > 0) && (
+                <>
+                  <div className={styles.positionDivider} />
+                  {cbTriggered ? (
+                    <>
+                      <span className={styles.positionStat} style={{ color: cbPaydownAffordable ? 'var(--green)' : 'var(--red)' }}>
+                        CB paydown: {fmtUSD(cbPaydownToTarget)}
+                      </span>
+                      <span className={styles.positionStatHint}>to reach {cbLtvTargetPct}% LTV</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className={styles.positionStat} style={{ color: 'var(--text-secondary)' }}>
+                        CB runway: {fmtUSD(cbRunwayToTrigger)}
+                      </span>
+                      <span className={styles.positionStatHint}>before {cbLtvTriggerPct}% trigger</span>
+                    </>
+                  )}
+                </>
               )}
             </div>
 

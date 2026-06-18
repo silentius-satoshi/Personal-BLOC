@@ -130,6 +130,7 @@
 
 .positionStat { font-size: 13px; color: var(--text-secondary); }
 .positionStatHint { font-size: 11px; color: var(--text-ghost); }
+.positionDivider { height: 1px; background: var(--border); margin: 6px 0 2px; align-self: stretch; }
 
 /* Change 2 — THIS MONTH column stat colours */
 .statGreen { color: var(--green); font-weight: 600; }

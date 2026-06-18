@@ -315,8 +315,16 @@ src/
                                 # editing Amount Drawn / BTC collateral in
                                 # Settings moves it cleanly. STRIKE was de-noised: the "fully backed above $X"
                                 # binding line was removed (only the amber "collateral-limited (50% LTV)" branch
-                                # remains, shown at the 50% ceiling); the ltvTriggered CB-buffer line is gated on
-                                # cbPaydownBuffer > 0; and the NDP badge moved to the THIS MONTH box. In the
+                                # remains, shown at the 50% ceiling). The ltvTriggered CB indicator was RELOCATED from
+                                # the CURRENT STRIKE BLOC box (category error — a CB metric in the Strike box) into
+                                # THIS MONTH (Box 2), after the NDP badge behind a .positionDivider, and REFRAMED by
+                                # band to match the engine: below the 75% trigger → neutral "CB runway: $X / before
+                                # 75% trigger" (collateral×price×trigger% − balance = headroom in the deliberately-idle
+                                # band); at/above trigger → "CB paydown: $X / to reach 65% LTV" (balance −
+                                # collateral×price×target%, the engine's draw; green/red by Strike-credit
+                                # affordability). cbTriggered reuses currentCbLtv; the old single cbPaydownBuffer/
+                                # cbBufferAffordable + the 65%-keyed CURRENT-box line are gone. The NDP badge moved to
+                                # the THIS MONTH box. In the
                                 # dot-rows the Pay/Skip pills sit BEFORE the amount so the amount anchors right
                                 # across current/projected/logged months. The Strike LTV line AND the whole CB LOAN column were
                                 # REMOVED (both LTVs now read from the SafetyDashboard bars above — de-duped;
