@@ -81,6 +81,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       sk = decoded.data as Uint8Array;
 
       const method = localMethod ?? await probeKeyVaultCapability();
+      console.log('[handleLocal] method=', method);
       const { ciphertext, meta } = await wrapSecretKey(sk, method, method === 'pin' ? pin : undefined);
       useStore.getState().setWriterKeyWrapped(ciphertext);
       useStore.getState().setWriterKeyWrapMeta(meta);
@@ -95,7 +96,13 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setIsAuthenticated(true);
       onSuccess();
     } catch (err: any) {
-      setError(err?.message ?? 'Could not set up the local key');
+      const detail = [
+        `name: ${err?.name ?? '?'}`,
+        `msg: ${err?.message ?? '?'}`,
+        `line: ${err?.stack?.split('\n')?.[1]?.trim() ?? '?'}`,
+      ].join(' | ');
+      setError(detail);
+      console.error('[handleLocal]', err);
     } finally {
       sk?.fill(0);   // best-effort zero (the NSecSigner holds its own copy for the session)
       setLoading(false);
