@@ -5,7 +5,7 @@ import { NSecSigner } from '@nostrify/nostrify';
 import { connectNip07 } from '../../lib/nostr/signers';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
-import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
+import { probeKeyVaultCapability, wrapSecretKey, unwrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -79,10 +79,17 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       catch { setError('Not a valid nsec'); setLoading(false); return; }
       if (decoded.type !== 'nsec') { setError('That key is not an nsec'); setLoading(false); return; }
       sk = decoded.data as Uint8Array;
+      console.log('[kv] decoded sk len=', sk.length, 'first4=', Array.from(sk.slice(0,4)));
 
       const method = localMethod ?? await probeKeyVaultCapability();
       console.log('[handleLocal] method=', method);
       const { ciphertext, meta } = await wrapSecretKey(sk, method, method === 'pin' ? pin : undefined);
+      console.log('[kv] wrapped scheme=', meta.scheme, 'ct.len=', ciphertext.length, 'credId=', meta.credentialId?.slice(0,8));
+      try {
+        const rt = await unwrapSecretKey(ciphertext, meta);
+        console.log('[kv] roundtrip unwrap len=', rt.length, 'first4=', Array.from(rt.slice(0,4)), 'matches=', rt.length===sk!.length && rt.every((b,i)=>b===sk![i]));
+        rt.fill(0);
+      } catch (e) { console.log('[kv] roundtrip unwrap FAILED', String(e)); }
       useStore.getState().setWriterKeyWrapped(ciphertext);
       useStore.getState().setWriterKeyWrapMeta(meta);
 
