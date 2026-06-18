@@ -659,7 +659,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} ({(currentBlocLtv * 100).toFixed(1)}% LTV)</span>
+              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({(currentBlocLtv * 100).toFixed(1)}% LTV)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
               {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
                 <span className={styles.positionStatHint} style={{ color: 'var(--green)' }}>
@@ -717,7 +717,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>AFTER THIS MONTH</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} (<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span>
+              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
             </div>
 
@@ -752,7 +752,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
             <div className={styles.scrubHeaderTop}>
               <div className={styles.scrubTitleGroup}>
                 <h3 className={styles.planTitle}>
-                  Month <span className={styles.scrubMonthNum}>{selectedMonth}</span> of 12
+                  Monthly Playbook <span className={styles.planTitleSep}>·</span> Month <span className={styles.scrubMonthNum}>{selectedMonth}</span> of 12
                 </h3>
                 <span className={`${styles.scrubBadge} ${
                   isCurrent ? styles.scrubBadgeCurrent
@@ -793,7 +793,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 <div className={styles.planBar}>
                   <div className={styles.planBarHead}>
                     <span className={styles.planBarLabel}>STRIKE BLOC</span>
-                    <span className={styles.planBarVal}>{(barStrikeLtv * 100).toFixed(1)}% LTV</span>
+                    <span className={styles.planBarVal}>
+                      {isCurrent ? (
+                        <>
+                          <span className={styles.planBarFrom}>{(currentBlocLtv * 100).toFixed(1)}%</span>
+                          <span className={styles.planBarArrow}> → </span>
+                          <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}% LTV</span>
+                        </>
+                      ) : (
+                        <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}% LTV</span>
+                      )}
+                    </span>
                   </div>
                   <div className={styles.planBarTrack}>
                     <div className={styles.planBarFill} style={{ width: `${strikeFillPct}%`, background: LEVEL_COLOR[strikeLevel] }} />
@@ -805,7 +815,17 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 <div className={styles.planBar}>
                   <div className={styles.planBarHead}>
                     <span className={styles.planBarLabel}>COINBASE LOAN</span>
-                    <span className={styles.planBarVal}>{(barCbLtv * 100).toFixed(1)}% LTV</span>
+                    <span className={styles.planBarVal}>
+                      {isCurrent ? (
+                        <>
+                          <span className={styles.planBarFrom}>{(currentCbLtv * 100).toFixed(1)}%</span>
+                          <span className={styles.planBarArrow}> → </span>
+                          <span>{(barCbLtv * 100).toFixed(1)}% LTV</span>
+                        </>
+                      ) : (
+                        <span>{(barCbLtv * 100).toFixed(1)}% LTV</span>
+                      )}
+                    </span>
                   </div>
                   <div className={styles.planBarTrack}>
                     <div className={styles.planBarFill} style={{ width: `${cbFillPct}%`, background: LEVEL_COLOR[cbLevel] }} />

@@ -253,7 +253,8 @@ src/
                                 # labeled per mode ("CB payment" monthly / "CB paydown" ltvTriggered) and, in
                                 # ltvTriggered mode, HIDDEN until currentRow.cbLtvTriggered fires (showCbRow).
                                 # Plan card = "Monthly Playbook" (polished toward Smart BLOC's restraint):
-                                # a TWO-LINE header — top "Month X of 12 · [de-boxed state badge]", second
+                                # a TWO-LINE header — top "Monthly Playbook · Month X of 12 · [de-boxed state badge]"
+                                # (.planTitleSep ghost dot before "Month"), second
                                 # line (.scrubMeta, above the scrubber) "LTV Z% — paydown triggered" (LTV +
                                 # flag coral when hasPaydown) left + "BTC $price" right;
                                 # a month SCRUBBER (1–12, selectedMonth,
@@ -261,7 +262,10 @@ src/
                                 # carousel) with a TWO-TONE fill (red paydown share / green rest, keyed to
                                 # the --paydownPct = barPaydownPct CSS var) + month-tick markers
                                 # (M1·M3·M6·M9·M12, replaced the "drag to scrub" caption); TWO stacked status
-                                # bars (Strike / CB — toggle-gated by showPlanStrikeBar/showPlanCbBar). The
+                                # bars (Strike / CB — toggle-gated by showPlanStrikeBar/showPlanCbBar). On the CURRENT
+                                # month each bar's value shows a current→eom TRANSITION "A% → B% LTV" (.planBarFrom/
+                                # .planBarArrow ghost; Strike's eom number stays orange on hasPaydown); projected/logged
+                                # months show the single eom value. The
                                 # INCOME ALLOCATION bar was REMOVED (redundant — the two-tone scrubber already
                                 # encodes the per-month paydown/buy split; allocation-complete ✓ is always true
                                 # in projected months + still surfaces in the confirm sheet) along with its dead
@@ -298,7 +302,9 @@ src/
                                 # comparison (asset → debt → avail, NO inline labels — titles carry the meaning, fixes
                                 # ⅓-width wrapping): "₿ held ($usd)" / "$balance (Z% LTV)" / "Avail: $A". The ₿ amount
                                 # is ORANGE (.btcAmt) and the ($usd) paren is a smaller ghost SUBTEXT (.parenSub, 11px)
-                                # — not same size/color as the ₿. CURRENT Z =
+                                # — not same size/color as the ₿. The debt-line "(Z% LTV)" paren is ALSO .parenSub ghost
+                                # subtext (AFTER keeps the orange Z number on hasPaydown — orange overrides the ghost).
+                                # CURRENT Z =
                                 # currentBlocLtv via computeStrikeLtv (matches the dashboard Strike bar); AFTER Z = eomLtv
                                 # (orange span when hasPaydown). usd = ₿ × live btcPrice. PER-BOX AVAIL CORRECTNESS:
                                 # CURRENT uses currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, price,
