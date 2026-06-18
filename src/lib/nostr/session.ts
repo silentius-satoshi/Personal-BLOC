@@ -43,7 +43,7 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
       const { writerKeyWrapped, writerKeyWrapMeta } = useStore.getState();
       if (!writerKeyWrapped || !writerKeyWrapMeta) throw new Error('no local key');
       const sk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta);   // → triggers Face ID / PIN
-      const signer = new NSecSigner(sk) as unknown as NostrSigner;
+      const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;
       if (await signer.getPublicKey() !== nostrPubkey) throw new Error('pubkey mismatch');
       sk.fill(0);   // best-effort zero after the signer holds its own copy
       useStore.getState().setNostrSigner(signer);
