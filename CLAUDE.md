@@ -201,7 +201,13 @@ src/
                                 # the Safe/Watch/Act .stateLine VERDICT is the FIRST child — a prominent 15px/700
                                 # headline at the very top (moved up from the buried last child; render-position +
                                 # style only, state/stateCopy derivation unchanged) → then
-                                # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/CB_LLTV, bare
+                                # <PriceChart/> strip (BTC candles) → CB bar (primary; fill = ltv/cbLiqFrac, where
+                                # cbLiqFrac = the effective liquidation LTV from the AUTHORITATIVE cbLiquidationPrice
+                                # (accruedBalance/(collateral×activeLiqPrice)), falling back to CB_LLTV when no price
+                                # is set — so editing the CB liquidation price MOVES the bar fill + trigger marker +
+                                # 0.93 level band consistently, not just the cushion subtext. The playbook COINBASE bar
+                                # mirrors this (cbLiquidationPrice>0 ? cbLoanBalance/(collateral×price) : CB_LLTV, raw
+                                # basis). bare
                                 # 75%/86% marker TICKS — trigger/liq prices + "Coinbase"/"~est." source moved to a
                                 # .priceNote subtext, no label collision; ↓drop-to-trigger/liq cushion, Safe/Fair/
                                 # Poor badge, no-grace note in amber/red) → Strike bar (body tap flips capacity-used

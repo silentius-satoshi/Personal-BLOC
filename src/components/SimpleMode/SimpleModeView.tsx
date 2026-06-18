@@ -220,6 +220,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const cbLoanBalance      = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc    = useStore((s) => s.cbCollateralBtc);
+  const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
@@ -493,9 +494,15 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const clampPct = (frac: number) => Math.max(0, Math.min(100, frac * 100));
   const strikeLiqFrac = strikeLiquidationLtvPct / 100;
   const cbTriggerFrac = cbLtvTriggerPct / 100;
+  // CB bar denominator = effective liquidation fraction from the authoritative cbLiquidationPrice
+  // (balance/(collateral×price)); falls back to the protocol CB_LLTV when no price set. Raw-balance basis
+  // matches barCbLtv (currentCbLtv), so the no-price case is an exact CB_LLTV no-op.
+  const cbLiqFrac     = cbLiquidationPrice > 0 && cbCollateralBtc > 0
+    ? cbLoanBalance / (cbCollateralBtc * cbLiquidationPrice)
+    : CB_LLTV;
   const barPaydownPct = income > 0 ? clampPct(rowPaydownUsd / income) : 0;   // scrubber paydown segment (red share)
   const strikeFillPct = strikeLiqFrac > 0 ? clampPct(barStrikeLtv / strikeLiqFrac) : 0;
-  const cbFillPct     = clampPct(barCbLtv / CB_LLTV);
+  const cbFillPct     = clampPct(barCbLtv / cbLiqFrac);
   const strikeLevel   = barLevel(barStrikeLtv, strikeLiqFrac * 0.6, strikeLiqFrac * 0.8);
   const cbLevel       = barLevel(barCbLtv, cbTriggerFrac * 0.85, cbTriggerFrac);
 
@@ -829,7 +836,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   </div>
                   <div className={styles.planBarTrack}>
                     <div className={styles.planBarFill} style={{ width: `${cbFillPct}%`, background: LEVEL_COLOR[cbLevel] }} />
-                    <div className={styles.planBarMarker} style={{ left: `${clampPct(cbTriggerFrac / CB_LLTV)}%` }} />
+                    <div className={styles.planBarMarker} style={{ left: `${clampPct(cbTriggerFrac / cbLiqFrac)}%` }} />
                   </div>
                 </div>
               )}

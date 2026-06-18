@@ -78,9 +78,15 @@ export function SafetyDashboard() {
   const dropToTrigger  = btcPrice > 0 ? (btcPrice - m.triggerPrice) / btcPrice : 0;
   const dropToLiq      = btcPrice > 0 ? (btcPrice - activeLiqPrice) / btcPrice : 0;
 
-  const cbFillPct  = Math.max(0, Math.min(100, (cbLtv / CB_LLTV) * 100));
-  const trigMarker = (cbLtvTriggerPct / 100 / CB_LLTV) * 100;             // trigger as % of the 0..86 track
-  const cbLevel    = barLevel(cbLtv, cbLtvTriggerPct / 100, CB_LLTV * 0.93);  // act ≈ 80% LTV
+  // CB bar denominator = effective liquidation fraction from the AUTHORITATIVE liquidation price
+  // (balance/(collateral×price)); falls back to the protocol CB_LLTV when no price is set. Uses accruedBalance
+  // (same basis as cbLtv / m.liqPrice) so the no-price case resolves to exactly CB_LLTV — no regression.
+  const cbLiqFrac  = activeLiqPrice > 0 && cbCollateralBtc > 0
+    ? accruedBalance / (cbCollateralBtc * activeLiqPrice)
+    : CB_LLTV;
+  const cbFillPct  = Math.max(0, Math.min(100, (cbLtv / cbLiqFrac) * 100));
+  const trigMarker = (cbLtvTriggerPct / 100 / cbLiqFrac) * 100;           // trigger as % of the 0..liquidation track
+  const cbLevel    = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);  // act ≈ 80% of liquidation LTV
   const cbFillColor = LEVEL_COLOR[cbLevel];
   const cbBadge    = cbLevel === 'safe' ? 'Safe' : cbLevel === 'watch' ? 'Fair' : 'Poor';
 
