@@ -339,14 +339,22 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const nextRow           = advisorRows.find((r) => r.month === currentMonth + 1);   // month after current; undefined at Mo 12
   const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(monthlyLog, expenses, expenseReanchorDismissedAt);
 
-  const expectedBlocDraw = currentTier === 1 ? 0
-    : currentTier === 2
-      ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
-      : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
+  // ltvTriggered suspends CB-tier rules (the trigger IS the safety mechanism) — mirror the engine
+  // (runAdvisor.ts:166/181/185): full expense draw, income-funded BTC buying, no tier gating. Tier
+  // halving/zeroing applies only in monthly mode.
+  const isLtvTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered';
+  const expectedBlocDraw = isLtvTriggered
+    ? Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance))   // tiers suspended (matches runAdvisor:166)
+    : currentTier === 1 ? 0
+      : currentTier === 2
+        ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
+        : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
   const expectedFiatGap   = Math.max(0, expenses - expectedBlocDraw);
   const expectedCbPayment = advisorSkipCbPayment ? 0 : (currentRow?.cbPayment ?? 0);
   const expectedBtcBuying = advisorSkipBtcBuying ? 0
-    : currentTier === 1 ? 0 : Math.max(0, income - expectedCbPayment);
+    : isLtvTriggered ? Math.max(0, income - expectedCbPayment)                 // tiers suspended (matches runAdvisor:185; cbPayment=0 in this mode)
+      : currentTier === 1 ? 0
+        : Math.max(0, income - expectedCbPayment);
 
   // Change 3 — effective amounts (override when user enters custom)
   const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
