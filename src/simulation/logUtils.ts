@@ -17,9 +17,10 @@ export function recomputeBtcHeld(
 export function deriveAdvisorStart(
   monthlyLog: MonthlyLogEntry[],
   advisorActualBtcHeld: number,
-  advisorActualBlocBalance: number,
+  _advisorActualBlocBalance: number,   // retained for signature stability — live-drawn balance is no longer the start base (see monthStartBalance)
   currentStrategyMonth: number,
   pendingCollateralAdjustment: number,
+  monthStartBalance: number,   // BLOC balance at the START of the current month — projection base (NOT live drawn)
 ): {
   startingBlocBalance: number;
   startingBtcHeld:     number;
@@ -27,7 +28,7 @@ export function deriveAdvisorStart(
 } {
   if (monthlyLog.length === 0) {
     return {
-      startingBlocBalance: advisorActualBlocBalance,
+      startingBlocBalance: monthStartBalance,   // start-of-month base; live-drawn (advisorActualBlocBalance) is a separate concept
       startingBtcHeld:     advisorActualBtcHeld + pendingCollateralAdjustment,
       startingMonth:       currentStrategyMonth,
     };

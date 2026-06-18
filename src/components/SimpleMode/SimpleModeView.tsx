@@ -189,9 +189,9 @@ function ConfirmLogSheet({
   );
 }
 
-function ModalField({ label, prefix, value, onChange, step = 1 }: {
+function ModalField({ label, prefix, value, onChange, step = 1, hint }: {
   label: string; prefix?: string; value: number;
-  onChange: (v: number) => void; step?: number;
+  onChange: (v: number) => void; step?: number; hint?: string;
 }) {
   return (
     <div className={styles.modalFieldGroup}>
@@ -206,6 +206,7 @@ function ModalField({ label, prefix, value, onChange, step = 1 }: {
           onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
         />
       </div>
+      {hint && <span className={styles.positionStatHint}>{hint}</span>}
     </div>
   );
 }
@@ -230,6 +231,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
+  const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
+  const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
   const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
@@ -269,6 +272,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const [modalDraft, setModalDraft] = useState({
     income, expenses, creditLine,
     blocBalance: advisorActualBlocBalance,
+    monthStartBalance: advisorMonthStartBalance,
     btcHeld: currentBtcHeld,
   });
 
@@ -296,8 +300,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment],
+    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance),
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance],
   );
 
   const advisorRows = useMemo(
@@ -359,6 +363,11 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   // Change 3 — effective amounts (override when user enters custom)
   const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
   const effectiveInterest   = customInterest ?? (currentRow?.blocInterest ?? 0);
+
+  // THIS MONTH shows what's LEFT to draw this month: full-month plan minus what you've already drawn
+  // (live − start-of-month). The full draw still feeds the confirm sheet + loggedStrikeBal + AFTER projection.
+  const alreadyDrawnThisMonth = Math.max(0, advisorActualBlocBalance - slmBlocBal);
+  const remainingDraw         = Math.max(0, expectedBlocDraw - alreadyDrawnThisMonth);
 
   // CB payment: per-mode projected seed (ltvTriggered → BLOC-funded cbPaydownDraw, monthly →
   // income-funded cbPayment), overridable in the confirm sheet. Matches the re-anchor source exactly.
@@ -494,7 +503,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
 
   const openSetupModal = () => {
-    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: currentBtcHeld });
+    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, monthStartBalance: advisorMonthStartBalance, btcHeld: currentBtcHeld });
     setShowSetupModal(true);
   };
 
@@ -503,6 +512,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
     setExpenses(modalDraft.expenses);
     setCreditLine(modalDraft.creditLine);
     setAdvisorActualBlocBalance(modalDraft.blocBalance);
+    setAdvisorMonthStartBalance(modalDraft.monthStartBalance);
     // btcHeld edits are reality edits — a dated adjustment, never the baseline
     if (modalDraft.btcHeld !== useStore.getState().getCurrentBtcHeld()) {
       adjustCurrentCollateral(modalDraft.btcHeld);
@@ -675,7 +685,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   Buy: ₿ {advisorSkipBtcBuying || effectiveBtcAmount <= 0 ? '—' : `+${effectiveBtcAmount.toFixed(5)}`}
                 </span>
               )}
-              <span className={styles.positionStat}>Draw: {advisorSkipBlocDraw ? '—' : fmtUSD(effectiveDrawAmount)}</span>
+              <span className={styles.positionStat}>Draw: {advisorSkipBlocDraw ? '—' : fmtUSD(remainingDraw)}</span>
               {ndp.status !== 'ok' && (
                 <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
                   {ndp.status === 'never'    && 'NDP — not recorded'}
@@ -1008,6 +1018,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     <ModalField label="Monthly expenses" prefix="$" value={modalDraft.expenses}    onChange={(v) => setModalDraft(d => ({ ...d, expenses: v }))} />
                     <ModalField label="Credit line"      prefix="$" value={modalDraft.creditLine}  onChange={(v) => setModalDraft(d => ({ ...d, creditLine: v }))} />
                     <ModalField label="Amount Drawn"      prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
+                    <ModalField label="Balance at start of this month" prefix="$" value={modalDraft.monthStartBalance} onChange={(v) => setModalDraft(d => ({ ...d, monthStartBalance: v }))}
+                      hint="What you owed on Strike at the start of the current month — the base for this month's projection." />
                     <ModalField label="BTC held"         prefix="₿" value={modalDraft.btcHeld}     onChange={(v) => setModalDraft(d => ({ ...d, btcHeld: v }))} step={0.001} />
                   </div>
                   <div className={styles.modalActions}>

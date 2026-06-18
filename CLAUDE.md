@@ -305,7 +305,12 @@ src/
                                 # hint (availCredit.binding) lives with AFTER (eom-based). Box2 THIS MONTH is a two-line
                                 # action card "Buy: ₿ +X" (₿-only) / "Draw: $Y" (both labeled — bare values would be
                                 # ambiguous), "(proj)" consolidated to the box title; NDP badge below (gated ndp.status
-                                # !== 'ok'). AFTER was promoted from the embedded .eomProjection sub-section (retired;
+                                # !== 'ok'). THIS MONTH's "Draw" shows the REMAINING draw (remainingDraw =
+                                # max(0, expectedBlocDraw − (advisorActualBlocBalance − slmBlocBal)) = full plan minus
+                                # what's already drawn live this month), so mid-month it counts down to 0 as you draw;
+                                # AFTER (eomBlocBalance) + the ConfirmLogSheet draw + loggedStrikeBal keep the FULL-month
+                                # draw on slmBlocBal (= advisorMonthStartBalance, the start-of-month base) → true
+                                # end-of-month. AFTER was promoted from the embedded .eomProjection sub-section (retired;
                                 # .eom*/.usedLabel CSS removed) to a peer box. So
                                 # editing Amount Drawn / BTC collateral in
                                 # Settings moves it cleanly. STRIKE was de-noised: the "fully backed above $X"
@@ -424,7 +429,8 @@ strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liq
 ### Advisor Tab
 ```typescript
 advisorStartDate:         string;   // ISO date, default today
-advisorActualBlocBalance: number;   // default 0 — month-0 baseline BLOC balance (empty-log fallback)
+advisorActualBlocBalance: number;   // default 0 — LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
+advisorMonthStartBalance: number;   // default 0 — BLOC balance at the START of the current month; projection base ONLY (deriveAdvisorStart month-1). SYNCED. Distinct from advisorActualBlocBalance (live drawn) so mid-month the AFTER box stacks the full draw on the start base, not on the live balance
 advisorActualBtcHeld:     number;   // default 0 — TRUE month-0 baseline BTC, NEVER back-solved; current = derives + pending
 pendingCollateralAdjustment: number;  // default 0 — un-graduated collateral delta; SYNCED; folds into the current month's entry on log
 sandboxCollateralBtc:     number | null;  // default null — Smart BLOC what-if collateral; IN-MEMORY only (partialize-excluded, never synced); null = tracks current
@@ -1080,12 +1086,12 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 29 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 30 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 
-### All 29 Synced Settings Fields
+### All 30 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
-`advisorActualBlocBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
+`advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
@@ -1136,7 +1142,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `MiningOddsBar` | Reads store directly — not props |
 | `fmtMining` | Inlined in `format.ts` — no circular import |
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
-| `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute) + `pendingCollateralAdjustment` as a REQUIRED param (never default it — the compiler must flag unthreaded surfaces); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne |
+| `deriveAdvisorStart` / `deriveCurrentPosition` | Anchor to `last.btcHeld` (absolute) + `pendingCollateralAdjustment` as a REQUIRED param (never default it — the compiler must flag unthreaded surfaces); standalone — no imports from runAdvisor/runBLOC/runBlocYearOne. `deriveAdvisorStart`'s month-1 (empty-log) branch returns `startingBlocBalance: monthStartBalance` (the trailing param = `advisorMonthStartBalance`, the start-of-month base — NOT the live `advisorActualBlocBalance`, which is now the 3rd param `_advisorActualBlocBalance`, retained for signature stability but unused); the logged branch still returns `last.strikeBal` |
 | `publishRecords` cadence | Immediate via `publishRecordsNow` (no debounce); NOT triggered by `setMonthlyLog` |
 | Records merge | Records receive is MERGE-based and unconditionally safe (`mergeRecords`); `recordsDirty` = publish-needed marker + merge tie-breaker ONLY (not a receive gate); `lastRecordsSyncAt` = observability only |
 | Settings LWW | Settings remain whole-object last-write-wins — last publisher wins the FULL object; only single-writer prefs belong in the payload (the checklist died for this) |
@@ -1146,7 +1152,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v9 migration | Adds `lastRecordsSyncAt` (seeded from old shared `lastSettingsSyncAt`) + `lastLocalChangedAt`; independent per-d-tag watermarks |
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
-| Zustand v15 migration | Adds `writerKeyWrapped`/`writerKeyWrapMeta` (writer local-key signer — AES-GCM ciphertext + WrapMeta, default `?? null`); additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload). `nostrSigningMethod` gains `'local'`. Current store version = 15 |
+| Zustand v15 migration | Adds `writerKeyWrapped`/`writerKeyWrapMeta` (writer local-key signer — AES-GCM ciphertext + WrapMeta, default `?? null`); additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload). `nostrSigningMethod` gains `'local'` |
+| Zustand v16 migration | Adds `advisorMonthStartBalance` (start-of-month BLOC balance — projection base, distinct from live-drawn `advisorActualBlocBalance`); default `persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0` (mid-month installs seed from the current live balance; fresh = 0). SYNCED (in `SETTINGS_FIELDS`/payload — real strategy state). Current store version = 16 |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |

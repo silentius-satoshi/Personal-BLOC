@@ -84,7 +84,8 @@ interface StoreState {
 
   // Advisor tab inputs
   advisorStartDate:         string;
-  advisorActualBlocBalance: number;
+  advisorActualBlocBalance: number;   // LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
+  advisorMonthStartBalance: number;   // BLOC balance at the START of the current month — projection base ONLY (deriveAdvisorStart month-1)
   advisorActualBtcHeld:     number;   // TRUE month-0 baseline — never back-solved; current holdings derive from the log + pending
   pendingCollateralAdjustment: number;   // un-graduated collateral delta (deposit/withdrawal); SYNCED via settings; folds into the current month's entry on log
   sandboxCollateralBtc:     number | null;   // Smart BLOC what-if collateral — in-memory ONLY (not persisted/synced); null = tracks current
@@ -154,6 +155,7 @@ interface StoreState {
   // Setters — Advisor tab
   setAdvisorStartDate:         (date: string) => void;
   setAdvisorActualBlocBalance: (v: number)    => void;
+  setAdvisorMonthStartBalance: (v: number)    => void;
   setAdvisorActualBtcHeld:     (v: number)    => void;
 
   advisorSkipBlocDraw:  boolean;
@@ -289,6 +291,7 @@ export async function publishSettingsNow(): Promise<boolean> {
       creditLine:               s.creditLine,
       advisorStartDate:         s.advisorStartDate,
       advisorActualBlocBalance: s.advisorActualBlocBalance,
+      advisorMonthStartBalance: s.advisorMonthStartBalance,
       advisorActualBtcHeld:     s.advisorActualBtcHeld,
       cbLoanBalance:            s.cbLoanBalance,
       cbCollateralBtc:          s.cbCollateralBtc,
@@ -389,6 +392,7 @@ export const useStore = create<StoreState>()(
 
   advisorStartDate:         new Date().toISOString().split('T')[0],
   advisorActualBlocBalance: 0,
+  advisorMonthStartBalance: 0,
   advisorActualBtcHeld:     0,
   pendingCollateralAdjustment: 0,   // default via shallow merge — no migration, store stays v11
   sandboxCollateralBtc:     null,
@@ -454,6 +458,7 @@ export const useStore = create<StoreState>()(
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
+  setAdvisorMonthStartBalance: (v) => { set({ advisorMonthStartBalance: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    useStore.getState().syncSettingsToNostr(); },
   setNdpLastPaidDate:          (v) => { set({ ndpLastPaidDate: v }); useStore.getState().syncSettingsToNostr(); },
 
@@ -618,7 +623,7 @@ export const useStore = create<StoreState>()(
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [
       'income', 'expenses', 'blocApr', 'creditLine',
-      'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBtcHeld',
+      'advisorStartDate', 'advisorActualBlocBalance', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
       'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
@@ -638,7 +643,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 15,
+      version: 16,
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
@@ -676,6 +681,8 @@ export const useStore = create<StoreState>()(
           showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
           writerKeyWrapped:     persistedState.writerKeyWrapped  ?? null,   // v15 — device-local, never synced
           writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? null,   // v15
+          // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
+          advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
         };
       },
       onRehydrateStorage: () => (state) => {

@@ -139,6 +139,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
+  const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
+  const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
   const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
@@ -371,6 +373,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           <div className={styles.setupFieldGroup}>
             <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
             <span className={styles.fieldHint}>Current outstanding BLOC draw balance.</span>
+          </div>
+          <div className={styles.setupFieldGroup}>
+            <NumberInput label="Balance at start of this month" value={advisorMonthStartBalance} onChange={setAdvisorMonthStartBalance} prefix="$" min={0} step={100} />
+            <span className={styles.fieldHint}>What you owed on Strike at the start of the current month — the base for this month's projection.</span>
           </div>
           <div className={styles.setupFieldGroup}>
             <span className={styles.setupFieldLabel}>Strategy start date</span>

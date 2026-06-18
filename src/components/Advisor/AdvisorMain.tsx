@@ -81,6 +81,7 @@ export function AdvisorMain() {
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
+  const advisorMonthStartBalance = useStore((s) => s.advisorMonthStartBalance);
   const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
   const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());
@@ -112,8 +113,9 @@ export function AdvisorMain() {
       advisorActualBlocBalance,
       currentMonth,
       pendingCollateralAdjustment,
+      advisorMonthStartBalance,
     ),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment],
+    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance],
   );
 
   const result = useMemo(
