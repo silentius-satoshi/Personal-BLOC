@@ -74,9 +74,6 @@ export function SafetyDashboard() {
   const activeLiqPrice = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
   const liqSource      = cbLiquidationPrice > 0 ? 'Coinbase' : '~est.';
   const cbLtv          = m.ltv;
-  // room for BTC to FALL before each threshold — positive when safe (price above the threshold price)
-  const dropToTrigger  = btcPrice > 0 ? (btcPrice - m.triggerPrice) / btcPrice : 0;
-  const dropToLiq      = btcPrice > 0 ? (btcPrice - activeLiqPrice) / btcPrice : 0;
 
   // CB bar denominator = effective liquidation fraction from the AUTHORITATIVE liquidation price
   // (balance/(collateral×price)); falls back to the protocol CB_LLTV when no price is set. Uses accruedBalance
@@ -89,6 +86,10 @@ export function SafetyDashboard() {
   const cbLevel    = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);  // act ≈ 80% of liquidation LTV
   const cbFillColor = LEVEL_COLOR[cbLevel];
   const cbBadge    = cbLevel === 'safe' ? 'Safe' : cbLevel === 'watch' ? 'Fair' : 'Poor';
+  // Cushion as LTV-POINT GAPS (matches the playbook "CB runway"): LTV points to the trigger / to liquidation
+  // (the latter via cbLiqFrac = the authoritative liquidation LTV). Clamped ≥ 0.
+  const ltvGapToTrigger = Math.max(0, cbLtvTriggerPct / 100 - cbLtv);
+  const ltvGapToLiq     = Math.max(0, cbLiqFrac - cbLtv);
 
   // ── Strike bar math ──────────────────────────────────────────────────
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
@@ -143,9 +144,6 @@ export function SafetyDashboard() {
     setStrikeEditing(false);
   };
 
-  // positive drop = room to fall (↓X%); negative = price already at/past the threshold
-  const pct = (n: number) => n > 0 ? `↓${(n * 100).toFixed(1)}%` : `${(Math.abs(n) * 100).toFixed(1)}% over`;
-
   return (
     <div className={styles.dashboard}>
       {/* ── State line (headline verdict) ──────────────────────────── */}
@@ -185,7 +183,7 @@ export function SafetyDashboard() {
 
         <div className={styles.cushionRow}>
           <span className={styles.ltvNow}>{(cbLtv * 100).toFixed(1)}% LTV</span>
-          <span className={styles.cushion}>{pct(dropToTrigger)} to trigger · {pct(dropToLiq)} to liquidation</span>
+          <span className={styles.cushion}>{(ltvGapToTrigger * 100).toFixed(1)}% to trigger · {(ltvGapToLiq * 100).toFixed(1)}% to liquidation</span>
         </div>
         <p className={styles.priceNote}>trigger {fmtUSD(m.triggerPrice)} · liq {fmtUSD(activeLiqPrice)} ({liqSource})</p>
 

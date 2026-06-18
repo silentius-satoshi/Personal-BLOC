@@ -209,7 +209,11 @@ src/
                                 # mirrors this (cbLiquidationPrice>0 ? cbLoanBalance/(collateral×price) : CB_LLTV, raw
                                 # basis). bare
                                 # 75%/86% marker TICKS — trigger/liq prices + "Coinbase"/"~est." source moved to a
-                                # .priceNote subtext, no label collision; ↓drop-to-trigger/liq cushion, Safe/Fair/
+                                # .priceNote subtext, no label collision; cushion = LTV-POINT GAPS "X% to trigger ·
+                                # Y% to liquidation" (ltvGapToTrigger = trigger% − cbLtv; ltvGapToLiq = cbLiqFrac −
+                                # cbLtv, the authoritative-liq-price LTV; matches the playbook "CB runway" — the price
+                                # view stays in the priceNote/liq-price field; the old ↓price-drop pct() was removed),
+                                # Safe/Fair/
                                 # Poor badge, no-grace note in amber/red) → Strike bar (body tap flips capacity-used
                                 # ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
                                 # computeStrikeLtv(advisorActualBlocBalance, getCurrentBtcHeld(), price) — the
