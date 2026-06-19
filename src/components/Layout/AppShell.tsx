@@ -39,7 +39,7 @@ import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
 import { ViewerWaitingGate } from '../Auth/ViewerWaitingGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
-import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
+import { setUnwrappedViewerKey, getViewerNpub } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -187,6 +187,7 @@ export function AppShell() {
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
   const [unlockEscape, setUnlockEscape] = useState(false);
+  const [bannerCopied, setBannerCopied] = useState(false);
 
   const isOwner = isOwnerPubkey(nostrPubkey, import.meta.env.VITE_OWNER_PUBKEY as string | undefined);
   const viewerMode    = useStore((s) => s.viewerMode);
@@ -283,6 +284,20 @@ export function AppShell() {
       {viewerMode && (
         <div className={styles.viewerBanner}>
           👁 Viewing {viewerNpubSelf ? `${viewerNpubSelf.slice(0, 8)}…` : 'a shared plan'} · read-only
+          {(() => {
+            const myNpub = getViewerNpub();
+            return myNpub ? (
+              <>
+                {' · '}
+                <button
+                  className={styles.viewerBannerCopyBtn}
+                  onClick={() => { navigator.clipboard?.writeText(myNpub); setBannerCopied(true); setTimeout(() => setBannerCopied(false), 1500); }}
+                >
+                  {bannerCopied ? 'copied ✓' : 'copy my npub'}
+                </button>
+              </>
+            ) : null;
+          })()}
         </div>
       )}
 

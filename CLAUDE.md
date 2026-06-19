@@ -981,7 +981,9 @@ src/
     ViewerUnlockGate.tsx            # Phase 3 viewer-key gate — unlock (wrapped) / one-time wrap-setup (v17 migrant);
                                     # populates viewerSync's in-memory holder. Reuses NostrAuthGate.module.css
     ViewerWaitingGate.tsx          # Data-remanence guard — "Waiting for the owner's data…" until viewerDataLoaded
-                                    # (valid decrypt) + "Reset viewing key" escape (revoked viewer isn't trapped)
+                                    # (valid decrypt) + "Reset viewing key" escape (revoked viewer isn't trapped) +
+                                    # "Copy my npub" (via getViewerNpub — derives the viewer's own npub from the
+                                    # holder so a pending/revoked viewer can re-send it; banner has it too)
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
                                     # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)

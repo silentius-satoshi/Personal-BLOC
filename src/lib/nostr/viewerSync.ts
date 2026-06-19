@@ -12,6 +12,8 @@
 
 import { SimplePool } from 'nostr-tools/pool';
 import { hexToBytes } from 'nostr-tools/utils';
+import { getPublicKey } from 'nostr-tools/pure';
+import { nip19 } from 'nostr-tools';
 import { NSecSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { VIEWER_DTAG, type ViewerSnapshot } from './publish';
@@ -32,6 +34,13 @@ export function setUnwrappedViewerKey(sk: Uint8Array | null): void {
   unwrappedViewerKey = sk ? sk.slice() : null;   // own copy — caller may zero/reuse its buffer
   cachedSigner = null;
   useStore.getState().setViewerUnlocked(!!sk);
+}
+
+/** The viewer's OWN npub, derived from the in-memory holder (never exposes raw bytes). null pre-unlock.
+ *  Lets a pending/revoked viewer copy their npub to (re-)send the owner — the key isn't in the store. */
+export function getViewerNpub(): string | null {
+  if (!unwrappedViewerKey) return null;
+  try { return nip19.npubEncode(getPublicKey(unwrappedViewerKey.slice())); } catch { return null; }
 }
 
 function getViewerSigner(): NSecSigner | null {

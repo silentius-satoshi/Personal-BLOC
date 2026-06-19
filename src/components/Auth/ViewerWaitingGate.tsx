@@ -1,3 +1,5 @@
+import { useState } from 'react';
+import { getViewerNpub } from '../../lib/nostr/viewerSync';
 import styles from './NostrAuthGate.module.css';
 
 /**
@@ -7,6 +9,9 @@ import styles from './NostrAuthGate.module.css';
  * viewing key" escape is essential — without it the viewer is trapped here forever.
  */
 export function ViewerWaitingGate({ onReset }: { onReset: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const npub = getViewerNpub();   // available — a viewer reaches this gate only AFTER unlocking (holder populated)
+
   return (
     <div className={styles.overlay}>
       <div className={styles.card}>
@@ -17,6 +22,20 @@ export function ViewerWaitingGate({ onReset }: { onReset: () => void }) {
           If this doesn't load, the owner may not have shared with this key yet (or revoked it). Reset to follow a
           different owner — no data is lost.
         </p>
+        {npub && (
+          <>
+            <p className={styles.hint}>Send the owner your viewing key:</p>
+            <p className={styles.hint} style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
+              {npub.slice(0, 16)}…{npub.slice(-8)}
+            </p>
+            <button
+              className={styles.ghostBtn}
+              onClick={() => { navigator.clipboard?.writeText(npub); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+            >
+              {copied ? 'Copied ✓' : 'Copy my npub'}
+            </button>
+          </>
+        )}
         <button className={styles.ghostBtn} onClick={onReset}>
           Reset viewing key
         </button>
