@@ -54,6 +54,7 @@ export function SafetyDashboard() {
   const strikeLiquidationLtvPct  = useStore((s) => s.strikeLiquidationLtvPct);
   const setStrikeLiquidationLtvPct = useStore((s) => s.setStrikeLiquidationLtvPct);
 
+  const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → inline editors disabled (view-flip still allowed)
   const [strikeView, setStrikeView] = useState<'capacity' | 'liquidation'>('capacity');
   const [editing, setEditing]       = useState(false);
   const [draftBal, setDraftBal]     = useState(cbLoanBalance);
@@ -122,6 +123,7 @@ export function SafetyDashboard() {
 
   // Whole-CB-card tap-to-anchor (mirrors the Strike card's whole-container tap).
   const toggleEdit = () => {
+    if (viewerMode) return;   // read-only viewer — no anchoring
     if (!editing) { setDraftBal(cbLoanBalance); setDraftLiq(cbLiquidationPrice); }   // seed drafts on open
     setEditing((v) => !v);
   };
@@ -130,6 +132,7 @@ export function SafetyDashboard() {
   // Strike card: body tap flips the view; the edit control opens a view-aware inline editor.
   const flipStrike = () => setStrikeView((v) => (v === 'capacity' ? 'liquidation' : 'capacity'));
   const openStrikeEdit = () => {
+    if (viewerMode) return;   // read-only viewer — no inline edit
     if (!strikeEditing) {
       setDraftStrikeBal(advisorActualBlocBalance);
       setDraftCreditLine(creditLine);

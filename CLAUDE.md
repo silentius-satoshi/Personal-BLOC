@@ -809,7 +809,9 @@ dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPla
 plan-card status-bar visibility, default true), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device), and
 `viewerNpub`/`viewerPubkey` (the provisioned viewer's npub/hex — writer-side Viewer Access config; the owner
-seals the viewer snapshot TO this key, so it must stay device-local). New per-device
+seals the viewer snapshot TO this key, so it must stay device-local), and `viewerMode`/`viewerWriterPubkey`/
+`viewerSecretKey` (viewer-side Phase-2 read-client config — this install's read-only mode, the owner it follows,
+and its own nsec; `viewerSecretKey` is plaintext until Phase 3 wraps it). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
 `nostrSyncing`/`sandboxCollateralBtc`).
 
@@ -1003,6 +1005,13 @@ src/
     liveSync.ts                     # foreground-only live relay subscription — module singleton (openLiveSync/
                                     # closeLiveSync); transport only, every event → applyRemoteEvent; opened on
                                     # visible, torn down on hidden, fresh since−60s each open
+    viewerSync.ts                   # Viewer Access Phase 2 (READ-ONLY) — the mirror of liveSync, but reads the
+                                    # OWNER's snapshot (authors:[viewerWriterPubkey], #d:[VIEWER_DTAG]) and decrypts
+                                    # with the VIEWER's key (NSecSigner(hexToBytes(viewerSecretKey).slice())).
+                                    # fetchViewerSnapshot (batch) + open/closeViewerSync (singleton live sub) →
+                                    # applyViewerEvent → read-only hydrate (hydrateSettings/setMonthlyLog/
+                                    # setDeletedMonths/setStrike*); NEVER publishes/dirties. useViewerSync (hook)
+                                    # mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
@@ -1120,23 +1129,53 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 | `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent |
 
-### Viewer Access (Phase 1 — writer-side snapshot only)
+### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
 The owner can provision a **viewer** (e.g. a family member) who gets a continuously-updated, **read-only**
-encrypted copy of the full model + live Strike balances. Phase 1 is **writer-side only** — it publishes the
-snapshot; there is **no viewer read client yet (Phase 2), no `viewerMode`/`viewerSecretKey` (Phase 3)**.
+encrypted copy of the full model + live Strike balances. **Phase 3 (passkey/keyVault-wrapping
+`viewerSecretKey`) is NOT built** — Phase 2 stores `viewerSecretKey` as **plaintext hex**.
+
+**Phase 1 (writer-side):**
 - **`buildSettingsPayload(s)`** (`useStore.ts`, exported) is THE single source of the settings object — consumed
   by BOTH `publishSettingsNow` AND the viewer snapshot, so the two can never drift. **It deliberately excludes
-  `viewerNpub`/`viewerPubkey`** (guarded by `viewerSnapshot.test.ts`).
+  ALL viewer fields** (`viewerNpub`/`viewerPubkey`/`viewerMode`/`viewerWriterPubkey`/`viewerSecretKey`; guarded
+  by `viewerSnapshot.test.ts`).
 - **`buildViewerSnapshotPayload(s)`** = `{ settings: buildSettingsPayload(s), records: { entries: monthlyLog,
   deletions: deletedMonths }, strike: { usd, btcAvail, rate } }`. `publishViewerSnapshotNow()` seals it to
   `viewerPubkey` via `publishViewerSnapshot` (`VIEWER_DTAG = 'personal-bloc:viewer:v1'`, NIP-44 to the viewer's
   key). Fire-and-forget, log-only — see the Published Event Types table.
-- **`viewerNpub` / `viewerPubkey`** are **device-local config, NEVER synced** (not in `SETTINGS_FIELDS` / the
-  payload / the partialize exclusion → persist via `...rest`; setters use plain `set()`, NO
-  `syncSettingsToNostr`) — same discipline as `writerKeyWrapped`. Set/removed in Settings → NOSTR IDENTITY →
-  VIEWER ACCESS (npub input, `nip19.decode` validated; Remove revokes future snapshots). **Store-neutral on
-  v16** (additive nullable migrate defaults, no bump).
+- **`viewerNpub` / `viewerPubkey`** (writer-side, the provisioned viewer): device-local config, set/removed in
+  Settings → NOSTR IDENTITY → VIEWER ACCESS (npub `nip19.decode` validated; Remove revokes future snapshots).
+
+**Phase 2 (viewer read client) — store v17:**
+- A fresh install picks **"View someone else's plan (read-only)"** in onboarding (`OnboardingModal` step-1
+  fork): it generates its own key (`generateSecretKey`), shows its npub for the owner to add, takes the
+  **owner's** npub, then sets `viewerMode=true` + `viewerSecretKey` (hex) + `viewerWriterPubkey` and lands in
+  the simple-mode dashboard.
+- **`viewerSync.ts`** (mirrors `liveSync.ts`): batch `fetchViewerSnapshot()` + a singleton live sub, both
+  filtered `{ kinds:[30078], authors:[viewerWriterPubkey], '#d':[VIEWER_DTAG] }` (SINGLE filter at 2.23.5).
+  Builds one `NSecSigner(hexToBytes(viewerSecretKey).slice())` (**`.slice()` — the writer-signer ref bug**),
+  `nip44.decrypt(viewerWriterPubkey, …)` → `{ settings, records, strike }` → **read-only hydrate**
+  (`hydrateSettings`/`setMonthlyLog`(via `recomputeBtcHeld`)/`setDeletedMonths`/`setStrike*`). NEVER sets dirty
+  flags, NEVER publishes. `useViewerSync` (hook) wires it on foreground; AppShell mounts it (no-op unless
+  viewerMode).
+- **READ-ONLY is two layers; structural is load-bearing.** (1) **No writer publish/sync path is reachable in
+  viewerMode by construction:** AppShell passes `useNostrSync({ live: !viewerMode })`, and `useNostrSync`
+  early-returns its whole effect + no-ops `triggerSync` when viewerMode → no `syncNow`/`openLiveSync`/`publish*`
+  wired; the viewer's only data source is the owner's snapshot (re-hydrated live, overwriting any stray local
+  edit). `useStrikeData(isAuthenticated && isOwner)` → the viewer is never `isOwner` so it **never fetches
+  Strike** (Strike comes from the snapshot). (2) **UX:** the shared inputs (`NumberInput`/`Toggle`/`SliderInput`
+  + the pill components) read `viewerMode` → disabled (covers all tabs' numeric/toggle/slider/pill inputs in one
+  place; programmatic hydration is unaffected); the SimpleMode bespoke mutation controls (Pay/Skip pills, Log,
+  Quick Setup, Edit-this-month) + SafetyDashboard inline editors are gated on `viewerMode`. The month scrubber
+  stays enabled (view-only). Exhaustive per-control hardening of every tab is deferred — backstopped by the
+  structural guarantee.
+- **Owner-gate amendment:** all three auth-gate branches (LocalUnlockGate/NostrAuthGate/PrivateAppNotice) gain
+  `&& !viewerMode` so a viewer install short-circuits straight to the app render (the spec's `|| viewerMode`
+  carve-out). A slim amber **"👁 Viewing … · read-only"** banner sits atop the app body in viewerMode.
+- **`viewerMode` / `viewerWriterPubkey` / `viewerSecretKey`** are **device-local, NEVER synced** (not in
+  `SETTINGS_FIELDS` / the payload / the partialize exclusion → persist via `...rest`; setters plain `set()`) —
+  same discipline as `writerKeyWrapped`. ⚠ `viewerSecretKey` is **plaintext** (Phase 3 will wrap it).
 
 ### All 30 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
@@ -1202,7 +1241,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v10 migration | Adds `nostrLogin` (JSON NIP-46 login) for session restore across reload |
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
 | Zustand v15 migration | Adds `writerKeyWrapped`/`writerKeyWrapMeta` (writer local-key signer — AES-GCM ciphertext + WrapMeta, default `?? null`); additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload). `nostrSigningMethod` gains `'local'` |
-| Zustand v16 migration | Adds `advisorMonthStartBalance` (start-of-month BLOC balance — projection base, distinct from live-drawn `advisorActualBlocBalance`); default `persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0` (mid-month installs seed from the current live balance; fresh = 0). SYNCED (in `SETTINGS_FIELDS`/payload — real strategy state). Current store version = 16 |
+| Zustand v16 migration | Adds `advisorMonthStartBalance` (start-of-month BLOC balance — projection base, distinct from live-drawn `advisorActualBlocBalance`); default `persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0` (mid-month installs seed from the current live balance; fresh = 0). SYNCED (in `SETTINGS_FIELDS`/payload — real strategy state) |
+| Zustand v17 migration | Adds Viewer Access Phase-2 fields `viewerMode` (default `?? false`), `viewerWriterPubkey`/`viewerSecretKey` (default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload/partialize-exclusion). `viewerSecretKey` is plaintext (Phase 3 wraps it). Current store version = 17 |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |

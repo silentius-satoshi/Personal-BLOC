@@ -245,6 +245,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
   const advisorSkipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
+  const viewerMode           = useStore((s) => s.viewerMode);   // read-only viewer → hide/disable mutation controls
   const setAdvisorSkipBlocDraw  = useStore((s) => s.setAdvisorSkipBlocDraw);
   const setAdvisorSkipCbPayment = useStore((s) => s.setAdvisorSkipCbPayment);
   const setAdvisorSkipBtcBuying = useStore((s) => s.setAdvisorSkipBtcBuying);
@@ -871,8 +872,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                   </div>
                   {isCurrent && (
                     <div className={styles.paySkipGroup}>
-                      <button className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBtcBuying(false)}>Pay</button>
-                      <button className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBtcBuying(true)}>Skip</button>
+                      <button disabled={viewerMode} className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBtcBuying(false)}>Pay</button>
+                      <button disabled={viewerMode} className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBtcBuying(true)}>Skip</button>
                     </div>
                   )}
                   <div className={styles.dotRightInner}>
@@ -913,8 +914,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     </div>
                     {isCurrent && (
                       <div className={styles.paySkipGroup}>
-                        <button className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBlocDraw(false)}>Pay</button>
-                        <button className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBlocDraw(true)}>Skip</button>
+                        <button disabled={viewerMode} className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBlocDraw(false)}>Pay</button>
+                        <button disabled={viewerMode} className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBlocDraw(true)}>Skip</button>
                       </div>
                     )}
                     <span className={styles.dotAmount}>
@@ -933,8 +934,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                     </div>
                     {isCurrent && (
                       <div className={styles.paySkipGroup}>
-                        <button className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipCbPayment(false)}>Pay</button>
-                        <button className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipCbPayment(true)}>Skip</button>
+                        <button disabled={viewerMode} className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipCbPayment(false)}>Pay</button>
+                        <button disabled={viewerMode} className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipCbPayment(true)}>Skip</button>
                       </div>
                     )}
                     <span className={styles.dotAmount}>
@@ -1005,8 +1006,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
                 </div>
               )}
 
-              {/* Log button — current month only */}
-              {isCurrent && !strategyDone && (
+              {/* Log button — current month only (hidden for read-only viewers) */}
+              {isCurrent && !strategyDone && !viewerMode && (
                 <button
                   className={styles.logThisMonthBtn}
                   onClick={() => { setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setNdpAmountPaid(ndpMinimum); setShowConfirmSheet(true); }}
@@ -1018,7 +1019,7 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
               {/* Preview affordances — non-current months */}
               {!isCurrent && (
                 <div className={styles.previewActions}>
-                  {selectedEntry && (
+                  {selectedEntry && !viewerMode && (
                     <button className={styles.previewEditBtn} onClick={() => { setLogOverlayInitialMonth(selectedMonth - 1); setLogOverlayOpen(true); }}>
                       ✎ Edit this month
                     </button>
@@ -1042,11 +1043,14 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </p>
         )}
 
-        {/* Change 1 (iter 2) — setup prompt + modal (always reachable; first-run copy when defaults) */}
+        {/* Change 1 (iter 2) — setup prompt + modal (always reachable; first-run copy when defaults).
+            Hidden for read-only viewers — they cannot edit the owner's numbers. */}
         <>
+            {!viewerMode && (
             <button className={styles.setupPrompt} onClick={openSetupModal}>
               {isDefaultSetup ? '⚙ Set up your numbers to personalize this plan' : '⚙ Edit your numbers'}
             </button>
+            )}
 
             {showSetupModal && (
               <div className={styles.modalOverlay} onClick={() => setShowSetupModal(false)}>

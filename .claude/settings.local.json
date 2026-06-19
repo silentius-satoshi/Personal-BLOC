@@ -42,7 +42,12 @@
       "Bash(grep -n 'CB runway: $X\\\\|CB runway' CLAUDE.md)",
       "Bash(grep -n '\\\\$balance \\(Z% LTV\\)\\\\|Monthly Playbook\\\\|TWO stacked status\\\\|TWO-LINE header' CLAUDE.md)",
       "Bash(grep -n \"Published Event Types\\\\|personal-bloc:records:v1 \\\\`\\\\|### All 30 Synced\\\\|d-tag | Contents\" CLAUDE.md)",
-      "Bash(grep -n \"writerKeyWrapped\\\\`/\\\\`writerKeyWrapMeta\\\\`\\\\|Device-local persisted-but-unsynced\" CLAUDE.md)"
+      "Bash(grep -n \"writerKeyWrapped\\\\`/\\\\`writerKeyWrapMeta\\\\`\\\\|Device-local persisted-but-unsynced\" CLAUDE.md)",
+      "Bash(node -e \"console.log\\(require.resolve\\('@noble/hashes/utils'\\)\\)\")",
+      "Bash(node -e \"const p=require\\('./node_modules/@noble/hashes/package.json'\\); console.log\\(JSON.stringify\\(p.exports['./utils'],null,1\\)\\); console.log\\('version', p.version\\)\")",
+      "Bash(node -e \"const p=require\\('./node_modules/nostr-tools/package.json'\\); console.log\\(Object.keys\\(p.exports\\).filter\\(k=>k.includes\\('util'\\)||k==='.'\\)\\)\")",
+      "Bash(grep -n \"data-active-tab\\\\|className={styles.shell}\\\\|className={\\\\`\\\\${styles.shell}\\\\|<SimpleModeView\\\\|styles.appWrap\\\\|styles.root\" src/components/Layout/AppShell.tsx)",
+      "Bash(node -e \"const e=require\\('./node_modules/@noble/hashes/package.json'\\).exports; console.log\\(Object.keys\\(e\\).slice\\(0,20\\)\\)\")"
     ],
     "additionalDirectories": [
       "/tmp"

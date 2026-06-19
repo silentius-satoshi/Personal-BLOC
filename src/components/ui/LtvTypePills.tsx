@@ -11,6 +11,7 @@ const PILLS = [
 export function LtvTypePills() {
   const ltvType    = useStore((s) => s.ltvType);
   const setLtvType = useStore((s) => s.setLtvType);
+  const viewerMode = useStore((s) => s.viewerMode);
 
   return (
     <div className={styles.pills}>
@@ -19,6 +20,7 @@ export function LtvTypePills() {
           key={p.key}
           className={`${styles.pill} ${ltvType === p.key ? styles.active : ''}`}
           onClick={() => setLtvType(p.key)}
+          disabled={viewerMode}
         >
           <span className={styles.pillName}>{p.label}</span>
           <span className={styles.pillValue}>{p.pct}</span>

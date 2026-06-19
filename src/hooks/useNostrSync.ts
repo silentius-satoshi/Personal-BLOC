@@ -6,12 +6,18 @@ import { useStore } from '../store/useStore';
 
 export function useNostrSync(opts?: { live?: boolean }) {
   const { nostr } = useNostr();
-  const live = opts?.live ?? false;
+  const viewerMode = useStore((s) => s.viewerMode);   // viewer installs run NO writer sync (read-only)
+  const live = (opts?.live ?? false) && !viewerMode;
   const nostrPubkey = useStore((s) => s.nostrPubkey);   // login/disconnect cycles the live sub
 
-  const triggerSync = useCallback(() => syncNow(nostr), [nostr]);
+  // In viewerMode the writer sync path is OFF by construction: triggerSync no-ops (no syncNow/publish).
+  const triggerSync = useCallback(
+    () => (useStore.getState().viewerMode ? Promise.resolve(false) : syncNow(nostr)),
+    [nostr],
+  );
 
   useEffect(() => {
+    if (viewerMode) return;   // no visibility/focus listeners → no openLiveSync, no auto syncNow
     const handler = () => {
       if (document.visibilityState === 'visible') {
         if (live) openLiveSync();
@@ -33,7 +39,7 @@ export function useNostrSync(opts?: { live?: boolean }) {
       window.removeEventListener('focus', onFocus);
       if (live) closeLiveSync();
     };
-  }, [triggerSync, live, nostrPubkey]);
+  }, [triggerSync, live, nostrPubkey, viewerMode]);
 
   return { triggerSync };
 }

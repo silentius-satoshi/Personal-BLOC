@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from 'react';
+import { useStore } from '../../store/useStore';
 import styles from './SliderInput.module.css';
 
 interface SliderInputProps {
@@ -17,6 +18,7 @@ interface SliderInputProps {
 export function SliderInput({
   label, value, onChange, min, max, step, display, minLabel, maxLabel, labelSuffix,
 }: SliderInputProps) {
+  const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → slider + edit disabled
   const [editing, setEditing]     = useState(false);
   const [editValue, setEditValue] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
@@ -56,7 +58,7 @@ export function SliderInput({
       ) : (
         <div
           className={styles.valueDisplay}
-          onClick={() => { setEditValue(String(value)); setEditing(true); }}
+          onClick={() => { if (viewerMode) return; setEditValue(String(value)); setEditing(true); }}
         >
           {display}
         </div>
@@ -69,6 +71,7 @@ export function SliderInput({
         max={max}
         step={step}
         value={value}
+        disabled={viewerMode}
         onChange={(e) => { if (!editing) onChange(Number(e.target.value)); }}
       />
 

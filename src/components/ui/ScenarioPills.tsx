@@ -10,6 +10,7 @@ const PILLS = [
 export function ScenarioPills() {
   const scenario = useStore((s) => s.scenario);
   const setScenario = useStore((s) => s.setScenario);
+  const viewerMode = useStore((s) => s.viewerMode);
 
   return (
     <div className={styles.pills}>
@@ -18,6 +19,7 @@ export function ScenarioPills() {
           key={p.key}
           className={`${styles.pill} ${scenario === p.key ? styles.active : ''}`}
           onClick={() => setScenario(p.key)}
+          disabled={viewerMode}
         >
           {p.label} <span className={styles.rate}>{p.rate}</span>
         </button>

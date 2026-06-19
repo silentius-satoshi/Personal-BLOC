@@ -33,4 +33,18 @@ describe('viewer snapshot builders', () => {
     const s = useStore.getState();
     expect(buildViewerSnapshotPayload(s).settings).toEqual(buildSettingsPayload(s));
   });
+
+  it('viewer-side fields (Phase 2) are device-local — never in the settings payload', () => {
+    useStore.getState().setViewerMode(true);
+    useStore.getState().setViewerWriterPubkey('b'.repeat(64));
+    useStore.getState().setViewerSecretKey('c'.repeat(64));
+    const payload = buildSettingsPayload(useStore.getState());
+    expect('viewerMode' in payload).toBe(false);
+    expect('viewerWriterPubkey' in payload).toBe(false);
+    expect('viewerSecretKey' in payload).toBe(false);
+    // reset so other suites see a clean store
+    useStore.getState().setViewerMode(false);
+    useStore.getState().setViewerWriterPubkey(null);
+    useStore.getState().setViewerSecretKey(null);
+  });
 });

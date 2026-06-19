@@ -217,6 +217,12 @@ export interface StoreState {
   // NEVER synced (not in SETTINGS_FIELDS / the settings payload). Gates publishViewerSnapshotNow.
   viewerNpub:         string | null;
   viewerPubkey:       string | null;      // hex — NIP-44 encrypt target for the viewer snapshot
+  // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
+  // viewer of the writer at viewerWriterPubkey, decrypting the viewer:v1 snapshot with viewerSecretKey.
+  // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
+  viewerMode:          boolean;
+  viewerWriterPubkey:  string | null;     // hex — the OWNER/writer whose snapshot this viewer follows
+  viewerSecretKey:     string | null;     // hex — this viewer's own nsec (plaintext, Phase 2)
   setNostrAuthEnabled:   (v: boolean) => void;
   setNostrPubkey:        (v: string | null) => void;
   setNostrSigningMethod: (v: 'nip07' | 'nip46' | 'local' | null) => void;
@@ -227,6 +233,9 @@ export interface StoreState {
   setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
   setViewerNpub:         (v: string | null) => void;
   setViewerPubkey:       (v: string | null) => void;
+  setViewerMode:         (v: boolean) => void;
+  setViewerWriterPubkey: (v: string | null) => void;
+  setViewerSecretKey:    (v: string | null) => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -622,6 +631,9 @@ export const useStore = create<StoreState>()(
   writerKeyWrapMeta:  null,
   viewerNpub:         null,
   viewerPubkey:       null,
+  viewerMode:          false,
+  viewerWriterPubkey:  null,
+  viewerSecretKey:     null,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
@@ -632,6 +644,9 @@ export const useStore = create<StoreState>()(
   setWriterKeyWrapMeta:  (v) => set({ writerKeyWrapMeta: v }),
   setViewerNpub:         (v) => set({ viewerNpub: v }),      // device-local — NO syncSettingsToNostr (must never sync)
   setViewerPubkey:       (v) => set({ viewerPubkey: v }),
+  setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
+  setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
+  setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
@@ -690,7 +705,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 16,
+      version: 17,
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
         return rest;
@@ -731,6 +746,10 @@ export const useStore = create<StoreState>()(
           // Viewer access (Phase 1) — device-local, never synced. Additive nullable defaults, no version bump.
           viewerNpub:           persistedState.viewerNpub   ?? null,
           viewerPubkey:         persistedState.viewerPubkey ?? null,
+          // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
+          viewerMode:           persistedState.viewerMode          ?? false,
+          viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
+          viewerSecretKey:      persistedState.viewerSecretKey     ?? null,
           // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
           advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
         };

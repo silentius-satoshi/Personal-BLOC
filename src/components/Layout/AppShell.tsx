@@ -33,6 +33,7 @@ import { AdvisorMain }    from '../Advisor/AdvisorMain';
 import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
+import { useViewerSync }          from '../../hooks/useViewerSync';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
@@ -185,11 +186,14 @@ export function AppShell() {
   const [unlockEscape, setUnlockEscape] = useState(false);
 
   const isOwner = isOwnerPubkey(nostrPubkey, import.meta.env.VITE_OWNER_PUBKEY as string | undefined);
+  const viewerMode    = useStore((s) => s.viewerMode);
+  const viewerNpubSelf = useStore((s) => s.viewerWriterPubkey);   // the owner this viewer follows (for the banner)
 
-  useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners
+  useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners (viewer gets Strike from the snapshot)
   useNostrAutoRestore();
+  useViewerSync();   // read-only viewer pull/sub — no-op unless viewerMode
 
-  const { triggerSync } = useNostrSync({ live: true });   // single live mount — SettingsMain stays batch-only
+  const { triggerSync } = useNostrSync({ live: !viewerMode });   // writer sync OFF in viewerMode (by construction)
 
   // Two-stage reconnect affordance: retry sync first; escalate to full re-auth only if the retry fails.
   const [retryFailed, setRetryFailed] = useState(false);
@@ -255,11 +259,17 @@ export function AppShell() {
         />
       )}
 
-      {onboardingComplete && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
+      {viewerMode && (
+        <div className={styles.viewerBanner}>
+          👁 Viewing {viewerNpubSelf ? `${viewerNpubSelf.slice(0, 8)}…` : 'a shared plan'} · read-only
+        </div>
+      )}
+
+      {onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
         <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
-      ) : onboardingComplete && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
+      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
-      ) : onboardingComplete && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
+      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
         <PrivateAppNotice />
       ) : simpleMode && activeTab === 'settings' ? (
         <div className={styles.simpleModeSettings}>

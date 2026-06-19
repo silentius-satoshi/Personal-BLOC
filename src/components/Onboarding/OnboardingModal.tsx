@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
+import { bytesToHex } from 'nostr-tools/utils';
 import { useStore } from '../../store/useStore';
 import styles from './OnboardingModal.module.css';
 
@@ -31,6 +33,32 @@ function OnboardingField({ label, prefix, suffix, value, onChange, step = 1 }: {
 export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const [step, setStep]       = useState(1);
   const [hasCbLoan, setHasCbLoan] = useState(false);
+
+  // ── Viewer (read-only) flow ──────────────────────────────────────────────────
+  const setViewerMode         = useStore((s) => s.setViewerMode);
+  const setViewerSecretKey    = useStore((s) => s.setViewerSecretKey);
+  const setViewerWriterPubkey = useStore((s) => s.setViewerWriterPubkey);
+  const [viewerFlow, setViewerFlow]   = useState(false);
+  // Generate this viewer's own key ONCE when the flow opens (lazy initializer → stable across re-renders).
+  const [viewerKey] = useState(() => {
+    const sk = generateSecretKey();
+    return { skHex: bytesToHex(sk), npub: nip19.npubEncode(getPublicKey(sk)) };
+  });
+  const [ownerNpub, setOwnerNpub]     = useState('');
+  const [viewerError, setViewerError] = useState<string | null>(null);
+  const [copied, setCopied]           = useState(false);
+
+  const handleViewerDone = () => {
+    const input = ownerNpub.trim();
+    try {
+      const decoded = nip19.decode(input);
+      if (decoded.type !== 'npub') { setViewerError('Not a valid npub'); return; }
+      setViewerSecretKey(viewerKey.skHex);
+      setViewerWriterPubkey(decoded.data as string);
+      setViewerMode(true);
+      onComplete(true);   // viewers land in the simple-mode dashboard
+    } catch { setViewerError('Not a valid npub'); }
+  };
   const [draft, setDraft] = useState({
     income: 5000, expenses: 4000,
     collateralBtc: 0.50, creditLine: 15000, blocApr: 13,
@@ -71,6 +99,50 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     <div className={styles.overlay}>
       <div className={styles.modal}>
 
+        {viewerFlow ? (
+          <div className={styles.step}>
+            <div className={styles.welcomeIcon}>👁</div>
+            <h2 className={styles.title}>View a plan (read-only)</h2>
+            <p className={styles.subtitle}>
+              Send your viewer key to the plan's owner. Once they add it, you'll see a live, read-only copy of
+              their plan and balances — you can never change their inputs.
+            </p>
+            <div className={styles.fields}>
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Your viewer key (send to the owner)</span>
+                <div className={styles.fieldInput}>
+                  <input className={styles.dateInput} type="text" readOnly value={viewerKey.npub} onFocus={(e) => e.target.select()} />
+                </div>
+                <button
+                  className={styles.skip}
+                  onClick={() => { navigator.clipboard?.writeText(viewerKey.npub); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                >
+                  {copied ? 'Copied ✓' : 'Copy'}
+                </button>
+              </div>
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>The owner's npub</span>
+                <div className={styles.fieldInput}>
+                  <input
+                    className={styles.dateInput}
+                    type="text"
+                    placeholder="npub1…"
+                    value={ownerNpub}
+                    onChange={(e) => { setOwnerNpub(e.target.value); setViewerError(null); }}
+                  />
+                </div>
+              </div>
+            </div>
+            {viewerError && <p className={styles.subtitle} style={{ color: 'var(--red)' }}>{viewerError}</p>}
+            <div className={styles.nav}>
+              <button className={styles.back} onClick={() => { setViewerFlow(false); setViewerError(null); }}>← Back</button>
+              <button className={styles.primary} disabled={!ownerNpub.trim()} onClick={handleViewerDone}>
+                Start viewing →
+              </button>
+            </div>
+          </div>
+        ) : (
+        <>
         <div className={styles.dots}>
           {[1, 2, 3, 4].map((n) => (
             <div key={n} className={`${styles.dot} ${step >= n ? styles.dotActive : ''}`} />
@@ -90,6 +162,9 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
             </button>
             <button className={styles.skip} onClick={() => handleDone(false)}>
               Skip for now →
+            </button>
+            <button className={styles.skip} onClick={() => { setViewerFlow(true); setViewerError(null); }}>
+              View someone else's plan (read-only) →
             </button>
           </div>
         )}
@@ -222,6 +297,8 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
               </button>
             </div>
           </div>
+        )}
+        </>
         )}
 
       </div>

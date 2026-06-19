@@ -10,6 +10,7 @@ const PRESETS = [
 export function GrowthPresetPills() {
   const annualBtcGrowth    = useStore((s) => s.annualBtcGrowth);
   const setAnnualBtcGrowth = useStore((s) => s.setAnnualBtcGrowth);
+  const viewerMode         = useStore((s) => s.viewerMode);
 
   return (
     <div className={styles.pills}>
@@ -18,6 +19,7 @@ export function GrowthPresetPills() {
           key={p.value}
           className={`${styles.pill} ${annualBtcGrowth === p.value ? styles.active : ''}`}
           onClick={() => setAnnualBtcGrowth(p.value)}
+          disabled={viewerMode}
         >
           <span className={styles.pillName}>{p.label}</span>
           <span className={styles.pillValue}>{p.value}%</span>
