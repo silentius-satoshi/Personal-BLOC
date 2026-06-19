@@ -26,12 +26,19 @@ export function DevPanel() {
   const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
   const pendingAdj           = useStore((s) => s.pendingCollateralAdjustment);
   const currentBtcHeld       = useStore((s) => s.getCurrentBtcHeld());
+  // Viewer access — handshake metadata (presence/pubkeys only; NEVER the secret key value)
+  const viewerMode           = useStore((s) => s.viewerMode);
+  const viewerPubkey         = useStore((s) => s.viewerPubkey);         // owner side: who I publish to
+  const viewerWriterPubkey   = useStore((s) => s.viewerWriterPubkey);   // viewer side: who I read from
+  const viewerSecretKey      = useStore((s) => s.viewerSecretKey);      // viewer side (presence only)
 
   const log = useSyncExternalStore(subscribeNostrLog, getNostrLog);
 
   const [probing, setProbing]         = useState(false);
   const [probeStatus, setProbeStatus] = useState('');
   const [copied, setCopied]           = useState(false);
+  const [vProbing, setVProbing]         = useState(false);
+  const [vProbeStatus, setVProbeStatus] = useState('');
 
   const syncState = {
     method:        nostrSigningMethod ?? '—',
@@ -69,6 +76,51 @@ export function DevPanel() {
     } finally {
       setProbing(false);
     }
+  };
+
+  // Test viewer link — query the relays for the viewer:v1 event and report WHERE the chain breaks.
+  // PRIVACY: status carries counts/booleans/ages/truncated-pubkeys only — NEVER decrypted amounts.
+  const runViewerProbe = async () => {
+    const s = useStore.getState();
+    setVProbing(true); setVProbeStatus('querying relays…');
+    try {
+      const { SimplePool } = await import('nostr-tools/pool');
+      const { VIEWER_DTAG } = await import('../../lib/nostr/publish');
+      const pool = new SimplePool();
+      if (s.viewerMode) {
+        // VIEWER side: fetch + decrypt
+        if (!s.viewerWriterPubkey || !s.viewerSecretKey) {
+          setVProbeStatus('viewer not provisioned (missing writerPubkey/key)'); pool.close(s.nostrRelays); setVProbing(false); return;
+        }
+        const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.viewerWriterPubkey], '#d': [VIEWER_DTAG] });
+        pool.close(s.nostrRelays);
+        if (!events.length) {
+          setVProbeStatus(`NO viewer:v1 event on relays from ${s.viewerWriterPubkey.slice(0, 8)}… — owner hasn't published (did they change a setting AFTER adding your npub?) or wrong owner npub/relays`); setVProbing(false); return;
+        }
+        const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a));
+        try {
+          const { NSecSigner } = await import('@nostrify/nostrify');
+          const { hexToBytes } = await import('nostr-tools/utils');
+          const signer = new NSecSigner(hexToBytes(s.viewerSecretKey).slice());   // .slice() — NSecSigner holds a ref
+          const json = await signer.nip44.decrypt(s.viewerWriterPubkey, latest.content);
+          const snap = JSON.parse(json);
+          const entries = snap?.records?.entries?.length ?? 0;
+          setVProbeStatus(`OK — decrypted ✓ · ${entries} log entries · settings:${!!snap?.settings} · strike:${!!snap?.strike} · age ${Math.round(Date.now() / 1000 - latest.created_at)}s`);
+        } catch (e) {
+          setVProbeStatus(`event found but DECRYPT FAILED — key/pubkey mismatch: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      } else {
+        // OWNER side: confirm my published viewer:v1 exists (can't decrypt — sealed to the viewer)
+        if (!s.nostrPubkey) { setVProbeStatus('not logged in'); pool.close(s.nostrRelays); setVProbing(false); return; }
+        const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.nostrPubkey], '#d': [VIEWER_DTAG] });
+        pool.close(s.nostrRelays);
+        if (!s.viewerPubkey) { setVProbeStatus(`no viewer configured — ${events.length} viewer:v1 events on relays`); }
+        else if (!events.length) { setVProbeStatus('NO viewer:v1 event published yet — change a setting/month to publish one (saving the npub alone does NOT publish)'); }
+        else { const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a)); setVProbeStatus(`published ✓ — ${events.length} event(s), latest ${Math.round(Date.now() / 1000 - latest.created_at)}s ago, sealed to ${s.viewerPubkey.slice(0, 8)}…`); }
+      }
+    } catch (e) {
+      setVProbeStatus(`probe error: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setVProbing(false); }
   };
 
   const copyDiagnostics = async () => {
@@ -115,6 +167,19 @@ export function DevPanel() {
           {pendingAdj === 0 ? '0' : `${pendingAdj > 0 ? '+' : ''}${pendingAdj.toFixed(5)}`} ₿
         </span>
         <span className={styles.key}>current</span><span className={styles.val}>{currentBtcHeld.toFixed(5)} ₿</span>
+      </div>
+
+      <div className={styles.sectionTitle}>VIEWER ACCESS</div>
+      <div className={styles.grid}>
+        <span className={styles.key}>role</span><span className={styles.val}>{viewerMode ? 'viewer' : 'owner/writer'}</span>
+        <span className={styles.key}>publishes to (viewerPubkey)</span><span className={styles.val}>{viewerPubkey ? `${viewerPubkey.slice(0, 8)}…${viewerPubkey.slice(-8)}` : '— (no viewer set)'}</span>
+        <span className={styles.key}>reads from (writerPubkey)</span><span className={styles.val}>{viewerWriterPubkey ? `${viewerWriterPubkey.slice(0, 8)}…${viewerWriterPubkey.slice(-8)}` : '—'}</span>
+        <span className={styles.key}>viewer key present</span><span className={styles.val}>{String(!!viewerSecretKey)}</span>
+        <span className={styles.key}>my pubkey</span><span className={styles.val}>{nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—'}</span>
+      </div>
+      <div className={styles.probeRow}>
+        <button className={styles.btn} onClick={runViewerProbe} disabled={vProbing}>Test viewer link</button>
+        <span className={styles.probeStatus}>{vProbeStatus}</span>
       </div>
 
       <div className={styles.sectionTitle}>SIGNER PROBE</div>

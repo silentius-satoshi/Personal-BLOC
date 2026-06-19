@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState } from 'react';
-import { useStore } from '../../store/useStore';
+import { useStore, publishViewerSnapshotNow } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
@@ -349,6 +349,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                       setViewerNpub(input);
                       setViewerPubkey(decoded.data as string);
                       setViewerError(null);
+                      void publishViewerSnapshotNow();   // seal + publish a snapshot NOW so the viewer hydrates without waiting for an owner edit
                     } catch { setViewerError('Not a valid npub'); }
                   }}
                 >

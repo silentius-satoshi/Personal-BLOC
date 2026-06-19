@@ -1146,6 +1146,9 @@ encrypted copy of the full model + live Strike balances. **Phase 3 (passkey/keyV
   key). Fire-and-forget, log-only — see the Published Event Types table.
 - **`viewerNpub` / `viewerPubkey`** (writer-side, the provisioned viewer): device-local config, set/removed in
   Settings → NOSTR IDENTITY → VIEWER ACCESS (npub `nip19.decode` validated; Remove revokes future snapshots).
+  **Saving a viewer npub fires `publishViewerSnapshotNow()` immediately** (`void`, fire-and-forget) so the
+  viewer hydrates right away — without it the snapshot would only publish on the next settings/records edit
+  (the "viewer sees no data until the owner makes an edit" gap).
 
 **Phase 2 (viewer read client) — store v17:**
 - A fresh install picks **"View someone else's plan (read-only)"** in onboarding (`OnboardingModal` step-1
