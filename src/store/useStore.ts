@@ -213,8 +213,10 @@ export interface StoreState {
   // Writer local-key (iOS Face-ID signer) — device-local, NEVER synced (excluded from any relay payload).
   writerKeyWrapped:   string | null;      // AES-GCM ciphertext (base64) of the writer nsec
   writerKeyWrapMeta:  WrapMeta | null;    // { iv, scheme, credentialId?, salt }
-  // Viewer access (Phase 1, writer-side) — the provisioned viewer's npub/hex pubkey. Device-local config,
-  // NEVER synced (not in SETTINGS_FIELDS / the settings payload). Gates publishViewerSnapshotNow.
+  // Viewer access (Phase 1, writer-side) — the provisioned viewer's npub/hex pubkey. SYNCED in the OWNER's own
+  // settings:v1 (so viewer config + removal propagate across the owner's devices) but STRIPPED from the viewer
+  // snapshot (the viewer must never learn who else the owner shares with). Public npubs — no secret leak.
+  // Gates publishViewerSnapshotNow.
   viewerNpub:         string | null;
   viewerPubkey:       string | null;      // hex — NIP-44 encrypt target for the viewer snapshot
   // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
@@ -369,13 +371,18 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
     pendingCollateralAdjustment: s.pendingCollateralAdjustment,
+    // Writer-side viewer config — synced in the OWNER's settings:v1 only; STRIPPED from the viewer snapshot below.
+    viewerNpub:               s.viewerNpub,
+    viewerPubkey:             s.viewerPubkey,
   };
 }
 
 // Combined viewer snapshot (Option B): the same settings payload + records + live Strike balances.
 export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/publish').ViewerSnapshot {
   return {
-    settings: buildSettingsPayload(s),
+    // STRIP the owner's sharing config (viewerNpub/viewerPubkey) — the viewer must never see who else the
+    // owner shares with. buildSettingsPayload stays the single source for the owner's own sync.
+    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
   };
@@ -656,8 +663,9 @@ export const useStore = create<StoreState>()(
   setNostrLogin:         (v) => set({ nostrLogin: v }),
   setWriterKeyWrapped:   (v) => set({ writerKeyWrapped: v }),
   setWriterKeyWrapMeta:  (v) => set({ writerKeyWrapMeta: v }),
-  setViewerNpub:         (v) => set({ viewerNpub: v }),      // device-local — NO syncSettingsToNostr (must never sync)
-  setViewerPubkey:       (v) => set({ viewerPubkey: v }),
+  // Writer-side viewer config — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
+  setViewerNpub:         (v) => { set({ viewerNpub: v });   useStore.getState().syncSettingsToNostr(); },
+  setViewerPubkey:       (v) => { set({ viewerPubkey: v }); useStore.getState().syncSettingsToNostr(); },
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
@@ -710,6 +718,7 @@ export const useStore = create<StoreState>()(
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
+      'viewerNpub', 'viewerPubkey',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {

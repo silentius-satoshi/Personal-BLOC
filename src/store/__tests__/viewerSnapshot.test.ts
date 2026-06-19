@@ -8,15 +8,27 @@ describe('viewer snapshot builders', () => {
     useStore.getState().setViewerPubkey(null);
   });
 
-  it('buildSettingsPayload NEVER includes the viewer config (device-local, never synced)', () => {
+  it("buildSettingsPayload INCLUDES the owner's viewer config (synced in the owner's own settings:v1)", () => {
     useStore.getState().setViewerNpub('npub1exampleviewer');
     useStore.getState().setViewerPubkey('a'.repeat(64));
     const payload = buildSettingsPayload(useStore.getState());
-    expect('viewerNpub' in payload).toBe(false);
-    expect('viewerPubkey' in payload).toBe(false);
-    // sanity: it DOES carry real synced settings
+    expect('viewerNpub' in payload).toBe(true);
+    expect('viewerPubkey' in payload).toBe(true);
+    expect(payload.viewerNpub).toBe('npub1exampleviewer');
+    expect(payload.viewerPubkey).toBe('a'.repeat(64));
+    // sanity: it also carries real synced settings
     expect('income' in payload).toBe(true);
     expect('advisorMonthStartBalance' in payload).toBe(true);
+  });
+
+  it("buildViewerSnapshotPayload STRIPS the owner's viewer config (the viewer must not see who else is shared with)", () => {
+    useStore.getState().setViewerNpub('npub1exampleviewer');
+    useStore.getState().setViewerPubkey('a'.repeat(64));
+    const snapSettings = buildViewerSnapshotPayload(useStore.getState()).settings as Record<string, unknown>;
+    expect('viewerNpub' in snapSettings).toBe(false);
+    expect('viewerPubkey' in snapSettings).toBe(false);
+    // but still carries the real settings the viewer needs
+    expect('income' in snapSettings).toBe(true);
   });
 
   it('buildViewerSnapshotPayload has the Option-B shape: settings + records + strike', () => {
@@ -29,9 +41,10 @@ describe('viewer snapshot builders', () => {
     expect(snap.strike).toHaveProperty('rate');
   });
 
-  it("the snapshot's settings deep-equal buildSettingsPayload (single source — cannot drift)", () => {
+  it("the snapshot's settings deep-equal buildSettingsPayload minus the owner's viewer config (single source — cannot drift)", () => {
     const s = useStore.getState();
-    expect(buildViewerSnapshotPayload(s).settings).toEqual(buildSettingsPayload(s));
+    const { viewerNpub: _n, viewerPubkey: _p, ...ownerMinusViewerConfig } = buildSettingsPayload(s);
+    expect(buildViewerSnapshotPayload(s).settings).toEqual(ownerMinusViewerConfig);
   });
 
   it('viewer-side fields (Phase 2) are device-local — never in the settings payload', () => {
