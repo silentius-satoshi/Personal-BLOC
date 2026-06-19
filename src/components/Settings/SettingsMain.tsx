@@ -22,6 +22,7 @@ import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { disconnectNostr, reconnectNostr } from '../../lib/nostr/disconnect';
+import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
@@ -131,6 +132,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
+  const viewerNpub          = useStore((s) => s.viewerNpub);
+  const setViewerNpub       = useStore((s) => s.setViewerNpub);
+  const setViewerPubkey     = useStore((s) => s.setViewerPubkey);
 
   const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
@@ -150,6 +154,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
   // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
   const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
+  const [viewerDraft, setViewerDraft]   = useState('');
+  const [viewerError, setViewerError]   = useState<string | null>(null);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
@@ -287,6 +293,54 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           <p className={styles.nostrWarning}>
             ⚠ Back up your nsec — losing it means permanent loss of encrypted relay data.
           </p>
+        )}
+
+        {nostrPubkey && (
+          <div className={styles.viewerAccessBlock}>
+            <div className={styles.cbLoanToggleTitle}>VIEWER ACCESS</div>
+            <p className={styles.cbLoanToggleDesc}>
+              Shares a continuously-updated, read-only copy of your full model and live Strike balances with this
+              person. They can see everything but can never change your inputs. Remove anytime to stop sharing
+              future updates.
+            </p>
+            {viewerNpub ? (
+              <div className={styles.nostrIdentityRow}>
+                <span className={styles.nostrPubkey}>{viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)}</span>
+                <button
+                  className={styles.nostrDisconnectBtn}
+                  onClick={() => { setViewerNpub(null); setViewerPubkey(null); setViewerDraft(''); setViewerError(null); }}
+                >
+                  Remove
+                </button>
+              </div>
+            ) : (
+              <>
+                <input
+                  className={styles.setupDateInput}
+                  type="text"
+                  placeholder="npub1…"
+                  value={viewerDraft}
+                  onChange={(e) => { setViewerDraft(e.target.value); setViewerError(null); }}
+                />
+                <button
+                  className={styles.nostrReconnectBtn}
+                  onClick={() => {
+                    const input = viewerDraft.trim();
+                    try {
+                      const decoded = nip19.decode(input);
+                      if (decoded.type !== 'npub') { setViewerError('Not a valid npub'); return; }
+                      setViewerNpub(input);
+                      setViewerPubkey(decoded.data as string);
+                      setViewerError(null);
+                    } catch { setViewerError('Not a valid npub'); }
+                  }}
+                >
+                  Save
+                </button>
+              </>
+            )}
+            {viewerError && <p className={styles.nostrWarning}>{viewerError}</p>}
+          </div>
         )}
       </div>
 

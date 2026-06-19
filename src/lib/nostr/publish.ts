@@ -70,3 +70,25 @@ export async function publishRecords(
 ): Promise<number> {
   return publishEncrypted(signer, pubkey, RECORDS_DTAG, payload, relays, opTimeoutMs);
 }
+
+// Viewer access (Phase 1, writer-side) — ONE combined snapshot sealed to a configured viewer's pubkey
+// (Option B: includes live Strike balances). The owner's device NIP-44-encrypts to the viewer's pubkey;
+// only that viewer can decrypt. Fire-and-forget at the publish layer — the caller (publishViewerSnapshotNow)
+// owns the gating + log-only failure handling.
+export const VIEWER_DTAG = 'personal-bloc:viewer:v1';
+
+export interface ViewerSnapshot {
+  settings: Record<string, unknown>;
+  records:  { entries: unknown[]; deletions: Record<number, number> };
+  strike:   { usd: number | null; btcAvail: number | null; rate: number | null };
+}
+
+export async function publishViewerSnapshot(
+  writerSigner: NostrSigner,
+  viewerPubkey: string,
+  payload:      ViewerSnapshot,
+  relays?:      string[],
+  opTimeoutMs?: number,
+): Promise<number> {
+  return publishEncrypted(writerSigner, viewerPubkey, VIEWER_DTAG, payload, relays, opTimeoutMs);
+}

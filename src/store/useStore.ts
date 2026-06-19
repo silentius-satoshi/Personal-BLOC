@@ -29,7 +29,7 @@ const defaultMiningInputs: MiningInputs = {
   btcPriceScenarios: [76000, 150000, 300000, 1000000],
 };
 
-interface StoreState {
+export interface StoreState {
   // Shared inputs
   income: number;
   expenses: number;
@@ -213,6 +213,10 @@ interface StoreState {
   // Writer local-key (iOS Face-ID signer) — device-local, NEVER synced (excluded from any relay payload).
   writerKeyWrapped:   string | null;      // AES-GCM ciphertext (base64) of the writer nsec
   writerKeyWrapMeta:  WrapMeta | null;    // { iv, scheme, credentialId?, salt }
+  // Viewer access (Phase 1, writer-side) — the provisioned viewer's npub/hex pubkey. Device-local config,
+  // NEVER synced (not in SETTINGS_FIELDS / the settings payload). Gates publishViewerSnapshotNow.
+  viewerNpub:         string | null;
+  viewerPubkey:       string | null;      // hex — NIP-44 encrypt target for the viewer snapshot
   setNostrAuthEnabled:   (v: boolean) => void;
   setNostrPubkey:        (v: string | null) => void;
   setNostrSigningMethod: (v: 'nip07' | 'nip46' | 'local' | null) => void;
@@ -221,6 +225,8 @@ interface StoreState {
   setNostrLogin:         (v: string | null) => void;
   setWriterKeyWrapped:   (v: string | null) => void;
   setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
+  setViewerNpub:         (v: string | null) => void;
+  setViewerPubkey:       (v: string | null) => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -268,6 +274,7 @@ export async function publishRecordsNow(): Promise<boolean> {
     useStore.getState().setRecordsDirty(false);
     useStore.getState().setNostrReconnectNeeded(false);
     nostrLog('info', 'records published');
+    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
     return true;
   } catch (e) {
     nostrLog('error', 'records publish failed', e);
@@ -283,39 +290,7 @@ export async function publishSettingsNow(): Promise<boolean> {
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;   // publish didn't happen
   useStore.getState().setNostrSyncing(true);
   try {
-    const s = useStore.getState();
-    const settings = {
-      income:                   s.income,
-      expenses:                 s.expenses,
-      blocApr:                  s.blocApr,
-      creditLine:               s.creditLine,
-      advisorStartDate:         s.advisorStartDate,
-      advisorActualBlocBalance: s.advisorActualBlocBalance,
-      advisorMonthStartBalance: s.advisorMonthStartBalance,
-      advisorActualBtcHeld:     s.advisorActualBtcHeld,
-      cbLoanBalance:            s.cbLoanBalance,
-      cbCollateralBtc:          s.cbCollateralBtc,
-      cbAprPct:                 s.cbAprPct,
-      hasCbLoan:                s.hasCbLoan,
-      ndpLastPaidDate:          s.ndpLastPaidDate,
-      tabOrder:                 s.tabOrder,
-      hiddenTabs:               s.hiddenTabs,
-      simpleMode:               s.simpleMode,
-      btcBuyingUnit:            s.btcBuyingUnit,
-      cbLiquidationPrice:       s.cbLiquidationPrice,
-      cbMonthlyPayment:         s.cbMonthlyPayment,
-      cbPaymentStrategy:        s.cbPaymentStrategy,
-      cbLtvTriggerPct:          s.cbLtvTriggerPct,
-      cbLtvTargetPct:           s.cbLtvTargetPct,
-      cbRotateBackPct:          s.cbRotateBackPct,
-      cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
-      cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
-      strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
-      advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
-      advisorSkipCbPayment:     s.advisorSkipCbPayment,
-      advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
-      pendingCollateralAdjustment: s.pendingCollateralAdjustment,
-    };
+    const settings = buildSettingsPayload(useStore.getState());
     const { publishSettings } = await import('../lib/nostr/publish');
     const createdAt = await publishSettings(
       state.nostrSigner,
@@ -328,6 +303,7 @@ export async function publishSettingsNow(): Promise<boolean> {
     useStore.getState().setSettingsDirty(false);
     useStore.getState().setNostrReconnectNeeded(false);
     nostrLog('info', 'settings published');
+    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
     return true;
   } catch (e) {
     nostrLog('error', 'settings publish failed', e);   // dirty stays true → retried by syncNow
@@ -335,6 +311,73 @@ export async function publishSettingsNow(): Promise<boolean> {
     return false;
   } finally {
     useStore.getState().setNostrSyncing(false);
+  }
+}
+
+// THE settings payload — single source built from current state, consumed by BOTH publishSettingsNow AND the
+// viewer snapshot so the two can never drift. Viewer config (viewerNpub/viewerPubkey) is DELIBERATELY excluded
+// (device-local, never synced — same discipline as writerKeyWrapped).
+export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
+  return {
+    income:                   s.income,
+    expenses:                 s.expenses,
+    blocApr:                  s.blocApr,
+    creditLine:               s.creditLine,
+    advisorStartDate:         s.advisorStartDate,
+    advisorActualBlocBalance: s.advisorActualBlocBalance,
+    advisorMonthStartBalance: s.advisorMonthStartBalance,
+    advisorActualBtcHeld:     s.advisorActualBtcHeld,
+    cbLoanBalance:            s.cbLoanBalance,
+    cbCollateralBtc:          s.cbCollateralBtc,
+    cbAprPct:                 s.cbAprPct,
+    hasCbLoan:                s.hasCbLoan,
+    ndpLastPaidDate:          s.ndpLastPaidDate,
+    tabOrder:                 s.tabOrder,
+    hiddenTabs:               s.hiddenTabs,
+    simpleMode:               s.simpleMode,
+    btcBuyingUnit:            s.btcBuyingUnit,
+    cbLiquidationPrice:       s.cbLiquidationPrice,
+    cbMonthlyPayment:         s.cbMonthlyPayment,
+    cbPaymentStrategy:        s.cbPaymentStrategy,
+    cbLtvTriggerPct:          s.cbLtvTriggerPct,
+    cbLtvTargetPct:           s.cbLtvTargetPct,
+    cbRotateBackPct:          s.cbRotateBackPct,
+    cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
+    cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
+    strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
+    advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
+    advisorSkipCbPayment:     s.advisorSkipCbPayment,
+    advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
+    pendingCollateralAdjustment: s.pendingCollateralAdjustment,
+  };
+}
+
+// Combined viewer snapshot (Option B): the same settings payload + records + live Strike balances.
+export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/publish').ViewerSnapshot {
+  return {
+    settings: buildSettingsPayload(s),
+    records:  { entries: s.monthlyLog, deletions: s.deletedMonths },
+    strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
+  };
+}
+
+// Fire-and-forget viewer snapshot — gated on a viewer being set; log-only on failure. MUST NOT touch
+// recordsDirty/settingsDirty/nostrReconnectNeeded/nostrSyncing — the owner's own sync result is independent.
+export async function publishViewerSnapshotNow(): Promise<void> {
+  const s = useStore.getState();
+  if (!s.viewerPubkey || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  try {
+    const { publishViewerSnapshot } = await import('../lib/nostr/publish');
+    await publishViewerSnapshot(
+      s.nostrSigner,
+      s.viewerPubkey,
+      buildViewerSnapshotPayload(s),
+      s.nostrRelays.length ? s.nostrRelays : undefined,
+      signerOpTimeout(s.nostrSigningMethod),
+    );
+    nostrLog('info', 'viewer snapshot published');
+  } catch (e) {
+    nostrLog('warn', 'viewer snapshot failed', e);
   }
 }
 
@@ -577,6 +620,8 @@ export const useStore = create<StoreState>()(
   nostrLogin:         null,
   writerKeyWrapped:   null,
   writerKeyWrapMeta:  null,
+  viewerNpub:         null,
+  viewerPubkey:       null,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
@@ -585,6 +630,8 @@ export const useStore = create<StoreState>()(
   setNostrLogin:         (v) => set({ nostrLogin: v }),
   setWriterKeyWrapped:   (v) => set({ writerKeyWrapped: v }),
   setWriterKeyWrapMeta:  (v) => set({ writerKeyWrapMeta: v }),
+  setViewerNpub:         (v) => set({ viewerNpub: v }),      // device-local — NO syncSettingsToNostr (must never sync)
+  setViewerPubkey:       (v) => set({ viewerPubkey: v }),
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
@@ -681,6 +728,9 @@ export const useStore = create<StoreState>()(
           showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
           writerKeyWrapped:     persistedState.writerKeyWrapped  ?? null,   // v15 — device-local, never synced
           writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? null,   // v15
+          // Viewer access (Phase 1) — device-local, never synced. Additive nullable defaults, no version bump.
+          viewerNpub:           persistedState.viewerNpub   ?? null,
+          viewerPubkey:         persistedState.viewerPubkey ?? null,
           // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
           advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
         };

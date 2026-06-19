@@ -214,6 +214,15 @@
   flex-wrap: wrap;
 }
 
+.viewerAccessBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border);
+}
+
 .nostrPubkey {
   font-family: monospace;
   font-size: 12px;

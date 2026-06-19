@@ -806,8 +806,10 @@ reports should include the Copy Diagnostics output from the failing device.
 publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
-plan-card status-bar visibility, default true), and `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
-local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device). New per-device
+plan-card status-bar visibility, default true), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
+local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device), and
+`viewerNpub`/`viewerPubkey` (the provisioned viewer's npub/hex — writer-side Viewer Access config; the owner
+seals the viewer snapshot TO this key, so it must stay device-local). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
 `nostrSyncing`/`sandboxCollateralBtc`).
 
@@ -1116,6 +1118,25 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 |---|---|---|
 | `personal-bloc:settings:v1` | All 30 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
+| `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent |
+
+### Viewer Access (Phase 1 — writer-side snapshot only)
+
+The owner can provision a **viewer** (e.g. a family member) who gets a continuously-updated, **read-only**
+encrypted copy of the full model + live Strike balances. Phase 1 is **writer-side only** — it publishes the
+snapshot; there is **no viewer read client yet (Phase 2), no `viewerMode`/`viewerSecretKey` (Phase 3)**.
+- **`buildSettingsPayload(s)`** (`useStore.ts`, exported) is THE single source of the settings object — consumed
+  by BOTH `publishSettingsNow` AND the viewer snapshot, so the two can never drift. **It deliberately excludes
+  `viewerNpub`/`viewerPubkey`** (guarded by `viewerSnapshot.test.ts`).
+- **`buildViewerSnapshotPayload(s)`** = `{ settings: buildSettingsPayload(s), records: { entries: monthlyLog,
+  deletions: deletedMonths }, strike: { usd, btcAvail, rate } }`. `publishViewerSnapshotNow()` seals it to
+  `viewerPubkey` via `publishViewerSnapshot` (`VIEWER_DTAG = 'personal-bloc:viewer:v1'`, NIP-44 to the viewer's
+  key). Fire-and-forget, log-only — see the Published Event Types table.
+- **`viewerNpub` / `viewerPubkey`** are **device-local config, NEVER synced** (not in `SETTINGS_FIELDS` / the
+  payload / the partialize exclusion → persist via `...rest`; setters use plain `set()`, NO
+  `syncSettingsToNostr`) — same discipline as `writerKeyWrapped`. Set/removed in Settings → NOSTR IDENTITY →
+  VIEWER ACCESS (npub input, `nip19.decode` validated; Remove revokes future snapshots). **Store-neutral on
+  v16** (additive nullable migrate defaults, no bump).
 
 ### All 30 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,

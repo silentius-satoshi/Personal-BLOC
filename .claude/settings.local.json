@@ -40,7 +40,9 @@
       "Bash(grep -n 'THIS MONTH is a two-line\\\\|Box2 THIS MONTH\\\\|Draw: $Y' CLAUDE.md)",
       "Bash(grep -n '₿ held \\($usd\\)\\\\|collateral-limited\\\\|asset → debt → avail\\\\|line-for-line' CLAUDE.md)",
       "Bash(grep -n 'CB runway: $X\\\\|CB runway' CLAUDE.md)",
-      "Bash(grep -n '\\\\$balance \\(Z% LTV\\)\\\\|Monthly Playbook\\\\|TWO stacked status\\\\|TWO-LINE header' CLAUDE.md)"
+      "Bash(grep -n '\\\\$balance \\(Z% LTV\\)\\\\|Monthly Playbook\\\\|TWO stacked status\\\\|TWO-LINE header' CLAUDE.md)",
+      "Bash(grep -n \"Published Event Types\\\\|personal-bloc:records:v1 \\\\`\\\\|### All 30 Synced\\\\|d-tag | Contents\" CLAUDE.md)",
+      "Bash(grep -n \"writerKeyWrapped\\\\`/\\\\`writerKeyWrapMeta\\\\`\\\\|Device-local persisted-but-unsynced\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"
