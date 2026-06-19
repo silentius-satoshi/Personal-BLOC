@@ -51,6 +51,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
   const [localMethod, setLocalMethod]     = useState<WrapMethod | null>(null);
   const [pin, setPin]                     = useState('');
   const [pinConfirm, setPinConfirm]       = useState('');
+  const [keyLabel, setKeyLabel]           = useState('');   // names the passkey (PRF path only)
 
   useEffect(() => {
     if (!showLocal) return;
@@ -66,6 +67,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
     setLocalMethod(null);
     setPin('');
     setPinConfirm('');
+    setKeyLabel('');
     setError(null);
   };
 
@@ -81,7 +83,9 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       sk = decoded.data as Uint8Array;
 
       const method = localMethod ?? await probeKeyVaultCapability();
-      const { ciphertext, meta } = await wrapSecretKey(sk, method, method === 'pin' ? pin : undefined);
+      const { ciphertext, meta } = await wrapSecretKey(
+        sk, method, method === 'pin' ? pin : undefined, method !== 'pin' ? keyLabel : undefined,
+      );
       useStore.getState().setWriterKeyWrapped(ciphertext);
       useStore.getState().setWriterKeyWrapMeta(meta);
 
@@ -304,6 +308,16 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
               onChange={(e) => setNsecInput(e.target.value)}
               disabled={loading || !backupConfirmed}
             />
+            {localMethod !== 'pin' && (
+              <input
+                className={styles.input}
+                type="text"
+                placeholder="Name this key (e.g. my laptop)"
+                value={keyLabel}
+                onChange={(e) => setKeyLabel(e.target.value)}
+                disabled={loading || !backupConfirmed}
+              />
+            )}
             {localMethod === 'pin' && (
               <>
                 <p className={styles.hint}>Face ID unavailable — set a PIN to encrypt the key (min 4 digits).</p>

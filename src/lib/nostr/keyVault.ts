@@ -87,14 +87,17 @@ function extractPrfFirst(resp: unknown): ArrayBuffer {
   throw new Error('PRF output in unexpected form');
 }
 
-async function prfRegister(): Promise<{ credentialId: string; ikm: ArrayBuffer }> {
+async function prfRegister(label?: string): Promise<{ credentialId: string; ikm: ArrayBuffer }> {
   const challenge = bufferToBase64URLString(randomBytes(32).buffer as ArrayBuffer);
   const userId = bufferToBase64URLString(randomBytes(16).buffer as ArrayBuffer);
+  // User-supplied label names the passkey (Face ID picker / iOS Settings → Passwords); fall back to a
+  // generic default. name + displayName matched for consistency across authenticators.
+  const passkeyName = label?.trim() || 'Personal ₿LOC key';
   const resp = await startRegistration({
     optionsJSON: {
       challenge,
       rp: { name: 'Personal ₿LOC', id: window.location.hostname },
-      user: { id: userId, name: 'local-key', displayName: 'Personal ₿LOC local key' },
+      user: { id: userId, name: passkeyName, displayName: passkeyName },
       pubKeyCredParams: [{ type: 'public-key', alg: -7 }, { type: 'public-key', alg: -257 }],
       authenticatorSelection: { residentKey: 'required', userVerification: 'required' },
       extensions: { prf: { eval: { first: PRF_EVAL.buffer } } } as any,
@@ -135,6 +138,7 @@ export async function wrapSecretKey(
   sk: Uint8Array,
   method: WrapMethod,
   pin?: string,
+  label?: string,
 ): Promise<{ ciphertext: string; meta: WrapMeta }> {
   const salt = randomBytes(16);
   const iv = randomBytes(12);
@@ -142,9 +146,9 @@ export async function wrapSecretKey(
   let credentialId: string | undefined;
   if (method === 'pin') {
     if (!pin) throw new Error('PIN required');
-    ikm = await pinIkm(pin, salt);
+    ikm = await pinIkm(pin, salt);   // PIN scheme has no passkey — label is ignored
   } else {
-    const reg = await prfRegister();
+    const reg = await prfRegister(label);
     credentialId = reg.credentialId;
     ikm = reg.ikm;
   }

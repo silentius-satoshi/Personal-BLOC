@@ -54,6 +54,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const [viewerMethod, setViewerMethod] = useState<WrapMethod | null>(null);   // probed wrap capability
   const [viewerPin, setViewerPin]         = useState('');
   const [viewerPinConfirm, setViewerPinConfirm] = useState('');
+  const [viewerLabel, setViewerLabel]     = useState('');   // names the viewer passkey (PRF path only)
 
   // Probe Face-ID/PIN capability when the viewer flow opens (so the step can show a PIN field if needed).
   useEffect(() => {
@@ -73,7 +74,9 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     setViewerError(null);
     try {
       const method = viewerMethod ?? await probeKeyVaultCapability();
-      const { ciphertext, meta } = await wrapSecretKey(viewerKey.sk, method, method === 'pin' ? viewerPin : undefined);
+      const { ciphertext, meta } = await wrapSecretKey(
+        viewerKey.sk, method, method === 'pin' ? viewerPin : undefined, method !== 'pin' ? viewerLabel : undefined,
+      );
       setViewerKeyWrapped(ciphertext);
       setViewerKeyWrapMeta(meta);
       setUnwrappedViewerKey(viewerKey.sk);   // unlock this session immediately (no re-prompt) — NO plaintext stored
@@ -163,6 +166,20 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                   />
                 </div>
               </div>
+              {viewerMethod !== 'pin' && (
+                <div className={styles.fieldGroup}>
+                  <span className={styles.fieldLabel}>Name this viewer (optional)</span>
+                  <div className={styles.fieldInput}>
+                    <input
+                      className={styles.dateInput}
+                      type="text"
+                      placeholder="e.g. Dad's iPhone"
+                      value={viewerLabel}
+                      onChange={(e) => setViewerLabel(e.target.value)}
+                    />
+                  </div>
+                </div>
+              )}
               {viewerMethod === 'pin' && (
                 <>
                   <div className={styles.fieldGroup}>
