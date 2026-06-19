@@ -156,6 +156,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const [viewerDraft, setViewerDraft]   = useState('');
   const [viewerError, setViewerError]   = useState<string | null>(null);
+  const [npubCopied, setNpubCopied]     = useState(false);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
@@ -238,11 +239,25 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
         </div>
 
         {nostrPubkey && (
+          <>
           <div className={styles.nostrIdentityRow}>
             <span className={styles.nostrPubkey}>
               {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
             </span>
             <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : nostrSigningMethod === 'local' ? 'Local · Face ID' : 'NIP-46'}</span>
+            <button
+              className={styles.nostrReconnectBtn}
+              onClick={() => {
+                try {
+                  const npub = nip19.npubEncode(nostrPubkey);
+                  navigator.clipboard?.writeText(npub);
+                  setNpubCopied(true);
+                  setTimeout(() => setNpubCopied(false), 1500);
+                } catch { /* nostrPubkey not valid hex — no-op */ }
+              }}
+            >
+              {npubCopied ? 'Copied ✓' : 'Copy npub'}
+            </button>
             {nostrSigningMethod !== 'local' && (
               <button
                 className={styles.nostrReconnectBtn}
@@ -277,6 +292,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               </button>
             )}
           </div>
+          <span className={styles.cbLoanToggleDesc}>Share your npub to give someone read-only viewer access.</span>
+          </>
         )}
 
         {nostrAuthEnabled && (
