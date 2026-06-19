@@ -222,7 +222,12 @@ export interface StoreState {
   // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
   viewerMode:          boolean;
   viewerWriterPubkey:  string | null;     // hex — the OWNER/writer whose snapshot this viewer follows
-  viewerSecretKey:     string | null;     // hex — this viewer's own nsec (plaintext, Phase 2)
+  viewerSecretKey:     string | null;     // hex — this viewer's own nsec. PLAINTEXT only as a v17-migrant holder
+                                          // (Phase 2); Phase 3 wraps it at rest (viewerKeyWrapped) and clears this.
+  // Viewer access (Phase 3) — the viewer key WRAPPED at rest (keyVault AES-GCM, Face-ID-PRF / PIN). Device-local,
+  // NEVER synced. The unwrapped bytes live ONLY in viewerSync's in-memory holder — never in serializable state.
+  viewerKeyWrapped:    string | null;     // AES-GCM ciphertext (base64) of the viewer nsec
+  viewerKeyWrapMeta:   WrapMeta | null;   // { iv, scheme, credentialId?, salt }
   setNostrAuthEnabled:   (v: boolean) => void;
   setNostrPubkey:        (v: string | null) => void;
   setNostrSigningMethod: (v: 'nip07' | 'nip46' | 'local' | null) => void;
@@ -236,6 +241,12 @@ export interface StoreState {
   setViewerMode:         (v: boolean) => void;
   setViewerWriterPubkey: (v: string | null) => void;
   setViewerSecretKey:    (v: string | null) => void;
+  setViewerKeyWrapped:   (v: string | null) => void;
+  setViewerKeyWrapMeta:  (v: WrapMeta | null) => void;
+  // Transient (NOT persisted) — true once viewerSync's in-memory key holder is populated (post-unlock /
+  // post-provision). AppShell gates the unlock screen on this (it can't read viewerSync's module var).
+  viewerUnlocked:        boolean;
+  setViewerUnlocked:     (v: boolean) => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -634,6 +645,9 @@ export const useStore = create<StoreState>()(
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
+  viewerKeyWrapped:    null,
+  viewerKeyWrapMeta:   null,
+  viewerUnlocked:      false,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
@@ -647,6 +661,9 @@ export const useStore = create<StoreState>()(
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
+  setViewerKeyWrapped:   (v) => set({ viewerKeyWrapped: v }),    // Phase 3 — device-local, never syncs
+  setViewerKeyWrapMeta:  (v) => set({ viewerKeyWrapMeta: v }),
+  setViewerUnlocked:     (v) => set({ viewerUnlocked: v }),      // transient (not persisted)
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
@@ -705,9 +722,9 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 17,
+      version: 18,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, ...rest } = state;
+        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {
@@ -749,7 +766,12 @@ export const useStore = create<StoreState>()(
           // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
           viewerMode:           persistedState.viewerMode          ?? false,
           viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
+          // v17 migrant: LEAVE any plaintext viewerSecretKey in place (wrapping needs a Face ID gesture,
+          // impossible here; the one-time wrap-setup screen clears it later).
           viewerSecretKey:      persistedState.viewerSecretKey     ?? null,
+          // Viewer access (Phase 3) — v18, wrapped-at-rest key. Device-local, never synced.
+          viewerKeyWrapped:     persistedState.viewerKeyWrapped    ?? null,
+          viewerKeyWrapMeta:    persistedState.viewerKeyWrapMeta   ?? null,
           // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
           advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
         };

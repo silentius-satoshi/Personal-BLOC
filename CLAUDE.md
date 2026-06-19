@@ -809,11 +809,12 @@ dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPla
 plan-card status-bar visibility, default true), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device), and
 `viewerNpub`/`viewerPubkey` (the provisioned viewer's npub/hex — writer-side Viewer Access config; the owner
-seals the viewer snapshot TO this key, so it must stay device-local), and `viewerMode`/`viewerWriterPubkey`/
-`viewerSecretKey` (viewer-side Phase-2 read-client config — this install's read-only mode, the owner it follows,
-and its own nsec; `viewerSecretKey` is plaintext until Phase 3 wraps it). New per-device
+seals the viewer snapshot TO this key, so it must stay device-local), `viewerMode`/`viewerWriterPubkey`/
+`viewerSecretKey` (viewer-side read-client config — this install's read-only mode, the owner it follows, and a
+v17-migrant plaintext-nsec holder), and `viewerKeyWrapped`/`viewerKeyWrapMeta` (Phase 3 — the viewer key wrapped
+at rest via keyVault; key material, MUST never leave the device). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
-`nostrSyncing`/`sandboxCollateralBtc`).
+`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`).
 
 **Dev mode:** 5 taps on the Settings Build row toggles `devMode` (persisted, DEVICE-LOCAL — never synced,
 not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe
@@ -1132,8 +1133,9 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
 The owner can provision a **viewer** (e.g. a family member) who gets a continuously-updated, **read-only**
-encrypted copy of the full model + live Strike balances. **Phase 3 (passkey/keyVault-wrapping
-`viewerSecretKey`) is NOT built** — Phase 2 stores `viewerSecretKey` as **plaintext hex**.
+encrypted copy of the full model + live Strike balances. **The viewer arc (Phases 1–3) is complete.** The
+viewer key is now **wrapped at rest** (Phase 3) — see below; the plaintext `viewerSecretKey` survives only as
+a v17-migrant holder until the one-time wrap.
 
 **Phase 1 (writer-side):**
 - **`buildSettingsPayload(s)`** (`useStore.ts`, exported) is THE single source of the settings object — consumed
@@ -1178,7 +1180,35 @@ encrypted copy of the full model + live Strike balances. **Phase 3 (passkey/keyV
   carve-out). A slim amber **"👁 Viewing … · read-only"** banner sits atop the app body in viewerMode.
 - **`viewerMode` / `viewerWriterPubkey` / `viewerSecretKey`** are **device-local, NEVER synced** (not in
   `SETTINGS_FIELDS` / the payload / the partialize exclusion → persist via `...rest`; setters plain `set()`) —
-  same discipline as `writerKeyWrapped`. ⚠ `viewerSecretKey` is **plaintext** (Phase 3 will wrap it).
+  same discipline as `writerKeyWrapped`.
+
+**Phase 3 (viewer key wrapped at rest) — store v18:**
+- The viewer key is **wrapped at rest** with the EXISTING `keyVault.ts` (AES-GCM via Face-ID-PRF / PIN), mirroring
+  the writer's local-key pattern (`NostrAuthGate` wraps → `LocalUnlockGate` unwraps). New device-local persisted
+  fields `viewerKeyWrapped` (base64 AES-GCM ciphertext) + `viewerKeyWrapMeta` (`WrapMeta`) — **NEVER synced**
+  (not in `SETTINGS_FIELDS`/payload/partialize-exclusion, persist via `...rest`), same discipline as
+  `writerKeyWrapped`. `viewerSecretKey` is now ONLY a transient v17-migrant plaintext holder.
+- **The unwrapped key NEVER touches serializable store state.** It lives in an **in-memory holder inside
+  `viewerSync.ts`** (`unwrappedViewerKey`); `setUnwrappedViewerKey(sk)` (exported) sets/clears it, rebuilds the
+  cached `NSecSigner`, and mirrors the **transient store boolean `viewerUnlocked`** (excluded from persistence)
+  so AppShell can reactively gate. `getViewerSigner()` is arg-less (builds from the holder). The 3 read sites
+  (`applyViewerEvent`/`fetchViewerSnapshot`/`openViewerSync`) guard on `!unwrappedViewerKey` and **back-fill the
+  holder from a surviving plaintext `viewerSecretKey`** (v17 migrant keeps syncing pre-wrap).
+- **`ViewerUnlockGate.tsx`** (mirrors `LocalUnlockGate`, reuses `NostrAuthGate.module.css`) — two modes off store
+  state: **unlock** (`viewerKeyWrapped` set → `unwrapSecretKey` → holder) and **setup** (v17 migrant: `!wrapped`
+  but plaintext present → one-time `wrapSecretKey` → store the pair, populate holder, `setViewerSecretKey(null)`).
+  Ghost **"Reset viewing key"** → `onReset`.
+- **AppShell gate** (before the writer branches, `!import.meta.env.DEV`): `viewerMode && viewerKeyWrapped &&
+  !viewerUnlocked` → `<ViewerUnlockGate>` (must unlock before render); `viewerMode && !viewerKeyWrapped &&
+  viewerSecretKey` → `<ViewerUnlockGate>` (migrant one-time wrap, then falls through). `resetViewer` clears the
+  wrapped pair + holder + plaintext + viewerMode/writerPubkey and re-opens onboarding (lossless — the snapshot
+  stays on the owner's relay). **Recovery = re-provision** (fresh key + new npub).
+- **Onboarding** (`OnboardingModal` viewer flow) wraps on provision: probe capability (+ PIN field if `'pin'`) →
+  `wrapSecretKey(sk)` → `setViewerKeyWrapped`/`setViewerKeyWrapMeta` → `setUnwrappedViewerKey(sk)` (session
+  unlocked, no re-prompt) → **NO plaintext stored**.
+- **DevPanel** VIEWER ACCESS adds `key wrapped` + `unlocked` boolean rows (booleans only, never the key). (The
+  `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
+  "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
 ### All 30 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
@@ -1207,6 +1237,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `nostrPubkey` | string | ✅ | Hex pubkey |
 | `nostrSigningMethod` | `'nip07' \| 'nip46' \| 'local' \| null` | ✅ | Login path used (`'local'` = iOS Face-ID signer) |
 | `writerKeyWrapped` / `writerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Encrypted writer nsec + wrap meta — **NEVER synced** (not in SETTINGS_FIELDS) |
+| `viewerKeyWrapped` / `viewerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Phase 3 — wrapped-at-rest viewer nsec + wrap meta — **NEVER synced**. Unwrapped bytes live only in viewerSync's in-memory holder |
+| `viewerUnlocked` | boolean | ❌ | In-memory; true once viewerSync's key holder is populated (post-unlock/provision) — AppShell gates the ViewerUnlockGate on it |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
 | `nostrRelays` | string[] | ✅ | From NIP-65 discovery |
 | `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
@@ -1245,7 +1277,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v11 migration | Adds `MonthlyLogEntry.btcHeld` (absolute) + `expensesActual`; resets `advisorActualBtcHeld` to month-0 baseline. The dated-collateral change (spec v4) ships WITHOUT a bump: `collateralAdjustment?` is optional and `pendingCollateralAdjustment` defaults via shallow merge |
 | Zustand v15 migration | Adds `writerKeyWrapped`/`writerKeyWrapMeta` (writer local-key signer — AES-GCM ciphertext + WrapMeta, default `?? null`); additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload). `nostrSigningMethod` gains `'local'` |
 | Zustand v16 migration | Adds `advisorMonthStartBalance` (start-of-month BLOC balance — projection base, distinct from live-drawn `advisorActualBlocBalance`); default `persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0` (mid-month installs seed from the current live balance; fresh = 0). SYNCED (in `SETTINGS_FIELDS`/payload — real strategy state) |
-| Zustand v17 migration | Adds Viewer Access Phase-2 fields `viewerMode` (default `?? false`), `viewerWriterPubkey`/`viewerSecretKey` (default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload/partialize-exclusion). `viewerSecretKey` is plaintext (Phase 3 wraps it). Current store version = 17 |
+| Zustand v17 migration | Adds Viewer Access Phase-2 fields `viewerMode` (default `?? false`), `viewerWriterPubkey`/`viewerSecretKey` (default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload/partialize-exclusion). `viewerSecretKey` was plaintext (wrapped at rest in v18) |
+| Zustand v18 migration | Viewer Access **Phase 3** — adds `viewerKeyWrapped`/`viewerKeyWrapMeta` (wrapped-at-rest viewer key: AES-GCM ciphertext + `WrapMeta`, default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced.** **Back-compat: LEAVES any existing plaintext `viewerSecretKey` in place** (wrapping needs a Face ID gesture, impossible in migrate — the one-time wrap-setup screen clears it). Transient `viewerUnlocked` (not persisted). Current store version = 18 |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |

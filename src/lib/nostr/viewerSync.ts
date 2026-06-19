@@ -5,7 +5,10 @@
 // publishes, NEVER sets dirty flags. The writer publish/sync path (useNostrSync/syncNow/openLiveSync) is gated
 // OFF in viewerMode (see useNostrSync), so nothing here can leak a write back to any relay.
 //
-// ⚠ Phase 2 holds viewerSecretKey as PLAINTEXT hex in the store — Phase 3 will passkey/keyVault-wrap it.
+// Phase 3: the at-rest viewer key is now keyVault-WRAPPED (viewerKeyWrapped). The unwrapped bytes live ONLY
+// in this module's in-memory holder (unwrappedViewerKey) — never in serializable store state. The
+// ViewerUnlockGate (unlock) and OnboardingModal (provision) populate it via setUnwrappedViewerKey. A v17
+// migrant that still has a plaintext store viewerSecretKey is back-filled lazily so it keeps working.
 
 import { SimplePool } from 'nostr-tools/pool';
 import { hexToBytes } from 'nostr-tools/utils';
@@ -19,15 +22,30 @@ import { withTimeout } from './timeout';
 import { nostrLog } from './log';
 import type { RemoteEvent } from './sync';
 
-// Signer is built once from the viewer secret key and cached (rebuilt only if the key changes).
+// The unwrapped viewer key (in-memory only) + a signer built lazily from it.
+let unwrappedViewerKey: Uint8Array | null = null;
 let cachedSigner: NSecSigner | null = null;
-let cachedKey: string | null = null;
-function getViewerSigner(secretKeyHex: string): NSecSigner {
-  if (cachedSigner && cachedKey === secretKeyHex) return cachedSigner;
+
+/** Set (or clear) the in-memory viewer key. Rebuilds/clears the cached signer and mirrors viewerUnlocked
+ *  so React (AppShell) can reactively gate on "holder populated". */
+export function setUnwrappedViewerKey(sk: Uint8Array | null): void {
+  unwrappedViewerKey = sk ? sk.slice() : null;   // own copy — caller may zero/reuse its buffer
+  cachedSigner = null;
+  useStore.getState().setViewerUnlocked(!!sk);
+}
+
+function getViewerSigner(): NSecSigner | null {
+  if (!unwrappedViewerKey) return null;
+  if (cachedSigner) return cachedSigner;
   // .slice() — NSecSigner holds a REFERENCE to the bytes; hand it its own copy (the writer-signer bug).
-  cachedSigner = new NSecSigner(hexToBytes(secretKeyHex).slice());
-  cachedKey = secretKeyHex;
+  cachedSigner = new NSecSigner(unwrappedViewerKey.slice());
   return cachedSigner;
+}
+
+// v17 back-compat: if the holder is empty but a plaintext store key survives (pre-wrap migrant), populate
+// the holder from it so syncing keeps working until the one-time wrap clears the plaintext.
+function backfillFromPlaintext(viewerSecretKey: string | null): void {
+  if (!unwrappedViewerKey && viewerSecretKey) setUnwrappedViewerKey(hexToBytes(viewerSecretKey).slice());
 }
 
 const filter = (writerPubkey: string) => ({
@@ -41,9 +59,10 @@ const filter = (writerPubkey: string) => ({
 async function applyViewerEvent(event: RemoteEvent): Promise<void> {
   const s = useStore.getState();
   const { viewerMode, viewerWriterPubkey, viewerSecretKey, nostrSigningMethod } = s;
-  if (!viewerMode || !viewerWriterPubkey || !viewerSecretKey) return;
-  const signer = getViewerSigner(viewerSecretKey);
-  if (!signer.nip44) return;
+  backfillFromPlaintext(viewerSecretKey);
+  if (!viewerMode || !viewerWriterPubkey || !unwrappedViewerKey) return;
+  const signer = getViewerSigner();
+  if (!signer || !signer.nip44) return;
   let plaintext: string;
   try {
     plaintext = await withTimeout(
@@ -71,7 +90,8 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
 // Batch pull — latest snapshot by created_at. Called on foreground.
 export async function fetchViewerSnapshot(): Promise<void> {
   const { viewerMode, viewerWriterPubkey, viewerSecretKey, nostrRelays } = useStore.getState();
-  if (!viewerMode || !viewerWriterPubkey || !viewerSecretKey) return;
+  backfillFromPlaintext(viewerSecretKey);
+  if (!viewerMode || !viewerWriterPubkey || !unwrappedViewerKey) return;
   const pool = new SimplePool();
   try {
     const events = await pool.querySync(nostrRelays, filter(viewerWriterPubkey));
@@ -90,7 +110,8 @@ let subRelays: string[] = [];
 export function openViewerSync(): void {
   if (sub) return;   // singleton, idempotent
   const { viewerMode, viewerWriterPubkey, viewerSecretKey, nostrRelays } = useStore.getState();
-  if (!viewerMode || !viewerWriterPubkey || !viewerSecretKey || !nostrRelays.length) return;
+  backfillFromPlaintext(viewerSecretKey);
+  if (!viewerMode || !viewerWriterPubkey || !unwrappedViewerKey || !nostrRelays.length) return;
   pool = new SimplePool();
   subRelays = nostrRelays;
   sub = pool.subscribeMany(

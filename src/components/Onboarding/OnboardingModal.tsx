@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
-import { bytesToHex } from 'nostr-tools/utils';
+import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
+import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
 import { useStore } from '../../store/useStore';
 import styles from './OnboardingModal.module.css';
 
@@ -36,29 +37,59 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
   // ── Viewer (read-only) flow ──────────────────────────────────────────────────
   const setViewerMode         = useStore((s) => s.setViewerMode);
-  const setViewerSecretKey    = useStore((s) => s.setViewerSecretKey);
   const setViewerWriterPubkey = useStore((s) => s.setViewerWriterPubkey);
+  const setViewerKeyWrapped   = useStore((s) => s.setViewerKeyWrapped);
+  const setViewerKeyWrapMeta  = useStore((s) => s.setViewerKeyWrapMeta);
   const [viewerFlow, setViewerFlow]   = useState(false);
   // Generate this viewer's own key ONCE when the flow opens (lazy initializer → stable across re-renders).
+  // Keep the raw sk bytes (NOT plaintext in the store) so we can keyVault-wrap them on Done.
   const [viewerKey] = useState(() => {
     const sk = generateSecretKey();
-    return { skHex: bytesToHex(sk), npub: nip19.npubEncode(getPublicKey(sk)) };
+    return { sk, npub: nip19.npubEncode(getPublicKey(sk)) };
   });
   const [ownerNpub, setOwnerNpub]     = useState('');
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [copied, setCopied]           = useState(false);
+  const [viewerBusy, setViewerBusy]   = useState(false);
+  const [viewerMethod, setViewerMethod] = useState<WrapMethod | null>(null);   // probed wrap capability
+  const [viewerPin, setViewerPin]         = useState('');
+  const [viewerPinConfirm, setViewerPinConfirm] = useState('');
 
-  const handleViewerDone = () => {
+  // Probe Face-ID/PIN capability when the viewer flow opens (so the step can show a PIN field if needed).
+  useEffect(() => {
+    if (!viewerFlow) return;
+    let cancelled = false;
+    probeKeyVaultCapability().then((m) => { if (!cancelled) setViewerMethod(m); });
+    return () => { cancelled = true; };
+  }, [viewerFlow]);
+
+  const handleViewerDone = async () => {
     const input = ownerNpub.trim();
+    let decoded;
+    try { decoded = nip19.decode(input); }
+    catch { setViewerError('Not a valid npub'); return; }
+    if (decoded.type !== 'npub') { setViewerError('Not a valid npub'); return; }
+    setViewerBusy(true);
+    setViewerError(null);
     try {
-      const decoded = nip19.decode(input);
-      if (decoded.type !== 'npub') { setViewerError('Not a valid npub'); return; }
-      setViewerSecretKey(viewerKey.skHex);
+      const method = viewerMethod ?? await probeKeyVaultCapability();
+      const { ciphertext, meta } = await wrapSecretKey(viewerKey.sk, method, method === 'pin' ? viewerPin : undefined);
+      setViewerKeyWrapped(ciphertext);
+      setViewerKeyWrapMeta(meta);
+      setUnwrappedViewerKey(viewerKey.sk);   // unlock this session immediately (no re-prompt) — NO plaintext stored
       setViewerWriterPubkey(decoded.data as string);
       setViewerMode(true);
       onComplete(true);   // viewers land in the simple-mode dashboard
-    } catch { setViewerError('Not a valid npub'); }
+    } catch (e: any) {
+      setViewerError(e?.message ?? 'Could not protect the viewing key');
+    } finally {
+      setViewerBusy(false);
+    }
   };
+
+  const viewerCanDone =
+    !!ownerNpub.trim() && !viewerBusy &&
+    (viewerMethod !== 'pin' || (viewerPin.length >= 4 && viewerPin === viewerPinConfirm));
   const [draft, setDraft] = useState({
     income: 5000, expenses: 4000,
     collateralBtc: 0.50, creditLine: 15000, blocApr: 13,
@@ -132,12 +163,34 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                   />
                 </div>
               </div>
+              {viewerMethod === 'pin' && (
+                <>
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Set a PIN to protect the key (min 4 digits)</span>
+                    <div className={styles.fieldInput}>
+                      <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="PIN"
+                        value={viewerPin} onChange={(e) => { setViewerPin(e.target.value); setViewerError(null); }} />
+                    </div>
+                  </div>
+                  <div className={styles.fieldGroup}>
+                    <span className={styles.fieldLabel}>Confirm PIN</span>
+                    <div className={styles.fieldInput}>
+                      <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="Confirm PIN"
+                        value={viewerPinConfirm} onChange={(e) => { setViewerPinConfirm(e.target.value); setViewerError(null); }} />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
+            <p className={styles.subtitle} style={{ fontSize: 12 }}>
+              🔒 Your viewing key is protected by {viewerMethod === 'pin' ? 'a PIN' : 'Face ID'} and never stored unencrypted.
+              You can reset it anytime without losing data.
+            </p>
             {viewerError && <p className={styles.subtitle} style={{ color: 'var(--red)' }}>{viewerError}</p>}
             <div className={styles.nav}>
               <button className={styles.back} onClick={() => { setViewerFlow(false); setViewerError(null); }}>← Back</button>
-              <button className={styles.primary} disabled={!ownerNpub.trim()} onClick={handleViewerDone}>
-                Start viewing →
+              <button className={styles.primary} disabled={!viewerCanDone} onClick={handleViewerDone}>
+                {viewerBusy ? 'Protecting…' : 'Start viewing →'}
               </button>
             </div>
           </div>

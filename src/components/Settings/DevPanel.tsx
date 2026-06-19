@@ -30,7 +30,9 @@ export function DevPanel() {
   const viewerMode           = useStore((s) => s.viewerMode);
   const viewerPubkey         = useStore((s) => s.viewerPubkey);         // owner side: who I publish to
   const viewerWriterPubkey   = useStore((s) => s.viewerWriterPubkey);   // viewer side: who I read from
-  const viewerSecretKey      = useStore((s) => s.viewerSecretKey);      // viewer side (presence only)
+  const viewerSecretKey      = useStore((s) => s.viewerSecretKey);      // viewer side (presence only — plaintext migrant)
+  const viewerKeyWrapped     = useStore((s) => s.viewerKeyWrapped);     // Phase 3 (presence only — never the value)
+  const viewerUnlocked       = useStore((s) => s.viewerUnlocked);       // in-memory holder populated?
 
   const log = useSyncExternalStore(subscribeNostrLog, getNostrLog);
 
@@ -174,7 +176,9 @@ export function DevPanel() {
         <span className={styles.key}>role</span><span className={styles.val}>{viewerMode ? 'viewer' : 'owner/writer'}</span>
         <span className={styles.key}>publishes to (viewerPubkey)</span><span className={styles.val}>{viewerPubkey ? `${viewerPubkey.slice(0, 8)}…${viewerPubkey.slice(-8)}` : '— (no viewer set)'}</span>
         <span className={styles.key}>reads from (writerPubkey)</span><span className={styles.val}>{viewerWriterPubkey ? `${viewerWriterPubkey.slice(0, 8)}…${viewerWriterPubkey.slice(-8)}` : '—'}</span>
-        <span className={styles.key}>viewer key present</span><span className={styles.val}>{String(!!viewerSecretKey)}</span>
+        <span className={styles.key}>plaintext key present</span><span className={styles.val}>{String(!!viewerSecretKey)}</span>
+        <span className={styles.key}>key wrapped</span><span className={styles.val}>{String(!!viewerKeyWrapped)}</span>
+        <span className={styles.key}>unlocked</span><span className={styles.val}>{String(viewerUnlocked)}</span>
         <span className={styles.key}>my pubkey</span><span className={styles.val}>{nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—'}</span>
       </div>
       <div className={styles.probeRow}>

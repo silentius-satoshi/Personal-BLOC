@@ -47,7 +47,9 @@
       "Bash(node -e \"const p=require\\('./node_modules/@noble/hashes/package.json'\\); console.log\\(JSON.stringify\\(p.exports['./utils'],null,1\\)\\); console.log\\('version', p.version\\)\")",
       "Bash(node -e \"const p=require\\('./node_modules/nostr-tools/package.json'\\); console.log\\(Object.keys\\(p.exports\\).filter\\(k=>k.includes\\('util'\\)||k==='.'\\)\\)\")",
       "Bash(grep -n \"data-active-tab\\\\|className={styles.shell}\\\\|className={\\\\`\\\\${styles.shell}\\\\|<SimpleModeView\\\\|styles.appWrap\\\\|styles.root\" src/components/Layout/AppShell.tsx)",
-      "Bash(node -e \"const e=require\\('./node_modules/@noble/hashes/package.json'\\).exports; console.log\\(Object.keys\\(e\\).slice\\(0,20\\)\\)\")"
+      "Bash(node -e \"const e=require\\('./node_modules/@noble/hashes/package.json'\\).exports; console.log\\(Object.keys\\(e\\).slice\\(0,20\\)\\)\")",
+      "Bash(grep -n \"store v17\\\\|version = 17\\\\|Zustand v17\\\\|Phase 3 \\(passkey\\\\|Phase 3 \\(passkey/keyVault\\\\|viewerSecretKey\\\\` is \\\\*\\\\*plaintext\\\\|plaintext until Phase 3\\\\|viewerSecretKey.*plaintext\\\\|Current store version = 17\\\\|viewer arc\" CLAUDE.md)",
+      "Bash(grep -n \"writerKeyWrapped\\\\` / \\\\`writerKeyWrapMeta\\\\`\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"

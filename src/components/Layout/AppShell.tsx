@@ -36,7 +36,9 @@ import { useNostrSync }           from '../../hooks/useNostrSync';
 import { useViewerSync }          from '../../hooks/useViewerSync';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
+import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
+import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -188,6 +190,22 @@ export function AppShell() {
   const isOwner = isOwnerPubkey(nostrPubkey, import.meta.env.VITE_OWNER_PUBKEY as string | undefined);
   const viewerMode    = useStore((s) => s.viewerMode);
   const viewerNpubSelf = useStore((s) => s.viewerWriterPubkey);   // the owner this viewer follows (for the banner)
+  const viewerKeyWrapped = useStore((s) => s.viewerKeyWrapped);   // Phase 3 — wrapped-at-rest viewer key
+  const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
+  const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
+
+  // Reset viewing key (gate escape / recovery) — clears the wrapped pair + holder + any plaintext and sends
+  // the viewer back to onboarding to re-provision a fresh key. Lossless: the owner's snapshot stays on relay.
+  const resetViewer = () => {
+    const st = useStore.getState();
+    st.setViewerKeyWrapped(null);
+    st.setViewerKeyWrapMeta(null);
+    st.setViewerSecretKey(null);
+    setUnwrappedViewerKey(null);
+    st.setViewerMode(false);
+    st.setViewerWriterPubkey(null);
+    st.setOnboardingComplete(false);   // re-enter the onboarding viewer flow
+  };
 
   useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners (viewer gets Strike from the snapshot)
   useNostrAutoRestore();
@@ -265,7 +283,11 @@ export function AppShell() {
         </div>
       )}
 
-      {onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
+      {onboardingComplete && viewerMode && viewerKeyWrapped && !viewerUnlocked && !import.meta.env.DEV ? (
+        <ViewerUnlockGate onReset={resetViewer} />   // wrapped viewer — must unlock (Face ID / PIN) before render
+      ) : onboardingComplete && viewerMode && !viewerKeyWrapped && viewerSecretKey && !import.meta.env.DEV ? (
+        <ViewerUnlockGate onReset={resetViewer} />   // v17 migrant — one-time wrap-setup screen, then falls through
+      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
         <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
