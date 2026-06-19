@@ -40,6 +40,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const setViewerWriterPubkey = useStore((s) => s.setViewerWriterPubkey);
   const setViewerKeyWrapped   = useStore((s) => s.setViewerKeyWrapped);
   const setViewerKeyWrapMeta  = useStore((s) => s.setViewerKeyWrapMeta);
+  const clearViewerData       = useStore((s) => s.clearViewerData);
   const [viewerFlow, setViewerFlow]   = useState(false);
   // Generate this viewer's own key ONCE when the flow opens (lazy initializer → stable across re-renders).
   // Keep the raw sk bytes (NOT plaintext in the store) so we can keyVault-wrap them on Done.
@@ -80,6 +81,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
       setViewerKeyWrapped(ciphertext);
       setViewerKeyWrapMeta(meta);
       setUnwrappedViewerKey(viewerKey.sk);   // unlock this session immediately (no re-prompt) — NO plaintext stored
+      clearViewerData();   // start clean — wipe any residual owner/prior-viewer data BEFORE viewerMode triggers the first fetch
       setViewerWriterPubkey(decoded.data as string);
       setViewerMode(true);
       onComplete(true);   // viewers land in the simple-mode dashboard

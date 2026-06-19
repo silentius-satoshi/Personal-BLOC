@@ -37,6 +37,7 @@ import { useViewerSync }          from '../../hooks/useViewerSync';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
+import { ViewerWaitingGate } from '../Auth/ViewerWaitingGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
 import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
@@ -193,11 +194,13 @@ export function AppShell() {
   const viewerKeyWrapped = useStore((s) => s.viewerKeyWrapped);   // Phase 3 — wrapped-at-rest viewer key
   const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
   const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
+  const viewerDataLoaded = useStore((s) => s.viewerDataLoaded);   // true only after a VALID snapshot decrypt
 
   // Reset viewing key (gate escape / recovery) — clears the wrapped pair + holder + any plaintext and sends
   // the viewer back to onboarding to re-provision a fresh key. Lossless: the owner's snapshot stays on relay.
   const resetViewer = () => {
     const st = useStore.getState();
+    st.clearViewerData();              // wipe the hydrated financial residue BEFORE leaving viewerMode (data-remanence fix)
     st.setViewerKeyWrapped(null);
     st.setViewerKeyWrapMeta(null);
     st.setViewerSecretKey(null);
@@ -287,6 +290,8 @@ export function AppShell() {
         <ViewerUnlockGate onReset={resetViewer} />   // wrapped viewer — must unlock (Face ID / PIN) before render
       ) : onboardingComplete && viewerMode && !viewerKeyWrapped && viewerSecretKey && !import.meta.env.DEV ? (
         <ViewerUnlockGate onReset={resetViewer} />   // v17 migrant — one-time wrap-setup screen, then falls through
+      ) : onboardingComplete && viewerMode && !viewerDataLoaded && !import.meta.env.DEV ? (
+        <ViewerWaitingGate onReset={resetViewer} />   // unlocked viewer, no VALID decrypt yet — never show stale store data
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
         <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (

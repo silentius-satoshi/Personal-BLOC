@@ -763,6 +763,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
 - `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
+- `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -977,6 +978,10 @@ src/
     LocalUnlockGate.tsx             # "Authenticated-but-locked" relaunch screen for the 'local' method —
                                     # gesture-driven "Unlock with Face ID" (restoreSigner→unwrap) + Retry +
                                     # "Use a different login" escape; reuses NostrAuthGate.module.css
+    ViewerUnlockGate.tsx            # Phase 3 viewer-key gate — unlock (wrapped) / one-time wrap-setup (v17 migrant);
+                                    # populates viewerSync's in-memory holder. Reuses NostrAuthGate.module.css
+    ViewerWaitingGate.tsx          # Data-remanence guard — "Waiting for the owner's data…" until viewerDataLoaded
+                                    # (valid decrypt) + "Reset viewing key" escape (revoked viewer isn't trapped)
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
                                     # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)
@@ -1189,6 +1194,20 @@ a v17-migrant holder until the one-time wrap.
 - **Owner-gate amendment:** all three auth-gate branches (LocalUnlockGate/NostrAuthGate/PrivateAppNotice) gain
   `&& !viewerMode` so a viewer install short-circuits straight to the app render (the spec's `|| viewerMode`
   carve-out). A slim amber **"👁 Viewing … · read-only"** banner sits atop the app body in viewerMode.
+- **Data-remanence guard (decrypted data must not outlive the viewer key).** A viewer's hydrated financial data
+  lives in the persisted Zustand store; clearing the viewer *key* alone left it rendering after revoke/reset (a
+  revoked viewer correctly got "invalid MAC" — encryption held — but the OLD numbers still showed). Two parts:
+  (1) **`clearViewerData()`** (store action) resets every viewer-hydrated field to its seed (financial
+  `SETTINGS_FIELDS` + `monthlyLog` + `deletedMonths` + `strike*` + owner-config nulls); pure local `set`, **no
+  `syncSettingsToNostr`**. Called from **VIEWER paths only** (audited): `resetViewer` (before `setViewerMode(false)`),
+  `applyViewerEvent` decrypt-failure, `fetchViewerSnapshot` zero-events, onboarding viewer-provision (before
+  `setViewerMode(true)`) — NEVER the owner's Remove or any owner edit (it would wipe the owner's real data; it has
+  **no internal `viewerMode` guard** by design, because the onboarding call precedes `setViewerMode(true)`).
+  (2) **`viewerDataLoaded`** (transient, non-persisted, in the partialize exclusion) is set true ONLY after a VALID
+  `applyViewerEvent` hydrate; AppShell gates the viewer render on it — `viewerMode && !viewerDataLoaded` →
+  **`ViewerWaitingGate`** ("Waiting for the owner's data…" + a **Reset viewing key** escape, essential because a
+  revoked viewer unlocks fine yet never decrypts the re-sealed snapshot). So stale store data never renders for a
+  key that hasn't validly decrypted a snapshot; the gate sits AFTER the unlock branches.
 - **`viewerMode` / `viewerWriterPubkey` / `viewerSecretKey`** are **device-local, NEVER synced** (not in
   `SETTINGS_FIELDS` / the payload / the partialize exclusion → persist via `...rest`; setters plain `set()`) —
   same discipline as `writerKeyWrapped`.

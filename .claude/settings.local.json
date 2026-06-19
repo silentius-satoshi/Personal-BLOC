@@ -50,7 +50,8 @@
       "Bash(node -e \"const e=require\\('./node_modules/@noble/hashes/package.json'\\).exports; console.log\\(Object.keys\\(e\\).slice\\(0,20\\)\\)\")",
       "Bash(grep -n \"store v17\\\\|version = 17\\\\|Zustand v17\\\\|Phase 3 \\(passkey\\\\|Phase 3 \\(passkey/keyVault\\\\|viewerSecretKey\\\\` is \\\\*\\\\*plaintext\\\\|plaintext until Phase 3\\\\|viewerSecretKey.*plaintext\\\\|Current store version = 17\\\\|viewer arc\" CLAUDE.md)",
       "Bash(grep -n \"writerKeyWrapped\\\\` / \\\\`writerKeyWrapMeta\\\\`\" CLAUDE.md)",
-      "Bash(grep -n \"viewerNpub\\\\`/\\\\`viewerPubkey\\\\`\\\\|All 32 Synced\\\\|32 settings fields\\\\|32-field\\\\|viewerNpub.*viewerPubkey.*owner\" CLAUDE.md)"
+      "Bash(grep -n \"viewerNpub\\\\`/\\\\`viewerPubkey\\\\`\\\\|All 32 Synced\\\\|32 settings fields\\\\|32-field\\\\|viewerNpub.*viewerPubkey.*owner\" CLAUDE.md)",
+      "Bash(grep -n \"viewerSync.ts\\\\b\\\\|ViewerUnlockGate on launch\\\\|read-only hydrate\\\\|READ-ONLY is two layers\\\\|viewerUnlocked\\\\` store boolean\\\\|amber \\\\*\\\\*\\\\\"👁\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"

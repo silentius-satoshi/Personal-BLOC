@@ -251,6 +251,13 @@ export interface StoreState {
   // post-provision). AppShell gates the unlock screen on this (it can't read viewerSync's module var).
   viewerUnlocked:        boolean;
   setViewerUnlocked:     (v: boolean) => void;
+  // Transient (NOT persisted) — true only after a VALID viewer snapshot decrypt+hydrate. AppShell gates the
+  // viewer render on this so stale persisted data never shows for a key that can't decrypt the snapshot.
+  viewerDataLoaded:      boolean;
+  setViewerDataLoaded:   (v: boolean) => void;
+  // Wipe every viewer-hydrated financial field back to its seed (data-remanence fix). VIEWER paths ONLY —
+  // never the owner's Remove or any owner edit (it would destroy the owner's real data). Pure local set (no sync).
+  clearViewerData:       () => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -659,6 +666,7 @@ export const useStore = create<StoreState>()(
   viewerKeyWrapped:    null,
   viewerKeyWrapMeta:   null,
   viewerUnlocked:      false,
+  viewerDataLoaded:    false,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
@@ -677,6 +685,25 @@ export const useStore = create<StoreState>()(
   setViewerKeyWrapped:   (v) => set({ viewerKeyWrapped: v }),    // Phase 3 — device-local, never syncs
   setViewerKeyWrapMeta:  (v) => set({ viewerKeyWrapMeta: v }),
   setViewerUnlocked:     (v) => set({ viewerUnlocked: v }),      // transient (not persisted)
+  setViewerDataLoaded:   (v) => set({ viewerDataLoaded: v }),    // transient (not persisted)
+  // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
+  // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally
+  // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no syncSettingsToNostr.
+  clearViewerData: () => set({
+    income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
+    advisorStartDate: new Date().toISOString().split('T')[0],
+    advisorActualBlocBalance: 0, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
+    cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
+    ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
+    cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
+    cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
+    advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
+    pendingCollateralAdjustment: 0,
+    monthlyLog: [], deletedMonths: {},
+    strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
+    viewerNpub: null, viewerPubkey: null, viewerLabel: null,
+    viewerDataLoaded: false,
+  }),
 
   isAuthenticated:    false,
   setIsAuthenticated: (v) => set({ isAuthenticated: v }),
@@ -738,7 +765,7 @@ export const useStore = create<StoreState>()(
       name: 'personal-bloc-store',
       version: 18,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, ...rest } = state;
+        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {

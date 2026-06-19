@@ -70,7 +70,13 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       signerOpTimeout(nostrSigningMethod),
       'viewer nip44 decrypt',
     );
-  } catch (e) { nostrLog('warn', 'viewer decrypt failed', e); return; }
+  } catch (e) {
+    // Invalid MAC / wrong key (revoked or wrong owner) — WIPE any stale hydrated data so a key that can't decrypt
+    // the snapshot never leaves the previous viewer's numbers on screen. (Past the viewerMode guard → viewer-only.)
+    nostrLog('warn', 'viewer decrypt failed', e);
+    s.clearViewerData();
+    return;
+  }
   try {
     const snap = JSON.parse(plaintext) as ViewerSnapshot;
     const settings = snap.settings ?? {};
@@ -83,6 +89,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       s.setStrikeBtcAvailable(snap.strike.btcAvail);
       s.setStrikeRate(snap.strike.rate);
     }
+    s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
     nostrLog('info', 'viewer snapshot hydrated');
   } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
 }
@@ -96,7 +103,8 @@ export async function fetchViewerSnapshot(): Promise<void> {
   try {
     const events = await pool.querySync(nostrRelays, filter(viewerWriterPubkey));
     pool.close(nostrRelays);
-    if (!events.length) return;
+    // Nothing shared (wrong writerPubkey / revoked) — no authorized data to show, so wipe stale residue.
+    if (!events.length) { useStore.getState().clearViewerData(); return; }
     const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a));
     await applyViewerEvent(latest);
   } catch (e) { nostrLog('warn', 'viewer fetch failed', e); try { pool.close(nostrRelays); } catch { /* noop */ } }
