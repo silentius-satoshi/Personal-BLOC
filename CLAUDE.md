@@ -812,9 +812,9 @@ local-key signer's encrypted nsec + wrap meta — key material, MUST never leave
 mode, the owner it follows, and a v17-migrant plaintext-nsec holder), and `viewerKeyWrapped`/`viewerKeyWrapMeta`
 (Phase 3 — the viewer key wrapped at rest via keyVault; key material, MUST never leave the device). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
-`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`). **NOTE: the writer-side `viewerNpub`/`viewerPubkey` are
-NOT here — they are now SYNCED in the owner's settings:v1 (public npubs; cross-device sharing config), stripped
-from the viewer snapshot. Only the viewer-SIDE fields stay device-local.**
+`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`). **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
+`viewerLabel` are NOT here — they are now SYNCED in the owner's settings:v1 (public npubs + the owner's nickname;
+cross-device sharing config), stripped from the viewer snapshot. Only the viewer-SIDE fields stay device-local.**
 
 **Dev mode:** 5 taps on the Settings Build row toggles `devMode` (persisted, DEVICE-LOCAL — never synced,
 not in SETTINGS_FIELDS or the settings payload). DevPanel shows: sync state (metadata), signer probe
@@ -1029,7 +1029,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
   rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 32-field payload from current state, dynamic
+  returns boolean — mirrors `publishRecordsNow`): builds the 33-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
   `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
   retried by `syncNow` exactly like records)
@@ -1126,7 +1126,7 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 32 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
 | `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent |
 
@@ -1140,21 +1140,26 @@ a v17-migrant holder until the one-time wrap.
 **Phase 1 (writer-side):**
 - **`buildSettingsPayload(s)`** (`useStore.ts`, exported) is THE single source of the settings object — consumed
   by BOTH `publishSettingsNow` AND the viewer snapshot. **It INCLUDES the owner's writer-side viewer config
-  `viewerNpub`/`viewerPubkey`** (so the owner's sharing config syncs across the owner's own devices), but
-  **EXCLUDES the viewer-SIDE fields** (`viewerMode`/`viewerWriterPubkey`/`viewerSecretKey`/`viewerKeyWrapped` —
-  device-local). **`buildViewerSnapshotPayload` then STRIPS `viewerNpub`/`viewerPubkey`** from its `settings`
-  (rest-omit destructure) so the viewer never learns who else the owner shares with — the **load-bearing
-  boundary**, guarded by `viewerSnapshot.test.ts` (payload HAS them; snapshot.settings does NOT).
-- **`buildViewerSnapshotPayload(s)`** = `{ settings: buildSettingsPayload(s) minus viewerNpub/viewerPubkey,
+  `viewerNpub`/`viewerPubkey`/`viewerLabel`** (so the owner's sharing config + nickname sync across the owner's own
+  devices), but **EXCLUDES the viewer-SIDE fields** (`viewerMode`/`viewerWriterPubkey`/`viewerSecretKey`/
+  `viewerKeyWrapped` — device-local). **`buildViewerSnapshotPayload` then STRIPS `viewerNpub`/`viewerPubkey`/
+  `viewerLabel`** from its `settings` (rest-omit destructure) so the viewer never learns who else the owner shares
+  with nor the owner's nickname for them — the **load-bearing boundary**, guarded by `viewerSnapshot.test.ts`
+  (payload HAS them; snapshot.settings does NOT).
+- **`buildViewerSnapshotPayload(s)`** = `{ settings: buildSettingsPayload(s) minus viewerNpub/viewerPubkey/viewerLabel,
   records: { entries: monthlyLog, deletions: deletedMonths }, strike: { usd, btcAvail, rate } }`.
   `publishViewerSnapshotNow()` seals it to `viewerPubkey` via `publishViewerSnapshot` (`VIEWER_DTAG =
   'personal-bloc:viewer:v1'`, NIP-44 to the viewer's key). Fire-and-forget, log-only — see the Published Event
   Types table.
-- **`viewerNpub` / `viewerPubkey`** (writer-side, the provisioned viewer): **SYNCED in the owner's own settings:v1**
-  (public npubs — NIP-44 to self, no secret leak; viewer set/removed on one owner device propagates to all,
-  and editing on any device publishes the snapshot because it has the synced `viewerPubkey`). Set/removed in
-  Settings → NOSTR IDENTITY → VIEWER ACCESS (npub `nip19.decode` validated; Remove revokes future snapshots).
-  The setters call `syncSettingsToNostr()`. **Saving a viewer npub fires `publishViewerSnapshotNow()` immediately**
+- **`viewerNpub` / `viewerPubkey` / `viewerLabel`** (writer-side, the provisioned viewer + the owner's nickname for
+  them): **SYNCED in the owner's own settings:v1** (public npubs — NIP-44 to self, no secret leak; viewer
+  set/removed on one owner device propagates to all, and editing on any device publishes the snapshot because it
+  has the synced `viewerPubkey`). Set/removed in Settings → NOSTR IDENTITY → VIEWER ACCESS (npub `nip19.decode`
+  validated; optional nickname input above the npub; Remove clears all three + revokes future snapshots). The
+  VIEWER ACCESS row shows `viewerLabel` primary with the npub as ghost subtext — "Dad's iPhone (npub1abc…)" — or
+  the npub alone when no nickname. (`viewerLabel` is the OWNER's private label — NOT the viewer's passkey name,
+  which is authenticator-held and never transmitted.) The setters call `syncSettingsToNostr()`. **Saving a viewer
+  npub fires `publishViewerSnapshotNow()` immediately**
   (`void`, fire-and-forget) so the viewer hydrates right away — without it the snapshot would only publish on the
   next settings/records edit (the "viewer sees no data until the owner makes an edit" gap).
 
@@ -1216,7 +1221,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 32 Synced Settings Fields
+### All 33 Synced Settings Fields
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
@@ -1225,10 +1230,11 @@ a v17-migrant holder until the one-time wrap.
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
-`pendingCollateralAdjustment`, `viewerNpub`, `viewerPubkey`
+`pendingCollateralAdjustment`, `viewerNpub`, `viewerPubkey`, `viewerLabel`
 (The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
-`viewerNpub`/`viewerPubkey` (the owner's writer-side sharing config) sync so viewer access propagates across the
-owner's devices — but `buildViewerSnapshotPayload` STRIPS them so the viewer never sees the owner's sharing config.
+`viewerNpub`/`viewerPubkey`/`viewerLabel` (the owner's writer-side sharing config + the owner's nickname for the
+viewer) sync so viewer access propagates across the owner's devices — but `buildViewerSnapshotPayload` STRIPS all
+three so the viewer never sees the owner's sharing config.
 The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
 LWW handles them like income or APR. `advisorChecklist` was REMOVED — per-month ritual ticking is
 multi-writer ephemeral state, incompatible with LWW settings; that's why the skips sync and the

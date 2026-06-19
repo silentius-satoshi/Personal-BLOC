@@ -133,8 +133,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
   const viewerNpub          = useStore((s) => s.viewerNpub);
+  const viewerLabel         = useStore((s) => s.viewerLabel);
   const setViewerNpub       = useStore((s) => s.setViewerNpub);
   const setViewerPubkey     = useStore((s) => s.setViewerPubkey);
+  const setViewerLabel      = useStore((s) => s.setViewerLabel);
 
   const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
@@ -155,6 +157,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
   const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const [viewerDraft, setViewerDraft]   = useState('');
+  const [viewerLabelDraft, setViewerLabelDraft] = useState('');
   const [viewerError, setViewerError]   = useState<string | null>(null);
   const [npubCopied, setNpubCopied]     = useState(false);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
@@ -322,16 +325,27 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             </p>
             {viewerNpub ? (
               <div className={styles.nostrIdentityRow}>
-                <span className={styles.nostrPubkey}>{viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)}</span>
+                {viewerLabel
+                  ? <span className={styles.nostrPubkey}>{viewerLabel}{' '}
+                      <span style={{ color: 'var(--text-ghost)', fontWeight: 400 }}>({viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)})</span>
+                    </span>
+                  : <span className={styles.nostrPubkey}>{viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)}</span>}
                 <button
                   className={styles.nostrDisconnectBtn}
-                  onClick={() => { setViewerNpub(null); setViewerPubkey(null); setViewerDraft(''); setViewerError(null); }}
+                  onClick={() => { setViewerNpub(null); setViewerPubkey(null); setViewerLabel(null); setViewerDraft(''); setViewerLabelDraft(''); setViewerError(null); }}
                 >
                   Remove
                 </button>
               </div>
             ) : (
               <>
+                <input
+                  className={styles.setupDateInput}
+                  type="text"
+                  placeholder="Nickname (e.g. Dad's iPhone)"
+                  value={viewerLabelDraft}
+                  onChange={(e) => setViewerLabelDraft(e.target.value)}
+                />
                 <input
                   className={styles.setupDateInput}
                   type="text"
@@ -348,6 +362,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                       if (decoded.type !== 'npub') { setViewerError('Not a valid npub'); return; }
                       setViewerNpub(input);
                       setViewerPubkey(decoded.data as string);
+                      const label = viewerLabelDraft.trim();
+                      if (label) setViewerLabel(label);
                       setViewerError(null);
                       void publishViewerSnapshotNow();   // seal + publish a snapshot NOW so the viewer hydrates without waiting for an owner edit
                     } catch { setViewerError('Not a valid npub'); }

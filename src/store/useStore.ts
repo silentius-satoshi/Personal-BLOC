@@ -213,12 +213,13 @@ export interface StoreState {
   // Writer local-key (iOS Face-ID signer) — device-local, NEVER synced (excluded from any relay payload).
   writerKeyWrapped:   string | null;      // AES-GCM ciphertext (base64) of the writer nsec
   writerKeyWrapMeta:  WrapMeta | null;    // { iv, scheme, credentialId?, salt }
-  // Viewer access (Phase 1, writer-side) — the provisioned viewer's npub/hex pubkey. SYNCED in the OWNER's own
-  // settings:v1 (so viewer config + removal propagate across the owner's devices) but STRIPPED from the viewer
-  // snapshot (the viewer must never learn who else the owner shares with). Public npubs — no secret leak.
-  // Gates publishViewerSnapshotNow.
+  // Viewer access (Phase 1, writer-side) — the provisioned viewer's npub/hex pubkey + the owner's nickname for
+  // them. SYNCED in the OWNER's own settings:v1 (so viewer config + removal propagate across the owner's devices)
+  // but STRIPPED from the viewer snapshot (the viewer must never learn who else the owner shares with, nor the
+  // owner's private nickname for them). Public npubs — no secret leak. Gates publishViewerSnapshotNow.
   viewerNpub:         string | null;
   viewerPubkey:       string | null;      // hex — NIP-44 encrypt target for the viewer snapshot
+  viewerLabel:        string | null;      // owner-assigned nickname for the viewer (e.g. "Dad's iPhone")
   // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
   // viewer of the writer at viewerWriterPubkey, decrypting the viewer:v1 snapshot with viewerSecretKey.
   // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
@@ -240,6 +241,7 @@ export interface StoreState {
   setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
   setViewerNpub:         (v: string | null) => void;
   setViewerPubkey:       (v: string | null) => void;
+  setViewerLabel:        (v: string | null) => void;
   setViewerMode:         (v: boolean) => void;
   setViewerWriterPubkey: (v: string | null) => void;
   setViewerSecretKey:    (v: string | null) => void;
@@ -337,8 +339,8 @@ export async function publishSettingsNow(): Promise<boolean> {
 }
 
 // THE settings payload — single source built from current state, consumed by BOTH publishSettingsNow AND the
-// viewer snapshot so the two can never drift. Viewer config (viewerNpub/viewerPubkey) is DELIBERATELY excluded
-// (device-local, never synced — same discipline as writerKeyWrapped).
+// viewer snapshot so the two can never drift. The owner's writer-side viewer config (viewerNpub/viewerPubkey/
+// viewerLabel) IS carried here (syncs across the owner's devices) but is STRIPPED from the viewer snapshot below.
 export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
   return {
     income:                   s.income,
@@ -374,15 +376,16 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     // Writer-side viewer config — synced in the OWNER's settings:v1 only; STRIPPED from the viewer snapshot below.
     viewerNpub:               s.viewerNpub,
     viewerPubkey:             s.viewerPubkey,
+    viewerLabel:              s.viewerLabel,
   };
 }
 
 // Combined viewer snapshot (Option B): the same settings payload + records + live Strike balances.
 export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/publish').ViewerSnapshot {
   return {
-    // STRIP the owner's sharing config (viewerNpub/viewerPubkey) — the viewer must never see who else the
-    // owner shares with. buildSettingsPayload stays the single source for the owner's own sync.
-    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, ...rest } = buildSettingsPayload(s); return rest; })(),
+    // STRIP the owner's sharing config (viewerNpub/viewerPubkey/viewerLabel) — the viewer must never see who else
+    // the owner shares with, nor the owner's nickname for them. buildSettingsPayload stays the single owner source.
+    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
   };
@@ -649,6 +652,7 @@ export const useStore = create<StoreState>()(
   writerKeyWrapMeta:  null,
   viewerNpub:         null,
   viewerPubkey:       null,
+  viewerLabel:        null,
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
@@ -666,6 +670,7 @@ export const useStore = create<StoreState>()(
   // Writer-side viewer config — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
   setViewerNpub:         (v) => { set({ viewerNpub: v });   useStore.getState().syncSettingsToNostr(); },
   setViewerPubkey:       (v) => { set({ viewerPubkey: v }); useStore.getState().syncSettingsToNostr(); },
+  setViewerLabel:        (v) => { set({ viewerLabel: v });  useStore.getState().syncSettingsToNostr(); },
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
@@ -718,7 +723,7 @@ export const useStore = create<StoreState>()(
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
-      'viewerNpub', 'viewerPubkey',
+      'viewerNpub', 'viewerPubkey', 'viewerLabel',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {
@@ -769,9 +774,11 @@ export const useStore = create<StoreState>()(
           showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
           writerKeyWrapped:     persistedState.writerKeyWrapped  ?? null,   // v15 — device-local, never synced
           writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? null,   // v15
-          // Viewer access (Phase 1) — device-local, never synced. Additive nullable defaults, no version bump.
+          // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
+          // snapshot). Additive nullable defaults, no version bump.
           viewerNpub:           persistedState.viewerNpub   ?? null,
           viewerPubkey:         persistedState.viewerPubkey ?? null,
+          viewerLabel:          persistedState.viewerLabel  ?? null,
           // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
           viewerMode:           persistedState.viewerMode          ?? false,
           viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
