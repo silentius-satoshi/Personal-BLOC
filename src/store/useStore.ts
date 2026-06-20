@@ -1,5 +1,6 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import { encryptedStorage } from '../lib/store/storeCrypto';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
 import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulation/logUtils';
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
@@ -9,6 +10,13 @@ import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
+
+// At-rest store encryption (Phase B) — standalone localStorage flag, read once at module load. Lives OUTSIDE the
+// persisted store blob (you can't read a setting stored inside the thing it gates). OFF by default → persist uses
+// default localStorage (storage: undefined), byte-identical to today. Phase C opts users in.
+export const storeEncEnabled = (() => {
+  try { return localStorage.getItem('personal-bloc-store-enc-enabled') === '1'; } catch { return false; }
+})();
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
@@ -255,6 +263,10 @@ export interface StoreState {
   // viewer render on this so stale persisted data never shows for a key that can't decrypt the snapshot.
   viewerDataLoaded:      boolean;
   setViewerDataLoaded:   (v: boolean) => void;
+  // Transient (NOT persisted) — true once the in-memory store-encryption key holder (storeCrypto) is populated.
+  // AppShell gates AppUnlockGate on this. Mirrors viewerUnlocked.
+  storeUnlocked:         boolean;
+  setStoreUnlocked:      (v: boolean) => void;
   // Wipe every viewer-hydrated financial field back to its seed (data-remanence fix). VIEWER paths ONLY —
   // never the owner's Remove or any owner edit (it would destroy the owner's real data). Pure local set (no sync).
   clearViewerData:       () => void;
@@ -688,6 +700,7 @@ export const useStore = create<StoreState>()(
   viewerKeyWrapMeta:   null,
   viewerUnlocked:      false,
   viewerDataLoaded:    false,
+  storeUnlocked:       false,
   setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
   setNostrPubkey:        (v) => set({ nostrPubkey: v }),
   setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
@@ -707,6 +720,7 @@ export const useStore = create<StoreState>()(
   setViewerKeyWrapMeta:  (v) => set({ viewerKeyWrapMeta: v }),
   setViewerUnlocked:     (v) => set({ viewerUnlocked: v }),      // transient (not persisted)
   setViewerDataLoaded:   (v) => set({ viewerDataLoaded: v }),    // transient (not persisted)
+  setStoreUnlocked:      (v) => set({ storeUnlocked: v }),       // transient (not persisted)
   // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
   // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally
   // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no syncSettingsToNostr.
@@ -785,8 +799,11 @@ export const useStore = create<StoreState>()(
     {
       name: 'personal-bloc-store',
       version: 18,
+      // Phase B: encrypted adapter ONLY when the standalone flag is on; else undefined = default localStorage
+      // (byte-identical to today — flag OFF is a total no-op).
+      storage: storeEncEnabled ? createJSONStorage(() => encryptedStorage) : undefined,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, ...rest } = state;
+        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {

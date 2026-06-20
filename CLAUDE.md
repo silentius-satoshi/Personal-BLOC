@@ -764,6 +764,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
 - `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
 - `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
+- `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -813,7 +814,14 @@ local-key signer's encrypted nsec + wrap meta — key material, MUST never leave
 mode, the owner it follows, and a v17-migrant plaintext-nsec holder), and `viewerKeyWrapped`/`viewerKeyWrapMeta`
 (Phase 3 — the viewer key wrapped at rest via keyVault; key material, MUST never leave the device). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
-`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`). **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
+`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`).
+**At-rest store encryption (Phase B, OFF by default):** the encrypted persist adapter is gated by a STANDALONE
+localStorage flag `personal-bloc-store-enc-enabled` (read once at module load into the exported `storeEncEnabled` —
+NOT a store field, since it can't live inside the blob it gates). Flag OFF → `storage: undefined` (default
+localStorage, byte-identical to today — a total no-op for every existing install). Flag ON → `createJSONStorage(()
+=> encryptedStorage)` (lib/store/storeCrypto.ts); `AppUnlockGate` derives the store key (from the nsec-wrap
+credential via `writerKeyWrapMeta.scheme`) and `persist.rehydrate()`s. `storeUnlocked` (transient) tells AppShell
+the key holder is populated. Phase C handles migration/opt-in of existing plaintext installs. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
 `viewerLabel` are NOT here — they are now SYNCED in the owner's settings:v1 (public npubs + the owner's nickname;
 cross-device sharing config), stripped from the viewer snapshot. Only the viewer-SIDE fields stay device-local.**
 
@@ -984,6 +992,9 @@ src/
                                     # (valid decrypt) + "Reset viewing key" escape (revoked viewer isn't trapped) +
                                     # "Copy my npub" (via getViewerNpub — derives the viewer's own npub from the
                                     # holder so a pending/revoked viewer can re-send it; banner has it too)
+    AppUnlockGate.tsx              # At-rest store-encryption unlock (Phase B) — Face ID / PIN → deriveStoreKey
+                                    # (keyed on writerKeyWrapMeta.scheme) → setStoreKey + useStore.persist.rehydrate()
+                                    # → encrypted blob decrypts into real data. Shown when storeEncEnabled && locked
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
                                     # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)
@@ -996,7 +1007,8 @@ src/
                                     # derives an INDEPENDENT AES key from the SAME unlock via a distinct HKDF info
                                     # (STORE_ENC_INFO='personal-bloc/store-enc/v1') — one Face ID/PIN, two keys;
                                     # + encryptBlob/decryptBlob (AES-GCM string blob, random IV). deriveAesKey
-                                    # gained a defaulted `info` param (nsec-wrap path byte-identical)
+                                    # gained a defaulted `info` param (nsec-wrap path byte-identical). Phase B wires
+                                    # these into the persist adapter (lib/store/storeCrypto.ts) behind a flag
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
                                     # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match → sk.fill(0)
     log.ts                          # nostrLog ring buffer — pure; console mirror + sessionStorage 'bloc-nostr-log'
@@ -1029,6 +1041,12 @@ src/
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
+  lib/store/
+    storeCrypto.ts                  # At-rest store encryption (Phase B) — in-memory storeKey holder (getStoreKey/
+                                    # setStoreKey/isStoreUnlocked, never persisted) + encryptedStorage adapter:
+                                    # getItem decrypts the {ct,iv} envelope (locked→null, non-envelope→passthrough),
+                                    # setItem encrypts (LOCKED→drops the write, NEVER plaintext). Wired into persist
+                                    # ONLY when storeEncEnabled (standalone 'personal-bloc-store-enc-enabled' flag)
 
 vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```
