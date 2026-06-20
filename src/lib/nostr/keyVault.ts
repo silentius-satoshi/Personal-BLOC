@@ -28,6 +28,9 @@ export interface WrapMeta {
 
 const PBKDF2_ITERS = 600_000;
 const HKDF_INFO = new TextEncoder().encode('personal-bloc/keyvault/v1');
+// At-rest store encryption (Phase A): a DISTINCT HKDF info label → an independent AES key derived from the SAME
+// IKM (same Face ID / PIN unlock, same salt). One unlock, two cryptographically separate keys.
+const STORE_ENC_INFO = new TextEncoder().encode('personal-bloc/store-enc/v1');
 // Fixed PRF eval input — PRF output is unique per authenticator credential regardless, so a constant
 // eval is fine (uniqueness comes from the credential, identified by meta.credentialId).
 const PRF_EVAL = new TextEncoder().encode('personal-bloc/keyvault/prf-eval/v1');
@@ -56,10 +59,10 @@ function randomBytes(n: number): Uint8Array {
 // ── shared crypto: ikm → AES-GCM key via HKDF ─────────────────────────────────
 const bs = (u: Uint8Array): BufferSource => u as unknown as BufferSource;
 
-async function deriveAesKey(ikm: ArrayBuffer, salt: Uint8Array): Promise<CryptoKey> {
+async function deriveAesKey(ikm: ArrayBuffer, salt: Uint8Array, info: Uint8Array = HKDF_INFO): Promise<CryptoKey> {
   const ikmKey = await subtle().importKey('raw', ikm, 'HKDF', false, ['deriveKey']);
   return subtle().deriveKey(
-    { name: 'HKDF', hash: 'SHA-256', salt: bs(salt), info: bs(HKDF_INFO) },
+    { name: 'HKDF', hash: 'SHA-256', salt: bs(salt), info: bs(info) },
     ikmKey,
     { name: 'AES-GCM', length: 256 },
     false,
@@ -181,4 +184,40 @@ export async function unwrapSecretKey(
   const aesKey = await deriveAesKey(ikm, salt);
   const pt = await subtle().decrypt({ name: 'AES-GCM', iv: bs(iv) }, aesKey, bs(fromB64(ciphertext)));
   return new Uint8Array(pt);
+}
+
+// ── At-rest store encryption (Phase A — primitives only, no store wiring) ─────────
+
+/** Derive the STORE-encryption key from an unlock — reuses the EXACT IKM paths as wrap/unwrap (PRF assertion via
+ *  credentialId, or PIN via PBKDF2) but a DIFFERENT HKDF info (STORE_ENC_INFO), so it is cryptographically
+ *  independent of the nsec-wrap key while unlocked by the same gesture/credential. In memory only — never
+ *  persisted here. */
+export async function deriveStoreKey(
+  method: WrapMethod,
+  meta: { salt: string; credentialId?: string },
+  pin?: string,
+): Promise<CryptoKey> {
+  const salt = fromB64(meta.salt);
+  let ikm: ArrayBuffer;
+  if (method === 'prf') {
+    if (!meta.credentialId) throw new Error('missing credentialId for PRF store key');
+    ikm = await prfAuthenticate(meta.credentialId);   // reuses the deploy-verified PRF assertion
+  } else {
+    if (!pin) throw new Error('missing PIN for store key');
+    ikm = await pinIkm(pin, salt);
+  }
+  return deriveAesKey(ikm, salt, STORE_ENC_INFO);
+}
+
+/** AES-GCM encrypt a string blob with a fresh random IV. Returns base64 ciphertext + iv. */
+export async function encryptBlob(plaintext: string, key: CryptoKey): Promise<{ ct: string; iv: string }> {
+  const iv = randomBytes(12);
+  const buf = await subtle().encrypt({ name: 'AES-GCM', iv: bs(iv) }, key, bs(new TextEncoder().encode(plaintext)));
+  return { ct: toB64(new Uint8Array(buf)), iv: toB64(iv) };
+}
+
+/** AES-GCM decrypt a string blob. Throws on wrong key / tampered ciphertext (GCM auth tag failure). */
+export async function decryptBlob(ct: string, iv: string, key: CryptoKey): Promise<string> {
+  const buf = await subtle().decrypt({ name: 'AES-GCM', iv: bs(fromB64(iv)) }, key, bs(fromB64(ct)));
+  return new TextDecoder().decode(buf);
 }
