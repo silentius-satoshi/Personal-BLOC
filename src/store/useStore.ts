@@ -1,6 +1,5 @@
 import { create } from 'zustand';
-import { persist, createJSONStorage } from 'zustand/middleware';
-import { encryptedStorage } from '../lib/store/storeCrypto';
+import { persist } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
 import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulation/logUtils';
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
@@ -834,7 +833,7 @@ export const useStore = create<StoreState>()(
       version: 18,
       // Phase B: encrypted adapter ONLY when the standalone flag is on; else undefined = default localStorage
       // (byte-identical to today — flag OFF is a total no-op).
-      storage: storeEncEnabled ? createJSONStorage(() => encryptedStorage) : undefined,
+      storage: undefined,   // ALWAYS default localStorage — user-facing at-rest encryption reverted (lockout-proof). storeEncEnabled is now inert.
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, ...rest } = state;
         return rest;

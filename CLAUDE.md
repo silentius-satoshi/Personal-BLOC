@@ -822,21 +822,19 @@ mode, the owner it follows, and a v17-migrant plaintext-nsec holder), and `viewe
 (Phase 3 — the viewer key wrapped at rest via keyVault; key material, MUST never leave the device). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
 `nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`).
-**At-rest store encryption (Phase B, OFF by default):** the encrypted persist adapter is gated by a STANDALONE
-localStorage flag `personal-bloc-store-enc-enabled` (read once at module load into the exported `storeEncEnabled` —
-NOT a store field, since it can't live inside the blob it gates). Flag OFF → `storage: undefined` (default
-localStorage, byte-identical to today — a total no-op for every existing install). Flag ON → `createJSONStorage(()
-=> encryptedStorage)` (lib/store/storeCrypto.ts); `AppUnlockGate` derives the store key (from the nsec-wrap
-credential via `writerKeyWrapMeta.scheme`) and `persist.rehydrate()`s. `storeUnlocked` (transient) tells AppShell
-the key holder is populated.
-**Phase C (opt-in + migration):** a Settings → NOSTR IDENTITY toggle (LOCAL-KEY users only — `writerKeyWrapMeta`
-present; NIP-07 sees it disabled) turns encryption on/off. Both directions RELOAD into a gate (no in-memory-key
-assumption): ON sets the flag → `StoreMigrationGate mode="encrypt"`; OFF sets a `personal-bloc-store-enc-pending-
-decrypt` marker (flag stays on) → `StoreMigrationGate mode="decrypt"` (clears flag + marker on success). The gates
-re-derive the key (Face ID / PIN) and call `storeMigration.ts`'s `migratePlaintextToEncrypted` /
-`migrateEncryptedToPlaintext` — **VERIFY-BEFORE-DELETE: the source blob is never overwritten until the new blob
-decrypts back === original**, so a failed migration leaves the plan intact (recoverable). AppShell routes
-plaintext-blob → encrypt gate, pending-decrypt → decrypt gate, both BEFORE the AppUnlockGate branch. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
+**At-rest store encryption — ⚠ USER-FACING FLOW REVERTED (lockout-proof).** The Phase B/C user flow (Settings
+"Encrypt local data" toggle + `AppUnlockGate`/`StoreMigrationGate` render branches + the conditional encrypted
+persist adapter) **locked users out twice on real iOS and has been removed.** `useStore` now hardcodes
+`storage: undefined` (ALWAYS default localStorage — no path reaches the encrypted adapter), AppShell renders NO
+encryption gate, and Settings has NO toggle. A stranded `personal-bloc-store-enc-enabled` / `-pending-decrypt`
+localStorage flag is now **inert** (nothing reads them to gate) → a previously stuck install loads normally on next
+launch (the lockout occurred at the gate before any `{ct,iv}` envelope was written, so the blob is plaintext).
+**RETAINED for an Option-3a redesign (nsec-derived store key, escape-hatch-first):** the Phase A primitives
+(`keyVault` `encryptBlob`/`decryptBlob`/`deriveStoreKey`), `storeCrypto.ts` (adapter + holder), `storeMigration.ts`
+(verify-before-delete fns), the `AppUnlockGate`/`StoreMigrationGate` component files (unrendered), `storeEncEnabled`
+(now a dead export), `storeUnlocked` (transient), and the standalone writer-credential storage fix
+(`personal-bloc-writer-key-wrapped`/`-meta`, partialize-excluded). The retained component/lib files carry the prior
+design inline (+ git history) as the rebuild basis. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
 `viewerLabel` are NOT here — they are now SYNCED in the owner's settings:v1 (public npubs + the owner's nickname;
 cross-device sharing config), stripped from the viewer snapshot. Only the viewer-SIDE fields stay device-local.**
 
@@ -1007,13 +1005,12 @@ src/
                                     # (valid decrypt) + "Reset viewing key" escape (revoked viewer isn't trapped) +
                                     # "Copy my npub" (via getViewerNpub — derives the viewer's own npub from the
                                     # holder so a pending/revoked viewer can re-send it; banner has it too)
-    AppUnlockGate.tsx              # At-rest store-encryption unlock (Phase B) — Face ID / PIN → deriveStoreKey
-                                    # (keyed on writerKeyWrapMeta.scheme) → setStoreKey + useStore.persist.rehydrate()
-                                    # → encrypted blob decrypts into real data. Shown when storeEncEnabled && locked
-    StoreMigrationGate.tsx         # At-rest store encryption (Phase C) — mode='encrypt'|'decrypt' migration gate
-                                    # (clone of AppUnlockGate). encrypt: derive key → migratePlaintextToEncrypted →
-                                    # rehydrate. decrypt: derive key → migrateEncryptedToPlaintext → clear flag +
-                                    # pending-decrypt marker → reload (flag OFF). Failure → source intact, error shown
+    AppUnlockGate.tsx              # ⚠ UNRENDERED (user-facing encryption reverted) — retained for Option-3a. Was:
+                                    # Face ID / PIN → deriveStoreKey (keyed on writerKeyWrapMeta.scheme) → setStoreKey
+                                    # + useStore.persist.rehydrate() → decrypt the blob. NOT imported by AppShell now
+    StoreMigrationGate.tsx         # ⚠ UNRENDERED (user-facing encryption reverted) — retained for Option-3a. Was:
+                                    # mode='encrypt'|'decrypt' migration gate (encrypt→migratePlaintextToEncrypted;
+                                    # decrypt→migrateEncryptedToPlaintext→clear flag+marker→reload). NOT imported now
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
                                     # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)
@@ -1064,12 +1061,13 @@ src/
     storeCrypto.ts                  # At-rest store encryption (Phase B) — in-memory storeKey holder (getStoreKey/
                                     # setStoreKey/isStoreUnlocked, never persisted) + encryptedStorage adapter:
                                     # getItem decrypts the {ct,iv} envelope (locked→null, non-envelope→passthrough),
-                                    # setItem encrypts (LOCKED→drops the write, NEVER plaintext). Wired into persist
-                                    # ONLY when storeEncEnabled (standalone 'personal-bloc-store-enc-enabled' flag)
-    storeMigration.ts               # At-rest store encryption (Phase C) — migratePlaintextToEncrypted /
+                                    # setItem encrypts (LOCKED→drops the write, NEVER plaintext). ⚠ NO LONGER wired
+                                    # into persist (user-facing encryption reverted; storage is always default) —
+                                    # retained + tested for Option-3a
+    storeMigration.ts               # ⚠ RETAINED but UNWIRED (encryption reverted) — migratePlaintextToEncrypted /
                                     # migrateEncryptedToPlaintext (VERIFY-BEFORE-DELETE: never overwrite the source
                                     # until the new blob decrypts back === original; idempotent; use getStoreKey) +
-                                    # blobIsPlaintext (gate routing). A failed migration leaves the source intact
+                                    # blobIsPlaintext. Tested; basis for Option-3a
 
 vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```

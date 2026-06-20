@@ -15,7 +15,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useStore, storeEncEnabled } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
 import { InputsPanel } from '../Inputs/InputsPanel';
 import { LivingInputsPanel } from '../LivingOnBitcoin/LivingInputsPanel';
 import { SmartBlocMain } from './SmartBlocMain';
@@ -38,9 +38,6 @@ import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
 import { ViewerWaitingGate } from '../Auth/ViewerWaitingGate';
-import { AppUnlockGate } from '../Auth/AppUnlockGate';
-import { StoreMigrationGate } from '../Auth/StoreMigrationGate';
-import { blobIsPlaintext } from '../../lib/store/storeMigration';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
 import { setUnwrappedViewerKey, getViewerNpub } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
@@ -67,12 +64,6 @@ type TabKey = typeof ALL_TABS_META[number]['key'];
 type ActiveTab = TabKey | 'settings';
 
 const TOOL_KEYS = ['powerlaw', 'converter', 'mining', 'liqsim'] as const;
-
-// Phase C — OFF (turn-off-encryption) request marker, read once at module load (like storeEncEnabled). When set,
-// the store is encrypted+locked but the user asked to decrypt back → route to the decrypt migration gate.
-const pendingDecrypt = (() => {
-  try { return localStorage.getItem('personal-bloc-store-enc-pending-decrypt') === '1'; } catch { return false; }
-})();
 
 interface SortableTabProps {
   tab: { key: string; fullLabel: string; shortLabel: string };
@@ -205,7 +196,6 @@ export function AppShell() {
   const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
   const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
   const viewerDataLoaded = useStore((s) => s.viewerDataLoaded);   // true only after a VALID snapshot decrypt
-  const storeUnlocked    = useStore((s) => s.storeUnlocked);      // Phase B — store-encryption key holder populated?
 
   // Reset viewing key (gate escape / recovery) — clears the wrapped pair + holder + any plaintext and sends
   // the viewer back to onboarding to re-provision a fresh key. Lossless: the owner's snapshot stays on relay.
@@ -317,12 +307,6 @@ export function AppShell() {
         <ViewerUnlockGate onReset={resetViewer} />   // v17 migrant — one-time wrap-setup screen, then falls through
       ) : onboardingComplete && viewerMode && !viewerDataLoaded && !import.meta.env.DEV ? (
         <ViewerWaitingGate onReset={resetViewer} />   // unlocked viewer, no VALID decrypt yet — never show stale store data
-      ) : storeEncEnabled && !storeUnlocked && blobIsPlaintext() && !viewerMode && !import.meta.env.DEV ? (
-        <StoreMigrationGate mode="encrypt" />   // Phase C — flag on + blob still plaintext → MIGRATE (verify-before-delete)
-      ) : storeEncEnabled && pendingDecrypt && !viewerMode && !import.meta.env.DEV ? (
-        <StoreMigrationGate mode="decrypt" />   // Phase C — OFF requested → re-derive key → decrypt back (BEFORE AppUnlockGate)
-      ) : storeEncEnabled && !storeUnlocked && !viewerMode && !import.meta.env.DEV ? (
-        <AppUnlockGate />   // Phase B — encrypted store, locked → Face ID / PIN before the app renders (flag OFF → never taken)
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
         <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
