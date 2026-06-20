@@ -18,6 +18,38 @@ export const storeEncEnabled = (() => {
   try { return localStorage.getItem('personal-bloc-store-enc-enabled') === '1'; } catch { return false; }
 })();
 
+// The wrap credential (writerKeyWrapped/writerKeyWrapMeta) is the KEY THAT UNLOCKS the encrypted store blob, so it
+// must persist OUTSIDE that blob (else it's locked inside the box it opens — the circular-dependency bug). Persist
+// it in standalone localStorage keys; the store fields below are seeded from / written through to these.
+const WK_WRAPPED_KEY = 'personal-bloc-writer-key-wrapped';
+const WK_META_KEY    = 'personal-bloc-writer-key-meta';
+
+// Seed from the standalone keys. ONE-TIME back-fill from the legacy in-blob location for existing users (their blob
+// is plaintext — the bug blocked enabling encryption; an already-encrypted blob can't be read here, but then the
+// standalone key would already exist). Runs at module init (before persist hydration), unconditionally — NOT in
+// migrate(), which only runs on a version change and so would never fire for existing version-18 users.
+const { wkWrapped: seedWriterKeyWrapped, wkMeta: seedWriterKeyWrapMeta } = (() => {
+  let wrapped: string | null = null;
+  let meta: WrapMeta | null = null;
+  try {
+    wrapped = localStorage.getItem(WK_WRAPPED_KEY);
+    const ms = localStorage.getItem(WK_META_KEY);
+    meta = ms ? (JSON.parse(ms) as WrapMeta) : null;
+    if (wrapped == null && meta == null) {
+      const raw = localStorage.getItem('personal-bloc-store');
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && o.ct == null && o.iv == null) {   // plaintext blob ONLY
+          const st = o.state ?? {};
+          if (st.writerKeyWrapped) { wrapped = String(st.writerKeyWrapped); localStorage.setItem(WK_WRAPPED_KEY, wrapped); }
+          if (st.writerKeyWrapMeta) { meta = st.writerKeyWrapMeta as WrapMeta; localStorage.setItem(WK_META_KEY, JSON.stringify(meta)); }
+        }
+      }
+    }
+  } catch { /* noop */ }
+  return { wkWrapped: wrapped, wkMeta: meta };
+})();
+
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
 type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'liqsim' | 'settings';
@@ -688,8 +720,8 @@ export const useStore = create<StoreState>()(
   nostrBunkerUri:     null,
   nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'],
   nostrLogin:         null,
-  writerKeyWrapped:   null,
-  writerKeyWrapMeta:  null,
+  writerKeyWrapped:   seedWriterKeyWrapped,
+  writerKeyWrapMeta:  seedWriterKeyWrapMeta,
   viewerNpub:         null,
   viewerPubkey:       null,
   viewerLabel:        null,
@@ -707,8 +739,9 @@ export const useStore = create<StoreState>()(
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),
   setNostrLogin:         (v) => set({ nostrLogin: v }),
-  setWriterKeyWrapped:   (v) => set({ writerKeyWrapped: v }),
-  setWriterKeyWrapMeta:  (v) => set({ writerKeyWrapMeta: v }),
+  // Write through to the standalone localStorage keys (persisted OUTSIDE the encrypted blob — see WK_*_KEY).
+  setWriterKeyWrapped:   (v) => { try { v == null ? localStorage.removeItem(WK_WRAPPED_KEY) : localStorage.setItem(WK_WRAPPED_KEY, v); } catch { /* noop */ } set({ writerKeyWrapped: v }); },
+  setWriterKeyWrapMeta:  (v) => { try { v == null ? localStorage.removeItem(WK_META_KEY) : localStorage.setItem(WK_META_KEY, JSON.stringify(v)); } catch { /* noop */ } set({ writerKeyWrapMeta: v }); },
   // Writer-side viewer config — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
   setViewerNpub:         (v) => { set({ viewerNpub: v });   useStore.getState().syncSettingsToNostr(); },
   setViewerPubkey:       (v) => { set({ viewerPubkey: v }); useStore.getState().syncSettingsToNostr(); },
@@ -803,7 +836,7 @@ export const useStore = create<StoreState>()(
       // (byte-identical to today — flag OFF is a total no-op).
       storage: storeEncEnabled ? createJSONStorage(() => encryptedStorage) : undefined,
       partialize: (state) => {
-        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, ...rest } = state;
+        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, ...rest } = state;
         return rest;
       },
       migrate: (persistedState: any) => {
@@ -837,8 +870,10 @@ export const useStore = create<StoreState>()(
           showPlanIncomeBar:    persistedState.showPlanIncomeBar ?? true,
           showPlanStrikeBar:    persistedState.showPlanStrikeBar ?? true,
           showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
-          writerKeyWrapped:     persistedState.writerKeyWrapped  ?? null,   // v15 — device-local, never synced
-          writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? null,   // v15
+          // Now standalone-backed (excluded from the blob). Legacy in-blob value wins for back-compat, else the
+          // standalone seed — NEVER null-clobber a future migration where the field is absent from the blob.
+          writerKeyWrapped:     persistedState.writerKeyWrapped  ?? seedWriterKeyWrapped,
+          writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? seedWriterKeyWrapMeta,
           // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
           // snapshot). Additive nullable defaults, no version bump.
           viewerNpub:           persistedState.viewerNpub   ?? null,

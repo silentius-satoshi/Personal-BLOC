@@ -53,7 +53,8 @@
       "Bash(grep -n \"viewerNpub\\\\`/\\\\`viewerPubkey\\\\`\\\\|All 32 Synced\\\\|32 settings fields\\\\|32-field\\\\|viewerNpub.*viewerPubkey.*owner\" CLAUDE.md)",
       "Bash(grep -n \"viewerSync.ts\\\\b\\\\|ViewerUnlockGate on launch\\\\|read-only hydrate\\\\|READ-ONLY is two layers\\\\|viewerUnlocked\\\\` store boolean\\\\|amber \\\\*\\\\*\\\\\"👁\" CLAUDE.md)",
       "Bash(grep -n \"personal-bloc:viewer:v1\\\\` |\" CLAUDE.md)",
-      "Bash(grep -n \"sandboxCollateralBtc\\\\`/\\\\`viewerUnlocked\\\\`\\\\|transient fields like\" CLAUDE.md)"
+      "Bash(grep -n \"sandboxCollateralBtc\\\\`/\\\\`viewerUnlocked\\\\`\\\\|transient fields like\" CLAUDE.md)",
+      "Bash(grep -n \"writerKeyWrapped\\\\`/\\\\`writerKeyWrapMeta\\\\` \\(the writer\\\\|Phase C \\(opt-in + migration\\)\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"
