@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useNostr } from '@nostrify/react';
 import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow } from '../../lib/nostr/syncNow';
+import { resetAndResync } from '../../lib/store/escapeHatch';
 import { useStore } from '../../store/useStore';
 import styles from './NostrAuthGate.module.css';
 
@@ -30,6 +31,25 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
     }
   };
 
+  // Last-resort recovery so a stuck unlock can never strand the user: clear local + pull the plan back from the
+  // relays. Operates on raw localStorage + restoreSigner (not a hydrated store), so it works from this gate.
+  const resetAndResyncFromGate = async () => {
+    if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await resetAndResync(nostr);
+      if (result === 'ok') { window.location.reload(); return; }
+      setError(result === 'no-relays'
+        ? "Couldn't reach the relays. Your data is safe — nothing was published. Check your connection and try again."
+        : "Couldn't unlock your key — use a different login.");
+    } catch {
+      setError('Reset failed — please try again.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className={styles.overlay}>
       <div className={styles.card}>
@@ -42,6 +62,9 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
         </button>
         <button className={styles.ghostBtn} onClick={onReauth} disabled={loading}>
           Use a different login
+        </button>
+        <button className={styles.ghostBtn} onClick={resetAndResyncFromGate} disabled={loading}>
+          Can't unlock — reset &amp; re-sync
         </button>
 
         {error && <p className={styles.error}>{error}</p>}

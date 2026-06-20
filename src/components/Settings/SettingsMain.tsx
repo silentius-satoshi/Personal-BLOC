@@ -17,6 +17,8 @@ import { useRef, useState } from 'react';
 import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
+import { useNostr } from '@nostrify/react';
+import { resetAndResync } from '../../lib/store/escapeHatch';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
@@ -130,6 +132,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
   const nostrSyncing        = useStore((s) => s.nostrSyncing);
   const { triggerSync }     = useNostrSync();
+  const { nostr }           = useNostr();   // for the escape-hatch reset & re-sync
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
@@ -161,6 +164,27 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const [viewerLabelDraft, setViewerLabelDraft] = useState('');
   const [viewerError, setViewerError]   = useState<string | null>(null);
   const [npubCopied, setNpubCopied]     = useState(false);
+  const [recoveryBusy, setRecoveryBusy] = useState(false);
+  const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
+
+  const handleResetAndResync = async () => {
+    if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
+    setRecoveryBusy(true);
+    setRecoveryMsg(null);
+    try {
+      const result = await resetAndResync(nostr);
+      if (result === 'ok') { window.location.reload(); return; }
+      if (result === 'no-relays') {
+        setRecoveryMsg("Couldn't reach the relays. Your data is safe — local was reset but nothing was published. Check your connection and try again.");
+      } else {
+        setRecoveryMsg("Couldn't unlock your key — re-enter your login to continue.");
+      }
+    } catch {
+      setRecoveryMsg('Reset failed — please try again.');
+    } finally {
+      setRecoveryBusy(false);
+    }
+  };
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
@@ -315,6 +339,19 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           >
             {nostrSyncing ? 'Syncing…' : '↻ Sync now'}
           </button>
+        )}
+
+        {nostrAuthEnabled && nostrPubkey && !viewerMode && (
+          <>
+            <button
+              onClick={handleResetAndResync}
+              disabled={recoveryBusy}
+              className={styles.nostrReconnectBtn}
+            >
+              {recoveryBusy ? 'Resetting…' : 'Reset local data & re-sync from relays'}
+            </button>
+            {recoveryMsg && <p className={styles.nostrWarning}>{recoveryMsg}</p>}
+          </>
         )}
 
         {nostrAuthEnabled && !nostrPubkey && (

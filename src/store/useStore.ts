@@ -301,6 +301,9 @@ export interface StoreState {
   // Wipe every viewer-hydrated financial field back to its seed (data-remanence fix). VIEWER paths ONLY —
   // never the owner's Remove or any owner edit (it would destroy the owner's real data). Pure local set (no sync).
   clearViewerData:       () => void;
+  // Escape-hatch recovery: reset the OWNER's plan/records/strike fields to seeds (pure local set, NO publish).
+  // Reachable ONLY from resetAndResync (escapeHatch.ts), which immediately pulls from relays to repopulate.
+  resetPlanToSeeds:      () => void;
 
   // Nostr session (excluded from persist — always re-auth on load)
   isAuthenticated:    boolean;
@@ -770,6 +773,24 @@ export const useStore = create<StoreState>()(
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     viewerNpub: null, viewerPubkey: null, viewerLabel: null,
     viewerDataLoaded: false,
+  }),
+
+  // Owner-recovery reset (escape hatch). Mirrors clearViewerData's financial/records/strike seed-reset but for the
+  // OWNER. Pure local set — NO syncSettingsToNostr / NO publish (resetAndResync controls when/whether the pull runs).
+  // Deliberately PRESERVES: writerKeyWrapped/Meta (standalone — needed to re-auth), nostr identity/relays, device
+  // prefs, and viewerNpub/Pubkey/Label (re-hydrate from the pull). Reachable ONLY from the escape hatch.
+  resetPlanToSeeds: () => set({
+    income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
+    advisorStartDate: new Date().toISOString().split('T')[0],
+    advisorActualBlocBalance: 0, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
+    cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
+    ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
+    cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
+    cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
+    advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
+    pendingCollateralAdjustment: 0,
+    monthlyLog: [], deletedMonths: {},
+    strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
   }),
 
   isAuthenticated:    false,
