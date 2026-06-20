@@ -418,6 +418,27 @@ export async function publishViewerSnapshotNow(): Promise<void> {
   }
 }
 
+// Real-time revocation: seal a TOMBSTONE (empty payload + revoked:true) to the current viewer so their next
+// live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. Call BEFORE clearing
+// viewerPubkey — the gate reads getState().viewerPubkey synchronously at call start. Fire-and-forget, log-only.
+export async function publishViewerRevocationNow(): Promise<void> {
+  const s = useStore.getState();
+  if (!s.viewerPubkey || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  try {
+    const { publishViewerSnapshot } = await import('../lib/nostr/publish');
+    await publishViewerSnapshot(
+      s.nostrSigner,
+      s.viewerPubkey,
+      { settings: {}, records: { entries: [], deletions: {} }, strike: { usd: null, btcAvail: null, rate: null }, revoked: true },
+      s.nostrRelays.length ? s.nostrRelays : undefined,
+      signerOpTimeout(s.nostrSigningMethod),
+    );
+    nostrLog('info', 'viewer revocation published');
+  } catch (e) {
+    nostrLog('warn', 'viewer revocation failed', e);
+  }
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set) => ({

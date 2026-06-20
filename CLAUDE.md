@@ -1135,7 +1135,7 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 |---|---|---|
 | `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
-| `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent |
+| `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (replaceable, supersedes the old snapshot) |
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
@@ -1162,7 +1162,8 @@ a v17-migrant holder until the one-time wrap.
   them): **SYNCED in the owner's own settings:v1** (public npubs — NIP-44 to self, no secret leak; viewer
   set/removed on one owner device propagates to all, and editing on any device publishes the snapshot because it
   has the synced `viewerPubkey`). Set/removed in Settings → NOSTR IDENTITY → VIEWER ACCESS (npub `nip19.decode`
-  validated; optional nickname input above the npub; Remove clears all three + revokes future snapshots). The
+  validated; optional nickname input above the npub; **Revoke** publishes a real-time tombstone then clears all
+  three — see Revocation below). The
   VIEWER ACCESS row shows `viewerLabel` primary with the npub as ghost subtext — "Dad's iPhone (npub1abc…)" — or
   the npub alone when no nickname. (`viewerLabel` is the OWNER's private label — NOT the viewer's passkey name,
   which is authenticator-held and never transmitted.) The setters call `syncSettingsToNostr()`. **Saving a viewer
@@ -1210,6 +1211,17 @@ a v17-migrant holder until the one-time wrap.
   **`ViewerWaitingGate`** ("Waiting for the owner's data…" + a **Reset viewing key** escape, essential because a
   revoked viewer unlocks fine yet never decrypts the re-sealed snapshot). So stale store data never renders for a
   key that hasn't validly decrypted a snapshot; the gate sits AFTER the unlock branches.
+- **Real-time revocation (tombstone — Option A).** Settings → VIEWER ACCESS **Revoke** (was "Remove") calls
+  `publishViewerRevocationNow()` (store, mirrors `publishViewerSnapshotNow`) BEFORE clearing the viewer fields —
+  it seals an EMPTY payload + `revoked: true` (a `ViewerSnapshot` field) to the still-set `viewerPubkey`. The
+  viewer's `applyViewerEvent` detects `snap.revoked` right after JSON.parse → `clearViewerData()` + return (no
+  hydrate) → `viewerDataLoaded` false → `ViewerWaitingGate`. So the viewer EXITS the data in real-time (online via
+  the live sub) or on reconnect (offline). `viewer:v1` is replaceable, so the tombstone supersedes the old
+  snapshot (no NIP-09 needed). Fire-and-forget, log-only — never touches the owner's own sync.
+- **Owner-only Settings hidden in viewerMode.** `SettingsMain` reads `viewerMode` and wraps the NOSTR IDENTITY +
+  VIEWER ACCESS section, the SETUP section, the TAB VISIBILITY & ORDER section, and the DevPanel render in
+  `{!viewerMode && …}` — a viewer sees none of the owner's identity/setup/layout/diagnostics (just a small
+  "viewing a shared plan, read-only" note + the build row). The owner (viewerMode=false) sees everything unchanged.
 - **`viewerMode` / `viewerWriterPubkey` / `viewerSecretKey`** are **device-local, NEVER synced** (not in
   `SETTINGS_FIELDS` / the payload / the partialize exclusion → persist via `...rest`; setters plain `set()`) —
   same discipline as `writerKeyWrapped`.

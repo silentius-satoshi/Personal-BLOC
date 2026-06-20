@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState } from 'react';
-import { useStore, publishViewerSnapshotNow } from '../../store/useStore';
+import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
@@ -107,6 +107,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const simpleMode          = useStore((s) => s.simpleMode);
   const setSimpleMode       = useStore((s) => s.setSimpleMode);
   const devMode             = useStore((s) => s.devMode);
+  const viewerMode          = useStore((s) => s.viewerMode);   // hide owner-only sections for a read-only viewer
   const setDevMode          = useStore((s) => s.setDevMode);
 
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
@@ -230,6 +231,13 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
         <Toggle value={simpleMode} onChange={setSimpleMode} />
       </div>
 
+      {viewerMode && (
+        <p className={styles.sectionDescription}>
+          You're viewing a shared plan, read-only. Manage your viewing key from the banner.
+        </p>
+      )}
+
+      {!viewerMode && (
       <div className={styles.section}>
         <div className={styles.sectionTitle}>NOSTR IDENTITY</div>
 
@@ -332,9 +340,13 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                   : <span className={styles.nostrPubkey}>{viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)}</span>}
                 <button
                   className={styles.nostrDisconnectBtn}
-                  onClick={() => { setViewerNpub(null); setViewerPubkey(null); setViewerLabel(null); setViewerDraft(''); setViewerLabelDraft(''); setViewerError(null); }}
+                  onClick={() => {
+                    void publishViewerRevocationNow();   // seal the tombstone to the viewer WHILE viewerPubkey is still set
+                    setViewerNpub(null); setViewerPubkey(null); setViewerLabel(null);
+                    setViewerDraft(''); setViewerLabelDraft(''); setViewerError(null);
+                  }}
                 >
-                  Remove
+                  Revoke
                 </button>
               </div>
             ) : (
@@ -377,7 +389,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </div>
         )}
       </div>
+      )}
 
+      {!viewerMode && (
       <div className={styles.section}>
         <div className={styles.sectionTitle}>SETUP</div>
 
@@ -590,7 +604,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           )}
         </div>
       </div>
+      )}
 
+      {!viewerMode && (
       <div className={styles.section}>
         <div className={styles.sectionTitle}>TAB VISIBILITY & ORDER</div>
         <div className={styles.sectionDescription}>
@@ -624,12 +640,13 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </SortableContext>
         </DndContext>
       </div>
+      )}
 
       <p className={styles.buildInfo} onClick={handleBuildTap}>
         Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </p>
 
-      {devMode && <DevPanel />}
+      {!viewerMode && devMode && <DevPanel />}
     </div>
   );
 }

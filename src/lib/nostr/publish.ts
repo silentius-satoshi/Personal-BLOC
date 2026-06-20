@@ -81,6 +81,7 @@ export interface ViewerSnapshot {
   settings: Record<string, unknown>;
   records:  { entries: unknown[]; deletions: Record<number, number> };
   strike:   { usd: number | null; btcAvail: number | null; rate: number | null };
+  revoked?: boolean;   // tombstone — the owner revoked this viewer; the viewer wipes + exits the data
 }
 
 export async function publishViewerSnapshot(

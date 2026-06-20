@@ -88,6 +88,12 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
   }
   try {
     const snap = JSON.parse(plaintext) as ViewerSnapshot;
+    if (snap.revoked) {
+      // Owner revoked this viewer — wipe hydrated data (viewerDataLoaded → false → ViewerWaitingGate). No hydrate.
+      nostrLog('info', 'viewer access revoked by owner');
+      s.clearViewerData();
+      return;
+    }
     const settings = snap.settings ?? {};
     s.hydrateSettings(settings);
     const baseBtc = typeof settings.advisorActualBtcHeld === 'number' ? settings.advisorActualBtcHeld : 0;
