@@ -646,7 +646,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
         Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
       </p>
 
-      {!viewerMode && devMode && <DevPanel />}
+      {devMode && <DevPanel />}
     </div>
   );
 }

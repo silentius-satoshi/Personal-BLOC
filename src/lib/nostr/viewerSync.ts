@@ -51,6 +51,14 @@ function getViewerSigner(): NSecSigner | null {
   return cachedSigner;
 }
 
+/** DevPanel probe helper — decrypt an owner snapshot with the in-memory holder (works for a wrapped Phase-3
+ *  viewer; never exposes raw bytes). Returns null when the holder is empty (key not unlocked). */
+export async function viewerDecryptForProbe(writerPubkey: string, content: string): Promise<string | null> {
+  const signer = getViewerSigner();
+  if (!signer || !signer.nip44) return null;
+  return signer.nip44.decrypt(writerPubkey, content);
+}
+
 // v17 back-compat: if the holder is empty but a plaintext store key survives (pre-wrap migrant), populate
 // the holder from it so syncing keeps working until the one-time wrap clears the plaintext.
 function backfillFromPlaintext(viewerSecretKey: string | null): void {

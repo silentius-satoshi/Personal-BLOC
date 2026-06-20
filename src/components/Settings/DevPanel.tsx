@@ -33,6 +33,7 @@ export function DevPanel() {
   const viewerSecretKey      = useStore((s) => s.viewerSecretKey);      // viewer side (presence only — plaintext migrant)
   const viewerKeyWrapped     = useStore((s) => s.viewerKeyWrapped);     // Phase 3 (presence only — never the value)
   const viewerUnlocked       = useStore((s) => s.viewerUnlocked);       // in-memory holder populated?
+  const viewerDataLoaded     = useStore((s) => s.viewerDataLoaded);     // flips false when a tombstone processes
 
   const log = useSyncExternalStore(subscribeNostrLog, getNostrLog);
 
@@ -41,6 +42,7 @@ export function DevPanel() {
   const [copied, setCopied]           = useState(false);
   const [vProbing, setVProbing]         = useState(false);
   const [vProbeStatus, setVProbeStatus] = useState('');
+  const [vRefetching, setVRefetching]   = useState(false);
 
   const syncState = {
     method:        nostrSigningMethod ?? '—',
@@ -90,9 +92,9 @@ export function DevPanel() {
       const { VIEWER_DTAG } = await import('../../lib/nostr/publish');
       const pool = new SimplePool();
       if (s.viewerMode) {
-        // VIEWER side: fetch + decrypt
-        if (!s.viewerWriterPubkey || !s.viewerSecretKey) {
-          setVProbeStatus('viewer not provisioned (missing writerPubkey/key)'); pool.close(s.nostrRelays); setVProbing(false); return;
+        // VIEWER side: fetch + decrypt (via the in-memory holder — works for a wrapped Phase-3 viewer, no plaintext)
+        if (!s.viewerWriterPubkey) {
+          setVProbeStatus('viewer not provisioned (missing writerPubkey)'); pool.close(s.nostrRelays); setVProbing(false); return;
         }
         const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.viewerWriterPubkey], '#d': [VIEWER_DTAG] });
         pool.close(s.nostrRelays);
@@ -101,11 +103,20 @@ export function DevPanel() {
         }
         const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a));
         try {
-          const { NSecSigner } = await import('@nostrify/nostrify');
-          const { hexToBytes } = await import('nostr-tools/utils');
-          const signer = new NSecSigner(hexToBytes(s.viewerSecretKey).slice());   // .slice() — NSecSigner holds a ref
-          const json = await signer.nip44.decrypt(s.viewerWriterPubkey, latest.content);
+          // Prefer the in-memory holder (wrapped, now-unlocked key); fall back to plaintext only for a v17 migrant.
+          const { viewerDecryptForProbe } = await import('../../lib/nostr/viewerSync');
+          let json = await viewerDecryptForProbe(s.viewerWriterPubkey, latest.content);
+          if (json === null && s.viewerSecretKey) {
+            const { NSecSigner } = await import('@nostrify/nostrify');
+            const { hexToBytes } = await import('nostr-tools/utils');
+            json = await new NSecSigner(hexToBytes(s.viewerSecretKey).slice()).nip44.decrypt(s.viewerWriterPubkey, latest.content);
+          }
+          if (json === null) { setVProbeStatus('viewer key not unlocked — unlock first'); setVProbing(false); return; }
           const snap = JSON.parse(json);
+          if (snap?.revoked) {
+            setVProbeStatus(`REVOKED tombstone on relay — owner revoked this viewer (age ${Math.round(Date.now() / 1000 - latest.created_at)}s). The viewer should wipe on next fetch.`);
+            setVProbing(false); return;
+          }
           const entries = snap?.records?.entries?.length ?? 0;
           setVProbeStatus(`OK — decrypted ✓ · ${entries} log entries · settings:${!!snap?.settings} · strike:${!!snap?.strike} · age ${Math.round(Date.now() / 1000 - latest.created_at)}s`);
         } catch (e) {
@@ -123,6 +134,18 @@ export function DevPanel() {
     } catch (e) {
       setVProbeStatus(`probe error: ${e instanceof Error ? e.message : String(e)}`);
     } finally { setVProbing(false); }
+  };
+
+  // Re-fetch now — run the REAL fetchViewerSnapshot so the tombstone-processing path executes (log shows
+  // "viewer access revoked by owner", data wipes, viewerDataLoaded flips). The key revoke-persistence diagnostic.
+  const runViewerRefetch = async () => {
+    setVRefetching(true);
+    try {
+      const { fetchViewerSnapshot } = await import('../../lib/nostr/viewerSync');
+      await fetchViewerSnapshot();
+    } catch (e) {
+      nostrLog('warn', `viewer re-fetch failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally { setVRefetching(false); }
   };
 
   const copyDiagnostics = async () => {
@@ -179,10 +202,12 @@ export function DevPanel() {
         <span className={styles.key}>plaintext key present</span><span className={styles.val}>{String(!!viewerSecretKey)}</span>
         <span className={styles.key}>key wrapped</span><span className={styles.val}>{String(!!viewerKeyWrapped)}</span>
         <span className={styles.key}>unlocked</span><span className={styles.val}>{String(viewerUnlocked)}</span>
+        <span className={styles.key}>data loaded</span><span className={styles.val}>{String(viewerDataLoaded)}</span>
         <span className={styles.key}>my pubkey</span><span className={styles.val}>{nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—'}</span>
       </div>
       <div className={styles.probeRow}>
         <button className={styles.btn} onClick={runViewerProbe} disabled={vProbing}>Test viewer link</button>
+        {viewerMode && <button className={styles.btn} onClick={runViewerRefetch} disabled={vRefetching}>Re-fetch now</button>}
         <span className={styles.probeStatus}>{vProbeStatus}</span>
       </div>
 
