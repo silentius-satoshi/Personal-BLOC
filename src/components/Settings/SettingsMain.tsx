@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState } from 'react';
-import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
+import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, storeEncEnabled } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
@@ -108,6 +108,16 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setSimpleMode       = useStore((s) => s.setSimpleMode);
   const devMode             = useStore((s) => s.devMode);
   const viewerMode          = useStore((s) => s.viewerMode);   // hide owner-only sections for a read-only viewer
+  const writerKeyWrapMeta   = useStore((s) => s.writerKeyWrapMeta);   // present → local-key user → encryption offered
+
+  // Opt-in at-rest store encryption (Phase C). Both directions reload into a gate (StoreMigrationGate) that
+  // re-derives the key via Face ID / PIN — no in-memory-key assumption. ON sets the flag; OFF sets a
+  // pending-decrypt marker (the decrypt gate clears the flag + marker on a verified decrypt).
+  const handleToggleEncryption = (next: boolean) => {
+    if (next) localStorage.setItem('personal-bloc-store-enc-enabled', '1');
+    else localStorage.setItem('personal-bloc-store-enc-pending-decrypt', '1');   // keep the flag ON until the gate verifies
+    window.location.reload();
+  };
   const setDevMode          = useStore((s) => s.setDevMode);
 
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
@@ -248,6 +258,24 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </div>
           <Toggle value={nostrAuthEnabled} onChange={setNostrAuthEnabled} />
         </div>
+
+        {writerKeyWrapMeta ? (
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>Encrypt local data (Face ID)</span>
+              <span className={styles.cbLoanToggleDesc}>Encrypt your plan on this device. You'll unlock the app each time it starts.</span>
+            </div>
+            <Toggle value={storeEncEnabled} onChange={handleToggleEncryption} />
+          </div>
+        ) : (
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>Encrypt local data</span>
+              <span className={styles.cbLoanToggleDesc}>Requires a local key (Face ID).</span>
+            </div>
+            <Toggle value={false} onChange={() => {}} disabled />
+          </div>
+        )}
 
         {nostrPubkey && (
           <>

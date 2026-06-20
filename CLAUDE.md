@@ -765,6 +765,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
 - `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
+- `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -821,7 +822,15 @@ NOT a store field, since it can't live inside the blob it gates). Flag OFF → `
 localStorage, byte-identical to today — a total no-op for every existing install). Flag ON → `createJSONStorage(()
 => encryptedStorage)` (lib/store/storeCrypto.ts); `AppUnlockGate` derives the store key (from the nsec-wrap
 credential via `writerKeyWrapMeta.scheme`) and `persist.rehydrate()`s. `storeUnlocked` (transient) tells AppShell
-the key holder is populated. Phase C handles migration/opt-in of existing plaintext installs. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
+the key holder is populated.
+**Phase C (opt-in + migration):** a Settings → NOSTR IDENTITY toggle (LOCAL-KEY users only — `writerKeyWrapMeta`
+present; NIP-07 sees it disabled) turns encryption on/off. Both directions RELOAD into a gate (no in-memory-key
+assumption): ON sets the flag → `StoreMigrationGate mode="encrypt"`; OFF sets a `personal-bloc-store-enc-pending-
+decrypt` marker (flag stays on) → `StoreMigrationGate mode="decrypt"` (clears flag + marker on success). The gates
+re-derive the key (Face ID / PIN) and call `storeMigration.ts`'s `migratePlaintextToEncrypted` /
+`migrateEncryptedToPlaintext` — **VERIFY-BEFORE-DELETE: the source blob is never overwritten until the new blob
+decrypts back === original**, so a failed migration leaves the plan intact (recoverable). AppShell routes
+plaintext-blob → encrypt gate, pending-decrypt → decrypt gate, both BEFORE the AppUnlockGate branch. **NOTE: the writer-side `viewerNpub`/`viewerPubkey`/
 `viewerLabel` are NOT here — they are now SYNCED in the owner's settings:v1 (public npubs + the owner's nickname;
 cross-device sharing config), stripped from the viewer snapshot. Only the viewer-SIDE fields stay device-local.**
 
@@ -995,6 +1004,10 @@ src/
     AppUnlockGate.tsx              # At-rest store-encryption unlock (Phase B) — Face ID / PIN → deriveStoreKey
                                     # (keyed on writerKeyWrapMeta.scheme) → setStoreKey + useStore.persist.rehydrate()
                                     # → encrypted blob decrypts into real data. Shown when storeEncEnabled && locked
+    StoreMigrationGate.tsx         # At-rest store encryption (Phase C) — mode='encrypt'|'decrypt' migration gate
+                                    # (clone of AppUnlockGate). encrypt: derive key → migratePlaintextToEncrypted →
+                                    # rehydrate. decrypt: derive key → migrateEncryptedToPlaintext → clear flag +
+                                    # pending-decrypt marker → reload (flag OFF). Failure → source intact, error shown
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
                                     # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)
@@ -1047,6 +1060,10 @@ src/
                                     # getItem decrypts the {ct,iv} envelope (locked→null, non-envelope→passthrough),
                                     # setItem encrypts (LOCKED→drops the write, NEVER plaintext). Wired into persist
                                     # ONLY when storeEncEnabled (standalone 'personal-bloc-store-enc-enabled' flag)
+    storeMigration.ts               # At-rest store encryption (Phase C) — migratePlaintextToEncrypted /
+                                    # migrateEncryptedToPlaintext (VERIFY-BEFORE-DELETE: never overwrite the source
+                                    # until the new blob decrypts back === original; idempotent; use getStoreKey) +
+                                    # blobIsPlaintext (gate routing). A failed migration leaves the source intact
 
 vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```
