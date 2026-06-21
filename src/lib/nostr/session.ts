@@ -1,8 +1,9 @@
 import { NLogin, NUser } from '@nostrify/react/login';
 import { NSecSigner } from '@nostrify/nostrify';
-import { useStore } from '../../store/useStore';
+import { useStore, storeEncEnabled } from '../../store/useStore';
 import { nostrLog } from './log';
-import { unwrapSecretKey } from './keyVault';
+import { unwrapSecretKey, deriveStoreKeyFromNsec } from './keyVault';
+import { setStoreKey } from '../store/storeCrypto';
 import type { NostrSigner } from './signers';
 
 // Matches the value useNostr() returns (the 2nd arg to NUser.fromBunkerLogin) without a fragile import.
@@ -64,6 +65,17 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
       const sk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta);   // → triggers Face ID / PIN
       const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;
       if (await signer.getPublicKey() !== nostrPubkey) throw new Error('pubkey mismatch');
+      // 3a.1: derive the at-rest store key from the nsec while we have it (flag-gated; DERIVATION ONLY — no
+      // gating, no encryption yet). Rooted in the nsec, so there's no separate credential to diverge. AFTER the
+      // pubkey check (right identity), BEFORE sk is zeroed. Failure is NON-FATAL — login must never break on 3a.
+      if (storeEncEnabled) {
+        try {
+          const storeKey = await deriveStoreKeyFromNsec(sk, nostrPubkey);
+          setStoreKey(storeKey);
+        } catch (e) {
+          nostrLog('warn', '3a store key derivation failed (non-fatal)', e);
+        }
+      }
       sk.fill(0);   // best-effort zero after the signer holds its own copy
       useStore.getState().setNostrSigner(signer);
       return signer;

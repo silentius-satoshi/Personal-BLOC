@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { wrapSecretKey, unwrapSecretKey, deriveStoreKey, encryptBlob, decryptBlob } from '../keyVault';
+import { wrapSecretKey, unwrapSecretKey, deriveStoreKey, deriveStoreKeyFromNsec, encryptBlob, decryptBlob } from '../keyVault';
 
 // PIN path only — the PRF (WebAuthn/Face ID) path needs a platform authenticator and is verified on-device.
 // These exercise the shared PBKDF2 → HKDF → AES-GCM crypto via Node's WebCrypto.
@@ -78,5 +78,48 @@ describe('keyVault — store key (Phase A)', () => {
     const b = await encryptBlob('same', storeKey);
     expect(a.iv).not.toBe(b.iv);
     expect(a.ct).not.toBe(b.ct);
+  });
+});
+
+// 3a.1 — store key derived from the nsec itself (no separate credential). PIN-free: pure nsec + pubkey via WebCrypto.
+describe('keyVault — deriveStoreKeyFromNsec (3a.1)', () => {
+  const skA = Uint8Array.from({ length: 32 }, (_, i) => (i * 7 + 3) & 0xff);
+  const skB = Uint8Array.from({ length: 32 }, (_, i) => (i * 11 + 5) & 0xff);
+  const pubA = 'a'.repeat(64);
+  const pubB = 'b'.repeat(64);
+
+  it('is deterministic — same nsec + pubkey → same key (round-trips across two derivations)', async () => {
+    const k1 = await deriveStoreKeyFromNsec(skA, pubA);
+    const k2 = await deriveStoreKeyFromNsec(skA, pubA);
+    const { ct, iv } = await encryptBlob('{"income":4000}', k1);
+    expect(await decryptBlob(ct, iv, k2)).toBe('{"income":4000}');
+  });
+
+  it('different nsec → different key (cross-decrypt throws)', async () => {
+    const k1 = await deriveStoreKeyFromNsec(skA, pubA);
+    const k2 = await deriveStoreKeyFromNsec(skB, pubA);   // different nsec, same pubkey
+    const { ct, iv } = await encryptBlob('secret', k1);
+    await expect(decryptBlob(ct, iv, k2)).rejects.toThrow();
+  });
+
+  it('different pubkey → different key via the salt (cross-decrypt throws)', async () => {
+    const k1 = await deriveStoreKeyFromNsec(skA, pubA);
+    const k2 = await deriveStoreKeyFromNsec(skA, pubB);   // same nsec, different pubkey-salt
+    const { ct, iv } = await encryptBlob('secret', k1);
+    await expect(decryptBlob(ct, iv, k2)).rejects.toThrow();
+  });
+
+  it('is INDEPENDENT of the nsec-WRAP key (STORE_ENC_INFO label) — cannot decrypt the wrap ciphertext', async () => {
+    const { ciphertext, meta } = await wrapSecretKey(skA, 'pin', 'shared-pin');
+    const storeKey = await deriveStoreKeyFromNsec(skA, pubA);
+    await expect(decryptBlob(ciphertext, meta.iv, storeKey)).rejects.toThrow();
+    // sanity: the wrap path itself still unwraps with the same pin.
+    expect(Array.from(await unwrapSecretKey(ciphertext, meta, 'shared-pin'))).toEqual(Array.from(skA));
+  });
+
+  it('does not mutate the caller sk (copies the buffer)', async () => {
+    const before = Array.from(skA);
+    await deriveStoreKeyFromNsec(skA, pubA);
+    expect(Array.from(skA)).toEqual(before);
   });
 });

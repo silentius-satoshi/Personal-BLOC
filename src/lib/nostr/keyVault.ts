@@ -209,6 +209,17 @@ export async function deriveStoreKey(
   return deriveAesKey(ikm, salt, STORE_ENC_INFO);
 }
 
+/** 3a: derive the at-rest STORE key from the nsec ITSELF (no separate credential — Option 3a re-roots store
+ *  encryption in the nsec). Salt = SHA-256(pubkeyHex) → deterministic + stable across reinstalls; info =
+ *  STORE_ENC_INFO → cryptographically independent from the nsec-WRAP key. In memory only — never persisted here. */
+export async function deriveStoreKeyFromNsec(sk: Uint8Array, pubkeyHex: string): Promise<CryptoKey> {
+  const pubkeyBytes = new TextEncoder().encode(pubkeyHex);
+  const saltBuf = await subtle().digest('SHA-256', bs(pubkeyBytes));
+  const salt = new Uint8Array(saltBuf);
+  const ikm = sk.slice().buffer;   // copy, not the live sk buffer
+  return deriveAesKey(ikm, salt, STORE_ENC_INFO);
+}
+
 /** AES-GCM encrypt a string blob with a fresh random IV. Returns base64 ciphertext + iv. */
 export async function encryptBlob(plaintext: string, key: CryptoKey): Promise<{ ct: string; iv: string }> {
   const iv = randomBytes(12);
