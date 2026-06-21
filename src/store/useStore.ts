@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
+import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
 import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulation/logUtils';
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
@@ -11,8 +11,8 @@ import type { NostrSigner } from '@nostrify/nostrify';
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
 
 // At-rest store encryption (Phase B) — standalone localStorage flag, read once at module load. Lives OUTSIDE the
-// persisted store blob (you can't read a setting stored inside the thing it gates). OFF by default → persist uses
-// default localStorage (storage: undefined), byte-identical to today. Phase C opts users in.
+// persisted store blob (you can't read a setting stored inside the thing it gates). NOW INERT: the user-facing
+// encryption flow was reverted and persist always uses plain localStorage (see the explicit `storage` below).
 export const storeEncEnabled = (() => {
   try { return localStorage.getItem('personal-bloc-store-enc-enabled') === '1'; } catch { return false; }
 })();
@@ -852,9 +852,12 @@ export const useStore = create<StoreState>()(
     {
       name: 'personal-bloc-store',
       version: 18,
-      // Phase B: encrypted adapter ONLY when the standalone flag is on; else undefined = default localStorage
-      // (byte-identical to today — flag OFF is a total no-op).
-      storage: undefined,   // ALWAYS default localStorage — user-facing at-rest encryption reverted (lockout-proof). storeEncEnabled is now inert.
+      // Zustand v5: storage MUST be explicit — `undefined` DISABLES persistence (it does NOT default to
+      // localStorage; that was older-Zustand behavior). Use `window.localStorage` (zustand's own default form):
+      // in the browser it's the real store; under Node (tests, no `window`) the getter throws → createJSONStorage
+      // returns undefined → persist cleanly disables, instead of building a broken adapter that throws on write.
+      // Plain localStorage (at-rest encryption reverted; lockout-proof).
+      storage: createJSONStorage(() => window.localStorage),
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, ...rest } = state;
         return rest;

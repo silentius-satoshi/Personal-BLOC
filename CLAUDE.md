@@ -826,9 +826,15 @@ prefs follow this pattern, NOT the in-memory exclusion list (which is for transi
 `nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`).
 **At-rest store encryption — ⚠ USER-FACING FLOW REVERTED (lockout-proof).** The Phase B/C user flow (Settings
 "Encrypt local data" toggle + `AppUnlockGate`/`StoreMigrationGate` render branches + the conditional encrypted
-persist adapter) **locked users out twice on real iOS and has been removed.** `useStore` now hardcodes
-`storage: undefined` (ALWAYS default localStorage — no path reaches the encrypted adapter), AppShell renders NO
-encryption gate, and Settings has NO toggle. A stranded `personal-bloc-store-enc-enabled` / `-pending-decrypt`
+persist adapter) **locked users out twice on real iOS and has been removed.** `useStore` persists via an EXPLICIT
+`storage: createJSONStorage(() => window.localStorage)` (plain localStorage — no path reaches the encrypted
+adapter), AppShell renders NO encryption gate, and Settings has NO toggle. **⚠ Zustand v5 gotcha (regression fixed):
+`storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
+persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
+empty localStorage). The revert had set `storage: undefined`; it must be an explicit `createJSONStorage`. Use the
+`() => window.localStorage` getter form (zustand's own default): real storage in the browser, while under Node
+(tests, no `window`) the getter throws → `createJSONStorage` returns undefined → persist cleanly disables (the
+pre-existing test posture) instead of building a broken adapter. A stranded `personal-bloc-store-enc-enabled` / `-pending-decrypt`
 localStorage flag is now **inert** (nothing reads them to gate) → a previously stuck install loads normally on next
 launch (the lockout occurred at the gate before any `{ct,iv}` envelope was written, so the blob is plaintext).
 **RETAINED for an Option-3a redesign (nsec-derived store key, escape-hatch-first):** the Phase A primitives
