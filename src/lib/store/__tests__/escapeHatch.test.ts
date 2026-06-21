@@ -33,6 +33,7 @@ beforeEach(() => {
   useStore.getState().setNostrRelays(['wss://relay.test']);
   useStore.getState().setWriterKeyWrapped('WRAPPED');
   useStore.getState().setWriterKeyWrapMeta({ iv: 'aXY=', scheme: 'pin', salt: 'c2FsdA==' });
+  useStore.getState().setNostrSigner(null);   // isolation: the live-signer test sets it; a leak would skip restoreSigner elsewhere
 });
 
 describe('resetPlanToSeeds', () => {
@@ -98,6 +99,24 @@ describe('resetAndResync', () => {
     const result = await resetAndResync({} as any);
 
     expect(result).toBe('ok');
+    expect(fetchAndSync).toHaveBeenCalledOnce();
+  });
+
+  it('reuses a live signer (no Face ID re-prompt) and resets the sync watermarks to 0 before the pull', async () => {
+    useStore.getState().setNostrSigner(STUB_SIGNER);            // already-authenticated owner
+    useStore.getState().setLastSettingsSyncAt(1_700_000_000);   // stale watermark from a prior sync
+    useStore.getState().setLastRecordsSyncAt(1_700_000_000);
+    // The pull must see the watermarks already reset to 0 (so the relay's settings re-hydrate immediately).
+    vi.mocked(fetchAndSync).mockImplementation(async () => {
+      expect(useStore.getState().lastSettingsSyncAt).toBe(0);
+      expect(useStore.getState().lastRecordsSyncAt).toBe(0);
+      return true;
+    });
+
+    const result = await resetAndResync({} as any);
+
+    expect(result).toBe('ok');
+    expect(restoreSigner).not.toHaveBeenCalled();   // live signer reused → no unwrapSecretKey → no Face ID
     expect(fetchAndSync).toHaveBeenCalledOnce();
   });
 

@@ -27,9 +27,18 @@ export async function resetAndResync(nostr: NostrParam): Promise<'ok' | 'no-rela
   // CRITICAL: clear dirty BEFORE any sync so a stale dirty flag can't trigger a push of the just-cleared state.
   s.setRecordsDirty(false);
   s.setSettingsDirty(false);
+  // We just cleared local — re-accept whatever the relays have, regardless of timestamp. Without this the stale
+  // watermark blocks the settings hydrate (applyRemoteEvent's remoteTs > lastSettingsSyncAt guard fails) and the
+  // store stays at seeds until a later, newer event eventually clears the guard (the 1–2 min default-values delay).
+  s.setLastSettingsSyncAt(0);
+  s.setLastRecordsSyncAt(0);
 
-  let signer;
-  try { signer = await restoreSigner(nostr); } catch { return 'no-auth'; }
+  // Reuse a live signer if one exists (already-authenticated user) — avoids a needless unwrapSecretKey → Face ID
+  // re-prompt. Only a genuinely missing signer (e.g. the locked-out LocalUnlockGate path) triggers the unwrap.
+  let signer = useStore.getState().nostrSigner;
+  if (!signer) {
+    try { signer = await restoreSigner(nostr); } catch { return 'no-auth'; }
+  }
   if (!signer) return 'no-auth';
   const pubkey = useStore.getState().nostrPubkey;
   if (!pubkey) return 'no-auth';

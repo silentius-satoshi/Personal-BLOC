@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (247 tests — all must pass before every commit)
+- Vitest (248 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -754,7 +754,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-247 tests — `npx vitest run` before every commit.
+248 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -767,7 +767,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
-- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` — **THE CRITICAL TEST: failed pull (`fetchAndSync`→false) returns 'no-relays' AND neither publish was called** (spies + structural "imports no publish symbol" assertion — relay data can never be erased); happy path clears dirty BEFORE the pull (asserted inside the fetchAndSync mock); no-auth (null + throw); zero-relays false-'ok' guard (empty relays + empty discovery → 'no-relays', fetchAndSync never called)
+- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` — **THE CRITICAL TEST: failed pull (`fetchAndSync`→false) returns 'no-relays' AND neither publish was called** (spies + structural "imports no publish symbol" assertion — relay data can never be erased); happy path clears dirty BEFORE the pull (asserted inside the fetchAndSync mock); no-auth (null + throw); zero-relays false-'ok' guard (empty relays + empty discovery → 'no-relays', fetchAndSync never called); live-signer reuse + watermark reset (pre-set nostrSigner + nonzero lastSettingsSyncAt → restoreSigner NOT called AND lastSettingsSyncAt/lastRecordsSyncAt are 0 by the time the pull runs)
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -1086,8 +1086,14 @@ src/
                                     # blobIsPlaintext. Tested; basis for Option-3a
     escapeHatch.ts                  # ESCAPE HATCH — resetAndResync(nostr): 'ok' | 'no-relays' | 'no-auth'. Always-
                                     # available recovery that clears local plan → seeds (resetPlanToSeeds) + stranded
-                                    # enc flags, clears recordsDirty/settingsDirty BEFORE any sync, restores the signer,
-                                    # then PULLS from the relays (fetchAndSync) — and re-enables publishing ONLY after a
+                                    # enc flags, clears recordsDirty/settingsDirty BEFORE any sync, RESETS the sync
+                                    # watermarks lastSettingsSyncAt/lastRecordsSyncAt to 0 (else the stale watermark
+                                    # blocks applyRemoteEvent's settings hydrate — remoteTs > lastSettingsSyncAt fails —
+                                    # and the store sits at seed defaults until a later newer event clears it: the
+                                    # 1–2 min default-values delay), REUSES a live nostrSigner if present (only falls
+                                    # back to restoreSigner when null — no needless Face ID re-prompt for an already-
+                                    # authenticated user; the locked-out LocalUnlockGate path has a null signer so it
+                                    # still unwraps there), then PULLS from the relays (fetchAndSync) — and re-enables publishing ONLY after a
                                     # CONFIRMED pull. NEVER publishes (imports NO publish symbol — structural guarantee):
                                     # a failed pull → 'no-relays', pushes NOTHING, relay data intact. Closes the
                                     # syncNow gap where pushes were gated on dirty flags, not pullOk (settings whole-
