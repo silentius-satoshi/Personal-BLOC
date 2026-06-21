@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (244 tests — all must pass before every commit)
+- Vitest (247 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -754,7 +754,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-244 tests — `npx vitest run` before every commit.
+247 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -781,6 +781,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 - `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
+- `src/lib/nostr/__tests__/session.test.ts` — `waitForNostrExtension` (the async-injection-race fix): already-present → true immediately; injected mid-poll (fake timers) → true; absent through the timeout → false
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -1014,7 +1015,11 @@ src/
                                     # decrypt→migrateEncryptedToPlaintext→clear flag+marker→reload). NOT imported now
   hooks/
     useNostrAutoRestore.ts          # Optimistic session restore on reload — NIP-07 AND NIP-46 (via nostrLogin).
-                                    # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock)
+                                    # 'local' is SKIPPED here (no optimistic auth — LocalUnlockGate drives unlock).
+                                    # RETRIES the syncNow restore ONCE (1.5s gap) before flipping isAuthenticated(false)
+                                    # — defense-in-depth for the async window.nostr injection race (a slow extension
+                                    # inject can outlast restoreSigner's own 3s wait). Only a genuinely-null signer
+                                    # flips auth off; a failed sync with a live signer does not
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2)
     keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
@@ -1027,7 +1032,11 @@ src/
                                     # gained a defaulted `info` param (nsec-wrap path byte-identical). Phase B wires
                                     # these into the persist adapter (lib/store/storeCrypto.ts) behind a flag
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
-                                    # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match → sk.fill(0)
+                                    # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match → sk.fill(0).
+                                    # nip07 branch AWAITS waitForNostrExtension() (exported; polls window.nostr every
+                                    # 100ms up to 3s) before throwing 'no extension' — extensions inject window.nostr
+                                    # ASYNCHRONOUSLY on load, so a refresh that runs the restore effect first must wait,
+                                    # else it silently logs the user out (fixed). Fails fast if genuinely absent
     log.ts                          # nostrLog ring buffer — pure; console mirror + sessionStorage 'bloc-nostr-log'
                                     # (50 entries, survives reloads, dies with the PWA); the STANDARD for
                                     # Nostr-layer logging — use it instead of bare console.warn

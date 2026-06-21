@@ -18,7 +18,13 @@ export function useNostrAutoRestore(): void {
     useStore.getState().setIsAuthenticated(true);  // optimistic
 
     const restore = async () => {
-      const ok = await syncNow(nostr);
+      let ok = await syncNow(nostr);
+      if (!ok && useStore.getState().nostrSigner === null) {
+        // Defense-in-depth for the async window.nostr injection race (beyond restoreSigner's own 3s wait):
+        // a slow extension inject can outlast the first attempt — retry once before declaring auth failure.
+        await new Promise((r) => setTimeout(r, 1500));
+        ok = await syncNow(nostr);
+      }
       if (!ok && useStore.getState().nostrSigner === null) {
         // Restore genuinely failed — a failed sync with a live signer is NOT an auth failure.
         useStore.getState().setIsAuthenticated(false);

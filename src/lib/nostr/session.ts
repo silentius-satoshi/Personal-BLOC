@@ -9,6 +9,24 @@ import type { NostrSigner } from './signers';
 export type NostrParam = Parameters<typeof NUser.fromBunkerLogin>[1];
 
 /**
+ * Browser extensions inject window.nostr ASYNCHRONOUSLY during page load, so on a refresh the restore effect can
+ * fire before the extension is ready. Poll briefly for it (default 3s ceiling) instead of failing instantly —
+ * window.nostr usually appears within a few hundred ms, and this still fails fast if no extension is installed.
+ */
+export async function waitForNostrExtension(timeoutMs = 3000): Promise<boolean> {
+  if ((window as any).nostr) return true;
+  const start = Date.now();
+  return new Promise((resolve) => {
+    const check = () => {
+      if ((window as any).nostr) { resolve(true); return; }
+      if (Date.now() - start >= timeoutMs) { resolve(false); return; }
+      setTimeout(check, 100);   // poll every 100ms up to the timeout
+    };
+    check();
+  });
+}
+
+/**
  * Rebuild the signer from the persisted login and store it. Single responsibility:
  * NO relay fetch, NO sync here. Returns the fresh signer, or null on any failure.
  */
@@ -17,7 +35,8 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
   if (!nostrPubkey) return null;
   try {
     if (nostrSigningMethod === 'nip07') {
-      if (!(window as any).nostr) throw new Error('no extension');
+      const hasExt = await waitForNostrExtension();   // extensions inject async — wait before declaring failure
+      if (!hasExt) throw new Error('no extension');
       // 60s, not 5s: the extension may show an approval popup; a short race beats the user's
       // click and an abandoned prompt can wedge the extension's request queue.
       const login = await Promise.race([
