@@ -173,7 +173,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
     setRecoveryMsg(null);
     try {
       const result = await resetAndResync(nostr);
-      if (result === 'ok') { window.location.reload(); return; }
+      // No reload: resetAndResync already pulled the relay data into the in-memory store, so the reactive
+      // useStore selectors rehydrate the UI in place. Reloading would discard it + bounce through the auth gate.
+      if (result === 'ok') { setRecoveryMsg('Local data reset and re-synced from the relays.'); return; }
       if (result === 'no-relays') {
         setRecoveryMsg("Couldn't reach the relays. Your data is safe — local was reset but nothing was published. Check your connection and try again.");
       } else {

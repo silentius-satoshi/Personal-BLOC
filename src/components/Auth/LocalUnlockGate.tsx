@@ -39,7 +39,9 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
     setError(null);
     try {
       const result = await resetAndResync(nostr);
-      if (result === 'ok') { window.location.reload(); return; }
+      // No reload: the 'ok' path means the signer is live (restoreSigner set it) AND the pull populated the store.
+      // Flip auth true so this gate dismisses straight into the app with the pulled data (mirrors unlock() above).
+      if (result === 'ok') { useStore.getState().setIsAuthenticated(true); return; }
       setError(result === 'no-relays'
         ? "Couldn't reach the relays. Your data is safe — nothing was published. Check your connection and try again."
         : "Couldn't unlock your key — use a different login.");

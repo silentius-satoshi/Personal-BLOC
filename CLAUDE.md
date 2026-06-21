@@ -1096,7 +1096,11 @@ src/
                                     # relays-if-empty discovery + a hard "still no relays → 'no-relays'" (fetchAndSync
                                     # returns true against zero relays). Wired into Settings (RECOVERY button) +
                                     # LocalUnlockGate ("Can't unlock — reset & re-sync" escape so a gate can't strand
-                                    # the user). PREREQUISITE/foundation for the queued Option-3a encryption redesign
+                                    # the user). ON SUCCESS: NO window.location.reload() — the pull already populated the
+                                    # in-memory store, so the UI rehydrates IN PLACE (Settings shows a success message;
+                                    # LocalUnlockGate sets isAuthenticated true since the signer is live). The old reload
+                                    # discarded the pulled data + bounced through the auth gate (logout detour, Bug B).
+                                    # PREREQUISITE/foundation for the queued Option-3a encryption redesign
 
 vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```
