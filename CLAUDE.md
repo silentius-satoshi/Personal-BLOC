@@ -96,8 +96,8 @@ src/
       SettingsMain.module.css
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
-                                # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + a RAW
-                                # flag toggle that reloads — developer maturation tooling).
+                                # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
+                                # ASYMMETRIC flag toggle that reloads — Enable RAW, Disable decrypts-first; dev tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
                                 # never balances/amounts/log contents); the panel itself may show position figures
       DevPanel.module.css
@@ -855,8 +855,11 @@ Fresh-install/flag-off parity: no `GATE_*` keys → seeds false/null, identical 
 back-fill from a plaintext blob for existing users (same as the WK_* back-fill). **3a.5** (done): the human-facing
 surfaces, split by audience. DEV — `DevPanel` gains an AT-REST ENCRYPTION section (status readout: flag /
 blob-state {ct,iv}-vs-plaintext / store-key-in-memory / GATE_* keys + a flag toggle that reloads) as developer
-maturation tooling (in-app diagnostics so the remaining device tests need no Mac console; the toggle is RAW — ON
-doesn't migrate, that's at unlock; OFF leaves a `{ct,iv}` blob). USER — `SettingsMain` RECOVERY gains a
+maturation tooling (in-app diagnostics so the remaining device tests need no Mac console). The toggle is ASYMMETRIC:
+ENABLE is RAW (just sets the flag + reloads — migration happens at unlock per 3a.3, NOT here); DISABLE decrypts-FIRST
+(`migrateEncryptedToPlaintext`, verify-before-overwrite, guarded on `isStoreUnlocked()`) THEN clears the flag THEN
+reloads → lands on clean plaintext (no seed-flash/half-state), mirroring the user opt-out so maturation toggling is
+smooth; a locked state or failed decrypt leaves the flag ON (nothing lost). USER — `SettingsMain` RECOVERY gains a
 "Turn off at-rest encryption (decrypt local data)" opt-out, shown ONLY when `!blobIsPlaintext() && isStoreUnlocked()`
 (encrypted AND unlocked): `migrateEncryptedToPlaintext()` (verify-before-overwrite) → THEN clear the flag → THEN
 reload — a failed decrypt short-circuits BEFORE the flag is touched (encryption stays on, nothing lost). The opt-out

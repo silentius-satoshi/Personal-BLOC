@@ -3,7 +3,7 @@ import { useStore, storeEncEnabled } from '../../store/useStore';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
-import { blobIsPlaintext } from '../../lib/store/storeMigration';
+import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
 import styles from './DevPanel.module.css';
 
@@ -182,8 +182,27 @@ export function DevPanel() {
     return `onboarded:${g('personal-bloc-onboarded') === '1'} auth:${g('personal-bloc-nostr-auth') === '1'} `
          + `method:${g('personal-bloc-nostr-method') ?? '—'} pubkey:${!!g('personal-bloc-nostr-pubkey')}`;
   })();
-  const toggleFlag = () => {
-    try { flagOn ? localStorage.removeItem(ENC_FLAG) : localStorage.setItem(ENC_FLAG, '1'); } catch { /* noop */ }
+  const toggleFlag = async () => {
+    if (flagOn) {
+      // DISABLE (encrypted → plaintext): decrypt FIRST so we land on clean plaintext (no {ct,iv} blob the plain
+      // adapter can't read → no seed-flash/half-state). Mirrors the user opt-out's safe order. Needs the key in
+      // memory (post-unlock); a locked state or failed decrypt leaves the flag ON (nothing lost).
+      if (!isStoreUnlocked()) {
+        // eslint-disable-next-line no-alert
+        alert('Unlock first (the store key must be in memory to decrypt). Leaving encryption on.');
+        return;
+      }
+      const ok = await migrateEncryptedToPlaintext();
+      if (!ok) {
+        // eslint-disable-next-line no-alert
+        alert('Could not decrypt — leaving encryption ON, your data is unchanged.');
+        return;
+      }
+      try { localStorage.removeItem(ENC_FLAG); } catch { /* noop */ }
+    } else {
+      // ENABLE (plaintext → encrypted): RAW — migration happens at unlock (3a.3), not here.
+      try { localStorage.setItem(ENC_FLAG, '1'); } catch { /* noop */ }
+    }
     window.location.reload();   // flag is a module-load constant — reload to swap the persist adapter
   };
 
