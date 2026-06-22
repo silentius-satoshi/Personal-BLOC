@@ -16,14 +16,15 @@ export function disconnectNostr(): void {
 
 export function reconnectNostr(): void {
   const s = useStore.getState();
-  // Clear the session but KEEP nostrAuthEnabled, so the auth gate reappears on the NIP-46 login (open signer app → re-approve).
+  // Clear the dead SESSION but KEEP the identity (pubkey + signing method) — same identity, just re-establish the
+  // signer. Under the B1 pin nostrAuthEnabled DERIVES from nostrPubkey, so retaining pubkey keeps auth true → the
+  // re-login gate (nostrAuthEnabled && !nostrSigner) reappears. nostrLogin is cleared so restoreSigner can't
+  // silently revive the dead NIP-46 session — the user re-approves via NostrAuthGate (reconnect's intent).
   // NConnectSigner has no dispose API — reload rebuilds the pool clean (same as disconnectNostr).
   s.setNostrSigner(null);
-  s.setNostrPubkey(null);
-  s.setNostrSigningMethod(null);
   s.setNostrBunkerUri(null);
   s.setNostrLogin(null);
   s.setIsAuthenticated(false);
-  // nostrAuthEnabled intentionally left true
+  // nostrPubkey + nostrSigningMethod intentionally retained; auth derives from the retained pubkey.
   window.location.reload();
 }

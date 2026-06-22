@@ -84,4 +84,21 @@ describe('gate-condition fields — standalone localStorage (3a.4)', () => {
     s().setNostrSigningMethod(null);   expect(mem.has(METHOD)).toBe(false);
     s().setNostrPubkey(null);          expect(mem.has(PUBKEY)).toBe(false);
   });
+
+  // B1: nostrAuthEnabled is DERIVED from pubkey presence — setNostrPubkey drives it in lockstep + mirrors GATE_AUTH_KEY.
+  it('B1 pin: setNostrPubkey drives nostrAuthEnabled and mirrors GATE_AUTH_KEY (can never desync)', async () => {
+    const useStore = await freshStore();
+    const s = () => useStore.getState();
+
+    s().setNostrPubkey('abc');
+    expect(s().nostrPubkey).toBe('abc');
+    expect(s().nostrAuthEnabled).toBe(true);     // auth active iff signed in
+    expect(mem.get(AUTH)).toBe('1');             // GATE_AUTH_KEY mirrors GATE_PUBKEY_KEY (3a.4 cold-start gate)
+
+    s().setNostrPubkey(null);
+    expect(s().nostrPubkey).toBeNull();
+    expect(s().nostrAuthEnabled).toBe(false);    // signed out → auth off, in lockstep
+    expect(mem.has(AUTH)).toBe(false);
+    expect(mem.has(PUBKEY)).toBe(false);
+  });
 });

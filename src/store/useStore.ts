@@ -68,32 +68,34 @@ const {
   gMethod:    seedNostrSigningMethod,
   gPubkey:    seedNostrPubkey,
 } = (() => {
-  let onboarded = false, auth = false;
+  let onboarded = false;
   let method: 'nip07' | 'nip46' | 'local' | null = null;
   let pubkey: string | null = null;
   try {
     onboarded = localStorage.getItem(GATE_ONBOARDED_KEY) === '1';
-    auth      = localStorage.getItem(GATE_AUTH_KEY) === '1';
     const m   = localStorage.getItem(GATE_METHOD_KEY);
     method    = (m === 'nip07' || m === 'nip46' || m === 'local') ? m : null;
     pubkey    = localStorage.getItem(GATE_PUBKEY_KEY);
     // ONE-TIME back-fill from a PLAINTEXT blob for existing users (same approach as the WK_* back-fill). An
     // already-encrypted blob can't be read here — but then these standalone keys were written on a prior run.
-    if (!onboarded && !auth && method == null && pubkey == null) {
+    if (!onboarded && method == null && pubkey == null) {
       const raw = localStorage.getItem('personal-bloc-store');
       if (raw) {
         const o = JSON.parse(raw);
         if (o && o.ct == null && o.iv == null) {   // plaintext blob ONLY
           const st = o.state ?? {};
           if (st.onboardingComplete) { onboarded = true; localStorage.setItem(GATE_ONBOARDED_KEY, '1'); }
-          if (st.nostrAuthEnabled)   { auth = true;      localStorage.setItem(GATE_AUTH_KEY, '1'); }
           if (st.nostrSigningMethod) { method = st.nostrSigningMethod; localStorage.setItem(GATE_METHOD_KEY, String(st.nostrSigningMethod)); }
           if (st.nostrPubkey)        { pubkey = String(st.nostrPubkey); localStorage.setItem(GATE_PUBKEY_KEY, pubkey); }
         }
       }
     }
+    // B1: nostrAuthEnabled is DERIVED from pubkey presence — mirror GATE_AUTH_KEY to GATE_PUBKEY_KEY so the 3a.4
+    // encrypted-cold-start gate still fires (GATE_AUTH_KEY present whenever GATE_PUBKEY_KEY is) AND any legacy
+    // desync (the half-state: auth flag out of step with pubkey) self-heals on launch.
+    if (pubkey) localStorage.setItem(GATE_AUTH_KEY, '1'); else localStorage.removeItem(GATE_AUTH_KEY);
   } catch { /* noop */ }
-  return { gOnboarded: onboarded, gAuth: auth, gMethod: method, gPubkey: pubkey };
+  return { gOnboarded: onboarded, gAuth: !!pubkey, gMethod: method, gPubkey: pubkey };
 })();
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
@@ -787,7 +789,10 @@ export const useStore = create<StoreState>()(
   // 3a.4: write through to the standalone GATE_* keys (outside the encrypted blob) — every mutation of these gate
   // fields keeps the cold-start bootstrap copy in sync; logout/disconnect call these with false/null → removeItem.
   setNostrAuthEnabled:   (v) => { try { v ? localStorage.setItem(GATE_AUTH_KEY, '1') : localStorage.removeItem(GATE_AUTH_KEY); } catch { /* noop */ } set({ nostrAuthEnabled: v }); },
-  setNostrPubkey:        (v) => { try { v == null ? localStorage.removeItem(GATE_PUBKEY_KEY) : localStorage.setItem(GATE_PUBKEY_KEY, v); } catch { /* noop */ } set({ nostrPubkey: v }); },
+  // B1: nostrAuthEnabled is DERIVED from pubkey presence (signed-in) — set in LOCKSTEP here + mirror GATE_AUTH_KEY
+  // to GATE_PUBKEY_KEY so the two can never desync (that desync was the unlock half-state bug). Auth is active iff
+  // signed in; the local key always Face-ID-gates on launch.
+  setNostrPubkey:        (v) => { try { if (v == null) { localStorage.removeItem(GATE_PUBKEY_KEY); localStorage.removeItem(GATE_AUTH_KEY); } else { localStorage.setItem(GATE_PUBKEY_KEY, v); localStorage.setItem(GATE_AUTH_KEY, '1'); } } catch { /* noop */ } set({ nostrPubkey: v, nostrAuthEnabled: !!v }); },
   setNostrSigningMethod: (v) => { try { v == null ? localStorage.removeItem(GATE_METHOD_KEY) : localStorage.setItem(GATE_METHOD_KEY, v); } catch { /* noop */ } set({ nostrSigningMethod: v }); },
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),
@@ -955,7 +960,7 @@ export const useStore = create<StoreState>()(
           // 3a.4: gate-condition fields — kept in the blob, but fall back to the standalone seed so a version bump
           // never loses them (booleans use ?? so a stored `false` is preserved).
           onboardingComplete:   persistedState.onboardingComplete   ?? seedOnboardingComplete,
-          nostrAuthEnabled:     persistedState.nostrAuthEnabled     ?? seedNostrAuthEnabled,
+          nostrAuthEnabled:     !!(persistedState.nostrPubkey ?? seedNostrPubkey),   // B1: derived from pubkey, never the persisted flag
           nostrSigningMethod:   persistedState.nostrSigningMethod   ?? seedNostrSigningMethod,
           nostrPubkey:          persistedState.nostrPubkey          ?? seedNostrPubkey,
           // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
