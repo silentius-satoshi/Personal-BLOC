@@ -17,11 +17,14 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
   const [error, setError]     = useState<string | null>(null);
 
   const unlock = async () => {
+    console.log('[3a-bug2] unlock() called', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
     setLoading(true);
     setError(null);
     try {
       const signer = await restoreSigner(nostr);   // → unwrapSecretKey → Face ID / PIN
       if (!signer) throw new Error('Unlock failed');
+      await useStore.persist.rehydrate();   // Bug 1: ensure async hydration lands BEFORE the gate dismisses (fixes
+                                            // the plaintext seed-flash; harmless on the encrypted path — restoreSigner already rehydrated)
       useStore.getState().setIsAuthenticated(true);
       syncNow(nostr);   // fire-and-forget pull/merge once unlocked
     } catch (e: any) {
@@ -34,6 +37,7 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
   // Last-resort recovery so a stuck unlock can never strand the user: clear local + pull the plan back from the
   // relays. Operates on raw localStorage + restoreSigner (not a hydrated store), so it works from this gate.
   const resetAndResyncFromGate = async () => {
+    console.log('[3a-bug2] resetAndResyncFromGate called', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
     if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
     setLoading(true);
     setError(null);
@@ -41,7 +45,7 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
       const result = await resetAndResync(nostr);
       // No reload: the 'ok' path means the signer is live (restoreSigner set it) AND the pull populated the store.
       // Flip auth true so this gate dismisses straight into the app with the pulled data (mirrors unlock() above).
-      if (result === 'ok') { useStore.getState().setIsAuthenticated(true); return; }
+      if (result === 'ok') { await useStore.persist.rehydrate(); useStore.getState().setIsAuthenticated(true); return; }   // Bug 1: hydration lands before dismiss (belt-and-suspenders — data already in memory from the pull)
       setError(result === 'no-relays'
         ? "Couldn't reach the relays. Your data is safe — nothing was published. Check your connection and try again."
         : "Couldn't unlock your key — use a different login.");

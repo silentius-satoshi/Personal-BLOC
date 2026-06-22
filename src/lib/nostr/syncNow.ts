@@ -9,10 +9,12 @@ let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from us
 export function markSignerFresh(): void { lastReconnectAt = Date.now(); }
 
 async function doSyncNow(nostr: NostrParam): Promise<boolean> {
+  console.log('[3a-bug2] syncNow ENTER', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
   const { nostrPubkey, nostrSigningMethod } = useStore.getState();
   if (!nostrPubkey) return false;
   let signer = useStore.getState().nostrSigner;
   if (!signer || (nostrSigningMethod === 'nip46' && Date.now() - lastReconnectAt > 20000)) {
+    console.log('[3a-bug2] syncNow calling restoreSigner', Date.now());   // TEMP [3a-bug2]
     const fresh = await restoreSigner(nostr);
     if (fresh) { signer = fresh; lastReconnectAt = Date.now(); }
   }

@@ -33,8 +33,9 @@ export async function waitForNostrExtension(timeoutMs = 3000): Promise<boolean> 
  * NO relay fetch, NO sync here. Returns the fresh signer, or null on any failure.
  */
 export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
+  console.log('[3a-bug2] restoreSigner ENTER', Date.now(), 'caller:', new Error().stack?.split('\n')[2]?.trim());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
   const { nostrSigningMethod, nostrPubkey, nostrLogin } = useStore.getState();
-  if (!nostrPubkey) return null;
+  if (!nostrPubkey) { console.log('[3a-bug2] restoreSigner EXIT no-pubkey', Date.now()); return null; }   // TEMP [3a-bug2]
   try {
     if (nostrSigningMethod === 'nip07') {
       const hasExt = await waitForNostrExtension();   // extensions inject async — wait before declaring failure
@@ -87,8 +88,10 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
       }
       sk.fill(0);   // best-effort zero after the signer holds its own copy
       useStore.getState().setNostrSigner(signer);
+      console.log('[3a-bug2] restoreSigner EXIT local-success', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
       return signer;
     }
+    console.log('[3a-bug2] restoreSigner EXIT no-method', Date.now());   // TEMP [3a-bug2]
     return null;
-  } catch (e) { nostrLog('warn', 'restoreSigner failed', e); return null; }
+  } catch (e) { console.log('[3a-bug2] restoreSigner EXIT catch', Date.now(), e);   /* TEMP [3a-bug2] */ nostrLog('warn', 'restoreSigner failed', e); return null; }
 }

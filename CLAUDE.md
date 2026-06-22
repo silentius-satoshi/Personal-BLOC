@@ -862,7 +862,17 @@ doesn't migrate, that's at unlock; OFF leaves a `{ct,iv}` blob). USER — `Setti
 reload — a failed decrypt short-circuits BEFORE the flag is touched (encryption stays on, nothing lost). The opt-out
 lives in RECOVERY (not the dev panel) so a non-dev user can always exit. **No prominent enable-toggle** — encrypted-
 by-default is the earned end state (later default-on flip, NOT 3a.5). The flag stays OFF by default; it's a
-module-load constant, so both surfaces reload to apply. With the flag OFF (default) persist is plain
+module-load constant, so both surfaces reload to apply. **3a polish** (from the 3a.5 device round-trip): **Bug 1
+FIXED** — the plaintext cold-start seed-flash (`LocalUnlockGate.unlock` + `resetAndResyncFromGate` now `await
+useStore.persist.rehydrate()` before `setIsAuthenticated`, so async plain-localStorage hydration lands before the
+gate dismisses; the encrypted path already rehydrated inside `restoreSigner`). **Bug 2 INSTRUMENTED (not fixed)** —
+the `LocalUnlockGate` escape ("Can't unlock — reset & re-sync") shows a double-Face-ID loop then bounces to
+`NostrAuthGate`; root cause UNCONFIRMED (the auto-restore hypothesis is ruled out — `useNostrAutoRestore`
+early-returns for `'local'`; leading hypothesis is `syncNow` + `resetAndResync` concurrent `restoreSigner`).
+TEMPORARY `[3a-bug2]` console instrumentation (ENTER/EXIT + caller-frame + timestamps in `restoreSigner`/`syncNow`/
+`resetAndResync`/the gate) is in place for the next on-device repro — NO behavioral change yet, all sites tagged
+`[3a-bug2]` + `// TEMP … remove after diagnosis` for trivial removal. The primary Settings→RECOVERY escape works; the
+escape hatch never publishes (structural) so the loop can't erase data. With the flag OFF (default) persist is plain
 `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,

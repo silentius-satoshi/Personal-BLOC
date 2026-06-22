@@ -17,6 +17,7 @@ import { useStore } from '../../store/useStore';
  *  'no-auth'   — couldn't restore the signer; the user must re-enter their login.
  */
 export async function resetAndResync(nostr: NostrParam): Promise<'ok' | 'no-relays' | 'no-auth'> {
+  console.log('[3a-bug2] resetAndResync ENTER', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
   const s = useStore.getState();
   s.resetPlanToSeeds();
   // Stranded at-rest-encryption flags are inert post-revert, but clear them defensively.
@@ -37,7 +38,10 @@ export async function resetAndResync(nostr: NostrParam): Promise<'ok' | 'no-rela
   // re-prompt. Only a genuinely missing signer (e.g. the locked-out LocalUnlockGate path) triggers the unwrap.
   let signer = useStore.getState().nostrSigner;
   if (!signer) {
+    console.log('[3a-bug2] resetAndResync calling restoreSigner (no live signer)', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
     try { signer = await restoreSigner(nostr); } catch { return 'no-auth'; }
+  } else {
+    console.log('[3a-bug2] resetAndResync reusing live signer', Date.now());   // TEMP [3a-bug2]
   }
   if (!signer) return 'no-auth';
   const pubkey = useStore.getState().nostrPubkey;
