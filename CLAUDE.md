@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (253 tests — all must pass before every commit)
+- Vitest (258 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -754,7 +754,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-253 tests — `npx vitest run` before every commit.
+258 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -841,7 +841,16 @@ never writes plaintext when locked; derivation/rehydrate failure is non-fatal (l
 nsec-derived key, **VERIFY-BEFORE-DELETE** (overwrite only after the ciphertext decrypts back === original; a failure
 returns false WITHOUT writing → plaintext survives → rehydrate passthrough-reads it → login succeeds). No separate
 migration gate (the key is already derived at unlock, unlike the original Phase C); idempotent, non-fatal. So with
-3a.3 flag-on-your-REAL-store is now SAFE (the tested verify-before-delete is the net). **NO opt-in toggle yet
+3a.3 flag-on-your-REAL-store is now SAFE (the tested verify-before-delete is the net). **3a.4** (done): the four
+gate-condition fields (`onboardingComplete`, `nostrAuthEnabled`, `nostrSigningMethod`, `nostrPubkey`) are now ALSO
+persisted in standalone localStorage (`GATE_*` keys: `personal-bloc-onboarded`/`-nostr-auth`/`-nostr-method`/
+`-nostr-pubkey`), seeded into the store initial state at module init (before hydration) and written through in their
+setters — mirroring `writerKeyWrapped`. Fixes the encrypted-cold-start DEADLOCK: on a `{ct,iv}` cold start the blob
+can't be read until unlock, but the `LocalUnlockGate` condition needs those four — locked inside the box the gate
+would open → onboarding showed instead. Now they live outside the blob (kept IN the blob too — redundant, serves the
+plaintext path; the standalone copy is the cold-start bootstrap), so the gate shows → Face ID → rehydrate → decrypt.
+Fresh-install/flag-off parity: no `GATE_*` keys → seeds false/null, identical to the old constants. One-time
+back-fill from a plaintext blob for existing users (same as the WK_* back-fill). **NO opt-in toggle yet
 (3a.5)** and NO decrypt-back opt-OUT — to revert from encrypted, use the escape hatch (reset & re-sync repopulates a
 fresh plaintext store from relays; clearing the flag alone leaves an `{ct,iv}` blob the plain adapter can't parse).
 With the flag OFF (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):

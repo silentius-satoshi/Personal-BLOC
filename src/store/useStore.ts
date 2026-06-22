@@ -11,9 +11,10 @@ import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
 
-// At-rest store encryption (Phase B) — standalone localStorage flag, read once at module load. Lives OUTSIDE the
-// persisted store blob (you can't read a setting stored inside the thing it gates). NOW INERT: the user-facing
-// encryption flow was reverted and persist always uses plain localStorage (see the explicit `storage` below).
+// At-rest store encryption — standalone localStorage flag, read once at module load. Lives OUTSIDE the persisted
+// store blob (you can't read a setting stored inside the thing it gates). Persist is FLAG-CONDITIONAL since 3a.2:
+// flag on → the encrypted `encryptedStorage` adapter; flag off (default) → plain `window.localStorage` (see the
+// `storage` config below). Manual flag only until the 3a.5 opt-in.
 export const storeEncEnabled = (() => {
   try { return localStorage.getItem('personal-bloc-store-enc-enabled') === '1'; } catch { return false; }
 })();
@@ -48,6 +49,51 @@ const { wkWrapped: seedWriterKeyWrapped, wkMeta: seedWriterKeyWrapMeta } = (() =
     }
   } catch { /* noop */ }
   return { wkWrapped: wrapped, wkMeta: meta };
+})();
+
+// Gate-condition fields needed to render the unlock gate on an ENCRYPTED cold start — they decide whether to show
+// LocalUnlockGate, so (like the wrap credential above) they must live OUTSIDE the encrypted blob, else they're
+// locked inside the box the gate would open (the 3a.4 cold-start deadlock: encrypted blob → getItem null → seeds →
+// onboarding shows instead of the gate). Standalone localStorage; the store fields are seeded from / written through
+// to these. KEPT in the blob too (redundant — serves the plaintext/flag-off path); the standalone copy bootstraps
+// the gate on encrypted cold start.
+const GATE_ONBOARDED_KEY = 'personal-bloc-onboarded';
+const GATE_AUTH_KEY      = 'personal-bloc-nostr-auth';       // 'nostrAuthEnabled'
+const GATE_METHOD_KEY    = 'personal-bloc-nostr-method';     // 'nostrSigningMethod'
+const GATE_PUBKEY_KEY    = 'personal-bloc-nostr-pubkey';     // 'nostrPubkey'
+
+const {
+  gOnboarded: seedOnboardingComplete,
+  gAuth:      seedNostrAuthEnabled,
+  gMethod:    seedNostrSigningMethod,
+  gPubkey:    seedNostrPubkey,
+} = (() => {
+  let onboarded = false, auth = false;
+  let method: 'nip07' | 'nip46' | 'local' | null = null;
+  let pubkey: string | null = null;
+  try {
+    onboarded = localStorage.getItem(GATE_ONBOARDED_KEY) === '1';
+    auth      = localStorage.getItem(GATE_AUTH_KEY) === '1';
+    const m   = localStorage.getItem(GATE_METHOD_KEY);
+    method    = (m === 'nip07' || m === 'nip46' || m === 'local') ? m : null;
+    pubkey    = localStorage.getItem(GATE_PUBKEY_KEY);
+    // ONE-TIME back-fill from a PLAINTEXT blob for existing users (same approach as the WK_* back-fill). An
+    // already-encrypted blob can't be read here — but then these standalone keys were written on a prior run.
+    if (!onboarded && !auth && method == null && pubkey == null) {
+      const raw = localStorage.getItem('personal-bloc-store');
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && o.ct == null && o.iv == null) {   // plaintext blob ONLY
+          const st = o.state ?? {};
+          if (st.onboardingComplete) { onboarded = true; localStorage.setItem(GATE_ONBOARDED_KEY, '1'); }
+          if (st.nostrAuthEnabled)   { auth = true;      localStorage.setItem(GATE_AUTH_KEY, '1'); }
+          if (st.nostrSigningMethod) { method = st.nostrSigningMethod; localStorage.setItem(GATE_METHOD_KEY, String(st.nostrSigningMethod)); }
+          if (st.nostrPubkey)        { pubkey = String(st.nostrPubkey); localStorage.setItem(GATE_PUBKEY_KEY, pubkey); }
+        }
+      }
+    }
+  } catch { /* noop */ }
+  return { gOnboarded: onboarded, gAuth: auth, gMethod: method, gPubkey: pubkey };
 })();
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
@@ -528,12 +574,14 @@ export const useStore = create<StoreState>()(
   strikeLiquidationLtvPct: 85,
 
   simpleMode:         false,
-  onboardingComplete: false,
+  onboardingComplete: seedOnboardingComplete,   // 3a.4: standalone-seeded (false on fresh install = today's default)
   btcBuyingUnit:      'btc',
   devMode:            false,
   expenseReanchorDismissedAt: 0,
   setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
-  setOnboardingComplete: (v) => set({ onboardingComplete: v }),
+  // 3a.4: write through to the standalone GATE_* key (outside the encrypted blob) so the unlock gate can bootstrap
+  // on an encrypted cold start. Mirrors setWriterKeyWrapped.
+  setOnboardingComplete: (v) => { try { v ? localStorage.setItem(GATE_ONBOARDED_KEY, '1') : localStorage.removeItem(GATE_ONBOARDED_KEY); } catch { /* noop */ } set({ onboardingComplete: v }); },
   setBtcBuyingUnit:      (v) => { set({ btcBuyingUnit: v }); useStore.getState().syncSettingsToNostr(); },
   setDevMode:            (v) => set({ devMode: v }),
   setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no syncSettingsToNostr
@@ -717,9 +765,9 @@ export const useStore = create<StoreState>()(
   setStrikeApiConnected: (v) => set({ strikeApiConnected: v }),
   setStrikeLastFetched:  (v) => set({ strikeLastFetched: v }),
 
-  nostrAuthEnabled:   false,
-  nostrPubkey:        null,
-  nostrSigningMethod: null,
+  nostrAuthEnabled:   seedNostrAuthEnabled,      // 3a.4: standalone-seeded (false/null on fresh install = today's default)
+  nostrPubkey:        seedNostrPubkey,
+  nostrSigningMethod: seedNostrSigningMethod,
   nostrBunkerUri:     null,
   nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'],
   nostrLogin:         null,
@@ -736,9 +784,11 @@ export const useStore = create<StoreState>()(
   viewerUnlocked:      false,
   viewerDataLoaded:    false,
   storeUnlocked:       false,
-  setNostrAuthEnabled:   (v) => set({ nostrAuthEnabled: v }),
-  setNostrPubkey:        (v) => set({ nostrPubkey: v }),
-  setNostrSigningMethod: (v) => set({ nostrSigningMethod: v }),
+  // 3a.4: write through to the standalone GATE_* keys (outside the encrypted blob) — every mutation of these gate
+  // fields keeps the cold-start bootstrap copy in sync; logout/disconnect call these with false/null → removeItem.
+  setNostrAuthEnabled:   (v) => { try { v ? localStorage.setItem(GATE_AUTH_KEY, '1') : localStorage.removeItem(GATE_AUTH_KEY); } catch { /* noop */ } set({ nostrAuthEnabled: v }); },
+  setNostrPubkey:        (v) => { try { v == null ? localStorage.removeItem(GATE_PUBKEY_KEY) : localStorage.setItem(GATE_PUBKEY_KEY, v); } catch { /* noop */ } set({ nostrPubkey: v }); },
+  setNostrSigningMethod: (v) => { try { v == null ? localStorage.removeItem(GATE_METHOD_KEY) : localStorage.setItem(GATE_METHOD_KEY, v); } catch { /* noop */ } set({ nostrSigningMethod: v }); },
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),
   setNostrLogin:         (v) => set({ nostrLogin: v }),
@@ -902,6 +952,12 @@ export const useStore = create<StoreState>()(
           // standalone seed — NEVER null-clobber a future migration where the field is absent from the blob.
           writerKeyWrapped:     persistedState.writerKeyWrapped  ?? seedWriterKeyWrapped,
           writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? seedWriterKeyWrapMeta,
+          // 3a.4: gate-condition fields — kept in the blob, but fall back to the standalone seed so a version bump
+          // never loses them (booleans use ?? so a stored `false` is preserved).
+          onboardingComplete:   persistedState.onboardingComplete   ?? seedOnboardingComplete,
+          nostrAuthEnabled:     persistedState.nostrAuthEnabled     ?? seedNostrAuthEnabled,
+          nostrSigningMethod:   persistedState.nostrSigningMethod   ?? seedNostrSigningMethod,
+          nostrPubkey:          persistedState.nostrPubkey          ?? seedNostrPubkey,
           // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
           // snapshot). Additive nullable defaults, no version bump.
           viewerNpub:           persistedState.viewerNpub   ?? null,
