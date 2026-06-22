@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (258 tests — all must pass before every commit)
+- Vitest (260 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -756,7 +756,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-258 tests — `npx vitest run` before every commit.
+260 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -784,6 +784,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 - `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
 - `src/lib/nostr/__tests__/session.test.ts` — `waitForNostrExtension` (the async-injection-race fix): already-present → true immediately; injected mid-poll (fake timers) → true; absent through the timeout → false
+- `src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts` — `restoreSigner` single-flight (Bug 2): two concurrent calls share ONE ceremony (`unwrapSecretKey` invoked once) + resolve to the SAME signer (stub NSecSigner + mocked unwrapSecretKey, no real crypto); a later non-concurrent call runs the worker again (guard cleared on settle)
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -868,15 +869,15 @@ by-default is the earned end state (later default-on flip, NOT 3a.5). The flag s
 module-load constant, so both surfaces reload to apply. **3a polish** (from the 3a.5 device round-trip): **Bug 1
 FIXED** — the plaintext cold-start seed-flash (`LocalUnlockGate.unlock` + `resetAndResyncFromGate` now `await
 useStore.persist.rehydrate()` before `setIsAuthenticated`, so async plain-localStorage hydration lands before the
-gate dismisses; the encrypted path already rehydrated inside `restoreSigner`). **Bug 2 INSTRUMENTED (not fixed)** —
-the `LocalUnlockGate` escape ("Can't unlock — reset & re-sync") shows a double-Face-ID loop then bounces to
-`NostrAuthGate`; root cause UNCONFIRMED (the auto-restore hypothesis is ruled out — `useNostrAutoRestore`
-early-returns for `'local'`; leading hypothesis is `syncNow` + `resetAndResync` concurrent `restoreSigner`).
-TEMPORARY `[3a-bug2]` console instrumentation (ENTER/EXIT + caller-frame + timestamps in `restoreSigner`/`syncNow`/
-`resetAndResync`/the gate) is in place for the next on-device repro — NO behavioral change yet, all sites tagged
-`[3a-bug2]` + `// TEMP … remove after diagnosis` for trivial removal. The primary Settings→RECOVERY escape works; the
-escape hatch never publishes (structural) so the loop can't erase data. With the flag OFF (default) persist is plain
-`window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
+gate dismisses; the encrypted path already rehydrated inside `restoreSigner`). **Bug 2 FIXED** — the
+`LocalUnlockGate` escape's double-Face-ID loop → `NostrAuthGate` bounce. Root cause CONFIRMED from device logs: the
+escape path's `restoreSigner` and a reactive `syncNow`'s `restoreSigner` (via `useNostrSync`) fired CONCURRENTLY →
+two WebAuthn ceremonies at once → one aborts (AbortError), the other loops (NotAllowedError). Fix: a **single-flight
+guard on `restoreSigner`** (module-level in-flight promise mirroring syncNow — the public `restoreSigner` wraps the
+renamed `doRestoreSigner` worker; concurrent callers share ONE ceremony AND the SAME signer, `.finally` clears the
+guard). `useNostrAutoRestore` was ruled out (early-returns for `'local'`); the second caller was `syncNow`. The
+`[3a-bug2]` instrumentation was removed. The primary Settings→RECOVERY escape works; the escape hatch never publishes
+(structural) so the loop never threatened data. With the flag OFF (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
 empty localStorage). The revert had set `storage: undefined`; it must be an explicit `createJSONStorage`. Use the
@@ -1090,6 +1091,10 @@ src/
                                     # credential. Deterministic + stable across reinstalls; independent from the
                                     # nsec-WRAP key (distinct info); copies sk (never mutates caller). In memory only
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
+                                    # SINGLE-FLIGHT (Bug 2 fix): the public restoreSigner wraps doRestoreSigner in a
+                                    # module-level in-flight promise (mirrors syncNow) — concurrent callers (gate escape
+                                    # + reactive syncNow) share ONE WebAuthn ceremony + the SAME signer; two ceremonies
+                                    # at once aborted one (AbortError) + looped the other (NotAllowedError).
                                     # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match →
                                     # [3a.1: storeEncEnabled ? deriveStoreKeyFromNsec(sk,pubkey)→setStoreKey, AFTER the
                                     # pubkey check, BEFORE sk.fill(0); + 3a.3: await migratePlaintextToEncrypted()

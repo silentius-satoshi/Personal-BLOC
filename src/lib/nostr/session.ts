@@ -31,11 +31,11 @@ export async function waitForNostrExtension(timeoutMs = 3000): Promise<boolean> 
 /**
  * Rebuild the signer from the persisted login and store it. Single responsibility:
  * NO relay fetch, NO sync here. Returns the fresh signer, or null on any failure.
+ * The inner worker — call the single-flight `restoreSigner` wrapper below, never this directly.
  */
-export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
-  console.log('[3a-bug2] restoreSigner ENTER', Date.now(), 'caller:', new Error().stack?.split('\n')[2]?.trim());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
+async function doRestoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
   const { nostrSigningMethod, nostrPubkey, nostrLogin } = useStore.getState();
-  if (!nostrPubkey) { console.log('[3a-bug2] restoreSigner EXIT no-pubkey', Date.now()); return null; }   // TEMP [3a-bug2]
+  if (!nostrPubkey) return null;
   try {
     if (nostrSigningMethod === 'nip07') {
       const hasExt = await waitForNostrExtension();   // extensions inject async — wait before declaring failure
@@ -88,10 +88,22 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
       }
       sk.fill(0);   // best-effort zero after the signer holds its own copy
       useStore.getState().setNostrSigner(signer);
-      console.log('[3a-bug2] restoreSigner EXIT local-success', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
       return signer;
     }
-    console.log('[3a-bug2] restoreSigner EXIT no-method', Date.now());   // TEMP [3a-bug2]
     return null;
-  } catch (e) { console.log('[3a-bug2] restoreSigner EXIT catch', Date.now(), e);   /* TEMP [3a-bug2] */ nostrLog('warn', 'restoreSigner failed', e); return null; }
+  } catch (e) { nostrLog('warn', 'restoreSigner failed', e); return null; }
+}
+
+let restoreInFlight: Promise<NostrSigner | null> | null = null;
+
+/**
+ * Single-flight: concurrent callers share ONE restore (and the SAME signer). WebAuthn permits only one ceremony
+ * at a time — launching two (e.g. the LocalUnlockGate escape AND a reactive syncNow) aborts one (AbortError) and
+ * loops the other (NotAllowedError). Mirrors syncNow's in-flight guard; module-level (one ceremony per browser);
+ * `.finally` clears it so later non-concurrent restores work.
+ */
+export function restoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
+  if (restoreInFlight) return restoreInFlight;
+  restoreInFlight = doRestoreSigner(nostr).finally(() => { restoreInFlight = null; });
+  return restoreInFlight;
 }

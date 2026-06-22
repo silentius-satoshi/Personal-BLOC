@@ -17,7 +17,6 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
   const [error, setError]     = useState<string | null>(null);
 
   const unlock = async () => {
-    console.log('[3a-bug2] unlock() called', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
     setLoading(true);
     setError(null);
     try {
@@ -37,7 +36,6 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
   // Last-resort recovery so a stuck unlock can never strand the user: clear local + pull the plan back from the
   // relays. Operates on raw localStorage + restoreSigner (not a hydrated store), so it works from this gate.
   const resetAndResyncFromGate = async () => {
-    console.log('[3a-bug2] resetAndResyncFromGate called', Date.now());   // TEMP [3a-bug2] instrumentation — remove after diagnosis
     if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
     setLoading(true);
     setError(null);
