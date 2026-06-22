@@ -5,6 +5,7 @@ import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulat
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
+import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
 import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { NostrSigner } from '@nostrify/nostrify';
 
@@ -853,11 +854,15 @@ export const useStore = create<StoreState>()(
       name: 'personal-bloc-store',
       version: 18,
       // Zustand v5: storage MUST be explicit — `undefined` DISABLES persistence (it does NOT default to
-      // localStorage; that was older-Zustand behavior). Use `window.localStorage` (zustand's own default form):
+      // localStorage; that was older-Zustand behavior). Plain `window.localStorage` (zustand's own default form):
       // in the browser it's the real store; under Node (tests, no `window`) the getter throws → createJSONStorage
       // returns undefined → persist cleanly disables, instead of building a broken adapter that throws on write.
-      // Plain localStorage (at-rest encryption reverted; lockout-proof).
-      storage: createJSONStorage(() => window.localStorage),
+      // 3a.2: flag ON → persist through the encrypted adapter (AES-GCM, nsec-derived key held in storeCrypto); OFF →
+      // plain localStorage (today's default, BYTE-IDENTICAL). The adapter NEVER writes plaintext when locked (drops
+      // the write) and hydrates empty until the key arrives at unlock (then session.ts calls persist.rehydrate()).
+      storage: storeEncEnabled
+        ? createJSONStorage(() => encryptedStorage)
+        : createJSONStorage(() => window.localStorage),
       partialize: (state) => {
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, ...rest } = state;
         return rest;

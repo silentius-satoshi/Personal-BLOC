@@ -72,8 +72,11 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
         try {
           const storeKey = await deriveStoreKeyFromNsec(sk, nostrPubkey);
           setStoreKey(storeKey);
+          // 3a.2: the key is now available → re-hydrate so the encrypted persist blob decrypts and real data loads.
+          // (First hydration ran before the key was set → store hydrated to seeds; this re-runs getItem WITH the key.)
+          await useStore.persist.rehydrate();
         } catch (e) {
-          nostrLog('warn', '3a store key derivation failed (non-fatal)', e);
+          nostrLog('warn', '3a store key derivation/rehydrate failed (non-fatal)', e);
         }
       }
       sk.fill(0);   // best-effort zero after the signer holds its own copy

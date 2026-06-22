@@ -826,9 +826,19 @@ prefs follow this pattern, NOT the in-memory exclusion list (which is for transi
 `nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`).
 **At-rest store encryption — ⚠ USER-FACING FLOW REVERTED (lockout-proof).** The Phase B/C user flow (Settings
 "Encrypt local data" toggle + `AppUnlockGate`/`StoreMigrationGate` render branches + the conditional encrypted
-persist adapter) **locked users out twice on real iOS and has been removed.** `useStore` persists via an EXPLICIT
-`storage: createJSONStorage(() => window.localStorage)` (plain localStorage — no path reaches the encrypted
-adapter), AppShell renders NO encryption gate, and Settings has NO toggle. **⚠ Zustand v5 gotcha (regression fixed):
+persist adapter) **locked users out twice on real iOS and has been removed.** The user-facing flow stays reverted —
+Settings has NO toggle and AppShell renders NO `AppUnlockGate`. **Option-3a is now being rebuilt in steps behind the
+MANUAL `storeEncEnabled` flag** (standalone `personal-bloc-store-enc-enabled`='1', set by hand; OFF by default → the
+sections below are byte-identical no-ops). **3a.1** (done): `restoreSigner`'s local branch derives an nsec-rooted
+store key at unlock (`deriveStoreKeyFromNsec`) and holds it — derivation only. **3a.2** (done): persist `storage` is
+now flag-conditional — `storeEncEnabled ? createJSONStorage(() => encryptedStorage) : createJSONStorage(() =>
+window.localStorage)`, and after `setStoreKey` the local branch calls `await useStore.persist.rehydrate()` so the
+encrypted blob decrypts post-unlock (first hydration runs keyless → seeds → rehydrate after Face ID). The flag-on
+cold-start path reuses the EXISTING `LocalUnlockGate` (already carries the escape hatch) — NO new gate; the adapter
+never writes plaintext when locked; derivation/rehydrate failure is non-fatal (logs, login still succeeds). **NO
+migration yet (3a.3) and NO opt-in toggle (3a.5)** — so flag-on with a plaintext store is a half-state (passthrough-
+read then encrypt-on-write); throwaway/observational only, do NOT flag-on a real store until 3a.3. With the flag OFF
+(default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
 empty localStorage). The revert had set `storage: undefined`; it must be an explicit `createJSONStorage`. Use the
@@ -1044,8 +1054,10 @@ src/
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
                                     # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match →
                                     # [3a.1: storeEncEnabled ? deriveStoreKeyFromNsec(sk,pubkey)→setStoreKey, AFTER the
-                                    # pubkey check, BEFORE sk.fill(0); flag-gated (OFF=no-op, byte-identical login) +
-                                    # try/catch NON-FATAL so login never breaks; DERIVATION ONLY — no gating/encryption] → sk.fill(0).
+                                    # pubkey check, BEFORE sk.fill(0); + 3a.2: await useStore.persist.rehydrate() right
+                                    # after setStoreKey (key now available → encrypted blob decrypts, real data loads);
+                                    # flag-gated (OFF=no-op, byte-identical login) + try/catch NON-FATAL so login never
+                                    # breaks] → sk.fill(0).
                                     # nip07 branch AWAITS waitForNostrExtension() (exported; polls window.nostr every
                                     # 100ms up to 3s) before throwing 'no extension' — extensions inject window.nostr
                                     # ASYNCHRONOUSLY on load, so a refresh that runs the restore effect first must wait,
@@ -1084,9 +1096,9 @@ src/
     storeCrypto.ts                  # At-rest store encryption (Phase B) — in-memory storeKey holder (getStoreKey/
                                     # setStoreKey/isStoreUnlocked, never persisted) + encryptedStorage adapter:
                                     # getItem decrypts the {ct,iv} envelope (locked→null, non-envelope→passthrough),
-                                    # setItem encrypts (LOCKED→drops the write, NEVER plaintext). ⚠ NO LONGER wired
-                                    # into persist (user-facing encryption reverted; storage is always default) —
-                                    # retained + tested for Option-3a
+                                    # setItem encrypts (LOCKED→drops the write, NEVER plaintext). 3a.2: WIRED into
+                                    # persist as the `storage` adapter WHEN storeEncEnabled (else plain
+                                    # window.localStorage). The held key is the nsec-derived 3a.1 key (set at unlock)
     storeMigration.ts               # ⚠ RETAINED but UNWIRED (encryption reverted) — migratePlaintextToEncrypted /
                                     # migrateEncryptedToPlaintext (VERIFY-BEFORE-DELETE: never overwrite the source
                                     # until the new blob decrypts back === original; idempotent; use getStoreKey) +
