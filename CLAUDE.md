@@ -835,10 +835,16 @@ now flag-conditional — `storeEncEnabled ? createJSONStorage(() => encryptedSto
 window.localStorage)`, and after `setStoreKey` the local branch calls `await useStore.persist.rehydrate()` so the
 encrypted blob decrypts post-unlock (first hydration runs keyless → seeds → rehydrate after Face ID). The flag-on
 cold-start path reuses the EXISTING `LocalUnlockGate` (already carries the escape hatch) — NO new gate; the adapter
-never writes plaintext when locked; derivation/rehydrate failure is non-fatal (logs, login still succeeds). **NO
-migration yet (3a.3) and NO opt-in toggle (3a.5)** — so flag-on with a plaintext store is a half-state (passthrough-
-read then encrypt-on-write); throwaway/observational only, do NOT flag-on a real store until 3a.3. With the flag OFF
-(default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
+never writes plaintext when locked; derivation/rehydrate failure is non-fatal (logs, login still succeeds).
+**3a.3** (done): the local branch runs `migratePlaintextToEncrypted()` INLINE between `setStoreKey` and
+`rehydrate()` — a flag-on cold start with an existing plaintext blob migrates it to the `{ct,iv}` envelope using the
+nsec-derived key, **VERIFY-BEFORE-DELETE** (overwrite only after the ciphertext decrypts back === original; a failure
+returns false WITHOUT writing → plaintext survives → rehydrate passthrough-reads it → login succeeds). No separate
+migration gate (the key is already derived at unlock, unlike the original Phase C); idempotent, non-fatal. So with
+3a.3 flag-on-your-REAL-store is now SAFE (the tested verify-before-delete is the net). **NO opt-in toggle yet
+(3a.5)** and NO decrypt-back opt-OUT — to revert from encrypted, use the escape hatch (reset & re-sync repopulates a
+fresh plaintext store from relays; clearing the flag alone leaves an `{ct,iv}` blob the plain adapter can't parse).
+With the flag OFF (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
 empty localStorage). The revert had set `storage: undefined`; it must be an explicit `createJSONStorage`. Use the
@@ -1054,8 +1060,9 @@ src/
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
                                     # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match →
                                     # [3a.1: storeEncEnabled ? deriveStoreKeyFromNsec(sk,pubkey)→setStoreKey, AFTER the
-                                    # pubkey check, BEFORE sk.fill(0); + 3a.2: await useStore.persist.rehydrate() right
-                                    # after setStoreKey (key now available → encrypted blob decrypts, real data loads);
+                                    # pubkey check, BEFORE sk.fill(0); + 3a.3: await migratePlaintextToEncrypted()
+                                    # (verify-before-delete, idempotent) then + 3a.2: await useStore.persist.rehydrate()
+                                    # (key now available → migrate plaintext→envelope, then decrypt + load real data);
                                     # flag-gated (OFF=no-op, byte-identical login) + try/catch NON-FATAL so login never
                                     # breaks] → sk.fill(0).
                                     # nip07 branch AWAITS waitForNostrExtension() (exported; polls window.nostr every
@@ -1099,10 +1106,11 @@ src/
                                     # setItem encrypts (LOCKED→drops the write, NEVER plaintext). 3a.2: WIRED into
                                     # persist as the `storage` adapter WHEN storeEncEnabled (else plain
                                     # window.localStorage). The held key is the nsec-derived 3a.1 key (set at unlock)
-    storeMigration.ts               # ⚠ RETAINED but UNWIRED (encryption reverted) — migratePlaintextToEncrypted /
-                                    # migrateEncryptedToPlaintext (VERIFY-BEFORE-DELETE: never overwrite the source
-                                    # until the new blob decrypts back === original; idempotent; use getStoreKey) +
-                                    # blobIsPlaintext. Tested; basis for Option-3a
+    storeMigration.ts               # migratePlaintextToEncrypted (3a.3: WIRED — restoreSigner calls it inline at
+                                    # unlock, between setStoreKey + rehydrate) / migrateEncryptedToPlaintext (still
+                                    # unused until 3a.5 opt-OUT). VERIFY-BEFORE-DELETE: never overwrite the source
+                                    # until the new blob decrypts back === original; idempotent; use getStoreKey. +
+                                    # blobIsPlaintext. Tested (incl. the critical verify-mismatch-keeps-plaintext)
     escapeHatch.ts                  # ESCAPE HATCH — resetAndResync(nostr): 'ok' | 'no-relays' | 'no-auth'. Always-
                                     # available recovery that clears local plan → seeds (resetPlanToSeeds) + stranded
                                     # enc flags, clears recordsDirty/settingsDirty BEFORE any sync, RESETS the sync

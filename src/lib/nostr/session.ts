@@ -4,6 +4,7 @@ import { useStore, storeEncEnabled } from '../../store/useStore';
 import { nostrLog } from './log';
 import { unwrapSecretKey, deriveStoreKeyFromNsec } from './keyVault';
 import { setStoreKey } from '../store/storeCrypto';
+import { migratePlaintextToEncrypted } from '../store/storeMigration';
 import type { NostrSigner } from './signers';
 
 // Matches the value useNostr() returns (the 2nd arg to NUser.fromBunkerLogin) without a fragile import.
@@ -72,11 +73,16 @@ export async function restoreSigner(nostr: NostrParam): Promise<NostrSigner | nu
         try {
           const storeKey = await deriveStoreKeyFromNsec(sk, nostrPubkey);
           setStoreKey(storeKey);
-          // 3a.2: the key is now available → re-hydrate so the encrypted persist blob decrypts and real data loads.
+          // 3a.3: migrate an existing plaintext blob to the encrypted envelope NOW, using the key just derived.
+          // VERIFY-BEFORE-DELETE — overwrites only after the ciphertext decrypts back === original; a failure
+          // leaves plaintext intact (rehydrate below passthrough-reads it). Idempotent (no-op if already encrypted).
+          // A false return is the SAFE path (plaintext intact), not an exception.
+          await migratePlaintextToEncrypted();
+          // 3a.2: re-hydrate so the now-encrypted (or still-plaintext-on-migration-failure) blob loads with the key.
           // (First hydration ran before the key was set → store hydrated to seeds; this re-runs getItem WITH the key.)
           await useStore.persist.rehydrate();
         } catch (e) {
-          nostrLog('warn', '3a store key derivation/rehydrate failed (non-fatal)', e);
+          nostrLog('warn', '3a store key derivation/migration/rehydrate failed (non-fatal)', e);
         }
       }
       sk.fill(0);   // best-effort zero after the signer holds its own copy
