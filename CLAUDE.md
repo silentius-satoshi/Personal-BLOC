@@ -91,9 +91,28 @@ src/
       InputsPanel.module.css
 
     Settings/
-      SettingsMain.tsx          # Tab visibility toggles + drag-to-reorder (⠿ handles only);
-                                # Build row (5 taps toggles devMode) + DevPanel mount
-      SettingsMain.module.css
+      SettingsMain.tsx          # PHASE 1 NAVIGATION SHELL — an iOS-style section MENU (rows) that drills into
+                                # dedicated SUBPAGES, driven by a LOCAL `settingsPage` state (NOT the store/activeTab):
+                                # 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'about'.
+                                # Menu view = header (when !hideHeader → ← Back to app) + the section rows (SettingsRow
+                                # helper: glyph icon + title + subtitle + chevron). Subpage view = a .subHeader (← Settings
+                                # → menu + SUBPAGE_TITLES[page]) then that section's content. Split A (controls moved
+                                # VERBATIM — same handlers/selectors/hooks, only relocated): identity = NOSTR IDENTITY
+                                # (Enable-Nostr-Lock toggle + identity row + sync + recovery + decrypt-back); sharing =
+                                # VIEWER ACCESS (pulled out of the shared Nostr section); strike = BUDGET + STRIKE BLOC
+                                # inputs; cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
+                                # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; about = build-tap row + DevPanel.
+                                # GATING PRESERVED: identity/sharing/strike/cbloan/tabs rows stay !viewerMode (display/about
+                                # always) — viewer visibility is unchanged from before (the zero-risk reading of the spec's
+                                # "always" table). The ONE behavioral change: the `hasCbLoan` toggle moved OUT of the subpage
+                                # ONTO a persistent Coinbase Loan menu row — off → row dimmed (.settingsRowDisabled), no
+                                # chevron, body not tappable (only the toggle, stopPropagation so it doesn't navigate); on →
+                                # tappable → cbloan subpage; a useEffect bounces 'cbloan'→'menu' if the loan is turned off
+                                # while there. simpleMode embed (hideHeader): menu omits the app-back button, subpages still
+                                # render their ← Settings sub-header. AUTH UNTOUCHED (NOSTR IDENTITY verbatim — Phase 2 will
+                                # rework it). Still owns the local ALL_TABS constant + 5-tap devMode build row
+      SettingsMain.module.css   # + Phase 1: .settingsMenu/.settingsRow(+Disabled/Icon/Body/Title/Subtitle/Toggle/Chevron)
+                                # + .subHeader/.subBackBtn/.subTitle (theme tokens; additive — no existing class changed)
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an

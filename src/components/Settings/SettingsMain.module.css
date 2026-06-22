@@ -347,3 +347,109 @@
   cursor: default;   /* 5-tap dev-mode trigger stays undiscoverable */
   user-select: none;
 }
+
+/* ── Phase 1 navigation shell: section menu (rows) + drill-in subpage headers ── */
+.settingsMenu {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settingsRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 14px 16px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.settingsRow:hover {
+  border-color: var(--text-secondary);
+  background: var(--bg-hover);
+}
+
+.settingsRowDisabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.settingsRowDisabled:hover {
+  border-color: var(--border);
+  background: var(--bg-card);
+}
+
+.settingsRowIcon {
+  font-size: 18px;
+  line-height: 1;
+  flex-shrink: 0;
+  width: 22px;
+  text-align: center;
+}
+
+.settingsRowBody {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.settingsRowTitle {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.settingsRowSubtitle {
+  font-size: 12px;
+  color: var(--text-ghost);
+  line-height: 1.4;
+}
+
+.settingsRowToggle {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  opacity: 1;   /* stay full-strength even when the row is dimmed — it's the only control then */
+}
+
+.settingsRowChevron {
+  font-size: 20px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  line-height: 1;
+}
+
+.subHeader {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.subBackBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 6px 12px;
+  transition: border-color 0.15s, color 0.15s;
+  flex-shrink: 0;
+}
+
+.subBackBtn:hover {
+  border-color: var(--text-secondary);
+  color: var(--text-primary);
+}
+
+.subTitle {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+}

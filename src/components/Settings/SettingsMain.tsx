@@ -13,7 +13,7 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { useRef, useState } from 'react';
+import { useRef, useState, useEffect } from 'react';
 import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
@@ -95,6 +95,46 @@ function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, 
   );
 }
 
+// Phase 1 navigation shell: the long scroll becomes a section menu (rows) that drills into subpages.
+type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'about';
+
+const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
+  identity: 'Identity & Security',
+  sharing:  'Sharing',
+  strike:   'Strike Strategy',
+  cbloan:   'Coinbase Loan',
+  display:  'Display',
+  tabs:     'Tabs',
+  about:    'About',
+};
+
+interface SettingsRowProps {
+  icon:      string;
+  title:     string;
+  subtitle?: string;
+  onClick:   () => void;
+  styles:    Record<string, string>;
+}
+
+function SettingsRow({ icon, title, subtitle, onClick, styles }: SettingsRowProps) {
+  return (
+    <div
+      className={styles.settingsRow}
+      role="button"
+      tabIndex={0}
+      onClick={onClick}
+      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
+    >
+      <span className={styles.settingsRowIcon}>{icon}</span>
+      <div className={styles.settingsRowBody}>
+        <span className={styles.settingsRowTitle}>{title}</span>
+        {subtitle && <span className={styles.settingsRowSubtitle}>{subtitle}</span>}
+      </div>
+      <span className={styles.settingsRowChevron}>›</span>
+    </div>
+  );
+}
+
 interface SettingsMainProps {
   hideHeader?: boolean;
 }
@@ -114,6 +154,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const viewerMode          = useStore((s) => s.viewerMode);   // hide owner-only sections for a read-only viewer
   const setDevMode          = useStore((s) => s.setDevMode);
 
+  // Phase 1: which settings subpage is showing (local — not threaded through the store/activeTab).
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>('menu');
+
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
   const tapCount  = useRef(0);
   const lastTapAt = useRef(0);
@@ -129,6 +172,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   };
   const hasCbLoan           = useStore((s) => s.hasCbLoan);
   const setHasCbLoan        = useStore((s) => s.setHasCbLoan);
+
+  // Don't strand the user on the Coinbase Loan subpage if the loan is turned off (via the menu-row toggle) while there.
+  useEffect(() => {
+    if (settingsPage === 'cbloan' && !hasCbLoan) setSettingsPage('menu');
+  }, [settingsPage, hasCbLoan]);
 
   const nostrAuthEnabled    = useStore((s) => s.nostrAuthEnabled);
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
@@ -268,32 +316,74 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
   return (
     <div className={styles.main}>
-      {!hideHeader && (
-        <div className={styles.header}>
-          <button className={styles.backBtn} onClick={() => setActiveTab(previousTab)}>
-            ← Back
-          </button>
-          <h2 className={styles.title}>Settings</h2>
+      {settingsPage === 'menu' && (
+        <>
+          {!hideHeader && (
+            <div className={styles.header}>
+              <button className={styles.backBtn} onClick={() => setActiveTab(previousTab)}>
+                ← Back
+              </button>
+              <h2 className={styles.title}>Settings</h2>
+            </div>
+          )}
+
+          {viewerMode && (
+            <p className={styles.sectionDescription}>
+              You're viewing a shared plan, read-only. Manage your viewing key from the banner.
+            </p>
+          )}
+
+          <div className={styles.settingsMenu}>
+            {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="👁" title="Sharing" subtitle="Give someone read-only viewer access" onClick={() => setSettingsPage('sharing')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date" onClick={() => setSettingsPage('strike')} styles={styles} />}
+            {!viewerMode && (
+              <div
+                className={`${styles.settingsRow} ${!hasCbLoan ? styles.settingsRowDisabled : ''}`}
+                role={hasCbLoan ? 'button' : undefined}
+                tabIndex={hasCbLoan ? 0 : undefined}
+                onClick={hasCbLoan ? () => setSettingsPage('cbloan') : undefined}
+                onKeyDown={hasCbLoan ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSettingsPage('cbloan'); } } : undefined}
+              >
+                <span className={styles.settingsRowIcon}>🏦</span>
+                <div className={styles.settingsRowBody}>
+                  <span className={styles.settingsRowTitle}>Coinbase Loan</span>
+                  <span className={styles.settingsRowSubtitle}>{hasCbLoan ? 'Balance, collateral, APR, payment strategy' : 'Turn on if you have a Coinbase/Morpho loan'}</span>
+                </div>
+                {/* the toggle is the only interactive element when the loan is off; stopPropagation so toggling never navigates */}
+                <span className={styles.settingsRowToggle} onClick={(e) => e.stopPropagation()}>
+                  <Toggle value={hasCbLoan} onChange={setHasCbLoan} />
+                </span>
+                {hasCbLoan && <span className={styles.settingsRowChevron}>›</span>}
+              </div>
+            )}
+            <SettingsRow icon="🖥️" title="Display" subtitle="Simple Mode, plan bars, mining log" onClick={() => setSettingsPage('display')} styles={styles} />
+            {!viewerMode && <SettingsRow icon="🗂️" title="Tabs" subtitle="Visibility & order" onClick={() => setSettingsPage('tabs')} styles={styles} />}
+            <SettingsRow icon="ℹ️" title="About" subtitle="Build info" onClick={() => setSettingsPage('about')} styles={styles} />
+          </div>
+        </>
+      )}
+
+      {settingsPage !== 'menu' && (
+        <div className={styles.subHeader}>
+          <button className={styles.subBackBtn} onClick={() => setSettingsPage('menu')}>← Settings</button>
+          <h2 className={styles.subTitle}>{SUBPAGE_TITLES[settingsPage]}</h2>
         </div>
       )}
 
-      <div className={styles.simpleModeToggle}>
-        <div className={styles.simpleModeLabel}>
-          <span className={styles.simpleModeTitle}>Simple Mode</span>
-          <span className={styles.simpleModeDesc}>
-            Shows only your monthly plan — hides all charts and details
-          </span>
+      {settingsPage === 'display' && (
+        <div className={styles.simpleModeToggle}>
+          <div className={styles.simpleModeLabel}>
+            <span className={styles.simpleModeTitle}>Simple Mode</span>
+            <span className={styles.simpleModeDesc}>
+              Shows only your monthly plan — hides all charts and details
+            </span>
+          </div>
+          <Toggle value={simpleMode} onChange={setSimpleMode} />
         </div>
-        <Toggle value={simpleMode} onChange={setSimpleMode} />
-      </div>
-
-      {viewerMode && (
-        <p className={styles.sectionDescription}>
-          You're viewing a shared plan, read-only. Manage your viewing key from the banner.
-        </p>
       )}
 
-      {!viewerMode && (
+      {settingsPage === 'identity' && !viewerMode && (
       <div className={styles.section}>
         <div className={styles.sectionTitle}>NOSTR IDENTITY</div>
 
@@ -403,8 +493,12 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             ⚠ Back up your nsec — losing it means permanent loss of encrypted relay data.
           </p>
         )}
+      </div>
+      )}
 
-        {nostrPubkey && (
+      {settingsPage === 'sharing' && !viewerMode && (
+      <div className={styles.section}>
+        {nostrPubkey ? (
           <div className={styles.viewerAccessBlock}>
             <div className={styles.cbLoanToggleTitle}>VIEWER ACCESS</div>
             <p className={styles.cbLoanToggleDesc}>
@@ -468,14 +562,14 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             )}
             {viewerError && <p className={styles.nostrWarning}>{viewerError}</p>}
           </div>
+        ) : (
+          <p className={styles.sectionDescription}>Connect a Nostr identity first to share viewer access.</p>
         )}
       </div>
       )}
 
-      {!viewerMode && (
+      {settingsPage === 'strike' && !viewerMode && (
       <div className={styles.section}>
-        <div className={styles.sectionTitle}>SETUP</div>
-
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>BUDGET</div>
           <NumberInput label="Monthly income"   value={income}   onChange={setIncome}   prefix="$" min={0} step={100} />
@@ -572,7 +666,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             />
           </div>
         </div>
+      </div>
+      )}
 
+      {settingsPage === 'display' && !viewerMode && (
+      <div className={styles.section}>
         {!hiddenTabs.includes('mining') && (
           <div className={styles.setupGroup}>
             <div className={styles.setupGroupLabel}>MONTHLY LOG</div>
@@ -602,18 +700,13 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             <Toggle value={showPlanCbBar} onChange={setShowPlanCbBar} />
           </div>
         </div>
+      </div>
+      )}
 
+      {settingsPage === 'cbloan' && !viewerMode && (
+      <div className={styles.section}>
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>COINBASE LOAN</div>
-          <div className={styles.cbLoanToggleRow}>
-            <div className={styles.cbLoanToggleLabel}>
-              <span className={styles.cbLoanToggleTitle}>I have a Coinbase loan</span>
-              <span className={styles.cbLoanToggleDesc}>
-                Shows CB Loan tab and includes loan in Advisor calculations
-              </span>
-            </div>
-            <Toggle value={hasCbLoan} onChange={setHasCbLoan} />
-          </div>
           {hasCbLoan && (
             <>
               <div className={styles.setupFieldGroup}>
@@ -687,7 +780,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       </div>
       )}
 
-      {!viewerMode && (
+      {settingsPage === 'tabs' && !viewerMode && (
       <div className={styles.section}>
         <div className={styles.sectionTitle}>TAB VISIBILITY & ORDER</div>
         <div className={styles.sectionDescription}>
@@ -723,11 +816,14 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       </div>
       )}
 
-      <p className={styles.buildInfo} onClick={handleBuildTap}>
-        Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
-      </p>
-
-      {devMode && <DevPanel />}
+      {settingsPage === 'about' && (
+        <div className={styles.section}>
+          <p className={styles.buildInfo} onClick={handleBuildTap}>
+            Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+          </p>
+          {devMode && <DevPanel />}
+        </div>
+      )}
     </div>
   );
 }
