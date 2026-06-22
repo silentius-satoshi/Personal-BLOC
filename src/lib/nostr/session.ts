@@ -64,6 +64,10 @@ async function doRestoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
     if (nostrSigningMethod === 'local') {
       const { writerKeyWrapped, writerKeyWrapMeta } = useStore.getState();
       if (!writerKeyWrapped || !writerKeyWrapMeta) throw new Error('no local key');
+      // #5: the method may have flipped (e.g. a NIP-46 login racing auto-restore on a device with a leftover
+      // wrapped key) since this restore was queued — re-read LIVE state and bail BEFORE WebAuthn, returning the
+      // current signer, so no spurious Face ID / passkey prompt fires.
+      if (useStore.getState().nostrSigningMethod !== 'local') return useStore.getState().nostrSigner;
       const sk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta);   // → triggers Face ID / PIN
       const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;
       if (await signer.getPublicKey() !== nostrPubkey) throw new Error('pubkey mismatch');

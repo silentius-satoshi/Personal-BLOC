@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (260 tests — all must pass before every commit)
+- Vitest (261 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -756,7 +756,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-260 tests — `npx vitest run` before every commit.
+261 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -784,7 +784,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 - `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
 - `src/lib/nostr/__tests__/session.test.ts` — `waitForNostrExtension` (the async-injection-race fix): already-present → true immediately; injected mid-poll (fake timers) → true; absent through the timeout → false
-- `src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts` — `restoreSigner` single-flight (Bug 2): two concurrent calls share ONE ceremony (`unwrapSecretKey` invoked once) + resolve to the SAME signer (stub NSecSigner + mocked unwrapSecretKey, no real crypto); a later non-concurrent call runs the worker again (guard cleared on settle)
+- `src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts` — `restoreSigner` single-flight (Bug 2): two concurrent calls share ONE ceremony (`unwrapSecretKey` invoked once) + resolve to the SAME signer (stub NSecSigner + mocked unwrapSecretKey, no real crypto); a later non-concurrent call runs the worker again (guard cleared on settle); + #5 live-method re-verify: a method flipped to 'nip46' between the entry destructure and the pre-unwrap guard (counter-backed getter on a `getState` spy) bails BEFORE `unwrapSecretKey` (no spurious passkey) and returns the current signer
 
 When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowthRate: 0`) to any test fixtures.
 
@@ -884,7 +884,13 @@ fell through to `NostrAuthGate` (Flash A) or seed-data `SimpleModeView` (Flash B
 edits): `LocalUnlockGate` now holds until `isAuthenticated` (dropped `!nostrSigner` from its condition) so a
 mid-unlock signer-set can't unmount it; and the `NostrAuthGate` fallthrough (312) is guarded with `!nostrSigner` so a
 present signer never shows the re-auth screen (verified safe — every NostrAuthGate handler sets signer→`isAuthenticated`
-synchronously/batched, and the nip07/46 reload path sets auth optimistically before the signer). With the flag OFF
+synchronously/batched, and the nip07/46 reload path sets auth optimistically before the signer). **Flash B
+INSTRUMENTED (not yet fixed)** — the seed-data flash after the gate drops on a plaintext post-escape reload has only
+a hypothesised render-timing cause (`rehydrate()` resolves before React re-renders with hydrated values), so —
+mirroring the Bug-2 discipline — temporary `console.log('[flashB] …', Date.now(), …)` probes (tagged `// TEMP
+[flashB] — remove after diagnosis`) were added at three points to confirm on-device before fixing: `LocalUnlockGate`
+`unlock()` (before/after `rehydrate()`, after `setIsAuthenticated`), `SimpleModeView` render body, and the `AppShell`
+render body. NO behavioral change; remove after the device timeline confirms the gap. With the flag OFF
 (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
@@ -1060,7 +1066,15 @@ src/
     NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring; calls markSignerFresh()
                                     # after setting the signer so syncNow doesn't rebuild a duplicate
                                     # NConnectSigner session post-login. + the iOS-only "Use a local key
-                                    # (Face ID)" flow (hard backup gate → nsec decode → keyVault wrap → NSecSigner)
+                                    # (Face ID)" flow (hard backup gate → nsec decode → keyVault wrap → NSecSigner).
+                                    # #4: optional onBack prop renders a "← Back to Face ID unlock" button in the main
+                                    # options view (AppShell passes onBack=()=>setUnlockEscape(false) → falls back to
+                                    # LocalUnlockGate; absent in first-time onboarding which passes no onBack). #6: when a
+                                    # writerKeyWrapped already exists (e.g. after a local→nip46→local switch) the local
+                                    # section shows "Unlock with Face ID" (handleUnlockExisting → setNostrSigningMethod
+                                    # ('local') → restoreSigner) instead of forcing an nsec re-import; a "Use a different
+                                    # key" ghost sets forceImport to reveal the import form, and a 'pubkey mismatch' throw
+                                    # (different account) catch-and-falls-back to import with a message
     LocalUnlockGate.tsx             # "Authenticated-but-locked" relaunch screen for the 'local' method —
                                     # gesture-driven "Unlock with Face ID" (restoreSigner→unwrap) + Retry +
                                     # "Use a different login" escape; reuses NostrAuthGate.module.css
@@ -1103,7 +1117,10 @@ src/
                                     # module-level in-flight promise (mirrors syncNow) — concurrent callers (gate escape
                                     # + reactive syncNow) share ONE WebAuthn ceremony + the SAME signer; two ceremonies
                                     # at once aborted one (AbortError) + looped the other (NotAllowedError).
-                                    # 'local' branch: unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match →
+                                    # 'local' branch: [#5: re-read LIVE nostrSigningMethod right BEFORE unwrap — if it
+                                    # flipped off 'local' (a nip46 login racing auto-restore on a device with a leftover
+                                    # wrapped key) RETURN the current signer, no WebAuthn, no spurious passkey prompt] →
+                                    # unwrapSecretKey (→ Face ID) → new NSecSigner(sk) → pubkey-match →
                                     # [3a.1: storeEncEnabled ? deriveStoreKeyFromNsec(sk,pubkey)→setStoreKey, AFTER the
                                     # pubkey check, BEFORE sk.fill(0); + 3a.3: await migratePlaintextToEncrypted()
                                     # (verify-before-delete, idempotent) then + 3a.2: await useStore.persist.rehydrate()

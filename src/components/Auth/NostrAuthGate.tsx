@@ -3,6 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { nip19, getPublicKey } from 'nostr-tools';
 import { NSecSigner } from '@nostrify/nostrify';
 import { connectNip07 } from '../../lib/nostr/signers';
+import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
@@ -19,7 +20,7 @@ import {
 } from '@nostrify/react/login';
 import styles from './NostrAuthGate.module.css';
 
-export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
+export function NostrAuthGate({ onSuccess, onBack }: { onSuccess: () => void; onBack?: () => void }) {
   const setNostrPubkey        = useStore((s) => s.setNostrPubkey);
   const setNostrSigningMethod = useStore((s) => s.setNostrSigningMethod);
   const setIsAuthenticated    = useStore((s) => s.setIsAuthenticated);
@@ -46,6 +47,8 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
 
   // ── Local-key (iOS Face-ID signer) flow ──────────────────────────────────────
   const [showLocal, setShowLocal]         = useState(false);
+  const hasWrappedKey = !!useStore((s) => s.writerKeyWrapped);   // #6: a wrapped key survives a local→nip46→local switch
+  const [forceImport, setForceImport]     = useState(false);     // #6: user chose to import a different key
   const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [nsecInput, setNsecInput]         = useState('');
   const [localMethod, setLocalMethod]     = useState<WrapMethod | null>(null);
@@ -62,6 +65,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
 
   const openLocal = () => {
     setShowLocal(true);
+    setForceImport(false);
     setBackupConfirmed(false);
     setNsecInput('');
     setLocalMethod(null);
@@ -102,6 +106,28 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
       setError(err?.message ?? 'Could not set up the local key');
     } finally {
       sk?.fill(0);   // best-effort zero (the NSecSigner holds its own copy for the session)
+      setLoading(false);
+    }
+  };
+
+  // #6: a wrapped key already exists — unlock it (Face ID) via restoreSigner instead of forcing an nsec re-import.
+  const handleUnlockExisting = async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      useStore.getState().setNostrSigningMethod('local');   // restore local context (may have flipped on a method switch) so restoreSigner's local branch runs
+      const signer = await restoreSigner(nostr);
+      if (!signer) throw new Error('Unlock failed');
+      setIsAuthenticated(true);
+      onSuccess();
+    } catch (e: any) {
+      if (String(e?.message).includes('pubkey mismatch')) {
+        setForceImport(true);   // saved key is a different account → fall back to import
+        setError("This device's saved key is for a different account — paste the nsec to switch, or go back.");
+      } else {
+        setError(e?.message ?? 'Unlock failed — try again');
+      }
+    } finally {
       setLoading(false);
     }
   };
@@ -290,6 +316,21 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             )}
           </div>
         ) : showLocal ? (
+          hasWrappedKey && !forceImport ? (
+            <>
+              {/* #6: a wrapped key already lives on this device — unlock it (Face ID) instead of re-importing the nsec */}
+              <p className={styles.hint}>A saved key is on this device. Unlock it with Face ID, or import a different key.</p>
+              <button className={styles.primaryBtn} onClick={handleUnlockExisting} disabled={loading}>
+                {loading ? 'Unlocking…' : '🔒 Unlock with Face ID'}
+              </button>
+              <button className={styles.ghostBtn} onClick={() => { setForceImport(true); setError(null); }} disabled={loading}>
+                Use a different key
+              </button>
+              <button className={styles.ghostBtn} onClick={() => { setShowLocal(false); setError(null); }} disabled={loading}>
+                ← Back
+              </button>
+            </>
+          ) : (
           <>
             <label className={styles.hint} style={{ display: 'flex', gap: 8, textAlign: 'left', alignItems: 'flex-start' }}>
               <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
@@ -334,6 +375,7 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
               ← Back
             </button>
           </>
+          )
         ) : !showBunker ? (
           <>
             {hasNip07 && (
@@ -359,6 +401,12 @@ export function NostrAuthGate({ onSuccess }: { onSuccess: () => void }) {
             {isIOS && (
               <button className={styles.secondaryBtn} onClick={openLocal} disabled={loading}>
                 Use a local key (Face ID)
+              </button>
+            )}
+            {/* #4: a locked-out local user who hit "Use a different login" can return to the Face ID unlock gate */}
+            {onBack && (
+              <button className={styles.ghostBtn} onClick={onBack} disabled={loading}>
+                ← Back to Face ID unlock
               </button>
             )}
           </>

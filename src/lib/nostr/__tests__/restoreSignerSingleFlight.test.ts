@@ -52,3 +52,24 @@ describe('restoreSigner — single-flight guard (Bug 2: concurrent WebAuthn cere
     expect(unwrapSecretKey).toHaveBeenCalledTimes(2);
   });
 });
+
+describe('restoreSigner — #5 live-method re-verify before unwrap', () => {
+  it('method flipped to nip46 between entry and the guard → bails BEFORE unwrapSecretKey (no spurious passkey)', async () => {
+    // Simulate a mid-flight method switch: the entry destructure reads 'local' (enters the local branch), but by
+    // the time the pre-unwrap guard re-reads LIVE state the method is 'nip46' (a nip46 login raced auto-restore).
+    const real = useStore.getState();
+    let methodReads = 0;
+    const stateMock = {
+      ...real,
+      get nostrSigningMethod() { return methodReads++ === 0 ? 'local' : 'nip46'; },   // 1st read (entry) local, then nip46
+    };
+    const spy = vi.spyOn(useStore, 'getState').mockReturnValue(stateMock as any);
+    try {
+      const signer = await restoreSigner({} as any);
+      expect(unwrapSecretKey).not.toHaveBeenCalled();   // bailed before WebAuthn — the whole #5 fix
+      expect(signer).toBe(real.nostrSigner);            // returns the current signer (null here), not throw/null-from-failure
+    } finally {
+      spy.mockRestore();
+    }
+  });
+});

@@ -270,6 +270,8 @@ export function AppShell() {
     }
   }, [hiddenTabs, activeTab]);
 
+  console.log('[flashB] AppShell render', Date.now(), isAuthenticated, useStore.getState().advisorActualBtcHeld);   // TEMP [flashB] — remove after diagnosis
+
   return (
     <>
       {!onboardingComplete && (
@@ -314,7 +316,7 @@ export function AppShell() {
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !nostrSigner && !isAuthenticated && !import.meta.env.DEV ? (
         // Bug 3: !nostrSigner guard — a present signer never shows the re-auth screen (every NostrAuthGate handler
         // sets signer→isAuthenticated synchronously/batched, so this can't drop the gate mid-auth for nip07/46).
-        <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
+        <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} onBack={() => setUnlockEscape(false)} />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
         <PrivateAppNotice />
       ) : simpleMode && activeTab === 'settings' ? (
