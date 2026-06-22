@@ -877,7 +877,15 @@ guard on `restoreSigner`** (module-level in-flight promise mirroring syncNow —
 renamed `doRestoreSigner` worker; concurrent callers share ONE ceremony AND the SAME signer, `.finally` clears the
 guard). `useNostrAutoRestore` was ruled out (early-returns for `'local'`); the second caller was `syncNow`. The
 `[3a-bug2]` instrumentation was removed. The primary Settings→RECOVERY escape works; the escape hatch never publishes
-(structural) so the loop never threatened data. With the flag OFF (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
+(structural) so the loop never threatened data. **Bug 3 FIXED** — the unlock double-flash: `restoreSigner` sets
+`nostrSigner` internally mid-`unlock()` (across `unlock`'s await boundaries), which tripped AppShell's `!nostrSigner`
+`LocalUnlockGate` condition (AppShell.tsx:310) and UNMOUNTED the gate before `isAuthenticated`+rehydrate completed →
+fell through to `NostrAuthGate` (Flash A) or seed-data `SimpleModeView` (Flash B) for 1–3s. Fix (two scoped gate-chain
+edits): `LocalUnlockGate` now holds until `isAuthenticated` (dropped `!nostrSigner` from its condition) so a
+mid-unlock signer-set can't unmount it; and the `NostrAuthGate` fallthrough (312) is guarded with `!nostrSigner` so a
+present signer never shows the re-auth screen (verified safe — every NostrAuthGate handler sets signer→`isAuthenticated`
+synchronously/batched, and the nip07/46 reload path sets auth optimistically before the signer). With the flag OFF
+(default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
 empty localStorage). The revert had set `storage: undefined`; it must be an explicit `createJSONStorage`. Use the

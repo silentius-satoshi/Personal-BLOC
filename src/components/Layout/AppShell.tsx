@@ -307,9 +307,13 @@ export function AppShell() {
         <ViewerUnlockGate onReset={resetViewer} />   // v17 migrant — one-time wrap-setup screen, then falls through
       ) : onboardingComplete && viewerMode && !viewerDataLoaded && !import.meta.env.DEV ? (
         <ViewerWaitingGate onReset={resetViewer} />   // unlocked viewer, no VALID decrypt yet — never show stale store data
-      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !nostrSigner && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
+      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && nostrSigningMethod === 'local' && nostrPubkey && !isAuthenticated && !unlockEscape && !import.meta.env.DEV ? (
+        // Bug 3: hold until isAuthenticated (NOT !nostrSigner) — restoreSigner sets nostrSigner mid-unlock(), across
+        // unlock()'s await boundaries; the old !nostrSigner term unmounted the gate then → NostrAuthGate/seed flash.
         <LocalUnlockGate onReauth={() => setUnlockEscape(true)} />
-      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !isAuthenticated && !import.meta.env.DEV ? (
+      ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !nostrSigner && !isAuthenticated && !import.meta.env.DEV ? (
+        // Bug 3: !nostrSigner guard — a present signer never shows the re-auth screen (every NostrAuthGate handler
+        // sets signer→isAuthenticated synchronously/batched, so this can't drop the gate mid-auth for nip07/46).
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
         <PrivateAppNotice />
