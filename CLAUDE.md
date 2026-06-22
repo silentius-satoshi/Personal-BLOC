@@ -100,7 +100,9 @@ src/
                                 # VERBATIM — same handlers/selectors/hooks, only relocated): identity = NOSTR IDENTITY
                                 # (Enable-Nostr-Lock toggle + identity row + sync + recovery + decrypt-back); sharing =
                                 # VIEWER ACCESS (pulled out of the shared Nostr section); strike = BUDGET + STRIKE BLOC
-                                # inputs; cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
+                                # inputs (+ a READ-ONLY "Strike API · Connected/Not connected" status row at the top of
+                                # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
+                                # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
                                 # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; about = build-tap row + DevPanel.
                                 # GATING PRESERVED: identity/sharing/strike/cbloan/tabs rows stay !viewerMode (display/about
                                 # always) — viewer visibility is unchanged from before (the zero-risk reading of the spec's
@@ -112,7 +114,11 @@ src/
                                 # render their ← Settings sub-header. AUTH UNTOUCHED (NOSTR IDENTITY verbatim — Phase 2 will
                                 # rework it). Still owns the local ALL_TABS constant + 5-tap devMode build row
       SettingsMain.module.css   # + Phase 1: .settingsMenu/.settingsRow(+Disabled/Icon/Body/Title/Subtitle/Toggle/Chevron)
-                                # + .subHeader/.subBackBtn/.subTitle (theme tokens; additive — no existing class changed)
+                                # + .subHeader/.subBackBtn/.subTitle (theme tokens; additive — no existing class changed).
+                                # + Phase 1 polish: .setupDateInput gains box-sizing:border-box + min-width:0 +
+                                # -webkit-appearance/appearance:none (fixes iOS native date-control overflow; keeps
+                                # color-scheme:dark) + read-only .strikeStatusRow/.strikeStatusLabel/.strikeStatusDotOn
+                                # (green glow) /.strikeStatusDotOff (var(--text-faint), mirrors InputsPanel's strike dot)
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an

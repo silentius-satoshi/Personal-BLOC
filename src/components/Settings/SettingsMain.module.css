@@ -166,10 +166,20 @@
   padding: 8px 12px;
   color-scheme: dark;
   width: 100%;
+  box-sizing: border-box;       /* iOS: native -webkit date control ignores the box model → overflows without this */
+  min-width: 0;
+  -webkit-appearance: none;
+  appearance: none;
   transition: border-color 0.12s;
 }
 
 .setupDateInput:focus { border-color: var(--orange); }
+
+/* Read-only Strike connection status (Strike Strategy subpage) — dot values mirror InputsPanel's strike dot */
+.strikeStatusRow { display: flex; align-items: center; gap: 8px; padding: 4px 0; }
+.strikeStatusLabel { font-size: 12px; color: var(--text-secondary); }
+.strikeStatusDotOn { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 4px var(--green); flex-shrink: 0; }
+.strikeStatusDotOff { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
 
 .locationToggle {
   background: none;

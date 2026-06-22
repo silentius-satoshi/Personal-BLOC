@@ -578,6 +578,12 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>STRIKE BLOC</div>
+          <div className={styles.strikeStatusRow}>
+            <span className={strikeApiConnected ? styles.strikeStatusDotOn : styles.strikeStatusDotOff} />
+            <span className={styles.strikeStatusLabel}>
+              Strike API · {strikeApiConnected ? 'Connected' : 'Not connected'}
+            </span>
+          </div>
           <div className={styles.setupFieldGroup}>
             <NumberInput label="Initial credit line" value={creditLine} onChange={setCreditLine} prefix="$" min={0} step={500} />
             <span className={styles.fieldHint}>
