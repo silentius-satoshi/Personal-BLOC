@@ -1,8 +1,10 @@
 import { useState, useSyncExternalStore } from 'react';
-import { useStore } from '../../store/useStore';
+import { useStore, storeEncEnabled } from '../../store/useStore';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
+import { blobIsPlaintext } from '../../lib/store/storeMigration';
+import { isStoreUnlocked } from '../../lib/store/storeCrypto';
 import styles from './DevPanel.module.css';
 
 // PRIVACY RULE: everything rendered or copied here is sync METADATA only —
@@ -163,6 +165,28 @@ export function DevPanel() {
     } catch { setProbeStatus('clipboard unavailable'); }
   };
 
+  // AT-REST ENCRYPTION readout (3a.5) — live localStorage + holder reads, computed on render. The flag is a
+  // module-load constant (storeEncEnabled), so a mid-session toggle only applies after a reload.
+  const ENC_FLAG = 'personal-bloc-store-enc-enabled';
+  const flagOn = (() => { try { return localStorage.getItem(ENC_FLAG) === '1'; } catch { return false; } })();
+  const blobState = (() => {
+    try {
+      const raw = localStorage.getItem('personal-bloc-store');
+      if (raw == null) return 'none';
+      return blobIsPlaintext() ? 'plaintext' : 'encrypted {ct,iv}';
+    } catch { return 'none'; }
+  })();
+  const keyInMemory = isStoreUnlocked();
+  const gateKeysSummary = (() => {
+    const g = (k: string) => { try { return localStorage.getItem(k); } catch { return null; } };
+    return `onboarded:${g('personal-bloc-onboarded') === '1'} auth:${g('personal-bloc-nostr-auth') === '1'} `
+         + `method:${g('personal-bloc-nostr-method') ?? '—'} pubkey:${!!g('personal-bloc-nostr-pubkey')}`;
+  })();
+  const toggleFlag = () => {
+    try { flagOn ? localStorage.removeItem(ENC_FLAG) : localStorage.setItem(ENC_FLAG, '1'); } catch { /* noop */ }
+    window.location.reload();   // flag is a module-load constant — reload to swap the persist adapter
+  };
+
   return (
     <div className={styles.panel}>
       <div className={styles.sectionTitle}>SYNC STATE</div>
@@ -210,6 +234,18 @@ export function DevPanel() {
         {viewerMode && <button className={styles.btn} onClick={runViewerRefetch} disabled={vRefetching}>Re-fetch now</button>}
         <span className={styles.probeStatus}>{vProbeStatus}</span>
       </div>
+
+      <div className={styles.sectionTitle}>AT-REST ENCRYPTION</div>
+      <div className={styles.grid}>
+        <span className={styles.key}>flag (storeEncEnabled)</span>
+        <span className={styles.val}>{flagOn ? 'ON' : 'off'}{flagOn !== storeEncEnabled ? ' (reload to apply)' : ''}</span>
+        <span className={styles.key}>blob state</span><span className={styles.val}>{blobState}</span>
+        <span className={styles.key}>store key in memory</span><span className={styles.val}>{String(keyInMemory)}</span>
+        <span className={styles.key}>GATE_* keys</span><span className={styles.val}>{gateKeysSummary}</span>
+      </div>
+      <button className={styles.btn} onClick={toggleFlag}>
+        {flagOn ? 'Disable' : 'Enable'} at-rest encryption flag (reloads)
+      </button>
 
       <div className={styles.sectionTitle}>SIGNER PROBE</div>
       <div className={styles.probeRow}>

@@ -95,7 +95,9 @@ src/
                                 # Build row (5 taps toggles devMode) + DevPanel mount
       SettingsMain.module.css
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
-                                # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics.
+                                # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
+                                # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + a RAW
+                                # flag toggle that reloads — developer maturation tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
                                 # never balances/amounts/log contents); the panel itself may show position figures
       DevPanel.module.css
@@ -850,10 +852,18 @@ can't be read until unlock, but the `LocalUnlockGate` condition needs those four
 would open → onboarding showed instead. Now they live outside the blob (kept IN the blob too — redundant, serves the
 plaintext path; the standalone copy is the cold-start bootstrap), so the gate shows → Face ID → rehydrate → decrypt.
 Fresh-install/flag-off parity: no `GATE_*` keys → seeds false/null, identical to the old constants. One-time
-back-fill from a plaintext blob for existing users (same as the WK_* back-fill). **NO opt-in toggle yet
-(3a.5)** and NO decrypt-back opt-OUT — to revert from encrypted, use the escape hatch (reset & re-sync repopulates a
-fresh plaintext store from relays; clearing the flag alone leaves an `{ct,iv}` blob the plain adapter can't parse).
-With the flag OFF (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
+back-fill from a plaintext blob for existing users (same as the WK_* back-fill). **3a.5** (done): the human-facing
+surfaces, split by audience. DEV — `DevPanel` gains an AT-REST ENCRYPTION section (status readout: flag /
+blob-state {ct,iv}-vs-plaintext / store-key-in-memory / GATE_* keys + a flag toggle that reloads) as developer
+maturation tooling (in-app diagnostics so the remaining device tests need no Mac console; the toggle is RAW — ON
+doesn't migrate, that's at unlock; OFF leaves a `{ct,iv}` blob). USER — `SettingsMain` RECOVERY gains a
+"Turn off at-rest encryption (decrypt local data)" opt-out, shown ONLY when `!blobIsPlaintext() && isStoreUnlocked()`
+(encrypted AND unlocked): `migrateEncryptedToPlaintext()` (verify-before-overwrite) → THEN clear the flag → THEN
+reload — a failed decrypt short-circuits BEFORE the flag is touched (encryption stays on, nothing lost). The opt-out
+lives in RECOVERY (not the dev panel) so a non-dev user can always exit. **No prominent enable-toggle** — encrypted-
+by-default is the earned end state (later default-on flip, NOT 3a.5). The flag stays OFF by default; it's a
+module-load constant, so both surfaces reload to apply. With the flag OFF (default) persist is plain
+`window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,
 empty localStorage). The revert had set `storage: undefined`; it must be an explicit `createJSONStorage`. Use the

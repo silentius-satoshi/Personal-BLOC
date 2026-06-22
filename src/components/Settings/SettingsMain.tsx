@@ -19,6 +19,8 @@ import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync } from '../../lib/store/escapeHatch';
+import { migrateEncryptedToPlaintext, blobIsPlaintext } from '../../lib/store/storeMigration';
+import { isStoreUnlocked } from '../../lib/store/storeCrypto';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
@@ -187,6 +189,34 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       setRecoveryBusy(false);
     }
   };
+
+  // 3a.5: user-facing decrypt-back opt-out (turn OFF at-rest encryption). Safe order — decrypt + VERIFY-before-
+  // overwrite FIRST (plaintext written to disk), THEN clear the flag, THEN reload. A failed decrypt short-circuits
+  // before the flag is touched → encryption stays on, blob untouched, nothing lost.
+  const [decryptBusy, setDecryptBusy] = useState(false);
+  const [decryptMsg, setDecryptMsg]   = useState<string | null>(null);
+  // Show ONLY when there's an encrypted blob AND the key is in memory (post-unlock) — a plaintext or locked user
+  // never sees it (a locked user has no key to decrypt with anyway).
+  const showDecryptBack = !blobIsPlaintext() && isStoreUnlocked() &&
+    (() => { try { return localStorage.getItem('personal-bloc-store') != null; } catch { return false; } })();
+  const handleDecryptBack = async () => {
+    setDecryptBusy(true);
+    setDecryptMsg(null);
+    try {
+      const ok = await migrateEncryptedToPlaintext();
+      if (!ok) {
+        setDecryptMsg('Could not decrypt — encryption left on, your data is unchanged. Try again after unlocking.');
+        setDecryptBusy(false);
+        return;
+      }
+      try { localStorage.removeItem('personal-bloc-store-enc-enabled'); } catch { /* noop */ }
+      setDecryptMsg('Encryption turned off. Reloading…');
+      setTimeout(() => window.location.reload(), 600);
+    } catch {
+      setDecryptMsg('Could not decrypt — encryption left on, your data is unchanged.');
+      setDecryptBusy(false);
+    }
+  };
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
@@ -353,6 +383,18 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               {recoveryBusy ? 'Resetting…' : 'Reset local data & re-sync from relays'}
             </button>
             {recoveryMsg && <p className={styles.nostrWarning}>{recoveryMsg}</p>}
+            {showDecryptBack && (
+              <>
+                <button
+                  onClick={handleDecryptBack}
+                  disabled={decryptBusy}
+                  className={styles.nostrReconnectBtn}
+                >
+                  {decryptBusy ? 'Decrypting…' : 'Turn off at-rest encryption (decrypt local data)'}
+                </button>
+                {decryptMsg && <p className={styles.nostrWarning}>{decryptMsg}</p>}
+              </>
+            )}
           </>
         )}
 
