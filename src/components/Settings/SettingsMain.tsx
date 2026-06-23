@@ -22,6 +22,7 @@ import { resetAndResync } from '../../lib/store/escapeHatch';
 import { migrateEncryptedToPlaintext, blobIsPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
+import { useRelayStatus } from '../../hooks/useRelayStatus';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
@@ -32,6 +33,10 @@ import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
 import styles from './SettingsMain.module.css';
+
+// Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
+// (passing a fresh [] each render would re-key the effect; this keeps the join('') dep stable).
+const EMPTY_RELAYS: string[] = [];
 
 const ALL_TABS = [
   { key: 'living',    label: 'Living on Bitcoin' },
@@ -194,6 +199,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       setRelaySyncMsg(ok ? 'Published your relay list to Nostr.' : 'Publish failed — try again.');
     } finally { setRelaySyncBusy('idle'); }
   };
+  // P3: live per-relay status dots. Unconditional call (rules of hooks), but probe sockets open ONLY while the
+  // Network subpage is visible (EMPTY_RELAYS otherwise → no sockets). See useRelayStatus for the owned-probe model.
+  const relayStatus = useRelayStatus(settingsPage === 'network' ? nostrRelays : EMPTY_RELAYS);
 
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
   const tapCount  = useRef(0);
@@ -868,8 +876,12 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           {nostrRelays.length === 0 && <span className={styles.fieldHint}>No relays configured.</span>}
           {nostrRelays.map((url) => (
             <div key={url} className={styles.relayRow}>
-              {/* P1: neutral placeholder dot — live connection status is P3 */}
-              <span className={styles.strikeStatusDotOff} />
+              {/* P3: live connection dot (green/amber/red) driven by the relay's real WebSocket state */}
+              <span className={
+                relayStatus[url] === 'connected' ? styles.relayDotOn
+                : relayStatus[url] === 'offline' ? styles.relayDotOff
+                : styles.relayDotConnecting
+              } />
               <span className={styles.relayUrl}>{url}</span>
               <button
                 className={styles.relayRemove}

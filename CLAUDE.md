@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (285 tests — all must pass before every commit)
+- Vitest (290 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -61,6 +61,17 @@ src/
     usePowerLawData.ts          # Blockchain.com historical price (via Vercel proxy in prod)
     useMempoolData.ts           # mempool.space block height (halving computed from it)
     useMorphoRate.ts            # Live Morpho borrow APY for the confirmed cbBTC/USDC Base market via same-origin /api/morpho-rate; usePageVisibility gate + slow 5-min refresh; ephemeral, NEVER stored/synced; pure parseMorphoRate (GraphQL state.borrowApy/netBorrowApy fraction → percent ×100, null on malformed). Display-only reference beside the manual cbAprPct (Settings APR field AND the SafetyDashboard CB anchor editBox) — never feeds CB math
+    useRelayStatus.ts           # Network subpage P3 — live per-relay connection dots. Owns its OWN dedicated NRelay1
+                                # probe sockets (idleTimeout:false — NOT useNostr()'s NPool, which drives zero I/O and
+                                # whose 30s default idleTimeout would self-close a status-only socket → false-offline
+                                # dots; liveSync uses a separate nostr-tools SimplePool, so nothing is shared). Reads
+                                # socket.readyState + listens websocket-ts open/close/error/retry/reconnect; pure
+                                # readyStateToStatus (1→connected, 0/retry/reconnect→connecting, 2/3/close/error→
+                                # offline). Sockets shared with nothing → cleanup removeEventListener AND relay.close()
+                                # (the inverse of "never close shared sockets" — correct because they're ours). Effect
+                                # keyed on the STABLE urls.join(',') (no re-subscribe thrash); functional setState
+                                # early-returns on no-change. Probes ONLY the urls passed in (SettingsMain gates on
+                                # settingsPage==='network' ? nostrRelays : EMPTY_RELAYS — no sockets unless viewing it)
 
   store/
     useStore.ts                 # Zustand store — all state, persisted to localStorage
@@ -104,8 +115,9 @@ src/
                                 # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
                                 # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
                                 # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
-                                # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; neutral
-                                # placeholder dots — live status is P3. P2 (DONE): the SYNC group's Import-from-Nostr
+                                # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; P3 (DONE):
+                                # each row's dot is a LIVE connection status (green/amber/red) via useRelayStatus. P2 (DONE):
+                                # the SYNC group's Import-from-Nostr
                                 # (window.confirm → importRelaysFromNip65 → message by found/empty/not-found; replaces
                                 # the local list only on a real found list) + Publish-to-Nostr (publishRelayListToNip65,
                                 # no confirm) are LIVE; relaySyncBusy 'idle'|'import'|'publish' disables both + busy
@@ -787,7 +799,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-285 tests — `npx vitest run` before every commit.
+290 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -810,6 +822,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/nostr/__tests__/proxyAuth.test.ts` — `getProxyAuthHeader` token cache: caches within ~50s (signs once), re-signs after expiry / on url change / on method change, returns the `"Nostr "` scheme prefix (mock signer, stubbed `Date.now`, `resetProxyAuthCache` per case)
 - `src/lib/nostr/__tests__/relays.test.ts` — `normalizeRelayUrl` (passthrough/trailing-slash/lowercase/prepend-wss/reject-http/reject-garbage/localhost-ws/reject-nonlocalhost-ws), `addRelay` (append/dup/invalid), `DEFAULT_RELAYS` shape; + P2 `importNip65RelayList` (mocked pool: found→all-r-tags flat + normalize/dedupe, newest-event-wins, no-event→{found:false}, throw→{found:false}, no-usable-r-tags→{found:true,relays:[]})
 - `src/lib/nostr/__tests__/publishRelayList.test.ts` — P2 `publishRelayListNip65` event-shape (mocked signer+pool): PLAIN kind-10002, content '', flat `r` tags, `signer.nip44.encrypt` NEVER called (G2), publishes to `publishTo` when wider than the tag list
+- `src/hooks/__tests__/useRelayStatus.test.ts` — P3 pure `readyStateToStatus` mapping (1→connected, 0→connecting, 2/3/other→offline); the hook's socket lifecycle is device-verified, not unit-tested
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
@@ -1280,6 +1293,8 @@ vercel.json                         # Catch-all rewrite → index.html (required
   to `[...nostrRelays, ...DEFAULT_RELAYS]` for reach. Both are out-of-band one-offs: they toggle only `nostrSyncing`
   (the orange dot) and DELIBERATELY do NOT touch `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded` (flipping the
   reconnect flag would mis-fire the ⚠ Reconnect affordance)
+- **Network feature COMPLETE** — P1 (local list add/remove/restore), P2 (NIP-65 import/publish), P3 (live status dots
+  via `useRelayStatus` — owned NRelay1 probes, `idleTimeout:false`, NOT the NPool; see hooks/useRelayStatus.ts)
 
 ---
 
