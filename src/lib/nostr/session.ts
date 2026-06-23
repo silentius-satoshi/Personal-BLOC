@@ -3,7 +3,7 @@ import { NSecSigner } from '@nostrify/nostrify';
 import { useStore, storeEncEnabled } from '../../store/useStore';
 import { nostrLog } from './log';
 import { unwrapSecretKey, deriveStoreKeyFromNsec } from './keyVault';
-import { setStoreKey, isStoreUnlocked } from '../store/storeCrypto';
+import { setStoreKey } from '../store/storeCrypto';
 import { migratePlaintextToEncrypted } from '../store/storeMigration';
 import type { NostrSigner } from './signers';
 
@@ -75,32 +75,20 @@ async function doRestoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
       // gating, no encryption yet). Rooted in the nsec, so there's no separate credential to diverge. AFTER the
       // pubkey check (right identity), BEFORE sk is zeroed. Failure is NON-FATAL — login must never break on 3a.
       if (storeEncEnabled) {
-        console.log('[3a] storeEncEnabled TRUE — entering 3a block');   // TEMP [3a] diagnostic — remove after diagnosis
         try {
-          console.log('[3a] deriving store key from nsec, pubkey:', nostrPubkey?.slice(0, 8));   // TEMP [3a]
           const storeKey = await deriveStoreKeyFromNsec(sk, nostrPubkey);
-          console.log('[3a] derive OK, key:', !!storeKey);   // TEMP [3a]
           setStoreKey(storeKey);
-          console.log('[3a] setStoreKey called, isStoreUnlocked now:', isStoreUnlocked());   // TEMP [3a]
           // 3a.3: migrate an existing plaintext blob to the encrypted envelope NOW, using the key just derived.
           // VERIFY-BEFORE-DELETE — overwrites only after the ciphertext decrypts back === original; a failure
           // leaves plaintext intact (rehydrate below passthrough-reads it). Idempotent (no-op if already encrypted).
           // A false return is the SAFE path (plaintext intact), not an exception.
-          const migrated = await migratePlaintextToEncrypted();
-          console.log('[3a] migratePlaintextToEncrypted returned:', migrated);   // TEMP [3a]
+          await migratePlaintextToEncrypted();
           // 3a.2: re-hydrate so the now-encrypted (or still-plaintext-on-migration-failure) blob loads with the key.
           // (First hydration ran before the key was set → store hydrated to seeds; this re-runs getItem WITH the key.)
           await useStore.persist.rehydrate();
-          console.log('[3a] rehydrate done');   // TEMP [3a]
-          const rawAfter = localStorage.getItem('personal-bloc-store');   // TEMP [3a]
-          const formAfter = rawAfter ? (() => { try { const o = JSON.parse(rawAfter); return (o.ct && o.iv) ? 'ENCRYPTED' : 'plaintext'; } catch { return '?'; } })() : 'none';   // TEMP [3a]
-          console.log('[3a] blob form after 3a:', formAfter);   // TEMP [3a]
         } catch (e) {
-          console.log('[3a] CAUGHT ERROR:', e);   // TEMP [3a]
           nostrLog('warn', '3a store key derivation/migration/rehydrate failed (non-fatal)', e);
         }
-      } else {
-        console.log('[3a] storeEncEnabled FALSE — 3a block SKIPPED');   // TEMP [3a]
       }
       sk.fill(0);   // best-effort zero after the signer holds its own copy
       useStore.getState().setNostrSigner(signer);
