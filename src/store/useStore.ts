@@ -793,7 +793,7 @@ export const useStore = create<StoreState>()(
   nostrPubkey:        seedNostrPubkey,
   nostrSigningMethod: seedNostrSigningMethod,
   nostrBunkerUri:     null,
-  nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol', 'wss://relay.nostr.band'],
+  nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'],
   nostrLogin:         null,
   writerKeyWrapped:   seedWriterKeyWrapped,
   writerKeyWrapMeta:  seedWriterKeyWrapMeta,
