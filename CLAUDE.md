@@ -410,7 +410,7 @@ public/
 
 ### Navigation
 ```typescript
-activeTab:   'living'|'bloc'|'powerlaw'|'converter'|'mining'|'coinbase'|'advisor'|'settings';
+activeTab:   'living'|'bloc'|'powerlaw'|'converter'|'mining'|'coinbase'|'advisor'|'settings';   // SESSION-ONLY (omitted from partialize) — every launch lands on the default 'living' (simple view when simpleMode); can't get stuck on a tab. Not in SETTINGS_FIELDS (no Nostr sync)
 hiddenTabs:  string[];   // default ['coinbase', 'advisor']
 tabOrder:    string[];   // default ['living','bloc','powerlaw','converter','mining','coinbase','advisor']
 previousTab: Exclude<ActiveTab, 'settings'>;
@@ -915,7 +915,7 @@ a hypothesised render-timing cause (`rehydrate()` resolves before React re-rende
 mirroring the Bug-2 discipline — temporary `console.log('[flashB] …', Date.now(), …)` probes (tagged `// TEMP
 [flashB] — remove after diagnosis`) were added at three points to confirm on-device before fixing: `LocalUnlockGate`
 `unlock()` (before/after `rehydrate()`, after `setIsAuthenticated`), `SimpleModeView` render body, and the `AppShell`
-render body. NO behavioral change; remove after the device timeline confirms the gap. With the flag OFF
+render body. (Diagnosis done — the `[flashB]` probes have since been REMOVED.) With the flag OFF
 (default) persist is plain `window.localStorage`. **⚠ Zustand v5 gotcha (regression fixed):
 `storage: undefined` does NOT mean "default localStorage" — in v5 it hits the `if (!storage)` branch and DISABLES
 persistence entirely** (warns "storage is currently unavailable" on every write, nothing saved → logout-on-refresh,

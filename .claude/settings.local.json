@@ -55,7 +55,8 @@
       "Bash(grep -n \"personal-bloc:viewer:v1\\\\` |\" CLAUDE.md)",
       "Bash(grep -n \"sandboxCollateralBtc\\\\`/\\\\`viewerUnlocked\\\\`\\\\|transient fields like\" CLAUDE.md)",
       "Bash(grep -n \"writerKeyWrapped\\\\`/\\\\`writerKeyWrapMeta\\\\` \\(the writer\\\\|Phase C \\(opt-in + migration\\)\" CLAUDE.md)",
-      "Bash(grep -n \"disconnectNostr\\\\` \\\\|Full sign-out\" CLAUDE.md)"
+      "Bash(grep -n \"disconnectNostr\\\\` \\\\|Full sign-out\" CLAUDE.md)",
+      "Bash(echo \"exit:$?\")"
     ],
     "additionalDirectories": [
       "/tmp"

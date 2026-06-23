@@ -941,7 +941,7 @@ export const useStore = create<StoreState>()(
         ? createJSONStorage(() => encryptedStorage)
         : createJSONStorage(() => window.localStorage),
       partialize: (state) => {
-        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, ...rest } = state;
+        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
         return rest;
       },
       // Custom merge (replaces zustand's default shallow `{...current, ...persisted}`) so identity restoration is

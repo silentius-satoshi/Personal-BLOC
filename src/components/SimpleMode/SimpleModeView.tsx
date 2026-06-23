@@ -212,7 +212,6 @@ function ModalField({ label, prefix, value, onChange, step = 1, hint }: {
 }
 
 export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
-  console.log('[flashB] SimpleModeView render', Date.now(), useStore.getState().advisorActualBtcHeld, useStore.getState().btcHoldings);   // TEMP [flashB] — remove after diagnosis
   const income    = useStore((s) => s.income);
   const expenses  = useStore((s) => s.expenses);
   const btcPrice  = useStore((s) => s.btcPrice);

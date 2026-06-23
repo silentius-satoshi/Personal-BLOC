@@ -270,8 +270,6 @@ export function AppShell() {
     }
   }, [hiddenTabs, activeTab]);
 
-  console.log('[flashB] AppShell render', Date.now(), isAuthenticated, useStore.getState().advisorActualBtcHeld);   // TEMP [flashB] — remove after diagnosis
-
   return (
     <>
       {!onboardingComplete && (

@@ -22,12 +22,9 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
     try {
       const signer = await restoreSigner(nostr);   // → unwrapSecretKey → Face ID / PIN
       if (!signer) throw new Error('Unlock failed');
-      console.log('[flashB] before rehydrate', Date.now(), useStore.getState().advisorActualBtcHeld, useStore.getState().onboardingComplete);   // TEMP [flashB] — remove after diagnosis
       await useStore.persist.rehydrate();   // Bug 1: ensure async hydration lands BEFORE the gate dismisses (fixes
                                             // the plaintext seed-flash; harmless on the encrypted path — restoreSigner already rehydrated)
-      console.log('[flashB] after rehydrate', Date.now(), useStore.getState().advisorActualBtcHeld, useStore.getState().onboardingComplete);   // TEMP [flashB] — remove after diagnosis
       useStore.getState().setIsAuthenticated(true);
-      console.log('[flashB] after setIsAuthenticated', Date.now(), useStore.getState().advisorActualBtcHeld, useStore.getState().onboardingComplete);   // TEMP [flashB] — remove after diagnosis
       syncNow(nostr);   // fire-and-forget pull/merge once unlocked
     } catch (e: any) {
       setError(e?.message ?? 'Unlock failed — try again');
