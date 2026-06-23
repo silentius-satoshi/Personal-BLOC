@@ -14,7 +14,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState, useEffect } from 'react';
-import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
+import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, importRelaysFromNip65, publishRelayListToNip65 } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
@@ -173,6 +173,26 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
     if (!window.confirm('Reset your relay list to the app defaults?')) return;
     setNostrRelays([...DEFAULT_RELAYS]);
     setRelayError(null);
+  };
+  // Network subpage (P2) — NIP-65 import/publish.
+  const [relaySyncBusy, setRelaySyncBusy] = useState<'idle' | 'import' | 'publish'>('idle');
+  const [relaySyncMsg, setRelaySyncMsg] = useState<string | null>(null);
+  const handleImportRelays = async () => {
+    if (!window.confirm('Replace your local relay list with the one from your Nostr (NIP-65) profile?')) return;
+    setRelaySyncBusy('import'); setRelaySyncMsg(null); setRelayError(null);
+    try {
+      const r = await importRelaysFromNip65();
+      if (r.found && !r.empty) setRelaySyncMsg(`Imported ${r.count} relay${r.count === 1 ? '' : 's'} from your Nostr list.`);
+      else if (r.found) setRelaySyncMsg('Your Nostr relay list is empty — keeping your current relays.');
+      else setRelaySyncMsg('No relay list found on your Nostr profile — keeping your current relays.');
+    } finally { setRelaySyncBusy('idle'); }
+  };
+  const handlePublishRelays = async () => {
+    setRelaySyncBusy('publish'); setRelaySyncMsg(null);
+    try {
+      const ok = await publishRelayListToNip65();
+      setRelaySyncMsg(ok ? 'Published your relay list to Nostr.' : 'Publish failed — try again.');
+    } finally { setRelaySyncBusy('idle'); }
   };
 
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
@@ -884,10 +904,13 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>SYNC</div>
-          {/* Import/Publish are inert in P1 — NIP-65 sync ships in P2 */}
-          <button className={styles.nostrReconnectBtn} disabled>Import from Nostr (coming soon)</button>
-          <button className={styles.nostrReconnectBtn} disabled>Publish to Nostr (coming soon)</button>
-          <span className={styles.fieldHint}>Sync your relay list with your Nostr (NIP-65) list — coming soon.</span>
+          <button className={styles.nostrReconnectBtn} onClick={handleImportRelays} disabled={relaySyncBusy !== 'idle'}>
+            {relaySyncBusy === 'import' ? 'Importing…' : 'Import from Nostr'}
+          </button>
+          <button className={styles.nostrReconnectBtn} onClick={handlePublishRelays} disabled={relaySyncBusy !== 'idle'}>
+            {relaySyncBusy === 'publish' ? 'Publishing…' : 'Publish to Nostr'}
+          </button>
+          {relaySyncMsg && <span className={styles.fieldHint}>{relaySyncMsg}</span>}
           <button className={styles.nostrDisconnectBtn} onClick={handleRestoreRelays}>Restore defaults</button>
         </div>
       </div>

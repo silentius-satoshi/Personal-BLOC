@@ -1,5 +1,19 @@
-import { describe, it, expect } from 'vitest';
-import { DEFAULT_RELAYS, normalizeRelayUrl, addRelay } from '../relays';
+import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+const { mockPool } = vi.hoisted(() => ({
+  mockPool: {
+    querySync: vi.fn(),
+    publish:   vi.fn(),
+    close:     vi.fn(),
+  },
+}));
+
+vi.mock('nostr-tools/pool', () => ({
+  // eslint-disable-next-line prefer-arrow-callback
+  SimplePool: vi.fn(function() { return mockPool; }),
+}));
+
+import { DEFAULT_RELAYS, normalizeRelayUrl, addRelay, importNip65RelayList } from '../relays';
 
 describe('normalizeRelayUrl', () => {
   it('passes a valid wss URL through unchanged', () => {
@@ -61,5 +75,57 @@ describe('addRelay', () => {
 describe('DEFAULT_RELAYS', () => {
   it('is the canonical post-nostr.band default (guards restore-defaults + no-drift)', () => {
     expect(DEFAULT_RELAYS).toEqual(['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol']);
+  });
+});
+
+describe('importNip65RelayList', () => {
+  beforeEach(() => { vi.clearAllMocks(); });
+
+  it('found → returns ALL r tags (flat), normalized + deduped', async () => {
+    mockPool.querySync.mockResolvedValue([{
+      created_at: 100,
+      tags: [
+        ['r', 'wss://relay.damus.io'],          // no marker
+        ['r', 'wss://relay.primal.net', 'write'],
+        ['r', 'WSS://Relay.Damus.IO/', 'read'], // dupe-after-normalize of the first (lowercase + trailing slash)
+        ['r', 'nos.lol'],                        // no scheme → prepend wss://
+        ['p', 'somepubkey'],                     // non-r tag ignored
+      ],
+    }]);
+
+    const res = await importNip65RelayList('owner-hex');
+    expect(res).toEqual({
+      found: true,
+      relays: ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'],
+    });
+    expect(mockPool.close).toHaveBeenCalled();
+  });
+
+  it('takes the NEWEST event when multiple are returned', async () => {
+    mockPool.querySync.mockResolvedValue([
+      { created_at: 100, tags: [['r', 'wss://old.example.com']] },
+      { created_at: 200, tags: [['r', 'wss://new.example.com']] },
+    ]);
+    const res = await importNip65RelayList('owner-hex');
+    expect(res).toEqual({ found: true, relays: ['wss://new.example.com'] });
+  });
+
+  it('no event → { found: false } (NOT defaults)', async () => {
+    mockPool.querySync.mockResolvedValue([]);
+    expect(await importNip65RelayList('owner-hex')).toEqual({ found: false });
+  });
+
+  it('query throws → { found: false } (NOT defaults)', async () => {
+    mockPool.querySync.mockRejectedValue(new Error('relays down'));
+    expect(await importNip65RelayList('owner-hex')).toEqual({ found: false });
+    expect(mockPool.close).toHaveBeenCalled();   // finally still runs
+  });
+
+  it('10002 with no usable r tags → { found: true, relays: [] } (distinct from not-found)', async () => {
+    mockPool.querySync.mockResolvedValue([{
+      created_at: 100,
+      tags: [['p', 'x'], ['r', 'http://nope.com'], ['r', 'not a url']],   // all unnormalizable / non-r
+    }]);
+    expect(await importNip65RelayList('owner-hex')).toEqual({ found: true, relays: [] });
   });
 });

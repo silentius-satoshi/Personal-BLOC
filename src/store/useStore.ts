@@ -5,7 +5,7 @@ import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulat
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
-import { DEFAULT_RELAYS } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
+import { DEFAULT_RELAYS, importNip65RelayList } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
 import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
 import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -457,6 +457,50 @@ export async function publishSettingsNow(): Promise<boolean> {
   } catch (e) {
     nostrLog('error', 'settings publish failed', e);   // dirty stays true → retried by syncNow
     useStore.getState().setNostrReconnectNeeded(true);
+    return false;
+  } finally {
+    useStore.getState().setNostrSyncing(false);
+  }
+}
+
+// Network subpage P2 — NIP-65 relay-list sync. Import READS the user's kind-10002 and replaces the local relay list
+// ONLY when a real list is found (the discriminated {found} result keeps an absent/empty list from clobbering the
+// current one). Publish WRITES the local list as a PLAIN kind-10002 (never encrypted). Both are out-of-band one-offs:
+// they don't touch settingsDirty/recordsDirty/nostrReconnectNeeded — only nostrSyncing for the loading dot.
+export async function importRelaysFromNip65(): Promise<{ found: boolean; count: number; empty: boolean }> {
+  const state = useStore.getState();
+  if (!state.nostrPubkey) return { found: false, count: 0, empty: false };
+  try {
+    const res = await importNip65RelayList(state.nostrPubkey);
+    if (res.found && res.relays.length) {
+      useStore.getState().setNostrRelays(res.relays);
+      return { found: true, count: res.relays.length, empty: false };
+    }
+    if (res.found) return { found: true, count: 0, empty: true };   // empty → do NOT touch relays
+    return { found: false, count: 0, empty: false };                // not-found → do NOT touch relays
+  } catch (e) {
+    nostrLog('error', 'relay import failed', e);
+    return { found: false, count: 0, empty: false };
+  }
+}
+
+export async function publishRelayListToNip65(): Promise<boolean> {
+  const state = useStore.getState();
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;
+  useStore.getState().setNostrSyncing(true);
+  try {
+    const { publishRelayListNip65 } = await import('../lib/nostr/publish');
+    await publishRelayListNip65(
+      state.nostrSigner,
+      state.nostrPubkey,
+      state.nostrRelays,
+      [...new Set([...state.nostrRelays, ...DEFAULT_RELAYS])],   // reach well-known relays too
+      signerOpTimeout(state.nostrSigningMethod),
+    );
+    nostrLog('info', 'relay list published (nip-65)');
+    return true;
+  } catch (e) {
+    nostrLog('error', 'relay list publish failed', e);
     return false;
   } finally {
     useStore.getState().setNostrSyncing(false);

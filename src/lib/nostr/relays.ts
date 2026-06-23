@@ -42,6 +42,36 @@ export function addRelay(list: string[], input: string): { list: string[]; error
   return { list: [...list, normalized], error: null };
 }
 
+/**
+ * Read the user's NIP-65 (kind 10002) relay list. Unlike `fetchUserRelays`, this returns a DISCRIMINATED result and
+ * does NOT fall back to defaults on no-event/empty/error — the caller (Network "Import from Nostr") must distinguish
+ * "found your real list" from "found nothing" so it never silently overwrites a real list with the default 3.
+ * Flat list: ALL `r` tags (no write/read marker filter — Personal ₿LOC treats its relay list as one flat connect set).
+ * A 10002 with no usable `r` tags → `{ found: true, relays: [] }` (distinct from not-found).
+ */
+export async function importNip65RelayList(
+  pubkey: string,
+  bootstrapRelays: string[] = BOOTSTRAP_RELAYS,
+): Promise<{ found: true; relays: string[] } | { found: false }> {
+  const pool = new SimplePool();
+  try {
+    const events = await pool.querySync(bootstrapRelays, { kinds: [10002], authors: [pubkey], limit: 1 });
+    if (!events.length) return { found: false };   // NO fallback to defaults — caller decides
+    const latest = events.sort((a, b) => b.created_at - a.created_at)[0];
+    const relays = [...new Set(
+      latest.tags
+        .filter(([t]) => t === 'r')                                  // ALL r tags — flat (no write/read filter)
+        .map(([, url]) => normalizeRelayUrl(url ?? ''))
+        .filter((u): u is string => !!u),                            // drop unnormalizable
+    )];
+    return { found: true, relays };                                 // empty array stays {found:true} — distinct from not-found
+  } catch {
+    return { found: false };                                        // query error → not-found, NOT defaults
+  } finally {
+    pool.close(bootstrapRelays);
+  }
+}
+
 export async function fetchUserRelays(
   pubkey: string,
   bootstrapRelays: string[] = BOOTSTRAP_RELAYS,

@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (278 tests — all must pass before every commit)
+- Vitest (285 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -105,8 +105,11 @@ src/
                                 # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
                                 # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
                                 # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; neutral
-                                # placeholder dots — live status is P3; Import/Publish-to-Nostr buttons present but
-                                # DISABLED "coming soon" — NIP-65 sync is P2); about = build-tap row + DevPanel.
+                                # placeholder dots — live status is P3. P2 (DONE): the SYNC group's Import-from-Nostr
+                                # (window.confirm → importRelaysFromNip65 → message by found/empty/not-found; replaces
+                                # the local list only on a real found list) + Publish-to-Nostr (publishRelayListToNip65,
+                                # no confirm) are LIVE; relaySyncBusy 'idle'|'import'|'publish' disables both + busy
+                                # labels, relaySyncMsg in a .fieldHint); about = build-tap row + DevPanel.
                                 # GATING PRESERVED: identity/sharing/strike/cbloan/tabs rows stay !viewerMode (display/about
                                 # always) — viewer visibility is unchanged from before (the zero-risk reading of the spec's
                                 # "always" table). The ONE behavioral change: the `hasCbLoan` toggle moved OUT of the subpage
@@ -784,7 +787,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-278 tests — `npx vitest run` before every commit.
+285 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -805,6 +808,8 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom); + Phase-A store-key suite: deriveStoreKey round-trips encryptBlob/decryptBlob, is independent of the nsec-wrap key (same pin+salt, different HKDF info → can't cross-decrypt) while the wrap path still unwraps, wrong-pin blob rejects, random IV per encrypt; + 3a.1 `deriveStoreKeyFromNsec` suite: deterministic (same nsec+pubkey round-trips), nsec-dependent + pubkey-salted (cross-decrypt throws), independent from the nsec-wrap key (can't decrypt the wrap ciphertext), and does not mutate the caller sk
 - `src/lib/nostr/__tests__/ownerGate.test.ts` — `isOwnerPubkey`: matches the owner, rejects a non-owner/null key when configured, unset/empty env → true (no lockout)
 - `src/lib/nostr/__tests__/proxyAuth.test.ts` — `getProxyAuthHeader` token cache: caches within ~50s (signs once), re-signs after expiry / on url change / on method change, returns the `"Nostr "` scheme prefix (mock signer, stubbed `Date.now`, `resetProxyAuthCache` per case)
+- `src/lib/nostr/__tests__/relays.test.ts` — `normalizeRelayUrl` (passthrough/trailing-slash/lowercase/prepend-wss/reject-http/reject-garbage/localhost-ws/reject-nonlocalhost-ws), `addRelay` (append/dup/invalid), `DEFAULT_RELAYS` shape; + P2 `importNip65RelayList` (mocked pool: found→all-r-tags flat + normalize/dedupe, newest-event-wins, no-event→{found:false}, throw→{found:false}, no-usable-r-tags→{found:true,relays:[]})
+- `src/lib/nostr/__tests__/publishRelayList.test.ts` — P2 `publishRelayListNip65` event-shape (mocked signer+pool): PLAIN kind-10002, content '', flat `r` tags, `signer.nip44.encrypt` NEVER called (G2), publishes to `publishTo` when wider than the tag list
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
@@ -1126,7 +1131,12 @@ src/
                                     # inject can outlast restoreSigner's own 3s wait). Only a genuinely-null signer
                                     # flips auth off; a failed sync with a live signer does not
   lib/nostr/
-    publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2)
+    publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2).
+                                    # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN
+                                    # (unencrypted) kind-10002 relay list (flat r tags, no read/write markers); MUST NOT
+                                    # route through publishEncrypted/signer.nip44 (10002 is public). Both share the
+                                    # private publishSignedToRelays tail (first-ack/all-reject/12s-timeout, pool close
+                                    # after allSettled) — extracted from publishEncrypted, whose signature is unchanged
     keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
                                     # PBKDF2→HKDF→AES-GCM via WebCrypto; wrap/unwrap/probe; key in MEMORY only,
                                     # never persisted). Shared infra: writer local-key now, viewer key later.
@@ -1191,7 +1201,14 @@ src/
                                     # defaults" + publish.ts FALLBACK_RELAYS + BOOTSTRAP_RELAYS all reference it — no
                                     # drift). normalizeRelayUrl (trim → prepend wss:// if no scheme → require wss:/
                                     # ws:-localhost → lowercase host → strip trailing slash → null on malformed) +
-                                    # addRelay (pure normalize+dedupe+append → {list,error}) for the Network subpage
+                                    # addRelay (pure normalize+dedupe+append → {list,error}) for the Network subpage.
+                                    # P2: importNip65RelayList(pubkey) — reads the user's kind-10002 and returns a
+                                    # DISCRIMINATED {found:true,relays} | {found:false}; UNLIKE fetchUserRelays it does
+                                    # NOT fall back to defaults on no-event/empty/error (the caller must distinguish a
+                                    # real list from nothing, else Import silently clobbers with the default 3). Flat:
+                                    # ALL r tags (no write/read filter), normalize+dedupe, newest event wins; a 10002
+                                    # with no usable r tags → {found:true,relays:[]} (distinct from not-found).
+                                    # fetchUserRelays is LEFT UNTOUCHED (its sync-bootstrap caller wants the fallback)
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
   lib/store/
@@ -1256,6 +1273,13 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - `FALLBACK_RELAYS`: = `DEFAULT_RELAYS` (damus, primal, nos.lol — relays.ts; used if NIP-65 discovery fails)
 - NIP-65 relay discovery: `syncNow` fetches the user's kind:10002 when `nostrRelays` is empty and
   stores it; subsequent publishes go to the user's own relays
+- `importRelaysFromNip65()` / `publishRelayListToNip65()` (Network P2) — exported from the store; the manual
+  Network-subpage NIP-65 sync. Import calls `importNip65RelayList(nostrPubkey)` and `setNostrRelays` ONLY on a
+  real found list (returns `{found,count,empty}` so the UI toasts the right message; absent/empty never overwrites).
+  Publish guards `isAuthenticated && nostrSigner && nostrPubkey` and calls `publishRelayListNip65` (PLAIN kind-10002)
+  to `[...nostrRelays, ...DEFAULT_RELAYS]` for reach. Both are out-of-band one-offs: they toggle only `nostrSyncing`
+  (the orange dot) and DELIBERATELY do NOT touch `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded` (flipping the
+  reconnect flag would mis-fire the ⚠ Reconnect affordance)
 
 ---
 

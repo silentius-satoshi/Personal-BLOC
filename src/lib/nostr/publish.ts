@@ -29,10 +29,20 @@ export async function publishEncrypted(
     content:    ciphertext,
   }), opTimeoutMs, 'signEvent');
 
+  return publishSignedToRelays(signed, relays, createdAt);
+}
+
+// Shared publish-and-await-ack tail: resolve on the FIRST relay ack, reject only if ALL reject or after 12s, close
+// the pool after all settle. Consumed by publishEncrypted (kind-30078) AND publishRelayListNip65 (plain kind-10002).
+function publishSignedToRelays(
+  signed:    Parameters<SimplePool['publish']>[1],
+  relays:    string[],
+  createdAt: number,
+): Promise<number> {
   const pool = new SimplePool();
   const pubs = pool.publish(relays, signed);                 // Promise[] (one per relay)
   Promise.allSettled(pubs).finally(() => pool.close(relays)); // close after all settle; do NOT block the return
-  return await new Promise<number>((resolve, reject) => {
+  return new Promise<number>((resolve, reject) => {
     let settled = false, rejections = 0;
     const timer = setTimeout(() => { if (!settled) { settled = true; reject(new Error('publish timeout — no relay accepted')); } }, 12000);
     if (pubs.length === 0) { clearTimeout(timer); reject(new Error('no relays')); return; }
@@ -41,6 +51,29 @@ export async function publishEncrypted(
        .catch((err) => { rejections++; if (!settled && rejections === pubs.length) { settled = true; clearTimeout(timer); reject(new AggregateError([err], 'All relays rejected the event')); } });
     }
   });
+}
+
+/**
+ * Publish a PLAIN (unencrypted) NIP-65 relay list — kind 10002, flat `r` tags (no read/write markers, both implied).
+ * MUST NOT route through publishEncrypted / signer.nip44 — kind 10002 is public and must stay readable by other
+ * clients. `_pubkey` is kept for signature parity (signer.signEvent needs no pubkey). `publishTo` lets the caller
+ * also hit well-known relays for reach even after the user removes everything; defaults to `relays`.
+ */
+export async function publishRelayListNip65(
+  signer:      NostrSigner,
+  _pubkey:     string,
+  relays:      string[],
+  publishTo:   string[] = relays,
+  opTimeoutMs: number = 20000,
+): Promise<number> {
+  const createdAt = Math.floor(Date.now() / 1000);
+  const signed = await withTimeout(signer.signEvent({
+    kind:       10002,
+    created_at: createdAt,
+    content:    '',
+    tags:       relays.map((url) => ['r', url]),   // flat — no read/write markers
+  }), opTimeoutMs, 'signEvent');
+  return publishSignedToRelays(signed, publishTo, createdAt);
 }
 
 export async function publishSettings(
