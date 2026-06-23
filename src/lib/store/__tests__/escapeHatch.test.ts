@@ -14,7 +14,11 @@ const mem = new Map<string, string>();
 // Mock the relay-touching deps so resetAndResync's outcome is driven entirely by the test.
 vi.mock('../../nostr/session', () => ({ restoreSigner: vi.fn() }));
 vi.mock('../../nostr/sync', () => ({ fetchAndSync: vi.fn() }));
-vi.mock('../../nostr/relays', () => ({ fetchUserRelays: vi.fn() }));
+// Keep the real exports (DEFAULT_RELAYS is read by the store at module init) — mock only fetchUserRelays.
+vi.mock('../../nostr/relays', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../nostr/relays')>()),
+  fetchUserRelays: vi.fn(),
+}));
 
 import { restoreSigner } from '../../nostr/session';
 import { fetchAndSync } from '../../nostr/sync';

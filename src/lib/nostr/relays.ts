@@ -1,10 +1,46 @@
 import { SimplePool } from 'nostr-tools/pool';
 
-const BOOTSTRAP_RELAYS = [
-  'wss://relay.primal.net',
+/**
+ * The single source of truth for the default relay list — consumed by the store's `nostrRelays` default, the
+ * Network subpage's "Restore defaults", `publish.ts`'s `FALLBACK_RELAYS`, and NIP-65 discovery bootstrap below.
+ * Keep them unified so they can't drift (a dead relay baked into one copy was the prior bug).
+ */
+export const DEFAULT_RELAYS = [
   'wss://relay.damus.io',
+  'wss://relay.primal.net',
   'wss://nos.lol',
 ];
+
+const BOOTSTRAP_RELAYS = DEFAULT_RELAYS;
+
+/**
+ * Normalize + validate a user-entered relay URL. Returns the canonical `wss://…` string, or null if malformed.
+ * - no scheme typed → prepend `wss://` (friendly default; standard relay-input UX)
+ * - require `wss:` (or `ws:` ONLY for localhost dev) — reject http/other schemes
+ * - lowercase host, strip a trailing slash
+ */
+export function normalizeRelayUrl(input: string): string | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  const withScheme = trimmed.includes('://') ? trimmed : `wss://${trimmed}`;
+  let url: URL;
+  try { url = new URL(withScheme); } catch { return null; }
+  const isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
+  if (url.protocol !== 'wss:' && !(url.protocol === 'ws:' && isLocalhost)) return null;
+  url.hostname = url.hostname.toLowerCase();
+  return url.toString().replace(/\/$/, '');   // drop the trailing slash URL adds for a root path
+}
+
+/**
+ * Pure add-relay: normalize → reject invalid → reject duplicate → append. Returns the (possibly unchanged) list and
+ * an error message (null on success). Used by the Network subpage so add/dedupe/validate is one unit-testable step.
+ */
+export function addRelay(list: string[], input: string): { list: string[]; error: string | null } {
+  const normalized = normalizeRelayUrl(input);
+  if (!normalized) return { list, error: 'Enter a valid wss:// relay URL' };
+  if (list.includes(normalized)) return { list, error: 'That relay is already in your list' };
+  return { list: [...list, normalized], error: null };
+}
 
 export async function fetchUserRelays(
   pubkey: string,

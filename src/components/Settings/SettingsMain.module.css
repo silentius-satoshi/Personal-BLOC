@@ -181,6 +181,42 @@
 .strikeStatusDotOn { width: 6px; height: 6px; border-radius: 50%; background: var(--green); box-shadow: 0 0 4px var(--green); flex-shrink: 0; }
 .strikeStatusDotOff { width: 6px; height: 6px; border-radius: 50%; background: var(--text-faint); flex-shrink: 0; }
 
+/* Network subpage (P1) — relay list rows + add row */
+.relayRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.relayRow:last-child { border-bottom: none; }
+.relayUrl {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.relayRemove {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 4px 6px;
+  flex-shrink: 0;
+  transition: color 0.12s;
+}
+.relayRemove:hover { color: var(--red); }
+.relayAddRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .locationToggle {
   background: none;
   border: 1px solid var(--border);

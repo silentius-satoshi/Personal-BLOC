@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (267 tests — all must pass before every commit)
+- Vitest (278 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -103,7 +103,10 @@ src/
                                 # inputs (+ a READ-ONLY "Strike API · Connected/Not connected" status row at the top of
                                 # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
                                 # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
-                                # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; about = build-tap row + DevPanel.
+                                # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
+                                # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; neutral
+                                # placeholder dots — live status is P3; Import/Publish-to-Nostr buttons present but
+                                # DISABLED "coming soon" — NIP-65 sync is P2); about = build-tap row + DevPanel.
                                 # GATING PRESERVED: identity/sharing/strike/cbloan/tabs rows stay !viewerMode (display/about
                                 # always) — viewer visibility is unchanged from before (the zero-risk reading of the spec's
                                 # "always" table). The ONE behavioral change: the `hasCbLoan` toggle moved OUT of the subpage
@@ -781,7 +784,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-267 tests — `npx vitest run` before every commit.
+278 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -1183,7 +1186,12 @@ src/
                                     # setDeletedMonths/setStrike*); NEVER publishes/dirties. useViewerSync (hook)
                                     # mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
-    relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery
+    relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
+                                    # source for the default relay list (store nostrRelays default + Network "Restore
+                                    # defaults" + publish.ts FALLBACK_RELAYS + BOOTSTRAP_RELAYS all reference it — no
+                                    # drift). normalizeRelayUrl (trim → prepend wss:// if no scheme → require wss:/
+                                    # ws:-localhost → lowercase host → strip trailing slash → null on malformed) +
+                                    # addRelay (pure normalize+dedupe+append → {list,error}) for the Network subpage
     disconnect.ts                   # disconnectNostr — clears state + window.location.reload() to flush NPool
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
   lib/store/
@@ -1245,7 +1253,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths }`; returns boolean and STILL
   manages the flag itself (the log mutators call it standalone, outside syncNow): clears `recordsDirty` +
   `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure (dirty stays true)
-- `FALLBACK_RELAYS`: damus, primal, nos.lol (used if NIP-65 discovery fails)
+- `FALLBACK_RELAYS`: = `DEFAULT_RELAYS` (damus, primal, nos.lol — relays.ts; used if NIP-65 discovery fails)
 - NIP-65 relay discovery: `syncNow` fetches the user's kind:10002 when `nostrRelays` is empty and
   stores it; subsequent publishes go to the user's own relays
 

@@ -26,6 +26,7 @@ import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { disconnectNostr, reconnectNostr } from '../../lib/nostr/disconnect';
+import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
@@ -96,7 +97,7 @@ function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, 
 }
 
 // Phase 1 navigation shell: the long scroll becomes a section menu (rows) that drills into subpages.
-type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'about';
+type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'network' | 'about';
 
 const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   identity: 'Identity & Security',
@@ -105,6 +106,7 @@ const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   cbloan:   'Coinbase Loan',
   display:  'Display',
   tabs:     'Tabs',
+  network:  'Network',
   about:    'About',
 };
 
@@ -156,6 +158,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
   // Phase 1: which settings subpage is showing (local — not threaded through the store/activeTab).
   const [settingsPage, setSettingsPage] = useState<SettingsPage>('menu');
+
+  // Network subpage (P1) — local relay list management.
+  const nostrRelays    = useStore((s) => s.nostrRelays);
+  const setNostrRelays = useStore((s) => s.setNostrRelays);
+  const [relayDraft, setRelayDraft] = useState('');
+  const [relayError, setRelayError] = useState<string | null>(null);
+  const handleAddRelay = () => {
+    const result = addRelay(nostrRelays, relayDraft);
+    setRelayError(result.error);
+    if (!result.error) { setNostrRelays(result.list); setRelayDraft(''); }
+  };
+  const handleRestoreRelays = () => {
+    if (!window.confirm('Reset your relay list to the app defaults?')) return;
+    setNostrRelays([...DEFAULT_RELAYS]);
+    setRelayError(null);
+  };
 
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
   const tapCount  = useRef(0);
@@ -359,6 +377,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             )}
             <SettingsRow icon="🖥️" title="Display" subtitle="Simple Mode, plan bars, mining log" onClick={() => setSettingsPage('display')} styles={styles} />
             {!viewerMode && <SettingsRow icon="🗂️" title="Tabs" subtitle="Visibility & order" onClick={() => setSettingsPage('tabs')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="🌐" title="Network" subtitle="Relays & connections" onClick={() => setSettingsPage('network')} styles={styles} />}
             <SettingsRow icon="ℹ️" title="About" subtitle="Build info" onClick={() => setSettingsPage('about')} styles={styles} />
           </div>
         </>
@@ -819,6 +838,58 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             </div>
           </SortableContext>
         </DndContext>
+      </div>
+      )}
+
+      {settingsPage === 'network' && !viewerMode && (
+      <div className={styles.section}>
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>YOUR RELAYS</div>
+          {nostrRelays.length === 0 && <span className={styles.fieldHint}>No relays configured.</span>}
+          {nostrRelays.map((url) => (
+            <div key={url} className={styles.relayRow}>
+              {/* P1: neutral placeholder dot — live connection status is P3 */}
+              <span className={styles.strikeStatusDotOff} />
+              <span className={styles.relayUrl}>{url}</span>
+              <button
+                className={styles.relayRemove}
+                onClick={() => setNostrRelays(nostrRelays.filter((r) => r !== url))}
+                aria-label={`Remove ${url}`}
+                title="Remove relay"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>ADD RELAY</div>
+          <div className={styles.relayAddRow}>
+            <input
+              className={styles.setupDateInput}
+              style={{ flex: 1, minWidth: 0 }}
+              type="text"
+              placeholder="wss://relay.example.com"
+              value={relayDraft}
+              onChange={(e) => { setRelayDraft(e.target.value); setRelayError(null); }}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleAddRelay(); }}
+            />
+            <button className={styles.nostrReconnectBtn} onClick={handleAddRelay} disabled={!relayDraft.trim()}>
+              Add
+            </button>
+          </div>
+          {relayError && <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>{relayError}</span>}
+        </div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>SYNC</div>
+          {/* Import/Publish are inert in P1 — NIP-65 sync ships in P2 */}
+          <button className={styles.nostrReconnectBtn} disabled>Import from Nostr (coming soon)</button>
+          <button className={styles.nostrReconnectBtn} disabled>Publish to Nostr (coming soon)</button>
+          <span className={styles.fieldHint}>Sync your relay list with your Nostr (NIP-65) list — coming soon.</span>
+          <button className={styles.nostrDisconnectBtn} onClick={handleRestoreRelays}>Restore defaults</button>
+        </div>
       </div>
       )}
 

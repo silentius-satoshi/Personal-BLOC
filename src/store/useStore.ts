@@ -5,6 +5,7 @@ import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulat
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
+import { DEFAULT_RELAYS } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
 import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
 import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -793,7 +794,7 @@ export const useStore = create<StoreState>()(
   nostrPubkey:        seedNostrPubkey,
   nostrSigningMethod: seedNostrSigningMethod,
   nostrBunkerUri:     null,
-  nostrRelays:        ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'],
+  nostrRelays:        [...DEFAULT_RELAYS],
   nostrLogin:         null,
   writerKeyWrapped:   seedWriterKeyWrapped,
   writerKeyWrapMeta:  seedWriterKeyWrapMeta,

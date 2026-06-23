@@ -2,15 +2,12 @@ import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { withTimeout } from './timeout';
+import { DEFAULT_RELAYS } from './relays';
 
 export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
 export const RECORDS_DTAG  = 'personal-bloc:records:v1';
 
-export const FALLBACK_RELAYS = [
-  'wss://relay.damus.io',
-  'wss://relay.primal.net',
-  'wss://nos.lol',
-];
+export const FALLBACK_RELAYS = DEFAULT_RELAYS;   // unified single source (see relays.ts)
 
 export async function publishEncrypted(
   signer:  NostrSigner,
