@@ -105,13 +105,19 @@ const {
  * hydrate on the GATE key makes sign-out authoritative. Applied in the persist `merge` so it runs on EVERY rehydrate
  * (unlike migrate(), which fires only on a version bump — useStore.ts module note above). Pure (gatePubkey passed in)
  * so it's unit-testable without localStorage. Only the 3 identity fields are touched; all other persisted data passes
- * through untouched.
+ * through untouched. BOTH identity fields (pubkey AND method) are gated on the live GATE keys — the racy blob is
+ * never authoritative for identity (a stale blob `nostrSigningMethod` would point at the wrong signer → timeouts).
  */
-export function gateHydratedIdentity(persisted: any, gatePubkey: string | null) {
+export function gateHydratedIdentity(persisted: any, gatePubkey: string | null, gateMethod: string | null) {
   if (!gatePubkey) {
     return { ...persisted, nostrPubkey: null, nostrSigningMethod: null, nostrAuthEnabled: false };
   }
-  return { ...persisted, nostrPubkey: persisted?.nostrPubkey ?? gatePubkey, nostrAuthEnabled: true };  // pin: GATE affirms identity
+  return {
+    ...persisted,
+    nostrPubkey: persisted?.nostrPubkey ?? gatePubkey,
+    nostrSigningMethod: gateMethod ?? persisted?.nostrSigningMethod ?? null,   // LIVE GATE_METHOD_KEY authoritative; blob fallback (fixes local-login hydrating stale nip46)
+    nostrAuthEnabled: true,   // pin: GATE affirms identity
+  };
 }
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
@@ -945,7 +951,8 @@ export const useStore = create<StoreState>()(
       // non-identity persisted fields pass through unchanged.
       merge: (persisted, current) => {
         const gatePubkey = (() => { try { return localStorage.getItem(GATE_PUBKEY_KEY); } catch { return null; } })();
-        return { ...current, ...gateHydratedIdentity(persisted, gatePubkey) } as typeof current;
+        const gateMethod = (() => { try { return localStorage.getItem(GATE_METHOD_KEY); } catch { return null; } })();
+        return { ...current, ...gateHydratedIdentity(persisted, gatePubkey, gateMethod) } as typeof current;
       },
       migrate: (persistedState: any) => {
         const { customCollateral, ...rest } = persistedState;
@@ -988,7 +995,7 @@ export const useStore = create<StoreState>()(
           // B1 + disconnect-signout: gate identity on the GATE key (seedNostrPubkey) here too — belt-and-suspenders
           // for an ACTUAL version bump (the persist `merge` above is the real fix for same-version reloads).
           nostrAuthEnabled:     !!seedNostrPubkey,   // pin: derived; gated by the GATE key
-          nostrSigningMethod:   seedNostrPubkey ? (persistedState.nostrSigningMethod ?? seedNostrSigningMethod) : null,
+          nostrSigningMethod:   seedNostrPubkey ? (seedNostrSigningMethod ?? persistedState.nostrSigningMethod) : null,   // GATE-first (consistent with merge); blob fallback
           nostrPubkey:          seedNostrPubkey ? (persistedState.nostrPubkey ?? seedNostrPubkey) : null,
           // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
           // snapshot). Additive nullable defaults, no version bump.

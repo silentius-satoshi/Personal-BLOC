@@ -106,16 +106,16 @@ describe('gate-condition fields — standalone localStorage (3a.4)', () => {
 describe('gateHydratedIdentity — disconnect-signout (identity gated on the synchronous GATE key, applied in persist merge)', () => {
   it('GATE absent (disconnect cleared it) → identity nulled + auth false: sign-out wins over a stale blob pubkey', async () => {
     const { gateHydratedIdentity } = await import('../useStore');
-    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'local', nostrAuthEnabled: true, income: 4000 }, null);
+    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'local', nostrAuthEnabled: true, income: 4000 }, null, null);
     expect(out.nostrPubkey).toBeNull();
     expect(out.nostrSigningMethod).toBeNull();
     expect(out.nostrAuthEnabled).toBe(false);
     expect(out.income).toBe(4000);   // non-identity data preserved
   });
 
-  it('GATE present + blob pubkey → restored from the blob + auth true (pin)', async () => {
+  it('GATE present + blob pubkey → restored + auth true (pin)', async () => {
     const { gateHydratedIdentity } = await import('../useStore');
-    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'local', income: 4000 }, 'abc');
+    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'local', income: 4000 }, 'abc', 'local');
     expect(out.nostrPubkey).toBe('abc');
     expect(out.nostrSigningMethod).toBe('local');
     expect(out.nostrAuthEnabled).toBe(true);
@@ -124,9 +124,22 @@ describe('gateHydratedIdentity — disconnect-signout (identity gated on the syn
 
   it('GATE present + blob missing pubkey → falls back to the GATE pubkey + auth true', async () => {
     const { gateHydratedIdentity } = await import('../useStore');
-    const out = gateHydratedIdentity({ income: 4000 }, 'abc');
+    const out = gateHydratedIdentity({ income: 4000 }, 'abc', null);
     expect(out.nostrPubkey).toBe('abc');
     expect(out.nostrAuthEnabled).toBe(true);
     expect(out.income).toBe(4000);
+  });
+
+  // Method precedence — the hotfix: the LIVE GATE_METHOD_KEY wins over a stale blob method.
+  it('GATE present, gateMethod=local, blob method nip46 → method LOCAL (live GATE wins — the bug)', async () => {
+    const { gateHydratedIdentity } = await import('../useStore');
+    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'nip46' }, 'abc', 'local');
+    expect(out.nostrSigningMethod).toBe('local');
+  });
+
+  it('GATE present, gateMethod absent → falls back to the blob method', async () => {
+    const { gateHydratedIdentity } = await import('../useStore');
+    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'nip46' }, 'abc', null);
+    expect(out.nostrSigningMethod).toBe('nip46');
   });
 });
