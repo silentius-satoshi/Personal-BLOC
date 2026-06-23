@@ -3,7 +3,9 @@ import { useStore } from '../../store/useStore';
 export function disconnectNostr(): void {
   const s = useStore.getState();
   // NConnectSigner exposes no public close/dispose API — reload rebuilds the pool clean.
-  // Zustand persist writes synchronously, so state is cleared in localStorage before reload.
+  // The setters remove the standalone GATE_* keys (pubkey/auth/method) SYNCHRONOUSLY; the persist blob write is NOT
+  // guaranteed to land before reload(), so the store's GATE-gated `merge` (not the blob) is what makes sign-out
+  // authoritative on the next load — a stale, un-flushed blob pubkey can't resurrect the session.
   s.setNostrSigner(null);
   s.setNostrPubkey(null);
   s.setNostrSigningMethod(null);

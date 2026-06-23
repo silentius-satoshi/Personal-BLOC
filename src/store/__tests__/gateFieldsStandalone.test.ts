@@ -102,3 +102,31 @@ describe('gate-condition fields — standalone localStorage (3a.4)', () => {
     expect(mem.has(PUBKEY)).toBe(false);
   });
 });
+
+describe('gateHydratedIdentity — disconnect-signout (identity gated on the synchronous GATE key, applied in persist merge)', () => {
+  it('GATE absent (disconnect cleared it) → identity nulled + auth false: sign-out wins over a stale blob pubkey', async () => {
+    const { gateHydratedIdentity } = await import('../useStore');
+    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'local', nostrAuthEnabled: true, income: 4000 }, null);
+    expect(out.nostrPubkey).toBeNull();
+    expect(out.nostrSigningMethod).toBeNull();
+    expect(out.nostrAuthEnabled).toBe(false);
+    expect(out.income).toBe(4000);   // non-identity data preserved
+  });
+
+  it('GATE present + blob pubkey → restored from the blob + auth true (pin)', async () => {
+    const { gateHydratedIdentity } = await import('../useStore');
+    const out = gateHydratedIdentity({ nostrPubkey: 'abc', nostrSigningMethod: 'local', income: 4000 }, 'abc');
+    expect(out.nostrPubkey).toBe('abc');
+    expect(out.nostrSigningMethod).toBe('local');
+    expect(out.nostrAuthEnabled).toBe(true);
+    expect(out.income).toBe(4000);
+  });
+
+  it('GATE present + blob missing pubkey → falls back to the GATE pubkey + auth true', async () => {
+    const { gateHydratedIdentity } = await import('../useStore');
+    const out = gateHydratedIdentity({ income: 4000 }, 'abc');
+    expect(out.nostrPubkey).toBe('abc');
+    expect(out.nostrAuthEnabled).toBe(true);
+    expect(out.income).toBe(4000);
+  });
+});

@@ -98,6 +98,22 @@ const {
   return { gOnboarded: onboarded, gAuth: !!pubkey, gMethod: method, gPubkey: pubkey };
 })();
 
+/**
+ * Gate hydrated identity on the standalone GATE_PUBKEY_KEY — the SYNCHRONOUS source of truth that disconnect clears
+ * before reload(). The persisted blob is racy: disconnect's setters clear it but the persist write may not land
+ * before the synchronous reload, leaving a stale `nostrPubkey` that (under the B1 pin) resurrects auth. Gating the
+ * hydrate on the GATE key makes sign-out authoritative. Applied in the persist `merge` so it runs on EVERY rehydrate
+ * (unlike migrate(), which fires only on a version bump — useStore.ts module note above). Pure (gatePubkey passed in)
+ * so it's unit-testable without localStorage. Only the 3 identity fields are touched; all other persisted data passes
+ * through untouched.
+ */
+export function gateHydratedIdentity(persisted: any, gatePubkey: string | null) {
+  if (!gatePubkey) {
+    return { ...persisted, nostrPubkey: null, nostrSigningMethod: null, nostrAuthEnabled: false };
+  }
+  return { ...persisted, nostrPubkey: persisted?.nostrPubkey ?? gatePubkey, nostrAuthEnabled: true };  // pin: GATE affirms identity
+}
+
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
 type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'liqsim' | 'settings';
@@ -922,6 +938,15 @@ export const useStore = create<StoreState>()(
         const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, ...rest } = state;
         return rest;
       },
+      // Custom merge (replaces zustand's default shallow `{...current, ...persisted}`) so identity restoration is
+      // gated on the SYNCHRONOUS GATE_PUBKEY_KEY — a stale, un-flushed blob `nostrPubkey` can't resurrect a
+      // signed-out session after disconnect (which removes the GATE key synchronously before reload). Runs on EVERY
+      // rehydrate (same-version included); migrate only fires on a version bump, so it can't cover this path. All
+      // non-identity persisted fields pass through unchanged.
+      merge: (persisted, current) => {
+        const gatePubkey = (() => { try { return localStorage.getItem(GATE_PUBKEY_KEY); } catch { return null; } })();
+        return { ...current, ...gateHydratedIdentity(persisted, gatePubkey) } as typeof current;
+      },
       migrate: (persistedState: any) => {
         const { customCollateral, ...rest } = persistedState;
         const sorted = [...(persistedState.monthlyLog ?? [])]
@@ -960,9 +985,11 @@ export const useStore = create<StoreState>()(
           // 3a.4: gate-condition fields — kept in the blob, but fall back to the standalone seed so a version bump
           // never loses them (booleans use ?? so a stored `false` is preserved).
           onboardingComplete:   persistedState.onboardingComplete   ?? seedOnboardingComplete,
-          nostrAuthEnabled:     !!(persistedState.nostrPubkey ?? seedNostrPubkey),   // B1: derived from pubkey, never the persisted flag
-          nostrSigningMethod:   persistedState.nostrSigningMethod   ?? seedNostrSigningMethod,
-          nostrPubkey:          persistedState.nostrPubkey          ?? seedNostrPubkey,
+          // B1 + disconnect-signout: gate identity on the GATE key (seedNostrPubkey) here too — belt-and-suspenders
+          // for an ACTUAL version bump (the persist `merge` above is the real fix for same-version reloads).
+          nostrAuthEnabled:     !!seedNostrPubkey,   // pin: derived; gated by the GATE key
+          nostrSigningMethod:   seedNostrPubkey ? (persistedState.nostrSigningMethod ?? seedNostrSigningMethod) : null,
+          nostrPubkey:          seedNostrPubkey ? (persistedState.nostrPubkey ?? seedNostrPubkey) : null,
           // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
           // snapshot). Additive nullable defaults, no version bump.
           viewerNpub:           persistedState.viewerNpub   ?? null,
