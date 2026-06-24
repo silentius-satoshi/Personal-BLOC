@@ -57,7 +57,8 @@
       "Bash(grep -n \"writerKeyWrapped\\\\`/\\\\`writerKeyWrapMeta\\\\` \\(the writer\\\\|Phase C \\(opt-in + migration\\)\" CLAUDE.md)",
       "Bash(grep -n \"disconnectNostr\\\\` \\\\|Full sign-out\" CLAUDE.md)",
       "Bash(echo \"exit:$?\")",
-      "Bash(xargs cat)"
+      "Bash(xargs cat)",
+      "Bash(grep -n \"287 tests\\\\|287 —\\\\|All 33 Synced\\\\|33 Synced Settings\\\\|33-field payload\\\\|nostrRelays\\\\` \\\\||\\\\`nostrRelays\\\\`\\\\|viewerNpub\\\\`/\\\\`viewerPubkey\\\\`/\\\\`viewerLabel\\\\`\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"

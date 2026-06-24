@@ -542,6 +542,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
     pendingCollateralAdjustment: s.pendingCollateralAdjustment,
+    nostrRelays:              s.nostrRelays,   // C: relay list syncs across the owner's devices (guarded on hydrate; stripped from the viewer snapshot)
     // Writer-side viewer config — synced in the OWNER's settings:v1 only; STRIPPED from the viewer snapshot below.
     viewerNpub:               s.viewerNpub,
     viewerPubkey:             s.viewerPubkey,
@@ -554,7 +555,7 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
   return {
     // STRIP the owner's sharing config (viewerNpub/viewerPubkey/viewerLabel) — the viewer must never see who else
     // the owner shares with, nor the owner's nickname for them. buildSettingsPayload stays the single owner source.
-    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, ...rest } = buildSettingsPayload(s); return rest; })(),
+    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),   // also strip nostrRelays — the owner's transport config, not for viewers
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
   };
@@ -961,12 +962,30 @@ export const useStore = create<StoreState>()(
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
+      'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
       'viewerNpub', 'viewerPubkey', 'viewerLabel',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {
       if (field in data && data[field] !== undefined) {
         (update as Record<string, unknown>)[field] = data[field];
+      }
+    }
+    // C guard: a default-looking incoming relay list must never clobber a real local one. Skip ONLY the nostrRelays
+    // field (the rest of `update` applies — skip-FIELD, not skip-all). Empty OR exactly-DEFAULT_RELAYS incoming + a
+    // non-empty custom local list → drop the incoming relays; a genuine custom incoming list passes through. (The
+    // creator closure is `(set) => …` with no `get`, so read local via useStore.getState() — safe at call time.)
+    if ('nostrRelays' in update) {
+      const incoming = update.nostrRelays as string[] | undefined;
+      const local = useStore.getState().nostrRelays;
+      const sortedJoin = (a: string[]) => [...a].sort().join(',');
+      const isEmpty = !Array.isArray(incoming) || incoming.length === 0;
+      const isJustDefaults = Array.isArray(incoming) && incoming.length === DEFAULT_RELAYS.length
+        && sortedJoin(incoming) === sortedJoin(DEFAULT_RELAYS);
+      const localIsRealCustom = local.length > 0
+        && !(local.length === DEFAULT_RELAYS.length && sortedJoin(local) === sortedJoin(DEFAULT_RELAYS));
+      if ((isEmpty || isJustDefaults) && localIsRealCustom) {
+        delete (update as Record<string, unknown>).nostrRelays;   // keep the local list
       }
     }
     set(update);

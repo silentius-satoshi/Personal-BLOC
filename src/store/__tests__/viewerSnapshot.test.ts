@@ -47,9 +47,10 @@ describe('viewer snapshot builders', () => {
     expect(snap.strike).toHaveProperty('rate');
   });
 
-  it("the snapshot's settings deep-equal buildSettingsPayload minus the owner's viewer config (single source — cannot drift)", () => {
+  it("the snapshot's settings deep-equal buildSettingsPayload minus the owner's viewer config + nostrRelays (single source — cannot drift)", () => {
     const s = useStore.getState();
-    const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, ...ownerMinusViewerConfig } = buildSettingsPayload(s);
+    // nostrRelays is ALSO stripped from the viewer snapshot (owner transport config) — see buildViewerSnapshotPayload.
+    const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, nostrRelays: _r, ...ownerMinusViewerConfig } = buildSettingsPayload(s);
     expect(buildViewerSnapshotPayload(s).settings).toEqual(ownerMinusViewerConfig);
   });
 
