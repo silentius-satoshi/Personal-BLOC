@@ -31,13 +31,9 @@ export const encryptedStorage = {
     catch { return null; }   // wrong key / corrupt → empty, don't crash
   },
   setItem: async (name: string, value: string): Promise<void> => {
-    if (!storeKey) {
-      console.log('[DROP] write dropped — store LOCKED (no key), name:', name, '| value bytes:', value?.length, '| time:', new Date().toISOString());   // TEMP [DROP] diagnostic — remove after observation run
-      return;   // locked → DROP the write; NEVER persist plaintext
-    }
+    if (!storeKey) return;   // locked → DROP the write; NEVER persist plaintext
     const { ct, iv } = await encryptBlob(value, storeKey);
     localStorage.setItem(name, JSON.stringify({ ct, iv }));
-    console.log('[WROTE] persisted (encrypted), name:', name, '| value bytes:', value?.length);   // TEMP [WROTE] diagnostic — remove after observation run
   },
   removeItem: async (name: string): Promise<void> => { localStorage.removeItem(name); },
 };
