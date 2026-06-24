@@ -166,17 +166,17 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
   // Network subpage (P1) — local relay list management.
   const nostrRelays    = useStore((s) => s.nostrRelays);
-  const setNostrRelays = useStore((s) => s.setNostrRelays);
+  const setNostrRelaysAndSync = useStore((s) => s.setNostrRelaysAndSync);   // user-edit path: set + mark dirty → publishes on its own
   const [relayDraft, setRelayDraft] = useState('');
   const [relayError, setRelayError] = useState<string | null>(null);
   const handleAddRelay = () => {
     const result = addRelay(nostrRelays, relayDraft);
     setRelayError(result.error);
-    if (!result.error) { setNostrRelays(result.list); setRelayDraft(''); }
+    if (!result.error) { setNostrRelaysAndSync(result.list); setRelayDraft(''); }
   };
   const handleRestoreRelays = () => {
     if (!window.confirm('Reset your relay list to the app defaults?')) return;
-    setNostrRelays([...DEFAULT_RELAYS]);
+    setNostrRelaysAndSync([...DEFAULT_RELAYS]);
     setRelayError(null);
   };
   // Network subpage (P2) — NIP-65 import/publish.
@@ -872,7 +872,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               <span className={styles.relayUrl}>{url}</span>
               <button
                 className={styles.relayRemove}
-                onClick={() => setNostrRelays(nostrRelays.filter((r) => r !== url))}
+                onClick={() => setNostrRelaysAndSync(nostrRelays.filter((r) => r !== url))}
                 aria-label={`Remove ${url}`}
                 title="Remove relay"
               >

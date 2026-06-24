@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useStore, buildSettingsPayload, buildViewerSnapshotPayload } from '../useStore';
 import { DEFAULT_RELAYS } from '../../lib/nostr/relays';
 
@@ -73,5 +73,35 @@ describe('Option C — hydrateSettings relay guard (replace-on-hydrate, default-
     hydrate({ income: 7777, nostrRelays: [...DEFAULT_RELAYS] });
     expect(useStore.getState().income).toBe(7777);   // income applied
     expect(relays()).toEqual([A, B, C]);              // relays skipped (guarded)
+  });
+});
+
+describe('Option C follow-on — relay edits publish on their own', () => {
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    // restore a clean store so other suites don't see the fake auth state.
+    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', settingsDirty: false } as never);
+  });
+
+  it('setNostrRelaysAndSync sets the list AND marks settingsDirty (user-edit publish path)', () => {
+    // syncSettingsToNostr early-returns unless authed; fake timers swallow the 2s debounce publish.
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', settingsDirty: false } as never);
+    vi.useFakeTimers();
+
+    useStore.getState().setNostrRelaysAndSync([A, B]);
+
+    expect(relays()).toEqual([A, B]);
+    expect(useStore.getState().settingsDirty).toBe(true);
+  });
+
+  it('plain setNostrRelays sets the list but leaves settingsDirty untouched (bootstrap path)', () => {
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', settingsDirty: false } as never);
+    vi.useFakeTimers();
+
+    useStore.getState().setNostrRelays([A]);
+
+    expect(relays()).toEqual([A]);
+    expect(useStore.getState().settingsDirty).toBe(false);   // no publish trigger — discovery must stay silent
   });
 });

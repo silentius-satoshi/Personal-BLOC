@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (296 tests — all must pass before every commit)
+- Vitest (298 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -799,11 +799,11 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-296 tests — `npx vitest run` before every commit.
+298 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
-- `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`)
+- `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
 - `living.test.ts`
 - `mining.test.ts`
@@ -1518,6 +1518,9 @@ a v17-migrant holder until the one-time wrap.
 propagate). `hydrateSettings` GUARDS it: a default-looking incoming list (empty OR exactly `DEFAULT_RELAYS`,
 order-independent sorted compare) never overwrites a non-empty custom local list — skips ONLY that field, applies the
 rest (skip-FIELD, not skip-all). Tradeoff: a deliberate reset-to-defaults doesn't auto-propagate (restore per-device).
+User edits publish on their OWN via `setNostrRelaysAndSync` (the plain `setNostrRelays` stays for boot discovery) —
+and Restore-defaults DOES publish `DEFAULT_RELAYS`, so the receiver-side guard is the load-bearing protector that keeps
+that from wiping the other device's custom list (guard + trigger are complementary).
 STRIPPED from `buildViewerSnapshotPayload` (owner transport config — a viewer reads via its own relay set).
 `viewerNpub`/`viewerPubkey`/`viewerLabel` (the owner's writer-side sharing config + the owner's nickname for the
 viewer) sync so viewer access propagates across the owner's devices — but `buildViewerSnapshotPayload` STRIPS all
@@ -1541,7 +1544,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `viewerKeyWrapped` / `viewerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Phase 3 — wrapped-at-rest viewer nsec + wrap meta — **NEVER synced**. Unwrapped bytes live only in viewerSync's in-memory holder |
 | `viewerUnlocked` | boolean | ❌ | In-memory; true once viewerSync's key holder is populated (post-unlock/provision) — AppShell gates the ViewerUnlockGate on it |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
-| `nostrRelays` | string[] | ✅ | From NIP-65 discovery. **Option C: now SYNCED** across the owner's devices (in `SETTINGS_FIELDS`/`buildSettingsPayload`) — replace-on-hydrate, guarded so a default-looking incoming list can't clobber a real custom local one; stripped from the viewer snapshot |
+| `nostrRelays` | string[] | ✅ | From NIP-65 discovery. **Option C: now SYNCED** across the owner's devices (in `SETTINGS_FIELDS`/`buildSettingsPayload`) — replace-on-hydrate, guarded so a default-looking incoming list can't clobber a real custom local one; stripped from the viewer snapshot. **User edits go through `setNostrRelaysAndSync`** (set + `syncSettingsToNostr` → marks `settingsDirty` → publishes on its own); the plain `setNostrRelays` is retained for the `syncNow` boot bootstrap (`fetchUserRelays` discovery) so fetched/default relays don't spuriously publish |
 | `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
 | `lastRecordsSyncAt` | number | ✅ | Unix ts of last records:v1 event seen — observability ONLY, not a gate |
 | `recordsDirty` | boolean | ✅ | Publish-needed marker + merge tie-breaker ONLY (NOT a receive gate); set on local edit or when the relay is behind; cleared on successful publish |

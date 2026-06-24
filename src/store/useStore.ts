@@ -347,6 +347,7 @@ export interface StoreState {
   setNostrSigningMethod: (v: 'nip07' | 'nip46' | 'local' | null) => void;
   setNostrBunkerUri:     (v: string | null) => void;
   setNostrRelays:        (v: string[]) => void;
+  setNostrRelaysAndSync: (v: string[]) => void;   // user-edit path: set + mark dirty + publish
   setNostrLogin:         (v: string | null) => void;
   setWriterKeyWrapped:   (v: string | null) => void;
   setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
@@ -473,7 +474,7 @@ export async function importRelaysFromNip65(): Promise<{ found: boolean; count: 
   try {
     const res = await importNip65RelayList(state.nostrPubkey);
     if (res.found && res.relays.length) {
-      useStore.getState().setNostrRelays(res.relays);
+      useStore.getState().setNostrRelaysAndSync(res.relays);   // deliberate user import → publish (receiver guard protects a defaults-y list)
       return { found: true, count: res.relays.length, empty: false };
     }
     if (res.found) return { found: true, count: 0, empty: true };   // empty → do NOT touch relays
@@ -863,7 +864,8 @@ export const useStore = create<StoreState>()(
   setNostrPubkey:        (v) => { try { if (v == null) { localStorage.removeItem(GATE_PUBKEY_KEY); localStorage.removeItem(GATE_AUTH_KEY); } else { localStorage.setItem(GATE_PUBKEY_KEY, v); localStorage.setItem(GATE_AUTH_KEY, '1'); } } catch { /* noop */ } set({ nostrPubkey: v, nostrAuthEnabled: !!v }); },
   setNostrSigningMethod: (v) => { try { v == null ? localStorage.removeItem(GATE_METHOD_KEY) : localStorage.setItem(GATE_METHOD_KEY, v); } catch { /* noop */ } set({ nostrSigningMethod: v }); },
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
-  setNostrRelays:        (v) => set({ nostrRelays: v }),
+  setNostrRelays:        (v) => set({ nostrRelays: v }),                                                  // bootstrap/internal: NO publish (syncNow's fetchUserRelays discovery uses this)
+  setNostrRelaysAndSync: (v) => { set({ nostrRelays: v }); useStore.getState().syncSettingsToNostr(); },  // user edit → mark dirty → publish on its own
   setNostrLogin:         (v) => set({ nostrLogin: v }),
   // Write through to the standalone localStorage keys (persisted OUTSIDE the encrypted blob — see WK_*_KEY).
   setWriterKeyWrapped:   (v) => { try { v == null ? localStorage.removeItem(WK_WRAPPED_KEY) : localStorage.setItem(WK_WRAPPED_KEY, v); } catch { /* noop */ } set({ writerKeyWrapped: v }); },
