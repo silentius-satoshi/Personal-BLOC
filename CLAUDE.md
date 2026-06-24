@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (290 tests — all must pass before every commit)
+- Vitest (287 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -799,7 +799,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-290 tests — `npx vitest run` before every commit.
+287 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -812,7 +812,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
-- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` — **THE CRITICAL TEST: failed pull (`fetchAndSync`→false) returns 'no-relays' AND neither publish was called** (spies + structural "imports no publish symbol" assertion — relay data can never be erased); happy path clears dirty BEFORE the pull (asserted inside the fetchAndSync mock); no-auth (null + throw); zero-relays false-'ok' guard (empty relays + empty discovery → 'no-relays', fetchAndSync never called); live-signer reuse + watermark reset (pre-set nostrSigner + nonzero lastSettingsSyncAt → restoreSigner NOT called AND lastSettingsSyncAt/lastRecordsSyncAt are 0 by the time the pull runs)
+- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased)
 - `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -913,9 +913,11 @@ reload — a failed decrypt short-circuits BEFORE the flag is touched (encryptio
 lives in RECOVERY (not the dev panel) so a non-dev user can always exit. **No prominent enable-toggle** — encrypted-
 by-default is the earned end state (later default-on flip, NOT 3a.5). The flag stays OFF by default; it's a
 module-load constant, so both surfaces reload to apply. **3a polish** (from the 3a.5 device round-trip): **Bug 1
-FIXED** — the plaintext cold-start seed-flash (`LocalUnlockGate.unlock` + `resetAndResyncFromGate` now `await
+FIXED** — the plaintext cold-start seed-flash (`LocalUnlockGate.unlock` now `await
 useStore.persist.rehydrate()` before `setIsAuthenticated`, so async plain-localStorage hydration lands before the
-gate dismisses; the encrypted path already rehydrated inside `restoreSigner`). **Bug 2 FIXED** — the
+gate dismisses; the encrypted path already rehydrated inside `restoreSigner`). (`resetAndResyncFromGate` is now
+reload-based per the teardown-desync fix — it no longer rehydrates-then-flips-auth; it clears encryption state +
+reloads into the normal boot path.) **Bug 2 FIXED** — the
 `LocalUnlockGate` escape's double-Face-ID loop → `NostrAuthGate` bounce. Root cause CONFIRMED from device logs: the
 escape path's `restoreSigner` and a reactive `syncNow`'s `restoreSigner` (via `useNostrSync`) fired CONCURRENTLY →
 two WebAuthn ceremonies at once → one aborts (AbortError), the other loops (NotAllowedError). Fix: a **single-flight
@@ -1230,35 +1232,36 @@ src/
                                     # getItem decrypts the {ct,iv} envelope (locked→null, non-envelope→passthrough),
                                     # setItem encrypts (LOCKED→drops the write, NEVER plaintext). 3a.2: WIRED into
                                     # persist as the `storage` adapter WHEN storeEncEnabled (else plain
-                                    # window.localStorage). The held key is the nsec-derived 3a.1 key (set at unlock)
+                                    # window.localStorage). The held key is the nsec-derived 3a.1 key (set at unlock).
+                                    # clearStoreEncryptionState() — TEARDOWN SAFETY: clears ALL FOUR (enc flag +
+                                    # pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key) so a
+                                    # later plaintext-adapter load can't misread a stale {ct,iv} envelope → seeds (the
+                                    # "settings revert to defaults" desync). FIRST action of BOTH teardown paths
+                                    # ("Remove local key" + escapeHatch.resetAndResync), which reload after
     storeMigration.ts               # migratePlaintextToEncrypted (3a.3: WIRED — restoreSigner calls it inline at
                                     # unlock, between setStoreKey + rehydrate) / migrateEncryptedToPlaintext (still
                                     # unused until 3a.5 opt-OUT). VERIFY-BEFORE-DELETE: never overwrite the source
                                     # until the new blob decrypts back === original; idempotent; use getStoreKey. +
                                     # blobIsPlaintext. Tested (incl. the critical verify-mismatch-keeps-plaintext)
-    escapeHatch.ts                  # ESCAPE HATCH — resetAndResync(nostr): 'ok' | 'no-relays' | 'no-auth'. Always-
-                                    # available recovery that clears local plan → seeds (resetPlanToSeeds) + stranded
-                                    # enc flags, clears recordsDirty/settingsDirty BEFORE any sync, RESETS the sync
-                                    # watermarks lastSettingsSyncAt/lastRecordsSyncAt to 0 (else the stale watermark
-                                    # blocks applyRemoteEvent's settings hydrate — remoteTs > lastSettingsSyncAt fails —
-                                    # and the store sits at seed defaults until a later newer event clears it: the
-                                    # 1–2 min default-values delay), REUSES a live nostrSigner if present (only falls
-                                    # back to restoreSigner when null — no needless Face ID re-prompt for an already-
-                                    # authenticated user; the locked-out LocalUnlockGate path has a null signer so it
-                                    # still unwraps there), then PULLS from the relays (fetchAndSync) — and re-enables publishing ONLY after a
-                                    # CONFIRMED pull. NEVER publishes (imports NO publish symbol — structural guarantee):
-                                    # a failed pull → 'no-relays', pushes NOTHING, relay data intact. Closes the
-                                    # syncNow gap where pushes were gated on dirty flags, not pullOk (settings whole-
-                                    # object LWW could overwrite real relay settings from empty seeds in the pull-fails-
-                                    # then-push window; records merge is union-safe already). Two false-'ok' guards:
-                                    # relays-if-empty discovery + a hard "still no relays → 'no-relays'" (fetchAndSync
-                                    # returns true against zero relays). Wired into Settings (RECOVERY button) +
-                                    # LocalUnlockGate ("Can't unlock — reset & re-sync" escape so a gate can't strand
-                                    # the user). ON SUCCESS: NO window.location.reload() — the pull already populated the
-                                    # in-memory store, so the UI rehydrates IN PLACE (Settings shows a success message;
-                                    # LocalUnlockGate sets isAuthenticated true since the signer is live). The old reload
-                                    # discarded the pulled data + bounced through the auth gate (logout detour, Bug B).
-                                    # PREREQUISITE/foundation for the queued Option-3a encryption redesign
+    escapeHatch.ts                  # ESCAPE HATCH — resetAndResync(_nostr?): void. Now RELOAD-BASED (teardown-desync
+                                    # fix): clearStoreEncryptionState() (enc flag + pending-decrypt + on-disk {ct,iv}
+                                    # blob + in-memory key) → window.location.reload(). The identity (nostrPubkey/
+                                    # nostrSigningMethod) is retained, so the NORMAL boot path repopulates: local unlock
+                                    # gate → restoreSigner (3a no-op, flag off) → LocalUnlockGate.unlock → syncNow pulls
+                                    # from the relay into the clean plaintext slate. Nuking the blob → boot hydrates to
+                                    # seeds → lastSettingsSyncAt defaults null → the sync-apply guard (remoteTs >
+                                    # lastSettingsSyncAt) does NOT block → relay data applies (so the bespoke in-line
+                                    # pull — resetPlanToSeeds + dirty-clear + watermark-zero + restoreSigner +
+                                    # fetchAndSync, and the 'ok'/'no-relays'/'no-auth' returns — was REMOVED; the boot
+                                    # path replaces it). Still imports NO publish symbol (structural no-publish
+                                    # guarantee preserved); the post-reload boot sync is dirty-gated, so a freshly-pulled
+                                    # clean state can't push over real relay data. The `_nostr` param is retained for
+                                    # call-site stability (unused). Wired into Settings (RECOVERY button) + LocalUnlockGate
+                                    # ("Can't unlock — reset & re-sync"). resetPlanToSeeds is now app-orphaned (left as a
+                                    # store action). KNOWN FOLLOW-ON: the persist adapter is chosen at MODULE LOAD from
+                                    # the enc flag — a mid-session flag change doesn't swap the live adapter; the teardown
+                                    # paths nuke+reload to stay coherent, but a structural fix (adapter re-reads the flag
+                                    # per op) is deferred
 
 vercel.json                         # Catch-all rewrite → index.html (required for SPA)
 ```
@@ -1589,7 +1592,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
 | `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct/cbRotateBackPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
 | `disconnectNostr` | Full sign-out — clears all nostr state INCL. `nostrPubkey` (auth auto-clears under the B1 pin) + removes the standalone GATE_* keys synchronously via the setters, then `window.location.reload()` to rebuild NPool clean; in lib/nostr/disconnect.ts. **Sign-out authority lives in the persist `merge`, not the racy blob:** the blob write isn't guaranteed to land before `reload()`, so a stale un-flushed `nostrPubkey` would (under the pin) resurrect auth — `gateHydratedIdentity` in the store's `merge` gates identity on the SYNCHRONOUS `GATE_PUBKEY_KEY` (removed by disconnect), so a stale blob can't sign you back in. (The fix is in `merge`, which runs on EVERY rehydrate; `migrate` only fires on a version bump, so it can't cover the same-version disconnect→reload.) **`merge`/`gateHydratedIdentity` gate BOTH `nostrPubkey` AND `nostrSigningMethod` on the live GATE keys (`GATE_PUBKEY_KEY` + `GATE_METHOD_KEY`), GATE-first with blob fallback — the racy blob is NEVER authoritative for identity. (A method-only gap once let a local-key login hydrate the stale blob `nip46` → nonexistent bunker signer → nip44 decrypt/probe timeouts → default data; gating method on the live `GATE_METHOD_KEY` fixed it.)** |
-| `resetAndResync` (escape hatch) | Recovery that can NEVER erase relay data: clear local → seeds + clear dirty flags BEFORE the pull → restore signer → PULL → publishing re-enabled ONLY after a confirmed pull. A failed pull returns `'no-relays'` and publishes NOTHING (the function imports no publish symbol — structural). `resetPlanToSeeds` runs on the OWNER but ONLY from this hatch (which immediately repopulates from relays) — never any auto/normal path. In `lib/store/escapeHatch.ts`; buttons in Settings + LocalUnlockGate |
+| `resetAndResync` (escape hatch) | RELOAD-BASED recovery that can NEVER erase relay data: `clearStoreEncryptionState()` (enc flag + pending-decrypt + on-disk `{ct,iv}` blob + in-memory key) → `window.location.reload()`. Identity retained → the normal boot local-unlock → `syncNow` repopulates from the relay into the clean plaintext slate (no bespoke in-line pull). Imports NO publish symbol (structural) + the boot sync is dirty-gated, so a freshly-pulled clean state can't push over real relay data. Returns void (it reloads — callers drop result handling). In `lib/store/escapeHatch.ts`; buttons in Settings + LocalUnlockGate. (`resetPlanToSeeds` is now app-orphaned — left as a store action.) See `clearStoreEncryptionState` / the teardown-desync fix |
 | `reconnectNostr` | Revoke-recovery — clears only the dead SESSION (`nostrSigner`/`nostrLogin`/`nostrBunkerUri`/`isAuthenticated`) but **RETAINS the identity (`nostrPubkey` + `nostrSigningMethod`)** so the B1-pinned `nostrAuthEnabled` stays true → the auth gate (`nostrAuthEnabled && !nostrSigner`) reappears on the NIP-46 login; `nostrLogin` cleared so `restoreSigner` can't revive the dead session. (Pre-B1 it cleared pubkey + relied on an independent `nostrAuthEnabled`; that's gone now — clearing pubkey would clear auth.) The bottom-right `⚠ Reconnect` affordance AND the Settings "Reconnect" button both call it; in lib/nostr/disconnect.ts. NOTE: reconnect reload shows a brief (~1.5s) optimistic-auth flash before the gate (autoRestore early-returns only for `'local'`); a follow-up autoRestore guard is deferred to Step 2/3 |
 | nostr-tools pin | EXACT 2.23.5 — verified with Primal NIP-44; do NOT downgrade to 2.13 (breaks @nostrify peer compat) |
 | NIP-46 mobile login | Two-step manual launch — relay warms in foreground BEFORE the deep-link; auto-firing breaks the handshake |

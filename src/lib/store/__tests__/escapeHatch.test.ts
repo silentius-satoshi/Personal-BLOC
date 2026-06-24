@@ -1,43 +1,40 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { readFileSync } from 'fs';
 
-// node env has no localStorage — minimal in-memory shim (defined BEFORE importing the store so its module-init
-// writer-credential seed + escapeHatch's removeItem calls have something to read/write).
+// node env has no localStorage/window — minimal in-memory shims (defined BEFORE importing the store so its module-init
+// writer-credential seed + escapeHatch's removeItem/reload calls have something to read/write).
 const mem = new Map<string, string>();
-(globalThis as any).localStorage = {
+const lsShim = {
   getItem: (k: string) => (mem.has(k) ? mem.get(k)! : null),
   setItem: (k: string, v: string) => { mem.set(k, String(v)); },
   removeItem: (k: string) => { mem.delete(k); },
   clear: () => { mem.clear(); },
 };
+(globalThis as any).localStorage = lsShim;
+const reloadMock = vi.fn();
+(globalThis as any).window = { location: { reload: reloadMock }, localStorage: lsShim };
 
-// Mock the relay-touching deps so resetAndResync's outcome is driven entirely by the test.
-vi.mock('../../nostr/session', () => ({ restoreSigner: vi.fn() }));
-vi.mock('../../nostr/sync', () => ({ fetchAndSync: vi.fn() }));
 // Keep the real exports (DEFAULT_RELAYS is read by the store at module init) — mock only fetchUserRelays.
 vi.mock('../../nostr/relays', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../../nostr/relays')>()),
   fetchUserRelays: vi.fn(),
 }));
 
-import { restoreSigner } from '../../nostr/session';
-import { fetchAndSync } from '../../nostr/sync';
-import { fetchUserRelays } from '../../nostr/relays';
 import { resetAndResync } from '../escapeHatch';
+import { setStoreKey, isStoreUnlocked } from '../storeCrypto';
 import * as storeMod from '../../../store/useStore';
 
 const { useStore } = storeMod;
-const STUB_SIGNER = {} as any;
 
 beforeEach(() => {
-  vi.clearAllMocks();
+  vi.clearAllMocks();   // resets reloadMock call history between cases
   mem.clear();
-  // A signed-in owner with relays — the recovery precondition.
+  // A signed-in owner with relays — the recovery precondition (used by the resetPlanToSeeds suite).
   useStore.getState().setNostrPubkey('owner-hex-pubkey');
   useStore.getState().setNostrRelays(['wss://relay.test']);
   useStore.getState().setWriterKeyWrapped('WRAPPED');
   useStore.getState().setWriterKeyWrapMeta({ iv: 'aXY=', scheme: 'pin', salt: 'c2FsdA==' });
-  useStore.getState().setNostrSigner(null);   // isolation: the live-signer test sets it; a leak would skip restoreSigner elsewhere
+  setStoreKey(null);
 });
 
 describe('resetPlanToSeeds', () => {
@@ -68,84 +65,32 @@ describe('resetPlanToSeeds', () => {
   });
 });
 
-describe('resetAndResync', () => {
-  it('THE CRITICAL TEST — failed pull never publishes (relay data can never be erased)', async () => {
-    vi.mocked(restoreSigner).mockResolvedValue(STUB_SIGNER);
-    vi.mocked(fetchAndSync).mockResolvedValue(false);   // relays unreachable
-    useStore.getState().setRecordsDirty(true);
-    useStore.getState().setSettingsDirty(true);
+describe('resetAndResync (reload-based teardown)', () => {
+  it('clears the enc flag + pending-decrypt marker + on-disk blob + in-memory key, then reloads', () => {
+    // Simulate a flag-on, unlocked, encrypted-blob session.
+    localStorage.setItem('personal-bloc-store-enc-enabled', '1');
+    localStorage.setItem('personal-bloc-store-enc-pending-decrypt', '1');
+    localStorage.setItem('personal-bloc-store', JSON.stringify({ ct: 'cipher', iv: 'iv' }));
+    setStoreKey({} as any);   // unlocked
+    expect(isStoreUnlocked()).toBe(true);
 
-    const pubSettingsSpy = vi.spyOn(storeMod, 'publishSettingsNow');
-    const pubRecordsSpy  = vi.spyOn(storeMod, 'publishRecordsNow');
+    resetAndResync();
 
-    const result = await resetAndResync({} as any);
+    // All four cleared → a later plaintext-adapter load can't misread a stale {ct,iv} envelope.
+    expect(localStorage.getItem('personal-bloc-store-enc-enabled')).toBeNull();
+    expect(localStorage.getItem('personal-bloc-store-enc-pending-decrypt')).toBeNull();
+    expect(localStorage.getItem('personal-bloc-store')).toBeNull();
+    expect(isStoreUnlocked()).toBe(false);
+    expect(reloadMock).toHaveBeenCalledOnce();
+  });
 
-    expect(result).toBe('no-relays');
-    expect(pubSettingsSpy).not.toHaveBeenCalled();
-    expect(pubRecordsSpy).not.toHaveBeenCalled();
+  it('is idempotent — reloads even with no flag/blob/key set (no throw)', () => {
+    expect(() => resetAndResync()).not.toThrow();
+    expect(reloadMock).toHaveBeenCalledOnce();
+  });
 
-    // Structural guarantee: the module references NO publish symbol, so a push is impossible by construction.
+  it('THE STRUCTURAL GUARANTEE — the module references NO publish symbol (a push is impossible by construction)', () => {
     const src = readFileSync(new URL('../escapeHatch.ts', import.meta.url), 'utf8');
     expect(src).not.toMatch(/publishSettingsNow|publishRecordsNow/);
-  });
-
-  it('happy path — pull succeeds → ok, and dirty flags are cleared BEFORE the pull', async () => {
-    vi.mocked(restoreSigner).mockResolvedValue(STUB_SIGNER);
-    useStore.getState().setRecordsDirty(true);
-    useStore.getState().setSettingsDirty(true);
-    // At the instant the pull runs, the just-cleared empty state must already be NOT dirty.
-    vi.mocked(fetchAndSync).mockImplementation(async () => {
-      expect(useStore.getState().recordsDirty).toBe(false);
-      expect(useStore.getState().settingsDirty).toBe(false);
-      return true;
-    });
-
-    const result = await resetAndResync({} as any);
-
-    expect(result).toBe('ok');
-    expect(fetchAndSync).toHaveBeenCalledOnce();
-  });
-
-  it('reuses a live signer (no Face ID re-prompt) and resets the sync watermarks to 0 before the pull', async () => {
-    useStore.getState().setNostrSigner(STUB_SIGNER);            // already-authenticated owner
-    useStore.getState().setLastSettingsSyncAt(1_700_000_000);   // stale watermark from a prior sync
-    useStore.getState().setLastRecordsSyncAt(1_700_000_000);
-    // The pull must see the watermarks already reset to 0 (so the relay's settings re-hydrate immediately).
-    vi.mocked(fetchAndSync).mockImplementation(async () => {
-      expect(useStore.getState().lastSettingsSyncAt).toBe(0);
-      expect(useStore.getState().lastRecordsSyncAt).toBe(0);
-      return true;
-    });
-
-    const result = await resetAndResync({} as any);
-
-    expect(result).toBe('ok');
-    expect(restoreSigner).not.toHaveBeenCalled();   // live signer reused → no unwrapSecretKey → no Face ID
-    expect(fetchAndSync).toHaveBeenCalledOnce();
-  });
-
-  it('no-auth — signer cannot be restored → no pull, no publish', async () => {
-    vi.mocked(restoreSigner).mockResolvedValue(null);
-    const result = await resetAndResync({} as any);
-    expect(result).toBe('no-auth');
-    expect(fetchAndSync).not.toHaveBeenCalled();
-  });
-
-  it('no-auth — restoreSigner throws → no pull', async () => {
-    vi.mocked(restoreSigner).mockRejectedValue(new Error('Face ID cancelled'));
-    const result = await resetAndResync({} as any);
-    expect(result).toBe('no-auth');
-    expect(fetchAndSync).not.toHaveBeenCalled();
-  });
-
-  it('zero-relays false-ok guard — empty relays + discovery returns none → no-relays, never pulls from nothing', async () => {
-    vi.mocked(restoreSigner).mockResolvedValue(STUB_SIGNER);
-    vi.mocked(fetchUserRelays).mockResolvedValue([]);   // discovery yields nothing
-    useStore.getState().setNostrRelays([]);
-
-    const result = await resetAndResync({} as any);
-
-    expect(result).toBe('no-relays');
-    expect(fetchAndSync).not.toHaveBeenCalled();   // never mistake a trivial empty-relay true for a real pull
   });
 });

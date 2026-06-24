@@ -33,25 +33,13 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
     }
   };
 
-  // Last-resort recovery so a stuck unlock can never strand the user: clear local + pull the plan back from the
-  // relays. Operates on raw localStorage + restoreSigner (not a hydrated store), so it works from this gate.
-  const resetAndResyncFromGate = async () => {
+  // Last-resort recovery so a stuck unlock can never strand the user: clear local encryption state (flag + {ct,iv}
+  // blob + in-memory key) and reload. The identity is retained, so the normal boot unlock → syncNow repopulates from
+  // the relay into a clean plaintext slate (resetAndResync is reload-based now — see escapeHatch).
+  const resetAndResyncFromGate = () => {
     if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
     setLoading(true);
-    setError(null);
-    try {
-      const result = await resetAndResync(nostr);
-      // No reload: the 'ok' path means the signer is live (restoreSigner set it) AND the pull populated the store.
-      // Flip auth true so this gate dismisses straight into the app with the pulled data (mirrors unlock() above).
-      if (result === 'ok') { await useStore.persist.rehydrate(); useStore.getState().setIsAuthenticated(true); return; }   // Bug 1: hydration lands before dismiss (belt-and-suspenders — data already in memory from the pull)
-      setError(result === 'no-relays'
-        ? "Couldn't reach the relays. Your data is safe — nothing was published. Check your connection and try again."
-        : "Couldn't unlock your key — use a different login.");
-    } catch {
-      setError('Reset failed — please try again.');
-    } finally {
-      setLoading(false);
-    }
+    resetAndResync(nostr);   // clears encryption state + reloads
   };
 
   return (

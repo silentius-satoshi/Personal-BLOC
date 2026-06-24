@@ -15,6 +15,20 @@ export function getStoreKey(): CryptoKey | null { return storeKey; }
 export function setStoreKey(k: CryptoKey | null): void { storeKey = k; }
 export function isStoreUnlocked(): boolean { return storeKey !== null; }
 
+/**
+ * Teardown safety: clear the at-rest encryption flag + pending-decrypt marker, nuke the on-disk blob, and drop the
+ * in-memory key — so a later plaintext-adapter load can never misread a stale {ct,iv} envelope as a raw string and
+ * hydrate to seeds (the "settings revert to defaults" desync). Called as the FIRST action by both teardown paths
+ * ("Remove local key" + escapeHatch.resetAndResync); the caller reloads after. Must clear ALL FOUR — missing any one
+ * re-opens the desync (clearing the flag but not the blob IS the exact bug).
+ */
+export function clearStoreEncryptionState(): void {
+  try { localStorage.removeItem('personal-bloc-store-enc-enabled'); } catch { /* noop */ }
+  try { localStorage.removeItem('personal-bloc-store-enc-pending-decrypt'); } catch { /* noop */ }
+  try { localStorage.removeItem('personal-bloc-store'); } catch { /* noop */ }   // nuke the (possibly {ct,iv}) blob
+  setStoreKey(null);
+}
+
 interface Envelope { ct?: string; iv?: string }
 
 export const encryptedStorage = {

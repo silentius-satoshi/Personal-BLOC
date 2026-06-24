@@ -20,7 +20,7 @@ import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync } from '../../lib/store/escapeHatch';
 import { migrateEncryptedToPlaintext, blobIsPlaintext } from '../../lib/store/storeMigration';
-import { isStoreUnlocked } from '../../lib/store/storeCrypto';
+import { isStoreUnlocked, clearStoreEncryptionState } from '../../lib/store/storeCrypto';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { useRelayStatus } from '../../hooks/useRelayStatus';
 import { Toggle } from '../ui/Toggle';
@@ -263,25 +263,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
 
-  const handleResetAndResync = async () => {
+  const handleResetAndResync = () => {
     if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
     setRecoveryBusy(true);
     setRecoveryMsg(null);
-    try {
-      const result = await resetAndResync(nostr);
-      // No reload: resetAndResync already pulled the relay data into the in-memory store, so the reactive
-      // useStore selectors rehydrate the UI in place. Reloading would discard it + bounce through the auth gate.
-      if (result === 'ok') { setRecoveryMsg('Local data reset and re-synced from the relays.'); return; }
-      if (result === 'no-relays') {
-        setRecoveryMsg("Couldn't reach the relays. Your data is safe — local was reset but nothing was published. Check your connection and try again.");
-      } else {
-        setRecoveryMsg("Couldn't unlock your key — re-enter your login to continue.");
-      }
-    } catch {
-      setRecoveryMsg('Reset failed — please try again.');
-    } finally {
-      setRecoveryBusy(false);
-    }
+    resetAndResync(nostr);   // reload-based: clears encryption state + reloads; the normal boot unlock → syncNow repopulates from the relay
   };
 
   // 3a.5: user-facing decrypt-back opt-out (turn OFF at-rest encryption). Safe order — decrypt + VERIFY-before-
@@ -482,6 +468,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                   s.setNostrPubkey(null);
                   s.setNostrSigner(null);
                   s.setIsAuthenticated(false);
+                  clearStoreEncryptionState();   // also clear the enc flag + {ct,iv} blob + key — next launch is a clean plaintext slate (no locked-out encrypted blob)
                   window.location.reload();
                 }}
               >
