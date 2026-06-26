@@ -409,7 +409,7 @@ let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
 export async function publishRecordsNow(): Promise<boolean> {
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;   // publish didn't happen
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode) return false;   // publish didn't happen (incl. read-only viewer — relay-side backstop)
   useStore.getState().setNostrSyncing(true);
   try {
     const { publishRecords } = await import('../lib/nostr/publish');

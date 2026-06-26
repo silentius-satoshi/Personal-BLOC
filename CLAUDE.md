@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (298 tests — all must pass before every commit)
+- Vitest (300 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -799,11 +799,12 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-298 tests — `npx vitest run` before every commit.
+300 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
+- `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
 - `living.test.ts`
 - `mining.test.ts`
@@ -1286,7 +1287,12 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - `publishRecordsNow()` — exported from the store; immediate (no debounce); publishes the v2
   `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths }`; returns boolean and STILL
   manages the flag itself (the log mutators call it standalone, outside syncNow): clears `recordsDirty` +
-  `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure (dirty stays true)
+  `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure (dirty stays true).
+  **Gated on `viewerMode`** (`!isAuthenticated || !nostrSigner || !nostrPubkey || viewerMode → return false`):
+  a read-only viewer IS authenticated with its own nsec, so the auth gate alone wouldn't stop it — the
+  `viewerMode` term is the relay-side backstop for the read-only-viewer invariant. The owner has
+  `viewerMode===false` so it's unaffected; the owner→viewer snapshot publish (`publishViewerSnapshotNow`,
+  gated on `viewerPubkey`) is a SEPARATE path, untouched
 - `FALLBACK_RELAYS`: = `DEFAULT_RELAYS` (damus, primal, nos.lol — relays.ts; used if NIP-65 discovery fails)
 - NIP-65 relay discovery: `syncNow` fetches the user's kind:10002 when `nostrRelays` is empty and
   stores it; subsequent publishes go to the user's own relays

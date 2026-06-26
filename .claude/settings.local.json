@@ -58,7 +58,9 @@
       "Bash(grep -n \"disconnectNostr\\\\` \\\\|Full sign-out\" CLAUDE.md)",
       "Bash(echo \"exit:$?\")",
       "Bash(xargs cat)",
-      "Bash(grep -n \"287 tests\\\\|287 —\\\\|All 33 Synced\\\\|33 Synced Settings\\\\|33-field payload\\\\|nostrRelays\\\\` \\\\||\\\\`nostrRelays\\\\`\\\\|viewerNpub\\\\`/\\\\`viewerPubkey\\\\`/\\\\`viewerLabel\\\\`\" CLAUDE.md)"
+      "Bash(grep -n \"287 tests\\\\|287 —\\\\|All 33 Synced\\\\|33 Synced Settings\\\\|33-field payload\\\\|nostrRelays\\\\` \\\\||\\\\`nostrRelays\\\\`\\\\|viewerNpub\\\\`/\\\\`viewerPubkey\\\\`/\\\\`viewerLabel\\\\`\" CLAUDE.md)",
+      "Bash(node_modules/.bin/vitest run *)",
+      "Bash(grep -n \"298 tests\\\\|298 —\\\\|publishRecordsNow\\(\\)\\\\` — exported\\\\|viewerPublishGate\\\\|READ-ONLY is two layers\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"
