@@ -63,7 +63,8 @@ src/
       strikeCredit.test.ts
 
   hooks/
-    useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick)
+    useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility
+    usePageVisibility.ts        # !document.hidden, SELF-CORRECTING (iOS-PWA resume fix): updates on visibilitychange + window focus/pageshow + a 20s interval re-read (one shared sync = setIsVisible(!document.hidden); the primitive bail-out adds no re-renders). visibilitychange ALONE misfires on iOS PWA launch/resume → isVisible could stick false → consumer polls (useBtcPrice/useBtcHistory) died forever; the extra signals recover it. Still genuinely pauses when backgrounded (NOT hardcoded true)
     useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); ephemeral, NEVER written to store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG
     useSimulation.ts            # Smart BLOC tab simulation hook
     useLivingSimulation.ts      # Living on Bitcoin tab hook
@@ -159,7 +160,10 @@ src/
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
                                 # ASYMMETRIC flag toggle that reloads — Enable RAW, Disable decrypts-first; dev tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
-                                # never balances/amounts/log contents); the panel itself may show position figures
+                                # never balances/amounts/log contents); the panel itself may show position figures.
+                                # SYNC STATE grid also carries a BTC-PRICE-AGE row (store price + "Ns/Nm ago", ⚠ stale
+                                # >5min, from btcPriceUpdatedAt; 5s now-tick so a dead poll's age climbs visibly) —
+                                # DevPanel-ONLY, rendered in JSX not the syncState object (kept out of Copy Diagnostics)
       DevPanel.module.css
 
     Summary/
@@ -457,6 +461,7 @@ income:           number;   // default 4000
 expenses:         number;   // default 3500
 btcPrice:         number;   // updated every 60s fetch when btcPriceMode === 'live'
 btcPriceMode:     'live' | 'manual';   // default 'live'; 'manual' suppresses live overwrites
+btcPriceUpdatedAt: number | null;   // default null; ms of last setBtcPrice. PER-DEVICE, NOT synced (not in SETTINGS_FIELDS/buildSettingsPayload); persists via partialize rest; stamped by setBtcPrice → DevPanel price-age diagnostic
 activeTier:       'min' | 'rec' | 'ideal' | 'custom';  // default 'rec'
 blocApr:          number;   // default 13 (percent)
 scenarioGrowth:   number;   // default 50

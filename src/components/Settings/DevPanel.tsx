@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { useStore, storeEncEnabled } from '../../store/useStore';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
@@ -12,6 +12,14 @@ import styles from './DevPanel.module.css';
 
 const fmtTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleString() : 'never');   // unix SECONDS
 
+// btcPriceUpdatedAt is in MILLISECONDS (Date.now()) — fmtTs above is for unix seconds, not reusable here.
+const fmtPriceAge = (ts: number | null, now: number) => {
+  if (!ts) return 'never';
+  const secs = Math.max(0, Math.round((now - ts) / 1000));
+  const age  = secs < 60 ? `${secs}s ago` : `${Math.floor(secs / 60)}m ago`;
+  return secs > 5 * 60 ? `⚠ stale ${age}` : age;
+};
+
 export function DevPanel() {
   const nostrSigningMethod   = useStore((s) => s.nostrSigningMethod);
   const nostrPubkey          = useStore((s) => s.nostrPubkey);
@@ -21,6 +29,9 @@ export function DevPanel() {
   const recordsDirty         = useStore((s) => s.recordsDirty);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const nostrSyncing         = useStore((s) => s.nostrSyncing);
+  // BTC price staleness (diagnostic only — public market price; kept OUT of syncState/Copy Diagnostics)
+  const btcPrice             = useStore((s) => s.btcPrice);
+  const btcPriceUpdatedAt    = useStore((s) => s.btcPriceUpdatedAt);
   const monthlyLogCount      = useStore((s) => s.monthlyLog.length);
   const tombstoneCount       = useStore((s) => Object.keys(s.deletedMonths).length);
   // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
@@ -45,6 +56,14 @@ export function DevPanel() {
   const [vProbing, setVProbing]         = useState(false);
   const [vProbeStatus, setVProbeStatus] = useState('');
   const [vRefetching, setVRefetching]   = useState(false);
+
+  // 5s tick so the btc-price age below climbs visibly — a frozen price (dead poll) shows the age growing
+  // past 60s/2m, which is the whole point of the diagnostic (a render-only age could look static).
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 5_000);
+    return () => clearInterval(id);
+  }, []);
 
   const syncState = {
     method:        nostrSigningMethod ?? '—',
@@ -225,6 +244,10 @@ export function DevPanel() {
         <span className={styles.key}>tombstones</span><span className={styles.val}>{tombstoneCount}</span>
         <span className={styles.key}>device</span><span className={styles.val}>{syncState.device}</span>
         <span className={styles.key}>build</span><span className={styles.val}>{__BUILD_SHA__}</span>
+        <span className={styles.key}>btc price</span>
+        <span className={styles.val}>
+          {btcPrice ? `$${Math.round(btcPrice).toLocaleString()}` : '—'} · {fmtPriceAge(btcPriceUpdatedAt, now)}
+        </span>
       </div>
 
       <div className={styles.sectionTitle}>COLLATERAL</div>

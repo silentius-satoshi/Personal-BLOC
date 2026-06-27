@@ -146,6 +146,7 @@ export interface StoreState {
   expenses: number;
   btcPrice: number;
   btcPriceMode: 'live' | 'manual';
+  btcPriceUpdatedAt: number | null;   // ms of last setBtcPrice; per-device, NOT synced (DevPanel staleness diagnostic)
   blocApr: number;
 
   // Smart BLOC tab state
@@ -800,6 +801,7 @@ export const useStore = create<StoreState>()(
   expenses: 3500,
   btcPrice: 82000,
   btcPriceMode: 'live' as const,
+  btcPriceUpdatedAt: null,
   blocApr: 13,
 
   activeTier: 'rec',
@@ -885,7 +887,7 @@ export const useStore = create<StoreState>()(
 
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
-  setBtcPrice: (v) => set({ btcPrice: v }),
+  setBtcPrice: (v) => set({ btcPrice: v, btcPriceUpdatedAt: Date.now() }),
   setBtcPriceMode: (v) => set({ btcPriceMode: v }),
   setBlocApr:  (v) => { set({ blocApr: v });  useStore.getState().syncSettingsToNostr(); },
 
