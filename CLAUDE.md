@@ -119,7 +119,12 @@ src/
                                 # VIEWER ACCESS (pulled out of the shared Nostr section); strike = BUDGET + STRIKE BLOC
                                 # inputs (+ a READ-ONLY "Strike API · Connected/Not connected" status row at the top of
                                 # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
-                                # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details; display = Simple Mode toggle + plan-bar toggles +
+                                # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details (P2b: when
+                                # cbPaymentStrategy === 'ltvTriggered', an ACTION AT TRIGGER sub-toggle — Paydown | Add
+                                # collateral — wires cbLtvAction; sub-toggle first, then the three threshold NumberInputs;
+                                # middle label flexes ('Pay down to LTV' / 'Reduce to LTV'); a fieldHint warns
+                                # add-collateral shapes logging/guidance only — Outlook projection still models paydown);
+                                # display = Simple Mode toggle + plan-bar toggles +
                                 # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
                                 # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; P3 (DONE):
                                 # each row's dot is a LIVE connection status (green/amber/red) via useRelayStatus. P2 (DONE):

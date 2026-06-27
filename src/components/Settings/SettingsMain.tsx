@@ -315,6 +315,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const cbLtvTriggerPct       = useStore((s) => s.cbLtvTriggerPct);       const setCbLtvTriggerPct       = useStore((s) => s.setCbLtvTriggerPct);
   const cbLtvTargetPct        = useStore((s) => s.cbLtvTargetPct);        const setCbLtvTargetPct        = useStore((s) => s.setCbLtvTargetPct);
   const cbRotateBackPct       = useStore((s) => s.cbRotateBackPct);       const setCbRotateBackPct       = useStore((s) => s.setCbRotateBackPct);
+  const cbLtvAction           = useStore((s) => s.cbLtvAction);           const setCbLtvAction           = useStore((s) => s.setCbLtvAction);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
 
@@ -789,8 +790,30 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               )}
               {cbPaymentStrategy === 'ltvTriggered' && (
                 <>
+                  <div className={styles.setupFieldGroup}>
+                    <span className={styles.setupFieldLabel}>ACTION AT TRIGGER</span>
+                    <div className={styles.strategyPills}>
+                      <button
+                        className={`${styles.strategyPill} ${cbLtvAction === 'paydown' ? styles.strategyPillActive : ''}`}
+                        onClick={() => setCbLtvAction('paydown')}
+                      >Paydown</button>
+                      <button
+                        className={`${styles.strategyPill} ${cbLtvAction === 'addCollateral' ? styles.strategyPillActive : ''}`}
+                        onClick={() => setCbLtvAction('addCollateral')}
+                      >Add collateral</button>
+                    </div>
+                    {cbLtvAction === 'addCollateral' && (
+                      <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now — the Outlook projection still models paydown.</span>
+                    )}
+                  </div>
                   <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} step={1} />
-                  <NumberInput label="Pay down to LTV"  value={cbLtvTargetPct}  onChange={setCbLtvTargetPct}  min={0} step={1} />
+                  <NumberInput
+                    label={cbLtvAction === 'addCollateral' ? 'Reduce to LTV' : 'Pay down to LTV'}
+                    value={cbLtvTargetPct}
+                    onChange={setCbLtvTargetPct}
+                    min={0}
+                    step={1}
+                  />
                   <NumberInput label="Rotate-back LTV"  value={cbRotateBackPct} onChange={setCbRotateBackPct} min={0} step={1} />
                   <span className={styles.fieldHint}>When CB LTV falls below this, shift expensive Strike debt back to the cheaper CB loan.</span>
                   {!(cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct) && (
