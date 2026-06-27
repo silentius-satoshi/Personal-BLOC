@@ -30,6 +30,7 @@ import { CoinbaseLoanSidebar } from '../CoinbaseLoan/CoinbaseLoanSidebar';
 import { CoinbaseLoanMain }    from '../CoinbaseLoan/CoinbaseLoanMain';
 import { AdvisorSidebar } from '../Advisor/AdvisorSidebar';
 import { AdvisorMain }    from '../Advisor/AdvisorMain';
+import { useBtcPrice }            from '../../hooks/useBtcPrice';
 import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
@@ -211,6 +212,7 @@ export function AppShell() {
     st.setOnboardingComplete(false);   // re-enter the onboarding viewer flow
   };
 
+  useBtcPrice(); // keep store btcPrice live for the whole session — Simple Mode mounts no sidebar that calls this
   useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners (viewer gets Strike from the snapshot)
   useNostrAutoRestore();
   useViewerSync();   // read-only viewer pull/sub — no-op unless viewerMode
