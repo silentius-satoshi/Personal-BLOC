@@ -629,12 +629,22 @@ function refreshCbCollateralCache(): void {
   useStore.setState({ cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc) });
 }
 
+// A day event is "monthly-meaningful" if it can affect a monthlyLog entry. cbCollateralReading is clock-only, and a
+// deposit/withdraw with target:'cb' is journal-only (CB collateral comes from the reading) — neither triggers a re-roll
+// or keeps a month alive. Shared by monthOf + rerollMonth so the two can't drift (BUG1 class — a cb-only event must
+// never flip a month to source:'daily').
+function isMonthlyMeaningful(ev: DayEvent): boolean {
+  if (ev.kind === 'cbCollateralReading') return false;
+  if ((ev.kind === 'deposit' || ev.kind === 'withdraw') && ev.target === 'cb') return false;
+  return true;
+}
+
 // Re-roll ONE strategy month from the current dayLog → Partial→Full bridge → upsertLogEntry → Seam 1 collateral.
-// cbCollateralReading events are excluded from "monthly meaning" (BUG1: they must never create/flip a monthlyLog entry).
+// Only monthly-meaningful events count (cbCollateralReading + target:'cb' moves are journal-only — never create/flip).
 function rerollMonth(month: number): void {
   const s = useStore.getState();
   const start = s.advisorStartDate;
-  const monthlyEvents = s.dayLog.filter((e) => e.kind !== 'cbCollateralReading' && bucketEventToMonth(e.date, start) === month);
+  const monthlyEvents = s.dayLog.filter((e) => isMonthlyMeaningful(e) && bucketEventToMonth(e.date, start) === month);
   const existing = s.monthlyLog.find((e) => e.month === month);
 
   if (monthlyEvents.length === 0) {
@@ -682,9 +692,9 @@ function rerollMonth(month: number): void {
   }
 }
 
-// Months affected by a Route-2 event (cbCollateralReading is clock-only → no month).
+// The strategy month a monthly-meaningful event affects (clock-only / journal-only events → null, no re-roll).
 function monthOf(ev: DayEvent | undefined): number | null {
-  if (!ev || ev.kind === 'cbCollateralReading') return null;
+  if (!ev || !isMonthlyMeaningful(ev)) return null;
   return bucketEventToMonth(ev.date, useStore.getState().advisorStartDate);
 }
 

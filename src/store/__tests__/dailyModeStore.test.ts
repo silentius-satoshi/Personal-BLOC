@@ -86,6 +86,32 @@ describe('target:cb is journal-only; cbCollateral feeds the derived clock', () =
     useStore.getState().addDayEvent(cbColl(1.6));
     expect(useStore.getState().cbCollateralBtc).toBeCloseTo(1.6);
   });
+
+  it('a target:cb deposit ALONE on a NEW month creates NO monthlyLog entry (no source:daily flip)', () => {
+    useStore.getState().addDayEvent(depo(0.1, 'cb'));
+    expect(useStore.getState().monthlyLog).toHaveLength(0);
+  });
+
+  it('a target:cb deposit into a previously source:manual month leaves it source:manual (Monthly editing stays allowed)', () => {
+    useStore.getState().setMonthlyLog([{
+      month: 1, date: TODAY, btcBought: 0, income: 0, paydown: 0, strikeBal: 200, strikeLtv: 0.1,
+      loggedAt: 7, btcHeld: BASELINE, expensesActual: 50, source: 'manual', confirmed: true,
+    } as any]);
+    useStore.getState().addDayEvent(depo(0.1, 'cb'));
+    expect(month1()!.source).toBe('manual');               // NOT flipped to daily
+    // M2 guard still allows a Monthly (non-daily) upsert against it.
+    useStore.getState().upsertLogEntry({ ...month1()!, expensesActual: 999, source: 'manual' });
+    expect(month1()!.expensesActual).toBe(999);
+  });
+
+  it('a target:cb deposit in a month that also has a draw → month is daily (draw triggers), cb deposit unaffects current BTC', () => {
+    useStore.getState().addDayEvent(draw(400));
+    useStore.getState().addDayEvent(depo(0.1, 'cb'));
+    const e = month1()!;
+    expect(e.source).toBe('daily');                        // the draw made it daily
+    expect(e.expensesActual).toBe(400);                    // rollup reflects the draw
+    expect(cur()).toBeCloseTo(BASELINE);                   // cb deposit contributed no collateral
+  });
 });
 
 describe('BUG1 — cbCollateralReading never touches monthlyLog', () => {
