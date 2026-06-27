@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { mergeRecords, type RecordsState } from '../mergeRecords';
-import type { MonthlyLogEntry } from '../types';
+import type { MonthlyLogEntry, DayEvent } from '../types';
 
 const NOW = Date.now();
 const DAY = 24 * 60 * 60 * 1000;
@@ -22,7 +22,12 @@ function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): Mon
 }
 
 const state = (entries: MonthlyLogEntry[], deletions: Record<number, number> = {}): RecordsState =>
-  ({ entries, deletions });
+  ({ entries, deletions, dayLog: [], dayLogDeletions: {} });
+
+// --- P3 dayLog fixtures ---
+const ev = (id: string, ts: number, amount = 100): DayEvent => ({ id, ts, date: '2026-01-05', kind: 'draw', amount });
+const dlState = (dayLog: DayEvent[], dayLogDeletions: Record<string, number> = {}): RecordsState =>
+  ({ entries: [], deletions: {}, dayLog, dayLogDeletions });
 
 describe('mergeRecords', () => {
   it('remote-only month unions in alongside local months', () => {
@@ -88,10 +93,62 @@ describe('mergeRecords', () => {
   });
 
   it('string-keyed tombstone (as from JSON.parse) still deletes its month', () => {
-    const remote: RecordsState = { entries: [], deletions: JSON.parse(`{"5": ${NOW - DAY}}`) };
+    const remote: RecordsState = { entries: [], deletions: JSON.parse(`{"5": ${NOW - DAY}}`), dayLog: [], dayLogDeletions: {} };
     const local = state([makeEntry(5, { updatedAt: NOW - 2 * DAY })]);
     const out = mergeRecords(local, remote, { preferLocalOnTie: true });
     expect(out.entries).toHaveLength(0);
     expect(out.deletions[5]).toBe(NOW - DAY);
+  });
+});
+
+describe('mergeRecords — dayLog (P3)', () => {
+  it('union by id — both local-only and remote-only events survive (sorted by ts)', () => {
+    const out = mergeRecords(dlState([ev('a', 1000)]), dlState([ev('b', 2000)]), { preferLocalOnTie: false });
+    expect(out.dayLog.map((e) => e.id)).toEqual(['a', 'b']);
+  });
+
+  it('same id — higher ts wins (edit replaces in place)', () => {
+    const out = mergeRecords(dlState([ev('a', 1000, 100)]), dlState([ev('a', 2000, 999)]), { preferLocalOnTie: true });
+    expect(out.dayLog).toHaveLength(1);
+    expect((out.dayLog[0] as Extract<DayEvent, { kind: 'draw' | 'paydown' }>).amount).toBe(999);
+  });
+
+  it('exact ts tie → local wins (independent of preferLocalOnTie)', () => {
+    const out = mergeRecords(dlState([ev('a', 1000, 100)]), dlState([ev('a', 1000, 999)]), { preferLocalOnTie: false });
+    expect((out.dayLog[0] as Extract<DayEvent, { kind: 'draw' | 'paydown' }>).amount).toBe(100);
+  });
+
+  it('tombstone strictly newer than the event → event suppressed, tombstone kept', () => {
+    const out = mergeRecords(
+      dlState([ev('a', NOW - 2 * DAY)]),
+      dlState([], { a: NOW - DAY }),
+      { preferLocalOnTie: true },
+    );
+    expect(out.dayLog).toHaveLength(0);
+    expect(out.dayLogDeletions.a).toBe(NOW - DAY);
+  });
+
+  it('event at/after its tombstone (edit-after-delete) → survives, stale tombstone dropped', () => {
+    const out = mergeRecords(
+      dlState([ev('a', NOW)]),
+      dlState([], { a: NOW - DAY }),
+      { preferLocalOnTie: true },
+    );
+    expect(out.dayLog.map((e) => e.id)).toEqual(['a']);
+    expect(out.dayLogDeletions.a).toBeUndefined();
+  });
+
+  it('dayLog tombstone older than 90 days is GC’d', () => {
+    const out = mergeRecords(dlState([], { a: NOW - 91 * DAY }), dlState([]), { preferLocalOnTie: true });
+    expect(out.dayLogDeletions.a).toBeUndefined();
+  });
+
+  it('idempotent — merge(merge(a,b),b) === merge(a,b) for dayLog + tombstones', () => {
+    const a = dlState([ev('a', 1000), ev('c', 3000)], { x: NOW - DAY });
+    const b = dlState([ev('b', 2000), ev('a', 2500, 555)], { c: NOW - 2 * DAY });
+    const once  = mergeRecords(a, b, { preferLocalOnTie: false });
+    const twice = mergeRecords(once, b, { preferLocalOnTie: false });
+    expect(twice.dayLog).toEqual(once.dayLog);
+    expect(twice.dayLogDeletions).toEqual(once.dayLogDeletions);
   });
 });

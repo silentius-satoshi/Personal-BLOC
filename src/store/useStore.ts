@@ -220,6 +220,7 @@ export interface StoreState {
   addDayEvent:    (event: DayEvent) => void;
   updateDayEvent: (event: DayEvent) => void;
   deleteDayEvent: (id: string) => void;
+  setDayLog:      (events: DayEvent[]) => void;   // P3 — raw write-back from records merge; folds the Seam-2 cbCollateralBtc derive
   setCbLtvAction: (v: 'paydown' | 'addCollateral') => void;
 
   // Simple Mode plan-card status bars — device-local display prefs (NOT synced, like devMode)
@@ -411,6 +412,8 @@ export interface StoreState {
   setSettingsDirty:      (v: boolean) => void;
   deletedMonths:         Record<number, number>;   // month → deletedAt (Unix ms); tombstones for synced deletes
   setDeletedMonths:      (v: Record<number, number>) => void;
+  deletedDayEvents:      Record<string, number>;   // P3 — event id → deletedAt (Unix ms); tombstones for synced dayLog deletes (persisted-not-synced, like deletedMonths; 90-day GC in merge)
+  setDeletedDayEvents:   (v: Record<string, number>) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
 }
 
@@ -425,7 +428,7 @@ export async function publishRecordsNow(): Promise<boolean> {
     const createdAt = await publishRecords(
       state.nostrSigner,
       state.nostrPubkey,
-      { entries: state.monthlyLog, deletions: state.deletedMonths },
+      { entries: state.monthlyLog, deletions: state.deletedMonths, dayLog: state.dayLog, dayLogDeletions: state.deletedDayEvents },
       state.nostrRelays.length ? state.nostrRelays : undefined,
       signerOpTimeout(state.nostrSigningMethod),
     );
@@ -568,8 +571,9 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
     // STRIP the owner's sharing config (viewerNpub/viewerPubkey/viewerLabel) — the viewer must never see who else
     // the owner shares with, nor the owner's nickname for them. buildSettingsPayload stays the single owner source.
     settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),   // also strip nostrRelays — the owner's transport config, not for viewers
-    records:  { entries: s.monthlyLog, deletions: s.deletedMonths },
+    records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
+    cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
   };
 }
 
@@ -903,8 +907,9 @@ export const useStore = create<StoreState>()(
   setCbLoanBalance:    (v) => { set({ cbLoanBalance: v });    useStore.getState().syncSettingsToNostr(); },
   setCbCollateralBtc:  (v) => {
     // Daily Mode P2a Seam 2: emit a cbCollateralReading (clock-only — feeds the derived cache via deriveCbCollateral)
-    // instead of syncing the field. NO syncSettingsToNostr (cross-device sync suspended P2a→P3; the event will ride
-    // records sync in P3). addDayEvent's clock refresh sets cbCollateralBtc to v (latest-ts event); set explicitly too.
+    // instead of syncing the field. NO syncSettingsToNostr — cross-device sync rides the RECORDS event now (P3): the
+    // cbCollateralReading is part of dayLog, and addDayEvent (Change 3) publishes records. addDayEvent's clock refresh
+    // sets cbCollateralBtc to v (latest-ts event); set explicitly too.
     const id = globalThis.crypto?.randomUUID?.() ?? `cbcoll-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     useStore.getState().addDayEvent({ id, date: new Date().toISOString().split('T')[0], ts: Date.now(), kind: 'cbCollateralReading', cbCollateral: v });
     set({ cbCollateralBtc: v });
@@ -987,31 +992,41 @@ export const useStore = create<StoreState>()(
     if (e) useStore.getState().upsertLogEntry({ ...e, confirmed: true });   // spreads source through → M2 guard passes
   },
 
-  // Daily Mode P2a — dayLog mutators. Each mutates dayLog, refreshes the cbCollateralBtc clock, then re-rolls any
+  // Daily Mode P2a/P3 — dayLog mutators. Each mutates dayLog, refreshes the cbCollateralBtc clock, then re-rolls any
   // affected strategy month(s). cbCollateralReading is clock-only (Route 1) — it never re-rolls / touches monthlyLog.
+  // P3 — EVERY mutator marks recordsDirty + publishes explicitly: journal-only events (cbCollateralReading, target:'cb')
+  // have monthOf===null → no rerollMonth → no publish, and rerollMonth's delete-to-empty branch returns without one.
+  // recordsDirty is set BEFORE publishing so a failed immediate publish is retried by syncNow (mirrors upsertLogEntry).
+  // Monthly-meaningful events publish twice (here + via rerollMonth→upsertLogEntry) — harmless (replaceable + idempotent merge).
   addDayEvent: (event) => {
-    set((s) => ({ dayLog: [...s.dayLog, event] }));
+    set((s) => ({ dayLog: [...s.dayLog, event], recordsDirty: true }));
     refreshCbCollateralCache();
     const m = monthOf(event);
     if (m !== null) rerollMonth(m);
+    publishRecordsNow();
   },
   updateDayEvent: (event) => {
     const before = useStore.getState().dayLog.find((e) => e.id === event.id);
-    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? event : e)) }));
+    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? event : e)), recordsDirty: true }));
     refreshCbCollateralCache();
     const months = new Set<number>();
     const mb = monthOf(before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
     const ma = monthOf(event);  if (ma !== null) months.add(ma);   // and the NEW month
     for (const m of months) rerollMonth(m);
+    publishRecordsNow();
   },
   deleteDayEvent: (id) => {
     const before = useStore.getState().dayLog.find((e) => e.id === id);
     if (!before) return;
-    set((s) => ({ dayLog: s.dayLog.filter((e) => e.id !== id) }));
+    set((s) => ({ dayLog: s.dayLog.filter((e) => e.id !== id), deletedDayEvents: { ...s.deletedDayEvents, [id]: Date.now() }, recordsDirty: true }));
     refreshCbCollateralCache();
     const m = monthOf(before);
     if (m !== null) rerollMonth(m);
+    publishRecordsNow();
   },
+  // P3 — raw write-back from the records merge (sync.ts). FOLDS the Seam-2 derive: set dayLog AND recompute
+  // cbCollateralBtc ONCE from the merged array. NO rollup / per-event derive — keeps the sync apply path actions-only.
+  setDayLog: (events) => set((s) => ({ dayLog: events, cbCollateralBtc: deriveCbCollateral(events, s.cbCollateralBtc) })),
   setCbLtvAction: (v) => set({ cbLtvAction: v }),
 
   // Device-local display prefs — plain set, NO syncSettingsToNostr (like devMode)
@@ -1189,6 +1204,8 @@ export const useStore = create<StoreState>()(
   setSettingsDirty: (v) => set({ settingsDirty: v }),
   deletedMonths: {},
   setDeletedMonths: (v) => set({ deletedMonths: v }),
+  deletedDayEvents: {},
+  setDeletedDayEvents: (v) => set({ deletedDayEvents: v }),   // P3 — raw, non-emitting (mirrors setDeletedMonths)
 
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [

@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (343 tests — all must pass before every commit)
+- Vitest (362 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -50,7 +50,10 @@ src/
                                 # { entry: Partial<MonthlyLogEntry>, collateralDelta }) + deriveCbCollateral (P2a:
                                 # latest cbCollateral-bearing event by ts across balanceReading + cbCollateralReading,
                                 # fallback to the cache — never undefined)
-    mergeRecords.ts             # PURE per-month records merge (RecordsState, mergeRecords) — newest updatedAt/loggedAt wins, tombstones, 90-day GC
+    mergeRecords.ts             # PURE records merge (RecordsState = entries+deletions+dayLog+dayLogDeletions, mergeRecords).
+                                # Per-month entries: newest updatedAt/loggedAt wins, tombstones, 90-day GC. P3: dayLog
+                                # union-by-id (higher ts wins, exact tie→local) + dayLogDeletions tombstone suppression
+                                # (strict >, edit-after-delete drops the stale tombstone, 90-day GC); deterministic sort by ts,id
     __tests__/
       smartBloc.test.ts
       living.test.ts
@@ -497,7 +500,7 @@ miningInputs: {
 ### CB Loan Tab
 ```typescript
 cbLoanBalance:       number;                       // default 60000
-cbCollateralBtc:     number;                       // default 1.48 — P2a: LOCAL derived cache (deriveCbCollateral over dayLog); NOT synced (cross-device suspended P2a→P3). setCbCollateralBtc emits a cbCollateralReading
+cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides records:v1). setCbCollateralBtc emits a cbCollateralReading
 cbAprPct:            number;                       // default 4.77
 cbMonthlyPayment:    number;                       // default 0
 cbLiquidationPrice:  number;                       // default 0 (0 = not set; guard before calling compute fn)
@@ -664,6 +667,53 @@ via dayLog records sync in P3).
   funnel through `upsertLogEntry`). The daily routing stamps `'daily'`; `confirmMonth` preserves it; legacy/manual months
   (undefined source) are unaffected.
 - **`confirmMonth(month)`** — sets that month's `confirmed:true` (spreads source through → passes the M2 guard).
+
+---
+
+## Daily Mode (P3 — `dayLog` rides records sync; store stays v19)
+
+Wires `dayLog` into the Nostr **records:v1** channel (the same path as `monthlyLog`), re-establishing the
+cross-device `cbCollateralBtc` sync suspended in P2a, and fixing two viewer bugs. **No store version bump** —
+`deletedDayEvents` defaults via the custom shallow `merge` (`current` fills absent keys), exactly like
+`deletedMonths`. **This is the project's most fragile surface (the data-scare origin)** — the design keeps
+`sync.ts` *actions-only* (no new `useStore.setState` in the apply path) and reuses the tombstone/merge
+discipline verbatim.
+
+- **State (`useStore.ts`):** `deletedDayEvents: Record<string, number>` (event id → deletedAt ms, default `{}`)
+  + raw `setDeletedDayEvents` (plain `set`, non-emitting, mirrors `setDeletedMonths`). **Persisted-not-synced**
+  (NOT in `partializeState`'s omit → rides the rest; NOT in `SETTINGS_FIELDS`). 90-day GC happens in `mergeRecords`.
+- **Raw `setDayLog(events)` FOLDS the Seam-2 derive:** `set((s) => ({ dayLog: events, cbCollateralBtc:
+  deriveCbCollateral(events, s.cbCollateralBtc) }))` — NO rollup, NO per-event derive; derives `cbCollateralBtc`
+  ONCE from the merged array. The Seam-2 invariant (`dayLog ⇒ cbCollateralBtc`) becomes **structural at the
+  setter**, so the hydrate path (`sync.ts`) stays actions-only — it calls `setDayLog`, no `deriveCbCollateral`
+  import, no `setState`.
+- **`deleteDayEvent` records a tombstone:** the same `set` adds `deletedDayEvents: { ...s.deletedDayEvents,
+  [id]: Date.now() }` + `recordsDirty: true`.
+- **All THREE dayLog mutators publish explicitly:** `addDayEvent`/`updateDayEvent`/`deleteDayEvent` each set
+  `recordsDirty: true` AND call `void publishRecordsNow()` at the end. **Why branch-free:** journal-only events
+  (`cbCollateralReading`, `target:'cb'`) have `monthOf===null` → no `rerollMonth` → would otherwise never
+  publish (defeating P3). Monthly-meaningful events publish twice (once via `rerollMonth→upsertLogEntry`, once
+  here) — harmless (replaceable kind-30078, idempotent merge, equal/higher `created_at` supersedes). Dirty-first
+  so a failed immediate publish is retried by `syncNow`.
+- **PUBLISH (`publish.ts`):** `RecordsPayload` += `dayLog: DayEvent[]` + `dayLogDeletions: Record<string, number>`
+  (REQUIRED — `publishRecordsNow` always sends them; readers default). `ViewerSnapshot` += `cbCollateralBtc?:
+  number` (OPTIONAL so the revocation tombstone literal still typechecks). `publishRecordsNow` serializes both
+  new fields.
+- **HYDRATE (`sync.ts`):** the records block builds a 4-field `remote`/`local` `RecordsState` (legacy bare array
+  → `dayLog:[]`/`dayLogDeletions:{}`; object → `?? []`/`?? {}`), a generalized `norm()` that canonicalizes ALL
+  FOUR collections (sorts entries by month + dayLog by id + both maps' keys) so a dayLog-only change is detected
+  and key-order can't false-dirty, then on change writes back via `setDayLog` (folds the derive) +
+  `setDeletedDayEvents`. **LD3 independence:** does NOT recompute `monthlyLog` from `dayLog` — `entries` is the
+  synced source for `monthlyLog`, `dayLog` for derived `cbCollateralBtc`.
+- **VIEWER BUG2 (the scalar — `buildViewerSnapshotPayload`):** add `cbCollateralBtc:
+  deriveCbCollateral(s.dayLog, s.cbCollateralBtc)` as a TOP-LEVEL snapshot key (the viewer never got it before).
+  `records` still carries `{ entries, deletions }` only — the viewer gets the **scalar, not the journal**
+  (no `dayLog` in the snapshot).
+- **VIEWER BUG3 (raw-set — `viewerSync.ts`):** `applyViewerEvent` raw-sets `useStore.setState({ cbCollateralBtc:
+  snap.cbCollateralBtc ?? useStore.getState().cbCollateralBtc })` — **MUST NOT** use `setCbCollateralBtc` (P2a
+  made it emit a `cbCollateralReading` → would inject a spurious event into the VIEWER's own `dayLog`). The
+  viewer's `dayLog` stays `[]`; the `??` fallback preserves the value for a legacy/pre-P3 owner snapshot. The
+  revoked path returns before this via `clearViewerData()`.
 
 ---
 
@@ -885,7 +935,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-343 tests — `npx vitest run` before every commit.
+362 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -896,14 +946,14 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
-- `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction
+- `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`
 - `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
 - `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
 - `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased)
-- `mergeRecords.test.ts` — per-month merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion
+- `mergeRecords.test.ts` — per-month entries merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion. P3 dayLog block: union-by-id, higher-ts-wins (edit in place), exact-ts tie→local, tombstone-newer→suppressed, edit-after-delete→survives + stale tombstone dropped, >90d GC, idempotent
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
 - `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
@@ -915,7 +965,9 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/hooks/__tests__/useRelayStatus.test.ts` — P3 pure `readyStateToStatus` mapping (1→connected, 0→connecting, 2/3/other→offline); the hook's socket lifecycle is device-verified, not unit-tested
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
-- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK
+- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw)
+- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache) + snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
+- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious cbCollateralReading injected into the viewer's journal); a pre-P3 snapshot without the scalar keeps the existing value (?? fallback); a revoked snapshot → clearViewerData, scalar NOT applied
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 - `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
@@ -1236,7 +1288,8 @@ src/
                                     # inject can outlast restoreSigner's own 3s wait). Only a genuinely-null signer
                                     # flips auth off; a failed sync with a live signer does not
   lib/nostr/
-    publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload v2).
+    publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload
+                                    # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar).
                                     # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN
                                     # (unencrypted) kind-10002 relay list (flat r tags, no read/write markers); MUST NOT
                                     # route through publishEncrypted/signer.nip44 (10002 is public). Both share the
@@ -1288,7 +1341,10 @@ src/
                                     # poll. resetProxyAuthCache() is test-only. See NIP-98 Proxy Auth
     sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
                                     # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail);
-                                    # settings watermark (read FRESH per event) + records per-month MERGE (mergeRecords);
+                                    # settings watermark (read FRESH per event) + records MERGE (mergeRecords, 4-field:
+                                    # entries+deletions+dayLog+dayLogDeletions). P3: generalized norm() canonicalizes all
+                                    # four; write-back via setDayLog (folds the cbCollateralBtc derive) + setDeletedDayEvents
+                                    # — actions-only (NO setState/deriveCbCollateral import); LD3 (no monthlyLog-from-dayLog);
                                     # does NOT manage the reconnect flag
     liveSync.ts                     # foreground-only live relay subscription — module singleton (openLiveSync/
                                     # closeLiveSync); transport only, every event → applyRemoteEvent; opened on
@@ -1298,8 +1354,10 @@ src/
                                     # with the VIEWER's key (NSecSigner(hexToBytes(viewerSecretKey).slice())).
                                     # fetchViewerSnapshot (batch) + open/closeViewerSync (singleton live sub) →
                                     # applyViewerEvent → read-only hydrate (hydrateSettings/setMonthlyLog/
-                                    # setDeletedMonths/setStrike*); NEVER publishes/dirties. useViewerSync (hook)
-                                    # mounts it on foreground; gated on viewerMode
+                                    # setDeletedMonths/setStrike*); NEVER publishes/dirties. P3 (BUG3): raw-sets
+                                    # cbCollateralBtc from snap.cbCollateralBtc via useStore.setState — NEVER setCbCollateralBtc
+                                    # (it would inject a cbCollateralReading into the viewer's OWN dayLog); the viewer's dayLog
+                                    # stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
@@ -1476,7 +1534,7 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 | d-tag | Contents | Trigger |
 |---|---|---|
 | `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
-| `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions }` (legacy bare array readable); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month merge — newest wins, tombstoned deletes, 90-day tombstone GC | Immediately after every upsert/delete (no debounce) via `publishRecordsNow` |
+| `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
 | `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (replaceable, supersedes the old snapshot) |
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
@@ -1598,7 +1656,7 @@ a v17-migrant holder until the one-time wrap.
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
 ### All 33 Synced Settings Fields
-(`cbCollateralBtc` was REMOVED from sync in Daily Mode P2a — now a LOCAL derived cache; cross-device sync suspended P2a→P3.)
+(`cbCollateralBtc` is a LOCAL derived cache, NOT a synced settings scalar — but Daily Mode P3 CONVERGES it cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives `cbCollateralBtc` from the merged `dayLog`.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,

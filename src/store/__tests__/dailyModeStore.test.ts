@@ -24,7 +24,8 @@ const cur = () => useStore.getState().getCurrentBtcHeld();
 
 beforeEach(() => {
   useStore.setState({
-    monthlyLog: [], deletedMonths: {}, dayLog: [],
+    monthlyLog: [], deletedMonths: {}, dayLog: [], deletedDayEvents: {},
+    recordsDirty: false,
     pendingCollateralAdjustment: 0,
     advisorActualBtcHeld: BASELINE,
     advisorActualBlocBalance: 0,
@@ -218,5 +219,49 @@ describe('persistence', () => {
     const out: any = partializeState(useStore.getState());
     expect('dayLog' in out).toBe(true);
     expect('cbLtvAction' in out).toBe(true);
+  });
+
+  it('partialize output includes deletedDayEvents (persists via rest like deletedMonths)', () => {
+    const out: any = partializeState(useStore.getState());
+    expect('deletedDayEvents' in out).toBe(true);
+  });
+});
+
+describe('P3 — dayLog rides records sync', () => {
+  it('deleteDayEvent removes the event AND writes a deletedDayEvents[id] tombstone', () => {
+    const ev = draw(300);
+    useStore.getState().addDayEvent(ev);
+    expect(useStore.getState().dayLog.some((e) => e.id === ev.id)).toBe(true);
+
+    useStore.getState().deleteDayEvent(ev.id);
+    expect(useStore.getState().dayLog.some((e) => e.id === ev.id)).toBe(false);
+    expect(typeof useStore.getState().deletedDayEvents[ev.id]).toBe('number');
+  });
+
+  it('a journal-only addDayEvent (cbCollateralReading) marks recordsDirty (publish trigger) and creates NO monthly entry', () => {
+    useStore.getState().addDayEvent(cbColl(1.55));
+    expect(useStore.getState().recordsDirty).toBe(true);   // monthOf===null would skip reroll → explicit publish path is what propagates it
+    expect(useStore.getState().monthlyLog).toHaveLength(0);
+  });
+
+  it('raw setDayLog replaces the journal AND folds the cbCollateralBtc derive once (newest reading), no monthly reroll', () => {
+    // Seed an existing manual month — setDayLog must NOT touch it (it is not a rollup path).
+    useStore.getState().setMonthlyLog([{
+      month: 1, date: TODAY, btcBought: 0, income: 0, paydown: 0, strikeBal: 100, strikeLtv: 0.1,
+      loggedAt: 9, btcHeld: BASELINE, expensesActual: 10, source: 'manual', confirmed: true,
+    } as never]);
+
+    const e1 = cbColl(1.1);      // ts smaller (created first)
+    const e2 = cbColl(2.2);      // ts larger → newest cbCollateral
+    useStore.getState().setDayLog([e1, e2]);
+
+    expect(useStore.getState().dayLog.map((e) => e.id)).toEqual([e1.id, e2.id]);
+    expect(useStore.getState().cbCollateralBtc).toBeCloseTo(2.2);    // derived once from the merged array
+    expect(month1()!.expensesActual).toBe(10);                       // manual month untouched (no reroll)
+  });
+
+  it('setDeletedDayEvents raw-sets the tombstone map', () => {
+    useStore.getState().setDeletedDayEvents({ z: 12345 });
+    expect(useStore.getState().deletedDayEvents.z).toBe(12345);
   });
 });

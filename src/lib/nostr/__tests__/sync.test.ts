@@ -26,10 +26,14 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     settingsDirty:           false,
     monthlyLog:              [],
     deletedMonths:           {},
+    dayLog:                  [],
+    deletedDayEvents:        {},
     advisorActualBtcHeld:    0,
     hydrateSettings:         vi.fn(),
     setMonthlyLog:           vi.fn(),
     setDeletedMonths:        vi.fn(),
+    setDayLog:               vi.fn(),
+    setDeletedDayEvents:     vi.fn(),
     setRecordsDirty:         vi.fn(),
     setSettingsDirty:        vi.fn(),
     setLastSettingsSyncAt:   vi.fn(),
@@ -214,6 +218,35 @@ describe('fetchAndSync', () => {
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
     expect(mockStoreState.setRecordsDirty).not.toHaveBeenCalled();
     expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);   // observability stamp still fires
+  });
+
+  it('P3: records payload carrying dayLog → setDayLog + setDeletedDayEvents called with the merged values', async () => {
+    resetStore();   // local dayLog [] / deletedDayEvents {}
+    const recent = Date.now() - 1000;   // within the 90-day TTL so it survives GC
+    const dl = [{ id: 'd1', date: '2026-01-05', ts: 111, kind: 'cbCollateralReading', cbCollateral: 1.7 }];
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:records:v1', 700, { entries: [], deletions: {}, dayLog: dl, dayLogDeletions: { gone: recent } }),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.setDayLog).toHaveBeenCalledOnce();
+    expect(mockStoreState.setDayLog.mock.calls[0][0].map((e: any) => e.id)).toEqual(['d1']);
+    expect(mockStoreState.setDeletedDayEvents).toHaveBeenCalledWith({ gone: recent });
+  });
+
+  it('P3: legacy records payload without dayLog hydrates safely (defaults [] / {}, no throw)', async () => {
+    resetStore();
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:records:v1', 700, [makeLogEntry(3)]),   // legacy bare array, no dayLog field
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toBe(true);
+
+    expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();   // entries applied
+    expect(mockStoreState.setDayLog).toHaveBeenCalledWith([]);     // dayLog defaulted to [] (no throw)
   });
 });
 

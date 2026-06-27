@@ -1,6 +1,6 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
-import type { MonthlyLogEntry } from '../../simulation/types';
+import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
 import { withTimeout } from './timeout';
 import { DEFAULT_RELAYS } from './relays';
 
@@ -88,7 +88,14 @@ export async function publishSettings(
 
 // Records payload schema v2 — same d-tag; the replaceable event's next publish supersedes old payloads.
 // Readers must also accept the legacy v1 bare MonthlyLogEntry[] array.
-export type RecordsPayload = { entries: MonthlyLogEntry[]; deletions: Record<number, number> };
+// P3: the daily journal (dayLog) + its deletion tombstones ride the SAME records event (required —
+// publishRecordsNow always sends them; pre-P3 readers default them to []/{}).
+export type RecordsPayload = {
+  entries:         MonthlyLogEntry[];
+  deletions:       Record<number, number>;
+  dayLog:          DayEvent[];
+  dayLogDeletions: Record<string, number>;
+};
 
 export async function publishRecords(
   signer:  NostrSigner,
@@ -110,6 +117,7 @@ export interface ViewerSnapshot {
   settings: Record<string, unknown>;
   records:  { entries: unknown[]; deletions: Record<number, number> };
   strike:   { usd: number | null; btcAvail: number | null; rate: number | null };
+  cbCollateralBtc?: number;   // P3 (BUG2) — the derived CB-collateral scalar; the viewer raw-sets it (never gets the dayLog journal). Optional so the revocation tombstone literal typechecks
   revoked?: boolean;   // tombstone — the owner revoked this viewer; the viewer wipes + exits the data
 }
 

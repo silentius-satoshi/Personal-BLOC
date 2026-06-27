@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore, buildSettingsPayload, buildViewerSnapshotPayload } from '../useStore';
+import { deriveCbCollateral } from '../../simulation/logUtils';
 
 describe('viewer snapshot builders', () => {
   beforeEach(() => {
@@ -37,14 +38,35 @@ describe('viewer snapshot builders', () => {
     expect('income' in snapSettings).toBe(true);
   });
 
-  it('buildViewerSnapshotPayload has the Option-B shape: settings + records + strike', () => {
+  it('buildViewerSnapshotPayload has the Option-B shape: settings + records + strike + cbCollateralBtc (P3)', () => {
     const snap = buildViewerSnapshotPayload(useStore.getState());
-    expect(Object.keys(snap).sort()).toEqual(['records', 'settings', 'strike']);
+    expect(Object.keys(snap).sort()).toEqual(['cbCollateralBtc', 'records', 'settings', 'strike']);
     expect(snap.records).toHaveProperty('entries');
     expect(snap.records).toHaveProperty('deletions');
     expect(snap.strike).toHaveProperty('usd');
     expect(snap.strike).toHaveProperty('btcAvail');
     expect(snap.strike).toHaveProperty('rate');
+  });
+
+  it('P3 (BUG2): snapshot carries cbCollateralBtc derived from dayLog (the viewer gets the scalar, not the journal)', () => {
+    useStore.setState({
+      dayLog: [{ id: 'c1', date: '2026-01-05', ts: 5000, kind: 'cbCollateralReading', cbCollateral: 2.25 }],
+      cbCollateralBtc: 0.99,
+    } as never);
+    const s = useStore.getState();
+    const snap = buildViewerSnapshotPayload(s);
+    expect(snap.cbCollateralBtc).toBe(deriveCbCollateral(s.dayLog, s.cbCollateralBtc));   // single source — cannot drift
+    expect(snap.cbCollateralBtc).toBeCloseTo(2.25);   // newest reading, not the 0.99 cache
+  });
+
+  it("P3: the snapshot's records carry entries + deletions but NOT the raw dayLog journal", () => {
+    useStore.setState({
+      dayLog: [{ id: 'c1', date: '2026-01-05', ts: 5000, kind: 'cbCollateralReading', cbCollateral: 2.25 }],
+    } as never);
+    const snap = buildViewerSnapshotPayload(useStore.getState());
+    expect(snap.records).toHaveProperty('entries');
+    expect(snap.records).toHaveProperty('deletions');
+    expect('dayLog' in snap.records).toBe(false);
   });
 
   it("the snapshot's settings deep-equal buildSettingsPayload minus the owner's viewer config + nostrRelays (single source — cannot drift)", () => {

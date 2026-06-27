@@ -112,6 +112,10 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       s.setStrikeBtcAvailable(snap.strike.btcAvail);
       s.setStrikeRate(snap.strike.rate);
     }
+    // P3 (BUG2 + BUG3) — receive the owner's derived CB-collateral scalar. RAW set, NEVER setCbCollateralBtc:
+    // that setter emits a cbCollateralReading (P2a Seam 2) → would inject a spurious event into the VIEWER's own
+    // dayLog. The viewer's dayLog stays []. Fallback keeps the current value for a legacy/pre-P3 owner snapshot.
+    useStore.setState({ cbCollateralBtc: snap.cbCollateralBtc ?? useStore.getState().cbCollateralBtc });
     s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
     nostrLog('info', 'viewer snapshot hydrated');
   } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
