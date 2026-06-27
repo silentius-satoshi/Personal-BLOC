@@ -119,7 +119,10 @@ src/
                                 # → menu + SUBPAGE_TITLES[page]) then that section's content. Split A (controls moved
                                 # VERBATIM — same handlers/selectors/hooks, only relocated): identity = NOSTR IDENTITY
                                 # (Enable-Nostr-Lock toggle + identity row + sync + recovery + decrypt-back); sharing =
-                                # VIEWER ACCESS (pulled out of the shared Nostr section); strike = BUDGET + STRIKE BLOC
+                                # VIEWER ACCESS (pulled out of the shared Nostr section; topped by the owner's OWN npub
+                                # truncated + "Copy your npub" button — reuses existing npubCopied/npubEncode logic —
+                                # so the owner can hand their npub to the viewer without navigating to Identity);
+                                # strike = BUDGET + STRIKE BLOC
                                 # inputs (+ a READ-ONLY "Strike API · Connected/Not connected" status row at the top of
                                 # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
                                 # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details (P2b: when

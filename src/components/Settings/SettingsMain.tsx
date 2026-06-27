@@ -535,6 +535,25 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       <div className={styles.section}>
         {nostrPubkey ? (
           <div className={styles.viewerAccessBlock}>
+            <div className={styles.nostrIdentityRow}>
+              <span className={styles.nostrPubkey}>
+                {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
+              </span>
+              <button
+                className={styles.nostrReconnectBtn}
+                onClick={() => {
+                  try {
+                    const npub = nip19.npubEncode(nostrPubkey);
+                    navigator.clipboard?.writeText(npub);
+                    setNpubCopied(true);
+                    setTimeout(() => setNpubCopied(false), 1500);
+                  } catch { /* nostrPubkey not valid hex — no-op */ }
+                }}
+              >
+                {npubCopied ? 'Copied ✓' : 'Copy your npub'}
+              </button>
+            </div>
+            <span className={styles.cbLoanToggleDesc}>Share this npub with your viewer so they can follow your plan.</span>
             <div className={styles.cbLoanToggleTitle}>VIEWER ACCESS</div>
             <p className={styles.cbLoanToggleDesc}>
               Shares a continuously-updated, read-only copy of your full model and live Strike balances with this
