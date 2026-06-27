@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (300 tests — all must pass before every commit)
+- Vitest (321 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -26,7 +26,8 @@ Deployed to Vercel.
 ```
 src/
   simulation/
-    types.ts                    # SimInputs (optional creditLine), LivingInputs, StrategyResult
+    types.ts                    # SimInputs (optional creditLine), LivingInputs, StrategyResult, MonthlyLogEntry,
+                                # DayEvent (Daily Mode P1 union) + source?/confirmed?/provisional? on MonthlyLogEntry
     livingUtils.ts              # getBtcPrice (8-param, bear market aware)
     powerLaw.ts                 # PL_B, PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, GENESIS + utils
     runNoBitcoin.ts
@@ -43,7 +44,10 @@ src/
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar)
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
                                 # deriveCurrentPosition (both take pendingCollateralAdjustment as a REQUIRED param),
-                                # upsertEntry — standalone, no cross-sim imports
+                                # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: bucketEventToMonth
+                                # (date→strategy-month 1–12, replicates getCurrentStrategyMonth's formula with the event
+                                # date — kept inline so logUtils stays import-standalone) + rollupMonth (DayEvent[] →
+                                # { entry: Partial<MonthlyLogEntry>, collateralDelta })
     mergeRecords.ts             # PURE per-month records merge (RecordsState, mergeRecords) — newest updatedAt/loggedAt wins, tombstones, 90-day GC
     __tests__/
       smartBloc.test.ts
@@ -581,6 +585,41 @@ recorded' (no amounts — the log ring stays paste-safe).
 
 ---
 
+## Daily Mode (P1 — pure data layer; store stays v18)
+
+A granular daily journal that rolls up into the existing month log. **P1 is types + two pure functions only** — no
+store, no UI, no sync.
+
+- **`DayEvent`** (types.ts) — a discriminated union over `DayEventKind` =
+  `draw | buy | paydown | deposit | withdraw | balanceReading | cbCollateralReading`. Base = `{ id, date (ISO
+  yyyy-mm-dd), ts (ms) }`. `draw`/`paydown` carry `amount` (USD); `buy` carries `amount` (BTC) + optional `usd`;
+  `deposit`/`withdraw` carry `amount` (BTC magnitude) + `target: 'strike' | 'cb'`; `cbCollateralReading` carries
+  `cbCollateral` (BTC); `balanceReading` carries a nested `reading { strikeBal, strikeLtv, cbBal?, cbLtv?,
+  cbCollateral?, price? }`.
+- **LD5 — stocks are READINGS:** balances/LTVs are read off Strike/Coinbase (the `balanceReading` event), never
+  chained. **btcHeld is NOT in `balanceReading`** — Strike BTC stays store-owned via `recomputeBtcHeld` /
+  `adjustCurrentCollateral`.
+- **LD7 — CB collateral = a reading, not a chain:** `cbCollateralBtc` is DERIVED (latest `cbCollateral`-bearing event
+  by `ts` — `balanceReading` or `cbCollateralReading`), wired in P2; it is NOT a synced setting and is NEVER placed in
+  the rollup entry.
+- **`target` semantics:** `deposit`/`withdraw` `target:'strike'` feeds `collateralDelta` (the P2 collateral seam);
+  `target:'cb'` is **journal-only** (ignored by rollup — CB collateral comes from the reading).
+- **`rollupMonth(dayLog, month, advisorStartDate, priorStocks?)` → `{ entry: Partial<MonthlyLogEntry>, collateralDelta }`:**
+  flows accumulate (`draw`→`expensesActual`, `buy`→`btcBought` [+`income` iff `usd`], `paydown`→`paydown`);
+  `collateralDelta` = net `target:'strike'` BTC, **signed by kind** (deposit +, withdraw −); stocks from the LATEST
+  `balanceReading` by `ts` (`strikeBal`/`strikeLtv` always, `cbBal`/`cbLtv` iff present). `entry` NEVER carries
+  `btcHeld`/`collateralAdjustment`/`source`/`confirmed`/`cbCollateral`. **Carry-forward** (LD6 backfill exception):
+  flows present but no `balanceReading` + `priorStocks` given → stocks borrowed from `priorStocks` + `provisional:true`.
+  Empty month → `{ entry: {}, collateralDelta: 0 }`. `bucketEventToMonth(date, advisorStartDate)` replicates
+  `getCurrentStrategyMonth`'s formula with the event date (kept inline — logUtils stays import-standalone).
+- **LD6 — hard-require stocks at creation time:** a real month entry should be created from a `balanceReading`; the
+  carry-forward `provisional` path is the explicit backfill exception (P2 enforces the creation-time requirement).
+- **`MonthlyLogEntry` gains `source?: 'manual' | 'daily'` / `confirmed?: boolean` / `provisional?: boolean`** — all
+  OPTIONAL (undefined on legacy entries = manual / confirmed / non-provisional), so no migration. `source`/`confirmed`
+  are P2-stamped; `provisional` is set by `rollupMonth` carry-forward. **Store stays v18** (P1 adds only optional fields).
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -799,7 +838,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-300 tests — `npx vitest run` before every commit.
+321 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -809,6 +848,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `living.test.ts`
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
+- `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation)
 - `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
 - `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)

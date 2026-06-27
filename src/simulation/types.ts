@@ -69,6 +69,27 @@ export interface StrategyResult {
   realReturn: number;
 }
 
+// --- Daily Mode Types ---
+
+export type DayEventKind = 'draw' | 'buy' | 'paydown' | 'deposit' | 'withdraw' | 'balanceReading' | 'cbCollateralReading';
+
+interface DayEventBase { id: string; date: string; /* ISO yyyy-mm-dd */ ts: number; /* ms */ }
+
+export type DayEvent =
+  | (DayEventBase & { kind: 'draw' | 'paydown'; amount: number /* USD */ })
+  | (DayEventBase & { kind: 'buy'; amount: number /* BTC acquired */; usd?: number })
+  | (DayEventBase & { kind: 'deposit' | 'withdraw'; amount: number /* BTC, signed by kind */; target: 'strike' | 'cb' })
+  | (DayEventBase & { kind: 'cbCollateralReading'; cbCollateral: number /* BTC — CB-only; feeds the derived cbCollateralBtc clock */ })
+  | (DayEventBase & { kind: 'balanceReading'; reading: {
+        strikeBal: number; strikeLtv: number;       // always required (read off Strike)
+        cbBal?: number; cbLtv?: number;             // required at runtime iff hasCbLoan
+        cbCollateral?: number;                      // CB collateral BTC — required at runtime iff hasCbLoan; feeds the derived cbCollateralBtc clock
+        price?: number;                             // optional spot price at reading time
+      } });
+// NOTE: btcHeld (Strike) is NOT in balanceReading — store-owned via recomputeBtcHeld/adjustCurrentCollateral.
+//       cbCollateralBtc is DERIVED = latest cbCollateral-bearing event by ts (balanceReading or cbCollateralReading); NOT synced as a setting.
+//       deposit/withdraw target:'strike' feeds collateralDelta (P2 seam); target:'cb' is journal-only (CB collateral comes from the reading).
+
 // --- Monthly Log ---
 
 export interface MonthlyLogEntry {
@@ -89,6 +110,9 @@ export interface MonthlyLogEntry {
   updatedAt?:     number;    // Unix ms; stamped by upsertLogEntry on every save. Legacy entries lack it — merge falls back to loggedAt.
   collateralAdjustment?: number;  // OPTIONAL — net BTC deposited(+)/withdrawn(−) that month, separate from btcBought.
                                   // STORE-OWNED: written only by graduation in upsertLogEntry. Remote pre-v4 entries lack it (?? 0 everywhere).
+  source?:      'manual' | 'daily';  // undefined on legacy entries — treated as 'manual'; 'daily' = rolled up from dayLog (P2 stamps it)
+  confirmed?:   boolean;             // undefined on legacy entries — treated as true; false = needs review (P2 stamps it)
+  provisional?: boolean;             // OPTIONAL — set by rollupMonth carry-forward (flows present, no balanceReading, priorStocks used)
 }
 
 // --- Mining Tab Types ---
