@@ -390,7 +390,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                 {hasCbLoan && <span className={styles.settingsRowChevron}>›</span>}
               </div>
             )}
-            <SettingsRow icon="🖥️" title="Display" subtitle="Simple Mode, plan bars, mining log" onClick={() => setSettingsPage('display')} styles={styles} />
+            <SettingsRow icon="🖥️" title="Display" subtitle="Monthly Mode, plan bars, mining log" onClick={() => setSettingsPage('display')} styles={styles} />
             {!viewerMode && <SettingsRow icon="🗂️" title="Tabs" subtitle="Visibility & order" onClick={() => setSettingsPage('tabs')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="🌐" title="Network" subtitle="Relays & connections" onClick={() => setSettingsPage('network')} styles={styles} />}
             <SettingsRow icon="ℹ️" title="About" subtitle="Build info" onClick={() => setSettingsPage('about')} styles={styles} />
@@ -408,7 +408,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       {settingsPage === 'display' && (
         <div className={styles.simpleModeToggle}>
           <div className={styles.simpleModeLabel}>
-            <span className={styles.simpleModeTitle}>Simple Mode</span>
+            <span className={styles.simpleModeTitle}>Monthly Mode</span>
             <span className={styles.simpleModeDesc}>
               Shows only your monthly plan — hides all charts and details
             </span>

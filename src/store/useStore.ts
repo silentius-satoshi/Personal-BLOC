@@ -232,6 +232,10 @@ export interface StoreState {
   setShowPlanStrikeBar: (v: boolean) => void;
   setShowPlanCbBar:     (v: boolean) => void;
 
+  // Consumer-shell view (Monthly Playbook vs Daily journal) — device-local UI pref (NOT synced, like devMode)
+  simpleView:    'monthly' | 'daily';
+  setSimpleView: (v: 'monthly' | 'daily') => void;
+
   // Setters — shared
   setIncome: (v: number) => void;
   setExpenses: (v: number) => void;
@@ -885,6 +889,9 @@ export const useStore = create<StoreState>()(
   showPlanStrikeBar: true,
   showPlanCbBar:     true,
 
+  // Default to the Monthly view; the custom merge fills this for existing users (no version bump).
+  simpleView: 'monthly',
+
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
   setBtcPrice: (v) => set({ btcPrice: v, btcPriceUpdatedAt: Date.now() }),
@@ -1035,6 +1042,7 @@ export const useStore = create<StoreState>()(
   setShowPlanIncomeBar: (v) => set({ showPlanIncomeBar: v }),
   setShowPlanStrikeBar: (v) => set({ showPlanStrikeBar: v }),
   setShowPlanCbBar:     (v) => set({ showPlanCbBar: v }),
+  setSimpleView:        (v) => set({ simpleView: v }),
 
   converterActiveField: 'sats',
   converterRawValue:    '0',

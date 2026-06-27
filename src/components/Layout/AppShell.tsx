@@ -46,6 +46,7 @@ import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
+import { DailyModeView }     from '../Daily/DailyModeView';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
@@ -174,6 +175,8 @@ export function AppShell() {
   const hasCbLoan    = useStore((s) => s.hasCbLoan);
 
   const simpleMode            = useStore((s) => s.simpleMode);
+  const simpleView            = useStore((s) => s.simpleView);        // Monthly Playbook vs Daily journal (device-local)
+  const setSimpleView         = useStore((s) => s.setSimpleView);
   const onboardingComplete    = useStore((s) => s.onboardingComplete);
   const setSimpleMode         = useStore((s) => s.setSimpleMode);
   const setOnboardingComplete = useStore((s) => s.setOnboardingComplete);
@@ -334,7 +337,21 @@ export function AppShell() {
         </div>
       ) : simpleMode && activeTab !== 'settings' ? (
         <div className={styles.simpleModeRoot}>
-          <SimpleModeView onOpenSettings={() => setActiveTab('settings')} />
+          <div className={styles.viewToggleWrap}>
+            <div className={styles.viewToggle}>
+              <button
+                className={`${styles.viewToggleBtn} ${simpleView === 'monthly' ? styles.viewToggleBtnActive : ''}`}
+                onClick={() => setSimpleView('monthly')}
+              >Monthly</button>
+              <button
+                className={`${styles.viewToggleBtn} ${simpleView === 'daily' ? styles.viewToggleBtnActive : ''}`}
+                onClick={() => setSimpleView('daily')}
+              >Daily</button>
+            </div>
+          </div>
+          {simpleView === 'daily'
+            ? <DailyModeView onOpenSettings={() => setActiveTab('settings')} />
+            : <SimpleModeView onOpenSettings={() => setActiveTab('settings')} />}
         </div>
       ) : (
         <div className={styles.shell} data-active-tab={activeTab}>
@@ -363,7 +380,7 @@ export function AppShell() {
             <button
               className={styles.simpleModeBtn}
               onClick={() => setSimpleMode(true)}
-              aria-label="Switch to simple mode"
+              aria-label="Switch to simple view"
             >
               <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="1" y="3" width="14" height="10" rx="1.5" fill="currentColor"/>

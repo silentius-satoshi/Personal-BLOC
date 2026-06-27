@@ -141,6 +141,40 @@
   background: var(--bg-base);
 }
 
+/* Monthly | Daily consumer-shell view toggle — centered to the 600px content width (mirrors
+   SimpleModeView's segmentControl pill). */
+.viewToggleWrap {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 12px 16px 0;
+}
+
+.viewToggle {
+  display: flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.viewToggleBtn {
+  flex: 1;
+  padding: 8px 0;
+  font-size: 13px;
+  font-weight: 600;
+  background: transparent;
+  color: var(--text-secondary);
+  border: none;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  font-family: inherit;
+}
+
+.viewToggleBtnActive {
+  background: var(--orange);
+  color: #000;
+}
+
 .simpleModeSettings {
   min-height: 100vh;
   background: var(--bg-base);

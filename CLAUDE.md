@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (362 tests — all must pass before every commit)
+- Vitest (371 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -257,6 +257,21 @@ src/
                                 # SINGLE-COLUMN (1fr) so long decimals fit; .viewGrid is a label/value column
       MonthlyLogOverlay.module.css
 
+    Daily/
+      DailyModeView.tsx         # Daily Mode P4a — READ-ONLY day-level consumer view. Mirrors SimpleModeView's
+                                # layout (same header + <SafetyDashboard/> verbatim + position trio CURRENT|THIS
+                                # MONTH(proj)|AFTER, replicating SimpleModeView's deriveAdvisorStart→runAdvisor→
+                                # computeStrikeLtv/strikeAvailableCredit cluster with the three advisorSkip* treated
+                                # as false — P4a has no Pay/Skip) but its ACTIVITY CARD lists the granular dayLog for
+                                # the current strategy month (selectMonthEvents + describeDayEvent), not the monthly
+                                # rollup. Plus a read-only PLAN REFERENCE (deriveForMonth + composeMonthSummary) and a
+                                # month indicator. NO event sheets / writes / FAB / calendar / scrubber (P4b/P4c).
+                                # Props {onOpenSettings}. DailyModeView.module.css alongside (own classes; replicates
+                                # SimpleModeView's visual tokens — does not import another component's module)
+      dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
+                                # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
+                                # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
+                                # withdraw carry target; balanceReading summarizes Strike + CB). Tested in __tests__/dailyView.test.ts
     SimpleMode/
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
                                 # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
@@ -725,6 +740,33 @@ discipline verbatim.
 
 ---
 
+## Daily Mode (P4a — read-only view shell + Monthly|Daily toggle; store stays v19)
+
+The first Daily Mode UI surface. **READ-ONLY** — it proves the dayLog/rollup data renders before any writing
+UI lands. NO event sheets / `addDayEvent`/`updateDayEvent`/`deleteDayEvent` wiring / FAB (P4b); NO Week|Month
+calendar / scrubbing / reconcile / dry-powder readout (P4c).
+
+- **`simpleView: 'monthly' | 'daily'`** (store, default `'monthly'`) — DEVICE-LOCAL UI pref selecting the
+  consumer-shell view. NOT synced (absent from `SETTINGS_FIELDS`/`buildSettingsPayload`); rides `partializeState`'s
+  `...rest` (NOT in the omit destructure); **no version bump** — the custom `merge` (`{...current, ...persisted}`)
+  fills it for existing users from `current`. Setter `setSimpleView` is a plain `set` (no `syncSettingsToNostr`),
+  mirroring `showPlanStrikeBar`.
+- **Copy relabel "Simple Mode" → "Monthly Mode"** (copy only; the `simpleMode` store field + all code identifiers
+  unchanged): SettingsMain Display row subtitle + the Display-subpage toggle title. The AppShell tab-bar button that
+  ENTERS the consumer shell (`setSimpleMode(true)`) is relabeled **`aria-label="Switch to simple view"`** (generic —
+  the shell now hosts BOTH Monthly and Daily, so "Monthly Mode" there would mislead once toggled to Daily).
+- **`DailyModeView`** (`components/Daily/`) — mirrors `SimpleModeView`'s layout/visual language: same header +
+  `<SafetyDashboard/>` verbatim + the CURRENT|THIS MONTH(proj)|AFTER position trio (same derivation cluster, skips
+  treated as false). Its ACTIVITY CARD lists the current strategy month's `dayLog` (`selectMonthEvents` +
+  `describeDayEvent`, both PURE in `dailyView.ts`), empty state "No activity logged this month." A read-only PLAN
+  REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
+  `cbPaydownDraw`, monthly shows `plan.cbPayment`). Month indicator only — no scrubber.
+- **Monthly | Daily toggle** (`AppShell`, inside the `simpleMode && activeTab !== 'settings'` branch) — a segmented
+  control (`.viewToggle*` in AppShell.module.css, mirrors SimpleModeView's `segmentControl`) bound to `simpleView`;
+  renders `<DailyModeView/>` when `'daily'`, else `<SimpleModeView/>`. Consumer shell only — full-app path untouched.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -943,9 +985,10 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-362 tests — `npx vitest run` before every commit.
+371 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
+- `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
@@ -1011,7 +1054,8 @@ reports should include the Copy Diagnostics output from the failing device.
 publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
-plan-card status-bar visibility, default true), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
+plan-card status-bar visibility, default true), `simpleView` (`'monthly'|'daily'` consumer-shell view,
+default `'monthly'` — Daily Mode P4a), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device; **persisted in
 STANDALONE localStorage `personal-bloc-writer-key-wrapped`/`-meta`, NOT inside the persist blob** — they're the
 credential that UNLOCKS the encrypted store, so they must be readable before/without decryption (else the
