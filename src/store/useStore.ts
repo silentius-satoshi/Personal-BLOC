@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
-import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry } from '../simulation/types';
-import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition } from '../simulation/logUtils';
+import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry, DayEvent } from '../simulation/types';
+import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral } from '../simulation/logUtils';
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
@@ -211,7 +211,16 @@ export interface StoreState {
   setMonthlyLog:      (entries: MonthlyLogEntry[]) => void;
   upsertLogEntry:     (entry: MonthlyLogEntry) => void;
   deleteLogEntry:     (month: number) => void;
+  confirmMonth:       (month: number) => void;   // Daily Mode P2a — mark a month's entry confirmed:true
   setShowMiningInLog: (v: boolean) => void;
+
+  // Daily Mode P2a — granular daily journal (LOCAL-only this phase; records sync is P3) + the CB-LTV action pref
+  dayLog:        DayEvent[];
+  cbLtvAction:   'paydown' | 'addCollateral';
+  addDayEvent:    (event: DayEvent) => void;
+  updateDayEvent: (event: DayEvent) => void;
+  deleteDayEvent: (id: string) => void;
+  setCbLtvAction: (v: 'paydown' | 'addCollateral') => void;
 
   // Simple Mode plan-card status bars — device-local display prefs (NOT synced, like devMode)
   showPlanIncomeBar:    boolean;
@@ -522,7 +531,9 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorMonthStartBalance: s.advisorMonthStartBalance,
     advisorActualBtcHeld:     s.advisorActualBtcHeld,
     cbLoanBalance:            s.cbLoanBalance,
-    cbCollateralBtc:          s.cbCollateralBtc,
+    // cbCollateralBtc REMOVED from settings sync (Daily Mode P2a, Seam 2) — it's now a LOCAL derived cache
+    // (deriveCbCollateral over dayLog). Cross-device sync is intentionally SUSPENDED P2a→P3 (re-established when
+    // dayLog rides the records event in P3).
     cbAprPct:                 s.cbAprPct,
     hasCbLoan:                s.hasCbLoan,
     ndpLastPaidDate:          s.ndpLastPaidDate,
@@ -601,6 +612,171 @@ export async function publishViewerRevocationNow(): Promise<void> {
   } catch (e) {
     nostrLog('warn', 'viewer revocation failed', e);
   }
+}
+
+// --- Daily Mode P2a routing helpers (module-level; use useStore.getState()/setState like the publish* fns) ---
+
+// ISO first-day of a strategy month (month 1 = advisorStartDate's month).
+function strategyMonthDate(advisorStartDate: string, month: number): string {
+  const d = new Date(advisorStartDate);
+  d.setMonth(d.getMonth() + (month - 1));
+  return d.toISOString().split('T')[0];
+}
+
+// Seam 2 clock: refresh the derived cbCollateralBtc cache from the current dayLog (cheap, idempotent).
+function refreshCbCollateralCache(): void {
+  const s = useStore.getState();
+  useStore.setState({ cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc) });
+}
+
+// Re-roll ONE strategy month from the current dayLog → Partial→Full bridge → upsertLogEntry → Seam 1 collateral.
+// cbCollateralReading events are excluded from "monthly meaning" (BUG1: they must never create/flip a monthlyLog entry).
+function rerollMonth(month: number): void {
+  const s = useStore.getState();
+  const start = s.advisorStartDate;
+  const monthlyEvents = s.dayLog.filter((e) => e.kind !== 'cbCollateralReading' && bucketEventToMonth(e.date, start) === month);
+  const existing = s.monthlyLog.find((e) => e.month === month);
+
+  if (monthlyEvents.length === 0) {
+    // Emptied daily month → remove the stale rolled-up entry (only if it was daily-owned).
+    if (existing && existing.source === 'daily') useStore.getState().deleteLogEntry(month);
+    return;
+  }
+
+  // priorStocks = the prior strategy-month's LAST balanceReading by ts.
+  const priorReadings = s.dayLog
+    .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
+      e.kind === 'balanceReading' && bucketEventToMonth(e.date, start) === month - 1)
+    .sort((a, b) => a.ts - b.ts);
+  const pr = priorReadings.length ? priorReadings[priorReadings.length - 1].reading : undefined;
+  const priorStocks = pr
+    ? { strikeBal: pr.strikeBal, strikeLtv: pr.strikeLtv, cbBal: pr.cbBal, cbLtv: pr.cbLtv, cbCollateral: pr.cbCollateral }
+    : undefined;
+
+  const { entry: rollupEntry, collateralDelta } = rollupMonth(s.dayLog, month, start, priorStocks);
+
+  // Partial→Full bridge: spread the rollup onto the EXISTING month (preserve miningSats/ndpPaid/loggedAt), or onto a
+  // full numeric seed for a NEW month (NEVER onto {} — would leave required fields undefined). recomputeBtcHeld (inside
+  // upsertLogEntry) fixes the btcHeld:0 placeholder.
+  const base: MonthlyLogEntry = existing ?? {
+    month,
+    date:           strategyMonthDate(start, month),
+    btcBought:      0,
+    income:         0,
+    paydown:        0,
+    strikeBal:      0,
+    strikeLtv:      0,
+    loggedAt:       monthlyEvents.reduce((mx, e) => Math.max(mx, e.ts), 0) || Date.now(),
+    btcHeld:        0,
+    expensesActual: 0,
+  };
+  const confirmed = base.confirmed === true ? false : (base.confirmed ?? false);   // reopen-on-edit (LD4); new = false
+  useStore.getState().upsertLogEntry({ ...base, ...rollupEntry, source: 'daily', confirmed });
+
+  // SEAM 1 — AFTER upsert (which graduated any prior pending into this month's collateralAdjustment). Feed the WHOLE
+  // month's net target:'strike' BTC as an absolute target, subtracting the already-graduated existingAdj so earlier
+  // same-month deposits aren't counted twice. Only when there's a target:'strike' move (collateralDelta !== 0).
+  if (collateralDelta !== 0) {
+    const existingAdj = useStore.getState().monthlyLog.find((e) => e.month === month)?.collateralAdjustment ?? 0;
+    useStore.getState().adjustCurrentCollateral(useStore.getState().getCurrentBtcHeld() - existingAdj + collateralDelta);
+  }
+}
+
+// Months affected by a Route-2 event (cbCollateralReading is clock-only → no month).
+function monthOf(ev: DayEvent | undefined): number | null {
+  if (!ev || ev.kind === 'cbCollateralReading') return null;
+  return bucketEventToMonth(ev.date, useStore.getState().advisorStartDate);
+}
+
+// Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
+// self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
+export function partializeState(state: StoreState) {
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  return rest;
+}
+
+// Persist migrate — exported so it's unit-testable (same reason as partializeState).
+export function migrateState(persistedState: any): any {
+  const { customCollateral, ...rest } = persistedState;
+  const sorted = [...(persistedState.monthlyLog ?? [])]
+    .sort((a: any, b: any) => a.month - b.month);
+  const cumBought = sorted.reduce((s: number, e: any) => s + (e.btcBought ?? 0), 0);
+  const month0Baseline = (persistedState.advisorActualBtcHeld ?? customCollateral ?? 0) - cumBought;
+  let running = month0Baseline;
+  for (const e of sorted) {
+    running += (e.btcBought ?? 0);
+    if (e.btcHeld == null) e.btcHeld = running;
+  }
+  for (const e of sorted) {
+    if (e.expensesActual == null) e.expensesActual = persistedState.expenses ?? 0;
+  }
+  // v19 (Daily Mode P2a): backfill source/confirmed on legacy entries (undefined → manual/confirmed).
+  for (const e of sorted) {
+    if (e.source == null)    e.source = 'manual';
+    if (e.confirmed == null) e.confirmed = true;
+  }
+  // v19: dayLog (LOCAL-only) + cbLtvAction. C2 seed — a hasCbLoan user with a cbCollateralBtc gets ONE
+  // cbCollateralReading so deriveCbCollateral reproduces the pre-migration value (else the derive starts empty).
+  const migratedDayLog: any[] = persistedState.dayLog ?? [];
+  if (migratedDayLog.length === 0 && persistedState.hasCbLoan && persistedState.cbCollateralBtc != null) {
+    migratedDayLog.push({
+      id: `cbcoll-migrate-${Date.now()}`,
+      date: new Date().toISOString().split('T')[0],
+      ts: Date.now(),
+      kind: 'cbCollateralReading',
+      cbCollateral: persistedState.cbCollateralBtc,
+    });
+  }
+  return {
+    ...rest,
+    advisorActualBtcHeld: month0Baseline,
+    monthlyLog:           sorted,
+    cbPaymentStrategy:    persistedState.cbPaymentStrategy ?? 'monthly',
+    cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
+    cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
+    cbRotateBackPct:      persistedState.cbRotateBackPct  ?? 55,
+    cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,
+    cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
+    strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
+    btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
+    lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
+    nostrLogin:           persistedState.nostrLogin         ?? null,
+    showPlanIncomeBar:    persistedState.showPlanIncomeBar ?? true,
+    showPlanStrikeBar:    persistedState.showPlanStrikeBar ?? true,
+    showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
+    // Now standalone-backed (excluded from the blob). Legacy in-blob value wins for back-compat, else the
+    // standalone seed — NEVER null-clobber a future migration where the field is absent from the blob.
+    writerKeyWrapped:     persistedState.writerKeyWrapped  ?? seedWriterKeyWrapped,
+    writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? seedWriterKeyWrapMeta,
+    // 3a.4: gate-condition fields — kept in the blob, but fall back to the standalone seed so a version bump
+    // never loses them (booleans use ?? so a stored `false` is preserved).
+    onboardingComplete:   persistedState.onboardingComplete   ?? seedOnboardingComplete,
+    // B1 + disconnect-signout: gate identity on the GATE key (seedNostrPubkey) here too — belt-and-suspenders
+    // for an ACTUAL version bump (the persist `merge` above is the real fix for same-version reloads).
+    nostrAuthEnabled:     !!seedNostrPubkey,   // pin: derived; gated by the GATE key
+    nostrSigningMethod:   seedNostrPubkey ? (seedNostrSigningMethod ?? persistedState.nostrSigningMethod) : null,   // GATE-first (consistent with merge); blob fallback
+    nostrPubkey:          seedNostrPubkey ? (persistedState.nostrPubkey ?? seedNostrPubkey) : null,
+    // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
+    // snapshot). Additive nullable defaults, no version bump.
+    viewerNpub:           persistedState.viewerNpub   ?? null,
+    viewerPubkey:         persistedState.viewerPubkey ?? null,
+    viewerLabel:          persistedState.viewerLabel  ?? null,
+    // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
+    viewerMode:           persistedState.viewerMode          ?? false,
+    viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
+    // v17 migrant: LEAVE any plaintext viewerSecretKey in place (wrapping needs a Face ID gesture,
+    // impossible here; the one-time wrap-setup screen clears it later).
+    viewerSecretKey:      persistedState.viewerSecretKey     ?? null,
+    // Viewer access (Phase 3) — v18, wrapped-at-rest key. Device-local, never synced.
+    viewerKeyWrapped:     persistedState.viewerKeyWrapped    ?? null,
+    viewerKeyWrapMeta:    persistedState.viewerKeyWrapMeta   ?? null,
+    // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
+    advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
+    // v19 — Daily Mode P2a: dayLog (LOCAL-only) + cbLtvAction; cbCollateralBtc becomes a derived cache.
+    dayLog:               migratedDayLog,
+    cbLtvAction:          persistedState.cbLtvAction ?? 'paydown',
+    cbCollateralBtc:      deriveCbCollateral(migratedDayLog as DayEvent[], persistedState.cbCollateralBtc),
+  };
 }
 
 export const useStore = create<StoreState>()(
@@ -685,6 +861,10 @@ export const useStore = create<StoreState>()(
   monthlyLog:      [],
   showMiningInLog: false,
 
+  // Daily Mode P2a
+  dayLog:      [],
+  cbLtvAction: 'paydown',
+
   showPlanIncomeBar: true,
   showPlanStrikeBar: true,
   showPlanCbBar:     true,
@@ -711,7 +891,14 @@ export const useStore = create<StoreState>()(
   setTimeHorizonYears: (v) => set({ timeHorizonYears: v }),
 
   setCbLoanBalance:    (v) => { set({ cbLoanBalance: v });    useStore.getState().syncSettingsToNostr(); },
-  setCbCollateralBtc:  (v) => { set({ cbCollateralBtc: v });  useStore.getState().syncSettingsToNostr(); },
+  setCbCollateralBtc:  (v) => {
+    // Daily Mode P2a Seam 2: emit a cbCollateralReading (clock-only — feeds the derived cache via deriveCbCollateral)
+    // instead of syncing the field. NO syncSettingsToNostr (cross-device sync suspended P2a→P3; the event will ride
+    // records sync in P3). addDayEvent's clock refresh sets cbCollateralBtc to v (latest-ts event); set explicitly too.
+    const id = globalThis.crypto?.randomUUID?.() ?? `cbcoll-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    useStore.getState().addDayEvent({ id, date: new Date().toISOString().split('T')[0], ts: Date.now(), kind: 'cbCollateralReading', cbCollateral: v });
+    set({ cbCollateralBtc: v });
+  },
   setCbAprPct:         (v) => { set({ cbAprPct: v });         useStore.getState().syncSettingsToNostr(); },
   setCbMonthlyPayment:   (v) => { set({ cbMonthlyPayment: v });   useStore.getState().syncSettingsToNostr(); },
   setCbLiquidationPrice: (v) => { set({ cbLiquidationPrice: v }); useStore.getState().syncSettingsToNostr(); },
@@ -735,6 +922,14 @@ export const useStore = create<StoreState>()(
 
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
+    // M2 guard (centralized — all Monthly UI write paths funnel here): a daily-owned month must not be clobbered by a
+    // non-daily (manual/monthly) write. The daily routing stamps source:'daily' (passes); confirmMonth preserves it
+    // (passes); legacy/manual months (source undefined) are unaffected.
+    const existingForGuard = useStore.getState().monthlyLog.find((e) => e.month === entry.month);
+    if (existingForGuard?.source === 'daily' && entry.source !== 'daily') {
+      nostrLog('warn', 'monthly write blocked — month is daily-owned');
+      return;
+    }
     let graduated = false;
     set((state) => {
       // Graduation: fold pending into the CURRENT month's entry only. Past-month edits preserve the
@@ -776,6 +971,38 @@ export const useStore = create<StoreState>()(
     if (restoredAdj !== 0) useStore.getState().syncSettingsToNostr();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
+
+  confirmMonth: (month) => {
+    const e = useStore.getState().monthlyLog.find((m) => m.month === month);
+    if (e) useStore.getState().upsertLogEntry({ ...e, confirmed: true });   // spreads source through → M2 guard passes
+  },
+
+  // Daily Mode P2a — dayLog mutators. Each mutates dayLog, refreshes the cbCollateralBtc clock, then re-rolls any
+  // affected strategy month(s). cbCollateralReading is clock-only (Route 1) — it never re-rolls / touches monthlyLog.
+  addDayEvent: (event) => {
+    set((s) => ({ dayLog: [...s.dayLog, event] }));
+    refreshCbCollateralCache();
+    const m = monthOf(event);
+    if (m !== null) rerollMonth(m);
+  },
+  updateDayEvent: (event) => {
+    const before = useStore.getState().dayLog.find((e) => e.id === event.id);
+    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? event : e)) }));
+    refreshCbCollateralCache();
+    const months = new Set<number>();
+    const mb = monthOf(before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
+    const ma = monthOf(event);  if (ma !== null) months.add(ma);   // and the NEW month
+    for (const m of months) rerollMonth(m);
+  },
+  deleteDayEvent: (id) => {
+    const before = useStore.getState().dayLog.find((e) => e.id === id);
+    if (!before) return;
+    set((s) => ({ dayLog: s.dayLog.filter((e) => e.id !== id) }));
+    refreshCbCollateralCache();
+    const m = monthOf(before);
+    if (m !== null) rerollMonth(m);
+  },
+  setCbLtvAction: (v) => set({ cbLtvAction: v }),
 
   // Device-local display prefs — plain set, NO syncSettingsToNostr (like devMode)
   setShowPlanIncomeBar: (v) => set({ showPlanIncomeBar: v }),
@@ -957,7 +1184,7 @@ export const useStore = create<StoreState>()(
     const SETTINGS_FIELDS = [
       'income', 'expenses', 'blocApr', 'creditLine',
       'advisorStartDate', 'advisorActualBlocBalance', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
-      'cbLoanBalance', 'cbCollateralBtc', 'cbAprPct', 'hasCbLoan',
+      'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc removed (P2a Seam 2 — local derived cache; cross-device sync suspended P2a→P3)
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
       'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct',
@@ -995,7 +1222,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 18,
+      version: 19,
       // Zustand v5: storage MUST be explicit — `undefined` DISABLES persistence (it does NOT default to
       // localStorage; that was older-Zustand behavior). Plain `window.localStorage` (zustand's own default form):
       // in the browser it's the real store; under Node (tests, no `window`) the getter throws → createJSONStorage
@@ -1006,10 +1233,7 @@ export const useStore = create<StoreState>()(
       storage: storeEncEnabled
         ? createJSONStorage(() => encryptedStorage)
         : createJSONStorage(() => window.localStorage),
-      partialize: (state) => {
-        const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
-        return rest;
-      },
+      partialize: partializeState,
       // Custom merge (replaces zustand's default shallow `{...current, ...persisted}`) so identity restoration is
       // gated on the SYNCHRONOUS GATE_PUBKEY_KEY — a stale, un-flushed blob `nostrPubkey` can't resurrect a
       // signed-out session after disconnect (which removes the GATE key synchronously before reload). Runs on EVERY
@@ -1020,67 +1244,7 @@ export const useStore = create<StoreState>()(
         const gateMethod = (() => { try { return localStorage.getItem(GATE_METHOD_KEY); } catch { return null; } })();
         return { ...current, ...gateHydratedIdentity(persisted, gatePubkey, gateMethod) } as typeof current;
       },
-      migrate: (persistedState: any) => {
-        const { customCollateral, ...rest } = persistedState;
-        const sorted = [...(persistedState.monthlyLog ?? [])]
-          .sort((a: any, b: any) => a.month - b.month);
-        const cumBought = sorted.reduce((s: number, e: any) => s + (e.btcBought ?? 0), 0);
-        const month0Baseline = (persistedState.advisorActualBtcHeld ?? customCollateral ?? 0) - cumBought;
-        let running = month0Baseline;
-        for (const e of sorted) {
-          running += (e.btcBought ?? 0);
-          if (e.btcHeld == null) e.btcHeld = running;
-        }
-        for (const e of sorted) {
-          if (e.expensesActual == null) e.expensesActual = persistedState.expenses ?? 0;
-        }
-        return {
-          ...rest,
-          advisorActualBtcHeld: month0Baseline,
-          monthlyLog:           sorted,
-          cbPaymentStrategy:    persistedState.cbPaymentStrategy ?? 'monthly',
-          cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
-          cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
-          cbRotateBackPct:      persistedState.cbRotateBackPct  ?? 55,
-          cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,
-          cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
-          strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
-          btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
-          lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
-          nostrLogin:           persistedState.nostrLogin         ?? null,
-          showPlanIncomeBar:    persistedState.showPlanIncomeBar ?? true,
-          showPlanStrikeBar:    persistedState.showPlanStrikeBar ?? true,
-          showPlanCbBar:        persistedState.showPlanCbBar     ?? true,
-          // Now standalone-backed (excluded from the blob). Legacy in-blob value wins for back-compat, else the
-          // standalone seed — NEVER null-clobber a future migration where the field is absent from the blob.
-          writerKeyWrapped:     persistedState.writerKeyWrapped  ?? seedWriterKeyWrapped,
-          writerKeyWrapMeta:    persistedState.writerKeyWrapMeta ?? seedWriterKeyWrapMeta,
-          // 3a.4: gate-condition fields — kept in the blob, but fall back to the standalone seed so a version bump
-          // never loses them (booleans use ?? so a stored `false` is preserved).
-          onboardingComplete:   persistedState.onboardingComplete   ?? seedOnboardingComplete,
-          // B1 + disconnect-signout: gate identity on the GATE key (seedNostrPubkey) here too — belt-and-suspenders
-          // for an ACTUAL version bump (the persist `merge` above is the real fix for same-version reloads).
-          nostrAuthEnabled:     !!seedNostrPubkey,   // pin: derived; gated by the GATE key
-          nostrSigningMethod:   seedNostrPubkey ? (seedNostrSigningMethod ?? persistedState.nostrSigningMethod) : null,   // GATE-first (consistent with merge); blob fallback
-          nostrPubkey:          seedNostrPubkey ? (persistedState.nostrPubkey ?? seedNostrPubkey) : null,
-          // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
-          // snapshot). Additive nullable defaults, no version bump.
-          viewerNpub:           persistedState.viewerNpub   ?? null,
-          viewerPubkey:         persistedState.viewerPubkey ?? null,
-          viewerLabel:          persistedState.viewerLabel  ?? null,
-          // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
-          viewerMode:           persistedState.viewerMode          ?? false,
-          viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
-          // v17 migrant: LEAVE any plaintext viewerSecretKey in place (wrapping needs a Face ID gesture,
-          // impossible here; the one-time wrap-setup screen clears it later).
-          viewerSecretKey:      persistedState.viewerSecretKey     ?? null,
-          // Viewer access (Phase 3) — v18, wrapped-at-rest key. Device-local, never synced.
-          viewerKeyWrapped:     persistedState.viewerKeyWrapped    ?? null,
-          viewerKeyWrapMeta:    persistedState.viewerKeyWrapMeta   ?? null,
-          // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
-          advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
-        };
-      },
+      migrate: migrateState,
       onRehydrateStorage: () => (state) => {
         if (state?.miningInputs?.devices) {
           state.miningInputs.devices = state.miningInputs.devices.map((d) => ({
@@ -1089,6 +1253,11 @@ export const useStore = create<StoreState>()(
             poolFee:    d.poolFee     ?? 2.0,
             soloMining: d.soloMining ?? false,
           }));
+        }
+        // Daily Mode P2a Seam 2: keep the cbCollateralBtc cache coherent on every rehydrate (covers same-version
+        // reloads, not just the version bump) — derive from the rehydrated dayLog, falling back to the stored cache.
+        if (state) {
+          state.cbCollateralBtc = deriveCbCollateral(state.dayLog ?? [], state.cbCollateralBtc);
         }
       },
     }

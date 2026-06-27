@@ -167,3 +167,20 @@ export function rollupMonth(
 
   return { entry, collateralDelta };
 }
+
+/**
+ * Single derived clock for cbCollateralBtc (Daily Mode P2a, Seam 2). Returns the cbCollateral of the MOST-RECENT event
+ * by ts that carries one — across BOTH balanceReading (reading.cbCollateral, when present) AND cbCollateralReading
+ * (cbCollateral). If none exists, falls back to the persisted cache `currentCbCollateralBtc` — NEVER undefined
+ * (consumers like runAdvisor require a number).
+ */
+export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: number): number {
+  let best: { ts: number; v: number } | null = null;
+  for (const e of dayLog) {
+    const v = e.kind === 'cbCollateralReading' ? e.cbCollateral
+            : e.kind === 'balanceReading'      ? e.reading.cbCollateral
+            : undefined;
+    if (v !== undefined && (best === null || e.ts >= best.ts)) best = { ts: e.ts, v };
+  }
+  return best ? best.v : (currentCbCollateralBtc ?? 0);
+}

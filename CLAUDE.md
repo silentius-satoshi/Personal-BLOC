@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (321 tests — all must pass before every commit)
+- Vitest (340 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -47,7 +47,9 @@ src/
                                 # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: bucketEventToMonth
                                 # (date→strategy-month 1–12, replicates getCurrentStrategyMonth's formula with the event
                                 # date — kept inline so logUtils stays import-standalone) + rollupMonth (DayEvent[] →
-                                # { entry: Partial<MonthlyLogEntry>, collateralDelta })
+                                # { entry: Partial<MonthlyLogEntry>, collateralDelta }) + deriveCbCollateral (P2a:
+                                # latest cbCollateral-bearing event by ts across balanceReading + cbCollateralReading,
+                                # fallback to the cache — never undefined)
     mergeRecords.ts             # PURE per-month records merge (RecordsState, mergeRecords) — newest updatedAt/loggedAt wins, tombstones, 90-day GC
     __tests__/
       smartBloc.test.ts
@@ -490,7 +492,7 @@ miningInputs: {
 ### CB Loan Tab
 ```typescript
 cbLoanBalance:       number;                       // default 60000
-cbCollateralBtc:     number;                       // default 1.48
+cbCollateralBtc:     number;                       // default 1.48 — P2a: LOCAL derived cache (deriveCbCollateral over dayLog); NOT synced (cross-device suspended P2a→P3). setCbCollateralBtc emits a cbCollateralReading
 cbAprPct:            number;                       // default 4.77
 cbMonthlyPayment:    number;                       // default 0
 cbLiquidationPrice:  number;                       // default 0 (0 = not set; guard before calling compute fn)
@@ -617,6 +619,42 @@ store, no UI, no sync.
 - **`MonthlyLogEntry` gains `source?: 'manual' | 'daily'` / `confirmed?: boolean` / `provisional?: boolean`** — all
   OPTIONAL (undefined on legacy entries = manual / confirmed / non-provisional), so no migration. `source`/`confirmed`
   are P2-stamped; `provisional` is set by `rollupMonth` carry-forward. **Store stays v18** (P1 adds only optional fields).
+
+---
+
+## Daily Mode (P2a — store wiring; store v18→19)
+
+Wires P1 into the store. **No settings UI (P2b).** `dayLog` is **LOCAL-only this phase** — no records-sync plumbing;
+**cross-device `cbCollateralBtc` sync is intentionally suspended P2a→P3** (removed from settings sync here, re-established
+via dayLog records sync in P3).
+
+- **State:** `dayLog: DayEvent[]` (default `[]`) + `cbLtvAction: 'paydown' | 'addCollateral'` (default `'paydown'`).
+  Both persist via the partialize rest (not synced). `cbCollateralBtc` becomes a **derived cache** (no longer in
+  `buildSettingsPayload`/`SETTINGS_FIELDS`).
+- **Three mutators `addDayEvent`/`updateDayEvent`/`deleteDayEvent`** — mutate `dayLog`, refresh the cbCollateral clock,
+  then route off kind:
+  - **Route 1 (clock-only) — `cbCollateralReading`:** updates the `cbCollateralBtc` cache via `deriveCbCollateral`;
+    **never** re-rolls / touches `monthlyLog` (BUG1). `monthOf()` returns null for it.
+  - **Route 2 (monthly) — draw/buy/paydown/deposit/withdraw/balanceReading:** `rerollMonth(month)` (update across a
+    month boundary re-rolls BOTH old + new). `priorStocks` = the prior strategy-month's last `balanceReading` by ts.
+- **Partial→Full bridge** (`rerollMonth`): spread the `rollupMonth` Partial onto the EXISTING month entry (preserve
+  miningSats/ndpPaid/loggedAt) or a full numeric seed for a new month (never `{}`); stamp `source:'daily'`,
+  `confirmed: existing.confirmed===true ? false : (existing.confirmed ?? false)` (reopen-on-edit, LD4). `recomputeBtcHeld`
+  (inside `upsertLogEntry`) fixes the `btcHeld:0` placeholder. **Emptied-daily-month cleanup:** if no Route-2 events
+  remain in the month and the entry is `source:'daily'`, `deleteLogEntry(month)` instead of a stale placeholder.
+- **Seam 1 (collateral)** — after the upsert (which graduated any prior pending into this month's `collateralAdjustment`),
+  and ONLY when `collateralDelta !== 0`: `adjustCurrentCollateral(getCurrentBtcHeld() − thisMonth's existingAdj +
+  collateralDelta)`. Subtracting `existingAdj` (the just-graduated amount) before adding the WHOLE-month net
+  `target:'strike'` delta prevents double-counting earlier same-month deposits. `target:'cb'` contributes 0 (journal-only).
+- **Seam 2 (cbCollateral clock)** — `deriveCbCollateral(dayLog, cache)` (logUtils) = latest `cbCollateral`-bearing event
+  by ts across `balanceReading` + `cbCollateralReading`, fallback to the cache (never undefined). `setCbCollateralBtc(v)`
+  now **emits a `cbCollateralReading`** (clock path) + sets the field — NO `syncSettingsToNostr`. The cache is recomputed
+  in `migrate` AND `onRehydrateStorage` (every reload).
+- **M2 guard** (centralized in `upsertLogEntry`): a write with `entry.source !== 'daily'` against an existing
+  `source:'daily'` month is dropped (warn + return) — protects daily-owned months from the Monthly/Advisor UI paths (all
+  funnel through `upsertLogEntry`). The daily routing stamps `'daily'`; `confirmMonth` preserves it; legacy/manual months
+  (undefined source) are unaffected.
+- **`confirmMonth(month)`** — sets that month's `confirmed:true` (spreads source through → passes the M2 guard).
 
 ---
 
@@ -838,7 +876,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-321 tests — `npx vitest run` before every commit.
+340 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
@@ -848,7 +886,8 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `living.test.ts`
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
-- `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation)
+- `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
+- `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction
 - `src/store/__tests__/collateral.test.ts` — dated-collateral store actions on the REAL store: adjust, graduation (current-month only, preservation, negative), delete recompute + current-month pending-restore, baseline stability, sandbox isolation, settingsDirty marking; Strike LTV tracks getCurrentBtcHeld() (current), not the frozen baseline
 - `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
@@ -1549,10 +1588,11 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 34 Synced Settings Fields
+### All 33 Synced Settings Fields
+(`cbCollateralBtc` was REMOVED from sync in Daily Mode P2a — now a LOCAL derived cache; cross-device sync suspended P2a→P3.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
-`cbCollateralBtc`, `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
+`cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
@@ -1628,7 +1668,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v15 migration | Adds `writerKeyWrapped`/`writerKeyWrapMeta` (writer local-key signer — AES-GCM ciphertext + WrapMeta, default `?? null`); additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload). `nostrSigningMethod` gains `'local'`. **(Later moved OUT of the persist blob into STANDALONE localStorage** `personal-bloc-writer-key-wrapped`/`-meta` — they unlock the encrypted store, so can't live inside it; seeded at module init + back-filled once from the legacy in-blob location; partialize-excluded. The migrate row falls back to the standalone seed, not null.) |
 | Zustand v16 migration | Adds `advisorMonthStartBalance` (start-of-month BLOC balance — projection base, distinct from live-drawn `advisorActualBlocBalance`); default `persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0` (mid-month installs seed from the current live balance; fresh = 0). SYNCED (in `SETTINGS_FIELDS`/payload — real strategy state) |
 | Zustand v17 migration | Adds Viewer Access Phase-2 fields `viewerMode` (default `?? false`), `viewerWriterPubkey`/`viewerSecretKey` (default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload/partialize-exclusion). `viewerSecretKey` was plaintext (wrapped at rest in v18) |
-| Zustand v18 migration | Viewer Access **Phase 3** — adds `viewerKeyWrapped`/`viewerKeyWrapMeta` (wrapped-at-rest viewer key: AES-GCM ciphertext + `WrapMeta`, default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced.** **Back-compat: LEAVES any existing plaintext `viewerSecretKey` in place** (wrapping needs a Face ID gesture, impossible in migrate — the one-time wrap-setup screen clears it). Transient `viewerUnlocked` (not persisted). Current store version = 18 |
+| Zustand v18 migration | Viewer Access **Phase 3** — adds `viewerKeyWrapped`/`viewerKeyWrapMeta` (wrapped-at-rest viewer key: AES-GCM ciphertext + `WrapMeta`, default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced.** **Back-compat: LEAVES any existing plaintext `viewerSecretKey` in place** (wrapping needs a Face ID gesture, impossible in migrate — the one-time wrap-setup screen clears it). Transient `viewerUnlocked` (not persisted). |
+| Zustand v19 migration | **Daily Mode P2a** — backfills legacy `monthlyLog` entries with `source:'manual'`/`confirmed:true` (only where undefined); adds `dayLog` (`?? []`, LOCAL-only) + `cbLtvAction` (`?? 'paydown'`). **C2 seed:** a `hasCbLoan` user with a `cbCollateralBtc` gets ONE seeded `cbCollateralReading` into dayLog so `deriveCbCollateral` reproduces the pre-migration value; then `cbCollateralBtc = deriveCbCollateral(dayLog, persisted)`. `migrate`/`partialize` were EXTRACTED to exported `migrateState`/`partializeState` (unit-testable — the persist API is unavailable under Node). Current store version = 19 |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |

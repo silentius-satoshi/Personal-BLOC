@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import type { DayEvent } from '../types';
-import { bucketEventToMonth, rollupMonth } from '../logUtils';
+import { bucketEventToMonth, rollupMonth, deriveCbCollateral } from '../logUtils';
 
 // Fixed absolute dates so bucketing is deterministic (bucketEventToMonth uses the event date, never Date.now()).
 const START = '2025-01-01';
@@ -173,5 +173,33 @@ describe('rollupMonth — invariants & boundaries', () => {
     const { entry } = rollupMonth([draw(1000, M1)], 2, START);
     expect(entry.expensesActual).toBeUndefined();
     expect(entry).toEqual({});
+  });
+});
+
+describe('deriveCbCollateral (P2a Seam 2)', () => {
+  it('empty dayLog → falls back to the cache (never undefined)', () => {
+    expect(deriveCbCollateral([], 1.2)).toBe(1.2);
+    expect(deriveCbCollateral([])).toBe(0);   // no cache → 0, never undefined
+  });
+
+  it('reads a cbCollateralReading', () => {
+    expect(deriveCbCollateral([cbColl(1.6, M1, 1000)], 0)).toBeCloseTo(1.6);
+  });
+
+  it('reads a balanceReading.cbCollateral', () => {
+    expect(deriveCbCollateral([reading({ strikeBal: 1, strikeLtv: 0.1, cbCollateral: 1.48 }, M1, 1000)], 0)).toBeCloseTo(1.48);
+  });
+
+  it('picks the latest by ts ACROSS both kinds', () => {
+    const log = [
+      cbColl(1.5, M1, 1000),
+      reading({ strikeBal: 1, strikeLtv: 0.1, cbCollateral: 2.0 }, M1, 3000),   // newest cbCollateral-bearer
+      cbColl(1.9, M1, 2000),
+    ];
+    expect(deriveCbCollateral(log, 0)).toBeCloseTo(2.0);
+  });
+
+  it('ignores a balanceReading with no cbCollateral; falls back to cache when none carry one', () => {
+    expect(deriveCbCollateral([reading({ strikeBal: 1, strikeLtv: 0.1 }, M1, 1000)], 1.3)).toBe(1.3);
   });
 });
