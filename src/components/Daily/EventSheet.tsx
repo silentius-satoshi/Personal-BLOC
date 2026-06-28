@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { fmtUSD } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import { readingComplete, buildEventsFromSheet, type SheetType, type SheetState } from './eventSheetModel';
+import type { DayEvent } from '../../simulation/types';
 import styles from './EventSheet.module.css';
 
 interface EventSheetProps {
@@ -46,6 +47,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   const advisorStartDate   = useStore((s) => s.advisorStartDate);
   const currentBtcHeld     = useStore((s) => s.getCurrentBtcHeld());
   const addDayEvent        = useStore((s) => s.addDayEvent);
+  const dayLog             = useStore((s) => s.dayLog);
 
   const [type, setType]                     = useState<SheetType>('draw');
   const [amount, setAmount]                 = useState<number | null>(null);
@@ -55,6 +57,34 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   const [cbBal, setCbBal]                   = useState<number | null>(null);
   const [cbLtv, setCbLtv]                   = useState<number | null>(null);
   const [cbCollateral, setCbCollateral]     = useState<number | null>(null);
+
+  // On each open: reset flow fields and pre-fill the reading from the latest balanceReading in dayLog.
+  // Keyed on [open] only — triggering on every dayLog change while open would clobber in-progress edits.
+  useEffect(() => {
+    if (!open) return;
+    setType('draw');
+    setAmount(null);
+    setCollTarget('strike');
+    const latest = dayLog
+      .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> => e.kind === 'balanceReading')
+      .reduce<Extract<DayEvent, { kind: 'balanceReading' }> | null>(
+        (best, e) => (!best || e.ts > best.ts ? e : best),
+        null,
+      );
+    if (latest) {
+      setStrikeBal(latest.reading.strikeBal);
+      setStrikeLtv(latest.reading.strikeLtv * 100);   // fraction → percent for display
+      setCbBal(latest.reading.cbBal ?? null);
+      setCbLtv(latest.reading.cbLtv != null ? latest.reading.cbLtv * 100 : null);
+      setCbCollateral(latest.reading.cbCollateral ?? null);
+    } else {
+      setStrikeBal(null);
+      setStrikeLtv(null);
+      setCbBal(null);
+      setCbLtv(null);
+      setCbCollateral(null);
+    }
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 

@@ -292,7 +292,12 @@ src/
                                 # ALL NumberInputs pass min={0} (NumberInput only clamps negatives when min is given) +
                                 # value={x ?? 0} with null-tracked state for the gate. Save → buildEventsFromSheet →
                                 # events.forEach(addDayEvent) (LD6 atomic flow+reading = TWO addDayEvent calls, same date/ts).
-                                # Today-only (M3 past-dating → P4c). Edit/delete = P4b-2 (not built). EventSheet.module.css alongside
+                                # Today-only (M3 past-dating → P4c). Edit/delete = P4b-2 (not built). ON OPEN: a
+                                # useEffect([open]) pre-fills the five reading fields from the latest balanceReading
+                                # in dayLog (LTV fraction×100 → percent for display; null when no prior reading) so
+                                # the user only needs to enter the flow amount. Amount stays blank. Dep-array is [open]
+                                # only — not [open,dayLog] — so in-progress edits can't be clobbered by a concurrent
+                                # addDayEvent. EventSheet.module.css alongside
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState + readingComplete(s,hasCbLoan)
                                 # (the reading half of the Save gate) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,
