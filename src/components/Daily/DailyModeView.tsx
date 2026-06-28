@@ -7,6 +7,7 @@ import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleMode
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { selectMonthEvents, describeDayEvent } from './dailyView';
 import { fmtUSD } from '../../utils/format';
+import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
 interface DailyModeViewProps {
@@ -26,10 +27,26 @@ function fmtDay(iso: string): string {
   return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
+// Map an event kind → its log-row dot/ring + amount tone (presentation; describeDayEvent stays generic).
+function eventTone(kind: DayEvent['kind']): { dot: string; ring: boolean; amt: string } {
+  switch (kind) {
+    case 'buy':      return { dot: styles.dotO, ring: false, amt: styles.amtPos };
+    case 'paydown':  return { dot: styles.dotG, ring: false, amt: styles.amtNeu };
+    case 'draw':     return { dot: styles.dotN, ring: false, amt: styles.amtNeu };
+    case 'deposit':  return { dot: styles.dotG, ring: false, amt: styles.amtNeu };
+    case 'withdraw': return { dot: styles.dotY, ring: false, amt: styles.amtNeu };
+    case 'balanceReading':
+    case 'cbCollateralReading': return { dot: '', ring: true, amt: styles.amtAnchor };
+  }
+}
+
+const clampPct = (a: number, b: number) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : a > 0 ? 100 : 0);
+
 /**
- * Daily Mode P4a — READ-ONLY day-level view. Mirrors SimpleModeView's layout (SafetyDashboard +
- * position trio + plan reference) but its activity card shows the granular dayLog for the current
- * strategy month instead of the monthly rollup. No event sheets / writes / calendar (P4b/P4c).
+ * Daily Mode P4a — READ-ONLY day-level view. Mirrors SimpleModeView's data (SafetyDashboard + position
+ * trio + plan reference) but its activity card shows the granular dayLog for the current strategy month.
+ * Presentation aligned to mode-toggle-preview.html (layered surfaces, divided trio, two-part activity
+ * card [aggregate streams + per-event log], terminal playbook plan card). No event sheets / writes / calendar.
  */
 export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
   const income     = useStore((s) => s.income);
@@ -125,110 +142,180 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
     [dayLog, currentMonth, advisorStartDate],
   );
 
+  // Aggregate the (already-read) month events into display totals — READ-ONLY (no writes, no new reads).
+  const agg = useMemo(() => {
+    let totalDraw = 0, totalPaydown = 0, totalBuyBtc = 0, netBtc = 0;
+    for (const ev of monthEvents) {
+      if      (ev.kind === 'draw')    totalDraw += ev.amount;
+      else if (ev.kind === 'paydown') totalPaydown += ev.amount;
+      else if (ev.kind === 'buy')   { totalBuyBtc += ev.amount; netBtc += ev.amount; }
+      else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
+      else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
+    }
+    return { totalDraw, totalPaydown, totalBuyBtc, netBtc };
+  }, [monthEvents]);
+
+  const netUsd       = agg.netBtc * btcPrice;
+  const plannedDraw  = plan?.blocDraw ?? 0;
+  const plannedPay   = plan?.paydown ?? 0;
+  const plannedBuy   = plan?.btcBought ?? 0;
+  const drawFill     = clampPct(agg.totalDraw, plannedDraw);
+  const payFill      = clampPct(agg.totalPaydown, plannedPay);
+  const buyFill      = clampPct(agg.totalBuyBtc, plannedBuy);
+  const actUsdText   = agg.netBtc > 0 ? `+${fmtUSD(netUsd)} stacked`
+    : monthEvents.length > 0 ? 'no Bitcoin bought yet'
+    : 'no activity yet this month';
+
   return (
     <div className={styles.root}>
       <div className={styles.content}>
 
-        <div className={styles.header}>
-          <div className={styles.headerLeft}>
+        <div className={styles.appbar}>
+          <div className={styles.brand}>
             <span className={styles.brandMark}>₿</span>
             <span className={styles.brandName}>Personal ₿LOC</span>
           </div>
-          <div className={styles.headerRight}>
-            <button className={styles.modeToggleBtn} onClick={() => setSimpleMode(false)} aria-label="Switch to full app">
-              <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
+          <div className={styles.hbtns}>
+            <button className={styles.iconBtn} onClick={() => setSimpleMode(false)} aria-label="Switch to full app">
+              <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
                 <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
                 <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
                 <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/>
               </svg>
             </button>
-            <button className={styles.settingsBtn} onClick={onOpenSettings} title="Settings">⚙</button>
+            <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">⚙</button>
           </div>
         </div>
 
         <SafetyDashboard />
 
-        <div className={styles.monthIndicator}>
-          <span className={styles.monthLabel}>{getMonthLabel(advisorStartDate, currentMonth)}</span>
-          <span className={styles.monthSub}>Month {currentMonth} of 12 · daily activity</span>
-        </div>
-
         <div className={styles.cards}>
 
-          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER */}
-          <div className={styles.positionRow}>
-            <div className={styles.positionCol}>
-              <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
-              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({(currentBlocLtv * 100).toFixed(1)}% LTV)</span></span>
-              <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
+          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER (preview .posrow/.posbox treatment) */}
+          <div className={styles.posrow}>
+            <div className={styles.posbox}>
+              <span className={styles.postitle}>Current BLOC</span>
+              <span className={`${styles.posval} ${styles.posvalBtc}`}>₿{currentBtcHeld.toFixed(5)}</span>
+              <span className={styles.possub}>{fmtUSD(currentBtcHeld * btcPrice)}</span>
+              <span className={styles.posval}>{fmtUSD(advisorActualBlocBalance)}</span>
+              <span className={styles.possub}>{(currentBlocLtv * 100).toFixed(1)}% LTV</span>
+              <span className={styles.possub}>avail {fmtUSD(currentAvail.available)}</span>
             </div>
 
-            <div className={styles.positionCol}>
-              <span className={styles.positionTitle}>THIS MONTH <span className={styles.projSuffix}>(proj)</span></span>
-              <span className={`${styles.positionStat} ${projBtcBought > 0 ? styles.statGreen : styles.statMuted}`}>
-                Buy: ₿ {projBtcBought > 0 ? `+${projBtcBought.toFixed(5)}` : '—'}
-              </span>
-              <span className={styles.positionStat}>Draw: {projBlocDraw > 0 ? fmtUSD(projBlocDraw) : '—'}</span>
+            <div className={styles.posbox}>
+              <span className={styles.postitle}>This Month <span className={styles.projSuffix}>(proj)</span></span>
+              <span className={styles.possub}>draw {projBlocDraw > 0 ? fmtUSD(projBlocDraw) : '—'}</span>
+              <span className={`${styles.posval} ${styles.posvalBtc}`}>{projBtcBought > 0 ? `+₿${projBtcBought.toFixed(5)}` : '—'}</span>
+              <span className={styles.possub}>buy {fmtUSD(plan?.btcBoughtUsd ?? 0)}</span>
+              <span className={styles.possub}>paydown {fmtUSD(plan?.paydown ?? 0)}</span>
             </div>
 
-            <div className={styles.positionCol}>
-              <span className={styles.positionTitle}>AFTER THIS MONTH</span>
-              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span></span>
-              <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
+            <div className={styles.posbox}>
+              <span className={styles.postitle}>After Month</span>
+              <span className={`${styles.posval} ${styles.posvalBtc}`}>₿{eomBtcHeld.toFixed(5)}</span>
+              <span className={styles.possub}>{fmtUSD(eomBtcHeld * btcPrice)}</span>
+              <span className={styles.posval}>{fmtUSD(eomBlocBalance)}</span>
+              <span className={styles.possub} style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
+              <span className={styles.possub}>avail {fmtUSD(availCredit.available)}</span>
             </div>
           </div>
 
-          {/* Activity card — the granular day journal for this month (read-only) */}
+          {/* Activity aggregate — net BTC + draw/paydown/buy streams (read-only rollup of this month's events) */}
           <div className={styles.card}>
-            <div className={styles.cardHead}>
-              <h3 className={styles.cardTitle}>This month's activity</h3>
-              {monthEvents.length > 0 && (
-                <span className={styles.cardCount}>{monthEvents.length} event{monthEvents.length === 1 ? '' : 's'}</span>
-              )}
+            <div className={styles.actHead}>
+              <span className={styles.actTitle}>This month</span>
+              <span className={styles.actWhen}>{getMonthLabel(advisorStartDate, currentMonth)} · month-to-date</span>
+            </div>
+            <div className={styles.actBig}>{agg.netBtc >= 0 ? '+' : ''}{agg.netBtc.toFixed(4)} ₿</div>
+            <div className={styles.actUsd}>{actUsdText}</div>
+            <div className={styles.streams}>
+              <div className={styles.stream}>
+                <span className={styles.streamLabel}>Draw</span>
+                <span className={styles.streamVal}>{fmtUSD(agg.totalDraw)} / {fmtUSD(plannedDraw)}</span>
+                <div className={styles.track}><div className={`${styles.fill} ${styles.fillDraw}`} style={{ width: `${drawFill}%` }} /></div>
+              </div>
+              <div className={styles.stream}>
+                <span className={styles.streamLabel}>Paydown</span>
+                <span className={`${styles.streamVal} ${plannedPay > 0 ? '' : styles.streamValMuted}`}>
+                  {plannedPay > 0 ? `${fmtUSD(agg.totalPaydown)} / ${fmtUSD(plannedPay)}` : '—'}
+                </span>
+                <div className={styles.track}><div className={`${styles.fill} ${styles.fillPaydn}`} style={{ width: `${payFill}%` }} /></div>
+              </div>
+              <div className={styles.stream}>
+                <span className={styles.streamLabel}>Buy ₿</span>
+                <span className={styles.streamVal}>₿{agg.totalBuyBtc.toFixed(4)} / {plannedBuy.toFixed(4)}</span>
+                <div className={styles.track}><div className={`${styles.fill} ${styles.fillBuy}`} style={{ width: `${buyFill}%` }} /></div>
+              </div>
+            </div>
+            <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSD(plan?.blocInterest ?? 0)}</b></div>
+          </div>
+
+          {/* Per-event log — the granular day journal for this month (read-only) */}
+          <div>
+            <div className={styles.logHead}>
+              <span className={styles.logTitle}>This month's log</span>
+              <span className={styles.logSub}>{monthEvents.length} event{monthEvents.length === 1 ? '' : 's'}</span>
             </div>
             {monthEvents.length === 0 ? (
-              <p className={styles.emptyState}>No activity logged this month.</p>
+              <div className={styles.empty}>No activity logged this month.</div>
             ) : (
-              <ul className={styles.eventList}>
+              <div className={styles.logList}>
                 {monthEvents.map((ev) => {
                   const d = describeDayEvent(ev);
+                  const tone = eventTone(ev.kind);
                   return (
-                    <li key={ev.id} className={styles.eventRow}>
-                      <span className={styles.eventIcon} aria-hidden="true">{d.icon}</span>
-                      <div className={styles.eventBody}>
-                        <span className={styles.eventLabel}>{d.label}</span>
-                        <span className={styles.eventDetail}>{d.detail}</span>
-                      </div>
-                      <span className={styles.eventDate}>{fmtDay(ev.date)}</span>
-                    </li>
+                    <div key={ev.id} className={styles.logRow}>
+                      <span className={styles.logTime}>{fmtDay(ev.date)}</span>
+                      <span className={styles.logType}>
+                        {tone.ring ? <span className={styles.ring} /> : <span className={`${styles.dot} ${tone.dot}`} />}
+                        {d.label}
+                      </span>
+                      <span className={`${styles.logAmt} ${tone.amt}`}>{d.detail}</span>
+                    </div>
                   );
                 })}
-              </ul>
+              </div>
             )}
           </div>
 
-          {/* Plan reference — what the plan expects this month (read-only) */}
-          <div className={styles.card}>
-            <h3 className={styles.cardTitle}>This month's plan <span className={styles.planRefHint}>(reference)</span></h3>
+          {/* Plan reference — terminal/playbook treatment of what the plan expects this month (read-only) */}
+          <div className={styles.pbcard}>
+            <div className={styles.pbHead}>This month's plan <span className={styles.pbRef}>· reference</span></div>
             {plan ? (
               <>
-                <div className={styles.planRefGrid}>
-                  <div className={styles.planRefItem}><span className={styles.planRefLabel}>Draw</span><span className={styles.planRefVal}>{fmtUSD(plan.blocDraw)}</span></div>
-                  <div className={styles.planRefItem}><span className={styles.planRefLabel}>Buy BTC</span><span className={styles.planRefVal}>{fmtUSD(plan.btcBoughtUsd)}</span></div>
-                  {hasCbLoan && cbRefAmount > 0 && (
-                    <div className={styles.planRefItem}><span className={styles.planRefLabel}>{cbRefLabel}</span><span className={styles.planRefVal}>{fmtUSD(cbRefAmount)}</span></div>
-                  )}
-                  {plan.paydown > 0 && (
-                    <div className={styles.planRefItem}><span className={styles.planRefLabel}>BLOC paydown</span><span className={styles.planRefVal}>{fmtUSD(plan.paydown)}</span></div>
-                  )}
+                <div className={styles.pbSub}>
+                  <span>Month {currentMonth} of 12 · <span className={styles.pbLtv}>LTV {(plan.blocLtv * 100).toFixed(1)}%</span></span>
+                  <span>BTC {fmtUSD(btcPrice)}</span>
                 </div>
-                {summaryText && <p className={styles.planSummary}>{summaryText}</p>}
+                <div className={styles.pbRow}>
+                  <span className={`${styles.dot} ${styles.dotY}`} />
+                  <span><span className={styles.pbLab}>Draw</span> <span className={styles.pbNote}>(expenses)</span></span>
+                  <span className={styles.pbAmt}>{fmtUSD(plan.blocDraw)}</span>
+                </div>
+                <div className={styles.pbRow}>
+                  <span className={`${styles.dot} ${styles.dotO}`} />
+                  <span><span className={styles.pbLab}>Buy Bitcoin</span></span>
+                  <span className={styles.pbAmt}>{fmtUSD(plan.btcBoughtUsd)}</span>
+                </div>
+                {hasCbLoan && cbRefAmount > 0 && (
+                  <div className={styles.pbRow}>
+                    <span className={`${styles.dot} ${styles.dotR}`} />
+                    <span><span className={styles.pbLab}>{cbRefLabel}</span></span>
+                    <span className={styles.pbAmt}>{fmtUSD(cbRefAmount)}</span>
+                  </div>
+                )}
+                {plan.paydown > 0 && (
+                  <div className={styles.pbRow}>
+                    <span className={`${styles.dot} ${styles.dotG}`} />
+                    <span><span className={styles.pbLab}>LoC Paydown</span></span>
+                    <span className={styles.pbAmt}>{fmtUSD(plan.paydown)}</span>
+                  </div>
+                )}
+                {summaryText && <div className={styles.pbNotebox}>{summaryText}</div>}
               </>
             ) : (
-              <p className={styles.emptyState}>Strategy complete — no plan for this month.</p>
+              <div className={styles.empty}>Strategy complete — no plan for this month.</div>
             )}
           </div>
 

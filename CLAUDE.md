@@ -258,16 +258,21 @@ src/
       MonthlyLogOverlay.module.css
 
     Daily/
-      DailyModeView.tsx         # Daily Mode P4a — READ-ONLY day-level consumer view. Mirrors SimpleModeView's
-                                # layout (same header + <SafetyDashboard/> verbatim + position trio CURRENT|THIS
-                                # MONTH(proj)|AFTER, replicating SimpleModeView's deriveAdvisorStart→runAdvisor→
-                                # computeStrikeLtv/strikeAvailableCredit cluster with the three advisorSkip* treated
-                                # as false — P4a has no Pay/Skip) but its ACTIVITY CARD lists the granular dayLog for
-                                # the current strategy month (selectMonthEvents + describeDayEvent), not the monthly
-                                # rollup. Plus a read-only PLAN REFERENCE (deriveForMonth + composeMonthSummary) and a
-                                # month indicator. NO event sheets / writes / FAB / calendar / scrubber (P4b/P4c).
-                                # Props {onOpenSettings}. DailyModeView.module.css alongside (own classes; replicates
-                                # SimpleModeView's visual tokens — does not import another component's module)
+      DailyModeView.tsx         # Daily Mode P4a — READ-ONLY day-level consumer view, presentation aligned to
+                                # mode-toggle-preview.html's visible Daily panel. Same data as SimpleModeView (header +
+                                # <SafetyDashboard/> VERBATIM + position trio CURRENT|THIS MONTH(proj)|AFTER, same
+                                # deriveAdvisorStart→runAdvisor→computeStrikeLtv/strikeAvailableCredit cluster, advisorSkip*
+                                # treated false — P4a has no Pay/Skip). RESTYLED to the preview: .appbar header (gradient
+                                # brand badge + boxed .iconBtn); .posrow/.posbox divided trio (mono nums, --btc accent);
+                                # a TWO-PART ACTIVITY card — (a) AGGREGATE .act-*/.streams: net BTC + Draw/Paydown/Buy bars
+                                # whose width = actual/plan (READ-ONLY rollup of this month's dayLog via a local agg over
+                                # selectMonthEvents; NO writes/new reads) + interest foot, (b) per-event .log-row LOG
+                                # (describeDayEvent label/detail + a component-local eventTone(kind)→dot/ring + amt color);
+                                # and a .pbcard terminal/playbook PLAN REFERENCE (deriveForMonth + composeMonthSummary).
+                                # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
+                                # act-when + pb-sub). NO event sheets / writes / FAB / calendar / scrubber (P4b/P4c).
+                                # Props {onOpenSettings}. DailyModeView.module.css alongside (own classes; uses the global
+                                # --surface*/--line*/--btc/--mono tokens + reuses --green/--amber/--red/--text-*)
       dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
                                 # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
@@ -762,8 +767,31 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
   `cbPaydownDraw`, monthly shows `plan.cbPayment`). Month indicator only — no scrubber.
 - **Monthly | Daily toggle** (`AppShell`, inside the `simpleMode && activeTab !== 'settings'` branch) — a segmented
-  control (`.viewToggle*` in AppShell.module.css, mirrors SimpleModeView's `segmentControl`) bound to `simpleView`;
-  renders `<DailyModeView/>` when `'daily'`, else `<SimpleModeView/>`. Consumer shell only — full-app path untouched.
+  control (`.viewToggle*` in AppShell.module.css) bound to `simpleView`; renders `<DailyModeView/>` when `'daily'`,
+  else `<SimpleModeView/>`. Consumer shell only — full-app path untouched.
+
+### P4a RESTYLE — DailyModeView aligned to `mode-toggle-preview.html`
+
+A presentation-only pass over the read-only Daily surfaces (no data-logic change, no writes; `<SafetyDashboard/>`
++ its `PriceChart` BTC indicator render **verbatim, untouched**). Adopts the preview's visual language while
+**reusing app tokens** (preview `--text/--dim/--mute` → `--text-primary/--text-muted/--text-faint`; `--green/
+--amber/--red` as-is):
+- **New global tokens** (`src/styles/tokens.css`, additive — consumed by DailyModeView AND the AppShell mode-switch,
+  so global not local; extends the single token system, doesn't fork it): `--surface`/`--surface-2`/`--surface-3`
+  (layered card backgrounds), `--line`/`--line-2` (translucent borders), `--btc` (#f7931a bitcoin accent, distinct
+  from `--orange`), `--mono` (mono font stack).
+- **Mode-switch pill** (`.viewToggle*`) restyled to the preview `.modeswitch`: `--surface-2` track, raised
+  `--surface-3` active, + a green inset ring on the Daily-active button (`.viewToggleBtnDaily`, `rgba(78,203,130,.18)`);
+  calendar SVG icons added to both buttons.
+- **DailyModeView** restyled: `.appbar` header (gradient brand badge + boxed `.iconBtn`); `.posrow/.posbox` divided
+  trio (keeps CURRENT/THIS MONTH/AFTER data, mono nums + `--btc`); a TWO-PART activity card — (a) `.act-*/.streams`
+  AGGREGATE (net BTC + Draw/Paydown/Buy bars at **actual/plan** width, a READ-ONLY rollup of `monthEvents`; interest
+  foot) and (b) per-event `.log-row` LOG (`describeDayEvent` label/detail + a component-local `eventTone(kind)` → dot/
+  ring + amount color); a `.pbcard` terminal/playbook PLAN REFERENCE. Empty → dashed `.empty`. Standalone month
+  indicator dropped (context moved into act-when + pb-sub).
+- **`dailyView.ts` UNCHANGED** — `describeDayEvent` keeps its `{icon,label,detail}` shape (the log-row uses label/
+  detail; dot/tone mapping lives in the component); `dailyView.test.ts` unaffected. Still read-only (FAB/add-sheet P4b,
+  calendar + drill-down gauge/CB sheets P4c).
 
 ---
 
@@ -964,6 +992,9 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 --orange: #E8836A  --green: #4ECB82  --red: #E85A4F  --amber: #E8A84A
 --bg-app / --bg-base (both #09090E, darkest)  --bg-card #111318 (slightly lighter)  --bg-input  --bg-hover
 --text-primary / secondary / ghost / muted / faint  --border
+/* Daily Mode P4a (mode-toggle-preview.html) — layered surfaces + accents, additive: */
+--surface #0e1219 / --surface-2 #151b25 / --surface-3 #1c2431  --line / --line-2 (translucent white borders)
+--btc #f7931a (bitcoin accent, distinct from --orange)  --mono (mono font stack)
 ```
 `--bg-base: #09090E` (= `--bg-app`) is defined in `tokens.css` — it had been referenced in 25 places across
 15 files but never defined (resolved transparent: 23 `background:` uses masked by the dark app bg, 2

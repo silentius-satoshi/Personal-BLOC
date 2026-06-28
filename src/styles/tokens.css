@@ -17,4 +17,15 @@
   --text-muted:     #888888;
   --text-faint:     #555555;
   --text-ghost:     #444444;
+
+  /* Daily Mode P4a — layered-surface card system + accents from mode-toggle-preview.html.
+     Additive: extends the single token system (consumed by DailyModeView + the AppShell mode-switch);
+     existing --green/--orange/--amber/--red/--text-* are reused, not duplicated. */
+  --surface:   #0e1219;
+  --surface-2: #151b25;
+  --surface-3: #1c2431;
+  --line:      rgba(255,255,255,.07);
+  --line-2:    rgba(255,255,255,.04);
+  --btc:       #f7931a;
+  --mono:      ui-monospace, "SF Mono", "Menlo", monospace;
 }
