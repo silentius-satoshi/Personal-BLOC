@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { deriveAdvisorStart } from '../../simulation/logUtils';
@@ -142,6 +142,8 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
     [dayLog, currentMonth, advisorStartDate],
   );
 
+  const [logExpanded, setLogExpanded] = useState(false);
+
   // Aggregate the (already-read) month events into display totals — READ-ONLY (no writes, no new reads).
   const agg = useMemo(() => {
     let totalDraw = 0, totalPaydown = 0, totalBuyBtc = 0, netBtc = 0;
@@ -192,33 +194,34 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
 
         <div className={styles.cards}>
 
-          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER (preview .posrow/.posbox treatment) */}
-          <div className={styles.posrow}>
-            <div className={styles.posbox}>
-              <span className={styles.postitle}>Current BLOC</span>
-              <span className={`${styles.posval} ${styles.posvalBtc}`}>₿{currentBtcHeld.toFixed(5)}</span>
-              <span className={styles.possub}>{fmtUSD(currentBtcHeld * btcPrice)}</span>
-              <span className={styles.posval}>{fmtUSD(advisorActualBlocBalance)}</span>
-              <span className={styles.possub}>{(currentBlocLtv * 100).toFixed(1)}% LTV</span>
-              <span className={styles.possub}>avail {fmtUSD(currentAvail.available)}</span>
+          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER — matches Monthly (SimpleModeView) format */}
+          <div className={styles.positionRow}>
+
+            {/* Box 1 — CURRENT STRIKE BLOC */}
+            <div className={styles.positionCol}>
+              <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
+              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
+              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({(currentBlocLtv * 100).toFixed(1)}% LTV)</span></span>
+              <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
             </div>
 
-            <div className={styles.posbox}>
-              <span className={styles.postitle}>This Month <span className={styles.projSuffix}>(proj)</span></span>
-              <span className={styles.possub}>draw {projBlocDraw > 0 ? fmtUSD(projBlocDraw) : '—'}</span>
-              <span className={`${styles.posval} ${styles.posvalBtc}`}>{projBtcBought > 0 ? `+₿${projBtcBought.toFixed(5)}` : '—'}</span>
-              <span className={styles.possub}>buy {fmtUSD(plan?.btcBoughtUsd ?? 0)}</span>
-              <span className={styles.possub}>paydown {fmtUSD(plan?.paydown ?? 0)}</span>
+            {/* Box 2 — THIS MONTH (projected; P4a is read-only, no logging UI) */}
+            <div className={styles.positionCol}>
+              <span className={styles.positionTitle}>THIS MONTH<span className={styles.projSuffix}> (proj)</span></span>
+              <span className={`${styles.positionStat} ${projBtcBought > 0 ? styles.statGreen : styles.statMuted}`}>
+                Buy: ₿ {projBtcBought > 0 ? `+${projBtcBought.toFixed(5)}` : '—'}
+              </span>
+              <span className={styles.positionStat}>Draw: {projBlocDraw > 0 ? fmtUSD(projBlocDraw) : '—'}</span>
             </div>
 
-            <div className={styles.posbox}>
-              <span className={styles.postitle}>After Month</span>
-              <span className={`${styles.posval} ${styles.posvalBtc}`}>₿{eomBtcHeld.toFixed(5)}</span>
-              <span className={styles.possub}>{fmtUSD(eomBtcHeld * btcPrice)}</span>
-              <span className={styles.posval}>{fmtUSD(eomBlocBalance)}</span>
-              <span className={styles.possub} style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>
-              <span className={styles.possub}>avail {fmtUSD(availCredit.available)}</span>
+            {/* Box 3 — AFTER THIS MONTH */}
+            <div className={styles.positionCol}>
+              <span className={styles.positionTitle}>AFTER THIS MONTH</span>
+              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
+              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span></span>
+              <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
             </div>
+
           </div>
 
           {/* Activity aggregate — net BTC + draw/paydown/buy streams (read-only rollup of this month's events) */}
@@ -260,22 +263,29 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
             {monthEvents.length === 0 ? (
               <div className={styles.empty}>No activity logged this month.</div>
             ) : (
-              <div className={styles.logList}>
-                {monthEvents.map((ev) => {
-                  const d = describeDayEvent(ev);
-                  const tone = eventTone(ev.kind);
-                  return (
-                    <div key={ev.id} className={styles.logRow}>
-                      <span className={styles.logTime}>{fmtDay(ev.date)}</span>
-                      <span className={styles.logType}>
-                        {tone.ring ? <span className={styles.ring} /> : <span className={`${styles.dot} ${tone.dot}`} />}
-                        {d.label}
-                      </span>
-                      <span className={`${styles.logAmt} ${tone.amt}`}>{d.detail}</span>
-                    </div>
-                  );
-                })}
-              </div>
+              <>
+                <div className={styles.logList}>
+                  {monthEvents.slice(0, logExpanded ? monthEvents.length : 5).map((ev) => {
+                    const d = describeDayEvent(ev);
+                    const tone = eventTone(ev.kind);
+                    return (
+                      <div key={ev.id} className={styles.logRow}>
+                        <span className={styles.logTime}>{fmtDay(ev.date)}</span>
+                        <span className={styles.logType}>
+                          {tone.ring ? <span className={styles.ring} /> : <span className={`${styles.dot} ${tone.dot}`} />}
+                          {d.label}
+                        </span>
+                        <span className={`${styles.logAmt} ${tone.amt}`}>{d.detail}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+                {monthEvents.length > 5 && (
+                  <button className={styles.logMoreBtn} onClick={() => setLogExpanded((x) => !x)}>
+                    {logExpanded ? 'Show less' : `Show more (${monthEvents.length - 5} more)`}
+                  </button>
+                )}
+              </>
             )}
           </div>
 

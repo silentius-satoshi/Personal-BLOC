@@ -783,12 +783,17 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
 - **Mode-switch pill** (`.viewToggle*`) restyled to the preview `.modeswitch`: `--surface-2` track, raised
   `--surface-3` active, + a green inset ring on the Daily-active button (`.viewToggleBtnDaily`, `rgba(78,203,130,.18)`);
   calendar SVG icons added to both buttons.
-- **DailyModeView** restyled: `.appbar` header (gradient brand badge + boxed `.iconBtn`); `.posrow/.posbox` divided
-  trio (keeps CURRENT/THIS MONTH/AFTER data, mono nums + `--btc`); a TWO-PART activity card — (a) `.act-*/.streams`
-  AGGREGATE (net BTC + Draw/Paydown/Buy bars at **actual/plan** width, a READ-ONLY rollup of `monthEvents`; interest
-  foot) and (b) per-event `.log-row` LOG (`describeDayEvent` label/detail + a component-local `eventTone(kind)` → dot/
-  ring + amount color); a `.pbcard` terminal/playbook PLAN REFERENCE. Empty → dashed `.empty`. Standalone month
-  indicator dropped (context moved into act-when + pb-sub).
+- **DailyModeView** restyled: `.appbar` header (gradient brand badge + boxed `.iconBtn`); position trio (see below);
+  a TWO-PART activity card — (a) `.act-*/.streams` AGGREGATE (net BTC + Draw/Paydown/Buy bars at **actual/plan**
+  width, a READ-ONLY rollup of `monthEvents`; interest foot) and (b) per-event `.log-row` LOG (`describeDayEvent`
+  label/detail + a component-local `eventTone(kind)` → dot/ring + amount color); a `.pbcard` terminal/playbook PLAN
+  REFERENCE. Empty → dashed `.empty`. Standalone month indicator dropped (context moved into act-when + pb-sub).
+  Activity log capped at 5 events; "Show more (N more)" / "Show less" toggle (local `logExpanded` state, read-only).
+- **Position trio reverted to Monthly format** (cross-view consistency): uppercase labels (CURRENT STRIKE BLOC /
+  THIS MONTH / AFTER THIS MONTH), parenthetical USD and LTV amounts on the same line, default UI font (13px), `--orange`
+  BTC color — exactly matching SimpleModeView's `.positionRow/.positionCol/.positionStat/.btcAmt/.parenSub` classes
+  (replicated into DailyModeView.module.css; the preview-style `.posrow/.posbox/.postitle/.posval/.posvalBtc/.possub`
+  classes were removed — they were trio-only).
 - **`dailyView.ts` UNCHANGED** — `describeDayEvent` keeps its `{icon,label,detail}` shape (the log-row uses label/
   detail; dot/tone mapping lives in the component); `dailyView.test.ts` unaffected. Still read-only (FAB/add-sheet P4b,
   calendar + drill-down gauge/CB sheets P4c).
