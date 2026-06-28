@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (371 tests — all must pass before every commit)
+- Vitest (383 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -270,13 +270,35 @@ src/
                                 # (describeDayEvent label/detail + a component-local eventTone(kind)→dot/ring + amt color);
                                 # and a .pbcard terminal/playbook PLAN REFERENCE (deriveForMonth + composeMonthSummary).
                                 # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
-                                # act-when + pb-sub). NO event sheets / writes / FAB / calendar / scrubber (P4b/P4c).
-                                # Props {onOpenSettings}. DailyModeView.module.css alongside (own classes; uses the global
-                                # --surface*/--line*/--btc/--mono tokens + reuses --green/--amber/--red/--text-*)
+                                # act-when + pb-sub). P4b-1: a Daily-only orange .fab (bottom-right, --btc gradient, hidden
+                                # when viewerMode) → opens <EventSheet/> (sheetOpen state); calendar/scrubber + edit/delete
+                                # still out (P4b-2/P4c). Props {onOpenSettings}. DailyModeView.module.css alongside (own
+                                # classes incl. .fab; uses the global --surface*/--line*/--btc/--mono tokens + reuses --green/--amber/--red/--text-*)
       dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
                                 # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
                                 # withdraw carry target; balanceReading summarizes Strike + CB). Tested in __tests__/dailyView.test.ts
+      EventSheet.tsx            # Daily Mode P4b-1 — the one adaptive event-entry BOTTOM-SHEET (ADD path only; createPortal
+                                # → .scrim/.sheet mirroring SimpleModeView's confirm overlay). Props {open,onClose}. D1
+                                # bundled cash-event sheet: type-pills (Draw/Buy ₿/Paydown/Collateral/Set balance, active =
+                                # --btc) + an amount NumberInput (hidden for Set balance; $ for draw/paydown, ₿ for buy/
+                                # collateral) + a REQUIRED "Current balances · required to log" reading section (Strike Bal/
+                                # LTV always, + CB Bal/LTV/Collateral iff hasCbLoan). D2 Collateral pill: a Strike|Coinbase
+                                # target toggle (shown only when hasCbLoan; else forced 'strike', no toggle) — target:'cb'
+                                # shows the dry-powder readout (strikeBtcAvailable) + a "logged, not modeled (Feature B)"
+                                # note; target:'strike' shows "Strike held after: …" (feeds the C1 collateralDelta seam).
+                                # D3 Set balance = reading-only (no amount → one balanceReading). Save (--btc orange) gated
+                                # on readingComplete + (setBalance || amount>0); soft amber >100% LTV hint (non-blocking).
+                                # ALL NumberInputs pass min={0} (NumberInput only clamps negatives when min is given) +
+                                # value={x ?? 0} with null-tracked state for the gate. Save → buildEventsFromSheet →
+                                # events.forEach(addDayEvent) (LD6 atomic flow+reading = TWO addDayEvent calls, same date/ts).
+                                # Today-only (M3 past-dating → P4c). Edit/delete = P4b-2 (not built). EventSheet.module.css alongside
+      eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
+                                # case-collision with EventSheet.tsx): SheetType/SheetState + readingComplete(s,hasCbLoan)
+                                # (the reading half of the Save gate) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,
+                                # idFn) → DayEvent[] ([reading] | [flow,reading] | [deposit,reading]; fresh id per event;
+                                # flow+reading share date+ts; usd=amount*price for buy; **LTV percent ÷100 → fraction** to
+                                # match the stored decimal convention). Tested in __tests__/eventSheet.test.ts
     SimpleMode/
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
                                 # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
@@ -804,6 +826,45 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
 
 ---
 
+## Daily Mode (P4b-1 — the write path: FAB + event sheet, ADD only; store stays v19)
+
+The first Daily Mode WRITE surface. A Bitcoin-orange FAB in `DailyModeView` opens ONE adaptive bottom-sheet
+(`EventSheet`) for logging a day event. Exercises the P2a store seams on-device for the first time (LD6 atomic
+flow+reading, C1 Strike collateral, LD7 CB journal-only). **ADD path only** — edit/delete (D4), tap-to-edit on
+log rows = **P4b-2** (not built). Today-only — no date picker; **M3 past-dated backfill → P4c**. No collateral
+withdraw (deposit/add only). SafetyDashboard / position trio / Monthly view untouched.
+
+- **`eventSheetModel.ts`** (PURE; named to dodge the macOS case-collision with `EventSheet.tsx`) — `SheetType`
+  (`draw|buy|paydown|collateral|setBalance`) + `SheetState` (`type`, `amount: number|null`, `collateralTarget`,
+  + five reading fields, LTVs held as **percent** as typed). Two functions: `readingComplete(s, hasCbLoan)` (the
+  reading half of the Save gate — Strike Bal/LTV always, +CB Bal/LTV/Collateral iff hasCbLoan) and
+  `buildEventsFromSheet(s, hasCbLoan, btcPrice, today, ts, idFn) → DayEvent[]`: `setBalance`→`[balanceReading]`;
+  `draw`/`paydown`→`[{flow,amount(USD)}, reading]`; `buy`→`[{buy,amount(BTC),usd:amount*price}, reading]`;
+  `collateral`→`[{deposit,amount(BTC),target}, reading]` (target = `hasCbLoan ? collateralTarget : 'strike'`).
+  Fresh id per event; **flow + reading share `date`+`ts`** (LD6 atomic). **LTV percent ÷100 → fraction** in the
+  reading (`strikeLtv`/`cbLtv` stored as the 0.1483 decimal convention). `reading.price = btcPrice`.
+- **`EventSheet.tsx`** (`{open, onClose}`) — `createPortal` → `.scrim`/`.sheet` (mirrors SimpleModeView's confirm
+  overlay; scrim onClick closes, sheet stopPropagation; `.grab` handle; title "Log an event" + sub-line
+  `adds to {fmtDay(today)} · Month {getCurrentStrategyMonth(advisorStartDate)}`). **D1** type-pills (active =
+  `--btc`) + a conditional amount NumberInput (hidden for Set balance; `$` draw/paydown, `₿` decimals 5
+  buy/collateral) + a REQUIRED "Current balances · required to log" reading section. **D2** Collateral pill:
+  a Strike|Coinbase target toggle (viewToggle-style, shown ONLY when hasCbLoan; else forced `'strike'`, no
+  toggle); `target:'cb'` → dry-powder readout (`strikeBtcAvailable` + `~$`) + "logged, not modeled (Feature B)"
+  note; `target:'strike'` → "Strike held after: {getCurrentBtcHeld()+amount} ₿" + "Updates your Strike
+  collateral" note. **D3** Set balance = reading-only (no amount → ONE balanceReading). **Scope-2 orange**:
+  active pills + Save = `--btc` (green stays SafetyDashboard's semantic). **Save gate** = `readingComplete` AND
+  (`setBalance` || `amount>0`); soft amber `>100%` LTV hint (non-blocking). **All NumberInputs pass `min={0}`**
+  (NumberInput's `commit()` only clamps negatives when `min` is given) + `value={x ?? 0}` over null-tracked
+  state (NumberInput has no empty render). Save → `buildEventsFromSheet` → `events.forEach(addDayEvent)` (each
+  routes/rerolls/publishes independently; the `cb` journal-only event publishes via P3 even though `monthOf`
+  is null), reset, onClose. `EventSheet.module.css` alongside.
+- **FAB + wiring** (`DailyModeView.tsx`) — a `viewerMode` selector + `sheetOpen` state; a fixed bottom-right
+  `+` FAB (`.fab`, `--btc` gradient, `right: max(20px, calc(50vw - 300px + 20px))` to hug the 600px content
+  column on wide screens) → `setSheetOpen(true)`; both FAB and EventSheet gated `!viewerMode` (a read-only
+  viewer can't write — the NumberInputs self-disable too, but the FAB must not even appear).
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -1025,10 +1086,11 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-371 tests — `npx vitest run` before every commit.
+383 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
+- `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)

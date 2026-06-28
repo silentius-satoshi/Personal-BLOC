@@ -6,6 +6,7 @@ import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strike
 import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { selectMonthEvents, describeDayEvent } from './dailyView';
+import { EventSheet } from './EventSheet';
 import { fmtUSD } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
@@ -74,6 +75,7 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
   const monthlyLog                  = useStore((s) => s.monthlyLog);
   const dayLog                      = useStore((s) => s.dayLog);
   const setSimpleMode               = useStore((s) => s.setSimpleMode);
+  const viewerMode                  = useStore((s) => s.viewerMode);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
 
@@ -143,6 +145,7 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
   );
 
   const [logExpanded, setLogExpanded] = useState(false);
+  const [sheetOpen, setSheetOpen] = useState(false);   // P4b-1 — the event-entry sheet (add path)
 
   // Aggregate the (already-read) month events into display totals — READ-ONLY (no writes, no new reads).
   const agg = useMemo(() => {
@@ -336,6 +339,14 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
         </button>
 
       </div>
+
+      {/* P4b-1 — Daily-only write path: orange FAB → the event-entry sheet. Hidden for read-only viewers. */}
+      {!viewerMode && (
+        <>
+          <button className={styles.fab} onClick={() => setSheetOpen(true)} aria-label="Log an event">+</button>
+          <EventSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+        </>
+      )}
     </div>
   );
 }

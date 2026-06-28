@@ -225,3 +225,28 @@
   transition: color 0.12s;
 }
 .fullAppLink:hover { color: var(--text-ghost); }
+
+/* P4b-1 — Daily-only event-entry FAB. Fixed bottom-right; on wide screens it hugs the 600px content
+   column (max-width 600 = 300 half-width) rather than floating to the far corner. */
+.fab {
+  position: fixed;
+  bottom: 24px;
+  right: max(20px, calc(50vw - 300px + 20px));
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  border: none;
+  background: linear-gradient(150deg, var(--btc), #c5710d);
+  color: #1a0f02;
+  font-size: 30px;
+  font-weight: 600;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(247, 147, 26, 0.25);
+  z-index: 8000;
+  transition: transform 0.12s, box-shadow 0.12s;
+}
+.fab:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(247, 147, 26, 0.4); }
+.fab:active { transform: translateY(0); }
