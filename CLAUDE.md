@@ -783,7 +783,7 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
 - **Mode-switch pill** (`.viewToggle*`) restyled to the preview `.modeswitch`: `--surface-2` track, raised
   `--surface-3` active, + a green inset ring on the Daily-active button (`.viewToggleBtnDaily`, `rgba(78,203,130,.18)`);
   calendar SVG icons added to both buttons.
-- **DailyModeView** restyled: `.appbar` header (gradient brand badge + boxed `.iconBtn`); position trio (see below);
+- **DailyModeView** restyled: `.appbar` header (plain ₿ brand mark matching Monthly — `font-size:18px; color:var(--orange)`, `.brandName` 16px/700, NO gradient badge; boxed `.iconBtn` buttons); position trio (see below);
   a TWO-PART activity card — (a) `.act-*/.streams` AGGREGATE (net BTC + Draw/Paydown/Buy bars at **actual/plan**
   width, a READ-ONLY rollup of `monthEvents`; interest foot) and (b) per-event `.log-row` LOG (`describeDayEvent`
   label/detail + a component-local `eventTone(kind)` → dot/ring + amount color); a `.pbcard` terminal/playbook PLAN
@@ -797,6 +797,7 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
   `.positionTitle/.positionStat/.btcAmt/.parenSub` which stay Monthly-format inside the boxes. The preview-style
   `.posrow/.posbox/.postitle/.posval/.posvalBtc/.possub` block is gone; the new `.posrow/.posbox` are the cube shells only.
   **The trio stays 3-across on mobile in both Monthly and Daily** — the `@media (max-width: 760px) { grid-template-columns: 1fr }` collapse was removed from `DailyModeView.module.css` (both `.posrow` and `.positionRow`) and `SimpleModeView.module.css` (`.positionRow`). On mobile (≤760px), `.parenSub` parenthetical amounts stack below the highlighted amount (`display: block` override in both files) so the narrow 3-across cubes stay readable; wider screens keep the inline layout.
+- **Header parity (polish pass):** Daily `.brandMark` now matches Monthly's plain ₿ (`font-size:18px; color:var(--orange)`, no gradient badge); Daily `.brandName` bumped to 16px/700 to match Monthly. Monthly's `.settingsBtn`/`.modeToggleBtn` restyled to match Daily's boxed `.iconBtn` (34×34, border 1px `var(--line)`, bg `var(--surface)`, `var(--text-muted)` → hover `var(--text-primary)`); `.headerRight` gap bumped 4px → 8px. Daily trio gap equalized: `.cards` `margin-top:13px`→`0` + `gap:13px`→`16px` (SafetyDashboard's own `margin-bottom:16px` is the sole above-gap → both sides 16px).
 - **`dailyView.ts` UNCHANGED** — `describeDayEvent` keeps its `{icon,label,detail}` shape (the log-row uses label/
   detail; dot/tone mapping lives in the component); `dailyView.test.ts` unaffected. Still read-only (FAB/add-sheet P4b,
   calendar + drill-down gauge/CB sheets P4c).

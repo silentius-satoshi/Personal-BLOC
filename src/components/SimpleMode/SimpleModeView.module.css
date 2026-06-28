@@ -36,28 +36,35 @@
   color: var(--text-primary);
 }
 
-.headerRight { display: flex; align-items: center; gap: 4px; }
+.headerRight { display: flex; align-items: center; gap: 8px; }
 
 .settingsBtn {
-  background: none;
-  border: none;
-  color: var(--text-ghost);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 15px;
   cursor: pointer;
-  font-size: 18px;
-  padding: 8px;
+  display: grid;
+  place-items: center;
   transition: color 0.12s;
 }
 
-.settingsBtn:hover { color: var(--text-secondary); }
+.settingsBtn:hover { color: var(--text-primary); }
 
 .modeToggleBtn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 15px;
   cursor: pointer;
-  padding: 13px 10px;
-  display: flex;
-  align-items: center;
+  display: grid;
+  place-items: center;
   transition: color 0.12s;
 }
 

@@ -29,18 +29,8 @@
   flex-shrink: 0;
 }
 .brand { display: flex; align-items: center; gap: 9px; }
-.brandMark {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: linear-gradient(150deg, var(--btc), #c5710d);
-  color: #1a0f02;
-  font-weight: 800;
-  font-size: 15px;
-  display: grid;
-  place-items: center;
-}
-.brandName { font-size: 15px; font-weight: 650; letter-spacing: -0.01em; color: var(--text-primary); }
+.brandMark { font-size: 18px; color: var(--orange); }
+.brandName { font-size: 16px; font-weight: 700; color: var(--text-primary); }
 .hbtns { display: flex; gap: 8px; }
 .iconBtn {
   width: 34px;
@@ -57,7 +47,7 @@
 }
 .iconBtn:hover { color: var(--text-primary); }
 
-.cards { display: flex; flex-direction: column; gap: 13px; margin-top: 13px; flex: 1; }
+.cards { display: flex; flex-direction: column; gap: 16px; margin-top: 0; flex: 1; }
 
 /* Position trio — outer cube containers (Daily restyle) + inner content classes (Monthly-format) */
 .posrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
