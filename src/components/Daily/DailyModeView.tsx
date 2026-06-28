@@ -194,11 +194,11 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
 
         <div className={styles.cards}>
 
-          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER — matches Monthly (SimpleModeView) format */}
-          <div className={styles.positionRow}>
+          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER — Monthly-format content in Daily cube containers */}
+          <div className={styles.posrow}>
 
             {/* Box 1 — CURRENT STRIKE BLOC */}
-            <div className={styles.positionCol}>
+            <div className={styles.posbox}>
               <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
               <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({(currentBlocLtv * 100).toFixed(1)}% LTV)</span></span>
@@ -206,7 +206,7 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
             </div>
 
             {/* Box 2 — THIS MONTH (projected; P4a is read-only, no logging UI) */}
-            <div className={styles.positionCol}>
+            <div className={styles.posbox}>
               <span className={styles.positionTitle}>THIS MONTH<span className={styles.projSuffix}> (proj)</span></span>
               <span className={`${styles.positionStat} ${projBtcBought > 0 ? styles.statGreen : styles.statMuted}`}>
                 Buy: ₿ {projBtcBought > 0 ? `+${projBtcBought.toFixed(5)}` : '—'}
@@ -215,14 +215,14 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
             </div>
 
             {/* Box 3 — AFTER THIS MONTH */}
-            <div className={styles.positionCol}>
+            <div className={styles.posbox}>
               <span className={styles.positionTitle}>AFTER THIS MONTH</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
               <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
             </div>
 
-          </div>
+          </div>  {/* end .posrow */}
 
           {/* Activity aggregate — net BTC + draw/paydown/buy streams (read-only rollup of this month's events) */}
           <div className={styles.card}>

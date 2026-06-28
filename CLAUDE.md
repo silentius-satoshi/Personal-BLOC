@@ -792,8 +792,10 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
 - **Position trio reverted to Monthly format** (cross-view consistency): uppercase labels (CURRENT STRIKE BLOC /
   THIS MONTH / AFTER THIS MONTH), parenthetical USD and LTV amounts on the same line, default UI font (13px), `--orange`
   BTC color — exactly matching SimpleModeView's `.positionRow/.positionCol/.positionStat/.btcAmt/.parenSub` classes
-  (replicated into DailyModeView.module.css; the preview-style `.posrow/.posbox/.postitle/.posval/.posvalBtc/.possub`
-  classes were removed — they were trio-only).
+  (replicated into DailyModeView.module.css). The **outer cube containers** use Daily-restyle classes `.posrow` (grid
+  wrapper) and `.posbox` (`--surface` bg, `--line` border, 14px radius) — distinct from the content classes
+  `.positionTitle/.positionStat/.btcAmt/.parenSub` which stay Monthly-format inside the boxes. The preview-style
+  `.posrow/.posbox/.postitle/.posval/.posvalBtc/.possub` block is gone; the new `.posrow/.posbox` are the cube shells only.
 - **`dailyView.ts` UNCHANGED** — `describeDayEvent` keeps its `{icon,label,detail}` shape (the log-row uses label/
   detail; dot/tone mapping lives in the component); `dailyView.test.ts` unaffected. Still read-only (FAB/add-sheet P4b,
   calendar + drill-down gauge/CB sheets P4c).

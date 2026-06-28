@@ -59,7 +59,12 @@
 
 .cards { display: flex; flex-direction: column; gap: 13px; margin-top: 13px; flex: 1; }
 
-/* Position trio — matches Monthly (SimpleModeView) format exactly */
+/* Position trio — outer cube containers (Daily restyle) + inner content classes (Monthly-format) */
+.posrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+@media (max-width: 760px) { .posrow { grid-template-columns: 1fr; } }
+.posbox { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 11px 10px; display: flex; flex-direction: column; gap: 4px; }
+
+/* .positionRow/.positionCol retained for content class references below */
 .positionRow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 @media (max-width: 760px) { .positionRow { grid-template-columns: 1fr; } }
 .positionCol {
