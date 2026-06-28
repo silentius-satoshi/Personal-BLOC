@@ -851,8 +851,8 @@ withdraw (deposit/add only). SafetyDashboard / position trio / Monthly view unto
 - **`EventSheet.tsx`** (`{open, onClose}`) — `createPortal` → `.scrim`/`.sheet` (mirrors SimpleModeView's confirm
   overlay; scrim onClick closes, sheet stopPropagation; `.grab` handle; title "Log an event" + sub-line
   `adds to {fmtDay(today)} · Month {getCurrentStrategyMonth(advisorStartDate)}`). **D1** type-pills (active =
-  `--btc`) + a conditional amount NumberInput (hidden for Set balance; `$` draw/paydown, `₿` decimals 5
-  buy/collateral) + a REQUIRED "Current balances · required to log" reading section. **D2** Collateral pill:
+  `--btc`) + a conditional amount NumberInput (hidden for Set balance; `$` draw/paydown, `₿` decimals 8
+  buy/collateral — sat precision) + a REQUIRED "Current balances · required to log" reading section. **D2** Collateral pill:
   a Strike|Coinbase target toggle (viewToggle-style, shown ONLY when hasCbLoan; else forced `'strike'`, no
   toggle); `target:'cb'` → dry-powder readout (`strikeBtcAvailable` + `~$`) + "logged, not modeled (Feature B)"
   note; `target:'strike'` → "Strike held after: {getCurrentBtcHeld()+amount} ₿" + "Updates your Strike

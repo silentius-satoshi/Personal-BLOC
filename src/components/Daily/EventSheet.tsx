@@ -135,7 +135,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   }
 
   const amountPrefix = type === 'draw' || type === 'paydown' ? '$' : '₿';
-  const amountDecimals = type === 'buy' || type === 'collateral' ? 5 : undefined;
+  const amountDecimals = type === 'buy' || type === 'collateral' ? 8 : undefined;
   const amountLabel =
     type === 'draw'       ? 'Draw amount'
     : type === 'paydown'  ? 'Paydown amount'
@@ -234,7 +234,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
               <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />
               <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" />
               {cbLtvWarn && <span className={styles.warn}>Coinbase LTV over 100% — double-check the value.</span>}
-              <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={5} />
+              <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} />
             </>
           )}
         </div>
