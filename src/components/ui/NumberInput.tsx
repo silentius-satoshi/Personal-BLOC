@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import styles from './NumberInput.module.css';
 
@@ -20,17 +20,20 @@ interface Props {
 export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext, readOnly, valueColor }: Props) {
   const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → every NumberInput is non-editable
   const ro = readOnly || viewerMode;
+  const focused = useRef(false);
   const fmt = (v: number) => decimals !== undefined ? v.toFixed(decimals) : String(v);
   const [raw, setRaw] = useState(fmt(value));
 
   useEffect(() => {
-    setRaw(fmt(value));
+    if (!focused.current) setRaw(fmt(value));
   }, [value]);
 
   function commit() {
     const n = parseFloat(raw);
     if (!isNaN(n)) {
-      onChange(Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n)));
+      const clamped = Math.min(max ?? Infinity, Math.max(min ?? -Infinity, n));
+      onChange(clamped);
+      setRaw(fmt(clamped));
     } else {
       setRaw(fmt(value));
     }
@@ -59,7 +62,8 @@ export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffi
               onChange(n);
             }
           }}
-          onBlur={() => { if (!ro) commit(); }}
+          onFocus={() => { focused.current = true; }}
+          onBlur={() => { if (!ro) { focused.current = false; commit(); } }}
           onKeyDown={(e) => { if (!ro && e.key === 'Enter') commit(); }}
         />
         {suffix && <span className={styles.suffix}>{suffix}</span>}
