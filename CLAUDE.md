@@ -751,7 +751,7 @@ The first Daily Mode UI surface. **READ-ONLY** — it proves the dayLog/rollup d
 UI lands. NO event sheets / `addDayEvent`/`updateDayEvent`/`deleteDayEvent` wiring / FAB (P4b); NO Week|Month
 calendar / scrubbing / reconcile / dry-powder readout (P4c).
 
-- **`simpleView: 'monthly' | 'daily'`** (store, default `'monthly'`) — DEVICE-LOCAL UI pref selecting the
+- **`simpleView: 'monthly' | 'daily'`** (store, default `'daily'`) — DEVICE-LOCAL UI pref selecting the
   consumer-shell view. NOT synced (absent from `SETTINGS_FIELDS`/`buildSettingsPayload`); rides `partializeState`'s
   `...rest` (NOT in the omit destructure); **no version bump** — the custom `merge` (`{...current, ...persisted}`)
   fills it for existing users from `current`. Setter `setSimpleView` is a plain `set` (no `syncSettingsToNostr`),
@@ -766,9 +766,9 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   `describeDayEvent`, both PURE in `dailyView.ts`), empty state "No activity logged this month." A read-only PLAN
   REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
   `cbPaydownDraw`, monthly shows `plan.cbPayment`). Month indicator only — no scrubber.
-- **Monthly | Daily toggle** (`AppShell`, inside the `simpleMode && activeTab !== 'settings'` branch) — a segmented
+- **Daily | Monthly toggle** (`AppShell`, inside the `simpleMode && activeTab !== 'settings'` branch) — a segmented
   control (`.viewToggle*` in AppShell.module.css) bound to `simpleView`; renders `<DailyModeView/>` when `'daily'`,
-  else `<SimpleModeView/>`. Consumer shell only — full-app path untouched.
+  else `<SimpleModeView/>`. Button order: Daily-left, Monthly-right. Consumer shell only — full-app path untouched.
 
 ### P4a RESTYLE — DailyModeView aligned to `mode-toggle-preview.html`
 
@@ -1094,7 +1094,7 @@ publishSettingsNow payload / the partialize exclusion destructure — so they su
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
 plan-card status-bar visibility, default true), `simpleView` (`'monthly'|'daily'` consumer-shell view,
-default `'monthly'` — Daily Mode P4a), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
+default `'daily'` — Daily Mode P4a), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device; **persisted in
 STANDALONE localStorage `personal-bloc-writer-key-wrapped`/`-meta`, NOT inside the persist blob** — they're the
 credential that UNLOCKS the encrypted store, so they must be readable before/without decryption (else the

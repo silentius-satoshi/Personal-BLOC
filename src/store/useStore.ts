@@ -889,8 +889,8 @@ export const useStore = create<StoreState>()(
   showPlanStrikeBar: true,
   showPlanCbBar:     true,
 
-  // Default to the Monthly view; the custom merge fills this for existing users (no version bump).
-  simpleView: 'monthly',
+  // Default to the Daily view; the custom merge fills this for existing users (no version bump).
+  simpleView: 'daily',
 
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
