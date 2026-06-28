@@ -84,6 +84,7 @@
 .positionStat { font-size: 13px; color: var(--text-secondary); }
 .btcAmt { color: var(--orange); }
 .parenSub { font-size: 11px; color: var(--text-ghost); }
+@media (max-width: 760px) { .parenSub { display: block; } }
 .projSuffix { font-size: 10px; color: var(--text-ghost); font-weight: 400; }
 .statGreen { color: var(--green); font-weight: 600; }
 .statMuted { color: var(--text-faint); }

@@ -132,6 +132,7 @@
 .positionDivider { height: 1px; background: var(--border); margin: 6px 0 2px; align-self: stretch; }
 .btcAmt { color: var(--orange); }
 .parenSub { font-size: 11px; color: var(--text-ghost); }
+@media (max-width: 760px) { .parenSub { display: block; } }
 .planBarFrom  { color: var(--text-ghost); }
 .planBarArrow { color: var(--text-ghost); }
 .planTitleSep { color: var(--text-ghost); font-weight: 400; }
