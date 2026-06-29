@@ -1070,6 +1070,42 @@ emission + withdraw editability. Builds on P4c-2.
 
 ---
 
+## Daily Mode (P4c-3b — reconcile → Review → confirm flow; store stays v19, NO store changes)
+
+Daily months carry two ORTHOGONAL flags (set by the store/rollup): `confirmed` (user signed off — undefined on
+legacy ⇒ treated true) and `provisional` (stocks are carry-forward estimates because a logged day had no
+balance reading). This build surfaces them: a Month-scope reconcile **banner** + a **Review sheet** so the
+owner can sign off. **`confirmMonth`/rollup/store UNCHANGED** — `confirmMonth(month)` (useStore.ts:999) spreads
+the existing entry + `confirmed:true` and **preserves `provisional`**; a real `balanceReading` clears
+`provisional` independently via the rollup (before OR after confirm).
+
+- **Orthogonal-flags model:** confirming does NOT clear provisional; a reading does. So a provisional month can
+  be confirmed-as-provisional (honest sign-off when the past reading is unavailable) and later upgraded by
+  adding a reading. Editing a confirmed month flips `confirmed→false` (LD4 reopen-on-edit, already built) → the
+  banner reappears. Correct, left as-is.
+- **Banner rule (the subtle one):** show iff the current month's entry is **unconfirmed** (`confirmed ===
+  false`; `needsReview = needsConfirm`). Copy branches on `provisional`. So confirm-as-provisional (sets
+  `confirmed:true`) removes the banner even though provisional persists — a confirmed-but-provisional month is
+  "done" from the user's view (the flag lives on as data-quality metadata, not a nag). A month with no entry
+  yet → no banner.
+- **`EventSheet.tsx`** gains an optional `initialType?: SheetType` prop — the add-mode open-effect uses
+  `setType(initialType ?? 'draw')` (added to its dep array). So the Review's "Add balance reading" path opens
+  the sheet directly in `setBalance` mode. Omitted ⇒ unchanged (the FAB still opens to 'draw'; it now also
+  resets `sheetInitialType` to undefined).
+- **`DailyModeView.tsx`** — derives `currentEntry`/`needsConfirm`/`isProvisional`/`needsReview`; renders the
+  banner (`.reconcileBanner`, amber) after `<Calendar/>`, **gated `isMonth && !viewerMode && needsReview`**
+  (Week scope + viewers show none). Copy: provisional → "Month N needs a balance reading"; clean → "Month N —
+  confirm your log". "Review" → opens `<ReviewSheet>`. New state `reviewOpen` + `sheetInitialType`; the
+  Add-reading path sets `setSheetInitialType('setBalance')` + opens the EventSheet.
+- **`ReviewSheet.tsx`** (+ `.module.css`, NEW) — `createPortal` scrim/sheet mirroring `MonthEventsModal`; pure
+  presentation (props `{open, month, rollup, isProvisional, onClose, onConfirm, onAddReading}`). Shows the
+  rolled-up totals (Drawn/Bought/Paydown/Net + "from N day entries" from `MonthRollup`) + a "why review" note;
+  actions branch: provisional → **Add balance reading** (→ EventSheet setBalance → a reading clears provisional
+  via the rollup) + **Confirm as provisional** (→ `confirmMonth`, honest subtext "balances stay estimated, add
+  later") + Cancel; clean → single **Confirm** + Cancel.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript

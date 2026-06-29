@@ -1,0 +1,63 @@
+/* Daily Mode P4c-3b review sheet — mirrors MonthEventsModal's scrim/sheet. */
+.scrim {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 9000;
+}
+.sheet {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 20px 20px 0 0;
+  width: 100%; max-width: 460px; max-height: 88vh;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 8px 18px 22px;
+}
+.grab { width: 36px; height: 4px; border-radius: 999px; background: var(--line); margin: 8px auto 2px; flex-shrink: 0; }
+.head { display: flex; align-items: center; justify-content: space-between; }
+.title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+
+/* Rolled-up totals */
+.summary {
+  display: flex; flex-direction: column; gap: 9px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 13px 15px;
+}
+.sumRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sumLabel { font-size: 13px; color: var(--text-muted); }
+.sumVal { font-family: var(--mono); font-size: 13px; color: var(--text-primary); }
+.sumValBtc { color: var(--btc); }
+.entriesNote { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); padding-top: 2px; }
+
+.why { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
+
+/* Actions */
+.actionsCol { display: flex; flex-direction: column; gap: 10px; }
+.actionsRow { display: flex; gap: 10px; }
+.provNote { font-size: 11px; color: var(--text-faint); line-height: 1.45; }
+
+.primaryBtn {
+  flex: 1; padding: 13px;
+  border: none; border-radius: 12px;
+  background: linear-gradient(150deg, var(--btc), #c5710d);
+  color: #1a0f02; font-size: 14px; font-weight: 700; font-family: inherit; cursor: pointer;
+  transition: opacity 0.12s;
+}
+.primaryBtn:hover { opacity: 0.92; }
+.secondaryBtn {
+  padding: 13px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: transparent; color: var(--text-primary);
+  font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: background 0.12s;
+}
+.secondaryBtn:hover { background: var(--surface); }
+.cancelBtn {
+  padding: 13px 18px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: transparent; color: var(--text-muted);
+  font-size: 14px; font-family: inherit; cursor: pointer;
+  transition: color 0.12s;
+}
+.cancelBtn:hover { color: var(--text-primary); }

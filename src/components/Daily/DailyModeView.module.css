@@ -200,6 +200,29 @@
   line-height: 1.5;
 }
 
+/* P4c-3b — reconcile banner (Month scope, unconfirmed month). Amber-tinted, noticeable but not alarming. */
+.reconcileBanner {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  background: rgba(232, 168, 74, 0.10);
+  border: 1px solid rgba(232, 168, 74, 0.30);
+  border-radius: 14px;
+  padding: 13px 15px;
+}
+.reconcileText { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.reconcileTitle { font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.reconcileSub { font-size: 11.5px; color: var(--text-muted); line-height: 1.4; }
+.reconcileBtn {
+  flex-shrink: 0;
+  padding: 9px 16px;
+  border: 1px solid rgba(232, 168, 74, 0.45);
+  border-radius: 10px;
+  background: rgba(232, 168, 74, 0.14);
+  color: var(--amber);
+  font-size: 13px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: background 0.12s;
+}
+.reconcileBtn:hover { background: rgba(232, 168, 74, 0.22); }
+
 /* Compact stat trio — Daily-only (Monthly keeps its .posrow projection trio) */
 .trioCard { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
 .trio { display: grid; grid-template-columns: repeat(3, 1fr); }

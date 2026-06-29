@@ -10,6 +10,8 @@ import { Calendar } from './Calendar';
 import { buildDayActivity, buildMonthRollup } from './calendarModel';
 import { EventSheet, isEditableKind } from './EventSheet';
 import { MonthEventsModal } from './MonthEventsModal';
+import { ReviewSheet } from './ReviewSheet';
+import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { fmtUSD } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
@@ -85,8 +87,17 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
   const dayLog                      = useStore((s) => s.dayLog);
   const setSimpleMode               = useStore((s) => s.setSimpleMode);
   const viewerMode                  = useStore((s) => s.viewerMode);
+  const confirmMonth                = useStore((s) => s.confirmMonth);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
+
+  // P4c-3b — reconcile state. confirmed/provisional are ORTHOGONAL; the banner shows iff UNCONFIRMED
+  // (confirm-as-provisional sets confirmed:true → banner gone, even though provisional persists). Copy
+  // branches on provisional. A month with no entry yet → no banner. undefined confirmed = legacy/confirmed.
+  const currentEntry  = monthlyLog.find((m) => m.month === currentMonth);
+  const needsConfirm  = currentEntry ? currentEntry.confirmed === false : false;
+  const isProvisional = currentEntry?.provisional === true;
+  const needsReview   = needsConfirm;
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
     () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance),
@@ -141,6 +152,8 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
   const [sheetOpen, setSheetOpen]           = useState(false);   // P4b — event-entry sheet (add/edit)
   const [editEvent, setEditEvent]           = useState<DayEvent | undefined>(undefined);
   const [monthModalOpen, setMonthModalOpen] = useState(false);   // P4c-1b — month-events modal
+  const [reviewOpen, setReviewOpen]         = useState(false);    // P4c-3b — reconcile Review sheet
+  const [sheetInitialType, setSheetInitialType] = useState<SheetType | undefined>(undefined); // P4c-3b — add-mode initial type
   const [scope, setScope]                   = useState<'week' | 'month'>('week');
   const [selectedDay, setSelectedDay]       = useState<string>(todayISO());
 
@@ -224,6 +237,24 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
             onScopeChange={setScope}
             onSelectDay={setSelectedDay}
           />
+
+          {/* P4c-3b — reconcile banner: Month scope, owner-only, when the current month is unconfirmed.
+              Copy differs for a provisional month (needs a reading) vs a clean unconfirmed one. */}
+          {isMonth && !viewerMode && needsReview && (
+            <div className={styles.reconcileBanner}>
+              <div className={styles.reconcileText}>
+                <span className={styles.reconcileTitle}>
+                  {isProvisional ? `Month ${currentMonth} needs a balance reading` : `Month ${currentMonth} — confirm your log`}
+                </span>
+                <span className={styles.reconcileSub}>
+                  {isProvisional
+                    ? "A logged day is missing its balances, so this month's figures are estimated."
+                    : "Review this month's activity and sign off."}
+                </span>
+              </div>
+              <button className={styles.reconcileBtn} onClick={() => setReviewOpen(true)}>Review</button>
+            </div>
+          )}
 
           {/* Activity aggregate — net BTC + draw/paydown/buy streams (scope-driven: day or month rollup) */}
           <div className={styles.card}>
@@ -409,7 +440,7 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
           <button
             className={styles.fab}
             disabled={selectedDay > today}
-            onClick={() => { setEditEvent(undefined); setSheetOpen(true); }}
+            onClick={() => { setEditEvent(undefined); setSheetInitialType(undefined); setSheetOpen(true); }}
             aria-label="Log an event"
             title={selectedDay > today ? "Can't log a future date" : 'Log an event'}
           >+</button>
@@ -417,7 +448,18 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
             open={sheetOpen}
             editEvent={editEvent}
             targetDate={selectedDay}
-            onClose={() => { setSheetOpen(false); setEditEvent(undefined); }}
+            initialType={sheetInitialType}
+            onClose={() => { setSheetOpen(false); setEditEvent(undefined); setSheetInitialType(undefined); }}
+          />
+          {/* P4c-3b — reconcile Review sheet (owner-only; the banner gates !viewerMode) */}
+          <ReviewSheet
+            open={reviewOpen}
+            month={currentMonth}
+            rollup={monthRollup}
+            isProvisional={isProvisional}
+            onClose={() => setReviewOpen(false)}
+            onConfirm={() => { confirmMonth(currentMonth); setReviewOpen(false); }}
+            onAddReading={() => { setReviewOpen(false); setEditEvent(undefined); setSheetInitialType('setBalance'); setSheetOpen(true); }}
           />
         </>
       )}

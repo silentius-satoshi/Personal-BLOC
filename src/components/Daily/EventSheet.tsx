@@ -13,6 +13,7 @@ interface EventSheetProps {
   onClose: () => void;
   editEvent?: DayEvent;   // P4b-2 — when set, the sheet opens in type-locked EDIT mode for this event
   targetDate?: string;    // P4c-2 — ISO yyyy-mm-dd the add-sheet logs to (the calendar's selectedDay); ignored in edit mode
+  initialType?: SheetType; // P4c-3b — add-mode opens to this type (e.g. 'setBalance' from the Review sheet); default 'draw'
 }
 
 // P4b-2 — the DayEvent kinds the sheet can edit (map 1:1 to a SheetType). cbCollateralReading has no sheet
@@ -49,7 +50,7 @@ const TYPE_PILLS: { type: SheetType; label: string }[] = [
  * future dates are blocked at the FAB. LD6: a today flow Save writes the flow AND a balanceReading atomically
  * (two addDayEvent calls, same date/ts) — see buildEventsFromSheet.
  */
-export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetProps) {
+export function EventSheet({ open, onClose, editEvent, targetDate, initialType }: EventSheetProps) {
   const hasCbLoan          = useStore((s) => s.hasCbLoan);
   const strikeBtcAvailable = useStore((s) => s.strikeBtcAvailable);
   const btcPrice           = useStore((s) => s.btcPrice);
@@ -126,7 +127,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
       return;
     }
 
-    setType('draw');
+    setType(initialType ?? 'draw');
     setAmount(null);
     setCollateralDir('deposit');
     setCollTarget('strike');
@@ -166,7 +167,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
       }
     }
     setCbLiqPrice(cbLiquidationPrice > 0 ? cbLiquidationPrice : null);
-  }, [open, editEvent?.id, targetDate]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editEvent?.id, targetDate, initialType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 
