@@ -74,3 +74,73 @@ export function buildDayCells(dayLog: DayEvent[], dates: string[]): DayCell[] {
     return { date, day: Number(date.split('-')[2]), weekday: utcWeekdayMon0(date), pips };
   });
 }
+
+// ─── P4c-1b — activity builders (the calendar drives the activity card) ───
+// These reproduce DailyModeView's prior inline agg EXACTLY (draw/paydown sums, buyBtc sum,
+// netBtc = buys + strike deposits − strike withdrawals; CB-target moves are journal-only → excluded
+// from netBtc). Pure — no store/UI/price dependency.
+
+export interface StreamAgg { draw: number; paydown: number; buyBtc: number; }
+
+export interface DayActivity {
+  date:    string;
+  netBtc:  number;
+  streams: StreamAgg;
+  events:  DayEvent[];
+  isEmpty: boolean;
+}
+
+export interface MonthRollup {
+  month:      number;
+  netBtc:     number;
+  streams:    StreamAgg;
+  entryCount: number;     // distinct dates with at least one event
+  events:     DayEvent[];
+}
+
+// Shared aggregation — the single source for both day + month totals.
+function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: number } {
+  let draw = 0, paydown = 0, buyBtc = 0, netBtc = 0;
+  for (const ev of events) {
+    if      (ev.kind === 'draw')    draw += ev.amount;
+    else if (ev.kind === 'paydown') paydown += ev.amount;
+    else if (ev.kind === 'buy')   { buyBtc += ev.amount; netBtc += ev.amount; }
+    else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
+    else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
+  }
+  return { streams: { draw, paydown, buyBtc }, netBtc };
+}
+
+/** All events on a single ISO date (asc by ts) + that day's stream totals / netBtc. */
+export function buildDayActivity(dayLog: DayEvent[], date: string): DayActivity {
+  const events = dayLog.filter((e) => e.date === date).sort((a, b) => a.ts - b.ts);
+  const { streams, netBtc } = aggregateEvents(events);
+  return { date, netBtc, streams, events, isEmpty: events.length === 0 };
+}
+
+/**
+ * A strategy month's events (asc by ts) + month totals. Filters via bucketEventToMonth (the same
+ * bucketing as selectMonthEvents/rollupMonth) so the totals match the month log. entryCount = number
+ * of distinct dates among the events.
+ */
+export function buildMonthRollup(dayLog: DayEvent[], advisorStartDate: string, month: number): MonthRollup {
+  const events = dayLog
+    .filter((e) => bucketEventToMonth(e.date, advisorStartDate) === month)
+    .sort((a, b) => a.ts - b.ts);
+  const { streams, netBtc } = aggregateEvents(events);
+  const entryCount = new Set(events.map((e) => e.date)).size;
+  return { month, netBtc, streams, entryCount, events };
+}
+
+/** Group events by date (each group asc by ts), groups sorted DESC by date (newest first). */
+export function groupEventsByDay(events: DayEvent[]): { date: string; events: DayEvent[] }[] {
+  const byDate = new Map<string, DayEvent[]>();
+  for (const ev of events) {
+    const arr = byDate.get(ev.date);
+    if (arr) arr.push(ev);
+    else byDate.set(ev.date, [ev]);
+  }
+  return Array.from(byDate.entries())
+    .map(([date, evs]) => ({ date, events: [...evs].sort((a, b) => a.ts - b.ts) }))
+    .sort((a, b) => (a.date < b.date ? 1 : a.date > b.date ? -1 : 0));
+}

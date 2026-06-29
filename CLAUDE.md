@@ -968,6 +968,33 @@ consume them — nothing reads them yet except `<Calendar/>`.
 
 ---
 
+## Daily Mode (P4c-1b — calendar drives the activity card + month-events modal; store stays v19)
+
+The calendar now DRIVES the activity card + log (P4c-1a only rendered/selected). **D3:** Week scope (a day
+selected) → that day's big-number/streams/foot + the EDITABLE per-event log (P4b-2 tap-to-edit reused);
+Month scope → a READ-ONLY summed rollup (month totals + fill vs the monthly plan) + a tappable "from N day
+entries" line. **D4:** the Month-scope "from N entries" → `MonthEventsModal` listing the month's individual
+events grouped by day (each editable via the P4b-2 sheet; the modal closes when an event opens to edit).
+
+- **`calendarModel.ts`** gains pure builders (+ types `StreamAgg`/`DayActivity`/`MonthRollup`):
+  `buildDayActivity(dayLog, date)` (a single date's events + stream sums + netBtc),
+  `buildMonthRollup(dayLog, advisorStartDate, month)` (a strategy month's events + totals + `entryCount` =
+  distinct dates; filters via `bucketEventToMonth`), `groupEventsByDay(events)` (group by date, groups DESC,
+  per-group ts ASC). The shared `aggregateEvents` REPRODUCES DailyModeView's prior inline agg EXACTLY
+  (draw/paydown sums, buyBtc sum, netBtc = buys + strike deposits − strike withdrawals; CB-target moves
+  journal-only/excluded) — guarded by a buildMonthRollup-equals-old-agg test. Suite 398 → 403.
+- **`DailyModeView`** — the inline `agg`/`monthEvents` memos are replaced by `dayActivity`/`monthRollup`
+  memos + `const view = isMonth ? monthRollup : dayActivity`; the activity card reads `view.netBtc/streams`,
+  the log section branches on `scope`. Month scope renders read-only summary rows (Drawn/Bought/Paydown/
+  Interest) + the `.entriesBtn` "from N entries" → `setMonthModalOpen(true)`. FAB still adds to TODAY
+  (backfill → P4c-2). The Calendar component, its pips, and the date math are UNCHANGED.
+- **`MonthEventsModal.tsx`** (+ `.module.css`) — portal scrim/sheet (mirrors EventSheet); `groupEventsByDay`
+  → per-day rows (describeDayEvent + a local kind→tone map); rows tappable when `!viewerMode &&
+  isEditableKind` → `onEditEvent` (host closes modal, opens the P4b-2 edit sheet). Read-only/non-interactive
+  for viewers.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { monthDateRange, weekDates, buildDayCells } from '../calendarModel';
+import { monthDateRange, weekDates, buildDayCells,
+  buildDayActivity, buildMonthRollup, groupEventsByDay } from '../calendarModel';
 import { bucketEventToMonth } from '../../../simulation/logUtils';
 import type { DayEvent } from '../../../simulation/types';
 
@@ -100,6 +101,65 @@ describe('buildDayCells', () => {
     // 2025-01-06 = Monday → 0; 2025-01-12 = Sunday → 6
     expect(buildDayCells([], ['2025-01-06'])[0].weekday).toBe(0);
     expect(buildDayCells([], ['2025-01-12'])[0].weekday).toBe(6);
+  });
+});
+
+describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () => {
+  const drawA:     DayEvent = { id: 'a', date: '2025-01-05', ts: 1, kind: 'draw', amount: 1000 };
+  const buyA:      DayEvent = { id: 'b', date: '2025-01-05', ts: 2, kind: 'buy', amount: 0.01, usd: 800 };
+  const paydownA:  DayEvent = { id: 'c', date: '2025-01-06', ts: 3, kind: 'paydown', amount: 500 };
+  const strikeDep: DayEvent = { id: 'd', date: '2025-01-07', ts: 4, kind: 'deposit', amount: 0.2, target: 'strike' };
+  const strikeWd:  DayEvent = { id: 'e', date: '2025-01-08', ts: 5, kind: 'withdraw', amount: 0.05, target: 'strike' };
+  const cbDep:     DayEvent = { id: 'f', date: '2025-01-09', ts: 6, kind: 'deposit', amount: 0.1, target: 'cb' };
+  const reading:   DayEvent = { id: 'g', date: '2025-01-06', ts: 7, kind: 'balanceReading', reading: { strikeBal: 5000, strikeLtv: 0.12 } };
+  const LOG = [drawA, buyA, paydownA, strikeDep, strikeWd, cbDep, reading];
+
+  it('buildDayActivity filters by date, sums streams, netBtc, isEmpty', () => {
+    const day = buildDayActivity(LOG, '2025-01-05');
+    expect(day.events.map((e) => e.id)).toEqual(['a', 'b']);   // asc by ts, only that date
+    expect(day.streams).toEqual({ draw: 1000, paydown: 0, buyBtc: 0.01 });
+    expect(day.netBtc).toBeCloseTo(0.01, 8);
+    expect(day.isEmpty).toBe(false);
+    expect(buildDayActivity(LOG, '2025-01-30').isEmpty).toBe(true);
+  });
+
+  it('buildDayActivity netBtc includes strike moves, excludes CB', () => {
+    expect(buildDayActivity(LOG, '2025-01-07').netBtc).toBeCloseTo(0.2, 8);    // strike deposit
+    expect(buildDayActivity(LOG, '2025-01-08').netBtc).toBeCloseTo(-0.05, 8);  // strike withdraw
+    expect(buildDayActivity(LOG, '2025-01-09').netBtc).toBeCloseTo(0, 8);      // CB deposit ignored
+  });
+
+  it('buildMonthRollup totals + entryCount (distinct dates)', () => {
+    const m = buildMonthRollup(LOG, '2025-01-01', 1);
+    expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01 });
+    expect(m.netBtc).toBeCloseTo(0.01 + 0.2 - 0.05, 8);   // CB deposit excluded
+    expect(m.entryCount).toBe(5);   // 05,06,07,08,09
+    expect(m.month).toBe(1);
+  });
+
+  it('buildMonthRollup reproduces the old inline agg exactly', () => {
+    const month = 1, start = '2025-01-01';
+    // old DailyModeView agg over selectMonthEvents-equivalent
+    let totalDraw = 0, totalPaydown = 0, totalBuyBtc = 0, netBtc = 0;
+    for (const ev of LOG.filter((e) => bucketEventToMonth(e.date, start) === month)) {
+      if      (ev.kind === 'draw')    totalDraw += ev.amount;
+      else if (ev.kind === 'paydown') totalPaydown += ev.amount;
+      else if (ev.kind === 'buy')   { totalBuyBtc += ev.amount; netBtc += ev.amount; }
+      else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
+      else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
+    }
+    const m = buildMonthRollup(LOG, start, month);
+    expect(m.streams.draw).toBe(totalDraw);
+    expect(m.streams.paydown).toBe(totalPaydown);
+    expect(m.streams.buyBtc).toBe(totalBuyBtc);
+    expect(m.netBtc).toBeCloseTo(netBtc, 8);
+  });
+
+  it('groupEventsByDay groups, sorts groups DESC, events ASC by ts', () => {
+    const groups = groupEventsByDay([buyA, drawA, paydownA, reading]);
+    expect(groups.map((g) => g.date)).toEqual(['2025-01-06', '2025-01-05']);   // DESC
+    expect(groups[1].events.map((e) => e.id)).toEqual(['a', 'b']);             // 05: ts 1,2 asc
+    expect(groups[0].events.map((e) => e.id)).toEqual(['c', 'g']);             // 06: ts 3,7 asc
   });
 });
 

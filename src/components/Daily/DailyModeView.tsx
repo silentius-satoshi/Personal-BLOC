@@ -5,9 +5,11 @@ import { deriveAdvisorStart } from '../../simulation/logUtils';
 import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
 import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
-import { selectMonthEvents, describeDayEvent } from './dailyView';
+import { describeDayEvent } from './dailyView';
 import { Calendar } from './Calendar';
+import { buildDayActivity, buildMonthRollup } from './calendarModel';
 import { EventSheet, isEditableKind } from './EventSheet';
+import { MonthEventsModal } from './MonthEventsModal';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { fmtUSD } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
@@ -145,43 +147,36 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
     skipDraw: false, skipBtc: false, skipCb: false, unallocated: 0,
   }) : '';
 
-  // Activity — the current month's day events, chronological.
-  const monthEvents = useMemo(
-    () => selectMonthEvents(dayLog, currentMonth, advisorStartDate),
-    [dayLog, currentMonth, advisorStartDate],
-  );
+  // ── Calendar state ──
+  const [logExpanded, setLogExpanded]       = useState(false);
+  const [sheetOpen, setSheetOpen]           = useState(false);   // P4b — event-entry sheet (add/edit)
+  const [editEvent, setEditEvent]           = useState<DayEvent | undefined>(undefined);
+  const [monthModalOpen, setMonthModalOpen] = useState(false);   // P4c-1b — month-events modal
+  const [scope, setScope]                   = useState<'week' | 'month'>('week');
+  const [selectedDay, setSelectedDay]       = useState<string>(todayISO());
 
-  const [logExpanded, setLogExpanded] = useState(false);
-  const [sheetOpen, setSheetOpen] = useState(false);   // P4b-1 — the event-entry sheet (add path)
-  const [editEvent, setEditEvent] = useState<DayEvent | undefined>(undefined);   // P4b-2 — set → edit mode
-  // P4c-1a — calendar scope + selected day. Captured now; NOTHING reads them yet except <Calendar/>
-  // (P4c-1b wires selectedDay/scope into the activity card + month-events modal).
-  const [scope, setScope] = useState<'week' | 'month'>('week');
-  const [selectedDay, setSelectedDay] = useState<string>(todayISO());
+  // ── Activity — scope-driven (P4c-1b). Week → the selected day; Month → the month rollup. ──
+  const dayActivity = useMemo(() => buildDayActivity(dayLog, selectedDay), [dayLog, selectedDay]);
+  const monthRollup = useMemo(() => buildMonthRollup(dayLog, advisorStartDate, currentMonth), [dayLog, advisorStartDate, currentMonth]);
+  const isMonth = scope === 'month';
+  const view    = isMonth ? monthRollup : dayActivity;
 
-  // Aggregate the (already-read) month events into display totals — READ-ONLY (no writes, no new reads).
-  const agg = useMemo(() => {
-    let totalDraw = 0, totalPaydown = 0, totalBuyBtc = 0, netBtc = 0;
-    for (const ev of monthEvents) {
-      if      (ev.kind === 'draw')    totalDraw += ev.amount;
-      else if (ev.kind === 'paydown') totalPaydown += ev.amount;
-      else if (ev.kind === 'buy')   { totalBuyBtc += ev.amount; netBtc += ev.amount; }
-      else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
-      else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
-    }
-    return { totalDraw, totalPaydown, totalBuyBtc, netBtc };
-  }, [monthEvents]);
-
-  const netUsd       = agg.netBtc * btcPrice;
+  const today        = todayISO();
+  const netUsd       = view.netBtc * btcPrice;
   const plannedDraw  = plan?.blocDraw ?? 0;
   const plannedPay   = plan?.paydown ?? 0;
   const plannedBuy   = plan?.btcBought ?? 0;
-  const drawFill     = clampPct(agg.totalDraw, plannedDraw);
-  const payFill      = clampPct(agg.totalPaydown, plannedPay);
-  const buyFill      = clampPct(agg.totalBuyBtc, plannedBuy);
-  const actUsdText   = agg.netBtc > 0 ? `+${fmtUSD(netUsd)} stacked`
-    : monthEvents.length > 0 ? 'no Bitcoin bought yet'
-    : 'no activity yet this month';
+  const drawFill     = clampPct(view.streams.draw, plannedDraw);
+  const payFill      = clampPct(view.streams.paydown, plannedPay);
+  const buyFill      = clampPct(view.streams.buyBtc, plannedBuy);
+
+  const actTitle   = isMonth ? getMonthLabel(advisorStartDate, currentMonth)
+    : (selectedDay === today ? 'Today' : fmtDay(selectedDay));
+  const actWhen    = isMonth ? `Month ${currentMonth} · month-to-date` : fmtDay(selectedDay);
+  const actUsdText = view.netBtc > 0 ? `+${fmtUSD(netUsd)} stacked`
+    : isMonth
+      ? (monthRollup.events.length > 0 ? 'no Bitcoin bought yet' : 'no activity yet this month')
+      : (dayActivity.events.length > 0 ? 'no Bitcoin bought this day' : 'nothing logged this day');
 
   return (
     <div className={styles.root}>
@@ -253,79 +248,122 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
             onSelectDay={setSelectedDay}
           />
 
-          {/* Activity aggregate — net BTC + draw/paydown/buy streams (read-only rollup of this month's events) */}
+          {/* Activity aggregate — net BTC + draw/paydown/buy streams (scope-driven: day or month rollup) */}
           <div className={styles.card}>
             <div className={styles.actHead}>
-              <span className={styles.actTitle}>This month</span>
-              <span className={styles.actWhen}>{getMonthLabel(advisorStartDate, currentMonth)} · month-to-date</span>
+              <span className={styles.actTitle}>{actTitle}</span>
+              <span className={styles.actWhen}>{actWhen}</span>
             </div>
-            <div className={styles.actBig}>{agg.netBtc >= 0 ? '+' : ''}{agg.netBtc.toFixed(4)} ₿</div>
+            <div className={styles.actBig}>{view.netBtc >= 0 ? '+' : ''}{view.netBtc.toFixed(4)} ₿</div>
             <div className={styles.actUsd}>{actUsdText}</div>
             <div className={styles.streams}>
               <div className={styles.stream}>
                 <span className={styles.streamLabel}>Draw</span>
-                <span className={styles.streamVal}>{fmtUSD(agg.totalDraw)} / {fmtUSD(plannedDraw)}</span>
+                <span className={styles.streamVal}>{fmtUSD(view.streams.draw)} / {fmtUSD(plannedDraw)}</span>
                 <div className={styles.track}><div className={`${styles.fill} ${styles.fillDraw}`} style={{ width: `${drawFill}%` }} /></div>
               </div>
               <div className={styles.stream}>
                 <span className={styles.streamLabel}>Paydown</span>
                 <span className={`${styles.streamVal} ${plannedPay > 0 ? '' : styles.streamValMuted}`}>
-                  {plannedPay > 0 ? `${fmtUSD(agg.totalPaydown)} / ${fmtUSD(plannedPay)}` : '—'}
+                  {plannedPay > 0 ? `${fmtUSD(view.streams.paydown)} / ${fmtUSD(plannedPay)}` : '—'}
                 </span>
                 <div className={styles.track}><div className={`${styles.fill} ${styles.fillPaydn}`} style={{ width: `${payFill}%` }} /></div>
               </div>
               <div className={styles.stream}>
                 <span className={styles.streamLabel}>Buy ₿</span>
-                <span className={styles.streamVal}>₿{agg.totalBuyBtc.toFixed(4)} / {plannedBuy.toFixed(4)}</span>
+                <span className={styles.streamVal}>₿{view.streams.buyBtc.toFixed(4)} / {plannedBuy.toFixed(4)}</span>
                 <div className={styles.track}><div className={`${styles.fill} ${styles.fillBuy}`} style={{ width: `${buyFill}%` }} /></div>
               </div>
             </div>
-            <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSD(plan?.blocInterest ?? 0)}</b></div>
+            {isMonth && <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSD(plan?.blocInterest ?? 0)}</b></div>}
           </div>
 
-          {/* Per-event log — the granular day journal for this month (read-only) */}
-          <div>
-            <div className={styles.logHead}>
-              <span className={styles.logTitle}>This month's log</span>
-              <span className={styles.logSub}>{monthEvents.length} event{monthEvents.length === 1 ? '' : 's'}</span>
-            </div>
-            {monthEvents.length === 0 ? (
-              <div className={styles.empty}>No activity logged this month.</div>
-            ) : (
-              <>
+          {/* Log section — Week: editable per-event log; Month: read-only summed rollup + "from N entries" */}
+          {isMonth ? (
+            <div>
+              <div className={styles.logHead}>
+                <span className={styles.logTitle}>Month {currentMonth} rollup</span>
+                <span className={styles.logSub}>
+                  {monthRollup.entryCount > 0 ? (
+                    <button className={styles.entriesBtn} onClick={() => setMonthModalOpen(true)}>
+                      from {monthRollup.entryCount} day {monthRollup.entryCount === 1 ? 'entry' : 'entries'}
+                    </button>
+                  ) : 'no entries'}
+                </span>
+              </div>
+              {monthRollup.events.length === 0 ? (
+                <div className={styles.empty}>No activity logged this month.</div>
+              ) : (
                 <div className={styles.logList}>
-                  {monthEvents.slice(0, logExpanded ? monthEvents.length : 5).map((ev) => {
-                    const d = describeDayEvent(ev);
-                    const tone = eventTone(ev.kind);
-                    const editable = !viewerMode && isEditableKind(ev.kind);
-                    const openEdit = () => { setEditEvent(ev); setSheetOpen(true); };
-                    return (
-                      <div
-                        key={ev.id}
-                        className={`${styles.logRow} ${editable ? styles.logRowClickable : ''}`}
-                        role={editable ? 'button' : undefined}
-                        tabIndex={editable ? 0 : undefined}
-                        onClick={editable ? openEdit : undefined}
-                        onKeyDown={editable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); } } : undefined}
-                      >
-                        <span className={styles.logTime}>{fmtDay(ev.date)}</span>
-                        <span className={styles.logType}>
-                          {tone.ring ? <span className={styles.ring} /> : <span className={`${styles.dot} ${tone.dot}`} />}
-                          {d.label}
-                        </span>
-                        <span className={`${styles.logAmt} ${tone.amt}`}>{d.detail}</span>
-                      </div>
-                    );
-                  })}
+                  <div className={styles.logRow}>
+                    <span className={styles.logTime}>sum</span>
+                    <span className={styles.logType}><span className={`${styles.dot} ${styles.dotN}`} />Drawn (expenses)</span>
+                    <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSD(monthRollup.streams.draw)}</span>
+                  </div>
+                  <div className={styles.logRow}>
+                    <span className={styles.logTime}>sum</span>
+                    <span className={styles.logType}><span className={`${styles.dot} ${styles.dotO}`} />Bought bitcoin</span>
+                    <span className={`${styles.logAmt} ${styles.amtPos}`}>+₿{monthRollup.streams.buyBtc.toFixed(4)}</span>
+                  </div>
+                  {monthRollup.streams.paydown > 0 && (
+                    <div className={styles.logRow}>
+                      <span className={styles.logTime}>sum</span>
+                      <span className={styles.logType}><span className={`${styles.dot} ${styles.dotG}`} />BLOC paydown</span>
+                      <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSD(monthRollup.streams.paydown)}</span>
+                    </div>
+                  )}
+                  <div className={styles.logRow}>
+                    <span className={styles.logTime}>sum</span>
+                    <span className={styles.logType}><span className={`${styles.dot} ${styles.dotR}`} />Interest capitalized</span>
+                    <span className={`${styles.logAmt} ${styles.amtCost}`}>{fmtUSD(plan?.blocInterest ?? 0)}</span>
+                  </div>
                 </div>
-                {monthEvents.length > 5 && (
-                  <button className={styles.logMoreBtn} onClick={() => setLogExpanded((x) => !x)}>
-                    {logExpanded ? 'Show less' : `Show more (${monthEvents.length - 5} more)`}
-                  </button>
-                )}
-              </>
-            )}
-          </div>
+              )}
+            </div>
+          ) : (
+            <div>
+              <div className={styles.logHead}>
+                <span className={styles.logTitle}>{selectedDay === today ? "Today's log" : `${fmtDay(selectedDay)} log`}</span>
+                <span className={styles.logSub}>{dayActivity.events.length} event{dayActivity.events.length === 1 ? '' : 's'}</span>
+              </div>
+              {dayActivity.events.length === 0 ? (
+                <div className={styles.empty}>Nothing logged this day.</div>
+              ) : (
+                <>
+                  <div className={styles.logList}>
+                    {dayActivity.events.slice(0, logExpanded ? dayActivity.events.length : 5).map((ev) => {
+                      const d = describeDayEvent(ev);
+                      const tone = eventTone(ev.kind);
+                      const editable = !viewerMode && isEditableKind(ev.kind);
+                      const openEdit = () => { setEditEvent(ev); setSheetOpen(true); };
+                      return (
+                        <div
+                          key={ev.id}
+                          className={`${styles.logRow} ${editable ? styles.logRowClickable : ''}`}
+                          role={editable ? 'button' : undefined}
+                          tabIndex={editable ? 0 : undefined}
+                          onClick={editable ? openEdit : undefined}
+                          onKeyDown={editable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); } } : undefined}
+                        >
+                          <span className={styles.logTime}>{fmtDay(ev.date)}</span>
+                          <span className={styles.logType}>
+                            {tone.ring ? <span className={styles.ring} /> : <span className={`${styles.dot} ${tone.dot}`} />}
+                            {d.label}
+                          </span>
+                          <span className={`${styles.logAmt} ${tone.amt}`}>{d.detail}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  {dayActivity.events.length > 5 && (
+                    <button className={styles.logMoreBtn} onClick={() => setLogExpanded((x) => !x)}>
+                      {logExpanded ? 'Show less' : `Show more (${dayActivity.events.length - 5} more)`}
+                    </button>
+                  )}
+                </>
+              )}
+            </div>
+          )}
 
           {/* Plan reference — terminal/playbook treatment of what the plan expects this month (read-only) */}
           <div className={styles.pbcard}>
@@ -374,6 +412,17 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
         </button>
 
       </div>
+
+      {/* P4c-1b — month-events modal (read-only for viewers; editable rows reuse the P4b-2 edit sheet) */}
+      <MonthEventsModal
+        open={monthModalOpen}
+        month={currentMonth}
+        events={monthRollup.events}
+        advisorStartDate={advisorStartDate}
+        viewerMode={viewerMode}
+        onClose={() => setMonthModalOpen(false)}
+        onEditEvent={(ev) => { setMonthModalOpen(false); setEditEvent(ev); setSheetOpen(true); }}
+      />
 
       {/* P4b-1 add / P4b-2 edit — Daily-only write path. FAB opens add mode; a log-row tap opens edit mode.
           Hidden for read-only viewers. */}

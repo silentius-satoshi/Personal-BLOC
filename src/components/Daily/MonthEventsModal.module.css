@@ -1,0 +1,58 @@
+/* Daily Mode P4c-1b month-events modal — mirrors EventSheet's scrim/sheet; rows mirror the Daily log rows. */
+.scrim {
+  position: fixed; inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex; align-items: flex-end; justify-content: center;
+  z-index: 9000;
+}
+.sheet {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 20px 20px 0 0;
+  width: 100%; max-width: 460px; max-height: 88vh;
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  display: flex; flex-direction: column; gap: 14px;
+  padding: 8px 18px 22px;
+}
+.grab { width: 36px; height: 4px; border-radius: 999px; background: var(--line); margin: 8px auto 2px; flex-shrink: 0; }
+.head { display: flex; align-items: center; justify-content: space-between; }
+.title { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+
+.groups { display: flex; flex-direction: column; gap: 16px; }
+.dayGroup { display: flex; flex-direction: column; gap: 8px; }
+.dayHeader { font-family: var(--mono); font-size: 11px; color: var(--text-faint); letter-spacing: 0.03em; }
+
+.row {
+  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px;
+  padding: 12px 13px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 13px;
+}
+.rowClickable { cursor: pointer; transition: border-color 0.12s; }
+.rowClickable:hover { border-color: var(--line-2); }
+.rowType { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-primary); font-weight: 550; }
+.rowAmt { font-family: var(--mono); font-size: 13px; text-align: right; }
+.amtPos { color: var(--btc); }
+.amtNeu { color: var(--text-primary); }
+.amtAnchor { color: var(--text-muted); }
+
+.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.dotG { background: var(--green); }
+.dotO { background: var(--btc); }
+.dotR { background: var(--red); }
+.dotY { background: var(--amber); }
+.dotN { background: #6b7488; }
+.ring { width: 9px; height: 9px; border-radius: 50%; border: 1.5px solid var(--text-muted); flex-shrink: 0; }
+
+.empty {
+  text-align: center; color: var(--text-faint); font-size: 12px;
+  padding: 22px 10px; border: 1px dashed var(--line); border-radius: 13px;
+}
+.actions { display: flex; }
+.doneBtn {
+  flex: 1; padding: 13px;
+  border: 1px solid var(--line); border-radius: 12px;
+  background: transparent; color: var(--text-primary);
+  font-size: 14px; font-weight: 600; font-family: inherit; cursor: pointer;
+  transition: background 0.12s;
+}
+.doneBtn:hover { background: var(--surface); }

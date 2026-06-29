@@ -200,6 +200,17 @@
   line-height: 1.5;
 }
 
+/* P4c-1b — Month-scope "from N day entries" → opens the month-events modal */
+.entriesBtn {
+  background: none; border: none; padding: 0;
+  color: var(--btc);
+  font-family: var(--mono); font-size: 10px;
+  cursor: pointer;
+  text-decoration: underline; text-underline-offset: 2px;
+  transition: color 0.12s;
+}
+.entriesBtn:hover { color: var(--text-primary); }
+
 .logMoreBtn {
   display: block;
   width: 100%;

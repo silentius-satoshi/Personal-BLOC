@@ -63,7 +63,8 @@
       "Bash(grep -n \"298 tests\\\\|298 —\\\\|publishRecordsNow\\(\\)\\\\` — exported\\\\|viewerPublishGate\\\\|READ-ONLY is two layers\" CLAUDE.md)",
       "Bash(grep -n \"^- \\\\`mergeRecords.test.ts\\\\`\\\\|^- \\\\`src/lib/nostr/__tests__/sync.test.ts\\\\`\\\\|viewerSnapshot.test.ts\\\\|viewerPublishGate.test.ts\\\\|^- \\\\`dailyMode.test.ts\\\\`\" CLAUDE.md)",
       "Bash(grep -n \"now a LOCAL derived cache; cross-device sync suspended P2a→P3\\\\|RecordsPayload v2\\\\|personal-bloc:records:v1\\\\` | Payload schema v2\" CLAUDE.md)",
-      "Bash(grep -n \"SimpleMode/$\\\\|Daily Mode \\(P3\\\\|Device-local persisted-but-unsynced\\\\|simpleModePlan.test.ts\\\\|## Daily Mode \\(P2a\\\\|SimpleModeView.tsx \\\\|### App mode\\\\|### Navigation\\\\|activeTab:   'living'\" CLAUDE.md)"
+      "Bash(grep -n \"SimpleMode/$\\\\|Daily Mode \\(P3\\\\|Device-local persisted-but-unsynced\\\\|simpleModePlan.test.ts\\\\|## Daily Mode \\(P2a\\\\|SimpleModeView.tsx \\\\|### App mode\\\\|### Navigation\\\\|activeTab:   'living'\" CLAUDE.md)",
+      "Bash(grep -n \"## Tab Architecture \\(\\\\`AppShell.tsx\\\\`\\)\" CLAUDE.md)"
     ],
     "additionalDirectories": [
       "/tmp"
