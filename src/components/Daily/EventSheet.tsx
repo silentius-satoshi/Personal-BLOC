@@ -76,9 +76,11 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
   const [cbLiqPrice, setCbLiqPrice]         = useState<number | null>(null);
   const [confirmDelete, setConfirmDelete]   = useState(false);
 
-  // On each open: ADD mode resets flow + pre-fills the reading from the latest balanceReading in dayLog;
-  // EDIT mode seeds the fields from editEvent (type-locked to its kind). Keyed on [open, editEvent?.id]
-  // only — triggering on every dayLog change would clobber in-progress edits.
+  // On each open: ADD mode resets flow + pre-fills the reading from the latest balanceReading in dayLog
+  // (today) OR leaves the reading fields EMPTY (past date — "skip" must genuinely skip; a seeded reading
+  // would make readingComplete() return true and defeat the handleSave filter). EDIT mode seeds the fields
+  // from editEvent (type-locked to its kind). Keyed on [open, editEvent?.id, targetDate] — targetDate is
+  // included so switching the selected day while the sheet is open re-runs the empty/seed branch correctly.
   useEffect(() => {
     if (!open) return;
     setConfirmDelete(false);
@@ -115,27 +117,43 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
     setType('draw');
     setAmount(null);
     setCollTarget('strike');
-    const latest = dayLog
-      .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> => e.kind === 'balanceReading')
-      .reduce<Extract<DayEvent, { kind: 'balanceReading' }> | null>(
-        (best, e) => (!best || e.ts > best.ts ? e : best),
-        null,
-      );
-    if (latest) {
-      setStrikeBal(latest.reading.strikeBal);
-      setStrikeLtv(latest.reading.strikeLtv * 100);   // fraction → percent for display
-      setCbBal(latest.reading.cbBal ?? null);
-      setCbLtv(latest.reading.cbLtv != null ? latest.reading.cbLtv * 100 : null);
-      setCbCollateral(latest.reading.cbCollateral ?? null);
-    } else {
+
+    // P4c-2 — recompute past-ness here (effectiveDate/isPast are declared after this effect closes).
+    const effDate = targetDate ?? todayISO();
+    const past = effDate < todayISO();
+
+    if (past) {
+      // Past backfill: leave reading fields EMPTY so "skip" genuinely omits the balanceReading.
+      // A seeded reading would make readingComplete() true → the handleSave filter would never fire.
       setStrikeBal(null);
       setStrikeLtv(null);
       setCbBal(null);
       setCbLtv(null);
       setCbCollateral(null);
+    } else {
+      // Today: pre-fill from the latest reading for convenience (LD6 reading still required).
+      const latest = dayLog
+        .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> => e.kind === 'balanceReading')
+        .reduce<Extract<DayEvent, { kind: 'balanceReading' }> | null>(
+          (best, e) => (!best || e.ts > best.ts ? e : best),
+          null,
+        );
+      if (latest) {
+        setStrikeBal(latest.reading.strikeBal);
+        setStrikeLtv(latest.reading.strikeLtv * 100);   // fraction → percent for display
+        setCbBal(latest.reading.cbBal ?? null);
+        setCbLtv(latest.reading.cbLtv != null ? latest.reading.cbLtv * 100 : null);
+        setCbCollateral(latest.reading.cbCollateral ?? null);
+      } else {
+        setStrikeBal(null);
+        setStrikeLtv(null);
+        setCbBal(null);
+        setCbLtv(null);
+        setCbCollateral(null);
+      }
     }
     setCbLiqPrice(cbLiquidationPrice > 0 ? cbLiquidationPrice : null);
-  }, [open, editEvent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editEvent?.id, targetDate]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 

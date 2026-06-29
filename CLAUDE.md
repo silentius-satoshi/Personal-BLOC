@@ -1025,7 +1025,12 @@ rollup, SafetyDashboard, and Monthly view are all unaffected.
   `effectiveDate` to `buildEventsFromSheet`, then when `isPast && !readingComplete(...)` filters out the
   `balanceReading` event so only the flow is written → the store marks the month provisional via carry-forward.
   The CB-collateral liq-price write + its `AsOf = todayISO()` stay unchanged (the anchor is "now," not the
-  backfill date).
+  backfill date). **Bugfix (pre-fill):** the open `useEffect` now leaves the five reading fields NULL when
+  the target date is past (was: unconditionally seeded from the latest `balanceReading`, making
+  `readingComplete()` true → the `handleSave` skip-filter never fired → "skip" silently wrote today's balances
+  onto the past date and never marked the month provisional). Empty = skip → provisional; fill = write the
+  entered past reading. `targetDate` added to the effect dep array so switching the selected day re-runs the
+  branch. Today-logging pre-fill unchanged.
 - **`DailyModeView.tsx`** passes `targetDate={selectedDay}` to `<EventSheet>` and disables the FAB when
   `selectedDay > today` (future) with a "Can't log a future date" title; the FAB stays `!viewerMode`-gated, so
   backfill inherits the read-only-viewer block. `DailyModeView.module.css` adds a `.fab:disabled` rule (0.4
