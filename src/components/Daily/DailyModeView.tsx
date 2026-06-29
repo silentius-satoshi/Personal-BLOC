@@ -195,20 +195,20 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
 
         <div className={styles.cards}>
 
-          {/* Position trio — BTC held / Avail credit / Strike BLOC balance */}
+          {/* Position trio — Strike BLOC collateral / Strike BLOC balance / Avail credit */}
           <div className={styles.trioCard}>
             <div className={styles.trio}>
               <div className={styles.trioCell}>
                 <span className={`${styles.trioNum} ${styles.trioNumBtc}`}>₿ {currentBtcHeld.toFixed(5)}</span>
-                <span className={styles.trioLab}>BTC held</span>
-              </div>
-              <div className={styles.trioCell}>
-                <span className={styles.trioNum}>{fmtUSD(currentAvail.available)}</span>
-                <span className={styles.trioLab}>Avail credit</span>
+                <span className={styles.trioLab}>Strike BLOC collateral</span>
               </div>
               <div className={styles.trioCell}>
                 <span className={styles.trioNum}>{fmtUSD(advisorActualBlocBalance)}</span>
                 <span className={styles.trioLab}>Strike BLOC balance</span>
+              </div>
+              <div className={styles.trioCell}>
+                <span className={styles.trioNum}>{fmtUSD(currentAvail.available)}</span>
+                <span className={styles.trioLab}>Avail credit</span>
               </div>
             </div>
           </div>

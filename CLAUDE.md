@@ -884,11 +884,12 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
   detail; dot/tone mapping lives in the component); `dailyView.test.ts` unaffected. Still read-only (FAB/add-sheet P4b,
   calendar + drill-down gauge/CB sheets P4c).
 - **Position area subsequently replaced with compact trio** (post-P4a): the Monthly-format `.posrow` projection
-  boxes were replaced with a single `.trioCard` containing three divided `.trioCell` cells — **BTC held** /
-  **Avail credit** / **Strike BLOC balance** — all present-tense live values. Monthly view's projection trio
-  (`SimpleModeView`) is unchanged. Projection vars (`eomBtcHeld`, `eomBlocBalance`, `eomLtv`, `availCredit`,
-  `hasPaydown`, `projBtcBought`, `projBlocDraw`, `currentBlocLtv`, `expectedPaydown`) were removed from
-  `DailyModeView.tsx`; `computeStrikeLtv` import dropped; `currentAvail` stays (trio Cell 2).
+  boxes were replaced with a single `.trioCard` containing three divided `.trioCell` cells — **Strike BLOC
+  collateral** / **Strike BLOC balance** / **Avail credit** — all present-tense live values (collateral →
+  balance → available, natural lending progression). Monthly view's projection trio (`SimpleModeView`) is
+  unchanged. Projection vars (`eomBtcHeld`, `eomBlocBalance`, `eomLtv`, `availCredit`, `hasPaydown`,
+  `projBtcBought`, `projBlocDraw`, `currentBlocLtv`, `expectedPaydown`) were removed from
+  `DailyModeView.tsx`; `computeStrikeLtv` import dropped; `currentAvail` stays (trio Cell 3).
 
 ---
 
