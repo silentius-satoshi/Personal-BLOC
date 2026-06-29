@@ -352,7 +352,7 @@ export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
             ) : (
               <>
                 <div className={styles.readout}>
-                  Strike held after: {(currentBtcHeld + (amount ?? 0)).toFixed(5)} ₿
+                  Strike held after: {(currentBtcHeld - (isEdit && editEvent && editEvent.kind === 'deposit' ? editEvent.amount : 0) + (amount ?? 0)).toFixed(5)} ₿
                 </div>
                 <div className={styles.note}>Updates your Strike collateral.</div>
               </>

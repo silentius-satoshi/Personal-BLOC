@@ -321,7 +321,11 @@ src/
                                 # (edit only) → an inline .confirmBox (copy names the month + provisional warning) →
                                 # deleteDayEvent(id). Exports isEditableKind(k) (draw/paydown/buy/deposit/balanceReading)
                                 # — DailyModeView gates row taps on it (withdraw/cbCollateralReading rows stay
-                                # non-tappable). EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
+                                # non-tappable). The Strike-target "Strike held after" readout is edit-aware: it backs
+                                # out the original deposit amount in edit mode (currentBtcHeld − editEvent.amount + amount)
+                                # so it doesn't double-count (the edited deposit is already in currentBtcHeld via the C1
+                                # seam); add mode + non-deposit edits subtract 0 — readout only, no data effect.
+                                # EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState + readingComplete(s,hasCbLoan)
                                 # (the reading half of the Save gate) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,
