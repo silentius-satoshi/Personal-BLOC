@@ -1126,7 +1126,7 @@ past month is not wired this phase). Store / `buildMonthRollup` / `confirmMonth`
 `SafetyDashboard`'s CB bar card rendered a factually-WRONG warning — "Morpho liquidates instantly — no
 margin-call window" — contradicting the code's own model (`runCoinbaseLoan.ts` `classifyLtv`: `ltv<0.65 →
 watch`, `0.65–0.70 → warning`, liquidation at `CB_LLTV=0.86`). **SURGICAL CB-bar-card-only** (Strike bar, all
-bar math `cbMetrics`/`cbLevel`/`cbFillPct`/markers, the `cushionRow`, freshness rows, edit box, setup card —
+bar math `cbMetrics`/`cbLevel`/`cbFillPct`/markers, the `cushionRow`, freshness rows, setup card —
 UNTOUCHED; display-only reads, no computed value changed):
 - **Removed** the false `graceNote` AND the now-redundant `priceNote` (the headline carries the liq price); the
   orphaned `liqSource` local was dropped (`noUnusedLocals`).
@@ -1138,6 +1138,10 @@ UNTOUCHED; display-only reads, no computed value changed):
   no rate row (edit box), no source tag.
 - New `export const CB_WARN_LTV = 0.65` in `runCoinbaseLoan.ts` (also de-magics `classifyLtv`'s watch
   boundary; behavior-identical). Renders in BOTH Monthly + Daily (shared dashboard).
+- **Post-3c relocation:** the `.cbDistance` headline and `.cbDetail` block were moved from always-visible
+  (between `cushionRow` and the freshness rows) INTO the `editing &&` tap-to-edit expansion — at the top, before
+  "Read both from your Coinbase Loan Center" + the editable fields. At rest the CB card shows only bar +
+  cushionRow + freshness (minimal); tapping reveals the distance context + detail + inputs.
 
 ---
 

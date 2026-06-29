@@ -190,32 +190,6 @@ export function SafetyDashboard() {
           <span className={styles.ltvNow}>{(cbLtv * 100).toFixed(1)}% LTV</span>
           <span className={styles.cushion}>{(ltvGapToTrigger * 100).toFixed(1)}% to trigger · {(ltvGapToLiq * 100).toFixed(1)}% to liquidation</span>
         </div>
-        {/* P4c-3c — distance-to-liquidation headline (replaces the false "instant liquidation" graceNote +
-            the redundant priceNote). Color-coded by cbFillColor (same green/amber/red as the bar). */}
-        {activeLiqPrice > 0 && (
-          <div className={styles.cbDistance} style={{ borderColor: cbFillColor }}>
-            <div className={styles.cbDistanceMain} style={{ color: cbFillColor }}>
-              {fmtUSD(liqDropUsd)} <span className={styles.cbDistanceSub}>above liquidation</span>
-            </div>
-            <div className={styles.cbDistanceNote}>
-              a <b>{(liqDropPct * 100).toFixed(0)}% drop</b> away from {fmtUSD(activeLiqPrice)} liquidation price
-            </div>
-          </div>
-        )}
-
-        <div className={styles.cbDetail}>
-          <div className={styles.cbDetailRow}>
-            <span className={styles.cbDetailLabel}>CB loan balance</span>
-            <span className={styles.cbDetailVal}>{fmtUSD(accruedBalance)}</span>
-          </div>
-          <div className={styles.cbDetailRow}>
-            <span className={styles.cbDetailLabel}>Warn · liquidate</span>
-            <span className={styles.cbDetailVal}>
-              <span style={{ color: 'var(--amber)' }}>{(CB_WARN_LTV * 100).toFixed(0)}%</span> · {(CB_LLTV * 100).toFixed(0)}%
-            </span>
-          </div>
-        </div>
-
         {neverAnchored ? (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
         ) : (
@@ -232,6 +206,28 @@ export function SafetyDashboard() {
 
         {editing && (
           <div className={styles.editBox} onClick={(e) => e.stopPropagation()}>
+            {activeLiqPrice > 0 && (
+              <div className={styles.cbDistance} style={{ borderColor: cbFillColor }}>
+                <div className={styles.cbDistanceMain} style={{ color: cbFillColor }}>
+                  {fmtUSD(liqDropUsd)} <span className={styles.cbDistanceSub}>above liquidation</span>
+                </div>
+                <div className={styles.cbDistanceNote}>
+                  a <b>{(liqDropPct * 100).toFixed(0)}% drop</b> away from {fmtUSD(activeLiqPrice)} liquidation price
+                </div>
+              </div>
+            )}
+            <div className={styles.cbDetail}>
+              <div className={styles.cbDetailRow}>
+                <span className={styles.cbDetailLabel}>CB loan balance</span>
+                <span className={styles.cbDetailVal}>{fmtUSD(accruedBalance)}</span>
+              </div>
+              <div className={styles.cbDetailRow}>
+                <span className={styles.cbDetailLabel}>Warn · liquidate</span>
+                <span className={styles.cbDetailVal}>
+                  <span style={{ color: 'var(--amber)' }}>{(CB_WARN_LTV * 100).toFixed(0)}%</span> · {(CB_LLTV * 100).toFixed(0)}%
+                </span>
+              </div>
+            </div>
             <span className={styles.editHint}>Read both from your Coinbase Loan Center, then save.</span>
             <NumberInput label="CB loan balance" value={draftBal} onChange={setDraftBal} prefix="$" min={0} step={100} />
             <NumberInput label="Liquidation price (Coinbase)" value={draftLiq} onChange={setDraftLiq} prefix="$" min={0} step={1000} />
