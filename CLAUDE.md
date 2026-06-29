@@ -1121,6 +1121,24 @@ its existing `currentMonth` prop). Buttons disable at the bounds (‹ at Month 1
 (`useEffect` on `scope`/`currentMonth`). The **FAB still logs to today/`selectedDay`** (backfill INTO a viewed
 past month is not wired this phase). Store / `buildMonthRollup` / `confirmMonth` / Monthly view unchanged.
 
+### P4c-3c — CB-section enrichment in SafetyDashboard (factual fix)
+
+`SafetyDashboard`'s CB bar card rendered a factually-WRONG warning — "Morpho liquidates instantly — no
+margin-call window" — contradicting the code's own model (`runCoinbaseLoan.ts` `classifyLtv`: `ltv<0.65 →
+watch`, `0.65–0.70 → warning`, liquidation at `CB_LLTV=0.86`). **SURGICAL CB-bar-card-only** (Strike bar, all
+bar math `cbMetrics`/`cbLevel`/`cbFillPct`/markers, the `cushionRow`, freshness rows, edit box, setup card —
+UNTOUCHED; display-only reads, no computed value changed):
+- **Removed** the false `graceNote` AND the now-redundant `priceNote` (the headline carries the liq price); the
+  orphaned `liqSource` local was dropped (`noUnusedLocals`).
+- **Added** a distance-to-liquidation headline (`.cbDistance`) — "$X above liquidation · a Y% drop away from
+  $Z liquidation price" — computed from `btcPrice`/`activeLiqPrice` (`liqDropUsd`/`liqDropPct`), color-coded by
+  `cbFillColor` (same green/amber/red as the bar), gated `activeLiqPrice > 0`.
+- **Added** a 2-row detail block (`.cbDetail`): "CB loan balance" = `fmtUSD(accruedBalance)`; "Warn ·
+  liquidate" = `65%` (amber) `· 86%`. Exactly two rows — no LTV row (on the bar), no liq-price row (headline),
+  no rate row (edit box), no source tag.
+- New `export const CB_WARN_LTV = 0.65` in `runCoinbaseLoan.ts` (also de-magics `classifyLtv`'s watch
+  boundary; behavior-identical). Renders in BOTH Monthly + Daily (shared dashboard).
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)

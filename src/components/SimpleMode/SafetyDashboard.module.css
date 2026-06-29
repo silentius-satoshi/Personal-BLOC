@@ -199,6 +199,47 @@
   color: var(--red);
 }
 
+/* P4c-3c — CB distance-to-liquidation headline (color set inline via cbFillColor) + 2-row detail block */
+.cbDistance {
+  border: 1px solid;
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin: 8px 0;
+  text-align: center;
+}
+.cbDistanceMain {
+  font-family: var(--mono);
+  font-size: 18px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.cbDistanceSub {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.cbDistanceNote {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 3px;
+}
+.cbDetail {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 2px 11px;
+  margin: 8px 0;
+}
+.cbDetailRow {
+  display: flex;
+  justify-content: space-between;
+  padding: 7px 0;
+  font-size: 11.5px;
+}
+.cbDetailRow + .cbDetailRow { border-top: 1px solid var(--line-2); }
+.cbDetailLabel { color: var(--text-muted); }
+.cbDetailVal { font-family: var(--mono); color: var(--text-primary); }
+
 /* ── Freshness ────────────────────────────────────────────────── */
 .freshRow {
   display: flex;

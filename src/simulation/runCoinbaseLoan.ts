@@ -1,4 +1,5 @@
 export const CB_LLTV = 0.86;
+export const CB_WARN_LTV = 0.65;  // Coinbase/Morpho warning band start (watch→warning boundary; see classifyLtv)
 export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
 
 export interface CbLoanInputs {
@@ -37,7 +38,7 @@ export interface CbLoanProjection {
 
 export function classifyLtv(ltv: number): CbLtvStatus {
   if (ltv < 0.55) return 'safe';
-  if (ltv < 0.65) return 'watch';
+  if (ltv < CB_WARN_LTV) return 'watch';
   if (ltv < 0.70) return 'warning';
   if (ltv < 0.84) return 'emergency';
   if (ltv < 0.86) return 'critical';

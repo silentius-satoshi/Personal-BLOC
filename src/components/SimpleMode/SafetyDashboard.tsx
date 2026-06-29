@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_WARN_LTV } from '../../simulation/runCoinbaseLoan';
 import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
@@ -73,8 +73,10 @@ export function SafetyDashboard() {
   const accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
   const m              = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
   const activeLiqPrice = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
-  const liqSource      = cbLiquidationPrice > 0 ? 'Coinbase' : '~est.';
   const cbLtv          = m.ltv;
+  // P4c-3c — distance-to-liquidation (display-only). From btcPrice → the authoritative activeLiqPrice.
+  const liqDropUsd = Math.max(0, btcPrice - activeLiqPrice);                    // $ cushion to liquidation
+  const liqDropPct = btcPrice > 0 ? (btcPrice - activeLiqPrice) / btcPrice : 0; // % drop to liquidation
 
   // CB bar denominator = effective liquidation fraction from the AUTHORITATIVE liquidation price
   // (balance/(collateral×price)); falls back to the protocol CB_LLTV when no price is set. Uses accruedBalance
@@ -188,11 +190,31 @@ export function SafetyDashboard() {
           <span className={styles.ltvNow}>{(cbLtv * 100).toFixed(1)}% LTV</span>
           <span className={styles.cushion}>{(ltvGapToTrigger * 100).toFixed(1)}% to trigger · {(ltvGapToLiq * 100).toFixed(1)}% to liquidation</span>
         </div>
-        <p className={styles.priceNote}>trigger {fmtUSD(m.triggerPrice)} · liq {fmtUSD(activeLiqPrice)} ({liqSource})</p>
-
-        {cbLevel !== 'safe' && (
-          <p className={styles.graceNote}>Morpho liquidates instantly — no margin-call window</p>
+        {/* P4c-3c — distance-to-liquidation headline (replaces the false "instant liquidation" graceNote +
+            the redundant priceNote). Color-coded by cbFillColor (same green/amber/red as the bar). */}
+        {activeLiqPrice > 0 && (
+          <div className={styles.cbDistance} style={{ borderColor: cbFillColor }}>
+            <div className={styles.cbDistanceMain} style={{ color: cbFillColor }}>
+              {fmtUSD(liqDropUsd)} <span className={styles.cbDistanceSub}>above liquidation</span>
+            </div>
+            <div className={styles.cbDistanceNote}>
+              a <b>{(liqDropPct * 100).toFixed(0)}% drop</b> away from {fmtUSD(activeLiqPrice)} liquidation price
+            </div>
+          </div>
         )}
+
+        <div className={styles.cbDetail}>
+          <div className={styles.cbDetailRow}>
+            <span className={styles.cbDetailLabel}>CB loan balance</span>
+            <span className={styles.cbDetailVal}>{fmtUSD(accruedBalance)}</span>
+          </div>
+          <div className={styles.cbDetailRow}>
+            <span className={styles.cbDetailLabel}>Warn · liquidate</span>
+            <span className={styles.cbDetailVal}>
+              <span style={{ color: 'var(--amber)' }}>{(CB_WARN_LTV * 100).toFixed(0)}%</span> · {(CB_LLTV * 100).toFixed(0)}%
+            </span>
+          </div>
+        </div>
 
         {neverAnchored ? (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
