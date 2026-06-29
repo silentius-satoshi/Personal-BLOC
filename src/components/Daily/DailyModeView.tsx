@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { deriveAdvisorStart } from '../../simulation/logUtils';
@@ -91,12 +91,18 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
 
-  // P4c-3b — reconcile state. confirmed/provisional are ORTHOGONAL; the banner shows iff UNCONFIRMED
-  // (confirm-as-provisional sets confirmed:true → banner gone, even though provisional persists). Copy
-  // branches on provisional. A month with no entry yet → no banner. undefined confirmed = legacy/confirmed.
-  const currentEntry  = monthlyLog.find((m) => m.month === currentMonth);
-  const needsConfirm  = currentEntry ? currentEntry.confirmed === false : false;
-  const isProvisional = currentEntry?.provisional === true;
+  // P4c-3b-ii — the LEDGER's viewed month (Month scope). Defaults to / resets to currentMonth; clamped
+  // 1…currentMonth (no future, no Month 0). The calendar grid, activity rollup, reconcile + Review key off
+  // this; the PLAN reference card + advisor projection stay currentMonth (Daily=ledger, Monthly=planner).
+  const [viewedMonth, setViewedMonth] = useState(currentMonth);
+  const safeViewedMonth = Math.min(Math.max(1, viewedMonth), currentMonth);
+
+  // P4c-3b — reconcile state (for the VIEWED month). confirmed/provisional are ORTHOGONAL; the banner shows
+  // iff UNCONFIRMED (confirm-as-provisional sets confirmed:true → banner gone, even though provisional
+  // persists). Copy branches on provisional. A month with no entry yet → no banner. undefined ⇒ confirmed.
+  const viewedEntry   = monthlyLog.find((m) => m.month === safeViewedMonth);
+  const needsConfirm  = viewedEntry ? viewedEntry.confirmed === false : false;
+  const isProvisional = viewedEntry?.provisional === true;
   const needsReview   = needsConfirm;
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
@@ -157,9 +163,12 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
   const [scope, setScope]                   = useState<'week' | 'month'>('week');
   const [selectedDay, setSelectedDay]       = useState<string>(todayISO());
 
-  // ── Activity — scope-driven (P4c-1b). Week → the selected day; Month → the month rollup. ──
+  // P4c-3b-ii — entering Month scope opens on the current month; navigate back from there.
+  useEffect(() => { if (scope === 'month') setViewedMonth(currentMonth); }, [scope, currentMonth]);
+
+  // ── Activity — scope-driven (P4c-1b). Week → the selected day; Month → the VIEWED month's rollup. ──
   const dayActivity = useMemo(() => buildDayActivity(dayLog, selectedDay), [dayLog, selectedDay]);
-  const monthRollup = useMemo(() => buildMonthRollup(dayLog, advisorStartDate, currentMonth), [dayLog, advisorStartDate, currentMonth]);
+  const monthRollup = useMemo(() => buildMonthRollup(dayLog, advisorStartDate, safeViewedMonth), [dayLog, advisorStartDate, safeViewedMonth]);
   const isMonth = scope === 'month';
   const view    = isMonth ? monthRollup : dayActivity;
 
@@ -172,9 +181,9 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
   const payFill      = clampPct(view.streams.paydown, plannedPay);
   const buyFill      = clampPct(view.streams.buyBtc, plannedBuy);
 
-  const actTitle   = isMonth ? getMonthLabel(advisorStartDate, currentMonth)
+  const actTitle   = isMonth ? getMonthLabel(advisorStartDate, safeViewedMonth)
     : (selectedDay === today ? 'Today' : fmtDay(selectedDay));
-  const actWhen    = isMonth ? `Month ${currentMonth} · month-to-date` : fmtDay(selectedDay);
+  const actWhen    = isMonth ? `Month ${safeViewedMonth} · month-to-date` : fmtDay(selectedDay);
   const actUsdText = view.netBtc > 0 ? `+${fmtUSD(netUsd)} stacked`
     : isMonth
       ? (monthRollup.events.length > 0 ? 'no Bitcoin bought yet' : 'no activity yet this month')
@@ -230,21 +239,25 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
           <Calendar
             dayLog={dayLog}
             advisorStartDate={advisorStartDate}
-            currentMonth={currentMonth}
+            currentMonth={safeViewedMonth}
             scope={scope}
             selectedDay={selectedDay}
-            monthLabel={getMonthLabel(advisorStartDate, currentMonth)}
+            monthLabel={getMonthLabel(advisorStartDate, safeViewedMonth)}
             onScopeChange={setScope}
             onSelectDay={setSelectedDay}
+            onPrevMonth={() => setViewedMonth((m) => Math.max(1, m - 1))}
+            onNextMonth={() => setViewedMonth((m) => Math.min(currentMonth, m + 1))}
+            canPrevMonth={safeViewedMonth > 1}
+            canNextMonth={safeViewedMonth < currentMonth}
           />
 
-          {/* P4c-3b — reconcile banner: Month scope, owner-only, when the current month is unconfirmed.
+          {/* P4c-3b — reconcile banner: Month scope, owner-only, when the VIEWED month is unconfirmed.
               Copy differs for a provisional month (needs a reading) vs a clean unconfirmed one. */}
           {isMonth && !viewerMode && needsReview && (
             <div className={styles.reconcileBanner}>
               <div className={styles.reconcileText}>
                 <span className={styles.reconcileTitle}>
-                  {isProvisional ? `Month ${currentMonth} needs a balance reading` : `Month ${currentMonth} — confirm your log`}
+                  {isProvisional ? `Month ${safeViewedMonth} needs a balance reading` : `Month ${safeViewedMonth} — confirm your log`}
                 </span>
                 <span className={styles.reconcileSub}>
                   {isProvisional
@@ -290,7 +303,7 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
           {isMonth ? (
             <div>
               <div className={styles.logHead}>
-                <span className={styles.logTitle}>Month {currentMonth} rollup</span>
+                <span className={styles.logTitle}>Month {safeViewedMonth} rollup</span>
                 <span className={styles.logSub}>
                   {monthRollup.entryCount > 0 ? (
                     <button className={styles.entriesBtn} onClick={() => setMonthModalOpen(true)}>
@@ -424,7 +437,7 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
       {/* P4c-1b — month-events modal (read-only for viewers; editable rows reuse the P4b-2 edit sheet) */}
       <MonthEventsModal
         open={monthModalOpen}
-        month={currentMonth}
+        month={safeViewedMonth}
         events={monthRollup.events}
         advisorStartDate={advisorStartDate}
         viewerMode={viewerMode}
@@ -454,11 +467,11 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
           {/* P4c-3b — reconcile Review sheet (owner-only; the banner gates !viewerMode) */}
           <ReviewSheet
             open={reviewOpen}
-            month={currentMonth}
+            month={safeViewedMonth}
             rollup={monthRollup}
             isProvisional={isProvisional}
             onClose={() => setReviewOpen(false)}
-            onConfirm={() => { confirmMonth(currentMonth); setReviewOpen(false); }}
+            onConfirm={() => { confirmMonth(safeViewedMonth); setReviewOpen(false); }}
             onAddReading={() => { setReviewOpen(false); setEditEvent(undefined); setSheetInitialType('setBalance'); setSheetOpen(true); }}
           />
         </>

@@ -42,6 +42,36 @@
   margin-bottom: 11px;
 }
 
+/* P4c-3b-ii — Month-scope ‹ › navigation row (owns the month label) */
+.calNav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 11px;
+}
+.calNavLabel {
+  font-size: 13px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.calNavBtn {
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: color 0.12s, background 0.12s;
+}
+.calNavBtn:hover:not(:disabled) { color: var(--text-primary); background: var(--surface-3); }
+.calNavBtn:disabled { opacity: 0.3; cursor: default; }
+
 .week, .grid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);

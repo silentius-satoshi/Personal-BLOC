@@ -1104,6 +1104,23 @@ the existing entry + `confirmed:true` and **preserves `provisional`**; a real `b
   via the rollup) + **Confirm as provisional** (→ `confirmMonth`, honest subtext "balances stay estimated, add
   later") + Cancel; clean → single **Confirm** + Cancel.
 
+### P4c-3b-ii — past-month navigation in the Daily ledger (Month scope)
+
+The Daily Month scope only showed the CURRENT month, so a passed unconfirmed/provisional month was
+unreachable for reconcile. A `viewedMonth` state (`DailyModeView`, default + reset to `currentMonth`, clamped
+`1…currentMonth` via `safeViewedMonth`) + ‹ › nav lets the **ledger** reach past months. **Conceptual split
+(load-bearing):** Daily = the LEDGER (what happened + reconcile) → the calendar grid, activity rollup, "Month N
+rollup", reconcile banner (+ its `viewedEntry` lookup), `MonthEventsModal`, and `ReviewSheet`/`confirmMonth`
+all key off `safeViewedMonth`; Monthly = the PLANNER → the **PLAN reference card + the advisor projection
+(`deriveAdvisorStart`/`advisorRows`/`currentRow`/`summaryText`) stay `currentMonth`** (the plan is about now,
+not the viewed past month). The ‹ › nav lives in the `Calendar` title row (new optional props
+`onPrevMonth`/`onNextMonth`/`canPrevMonth`/`canNextMonth` → `.calNav`/`.calNavBtn`/`.calNavLabel`; the title
+owns the label, no duplicate) — the Calendar **date math is unchanged** (it receives `safeViewedMonth` through
+its existing `currentMonth` prop). Buttons disable at the bounds (‹ at Month 1, › at the current month).
+**Week scope unaffected** (about specific days); entering Month scope resets `viewedMonth` to `currentMonth`
+(`useEffect` on `scope`/`currentMonth`). The **FAB still logs to today/`selectedDay`** (backfill INTO a viewed
+past month is not wired this phase). Store / `buildMonthRollup` / `confirmMonth` / Monthly view unchanged.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)

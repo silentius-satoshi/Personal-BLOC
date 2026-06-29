@@ -15,12 +15,19 @@ interface CalendarProps {
   monthLabel:       string;
   onScopeChange:    (s: 'week' | 'month') => void;
   onSelectDay:      (iso: string) => void;
+  // P4c-3b-ii — optional Month-scope ‹ › navigation. When onPrevMonth is provided, the Month-scope title
+  // becomes a nav row owning the label (date math unchanged — currentMonth carries the viewed month).
+  onPrevMonth?:     () => void;
+  onNextMonth?:     () => void;
+  canPrevMonth?:    boolean;
+  canNextMonth?:    boolean;
 }
 
 const WD = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
 
 export function Calendar({
   dayLog, advisorStartDate, currentMonth, scope, selectedDay, monthLabel, onScopeChange, onSelectDay,
+  onPrevMonth, onNextMonth, canPrevMonth, canNextMonth,
 }: CalendarProps) {
   const isMonth = scope === 'month';
   const dates = isMonth ? monthDateRange(advisorStartDate, currentMonth) : weekDates(selectedDay);
@@ -38,7 +45,15 @@ export function Calendar({
       </div>
 
       <div className={styles.calcard}>
-        <div className={styles.calTitle}>{isMonth ? monthLabel : 'This week'}</div>
+        {isMonth && onPrevMonth ? (
+          <div className={styles.calNav}>
+            <button className={styles.calNavBtn} onClick={onPrevMonth} disabled={!canPrevMonth} aria-label="Previous month">‹</button>
+            <span className={styles.calNavLabel}>{monthLabel}</span>
+            <button className={styles.calNavBtn} onClick={onNextMonth} disabled={!canNextMonth} aria-label="Next month">›</button>
+          </div>
+        ) : (
+          <div className={styles.calTitle}>{isMonth ? monthLabel : 'This week'}</div>
+        )}
 
         {isMonth && (
           <div className={styles.wdRow}>
