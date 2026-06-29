@@ -297,7 +297,11 @@ src/
                                 # in dayLog (LTV fraction×100 → percent for display; null when no prior reading) so
                                 # the user only needs to enter the flow amount. Amount stays blank. Dep-array is [open]
                                 # only — not [open,dayLog] — so in-progress edits can't be clobbered by a concurrent
-                                # addDayEvent. EventSheet.module.css alongside
+                                # addDayEvent. CB-target collateral move also captures + writes cbLiquidationPrice +
+                                # cbLiquidationPriceAsOf (anchor-to-today), mirroring the Loan Center re-anchor; the
+                                # liq-price field prefills from the current scalar (cbLiquidationPrice > 0) and is
+                                # required for save on CB collateral; Strike target and loan balance unaffected.
+                                # EventSheet.module.css alongside
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState + readingComplete(s,hasCbLoan)
                                 # (the reading half of the Save gate) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,

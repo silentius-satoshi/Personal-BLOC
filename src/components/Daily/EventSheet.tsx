@@ -46,8 +46,11 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   const btcPrice           = useStore((s) => s.btcPrice);
   const advisorStartDate   = useStore((s) => s.advisorStartDate);
   const currentBtcHeld     = useStore((s) => s.getCurrentBtcHeld());
-  const addDayEvent        = useStore((s) => s.addDayEvent);
-  const dayLog             = useStore((s) => s.dayLog);
+  const addDayEvent           = useStore((s) => s.addDayEvent);
+  const dayLog                = useStore((s) => s.dayLog);
+  const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);
+  const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
+  const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
 
   const [type, setType]                     = useState<SheetType>('draw');
   const [amount, setAmount]                 = useState<number | null>(null);
@@ -57,6 +60,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   const [cbBal, setCbBal]                   = useState<number | null>(null);
   const [cbLtv, setCbLtv]                   = useState<number | null>(null);
   const [cbCollateral, setCbCollateral]     = useState<number | null>(null);
+  const [cbLiqPrice, setCbLiqPrice]         = useState<number | null>(null);
 
   // On each open: reset flow fields and pre-fill the reading from the latest balanceReading in dayLog.
   // Keyed on [open] only — triggering on every dayLog change while open would clobber in-progress edits.
@@ -84,6 +88,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
       setCbLtv(null);
       setCbCollateral(null);
     }
+    setCbLiqPrice(cbLiquidationPrice > 0 ? cbLiquidationPrice : null);
   }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
@@ -95,10 +100,14 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
-  const canSave = readingComplete(state, hasCbLoan) && (!showAmount || amountValid);
 
   // Effective collateral target — no toggle without a CB loan (implicitly Strike).
   const effectiveTarget = hasCbLoan ? collateralTarget : 'strike';
+
+  const cbCollateralNeedsLiq = type === 'collateral' && effectiveTarget === 'cb';
+  const canSave = readingComplete(state, hasCbLoan)
+    && (!showAmount || amountValid)
+    && (!cbCollateralNeedsLiq || (cbLiqPrice !== null && cbLiqPrice > 0));
 
   const strikeLtvWarn = strikeLtv !== null && strikeLtv > 100;
   const cbLtvWarn     = cbLtv !== null && cbLtv > 100;
@@ -117,6 +126,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
     setCbBal(null);
     setCbLtv(null);
     setCbCollateral(null);
+    setCbLiqPrice(null);
   }
 
   function handleSave() {
@@ -125,6 +135,10 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
       hasCbLoan, btcPrice, today, Date.now(), newId,
     );
     events.forEach((e) => addDayEvent(e));
+    if (type === 'collateral' && effectiveTarget === 'cb' && cbLiqPrice !== null) {
+      setCbLiquidationPrice(cbLiqPrice);
+      setCbLiquidationPriceAsOf(todayISO());
+    }
     reset();
     onClose();
   }
@@ -211,6 +225,13 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
                 <div className={styles.note}>
                   Logged as activity. Effect on dry powder &amp; projections is not modeled yet (Feature B).
                 </div>
+                <NumberInput
+                  label="New liquidation price"
+                  value={cbLiqPrice ?? 0}
+                  onChange={setCbLiqPrice}
+                  min={0}
+                  prefix="$"
+                />
               </>
             ) : (
               <>
