@@ -957,7 +957,11 @@ consume them — nothing reads them yet except `<Calendar/>`.
   `leadBlanks` = first cell's weekday so dates align to columns; cells are `<button>`→`onSelectDay`, pips
   `.mG`/`.mRing`/`.mCb`(--btc), selected → `.cellSel` (green-filled num). **LEANER legend** (logged/reading/
   CB collateral; NO scheduled/needs-entry — follow-on). `Calendar.module.css` from preview ~:145-162 (app
-  tokens; preview `--blue` pip → `--btc`).
+  tokens; preview `--blue` pip → `--btc`). **`.seg` toggle styling fix:** the original `.seg button`
+  descendant selector wasn't applying (inactive buttons received `className=""` — browser defaults showed
+  instead). Fixed with an explicit `.segBtn` class on each button (same pattern as `ViewToggle.tsx`'s
+  `.viewToggleBtn`); `.segActive` background is `#232b38` (the preview's exact active-segment color — pops
+  against the `--surface-2` track).
 - **`DailyModeView`** — added `scope`/`selectedDay` state + `todayISO()`; mounts `<Calendar/>` between
   `.posrow` and the activity `.card`. Activity card/log UNCHANGED. `viewerMode`: calendar renders fine (read-
   only browsing; selecting a day is harmless — no guard); FAB unchanged.

@@ -32,9 +32,9 @@ export function Calendar({
     <div>
       <div className={styles.seg} role="tablist" aria-label="Calendar scope">
         <button role="tab" aria-selected={scope === 'week'}
-          className={scope === 'week' ? styles.segActive : ''} onClick={() => onScopeChange('week')}>Week</button>
+          className={`${styles.segBtn} ${scope === 'week' ? styles.segActive : ''}`} onClick={() => onScopeChange('week')}>Week</button>
         <button role="tab" aria-selected={scope === 'month'}
-          className={scope === 'month' ? styles.segActive : ''} onClick={() => onScopeChange('month')}>Month</button>
+          className={`${styles.segBtn} ${scope === 'month' ? styles.segActive : ''}`} onClick={() => onScopeChange('month')}>Month</button>
       </div>
 
       <div className={styles.calcard}>
