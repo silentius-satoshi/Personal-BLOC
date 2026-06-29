@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (383 tests — all must pass before every commit)
+- Vitest (398 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -288,6 +288,25 @@ src/
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
                                 # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
                                 # withdraw carry target; balanceReading summarizes Strike + CB). Tested in __tests__/dailyView.test.ts
+      calendarModel.ts          # Daily Mode P4c-1a — PURE calendar date model (no store/UI/price dep; imports only the pure
+                                # bucketEventToMonth + DayEvent type, mirroring dailyView.ts). monthDateRange(advisorStartDate,
+                                # month) = ascending ISO dates that bucket to that STRATEGY month (uses bucketEventToMonth's
+                                # 30.4375-day def — NOT strategyMonthDate's calendar-month stepping — so cells + bucketed events
+                                # AGREE; loOffset clamped ≥0 so month 1 begins exactly at start, since bucket clamps pre-start
+                                # days to month 1); weekDates(selectedDay) = 7 ISO Mon→Sun; buildDayCells(dayLog, dates) →
+                                # DayCell{date,day,weekday(Mon=0),pips} (pips: 'logged' any draw/buy/paydown/deposit/withdraw;
+                                # 'reading' any balanceReading; 'cbCollateral' a deposit target:'cb', ADDITIVE to logged). ALL
+                                # date math UTC (new Date(iso)=UTC midnight; getUTCDay, not getDay → tz-safe). Tested in
+                                # __tests__/calendarModel.test.ts (every monthDateRange date buckets back to its month — load-bearing)
+      Calendar.tsx              # Daily Mode P4c-1a — the Week|Month calendar. RENDER + SELECT only (does NOT yet drive the
+                                # activity card — P4c-1b). Props {dayLog,advisorStartDate,currentMonth,scope,selectedDay,
+                                # monthLabel,onScopeChange,onSelectDay}. .seg Week|Month toggle; .calcard title (Week→"This week",
+                                # Month→monthLabel); Week=weekDates (7 cells w/ weekday letter), Month=monthDateRange + .wd-row
+                                # header + .grid with leadBlanks=first cell's weekday padding; cells=buildDayCells, each a
+                                # <button>→onSelectDay with .num + .ind pips (.mG logged / .mRing reading / .mCb=--btc
+                                # cbCollateral), selectedDay→.cellSel (green-filled num). LEANER legend (logged/reading/CB
+                                # collateral; NO scheduled/needs-entry — follow-on). Calendar.module.css alongside (from preview
+                                # ~:145-162, app tokens; preview --blue pip → --btc)
       EventSheet.tsx            # Daily Mode P4b-1 — the one adaptive event-entry BOTTOM-SHEET (ADD path only; createPortal
                                 # → .scrim/.sheet mirroring SimpleModeView's confirm overlay). Props {open,onClose}. D1
                                 # bundled cash-event sheet: type-pills (Draw/Buy ₿/Paydown/Collateral/Set balance, active =
@@ -906,6 +925,45 @@ withdraw (deposit/add only). SafetyDashboard / position trio / Monthly view unto
 
 ---
 
+## Daily Mode (P4c-1a — Week|Month calendar + pure calendarModel; store stays v19)
+
+The FOUNDATION of P4c (day-level granularity). A new `Calendar` renders inside `DailyModeView` between the
+position trio (`.posrow`) and the activity card, backed by a new pure `calendarModel.ts`. **RENDER + SELECT
+only** — you can toggle Week|Month and pick a day, but the calendar does **NOT yet drive the activity card**
+(the card/log stay scoped to the current strategy month exactly as in P4a). Wiring `selectedDay`/`scope`
+into the activity card + the month-events modal is **P4c-1b** (a separate later prompt); the backfill /
+past-dated FAB is **P4c-2**. `scope`/`selectedDay` are captured in `DailyModeView` state now so P4c-1b can
+consume them — nothing reads them yet except `<Calendar/>`.
+
+- **⚠ CRITICAL — the calendar's month range uses `bucketEventToMonth`'s 30.4375-day STRATEGY-month
+  definition** (logUtils.ts:98), NOT `strategyMonthDate`'s calendar-month `setMonth` stepping (useStore.ts) —
+  so a day's calendar cell and the events `selectMonthEvents` buckets to that month AGREE. `monthDateRange`
+  enumerates a safe day-offset window and KEEPS only dates that bucket to the target month (self-corrects
+  boundaries); every returned date round-trips `bucketEventToMonth(date,start)===month` (the load-bearing
+  test). `loOffset` is clamped ≥0 — `bucketEventToMonth` clamps pre-start days to month 1, so without it
+  month 1 would leak days before `advisorStartDate`.
+- **Timezone-safe**: `bucketEventToMonth` parses `'yyyy-mm-dd'` via `new Date(iso)` = UTC midnight, so
+  `calendarModel` does all date math in UTC (enumerate via `getTime()+N*86400000`, format with
+  `toISOString().split('T')[0]`, weekday via `getUTCDay()` — `getDay()` would drift a day in tz-behind-UTC
+  locales). `DailyModeView`'s `todayISO()` is likewise UTC.
+- **`calendarModel.ts`** (PURE) — `PipKind` ('logged'|'reading'|'cbCollateral') + `DayCell`
+  {date,day,weekday(Mon=0..Sun=6),pips}; `monthDateRange` / `weekDates` (7 ISO Mon→Sun) / `buildDayCells`
+  (pips: 'logged' any draw/buy/paydown/deposit/withdraw; 'reading' any balanceReading; 'cbCollateral' a
+  `deposit target:'cb'`, ADDITIVE to logged). Tested in `__tests__/calendarModel.test.ts` (15 cases —
+  bucket round-trip, contiguity, week Mon-first, pip mapping, tz no-drift). Suite 383 → 398.
+- **`Calendar.tsx`** (props `{dayLog,advisorStartDate,currentMonth,scope,selectedDay,monthLabel,
+  onScopeChange,onSelectDay}`) — `.seg` Week|Month toggle; `.calcard` (title Week→"This week",
+  Month→`monthLabel` = `getMonthLabel(advisorStartDate,currentMonth)` passed from the view); Month grid pads
+  `leadBlanks` = first cell's weekday so dates align to columns; cells are `<button>`→`onSelectDay`, pips
+  `.mG`/`.mRing`/`.mCb`(--btc), selected → `.cellSel` (green-filled num). **LEANER legend** (logged/reading/
+  CB collateral; NO scheduled/needs-entry — follow-on). `Calendar.module.css` from preview ~:145-162 (app
+  tokens; preview `--blue` pip → `--btc`).
+- **`DailyModeView`** — added `scope`/`selectedDay` state + `todayISO()`; mounts `<Calendar/>` between
+  `.posrow` and the activity `.card`. Activity card/log UNCHANGED. `viewerMode`: calendar renders fine (read-
+  only browsing; selecting a day is harmless — no guard); FAB unchanged.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -1127,10 +1185,11 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-383 tests — `npx vitest run` before every commit.
+398 tests — `npx vitest run` before every commit.
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
+- `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
 - `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)

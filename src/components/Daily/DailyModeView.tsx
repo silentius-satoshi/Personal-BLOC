@@ -6,6 +6,7 @@ import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strike
 import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { selectMonthEvents, describeDayEvent } from './dailyView';
+import { Calendar } from './Calendar';
 import { EventSheet, isEditableKind } from './EventSheet';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { fmtUSD } from '../../utils/format';
@@ -24,6 +25,9 @@ function getMonthLabel(advisorStartDate: string, monthNum: number): string {
   const d = new Date(y, m - 1 + (monthNum - 1), 1);
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
+
+// Today as ISO yyyy-mm-dd (UTC — matches calendarModel's UTC date math).
+const todayISO = () => new Date().toISOString().split('T')[0];
 
 // ISO yyyy-mm-dd → "Mon D" (local, no UTC shift — parse the parts).
 function fmtDay(iso: string): string {
@@ -150,6 +154,10 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
   const [logExpanded, setLogExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);   // P4b-1 — the event-entry sheet (add path)
   const [editEvent, setEditEvent] = useState<DayEvent | undefined>(undefined);   // P4b-2 — set → edit mode
+  // P4c-1a — calendar scope + selected day. Captured now; NOTHING reads them yet except <Calendar/>
+  // (P4c-1b wires selectedDay/scope into the activity card + month-events modal).
+  const [scope, setScope] = useState<'week' | 'month'>('week');
+  const [selectedDay, setSelectedDay] = useState<string>(todayISO());
 
   // Aggregate the (already-read) month events into display totals — READ-ONLY (no writes, no new reads).
   const agg = useMemo(() => {
@@ -232,6 +240,18 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
             </div>
 
           </div>  {/* end .posrow */}
+
+          {/* P4c-1a — Week|Month calendar (render + select only; does NOT yet drive the activity card) */}
+          <Calendar
+            dayLog={dayLog}
+            advisorStartDate={advisorStartDate}
+            currentMonth={currentMonth}
+            scope={scope}
+            selectedDay={selectedDay}
+            monthLabel={getMonthLabel(advisorStartDate, currentMonth)}
+            onScopeChange={setScope}
+            onSelectDay={setSelectedDay}
+          />
 
           {/* Activity aggregate — net BTC + draw/paydown/buy streams (read-only rollup of this month's events) */}
           <div className={styles.card}>
