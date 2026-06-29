@@ -92,8 +92,14 @@ src/
   components/
     Layout/
       AppShell.tsx              # ALL_TABS_META array, tab bar DndContext, sidebar/main routing,
-                                # hiddenTabs guard useEffect, [data-active-tab] on shell div
+                                # hiddenTabs guard useEffect, [data-active-tab] on shell div;
+                                # passes simpleView/setSimpleView as props to DailyModeView/SimpleModeView
+                                # (ViewToggle lives inside each view, not here)
       AppShell.module.css
+      ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — rendered inside BOTH
+                                # DailyModeView and SimpleModeView (between header + SafetyDashboard).
+                                # Props: simpleView + setSimpleView. CSS in ViewToggle.module.css.
+      ViewToggle.module.css     # .viewToggle* rules (moved from AppShell.module.css)
 
     Tools/
       LiqSimulator.tsx          # Liq Price Simulator overlay content; reads store directly, no props
@@ -821,9 +827,11 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   `describeDayEvent`, both PURE in `dailyView.ts`), empty state "No activity logged this month." A read-only PLAN
   REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
   `cbPaydownDraw`, monthly shows `plan.cbPayment`). Month indicator only — no scrubber.
-- **Daily | Monthly toggle** (`AppShell`, inside the `simpleMode && activeTab !== 'settings'` branch) — a segmented
-  control (`.viewToggle*` in AppShell.module.css) bound to `simpleView`; renders `<DailyModeView/>` when `'daily'`,
-  else `<SimpleModeView/>`. Button order: Daily-left, Monthly-right. Consumer shell only — full-app path untouched.
+- **Daily | Monthly toggle** — a segmented control (`<ViewToggle>` from `src/components/Layout/ViewToggle.tsx`;
+  `.viewToggle*` in `ViewToggle.module.css`) bound to `simpleView`; rendered INSIDE each view (DailyModeView +
+  SimpleModeView) immediately after its header and before `<SafetyDashboard>` (header → toggle → SafetyDashboard),
+  matching the preview layout. `AppShell` passes `simpleView`/`setSimpleView` as props to both views; the toggle
+  block was removed from AppShell. Button order: Daily-left, Monthly-right. Consumer shell only — full-app path untouched.
 
 ### P4a RESTYLE — DailyModeView aligned to `mode-toggle-preview.html`
 

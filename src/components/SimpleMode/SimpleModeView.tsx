@@ -11,6 +11,7 @@ import { fmtUSD } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
+import { ViewToggle } from '../Layout/ViewToggle';
 import { accruedCbBalance, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
 
@@ -22,6 +23,8 @@ const LEVEL_COLOR: Record<SafetyLevel, string> = {
 
 interface SimpleModeViewProps {
   onOpenSettings: () => void;
+  simpleView: 'monthly' | 'daily';
+  setSimpleView: (v: 'monthly' | 'daily') => void;
 }
 
 function getMonthLabel(advisorStartDate: string, monthNum: number): string {
@@ -211,7 +214,7 @@ function ModalField({ label, prefix, value, onChange, step = 1, hint }: {
   );
 }
 
-export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
+export function SimpleModeView({ onOpenSettings, simpleView, setSimpleView }: SimpleModeViewProps) {
   const income    = useStore((s) => s.income);
   const expenses  = useStore((s) => s.expenses);
   const btcPrice  = useStore((s) => s.btcPrice);
@@ -598,6 +601,8 @@ export function SimpleModeView({ onOpenSettings }: SimpleModeViewProps) {
           </button>
         </div>
       </div>
+
+      <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />
 
       <SafetyDashboard />
 

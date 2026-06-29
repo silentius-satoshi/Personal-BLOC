@@ -141,54 +141,6 @@
   background: var(--bg-base);
 }
 
-/* Monthly | Daily consumer-shell view toggle — the headline mode-switch pill, matched to
-   mode-toggle-preview.html's .modeswitch. Centered to the 600px content width. */
-.viewToggleWrap {
-  max-width: 600px;
-  width: 100%;
-  margin: 0 auto;
-  padding: 14px 16px 0;
-}
-
-.viewToggle {
-  display: flex;
-  gap: 4px;
-  padding: 4px;
-  background: var(--surface-2);
-  border: 1px solid var(--line);
-  border-radius: 15px;
-}
-
-.viewToggleBtn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  padding: 12px;
-  font-size: 14.5px;
-  font-weight: 650;
-  background: transparent;
-  color: var(--text-muted);
-  border: none;
-  border-radius: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-  font-family: inherit;
-}
-
-.viewToggleBtn svg { opacity: 0.85; }
-
-.viewToggleBtnActive {
-  background: var(--surface-3);
-  color: var(--text-primary);
-  box-shadow: 0 1px 3px rgba(0,0,0,.45);
-}
-
-/* Daily-active gets the green inset ring (matches the preview's .modeswitch button.active.daily). */
-.viewToggleBtnDaily {
-  box-shadow: 0 1px 3px rgba(0,0,0,.45), inset 0 0 0 1px rgba(78,203,130,.18);
-}
 
 .simpleModeSettings {
   min-height: 100vh;

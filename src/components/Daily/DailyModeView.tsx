@@ -7,12 +7,15 @@ import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleMode
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { selectMonthEvents, describeDayEvent } from './dailyView';
 import { EventSheet, isEditableKind } from './EventSheet';
+import { ViewToggle } from '../Layout/ViewToggle';
 import { fmtUSD } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
 interface DailyModeViewProps {
   onOpenSettings: () => void;
+  simpleView: 'monthly' | 'daily';
+  setSimpleView: (v: 'monthly' | 'daily') => void;
 }
 
 // Strategy-month → "Month Year" (copied from SimpleModeView — kept local so Daily owns its own copy).
@@ -49,7 +52,7 @@ const clampPct = (a: number, b: number) => (b > 0 ? Math.max(0, Math.min(100, (a
  * Presentation aligned to mode-toggle-preview.html (layered surfaces, divided trio, two-part activity
  * card [aggregate streams + per-event log], terminal playbook plan card). No event sheets / writes / calendar.
  */
-export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
+export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: DailyModeViewProps) {
   const income     = useStore((s) => s.income);
   const expenses   = useStore((s) => s.expenses);
   const btcPrice   = useStore((s) => s.btcPrice);
@@ -193,6 +196,8 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
             <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">⚙</button>
           </div>
         </div>
+
+        <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />
 
         <SafetyDashboard />
 
