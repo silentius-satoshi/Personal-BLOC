@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { deriveAdvisorStart } from '../../simulation/logUtils';
-import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
+import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
@@ -118,18 +118,7 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
 
   // Position — CURRENT (live) vs AFTER (projected). P4a is read-only and exposes no Pay/Skip, so the
   // AFTER projection uses the unskipped plan (skip flags treated as false).
-  const currentBlocLtv = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
-  const currentAvail   = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);
-
-  const expectedPaydown = currentRow ? Math.max(0, income - (hasCbLoan ? currentRow.cbPayment : 0) - currentRow.incomeToBtc) : 0;
-  const eomBlocBalance  = currentRow ? slmBlocBal + currentRow.blocDraw + currentRow.blocInterest - expectedPaydown : advisorActualBlocBalance;
-  const eomBtcHeld      = slmBtcHeld + (currentRow?.btcBought ?? 0);
-  const eomLtv          = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
-  const availCredit     = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);
-  const hasPaydown      = expectedPaydown > 0;
-
-  const projBtcBought = currentRow?.btcBought ?? 0;
-  const projBlocDraw  = currentRow?.blocDraw ?? 0;
+  const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);
 
   // Plan reference (read-only) — the unskipped projection + plain-English narration for this month.
   const plan = currentRow ? deriveForMonth(currentRow, income, hasCbLoan, cbPaymentStrategy) : null;
@@ -206,35 +195,23 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
 
         <div className={styles.cards}>
 
-          {/* Position trio — CURRENT | THIS MONTH (proj) | AFTER — Monthly-format content in Daily cube containers */}
-          <div className={styles.posrow}>
-
-            {/* Box 1 — CURRENT STRIKE BLOC */}
-            <div className={styles.posbox}>
-              <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
-              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({(currentBlocLtv * 100).toFixed(1)}% LTV)</span></span>
-              <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
+          {/* Position trio — BTC held / Avail credit / Strike BLOC balance */}
+          <div className={styles.trioCard}>
+            <div className={styles.trio}>
+              <div className={styles.trioCell}>
+                <span className={`${styles.trioNum} ${styles.trioNumBtc}`}>₿ {currentBtcHeld.toFixed(5)}</span>
+                <span className={styles.trioLab}>BTC held</span>
+              </div>
+              <div className={styles.trioCell}>
+                <span className={styles.trioNum}>{fmtUSD(currentAvail.available)}</span>
+                <span className={styles.trioLab}>Avail credit</span>
+              </div>
+              <div className={styles.trioCell}>
+                <span className={styles.trioNum}>{fmtUSD(advisorActualBlocBalance)}</span>
+                <span className={styles.trioLab}>Strike BLOC balance</span>
+              </div>
             </div>
-
-            {/* Box 2 — THIS MONTH (projected; P4a is read-only, no logging UI) */}
-            <div className={styles.posbox}>
-              <span className={styles.positionTitle}>THIS MONTH<span className={styles.projSuffix}> (proj)</span></span>
-              <span className={`${styles.positionStat} ${projBtcBought > 0 ? styles.statGreen : styles.statMuted}`}>
-                Buy: ₿ {projBtcBought > 0 ? `+${projBtcBought.toFixed(5)}` : '—'}
-              </span>
-              <span className={styles.positionStat}>Draw: {projBlocDraw > 0 ? fmtUSD(projBlocDraw) : '—'}</span>
-            </div>
-
-            {/* Box 3 — AFTER THIS MONTH */}
-            <div className={styles.posbox}>
-              <span className={styles.positionTitle}>AFTER THIS MONTH</span>
-              <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span></span>
-              <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
-            </div>
-
-          </div>  {/* end .posrow */}
+          </div>
 
           {/* P4c-1a — Week|Month calendar (render + select only; does NOT yet drive the activity card) */}
           <Calendar

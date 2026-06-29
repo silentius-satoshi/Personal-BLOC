@@ -200,6 +200,15 @@
   line-height: 1.5;
 }
 
+/* Compact stat trio — Daily-only (Monthly keeps its .posrow projection trio) */
+.trioCard { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.trio { display: grid; grid-template-columns: repeat(3, 1fr); }
+.trioCell { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.trioCell + .trioCell { border-left: 1px solid var(--line-2); }
+.trioNum { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-primary); }
+.trioNumBtc { color: var(--btc); }
+.trioLab { font-size: 10px; color: var(--text-muted); }
+
 /* P4c-1b — Month-scope "from N day entries" → opens the month-events modal */
 .entriesBtn {
   background: none; border: none; padding: 0;
