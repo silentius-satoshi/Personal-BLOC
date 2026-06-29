@@ -1038,6 +1038,38 @@ rollup, SafetyDashboard, and Monthly view are all unaffected.
 
 ---
 
+## Daily Mode (P4c-3a — collateral WITHDRAW; store stays v19, NO store changes)
+
+The collateral pill could only DEPOSIT (always emitted `kind:'deposit'`). This build adds a **Deposit|Withdraw
+direction toggle** (above the Strike|Coinbase target toggle) so the pill can also remove collateral. **The
+store/rollup is UNCHANGED** — the `DayEvent` union already has a `withdraw` kind (`{kind, amount, target}`,
+same shape as deposit) and `rollupMonth`'s `collateralDelta` is signed by kind (deposit +, withdraw −), so a
+withdraw already flows correctly into `getCurrentBtcHeld()`. This is sheet UI + the pure-helper withdraw
+emission + withdraw editability. Builds on P4c-2.
+
+- **`eventSheetModel.ts`** — `SheetState` gains `collateralDir: 'deposit' | 'withdraw'` (only meaningful when
+  `type==='collateral'`). `buildEventsFromSheet`'s `'collateral'` case emits `kind: collateralDir==='withdraw'
+  ? 'withdraw' : 'deposit'` (amount stays POSITIVE — the store signs it negative in `collateralDelta`; same
+  `{amount, target}` shape; `target='strike'` when `!hasCbLoan`). `readingComplete` UNCHANGED.
+- **`EventSheet.tsx`** — D1 a `collateralDir` state + a Deposit|Withdraw toggle ABOVE the Strike|Coinbase
+  toggle inside the collateral section, ADD-mode only (locked in edit; renders regardless of `hasCbLoan` — you
+  can withdraw Strike collateral with no CB loan). D2 direction-aware "Strike held after" readout (`strikeAfter
+  = currentBtcHeld − origEffect + dirSign·amount`; the edit-backout `origEffect` is KIND-AWARE — a withdraw
+  edit already reduced holdings, so back out `−amount` — the double-count seam, now direction-aware) + a
+  `(+x)/(−x)` delta hint. D3 CB coupling BOTH ways: the cb-branch `.note` reframes on withdraw ("Removing
+  collateral raises your liquidation price — enter the new value from your Loan Center"); the liq-price field +
+  its Save write (`setCbLiquidationPrice`/`AsOf`) already cover both directions (the
+  `type==='collateral' && effectiveTarget==='cb'` gate is direction-agnostic). D4 withdraw is now EDITABLE:
+  `isEditableKind` includes `'withdraw'`; the edit-prefill + `handleSave` edit path each gain a `'withdraw'`
+  case mirroring `'deposit'`; `canSave`'s deposit branch + the cb re-anchor broadened to
+  `(kind==='deposit' || kind==='withdraw')`. The `amountLabel` reads "Collateral removed (BTC)" on withdraw.
+  D5 a SOFT, non-blocking LTV warning (`.warnNote`, amber): on a withdraw a conservative post-withdraw LTV
+  estimate (Strike → `advisorActualBlocBalance / ((currentBtcHeld − amt)×price)`, warn >0.5; CB →
+  `cbLoanBalance / ((cbCollateralBtc − amt)×price)`, warn >0.6) shows "approaching your limit" but NEVER gates
+  `canSave`. `EventSheet.module.css` adds `.warnNote`.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript

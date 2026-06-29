@@ -15,10 +15,10 @@ interface EventSheetProps {
   targetDate?: string;    // P4c-2 — ISO yyyy-mm-dd the add-sheet logs to (the calendar's selectedDay); ignored in edit mode
 }
 
-// P4b-2 — the DayEvent kinds the sheet can edit (map 1:1 to a SheetType). withdraw + cbCollateralReading
-// have no sheet UI, so their log rows stay non-tappable.
+// P4b-2 — the DayEvent kinds the sheet can edit (map 1:1 to a SheetType). cbCollateralReading has no sheet
+// UI, so its log rows stay non-tappable. P4c-3a — withdraw is now editable (collateral pill, withdraw dir).
 export function isEditableKind(k: DayEventKind): boolean {
-  return k === 'draw' || k === 'paydown' || k === 'buy' || k === 'deposit' || k === 'balanceReading';
+  return k === 'draw' || k === 'paydown' || k === 'buy' || k === 'deposit' || k === 'withdraw' || k === 'balanceReading';
 }
 
 const todayISO = () => new Date().toISOString().split('T')[0];
@@ -55,6 +55,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
   const btcPrice           = useStore((s) => s.btcPrice);
   const advisorStartDate   = useStore((s) => s.advisorStartDate);
   const currentBtcHeld     = useStore((s) => s.getCurrentBtcHeld());
+  const cbCollateralBtc        = useStore((s) => s.cbCollateralBtc);          // D5 withdraw warning
+  const cbLoanBalance          = useStore((s) => s.cbLoanBalance);            // D5 withdraw warning
+  const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance); // D5 withdraw warning
   const addDayEvent           = useStore((s) => s.addDayEvent);
   const updateDayEvent        = useStore((s) => s.updateDayEvent);
   const deleteDayEvent        = useStore((s) => s.deleteDayEvent);
@@ -67,6 +70,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
 
   const [type, setType]                     = useState<SheetType>('draw');
   const [amount, setAmount]                 = useState<number | null>(null);
+  const [collateralDir, setCollateralDir]   = useState<'deposit' | 'withdraw'>('deposit');
   const [collateralTarget, setCollTarget]   = useState<'strike' | 'cb'>('strike');
   const [strikeBal, setStrikeBal]           = useState<number | null>(null);
   const [strikeLtv, setStrikeLtv]           = useState<number | null>(null);
@@ -98,6 +102,14 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
           break;
         case 'deposit':
           setType('collateral');
+          setCollateralDir('deposit');
+          setCollTarget(editEvent.target);
+          setAmount(editEvent.amount);
+          setCbLiqPrice(editEvent.target === 'cb' ? (cbLiquidationPrice > 0 ? cbLiquidationPrice : null) : null);
+          break;
+        case 'withdraw':
+          setType('collateral');
+          setCollateralDir('withdraw');
           setCollTarget(editEvent.target);
           setAmount(editEvent.amount);
           setCbLiqPrice(editEvent.target === 'cb' ? (cbLiquidationPrice > 0 ? cbLiquidationPrice : null) : null);
@@ -116,6 +128,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
 
     setType('draw');
     setAmount(null);
+    setCollateralDir('deposit');
     setCollTarget('strike');
 
     // P4c-2 — recompute past-ness here (effectiveDate/isPast are declared after this effect closes).
@@ -165,7 +178,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
 
-  const state: SheetState = { type, amount, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral };
+  const state: SheetState = { type, amount, collateralDir, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral };
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
@@ -185,7 +198,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
   let canSave: boolean;
   if (isEdit && editEvent) {
     if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading);
-    else if (editEvent.kind === 'deposit')        canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
+    else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
+                                                  canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
     else                                          canSave = amountValid;   // draw / paydown / buy
   } else {
     // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
@@ -197,6 +211,29 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
   const strikeLtvWarn = strikeLtv !== null && strikeLtv > 100;
   const cbLtvWarn     = cbLtv !== null && cbLtv > 100;
 
+  // D2 — direction-aware "Strike held after" readout. The edit-backout is kind-aware: a deposit edit ADDED
+  // to currentBtcHeld, a withdraw edit SUBTRACTED — back out the original effect before applying the new one.
+  const dirSign = collateralDir === 'withdraw' ? -1 : 1;
+  const origEffect = isEdit && editEvent && (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
+    ? (editEvent.kind === 'withdraw' ? -editEvent.amount : editEvent.amount)
+    : 0;
+  const strikeAfter = currentBtcHeld - origEffect + dirSign * (amount ?? 0);
+
+  // D5 — soft, non-blocking heads-up. Conservative post-withdraw LTV estimate from live figures; NEVER gates Save.
+  let withdrawWarnLtv: number | null = null;
+  if (type === 'collateral' && collateralDir === 'withdraw' && amountValid) {
+    const amt = amount ?? 0;
+    if (effectiveTarget === 'cb') {
+      const postColl = cbCollateralBtc - amt;                                  // CB: 65% trigger / 86% LLTV
+      const est = postColl > 0 ? cbLoanBalance / (postColl * btcPrice) : Infinity;
+      if (est > 0.6) withdrawWarnLtv = est;
+    } else {
+      const postColl = currentBtcHeld - amt;                                   // Strike: 50% max-draw ceiling
+      const est = postColl > 0 ? advisorActualBlocBalance / (postColl * btcPrice) : Infinity;
+      if (est > 0.5) withdrawWarnLtv = est;
+    }
+  }
+
   function pickType(t: SheetType) {
     setType(t);
     setAmount(null);   // switching the type clears the amount (USD vs BTC unit changes)
@@ -205,6 +242,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
   function reset() {
     setType('draw');
     setAmount(null);
+    setCollateralDir('deposit');
     setCollTarget('strike');
     setStrikeBal(null);
     setStrikeLtv(null);
@@ -232,6 +270,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
         case 'deposit':
           updated = { id, date, ts, kind: 'deposit', amount: amount ?? 0, target: editEvent.target };
           break;
+        case 'withdraw':
+          updated = { id, date, ts, kind: 'withdraw', amount: amount ?? 0, target: editEvent.target };
+          break;
         case 'balanceReading': {
           const reading: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; price?: number } =
             { strikeBal: strikeBal ?? 0, strikeLtv: (strikeLtv ?? 0) / 100, price: btcPrice };
@@ -244,10 +285,10 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
           break;
         }
         default:
-          reset(); onClose(); return;   // withdraw / cbCollateralReading — not editable via the sheet
+          reset(); onClose(); return;   // cbCollateralReading — not editable via the sheet
       }
       updateDayEvent(updated);
-      if (editEvent.kind === 'deposit' && editEvent.target === 'cb' && cbLiqPrice !== null) {
+      if ((editEvent.kind === 'deposit' || editEvent.kind === 'withdraw') && editEvent.target === 'cb' && cbLiqPrice !== null) {
         setCbLiquidationPrice(cbLiqPrice);
         setCbLiquidationPriceAsOf(todayISO());
       }
@@ -257,7 +298,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
     }
 
     const events = buildEventsFromSheet(
-      { type, amount, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral },
+      { type, amount, collateralDir, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral },
       hasCbLoan, btcPrice, effectiveDate, Date.now(), newId,
     );
     // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
@@ -292,6 +333,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
     type === 'draw'       ? 'Draw amount'
     : type === 'paydown'  ? 'Paydown amount'
     : type === 'buy'      ? 'Bitcoin bought'
+    : collateralDir === 'withdraw' ? 'Collateral removed (BTC)'
     : 'Collateral added (BTC)';
 
   return createPortal(
@@ -337,9 +379,30 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
           />
         )}
 
-        {/* Collateral extras — Strike|Coinbase toggle + contextual readout */}
+        {/* Collateral extras — Deposit|Withdraw direction + Strike|Coinbase target toggles + contextual readout */}
         {type === 'collateral' && (
           <div className={styles.section}>
+            {!isEdit && (
+              <div className={styles.targetToggle} role="tablist" aria-label="Collateral direction">
+                <button
+                  role="tab"
+                  aria-selected={collateralDir === 'deposit'}
+                  className={`${styles.targetBtn} ${collateralDir === 'deposit' ? styles.targetBtnActive : ''}`}
+                  onClick={() => setCollateralDir('deposit')}
+                >
+                  Deposit
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={collateralDir === 'withdraw'}
+                  className={`${styles.targetBtn} ${collateralDir === 'withdraw' ? styles.targetBtnActive : ''}`}
+                  onClick={() => setCollateralDir('withdraw')}
+                >
+                  Withdraw
+                </button>
+              </div>
+            )}
+
             {!isEdit && hasCbLoan && (
               <div className={styles.targetToggle} role="tablist" aria-label="Collateral target">
                 <button
@@ -369,7 +432,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
                     : '— dry powder · connect Strike for context'}
                 </div>
                 <div className={styles.note}>
-                  Logged as activity. Effect on dry powder &amp; projections is not modeled yet (Feature B).
+                  {collateralDir === 'withdraw'
+                    ? 'Removing collateral raises your liquidation price — enter the new value from your Loan Center.'
+                    : 'Logged as activity. Effect on dry powder & projections is not modeled yet (Feature B).'}
                 </div>
                 <NumberInput
                   label="New liquidation price"
@@ -382,10 +447,21 @@ export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetP
             ) : (
               <>
                 <div className={styles.readout}>
-                  Strike held after: {(currentBtcHeld - (isEdit && editEvent && editEvent.kind === 'deposit' ? editEvent.amount : 0) + (amount ?? 0)).toFixed(5)} ₿
+                  Strike held after: {strikeAfter.toFixed(5)} ₿
+                  {amountValid && (
+                    <span className={styles.note}> ({dirSign > 0 ? '+' : '−'}{(amount ?? 0).toFixed(5)})</span>
+                  )}
                 </div>
                 <div className={styles.note}>Updates your Strike collateral.</div>
               </>
+            )}
+
+            {withdrawWarnLtv !== null && (
+              <div className={styles.warnNote}>
+                This withdrawal raises {effectiveTarget === 'cb' ? 'Coinbase' : 'Strike'} LTV to ~
+                {Number.isFinite(withdrawWarnLtv) ? Math.round(withdrawWarnLtv * 100) : '∞'}% — approaching your
+                limit. Proceed only if intended.
+              </div>
             )}
           </div>
         )}

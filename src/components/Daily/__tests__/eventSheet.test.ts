@@ -15,6 +15,7 @@ function idFactory() {
 const FULL: SheetState = {
   type: 'draw',
   amount: 1000,
+  collateralDir: 'deposit',
   collateralTarget: 'strike',
   strikeBal: 5000,
   strikeLtv: 11.2,
@@ -110,5 +111,42 @@ describe('buildEventsFromSheet — collateral (D2)', () => {
   it('collateral defaults to target:strike when !hasCbLoan (no toggle)', () => {
     const out = buildEventsFromSheet({ ...FULL, type: 'collateral', amount: 0.1, collateralTarget: 'cb' }, false, PRICE, TODAY, TS, idFactory());
     expect(out[0]).toMatchObject({ kind: 'deposit', amount: 0.1, target: 'strike' });
+  });
+});
+
+describe('buildEventsFromSheet — collateral WITHDRAW (P4c-3a)', () => {
+  it('collateral + collateralDir:withdraw + target:strike → [withdraw target:strike, balanceReading]', () => {
+    const out = buildEventsFromSheet(
+      { ...FULL, type: 'collateral', amount: 0.05, collateralDir: 'withdraw', collateralTarget: 'strike' },
+      true, PRICE, TODAY, TS, idFactory(),
+    );
+    expect(out.map((e) => e.kind)).toEqual(['withdraw', 'balanceReading']);
+    expect(out[0]).toMatchObject({ kind: 'withdraw', amount: 0.05, target: 'strike' });
+    expect(out[0].id).not.toBe(out[1].id);            // distinct ids
+    expect(out[0].date).toBe(TODAY); expect(out[0].ts).toBe(TS);   // flow + reading share date/ts
+  });
+
+  it('collateral + collateralDir:withdraw + target:cb → [withdraw target:cb, balanceReading]', () => {
+    const out = buildEventsFromSheet(
+      { ...FULL, type: 'collateral', amount: 0.1, collateralDir: 'withdraw', collateralTarget: 'cb' },
+      true, PRICE, TODAY, TS, idFactory(),
+    );
+    expect(out[0]).toMatchObject({ kind: 'withdraw', amount: 0.1, target: 'cb' });
+  });
+
+  it('withdraw amount stays POSITIVE (the store signs it negative in collateralDelta)', () => {
+    const out = buildEventsFromSheet(
+      { ...FULL, type: 'collateral', amount: 0.2, collateralDir: 'withdraw', collateralTarget: 'strike' },
+      false, PRICE, TODAY, TS, idFactory(),
+    );
+    expect(out[0]).toMatchObject({ kind: 'withdraw', amount: 0.2 });   // magnitude, not −0.2
+  });
+
+  it('withdraw defaults to target:strike when !hasCbLoan (no toggle)', () => {
+    const out = buildEventsFromSheet(
+      { ...FULL, type: 'collateral', amount: 0.05, collateralDir: 'withdraw', collateralTarget: 'cb' },
+      false, PRICE, TODAY, TS, idFactory(),
+    );
+    expect(out[0]).toMatchObject({ kind: 'withdraw', amount: 0.05, target: 'strike' });
   });
 });

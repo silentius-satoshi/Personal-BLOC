@@ -8,6 +8,7 @@ export type SheetType = 'draw' | 'buy' | 'paydown' | 'collateral' | 'setBalance'
 export interface SheetState {
   type: SheetType;
   amount: number | null;              // USD (draw/paydown) | BTC (buy/collateral) | null (setBalance)
+  collateralDir: 'deposit' | 'withdraw';  // only meaningful when type === 'collateral'
   collateralTarget: 'strike' | 'cb';  // only meaningful when type === 'collateral' (and hasCbLoan)
   strikeBal: number | null;
   strikeLtv: number | null;           // PERCENT as typed by the user (e.g. 11.2 = 11.2%)
@@ -32,7 +33,8 @@ export function readingComplete(s: SheetState, hasCbLoan: boolean): boolean {
  *  - setBalance  → [balanceReading]
  *  - draw/paydown → [{kind}, balanceReading]            (amount = USD)
  *  - buy          → [{buy, usd: amount*price}, reading]  (amount = BTC)
- *  - collateral   → [{deposit, target}, balanceReading]  (amount = BTC; target='strike' when !hasCbLoan)
+ *  - collateral   → [{deposit|withdraw, target}, balanceReading]  (amount = BTC magnitude, positive; kind by
+ *                   collateralDir — the store signs withdraw negative in collateralDelta; target='strike' when !hasCbLoan)
  * LTV is stored as a FRACTION (e.g. 0.112) — the user-entered PERCENT is divided by 100 here.
  * Each event gets a FRESH id from idFn(); the flow and its reading share date + ts.
  */
@@ -72,7 +74,11 @@ export function buildEventsFromSheet(
       return [{ id: idFn(), date: today, ts, kind: 'buy', amount, usd: amount * btcPrice }, readingEvent];
     case 'collateral':
       return [
-        { id: idFn(), date: today, ts, kind: 'deposit', amount, target: hasCbLoan ? s.collateralTarget : 'strike' },
+        {
+          id: idFn(), date: today, ts,
+          kind: s.collateralDir === 'withdraw' ? 'withdraw' : 'deposit',
+          amount, target: hasCbLoan ? s.collateralTarget : 'strike',
+        },
         readingEvent,
       ];
   }

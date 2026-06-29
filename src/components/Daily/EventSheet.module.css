@@ -101,6 +101,16 @@
 .readout { font-size: 12.5px; color: var(--text-secondary); font-family: var(--mono); }
 .note { font-size: 11px; color: var(--text-faint); line-height: 1.45; }
 .warn { font-size: 11px; color: var(--amber); }
+/* P4c-3a — soft, non-blocking withdraw LTV heads-up (block note, distinct from the inline .warn) */
+.warnNote {
+  font-size: 11px;
+  color: var(--amber);
+  line-height: 1.45;
+  background: rgba(232, 168, 74, 0.10);
+  border: 1px solid rgba(232, 168, 74, 0.30);
+  border-radius: 9px;
+  padding: 9px 11px;
+}
 
 /* Actions */
 .actions { display: flex; gap: 10px; margin-top: 4px; }
