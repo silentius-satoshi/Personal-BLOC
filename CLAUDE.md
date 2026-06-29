@@ -271,9 +271,13 @@ src/
                                 # and a .pbcard terminal/playbook PLAN REFERENCE (deriveForMonth + composeMonthSummary).
                                 # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
                                 # act-when + pb-sub). P4b-1: a Daily-only orange .fab (bottom-right, --btc gradient, hidden
-                                # when viewerMode) → opens <EventSheet/> (sheetOpen state); calendar/scrubber + edit/delete
-                                # still out (P4b-2/P4c). Props {onOpenSettings}. DailyModeView.module.css alongside (own
-                                # classes incl. .fab; uses the global --surface*/--line*/--btc/--mono tokens + reuses --green/--amber/--red/--text-*)
+                                # when viewerMode) → opens <EventSheet/> for ADD (setEditEvent(undefined)). P4b-2: each
+                                # editable-kind log row (isEditableKind — draw/paydown/buy/deposit/balanceReading; not
+                                # withdraw/cbCollateralReading) is tap-to-EDIT (role=button + Enter/Space + .logRowClickable
+                                # hover) → setEditEvent(ev) → the SAME <EventSheet/> in edit mode; gated !viewerMode (the
+                                # row is inert for viewers). calendar/scrubber + past-dating still out (P4c). Props
+                                # {onOpenSettings}. DailyModeView.module.css alongside (own classes incl. .fab +
+                                # .logRowClickable; uses the global --surface*/--line*/--btc/--mono tokens + reuses --green/--amber/--red/--text-*)
       dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
                                 # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
@@ -292,7 +296,7 @@ src/
                                 # ALL NumberInputs pass min={0} (NumberInput only clamps negatives when min is given) +
                                 # value={x ?? 0} with null-tracked state for the gate. Save → buildEventsFromSheet →
                                 # events.forEach(addDayEvent) (LD6 atomic flow+reading = TWO addDayEvent calls, same date/ts).
-                                # Today-only (M3 past-dating → P4c). Edit/delete = P4b-2 (not built). ON OPEN: a
+                                # Today-only (M3 past-dating → P4c). ON OPEN: a
                                 # useEffect([open]) pre-fills the five reading fields from the latest balanceReading
                                 # in dayLog (LTV fraction×100 → percent for display; null when no prior reading) so
                                 # the user only needs to enter the flow amount. Amount stays blank. Dep-array is [open]
@@ -301,7 +305,23 @@ src/
                                 # cbLiquidationPriceAsOf (anchor-to-today), mirroring the Loan Center re-anchor; the
                                 # liq-price field prefills from the current scalar (cbLiquidationPrice > 0) and is
                                 # required for save on CB collateral; Strike target and loan balance unaffected.
-                                # EventSheet.module.css alongside
+                                # P4b-2 EDIT + DELETE (the same shell): an optional editEvent?: DayEvent prop flips the
+                                # sheet into type-LOCKED edit mode (Option A — one DayEvent per log row; a flow and its
+                                # reading are independent rows). isEdit hides the type-pills + the Strike|CB toggle (target
+                                # locked) and shows ONLY that kind's fields: draw/paydown/buy → amount; deposit → amount
+                                # (+ liq-price when target:'cb'); balanceReading → the reading section (CB block gated on
+                                # the ORIGINAL reading's cbBal!=null via showCbReading, NOT current hasCbLoan). The reading
+                                # section renders ONLY in add mode OR for a balanceReading edit — a flow edit never shows
+                                # it (no LD6 re-enforcement). Title "Edit event"; month via bucketEventToMonth(editEvent.date).
+                                # canSave branches by kind (reading→readingComplete(state,showCbReading); cb-deposit→
+                                # amount>0 && liq>0; else amount>0). The open useEffect keys on [open, editEvent?.id] and
+                                # seeds fields from editEvent (LTV ×100 for display). handleSave reconstructs ONE event
+                                # preserving id/date/ts → updateDayEvent (LTV ÷100 on reading edits; cb-deposit edit also
+                                # re-anchors cbLiquidationPrice/AsOf) — NO buildEventsFromSheet, no second event. Delete
+                                # (edit only) → an inline .confirmBox (copy names the month + provisional warning) →
+                                # deleteDayEvent(id). Exports isEditableKind(k) (draw/paydown/buy/deposit/balanceReading)
+                                # — DailyModeView gates row taps on it (withdraw/cbCollateralReading rows stay
+                                # non-tappable). EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState + readingComplete(s,hasCbLoan)
                                 # (the reading half of the Save gate) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,

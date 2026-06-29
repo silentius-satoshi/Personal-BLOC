@@ -2,15 +2,23 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
+import { bucketEventToMonth } from '../../simulation/logUtils';
 import { fmtUSD } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import { readingComplete, buildEventsFromSheet, type SheetType, type SheetState } from './eventSheetModel';
-import type { DayEvent } from '../../simulation/types';
+import type { DayEvent, DayEventKind } from '../../simulation/types';
 import styles from './EventSheet.module.css';
 
 interface EventSheetProps {
   open: boolean;
   onClose: () => void;
+  editEvent?: DayEvent;   // P4b-2 — when set, the sheet opens in type-locked EDIT mode for this event
+}
+
+// P4b-2 — the DayEvent kinds the sheet can edit (map 1:1 to a SheetType). withdraw + cbCollateralReading
+// have no sheet UI, so their log rows stay non-tappable.
+export function isEditableKind(k: DayEventKind): boolean {
+  return k === 'draw' || k === 'paydown' || k === 'buy' || k === 'deposit' || k === 'balanceReading';
 }
 
 const todayISO = () => new Date().toISOString().split('T')[0];
@@ -40,17 +48,21 @@ const TYPE_PILLS: { type: SheetType; label: string }[] = [
  * (M3 past-dating → P4c). LD6: a flow Save writes the flow AND a balanceReading atomically (two addDayEvent
  * calls, same date/ts) — see buildEventsFromSheet.
  */
-export function EventSheet({ open, onClose }: EventSheetProps) {
+export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
   const hasCbLoan          = useStore((s) => s.hasCbLoan);
   const strikeBtcAvailable = useStore((s) => s.strikeBtcAvailable);
   const btcPrice           = useStore((s) => s.btcPrice);
   const advisorStartDate   = useStore((s) => s.advisorStartDate);
   const currentBtcHeld     = useStore((s) => s.getCurrentBtcHeld());
   const addDayEvent           = useStore((s) => s.addDayEvent);
+  const updateDayEvent        = useStore((s) => s.updateDayEvent);
+  const deleteDayEvent        = useStore((s) => s.deleteDayEvent);
   const dayLog                = useStore((s) => s.dayLog);
   const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);
   const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
   const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
+
+  const isEdit = !!editEvent;
 
   const [type, setType]                     = useState<SheetType>('draw');
   const [amount, setAmount]                 = useState<number | null>(null);
@@ -61,11 +73,44 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   const [cbLtv, setCbLtv]                   = useState<number | null>(null);
   const [cbCollateral, setCbCollateral]     = useState<number | null>(null);
   const [cbLiqPrice, setCbLiqPrice]         = useState<number | null>(null);
+  const [confirmDelete, setConfirmDelete]   = useState(false);
 
-  // On each open: reset flow fields and pre-fill the reading from the latest balanceReading in dayLog.
-  // Keyed on [open] only — triggering on every dayLog change while open would clobber in-progress edits.
+  // On each open: ADD mode resets flow + pre-fills the reading from the latest balanceReading in dayLog;
+  // EDIT mode seeds the fields from editEvent (type-locked to its kind). Keyed on [open, editEvent?.id]
+  // only — triggering on every dayLog change would clobber in-progress edits.
   useEffect(() => {
     if (!open) return;
+    setConfirmDelete(false);
+
+    if (editEvent) {
+      switch (editEvent.kind) {
+        case 'draw':
+        case 'paydown':
+          setType(editEvent.kind);
+          setAmount(editEvent.amount);
+          break;
+        case 'buy':
+          setType('buy');
+          setAmount(editEvent.amount);
+          break;
+        case 'deposit':
+          setType('collateral');
+          setCollTarget(editEvent.target);
+          setAmount(editEvent.amount);
+          setCbLiqPrice(editEvent.target === 'cb' ? (cbLiquidationPrice > 0 ? cbLiquidationPrice : null) : null);
+          break;
+        case 'balanceReading':
+          setType('setBalance');
+          setStrikeBal(editEvent.reading.strikeBal);
+          setStrikeLtv(editEvent.reading.strikeLtv * 100);   // fraction → percent for display
+          setCbBal(editEvent.reading.cbBal ?? null);
+          setCbLtv(editEvent.reading.cbLtv != null ? editEvent.reading.cbLtv * 100 : null);
+          setCbCollateral(editEvent.reading.cbCollateral ?? null);
+          break;
+      }
+      return;
+    }
+
     setType('draw');
     setAmount(null);
     setCollTarget('strike');
@@ -89,12 +134,14 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
       setCbCollateral(null);
     }
     setCbLiqPrice(cbLiquidationPrice > 0 ? cbLiquidationPrice : null);
-  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editEvent?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
 
   const today = todayISO();
-  const month = getCurrentStrategyMonth(advisorStartDate);
+  const month = isEdit && editEvent
+    ? bucketEventToMonth(editEvent.date, advisorStartDate)
+    : getCurrentStrategyMonth(advisorStartDate);
 
   const state: SheetState = { type, amount, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral };
 
@@ -104,10 +151,25 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
   // Effective collateral target — no toggle without a CB loan (implicitly Strike).
   const effectiveTarget = hasCbLoan ? collateralTarget : 'strike';
 
+  // For a balanceReading edit, show/require CB reading fields based on the ORIGINAL reading (faithful to
+  // when it was logged), not the current hasCbLoan. Add mode keys on hasCbLoan as before.
+  const showCbReading = editEvent && editEvent.kind === 'balanceReading'
+    ? editEvent.reading.cbBal != null
+    : hasCbLoan;
+
+  const cbLiqOk = cbLiqPrice !== null && cbLiqPrice > 0;
   const cbCollateralNeedsLiq = type === 'collateral' && effectiveTarget === 'cb';
-  const canSave = readingComplete(state, hasCbLoan)
-    && (!showAmount || amountValid)
-    && (!cbCollateralNeedsLiq || (cbLiqPrice !== null && cbLiqPrice > 0));
+
+  let canSave: boolean;
+  if (isEdit && editEvent) {
+    if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading);
+    else if (editEvent.kind === 'deposit')        canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
+    else                                          canSave = amountValid;   // draw / paydown / buy
+  } else {
+    canSave = readingComplete(state, hasCbLoan)
+      && (!showAmount || amountValid)
+      && (!cbCollateralNeedsLiq || cbLiqOk);
+  }
 
   const strikeLtvWarn = strikeLtv !== null && strikeLtv > 100;
   const cbLtvWarn     = cbLtv !== null && cbLtv > 100;
@@ -127,9 +189,50 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
     setCbLtv(null);
     setCbCollateral(null);
     setCbLiqPrice(null);
+    setConfirmDelete(false);
   }
 
   function handleSave() {
+    // EDIT mode — reconstruct the SINGLE event preserving id/date/ts, then updateDayEvent (Option A: no
+    // second event, no LD6 re-enforcement). CB-deposit edits also re-anchor the coupled liq-price scalar.
+    if (isEdit && editEvent) {
+      const { id, date, ts } = editEvent;
+      let updated: DayEvent;
+      switch (editEvent.kind) {
+        case 'draw':
+        case 'paydown':
+          updated = { id, date, ts, kind: editEvent.kind, amount: amount ?? 0 };
+          break;
+        case 'buy':
+          updated = { id, date, ts, kind: 'buy', amount: amount ?? 0, usd: (amount ?? 0) * btcPrice };
+          break;
+        case 'deposit':
+          updated = { id, date, ts, kind: 'deposit', amount: amount ?? 0, target: editEvent.target };
+          break;
+        case 'balanceReading': {
+          const reading: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; price?: number } =
+            { strikeBal: strikeBal ?? 0, strikeLtv: (strikeLtv ?? 0) / 100, price: btcPrice };
+          if (editEvent.reading.cbBal != null) {   // CB-bearing reading → keep CB fields
+            reading.cbBal = cbBal ?? 0;
+            reading.cbLtv = (cbLtv ?? 0) / 100;
+            reading.cbCollateral = cbCollateral ?? 0;
+          }
+          updated = { id, date, ts, kind: 'balanceReading', reading };
+          break;
+        }
+        default:
+          reset(); onClose(); return;   // withdraw / cbCollateralReading — not editable via the sheet
+      }
+      updateDayEvent(updated);
+      if (editEvent.kind === 'deposit' && editEvent.target === 'cb' && cbLiqPrice !== null) {
+        setCbLiquidationPrice(cbLiqPrice);
+        setCbLiquidationPriceAsOf(todayISO());
+      }
+      reset();
+      onClose();
+      return;
+    }
+
     const events = buildEventsFromSheet(
       { type, amount, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral },
       hasCbLoan, btcPrice, today, Date.now(), newId,
@@ -139,6 +242,13 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
       setCbLiquidationPrice(cbLiqPrice);
       setCbLiquidationPriceAsOf(todayISO());
     }
+    reset();
+    onClose();
+  }
+
+  function handleDelete() {
+    if (!editEvent) return;
+    deleteDayEvent(editEvent.id);
     reset();
     onClose();
   }
@@ -162,22 +272,28 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
         <div className={styles.grab} />
 
         <div>
-          <div className={styles.sheetTitle}>Log an event</div>
-          <div className={styles.sheetSub}>adds to {fmtDay(today)} · Month {month}</div>
+          <div className={styles.sheetTitle}>{isEdit ? 'Edit event' : 'Log an event'}</div>
+          <div className={styles.sheetSub}>
+            {isEdit && editEvent
+              ? `${fmtDay(editEvent.date)} · Month ${month}`
+              : `adds to ${fmtDay(today)} · Month ${month}`}
+          </div>
         </div>
 
-        {/* Type-pills */}
-        <div className={styles.typepills}>
-          {TYPE_PILLS.map((p) => (
-            <button
-              key={p.type}
-              className={`${styles.typepill} ${type === p.type ? styles.typepillActive : ''}`}
-              onClick={() => pickType(p.type)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        {/* Type-pills — hidden in edit mode (the type is locked to the event's kind) */}
+        {!isEdit && (
+          <div className={styles.typepills}>
+            {TYPE_PILLS.map((p) => (
+              <button
+                key={p.type}
+                className={`${styles.typepill} ${type === p.type ? styles.typepillActive : ''}`}
+                onClick={() => pickType(p.type)}
+              >
+                {p.label}
+              </button>
+            ))}
+          </div>
+        )}
 
         {/* Amount field (hidden for Set balance) */}
         {showAmount && (
@@ -194,7 +310,7 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
         {/* Collateral extras — Strike|Coinbase toggle + contextual readout */}
         {type === 'collateral' && (
           <div className={styles.section}>
-            {hasCbLoan && (
+            {!isEdit && hasCbLoan && (
               <div className={styles.targetToggle} role="tablist" aria-label="Collateral target">
                 <button
                   role="tab"
@@ -244,26 +360,42 @@ export function EventSheet({ open, onClose }: EventSheetProps) {
           </div>
         )}
 
-        {/* Reading section — required to log */}
-        <div className={styles.section}>
-          <span className={styles.sectionLabel}>Current balances · required to log</span>
-          <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" />
-          <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" />
-          {strikeLtvWarn && <span className={styles.warn}>Strike LTV over 100% — double-check the value.</span>}
-          {hasCbLoan && (
-            <>
-              <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />
-              <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" />
-              {cbLtvWarn && <span className={styles.warn}>Coinbase LTV over 100% — double-check the value.</span>}
-              <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} />
-            </>
-          )}
-        </div>
+        {/* Reading section — in ADD mode it's the bundled hard-require; in EDIT mode it shows ONLY for a
+            balanceReading edit (a flow edit touches just the flow, never its separate reading row). */}
+        {(!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
+          <div className={styles.section}>
+            <span className={styles.sectionLabel}>{isEdit ? 'Balances' : 'Current balances · required to log'}</span>
+            <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" />
+            <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" />
+            {strikeLtvWarn && <span className={styles.warn}>Strike LTV over 100% — double-check the value.</span>}
+            {showCbReading && (
+              <>
+                <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />
+                <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" />
+                {cbLtvWarn && <span className={styles.warn}>Coinbase LTV over 100% — double-check the value.</span>}
+                <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} />
+              </>
+            )}
+          </div>
+        )}
 
-        <div className={styles.actions}>
-          <button className={styles.cancelBtn} onClick={handleClose}>Cancel</button>
-          <button className={styles.saveBtn} onClick={handleSave} disabled={!canSave}>Save</button>
-        </div>
+        {confirmDelete ? (
+          <div className={styles.confirmBox}>
+            <span className={styles.confirmText}>
+              Delete this event? Month {month} will be re-rolled. If a today flow loses its reading, the month is marked provisional.
+            </span>
+            <div className={styles.actions}>
+              <button className={styles.cancelBtn} onClick={() => setConfirmDelete(false)}>Cancel</button>
+              <button className={styles.deleteBtn} onClick={handleDelete}>Delete</button>
+            </div>
+          </div>
+        ) : (
+          <div className={styles.actions}>
+            <button className={styles.cancelBtn} onClick={handleClose}>Cancel</button>
+            {isEdit && <button className={styles.deleteBtn} onClick={() => setConfirmDelete(true)}>Delete</button>}
+            <button className={styles.saveBtn} onClick={handleSave} disabled={!canSave}>Save</button>
+          </div>
+        )}
 
       </div>
     </div>,

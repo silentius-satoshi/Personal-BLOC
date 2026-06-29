@@ -6,7 +6,7 @@ import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strike
 import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { selectMonthEvents, describeDayEvent } from './dailyView';
-import { EventSheet } from './EventSheet';
+import { EventSheet, isEditableKind } from './EventSheet';
 import { fmtUSD } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
@@ -146,6 +146,7 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
 
   const [logExpanded, setLogExpanded] = useState(false);
   const [sheetOpen, setSheetOpen] = useState(false);   // P4b-1 — the event-entry sheet (add path)
+  const [editEvent, setEditEvent] = useState<DayEvent | undefined>(undefined);   // P4b-2 — set → edit mode
 
   // Aggregate the (already-read) month events into display totals — READ-ONLY (no writes, no new reads).
   const agg = useMemo(() => {
@@ -271,8 +272,17 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
                   {monthEvents.slice(0, logExpanded ? monthEvents.length : 5).map((ev) => {
                     const d = describeDayEvent(ev);
                     const tone = eventTone(ev.kind);
+                    const editable = !viewerMode && isEditableKind(ev.kind);
+                    const openEdit = () => { setEditEvent(ev); setSheetOpen(true); };
                     return (
-                      <div key={ev.id} className={styles.logRow}>
+                      <div
+                        key={ev.id}
+                        className={`${styles.logRow} ${editable ? styles.logRowClickable : ''}`}
+                        role={editable ? 'button' : undefined}
+                        tabIndex={editable ? 0 : undefined}
+                        onClick={editable ? openEdit : undefined}
+                        onKeyDown={editable ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openEdit(); } } : undefined}
+                      >
                         <span className={styles.logTime}>{fmtDay(ev.date)}</span>
                         <span className={styles.logType}>
                           {tone.ring ? <span className={styles.ring} /> : <span className={`${styles.dot} ${tone.dot}`} />}
@@ -340,11 +350,16 @@ export function DailyModeView({ onOpenSettings }: DailyModeViewProps) {
 
       </div>
 
-      {/* P4b-1 — Daily-only write path: orange FAB → the event-entry sheet. Hidden for read-only viewers. */}
+      {/* P4b-1 add / P4b-2 edit — Daily-only write path. FAB opens add mode; a log-row tap opens edit mode.
+          Hidden for read-only viewers. */}
       {!viewerMode && (
         <>
-          <button className={styles.fab} onClick={() => setSheetOpen(true)} aria-label="Log an event">+</button>
-          <EventSheet open={sheetOpen} onClose={() => setSheetOpen(false)} />
+          <button className={styles.fab} onClick={() => { setEditEvent(undefined); setSheetOpen(true); }} aria-label="Log an event">+</button>
+          <EventSheet
+            open={sheetOpen}
+            editEvent={editEvent}
+            onClose={() => { setSheetOpen(false); setEditEvent(undefined); }}
+          />
         </>
       )}
     </div>

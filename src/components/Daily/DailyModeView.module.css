@@ -136,6 +136,9 @@
   margin-bottom: 8px;
 }
 .logRow:last-child { margin-bottom: 0; }
+/* P4b-2 — editable rows tap to open the edit sheet */
+.logRowClickable { cursor: pointer; transition: border-color 0.12s; }
+.logRowClickable:hover { border-color: var(--line-2); }
 .logTime { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); }
 .logType { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-primary); font-weight: 550; }
 .logAmt { font-family: var(--mono); font-size: 13px; text-align: right; }
