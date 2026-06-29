@@ -993,12 +993,43 @@ events grouped by day (each editable via the P4b-2 sheet; the modal closes when 
 - **`DailyModeView`** — the inline `agg`/`monthEvents` memos are replaced by `dayActivity`/`monthRollup`
   memos + `const view = isMonth ? monthRollup : dayActivity`; the activity card reads `view.netBtc/streams`,
   the log section branches on `scope`. Month scope renders read-only summary rows (Drawn/Bought/Paydown/
-  Interest) + the `.entriesBtn` "from N entries" → `setMonthModalOpen(true)`. FAB still adds to TODAY
-  (backfill → P4c-2). The Calendar component, its pips, and the date math are UNCHANGED.
+  Interest) + the `.entriesBtn` "from N entries" → `setMonthModalOpen(true)`. (FAB targets the selected day
+  as of P4c-2.) The Calendar component, its pips, and the date math are UNCHANGED.
 - **`MonthEventsModal.tsx`** (+ `.module.css`) — portal scrim/sheet (mirrors EventSheet); `groupEventsByDay`
   → per-day rows (describeDayEvent + a local kind→tone map); rows tappable when `!viewerMode &&
   isEditableKind` → `onEditEvent` (host closes modal, opens the P4b-2 edit sheet). Read-only/non-interactive
   for viewers.
+
+---
+
+## Daily Mode (P4c-2 — past-dated backfill; store stays v19, NO store changes)
+
+The add-sheet can now target the calendar's `selectedDay` instead of always logging to today; past dates make
+the balance reading OPTIONAL (the month is marked provisional for later reconciliation), future dates are
+blocked. **No store changes** — `rollupMonth` (logUtils.ts:159-165) already carry-forwards prior stocks +
+`provisional:true` when a month has flows but no `balanceReading`; this build just lets the UI CREATE such
+reading-less events for past dates. The pure helpers (`buildEventsFromSheet`/`readingComplete`) are UNTOUCHED —
+the reading-omit is a filter in `handleSave`. Edit mode, today-logging, the calendar, the activity card, the
+rollup, SafetyDashboard, and Monthly view are all unaffected.
+
+- **`EventSheet.tsx`** gains `targetDate?: string` (ISO yyyy-mm-dd = the calendar's `selectedDay`; ignored in
+  edit mode). Add-mode now derives `effectiveDate = targetDate ?? today` (logs there) + `isPast = !isEdit &&
+  effectiveDate < today` (yyyy-mm-dd string compare). The add-mode `month` is computed from `effectiveDate` via
+  `bucketEventToMonth` (was `getCurrentStrategyMonth`, now dropped — its only use); the title reads
+  `backfilling {fmtDay} · Month N` when past, `adds to {fmtDay} · Month N` otherwise.
+- **M3 optional-reading gate (past dates):** the reading section still renders (you CAN fill it if you know the
+  past balances) but its label becomes "Current balances · optional for past dates" + a `.note` explains the
+  provisional consequence. `canSave` relaxes for past FLOW types only: `((isPast && type !== 'setBalance') ||
+  readingComplete(state, hasCbLoan)) && (!showAmount || amountValid) && (!cbCollateralNeedsLiq || cbLiqOk)` — a
+  reading-only `setBalance` past event STILL requires the reading (nothing else to write). `handleSave` passes
+  `effectiveDate` to `buildEventsFromSheet`, then when `isPast && !readingComplete(...)` filters out the
+  `balanceReading` event so only the flow is written → the store marks the month provisional via carry-forward.
+  The CB-collateral liq-price write + its `AsOf = todayISO()` stay unchanged (the anchor is "now," not the
+  backfill date).
+- **`DailyModeView.tsx`** passes `targetDate={selectedDay}` to `<EventSheet>` and disables the FAB when
+  `selectedDay > today` (future) with a "Can't log a future date" title; the FAB stays `!viewerMode`-gated, so
+  backfill inherits the read-only-viewer block. `DailyModeView.module.css` adds a `.fab:disabled` rule (0.4
+  opacity, `not-allowed` cursor, no hover lift).
 
 ---
 

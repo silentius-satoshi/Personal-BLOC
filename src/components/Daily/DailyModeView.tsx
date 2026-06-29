@@ -405,10 +405,18 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
           Hidden for read-only viewers. */}
       {!viewerMode && (
         <>
-          <button className={styles.fab} onClick={() => { setEditEvent(undefined); setSheetOpen(true); }} aria-label="Log an event">+</button>
+          {/* P4c-2 — future days can't be logged; the FAB greys out until today or a past day is selected. */}
+          <button
+            className={styles.fab}
+            disabled={selectedDay > today}
+            onClick={() => { setEditEvent(undefined); setSheetOpen(true); }}
+            aria-label="Log an event"
+            title={selectedDay > today ? "Can't log a future date" : 'Log an event'}
+          >+</button>
           <EventSheet
             open={sheetOpen}
             editEvent={editEvent}
+            targetDate={selectedDay}
             onClose={() => { setSheetOpen(false); setEditEvent(undefined); }}
           />
         </>

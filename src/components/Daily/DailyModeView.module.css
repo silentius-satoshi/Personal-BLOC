@@ -273,3 +273,6 @@
 }
 .fab:hover { transform: translateY(-1px); box-shadow: 0 8px 22px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(247, 147, 26, 0.4); }
 .fab:active { transform: translateY(0); }
+/* P4c-2 — a future-day selection disables logging (can't log ahead of today). */
+.fab:disabled { opacity: 0.4; cursor: not-allowed; }
+.fab:disabled:hover { transform: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(247, 147, 26, 0.25); }

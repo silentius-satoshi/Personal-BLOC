@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
-import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { bucketEventToMonth } from '../../simulation/logUtils';
 import { fmtUSD } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
@@ -13,6 +12,7 @@ interface EventSheetProps {
   open: boolean;
   onClose: () => void;
   editEvent?: DayEvent;   // P4b-2 — when set, the sheet opens in type-locked EDIT mode for this event
+  targetDate?: string;    // P4c-2 — ISO yyyy-mm-dd the add-sheet logs to (the calendar's selectedDay); ignored in edit mode
 }
 
 // P4b-2 — the DayEvent kinds the sheet can edit (map 1:1 to a SheetType). withdraw + cbCollateralReading
@@ -44,11 +44,12 @@ const TYPE_PILLS: { type: SheetType; label: string }[] = [
  * Daily Mode P4b-1 — the one adaptive event-entry bottom-sheet (ADD path only).
  * D1 bundled cash-event sheet (type-pills + amount + a required "current balances" reading section,
  * Save gated on the reading), D2 Collateral pill with a Strike|Coinbase target toggle + contextual
- * readout, D3 Set-balance reading-only pill. Scope-2 orange (active pills + Save = --btc). Today-only
- * (M3 past-dating → P4c). LD6: a flow Save writes the flow AND a balanceReading atomically (two addDayEvent
- * calls, same date/ts) — see buildEventsFromSheet.
+ * readout, D3 Set-balance reading-only pill. Scope-2 orange (active pills + Save = --btc). P4c-2: the add path
+ * targets `targetDate` (the calendar's selectedDay) — past dates make the reading optional (provisional month),
+ * future dates are blocked at the FAB. LD6: a today flow Save writes the flow AND a balanceReading atomically
+ * (two addDayEvent calls, same date/ts) — see buildEventsFromSheet.
  */
-export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
+export function EventSheet({ open, onClose, editEvent, targetDate }: EventSheetProps) {
   const hasCbLoan          = useStore((s) => s.hasCbLoan);
   const strikeBtcAvailable = useStore((s) => s.strikeBtcAvailable);
   const btcPrice           = useStore((s) => s.btcPrice);
@@ -139,9 +140,12 @@ export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
   if (!open) return null;
 
   const today = todayISO();
+  // P4c-2 — add-mode logs to the calendar's selectedDay (effectiveDate); edit-mode stays on editEvent.date.
+  const effectiveDate = targetDate ?? today;
+  const isPast = !isEdit && effectiveDate < today;   // yyyy-mm-dd string compare; past = strictly before today
   const month = isEdit && editEvent
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
-    : getCurrentStrategyMonth(advisorStartDate);
+    : bucketEventToMonth(effectiveDate, advisorStartDate);
 
   const state: SheetState = { type, amount, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral };
 
@@ -166,7 +170,8 @@ export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
     else if (editEvent.kind === 'deposit')        canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
     else                                          canSave = amountValid;   // draw / paydown / buy
   } else {
-    canSave = readingComplete(state, hasCbLoan)
+    // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
+    canSave = ((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))
       && (!showAmount || amountValid)
       && (!cbCollateralNeedsLiq || cbLiqOk);
   }
@@ -235,9 +240,14 @@ export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
 
     const events = buildEventsFromSheet(
       { type, amount, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral },
-      hasCbLoan, btcPrice, today, Date.now(), newId,
+      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId,
     );
-    events.forEach((e) => addDayEvent(e));
+    // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
+    // the store carry-forwards prior stocks + marks the month provisional (logUtils rollupMonth).
+    const toWrite = (isPast && !readingComplete(state, hasCbLoan))
+      ? events.filter((e) => e.kind !== 'balanceReading')
+      : events;
+    toWrite.forEach((e) => addDayEvent(e));
     if (type === 'collateral' && effectiveTarget === 'cb' && cbLiqPrice !== null) {
       setCbLiquidationPrice(cbLiqPrice);
       setCbLiquidationPriceAsOf(todayISO());
@@ -276,7 +286,9 @@ export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
           <div className={styles.sheetSub}>
             {isEdit && editEvent
               ? `${fmtDay(editEvent.date)} · Month ${month}`
-              : `adds to ${fmtDay(today)} · Month ${month}`}
+              : isPast
+                ? `backfilling ${fmtDay(effectiveDate)} · Month ${month}`
+                : `adds to ${fmtDay(effectiveDate)} · Month ${month}`}
           </div>
         </div>
 
@@ -364,7 +376,14 @@ export function EventSheet({ open, onClose, editEvent }: EventSheetProps) {
             balanceReading edit (a flow edit touches just the flow, never its separate reading row). */}
         {(!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
           <div className={styles.section}>
-            <span className={styles.sectionLabel}>{isEdit ? 'Balances' : 'Current balances · required to log'}</span>
+            <span className={styles.sectionLabel}>
+              {isEdit ? 'Balances' : isPast ? 'Current balances · optional for past dates' : 'Current balances · required to log'}
+            </span>
+            {isPast && (
+              <div className={styles.note}>
+                Past date — current balances optional. Skip if you don&apos;t have them; this month is marked provisional until a reading is logged.
+              </div>
+            )}
             <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" />
             <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" />
             {strikeLtvWarn && <span className={styles.warn}>Strike LTV over 100% — double-check the value.</span>}
