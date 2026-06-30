@@ -1317,7 +1317,10 @@ pattern, reuses `.simpleModeSettings`/`.simpleModeSettingsHeader`/`.simpleModeBa
 Still STATIC (default fixture height 955_710/'estimated'; P3 wires live data via `useChainTip`).
 `AlmanacView` content is wrapped in a `.container` (`max-width: 600px; margin: 0 auto; padding: 0
 16px 32px`) — matches Daily/Monthly's `.content` exactly, fixing full-width sprawl in both full-mode
-and simple-mode. One container, no mode branching.
+and simple-mode. One container, no mode branching. `AppShell.module.css` carries
+`[data-active-tab="almanac"]` sidebar-collapse rules (`.sidebar { display: none }` +
+`.main { grid-column: 1 / -1 }`) matching the liqsim/settings pattern — the empty 280px rail
+no longer renders in full-mode.
 
 ---
 
