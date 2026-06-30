@@ -1322,6 +1322,47 @@ and simple-mode. One container, no mode branching. `AppShell.module.css` carries
 `.main { grid-column: 1 / -1 }`) matching the liqsim/settings pattern — the empty 280px rail
 no longer renders in full-mode.
 
+### P3 — live block height (opt-in fetch; store stays v19)
+
+The Almanac height is now REAL and updating — but **sovereign-first: DEFAULT OFF**. With the toggle off the
+clock fetches NOTHING; `height = Math.round(blockAtDate(Date.now()))` (mode `'estimated'`). Live is opt-in.
+Off and live feed the SAME `epochProgress(height).fraction` geometry (§4 fallback parity / HR-1) — only the
+badge + an off-mode `~`/`est.` precision marker differ.
+- **`src/hooks/useChainTip.ts`** (NEW) — `{ height, mode, source, lastUpdated, isStale }`. Multi-provider
+  config-ready `PROVIDERS` array `{name,url,parse}` tried sequentially: mempool.space → blockstream.info →
+  blockchain.info (plain-text height) → blockchair.com (`data.blocks` JSON); 8s AbortController each;
+  plausibility guard `isPlausibleHeight` = `800_000 < h < 2_000_000`; first valid wins (else keeps the last
+  good tip, silent). Lifecycle mirrors `useBtcPrice`: Effect A = a 60s `now` ticker (off-estimate freshness
+  + staleness clock); Effect B = the live poll gated `[isVisible, almanacLiveEnabled]` (120s interval,
+  `clearInterval` + `abortRef.abort()` on cleanup → never fetches when off/hidden, flipping off aborts
+  in-flight). `inFlightRef` prevents stacked polls. `isStale` = live && lastUpdated >10min old. Exports
+  `PROVIDERS` + `isPlausibleHeight` (pure-tested). 🔴 imports `usePageVisibility` + `cycleModel.blockAtDate`
+  + the store (toggle flag ONLY) — nothing from the risk core.
+- **Store (mirror `devMode`, NO version bump):** `almanacLiveEnabled`/`almanacLiveConsented` (default
+  `false`) + plain `set()` setters (no `syncSettingsToNostr`). DEVICE-LOCAL — ride `partializeState`'s
+  `...rest`, ABSENT from `buildSettingsPayload`/`SETTINGS_FIELDS`. Never synced → the owner's and a viewer's
+  choices are independent (**viewer parity for free**). No `migrateState` entry (the custom `merge` fills the
+  default, `simpleView` precedent).
+- **`FreshnessBadge.tsx`** (NEW, eyebrow row, in `AlmanacView`) — a plain `<button>` (NOT the auto-disabled
+  `Toggle`, so a viewer can flip it). OFF: muted "date-only · live off"; LIVE: green "live · {ago} ·
+  {source}" (amber when stale). Tap = the toggle: enabled→off (silent); else consented→on (silent); else →
+  open the consent sheet. a11y `aria-label`. The badge is shared by both faces (single fetch in AlmanacView).
+- **`AlmanacConsentSheet.tsx`** (NEW) — one-time consent on FIRST enable (createPortal scrim/sheet mirroring
+  `EventSheet`): title + the four hosts as mono pills + a green "block height only — no holdings, no
+  identity" reassurance + Stay-offline / Turn-on (`--btc`). Confirm → consent+enable; cancel → stays off.
+- **`AlmanacView.tsx`** — dropped the static `height`/`mode` props; calls `useChainTip()` ONCE and feeds
+  `tip.height`/`tip.mode` to both faces (face switch never refetches — §14.5). Owns the badge tap + consent
+  state.
+- **Faces (off-mode precision marker, conditional on the existing `mode` prop, no new prop):** HalvingClock
+  `.sub2` prepends `~` when estimated + the block-height stat rsub reads `estimate`/`live`; CycleClock's
+  block-height stat rsub same; CycleDial's cycle-branch `aria-valuetext` gains the `(estimated)` suffix
+  (halving branch already had it).
+- **Settings → Display** gains an ALMANAC group "Live block height" toggle (canonical entry, owner-only
+  block; viewers use the badge) — ON also sets consent (the inline host disclosure satisfies it).
+- Supersedes `useMempoolData` conceptually (PowerLawSidebar still uses the old single-provider hook,
+  unmigrated). Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).
+  Suite 419 → 425.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)

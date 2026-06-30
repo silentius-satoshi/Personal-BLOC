@@ -89,7 +89,7 @@ export default function CycleClock({ height, mode, onSwitchToHalving }: CycleClo
         <div className={styles.rstat}>
           <div className={styles.k}>Block height</div>
           <div className={styles.v}>{height.toLocaleString()}</div>
-          <div className={styles.rsub}>estimate</div>
+          <div className={styles.rsub}>{mode === 'estimated' ? 'estimate' : 'live'}</div>
         </div>
       </div>
 

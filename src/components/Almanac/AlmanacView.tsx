@@ -1,29 +1,51 @@
 import { useState } from 'react';
 import HalvingClock from './HalvingClock';
 import CycleClock from './CycleClock';
+import FreshnessBadge from './FreshnessBadge';
+import AlmanacConsentSheet from './AlmanacConsentSheet';
+import { useChainTip } from '../../hooks/useChainTip';
+import { useStore } from '../../store/useStore';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac container (P2) — the sub-nav + the two clock faces. Holds the local face state (DEFAULT
- * halving, §14.3 — nothing persisted, nothing synced). The SAME height/mode are passed to both faces,
- * so switching faces is pure presentation and never remounts a data layer (§14.5). In P3 the single
- * useChainTip lives HERE and feeds height/mode down — this prop shape is already that seam.
- *
- * STILL STATIC in P2 — height/mode default to a review fixture; not wired into the app surface switch
- * (P4). Imports nothing from the risk/position core.
+ * Almanac container — the sub-nav + the two clock faces. Holds the local face state (DEFAULT halving,
+ * §14.3 — nothing persisted, nothing synced). P3: the single useChainTip lives HERE and feeds the SAME
+ * height/mode to both faces, so switching faces is pure presentation and never remounts the data layer
+ * (§14.5 by construction). The eyebrow badge is the live-block-height toggle (device-local; one-time
+ * consent on first enable). Imports nothing from the risk/position core.
  */
-export interface AlmanacViewProps {
-  height?: number;
-  mode?: 'live' | 'estimated';
-}
-
-export default function AlmanacView({ height = 955_710, mode = 'estimated' }: AlmanacViewProps) {
+export default function AlmanacView() {
   const [face, setFace] = useState<'halving' | 'cycle'>('halving');
+  const [consentOpen, setConsentOpen] = useState(false);
+
+  const tip = useChainTip();
+  const almanacLiveEnabled = useStore((s) => s.almanacLiveEnabled);
+  const almanacLiveConsented = useStore((s) => s.almanacLiveConsented);
+  const setAlmanacLiveEnabled = useStore((s) => s.setAlmanacLiveEnabled);
+  const setAlmanacLiveConsented = useStore((s) => s.setAlmanacLiveConsented);
+
+  const handleBadgeTap = () => {
+    if (almanacLiveEnabled) {
+      setAlmanacLiveEnabled(false);            // off — silent
+    } else if (almanacLiveConsented) {
+      setAlmanacLiveEnabled(true);             // already consented — silent enable
+    } else {
+      setConsentOpen(true);                    // first enable — one-time consent
+    }
+  };
 
   return (
     <div className={styles.container}>
       <div className={styles.eyebrow}>
         <span className={styles.eyebrowLabel}>Almanac</span>
+        <FreshnessBadge
+          enabled={almanacLiveEnabled}
+          mode={tip.mode}
+          source={tip.source}
+          lastUpdated={tip.lastUpdated}
+          isStale={tip.isStale}
+          onTap={handleBadgeTap}
+        />
         <span className={styles.eyebrowLine} />
       </div>
 
@@ -51,10 +73,20 @@ export default function AlmanacView({ height = 955_710, mode = 'estimated' }: Al
       </div>
 
       {face === 'halving' ? (
-        <HalvingClock height={height} mode={mode} />
+        <HalvingClock height={tip.height} mode={tip.mode} />
       ) : (
-        <CycleClock height={height} mode={mode} onSwitchToHalving={() => setFace('halving')} />
+        <CycleClock height={tip.height} mode={tip.mode} onSwitchToHalving={() => setFace('halving')} />
       )}
+
+      <AlmanacConsentSheet
+        open={consentOpen}
+        onCancel={() => setConsentOpen(false)}
+        onConfirm={() => {
+          setAlmanacLiveConsented(true);
+          setAlmanacLiveEnabled(true);
+          setConsentOpen(false);
+        }}
+      />
     </div>
   );
 }

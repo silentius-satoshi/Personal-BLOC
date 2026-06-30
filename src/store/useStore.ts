@@ -187,12 +187,16 @@ export interface StoreState {
   onboardingComplete:    boolean;
   btcBuyingUnit:         'btc' | 'sats';
   devMode:               boolean;   // persisted, DEVICE-LOCAL — never synced (not in SETTINGS_FIELDS/payload)
+  almanacLiveEnabled:    boolean;   // persisted, DEVICE-LOCAL — never synced (Almanac live block height opt-in; mirrors devMode)
+  almanacLiveConsented:  boolean;   // persisted, DEVICE-LOCAL — never synced (one-time consent for the explorer fetch)
   expenseReanchorDismissedAt: number;   // avg dismissed against (0 = not dismissed); persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
   setExpenseReanchorDismissedAt: (v: number) => void;
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setBtcBuyingUnit:      (v: 'btc' | 'sats') => void;
   setDevMode:            (v: boolean) => void;
+  setAlmanacLiveEnabled:   (v: boolean) => void;
+  setAlmanacLiveConsented: (v: boolean) => void;
 
   // Advisor tab inputs
   advisorStartDate:         string;
@@ -844,6 +848,8 @@ export const useStore = create<StoreState>()(
   onboardingComplete: seedOnboardingComplete,   // 3a.4: standalone-seeded (false on fresh install = today's default)
   btcBuyingUnit:      'btc',
   devMode:            false,
+  almanacLiveEnabled:   false,
+  almanacLiveConsented: false,
   expenseReanchorDismissedAt: 0,
   setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
   // 3a.4: write through to the standalone GATE_* key (outside the encrypted blob) so the unlock gate can bootstrap
@@ -851,6 +857,8 @@ export const useStore = create<StoreState>()(
   setOnboardingComplete: (v) => { try { v ? localStorage.setItem(GATE_ONBOARDED_KEY, '1') : localStorage.removeItem(GATE_ONBOARDED_KEY); } catch { /* noop */ } set({ onboardingComplete: v }); },
   setBtcBuyingUnit:      (v) => { set({ btcBuyingUnit: v }); useStore.getState().syncSettingsToNostr(); },
   setDevMode:            (v) => set({ devMode: v }),
+  setAlmanacLiveEnabled:   (v) => set({ almanacLiveEnabled: v }),    // device-local, unsynced — no syncSettingsToNostr
+  setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no syncSettingsToNostr
   setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no syncSettingsToNostr
 
   advisorStartDate:         new Date().toISOString().split('T')[0],

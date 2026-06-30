@@ -123,7 +123,7 @@ export default function CycleDial({ height, mode, emphasis = 'halving', children
         aria-valuetext={
           isHalving
             ? `Epoch ${epoch.era}, ${pct}% complete${mode === 'estimated' ? ' (estimated)' : ''}`
-            : `${pct}% through the projected descending phase, idealized`
+            : `${pct}% through the projected descending phase, idealized${mode === 'estimated' ? ' (estimated)' : ''}`
         }
       >
         {/* gradient only used by the confident halving arc */}

@@ -1,0 +1,56 @@
+/* Almanac P3 — freshness badge / live-toggle button (eyebrow row). Tokens only. */
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  border-radius: 999px;
+  padding: 3px 9px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+
+.text {
+  line-height: 1;
+}
+
+/* OFF — muted hollow dot */
+.off {
+  color: var(--text-faint);
+}
+.off .dot {
+  background: transparent;
+  border: 1px solid var(--text-faint);
+}
+
+/* LIVE — green filled dot with a subtle glow */
+.live {
+  color: var(--green);
+  border-color: color-mix(in srgb, var(--green) 35%, transparent);
+}
+.live .dot {
+  background: var(--green);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--green) 70%, transparent);
+}
+
+/* LIVE but stale — amber */
+.stale {
+  color: var(--amber);
+  border-color: color-mix(in srgb, var(--amber) 35%, transparent);
+}
+.stale .dot {
+  background: var(--amber);
+}

@@ -305,6 +305,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setShowPlanStrikeBar        = useStore((s) => s.setShowPlanStrikeBar);
   const showPlanCbBar               = useStore((s) => s.showPlanCbBar);
   const setShowPlanCbBar            = useStore((s) => s.setShowPlanCbBar);
+  const almanacLiveEnabled          = useStore((s) => s.almanacLiveEnabled);
+  const setAlmanacLiveEnabled       = useStore((s) => s.setAlmanacLiveEnabled);
+  const setAlmanacLiveConsented     = useStore((s) => s.setAlmanacLiveConsented);
 
   const cbLoanBalance         = useStore((s) => s.cbLoanBalance);         const setCbLoanBalance         = useStore((s) => s.setCbLoanBalance);
   const cbCollateralBtc       = useStore((s) => s.cbCollateralBtc);       const setCbCollateralBtc       = useStore((s) => s.setCbCollateralBtc);
@@ -758,6 +761,30 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               <span className={styles.cbLoanToggleDesc}>In the monthly plan card</span>
             </div>
             <Toggle value={showPlanCbBar} onChange={setShowPlanCbBar} />
+          </div>
+        </div>
+
+        <div className={styles.setupGroup}>
+          <div className={styles.setupGroupLabel}>ALMANAC</div>
+          <div className={styles.cbLoanToggleRow}>
+            <div className={styles.cbLoanToggleLabel}>
+              <span className={styles.cbLoanToggleTitle}>Live block height</span>
+              <span className={styles.cbLoanToggleDesc}>
+                Fetches the current block from mempool.space, blockstream.info, blockchain.info, or
+                blockchair — block height only, no identity. Off = local estimate.
+              </span>
+            </div>
+            <Toggle
+              value={almanacLiveEnabled}
+              onChange={(v) => {
+                if (v) {
+                  setAlmanacLiveConsented(true);   // the host list above satisfies the disclosure
+                  setAlmanacLiveEnabled(true);
+                } else {
+                  setAlmanacLiveEnabled(false);
+                }
+              }}
+            />
           </div>
         </div>
       </div>

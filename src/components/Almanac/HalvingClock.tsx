@@ -45,7 +45,9 @@ export default function HalvingClock({ height, mode }: HalvingClockProps) {
             <span className={styles.countUnit}>d</span>
           </div>
           <div className={styles.sub}>est. ~{estLabel}</div>
-          <div className={styles.sub2}>block {height.toLocaleString()} / 1,050,000</div>
+          <div className={styles.sub2}>
+            {mode === 'estimated' ? '~' : ''}block {height.toLocaleString()} / 1,050,000
+          </div>
         </CycleDial>
       </div>
 
@@ -65,7 +67,7 @@ export default function HalvingClock({ height, mode }: HalvingClockProps) {
         <div className={styles.rstat}>
           <div className={styles.k}>Block height</div>
           <div className={styles.v}>{height.toLocaleString()}</div>
-          <div className={styles.rsub}>estimate</div>
+          <div className={styles.rsub}>{mode === 'estimated' ? 'estimate' : 'live'}</div>
         </div>
       </div>
 
