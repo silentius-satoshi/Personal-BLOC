@@ -1168,6 +1168,34 @@ caption distillation, and always-visible-vs-expansion placement moved. Renders i
 - **CSS (additive):** `.barHeaderLeft`/`.barValue`/`.chevron` in `SafetyDashboard.module.css`; captions reuse
   `.cushionRow`/`.cushion`/`.ltvNow`, flip hint reuses `.flipHint`, badge `.badge`, edit `.editLink`.
 
+### SafetyDashboard structural minimalism (display-only — matches preview)
+
+A second presentation-only pass on top of Option 1 — **no computed value / handler / edit-box content
+changed** (one read-only local added). Merges the loose stack into a single card matching the preview:
+- **Verdict → eyebrow:** the standalone `.stateLine`/`.stateDot` were removed; the verdict now renders as a
+  `.eyebrow` card title — a muted mono `.eyebrowLabel` "SAFETY ·" + a `.eyebrowVerdict` (state-colored via
+  `LEVEL_COLOR[state]`, natural case). `stateCopy`'s three strings lost their trailing period (CONDITIONS
+  unchanged).
+- **Two cards → one:** the two bordered `.barCard`s merged into ONE inner `.safetyCard` (border + bg-card +
+  radius 12px); the bars are now borderless `.barRow`s separated by a single `.barDiv` hairline (between
+  Strike and CB only). `.dashboard` stays the OUTER flex container; **`priceSlot` (the price chart) stays a
+  sibling ABOVE `.safetyCard`** (chart on top, then the safety card titled by the eyebrow). Expansions open
+  inline within the card (children of each `barRow`).
+- **Tightened:** CB's standalone "tap to update" `.flipHint` line was dropped (the `›` chevron in the header
+  is the affordance); Strike keeps its `⇄ liquidation/capacity` flip hint on the cushion row + the `edit`
+  link.
+- **Captions enriched (TEXT only):** Strike capacity → "X% of credit line used · avail $Y" (avail =
+  `creditLine − advisorActualBlocBalance`, the matching remaining capacity — NOT the collateral-capped
+  `strikeAvailableCredit`); Strike liquidation → "X.X% LTV · liq Y% · 80% crash → Z%" where `crashLtv =
+  computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice * 0.2)` (the ONE new read-only
+  value — feeds nothing else); CB → "$X above liq · Y% drop away" (short form; the full "…from $Z
+  liquidation price" stays in the expansion's `cbDistance`). The now-dead `ltvGapToLiq` local was removed.
+- **Polish:** `.markerLabelRight` `transform: translateX(0)` → `translateX(-4px)` so the "85% liq"/"86%"
+  edge labels sit fully inside the card.
+- **CSS (additive + one fix):** `.safetyCard`/`.barRow`/`.barDiv`/`.eyebrow`/`.eyebrowLabel`/
+  `.eyebrowVerdict` added; `.markerLabelRight` nudged; `.barCard`/`.stateLine`/`.stateDot` left orphaned
+  (harmless). All bar math / flip / expand / edit logic byte-for-byte; renders in both Monthly + Daily.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)

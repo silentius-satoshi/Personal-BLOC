@@ -46,6 +46,47 @@
   cursor: pointer;
 }
 
+/* ── Merged safety card (structural minimalism — verdict eyebrow + bars + divider) ── */
+.safetyCard {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-card);
+  padding: 15px 16px;
+}
+
+.eyebrow {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.eyebrowLabel { color: var(--text-muted); }
+.eyebrowVerdict {
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+/* borderless bar row inside the merged card (old .barCard minus border/bg/padding) */
+.barRow {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+.barDiv {
+  height: 1px;
+  background: var(--line-2);
+  margin: 13px 0;
+}
+
 /* ── Bar cards ────────────────────────────────────────────────── */
 .barCard {
   display: flex;
@@ -171,7 +212,7 @@
 
 .markerLabelRight {
   right: 0;
-  transform: translateX(0);
+  transform: translateX(-4px);
 }
 
 .markerLabelRight em {

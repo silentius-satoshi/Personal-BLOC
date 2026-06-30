@@ -89,15 +89,11 @@ export function SafetyDashboard() {
   const cbLevel    = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);  // act ≈ 80% of liquidation LTV
   const cbFillColor = LEVEL_COLOR[cbLevel];
   const cbBadge    = cbLevel === 'safe' ? 'Safe' : cbLevel === 'watch' ? 'Fair' : 'Poor';
-  // Cushion as an LTV-POINT GAP (matches the playbook "CB runway"): LTV points to liquidation
-  // (via cbLiqFrac = the authoritative liquidation LTV). Clamped ≥ 0. (The trigger-gap line was
-  // dropped from the glance in the Option-1 tidy — distilled to a single "% to liquidation" caption.)
-  const ltvGapToLiq = Math.max(0, cbLiqFrac - cbLtv);
-
   // ── Strike bar math ──────────────────────────────────────────────────
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
   const capacityUsed  = creditLine > 0 ? advisorActualBlocBalance / creditLine : 0;
   const strikeLtv     = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
+  const crashLtv      = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice * 0.2); // read-only stress: Strike LTV if BTC fell 80%
   const strikeLevel   = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82); // ≈65% warn / 70% margin call
   const strikeFillPct = strikeView === 'capacity'
     ? Math.max(0, Math.min(100, capacityUsed * 100))
@@ -107,10 +103,10 @@ export function SafetyDashboard() {
   // ── State line (nearer / worse bar drives it; Strike-only when no CB loan) ──
   const state: SafetyLevel = hasCbLoan ? worseLevel(cbLevel, strikeLevel) : strikeLevel;
   const stateCopy = state === 'safe'
-    ? 'Safe — nothing to do today.'
+    ? 'Safe — nothing to do today'
     : state === 'watch'
-      ? 'Watch — your CB cushion is tightening.'
-      : 'Act — pay down or add collateral now.';
+      ? 'Watch — your CB cushion is tightening'
+      : 'Act — pay down or add collateral now';
 
   const balFresh = freshnessLabel('balance', cbLoanBalanceAsOf);
   const liqFresh = freshnessLabel('liq price', cbLiquidationPriceAsOf);
@@ -151,17 +147,18 @@ export function SafetyDashboard() {
 
   return (
     <div className={styles.dashboard}>
-      {/* ── State line (headline verdict) ──────────────────────────── */}
-      <div className={styles.stateLine} style={{ color: LEVEL_COLOR[state] }}>
-        <span className={styles.stateDot} style={{ background: LEVEL_COLOR[state] }} />
-        {stateCopy}
-      </div>
-
       {priceSlot}
+
+      <div className={styles.safetyCard}>
+      {/* ── Verdict eyebrow (card title) ───────────────────────────── */}
+      <div className={styles.eyebrow}>
+        <span className={styles.eyebrowLabel}>Safety ·</span>{' '}
+        <span className={styles.eyebrowVerdict} style={{ color: LEVEL_COLOR[state] }}>{stateCopy}</span>
+      </div>
 
       {/* ── Strike bar (primary; body tap flips, edit control opens inline editor) ── */}
       <div
-        className={styles.barCard}
+        className={styles.barRow}
         onClick={flipStrike}
         role="button"
         tabIndex={0}
@@ -194,9 +191,9 @@ export function SafetyDashboard() {
         </div>
         <div className={styles.cushionRow}>
           {strikeView === 'capacity' ? (
-            <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used</span>
+            <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used · avail {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
           ) : (
-            <span className={styles.ltvNow}>{(strikeLtv * 100).toFixed(1)}% LTV · liquidation at {strikeLiquidationLtvPct}%</span>
+            <span className={styles.ltvNow}>{(strikeLtv * 100).toFixed(1)}% LTV · liq {strikeLiquidationLtvPct}% · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
           )}
           <span className={styles.flipHint}>
             {strikeEditing ? 'editing…' : strikeView === 'capacity' ? '⇄ liquidation' : '⇄ capacity'}
@@ -222,10 +219,12 @@ export function SafetyDashboard() {
         )}
       </div>
 
+      <div className={styles.barDiv} />
+
       {/* ── CB bar (secondary) — or CB-setup prompt in the CB slot when no loan ── */}
       {hasCbLoan ? (
       <div
-        className={styles.barCard}
+        className={styles.barRow}
         onClick={toggleEdit}
         role="button"
         tabIndex={0}
@@ -239,9 +238,6 @@ export function SafetyDashboard() {
           </span>
           <span className={styles.chevron}>›</span>
         </div>
-        <span className={styles.flipHint}>
-          {editing ? 'editing…' : neverAnchored ? 'tap to set your balance & liquidation price' : 'tap to update'}
-        </span>
 
         <div className={styles.barTrack}>
           <div className={styles.barFill} style={{ width: `${cbFillPct}%`, background: cbFillColor }} />
@@ -254,7 +250,7 @@ export function SafetyDashboard() {
         </div>
 
         <div className={styles.cushionRow}>
-          <span className={styles.cushion}>{(ltvGapToLiq * 100).toFixed(1)}% to liquidation</span>
+          <span className={styles.cushion}>{fmtUSD(liqDropUsd)} above liq · {(liqDropPct * 100).toFixed(0)}% drop away</span>
         </div>
         {neverAnchored && (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
@@ -330,6 +326,7 @@ export function SafetyDashboard() {
           </button>
         </div>
       )}
+      </div>
     </div>
   );
 }
