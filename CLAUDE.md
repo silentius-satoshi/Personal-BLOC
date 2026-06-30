@@ -1428,6 +1428,53 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
 
 ---
 
+## Access Layer Redesign (Phase 1 — the shippable lockout fix; store unchanged, AppShell ladder UNTOUCHED)
+
+Fixes two front-door reachability defects WITHOUT touching the Bug-3-guarded AppShell auth/viewer
+render ladder (that ladder refactor is deferred Phase 3):
+- **D1 (viewer lockout):** viewer login was reachable ONLY via OnboardingModal's button, gated on
+  `!onboardingComplete`. "Skip for now" flipped `onboardingComplete=true` permanently → the trigger
+  vanished forever.
+- **D2 (returning owner buried):** no front-door login — the owner had to toggle "Enable Nostr Lock"
+  in Settings → Identity to trip NostrAuthGate.
+
+**The real fix = always-present Settings doors.** The first-run fork is just the welcome replacement.
+
+- **`src/components/Entry/ChoosePathView.tsx`** (+ `.module.css`) — the sovereign 3-path first-run
+  fork that REPLACES OnboardingModal's step-1 welcome. Pure presentational, renders as the step-1
+  content inside the modal. Props `{onStartNew, onLogIn, onConnectShared}`. Brand ring + tagline +
+  3 cards (Start a new plan [accented `--btc`] / Log in to my plan / Connect to a shared plan) +
+  footer. **"Start a new plan" copy is softened** ("set up a fresh plan") — it still routes to the
+  numbers wizard; owner key-generation is the committed **Phase 1.5** fast-follow, NOT this phase.
+- **`src/components/Auth/ViewerLoginFlow.tsx`** (+ `.module.css`) — the viewer-login flow EXTRACTED
+  VERBATIM from OnboardingModal (byte-identical crypto/key sequence: `wrapSecretKey` →
+  `setUnwrappedViewerKey` → `clearViewerData` → `setViewerWriterPubkey` → `setViewerMode(true)`).
+  Self-contained full-screen overlay (own `.overlay`/`.modal`, mirroring NostrAuthGate) so it launches
+  from BOTH onboarding AND Settings. The ONLY behavioral change: the final `onComplete(true)` became a
+  `onDone()` prop. Props `{onDone, onBack}`.
+- **`OnboardingModal.tsx`** — step 1 = `<ChoosePathView>`; the extracted viewer state/effect/handlers
+  are GONE (live in ViewerLoginFlow). Two flow flags `viewerFlow`/`loginFlow`; the component
+  early-returns the sub-flow overlays before its own modal: `viewerFlow` → `<ViewerLoginFlow
+  onDone={() => onComplete(true)} …/>`, `loginFlow` → `<NostrAuthGate onSuccess={() => onComplete(false)}
+  …/>`. The numbers wizard (steps 2-4 + `handleDone`) is INTACT; dots moved under the `step>=2` branch.
+- **Completion-wiring principle (load-bearing):** `handleDone` (which writes the DRAFT plan numbers)
+  belongs ONLY to the numbers-wizard path where the user actually entered them. Viewer + login use
+  **flag-only** `onComplete` so they never clobber synced/incoming data with defaults — viewer onDone →
+  `onComplete(true)` (today's behavior); login onSuccess → `onComplete(false)` (marks onboarding done,
+  NO plan write). (This corrects the build prompt's literal §3 which said `handleDone(...)`.)
+- **`SettingsMain.tsx` — persistent "Access" group** (the real D1/D2 fix): a labeled `.settingsGroupLabel`
+  "ACCESS" + two `SettingsRow`s at the TOP of `.settingsMenu` (gated `!viewerMode`, no drill-down so
+  they're found the moment Settings opens). Local `accessFlow: null|'login'|'viewer'`. "Connect Nostr
+  identity" → `setAccessFlow('login')` → `<NostrAuthGate onSuccess/onBack={()=>setAccessFlow(null)}/>`
+  (gate sets auth → owner gates take over). "Connect to a shared plan" → `window.confirm(...)` →
+  `setAccessFlow('viewer')` → `<ViewerLoginFlow onDone={()=>{setSimpleMode(true);setAccessFlow(null);}}
+  …/>` (sets viewerMode → viewer gates take over). Both overlays render at the end of SettingsMain.
+- **Deferred / untouched:** the AppShell render ladder (Phase 3); `nostrAuthEnabled` + the "Enable
+  Nostr Lock" toggle (Phase 2 removal); owner key-gen on "Start new" (Phase 1.5). Almanac, BLOC math,
+  risk core, the V1 viewer home, the viewer snapshot/sync — all untouched. No store version bump.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -1990,6 +2037,11 @@ src/
     LocalUnlockGate.tsx             # "Authenticated-but-locked" relaunch screen for the 'local' method —
                                     # gesture-driven "Unlock with Face ID" (restoreSigner→unwrap) + Retry +
                                     # "Use a different login" escape; reuses NostrAuthGate.module.css
+    ViewerLoginFlow.tsx             # Access Layer Phase 1 — the viewer-login flow EXTRACTED VERBATIM from
+                                    # OnboardingModal (byte-identical crypto: wrapSecretKey→setUnwrappedViewerKey
+                                    # →clearViewerData→setViewerWriterPubkey→setViewerMode(true); only the final
+                                    # onComplete(true) became an onDone() prop). Self-contained overlay (own
+                                    # .overlay/.modal) → reusable from BOTH onboarding AND Settings. Props {onDone,onBack}
     ViewerUnlockGate.tsx            # Phase 3 viewer-key gate — unlock (wrapped) / one-time wrap-setup (v17 migrant);
                                     # populates viewerSync's in-memory holder. Reuses NostrAuthGate.module.css
     ViewerWaitingGate.tsx          # Data-remanence guard — "Waiting for the owner's data…" until viewerDataLoaded

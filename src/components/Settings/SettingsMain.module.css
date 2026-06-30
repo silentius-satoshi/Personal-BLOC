@@ -408,6 +408,19 @@
   gap: 8px;
 }
 
+/* Access Layer Redesign Phase 1 — small group label above the persistent Access doors. */
+.settingsGroupLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  text-transform: uppercase;
+  padding: 4px 2px 0;
+}
+.settingsGroupLabel:not(:first-child) {
+  margin-top: 8px;
+}
+
 .settingsRow {
   display: flex;
   align-items: center;

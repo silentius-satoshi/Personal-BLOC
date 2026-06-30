@@ -16,6 +16,8 @@ import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState, useEffect } from 'react';
 import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, importRelaysFromNip65, publishRelayListToNip65 } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
+import { NostrAuthGate } from '../Auth/NostrAuthGate';
+import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync } from '../../lib/store/escapeHatch';
@@ -163,6 +165,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
   // Phase 1: which settings subpage is showing (local — not threaded through the store/activeTab).
   const [settingsPage, setSettingsPage] = useState<SettingsPage>('menu');
+  // Access Layer Redesign Phase 1 — the persistent front-door flows (each renders its own overlay).
+  const [accessFlow, setAccessFlow] = useState<null | 'login' | 'viewer'>(null);
 
   // Network subpage (P1) — local relay list management.
   const nostrRelays    = useStore((s) => s.nostrRelays);
@@ -370,6 +374,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           )}
 
           <div className={styles.settingsMenu}>
+            {/* Access Layer Redesign Phase 1 — persistent front-door doors (the lockout fix). Top of menu,
+                no drill-down, so they're found the moment Settings opens. Owner-only (a viewer's exit is V4). */}
+            {!viewerMode && <div className={styles.settingsGroupLabel}>ACCESS</div>}
+            {!viewerMode && <SettingsRow icon="🔑" title="Connect Nostr identity" subtitle="Sign in to sync this plan across devices" onClick={() => setAccessFlow('login')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="👁" title="Connect to a shared plan" subtitle="Switch this device to viewing someone's plan" onClick={() => { if (window.confirm('This switches this device to viewing someone else’s plan and clears your current plan. Continue?')) setAccessFlow('viewer'); }} styles={styles} />}
             {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Sharing" subtitle="Give someone read-only viewer access" onClick={() => setSettingsPage('sharing')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date" onClick={() => setSettingsPage('strike')} styles={styles} />}
@@ -991,6 +1000,15 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           </p>
           {devMode && <DevPanel />}
         </div>
+      )}
+
+      {/* Access Layer Redesign Phase 1 — front-door flows (each owns its full-screen overlay). The gate
+          sets auth itself → owner gates take over; ViewerLoginFlow sets viewerMode → viewer gates take over. */}
+      {accessFlow === 'login' && (
+        <NostrAuthGate onSuccess={() => setAccessFlow(null)} onBack={() => setAccessFlow(null)} />
+      )}
+      {accessFlow === 'viewer' && (
+        <ViewerLoginFlow onDone={() => { setSimpleMode(true); setAccessFlow(null); }} onBack={() => setAccessFlow(null)} />
       )}
     </div>
   );

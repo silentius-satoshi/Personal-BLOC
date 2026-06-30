@@ -1,0 +1,146 @@
+/* Access Layer Redesign — Phase 1. Ported from OnboardingModal.module.css (the classes the viewer
+   step used) so ViewerLoginFlow is a self-contained overlay reusable from onboarding + Settings. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 16px;
+}
+
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.step {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.welcomeIcon {
+  font-size: 40px;
+  text-align: center;
+  color: var(--orange);
+}
+
+.title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  text-align: center;
+}
+
+.subtitle {
+  font-size: 13px;
+  color: var(--text-ghost);
+  text-align: center;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.fields { display: flex; flex-direction: column; gap: 12px; }
+
+.fieldGroup { display: flex; flex-direction: column; gap: 4px; }
+
+.fieldLabel {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+}
+
+.fieldInput {
+  display: flex;
+  align-items: center;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  height: 44px;
+  gap: 6px;
+  transition: border-color 0.12s;
+}
+
+.fieldInput:focus-within {
+  border-color: var(--orange);
+}
+
+.dateInput {
+  flex: 1;
+  background: none;
+  border: none;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  outline: none;
+  color-scheme: dark;
+  width: 100%;
+  padding: 0;
+  font-family: inherit;
+}
+
+.nav {
+  display: flex;
+  gap: 8px;
+}
+
+.primary {
+  flex: 1;
+  background: var(--orange);
+  border: none;
+  border-radius: 10px;
+  color: white;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 700;
+  height: 48px;
+  font-family: inherit;
+  transition: opacity 0.15s;
+}
+
+.primary:hover { opacity: 0.9; }
+.primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.back {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  height: 48px;
+  padding: 0 16px;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s;
+}
+
+.back:hover { border-color: var(--text-ghost); color: var(--text-secondary); }
+
+.skip {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 11px;
+  font-style: italic;
+  text-align: center;
+  padding: 0;
+  font-family: inherit;
+}
+
+.skip:hover { color: var(--text-ghost); }
