@@ -21,7 +21,7 @@ export default function AlmanacView({ height = 955_710, mode = 'estimated' }: Al
   const [face, setFace] = useState<'halving' | 'cycle'>('halving');
 
   return (
-    <div>
+    <div className={styles.container}>
       <div className={styles.eyebrow}>
         <span className={styles.eyebrowLabel}>Almanac</span>
         <span className={styles.eyebrowLine} />

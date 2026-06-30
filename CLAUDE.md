@@ -1315,6 +1315,9 @@ button (`15px` Daily / `16px` Monthly, matching each view's existing grid icon) 
 pattern, reuses `.simpleModeSettings`/`.simpleModeSettingsHeader`/`.simpleModeBackBtn`/
 `.simpleModeSettingsTitle` CSS — no new CSS). `onOpenAlmanac: () => void` prop added to both views.
 Still STATIC (default fixture height 955_710/'estimated'; P3 wires live data via `useChainTip`).
+`AlmanacView` content is wrapped in a `.container` (`max-width: 600px; margin: 0 auto; padding: 0
+16px 32px`) — matches Daily/Monthly's `.content` exactly, fixing full-width sprawl in both full-mode
+and simple-mode. One container, no mode branching.
 
 ---
 
