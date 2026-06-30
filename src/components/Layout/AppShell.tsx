@@ -183,6 +183,7 @@ export function AppShell() {
   const setSimpleMode         = useStore((s) => s.setSimpleMode);
   const setOnboardingComplete = useStore((s) => s.setOnboardingComplete);
   const previousTab           = useStore((s) => s.previousTab);
+  const setPreviousTab        = useStore((s) => s.setPreviousTab);
 
   const nostrAuthEnabled  = useStore((s) => s.nostrAuthEnabled);
   const isAuthenticated   = useStore((s) => s.isAuthenticated);
@@ -349,14 +350,14 @@ export function AppShell() {
         <div className={styles.simpleModeRoot}>
           {simpleView === 'daily'
             ? <DailyModeView
-                onOpenSettings={() => setActiveTab('settings')}
-                onOpenAlmanac={() => setActiveTab('almanac')}
+                onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
+                onOpenAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}
                 simpleView={simpleView}
                 setSimpleView={setSimpleView}
               />
             : <SimpleModeView
-                onOpenSettings={() => setActiveTab('settings')}
-                onOpenAlmanac={() => setActiveTab('almanac')}
+                onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
+                onOpenAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}
                 simpleView={simpleView}
                 setSimpleView={setSimpleView}
               />}
