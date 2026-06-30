@@ -89,10 +89,10 @@ export function SafetyDashboard() {
   const cbLevel    = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);  // act ≈ 80% of liquidation LTV
   const cbFillColor = LEVEL_COLOR[cbLevel];
   const cbBadge    = cbLevel === 'safe' ? 'Safe' : cbLevel === 'watch' ? 'Fair' : 'Poor';
-  // Cushion as LTV-POINT GAPS (matches the playbook "CB runway"): LTV points to the trigger / to liquidation
-  // (the latter via cbLiqFrac = the authoritative liquidation LTV). Clamped ≥ 0.
-  const ltvGapToTrigger = Math.max(0, cbLtvTriggerPct / 100 - cbLtv);
-  const ltvGapToLiq     = Math.max(0, cbLiqFrac - cbLtv);
+  // Cushion as an LTV-POINT GAP (matches the playbook "CB runway"): LTV points to liquidation
+  // (via cbLiqFrac = the authoritative liquidation LTV). Clamped ≥ 0. (The trigger-gap line was
+  // dropped from the glance in the Option-1 tidy — distilled to a single "% to liquidation" caption.)
+  const ltvGapToLiq = Math.max(0, cbLiqFrac - cbLtv);
 
   // ── Strike bar math ──────────────────────────────────────────────────
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
@@ -159,7 +159,70 @@ export function SafetyDashboard() {
 
       {priceSlot}
 
-      {/* ── CB bar (primary) — or CB-setup prompt in the CB slot when no loan ── */}
+      {/* ── Strike bar (primary; body tap flips, edit control opens inline editor) ── */}
+      <div
+        className={styles.barCard}
+        onClick={flipStrike}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); flipStrike(); } }}
+      >
+        <div className={styles.barHeader}>
+          <span className={styles.barHeaderLeft}>
+            <span className={styles.barLabel}>STRIKE BLOC</span>
+            <span className={styles.barValue}>
+              {strikeView === 'capacity' ? `${(capacityUsed * 100).toFixed(0)}% used` : `${(strikeLtv * 100).toFixed(1)}% LTV`}
+            </span>
+            <span className={styles.badge} style={{ color: LEVEL_COLOR[strikeLevel], borderColor: LEVEL_COLOR[strikeLevel] }}>
+              {strikeLevel === 'safe' ? 'Safe' : strikeLevel === 'watch' ? 'Fair' : 'Poor'}
+            </span>
+          </span>
+          <button
+            className={styles.editLink}
+            onClick={(e) => { e.stopPropagation(); openStrikeEdit(); }}
+          >
+            edit
+          </button>
+        </div>
+        <div className={styles.barTrack}>
+          <div className={styles.barFill} style={{ width: `${strikeFillPct}%`, background: strikeFillColor }} />
+          {strikeView === 'liquidation' && (
+            <div className={styles.marker} style={{ left: '100%' }}>
+              <span className={styles.markerLabelRight}>{strikeLiquidationLtvPct}% liq</span>
+            </div>
+          )}
+        </div>
+        <div className={styles.cushionRow}>
+          {strikeView === 'capacity' ? (
+            <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used</span>
+          ) : (
+            <span className={styles.ltvNow}>{(strikeLtv * 100).toFixed(1)}% LTV · liquidation at {strikeLiquidationLtvPct}%</span>
+          )}
+          <span className={styles.flipHint}>
+            {strikeEditing ? 'editing…' : strikeView === 'capacity' ? '⇄ liquidation' : '⇄ capacity'}
+          </span>
+        </div>
+
+        {strikeEditing && (
+          <div className={styles.editBox} onClick={(e) => e.stopPropagation()}>
+            <span className={styles.editHint}>
+              {strikeView === 'capacity' ? 'Adjust your drawn balance & approved credit line.' : 'Adjust your drawn balance & liquidation LTV.'}
+            </span>
+            <NumberInput label="BLOC balance" value={draftStrikeBal} onChange={setDraftStrikeBal} prefix="$" min={0} step={100} />
+            {strikeView === 'capacity' ? (
+              <NumberInput label="Credit line" value={draftCreditLine} onChange={setDraftCreditLine} prefix="$" min={0} step={1000} />
+            ) : (
+              <NumberInput label="Liquidation LTV" value={draftLiqLtv} onChange={setDraftLiqLtv} suffix="%" min={0} max={100} step={1} />
+            )}
+            <div className={styles.editBtns}>
+              <button className={styles.saveBtn} onClick={saveStrike}>Save</button>
+              <button className={styles.cancelBtn} onClick={() => setStrikeEditing(false)}>Cancel</button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── CB bar (secondary) — or CB-setup prompt in the CB slot when no loan ── */}
       {hasCbLoan ? (
       <div
         className={styles.barCard}
@@ -169,8 +232,12 @@ export function SafetyDashboard() {
         onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); toggleEdit(); } }}
       >
         <div className={styles.barHeader}>
-          <span className={styles.barLabel}>COINBASE LOAN</span>
-          <span className={styles.badge} style={{ color: cbFillColor, borderColor: cbFillColor }}>{cbBadge}</span>
+          <span className={styles.barHeaderLeft}>
+            <span className={styles.barLabel}>COINBASE LOAN</span>
+            <span className={styles.barValue}>{(cbLtv * 100).toFixed(1)}% LTV</span>
+            <span className={styles.badge} style={{ color: cbFillColor, borderColor: cbFillColor }}>{cbBadge}</span>
+          </span>
+          <span className={styles.chevron}>›</span>
         </div>
         <span className={styles.flipHint}>
           {editing ? 'editing…' : neverAnchored ? 'tap to set your balance & liquidation price' : 'tap to update'}
@@ -187,25 +254,25 @@ export function SafetyDashboard() {
         </div>
 
         <div className={styles.cushionRow}>
-          <span className={styles.ltvNow}>{(cbLtv * 100).toFixed(1)}% LTV</span>
-          <span className={styles.cushion}>{(ltvGapToTrigger * 100).toFixed(1)}% to trigger · {(ltvGapToLiq * 100).toFixed(1)}% to liquidation</span>
+          <span className={styles.cushion}>{(ltvGapToLiq * 100).toFixed(1)}% to liquidation</span>
         </div>
-        {neverAnchored ? (
+        {neverAnchored && (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
-        ) : (
-          <>
-            <div className={styles.freshRow}>
-              <span className={balFresh.stale ? styles.freshStale : styles.fresh}>{balFresh.text}</span>
-              <span className={liqFresh.stale ? styles.freshStale : styles.fresh}>{liqFresh.text}</span>
-            </div>
-            {liqFresh.stale && (
-              <p className={styles.staleWarn}>liq price may be low — BTC drop to liquidation is smaller than shown</p>
-            )}
-          </>
         )}
 
         {editing && (
           <div className={styles.editBox} onClick={(e) => e.stopPropagation()}>
+            {!neverAnchored && (
+              <>
+                <div className={styles.freshRow}>
+                  <span className={balFresh.stale ? styles.freshStale : styles.fresh}>{balFresh.text}</span>
+                  <span className={liqFresh.stale ? styles.freshStale : styles.fresh}>{liqFresh.text}</span>
+                </div>
+                {liqFresh.stale && (
+                  <p className={styles.staleWarn}>liq price may be low — BTC drop to liquidation is smaller than shown</p>
+                )}
+              </>
+            )}
             {activeLiqPrice > 0 && (
               <div className={styles.cbDistance} style={{ borderColor: cbFillColor }}>
                 <div className={styles.cbDistanceMain} style={{ color: cbFillColor }}>
@@ -263,63 +330,6 @@ export function SafetyDashboard() {
           </button>
         </div>
       )}
-
-      {/* ── Strike bar (secondary; body tap flips, edit control opens inline editor) ── */}
-      <div
-        className={styles.barCard}
-        onClick={flipStrike}
-        role="button"
-        tabIndex={0}
-        onKeyDown={(e) => { if (e.target === e.currentTarget && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); flipStrike(); } }}
-      >
-        <div className={styles.barHeader}>
-          <span className={styles.barLabel}>STRIKE BLOC</span>
-          <span className={styles.barHeaderRight}>
-            <span className={styles.flipHint}>
-              {strikeEditing ? 'editing…' : strikeView === 'capacity' ? 'tap for liquidation view' : 'tap for capacity view'}
-            </span>
-            <button
-              className={styles.editLink}
-              onClick={(e) => { e.stopPropagation(); openStrikeEdit(); }}
-            >
-              edit
-            </button>
-          </span>
-        </div>
-        <div className={styles.barTrack}>
-          <div className={styles.barFill} style={{ width: `${strikeFillPct}%`, background: strikeFillColor }} />
-          {strikeView === 'liquidation' && (
-            <div className={styles.marker} style={{ left: '100%' }}>
-              <span className={styles.markerLabelRight}>{strikeLiquidationLtvPct}% liq</span>
-            </div>
-          )}
-        </div>
-        <div className={styles.cushionRow}>
-          {strikeView === 'capacity' ? (
-            <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used</span>
-          ) : (
-            <span className={styles.ltvNow}>{(strikeLtv * 100).toFixed(1)}% LTV · liquidation at {strikeLiquidationLtvPct}%</span>
-          )}
-        </div>
-
-        {strikeEditing && (
-          <div className={styles.editBox} onClick={(e) => e.stopPropagation()}>
-            <span className={styles.editHint}>
-              {strikeView === 'capacity' ? 'Adjust your drawn balance & approved credit line.' : 'Adjust your drawn balance & liquidation LTV.'}
-            </span>
-            <NumberInput label="BLOC balance" value={draftStrikeBal} onChange={setDraftStrikeBal} prefix="$" min={0} step={100} />
-            {strikeView === 'capacity' ? (
-              <NumberInput label="Credit line" value={draftCreditLine} onChange={setDraftCreditLine} prefix="$" min={0} step={1000} />
-            ) : (
-              <NumberInput label="Liquidation LTV" value={draftLiqLtv} onChange={setDraftLiqLtv} suffix="%" min={0} max={100} step={1} />
-            )}
-            <div className={styles.editBtns}>
-              <button className={styles.saveBtn} onClick={saveStrike}>Save</button>
-              <button className={styles.cancelBtn} onClick={() => setStrikeEditing(false)}>Cancel</button>
-            </div>
-          </div>
-        )}
-      </div>
     </div>
   );
 }

@@ -97,6 +97,26 @@
   gap: 8px;
 }
 
+/* Option 1 minimalist tidy — grouped left side (label + value + pill), header value, chevron affordance */
+.barHeaderLeft {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.barValue {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.chevron {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--text-faint);
+}
+
 .editLink {
   font-size: 10px;
   font-weight: 600;

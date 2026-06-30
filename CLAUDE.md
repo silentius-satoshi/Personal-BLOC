@@ -1143,6 +1143,31 @@ UNTOUCHED; display-only reads, no computed value changed):
   "Read both from your Coinbase Loan Center" + the editable fields. At rest the CB card shows only bar +
   cushionRow + freshness (minimal); tapping reveals the distance context + detail + inputs.
 
+### SafetyDashboard minimalist tidy (Option 1, display-only)
+
+A presentation-only pass over the two bars — **no computed value / handler / edit-box content changed**
+(byte-for-byte: all bar math, `cbMetrics`/`barLevel`/`computeStrikeLtv`, fills, markers, the state line,
+priceSlot, drafts, `flipStrike`/`openStrikeEdit`/`toggleEdit`/`saveStrike`/`saveReanchor`). Only bar ORDER,
+caption distillation, and always-visible-vs-expansion placement moved. Renders in BOTH Monthly + Daily.
+- **Bar order SWAPPED** — Strike is now the PRIMARY (top) bar, Coinbase secondary (below): `stateLine →
+  priceSlot → Strike barCard → CB (hasCbLoan ? barCard : setupCard)`.
+- **Each bar distilled to a clean glance:** name + headline value + status pill + bar + ONE caption +
+  a compact affordance.
+- **Strike:** keeps its capacity⇄liquidation body-tap FLIP + the `edit` link. Header gains a grouped left
+  side (`.barHeaderLeft`: label + `.barValue` headline `"X% used"`/`"X.X% LTV"` + a `.badge` colored by
+  `LEVEL_COLOR[strikeLevel]`, text Safe/Fair/Poor). The wordy header flip hint is replaced by a compact
+  `⇄ liquidation`/`⇄ capacity` (`.flipHint`) sitting on the RIGHT of the cushion row; the per-view caption
+  (`.ltvNow`) is unchanged. Strike edit box unchanged (no freshness clutter → nothing moved into it).
+- **Coinbase:** keeps its tap-to-expand. Header gains `.barHeaderLeft` (label + `.barValue` `"X.X% LTV"` +
+  the `cbBadge`/`cbFillColor` badge) + a `.chevron` `›` expand affordance; the small "tap to update" hint
+  stays. The two-part cushion row collapsed to a SINGLE distilled `.cushion` caption `"X.X% to liquidation"`
+  (the price-drop framing already lives in the expansion's `cbDistance`); the dead `ltvGapToTrigger` local
+  was removed. The `!neverAnchored` `freshRow` + `staleWarn` MOVED into the `editing &&` editBox (top, above
+  `cbDistance`), keeping their exact gates; the `neverAnchored` `anchorNudge` stays at the glance (first-time
+  setup). CB edit-box contents otherwise unchanged.
+- **CSS (additive):** `.barHeaderLeft`/`.barValue`/`.chevron` in `SafetyDashboard.module.css`; captions reuse
+  `.cushionRow`/`.cushion`/`.ltvNow`, flip hint reuses `.flipHint`, badge `.badge`, edit `.editLink`.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)
