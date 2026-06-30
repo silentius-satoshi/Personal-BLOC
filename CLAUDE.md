@@ -1208,6 +1208,14 @@ Pure CSS pass — no JSX, no logic, no new classes. Six values updated across th
 - **`Calendar.module.css`** — NO CHANGES (`.calcard` already 18px, `.segBtn` padding already 8px —
   both preview-matched). Monthly-format classes and the activity card (already 20px) unchanged.
 
+### ViewToggle width fix (CSS-only)
+
+`.viewToggleWrap` dropped its redundant `max-width`/`width: 100%`/`padding: 0 16px` (now just
+`margin: 12px 0 14px`). `ViewToggle` renders inside `.content` which already provides `max-width:
+600px` + `padding: 0 16px`; the duplicated properties caused the toggle to be 32px narrower than every
+section below it (double 16px inset vs. single). Fix applies to both Daily and Monthly views (shared
+component). No JSX, no logic, no other CSS changed.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)
