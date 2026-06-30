@@ -1,8 +1,8 @@
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 13px;
+  margin-bottom: 13px;
 }
 
 /* Spec C fills this; reserved so the layout doesn't jump when the chart lands */
@@ -51,7 +51,7 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 20px;
   background: var(--bg-card);
   padding: 15px 16px;
 }

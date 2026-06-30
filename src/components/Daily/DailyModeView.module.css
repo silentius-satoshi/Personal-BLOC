@@ -47,7 +47,7 @@
 }
 .iconBtn:hover { color: var(--text-primary); }
 
-.cards { display: flex; flex-direction: column; gap: 16px; margin-top: 0; flex: 1; }
+.cards { display: flex; flex-direction: column; gap: 13px; margin-top: 0; flex: 1; }
 
 /* Position trio — outer cube containers (Daily restyle) + inner content classes (Monthly-format) */
 .posrow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
@@ -224,7 +224,7 @@
 .reconcileBtn:hover { background: rgba(232, 168, 74, 0.22); }
 
 /* Compact stat trio — Daily-only (Monthly keeps its .posrow projection trio) */
-.trioCard { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+.trioCard { background: var(--surface); border: 1px solid var(--line); border-radius: 20px; padding: 14px 16px; }
 .trio { display: grid; grid-template-columns: repeat(3, 1fr); }
 .trioCell { display: flex; flex-direction: column; gap: 3px; align-items: center; }
 .trioCell + .trioCell { border-left: 1px solid var(--line-2); }

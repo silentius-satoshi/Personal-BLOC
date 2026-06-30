@@ -1196,6 +1196,18 @@ changed** (one read-only local added). Merges the loose stack into a single card
   `.eyebrowVerdict` added; `.markerLabelRight` nudged; `.barCard`/`.stateLine`/`.stateDot` left orphaned
   (harmless). All bar math / flip / expand / edit logic byte-for-byte; renders in both Monthly + Daily.
 
+### Daily view spacing + card-radius polish (CSS-only — matches preview)
+
+Pure CSS pass — no JSX, no logic, no new classes. Six values updated across three files:
+- **`ViewToggle.module.css`** — `.viewToggleWrap` gains `margin-bottom: 14px` (was `0`) → fixes the
+  cramped toggle→chart gap; matches the preview's `.modeswitch { margin: 15px 0 14px }`.
+- **`SafetyDashboard.module.css`** — `.dashboard` `gap` 12→**13px**, `margin-bottom` 16→**13px**;
+  `.safetyCard` `border-radius` 12→**20px** (matches the preview's `.card` and the activity card).
+- **`DailyModeView.module.css`** — `.cards` `gap` 16→**13px** (the main rhythm fix); `.trioCard`
+  `border-radius` 14→**20px** (matching the activity card and the preview's `.card`).
+- **`Calendar.module.css`** — NO CHANGES (`.calcard` already 18px, `.segBtn` padding already 8px —
+  both preview-matched). Monthly-format classes and the activity card (already 20px) unchanged.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)
