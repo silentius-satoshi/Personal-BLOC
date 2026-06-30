@@ -30,3 +30,16 @@
   font-size: 9.5px;
   letter-spacing: 0.04em;
 }
+
+/* P2 — center readout overlay (the wrapper faces pass their hero/sub via children). */
+.dialCenter {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  padding: 0 15%;
+}

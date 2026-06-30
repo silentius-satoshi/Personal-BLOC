@@ -1270,6 +1270,40 @@ in P1, superseded later.
   neutral track/tick hairlines + the mono label font.
 - **New token** `--maroon: #8B3A3A` in `tokens.css` (additive — low/floor marker accent).
 
+### P2 — certainty inversion (HR-2) + second face + sub-nav (still STATIC; store unchanged)
+
+The presentation layer over P1. `CycleDial` is now **emphasis-aware** (`'halving' | 'cycle'`, §14.2):
+markers ghosted vs confident (glow + solid dot), arc BTC→green-gradient (sw9) vs dim solid `--btc`
+(sw8, opacity .55), halving cut confident vs ghosted (lowercase "halving" in `--text-faint`), NOW hand
+`--green` vs `--text-primary` — but the hand/arc/% POSITION stays `epochProgress(height).fraction` on
+BOTH (HR-1; the framing flips, the geometry doesn't). Marker HUES fixed both ways (high `--amber`, low
+`--maroon`). The gradient `<defs>` is emitted only for halving (cycle arc is solid). `CycleDial` also
+accepts a `children` center overlay (absolute `.dialCenter` inside `.dialwrap`) so faces align their
+readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis.
+
+- **`HalvingClock.tsx`** (+ `.module.css`) — DEFAULT honest face (§5): real hero = next-halving
+  **day-count** (`Math.round(blocksRemaining·TARGET_BLOCK_S/86400)`, NO ticking seconds — HR-2) + `est.
+  ~{Mon YYYY}` (from `H5_EST`) + `block N / 1,050,000`; real 3-cell stat row (Through epoch / Blocks to
+  halving / Block height); demoted GHOSTED projection card (next-low floor + last-high peak via
+  `CYCLE_TURNS`, soft proj-bar at the descending %, "pattern not a forecast" caption). One-time
+  `Date.now()` read, no interval.
+- **`CycleClock.tsx`** (+ `.module.css`) — OPT-IN projection-hero (§14.2): hero = ticking
+  projected-floor countdown `Nd HH:MM:SS` to the next `CYCLE_TURNS` low — **the ONE permitted ticker
+  (§14.4)**, a 1s `setInterval` gated by `usePageVisibility` (pauses hidden, resyncs on resume) +
+  cleaned up on unmount; carries the REQUIRED "idealized cadence" tag + "why idealized" note (both
+  §14.4, always shown with the countdown); stat row (Descending phase `--maroon` / Since proj. peak
+  `--amber` / Block height); demoted halving card with an "Open Halving Clock →" link (`--btc`) calling
+  `onSwitchToHalving`.
+- **`AlmanacView.tsx`** (+ `.module.css`) — local `face` state (default `'halving'`, §14.3, unpersisted)
+  + the sub-nav (Halving · Cycle · Mining-soon-disabled · Power-Law-soon-disabled); passes the SAME
+  `height`/`mode` to both faces (props default to a static review fixture `955_710`/`'estimated'`) — the
+  P3 `useChainTip` seam lives here so a face switch never remounts the data layer (§14.5).
+- Token mapping: preview `--blue` (floor/low) → `--maroon`; the plain "Open Halving Clock" link →
+  `--btc`; cycle hand → `var(--text-primary)` (no foreign hex); translucent ghost surfaces via
+  `color-mix` on app tokens. 🔴 Both faces import nothing from the risk/position core (§2 holds on Cycle
+  specifically — grep-clean). Still STATIC (no fetch/`useChainTip` — P3); NOT wired to the app surface
+  switch (P4).
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)

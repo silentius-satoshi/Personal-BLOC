@@ -1,20 +1,24 @@
+import type { ReactNode } from 'react';
 import { epochProgress, blockPositionInEpoch, CYCLE_TURNS, type CycleTurn } from '../../simulation/cycleModel';
 import styles from './CycleDial.module.css';
 
 /**
- * Almanac CycleClock — static presentational dial (P1, halving face).
+ * Almanac CycleClock — static presentational dial (P2).
  *
  * HR-1 one-coordinate-system: the NOW hand, the progress arc, and the "% through epoch" ALL derive
- * from epochProgress(height).fraction. There is no separate date path — when mode==='estimated' the
- * CALLER passes a height from blockAtDate(now); the dial does not care how the height was derived.
+ * from epochProgress(height).fraction on BOTH emphases. The certainty INVERSION (HR-2) flips only the
+ * framing — markers ghosted⇄confident, arc gradient⇄dim, cut confident⇄ghosted, hand green⇄neutral —
+ * never the geometry. When mode==='estimated' the CALLER passed a blockAtDate(now) height; the dial
+ * does not care how the height was derived.
  *
- * Pure-from-props: no fetch, no timers, no state. Not wired to any surface (nav is P4).
- * `emphasis` is accepted for the P2 seam; P1 renders the 'halving' treatment only.
+ * Pure-from-props: no fetch, no timers, no state. The optional `children` render as the absolutely-
+ * positioned center overlay (the wrapper faces pass their readout here). Not wired to any surface (P4).
  */
 export interface CycleDialProps {
   height: number;
   mode: 'live' | 'estimated';
   emphasis?: 'halving' | 'cycle';
+  children?: ReactNode;
 }
 
 // ── Geometry (ported verbatim from the preview <script>) ────────────────────
@@ -50,7 +54,8 @@ function turnLabel(t: CycleTurn): string {
 
 const TICKS = Array.from({ length: 12 }, (_, i) => (i / 12) * 100);
 
-export default function CycleDial({ height, mode }: CycleDialProps) {
+export default function CycleDial({ height, mode, emphasis = 'halving', children }: CycleDialProps) {
+  const isHalving = emphasis === 'halving';
   const epoch = epochProgress(height);
   const NOW = epoch.fraction * 100;
   const pct = Math.round(NOW);
@@ -64,34 +69,39 @@ export default function CycleDial({ height, mode }: CycleDialProps) {
     }
     return null;
   };
-  const peak = pickMarker('high'); // --amber
-  const floor = pickMarker('low'); // --maroon
+  const peak = pickMarker('high'); // hue --amber (style flips by emphasis)
+  const floor = pickMarker('low'); // hue --maroon (style flips by emphasis)
 
   const handPt = polar(R, NOW);
+  const handColor = isHalving ? 'var(--green)' : 'var(--text-primary)'; // green vs neutral (HR-2)
   const cut1 = polar(R - 9, 0);
   const cut2 = polar(R + 9, 0);
   const cutDot = polar(R, 0);
   const cutLabel = polar(R + 22, 0);
 
+  // Projection marker — GHOSTED on halving (background pattern), CONFIDENT on cycle (foregrounded).
   const renderMarker = (m: { pct: number; turn: CycleTurn }, color: string) => {
     const pt = polar(R, m.pct);
     const lp = polar(R + 21, m.pct);
     return (
       <g key={m.turn.kind}>
-        <path
-          d={arc(R, m.pct - BAND, m.pct + BAND)}
-          fill="none"
-          stroke={color}
-          strokeWidth={7}
-          strokeLinecap="round"
-          opacity={0.15}
-        />
-        <circle cx={pt.x} cy={pt.y} r={6} fill="none" stroke={color} strokeWidth={2} strokeDasharray="3 3" opacity={0.85} />
+        {isHalving ? (
+          <>
+            <path d={arc(R, m.pct - BAND, m.pct + BAND)} fill="none" stroke={color} strokeWidth={7} strokeLinecap="round" opacity={0.15} />
+            <circle cx={pt.x} cy={pt.y} r={6} fill="none" stroke={color} strokeWidth={2} strokeDasharray="3 3" opacity={0.85} />
+          </>
+        ) : (
+          <>
+            <circle cx={pt.x} cy={pt.y} r={11} fill={color} opacity={0.18} />
+            <circle cx={pt.x} cy={pt.y} r={6.5} fill={color} stroke="var(--bg-base)" strokeWidth={2} />
+          </>
+        )}
         <text
           className={styles.lab}
           x={lp.x}
           y={lp.y}
           fill={color}
+          opacity={isHalving ? 0.85 : 1}
           textAnchor={labelAnchor(m.pct)}
           dominantBaseline="middle"
         >
@@ -110,14 +120,21 @@ export default function CycleDial({ height, mode }: CycleDialProps) {
         aria-valuemin={0}
         aria-valuemax={100}
         aria-valuenow={pct}
-        aria-valuetext={`Epoch ${epoch.era}, ${pct}% complete${mode === 'estimated' ? ' (estimated)' : ''}`}
+        aria-valuetext={
+          isHalving
+            ? `Epoch ${epoch.era}, ${pct}% complete${mode === 'estimated' ? ' (estimated)' : ''}`
+            : `${pct}% through the projected descending phase, idealized`
+        }
       >
-        <defs>
-          <linearGradient id={GRAD_ID} x1="0" y1="0" x2="1" y2="1">
-            <stop offset="0" stopColor="var(--btc)" />
-            <stop offset="1" stopColor="var(--green)" />
-          </linearGradient>
-        </defs>
+        {/* gradient only used by the confident halving arc */}
+        {isHalving && (
+          <defs>
+            <linearGradient id={GRAD_ID} x1="0" y1="0" x2="1" y2="1">
+              <stop offset="0" stopColor="var(--btc)" />
+              <stop offset="1" stopColor="var(--green)" />
+            </linearGradient>
+          </defs>
+        )}
 
         {/* track + ticks */}
         <circle className={styles.track} cx={CX} cy={CY} r={R} />
@@ -127,26 +144,43 @@ export default function CycleDial({ height, mode }: CycleDialProps) {
           return <line key={i} className={styles.tick} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
         })}
 
-        {/* ghosted projection markers (halving face) */}
+        {/* projection markers (hue fixed; ghosted on halving, confident on cycle) */}
         {peak && renderMarker(peak, 'var(--amber)')}
         {floor && renderMarker(floor, 'var(--maroon)')}
 
-        {/* progress arc — confident BTC→green; the 0.4 offset clears the round cap off the 0% cut */}
-        {NOW > 0.4 && (
-          <path d={arc(R, 0.4, NOW)} fill="none" stroke={`url(#${GRAD_ID})`} strokeWidth={9} strokeLinecap="round" />
+        {/* progress arc — confident BTC→green on halving, dim solid orange on cycle. 0.4 offset clears the round cap off the 0% cut */}
+        {NOW > 0.4 &&
+          (isHalving ? (
+            <path d={arc(R, 0.4, NOW)} fill="none" stroke={`url(#${GRAD_ID})`} strokeWidth={9} strokeLinecap="round" />
+          ) : (
+            <path d={arc(R, 0.4, NOW)} fill="none" stroke="var(--btc)" strokeWidth={8} strokeLinecap="round" opacity={0.55} />
+          ))}
+
+        {/* halving cut at top (0%) — confident on halving, ghosted on cycle */}
+        {isHalving ? (
+          <>
+            <line x1={cut1.x} y1={cut1.y} x2={cut2.x} y2={cut2.y} stroke="var(--btc)" strokeWidth={3} strokeLinecap="round" />
+            <circle cx={cutDot.x} cy={cutDot.y} r={5} fill="var(--btc)" stroke="var(--bg-base)" strokeWidth={2} />
+            <text className={styles.lab} x={cutLabel.x} y={cutLabel.y - 2} fill="var(--btc)" textAnchor="middle">
+              ½ HALVING
+            </text>
+          </>
+        ) : (
+          <>
+            <line x1={cut1.x} y1={cut1.y} x2={cut2.x} y2={cut2.y} stroke="var(--btc)" strokeWidth={2} strokeLinecap="round" opacity={0.3} />
+            <circle cx={cutDot.x} cy={cutDot.y} r={3.5} fill="var(--btc)" opacity={0.4} />
+            <text className={styles.lab} x={cutLabel.x} y={cutLabel.y - 2} fill="var(--text-faint)" textAnchor="middle">
+              halving
+            </text>
+          </>
         )}
 
-        {/* halving cut at top (0%) */}
-        <line x1={cut1.x} y1={cut1.y} x2={cut2.x} y2={cut2.y} stroke="var(--btc)" strokeWidth={3} strokeLinecap="round" />
-        <circle cx={cutDot.x} cy={cutDot.y} r={5} fill="var(--btc)" stroke="var(--bg-base)" strokeWidth={2} />
-        <text className={styles.lab} x={cutLabel.x} y={cutLabel.y - 2} fill="var(--btc)" textAnchor="middle">
-          ½ HALVING
-        </text>
-
-        {/* NOW hand */}
-        <circle cx={handPt.x} cy={handPt.y} r={11} fill="var(--green)" opacity={0.16} />
-        <circle cx={handPt.x} cy={handPt.y} r={6} fill="var(--green)" stroke="var(--bg-base)" strokeWidth={2.5} />
+        {/* NOW hand — green on halving, neutral on cycle */}
+        <circle cx={handPt.x} cy={handPt.y} r={11} fill={handColor} opacity={0.16} />
+        <circle cx={handPt.x} cy={handPt.y} r={6} fill={handColor} stroke="var(--bg-base)" strokeWidth={2.5} />
       </svg>
+
+      {children != null && <div className={styles.dialCenter}>{children}</div>}
     </div>
   );
 }

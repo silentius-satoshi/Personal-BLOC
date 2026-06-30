@@ -1,0 +1,67 @@
+/* Almanac container + sub-nav (P2) — ported re-tokenized from the preview .alm-eyebrow / .subnav.
+   Active button = green-tinted (preview .subnav button.on); "soon" buttons disabled at opacity .5. */
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 15px 2px 10px;
+}
+.eyebrowLabel {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+.eyebrowLine {
+  flex: 1;
+  height: 1px;
+  background: var(--line-2);
+}
+
+.subnav {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 16px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.subnav::-webkit-scrollbar {
+  display: none;
+}
+.subnavBtn {
+  flex: none;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-weight: 600;
+  font-size: 12.5px;
+  padding: 7px 13px;
+  border-radius: 11px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  white-space: nowrap;
+}
+.subnavBtnOn {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  color: var(--text-primary);
+}
+.subnavBtnSoon {
+  opacity: 0.5;
+  cursor: default;
+}
+.soonTag {
+  font-family: var(--mono);
+  font-size: 8px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--line-2);
+  border-radius: 5px;
+  padding: 1px 4px;
+}
