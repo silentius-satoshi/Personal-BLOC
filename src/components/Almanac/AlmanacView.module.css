@@ -2,6 +2,9 @@
    Active button = green-tinted (preview .subnav button.on); "soon" buttons disabled at opacity .5. */
 
 .container {
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
   max-width: 600px;
   margin: 0 auto;
   padding: 0 16px 32px;

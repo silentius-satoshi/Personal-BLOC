@@ -3,7 +3,9 @@
    classes carry only layout + neutral track/tick hairlines + the mono label font. */
 .dialwrap {
   position: relative;
-  width: min(330px, 82vw);
+  width: 100%;
+  max-width: 300px;
+  margin: 0 auto;
   aspect-ratio: 1 / 1;
 }
 

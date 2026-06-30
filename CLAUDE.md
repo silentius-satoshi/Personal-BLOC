@@ -1279,10 +1279,12 @@ markers ghosted vs confident (glow + solid dot), arc BTC→green-gradient (sw9) 
 BOTH (HR-1; the framing flips, the geometry doesn't). Marker HUES fixed both ways (high `--amber`, low
 `--maroon`). The gradient `<defs>` is emitted only for halving (cycle arc is solid). `CycleDial` also
 accepts a `children` center overlay (absolute `.dialCenter` inside `.dialwrap`) so faces align their
-readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis. **`viewBox` padded
-from `"0 0 360 360"` to `"-34 -34 428 428"`** — marker/cut labels (at `polar(R+21/R+22)`) that
-extended ~21px past the old 360 edge now render inside the box; fixes mobile clipping (iOS showed
-only ~2/3 of the dial). Coordinate math unchanged; both faces fixed by the one change.
+readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis. **`viewBox` stays `"0 0 360 360"`** — coordinate math unchanged. iOS-portrait overflow (dial
+off-center-right, content zoomed) was fixed via CSS containment instead: `AlmanacView .container`
+gains `width:100%; box-sizing:border-box; overflow-x:hidden` (stops SVG `overflow:visible` labels
+from propagating to the viewport); `.dialwrap` is now `width:100%; max-width:300px; margin:0 auto`
+(centered, slightly narrower, leaves label headroom). A prior attempt to pad the viewBox
+(`"-34 -34 428 428"`) did not fix the overflow and was reverted.
 
 - **`HalvingClock.tsx`** (+ `.module.css`) — DEFAULT honest face (§5): real hero = next-halving
   **day-count** (`Math.round(blocksRemaining·TARGET_BLOCK_S/86400)`, NO ticking seconds — HR-2) + `est.
@@ -1321,6 +1323,11 @@ Still STATIC (default fixture height 955_710/'estimated'; P3 wires live data via
 **Bugfix:** `onOpenAlmanac`/`onOpenSettings` in simple mode now call `setPreviousTab(activeTab)` before
 navigating (mirroring `BrandingDropdown`'s `openSettings`) — fixes the "← Back" button doing nothing
 (previousTab was stale/never set; could be `'almanac'` → no-op after opening Settings from Almanac).
+**iOS-portrait overflow fix:** on 375px portrait the Almanac content rendered wider than the viewport
+(dial off-center-right, zoomed). Fixed via: (1) reverted the bad `viewBox="-34 -34 428 428"` back to
+`"0 0 360 360"`; (2) `.dialwrap` → `width:100%; max-width:300px; margin:0 auto` (centered, narrower);
+(3) `AlmanacView .container` gains `width:100%; box-sizing:border-box; overflow-x:hidden` (stops SVG
+`overflow:visible` from propagating to the viewport and triggering iOS zoom).
 `AlmanacView` content is wrapped in a `.container` (`max-width: 600px; margin: 0 auto; padding: 0
 16px 32px`) — matches Daily/Monthly's `.content` exactly, fixing full-width sprawl in both full-mode
 and simple-mode. One container, no mode branching. `AppShell.module.css` carries
