@@ -1216,6 +1216,14 @@ Pure CSS pass — no JSX, no logic, no new classes. Six values updated across th
 section below it (double 16px inset vs. single). Fix applies to both Daily and Monthly views (shared
 component). No JSX, no logic, no other CSS changed.
 
+### Monthly view spacing + card-radius polish (CSS-only — matches preview + Daily fix)
+
+`SimpleModeView.module.css` — four values only: `.segmentControl margin-bottom` 4px→13px (fixes the
+"This Month / Outlook" toggle cramped against the trio); `.cards gap` 12px→13px; `.card` and
+`.positionCol border-radius` →20px (matches the preview's `.card` and Daily's `.trioCard`). Orange
+toggle style (`.segmentBtn`/`.segmentBtnActive`) unchanged; modal (`.modalCard`) and confirm-sheet
+(`.confirmSheet`) radii unchanged. No JSX, no logic, no other CSS changed.
+
 ---
 
 ## Tab Architecture (`AppShell.tsx`)
