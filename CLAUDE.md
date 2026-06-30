@@ -1279,7 +1279,10 @@ markers ghosted vs confident (glow + solid dot), arc BTC→green-gradient (sw9) 
 BOTH (HR-1; the framing flips, the geometry doesn't). Marker HUES fixed both ways (high `--amber`, low
 `--maroon`). The gradient `<defs>` is emitted only for halving (cycle arc is solid). `CycleDial` also
 accepts a `children` center overlay (absolute `.dialCenter` inside `.dialwrap`) so faces align their
-readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis.
+readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis. **`viewBox` padded
+from `"0 0 360 360"` to `"-34 -34 428 428"`** — marker/cut labels (at `polar(R+21/R+22)`) that
+extended ~21px past the old 360 edge now render inside the box; fixes mobile clipping (iOS showed
+only ~2/3 of the dial). Coordinate math unchanged; both faces fixed by the one change.
 
 - **`HalvingClock.tsx`** (+ `.module.css`) — DEFAULT honest face (§5): real hero = next-halving
   **day-count** (`Math.round(blocksRemaining·TARGET_BLOCK_S/86400)`, NO ticking seconds — HR-2) + `est.

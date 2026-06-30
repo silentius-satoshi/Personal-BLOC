@@ -115,7 +115,7 @@ export default function CycleDial({ height, mode, emphasis = 'halving', children
     <div className={styles.dialwrap}>
       <svg
         className={styles.dial}
-        viewBox="0 0 360 360"
+        viewBox="-34 -34 428 428"
         role="progressbar"
         aria-valuemin={0}
         aria-valuemax={100}
