@@ -117,6 +117,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     // dayLog. The viewer's dayLog stays []. Fallback keeps the current value for a legacy/pre-P3 owner snapshot.
     useStore.setState({ cbCollateralBtc: snap.cbCollateralBtc ?? useStore.getState().cbCollateralBtc });
     s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
+    s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)
     nostrLog('info', 'viewer snapshot hydrated');
   } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
 }

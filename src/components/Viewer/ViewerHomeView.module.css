@@ -1,0 +1,128 @@
+/* Viewer Experience Revamp — V1. Calm, read-only viewer home (fitness-app language, dark tokens). */
+.root {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  background: var(--bg-base);
+}
+
+.content {
+  max-width: 600px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 0 16px 96px; /* bottom pad clears the fixed nav */
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+/* Header */
+.appbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 2px 4px;
+  height: 56px;
+  flex-shrink: 0;
+}
+.brand { display: flex; align-items: center; gap: 9px; }
+.brandMark { font-size: 18px; color: var(--orange); }
+.brandName { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.iconBtn {
+  width: 34px;
+  height: 34px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 15px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: color 0.12s;
+}
+.iconBtn:hover { color: var(--text-primary); }
+
+/* Greeting */
+.greeting { margin: 18px 2px 14px; }
+.greetTitle { font-size: 26px; font-weight: 700; color: var(--text-primary); margin: 0; letter-spacing: -0.01em; }
+.greetSub { font-size: 14px; color: var(--text-muted); margin: 4px 0 0; }
+
+/* Overall pill */
+.pill {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 15px;
+  margin-bottom: 18px;
+}
+.pillDot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.pillText { font-size: 14px; font-weight: 650; }
+.pillAge { margin-left: auto; font-family: var(--mono); font-size: 11px; color: var(--text-faint); }
+
+/* Status cards */
+.cards { display: flex; flex-direction: column; gap: 14px; flex: 1; }
+.card {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+}
+.cardBody { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
+.cardLabel { font-size: 15px; font-weight: 650; color: var(--text-primary); }
+.badge {
+  align-self: flex-start;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  border: 1px solid;
+  border-radius: 999px;
+  padding: 2px 9px;
+}
+.cardSub { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.4; }
+
+/* Bottom nav */
+.bottomNav {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px 16px calc(10px + env(safe-area-inset-bottom));
+  background: color-mix(in srgb, var(--bg-base) 92%, transparent);
+  border-top: 1px solid var(--line);
+  backdrop-filter: blur(8px);
+}
+.navBtn {
+  flex: 1;
+  max-width: 200px;
+  padding: 10px 0;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.12s, border-color 0.12s;
+}
+.navBtn:hover { color: var(--text-primary); }
+.navActive {
+  color: var(--text-primary);
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+}
+
+@media (max-width: 480px) {
+  .card { gap: 14px; padding: 16px; }
+}

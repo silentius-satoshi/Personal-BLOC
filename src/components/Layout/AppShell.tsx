@@ -47,6 +47,7 @@ import { SettingsMain }      from '../Settings/SettingsMain';
 import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
+import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
 import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
@@ -325,6 +326,12 @@ export function AppShell() {
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} onBack={() => setUnlockEscape(false)} />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
         <PrivateAppNotice />
+      ) : viewerMode && viewerDataLoaded && activeTab !== 'settings' && activeTab !== 'almanac' ? (
+        // Viewer Experience Revamp V1 — the dedicated read-only viewer home REPLACES Daily/Monthly for
+        // the viewer. Settings/Almanac fall through to their simple-mode branches below.
+        <ViewerHomeView
+          onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
+        />
       ) : simpleMode && activeTab === 'settings' ? (
         <div className={styles.simpleModeSettings}>
           <div className={styles.simpleModeSettingsHeader}>

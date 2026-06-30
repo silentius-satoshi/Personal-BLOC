@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (398 tests — all must pass before every commit)
+- Vitest (444 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -42,6 +42,17 @@ src/
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar)
+    safetyView.ts               # Viewer Revamp V1 — PURE single-source of the 3 safety dimensions
+                                # (deriveSafetyView → {capacityUsed, creditLevel, strikeLtv, strikeLevel,
+                                # crashLtv, cbLtv, cbLevel}; deriveViewerOverall = worst of the gauges
+                                # SHOWN incl. credit). Mirrors SafetyDashboard.tsx lines 73-104 VERBATIM;
+                                # reuses barLevel/worseLevel/cbMetrics/accruedCbBalance (cbMetrics),
+                                # computeStrikeLtv (strikeCredit), CB_LLTV (runCoinbaseLoan). NEW credit
+                                # risk band CREDIT_WARN_USED 0.75 / CREDIT_ACT_USED 0.90 (the owner's
+                                # capacity bar is always-green; the viewer colors it). 🔴 FOLLOW-UP:
+                                # SafetyDashboard still keeps its OWN inline copy — V1 did NOT refactor it;
+                                # the owner-side dedup (point SafetyDashboard at safetyView, remove inline)
+                                # is a tracked TODO so the two can't drift
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
                                 # deriveCurrentPosition (both take pendingCollateralAdjustment as a REQUIRED param),
                                 # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: bucketEventToMonth
@@ -1378,6 +1389,45 @@ badge + an off-mode `~`/`est.` precision marker differ.
 
 ---
 
+## Viewer Experience Revamp (V1 — the dedicated viewer home; store stays v19, NO bump)
+
+The first phase of giving a read-only viewer (e.g. the owner's father) a calm, abstracted experience
+instead of the owner's dense Daily/Monthly surface. **V1 is the home page only** — three radial
+status gauges + greeting + one overall pill, **C-safe DISPLAY only** (renders ratios/levels the
+viewer already receives — NO absolute figures stripped from the snapshot yet; the C-safe/C-trusted
+privacy mechanism + sharing-page revamp = V2, onboarding name step = V3, stripped viewer Settings =
+V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** (no inputs).
+
+- **`src/simulation/safetyView.ts`** (+ `__tests__/safetyView.test.ts`, 19 cases) — the PURE shared
+  derivation; see the simulation/ file list above. The 3 dimensions reuse the owner's exact health
+  math (`SafetyLevel` = `'safe'|'watch'|'act'`; badges Safe/Fair/Poor). The ONE new behavior: the
+  credit gauge is **risk-colored** (band 0.75/0.90) — a deliberate divergence from the owner's
+  always-green capacity bar (chosen by the user). Suite 425 → 444.
+- **`src/components/Viewer/ViewerHomeView.tsx`** (+ `.module.css`) — reads the store directly
+  (recomputes on price tick), calls `deriveSafetyView`/`deriveViewerOverall`. Header (brand + ⚙ →
+  `onOpenSettings`) → greeting ("Good morning/afternoon/evening"; **no name in V1** — the
+  `viewerDisplayName` capture is V3) → overall pill (level dot + copy "All positions safe / Worth
+  keeping an eye / Action needed" + "updated Nm ago" from `viewerLastSyncAt`) → 3 `<RadialGauge>`
+  cards (Strike credit / Strike LTV / Coinbase LTV, the CB card gated on `hasCbLoan`; each a gauge +
+  Safe/Fair/Poor badge + a plain C-safe sub-line) → minimal bottom nav (Home + Settings). Local
+  `LEVEL_COLOR` mirrors SafetyDashboard.
+- **`src/components/Viewer/RadialGauge.tsx`** (+ `.module.css`) — lightweight presentational SVG
+  donut (stroke-dasharray fill, props `{pct,color,label}`, center "{pct}%", `role="img"`). NOT the
+  Almanac `CycleDial` (coordinate-system-specialized).
+- **`AppShell.tsx`** — a new render branch `viewerMode && viewerDataLoaded && activeTab !== 'settings'
+  && activeTab !== 'almanac'` → `<ViewerHomeView onOpenSettings={…}/>`, inserted AFTER the
+  `PrivateAppNotice` owner gate and BEFORE the `simpleMode` branches. So the viewer home REPLACES
+  Daily/Monthly for the viewer; Settings/Almanac still fall through to their existing simple-mode
+  branches (a provisioned viewer has `simpleMode===true`). Owner (`viewerMode===false`) skips it.
+- **Store `viewerLastSyncAt: number | null`** (transient — NOT persisted, in the partialize
+  exclusion alongside `viewerDataLoaded`; setter `setViewerLastSyncAt`) — set in `viewerSync.ts`
+  `applyViewerEvent` on a valid hydrate (the freshness clock for the home pill). No persisted field →
+  no store version bump.
+- **`SafetyDashboard.tsx` UNTOUCHED** (V1) — it keeps its inline level math. 🔴 Tracked follow-up:
+  refactor it to consume `safetyView.ts` (remove the inline copy) so owner + viewer can't drift.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -1601,7 +1651,8 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-398 tests — `npx vitest run` before every commit.
+444 tests — `npx vitest run` before every commit.
+- `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)

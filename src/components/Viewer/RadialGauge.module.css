@@ -1,0 +1,17 @@
+/* Viewer Experience Revamp — V1. Radial donut gauge (fitness-ring). */
+.gauge {
+  width: 120px;
+  height: 120px;
+  display: block;
+}
+
+.track {
+  stroke: var(--surface-3);
+}
+
+.value {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
