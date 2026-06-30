@@ -28,4 +28,7 @@
   --line-2:    rgba(255,255,255,.04);
   --btc:       #f7931a;
   --mono:      ui-monospace, "SF Mono", "Menlo", monospace;
+
+  /* Almanac CycleClock P1 — low/floor projection-marker accent (additive). */
+  --maroon:    #8B3A3A;
 }

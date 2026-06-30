@@ -1226,6 +1226,52 @@ toggle style (`.segmentBtn`/`.segmentBtnActive`) unchanged; modal (`.modalCard`)
 
 ---
 
+## Almanac / CycleClock (P1 — pure model + tests + static dial; store unchanged)
+
+The risk-free foundation for an Almanac "CycleClock" — a pure, unit-tested domain model and a static
+presentational SVG dial. **No fetch, no lifecycle, no nav wiring, no live data, no settings** (those are
+P3/P4). The dial is built but **NOT mounted on any surface** (the surface switch is P4). Prior art for
+P3's `useChainTip`: `useMempoolData.ts` (existing tip fetch, consumed by `PowerLawSidebar`) — untouched
+in P1, superseded later.
+
+- **`src/simulation/cycleModel.ts`** — PURE, standalone (no React, no fetch, no `Date.now()` in the
+  exported math; callers pass `ms`/`height`). 🔴 Imports NOTHING from the risk/position core
+  (`runAdvisor`/`runCoinbaseLoan`/`strikeCredit`/`cbMetrics`/store) — the §2 boundary holds from P1.
+  Two INDEPENDENT lifetimes that never mix in code:
+  - **Halving math (GENERALIZES):** `epochFromHeight(height)` → `{index, era, startBlock, endBlock,
+    reward}` (`index=floor(h/210000)`, `era=index+1`, `reward=50/2**index`); `epochProgress(height)`
+    adds `{blocksIntoEpoch, blocksRemaining, fraction}` where `fraction=(h−startBlock)/210000` —
+    **THE single source** for the dial's hand/arc/% (half-open [0,1): at exactly `endBlock` the height
+    rolls to the next epoch → fraction 0, which IS the halving wrap). `dateAtBlock(target, tip, blockS=
+    600)`, `blockAtDate(ms)` (anchored at `H4`), `blockPositionInEpoch(ms, e)` (caller clamps/hides
+    outside [0,1]). Constants: `HALVING_INTERVAL 210_000`, `GENESIS_REWARD 50`, `TARGET_BLOCK_S 600`,
+    `H4 {block 840_000, date 20 Apr 2024}`, `NEXT_HALVING_BLOCK 1_050_000`, `H5_EST` (date-fallback
+    boundary only). Epoch 6 (height ≥1,050,000 → reward 1.5625, new bounds) derives with no code change.
+  - **Cycle projection (FIXED-ANCHORED, does NOT generalize):** `CYCLE_TURNS` (14 turns built from
+    `CYCLE_ANCHOR` = Mon 6 Oct 2025 high, alternating High→Low +364d / Low→High +1064d to ~2050; both
+    steps ×7 so EVERY turn lands on a Monday; first low = Mon 5 Oct 2026) + `nextTurnAfter(ms)`.
+- **`src/simulation/__tests__/cycleModel.test.ts`** (12 cases) — epoch-5 classification + 2028 rollover
+  (Epoch 6/1.5625, no code change), `fraction` 0..1 single-source (half-open: ~1 just below endBlock,
+  0 at rollover), `blocksRemaining === 1_050_000 − h` exactness, `dateAtBlock` 144-blocks≈1-day,
+  `blockAtDate(H4.date)===H4.block`, and the IMG_7080 premise (14 turns, anchor high, first low Mon
+  5 Oct 2026, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation).
+- **`src/components/Almanac/CycleDial.tsx`** (+ `.module.css`) — STATIC presentational SVG dial, a
+  declarative React port of the preview's `drawDial(…,'halving')` (no `createElementNS`). Props
+  `{height, mode:'live'|'estimated', emphasis?:'halving'|'cycle'}` (`emphasis` accepted as the P2 seam;
+  P1 renders the **halving** face only). HR-1 one-coordinate-system: hand, progress arc, and "%" ALL
+  from `epochProgress(height).fraction` — `mode==='estimated'` just means the caller passed a
+  `blockAtDate(now)` height (the dial doesn't care how it was derived). Geometry ported verbatim
+  (`viewBox 0 0 360 360`, `CX/CY 180`, `R 140`, pure `polar`/`arc` helpers): track + 12 ticks → ghosted
+  projection markers (band + dashed hollow + muted label, **clamped/hidden outside [0,1]**: high
+  `--amber`, low `--maroon`) → BTC→green progress arc `arc(R,0.4,NOW)` (0.4 clears the round cap off the
+  cut) → halving cut + "½ HALVING" at 0% → NOW hand. a11y: `role="progressbar"`, `aria-valuemin/max`
+  0/100, `aria-valuenow=round(NOW)`, `aria-valuetext`. Colors via app tokens (gradient/cut/hand `--btc`/
+  `--green`, dot outline `--bg-base`, mono labels `--mono`); `.module.css` carries only wrapper sizing +
+  neutral track/tick hairlines + the mono label font.
+- **New token** `--maroon: #8B3A3A` in `tokens.css` (additive — low/floor marker accent).
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -1457,6 +1503,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
+- `src/simulation/__tests__/cycleModel.test.ts` — Almanac CycleClock P1 (12 cases): `epochFromHeight` epoch-5 classification + 2028 rollover (Epoch 6/1.5625, no code change); `epochProgress.fraction` 0..1 single-source (half-open — ~1 just below endBlock, 0 at rollover) + `blocksRemaining === 1_050_000 − h` exactness; `dateAtBlock` 144-blocks≈1-day; `blockAtDate(H4.date)===H4.block`; `CYCLE_TURNS` IMG_7080 premise (14 turns, anchor high @ 6 Oct 2025, first low Mon 5 Oct 2026 @ +364d, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `nextTurnAfter` selection + null past end
 - `living.test.ts`
 - `mining.test.ts`
 - `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
