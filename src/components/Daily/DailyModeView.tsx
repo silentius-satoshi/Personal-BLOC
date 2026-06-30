@@ -19,6 +19,7 @@ import styles from './DailyModeView.module.css';
 
 interface DailyModeViewProps {
   onOpenSettings: () => void;
+  onOpenAlmanac:  () => void;
   simpleView: 'monthly' | 'daily';
   setSimpleView: (v: 'monthly' | 'daily') => void;
 }
@@ -60,7 +61,7 @@ const clampPct = (a: number, b: number) => (b > 0 ? Math.max(0, Math.min(100, (a
  * Presentation aligned to mode-toggle-preview.html (layered surfaces, divided trio, two-part activity
  * card [aggregate streams + per-event log], terminal playbook plan card). No event sheets / writes / calendar.
  */
-export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: DailyModeViewProps) {
+export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSimpleView }: DailyModeViewProps) {
   const income     = useStore((s) => s.income);
   const expenses   = useStore((s) => s.expenses);
   const btcPrice   = useStore((s) => s.btcPrice);
@@ -205,6 +206,11 @@ export function DailyModeView({ onOpenSettings, simpleView, setSimpleView }: Dai
                 <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
                 <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
                 <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/>
+              </svg>
+            </button>
+            <button className={styles.iconBtn} onClick={onOpenAlmanac} aria-label="Almanac">
+              <svg width="15" height="15" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
+                <path d="M480 576L192 576C139 576 96 533 96 480L96 160C96 107 139 64 192 64L496 64C522.5 64 544 85.5 544 112L544 400C544 420.9 530.6 438.7 512 445.3L512 512C529.7 512 544 526.3 544 544C544 561.7 529.7 576 512 576L480 576zM192 448C174.3 448 160 462.3 160 480C160 497.7 174.3 512 192 512L448 512L448 448L192 448zM224 216C224 229.3 234.7 240 248 240L424 240C437.3 240 448 229.3 448 216C448 202.7 437.3 192 424 192L248 192C234.7 192 224 202.7 224 216zM248 288C234.7 288 224 298.7 224 312C224 325.3 234.7 336 248 336L424 336C437.3 336 448 325.3 448 312C448 298.7 437.3 288 424 288L248 288z"/>
               </svg>
             </button>
             <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">⚙</button>

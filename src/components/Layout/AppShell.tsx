@@ -48,6 +48,7 @@ import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
+import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
 
@@ -59,13 +60,14 @@ const ALL_TABS_META = [
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'   },
   { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'       },
   { key: 'liqsim',   fullLabel: 'Liq Sim',           shortLabel: 'Liq'      },
+  { key: 'almanac',  fullLabel: 'Almanac',            shortLabel: 'Almanac'  },
   { key: 'advisor',  fullLabel: 'Advisor',            shortLabel: 'Adv'      },
 ] as const;
 
 type TabKey = typeof ALL_TABS_META[number]['key'];
 type ActiveTab = TabKey | 'settings';
 
-const TOOL_KEYS = ['powerlaw', 'converter', 'mining', 'liqsim'] as const;
+const TOOL_KEYS = ['powerlaw', 'converter', 'mining', 'liqsim', 'almanac'] as const;
 
 interface SortableTabProps {
   tab: { key: string; fullLabel: string; shortLabel: string };
@@ -335,11 +337,29 @@ export function AppShell() {
           </div>
           <SettingsMain hideHeader />
         </div>
+      ) : simpleMode && activeTab === 'almanac' ? (
+        <div className={styles.simpleModeSettings}>
+          <div className={styles.simpleModeSettingsHeader}>
+            <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
+            <span className={styles.simpleModeSettingsTitle}>Almanac</span>
+          </div>
+          <AlmanacView />
+        </div>
       ) : simpleMode && activeTab !== 'settings' ? (
         <div className={styles.simpleModeRoot}>
           {simpleView === 'daily'
-            ? <DailyModeView onOpenSettings={() => setActiveTab('settings')} simpleView={simpleView} setSimpleView={setSimpleView} />
-            : <SimpleModeView onOpenSettings={() => setActiveTab('settings')} simpleView={simpleView} setSimpleView={setSimpleView} />}
+            ? <DailyModeView
+                onOpenSettings={() => setActiveTab('settings')}
+                onOpenAlmanac={() => setActiveTab('almanac')}
+                simpleView={simpleView}
+                setSimpleView={setSimpleView}
+              />
+            : <SimpleModeView
+                onOpenSettings={() => setActiveTab('settings')}
+                onOpenAlmanac={() => setActiveTab('almanac')}
+                simpleView={simpleView}
+                setSimpleView={setSimpleView}
+              />}
         </div>
       ) : (
         <div className={styles.shell} data-active-tab={activeTab}>
@@ -381,6 +401,7 @@ export function AppShell() {
             <div className={styles.sidebarInner}>
               {activeTab === 'settings'   ? null                   :
                activeTab === 'liqsim'     ? null                   :
+               activeTab === 'almanac'    ? null                   :
                activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
                activeTab === 'advisor'    ? <AdvisorSidebar />      :
                activeTab === 'living'     ? <LivingInputsPanel />   :
@@ -400,6 +421,7 @@ export function AppShell() {
              activeTab === 'converter'  ? <ConverterMain />     :
              activeTab === 'mining'     ? <MiningMain />        :
              activeTab === 'liqsim'     ? <LiqSimulator />     :
+             activeTab === 'almanac'    ? <AlmanacView />      :
                                           <SmartBlocMain />}
           </main>
         </div>

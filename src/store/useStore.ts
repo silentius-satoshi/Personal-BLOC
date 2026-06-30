@@ -123,7 +123,7 @@ export function gateHydratedIdentity(persisted: any, gatePubkey: string | null, 
 
 type Tier = 'min' | 'rec' | 'ideal' | 'custom';
 type Scenario = 'conservative' | 'moderate' | 'historical';
-type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'liqsim' | 'settings';
+type ActiveTab = 'living' | 'bloc' | 'powerlaw' | 'converter' | 'mining' | 'coinbase' | 'advisor' | 'liqsim' | 'almanac' | 'settings';
 type LtvType = 'target' | 'current' | 'high' | 'hyper';
 
 const defaultMiningInputs: MiningInputs = {
@@ -1051,7 +1051,7 @@ export const useStore = create<StoreState>()(
 
   hiddenTabs:  [],
   tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase', 'advisor'],
-  toolTabs:    ['powerlaw', 'converter', 'mining', 'liqsim'],
+  toolTabs:    ['powerlaw', 'converter', 'mining', 'liqsim', 'almanac'],
   previousTab: 'living',
   toggleTabVisibility: (tab) => set((s) => ({
     hiddenTabs: s.hiddenTabs.includes(tab)

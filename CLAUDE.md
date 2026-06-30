@@ -1301,8 +1301,20 @@ readout to the dial's own sized box. a11y `aria-valuetext` branches per emphasis
 - Token mapping: preview `--blue` (floor/low) → `--maroon`; the plain "Open Halving Clock" link →
   `--btc`; cycle hand → `var(--text-primary)` (no foreign hex); translucent ghost surfaces via
   `color-mix` on app tokens. 🔴 Both faces import nothing from the risk/position core (§2 holds on Cycle
-  specifically — grep-clean). Still STATIC (no fetch/`useChainTip` — P3); NOT wired to the app surface
-  switch (P4).
+  specifically — grep-clean). Still STATIC (no fetch/`useChainTip` — P3).
+
+### P4 — nav wiring (full-app Tools + Simple-mode book icon; store `ActiveTab` gains `'almanac'`)
+
+`'almanac'` added to `ALL_TABS_META` + `TOOL_KEYS` + `toolTabs` default (the latter covers desktop;
+`TOOL_KEYS` covers mobile) → lives in the **Tools dropdown** (null sidebar, `<AlmanacView/>` in main,
+no `hasCbLoan` gate — always available). Store `ActiveTab` union gains `'almanac'`; `tabOrder` default
+is unchanged (almanac auto-appends as a new key). Simple mode: an **inline FA book-solid SVG** icon
+button (`15px` Daily / `16px` Monthly, matching each view's existing grid icon) in both appbars
+(DailyModeView + SimpleModeView) → `setActiveTab('almanac')` → a new
+`simpleMode && activeTab === 'almanac'` surface with a ← Back header (mirrors the Settings-in-Simple-mode
+pattern, reuses `.simpleModeSettings`/`.simpleModeSettingsHeader`/`.simpleModeBackBtn`/
+`.simpleModeSettingsTitle` CSS — no new CSS). `onOpenAlmanac: () => void` prop added to both views.
+Still STATIC (default fixture height 955_710/'estimated'; P3 wires live data via `useChainTip`).
 
 ---
 
@@ -1316,7 +1328,9 @@ const ALL_TABS_META = [
   { key: 'converter', fullLabel: 'Sats',              shortLabel: '丰'        },
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'    },
   { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'        },
-  { key: 'advisor',   fullLabel: 'Advisor',           shortLabel: 'Adv'       },
+  { key: 'liqsim',   fullLabel: 'Liq Sim',           shortLabel: 'Liq'      },
+  { key: 'almanac',  fullLabel: 'Almanac',            shortLabel: 'Almanac'  },
+  { key: 'advisor',  fullLabel: 'Advisor',            shortLabel: 'Adv'      },
 ];
 ```
 
