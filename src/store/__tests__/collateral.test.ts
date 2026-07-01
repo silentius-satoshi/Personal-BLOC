@@ -187,7 +187,7 @@ describe('dated collateral — store actions (spec v4)', () => {
   });
 
   it('adjustCurrentCollateral AND a graduating upsert both mark settingsDirty (pending is synced)', async () => {
-    resetStore({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk' });
+    resetStore({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', initialSettingsPullDone: true });
     vi.useFakeTimers();
 
     useStore.getState().adjustCurrentCollateral(0.60);

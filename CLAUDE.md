@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (444 tests — all must pass before every commit)
+- Vitest (449 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -1698,7 +1698,8 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ## Test Suite
 
-444 tests — `npx vitest run` before every commit.
+449 tests — `npx vitest run` before every commit.
+- `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
@@ -1733,7 +1734,7 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 - `src/hooks/__tests__/useRelayStatus.test.ts` — P3 pure `readyStateToStatus` mapping (1→connected, 0→connecting, 2/3/other→offline); the hook's socket lifecycle is device-verified, not unit-tested
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
-- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw)
+- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). Seed-clobber Fix B: the FIRST pull (`!initialSettingsPullDone`) hydrates real remote settings even when `settingsDirty` is spuriously true (the fixture default is `initialSettingsPullDone: true` = established session)
 - `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache) + snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
 - `src/lib/nostr/__tests__/viewerSync.test.ts` — P3 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious cbCollateralReading injected into the viewer's journal); a pre-P3 snapshot without the scalar keeps the existing value (?? fallback); a revoked snapshot → clearViewerData, scalar NOT applied
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
@@ -2240,6 +2241,26 @@ vercel.json                         # Catch-all rewrite → index.html (required
   `'sync incomplete (pull ok|FAILED, records ok|FAILED|skipped, settings ok|FAILED|skipped)'` otherwise
   (`skipped` = not dirty — never reported `ok` when nothing was pushed). Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
   double-mount races share one promise). Auto-restore reverts optimistic auth only if it failed with no signer.
+- **INVARIANT — a freshly-authenticated session must complete an initial settings PULL before it may
+  PUBLISH settings; seed/un-established state must NEVER (a) block hydration of real remote data nor
+  (b) be published over it.** (Fixes the fresh-install→login data-loss incident + closes parked backlog
+  #6 — a seed-default store published defaults over the owner's real relay data.) The gate is the
+  session-transient **`initialSettingsPullDone`** (in-memory, NOT persisted — in the `partializeState`
+  exclusion, reset each boot + in `clearViewerData`; never in `SETTINGS_FIELDS`). It is set `true` in
+  `syncNow` right after `fetchAndSync` returns (the settings pull query resolved — whether it hydrated
+  real data or the relay was empty; NOT set if `fetchAndSync` threw). Four layered defenses:
+  - **Fix A (`syncNow.ts`):** the settings publish is gated `settingsDirty && initialSettingsPullDone`
+    — a fresh login can't publish settings until it has pulled first.
+  - **Fix B (`sync.ts applyRemoteEvent`):** the settings-hydrate guard is relaxed on the FIRST pull —
+    `(!settingsDirty || !initialSettingsPullDone) && remoteTs > lastSettingsSyncAt` — so real remote
+    settings hydrate even if a benign post-auth setter spuriously seed-dirtied the store (no genuine
+    unpublished edits exist yet). Subsequent pulls (flag now true) keep the genuine edit-protection.
+  - **Fix C (`syncSettingsToNostr`):** early-returns `if (!initialSettingsPullDone)` — a benign
+    post-auth setter (`setSimpleMode` etc.) firing the instant auth flips true no longer dirties the
+    seed store. This is the root fix.
+  - **Fix D (`publishSettingsNow`):** refuses (returns false + warns) when `!initialSettingsPullDone`
+    AND the payload is the untouched seed (`income===4000 && expenses===3500 && creditLine===10000 &&
+    !advisorActualBtcHeld`) — the belt-and-suspenders net. No store version bump (transient flag).
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)
 - **Records receive is MERGE-based and unconditionally safe** (`mergeRecords`, per month): newest

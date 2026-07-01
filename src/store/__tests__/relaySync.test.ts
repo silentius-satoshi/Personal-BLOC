@@ -81,12 +81,12 @@ describe('Option C follow-on — relay edits publish on their own', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
     // restore a clean store so other suites don't see the fake auth state.
-    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', settingsDirty: false } as never);
+    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', settingsDirty: false, initialSettingsPullDone: false } as never);
   });
 
   it('setNostrRelaysAndSync sets the list AND marks settingsDirty (user-edit publish path)', () => {
-    // syncSettingsToNostr early-returns unless authed; fake timers swallow the 2s debounce publish.
-    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', settingsDirty: false } as never);
+    // syncSettingsToNostr early-returns unless authed AND past the initial pull; fake timers swallow the 2s debounce.
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', settingsDirty: false, initialSettingsPullDone: true } as never);
     vi.useFakeTimers();
 
     useStore.getState().setNostrRelaysAndSync([A, B]);

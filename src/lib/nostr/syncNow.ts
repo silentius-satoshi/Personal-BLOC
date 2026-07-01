@@ -25,10 +25,16 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
       useStore.getState().setNostrRelays(relays);
     }
     const pullOk = await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
+    // The settings pull query has now resolved this session (whether it hydrated real data or the relay was
+    // empty). Set regardless of pullOk — a decrypt failure must not permanently block publishing; a brand-new
+    // owner with an empty relay must still be able to publish. Set only in this normal-completion path (a THROW
+    // from fetchAndSync is caught below and leaves the flag false). This flag now permits settings publishing +
+    // re-arms syncSettingsToNostr's dirty-trigger, closing the fresh-install seed-clobber race.
+    useStore.getState().setInitialSettingsPullDone(true);
     let recOk = true, setOk = true;
     let recLabel = 'skipped', setLabel = 'skipped';   // not dirty → no push attempted
     if (useStore.getState().recordsDirty)  { recOk = await publishRecordsNow();  recLabel = recOk ? 'ok' : 'FAILED'; }
-    if (useStore.getState().settingsDirty) { setOk = await publishSettingsNow(); setLabel = setOk ? 'ok' : 'FAILED'; }
+    if (useStore.getState().settingsDirty && useStore.getState().initialSettingsPullDone) { setOk = await publishSettingsNow(); setLabel = setOk ? 'ok' : 'FAILED'; }
     const ok = pullOk && recOk && setOk;
     if (ok) {
       useStore.getState().setNostrReconnectNeeded(false);

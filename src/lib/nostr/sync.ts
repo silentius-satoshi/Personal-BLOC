@@ -38,8 +38,12 @@ export async function applyRemoteEvent(
     const remoteTs = event.created_at;
     // While local settings changes are unpublished (settingsDirty), an older/foreign remote
     // whole-object must not clobber them; syncNow pushes local first, then the watermark governs.
+    // EXCEPTION — the FIRST pull of a session (!initialSettingsPullDone, still false until fetchAndSync
+    // returns) must hydrate real remote data even if a benign post-auth setter spuriously seed-dirtied the
+    // store; there are no genuine unpublished edits yet, so the "dirty" is seed noise. Subsequent pulls
+    // (flag now true) keep the genuine edit-protection.
     if (dTag === SETTINGS_DTAG
-        && !useStore.getState().settingsDirty
+        && (!useStore.getState().settingsDirty || !useStore.getState().initialSettingsPullDone)
         && remoteTs > (useStore.getState().lastSettingsSyncAt ?? 0)) {
       useStore.getState().hydrateSettings(data);
       useStore.getState().setLastSettingsSyncAt(remoteTs);

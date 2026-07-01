@@ -411,6 +411,11 @@ export interface StoreState {
   syncSettingsToNostr: () => void;
   nostrSyncing:        boolean;
   setNostrSyncing:     (v: boolean) => void;
+  // Transient (NOT persisted/synced) — true once this session's FIRST settings pull query has resolved.
+  // Gates the first settings publish + relaxes the first-pull hydrate guard + gates syncSettingsToNostr's
+  // dirty-trigger, so a seed-default store can never clobber real relay data on fresh-install→login.
+  initialSettingsPullDone:    boolean;
+  setInitialSettingsPullDone: (v: boolean) => void;
   nostrReconnectNeeded:    boolean;
   setNostrReconnectNeeded: (v: boolean) => void;
 
@@ -463,6 +468,13 @@ export async function publishRecordsNow(): Promise<boolean> {
 export async function publishSettingsNow(): Promise<boolean> {
   const state = useStore.getState();
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;   // publish didn't happen
+  // Backstop (closes parked backlog #6): never publish the UNTOUCHED SEED over real relay data before this
+  // session has pulled a baseline. Cheap sentinel check — enough to catch the fresh-install seed store.
+  if (!state.initialSettingsPullDone
+      && state.income === 4000 && state.expenses === 3500 && state.creditLine === 10000 && !state.advisorActualBtcHeld) {
+    nostrLog('warn', 'refused to publish seed-default settings before initial pull');
+    return false;
+  }
   useStore.getState().setNostrSyncing(true);
   try {
     const settings = buildSettingsPayload(useStore.getState());
@@ -718,7 +730,7 @@ function monthOf(ev: DayEvent | undefined): number | null {
 // Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
 // self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
 export function partializeState(state: StoreState) {
-  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
   return rest;
 }
 
@@ -1175,6 +1187,7 @@ export const useStore = create<StoreState>()(
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     viewerNpub: null, viewerPubkey: null, viewerLabel: null,
     viewerDataLoaded: false,
+    initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
   }),
 
   // Owner-recovery reset (escape hatch). Mirrors clearViewerData's financial/records/strike seed-reset but for the
@@ -1208,6 +1221,7 @@ export const useStore = create<StoreState>()(
   syncSettingsToNostr: () => {
     const s = useStore.getState();
     if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;   // pre-login edits must NOT mark dirty (would block first hydrate)
+    if (!s.initialSettingsPullDone) return;   // don't dirty/publish before the first pull establishes a baseline (prevents a benign post-auth setter dirtying the seed store → seed-clobber)
     set({ settingsDirty: true });
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
     syncDebounceTimer = setTimeout(() => { publishSettingsNow(); }, 2000);
@@ -1215,6 +1229,8 @@ export const useStore = create<StoreState>()(
 
   nostrSyncing:    false,
   setNostrSyncing: (v) => set({ nostrSyncing: v }),
+  initialSettingsPullDone:    false,   // session-transient — reset each boot (never persisted/synced)
+  setInitialSettingsPullDone: (v) => set({ initialSettingsPullDone: v }),
   nostrReconnectNeeded:    false,
   setNostrReconnectNeeded: (v) => set({ nostrReconnectNeeded: v }),
 

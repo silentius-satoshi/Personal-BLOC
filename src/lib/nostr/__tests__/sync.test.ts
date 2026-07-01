@@ -24,6 +24,8 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     lastRecordsSyncAt:       null,
     recordsDirty:            false,
     settingsDirty:           false,
+    initialSettingsPullDone: true,   // default = established session (past the first pull); the first-pull case sets this false explicitly
+    setInitialSettingsPullDone: vi.fn(),
     monthlyLog:              [],
     deletedMonths:           {},
     dayLog:                  [],
@@ -130,6 +132,22 @@ describe('fetchAndSync', () => {
     await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+  });
+
+  it('FIRST pull (!initialSettingsPullDone) hydrates real remote settings even when settingsDirty is spuriously true (seed-clobber fix B)', async () => {
+    // Fresh-install race: a benign post-auth setter seed-dirtied the store BEFORE the first pull.
+    // The relaxed guard must still hydrate the real remote data (no genuine edits exist yet to protect).
+    resetStore({ settingsDirty: true, initialSettingsPullDone: false, lastSettingsSyncAt: null });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 700, { income: 9999 }),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
+    expect(mockStoreState.hydrateSettings.mock.calls[0][0]).toEqual({ income: 9999 });
+    expect(mockStoreState.setLastSettingsSyncAt).toHaveBeenCalledWith(700);
   });
 
   it('settingsDirty false → same newer remote hydrates + stamps the watermark', async () => {
