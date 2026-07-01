@@ -5,6 +5,7 @@ import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMont
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
+import { todayLocalISO } from '../utils/format';
 import { DEFAULT_RELAYS, importNip65RelayList } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
 import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
 import type { WrapMeta } from '../lib/nostr/keyVault';
@@ -645,10 +646,14 @@ export async function publishViewerRevocationNow(): Promise<void> {
 
 // --- Daily Mode P2a routing helpers (module-level; use useStore.getState()/setState like the publish* fns) ---
 
-// ISO first-day of a strategy month (month 1 = advisorStartDate's month).
+// ISO first-day of a strategy month (month 1 = advisorStartDate's month). advisorStartDate is a
+// date-only 'yyyy-mm-dd' string → new Date(...) parses it at UTC MIDNIGHT (JS spec). The output feeds
+// bucketEventToMonth/calendarModel's UTC-string calendar-date convention, so this stays UTC-consistent
+// throughout (UTC accessors, not local) — mixing local getMonth/setMonth with a UTC-parsed input was the
+// bug (an off-by-one near month boundaries in behind-UTC zones).
 function strategyMonthDate(advisorStartDate: string, month: number): string {
   const d = new Date(advisorStartDate);
-  d.setMonth(d.getMonth() + (month - 1));
+  d.setUTCMonth(d.getUTCMonth() + (month - 1));
   return d.toISOString().split('T')[0];
 }
 
@@ -760,7 +765,7 @@ export function migrateState(persistedState: any): any {
   if (migratedDayLog.length === 0 && persistedState.hasCbLoan && persistedState.cbCollateralBtc != null) {
     migratedDayLog.push({
       id: `cbcoll-migrate-${Date.now()}`,
-      date: new Date().toISOString().split('T')[0],
+      date: todayLocalISO(),
       ts: Date.now(),
       kind: 'cbCollateralReading',
       cbCollateral: persistedState.cbCollateralBtc,
@@ -877,7 +882,7 @@ export const useStore = create<StoreState>()(
   setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no syncSettingsToNostr
   setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no syncSettingsToNostr
 
-  advisorStartDate:         new Date().toISOString().split('T')[0],
+  advisorStartDate:         todayLocalISO(),
   advisorActualBlocBalance: 0,
   advisorMonthStartBalance: 0,
   advisorActualBtcHeld:     0,
@@ -944,7 +949,7 @@ export const useStore = create<StoreState>()(
     // cbCollateralReading is part of dayLog, and addDayEvent (Change 3) publishes records. addDayEvent's clock refresh
     // sets cbCollateralBtc to v (latest-ts event); set explicitly too.
     const id = globalThis.crypto?.randomUUID?.() ?? `cbcoll-${Date.now()}-${Math.random().toString(36).slice(2)}`;
-    useStore.getState().addDayEvent({ id, date: new Date().toISOString().split('T')[0], ts: Date.now(), kind: 'cbCollateralReading', cbCollateral: v });
+    useStore.getState().addDayEvent({ id, date: todayLocalISO(), ts: Date.now(), kind: 'cbCollateralReading', cbCollateral: v });
     set({ cbCollateralBtc: v });
   },
   setCbAprPct:         (v) => { set({ cbAprPct: v });         useStore.getState().syncSettingsToNostr(); },
@@ -1175,7 +1180,7 @@ export const useStore = create<StoreState>()(
   // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no syncSettingsToNostr.
   clearViewerData: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
-    advisorStartDate: new Date().toISOString().split('T')[0],
+    advisorStartDate: todayLocalISO(),
     advisorActualBlocBalance: 0, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
     cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
@@ -1196,7 +1201,7 @@ export const useStore = create<StoreState>()(
   // prefs, and viewerNpub/Pubkey/Label (re-hydrate from the pull). Reachable ONLY from the escape hatch.
   resetPlanToSeeds: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
-    advisorStartDate: new Date().toISOString().split('T')[0],
+    advisorStartDate: todayLocalISO(),
     advisorActualBlocBalance: 0, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
     cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',

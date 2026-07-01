@@ -1,12 +1,15 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore, buildSettingsPayload, migrateState, partializeState } from '../useStore';
+import { todayLocalISO, toLocalISO } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 
 // Real store. advisorStartDate = today → events dated today bucket to strategy month 1 = the CURRENT month (so
 // upsertLogEntry graduates pending, exercising the C1 collateral seam). isAuthenticated:false → publishRecordsNow /
 // syncSettingsToNostr early-return (no async / timers).
-const TODAY = new Date().toISOString().split('T')[0];
-const FUTURE = new Date(Date.now() + 45 * 86400000).toISOString().split('T')[0];   // ~month 2
+// TODAY must match the store's advisorStartDate default (todayLocalISO()) — use the same helper, not a UTC-derived
+// date, so the two stay the same calendar day regardless of the test runner's timezone/time-of-day.
+const TODAY = todayLocalISO();
+const FUTURE = toLocalISO(new Date(Date.now() + 45 * 86400000));   // ~month 2
 const BASELINE = 0.5;
 
 let seq = 0;

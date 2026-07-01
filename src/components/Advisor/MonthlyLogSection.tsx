@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
 import type { MonthlyLogEntry } from '../../simulation/types';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, toLocalISO } from '../../utils/format';
 import styles from './MonthlyLogSection.module.css';
 
 type AdvisorMonthRow = ReturnType<typeof runAdvisor>['rows'][number];
@@ -115,9 +115,12 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
 
   const handleSave = () => {
     const mn = selectedMonthNum;
-    const start = new Date(advisorStartDate);
-    const entryDate = new Date(start.getFullYear(), start.getMonth() + (mn - 1), 1);
-    const date = entryDate.toISOString().split('T')[0];
+    // Extract y/m from the RAW string (never round-trip through new Date(advisorStartDate) — that parses
+    // at UTC midnight, and reading it back via local getFullYear/getMonth shifts a month in behind-UTC
+    // zones whenever advisorStartDate falls near a month boundary). Mirrors MonthlyLogOverlay.getMonthDate.
+    const [ey, em] = advisorStartDate.split('-').map(Number);
+    const entryDate = new Date(ey, em - 1 + (mn - 1), 1);
+    const date = toLocalISO(entryDate);
     upsertLogEntry({
       month:      mn,
       date,

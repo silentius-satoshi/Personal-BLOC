@@ -1662,6 +1662,47 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 ---
 
+## Date Formatting — `todayLocalISO()` / `toLocalISO()` (`src/utils/format.ts`)
+
+**Never derive "today" or format a specific local `Date` via `new Date(...).toISOString().split('T')[0]`**
+— `toISOString()` is always UTC. For "today", this shows TOMORROW's date once UTC has rolled over
+while it's still evening in a behind-UTC zone (e.g. US) — a real bug that hit date-stamping
+(`cbLoanBalanceAsOf`, `ndpLastPaidDate`), date-input `max` bounds, the Daily Mode event-filing date, and
+several store defaults/seeds. The complementary bug (a LOCAL `Date` built via `new Date(y, m, d)` then
+formatted via `.toISOString()`) shifts a day *earlier* in ahead-of-UTC zones — hit the month-entry-date
+builders in `SimpleModeView`/`MonthlyLogOverlay`/`MonthlyLogSection`.
+
+```typescript
+export const toLocalISO = (date: Date): string => `${y}-${mm}-${dd}`;   // LOCAL getFullYear/getMonth/getDate
+export const todayLocalISO = (): string => toLocalISO(new Date());
+```
+
+- **Use `todayLocalISO()`** anywhere "today" (the real wall-clock calendar day) is needed: date-stamping
+  setters, date-input `max` attributes, day-event dates, `advisorStartDate` defaults/seeds.
+- **Use `toLocalISO(date)`** anywhere a specific LOCAL `Date` object (e.g. `new Date(y, m, 1)`, the
+  first-of-a-strategy-month) needs to become its correct calendar-day string — never `.toISOString()`.
+- **`MonthlyLogSection.tsx`'s month-entry-date builder** goes one step further: it must extract
+  `advisorStartDate`'s y/m from the RAW STRING (`.split('-').map(Number)`), never via
+  `new Date(advisorStartDate).getFullYear()/.getMonth()` — that round-trip parses the string at UTC
+  midnight (JS spec) then reads it back with LOCAL accessors, which shifts a MONTH in behind-UTC zones
+  whenever the anchor date falls near a month boundary (mirrors `MonthlyLogOverlay.getMonthDate`'s
+  already-correct pattern).
+- **`useStore.ts`'s `strategyMonthDate`** is a distinct case — do NOT convert it to `toLocalISO`. Its
+  output feeds `bucketEventToMonth`/`calendarModel.ts`'s UTC-string calendar-date convention, so it
+  stays UTC-consistent THROUGHOUT (`setUTCMonth`/`getUTCMonth`, not local accessors) rather than mixing
+  a UTC-parsed input with local month arithmetic (which was the actual bug — an off-by-one near month
+  boundaries in behind-UTC zones).
+- **`src/components/Daily/calendarModel.ts` stays UTC by design** — it never derives "today"; it only
+  does UTC-midnight ms-stepping arithmetic on `'yyyy-mm-dd'` strings that are already correct (matching
+  `bucketEventToMonth`'s spec-mandated UTC-midnight parse of date-only ISO strings). This is internally
+  self-consistent and DST-safe; converting it to local-time arithmetic would risk DST bugs. `DailyModeView`
+  compares its `today`/`selectedDay` as opaque `'yyyy-mm-dd'` strings, so once `todayLocalISO()` produces
+  the correct calendar day upstream, it flows into the UTC-string calendar logic with no mismatch.
+- **Almanac** (`HalvingClock`/`CycleClock`/`CycleDial`) and `DevPanel.tsx`'s diagnostic
+  `now: new Date().toISOString()` stay UTC/full-ISO by design — unaffected.
+
+---
+
 ## NumberInput
 
 `prefix` (e.g. `'$'` or `'₿'`) renders before the number. `suffix` renders inside the input — **avoid suffix for BTC amounts** (cursor issues). Omit `decimals` to let user type freely. Use an external label or hint for units instead. Suppresses the `value → raw` re-sync while focused (fixes mid-type clobber on high-decimal fields like BTC amounts); formats to `fmt(clamped)` on blur.

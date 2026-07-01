@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, toLocalISO } from '../../utils/format';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import styles from './MonthlyLogOverlay.module.css';
 
@@ -41,7 +41,7 @@ function getMonthLabel(advisorStartDate: string, monthNum: number): string {
 function getMonthDate(advisorStartDate: string, monthNum: number): string {
   const [y, m] = advisorStartDate.split('-').map(Number);
   const d = new Date(y, m - 1 + (monthNum - 1), 1);
-  return d.toISOString().split('T')[0];
+  return toLocalISO(d);
 }
 
 function fmt(n: number): string { return isNaN(n) ? '0' : n.toString(); }

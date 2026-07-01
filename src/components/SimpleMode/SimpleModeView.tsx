@@ -7,7 +7,7 @@ import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/log
 import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { deriveForMonth, isOperatingMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO, toLocalISO } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
@@ -539,7 +539,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
 
   const handleApply = (confirmedBtcBought: number) => {
     const [ey, em] = advisorStartDate.split('-').map(Number);
-    const entryDate = new Date(ey, em - 1 + (currentMonth - 1), 1).toISOString().split('T')[0];
+    const entryDate = toLocalISO(new Date(ey, em - 1 + (currentMonth - 1), 1));
     upsertLogEntry({
       month:          currentMonth,
       date:           entryDate,
@@ -561,10 +561,10 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     if (hasCbLoan && cbPaymentThisMonth > 0) {
       const accrued = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
       setCbLoanBalance(Math.max(0, accrued - cbPaymentThisMonth));
-      setCbLoanBalanceAsOf(new Date().toISOString().split('T')[0]);
+      setCbLoanBalanceAsOf(todayLocalISO());
     }
     if (ndpPayThisMonth) {
-      setNdpLastPaidDate(new Date().toISOString().split('T')[0]);
+      setNdpLastPaidDate(todayLocalISO());
     }
     setNdpPayThisMonth(false);
     setCustomBlocDraw(null);

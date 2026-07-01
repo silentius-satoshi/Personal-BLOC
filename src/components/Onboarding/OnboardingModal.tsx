@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { todayLocalISO } from '../../utils/format';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { ChoosePathView } from '../Entry/ChoosePathView';
@@ -42,7 +43,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   const [draft, setDraft] = useState({
     income: 5000, expenses: 4000,
     collateralBtc: 0.50, creditLine: 15000, blocApr: 13,
-    startDate: new Date().toISOString().split('T')[0],
+    startDate: todayLocalISO(),
     cbLoanBalance: 50000, cbCollateralBtc: 1.00, cbAprPct: 4.77,
   });
 
@@ -158,7 +159,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
                     type="date"
                     className={styles.dateInput}
                     value={draft.startDate}
-                    max={new Date().toISOString().split('T')[0]}
+                    max={todayLocalISO()}
                     onChange={(e) => setDraft((d) => ({ ...d, startDate: e.target.value }))}
                   />
                 </div>

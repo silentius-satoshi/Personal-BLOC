@@ -33,7 +33,7 @@ import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './SettingsMain.module.css';
 
 // Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
@@ -733,7 +733,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               type="date"
               className={styles.setupDateInput}
               value={advisorStartDate}
-              max={new Date().toISOString().split('T')[0]}
+              max={todayLocalISO()}
               onChange={(e) => setAdvisorStartDate(e.target.value)}
             />
           </div>

@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { bucketEventToMonth } from '../../simulation/logUtils';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import { readingComplete, buildEventsFromSheet, type SheetType, type SheetState } from './eventSheetModel';
 import type { DayEvent, DayEventKind } from '../../simulation/types';
@@ -21,8 +21,6 @@ interface EventSheetProps {
 export function isEditableKind(k: DayEventKind): boolean {
   return k === 'draw' || k === 'paydown' || k === 'buy' || k === 'deposit' || k === 'withdraw' || k === 'balanceReading';
 }
-
-const todayISO = () => new Date().toISOString().split('T')[0];
 
 // ISO yyyy-mm-dd → "Mon D" (local, no UTC shift). Replicated from DailyModeView (not exported there).
 function fmtDay(iso: string): string {
@@ -133,8 +131,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setCollTarget('strike');
 
     // P4c-2 — recompute past-ness here (effectiveDate/isPast are declared after this effect closes).
-    const effDate = targetDate ?? todayISO();
-    const past = effDate < todayISO();
+    const effDate = targetDate ?? todayLocalISO();
+    const past = effDate < todayLocalISO();
 
     if (past) {
       // Past backfill: leave reading fields EMPTY so "skip" genuinely omits the balanceReading.
@@ -171,7 +169,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
   if (!open) return null;
 
-  const today = todayISO();
+  const today = todayLocalISO();
   // P4c-2 — add-mode logs to the calendar's selectedDay (effectiveDate); edit-mode stays on editEvent.date.
   const effectiveDate = targetDate ?? today;
   const isPast = !isEdit && effectiveDate < today;   // yyyy-mm-dd string compare; past = strictly before today
@@ -291,7 +289,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       updateDayEvent(updated);
       if ((editEvent.kind === 'deposit' || editEvent.kind === 'withdraw') && editEvent.target === 'cb' && cbLiqPrice !== null) {
         setCbLiquidationPrice(cbLiqPrice);
-        setCbLiquidationPriceAsOf(todayISO());
+        setCbLiquidationPriceAsOf(todayLocalISO());
       }
       reset();
       onClose();
@@ -310,7 +308,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     toWrite.forEach((e) => addDayEvent(e));
     if (type === 'collateral' && effectiveTarget === 'cb' && cbLiqPrice !== null) {
       setCbLiquidationPrice(cbLiqPrice);
-      setCbLiquidationPriceAsOf(todayISO());
+      setCbLiquidationPriceAsOf(todayLocalISO());
     }
     reset();
     onClose();

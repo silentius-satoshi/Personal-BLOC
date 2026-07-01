@@ -6,10 +6,8 @@ import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
-
-const todayISO = () => new Date().toISOString().split('T')[0];
 
 function daysSince(asOf: string | null): number | null {
   if (!asOf) return null;
@@ -114,8 +112,8 @@ export function SafetyDashboard() {
   const saveReanchor = () => {
     setCbLoanBalance(draftBal);
     setCbLiquidationPrice(draftLiq);
-    setCbLoanBalanceAsOf(todayISO());
-    setCbLiquidationPriceAsOf(todayISO());
+    setCbLoanBalanceAsOf(todayLocalISO());
+    setCbLiquidationPriceAsOf(todayLocalISO());
     setEditing(false);
   };
 

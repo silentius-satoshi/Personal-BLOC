@@ -5,7 +5,7 @@ import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
 import { deriveCurrentPosition } from '../../simulation/logUtils';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './AdvisorSidebar.module.css';
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -96,7 +96,7 @@ export function AdvisorSidebar() {
           className={styles.dateInput}
           value={advisorStartDate}
           onChange={(e) => setAdvisorStartDate(e.target.value)}
-          max={new Date().toISOString().split('T')[0]}
+          max={todayLocalISO()}
         />
       </div>
 
@@ -190,7 +190,7 @@ export function AdvisorSidebar() {
 
         <button
           className={styles.ndpButton}
-          onClick={() => setNdpLastPaidDate(new Date().toISOString().split('T')[0])}
+          onClick={() => setNdpLastPaidDate(todayLocalISO())}
         >
           {ndp.status === 'never' ? 'Record first payment' : 'Mark as paid today'}
         </button>
@@ -201,7 +201,7 @@ export function AdvisorSidebar() {
               type="date"
               className={styles.ndpDateInput}
               value={ndpLastPaidDate}
-              max={new Date().toISOString().split('T')[0]}
+              max={todayLocalISO()}
               onChange={(e) => setNdpLastPaidDate(e.target.value)}
             />
             <button

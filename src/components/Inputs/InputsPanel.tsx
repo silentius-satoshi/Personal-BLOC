@@ -5,7 +5,7 @@ import { NumberInput } from '../ui/NumberInput';
 import { SettingsDropdown } from './SettingsDropdown';
 import { runBlocYearOne, getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getNdpStatus } from '../../simulation/runAdvisor';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './InputsPanel.module.css';
 
 export function InputsPanel() {
@@ -270,7 +270,7 @@ export function InputsPanel() {
           {ndp.status !== 'ok' && (
             <button
               className={styles.ndpRowBtn}
-              onClick={() => setNdpLastPaidDate(new Date().toISOString().split('T')[0])}
+              onClick={() => setNdpLastPaidDate(todayLocalISO())}
             >
               Paid
             </button>

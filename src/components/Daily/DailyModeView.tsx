@@ -13,7 +13,7 @@ import { MonthEventsModal } from './MonthEventsModal';
 import { ReviewSheet } from './ReviewSheet';
 import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
@@ -30,9 +30,6 @@ function getMonthLabel(advisorStartDate: string, monthNum: number): string {
   const d = new Date(y, m - 1 + (monthNum - 1), 1);
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
 }
-
-// Today as ISO yyyy-mm-dd (UTC — matches calendarModel's UTC date math).
-const todayISO = () => new Date().toISOString().split('T')[0];
 
 // ISO yyyy-mm-dd → "Mon D" (local, no UTC shift — parse the parts).
 function fmtDay(iso: string): string {
@@ -162,7 +159,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const [reviewOpen, setReviewOpen]         = useState(false);    // P4c-3b — reconcile Review sheet
   const [sheetInitialType, setSheetInitialType] = useState<SheetType | undefined>(undefined); // P4c-3b — add-mode initial type
   const [scope, setScope]                   = useState<'week' | 'month'>('week');
-  const [selectedDay, setSelectedDay]       = useState<string>(todayISO());
+  const [selectedDay, setSelectedDay]       = useState<string>(todayLocalISO());
 
   // P4c-3b-ii — entering Month scope opens on the current month; navigate back from there.
   useEffect(() => { if (scope === 'month') setViewedMonth(currentMonth); }, [scope, currentMonth]);
@@ -173,7 +170,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const isMonth = scope === 'month';
   const view    = isMonth ? monthRollup : dayActivity;
 
-  const today        = todayISO();
+  const today        = todayLocalISO();
   const netUsd       = view.netBtc * btcPrice;
   const plannedDraw  = plan?.blocDraw ?? 0;
   const plannedPay   = plan?.paydown ?? 0;
