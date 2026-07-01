@@ -42,17 +42,23 @@ src/
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar)
-    safetyView.ts               # Viewer Revamp V1 — PURE single-source of the 3 safety dimensions
-                                # (deriveSafetyView → {capacityUsed, creditLevel, strikeLtv, strikeLevel,
-                                # crashLtv, cbLtv, cbLevel}; deriveViewerOverall = worst of the gauges
-                                # SHOWN incl. credit). Mirrors SafetyDashboard.tsx lines 73-104 VERBATIM;
+    safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
+                                # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
+                                # copy is GONE; the two can no longer drift). deriveSafetyView → {capacityUsed,
+                                # creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, + the CB
+                                # display intermediates accruedBalance/cbLiqPrice/cbLiqFrac the dashboard
+                                # needs (additive — the viewer ignores them; hoisted with no-CB defaults
+                                # 0/0/CB_LLTV that never render)}; deriveViewerOverall = worst of the gauges
+                                # SHOWN incl. credit. selectSafetyViewInputs(s: StoreState) = the SINGLE
+                                # store→inputs mapping (pure, type-only StoreState import → no cycle) shared
+                                # by BOTH consumers today + Viewer V2's safe-snapshot builder next.
                                 # reuses barLevel/worseLevel/cbMetrics/accruedCbBalance (cbMetrics),
-                                # computeStrikeLtv (strikeCredit), CB_LLTV (runCoinbaseLoan). NEW credit
-                                # risk band CREDIT_WARN_USED 0.75 / CREDIT_ACT_USED 0.90 (the owner's
-                                # capacity bar is always-green; the viewer colors it). 🔴 FOLLOW-UP:
-                                # SafetyDashboard still keeps its OWN inline copy — V1 did NOT refactor it;
-                                # the owner-side dedup (point SafetyDashboard at safetyView, remove inline)
-                                # is a tracked TODO so the two can't drift
+                                # computeStrikeLtv (strikeCredit), CB_LLTV (runCoinbaseLoan). credit risk
+                                # band CREDIT_WARN_USED 0.75 / CREDIT_ACT_USED 0.90 (the owner's capacity bar
+                                # is always-green — the returned creditLevel is deliberately IGNORED owner-
+                                # side; the viewer colors it. Owner `state` is credit-EXCLUDED, unlike
+                                # deriveViewerOverall). SafetyDashboard/ViewerHomeView subscribe the selector
+                                # via useShallow (re-render only when a mapped value changes)
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
                                 # deriveCurrentPosition (both take pendingCollateralAdjustment as a REQUIRED param),
                                 # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: bucketEventToMonth
@@ -1430,8 +1436,13 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
   exclusion alongside `viewerDataLoaded`; setter `setViewerLastSyncAt`) — set in `viewerSync.ts`
   `applyViewerEvent` on a valid hydrate (the freshness clock for the home pill). No persisted field →
   no store version bump.
-- **`SafetyDashboard.tsx` UNTOUCHED** (V1) — it keeps its inline level math. 🔴 Tracked follow-up:
-  refactor it to consume `safetyView.ts` (remove the inline copy) so owner + viewer can't drift.
+- **`SafetyDashboard.tsx` UNTOUCHED** (V1) — it kept its inline level math. ✅ **RESOLVED (dedup spec
+  v2, `fb35eb5`+):** SafetyDashboard now consumes `deriveSafetyView(selectSafetyViewInputs(...))` — its
+  inline copy is gone and the store→inputs mapping is shared too (the ONE selector feeds owner +
+  viewer + Viewer V2's snapshot builder), so the two surfaces can't drift. See the safetyView.ts
+  file-list entry above. Zero owner-UX change (value-identical); safetyView gained the CB display
+  intermediates (accruedBalance/cbLiqPrice/cbLiqFrac) so the dashboard could drop its whole block, and
+  `safetyView.test.ts` pins them + the selector (suite 456 → 460). No store version bump.
 
 ---
 

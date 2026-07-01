@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
+import { useShallow } from 'zustand/react/shallow';
 import { CB_LLTV, CB_WARN_LTV } from '../../simulation/runCoinbaseLoan';
-import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
-import { computeStrikeLtv } from '../../simulation/strikeCredit';
+import { worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { deriveSafetyView, selectSafetyViewInputs } from '../../simulation/safetyView';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
@@ -32,7 +33,6 @@ export function SafetyDashboard() {
   const hasCbLoan              = useStore((s) => s.hasCbLoan);
   const setHasCbLoan           = useStore((s) => s.setHasCbLoan);
   const cbLoanBalance          = useStore((s) => s.cbLoanBalance);
-  const cbCollateralBtc        = useStore((s) => s.cbCollateralBtc);
   const cbAprPct               = useStore((s) => s.cbAprPct);
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const cbLiquidationPrice     = useStore((s) => s.cbLiquidationPrice);
@@ -46,7 +46,6 @@ export function SafetyDashboard() {
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
-  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reality read (baseline + logged buys + pending)
   const creditLine               = useStore((s) => s.creditLine);
   const setCreditLine            = useStore((s) => s.setCreditLine);
   const strikeLiquidationLtvPct  = useStore((s) => s.strikeLiquidationLtvPct);
@@ -67,38 +66,37 @@ export function SafetyDashboard() {
   // ── Price chart slot — BTC candles (1H/1D/1W), top of the dashboard ──
   const priceSlot = <PriceChart />;
 
-  // ── CB bar math (shared cbMetrics — same numbers as the CB Loan tab) ──
-  const accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
-  const m              = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
-  const activeLiqPrice = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
-  const cbLtv          = m.ltv;
+  // ── Safety math — single source of truth (deriveSafetyView, shared with the viewer home) ──────
+  // selectSafetyViewInputs is the ONE store→inputs mapping (no drift). useShallow re-renders only when
+  // one of the 12 mapped values changes (incl. getCurrentBtcHeld() + cbCollateralBtc) → value-identical
+  // reactivity, incl. recompute-on-price-tick, without listing every field a second time here.
+  const view = deriveSafetyView(useStore(useShallow(selectSafetyViewInputs)));
+  // creditLevel is intentionally NOT destructured — the owner's capacity bar is ALWAYS green (the
+  // viewer colors it via creditLevel; wiring it up here is the single most likely future regression).
+  const {
+    capacityUsed, strikeLtv, strikeLevel, crashLtv,
+    cbLtv, cbLevel, accruedBalance, cbLiqPrice, cbLiqFrac,
+  } = view;
+  const activeLiqPrice = cbLiqPrice; // alias → downstream JSX names unchanged
+
+  // ── CB bar display (from view) ────────────────────────────────────────
   // P4c-3c — distance-to-liquidation (display-only). From btcPrice → the authoritative activeLiqPrice.
   const liqDropUsd = Math.max(0, btcPrice - activeLiqPrice);                    // $ cushion to liquidation
   const liqDropPct = btcPrice > 0 ? (btcPrice - activeLiqPrice) / btcPrice : 0; // % drop to liquidation
-
-  // CB bar denominator = effective liquidation fraction from the AUTHORITATIVE liquidation price
-  // (balance/(collateral×price)); falls back to the protocol CB_LLTV when no price is set. Uses accruedBalance
-  // (same basis as cbLtv / m.liqPrice) so the no-price case resolves to exactly CB_LLTV — no regression.
-  const cbLiqFrac  = activeLiqPrice > 0 && cbCollateralBtc > 0
-    ? accruedBalance / (cbCollateralBtc * activeLiqPrice)
-    : CB_LLTV;
   const cbFillPct  = Math.max(0, Math.min(100, (cbLtv / cbLiqFrac) * 100));
   const trigMarker = (cbLtvTriggerPct / 100 / cbLiqFrac) * 100;           // trigger as % of the 0..liquidation track
-  const cbLevel    = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);  // act ≈ 80% of liquidation LTV
   const cbFillColor = LEVEL_COLOR[cbLevel];
   const cbBadge    = cbLevel === 'safe' ? 'Safe' : cbLevel === 'watch' ? 'Fair' : 'Poor';
-  // ── Strike bar math ──────────────────────────────────────────────────
+  // ── Strike bar display (from view) ────────────────────────────────────
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
-  const capacityUsed  = creditLine > 0 ? advisorActualBlocBalance / creditLine : 0;
-  const strikeLtv     = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
-  const crashLtv      = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice * 0.2); // read-only stress: Strike LTV if BTC fell 80%
-  const strikeLevel   = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82); // ≈65% warn / 70% margin call
   const strikeFillPct = strikeView === 'capacity'
     ? Math.max(0, Math.min(100, capacityUsed * 100))
     : Math.max(0, Math.min(100, (strikeLtv / strikeLiqLtv) * 100));
   const strikeFillColor = strikeView === 'capacity' ? 'var(--green)' : LEVEL_COLOR[strikeLevel];
 
-  // ── State line (nearer / worse bar drives it; Strike-only when no CB loan) ──
+  // ── State line — CREDIT-EXCLUDED (unlike deriveViewerOverall, which folds creditLevel). The owner
+  // state = the nearer of the two bars actually shown (Strike, +CB when present); capacity is
+  // always-green so it never drives. Strike-only when no CB loan. ──
   const state: SafetyLevel = hasCbLoan ? worseLevel(cbLevel, strikeLevel) : strikeLevel;
   const stateCopy = state === 'safe'
     ? 'Safe — nothing to do today'

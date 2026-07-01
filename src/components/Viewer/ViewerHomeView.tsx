@@ -1,5 +1,6 @@
 import { useStore } from '../../store/useStore';
-import { deriveSafetyView, deriveViewerOverall, type SafetyLevel } from '../../simulation/safetyView';
+import { useShallow } from 'zustand/react/shallow';
+import { deriveSafetyView, deriveViewerOverall, selectSafetyViewInputs, type SafetyLevel } from '../../simulation/safetyView';
 import { RadialGauge } from './RadialGauge';
 import styles from './ViewerHomeView.module.css';
 
@@ -68,21 +69,11 @@ function strikeSub(level: SafetyLevel): string {
 }
 
 export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
-  const view = deriveSafetyView({
-    advisorActualBlocBalance: useStore((s) => s.advisorActualBlocBalance),
-    creditLine: useStore((s) => s.creditLine),
-    currentBtcHeld: useStore((s) => s.getCurrentBtcHeld()),
-    btcPrice: useStore((s) => s.btcPrice),
-    strikeLiquidationLtvPct: useStore((s) => s.strikeLiquidationLtvPct),
-    hasCbLoan: useStore((s) => s.hasCbLoan),
-    cbLoanBalance: useStore((s) => s.cbLoanBalance),
-    cbAprPct: useStore((s) => s.cbAprPct),
-    cbLoanBalanceAsOf: useStore((s) => s.cbLoanBalanceAsOf),
-    cbCollateralBtc: useStore((s) => s.cbCollateralBtc),
-    cbLtvTriggerPct: useStore((s) => s.cbLtvTriggerPct),
-    cbLiquidationPrice: useStore((s) => s.cbLiquidationPrice),
-  });
-  const hasCbLoan = useStore((s) => s.hasCbLoan);
+  // Shared store→inputs mapping (selectSafetyViewInputs), subscribed via useShallow so this re-renders
+  // ONLY when one of the 12 mapped values changes — preserving the prior per-field reactivity.
+  const inputs = useStore(useShallow(selectSafetyViewInputs));
+  const view = deriveSafetyView(inputs);
+  const hasCbLoan = inputs.hasCbLoan;
   const lastSync = useStore((s) => s.viewerLastSyncAt);
 
   const overall = deriveViewerOverall(view, hasCbLoan);

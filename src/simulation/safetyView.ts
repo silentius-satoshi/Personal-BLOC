@@ -1,20 +1,20 @@
 import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from './cbMetrics';
 import { computeStrikeLtv } from './strikeCredit';
 import { CB_LLTV } from './runCoinbaseLoan';
+import type { StoreState } from '../store/useStore'; // TYPE-only → erased at compile → no runtime cycle
 
 /**
  * Viewer Experience Revamp — V1.
  *
- * PURE single source of truth for the three safety dimensions the viewer home renders:
- * Strike BLOC credit (capacity utilization), Strike BLOC LTV, and Coinbase LTV. The level/value
- * formulas here MIRROR SafetyDashboard.tsx VERBATIM (lines 73-104) so the two surfaces can't drift.
- *
- * NOTE (tracked follow-up): SafetyDashboard.tsx still carries its OWN inline copy of this math —
- * V1 deliberately did NOT refactor it. The owner-side refactor (point SafetyDashboard at this
- * module, remove its inline copy — the cbMetrics.ts dedup discipline) is a separate follow-up.
+ * PURE single source of truth for the three safety dimensions BOTH the viewer home AND the owner's
+ * SafetyDashboard render: Strike BLOC credit (capacity utilization), Strike BLOC LTV, and Coinbase LTV.
+ * The owner-side dedup is DONE — SafetyDashboard.tsx now consumes deriveSafetyView (its inline copy is
+ * gone), so the two surfaces cannot drift. `selectSafetyViewInputs` (below) is the single store→inputs
+ * mapping shared by both call sites (and Viewer V2's safe-snapshot builder next).
  *
  * Reuses the already-shared primitives: cbMetrics/accruedCbBalance/barLevel/worseLevel (cbMetrics.ts),
- * computeStrikeLtv (strikeCredit.ts), CB_LLTV (runCoinbaseLoan.ts). No store/UI/price imports.
+ * computeStrikeLtv (strikeCredit.ts), CB_LLTV (runCoinbaseLoan.ts). No store/UI/price VALUE imports
+ * (the StoreState import is type-only — the selector takes state as an argument, keeping this pure).
  *
  * The overall pill composition is left to each CONSUMER (one line) so the owner's `state` can stay
  * credit-excluded while the viewer's includes credit — see deriveViewerOverall below.
@@ -51,6 +51,10 @@ export interface SafetyView {
   crashLtv: number; // Strike LTV if BTC fell 80% (read-only stress)
   cbLtv: number; // 0..1+ (0 when !hasCbLoan / no collateral)
   cbLevel: SafetyLevel; // 'safe' when !hasCbLoan
+  // CB display intermediates — additive for the owner dashboard (the viewer ignores them).
+  accruedBalance: number; // accrued CB debt (0 when !hasCbLoan)
+  cbLiqPrice: number; // effective liquidation price: entered cbLiquidationPrice, else computed m.liqPrice (0 when !hasCbLoan)
+  cbLiqFrac: number; // effective liquidation LTV fraction (CB_LLTV when !hasCbLoan)
 }
 
 export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
@@ -80,21 +84,51 @@ export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
   const strikeLevel = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82);
 
   // ── Coinbase LTV (mirrors SafetyDashboard; 'safe'/0 when no CB loan) ──
+  // Intermediates hoisted with no-CB defaults so the return always carries them; when !hasCbLoan the
+  // dashboard shows the CB setup card (never these values), so the defaults are value-inert.
   let cbLtv = 0;
   let cbLevel: SafetyLevel = 'safe';
+  let accruedBalance = 0;
+  let cbLiqPrice = 0;
+  let cbLiqFrac = CB_LLTV;
   if (hasCbLoan) {
-    const accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
+    accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
     const m = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
-    const activeLiqPrice = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
+    cbLiqPrice = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
     cbLtv = m.ltv;
-    const cbLiqFrac =
-      activeLiqPrice > 0 && cbCollateralBtc > 0
-        ? accruedBalance / (cbCollateralBtc * activeLiqPrice)
+    cbLiqFrac =
+      cbLiqPrice > 0 && cbCollateralBtc > 0
+        ? accruedBalance / (cbCollateralBtc * cbLiqPrice)
         : CB_LLTV;
     cbLevel = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);
   }
 
-  return { capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel };
+  return {
+    capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel,
+    accruedBalance, cbLiqPrice, cbLiqFrac,
+  };
+}
+
+/**
+ * The SINGLE store→inputs mapping. Pure: takes StoreState as an argument (type-only import, no cycle)
+ * so every consumer feeds deriveSafetyView the same numbers. Consumers: SafetyDashboard (owner),
+ * ViewerHomeView (viewer home), and Viewer V2's safe-snapshot builder (next).
+ */
+export function selectSafetyViewInputs(s: StoreState): SafetyViewInputs {
+  return {
+    advisorActualBlocBalance: s.advisorActualBlocBalance,
+    creditLine: s.creditLine,
+    currentBtcHeld: s.getCurrentBtcHeld(),
+    btcPrice: s.btcPrice,
+    strikeLiquidationLtvPct: s.strikeLiquidationLtvPct,
+    hasCbLoan: s.hasCbLoan,
+    cbLoanBalance: s.cbLoanBalance,
+    cbAprPct: s.cbAprPct,
+    cbLoanBalanceAsOf: s.cbLoanBalanceAsOf,
+    cbCollateralBtc: s.cbCollateralBtc,
+    cbLtvTriggerPct: s.cbLtvTriggerPct,
+    cbLiquidationPrice: s.cbLiquidationPrice,
+  };
 }
 
 /** Viewer overall pill = worst of the gauges SHOWN (credit + strike, + cb when hasCbLoan).
