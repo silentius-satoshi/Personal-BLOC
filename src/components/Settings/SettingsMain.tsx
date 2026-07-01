@@ -18,6 +18,7 @@ import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, importR
 import { DevPanel } from './DevPanel';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
+import { RevealRecoveryKey } from './RevealRecoveryKey';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
@@ -40,6 +41,18 @@ import styles from './SettingsMain.module.css';
 // Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
 // (passing a fresh [] each render would re-key the effect; this keeps the join('') dep stable).
 const EMPTY_RELAYS: string[] = [];
+
+// Relative-time for the SYNC rows — mirrors ViewerHomeView's relativeAge m/h/d convention, but "never" when
+// unsynced and no "updated" prefix (the row already reads "Settings synced · …").
+function relativeSync(ts: number | null): string {
+  if (!ts) return 'never';
+  const mins = Math.floor((Date.now() - ts) / 60_000);
+  if (mins <= 0) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `${hrs}h ago`;
+  return `${Math.floor(hrs / 24)}d ago`;
+}
 
 const ALL_TABS = [
   { key: 'living',    label: 'Living on Bitcoin' },
@@ -230,14 +243,16 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
     if (settingsPage === 'cbloan' && !hasCbLoan) setSettingsPage('menu');
   }, [settingsPage, hasCbLoan]);
 
-  const nostrAuthEnabled    = useStore((s) => s.nostrAuthEnabled);
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
   const nostrSyncing        = useStore((s) => s.nostrSyncing);
   const { triggerSync }     = useNostrSync();
   const { nostr }           = useNostr();   // for the escape-hatch reset & re-sync
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
-  const setNostrAuthEnabled = useStore((s) => s.setNostrAuthEnabled);
+  const isAuthenticated     = useStore((s) => s.isAuthenticated);
+  const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
+  const lastSettingsSyncAt  = useStore((s) => s.lastSettingsSyncAt);
+  const lastRecordsSyncAt   = useStore((s) => s.lastRecordsSyncAt);
   const viewerNpub          = useStore((s) => s.viewerNpub);
   const viewerLabel         = useStore((s) => s.viewerLabel);
   const setViewerNpub       = useStore((s) => s.setViewerNpub);
@@ -379,7 +394,9 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             {/* Access Layer Redesign Phase 1 — persistent front-door doors (the lockout fix). Top of menu,
                 no drill-down, so they're found the moment Settings opens. Owner-only (a viewer's exit is V4). */}
             {!viewerMode && <div className={styles.settingsGroupLabel}>ACCESS</div>}
-            {!viewerMode && <SettingsRow icon="🔑" title="Connect Nostr identity" subtitle="Sign in to sync this plan across devices" onClick={() => setAccessFlow('login')} styles={styles} />}
+            {/* Phase 2: hide the "sign in" door once authed — Identity & Security is the connected-identity home
+                (a duplicate sign-in row over-promises). Serves pre-1.5 local-owner-not-authed + post-key-removal. */}
+            {!viewerMode && !isAuthenticated && <SettingsRow icon="🔑" title="Connect Nostr identity" subtitle="Sign in to sync this plan across devices" onClick={() => setAccessFlow('login')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Connect to a shared plan" subtitle="Switch this device to viewing someone's plan" onClick={() => { if (window.confirm('This switches this device to viewing someone else’s plan and clears your current plan. Continue?')) setAccessFlow('viewer'); }} styles={styles} />}
             {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="💾" title="Backup" subtitle="Download a copy of your plan" onClick={() => setSettingsPage('backup')} styles={styles} />}
@@ -436,112 +453,107 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       <div className={styles.section}>
         <div className={styles.sectionTitle}>NOSTR IDENTITY</div>
 
-        <div className={styles.cbLoanToggleRow}>
-          <div className={styles.cbLoanToggleLabel}>
-            <span className={styles.cbLoanToggleTitle}>Enable Nostr Lock</span>
-            <span className={styles.cbLoanToggleDesc}>Require Nostr sign-in on every page load</span>
-          </div>
-          <Toggle value={nostrAuthEnabled} onChange={setNostrAuthEnabled} />
-        </div>
-
-        {nostrPubkey && (
+        {nostrPubkey ? (
           <>
-          <div className={styles.nostrIdentityRow}>
-            <span className={styles.nostrPubkey}>
-              {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
-            </span>
-            <span className={styles.nostrBadge}>{nostrSigningMethod === 'nip07' ? 'NIP-07' : nostrSigningMethod === 'local' ? 'Local · Face ID' : 'NIP-46'}</span>
-            <button
-              className={styles.nostrReconnectBtn}
-              onClick={() => {
-                try {
-                  const npub = nip19.npubEncode(nostrPubkey);
-                  navigator.clipboard?.writeText(npub);
-                  setNpubCopied(true);
-                  setTimeout(() => setNpubCopied(false), 1500);
-                } catch { /* nostrPubkey not valid hex — no-op */ }
-              }}
-            >
-              {npubCopied ? 'Copied ✓' : 'Copy npub'}
-            </button>
-            {nostrSigningMethod !== 'local' && (
+          {/* IDENTITY CARD (hero) — npub · method chip · connection status */}
+          <div className={styles.identityCard}>
+            <div className={styles.identityRing}>₿</div>
+            <div className={styles.identityCardBody}>
               <button
-                className={styles.nostrReconnectBtn}
-                onClick={() => reconnectNostr()}
-              >
-                Reconnect
-              </button>
-            )}
-            {nostrSigningMethod === 'local' ? (
-              <button
-                className={styles.nostrDisconnectBtn}
+                className={styles.identityNpub}
                 onClick={() => {
-                  if (!window.confirm('Remove the encrypted key from this device? Make sure your nsec is backed up — you’ll need it to log in again.')) return;
-                  const s = useStore.getState();
-                  s.setWriterKeyWrapped(null);
-                  s.setWriterKeyWrapMeta(null);
-                  s.setNostrSigningMethod(null);
-                  s.setNostrPubkey(null);
-                  s.setNostrSigner(null);
-                  s.setIsAuthenticated(false);
-                  clearStoreEncryptionState();   // also clear the enc flag + {ct,iv} blob + key — next launch is a clean plaintext slate (no locked-out encrypted blob)
-                  window.location.reload();
+                  try {
+                    const npub = nip19.npubEncode(nostrPubkey);
+                    navigator.clipboard?.writeText(npub);
+                    setNpubCopied(true);
+                    setTimeout(() => setNpubCopied(false), 1500);
+                  } catch { /* nostrPubkey not valid hex — no-op */ }
                 }}
               >
-                Remove local key
+                <span className={styles.identityNpubText}>
+                  {(() => { try { const n = nip19.npubEncode(nostrPubkey); return `${n.slice(0, 14)}…${n.slice(-6)}`; } catch { return `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}`; } })()}
+                </span>
+                <span className={styles.identityCopyHint}>{npubCopied ? 'Copied ✓' : 'tap to copy'}</span>
               </button>
-            ) : (
-              <button
-                className={styles.nostrDisconnectBtn}
-                onClick={() => disconnectNostr()}
-              >
-                Disconnect
-              </button>
-            )}
+              <div className={styles.identityMeta}>
+                <span className={styles.identityChip}>
+                  {nostrSigningMethod === 'local' ? 'Face ID · local key' : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}
+                </span>
+                <span className={styles.identityStatus}>
+                  <span className={nostrReconnectNeeded ? styles.identityDotWarn : styles.identityDotOn} />
+                  {nostrReconnectNeeded ? 'Reconnect needed' : 'Connected'}
+                </span>
+              </div>
+            </div>
           </div>
-          <span className={styles.cbLoanToggleDesc}>Share your npub to give someone read-only viewer access.</span>
-          </>
-        )}
 
-        {nostrAuthEnabled && (
-          <button
-            onClick={triggerSync}
-            disabled={nostrSyncing}
-            className={styles.syncButton}
-          >
+          {/* SYNC */}
+          <div className={styles.settingsGroupLabel}>SYNC</div>
+          <div className={styles.syncRow}><span className={styles.syncRowLabel}>Settings synced</span><span className={styles.syncRowValue}>{relativeSync(lastSettingsSyncAt)}</span></div>
+          <div className={styles.syncRow}><span className={styles.syncRowLabel}>Records synced</span><span className={styles.syncRowValue}>{relativeSync(lastRecordsSyncAt)}</span></div>
+          <button onClick={triggerSync} disabled={nostrSyncing} className={styles.syncButton}>
             {nostrSyncing ? 'Syncing…' : '↻ Sync now'}
           </button>
-        )}
 
-        {nostrAuthEnabled && nostrPubkey && !viewerMode && (
-          <>
+          {/* THIS DEVICE — one exit row per method (local: Remove local key · nip07/46: Disconnect) */}
+          <div className={styles.settingsGroupLabel}>THIS DEVICE</div>
+          <div className={styles.syncRow}>
+            <span className={styles.syncRowLabel}>Signing method</span>
+            <span className={styles.syncRowValue}>{nostrSigningMethod === 'local' ? 'Face ID · local key' : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}</span>
+          </div>
+          {nostrSigningMethod !== 'local' && (
+            <button className={styles.nostrReconnectBtn} onClick={() => reconnectNostr()}>Reconnect</button>
+          )}
+          {nostrSigningMethod === 'local' ? (
             <button
-              onClick={handleResetAndResync}
-              disabled={recoveryBusy}
-              className={styles.nostrReconnectBtn}
+              className={styles.nostrDisconnectBtn}
+              onClick={() => {
+                if (!window.confirm('Remove the encrypted key from this device? Make sure your nsec is backed up — you’ll need it to log in again.')) return;
+                const s = useStore.getState();
+                s.setWriterKeyWrapped(null);
+                s.setWriterKeyWrapMeta(null);
+                s.setNostrSigningMethod(null);
+                s.setNostrPubkey(null);
+                s.setNostrSigner(null);
+                s.setIsAuthenticated(false);
+                clearStoreEncryptionState();   // also clear the enc flag + {ct,iv} blob + key — next launch is a clean plaintext slate (no locked-out encrypted blob)
+                window.location.reload();
+              }}
             >
-              {recoveryBusy ? 'Resetting…' : 'Reset local data & re-sync from relays'}
+              Remove local key
             </button>
-            {recoveryMsg && <p className={styles.nostrWarning}>{recoveryMsg}</p>}
-            {showDecryptBack && (
-              <>
-                <button
-                  onClick={handleDecryptBack}
-                  disabled={decryptBusy}
-                  className={styles.nostrReconnectBtn}
-                >
-                  {decryptBusy ? 'Decrypting…' : 'Turn off at-rest encryption (decrypt local data)'}
-                </button>
-                {decryptMsg && <p className={styles.nostrWarning}>{decryptMsg}</p>}
-              </>
-            )}
-          </>
-        )}
+          ) : (
+            <button
+              className={styles.nostrDisconnectBtn}
+              onClick={() => { if (window.confirm('Disconnect this identity from this device? Your plan stays on the relay.')) disconnectNostr(); }}
+            >
+              Disconnect
+            </button>
+          )}
 
-        {nostrAuthEnabled && !nostrPubkey && (
-          <p className={styles.nostrWarning}>
-            ⚠ Back up your nsec — losing it means permanent loss of encrypted relay data.
-          </p>
+          {/* RECOVERY — reveal key (local) · backup plan · reset & re-sync · decrypt-back (when enc on) */}
+          <div className={styles.settingsGroupLabel}>RECOVERY</div>
+          {nostrSigningMethod === 'local' && <RevealRecoveryKey />}
+          <button className={styles.nostrReconnectBtn} onClick={() => setSettingsPage('backup')}>Backup plan</button>
+          <button onClick={handleResetAndResync} disabled={recoveryBusy} className={styles.nostrReconnectBtn}>
+            {recoveryBusy ? 'Resetting…' : 'Reset local data & re-sync from relays'}
+          </button>
+          {recoveryMsg && <p className={styles.nostrWarning}>{recoveryMsg}</p>}
+          {showDecryptBack && (
+            <>
+              <button onClick={handleDecryptBack} disabled={decryptBusy} className={styles.nostrReconnectBtn}>
+                {decryptBusy ? 'Decrypting…' : 'Turn off at-rest encryption (decrypt local data)'}
+              </button>
+              {decryptMsg && <p className={styles.nostrWarning}>{decryptMsg}</p>}
+            </>
+          )}
+
+          <span className={styles.fieldHint}>Your key is encrypted at rest and never stored in plain text.</span>
+          </>
+        ) : (
+          <span className={styles.fieldHint}>
+            No identity connected on this device. Use “Connect Nostr identity” from the Settings menu to sign in.
+          </span>
         )}
       </div>
       )}

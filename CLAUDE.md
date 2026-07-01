@@ -172,6 +172,13 @@ src/
                                 # -webkit-appearance/appearance:none (fixes iOS native date-control overflow; keeps
                                 # color-scheme:dark) + read-only .strikeStatusRow/.strikeStatusLabel/.strikeStatusDotOn
                                 # (green glow) /.strikeStatusDotOff (var(--text-faint), mirrors InputsPanel's strike dot)
+                                # + Access Phase 2: .identityCard hero (--surface-2 + orange ring) /.identityRing/
+                                # .identityNpub(+Text/CopyHint)/.identityMeta/.identityChip/.identityStatus/
+                                # .identityDotOn(green)/.identityDotWarn(amber) + .syncRow/.syncRowLabel/.syncRowValue
+      RevealRecoveryKey.tsx     # Access Phase 2 — lost-my-backup escape hatch (+ .module.css). Rendered ONLY in the
+                                # identity subpage for a 'local' signer (leaving the page unmounts → discards the nsec).
+                                # Tap → PRF Face ID / PIN field → unwrapSecretKey (EVERY reveal) → nip19.nsecEncode →
+                                # sk.fill(0) → <SecretKeyCard/> → auto-clear ~30s / Hide / unmount. NEVER logs the key
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
@@ -1529,6 +1536,46 @@ NostrAuthGate's import path so the two identity-establish paths can't drift).
 
 ---
 
+## Access Phase 2 — Identity, Access & Recovery cleanup (store unchanged, NO bump)
+
+Makes the identity/access surface coherent after 1.5 (every owner is now authed from minute one). UI-only —
+every store field is unchanged; `nostrAuthEnabled` + its `!!nostrPubkey` derivation are KEPT (load-bearing for
+the Bug-3 render ladder + sync banners), only the dead toggle UI is removed. **Consumes 1.5's `SecretKeyCard`.**
+
+- **NostrAuthGate `backLabel?: string` prop** (default `'← Back'`): the back button (was hardcoded
+  "← Back to Face ID unlock") now reads `{backLabel ?? '← Back'}`. Only **AppShell:326** (the locked-out
+  local-unlock escape) passes the original string; the **SettingsMain access door** + **OnboardingModal fork
+  login** use the default. Label-only.
+- **autoRestore nip46 guard** (`useNostrAutoRestore.ts`): after the `local` guard, `if (nostrSigningMethod ===
+  'nip46' && !nostrLogin) return;` — a nip46 session with no persisted `nostrLogin` can't be silently rebuilt,
+  so skipping optimistic auth kills the ~1.5s authed-app flash before the gate.
+- **ACCESS group — state-aware login door** (SettingsMain menu): "Connect Nostr identity" is now gated
+  `!viewerMode && !isAuthenticated` (an authed owner sees no duplicate sign-in door — Identity & Security is the
+  connected-identity home; the "Identity & Security" drill-in row stays `!viewerMode`). "Connect to a shared
+  plan" unchanged.
+- **Toggle retired (UI only)**: the "Enable Nostr Lock" row + the orphaned `setNostrAuthEnabled`/`nostrAuthEnabled`
+  selectors + the **dead** `nostrAuthEnabled && !nostrPubkey` warning (dead because `nostrAuthEnabled ≡
+  !!nostrPubkey`) are removed. The rebuilt connected sections key off `nostrPubkey`.
+- **Identity & Security page rebuilt** into grouped sections (all reusing existing handlers): **IDENTITY CARD**
+  (hero `.identityCard`, `--surface-2` + orange-ring ₿: truncated npub tap-to-copy · method chip `Face ID · local
+  key`/`Extension (NIP-07)`/`Remote signer (NIP-46)` · status dot `.identityDotOn` green Connected / `.identityDotWarn`
+  amber "Reconnect needed" via `nostrReconnectNeeded`) → **SYNC** ("Settings synced · {relativeSync(lastSettingsSyncAt)}"
+  / "Records synced · {relativeSync(lastRecordsSyncAt)}" [relative TIME, "never" when null — `relativeSync` mirrors
+  ViewerHomeView's m/h/d convention; NOT relay hosts] + Sync now) → **THIS DEVICE** (signing-method row + exactly ONE
+  exit per method: local → Remove local key; nip07/46 → **Disconnect** now with a confirm "…Your plan stays on the
+  relay." → `disconnectNostr()`) → **RECOVERY** (`<RevealRecoveryKey/>` local-only · **Backup plan** →
+  `setSettingsPage('backup')` · retained Reset-&-re-sync escape hatch · conditional decrypt-back) → footer "Your key
+  is encrypted at rest and never stored in plain text." `!nostrPubkey` → a calm "No identity connected" hint.
+- **`RevealRecoveryKey.tsx`** (+ css, NEW `components/Settings/`) — the lost-my-backup escape hatch. Rendered ONLY
+  when `settingsPage === 'identity' && nostrSigningMethod === 'local'`, so leaving the page **unmounts it →
+  discards the revealed nsec**. Tap "Reveal recovery key" → PRF: Face ID directly / PIN: an inline PIN field →
+  `unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, pin?)` (**unwrap required on EVERY reveal**) →
+  `nip19.nsecEncode(sk)` → `sk.fill(0)` immediately → `<SecretKeyCard/>` → **auto-re-blur/clear after ~30s** (or
+  Hide, or unmount). ⚠ Never logs the key.
+- **No store version bump.** Suite unchanged at 456 (UI-only; flow is device territory).
+
+---
+
 ## Plan Export / Backup Tool (EXPORT phase only; store unchanged)
 
 A local, in-hand copy of the owner's plan independent of the relay/sync path — motivated by the
@@ -2158,9 +2205,11 @@ src/
                                     # after setting the signer so syncNow doesn't rebuild a duplicate
                                     # NConnectSigner session post-login. + the iOS-only "Use a local key
                                     # (Face ID)" flow (hard backup gate → nsec decode → keyVault wrap → NSecSigner).
-                                    # #4: optional onBack prop renders a "← Back to Face ID unlock" button in the main
-                                    # options view (AppShell passes onBack=()=>setUnlockEscape(false) → falls back to
-                                    # LocalUnlockGate; absent in first-time onboarding which passes no onBack). #6: when a
+                                    # #4: optional onBack prop renders a back button in the main options view; its label
+                                    # is the Phase-2 `backLabel?` prop (default "← Back"). AppShell's locked-out-unlock
+                                    # escape passes backLabel="← Back to Face ID unlock" (+ onBack=()=>setUnlockEscape(false)
+                                    # → falls back to LocalUnlockGate); the Settings access door + onboarding fork login use
+                                    # the default. Absent in first-time onboarding which passes no onBack. #6: when a
                                     # writerKeyWrapped already exists (e.g. after a local→nip46→local switch) the local
                                     # section shows "Unlock with Face ID" (handleUnlockExisting → setNostrSigningMethod
                                     # ('local') → restoreSigner) instead of forcing an nsec re-import; a "Use a different

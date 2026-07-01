@@ -20,7 +20,7 @@ import {
 } from '@nostrify/react/login';
 import styles from './NostrAuthGate.module.css';
 
-export function NostrAuthGate({ onSuccess, onBack }: { onSuccess: () => void; onBack?: () => void }) {
+export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () => void; onBack?: () => void; backLabel?: string }) {
   const setNostrPubkey        = useStore((s) => s.setNostrPubkey);
   const setNostrSigningMethod = useStore((s) => s.setNostrSigningMethod);
   const setIsAuthenticated    = useStore((s) => s.setIsAuthenticated);
@@ -390,10 +390,11 @@ export function NostrAuthGate({ onSuccess, onBack }: { onSuccess: () => void; on
                 Use a local key (Face ID)
               </button>
             )}
-            {/* #4: a locked-out local user who hit "Use a different login" can return to the Face ID unlock gate */}
+            {/* #4: a locked-out local user who hit "Use a different login" can return to the Face ID unlock gate.
+                backLabel defaults to "← Back" (Settings door + fork login); the unlock escape passes the original. */}
             {onBack && (
               <button className={styles.ghostBtn} onClick={onBack} disabled={loading}>
-                ← Back to Face ID unlock
+                {backLabel ?? '← Back'}
               </button>
             )}
           </>

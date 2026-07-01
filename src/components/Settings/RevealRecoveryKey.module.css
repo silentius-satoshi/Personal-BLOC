@@ -1,0 +1,89 @@
+/* Access Phase 2 — Reveal recovery key (RECOVERY section escape hatch). */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pinRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+/* mirrors .setupDateInput */
+.pinInput {
+  flex: 1;
+  min-width: 120px;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  outline: none;
+  padding: 8px 12px;
+  color-scheme: dark;
+  box-sizing: border-box;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.12s;
+}
+
+.pinInput:focus { border-color: var(--orange); }
+
+.revealBtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--orange);
+  border-radius: 6px;
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  font-family: inherit;
+  transition: background 0.12s;
+  flex-shrink: 0;
+}
+
+.revealBtn:hover:not(:disabled) { background: rgba(232, 131, 106, 0.10); }
+.revealBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.revealFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.hideBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 6px 12px;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s;
+  flex-shrink: 0;
+}
+
+.hideBtn:hover:not(:disabled) { border-color: var(--text-secondary); color: var(--text-primary); }
+.hideBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.note {
+  font-size: 11px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+.error {
+  font-size: 11px;
+  color: var(--red);
+  margin: 0;
+  line-height: 1.4;
+}

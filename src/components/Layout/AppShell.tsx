@@ -323,7 +323,7 @@ export function AppShell() {
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && !nostrSigner && !isAuthenticated && !import.meta.env.DEV ? (
         // Bug 3: !nostrSigner guard — a present signer never shows the re-auth screen (every NostrAuthGate handler
         // sets signer→isAuthenticated synchronously/batched, so this can't drop the gate mid-auth for nip07/46).
-        <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} onBack={() => setUnlockEscape(false)} />
+        <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} onBack={() => setUnlockEscape(false)} backLabel="← Back to Face ID unlock" />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
         <PrivateAppNotice />
       ) : viewerMode && viewerDataLoaded && activeTab !== 'settings' && activeTab !== 'almanac' ? (

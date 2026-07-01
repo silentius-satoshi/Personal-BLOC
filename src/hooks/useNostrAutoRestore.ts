@@ -7,13 +7,18 @@ export function useNostrAutoRestore(): void {
   const { nostr } = useNostr();
 
   useEffect(() => {
-    const { nostrAuthEnabled, nostrPubkey, nostrSigningMethod } = useStore.getState();
+    const { nostrAuthEnabled, nostrPubkey, nostrSigningMethod, nostrLogin } = useStore.getState();
     if (!nostrAuthEnabled || !nostrPubkey) return;
 
     // 'local' is an "authenticated-but-locked" launch: the unwrap triggers Face ID, which needs a user
     // gesture, so the LocalUnlockGate drives unlock on tap. Do NOT optimistically auth (would render the
     // app before unlock) and do NOT auto-restore here. nip07/nip46 keep the optimistic silent-restore.
     if (nostrSigningMethod === 'local') return;
+
+    // A nip46 session can only be silently rebuilt from a persisted nostrLogin — without it (e.g. after a
+    // reconnect cleared it) optimistic auth would render the app for ~1.5s then bounce to the gate. Skip
+    // straight to the gate instead of flashing.
+    if (nostrSigningMethod === 'nip46' && !nostrLogin) return;
 
     useStore.getState().setIsAuthenticated(true);  // optimistic
 
