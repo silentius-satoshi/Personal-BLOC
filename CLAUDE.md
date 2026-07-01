@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (454 tests — all must pass before every commit)
+- Vitest (456 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -1470,8 +1470,62 @@ render ladder (that ladder refactor is deferred Phase 3):
   `setAccessFlow('viewer')` → `<ViewerLoginFlow onDone={()=>{setSimpleMode(true);setAccessFlow(null);}}
   …/>` (sets viewerMode → viewer gates take over). Both overlays render at the end of SettingsMain.
 - **Deferred / untouched:** the AppShell render ladder (Phase 3); `nostrAuthEnabled` + the "Enable
-  Nostr Lock" toggle (Phase 2 removal); owner key-gen on "Start new" (Phase 1.5). Almanac, BLOC math,
-  risk core, the V1 viewer home, the viewer snapshot/sync — all untouched. No store version bump.
+  Nostr Lock" toggle (Phase 2 removal); owner key-gen on "Start new" (Phase 1.5 — now SHIPPED, see
+  below). Almanac, BLOC math, risk core, the V1 viewer home, the viewer snapshot/sync — all untouched.
+  No store version bump.
+
+---
+
+## Access Layer — Phase 1.5 (owner key generation + recovery-key backup; store unchanged, NO bump)
+
+"Start a new plan" now MINTS a real owner identity (nsec/npub generated + keyVault-wrapped on-device)
+with a mandatory recovery-key backup **before** the numbers wizard — eliminating the
+local-owner-without-identity limbo (device model is now cleanly `undecided | owner | viewer`) and
+closing the clobber-fix's empty-baseline tradeoff (the new owner is authenticated before the wizard, so
+the wizard's plan publishes as the legitimate first settings event). Out of scope: import/restore,
+Log-in/Connect-shared, the AppShell render ladder, toggle retirement. Introduces two SHARED pieces later
+specs reuse: `SecretKeyCard` (Access P2's Reveal-recovery-key) + `establishLocalOwner` (shared with
+NostrAuthGate's import path so the two identity-establish paths can't drift).
+
+- **Flow:** fork → "Start a new plan" → **K1** Create key → **K2** Save recovery key → **K3** Protect it
+  → numbers wizard (existing steps 2–4) → `handleDone(true)` → app (owner, authed, synced). Key-first,
+  then numbers.
+- **`src/lib/nostr/establishOwner.ts`** — `establishLocalOwner(sk, method, nostr, opts?)`: the SINGLE
+  local-owner establish path, extracted VERBATIM from NostrAuthGate's import body (wrap at rest → persist
+  the wrapped credential via `setWriterKeyWrapped`/`setWriterKeyWrapMeta` → `new NSecSigner(sk.slice())`
+  + `setNostrSigner` → `markSignerFresh` → `setNostrPubkey(getPublicKey(sk))` → `setNostrSigningMethod
+  ('local')` → fire-and-forget `syncNow(nostr)` → `setIsAuthenticated(true)` → `sk.fill(0)`). `NostrAuthGate`'s
+  `handleLocal` now calls it (behavior-identical; `wrapSecretKey`/`NSecSigner`/`getPublicKey` imports pruned
+  there). ⚠ **Never logs the nsec** (no `nostrLog` of key material anywhere in the feature). `NostrSigner`
+  imported from `./signers` (the sibling re-export, matching `session.ts`).
+- **`src/components/Auth/SecretKeyCard.tsx`** (+ css) — shared presentational card: bech32 nsec in `--mono`
+  `word-break: break-all`, **blurred by default** (`filter: blur(6px)` + "Tap to reveal" pill, local toggle),
+  one-tap Copy (flashes "Copied ✓" 2s, fires `onCopied?`), "Best kept in a password manager." sub-line.
+  Props `{ nsec, onCopied? }`. `--surface-2` bg / btc-tinted border.
+- **`src/components/Onboarding/OwnerKeySetup.tsx`** (+ css) — the K1→K2→K3 sequence; own `.overlay`/`.modal`
+  chrome mirroring `ViewerLoginFlow`, `--btc` primaries. Internal `step: 'intro'|'save'|'protect'`, props
+  `{ onComplete, onBack, onLogIn }`. **sk in a `useRef`** generated on the K1 tap (NOT mount), zeroed on
+  Start-over / unmount / establish. **K1** intro + "Generate my key" + **existing-key guard** (if
+  `writerKeyWrapped || nostrPubkey` present → "This device already has a key" + [Log in]→`onLogIn` /
+  [← Back]; never regenerate over an identity). **K2** `<SecretKeyCard/>` + mandatory ack checkbox
+  (Continue disabled until checked) + "Start over" (no Back). **K3** `probeKeyVaultCapability` → single
+  "Enable Face ID" (biometric) or the ViewerLoginFlow PIN+confirm UI (PIN); Success →
+  `establishLocalOwner` → `onComplete`. `onLogIn` is a small justified extension of the spec's
+  `{onComplete,onBack}` (the guard's [Log in] needs to reach the loginFlow).
+- **`OnboardingModal`** gains a `keySetup` sub-state mirroring `viewerFlow`/`loginFlow` (early-return
+  `<OwnerKeySetup onComplete={→setStep(2)} onBack={→fork} onLogIn={→setLoginFlow(true)}/>`); `onStartNew` →
+  `setKeySetup(true)` (was `setStep(2)`). The numbers wizard + `handleDone` are untouched.
+  **`ChoosePathView`** card-1 sub-line → "Create your own — keys generated on this device".
+- **AppShell is SAFE with no edits** (verified): `AppShell.tsx:284` renders `<OnboardingModal>` while
+  `!onboardingComplete`; every auth gate is `onboardingComplete && …`-gated, so `establishLocalOwner`
+  flipping auth/pubkey/method mid-onboarding cannot unmount the modal or trip a gate. On final
+  `onComplete → setOnboardingComplete(true)` the ladder re-evaluates and lands on the app (LocalUnlockGate/
+  NostrAuthGate skip because `isAuthenticated` is already true).
+- **Sync safety (tradeoff closure):** K3's `syncNow` hits an empty relay for the brand-new key → pulls
+  nothing → `initialSettingsPullDone=true`, nothing publishes (not dirty; Fix D refuses seed defaults). The
+  wizard's `handleDone(true)` then writes real numbers → the debounced publish ships the actual plan as the
+  first settings event. **No store version bump** (wrapped key reuses existing keyVault storage). Suite 454
+  → 456.
 
 ---
 
@@ -1773,7 +1827,8 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-454 tests — `npx vitest run` before every commit.
+456 tests — `npx vitest run` before every commit.
+- `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
@@ -2119,6 +2174,10 @@ src/
                                     # →clearViewerData→setViewerWriterPubkey→setViewerMode(true); only the final
                                     # onComplete(true) became an onDone() prop). Self-contained overlay (own
                                     # .overlay/.modal) → reusable from BOTH onboarding AND Settings. Props {onDone,onBack}
+    SecretKeyCard.tsx               # Phase 1.5 — SHARED blurred-nsec recovery-key card: bech32 nsec in --mono
+                                    # (word-break), blurred by default (tap-to-reveal pill) + one-tap Copy
+                                    # (flash "Copied ✓") + "Best kept in a password manager." Props {nsec,onCopied?}.
+                                    # Presentational, never logs the key; reused by Access P2's Reveal-recovery-key
     ViewerUnlockGate.tsx            # Phase 3 viewer-key gate — unlock (wrapped) / one-time wrap-setup (v17 migrant);
                                     # populates viewerSync's in-memory holder. Reuses NostrAuthGate.module.css
     ViewerWaitingGate.tsx          # Data-remanence guard — "Waiting for the owner's data…" until viewerDataLoaded
@@ -2159,6 +2218,12 @@ src/
                                     # NSEC ITSELF (HKDF: salt=SHA256(pubkeyHex), info=STORE_ENC_INFO), no separate
                                     # credential. Deterministic + stable across reinstalls; independent from the
                                     # nsec-WRAP key (distinct info); copies sk (never mutates caller). In memory only
+    establishOwner.ts               # Phase 1.5 — establishLocalOwner(sk, method, nostr, opts?): the SINGLE local-owner
+                                    # establish path (wrap→persist writerKey→NSecSigner+setNostrSigner→markSignerFresh→
+                                    # setNostrPubkey(getPublicKey(sk))→setNostrSigningMethod('local')→fire-and-forget
+                                    # syncNow→setIsAuthenticated(true)→sk.fill(0)). Extracted VERBATIM from NostrAuthGate's
+                                    # import body → BOTH the import path AND OwnerKeySetup K3 call it (zero drift).
+                                    # ⚠ NEVER logs the nsec. NostrSigner from './signers' (sibling re-export)
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
                                     # SINGLE-FLIGHT (Bug 2 fix): the public restoreSigner wraps doRestoreSigner in a
                                     # module-level in-flight promise (mirrors syncNow) — concurrent callers (gate escape

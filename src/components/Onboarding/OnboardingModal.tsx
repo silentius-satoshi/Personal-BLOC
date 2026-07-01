@@ -3,6 +3,7 @@ import { useStore } from '../../store/useStore';
 import { todayLocalISO } from '../../utils/format';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
+import { OwnerKeySetup } from './OwnerKeySetup';
 import { ChoosePathView } from '../Entry/ChoosePathView';
 import styles from './OnboardingModal.module.css';
 
@@ -39,6 +40,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   // Access Layer Redesign Phase 1 — the fork routes to these sub-flows (each renders its own overlay).
   const [viewerFlow, setViewerFlow] = useState(false);   // → ViewerLoginFlow (connect to a shared plan)
   const [loginFlow, setLoginFlow]   = useState(false);   // → NostrAuthGate (connect an existing identity)
+  const [keySetup, setKeySetup]     = useState(false);   // Phase 1.5 → OwnerKeySetup (mint a new owner identity)
 
   const [draft, setDraft] = useState({
     income: 5000, expenses: 4000,
@@ -79,6 +81,14 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
   // Sub-flows render their OWN full-screen overlay → return them directly (not inside the modal chrome).
   if (viewerFlow) return <ViewerLoginFlow onDone={() => onComplete(true)} onBack={() => setViewerFlow(false)} />;
   if (loginFlow)  return <NostrAuthGate onSuccess={() => onComplete(false)} onBack={() => setLoginFlow(false)} />;
+  // Phase 1.5 — key-first: mint the owner identity, THEN fall through to the numbers wizard (step 2).
+  if (keySetup)   return (
+    <OwnerKeySetup
+      onComplete={() => { setKeySetup(false); setStep(2); }}
+      onBack={() => setKeySetup(false)}
+      onLogIn={() => { setKeySetup(false); setLoginFlow(true); }}
+    />
+  );
 
   return (
     <div className={styles.overlay}>
@@ -86,7 +96,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
 
         {step === 1 ? (
           <ChoosePathView
-            onStartNew={() => setStep(2)}
+            onStartNew={() => setKeySetup(true)}
             onLogIn={() => setLoginFlow(true)}
             onConnectShared={() => setViewerFlow(true)}
           />

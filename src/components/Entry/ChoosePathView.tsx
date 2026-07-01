@@ -4,7 +4,7 @@ import styles from './ChoosePathView.module.css';
  * Access Layer Redesign — Phase 1. The sovereign 3-path first-run fork that REPLACES OnboardingModal's
  * step-1 welcome. Pure presentational + 3 actions; renders as the step-1 content inside the modal.
  *
- * "Start a new plan" → the numbers wizard (owner key-gen is Phase 1.5 — softened copy, no over-promise).
+ * "Start a new plan" → OwnerKeySetup (mint an on-device owner key), then the numbers wizard.
  * "Log in to my plan" → connect an existing Nostr identity. "Connect to a shared plan" → read-only viewer.
  */
 export interface ChoosePathViewProps {
@@ -25,7 +25,7 @@ export function ChoosePathView({ onStartNew, onLogIn, onConnectShared }: ChooseP
       <div className={styles.paths}>
         <button className={`${styles.path} ${styles.pathAccent}`} onClick={onStartNew}>
           <span className={styles.pathTitle}>Start a new plan</span>
-          <span className={styles.pathSub}>Create your own — set up a fresh plan</span>
+          <span className={styles.pathSub}>Create your own — keys generated on this device</span>
         </button>
         <button className={styles.path} onClick={onLogIn}>
           <span className={styles.pathTitle}>Log in to my plan</span>

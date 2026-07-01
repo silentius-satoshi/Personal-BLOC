@@ -68,7 +68,8 @@
       "Bash(grep -n 'calendarModel.test.ts —\\\\|cbMetrics.test.ts —\\\\|^- `living.test.ts`' CLAUDE.md)",
       "Bash(grep -vE 'dynamically imported|dynamic import will not|^\\\\s*$|vite:reporter|computing gzip')",
       "Bash(grep -vE \"dynamically imported|will not move module|^\\\\[plugin|^$|computing gzip|chunks are larger|Using dynamic|manualChunks|Adjust chunk|rollupjs\")",
-      "Bash(grep -vE \"dynamically imported|will not move module|^\\\\[plugin|^\\\\\\(!\\\\\\)|computing gzip|chunks are larger|Using dynamic|manualChunks|Adjust chunk|rollupjs|^dist/|^$\")"
+      "Bash(grep -vE \"dynamically imported|will not move module|^\\\\[plugin|^\\\\\\(!\\\\\\)|computing gzip|chunks are larger|Using dynamic|manualChunks|Adjust chunk|rollupjs|^dist/|^$\")",
+      "Bash(echo \"TSC_EXIT: $?\")"
     ],
     "additionalDirectories": [
       "/tmp"

@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
-import { nip19, getPublicKey } from 'nostr-tools';
-import { NSecSigner } from '@nostrify/nostrify';
+import { nip19 } from 'nostr-tools';
 import { connectNip07 } from '../../lib/nostr/signers';
+import { establishLocalOwner } from '../../lib/nostr/establishOwner';
 import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
-import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
+import { probeKeyVaultCapability, type WrapMethod } from '../../lib/nostr/keyVault';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -87,20 +87,7 @@ export function NostrAuthGate({ onSuccess, onBack }: { onSuccess: () => void; on
       sk = decoded.data as Uint8Array;
 
       const method = localMethod ?? await probeKeyVaultCapability();
-      const { ciphertext, meta } = await wrapSecretKey(
-        sk, method, method === 'pin' ? pin : undefined, method !== 'pin' ? keyLabel : undefined,
-      );
-      useStore.getState().setWriterKeyWrapped(ciphertext);
-      useStore.getState().setWriterKeyWrapMeta(meta);
-
-      const pubkey = getPublicKey(sk);
-      const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;
-      useStore.getState().setNostrSigner(signer);
-      markSignerFresh();
-      setNostrPubkey(pubkey);
-      setNostrSigningMethod('local');
-      syncNow(nostr);
-      setIsAuthenticated(true);
+      await establishLocalOwner(sk, method, nostr, { pin, keyLabel });   // shared with OwnerKeySetup K3
       onSuccess();
     } catch (err: any) {
       setError(err?.message ?? 'Could not set up the local key');
