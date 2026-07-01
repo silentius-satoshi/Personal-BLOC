@@ -501,7 +501,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             <span className={styles.syncRowLabel}>Signing method</span>
             <span className={styles.syncRowValue}>{nostrSigningMethod === 'local' ? 'Face ID · local key' : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}</span>
           </div>
-          {nostrSigningMethod !== 'local' && (
+          {nostrSigningMethod !== 'local' && nostrReconnectNeeded && (
             <button className={styles.nostrReconnectBtn} onClick={() => reconnectNostr()}>Reconnect</button>
           )}
           {nostrSigningMethod === 'local' ? (
