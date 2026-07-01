@@ -18,6 +18,7 @@ import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, importR
 import { DevPanel } from './DevPanel';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
+import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync } from '../../lib/store/escapeHatch';
@@ -104,7 +105,7 @@ function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, 
 }
 
 // Phase 1 navigation shell: the long scroll becomes a section menu (rows) that drills into subpages.
-type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'network' | 'about';
+type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'network' | 'about' | 'backup';
 
 const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   identity: 'Identity & Security',
@@ -115,6 +116,7 @@ const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   tabs:     'Tabs',
   network:  'Network',
   about:    'About',
+  backup:   'Backup',
 };
 
 interface SettingsRowProps {
@@ -380,6 +382,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             {!viewerMode && <SettingsRow icon="🔑" title="Connect Nostr identity" subtitle="Sign in to sync this plan across devices" onClick={() => setAccessFlow('login')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Connect to a shared plan" subtitle="Switch this device to viewing someone's plan" onClick={() => { if (window.confirm('This switches this device to viewing someone else’s plan and clears your current plan. Continue?')) setAccessFlow('viewer'); }} styles={styles} />}
             {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="💾" title="Backup" subtitle="Download a copy of your plan" onClick={() => setSettingsPage('backup')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Sharing" subtitle="Give someone read-only viewer access" onClick={() => setSettingsPage('sharing')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date" onClick={() => setSettingsPage('strike')} styles={styles} />}
             {!viewerMode && (
@@ -999,6 +1002,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             Build {__BUILD_SHA__} · {new Date(__BUILD_TIME__).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
           </p>
           {devMode && <DevPanel />}
+        </div>
+      )}
+
+      {/* Plan Export / Backup Tool — EXPORT phase only (read-only; import/restore is a later build).
+          Plan-only: downloadPlanBackup strips the sharing/transport config (viewerNpub/viewerPubkey/
+          viewerLabel/nostrRelays) and includes the full records set (incl. raw dayLog). Owner-only. */}
+      {settingsPage === 'backup' && !viewerMode && (
+        <div className={styles.section}>
+          <p className={styles.cbLoanToggleDesc}>
+            Downloads your full plan — settings and all records — as a JSON file you can keep as a backup.
+            It stays on your device; nothing is uploaded. Keep it somewhere safe so you can restore your
+            plan if you ever need to.
+          </p>
+          <button className={styles.syncButton} onClick={() => downloadPlanBackup(useStore.getState())}>
+            Export plan
+          </button>
         </div>
       )}
 

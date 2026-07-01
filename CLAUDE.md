@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (449 tests — all must pass before every commit)
+- Vitest (454 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -1475,6 +1475,40 @@ render ladder (that ladder refactor is deferred Phase 3):
 
 ---
 
+## Plan Export / Backup Tool (EXPORT phase only; store unchanged)
+
+A local, in-hand copy of the owner's plan independent of the relay/sync path — motivated by the
+fresh-install settings-clobber incident (the relay was the *only* copy, with no way to get data out).
+**Read-only / export-only this phase** — no import/restore (a separate, later, more careful build that
+writes to the store + interacts with sync). The nsec key-backup ("save your recovery key") is a
+different artifact (Phase 1.5) — not this tool.
+
+- **`src/lib/backup/exportPlan.ts`** (+ `__tests__/exportPlan.test.ts`) — `buildPlanBackup(s:
+  StoreState): PlanBackup`, a pure function reusing `buildSettingsPayload` (so future-added settings
+  fields flow into the backup automatically) and stripping ONLY the sharing/transport config
+  (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`nostrRelays` — re-establishable, relationship-specific,
+  not irreplaceable). Bundles the FULL records set (`monthlyLog`, `deletedMonths`, `dayLog`,
+  `deletedDayEvents` — the RAW dayLog journal, not just rolled-up months; `cbCollateralBtc` needs no
+  special handling since it's a derived cache reconstructable from the exported `dayLog`). Wrapper:
+  `{ format: 'personal-bloc-plan-backup', schemaVersion: 1, storeVersion: 19, exportedAt (UTC ISO —
+  correct here, a machine timestamp not a user-facing "today"), plan: { settings, records } }`.
+  `downloadPlanBackup(s)` serializes + triggers a browser-standard Blob/`<a download>` save, filename
+  `personal-bloc-backup-{todayLocalISO()}.json` (the LOCAL date, per the date-fix convention).
+- **`SettingsMain.tsx` — "Backup" subpage** — `'backup'` added to `SettingsPage`/`SUBPAGE_TITLES`; a
+  menu row (💾, `!viewerMode`-gated) placed right after "Identity & Security" (recovery-adjacent); the
+  subpage is one paragraph + an "Export plan" button (`styles.syncButton`, calls
+  `downloadPlanBackup(useStore.getState())`). No confirm (read-only, harmless). Owner-only.
+- **Device-local/session fields are naturally absent** (not in `buildSettingsPayload`/the records
+  set) — `devMode`, `viewerMode`, `settingsDirty`, `initialSettingsPullDone`, nostr identity fields
+  never need explicit stripping.
+- **Not built (explicitly deferred):** import/restore — will validate `format`/`schemaVersion`/
+  `storeVersion` (migrating an older `storeVersion` if the store schema has since advanced) and write
+  the plan back to the store; the settings-clobber fix (`initialSettingsPullDone`) makes a post-import
+  publish safe (publishes the restored plan AFTER an initial pull, not seed defaults). Separate spec +
+  device-check, since it writes state and interacts with sync. No store version bump this phase.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -1739,7 +1773,8 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-449 tests — `npx vitest run` before every commit.
+454 tests — `npx vitest run` before every commit.
+- `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
