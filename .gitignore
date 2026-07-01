@@ -9,3 +9,4 @@ dist-ssr/
 *.log
 npm-debug.log*
 .vercel
+.claude/settings.local.json
