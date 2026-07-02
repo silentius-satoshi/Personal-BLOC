@@ -366,6 +366,10 @@ export interface StoreState {
   // NEVER synced. The unwrapped bytes live ONLY in viewerSync's in-memory holder — never in serializable state.
   viewerKeyWrapped:    string | null;     // AES-GCM ciphertext (base64) of the viewer nsec
   viewerKeyWrapMeta:   WrapMeta | null;   // { iv, scheme, credentialId?, salt }
+  // Viewer V3 — the viewer's own display name ("Good morning, Dad"). DEVICE-LOCAL PERSISTED, NEVER synced
+  // (the almanacLiveEnabled pattern: rides partializeState's ...rest, absent from SETTINGS_FIELDS /
+  // buildSettingsPayload / both snapshot branches). null = nameless greeting. Cleared on sign-out.
+  viewerDisplayName:   string | null;
   setNostrAuthEnabled:   (v: boolean) => void;
   setNostrPubkey:        (v: string | null) => void;
   setNostrSigningMethod: (v: 'nip07' | 'nip46' | 'local' | null) => void;
@@ -384,6 +388,7 @@ export interface StoreState {
   setViewerSecretKey:    (v: string | null) => void;
   setViewerKeyWrapped:   (v: string | null) => void;
   setViewerKeyWrapMeta:  (v: WrapMeta | null) => void;
+  setViewerDisplayName:  (v: string | null) => void;
   // Transient (NOT persisted) — true once viewerSync's in-memory key holder is populated (post-unlock /
   // post-provision). AppShell gates the unlock screen on this (it can't read viewerSync's module var).
   viewerUnlocked:        boolean;
@@ -848,6 +853,7 @@ export function migrateState(persistedState: any): any {
     // v17 migrant: LEAVE any plaintext viewerSecretKey in place (wrapping needs a Face ID gesture,
     // impossible here; the one-time wrap-setup screen clears it later).
     viewerSecretKey:      persistedState.viewerSecretKey     ?? null,
+    viewerDisplayName:    persistedState.viewerDisplayName   ?? null,   // Viewer V3 — additive default, no bump
     // Viewer access (Phase 3) — v18, wrapped-at-rest key. Device-local, never synced.
     viewerKeyWrapped:     persistedState.viewerKeyWrapped    ?? null,
     viewerKeyWrapMeta:    persistedState.viewerKeyWrapMeta   ?? null,
@@ -1179,6 +1185,7 @@ export const useStore = create<StoreState>()(
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
+  viewerDisplayName:   null,   // Viewer V3 — device-local persisted, never synced
   viewerKeyWrapped:    null,
   viewerKeyWrapMeta:   null,
   viewerUnlocked:      false,
@@ -1211,6 +1218,7 @@ export const useStore = create<StoreState>()(
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
+  setViewerDisplayName:  (v) => set({ viewerDisplayName: v }),   // device-local — no syncSettingsToNostr
   setViewerKeyWrapped:   (v) => set({ viewerKeyWrapped: v }),    // Phase 3 — device-local, never syncs
   setViewerKeyWrapMeta:  (v) => set({ viewerKeyWrapMeta: v }),
   setViewerUnlocked:     (v) => set({ viewerUnlocked: v }),      // transient (not persisted)

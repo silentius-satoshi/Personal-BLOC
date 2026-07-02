@@ -1,0 +1,172 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.groupLabel {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  color: var(--text-faint);
+  margin-top: 16px;
+}
+.groupLabel:first-child { margin-top: 0; }
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-2, #151b25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.rowTappable { cursor: pointer; transition: background 0.12s; }
+.rowTappable:hover { background: var(--bg-hover); }
+.rowBusy { opacity: 0.6; cursor: default; }
+
+.rowBody {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 0;
+}
+
+.rowTitle {
+  font-size: 13px;
+  color: var(--text-primary);
+  flex: 1;
+  min-width: 0;
+}
+.rowBody .rowTitle { flex: none; }
+
+.rowHint {
+  font-size: 10px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+.rowValue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.chevron { color: var(--text-faint); font-size: 15px; flex-shrink: 0; }
+
+/* Inline name edit */
+.nameInput {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+}
+.nameInput:focus { outline: none; border-color: var(--orange); }
+
+.saveBtn {
+  background: var(--orange);
+  border: none;
+  border-radius: 6px;
+  color: white;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+.cancelBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-ghost);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 10px;
+  font-family: inherit;
+  flex-shrink: 0;
+}
+
+/* Local role="switch" (the shared Toggle self-disables in viewerMode) */
+.switch {
+  position: relative;
+  width: 40px;
+  height: 24px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--bg-input);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+}
+.switchOn { background: var(--green); border-color: var(--green); }
+
+.switchThumb {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: var(--text-primary);
+  transition: transform 0.15s;
+}
+.switchOn .switchThumb { transform: translateX(16px); background: #fff; }
+
+/* Sync dot */
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.dotOn { background: var(--green); box-shadow: 0 0 6px var(--green); }
+.dotWarn { background: var(--amber); }
+
+/* Refresh */
+.refreshIcon {
+  font-size: 16px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+  display: inline-block;
+}
+.spinning { animation: viewerSettingsSpin 0.9s linear infinite; }
+@keyframes viewerSettingsSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.errorLine {
+  font-size: 11px;
+  color: var(--amber);
+  margin: 0;
+  padding: 0 4px;
+  line-height: 1.5;
+}
+
+/* Sign out */
+.signOutBtn {
+  margin-top: 20px;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--red);
+  border-radius: 10px;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 11px 0;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.signOutBtn:hover { background: rgba(232, 90, 79, 0.08); }

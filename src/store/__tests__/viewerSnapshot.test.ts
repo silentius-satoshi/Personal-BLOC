@@ -140,4 +140,22 @@ describe('viewer snapshot builders', () => {
     useStore.getState().setViewerWriterPubkey(null);
     useStore.getState().setViewerSecretKey(null);
   });
+
+  it('V3: viewerDisplayName is device-local — absent from BOTH payload builders (settings + snapshot)', () => {
+    useStore.getState().setViewerDisplayName('Dad');
+    // owner settings payload
+    expect('viewerDisplayName' in buildSettingsPayload(useStore.getState())).toBe(false);
+    // C-safe snapshot (no settings block at all)
+    useStore.setState({ viewerPrivacyTrusted: false });
+    const safe = buildViewerSnapshotPayload(useStore.getState());
+    expect('settings' in safe).toBe(false);
+    expect('viewerDisplayName' in safe).toBe(false);
+    // C-trusted snapshot settings
+    useStore.setState({ viewerPrivacyTrusted: true });
+    const trusted = buildViewerSnapshotPayload(useStore.getState());
+    expect('viewerDisplayName' in (trusted.settings as Record<string, unknown>)).toBe(false);
+    // reset for other suites
+    useStore.setState({ viewerPrivacyTrusted: false });
+    useStore.getState().setViewerDisplayName(null);
+  });
 });

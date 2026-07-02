@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { useStore } from '../useStore';
+import { resetViewerSession } from '../../lib/nostr/viewerSync';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
 // Data-remanence fix: clearViewerData() must wipe every viewer-hydrated financial/records/strike field back to
@@ -35,5 +36,28 @@ describe('clearViewerData', () => {
     expect(after.advisorActualBlocBalance).toBe(0);
     // the loaded gate flag
     expect(after.viewerDataLoaded).toBe(false);
+  });
+});
+
+// Viewer V4 — the shared sign-out/reset teardown must clear EVERYTHING the connect created (name, key,
+// mode, writer) so a signed-out device retains no residue and lands undecided → the fork.
+describe('resetViewerSession (viewer sign-out teardown)', () => {
+  it('clears viewerDisplayName + viewerMode + writer pubkey + wrapped key + re-arms onboarding', () => {
+    const s = useStore.getState();
+    s.setViewerMode(true);
+    s.setViewerWriterPubkey('o'.repeat(64));
+    s.setViewerKeyWrapped('wrapped-ciphertext');
+    s.setViewerDisplayName('Dad');
+    s.setOnboardingComplete(true);
+
+    resetViewerSession();
+    const after = useStore.getState();
+
+    expect(after.viewerDisplayName).toBeNull();     // V3 name — no residue
+    expect(after.viewerMode).toBe(false);
+    expect(after.viewerWriterPubkey).toBeNull();
+    expect(after.viewerKeyWrapped).toBeNull();      // wrapped key cleared
+    expect(after.viewerUnlocked).toBe(false);       // in-memory holder cleared (setUnwrappedViewerKey(null))
+    expect(after.onboardingComplete).toBe(false);   // undecided device → the fork renders
   });
 });

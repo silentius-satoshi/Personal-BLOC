@@ -40,7 +40,7 @@ import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
 import { ViewerWaitingGate } from '../Auth/ViewerWaitingGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
-import { setUnwrappedViewerKey, getViewerNpub } from '../../lib/nostr/viewerSync';
+import { resetViewerSession, getViewerNpub } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -205,19 +205,10 @@ export function AppShell() {
   const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
   const viewerDataLoaded = useStore((s) => s.viewerDataLoaded);   // true only after a VALID snapshot decrypt
 
-  // Reset viewing key (gate escape / recovery) — clears the wrapped pair + holder + any plaintext and sends
-  // the viewer back to onboarding to re-provision a fresh key. Lossless: the owner's snapshot stays on relay.
-  const resetViewer = () => {
-    const st = useStore.getState();
-    st.clearViewerData();              // wipe the hydrated financial residue BEFORE leaving viewerMode (data-remanence fix)
-    st.setViewerKeyWrapped(null);
-    st.setViewerKeyWrapMeta(null);
-    st.setViewerSecretKey(null);
-    setUnwrappedViewerKey(null);
-    st.setViewerMode(false);
-    st.setViewerWriterPubkey(null);
-    st.setOnboardingComplete(false);   // re-enter the onboarding viewer flow
-  };
+  // Reset viewing key (gate escape / recovery) — delegates to the SINGLE shared teardown
+  // (resetViewerSession, viewerSync.ts — Viewer V4) so the gate escapes and the Settings Sign-out
+  // can't drift. Lossless: the owner's snapshot stays on relay.
+  const resetViewer = () => resetViewerSession();
 
   useBtcPrice(); // keep store btcPrice live for the whole session — Simple Mode mounts no sidebar that calls this
   useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners (viewer gets Strike from the snapshot)

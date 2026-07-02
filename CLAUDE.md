@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (470 tests — all must pass before every commit)
+- Vitest (472 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -1504,6 +1504,52 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
 
 ---
 
+## Viewer V3 + V4 + V5 — Name Step, Viewer Settings, Role Scaffolding (store stays v19, NO bump)
+
+Three small viewer-side phases. Builds on Viewer V2.
+
+- **V3 — onboarding name step (`ViewerLoginFlow.tsx`).** After the handshake succeeds (`setViewerMode(true)`),
+  the flow advances to an internal `step: 'connect' | 'name'` → the name screen (₿ · "What should we call
+  you?" · "Just for your greeting — this stays on your device and is never shared." · one field · **Skip**
+  + **Continue**, always enabled — empty = skip) → `setViewerDisplayName(name.trim() || null)` → `onDone()`.
+  Name AFTER the handshake (don't collect a name for a connection that might fail). Runs for BOTH entry
+  points (onboarding fork + Settings access door) for free — it's internal to the flow. No Back on the
+  name step (the handshake already succeeded).
+- **Store field `viewerDisplayName: string | null`** (default null) + plain `set()` setter. **DEVICE-LOCAL
+  PERSISTED, NEVER synced** — the `almanacLiveEnabled` pattern: rides `partializeState`'s `...rest` (NOT in
+  the exclusion → survives reloads), absent from `SETTINGS_FIELDS` / `buildSettingsPayload` / BOTH snapshot
+  branches. Migrate default `?? null`. Greeting: `ViewerHomeView` renders `Good {timeofday}{name ? ', '+name
+  : ''}` (nameless when null).
+- **V4 — the stripped viewer Settings (`components/Settings/ViewerSettings.tsx` + `.module.css`, NEW).**
+  `SettingsMain` early-returns `<ViewerSettings/>` when `viewerMode` (a viewer never reaches the owner
+  menu/subpages/`accessFlow`); AppShell mounts it as `<SettingsMain hideHeader/>` inside `.simpleModeSettings`,
+  which supplies the ← Back header. One FLAT screen (no subpages): **YOU** (Your name — inline edit: tap →
+  field + Save/Cancel; empty Save clears to null) · **DEVICE** (Live block height — a LOCAL `role="switch"`
+  button, NOT the shared `ui/Toggle` which self-disables in viewerMode; sets `almanacLiveConsented`+`Enabled`)
+  · **CONNECTION** (Sync status: green/amber dot + `relativeAge(viewerLastSyncAt)`; **Refresh now** →
+  `await fetchViewerSnapshot()`, spins + disables, success/failure via a before/after `viewerLastSyncAt`
+  compare since fetch swallows its own errors → inline error line on no-change) · **ABOUT** (Version = build
+  string) · **[ Sign out ]** (red, full-width → `window.confirm` → `resetViewerSession()`). **Deliberate
+  scope cut: NO theme toggle** (dark-only app). The old ungated Display/About viewer rows are gone.
+  `relativeAge` was extracted from ViewerHomeView → `utils/format.ts` (shared by both).
+- **Sign-out teardown — COMPLETE + SHARED (`resetViewerSession()` in `viewerSync.ts`).** Extracted from
+  AppShell's `resetViewer` (which now just calls it — single source, no drift) and completed:
+  `clearViewerData()` → clear wrapped key pair + plaintext migrant → **`setViewerDisplayName(null)`** →
+  `setUnwrappedViewerKey(null)` (clears the in-memory holder + cached signer — the key-clear is explicit) →
+  `setViewerMode(false)` + `setViewerWriterPubkey(null)` → `setOnboardingComplete(false)` → the device
+  becomes UNDECIDED → **the fork renders** (never the empty owner shell). Shared by the Settings Sign-out
+  AND the gate escapes (ViewerUnlockGate/ViewerWaitingGate). A sign-out that leaves residue isn't a sign-out.
+- **V5 — dormant role scaffolding (`components/Viewer/RolePill.tsx`, NEW).** `useGrantedRoles(): readonly
+  string[]` = today literally `viewerMode ? ['viewer'] : []` (derived, not stored — a future snapshot can
+  carry granted roles and the derivation widens). `<RolePill roles={grantedRoles}/>` in the ViewerHomeView
+  header returns **null unless `roles.length > 1`** — ships invisible. The seam exists so a second role
+  (e.g. accountant) is additive, not a rewrite.
+- **No store version bump.** Tests: `viewerDisplayName` absent from BOTH payload builders + `resetViewerSession`
+  clears name/mode/writer/key/onboarding (472 total). `viewerDisplayName` added to the device-local
+  persisted-but-unsynced list.
+
+---
+
 ## Access Layer Redesign (Phase 1 — the shippable lockout fix; store unchanged, AppShell ladder UNTOUCHED)
 
 Fixes two front-door reachability defects WITHOUT touching the Bug-3-guarded AppShell auth/viewer
@@ -1943,7 +1989,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-470 tests — `npx vitest run` before every commit.
+472 tests — `npx vitest run` before every commit.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
@@ -2020,7 +2066,8 @@ publishSettingsNow payload / the partialize exclusion destructure — so they su
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
 plan-card status-bar visibility, default true), `simpleView` (`'monthly'|'daily'` consumer-shell view,
-default `'daily'` — Daily Mode P4a), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
+default `'daily'` — Daily Mode P4a), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
+null; cleared on `resetViewerSession`), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device; **persisted in
 STANDALONE localStorage `personal-bloc-writer-key-wrapped`/`-meta`, NOT inside the persist blob** — they're the
 credential that UNLOCKS the encrypted store, so they must be readable before/without decryption (else the

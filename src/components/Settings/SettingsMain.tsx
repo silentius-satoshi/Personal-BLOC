@@ -17,6 +17,7 @@ import { useRef, useState, useEffect } from 'react';
 import { useStore, importRelaysFromNip65, publishRelayListToNip65 } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
 import { SharingPage } from './SharingPage';
+import { ViewerSettings } from './ViewerSettings';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { RevealRecoveryKey } from './RevealRecoveryKey';
@@ -365,6 +366,23 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       .filter((t): t is TabEntry => t !== undefined),
     ...ALL_TABS.filter((t) => !tabOrder.includes(t.key)),
   ];
+
+  // Viewer V4 — a viewer gets the purpose-built FLAT settings screen, NOT the owner menu/subpages
+  // (a viewer never reaches accessFlow — those rows are !viewerMode). AppShell mounts this as
+  // <SettingsMain hideHeader/> inside .simpleModeSettings, which supplies the ← Back header.
+  if (viewerMode) {
+    return (
+      <div className={styles.main}>
+        {!hideHeader && (
+          <div className={styles.header}>
+            <button className={styles.backBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
+            <h2 className={styles.title}>Settings</h2>
+          </div>
+        )}
+        <ViewerSettings />
+      </div>
+    );
+  }
 
   return (
     <div className={styles.main}>

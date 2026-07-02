@@ -1,8 +1,9 @@
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { deriveSafetyView, deriveViewerOverall, selectSafetyViewInputs, scaleSafetyView, type SafetyLevel } from '../../simulation/safetyView';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, relativeAge } from '../../utils/format';
 import { RadialGauge } from './RadialGauge';
+import { RolePill, useGrantedRoles } from './RolePill';
 import styles from './ViewerHomeView.module.css';
 
 /**
@@ -42,15 +43,7 @@ function greetingTime(): string {
   return 'evening';
 }
 
-function relativeAge(ts: number | null): string {
-  if (!ts) return 'syncing…';
-  const mins = Math.floor((Date.now() - ts) / 60_000);
-  if (mins <= 0) return 'updated just now';
-  if (mins < 60) return `updated ${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `updated ${hrs}h ago`;
-  return `updated ${Math.floor(hrs / 24)}d ago`;
-}
+// relativeAge moved to utils/format.ts (V4) — shared with ViewerSettings' sync-status row.
 
 const CREDIT_SUB: Record<SafetyLevel, string> = {
   safe: 'Plenty of room left',
@@ -134,6 +127,8 @@ function useViewerSafety(): ViewerSafetyResult {
 export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
   const s = useViewerSafety();
   const lastSync = useStore((st) => st.viewerLastSyncAt);
+  const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
+  const grantedRoles = useGrantedRoles();                       // V5 — dormant (renders nothing today)
   const f = s.figures;
 
   const creditSub = f ? `${fmtUSD(f.credit.used)} of ${fmtUSD(f.credit.total)} · ${fmtUSD(f.credit.avail)} available`
@@ -152,6 +147,7 @@ export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
             <span className={styles.brandMark}>₿</span>
             <span className={styles.brandName}>Personal ₿LOC</span>
           </div>
+          <RolePill roles={grantedRoles} />
           <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">
             ⚙
           </button>
@@ -159,7 +155,7 @@ export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
 
         {/* Greeting */}
         <div className={styles.greeting}>
-          <h1 className={styles.greetTitle}>Good {greetingTime()}</h1>
+          <h1 className={styles.greetTitle}>Good {greetingTime()}{displayName ? `, ${displayName}` : ''}</h1>
           <p className={styles.greetSub}>{OVERALL_COPY[s.overall]}</p>
         </div>
 

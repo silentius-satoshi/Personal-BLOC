@@ -36,6 +36,28 @@ export function setUnwrappedViewerKey(sk: Uint8Array | null): void {
   useStore.getState().setViewerUnlocked(!!sk);
 }
 
+/**
+ * Viewer V4 — the SINGLE, COMPLETE viewer sign-out/reset teardown. Clears everything the connect created:
+ * hydrated data (clearViewerData), the wrapped key pair + any plaintext migrant, the display name (a
+ * signed-out device retains no name), the in-memory key holder + cached signer (setUnwrappedViewerKey(null)
+ * — the key-clear is explicit here), viewerMode + writer pubkey, then re-arms onboarding so the device
+ * becomes UNDECIDED → the fork renders (the clean exit door; never the empty owner shell). Shared by the
+ * Settings "Sign out" AND the gate escapes (ViewerUnlockGate/ViewerWaitingGate via AppShell's resetViewer).
+ * Lossless: the owner's snapshot stays on the relay.
+ */
+export function resetViewerSession(): void {
+  const st = useStore.getState();
+  st.clearViewerData();              // wipe the hydrated financial residue BEFORE leaving viewerMode (data-remanence fix)
+  st.setViewerKeyWrapped(null);
+  st.setViewerKeyWrapMeta(null);
+  st.setViewerSecretKey(null);
+  st.setViewerDisplayName(null);     // V3 name — sign-out retains no name (privacy + clean re-onboard)
+  setUnwrappedViewerKey(null);       // in-memory holder + cached signer cleared, viewerUnlocked → false
+  st.setViewerMode(false);
+  st.setViewerWriterPubkey(null);
+  st.setOnboardingComplete(false);   // undecided device → the fork renders
+}
+
 /** The viewer's OWN npub, derived from the in-memory holder (never exposes raw bytes). null pre-unlock.
  *  Lets a pending/revoked viewer copy their npub to (re-)send the owner — the key isn't in the store. */
 export function getViewerNpub(): string | null {

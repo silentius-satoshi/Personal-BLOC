@@ -23,3 +23,15 @@ export function fmtMining(value_usd: number, currency: MiningCurrency, btcPrice:
   if (currency === 'sats') return `${sats.toLocaleString()} sats`;
   return `${(sats / 100_000_000).toFixed(8)} BTC`;
 }
+
+// Relative freshness for the viewer surfaces ("updated Nm ago" — home pill + viewer Settings sync row).
+// Extracted from ViewerHomeView (Viewer V4) so both consumers share one convention.
+export function relativeAge(ts: number | null): string {
+  if (!ts) return 'syncing…';
+  const mins = Math.floor((Date.now() - ts) / 60_000);
+  if (mins <= 0) return 'updated just now';
+  if (mins < 60) return `updated ${mins}m ago`;
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return `updated ${hrs}h ago`;
+  return `updated ${Math.floor(hrs / 24)}d ago`;
+}
