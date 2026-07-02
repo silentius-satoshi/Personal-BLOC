@@ -104,6 +104,8 @@ export interface MonthlyLogEntry {
   cbLtv?:         number;    // omit if !hasCbLoan
   miningSats?:    number;    // omit if !showMiningInLog
   ndpPaid?:       number;    // OPTIONAL — actual NDP (non-draw payment) recorded this month; omit when no NDP paid
+  strikeMinPaid?:  number;             // OPTIONAL — Strike monthly minimum actually paid this month (income source); omit when rolled
+  strikeMinSource?: 'income' | 'roll'; // OPTIONAL — the min-payment source in effect when this month was logged
   loggedAt:       number;    // Unix ms timestamp
   btcHeld:        number;    // absolute BTC at end of this logged month
   expensesActual: number;    // actual expenses recorded for this month

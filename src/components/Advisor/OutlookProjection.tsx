@@ -34,6 +34,7 @@ interface OutlookProjectionProps {
   cbLtvTriggerPct:     number;
   cbLtvTargetPct:      number;
   cbRotateBackPct:     number;
+  blocMinPaymentSource: 'income' | 'roll';
 }
 
 function tierBadgeClass(tier: AdvisorTier): string {
@@ -47,6 +48,7 @@ export function OutlookProjection({
   btcPrice, income, expenses, blocApr, creditLine,
   hasCbLoan, cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
   cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
+  blocMinPaymentSource,
 }: OutlookProjectionProps) {
   const [growthScenario, setGrowthScenario] = useState<GrowthScenario>('flat');
 
@@ -81,13 +83,14 @@ export function OutlookProjection({
       startingBtcHeld,
       startingMonth,
       btcGrowthRate,
+      blocMinPaymentSource,
     }),
     [
       btcPrice, income, expenses, blocApr, creditLine,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
       cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
       startingBlocBalance, startingBtcHeld, startingMonth,
-      btcGrowthRate, hasCbLoan,
+      btcGrowthRate, hasCbLoan, blocMinPaymentSource,
     ],
   );
 

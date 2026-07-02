@@ -1053,3 +1053,52 @@
   line-height: 1.5;
   color: var(--text-secondary);
 }
+
+/* Simple Mode Corrections — Strike minimum chip, statement-entry button, threshold + savings notices */
+.chip {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  text-transform: uppercase;
+}
+.chipStatement { background: rgba(78,203,130,0.16); color: var(--green); }
+.chipEst       { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+.minAmountBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.minAmountBtn:disabled { cursor: default; }
+.misorderNotice {
+  margin: 14px 0 0;
+  padding: 9px 12px;
+  background: rgba(232,168,74,0.10);
+  border: 1px solid rgba(232,168,74,0.35);
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--amber);
+}
+.savingsNeed {
+  margin: 10px 0 0;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.03);
+}
+.savingsNeedAlert {
+  color: var(--amber);
+  background: rgba(232,168,74,0.10);
+  border: 1px solid rgba(232,168,74,0.35);
+}

@@ -262,6 +262,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
   const creditLine  = useStore((s) => s.creditLine);   const setCreditLine  = useStore((s) => s.setCreditLine);
   const blocApr     = useStore((s) => s.blocApr);      const setBlocApr     = useStore((s) => s.setBlocApr);
+  const blocMinPaymentSource    = useStore((s) => s.blocMinPaymentSource);
+  const setBlocMinPaymentSource = useStore((s) => s.setBlocMinPaymentSource);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
@@ -663,6 +665,24 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           )}
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
           <div className={styles.setupFieldGroup}>
+            <span className={styles.setupFieldLabel}>MINIMUM PAYMENT SOURCE</span>
+            <div className={styles.strategyPills}>
+              <button
+                className={`${styles.strategyPill} ${blocMinPaymentSource === 'income' ? styles.strategyPillActive : ''}`}
+                onClick={() => setBlocMinPaymentSource('income')}
+              >Pay from income</button>
+              <button
+                className={`${styles.strategyPill} ${blocMinPaymentSource === 'roll' ? styles.strategyPillActive : ''}`}
+                onClick={() => setBlocMinPaymentSource('roll')}
+              >Roll into line</button>
+            </div>
+            <span className={styles.fieldHint}>
+              {blocMinPaymentSource === 'roll'
+                ? 'Roll: the monthly minimum is drawn from the line and accrues interest; requires an annual non-draw payment.'
+                : 'Income: the monthly minimum (interest) is paid from income, so the balance stops compounding — at the cost of some Bitcoin buying.'}
+            </span>
+          </div>
+          <div className={styles.setupFieldGroup}>
             <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />
             <span className={styles.fieldHint}>Current outstanding BLOC draw balance.</span>
           </div>
@@ -804,19 +824,20 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                       <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now — the Outlook projection still models paydown.</span>
                     )}
                   </div>
-                  <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} step={1} />
+                  <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} max={85} step={1} />
                   <NumberInput
                     label={cbLtvAction === 'addCollateral' ? 'Reduce to LTV' : 'Pay down to LTV'}
                     value={cbLtvTargetPct}
                     onChange={setCbLtvTargetPct}
                     min={0}
+                    max={85}
                     step={1}
                   />
-                  <NumberInput label="Rotate-back LTV"  value={cbRotateBackPct} onChange={setCbRotateBackPct} min={0} step={1} />
+                  <NumberInput label="Rotate-back LTV"  value={cbRotateBackPct} onChange={setCbRotateBackPct} min={0} max={85} step={1} />
                   <span className={styles.fieldHint}>When CB LTV falls below this, shift expensive Strike debt back to the cheaper CB loan.</span>
-                  {!(cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct) && (
+                  {!(cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
                     <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
-                      Must satisfy: rotate-back &lt; pay-down &lt; trigger
+                      Thresholds must satisfy rotate-back &lt; target &lt; trigger &lt; 86% (Morpho liquidation).
                     </span>
                   )}
                 </>

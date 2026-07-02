@@ -74,6 +74,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const cbLtvTriggerPct   = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct    = useStore((s) => s.cbLtvTargetPct);
   const cbRotateBackPct   = useStore((s) => s.cbRotateBackPct);
+  const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
@@ -122,11 +123,12 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
       startingBtcHeld:     slmBtcHeld,
       startingMonth:       slmStartMonth,
       btcGrowthRate: 0,
+      blocMinPaymentSource,
     }).rows,
     [btcPrice, income, expenses, blocApr, creditLine,
      cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-     slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan],
+     slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan, blocMinPaymentSource],
   );
 
   const currentRow = advisorRows.find((r) => r.month === currentMonth) ?? null;
@@ -148,6 +150,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
     draw: plan.blocDraw, btcBoughtUsd: plan.btcBoughtUsd, cbPayment: plan.cbPayment,
     rotationFired: !!currentRow.strikeRepayFired, rotationAmount: currentRow.strikeRepayDraw ?? 0,
     interest: plan.blocInterest,
+    minPayment: plan.minPayment,
     skipDraw: false, skipBtc: false, skipCb: false, unallocated: 0,
   }) : '';
 

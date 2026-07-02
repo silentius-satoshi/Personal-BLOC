@@ -79,6 +79,7 @@ export function AdvisorMain() {
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
+  const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorMonthStartBalance = useStore((s) => s.advisorMonthStartBalance);
@@ -135,6 +136,7 @@ export function AdvisorMain() {
         startingBtcHeld,
         startingMonth,
         btcGrowthRate: 0,   // operating plan = flat; scenario projection lives in <OutlookProjection>
+        blocMinPaymentSource,
       });
       return r;
     },
@@ -142,7 +144,7 @@ export function AdvisorMain() {
       btcPrice, income, expenses, blocApr, creditLine,
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
       cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-      startingBlocBalance, startingBtcHeld, startingMonth,
+      startingBlocBalance, startingBtcHeld, startingMonth, blocMinPaymentSource,
     ],
   );
 
@@ -467,6 +469,7 @@ export function AdvisorMain() {
             cbLtvTriggerPct={cbLtvTriggerPct}
             cbLtvTargetPct={cbLtvTargetPct}
             cbRotateBackPct={cbRotateBackPct}
+            blocMinPaymentSource={blocMinPaymentSource}
           />
         </>
       )}

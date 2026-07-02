@@ -43,6 +43,7 @@ export interface AdvisorInputs {
   startingBtcHeld:     number;
   startingMonth:       number;
   btcGrowthRate:       number;  // annualized decimal (e.g. 0.33), 0 = flat
+  blocMinPaymentSource?: 'income' | 'roll';  // how the monthly BLOC minimum (interest) is paid; default 'roll' (capitalize)
 }
 
 export interface AdvisorMonthRow {
@@ -60,6 +61,8 @@ export interface AdvisorMonthRow {
   cbPaydownShortfall: number;  // desired - actual (0 when not capped)
   strikeRepayDraw:  number;    // amount rotated from Strike to CB (0 if not fired)
   strikeRepayFired: boolean;   // true when the reverse trigger fired this month
+  blocMinPayment:   number;    // BLOC minimum (interest) paid from income this month (0 in roll mode)
+  blocMinShortfall: number;    // interest that capitalized because income couldn't cover the minimum (0 in roll / when covered)
   btcBought:      number;
   incomeToBtc:    number;
   blocBalance:    number;
@@ -91,6 +94,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
     startingBlocBalance, startingBtcHeld, startingMonth, btcGrowthRate,
   } = inputs;
+  const blocMinPaymentSource = inputs.blocMinPaymentSource ?? 'roll';
 
   const blocMonthlyRate = blocApr / 100 / 12;
   const cbMonthlyRate   = cbAprPct / 100 / 12;
@@ -126,6 +130,8 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     let cbPaydownShortfall: number = 0;
     let strikeRepayDraw:  number  = 0;
     let strikeRepayFired: boolean = false;
+    let blocMinPayment:   number  = 0;
+    let blocMinShortfall: number  = 0;
 
     // CB interest accrues on opening balance (both paths)
     const cbInterest = cbBal * cbMonthlyRate;
@@ -135,7 +141,10 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       // Check trigger AFTER interest accrual
       const cbLtvNow = cbCollateralBtc * btcPriceThisMonth > 0
         ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
-      if (cbLtvNow >= cbLtvTriggerPct / 100) {
+      // Skip the forward-paydown / reverse-rotation block entirely when thresholds are
+      // mis-ordered (nonsense config) — no paydown churn. Draw / interest / paydown / BTC still run.
+      const thresholdsOrdered = cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct;
+      if (thresholdsOrdered && cbLtvNow >= cbLtvTriggerPct / 100) {
         const targetBal       = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
         const desiredPaydown  = Math.max(0, cbBal - targetBal);
         const availableCredit = Math.max(0, creditLine - blocBalance);
@@ -147,7 +156,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
           cbPaydownCapped    = true;
           cbPaydownShortfall = desiredPaydown - cbPaydownDraw;
         }
-      } else if (cbLtvNow <= cbRotateBackPct / 100 && blocBalance > 0) {
+      } else if (thresholdsOrdered && cbLtvNow <= cbRotateBackPct / 100 && blocBalance > 0) {
         // REVERSE rotation: draw cheap CB debt UP TO target, repay expensive Strike.
         // Gated to start only when CB LTV ≤ rotate-back; fills the loan back up TO target
         // (not to rotate-back) — the neutral zone between rotate-back and trigger prevents
@@ -166,15 +175,27 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       blocDraw = Math.min(expenses, Math.max(0, creditLine - blocBalance));
       fiatGap  = expenses - blocDraw;
 
-      // BLOC: draw then interest
+      // BLOC: draw then interest (interest off the post-draw balance in both modes)
       blocBalance  += blocDraw;
       blocInterest  = blocBalance * blocMonthlyRate;
-      blocBalance  += blocInterest;
 
-      // BLOC LTV paydown check — funded from income
+      // Min-payment source: 'roll' capitalizes interest; 'income' pays it from income.
+      let incomeBudget: number;
+      if (blocMinPaymentSource === 'income') {
+        const minPay     = blocInterest;
+        blocMinPayment   = Math.min(income, minPay);
+        blocMinShortfall = Math.max(0, minPay - income);
+        blocBalance     += blocMinShortfall;             // only the UNPAID remainder capitalizes
+        incomeBudget     = Math.max(0, income - blocMinPayment);
+      } else {
+        blocBalance     += blocInterest;                 // roll: full capitalization (byte-identical)
+        incomeBudget     = income;
+      }
+
+      // BLOC LTV paydown check — funded from the (min-payment-reduced) income budget
       const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
       blocPaydown = blocBalance > blocTarget
-        ? Math.min(income, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
+        ? Math.min(incomeBudget, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
 
       // No CB payment from income in ltvTriggered mode
@@ -182,7 +203,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       cbExtraPayment = 0;
 
       blocBalance -= blocPaydown;
-      incomeToBtc  = income - blocPaydown;
+      incomeToBtc  = incomeBudget - blocPaydown;
 
     } else {
       // Monthly payment strategy (original logic)
@@ -199,19 +220,31 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       }
       fiatGap = expenses - blocDraw;
 
-      // BLOC: draw then interest
+      // BLOC: draw then interest (interest off the post-draw balance in both modes)
       blocBalance  += blocDraw;
       blocInterest  = blocBalance * blocMonthlyRate;
-      blocBalance  += blocInterest;
 
-      // BLOC LTV paydown check — funded from income
+      // Min-payment source: 'roll' capitalizes interest; 'income' pays it from income.
+      let incomeBudget: number;
+      if (blocMinPaymentSource === 'income') {
+        const minPay     = blocInterest;
+        blocMinPayment   = Math.min(income, minPay);
+        blocMinShortfall = Math.max(0, minPay - income);
+        blocBalance     += blocMinShortfall;             // only the UNPAID remainder capitalizes
+        incomeBudget     = Math.max(0, income - blocMinPayment);
+      } else {
+        blocBalance     += blocInterest;                 // roll: full capitalization (byte-identical)
+        incomeBudget     = income;
+      }
+
+      // BLOC LTV paydown check — funded from the (min-payment-reduced) income budget
       const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
       blocPaydown = blocBalance > blocTarget
-        ? Math.min(income, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
+        ? Math.min(incomeBudget, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
 
-      // Income allocation by tier
-      let remainingIncome = income - blocPaydown;
+      // Income allocation by tier — seeded from the reduced budget
+      let remainingIncome = incomeBudget - blocPaydown;
       cbExtraPayment = 0;
       if (tier === 1) {
         cbExtraPayment  = remainingIncome;
@@ -251,6 +284,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       cbPayment: cbTotalPayment, cbExtraPayment,
       cbPaydownDraw, cbLtvTriggered, cbPaydownCapped, cbPaydownShortfall,
       strikeRepayDraw, strikeRepayFired,
+      blocMinPayment, blocMinShortfall,
       btcBought, incomeToBtc,
       blocBalance, blocLtv, cbBalance: cbBal, cbLtv, btcHeld,
       blocInterest, cbInterest, totalInterest,

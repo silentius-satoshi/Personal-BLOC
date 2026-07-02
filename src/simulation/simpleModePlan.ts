@@ -16,10 +16,11 @@ export interface MonthPlan {
   btcBought:           number;   // income → BTC, in BTC
   cbPayment:           number;   // monthly CB payment (0 in ltvTriggered / !hasCbLoan)
   paydown:             number;   // income → BLOC paydown
-  blocInterest:        number;   // monthly BLOC interest (capitalizes)
+  minPayment:          number;   // income → BLOC minimum (interest) payment (= row.blocMinPayment; 0 in roll mode)
+  blocInterest:        number;   // monthly BLOC interest (capitalizes in roll mode; paid in income mode)
   blocLtv:             number;   // projected EoM Strike LTV (decimal)
   cbLtv:               number;   // projected EoM CB LTV (decimal; 0 if !hasCbLoan)
-  allocatedFromIncome: number;   // paydown + btcBoughtUsd + cbPayment (= income for a clean projection)
+  allocatedFromIncome: number;   // paydown + btcBoughtUsd + cbPayment + minPayment (= income for a clean projection)
   isFullyAllocated:    boolean;
 }
 
@@ -36,8 +37,9 @@ export function deriveForMonth(
 ): MonthPlan {
   const cbPayment    = hasCbLoan && cbPaymentStrategy === 'monthly' ? row.cbPayment : 0;
   const btcBoughtUsd = row.incomeToBtc;
-  const paydown      = Math.max(0, income - (hasCbLoan ? row.cbPayment : 0) - row.incomeToBtc);
-  const allocatedFromIncome = paydown + btcBoughtUsd + cbPayment;
+  const minPayment   = row.blocMinPayment;
+  const paydown      = Math.max(0, income - (hasCbLoan ? row.cbPayment : 0) - row.incomeToBtc - minPayment);
+  const allocatedFromIncome = paydown + btcBoughtUsd + cbPayment + minPayment;
   return {
     blocDraw:     row.blocDraw,
     fiatGap:      row.fiatGap,
@@ -45,6 +47,7 @@ export function deriveForMonth(
     btcBought:    row.btcBought,
     cbPayment,
     paydown,
+    minPayment,
     blocInterest: row.blocInterest,
     blocLtv:      row.blocLtv,
     cbLtv:        hasCbLoan ? row.cbLtv : 0,
@@ -71,6 +74,7 @@ export interface MonthSummaryArgs {
   rotationFired: boolean;   // Strike→CB reverse rotation fired this month
   rotationAmount: number;   // USD rotated
   interest:      number;    // monthly BLOC interest (USD)
+  minPayment:    number;    // BLOC minimum paid from income (USD); >0 → income source, 0 → roll (capitalizes)
   // current-month skip flags (ignored unless isCurrent)
   skipDraw:      boolean;
   skipBtc:       boolean;
@@ -122,6 +126,12 @@ export function composeMonthSummary(a: MonthSummaryArgs): string {
     }
   }
 
-  if (a.interest > 0) parts.push(`Interest of ${usd(a.interest)} capitalizes onto the balance.`);
+  if (a.minPayment > 0) {
+    // Income source: the monthly minimum (interest) is paid from income rather than capitalizing.
+    const verb = a.isLogged ? 'Paid the' : 'Pay the';
+    parts.push(`${verb} ${usd(a.minPayment)} Strike minimum from income.`);
+  } else if (a.interest > 0) {
+    parts.push(`Interest of ${usd(a.interest)} capitalizes onto the balance.`);
+  }
   return parts.join(' ');
 }

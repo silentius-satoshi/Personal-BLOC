@@ -183,6 +183,10 @@ export interface StoreState {
   cbLoanBalanceAsOf:      string | null;   // ISO date — when cbLoanBalance was last re-anchored (interest accrues daily from here)
   cbLiquidationPriceAsOf: string | null;   // ISO date — when cbLiquidationPrice was last re-entered (drifts up as interest accrues)
   strikeLiquidationLtvPct: number;         // Strike partial-liquidation LTV (published terms: 85%)
+  blocMinPaymentSource:  'income' | 'roll';  // how the monthly BLOC minimum (interest) is paid: 'roll' (capitalize, default) or 'income'
+  blocStatementMinimum:  number | null;      // this month's Strike statement minimum (user-entered); null → fall back to the computed estimate
+  setBlocMinPaymentSource: (v: 'income' | 'roll') => void;
+  setBlocStatementMinimum: (v: number | null) => void;
 
   // App mode
   simpleMode:            boolean;
@@ -594,6 +598,8 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
     cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
     strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
+    blocMinPaymentSource:     s.blocMinPaymentSource,
+    blocStatementMinimum:     s.blocStatementMinimum,
     advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
@@ -823,6 +829,8 @@ export function migrateState(persistedState: any): any {
     cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,
     cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
     strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
+    blocMinPaymentSource:  persistedState.blocMinPaymentSource ?? 'roll',
+    blocStatementMinimum:  persistedState.blocStatementMinimum ?? null,
     btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
     lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
     nostrLogin:           persistedState.nostrLogin         ?? null,
@@ -907,6 +915,8 @@ export const useStore = create<StoreState>()(
   cbLoanBalanceAsOf:      null,
   cbLiquidationPriceAsOf: null,
   strikeLiquidationLtvPct: 85,
+  blocMinPaymentSource:  'roll' as const,
+  blocStatementMinimum:  null,
 
   simpleMode:         false,
   onboardingComplete: seedOnboardingComplete,   // 3a.4: standalone-seeded (false on fresh install = today's default)
@@ -1005,6 +1015,8 @@ export const useStore = create<StoreState>()(
   setCbLoanBalanceAsOf:      (v) => { set({ cbLoanBalanceAsOf: v });      useStore.getState().syncSettingsToNostr(); },
   setCbLiquidationPriceAsOf: (v) => { set({ cbLiquidationPriceAsOf: v }); useStore.getState().syncSettingsToNostr(); },
   setStrikeLiquidationLtvPct: (v) => { set({ strikeLiquidationLtvPct: v }); useStore.getState().syncSettingsToNostr(); },
+  setBlocMinPaymentSource: (v) => { set({ blocMinPaymentSource: v }); useStore.getState().syncSettingsToNostr(); },
+  setBlocStatementMinimum: (v) => { set({ blocStatementMinimum: v }); useStore.getState().syncSettingsToNostr(); },
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -1237,6 +1249,7 @@ export const useStore = create<StoreState>()(
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
+    blocMinPaymentSource: 'roll', blocStatementMinimum: null,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     pendingCollateralAdjustment: 0,
     monthlyLog: [], deletedMonths: {},
@@ -1259,6 +1272,7 @@ export const useStore = create<StoreState>()(
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
+    blocMinPaymentSource: 'roll', blocStatementMinimum: null,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     pendingCollateralAdjustment: 0,
     monthlyLog: [], deletedMonths: {},
@@ -1313,6 +1327,7 @@ export const useStore = create<StoreState>()(
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
       'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct',
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
+      'blocMinPaymentSource', 'blocStatementMinimum',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)

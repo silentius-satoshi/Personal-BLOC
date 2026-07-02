@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (472 tests — all must pass before every commit)
+- Vitest (482 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -1897,6 +1897,67 @@ Three independent A constants — never `PL_A_FAIR × scalar`. Data: Blockchain.
 
 ---
 
+## Strike Minimum Payment + NDP re-scope (Simple Mode Corrections A; store v19, NO bump)
+
+Corrects how the BLOC monthly minimum (accrued interest, billed monthly / due the 15th per Strike's terms)
+is modeled. The payment SOURCE is now an owner-selectable policy (Settings → Strike → MINIMUM PAYMENT SOURCE),
+and the NDP clause is re-scoped to roll-mode only.
+
+- **Two synced settings (`useStore.ts`):** `blocMinPaymentSource: 'income' | 'roll'` (default `'roll'` —
+  today's exact behavior, the migration-free choice) + `blocStatementMinimum: number | null` (this month's
+  user-entered statement figure; `null` → the computed one-month-interest estimate `balance × APR/12`; reset to
+  `null` at month-confirm). Both in `buildSettingsPayload` + `SETTINGS_FIELDS` + defensive `migrateState`
+  defaults; **no store version bump** (initial-state default + custom shallow merge, `simpleView` precedent). Ride
+  into the plan backup + trusted snapshot automatically; the safe snapshot (ratios-only) is untouched.
+- **Engine (`runAdvisor.ts`):** optional input `blocMinPaymentSource?` (defaults `'roll'` inside → every existing
+  call site is byte-identical unless it threads the real value). After `blocInterest = blocBalance ×
+  blocMonthlyRate` in BOTH branches: `roll` capitalizes (`blocBalance += blocInterest`, unchanged); `income` pays
+  `blocMinPayment = min(income, interest)` from income (does NOT capitalize), re-capitalizes only the
+  `blocMinShortfall = max(0, interest − income)`, and runs the LTV-paydown + BTC/CB-split on the reduced
+  `incomeBudget = income − blocMinPayment`. New row fields `blocMinPayment` / `blocMinShortfall` (0 in roll).
+  ⚠ The min-payment computation + the expense `blocDraw` + `fiatGap` + the Strike-LOC-funded cbPaydownDraw use RAW
+  `income`/`expenses`, NOT `incomeBudget`.
+- **`simpleModePlan.ts`:** `MonthPlan.minPayment` (= `row.blocMinPayment`); `deriveForMonth` subtracts it so
+  `allocatedFromIncome = paydown + btcBoughtUsd + cbPayment + minPayment` still equals income;
+  `composeMonthSummary` emits **"Pay/Paid the $X Strike minimum from income."** when `minPayment > 0`, else the
+  existing **"Interest of $X capitalizes onto the balance."** (roll).
+- **Threading:** the store `blocMinPaymentSource` is passed into `runAdvisor` at ALL app call sites
+  (SimpleModeView, DailyModeView, AdvisorMain, and via a new prop into OutlookProjection) so projections show the
+  income-mode tradeoff (lower balance/LTV, less BTC) honestly.
+- **Simple Mode UI (`SimpleModeView.tsx`):** income mode adds a FROM MONTHLY INCOME allocation row "Strike minimum
+  · due the 15th" (amount = `blocStatementMinimum ?? estimate` + a `statement`/`est.` chip; tap the amount →
+  inline field → `setBlocStatementMinimum`; no Skip pill — contractual). Roll mode keeps the Interest-capitalizes
+  row. The current-month reality math (`effectiveInterest`/`expectedBtcBuying`/`expectedPaydown`/`eomBlocBalance`/
+  `loggedStrikeBal`/`allocatedFromIncome`) all gate the income-mode terms on `isIncomeSource` (roll = 0 → byte-
+  identical). ConfirmLogSheet relabels the interest row "Strike minimum paid" in income mode; `handleApply` writes
+  `strikeMinPaid` + `strikeMinSource` to the entry, and in income mode resets `blocStatementMinimum` to null +
+  stamps `ndpLastPaidDate` (an external minimum IS a non-draw payment). Box 2 "THIS MONTH" Draw line now anchors on
+  the MONTH's total (`effectiveDrawAmount`) with `($X left)` as the countdown parenthetical (was a bare "Draw: $0"
+  once the month's draws were logged), plus a `Min:` line in both modes.
+- **NDP re-scope:** `ndpActionActive` (SimpleModeView) is gated on `blocMinPaymentSource === 'roll'` — the annual
+  NDP surfaces (`showNdpRow`, the "NDP paid $X" summary, the status pill/badge) only exist while minimums roll.
+  `getNdpStatus`'s signature/estimate (one month's interest) is unchanged.
+- **`MonthlyLogEntry` += `strikeMinPaid?` / `strikeMinSource?`** (optional additive, legacy-tolerant next to
+  `ndpPaid?`).
+
+## Threshold validation (Simple Mode Corrections B)
+
+The three CB threshold `NumberInput`s (SettingsMain cbloan subpage) gain `max={85}` bounds; the ordering warning
+extends to `rotate-back < target < trigger < 86% (Morpho liquidation)`. In `runAdvisor` a `thresholdsOrdered`
+guard (`cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct`) leads BOTH the forward-paydown `if` and the
+reverse-rotation `else if` — mis-ordered config suspends rotation for the month (no churn) while draw/interest/BTC
+still run. Simple Mode's plan card surfaces an amber `.misorderNotice` "⚠ CB thresholds mis-ordered — rotation
+advice suspended; fix in Settings → Coinbase Loan." when the persisted config violates ordering (covers
+legacy/synced-in bad values).
+
+## Cumulative savings-need line (Simple Mode Corrections C)
+
+`SimpleModeView` computes `savingsNeed = Σ (max(0, fiatGap) + max(0, blocMinShortfall))` over the remaining
+projection rows (`month ≥ currentMonth`) and renders a `.savingsNeed` line "Needs ~$X from savings over the next N
+months" when `> $0` (N = remaining months with a gap) — muted normally, `.savingsNeedAlert` amber when `≥ 1× income`.
+
+---
+
 ## Dollar Formatting
 
 ```typescript
@@ -1989,13 +2050,14 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-472 tests — `npx vitest run` before every commit.
+482 tests — `npx vitest run` before every commit.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
-- `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure)
+- `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure). **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); `deriveForMonth` folds `minPayment` into the allocation identity; narration income-vs-capitalizes; **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run)
+- `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, hydrate cross-device, and a remote event lacking them doesn't clobber (whitelist skips absent)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
 - `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids
@@ -2756,7 +2818,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 34 Synced Settings Fields
+### All 36 Synced Settings Fields
 (`cbCollateralBtc` is a LOCAL derived cache, NOT a synced settings scalar — but Daily Mode P3 CONVERGES it cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives `cbCollateralBtc` from the merged `dayLog`.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -2765,6 +2827,7 @@ a v17-migrant holder until the one-time wrap.
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
+`blocMinPaymentSource`, `blocStatementMinimum`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
 `pendingCollateralAdjustment`, `nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`, `viewerPrivacyTrusted`
 (`viewerPrivacyTrusted` (Viewer V2) syncs the owner's C-safe/C-trusted choice across the owner's devices; like the
