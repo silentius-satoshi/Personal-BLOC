@@ -3,7 +3,7 @@
 // (readingComplete). Kept pure so the LD6 atomic flow+reading write + the LTV fraction conversion are unit-tested.
 import type { DayEvent } from '../../simulation/types';
 
-export type SheetType = 'draw' | 'buy' | 'paydown' | 'collateral' | 'setBalance';
+export type SheetType = 'draw' | 'buy' | 'paydown' | 'minPayment' | 'collateral' | 'setBalance';
 
 export interface SheetState {
   type: SheetType;
@@ -70,6 +70,10 @@ export function buildEventsFromSheet(
       return [{ id: idFn(), date: today, ts, kind: 'draw', amount }, readingEvent];
     case 'paydown':
       return [{ id: idFn(), date: today, ts, kind: 'paydown', amount }, readingEvent];
+    case 'minPayment':
+      // Balance-neutral; reading-free (a one-field sheet). No atomic balanceReading — paying the billed
+      // minimum doesn't move the position, so LD6 doesn't apply.
+      return [{ id: idFn(), date: today, ts, kind: 'minPayment', amount }];
     case 'buy':
       return [{ id: idFn(), date: today, ts, kind: 'buy', amount, usd: amount * btcPrice }, readingEvent];
     case 'collateral':

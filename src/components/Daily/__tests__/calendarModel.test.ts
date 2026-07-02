@@ -117,7 +117,7 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
   it('buildDayActivity filters by date, sums streams, netBtc, isEmpty', () => {
     const day = buildDayActivity(LOG, '2025-01-05');
     expect(day.events.map((e) => e.id)).toEqual(['a', 'b']);   // asc by ts, only that date
-    expect(day.streams).toEqual({ draw: 1000, paydown: 0, buyBtc: 0.01 });
+    expect(day.streams).toEqual({ draw: 1000, paydown: 0, buyBtc: 0.01, minPayment: 0 });
     expect(day.netBtc).toBeCloseTo(0.01, 8);
     expect(day.isEmpty).toBe(false);
     expect(buildDayActivity(LOG, '2025-01-30').isEmpty).toBe(true);
@@ -131,7 +131,7 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
 
   it('buildMonthRollup totals + entryCount (distinct dates)', () => {
     const m = buildMonthRollup(LOG, '2025-01-01', 1);
-    expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01 });
+    expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01, minPayment: 0 });
     expect(m.netBtc).toBeCloseTo(0.01 + 0.2 - 0.05, 8);   // CB deposit excluded
     expect(m.entryCount).toBe(5);   // 05,06,07,08,09
     expect(m.month).toBe(1);

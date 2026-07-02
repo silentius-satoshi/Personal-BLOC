@@ -32,6 +32,7 @@ export function AdvisorSidebar() {
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
   const cbMonthlyPayment  = useStore((s) => s.cbMonthlyPayment);
+  const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);   // §2b — NDP only applies while rolling
 
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
@@ -158,6 +159,9 @@ export function AdvisorSidebar() {
         )}
       </div>
 
+      {/* §2b — the annual NDP only exists while minimums are ROLLED into the line. In income mode the
+          minimum is paid monthly from income (each payment IS a non-draw payment), so the clause is gone. */}
+      {blocMinPaymentSource === 'roll' && (<>
       <div className={styles.divider} />
       <div className={styles.sectionLabel}>ANNUAL NON-DRAW PAYMENT</div>
 
@@ -214,6 +218,7 @@ export function AdvisorSidebar() {
           </div>
         )}
       </div>
+      </>)}
 
       <div className={styles.divider} />
 

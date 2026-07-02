@@ -1068,6 +1068,29 @@
 }
 .chipStatement { background: rgba(78,203,130,0.16); color: var(--green); }
 .chipEst       { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+
+/* §2b — Strike minimum status chip (income mode) */
+.minChip { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle; }
+.minChip_PAID   { background: rgba(78,203,130,0.16); color: var(--green); }
+.minChip_DUE    { background: rgba(232,168,74,0.16); color: var(--amber); }
+.minChip_MISSED { background: rgba(232,90,79,0.16); color: var(--red); }
+.minChip_ROLLS  { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+
+/* §3 — MTD ledger strip + sign-off pointer (replace the operate console) */
+.mtdStrip {
+  width: 100%; margin-top: 12px; padding: 9px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  color: var(--text-muted); font-size: 12px; font-family: 'IBM Plex Mono', monospace;
+  text-align: left; cursor: pointer; transition: color 0.12s, border-color 0.12s;
+}
+.mtdStrip:hover { color: var(--text-primary); border-color: var(--line-2); }
+.signoffPointer {
+  width: 100%; margin-top: 10px; padding: 11px 12px;
+  border: 1px solid rgba(232,168,74,0.35); border-radius: 10px; background: rgba(232,168,74,0.10);
+  color: var(--amber); font-size: 13px; font-weight: 600; font-family: inherit;
+  text-align: left; cursor: pointer; transition: opacity 0.12s;
+}
+.signoffPointer:hover { opacity: 0.88; }
 .minAmountBtn {
   display: inline-flex;
   align-items: center;

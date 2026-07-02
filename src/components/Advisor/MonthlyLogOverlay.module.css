@@ -139,6 +139,8 @@
   flex-shrink: 0;
 }
 .editBtn:hover { border-color: var(--orange); color: var(--orange); }
+/* §4 — daily-owned month: edits belong in the Ledger */
+.ledgerHint { font-size: 11px; color: var(--text-faint); align-self: center; }
 
 /* BTC Bought highlight (current month) */
 .btcBoughtHighlight {

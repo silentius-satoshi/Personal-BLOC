@@ -264,6 +264,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const blocApr     = useStore((s) => s.blocApr);      const setBlocApr     = useStore((s) => s.setBlocApr);
   const blocMinPaymentSource    = useStore((s) => s.blocMinPaymentSource);
   const setBlocMinPaymentSource = useStore((s) => s.setBlocMinPaymentSource);
+  const blocStatementMinimum    = useStore((s) => s.blocStatementMinimum);
+  const setBlocStatementMinimum = useStore((s) => s.setBlocStatementMinimum);
+  const blocMinPaymentDueDay    = useStore((s) => s.blocMinPaymentDueDay);
+  const setBlocMinPaymentDueDay = useStore((s) => s.setBlocMinPaymentDueDay);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
@@ -664,8 +668,10 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             </div>
           )}
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
+
+          {/* §2b — MINIMUM PAYMENT group (source policy + this month's statement figure + due day) */}
           <div className={styles.setupFieldGroup}>
-            <span className={styles.setupFieldLabel}>MINIMUM PAYMENT SOURCE</span>
+            <span className={styles.setupFieldLabel}>MINIMUM PAYMENT</span>
             <div className={styles.strategyPills}>
               <button
                 className={`${styles.strategyPill} ${blocMinPaymentSource === 'income' ? styles.strategyPillActive : ''}`}
@@ -678,9 +684,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
             </div>
             <span className={styles.fieldHint}>
               {blocMinPaymentSource === 'roll'
-                ? 'Roll: the monthly minimum is drawn from the line and accrues interest; requires an annual non-draw payment.'
-                : 'Income: the monthly minimum (interest) is paid from income, so the balance stops compounding — at the cost of some Bitcoin buying.'}
+                ? 'Roll: the payment is drawn from the line and accrues interest; requires an annual non-draw payment.'
+                : 'Income: paid from your paycheck — keeps the balance from compounding.'}
             </span>
+            <NumberInput
+              label="This month's amount"
+              value={blocStatementMinimum ?? 0}
+              onChange={(v) => setBlocStatementMinimum(v > 0 ? v : null)}
+              prefix="$"
+              min={0}
+              step={1}
+            />
+            <span className={styles.fieldHint}>
+              From your Strike monthly statement (billed the 1st){blocStatementMinimum == null ? ' — blank uses the computed estimate.' : '.'}
+            </span>
+            <NumberInput label="Due day" value={blocMinPaymentDueDay} onChange={setBlocMinPaymentDueDay} min={1} max={28} step={1} />
+            <span className={styles.fieldHint}>Strike's default is the 15th.</span>
           </div>
           <div className={styles.setupFieldGroup}>
             <NumberInput label="Amount Drawn" value={advisorActualBlocBalance} onChange={setAdvisorActualBlocBalance} prefix="$" min={0} step={100} />

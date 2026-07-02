@@ -1,6 +1,22 @@
 import { describe, it, expect } from 'vitest';
-import { deriveForMonth, isOperatingMonth, composeMonthSummary, type MonthSummaryArgs } from '../simpleModePlan';
+import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus, type MonthSummaryArgs } from '../simpleModePlan';
 import { runAdvisor, type AdvisorMonthRow } from '../runAdvisor';
+
+describe('Logging Consolidation §2b — minPaymentStatus', () => {
+  const base = { owed: 400, dueDay: 15, todayDay: 10, isCurrent: true };
+  it('roll mode always ROLLS', () => {
+    expect(minPaymentStatus({ ...base, source: 'roll', paidSoFar: 0 })).toBe('ROLLS');
+  });
+  it('income: PAID once the logged sum covers the owed figure', () => {
+    expect(minPaymentStatus({ ...base, source: 'income', paidSoFar: 400 })).toBe('PAID');
+    expect(minPaymentStatus({ ...base, source: 'income', paidSoFar: 50 })).toBe('PAID');   // any payment counts
+  });
+  it('income: DUE before/on the due day, MISSED after (current month only)', () => {
+    expect(minPaymentStatus({ ...base, source: 'income', paidSoFar: 0, todayDay: 10 })).toBe('DUE');
+    expect(minPaymentStatus({ ...base, source: 'income', paidSoFar: 0, todayDay: 20 })).toBe('MISSED');
+    expect(minPaymentStatus({ ...base, source: 'income', paidSoFar: 0, todayDay: 20, isCurrent: false })).toBe('DUE');   // past/future never MISSED-nag
+  });
+});
 
 function makeRow(month: number, o: Partial<AdvisorMonthRow> = {}): AdvisorMonthRow {
   return {
@@ -17,10 +33,9 @@ function makeRow(month: number, o: Partial<AdvisorMonthRow> = {}): AdvisorMonthR
 
 function summaryArgs(o: Partial<MonthSummaryArgs> = {}): MonthSummaryArgs {
   return {
-    month: 3, isCurrent: false, isLogged: false, hasCbLoan: false,
+    month: 3, isLogged: false, hasCbLoan: false,
     cbLtv: 0, triggerPct: 75, draw: 3500, btcBoughtUsd: 4000, cbPayment: 0,
     rotationFired: false, rotationAmount: 0, interest: 108, minPayment: 0,
-    skipDraw: false, skipBtc: false, skipCb: false, unallocated: 0,
     ...o,
   };
 }
@@ -77,8 +92,8 @@ describe('composeMonthSummary', () => {
     expect(s).not.toContain('Coinbase');
   });
 
-  it('future month uses plan voice (Draw / Buy)', () => {
-    const s = composeMonthSummary(summaryArgs({ isCurrent: false, isLogged: false, draw: 3500, btcBoughtUsd: 4000 }));
+  it('non-logged month uses plan voice (Draw / Buy)', () => {
+    const s = composeMonthSummary(summaryArgs({ isLogged: false, draw: 3500, btcBoughtUsd: 4000 }));
     expect(s).toContain('Draw $3,500');
     expect(s).toContain('Buy $4,000 of Bitcoin');
   });
@@ -97,16 +112,20 @@ describe('composeMonthSummary', () => {
     expect(s).toContain('Paid $500');
   });
 
-  it('current month + skipBtc → "skipped … unallocated"', () => {
-    const s = composeMonthSummary(summaryArgs({ isCurrent: true, skipBtc: true, unallocated: 4000 }));
-    expect(s).toContain("skipped this month's Bitcoin buy");
-    expect(s).toContain('$4,000 income unallocated');
-    expect(s).not.toContain('Buy $');
+  it('Logging Consolidation §3 — the current month uses plan voice (no skip-adjusted narration)', () => {
+    // Skip args are retired; the current month narrates exactly like any projected month.
+    const s = composeMonthSummary(summaryArgs({ draw: 3500, btcBoughtUsd: 4000 }));
+    expect(s).toContain('Draw $3,500 from your credit line');
+    expect(s).toContain('Buy $4,000 of Bitcoin');
+    expect(s).not.toContain('skipped');
   });
 
-  it('current month + skipDraw → "covering … from savings"', () => {
-    const s = composeMonthSummary(summaryArgs({ isCurrent: true, skipDraw: true, draw: 3500 }));
-    expect(s).toContain('covering $3,500 from savings');
+  it('income minimum narration vs roll capitalization', () => {
+    const income = composeMonthSummary(summaryArgs({ minPayment: 108, interest: 108 }));
+    expect(income).toContain('Strike minimum from income');
+    expect(income).not.toContain('capitalizes');
+    const roll = composeMonthSummary(summaryArgs({ minPayment: 0, interest: 108 }));
+    expect(roll).toContain('capitalizes onto the balance');
   });
 });
 

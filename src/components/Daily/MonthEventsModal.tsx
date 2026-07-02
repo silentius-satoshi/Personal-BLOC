@@ -30,6 +30,7 @@ function tone(kind: DayEvent['kind']): { dot: string; ring: boolean; amt: string
     case 'buy':      return { dot: styles.dotO, ring: false, amt: styles.amtPos };
     case 'paydown':  return { dot: styles.dotG, ring: false, amt: styles.amtNeu };
     case 'draw':     return { dot: styles.dotN, ring: false, amt: styles.amtNeu };
+    case 'minPayment': return { dot: styles.dotR, ring: false, amt: styles.amtNeu };
     case 'deposit':  return { dot: styles.dotG, ring: false, amt: styles.amtNeu };
     case 'withdraw': return { dot: styles.dotY, ring: false, amt: styles.amtNeu };
     case 'balanceReading':

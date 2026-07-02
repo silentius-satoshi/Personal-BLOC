@@ -1,9 +1,9 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { runAdvisor, getCurrentStrategyMonth } from '../../simulation/runAdvisor';
-import { deriveAdvisorStart } from '../../simulation/logUtils';
+import { runAdvisor, getCurrentStrategyMonth, getNdpStatus } from '../../simulation/runAdvisor';
+import { deriveAdvisorStart, bucketEventToMonth } from '../../simulation/logUtils';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
-import { deriveForMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
+import { deriveForMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
 import { Calendar } from './Calendar';
@@ -43,6 +43,7 @@ function eventTone(kind: DayEvent['kind']): { dot: string; ring: boolean; amt: s
     case 'buy':      return { dot: styles.dotO, ring: false, amt: styles.amtPos };
     case 'paydown':  return { dot: styles.dotG, ring: false, amt: styles.amtNeu };
     case 'draw':     return { dot: styles.dotN, ring: false, amt: styles.amtNeu };
+    case 'minPayment': return { dot: styles.dotR, ring: false, amt: styles.amtNeu };
     case 'deposit':  return { dot: styles.dotG, ring: false, amt: styles.amtNeu };
     case 'withdraw': return { dot: styles.dotY, ring: false, amt: styles.amtNeu };
     case 'balanceReading':
@@ -87,6 +88,12 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const setSimpleMode               = useStore((s) => s.setSimpleMode);
   const viewerMode                  = useStore((s) => s.viewerMode);
   const confirmMonth                = useStore((s) => s.confirmMonth);
+  // §2/§2b — sign-off details context
+  const blocStatementMinimum    = useStore((s) => s.blocStatementMinimum);
+  const blocMinPaymentDueDay    = useStore((s) => s.blocMinPaymentDueDay);
+  const setBlocStatementMinimum = useStore((s) => s.setBlocStatementMinimum);
+  const ndpLastPaidDate         = useStore((s) => s.ndpLastPaidDate);
+  const setNdpLastPaidDate      = useStore((s) => s.setNdpLastPaidDate);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
 
@@ -145,14 +152,25 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
     : (plan?.cbPayment ?? 0);
   const cbRefLabel  = cbPaymentStrategy === 'ltvTriggered' ? 'CB paydown' : 'CB payment';
   const summaryText = currentRow && plan ? composeMonthSummary({
-    month: currentMonth, isCurrent: true, isLogged: false, hasCbLoan,
+    month: currentMonth, isLogged: false, hasCbLoan,
     cbLtv: plan.cbLtv, triggerPct: cbLtvTriggerPct,
     draw: plan.blocDraw, btcBoughtUsd: plan.btcBoughtUsd, cbPayment: plan.cbPayment,
     rotationFired: !!currentRow.strikeRepayFired, rotationAmount: currentRow.strikeRepayDraw ?? 0,
     interest: plan.blocInterest,
     minPayment: plan.minPayment,
-    skipDraw: false, skipBtc: false, skipCb: false, unallocated: 0,
   }) : '';
+
+  // §2b — the current month's Strike minimum: owed figure + status chip for the plan reference card.
+  const isIncomeSource = blocMinPaymentSource === 'income';
+  const strikeMinEstimate = Math.round(advisorActualBlocBalance * (blocApr / 100 / 12));
+  const strikeMinOwed = blocStatementMinimum ?? strikeMinEstimate;
+  const minPaidCurrentMonth = dayLog
+    .filter((e) => e.kind === 'minPayment' && bucketEventToMonth(e.date, advisorStartDate) === currentMonth)
+    .reduce((sum, e) => sum + (e as Extract<DayEvent, { kind: 'minPayment' }>).amount, 0);
+  const curMinStatus = minPaymentStatus({
+    source: blocMinPaymentSource, paidSoFar: minPaidCurrentMonth, owed: strikeMinOwed,
+    dueDay: blocMinPaymentDueDay, todayDay: Number(todayLocalISO().split('-')[2]), isCurrent: true,
+  });
 
   // ── Calendar state ──
   const [logExpanded, setLogExpanded]       = useState(false);
@@ -425,6 +443,17 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                     <span className={styles.pbAmt}>{fmtUSD(plan.paydown)}</span>
                   </div>
                 )}
+                {/* §2b — Strike minimum line + status chip (income: PAID/DUE/MISSED; roll: capitalize · Nth) */}
+                <div className={styles.pbRow}>
+                  <span className={`${styles.dot} ${styles.dotR}`} />
+                  <span>
+                    <span className={styles.pbLab}>Strike minimum</span>{' '}
+                    {isIncomeSource
+                      ? <span className={`${styles.minChip} ${styles[`minChip_${curMinStatus}`]}`}>{curMinStatus}</span>
+                      : <span className={styles.pbNote}>· {blocMinPaymentDueDay}th</span>}
+                  </span>
+                  <span className={styles.pbAmt}>{fmtUSD(isIncomeSource ? strikeMinOwed : (plan.blocInterest))}</span>
+                </div>
                 {summaryText && <div className={styles.pbNotebox}>{summaryText}</div>}
               </>
             ) : (
@@ -470,14 +499,27 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             initialType={sheetInitialType}
             onClose={() => { setSheetOpen(false); setEditEvent(undefined); setSheetInitialType(undefined); }}
           />
-          {/* P4c-3b — reconcile Review sheet (owner-only; the banner gates !viewerMode) */}
+          {/* §2 — the SIGN-OFF (reconcile Review sheet); owner-only (the banner gates !viewerMode). The
+              confirm is ONE atomic confirmMonth(month, extras); side-effects mirror the corrections build. */}
           <ReviewSheet
             open={reviewOpen}
             month={safeViewedMonth}
             rollup={monthRollup}
             isProvisional={isProvisional}
+            source={blocMinPaymentSource}
+            strikeMinPrefill={monthRollup.streams.minPayment > 0 ? monthRollup.streams.minPayment : strikeMinOwed}
+            statementIsSet={monthRollup.streams.minPayment > 0 || blocStatementMinimum != null}
+            ndpActive={blocMinPaymentSource === 'roll' && getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15, blocApr).status !== 'ok'}
+            ndpPrefill={getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15, blocApr).estimatedAmount}
             onClose={() => setReviewOpen(false)}
-            onConfirm={() => { confirmMonth(safeViewedMonth); setReviewOpen(false); }}
+            onConfirm={(extras) => {
+              confirmMonth(safeViewedMonth, extras);
+              // Side-effects (mirror the corrections build): income → fresh statement + stamp the NDP clock
+              // (an external minimum IS a non-draw payment); roll → stamp when an NDP was recorded.
+              if (blocMinPaymentSource === 'income') { setBlocStatementMinimum(null); setNdpLastPaidDate(todayLocalISO()); }
+              else if (extras.ndpPaid !== undefined) { setNdpLastPaidDate(todayLocalISO()); }
+              setReviewOpen(false);
+            }}
             onAddReading={() => { setReviewOpen(false); setEditEvent(undefined); setSheetInitialType('setBalance'); setSheetOpen(true); }}
           />
         </>

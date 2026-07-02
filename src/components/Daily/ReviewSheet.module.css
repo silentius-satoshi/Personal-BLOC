@@ -30,6 +30,25 @@
 .sumValBtc { color: var(--btc); }
 .entriesNote { font-family: var(--mono); font-size: 10.5px; color: var(--text-faint); padding-top: 2px; }
 
+/* §2 — SIGN-OFF DETAILS group */
+.detailsGroup {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 13px 15px;
+}
+.detailsLabel { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; color: var(--text-faint); margin-bottom: 2px; }
+.detailRow, .detailCheckRow { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.detailCheckRow { cursor: pointer; }
+.detailName { font-size: 13px; color: var(--text-primary); display: inline-flex; align-items: center; }
+.detailField { display: flex; align-items: center; gap: 3px; border: 1px solid var(--line); border-radius: 8px; padding: 5px 9px; background: var(--surface-2); }
+.detailPrefix { font-family: var(--mono); font-size: 13px; color: var(--text-muted); }
+.detailInput { width: 84px; border: none; background: transparent; color: var(--text-primary); font-family: var(--mono); font-size: 14px; text-align: right; outline: none; -moz-appearance: textfield; }
+.detailInput::-webkit-outer-spin-button, .detailInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.detailHint { font-size: 11px; color: var(--text-faint); line-height: 1.4; margin: -2px 0 4px; }
+.chip { margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 10px; font-weight: 600; letter-spacing: 0.02em; text-transform: uppercase; }
+.chipStatement { background: rgba(78,203,130,0.16); color: var(--green); }
+.chipEst { background: rgba(255,255,255,0.08); color: var(--text-muted); }
+
 .why { font-size: 12px; color: var(--text-muted); line-height: 1.5; }
 
 /* Actions */

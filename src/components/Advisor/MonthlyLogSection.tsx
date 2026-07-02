@@ -74,6 +74,7 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   const showMiningInLog = useStore((s) => s.showMiningInLog);
   const upsertLogEntry  = useStore((s) => s.upsertLogEntry);
   const deleteLogEntry  = useStore((s) => s.deleteLogEntry);
+  const unconfirmMonth  = useStore((s) => s.unconfirmMonth);   // §4 — daily months un-sign-off (never delete)
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
   const loggedCount  = monthlyLog.length;
@@ -87,6 +88,9 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   const loggedEntry  = monthlyLog.find((e) => e.month === selectedMonthNum) ?? null;
   const projRow      = months.find((r) => r.month === selectedMonthNum) ?? null;
   const isLogged     = !!loggedEntry;
+  // §4 — a daily-owned month is a living rollup: it's a VIEWER here (edits belong in the Ledger). Legacy/
+  // manual months (source undefined/'manual') stay editable. Undo on a daily month un-signs, never deletes.
+  const isDaily      = loggedEntry?.source === 'daily';
   const isCurrent    = selectedMonthNum === currentMonth;
 
   const buildFormFromRow = (row: AdvisorMonthRow): InlineForm => {
@@ -211,31 +215,39 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
               Month {selectedMonthNum} · {getMonthLabel(advisorStartDate, selectedMonthNum)}
             </span>
           </div>
-          {/* Right-side buttons (only in view mode) */}
+          {/* Right-side buttons (only in view mode). §4 — daily months are read-only here (edit in the
+              Ledger); the Remove action un-signs (reopen) rather than deleting. Manual months: Edit + Remove. */}
           {!detailEditing && isLogged && (
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
-              <button className={styles.editBtn} onClick={() => { setForm(formFromEntry(loggedEntry!)); setDetailEditing(true); setUnlogConfirm(false); }}>
-                Edit
-              </button>
+              {!isDaily && (
+                <button className={styles.editBtn} onClick={() => { setForm(formFromEntry(loggedEntry!)); setDetailEditing(true); setUnlogConfirm(false); }}>
+                  Edit
+                </button>
+              )}
               {!unlogConfirm && (
                 <button className={styles.removeBtn} onClick={() => setUnlogConfirm(true)}>
-                  Remove
+                  {isDaily ? 'Reopen' : 'Remove'}
                 </button>
               )}
             </div>
           )}
-          {allowInlineLog && !detailEditing && isCurrent && !isLogged && (
+          {/* §4 — daily months: point edits to the Ledger */}
+          {!detailEditing && isDaily && (
+            <span className={styles.dailyHint}>Edit the day&apos;s events in the Ledger (Daily view).</span>
+          )}
+          {allowInlineLog && !detailEditing && !isDaily && isCurrent && !isLogged && (
             <button className={styles.logNowBtn} onClick={() => { setForm(projRow ? buildFormFromRow(projRow) : emptyForm()); setDetailEditing(true); }}>
               Log this month →
             </button>
           )}
         </div>
 
-        {/* Unlog confirmation */}
+        {/* Unlog confirmation. §4 — daily months UN-SIGN (entry + rollup preserved; DELETE would tombstone
+            the month and suppress its own future rollups); manual months delete. */}
         {unlogConfirm && (
           <div className={styles.unlogConfirmRow}>
-            <span className={styles.unlogConfirmText}>Remove this entry?</span>
-            <button className={styles.confirmBtn} onClick={() => { deleteLogEntry(selectedMonthNum); setUnlogConfirm(false); }}>
+            <span className={styles.unlogConfirmText}>{isDaily ? 'Reopen this month for editing?' : 'Remove this entry?'}</span>
+            <button className={styles.confirmBtn} onClick={() => { if (isDaily) unconfirmMonth(selectedMonthNum); else deleteLogEntry(selectedMonthNum); setUnlogConfirm(false); }}>
               Confirm
             </button>
             <button className={styles.cancelConfirmBtn} onClick={() => setUnlogConfirm(false)}>
@@ -299,7 +311,15 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
                 {loggedEntry ? fmtUSD(loggedEntry.paydown) : '—'}
               </span>
             </div>
-            <div className={styles.fieldCell} />
+            {/* §2b — Strike minimum paid from income (only when recorded) */}
+            {(loggedEntry?.strikeMinPaid ?? 0) > 0 ? (
+              <div className={styles.fieldCell}>
+                <span className={styles.fieldLabel}>Strike min</span>
+                <span className={styles.fieldValue}>{fmtUSD(loggedEntry!.strikeMinPaid!)}</span>
+              </div>
+            ) : (
+              <div className={styles.fieldCell} />
+            )}
             <div className={styles.fieldCell}>
               <span className={styles.fieldLabel}>Strike Balance</span>
               <span className={styles.fieldValue}>

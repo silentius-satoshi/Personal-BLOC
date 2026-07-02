@@ -135,6 +135,14 @@ export function rollupMonth(
         entry.paydown = (entry.paydown ?? 0) + ev.amount;
         hasFlow = true;
         break;
+      case 'minPayment':
+        // Balance-NEUTRAL: paying billed interest doesn't reduce principal. Sums to strikeMinPaid ONLY
+        // (never paydown/balance); stocks still come from readings. Marks the source income (an event
+        // only exists when the minimum is paid from income).
+        entry.strikeMinPaid   = (entry.strikeMinPaid ?? 0) + ev.amount;
+        entry.strikeMinSource = 'income';
+        hasFlow = true;
+        break;
       case 'deposit':
       case 'withdraw':
         if (ev.target === 'strike') {

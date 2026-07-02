@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (482 tests — all must pass before every commit)
+- Vitest (489 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -740,11 +740,12 @@ A granular daily journal that rolls up into the existing month log. **P1 is type
 store, no UI, no sync.
 
 - **`DayEvent`** (types.ts) — a discriminated union over `DayEventKind` =
-  `draw | buy | paydown | deposit | withdraw | balanceReading | cbCollateralReading`. Base = `{ id, date (ISO
-  yyyy-mm-dd), ts (ms) }`. `draw`/`paydown` carry `amount` (USD); `buy` carries `amount` (BTC) + optional `usd`;
-  `deposit`/`withdraw` carry `amount` (BTC magnitude) + `target: 'strike' | 'cb'`; `cbCollateralReading` carries
-  `cbCollateral` (BTC); `balanceReading` carries a nested `reading { strikeBal, strikeLtv, cbBal?, cbLtv?,
-  cbCollateral?, price? }`.
+  `draw | buy | paydown | minPayment | deposit | withdraw | balanceReading | cbCollateralReading`. Base = `{ id,
+  date (ISO yyyy-mm-dd), ts (ms) }`. `draw`/`paydown`/`minPayment` carry `amount` (USD); `buy` carries `amount`
+  (BTC) + optional `usd`; `deposit`/`withdraw` carry `amount` (BTC magnitude) + `target: 'strike' | 'cb'`;
+  `cbCollateralReading` carries `cbCollateral` (BTC); `balanceReading` carries a nested `reading { strikeBal,
+  strikeLtv, cbBal?, cbLtv?, cbCollateral?, price? }`. (`minPayment` = the Strike monthly minimum paid from
+  income — Logging Consolidation §2b; **balance-neutral**, rolls up to `strikeMinPaid` only.)
 - **LD5 — stocks are READINGS:** balances/LTVs are read off Strike/Coinbase (the `balanceReading` event), never
   chained. **btcHeld is NOT in `balanceReading`** — Strike BTC stays store-owned via `recomputeBtcHeld` /
   `adjustCurrentCollateral`.
@@ -1958,6 +1959,66 @@ months" when `> $0` (N = remaining months with a gap) — muted normally, `.savi
 
 ---
 
+## Logging Consolidation — One Ledger, One Sign-off, a Pure Playbook (§1–§4 + §2b; store stays v19, NO bump)
+
+Retires the **second writer** of monthly actuals. Before: the Daily view (**Ledger** — `dayLog` events that
+roll up) AND the Monthly view's `ConfirmLogSheet` (**Playbook** — a parallel skip-adjusted derivation) both
+wrote the same entry → "the amounts don't match." Now the **Ledger is the sole writer of actuals** and the
+**Sign-off** (ReviewSheet) is the sole monthly confirmation; the Playbook renders its current month exactly
+like any projected month (figures from the engine via `deriveForMonth`).
+
+- **§1 Vocabulary + Invariant 1:** Ledger = Daily, Playbook = Monthly, Sign-off = ReviewSheet flow. **The
+  Ledger is the only writer of ACTUALS** (`dayLog` events + the sign-off's entry fields); the Playbook never
+  logs. (Invariant 2 / readings-unification is **§5b — DEFERRED**, see below.)
+- **§2 Sign-off absorbs the confirm (ONE atomic write):** `confirmMonth(month, extras?)` (useStore) —
+  `extras` (`expensesActual`/`ndpPaid`/`strikeMinPaid`/`strikeMinSource`) land WITH `confirmed:true` in a
+  single `upsertLogEntry` (spread preserves `source:'daily'` → M2 guard passes; zero-arg callers unchanged).
+  `ReviewSheet` gains a **SIGN-OFF DETAILS** group (Expenses actually paid; income-mode Strike-minimum-paid
+  with the statement/est chip prefilled `rollup.streams.minPayment ?? blocStatementMinimum ?? estimate`;
+  roll-mode NDP row). The **btcBought override retired** (fix a wrong buy by editing the event). Side-effects
+  in `DailyModeView`'s confirm handler (mirror the corrections build): income → `setBlocStatementMinimum(null)`
+  + stamp `ndpLastPaidDate`; roll → stamp when an NDP was recorded.
+- **§2b The minimum payment, first-class:** a new `DayEvent` kind **`minPayment` `{ amount /* USD */ }`**
+  (types.ts). `rollupMonth` (logUtils) sums it to `entry.strikeMinPaid` + `strikeMinSource:'income'` —
+  **balance-NEUTRAL** (never `paydown`/balance; stocks still from readings; it's `isMonthlyMeaningful` via the
+  default). `StreamAgg` gains a `minPayment` sum (calendarModel `aggregateEvents`). New synced setting
+  **`blocMinPaymentDueDay`** (default 15, bounds 1–28; setter clamps; in payload + `SETTINGS_FIELDS` + migrate
+  default; NO version bump). Pure **`minPaymentStatus(...)`** (simpleModePlan) → income: `PAID`/`DUE`/`MISSED`;
+  roll: `ROLLS`. `EventSheet` gains a `'minPayment'` type-pill (income-mode only, gated on
+  `blocMinPaymentSource`) — a one-field reading-free sheet (prefill `blocStatementMinimum ?? estimate`); the
+  Paydown sheet shows a `Minimum · due the Nth · $X · STATUS` context line. Settings → Strike Strategy → a
+  **MINIMUM PAYMENT** group (Source pills + This month's amount + Due day). Status chips (PAID/DUE/MISSED/ROLLS)
+  on the Daily plan card + the Playbook Box 2 Min line. `MonthlyLogSection`/`Overlay` show `strikeMinPaid`;
+  **`AdvisorSidebar`'s ANNUAL NON-DRAW PAYMENT card gates on `blocMinPaymentSource === 'roll'`** (an income
+  minimum IS a monthly non-draw payment → the annual clause is gone).
+- **§3 The Playbook goes pure (`SimpleModeView`):** RETIRED — `ConfirmLogSheet`, `handleApply`, the Pay/Skip
+  pills, `custom*` overrides, the whole skip-adjusted block (`effective*`/`eom*`-skip/`expected*`/live
+  `allocatedFromIncome`/`loggedStrike*`/`remainingDraw`), the "Log this month" button + logged-note Undo. The
+  current month renders like any projected month via `selectedPlan`/`deriveForMonth`; Box 3 AFTER = the engine
+  row's eom. A **sign-off pointer** ("Month N awaits sign-off in the Ledger →" → `setSimpleView('daily')`; shown
+  when `currentEntry?.confirmed === false` or no entry) replaces the Log button; a read-only **MTD strip**
+  ("Ledger: $X drawn · ₿Y bought · $Z paid ›" from `buildMonthRollup`) deep-links to the Ledger. Box 2/3 gain
+  **paren symmetry** (plan headline + ledger progress: "Draw: $3,750 ($1,200 left)"). `composeMonthSummary`'s
+  skip args (`skipDraw/skipBtc/skipCb/unallocated` + `isCurrent`) are RETIRED from `MonthSummaryArgs`; the
+  current voice = the imperative plan voice. **`advisorSkip*` stay DORMANT** in store + payload (sync compat;
+  no consumers).
+- **§4 Advisor surfaces = history, not writers:** `MonthlyLogSection` inline-log/Edit gates to legacy
+  `source !== 'daily'`; a daily month is a VIEWER ("Edit the day's events in the Ledger" hint) and its
+  Unlog/Undo becomes **Reopen → `unconfirmMonth(month)`** (flip `confirmed→false`, entry + rollup preserved —
+  DELETE would tombstone the month and suppress its own future rollups). `MonthlyLogOverlay` same rule (viewer
+  for all; edit gated to manual; a `useEffect` forces `editing:false` for daily). `deleteLogEntry` remains only
+  for legacy `manual` entries. New **`unconfirmMonth`** store action.
+- **§5b DEFERRED (committed immediate follow-up):** readings-unification — a `refreshBalanceAnchors` that
+  couples the live anchors (`advisorActualBlocBalance`/`cbLoanBalance`/`cbLiquidationPrice`) to the journal +
+  the SafetyDashboard/position-modal emit conversions + `cbLiqPrice` on the reading shape + the EventSheet
+  liq-price field. **Not built here (zero scaffolding).**
+- **⚠ R2 INTERIM REGRESSION (conscious, temporary — until §5b lands):** retiring `ConfirmLogSheet` removed its
+  CB-balance auto-accrual re-anchor (the old `handleApply` `accruedCbBalance` write). CB balance freshness now
+  relies on **SafetyDashboard re-anchors alone** (the existing staleness hints cover it). This is expected, not
+  a bug — §5b restores realtime coupling.
+
+---
+
 ## Dollar Formatting
 
 ```typescript
@@ -2050,7 +2111,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-482 tests — `npx vitest run` before every commit.
+489 tests — `npx vitest run` before every commit.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
@@ -2818,7 +2879,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 36 Synced Settings Fields
+### All 37 Synced Settings Fields
 (`cbCollateralBtc` is a LOCAL derived cache, NOT a synced settings scalar — but Daily Mode P3 CONVERGES it cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives `cbCollateralBtc` from the merged `dayLog`.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -2827,7 +2888,7 @@ a v17-migrant holder until the one-time wrap.
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
-`blocMinPaymentSource`, `blocStatementMinimum`,
+`blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
 `pendingCollateralAdjustment`, `nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`, `viewerPrivacyTrusted`
 (`viewerPrivacyTrusted` (Viewer V2) syncs the owner's C-safe/C-trusted choice across the owner's devices; like the

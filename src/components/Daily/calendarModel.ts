@@ -80,7 +80,7 @@ export function buildDayCells(dayLog: DayEvent[], dates: string[]): DayCell[] {
 // netBtc = buys + strike deposits − strike withdrawals; CB-target moves are journal-only → excluded
 // from netBtc). Pure — no store/UI/price dependency.
 
-export interface StreamAgg { draw: number; paydown: number; buyBtc: number; }
+export interface StreamAgg { draw: number; paydown: number; buyBtc: number; minPayment: number; }
 
 export interface DayActivity {
   date:    string;
@@ -100,15 +100,16 @@ export interface MonthRollup {
 
 // Shared aggregation — the single source for both day + month totals.
 function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: number } {
-  let draw = 0, paydown = 0, buyBtc = 0, netBtc = 0;
+  let draw = 0, paydown = 0, buyBtc = 0, minPayment = 0, netBtc = 0;
   for (const ev of events) {
-    if      (ev.kind === 'draw')    draw += ev.amount;
-    else if (ev.kind === 'paydown') paydown += ev.amount;
+    if      (ev.kind === 'draw')       draw += ev.amount;
+    else if (ev.kind === 'paydown')    paydown += ev.amount;
+    else if (ev.kind === 'minPayment') minPayment += ev.amount;   // USD; balance-neutral — display/prefill only
     else if (ev.kind === 'buy')   { buyBtc += ev.amount; netBtc += ev.amount; }
     else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
     else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
   }
-  return { streams: { draw, paydown, buyBtc }, netBtc };
+  return { streams: { draw, paydown, buyBtc, minPayment }, netBtc };
 }
 
 /** All events on a single ISO date (asc by ts) + that day's stream totals / netBtc. */

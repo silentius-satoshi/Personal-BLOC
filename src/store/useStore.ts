@@ -185,8 +185,10 @@ export interface StoreState {
   strikeLiquidationLtvPct: number;         // Strike partial-liquidation LTV (published terms: 85%)
   blocMinPaymentSource:  'income' | 'roll';  // how the monthly BLOC minimum (interest) is paid: 'roll' (capitalize, default) or 'income'
   blocStatementMinimum:  number | null;      // this month's Strike statement minimum (user-entered); null → fall back to the computed estimate
+  blocMinPaymentDueDay:  number;             // day-of-month the Strike minimum is due (default 15, bounds 1–28)
   setBlocMinPaymentSource: (v: 'income' | 'roll') => void;
   setBlocStatementMinimum: (v: number | null) => void;
+  setBlocMinPaymentDueDay: (v: number) => void;
 
   // App mode
   simpleMode:            boolean;
@@ -222,7 +224,8 @@ export interface StoreState {
   setMonthlyLog:      (entries: MonthlyLogEntry[]) => void;
   upsertLogEntry:     (entry: MonthlyLogEntry) => void;
   deleteLogEntry:     (month: number) => void;
-  confirmMonth:       (month: number) => void;   // Daily Mode P2a — mark a month's entry confirmed:true
+  confirmMonth:       (month: number, extras?: { expensesActual?: number; ndpPaid?: number; strikeMinPaid?: number; strikeMinSource?: 'income' | 'roll' }) => void;   // §2 — sign-off absorbs the confirm (atomic)
+  unconfirmMonth:     (month: number) => void;   // §4 — flip confirmed→false, entry + rollup preserved (daily un-sign-off)
   setShowMiningInLog: (v: boolean) => void;
 
   // Daily Mode P2a — granular daily journal (LOCAL-only this phase; records sync is P3) + the CB-LTV action pref
@@ -600,6 +603,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
     blocMinPaymentSource:     s.blocMinPaymentSource,
     blocStatementMinimum:     s.blocStatementMinimum,
+    blocMinPaymentDueDay:     s.blocMinPaymentDueDay,
     advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
@@ -831,6 +835,7 @@ export function migrateState(persistedState: any): any {
     strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
     blocMinPaymentSource:  persistedState.blocMinPaymentSource ?? 'roll',
     blocStatementMinimum:  persistedState.blocStatementMinimum ?? null,
+    blocMinPaymentDueDay:  persistedState.blocMinPaymentDueDay ?? 15,
     btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
     lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
     nostrLogin:           persistedState.nostrLogin         ?? null,
@@ -917,6 +922,7 @@ export const useStore = create<StoreState>()(
   strikeLiquidationLtvPct: 85,
   blocMinPaymentSource:  'roll' as const,
   blocStatementMinimum:  null,
+  blocMinPaymentDueDay:  15,
 
   simpleMode:         false,
   onboardingComplete: seedOnboardingComplete,   // 3a.4: standalone-seeded (false on fresh install = today's default)
@@ -1017,6 +1023,7 @@ export const useStore = create<StoreState>()(
   setStrikeLiquidationLtvPct: (v) => { set({ strikeLiquidationLtvPct: v }); useStore.getState().syncSettingsToNostr(); },
   setBlocMinPaymentSource: (v) => { set({ blocMinPaymentSource: v }); useStore.getState().syncSettingsToNostr(); },
   setBlocStatementMinimum: (v) => { set({ blocStatementMinimum: v }); useStore.getState().syncSettingsToNostr(); },
+  setBlocMinPaymentDueDay: (v) => { set({ blocMinPaymentDueDay: Math.max(1, Math.min(28, Math.round(v))) }); useStore.getState().syncSettingsToNostr(); },
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
@@ -1080,9 +1087,20 @@ export const useStore = create<StoreState>()(
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
 
-  confirmMonth: (month) => {
+  // Logging Consolidation §2 — the Sign-off absorbs the confirm in ONE atomic write. extras (from the
+  // ReviewSheet's SIGN-OFF DETAILS group) land together with confirmed:true → single publish, no
+  // half-signed window. The spread keeps source:'daily' so the M2 guard passes. Zero-arg callers unchanged.
+  confirmMonth: (month, extras) => {
     const e = useStore.getState().monthlyLog.find((m) => m.month === month);
-    if (e) useStore.getState().upsertLogEntry({ ...e, confirmed: true });   // spreads source through → M2 guard passes
+    if (e) useStore.getState().upsertLogEntry({ ...e, ...extras, confirmed: true });
+  },
+
+  // §4 — the honest "signed off too early" flow for a daily-owned month: flip confirmed→false, entry +
+  // rollup preserved (spread keeps source:'daily' → M2 guard passes). Replaces the delete-based Undo/Unlog
+  // for daily months (DELETE tombstones the month; un-confirm keeps it so the Ledger's events keep rolling).
+  unconfirmMonth: (month) => {
+    const e = useStore.getState().monthlyLog.find((m) => m.month === month);
+    if (e) useStore.getState().upsertLogEntry({ ...e, confirmed: false });
   },
 
   // Daily Mode P2a/P3 — dayLog mutators. Each mutates dayLog, refreshes the cbCollateralBtc clock, then re-rolls any
@@ -1249,7 +1267,7 @@ export const useStore = create<StoreState>()(
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
-    blocMinPaymentSource: 'roll', blocStatementMinimum: null,
+    blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     pendingCollateralAdjustment: 0,
     monthlyLog: [], deletedMonths: {},
@@ -1272,7 +1290,7 @@ export const useStore = create<StoreState>()(
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
-    blocMinPaymentSource: 'roll', blocStatementMinimum: null,
+    blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     pendingCollateralAdjustment: 0,
     monthlyLog: [], deletedMonths: {},
@@ -1327,7 +1345,7 @@ export const useStore = create<StoreState>()(
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
       'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct',
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
-      'blocMinPaymentSource', 'blocStatementMinimum',
+      'blocMinPaymentSource', 'blocStatementMinimum', 'blocMinPaymentDueDay',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)

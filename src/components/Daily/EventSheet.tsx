@@ -5,6 +5,8 @@ import { bucketEventToMonth } from '../../simulation/logUtils';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import { readingComplete, buildEventsFromSheet, type SheetType, type SheetState } from './eventSheetModel';
+import { minPaymentStatus } from '../../simulation/simpleModePlan';
+import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { DayEvent, DayEventKind } from '../../simulation/types';
 import styles from './EventSheet.module.css';
 
@@ -19,7 +21,7 @@ interface EventSheetProps {
 // P4b-2 — the DayEvent kinds the sheet can edit (map 1:1 to a SheetType). cbCollateralReading has no sheet
 // UI, so its log rows stay non-tappable. P4c-3a — withdraw is now editable (collateral pill, withdraw dir).
 export function isEditableKind(k: DayEventKind): boolean {
-  return k === 'draw' || k === 'paydown' || k === 'buy' || k === 'deposit' || k === 'withdraw' || k === 'balanceReading';
+  return k === 'draw' || k === 'paydown' || k === 'minPayment' || k === 'buy' || k === 'deposit' || k === 'withdraw' || k === 'balanceReading';
 }
 
 // ISO yyyy-mm-dd → "Mon D" (local, no UTC shift). Replicated from DailyModeView (not exported there).
@@ -31,10 +33,11 @@ function fmtDay(iso: string): string {
 const newId = () =>
   globalThis.crypto?.randomUUID?.() ?? `evt-${Date.now()}-${Math.random().toString(36).slice(2)}`;
 
-const TYPE_PILLS: { type: SheetType; label: string }[] = [
+const TYPE_PILLS: { type: SheetType; label: string; incomeOnly?: boolean }[] = [
   { type: 'draw',       label: 'Draw' },
   { type: 'buy',        label: 'Buy ₿' },
   { type: 'paydown',    label: 'Paydown' },
+  { type: 'minPayment', label: 'Strike minimum', incomeOnly: true },   // §2b — income mode only
   { type: 'collateral', label: 'Collateral' },
   { type: 'setBalance', label: 'Set balance' },
 ];
@@ -64,8 +67,16 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);
   const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
   const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
+  // §2b — Strike minimum payment context
+  const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
+  const blocMinPaymentDueDay = useStore((s) => s.blocMinPaymentDueDay);
+  const blocStatementMinimum = useStore((s) => s.blocStatementMinimum);
+  const blocApr              = useStore((s) => s.blocApr);
 
   const isEdit = !!editEvent;
+  const isIncomeSource = blocMinPaymentSource === 'income';
+  const strikeMinEstimate = Math.round(advisorActualBlocBalance * (blocApr / 100 / 12));   // one month's interest
+  const strikeMinOwed = blocStatementMinimum ?? strikeMinEstimate;
 
   const [type, setType]                     = useState<SheetType>('draw');
   const [amount, setAmount]                 = useState<number | null>(null);
@@ -92,6 +103,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       switch (editEvent.kind) {
         case 'draw':
         case 'paydown':
+        case 'minPayment':
           setType(editEvent.kind);
           setAmount(editEvent.amount);
           break;
@@ -200,6 +212,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
                                                   canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
     else                                          canSave = amountValid;   // draw / paydown / buy
+  } else if (type === 'minPayment') {
+    // §2b — reading-free one-field sheet; just needs a positive amount.
+    canSave = amountValid;
   } else {
     // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
     canSave = ((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))
@@ -235,7 +250,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
   function pickType(t: SheetType) {
     setType(t);
-    setAmount(null);   // switching the type clears the amount (USD vs BTC unit changes)
+    setAmount(t === 'minPayment' ? strikeMinOwed : null);   // minPayment prefills the owed figure; else clear (USD vs BTC unit changes)
   }
 
   function reset() {
@@ -261,6 +276,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       switch (editEvent.kind) {
         case 'draw':
         case 'paydown':
+        case 'minPayment':
           updated = { id, date, ts, kind: editEvent.kind, amount: amount ?? 0 };
           break;
         case 'buy':
@@ -326,14 +342,29 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     onClose();
   }
 
-  const amountPrefix = type === 'draw' || type === 'paydown' ? '$' : '₿';
+  const amountPrefix = type === 'draw' || type === 'paydown' || type === 'minPayment' ? '$' : '₿';
   const amountDecimals = type === 'buy' || type === 'collateral' ? 8 : undefined;
   const amountLabel =
-    type === 'draw'       ? 'Draw amount'
-    : type === 'paydown'  ? 'Paydown amount'
-    : type === 'buy'      ? 'Bitcoin bought'
+    type === 'draw'        ? 'Draw amount'
+    : type === 'paydown'   ? 'Paydown amount'
+    : type === 'minPayment' ? 'Minimum paid'
+    : type === 'buy'       ? 'Bitcoin bought'
     : collateralDir === 'withdraw' ? 'Collateral removed (BTC)'
     : 'Collateral added (BTC)';
+
+  // §2b — paydown-sheet context: surface the Strike minimum's status so a paydown never strands it.
+  const paydownMonth = isEdit && editEvent ? bucketEventToMonth(editEvent.date, advisorStartDate) : month;
+  const minPaidThisMonth = dayLog
+    .filter((e) => e.kind === 'minPayment' && bucketEventToMonth(e.date, advisorStartDate) === paydownMonth)
+    .reduce((sum, e) => sum + (e as Extract<DayEvent, { kind: 'minPayment' }>).amount, 0);
+  const minStatus = minPaymentStatus({
+    source: blocMinPaymentSource,
+    paidSoFar: minPaidThisMonth,
+    owed: strikeMinOwed,
+    dueDay: blocMinPaymentDueDay,
+    todayDay: Number(today.split('-')[2]),
+    isCurrent: paydownMonth === getCurrentStrategyMonth(advisorStartDate),
+  });
 
   return createPortal(
     <div className={styles.scrim} onClick={handleClose}>
@@ -351,10 +382,10 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           </div>
         </div>
 
-        {/* Type-pills — hidden in edit mode (the type is locked to the event's kind) */}
+        {/* Type-pills — hidden in edit mode (the type is locked to the event's kind); Strike-minimum is income-mode only */}
         {!isEdit && (
           <div className={styles.typepills}>
-            {TYPE_PILLS.map((p) => (
+            {TYPE_PILLS.filter((p) => !p.incomeOnly || isIncomeSource).map((p) => (
               <button
                 key={p.type}
                 className={`${styles.typepill} ${type === p.type ? styles.typepillActive : ''}`}
@@ -376,6 +407,14 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             prefix={amountPrefix}
             decimals={amountDecimals}
           />
+        )}
+
+        {/* §2b — paydown-sheet context line: the Strike minimum status (income mode) */}
+        {type === 'paydown' && isIncomeSource && (
+          <div className={styles.readout}>
+            Minimum · due the {blocMinPaymentDueDay}th · {fmtUSD(strikeMinOwed)}
+            <span className={styles.note}> · {minStatus}</span>
+          </div>
         )}
 
         {/* Collateral extras — Deposit|Withdraw direction + Strike|Coinbase target toggles + contextual readout */}
@@ -466,8 +505,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
         )}
 
         {/* Reading section — in ADD mode it's the bundled hard-require; in EDIT mode it shows ONLY for a
-            balanceReading edit (a flow edit touches just the flow, never its separate reading row). */}
-        {(!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
+            balanceReading edit (a flow edit touches just the flow, never its separate reading row).
+            §2b — minPayment is reading-free (a one-field sheet). */}
+        {type !== 'minPayment' && (!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
           <div className={styles.section}>
             <span className={styles.sectionLabel}>
               {isEdit ? 'Balances' : isPast ? 'Current balances · optional for past dates' : 'Current balances · required to log'}

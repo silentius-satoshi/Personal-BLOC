@@ -186,7 +186,12 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
   const monthNum    = currentIdx + 1;
   const loggedEntry = monthlyLog.find((e) => e.month === monthNum) ?? null;
   const isLogged    = !!loggedEntry;
+  // §4 — a daily-owned month is a VIEWER here; edits belong in the Ledger (a manual write is re-clobbered by
+  // the next re-roll and dropped by the store's M2 guard). Legacy/manual months stay editable.
+  const isDaily     = loggedEntry?.source === 'daily';
   const isCurrent   = monthNum === currentMonth;
+
+  useEffect(() => { if (isDaily) setEditing(false); }, [isDaily, monthNum]);
 
   const setF = (key: keyof OverlayForm) => (v: string) => setForm((f) => ({ ...f, [key]: v }));
 
@@ -212,8 +217,11 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
               <span className={styles.badgeLogged}>✓ LOGGED</span>
               <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, monthNum)}</span>
             </div>
-            {!editing && (
+            {!editing && !isDaily && (
               <button className={styles.editBtn} onClick={() => setEditing(true)}>Edit</button>
+            )}
+            {!editing && isDaily && (
+              <span className={styles.ledgerHint}>Edit in the Ledger</span>
             )}
           </div>
 

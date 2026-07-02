@@ -71,12 +71,13 @@ export interface StrategyResult {
 
 // --- Daily Mode Types ---
 
-export type DayEventKind = 'draw' | 'buy' | 'paydown' | 'deposit' | 'withdraw' | 'balanceReading' | 'cbCollateralReading';
+export type DayEventKind = 'draw' | 'buy' | 'paydown' | 'minPayment' | 'deposit' | 'withdraw' | 'balanceReading' | 'cbCollateralReading';
 
 interface DayEventBase { id: string; date: string; /* ISO yyyy-mm-dd */ ts: number; /* ms */ }
 
 export type DayEvent =
   | (DayEventBase & { kind: 'draw' | 'paydown'; amount: number /* USD */ })
+  | (DayEventBase & { kind: 'minPayment'; amount: number /* USD — Strike monthly minimum paid from income; balance-neutral (rolls up to strikeMinPaid, NOT paydown) */ })
   | (DayEventBase & { kind: 'buy'; amount: number /* BTC acquired */; usd?: number })
   | (DayEventBase & { kind: 'deposit' | 'withdraw'; amount: number /* BTC, signed by kind */; target: 'strike' | 'cb' })
   | (DayEventBase & { kind: 'cbCollateralReading'; cbCollateral: number /* BTC — CB-only; feeds the derived cbCollateralBtc clock */ })

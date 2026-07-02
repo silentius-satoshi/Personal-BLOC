@@ -60,6 +60,15 @@ describe('rollupMonth — flows', () => {
     expect(entry.expensesActual ?? 0).toBe(0);
     expect(entry.btcBought ?? 0).toBe(0);
   });
+
+  it('Logging Consolidation §2b — minPayment is balance-neutral: sums to strikeMinPaid, NOT paydown', () => {
+    const minPay = (amount: number): DayEvent => ({ id: id(), date: M1, ts: ++seq, kind: 'minPayment', amount });
+    const { entry } = rollupMonth([minPay(120), minPay(80), paydown(500)], 1, START);
+    expect(entry.strikeMinPaid).toBe(200);
+    expect(entry.strikeMinSource).toBe('income');
+    expect(entry.paydown).toBe(500);          // untouched by minPayment
+    expect(entry.expensesActual ?? 0).toBe(0);
+  });
 });
 
 describe('rollupMonth — collateral (target:strike) and journal-only (target:cb)', () => {

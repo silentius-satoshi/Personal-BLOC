@@ -63,10 +63,9 @@ export function isOperatingMonth(selectedMonth: number, currentMonth: number): b
 
 export interface MonthSummaryArgs {
   month:         number;
-  isCurrent:     boolean;
   isLogged:      boolean;
   hasCbLoan:     boolean;
-  cbLtv:         number;    // decimal — skip-adjusted (current), actual (logged), or projected
+  cbLtv:         number;    // decimal — actual (logged) or projected
   triggerPct:    number;    // e.g. 75
   draw:          number;    // USD drawn from the credit line for expenses
   btcBoughtUsd:  number;    // USD into BTC
@@ -75,18 +74,13 @@ export interface MonthSummaryArgs {
   rotationAmount: number;   // USD rotated
   interest:      number;    // monthly BLOC interest (USD)
   minPayment:    number;    // BLOC minimum paid from income (USD); >0 → income source, 0 → roll (capitalizes)
-  // current-month skip flags (ignored unless isCurrent)
-  skipDraw:      boolean;
-  skipBtc:       boolean;
-  skipCb:        boolean;
-  unallocated:   number;    // income left unallocated by a skip (current month)
 }
 
 /**
  * Plain-English narration of the selected month. Voice depends on state:
  *  - logged  → past-tense actuals
- *  - current → skip-adjusted reality (branches on the skip flags)
- *  - future  → plan voice (what the projection says to do)
+ *  - otherwise (current + future) → plan voice (what the projection says to do — the current month is
+ *    now rendered identically to any projected month; the Ledger owns actuals, so no skip-adjusted voice).
  * Only applicable clauses are included (no CB clause when !hasCbLoan; rotation vs paydown per fired).
  */
 export function composeMonthSummary(a: MonthSummaryArgs): string {
@@ -105,18 +99,6 @@ export function composeMonthSummary(a: MonthSummaryArgs): string {
     if (a.draw > 0)                    parts.push(`You drew ${usd(a.draw)} for expenses.`);
     if (a.btcBoughtUsd > 0)            parts.push(`Bought ${usd(a.btcBoughtUsd)} of Bitcoin.`);
     if (a.hasCbLoan && a.cbPayment > 0) parts.push(`Paid ${usd(a.cbPayment)} to your Coinbase loan.`);
-  } else if (a.isCurrent) {
-    if (a.skipDraw)        parts.push(`You've skipped the credit-line draw — covering ${usd(a.draw)} from savings.`);
-    else if (a.draw > 0)   parts.push(`Draw ${usd(a.draw)} from your credit line for expenses.`);
-
-    if (a.skipBtc)              parts.push(`You've skipped this month's Bitcoin buy — ${usd(a.unallocated)} income unallocated.`);
-    else if (a.btcBoughtUsd > 0) parts.push(`Buy ${usd(a.btcBoughtUsd)} of Bitcoin.`);
-
-    if (a.hasCbLoan) {
-      if (a.skipCb)                                  parts.push(`You've skipped the Coinbase payment this month.`);
-      else if (a.rotationFired && a.rotationAmount > 0) parts.push(`Rotate ${usd(a.rotationAmount)} to the cheaper CB loan.`);
-      else if (a.cbPayment > 0)                      parts.push(`Pay ${usd(a.cbPayment)} to your Coinbase loan.`);
-    }
   } else {
     if (a.draw > 0)         parts.push(`Draw ${usd(a.draw)} from your credit line for expenses.`);
     if (a.btcBoughtUsd > 0) parts.push(`Buy ${usd(a.btcBoughtUsd)} of Bitcoin.`);
@@ -134,4 +116,32 @@ export function composeMonthSummary(a: MonthSummaryArgs): string {
     parts.push(`Interest of ${usd(a.interest)} capitalizes onto the balance.`);
   }
   return parts.join(' ');
+}
+
+// ── Strike minimum payment lifecycle (Logging Consolidation §2b) ───────────────────────────────
+export type MinPaymentStatus = 'PAID' | 'DUE' | 'MISSED' | 'ROLLS';
+
+/**
+ * Pure status of this month's Strike minimum. Roll mode has no loggable event → always ROLLS.
+ * Income mode: PAID once the month's logged minPayment sum covers the owed figure; else DUE on/before
+ * the due day, MISSED past it. All inputs passed in (no Date reads) so it stays pure/testable.
+ *   paidSoFar   — sum of this month's logged minPayment events (USD)
+ *   owed        — blocStatementMinimum ?? estimate (USD)
+ *   dueDay      — blocMinPaymentDueDay (1–28)
+ *   todayDay    — current day-of-month (1–31); only meaningful for the CURRENT month
+ *   isCurrent   — whether the queried month is the current strategy month (past/future never MISSED-nag)
+ */
+export function minPaymentStatus(args: {
+  source: 'income' | 'roll';
+  paidSoFar: number;
+  owed: number;
+  dueDay: number;
+  todayDay: number;
+  isCurrent: boolean;
+}): MinPaymentStatus {
+  if (args.source === 'roll') return 'ROLLS';
+  if (args.owed > 0 && args.paidSoFar + 0.005 >= args.owed) return 'PAID';
+  if (args.paidSoFar > 0) return 'PAID';                       // any logged payment when owed is unknown/0
+  if (args.isCurrent && args.todayDay > args.dueDay) return 'MISSED';
+  return 'DUE';
 }

@@ -1,18 +1,18 @@
 import { useState, useMemo, useEffect } from 'react';
-import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { deriveForMonth, isOperatingMonth, composeMonthSummary } from '../../simulation/simpleModePlan';
-import { fmtUSD, todayLocalISO, toLocalISO } from '../../utils/format';
+import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
+import { buildMonthRollup } from '../Daily/calendarModel';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
 import { ViewToggle } from '../Layout/ViewToggle';
-import { accruedCbBalance, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -28,170 +28,8 @@ interface SimpleModeViewProps {
   setSimpleView: (v: 'monthly' | 'daily') => void;
 }
 
-function getMonthLabel(advisorStartDate: string, monthNum: number): string {
-  const [y, m] = advisorStartDate.split('-').map(Number);
-  const d = new Date(y, m - 1 + (monthNum - 1), 1);
-  return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
-}
-
 const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
 
-function ConfirmLogSheet({
-  monthNum, monthLabel,
-  drawAmount, skipDraw, onBlocDrawChange,
-  cbPayment, skipCb, showCbRow, cbRowLabel, onCbPaymentChange,
-  btcPrice, skipBtc,
-  interest, onInterestChange, isIncomeSource,
-  confirmBtcBought, onBtcBoughtChange,
-  isFullyAllocated,
-  ndpDone, ndpAmount,
-  showNdpRow, ndpChecked, onNdpChange,
-  ndpAmountPaid, onNdpAmountChange,
-  onConfirm, onCancel,
-}: {
-  monthNum: number; monthLabel: string;
-  drawAmount: number; skipDraw: boolean; onBlocDrawChange: (v: number) => void;
-  cbPayment: number; skipCb: boolean; showCbRow: boolean; cbRowLabel: string; onCbPaymentChange: (v: number) => void;
-  btcPrice: number; skipBtc: boolean;
-  interest: number; onInterestChange: (v: number) => void; isIncomeSource: boolean;
-  confirmBtcBought: number; onBtcBoughtChange: (v: number) => void;
-  isFullyAllocated: boolean;
-  ndpDone: boolean; ndpAmount: number;
-  showNdpRow?: boolean; ndpChecked?: boolean; onNdpChange?: (v: boolean) => void;
-  ndpAmountPaid: number; onNdpAmountChange?: (v: number) => void;
-  onConfirm: () => void; onCancel: () => void;
-}) {
-  return createPortal(
-    <div className={styles.confirmOverlay} onClick={onCancel}>
-      <div className={styles.confirmSheet} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.confirmHeader}>
-          <span className={styles.confirmTitle}>Confirm Month {monthNum}</span>
-          <span className={styles.confirmSub}>{monthLabel}</span>
-        </div>
-        <div className={styles.confirmRows}>
-          {skipDraw ? (
-            <div className={styles.confirmRow}>
-              <span>BLOC draw</span>
-              <span>Skipped</span>
-            </div>
-          ) : (
-            <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
-              <span>BLOC draw</span>
-              <div className={styles.confirmExpensesField}>
-                <span className={styles.confirmExpensesPrefix}>$</span>
-                <input
-                  type="number"
-                  className={styles.confirmExpensesInput}
-                  value={drawAmount}
-                  step={100}
-                  onChange={(e) => onBlocDrawChange(parseFloat(e.target.value) || 0)}
-                />
-              </div>
-            </div>
-          )}
-          {showCbRow && (
-            skipCb ? (
-              <div className={styles.confirmRow}>
-                <span>{cbRowLabel}</span>
-                <span>Skipped</span>
-              </div>
-            ) : (
-              <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
-                <span>{cbRowLabel}</span>
-                <div className={styles.confirmExpensesField}>
-                  <span className={styles.confirmExpensesPrefix}>$</span>
-                  <input
-                    type="number"
-                    className={styles.confirmExpensesInput}
-                    value={cbPayment}
-                    step={100}
-                    onChange={(e) => onCbPaymentChange(parseFloat(e.target.value) || 0)}
-                  />
-                </div>
-              </div>
-            )
-          )}
-          {skipBtc ? (
-            <div className={styles.confirmRow}>
-              <span>BTC bought</span>
-              <span>Skipped</span>
-            </div>
-          ) : (
-            <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
-              <span>BTC bought this month <span style={{ color: 'var(--text-muted)', fontSize: '0.85em' }}>(~{fmtUSD(confirmBtcBought * btcPrice)})</span></span>
-              <div className={styles.confirmExpensesField}>
-                <span className={styles.confirmExpensesPrefix}>₿</span>
-                <input
-                  type="number"
-                  className={styles.confirmExpensesInput}
-                  value={confirmBtcBought}
-                  step={0.00000001}
-                  onChange={(e) => onBtcBoughtChange(parseFloat(e.target.value) || 0)}
-                />
-              </div>
-            </div>
-          )}
-          {ndpDone && ndpAmount > 0 && (
-            <div className={styles.confirmRow}>
-              <span>NDP</span>
-              <span>paid {fmtUSD(ndpAmount)}</span>
-            </div>
-          )}
-          <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
-            <span>{isIncomeSource ? 'Strike minimum paid' : 'Interest /mo'}</span>
-            <div className={styles.confirmExpensesField}>
-              <span className={styles.confirmExpensesPrefix}>$</span>
-              <input
-                type="number"
-                className={styles.confirmExpensesInput}
-                value={interest}
-                step={1}
-                onChange={(e) => onInterestChange(parseFloat(e.target.value) || 0)}
-              />
-            </div>
-          </div>
-          {isFullyAllocated && (
-            <div className={`${styles.confirmRow} ${styles.confirmRowAlloc}`}>
-              Income fully allocated ✓
-            </div>
-          )}
-          {showNdpRow && (
-            <>
-              <label className={styles.confirmRow}>
-                <span>NDP payment made this year</span>
-                <input
-                  type="checkbox"
-                  checked={!!ndpChecked}
-                  onChange={(e) => onNdpChange?.(e.target.checked)}
-                />
-              </label>
-              {ndpChecked && (
-                <div className={`${styles.confirmRow} ${styles.confirmRowExpenses}`}>
-                  <span>NDP amount</span>
-                  <div className={styles.confirmExpensesField}>
-                    <span className={styles.confirmExpensesPrefix}>$</span>
-                    <input
-                      type="number"
-                      className={styles.confirmExpensesInput}
-                      value={ndpAmountPaid}
-                      step={1}
-                      onChange={(e) => onNdpAmountChange?.(parseFloat(e.target.value) || 0)}
-                    />
-                  </div>
-                </div>
-              )}
-            </>
-          )}
-        </div>
-        <div className={styles.confirmActions}>
-          <button className={styles.confirmCancelBtn} onClick={onCancel}>Cancel</button>
-          <button className={styles.confirmPrimaryBtn} onClick={onConfirm}>Confirm & advance</button>
-        </div>
-      </div>
-    </div>,
-    document.body,
-  );
-}
 
 function ModalField({ label, prefix, value, onChange, step = 1, hint }: {
   label: string; prefix?: string; value: number;
@@ -227,9 +65,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
-  const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
-  const setCbLoanBalance      = useStore((s) => s.setCbLoanBalance);
-  const setCbLoanBalanceAsOf  = useStore((s) => s.setCbLoanBalanceAsOf);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
@@ -244,21 +79,17 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
-  const setNdpLastPaidDate          = useStore((s) => s.setNdpLastPaidDate);
+  const dayLog                      = useStore((s) => s.dayLog);   // §3 — month-to-date ledger progress
 
-  const advisorSkipBlocDraw  = useStore((s) => s.advisorSkipBlocDraw);
-  const advisorSkipCbPayment = useStore((s) => s.advisorSkipCbPayment);
-  const advisorSkipBtcBuying = useStore((s) => s.advisorSkipBtcBuying);
+  // §3 — advisorSkip* are DORMANT (retained in the store/payload for sync compat; no consumers).
   const viewerMode           = useStore((s) => s.viewerMode);   // read-only viewer → hide/disable mutation controls
-  const setAdvisorSkipBlocDraw  = useStore((s) => s.setAdvisorSkipBlocDraw);
-  const setAdvisorSkipCbPayment = useStore((s) => s.setAdvisorSkipCbPayment);
-  const setAdvisorSkipBtcBuying = useStore((s) => s.setAdvisorSkipBtcBuying);
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
 
   const strikeLiquidationLtvPct = useStore((s) => s.strikeLiquidationLtvPct);
   const blocMinPaymentSource    = useStore((s) => s.blocMinPaymentSource);
   const blocStatementMinimum    = useStore((s) => s.blocStatementMinimum);
   const setBlocStatementMinimum = useStore((s) => s.setBlocStatementMinimum);
+  const blocMinPaymentDueDay    = useStore((s) => s.blocMinPaymentDueDay);
   const showPlanStrikeBar       = useStore((s) => s.showPlanStrikeBar);
   const showPlanCbBar           = useStore((s) => s.showPlanCbBar);
 
@@ -273,8 +104,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const activeTier       = useStore((s) => s.activeTier);
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const monthlyLog       = useStore((s) => s.monthlyLog);
-  const upsertLogEntry   = useStore((s) => s.upsertLogEntry);
-  const deleteLogEntry   = useStore((s) => s.deleteLogEntry);
 
   // Change 1 (iter 2) — setup modal
   const [showSetupModal, setShowSetupModal] = useState(false);
@@ -285,16 +114,8 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     btcHeld: currentBtcHeld,
   });
 
-  // Change 3 — custom amounts
-  const [customBlocDraw,  setCustomBlocDraw]  = useState<number | null>(null);
-  const [customCbPayment, setCustomCbPayment] = useState<number | null>(null);
-  const [customInterest,  setCustomInterest]  = useState<number | null>(null);
-  const [customBtcBuying, setCustomBtcBuying] = useState<number | null>(null); // stored as BTC
-  // Confirm sheet
-  const [showConfirmSheet, setShowConfirmSheet] = useState(false);
-  const [confirmBtcBought, setConfirmBtcBought] = useState(0);
-  const [ndpAmountPaid, setNdpAmountPaid]       = useState(0);
-  // Inline Strike-statement entry (income-mode allocation row)
+  // §3 — the Playbook no longer writes: ConfirmLogSheet, Pay/Skip pills, and the custom-amount overrides
+  // are retired. The current-month Min line keeps its inline statement entry (a reading, not a log).
   const [editingMin, setEditingMin] = useState(false);
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
@@ -355,13 +176,10 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const nextRow           = advisorRows.find((r) => r.month === currentMonth + 1);   // month after current; undefined at Mo 12
   const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(monthlyLog, expenses, expenseReanchorDismissedAt);
 
-  // Strike minimum payment source (Simple Mode Corrections A). In 'income' mode the monthly minimum
-  // (accrued interest) is paid from income rather than capitalizing — it reduces income available for
-  // BTC/paydown; the user-entered statement figure overrides the one-month-interest estimate. In 'roll'
-  // mode effectiveMin === 0 so every downstream figure is byte-identical to before.
+  // Strike minimum payment source. In 'income' mode the monthly minimum (accrued interest) is paid from
+  // income; the user-entered statement figure overrides the one-month-interest estimate.
   const isIncomeSource    = blocMinPaymentSource === 'income';
   const strikeMinEstimate = currentRow?.blocInterest ?? 0;   // one month's accrued interest (model hint)
-  const effectiveMin      = isIncomeSource ? (blocStatementMinimum ?? strikeMinEstimate) : 0;
 
   // B — mis-ordered CB thresholds: the engine suspends rotation; the plan card surfaces it.
   const cbThresholdsMisordered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
@@ -375,96 +193,43 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const savingsNeedMonths = advisorRows
     .filter((r) => r.month >= currentMonth && (r.fiatGap + r.blocMinShortfall) > 0).length;
 
-  // ltvTriggered suspends CB-tier rules (the trigger IS the safety mechanism) — mirror the engine
-  // (runAdvisor.ts:166/181/185): full expense draw, income-funded BTC buying, no tier gating. Tier
-  // halving/zeroing applies only in monthly mode.
-  const isLtvTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered';
-  const expectedBlocDraw = isLtvTriggered
-    ? Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance))   // tiers suspended (matches runAdvisor:166)
-    : currentTier === 1 ? 0
-      : currentTier === 2
-        ? Math.min(expenses * 0.5, Math.max(0, creditLine - advisorActualBlocBalance))
-        : Math.min(expenses, Math.max(0, creditLine - advisorActualBlocBalance));
-  const expectedFiatGap   = Math.max(0, expenses - expectedBlocDraw);
-  const expectedCbPayment = advisorSkipCbPayment ? 0 : (currentRow?.cbPayment ?? 0);
-  const expectedBtcBuying = advisorSkipBtcBuying ? 0
-    : isLtvTriggered ? Math.max(0, income - expectedCbPayment - effectiveMin)  // tiers suspended (matches runAdvisor:185; cbPayment=0 in this mode); income-source min competes for income
-      : currentTier === 1 ? 0
-        : Math.max(0, income - expectedCbPayment - effectiveMin);
-
-  // Change 3 — effective amounts (override when user enters custom). In income mode the "interest"
-  // field IS the Strike minimum paid from income (statement ?? estimate); in roll mode it's the
-  // capitalizing interest (byte-identical to before).
-  const effectiveDrawAmount = customBlocDraw ?? expectedBlocDraw;
-  const effectiveInterest   = customInterest ?? (isIncomeSource ? effectiveMin : (currentRow?.blocInterest ?? 0));
-
-  // THIS MONTH shows what's LEFT to draw this month: full-month plan minus what you've already drawn
-  // (live − start-of-month). The full draw still feeds the confirm sheet + loggedStrikeBal + AFTER projection.
-  const alreadyDrawnThisMonth = Math.max(0, advisorActualBlocBalance - slmBlocBal);
-  const remainingDraw         = Math.max(0, expectedBlocDraw - alreadyDrawnThisMonth);
-
-  // CB payment: per-mode projected seed (ltvTriggered → BLOC-funded cbPaydownDraw, monthly →
-  // income-funded cbPayment), overridable in the confirm sheet. Matches the re-anchor source exactly.
-  const projectedCbAmount = advisorSkipCbPayment ? 0
-    : cbPaymentStrategy === 'ltvTriggered' ? (currentRow?.cbPaydownDraw ?? 0)
-    : (currentRow?.cbPayment ?? 0);
-  const effectiveCbPayment = customCbPayment ?? projectedCbAmount;
-
-  // CB row shows when there's a payment in play: always in monthly mode; ltvTriggered only once fired.
-  const showCbRow = hasCbLoan && (cbPaymentStrategy === 'monthly'
-    || (cbPaymentStrategy === 'ltvTriggered' && !!currentRow?.cbLtvTriggered));
-
-  // BTC buying: default is (income − CB payment) ÷ price; custom override stored as BTC
-  const defaultBtcAmount =
-    btcPrice > 0 ? Math.max(0, expectedBtcBuying / btcPrice) : 0;
-  const effectiveBtcAmount    = customBtcBuying ?? defaultBtcAmount;
-
-  const expectedPaydown    = currentRow
-    ? Math.max(0, income - (hasCbLoan ? currentRow.cbPayment : 0) - currentRow.incomeToBtc - (currentRow.blocMinPayment ?? 0))
-    : 0;
-
-  // True end-of-month projections from AdvisorMonthRow + skip flags. In income mode the minimum is
-  // paid from income (does NOT capitalize) — only the engine's shortfall re-capitalizes; in roll mode
-  // the full interest capitalizes (byte-identical).
-  const eomBlocBalance: number = currentRow
-    ? slmBlocBal + (advisorSkipBlocDraw ? 0 : currentRow.blocDraw)
-      + (isIncomeSource ? (currentRow.blocMinShortfall ?? 0) : currentRow.blocInterest) - expectedPaydown
-    : advisorActualBlocBalance;
-  const eomBtcHeld: number = slmBtcHeld + (advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0));
-  const eomLtv: number     = computeStrikeLtv(eomBlocBalance, eomBtcHeld, btcPrice);
-  const currentBlocLtv: number = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);   // matches the Strike dashboard bar
-  const availCredit        = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);   // AFTER-this-month basis
-  const currentAvail       = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);   // CURRENT basis
-
-  // Logged Strike balance/LTV reflect the EDITED draw + interest (effectiveDrawAmount/effectiveInterest)
-  // — what the user confirms in the sheet — substituting them for the projected currentRow values.
-  const loggedStrikeBal: number = currentRow
-    ? slmBlocBal + (advisorSkipBlocDraw ? 0 : effectiveDrawAmount)
-      + (isIncomeSource ? Math.max(0, effectiveInterest - income) : effectiveInterest) - expectedPaydown
-    : advisorActualBlocBalance;
-  const loggedStrikeLtv: number = computeStrikeLtv(loggedStrikeBal, eomBtcHeld, btcPrice);
-
-  // Change 2 — THIS MONTH column: actuals from the log entry when logged, projections otherwise
+  // §3 — the Playbook is PURE: the current month renders like any projected month, figures straight from
+  // the engine row (via selectedPlan/deriveForMonth). The Ledger owns actuals; there's no operate console,
+  // no Pay/Skip, no ConfirmLogSheet. Skip flags (advisorSkip*) are dormant (kept in the store for sync compat).
   const currentEntry = monthlyLog.find((e) => e.month === currentMonth);
-  const ndpMinimum = advisorActualBlocBalance > 0
-    ? advisorActualBlocBalance * (blocApr / 100 / 12)
-    : 0;
 
-  const allocatedFromIncome = expectedPaydown
-    + (advisorSkipBtcBuying ? 0 : expectedBtcBuying)
-    + (hasCbLoan && cbPaymentStrategy === 'monthly' && !advisorSkipCbPayment ? expectedCbPayment : 0)
-    + effectiveMin;   // income-source minimum is an income allocation (0 in roll mode)
+  // AFTER-this-month = the engine row's end-of-month figures (plan, unskipped — the row already holds them).
+  const eomBtcHeld: number     = currentRow?.btcHeld ?? currentBtcHeld;
+  const eomBlocBalance: number = currentRow?.blocBalance ?? advisorActualBlocBalance;
+  const eomLtv: number         = currentRow?.blocLtv ?? computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
+  const currentBlocLtv: number = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);   // matches the Strike dashboard bar
+  const availCredit  = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);          // AFTER-this-month basis
+  const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);   // CURRENT basis
+
+  // §3 — month-to-date ledger progress for the current month (Box 2/3 parens + the MTD strip).
+  const mtd = buildMonthRollup(dayLog, advisorStartDate, currentMonth);
+
+  // §2b — current month's Strike minimum: owed figure + PAID/DUE/MISSED/ROLLS status chip.
+  const strikeMinOwed = blocStatementMinimum ?? strikeMinEstimate;
+  const curMinStatus = minPaymentStatus({
+    source: blocMinPaymentSource, paidSoFar: mtd.streams.minPayment, owed: strikeMinOwed,
+    dueDay: blocMinPaymentDueDay, todayDay: Number(todayLocalISO().split('-')[2]), isCurrent: true,
+  });
+
+  // §3 — the current month "awaits sign-off" until confirmed in the Ledger. A daily month starts
+  // confirmed:false; a legacy/manual month has confirmed undefined (treated signed). No entry yet → still
+  // prompt the user into the Ledger to log + sign off.
+  const needsSignoff = !strategyDone && (currentEntry ? currentEntry.confirmed === false : true);
 
   // CB runway/paydown indicator (ltvTriggered only), banded to match the engine: below the 75% trigger we're
   // deliberately idle → show RUNWAY (headroom before the trigger); at/above it the engine draws → show the
-  // PAYDOWN to the 65% target. Reuses currentCbLtv (:332).
+  // PAYDOWN to the 65% target. Reuses currentCbLtv.
   const cbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentCbLtv >= cbLtvTriggerPct / 100;
   const cbRunwayToTrigger = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
     ? Math.max(0, cbCollateralBtc * btcPrice * (cbLtvTriggerPct / 100) - cbLoanBalance) : 0;
   const cbPaydownToTarget = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
     ? Math.max(0, cbLoanBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100)) : 0;
   const cbPaydownAffordable = cbPaydownToTarget <= Math.max(0, creditLine - advisorActualBlocBalance);
-  const isFullyAllocated   = income > 0 && Math.abs(income - allocatedFromIncome) < 1;
 
   // ── Month scrubber — projection-vs-reality split (spec v2) ─────────────────────────────────
   // Snap the selection to "now" whenever the real month advances; free scrubbing within a session.
@@ -475,39 +240,19 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const selectedEntry = monthlyLog.find((e) => e.month === selectedMonth);
   const selectedPlan  = selectedRow ? deriveForMonth(selectedRow, income, hasCbLoan, cbPaymentStrategy) : null;
 
-  // Skip-aware EoM CB LTV for the CURRENT month: in monthly mode a skipped payment leaves the balance
-  // un-paid → use the start-of-month CB LTV; otherwise the advisor's post-payment cbLtv stands.
-  // (ltvTriggered CB is event-driven, never income-skipped.)
-  const eomCbLtv = !hasCbLoan ? 0
-    : (cbPaymentStrategy === 'monthly' && advisorSkipCbPayment)
-      ? currentCbLtv
-      : (currentRow?.cbLtv ?? currentCbLtv);
-
-  // Bar inputs for the SELECTED month — current = skip-adjusted reality; other = projection / actuals.
-  const barStrikeLtv = isCurrent ? eomLtv
-    : selectedEntry ? selectedEntry.strikeLtv
-    : (selectedRow?.blocLtv ?? 0);
-  const barCbLtv = isCurrent ? eomCbLtv
-    : selectedEntry ? (selectedEntry.cbLtv ?? 0)
-    : (selectedRow?.cbLtv ?? 0);
+  // §3 — the current month is no longer special: bars/rows read the LOGGED actuals when the month has an
+  // entry, else the engine plan projection — identical treatment to any projected month.
+  const barStrikeLtv = selectedEntry ? selectedEntry.strikeLtv : (selectedRow?.blocLtv ?? 0);
+  const barCbLtv     = selectedEntry ? (selectedEntry.cbLtv ?? 0) : (selectedRow?.cbLtv ?? 0);
 
   // Action-row display values for the SELECTED month.
-  const rowDrawUsd  = isCurrent ? effectiveDrawAmount : (selectedPlan?.blocDraw ?? 0);
-  const rowBtcAmt   = isCurrent ? effectiveBtcAmount
-    : selectedEntry ? selectedEntry.btcBought
-    : (selectedPlan?.btcBought ?? 0);
-  const rowBtcUsd   = isCurrent ? expectedBtcBuying
-    : selectedEntry ? selectedEntry.btcBought * btcPrice
-    : (selectedPlan?.btcBoughtUsd ?? 0);
-  const rowInterest = isCurrent ? (currentRow?.blocInterest ?? 0) : (selectedRow?.blocInterest ?? 0);
-  const rowCbPayUsd = isCurrent ? expectedCbPayment : (selectedPlan?.cbPayment ?? 0);
-  // Strike minimum paid from income (>0 → income source; drives the narration + allocation row).
-  const rowMinPayment = isCurrent ? effectiveMin : (selectedRow?.blocMinPayment ?? 0);
-
-  // Income→BLOC paydown (Smart BLOC structure on the reality engine): current = skip-adjusted
-  // expectedPaydown, selected = clean selectedPlan.paydown. Drives the conditional LoC Paydown row,
-  // the Buy Bitcoin %/(after paydown) subtext, and the INCOME bar's paydown segment.
-  const rowPaydownUsd = isCurrent ? expectedPaydown : (selectedPlan?.paydown ?? 0);
+  const rowDrawUsd  = selectedEntry ? (selectedEntry.expensesActual ?? selectedPlan?.blocDraw ?? 0) : (selectedPlan?.blocDraw ?? 0);
+  const rowBtcAmt   = selectedEntry ? selectedEntry.btcBought : (selectedPlan?.btcBought ?? 0);
+  const rowBtcUsd   = selectedEntry ? selectedEntry.btcBought * btcPrice : (selectedPlan?.btcBoughtUsd ?? 0);
+  const rowInterest = selectedRow?.blocInterest ?? 0;
+  const rowCbPayUsd = selectedPlan?.cbPayment ?? 0;
+  const rowMinPayment = selectedPlan?.minPayment ?? 0;
+  const rowPaydownUsd = selectedPlan?.paydown ?? 0;
   const hasPaydown    = rowPaydownUsd > 0;
   const rowBuyPct     = income > 0 ? rowBtcUsd / income : 1;
   const rowPaydownPct = income > 0 ? rowPaydownUsd / income : 0;
@@ -516,19 +261,15 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const sCbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.cbLtvTriggered;
   const sCapped      = sCbTriggered && !!selectedRow?.cbPaydownCapped;
   const sRepayFired  = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.strikeRepayFired;
-  const sFiatGap     = isCurrent ? expectedFiatGap : (selectedRow?.fiatGap ?? 0);
+  const sFiatGap     = selectedRow?.fiatGap ?? 0;
 
   const summaryText = composeMonthSummary({
-    month: selectedMonth, isCurrent, isLogged: !!selectedEntry, hasCbLoan,
+    month: selectedMonth, isLogged: !!selectedEntry, hasCbLoan,
     cbLtv: barCbLtv, triggerPct: cbLtvTriggerPct,
     draw: rowDrawUsd, btcBoughtUsd: rowBtcUsd, cbPayment: rowCbPayUsd,
     rotationFired: sRepayFired, rotationAmount: selectedRow?.strikeRepayDraw ?? 0,
     interest: rowInterest,
     minPayment: rowMinPayment,
-    skipDraw: advisorSkipBlocDraw,
-    skipBtc:  advisorSkipBtcBuying,
-    skipCb:   advisorSkipCbPayment && cbPaymentStrategy === 'monthly',
-    unallocated: Math.max(0, income - allocatedFromIncome),
   });
 
   // Bar fill % + shared barLevel color language.
@@ -551,8 +292,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   // are ROLLED into the line. In income mode every month's external minimum IS a non-draw payment, so
   // the annual clause disappears entirely.
   const ndpActionActive = blocMinPaymentSource === 'roll' && ndp.status !== 'ok';
-  // NDP recording happens at log time via the confirm sheet (no stored intent flag)
-  const [ndpPayThisMonth, setNdpPayThisMonth] = useState(false);
 
   const cardTierClass  = styles[`cardTier${currentTier}`];
 
@@ -576,50 +315,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     setShowSetupModal(false);
   };
 
-  const handleApply = (confirmedBtcBought: number) => {
-    const [ey, em] = advisorStartDate.split('-').map(Number);
-    const entryDate = toLocalISO(new Date(ey, em - 1 + (currentMonth - 1), 1));
-    upsertLogEntry({
-      month:          currentMonth,
-      date:           entryDate,
-      btcBought:      confirmedBtcBought,
-      income:         currentRow?.incomeToBtc ?? 0,
-      paydown:        expectedPaydown,
-      strikeBal:      loggedStrikeBal,
-      strikeLtv:      loggedStrikeLtv,
-      ...(hasCbLoan ? { cbBal: currentRow?.cbBalance ?? 0, cbLtv: currentRow?.cbLtv ?? 0 } : {}),
-      ...(ndpPayThisMonth && ndpActionActive ? { ndpPaid: ndpAmountPaid } : {}),
-      ...(isIncomeSource ? { strikeMinPaid: effectiveInterest, strikeMinSource: 'income' as const } : { strikeMinSource: 'roll' as const }),
-      loggedAt:       Date.now(),
-      btcHeld:        0,
-      expensesActual: effectiveDrawAmount,
-    });
-    // Re-anchor the store CB balance by this month's actual paydown (ltvTriggered → BLOC-funded
-    // cbPaydownDraw, monthly → income-funded cbPayment). Liq price is NOT auto-updated (needs the
-    // Coinbase oracle figure re-entered manually via the dashboard).
-    const cbPaymentThisMonth = effectiveCbPayment;   // edited amount (defaults to the per-mode projection)
-    if (hasCbLoan && cbPaymentThisMonth > 0) {
-      const accrued = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
-      setCbLoanBalance(Math.max(0, accrued - cbPaymentThisMonth));
-      setCbLoanBalanceAsOf(todayLocalISO());
-    }
-    if (ndpPayThisMonth) {
-      setNdpLastPaidDate(todayLocalISO());
-    }
-    // Income-source months: fresh statement each month + an external minimum IS a non-draw payment,
-    // so stamp the NDP clock (keeps the annual window trivially fresh should the owner switch to roll).
-    if (isIncomeSource) {
-      setBlocStatementMinimum(null);
-      setNdpLastPaidDate(todayLocalISO());
-    }
-    setNdpPayThisMonth(false);
-    setEditingMin(false);
-    setCustomBlocDraw(null);
-    setCustomCbPayment(null);
-    setCustomInterest(null);
-    setCustomBtcBuying(null);
-    setShowConfirmSheet(false);
-  };
 
   return (
     <>
@@ -740,29 +435,23 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
               <span className={styles.positionTitle}>
                 THIS MONTH{!currentEntry && <span className={styles.projSuffix}> (proj)</span>}
               </span>
-              {currentEntry ? (
-                <span className={`${styles.positionStat} ${currentEntry.btcBought > 0 ? styles.statGreen : styles.statMuted}`}>
-                  Buy: ₿ {currentEntry.btcBought > 0 ? `+${currentEntry.btcBought.toFixed(5)}` : '—'}
-                </span>
-              ) : (
-                <span className={`${styles.positionStat} ${!advisorSkipBtcBuying && effectiveBtcAmount > 0 ? styles.statGreen : styles.statMuted}`}>
-                  Buy: ₿ {advisorSkipBtcBuying || effectiveBtcAmount <= 0 ? '—' : `+${effectiveBtcAmount.toFixed(5)}`}
-                </span>
-              )}
-              {/* Draw anchors on the MONTH's total (matching the Buy line's basis); the remaining draw
-                  is a parenthetical that counts down as the month's draws are logged. */}
+              {/* §3 — headline = the engine PLAN; ledger month-to-date in the parenthetical. */}
+              <span className={`${styles.positionStat} ${(currentRow?.btcBought ?? 0) > 0 ? styles.statGreen : styles.statMuted}`}>
+                Buy: ₿ {(currentRow?.btcBought ?? 0) > 0 ? `+${(currentRow?.btcBought ?? 0).toFixed(5)}` : '—'}
+                {mtd.streams.buyBtc > 0 && <span className={styles.parenSub}> (₿{mtd.streams.buyBtc.toFixed(3)} so far)</span>}
+              </span>
               <span className={styles.positionStat}>
-                Draw: {advisorSkipBlocDraw ? '—' : fmtUSD(effectiveDrawAmount)}
-                {!advisorSkipBlocDraw && remainingDraw < effectiveDrawAmount && (
-                  <span className={styles.parenSub}> ({fmtUSD(remainingDraw)} left)</span>
+                Draw: {fmtUSD(currentRow?.blocDraw ?? 0)}
+                {mtd.streams.draw < (currentRow?.blocDraw ?? 0) && mtd.streams.draw > 0 && (
+                  <span className={styles.parenSub}> ({fmtUSD((currentRow?.blocDraw ?? 0) - mtd.streams.draw)} left)</span>
                 )}
               </span>
-              {/* Strike monthly minimum — shown in both source modes (income = paid; roll = capitalizes). */}
+              {/* §2b — Strike monthly minimum + status chip (income) / capitalize note (roll). */}
               <span className={styles.positionStat}>
-                Min: {fmtUSD(blocStatementMinimum ?? strikeMinEstimate)}
+                Min: {fmtUSD(isIncomeSource ? strikeMinOwed : (currentRow?.blocInterest ?? 0))}
                 {isIncomeSource
-                  ? <span className={`${styles.chip} ${blocStatementMinimum != null ? styles.chipStatement : styles.chipEst}`}>{blocStatementMinimum != null ? 'statement' : 'est.'}</span>
-                  : <span className={styles.parenSub}> (rolls into balance)</span>}
+                  ? <span className={`${styles.minChip} ${styles[`minChip_${curMinStatus}`]}`}>{curMinStatus}</span>
+                  : <span className={styles.parenSub}> · {blocMinPaymentDueDay}th (rolls in)</span>}
               </span>
               {ndpActionActive && (
                 <span className={`${styles.ndpBadge} ${styles[`ndp_${ndp.status}`]}`}>
@@ -917,20 +606,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             </div>
           )}
 
-          {/* Body — logged completion (current), else action rows (operate or preview) */}
-          {isCurrent && isLogged ? (
-            <div className={styles.loggedNote}>
-              <span className={styles.loggedNoteIcon}>✓</span>
-              <span className={styles.loggedNoteText}>
-                Month {currentMonth} logged — {strategyDone ? 'year complete' : 'come back next month'}
-              </span>
-              <button className={styles.undoBtn} onClick={() => { setLogOverlayInitialMonth(currentMonth - 1); setLogOverlayOpen(true); }}>
-                ✎ Edit this month
-              </button>
-              <button className={styles.undoBtn} onClick={() => deleteLogEntry(currentMonth)}>← Undo</button>
-            </div>
-          ) : (
-            <>
+          {/* Body — pure plan rows: the current month renders like any projected month; the Ledger owns
+              actuals. §3 — no operate console, no Pay/Skip, no Log button. */}
+          <>
               <div className={styles.dotRows}>
                 {/* Buy Bitcoin */}
                 <div className={styles.dotRow}>
@@ -938,22 +616,12 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                   <div className={styles.dotLabelGroup}>
                     <span className={styles.dotLabel}>Buy Bitcoin</span>
                     <span className={styles.dotSub}>
-                      {isCurrent && advisorSkipBtcBuying
-                        ? 'skipped this month'
-                        : `~${fmtUSD(rowBtcUsd)} ${hasPaydown ? '(after paydown)' : '(100% of income)'}`}
+                      {`~${fmtUSD(rowBtcUsd)} ${hasPaydown ? '(after paydown)' : '(100% of income)'}`}
                     </span>
                   </div>
-                  {isCurrent && (
-                    <div className={styles.paySkipGroup}>
-                      <button disabled={viewerMode} className={`${styles.actionPill} ${!advisorSkipBtcBuying ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBtcBuying(false)}>Pay</button>
-                      <button disabled={viewerMode} className={`${styles.actionPill} ${advisorSkipBtcBuying ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBtcBuying(true)}>Skip</button>
-                    </div>
-                  )}
                   <div className={styles.dotRightInner}>
-                    {!(isCurrent && advisorSkipBtcBuying) && <span className={styles.dotPct}>{fmtPct(rowBuyPct)}</span>}
-                    <span className={styles.dotAmount}>
-                      {isCurrent && advisorSkipBtcBuying ? <span className={styles.skippedText}>Skipped</span> : `${rowBtcAmt.toFixed(5)} ₿`}
-                    </span>
+                    <span className={styles.dotPct}>{fmtPct(rowBuyPct)}</span>
+                    <span className={styles.dotAmount}>{rowBtcAmt.toFixed(5)} ₿</span>
                   </div>
                 </div>
 
@@ -985,15 +653,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                       <span className={styles.dotLabel}>Monthly Draw</span>
                       <span className={styles.dotSub}>living expenses, from BLOC</span>
                     </div>
-                    {isCurrent && (
-                      <div className={styles.paySkipGroup}>
-                        <button disabled={viewerMode} className={`${styles.actionPill} ${!advisorSkipBlocDraw ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipBlocDraw(false)}>Pay</button>
-                        <button disabled={viewerMode} className={`${styles.actionPill} ${advisorSkipBlocDraw ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipBlocDraw(true)}>Skip</button>
-                      </div>
-                    )}
-                    <span className={styles.dotAmount}>
-                      {isCurrent && advisorSkipBlocDraw ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowDrawUsd)}
-                    </span>
+                    <span className={styles.dotAmount}>{fmtUSD(rowDrawUsd)}</span>
                   </div>
                 )}
 
@@ -1005,15 +665,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                       <span className={styles.dotLabel}>Pay Coinbase loan</span>
                       <span className={styles.dotSub}>from monthly income</span>
                     </div>
-                    {isCurrent && (
-                      <div className={styles.paySkipGroup}>
-                        <button disabled={viewerMode} className={`${styles.actionPill} ${!advisorSkipCbPayment ? styles.pillPay : ''}`} onClick={() => setAdvisorSkipCbPayment(false)}>Pay</button>
-                        <button disabled={viewerMode} className={`${styles.actionPill} ${advisorSkipCbPayment ? styles.pillSkipActive : ''}`} onClick={() => setAdvisorSkipCbPayment(true)}>Skip</button>
-                      </div>
-                    )}
-                    <span className={styles.dotAmount}>
-                      {isCurrent && advisorSkipCbPayment ? <span className={styles.skippedText}>Skipped</span> : fmtUSD(rowCbPayUsd)}
-                    </span>
+                    <span className={styles.dotAmount}>{fmtUSD(rowCbPayUsd)}</span>
                   </div>
                 )}
 
@@ -1022,7 +674,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                   <div className={styles.dotRow}>
                     <span className={`${styles.dot} ${styles.dotRed}`} />
                     <div className={styles.dotLabelGroup}>
-                      <span className={styles.dotLabel}>Strike minimum · due the 15th</span>
+                      <span className={styles.dotLabel}>Strike minimum · due the {blocMinPaymentDueDay}th</span>
                       <span className={styles.dotSub}>paid from income (no compounding)</span>
                     </div>
                     <div className={styles.dotRightInner}>
@@ -1046,9 +698,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                           onClick={() => setEditingMin(true)}
                         >
                           <span className={styles.dotAmount}>{fmtUSD(rowMinPayment)}</span>
-                          <span className={`${styles.chip} ${isCurrent && blocStatementMinimum != null ? styles.chipStatement : styles.chipEst}`}>
-                            {isCurrent && blocStatementMinimum != null ? 'statement' : 'est.'}
-                          </span>
+                          {isCurrent
+                            ? <span className={`${styles.minChip} ${styles[`minChip_${curMinStatus}`]}`}>{curMinStatus}</span>
+                            : <span className={`${styles.chip} ${styles.chipEst}`}>est.</span>}
                         </button>
                       )}
                     </div>
@@ -1110,29 +762,33 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                         {ndp.status === 'never' ? 'Non-draw payment — not yet recorded'
                           : ndp.status === 'overdue' ? 'NDP overdue — pay Strike now'
                           : `Non-draw payment due in ${ndp.daysRemaining}d`}
-                        {ndpMinimum > 0 ? ` · ~${fmtUSD(ndpMinimum)} min` : ''}
+                        {ndp.estimatedAmount > 0 ? ` · ~${fmtUSD(ndp.estimatedAmount)} min` : ''}
                       </span>
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Log button — current month only (hidden for read-only viewers) */}
-              {isCurrent && !strategyDone && !viewerMode && (
-                <button
-                  className={styles.logThisMonthBtn}
-                  onClick={() => { setConfirmBtcBought(advisorSkipBtcBuying ? 0 : (currentRow?.btcBought ?? 0)); setNdpAmountPaid(ndpMinimum); setShowConfirmSheet(true); }}
-                >
-                  Log this month & continue
+              {/* §3 — MTD strip: read-only ledger progress for the current month; deep-links to the Ledger */}
+              {isCurrent && (
+                <button className={styles.mtdStrip} onClick={() => setSimpleView('daily')}>
+                  Ledger: {fmtUSD(mtd.streams.draw)} drawn · ₿{mtd.streams.buyBtc.toFixed(3)} bought · {fmtUSD(mtd.streams.paydown)} paid ›
                 </button>
               )}
 
-              {/* Preview affordances — non-current months */}
+              {/* §3 — sign-off pointer (replaces the Log button): the Playbook informs, the Ledger signs off */}
+              {isCurrent && needsSignoff && !viewerMode && (
+                <button className={styles.signoffPointer} onClick={() => setSimpleView('daily')}>
+                  Month {currentMonth} awaits sign-off in the Ledger →
+                </button>
+              )}
+
+              {/* Preview affordances — non-current months (the overlay is read-only for daily months, §4) */}
               {!isCurrent && (
                 <div className={styles.previewActions}>
                   {selectedEntry && !viewerMode && (
                     <button className={styles.previewEditBtn} onClick={() => { setLogOverlayInitialMonth(selectedMonth - 1); setLogOverlayOpen(true); }}>
-                      ✎ Edit this month
+                      ✎ View / edit this month
                     </button>
                   )}
                   <button className={styles.backToCurrentBtn} onClick={() => setSelectedMonth(currentMonth)}>
@@ -1141,7 +797,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                 </div>
               )}
             </>
-          )}
 
           {/* B — mis-ordered CB thresholds notice (covers legacy/synced-in bad config) */}
           {cbThresholdsMisordered && (
@@ -1216,38 +871,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
         collateralBtc={collateralBtc}
         openInEditMode
         onClose={() => setLogOverlayOpen(false)}
-      />
-    )}
-
-    {showConfirmSheet && (
-      <ConfirmLogSheet
-        monthNum={currentMonth}
-        monthLabel={getMonthLabel(advisorStartDate, currentMonth)}
-        drawAmount={effectiveDrawAmount}
-        skipDraw={advisorSkipBlocDraw}
-        onBlocDrawChange={setCustomBlocDraw}
-        cbPayment={effectiveCbPayment}
-        skipCb={advisorSkipCbPayment}
-        showCbRow={showCbRow}
-        cbRowLabel={cbPaymentStrategy === 'ltvTriggered' ? 'CB paydown' : 'CB payment'}
-        onCbPaymentChange={setCustomCbPayment}
-        btcPrice={btcPrice}
-        skipBtc={advisorSkipBtcBuying}
-        interest={effectiveInterest}
-        onInterestChange={setCustomInterest}
-        isIncomeSource={isIncomeSource}
-        confirmBtcBought={confirmBtcBought}
-        onBtcBoughtChange={setConfirmBtcBought}
-        isFullyAllocated={isFullyAllocated}
-        ndpDone={ndpPayThisMonth && ndpActionActive}
-        ndpAmount={ndpAmountPaid}
-        showNdpRow={ndpActionActive}
-        ndpChecked={ndpPayThisMonth}
-        onNdpChange={setNdpPayThisMonth}
-        ndpAmountPaid={ndpAmountPaid}
-        onNdpAmountChange={setNdpAmountPaid}
-        onConfirm={() => handleApply(confirmBtcBought)}
-        onCancel={() => setShowConfirmSheet(false)}
       />
     )}
     </>

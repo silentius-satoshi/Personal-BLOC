@@ -48,6 +48,8 @@ export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
       };
     case 'paydown':
       return { icon: '↘', label: 'BLOC paydown', detail: fmtUSD(ev.amount) };
+    case 'minPayment':
+      return { icon: '◇', label: 'Strike minimum', detail: fmtUSD(ev.amount) };
     case 'deposit':
       return { icon: '+', label: `Deposit to ${TARGET_LABEL[ev.target]}`, detail: btc(ev.amount) };
     case 'withdraw':

@@ -46,6 +46,9 @@
 }
 .removeBtn:hover { background: rgba(232,90,79,0.07); }
 
+/* §4 — daily-owned month hint (edit in the Ledger) */
+.dailyHint { font-size: 11px; color: var(--text-faint); flex-shrink: 0; align-self: center; }
+
 /* Carousel */
 .carousel {
   display: flex;
