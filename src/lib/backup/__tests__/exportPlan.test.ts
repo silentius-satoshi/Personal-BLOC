@@ -6,9 +6,9 @@ import { buildPlanBackup } from '../exportPlan';
 // no mocking needed (it never writes, never touches sync/auth).
 
 describe('buildPlanBackup — plan-only scope', () => {
-  it('excludes the sharing/transport config (viewerNpub/viewerPubkey/viewerLabel/nostrRelays)', () => {
+  it('excludes the sharing/transport config (viewerNpub/viewerPubkey/viewerLabel/viewerPrivacyTrusted/nostrRelays)', () => {
     useStore.setState({
-      viewerNpub: 'npub1test', viewerPubkey: 'abc123', viewerLabel: 'Dad', nostrRelays: ['wss://r.example'],
+      viewerNpub: 'npub1test', viewerPubkey: 'abc123', viewerLabel: 'Dad', viewerPrivacyTrusted: true, nostrRelays: ['wss://r.example'],
     } as never);
 
     const backup = buildPlanBackup(useStore.getState());
@@ -16,6 +16,7 @@ describe('buildPlanBackup — plan-only scope', () => {
     expect('viewerNpub' in backup.plan.settings).toBe(false);
     expect('viewerPubkey' in backup.plan.settings).toBe(false);
     expect('viewerLabel' in backup.plan.settings).toBe(false);
+    expect('viewerPrivacyTrusted' in backup.plan.settings).toBe(false);
     expect('nostrRelays' in backup.plan.settings).toBe(false);
   });
 

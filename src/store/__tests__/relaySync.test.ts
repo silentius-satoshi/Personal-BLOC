@@ -23,10 +23,12 @@ describe('Option C — settings payload carries nostrRelays (owner sync), viewer
 
   it("buildViewerSnapshotPayload's settings does NOT carry nostrRelays (owner transport config)", () => {
     seedLocal([A, B, C]);
+    useStore.setState({ viewerPrivacyTrusted: true });   // V2 — only the C-trusted snapshot carries a settings block
     const snapSettings = buildViewerSnapshotPayload(useStore.getState()).settings as Record<string, unknown>;
     expect('nostrRelays' in snapSettings).toBe(false);
     // sanity: it still carries the real synced settings a viewer needs
     expect('income' in snapSettings).toBe(true);
+    useStore.setState({ viewerPrivacyTrusted: false });   // restore default for other suites
   });
 });
 

@@ -1,19 +1,21 @@
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
-import { deriveSafetyView, deriveViewerOverall, selectSafetyViewInputs, type SafetyLevel } from '../../simulation/safetyView';
+import { deriveSafetyView, deriveViewerOverall, selectSafetyViewInputs, scaleSafetyView, type SafetyLevel } from '../../simulation/safetyView';
+import { fmtUSD } from '../../utils/format';
 import { RadialGauge } from './RadialGauge';
 import styles from './ViewerHomeView.module.css';
 
 /**
- * Viewer Experience Revamp — V1.
+ * Viewer Experience Revamp — V1 + Viewer V2 (C-safe/C-trusted).
  *
  * The dedicated, calm, READ-ONLY viewer home: three radial status gauges (Strike BLOC credit,
- * Strike BLOC LTV, Coinbase LTV) + a warm greeting + one overall status pill. Replaces the
- * Daily/Monthly surface as the viewer's only monitoring screen. C-safe DISPLAY only — renders the
- * ratios/levels the viewer already receives; no absolute figures, no snapshot stripping (that's V2).
- *
- * Reads the store directly (recomputes on price tick) and calls the shared deriveSafetyView so the
- * level math can't drift from the owner's SafetyDashboard. Inherently read-only — no inputs.
+ * Strike BLOC LTV, Coinbase LTV) + a warm greeting + one overall status pill. Gauges/pill/badges
+ * render identically in either mode; only the SUB-LINES differ:
+ *  - C-SAFE (default): the owner shared health ratios only → useViewerSafety scales them to the LIVE
+ *    price (scaleSafetyView) and shows plain language + a live drop%. No absolutes exist to show.
+ *  - C-TRUSTED (opt-in): the store is fully hydrated → live-derive via the shared deriveSafetyView and
+ *    show real figures ($ used/available, liquidation prices) computed from the hydrated raw data.
+ * Inherently read-only — no inputs. Recomputes on price tick.
  */
 export interface ViewerHomeViewProps {
   onOpenSettings: () => void;
@@ -68,15 +70,78 @@ function strikeSub(level: SafetyLevel): string {
   return 'Action needed';
 }
 
-export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
-  // Shared store→inputs mapping (selectSafetyViewInputs), subscribed via useShallow so this re-renders
-  // ONLY when one of the 12 mapped values changes — preserving the prior per-field reactivity.
-  const inputs = useStore(useShallow(selectSafetyViewInputs));
-  const view = deriveSafetyView(inputs);
-  const hasCbLoan = inputs.hasCbLoan;
-  const lastSync = useStore((s) => s.viewerLastSyncAt);
+/** C-safe Strike sub-line — the plain V1 tone, with a LIVE drop-to-liquidation on the healthy case. */
+function strikeSubSafe(level: SafetyLevel, dropPct: number): string {
+  if (level === 'safe') return `Safe through a ~${Math.round(dropPct * 100)}% dip`;
+  return strikeSub(level);
+}
 
-  const overall = deriveViewerOverall(view, hasCbLoan);
+interface ViewerSafetyResult {
+  mode: 'safe' | 'trusted';
+  capacityUsed: number; creditLevel: SafetyLevel;
+  strikeLtv: number;    strikeLevel: SafetyLevel;
+  cbLtv: number;        cbLevel: SafetyLevel;
+  hasCbLoan: boolean;   overall: SafetyLevel;
+  strikeDropPct: number;
+  figures: null | {
+    credit: { used: number; total: number; avail: number };
+    strike: { liqPrice: number; balance: number };
+    cb:     { liqPrice: number; balance: number };
+  };
+}
+
+/**
+ * The one seam that unifies C-safe (scaled from the shared snapshot) and C-trusted (live-derived from
+ * the hydrated store) into a single render-ready shape. All hooks run unconditionally before the branch.
+ */
+function useViewerSafety(): ViewerSafetyResult {
+  const safeSnap  = useStore((s) => s.viewerSafeSnapshot);
+  const livePrice = useStore((s) => s.btcPrice);                    // live via AppShell's useBtcPrice()
+  const inputs    = useStore(useShallow(selectSafetyViewInputs));   // trusted path (subscribed either way; harmless in safe mode)
+  if (safeSnap) {
+    const v = scaleSafetyView(safeSnap, livePrice);
+    return {
+      mode: 'safe',
+      capacityUsed: v.capacityUsed, creditLevel: v.creditLevel,
+      strikeLtv: v.strikeLtv, strikeLevel: v.strikeLevel,
+      cbLtv: v.cbLtv, cbLevel: v.cbLevel,
+      hasCbLoan: safeSnap.hasCbLoan, overall: v.overall,
+      strikeDropPct: v.strikeDropPct, figures: null,
+    };
+  }
+  const view = deriveSafetyView(inputs);
+  const overall = deriveViewerOverall(view, inputs.hasCbLoan);
+  const strikeLiqLtv = inputs.strikeLiquidationLtvPct / 100;
+  const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - view.strikeLtv / strikeLiqLtv) : 0;
+  const availCredit = inputs.creditLine - inputs.advisorActualBlocBalance;
+  const strikeLiqPrice = inputs.currentBtcHeld > 0
+    ? inputs.advisorActualBlocBalance / (inputs.currentBtcHeld * strikeLiqLtv)   // bloc / (btcHeld × liqLtv)
+    : 0;
+  return {
+    mode: 'trusted',
+    capacityUsed: view.capacityUsed, creditLevel: view.creditLevel,
+    strikeLtv: view.strikeLtv, strikeLevel: view.strikeLevel,
+    cbLtv: view.cbLtv, cbLevel: view.cbLevel,
+    hasCbLoan: inputs.hasCbLoan, overall, strikeDropPct,
+    figures: {
+      credit: { used: inputs.advisorActualBlocBalance, total: inputs.creditLine, avail: availCredit },
+      strike: { liqPrice: strikeLiqPrice, balance: inputs.advisorActualBlocBalance },
+      cb:     { liqPrice: view.cbLiqPrice, balance: view.accruedBalance },
+    },
+  };
+}
+
+export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
+  const s = useViewerSafety();
+  const lastSync = useStore((st) => st.viewerLastSyncAt);
+  const f = s.figures;
+
+  const creditSub = f ? `${fmtUSD(f.credit.used)} of ${fmtUSD(f.credit.total)} · ${fmtUSD(f.credit.avail)} available`
+                      : CREDIT_SUB[s.creditLevel];
+  const strikeSubLine = f ? `Liq at ~${fmtUSD(f.strike.liqPrice)} · ${fmtUSD(f.strike.balance)} balance`
+                          : strikeSubSafe(s.strikeLevel, s.strikeDropPct);
+  const cbSub = f ? `Liq at ~${fmtUSD(f.cb.liqPrice)} · ${fmtUSD(f.cb.balance)} balance`
+                  : CB_SUB[s.cbLevel];
 
   return (
     <div className={styles.root}>
@@ -95,14 +160,14 @@ export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
         {/* Greeting */}
         <div className={styles.greeting}>
           <h1 className={styles.greetTitle}>Good {greetingTime()}</h1>
-          <p className={styles.greetSub}>{OVERALL_COPY[overall]}</p>
+          <p className={styles.greetSub}>{OVERALL_COPY[s.overall]}</p>
         </div>
 
         {/* Overall pill */}
         <div className={styles.pill}>
-          <span className={styles.pillDot} style={{ background: LEVEL_COLOR[overall] }} />
-          <span className={styles.pillText} style={{ color: LEVEL_COLOR[overall] }}>
-            {OVERALL_COPY[overall]}
+          <span className={styles.pillDot} style={{ background: LEVEL_COLOR[s.overall] }} />
+          <span className={styles.pillText} style={{ color: LEVEL_COLOR[s.overall] }}>
+            {OVERALL_COPY[s.overall]}
           </span>
           <span className={styles.pillAge}>{relativeAge(lastSync)}</span>
         </div>
@@ -111,22 +176,22 @@ export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
         <div className={styles.cards}>
           <StatusCard
             label="Strike BLOC credit"
-            pct={view.capacityUsed * 100}
-            level={view.creditLevel}
-            sub={CREDIT_SUB[view.creditLevel]}
+            pct={s.capacityUsed * 100}
+            level={s.creditLevel}
+            sub={creditSub}
           />
           <StatusCard
             label="Strike BLOC LTV"
-            pct={view.strikeLtv * 100}
-            level={view.strikeLevel}
-            sub={strikeSub(view.strikeLevel)}
+            pct={s.strikeLtv * 100}
+            level={s.strikeLevel}
+            sub={strikeSubLine}
           />
-          {hasCbLoan && (
+          {s.hasCbLoan && (
             <StatusCard
               label="Coinbase LTV"
-              pct={view.cbLtv * 100}
-              level={view.cbLevel}
-              sub={CB_SUB[view.cbLevel]}
+              pct={s.cbLtv * 100}
+              level={s.cbLevel}
+              sub={cbSub}
             />
           )}
         </div>

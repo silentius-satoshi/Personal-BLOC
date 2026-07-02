@@ -3,9 +3,12 @@ import {
   deriveSafetyView,
   deriveViewerOverall,
   selectSafetyViewInputs,
+  buildSafeSafety,
+  scaleSafetyView,
   CREDIT_WARN_USED,
   CREDIT_ACT_USED,
   type SafetyViewInputs,
+  type SafeSnapshot,
 } from '../safetyView';
 import { cbMetrics, accruedCbBalance } from '../cbMetrics';
 import { CB_LLTV } from '../runCoinbaseLoan';
@@ -178,5 +181,68 @@ describe('deriveViewerOverall — worst of the gauges shown (credit included)', 
   it('CB act folds into overall when hasCbLoan', () => {
     const v = deriveSafetyView({ ...base, advisorActualBlocBalance: 5_000, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 170_000 });
     expect(deriveViewerOverall(v, true)).toBe('act');
+  });
+});
+
+describe('Viewer V2 — buildSafeSafety (ratio/level-only projection, drops the $ absolutes)', () => {
+  it('drops accruedBalance + cbLiqPrice; keeps ratios/levels + overall', () => {
+    const view = deriveSafetyView({ ...base, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 100_000 });
+    const safe = buildSafeSafety(view, true);
+    expect('accruedBalance' in safe).toBe(false);   // $ absolute — must NOT leak
+    expect('cbLiqPrice' in safe).toBe(false);        // $ absolute — must NOT leak
+    expect(safe.cbLiqFrac).toBeCloseTo(view.cbLiqFrac);   // ratio — kept
+    expect(safe.strikeLtv).toBeCloseTo(view.strikeLtv);
+    expect(safe.overall).toBe(deriveViewerOverall(view, true));
+  });
+});
+
+describe('Viewer V2 — scaleSafetyView (live price-scaling; exact between publishes)', () => {
+  // snapshot @ $100k: strikeLtv 0.50, cbLtv 0.50, capacity 0.70. strikeLiqLtv 0.85.
+  const snap: SafeSnapshot = {
+    safety: {
+      capacityUsed: 0.70, creditLevel: 'safe',
+      strikeLtv: 0.50, strikeLevel: 'safe', crashLtv: 2.5,
+      cbLtv: 0.50, cbLevel: 'safe', cbLiqFrac: CB_LLTV,
+      overall: 'safe',
+    },
+    thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 75, cbLiqFrac: CB_LLTV },
+    btcPriceAtSnapshot: 100_000,
+    hasCbLoan: true,
+  };
+
+  it('price unchanged → factor 1 → identity on the LTVs', () => {
+    const v = scaleSafetyView(snap, 100_000);
+    expect(v.strikeLtv).toBeCloseTo(0.50);
+    expect(v.cbLtv).toBeCloseTo(0.50);
+    expect(v.capacityUsed).toBe(0.70);          // price-free
+    expect(v.crashLtv).toBeCloseTo(2.5);        // strikeLtv' × 5
+  });
+
+  it('price HALVED → LTVs double (LTV ∝ 1/price); levels re-classify', () => {
+    const v = scaleSafetyView(snap, 50_000);    // f = 100k/50k = 2
+    expect(v.strikeLtv).toBeCloseTo(1.0);
+    expect(v.cbLtv).toBeCloseTo(1.0);
+    expect(v.capacityUsed).toBe(0.70);          // unchanged
+    expect(v.strikeLevel).toBe('act');          // 1.0 >> 0.85×0.82
+    expect(v.cbLevel).toBe('act');
+    expect(v.overall).toBe('act');
+  });
+
+  it('price UP → LTVs shrink, strikeDropPct grows', () => {
+    const v = scaleSafetyView(snap, 200_000);   // f = 0.5
+    expect(v.strikeLtv).toBeCloseTo(0.25);
+    expect(v.strikeDropPct).toBeCloseTo(1 - 0.25 / 0.85);   // ~0.706
+  });
+
+  it('livePrice 0 (offline / feed down) → factor 1 fallback = the at-snapshot levels', () => {
+    const v = scaleSafetyView(snap, 0);
+    expect(v.strikeLtv).toBeCloseTo(0.50);
+    expect(v.cbLtv).toBeCloseTo(0.50);
+    expect(v.strikeLevel).toBe('safe');
+  });
+
+  it('!hasCbLoan → cbLevel forced safe regardless of scaled cbLtv', () => {
+    const v = scaleSafetyView({ ...snap, hasCbLoan: false }, 50_000);
+    expect(v.cbLevel).toBe('safe');
   });
 });

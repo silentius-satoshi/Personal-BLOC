@@ -1,6 +1,7 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
+import type { ViewerSafeSafety } from '../../simulation/safetyView'; // type-only — no runtime cycle
 import { withTimeout } from './timeout';
 import { DEFAULT_RELAYS } from './relays';
 
@@ -113,12 +114,26 @@ export async function publishRecords(
 // owns the gating + log-only failure handling.
 export const VIEWER_DTAG = 'personal-bloc:viewer:v1';
 
+// V2 — MODE-SHAPED. Every field optional so a SAFE payload (health only) and a TRUSTED payload (today's
+// full data) are the same type, and old (pre-V2) events without privacyMode still typecheck + read as
+// trusted. A SAFE payload carries ONLY the common + safe keys — no settings/records/strike/cbCollateralBtc
+// exist in it by construction (the privacy audit is Object.keys). A TRUSTED payload adds today's block.
 export interface ViewerSnapshot {
-  settings: Record<string, unknown>;
-  records:  { entries: unknown[]; deletions: Record<number, number> };
-  strike:   { usd: number | null; btcAvail: number | null; rate: number | null };
-  cbCollateralBtc?: number;   // P3 (BUG2) — the derived CB-collateral scalar; the viewer raw-sets it (never gets the dayLog journal). Optional so the revocation tombstone literal typechecks
-  revoked?: boolean;   // tombstone — the owner revoked this viewer; the viewer wipes + exits the data
+  // common (v2)
+  snapshotVersion?: number;              // 2
+  privacyMode?: 'safe' | 'trusted';      // ABSENT → treat as trusted (old events / compat)
+  asOf?: number;                         // owner publish time (ms)
+  revoked?: boolean;                     // tombstone — checked FIRST, mode-agnostic; the viewer wipes + exits
+  // SAFE branch (nothing absolute — ratios/config/public price)
+  hasCbLoan?: boolean;
+  btcPriceAtSnapshot?: number;           // public market data
+  thresholds?: { strikeLiqLtv: number; cbLtvTriggerPct: number; cbLiqFrac: number };
+  safety?: ViewerSafeSafety;
+  // TRUSTED branch (today's payload — now optional)
+  settings?: Record<string, unknown>;
+  records?:  { entries: unknown[]; deletions: Record<number, number> };
+  strike?:   { usd: number | null; btcAvail: number | null; rate: number | null };
+  cbCollateralBtc?: number;   // P3 (BUG2) — the derived CB-collateral scalar; the viewer raw-sets it (never gets the dayLog journal)
 }
 
 export async function publishViewerSnapshot(

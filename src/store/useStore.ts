@@ -3,6 +3,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry, DayEvent } from '../simulation/types';
 import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral } from '../simulation/logUtils';
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
+import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety, type SafeSnapshot } from '../simulation/safetyView';   // Viewer V2 — pure (safetyView has no runtime dep on this store; type-only StoreState import) → cycle-free
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
 import { todayLocalISO } from '../utils/format';
@@ -351,6 +352,9 @@ export interface StoreState {
   viewerNpub:         string | null;
   viewerPubkey:       string | null;      // hex — NIP-44 encrypt target for the viewer snapshot
   viewerLabel:        string | null;      // owner-assigned nickname for the viewer (e.g. "Dad's iPhone")
+  // Viewer V2 — C-safe/C-trusted privacy. false (default) = C-safe (health ratios only); true = C-trusted
+  // (full figures). Owner sharing config: SYNCED across the owner's devices, STRIPPED from the viewer snapshot.
+  viewerPrivacyTrusted: boolean;
   // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
   // viewer of the writer at viewerWriterPubkey, decrypting the viewer:v1 snapshot with viewerSecretKey.
   // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
@@ -374,6 +378,7 @@ export interface StoreState {
   setViewerNpub:         (v: string | null) => void;
   setViewerPubkey:       (v: string | null) => void;
   setViewerLabel:        (v: string | null) => void;
+  setViewerPrivacyTrusted: (v: boolean) => void;
   setViewerMode:         (v: boolean) => void;
   setViewerWriterPubkey: (v: string | null) => void;
   setViewerSecretKey:    (v: string | null) => void;
@@ -391,6 +396,11 @@ export interface StoreState {
   // "updated Nm ago" freshness pill. Set in applyViewerEvent on a good decrypt. Viewer Revamp V1.
   viewerLastSyncAt:      number | null;
   setViewerLastSyncAt:   (v: number | null) => void;
+  // Transient (NOT persisted) — Viewer V2. The last C-safe snapshot (ratios/config/at-snapshot price) the
+  // viewer received; null in C-trusted mode (the store is fully hydrated instead). ViewerHomeView scales it
+  // to the live price. Set in applyViewerEvent on a safe-mode decrypt; cleared on trusted/revoke.
+  viewerSafeSnapshot:    SafeSnapshot | null;
+  setViewerSafeSnapshot: (v: SafeSnapshot | null) => void;
   // Transient (NOT persisted) — true once the in-memory store-encryption key holder (storeCrypto) is populated.
   // AppShell gates AppUnlockGate on this. Mirrors viewerUnlocked.
   storeUnlocked:         boolean;
@@ -588,15 +598,41 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     viewerNpub:               s.viewerNpub,
     viewerPubkey:             s.viewerPubkey,
     viewerLabel:              s.viewerLabel,
+    viewerPrivacyTrusted:     s.viewerPrivacyTrusted,   // Viewer V2 — sharing config; stripped from the viewer snapshot + the plan backup
   };
 }
 
-// Combined viewer snapshot (Option B): the same settings payload + records + live Strike balances.
+// Viewer snapshot — MODE-SHAPED (Viewer V2). Default C-SAFE: a tiny payload of health ratios + config
+// ratios + public price. NO absolute exists in it BY CONSTRUCTION (the privacy audit is Object.keys — no
+// settings/records/strike/cbCollateralBtc keys). C-TRUSTED (opt-in): today's full payload. See safetyView.ts.
 export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/publish').ViewerSnapshot {
+  const asOf = Date.now();
+  if (!s.viewerPrivacyTrusted) {
+    // C-SAFE — the owner runs the dashboard's EXACT inputs (deriveSafetyView ∘ selectSafetyViewInputs), then
+    // ships only the ratio/level block (buildSafeSafety drops the two $ absolutes) + config ratios + price.
+    const view = deriveSafetyView(selectSafetyViewInputs(s));
+    return {
+      snapshotVersion: 2,
+      privacyMode: 'safe',
+      asOf,
+      hasCbLoan: s.hasCbLoan,
+      btcPriceAtSnapshot: s.btcPrice,   // public market data
+      thresholds: {
+        strikeLiqLtv:    s.strikeLiquidationLtvPct / 100,
+        cbLtvTriggerPct: s.cbLtvTriggerPct,
+        cbLiqFrac:       view.cbLiqFrac,
+      },
+      safety: buildSafeSafety(view, s.hasCbLoan),
+    };
+  }
+  // C-TRUSTED (Option B): today's full payload. STRIP the owner's sharing/transport config (viewerNpub/
+  // viewerPubkey/viewerLabel/viewerPrivacyTrusted/nostrRelays) — the viewer must never see who else the owner
+  // shares with, the owner's nickname/mode choice for them, nor the owner's relay set.
   return {
-    // STRIP the owner's sharing config (viewerNpub/viewerPubkey/viewerLabel) — the viewer must never see who else
-    // the owner shares with, nor the owner's nickname for them. buildSettingsPayload stays the single owner source.
-    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),   // also strip nostrRelays — the owner's transport config, not for viewers
+    snapshotVersion: 2,
+    privacyMode: 'trusted',
+    asOf,
+    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
     cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
@@ -735,7 +771,7 @@ function monthOf(ev: DayEvent | undefined): number | null {
 // Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
 // self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
 export function partializeState(state: StoreState) {
-  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
   return rest;
 }
 
@@ -805,6 +841,7 @@ export function migrateState(persistedState: any): any {
     viewerNpub:           persistedState.viewerNpub   ?? null,
     viewerPubkey:         persistedState.viewerPubkey ?? null,
     viewerLabel:          persistedState.viewerLabel  ?? null,
+    viewerPrivacyTrusted: persistedState.viewerPrivacyTrusted ?? false,   // Viewer V2 — additive default (C-safe), no version bump
     // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
     viewerMode:           persistedState.viewerMode          ?? false,
     viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
@@ -1138,6 +1175,7 @@ export const useStore = create<StoreState>()(
   viewerNpub:         null,
   viewerPubkey:       null,
   viewerLabel:        null,
+  viewerPrivacyTrusted: false,   // Viewer V2 — default C-safe (privacy-first)
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
@@ -1146,6 +1184,7 @@ export const useStore = create<StoreState>()(
   viewerUnlocked:      false,
   viewerDataLoaded:    false,
   viewerLastSyncAt:    null,
+  viewerSafeSnapshot:  null,
   storeUnlocked:       false,
   // 3a.4: write through to the standalone GATE_* keys (outside the encrypted blob) — every mutation of these gate
   // fields keeps the cold-start bootstrap copy in sync; logout/disconnect call these with false/null → removeItem.
@@ -1166,6 +1205,9 @@ export const useStore = create<StoreState>()(
   setViewerNpub:         (v) => { set({ viewerNpub: v });   useStore.getState().syncSettingsToNostr(); },
   setViewerPubkey:       (v) => { set({ viewerPubkey: v }); useStore.getState().syncSettingsToNostr(); },
   setViewerLabel:        (v) => { set({ viewerLabel: v });  useStore.getState().syncSettingsToNostr(); },
+  // Viewer V2 — sync the mode across the owner's devices AND republish the snapshot NOW so the viewer
+  // switches shape immediately (mirrors saving a viewer npub). publishViewerSnapshotNow is fire-and-forget.
+  setViewerPrivacyTrusted: (v) => { set({ viewerPrivacyTrusted: v }); useStore.getState().syncSettingsToNostr(); void publishViewerSnapshotNow(); },
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
@@ -1174,6 +1216,7 @@ export const useStore = create<StoreState>()(
   setViewerUnlocked:     (v) => set({ viewerUnlocked: v }),      // transient (not persisted)
   setViewerDataLoaded:   (v) => set({ viewerDataLoaded: v }),    // transient (not persisted)
   setViewerLastSyncAt:   (v) => set({ viewerLastSyncAt: v }),    // transient (not persisted)
+  setViewerSafeSnapshot: (v) => set({ viewerSafeSnapshot: v }),  // transient (not persisted) — Viewer V2
   setStoreUnlocked:      (v) => set({ storeUnlocked: v }),       // transient (not persisted)
   // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
   // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally
@@ -1192,6 +1235,7 @@ export const useStore = create<StoreState>()(
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     viewerNpub: null, viewerPubkey: null, viewerLabel: null,
     viewerDataLoaded: false,
+    viewerSafeSnapshot: null,   // Viewer V2 — drop the C-safe snapshot too (data-remanence)
     initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
   }),
 
@@ -1264,7 +1308,7 @@ export const useStore = create<StoreState>()(
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       'pendingCollateralAdjustment',
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
-      'viewerNpub', 'viewerPubkey', 'viewerLabel',
+      'viewerNpub', 'viewerPubkey', 'viewerLabel', 'viewerPrivacyTrusted',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {

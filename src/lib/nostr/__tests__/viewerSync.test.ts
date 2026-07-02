@@ -52,6 +52,8 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     setStrikeRate:       vi.fn(),
     setCbCollateralBtc:  vi.fn(),         // MUST stay uncalled — it would emit a cbCollateralReading into the viewer's dayLog
     setViewerDataLoaded: vi.fn(),
+    setViewerLastSyncAt: vi.fn(),
+    setViewerSafeSnapshot: vi.fn(),       // Viewer V2 — the C-safe transient
     setViewerUnlocked:   vi.fn(),
     clearViewerData:     vi.fn(),
     ...overrides,
@@ -102,5 +104,38 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.clearViewerData).toHaveBeenCalled();
     expect(mockState.cbCollateralBtc).toBeCloseTo(0.5);    // NOT overwritten — revoked returns before the scalar set
     expect(mockState.setViewerDataLoaded).not.toHaveBeenCalled();
+  });
+
+  // ── Viewer V2 — mode-aware hydrate ──────────────────────────────────────────────────────────────
+  it('C-safe snapshot stores the safe block and does NOT hydrateSettings/records/strike', async () => {
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({
+      snapshotVersion: 2, privacyMode: 'safe', asOf: 1, hasCbLoan: true,
+      btcPriceAtSnapshot: 100_000,
+      thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 75, cbLiqFrac: 0.86 },
+      safety: { capacityUsed: 0.7, creditLevel: 'safe', strikeLtv: 0.5, strikeLevel: 'safe', crashLtv: 2.5, cbLtv: 0.5, cbLevel: 'safe', cbLiqFrac: 0.86, overall: 'safe' },
+    }));
+
+    await fetchViewerSnapshot();
+
+    expect(mockState.setViewerSafeSnapshot).toHaveBeenCalledWith(
+      expect.objectContaining({ hasCbLoan: true, btcPriceAtSnapshot: 100_000 }),
+    );
+    expect(mockState.hydrateSettings).not.toHaveBeenCalled();   // no absolutes to hydrate in safe mode
+    expect(mockState.setMonthlyLog).not.toHaveBeenCalled();
+    expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
+    expect(mockState.clearViewerData).not.toHaveBeenCalled();
+  });
+
+  it('C-trusted snapshot hydrates the full store and clears the safe snapshot', async () => {
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({
+      snapshotVersion: 2, privacyMode: 'trusted',
+      settings: { income: 5000 }, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 1.1,
+    }));
+
+    await fetchViewerSnapshot();
+
+    expect(mockState.setViewerSafeSnapshot).toHaveBeenCalledWith(null);
+    expect(mockState.hydrateSettings).toHaveBeenCalled();
+    expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
   });
 });

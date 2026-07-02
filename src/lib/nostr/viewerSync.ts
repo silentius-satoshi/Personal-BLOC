@@ -102,6 +102,23 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       s.clearViewerData();
       return;
     }
+    // Viewer V2 — C-SAFE mode: store only the ratio/config/at-snapshot-price block (ViewerHomeView scales it to
+    // the live price). Do NOT hydrateSettings/records/strike — none exist in a safe payload (no absolutes).
+    if (snap.privacyMode === 'safe') {
+      s.setViewerSafeSnapshot({
+        safety:             snap.safety!,
+        thresholds:         snap.thresholds!,
+        btcPriceAtSnapshot: snap.btcPriceAtSnapshot!,
+        hasCbLoan:          snap.hasCbLoan ?? false,
+      });
+      s.setViewerDataLoaded(true);
+      s.setViewerLastSyncAt(Date.now());
+      nostrLog('info', 'viewer safe snapshot hydrated');
+      return;
+    }
+    // C-TRUSTED (or a pre-V2 snapshot with no privacyMode) — the full hydrate. Clear any prior safe snapshot first
+    // so a trusted→ nothing-stale mix can't linger (ViewerHomeView reads viewerSafeSnapshot to pick its mode).
+    s.setViewerSafeSnapshot(null);
     const settings = snap.settings ?? {};
     s.hydrateSettings(settings);
     const baseBtc = typeof settings.advisorActualBtcHeld === 'number' ? settings.advisorActualBtcHeld : 0;

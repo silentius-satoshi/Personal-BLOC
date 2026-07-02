@@ -14,8 +14,9 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState, useEffect } from 'react';
-import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, importRelaysFromNip65, publishRelayListToNip65 } from '../../store/useStore';
+import { useStore, importRelaysFromNip65, publishRelayListToNip65 } from '../../store/useStore';
 import { DevPanel } from './DevPanel';
+import { SharingPage } from './SharingPage';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { RevealRecoveryKey } from './RevealRecoveryKey';
@@ -253,11 +254,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const lastSettingsSyncAt  = useStore((s) => s.lastSettingsSyncAt);
   const lastRecordsSyncAt   = useStore((s) => s.lastRecordsSyncAt);
-  const viewerNpub          = useStore((s) => s.viewerNpub);
-  const viewerLabel         = useStore((s) => s.viewerLabel);
-  const setViewerNpub       = useStore((s) => s.setViewerNpub);
-  const setViewerPubkey     = useStore((s) => s.setViewerPubkey);
-  const setViewerLabel      = useStore((s) => s.setViewerLabel);
+  // Viewer/sharing config now lives in <SharingPage/> (extracted). Only npubCopied stays here (the
+  // Identity page's tap-to-copy also uses it).
 
   const income      = useStore((s) => s.income);       const setIncome      = useStore((s) => s.setIncome);
   const expenses    = useStore((s) => s.expenses);     const setExpenses    = useStore((s) => s.setExpenses);
@@ -277,9 +275,6 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
   // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
   const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
-  const [viewerDraft, setViewerDraft]   = useState('');
-  const [viewerLabelDraft, setViewerLabelDraft] = useState('');
-  const [viewerError, setViewerError]   = useState<string | null>(null);
   const [npubCopied, setNpubCopied]     = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
@@ -560,92 +555,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
 
       {settingsPage === 'sharing' && !viewerMode && (
       <div className={styles.section}>
-        {nostrPubkey ? (
-          <div className={styles.viewerAccessBlock}>
-            <div className={styles.nostrIdentityRow}>
-              <span className={styles.nostrPubkey}>
-                {nostrPubkey.slice(0, 8)}…{nostrPubkey.slice(-8)}
-              </span>
-              <button
-                className={styles.nostrReconnectBtn}
-                onClick={() => {
-                  try {
-                    const npub = nip19.npubEncode(nostrPubkey);
-                    navigator.clipboard?.writeText(npub);
-                    setNpubCopied(true);
-                    setTimeout(() => setNpubCopied(false), 1500);
-                  } catch { /* nostrPubkey not valid hex — no-op */ }
-                }}
-              >
-                {npubCopied ? 'Copied ✓' : 'Copy your npub'}
-              </button>
-            </div>
-            <span className={styles.cbLoanToggleDesc}>Share this npub with your viewer so they can follow your plan.</span>
-            <div className={styles.cbLoanToggleTitle}>VIEWER ACCESS</div>
-            <p className={styles.cbLoanToggleDesc}>
-              Shares a continuously-updated, read-only copy of your full model and live Strike balances with this
-              person. They can see everything but can never change your inputs. Remove anytime to stop sharing
-              future updates.
-            </p>
-            {viewerNpub ? (
-              <div className={styles.nostrIdentityRow}>
-                {viewerLabel
-                  ? <span className={styles.nostrPubkey}>{viewerLabel}{' '}
-                      <span style={{ color: 'var(--text-ghost)', fontWeight: 400 }}>({viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)})</span>
-                    </span>
-                  : <span className={styles.nostrPubkey}>{viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)}</span>}
-                <button
-                  className={styles.nostrDisconnectBtn}
-                  onClick={() => {
-                    void publishViewerRevocationNow();   // seal the tombstone to the viewer WHILE viewerPubkey is still set
-                    setViewerNpub(null); setViewerPubkey(null); setViewerLabel(null);
-                    setViewerDraft(''); setViewerLabelDraft(''); setViewerError(null);
-                  }}
-                >
-                  Revoke
-                </button>
-              </div>
-            ) : (
-              <>
-                <input
-                  className={styles.setupDateInput}
-                  type="text"
-                  placeholder="Nickname (e.g. Dad's iPhone)"
-                  value={viewerLabelDraft}
-                  onChange={(e) => setViewerLabelDraft(e.target.value)}
-                />
-                <input
-                  className={styles.setupDateInput}
-                  type="text"
-                  placeholder="npub1…"
-                  value={viewerDraft}
-                  onChange={(e) => { setViewerDraft(e.target.value); setViewerError(null); }}
-                />
-                <button
-                  className={styles.nostrReconnectBtn}
-                  onClick={() => {
-                    const input = viewerDraft.trim();
-                    try {
-                      const decoded = nip19.decode(input);
-                      if (decoded.type !== 'npub') { setViewerError('Not a valid npub'); return; }
-                      setViewerNpub(input);
-                      setViewerPubkey(decoded.data as string);
-                      const label = viewerLabelDraft.trim();
-                      if (label) setViewerLabel(label);
-                      setViewerError(null);
-                      void publishViewerSnapshotNow();   // seal + publish a snapshot NOW so the viewer hydrates without waiting for an owner edit
-                    } catch { setViewerError('Not a valid npub'); }
-                  }}
-                >
-                  Save
-                </button>
-              </>
-            )}
-            {viewerError && <p className={styles.nostrWarning}>{viewerError}</p>}
-          </div>
-        ) : (
-          <p className={styles.sectionDescription}>Connect a Nostr identity first to share viewer access.</p>
-        )}
+        <SharingPage />
       </div>
       )}
 

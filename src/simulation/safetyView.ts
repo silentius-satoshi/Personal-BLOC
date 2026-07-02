@@ -138,3 +138,62 @@ export function deriveViewerOverall(view: SafetyView, hasCbLoan: boolean): Safet
   const base = worseLevel(view.creditLevel, view.strikeLevel);
   return hasCbLoan ? worseLevel(base, view.cbLevel) : base;
 }
+
+// ── Viewer V2 — C-safe privacy: ratio/level-only projection + live price-scaler ──────────────────
+/**
+ * The ratio/level-only projection of SafetyView that the owner seals into a C-SAFE viewer snapshot.
+ * ⚠ Privacy-load-bearing: it deliberately DROPS SafetyView's two $ absolutes (accruedBalance = CB debt,
+ * cbLiqPrice = CB liq price). Every field here is a ratio (0..1+) or a level string from which NO
+ * absolute is recoverable (2 unknowns, 1 equation) — so "no absolute exists by construction".
+ */
+export interface ViewerSafeSafety {
+  capacityUsed: number;
+  creditLevel: SafetyLevel;
+  strikeLtv: number;
+  strikeLevel: SafetyLevel;
+  crashLtv: number;
+  cbLtv: number;
+  cbLevel: SafetyLevel;
+  cbLiqFrac: number; // ratio (effective liquidation LTV) — safe to share
+  overall: SafetyLevel;
+}
+
+/** Owner-side: reduce the full SafetyView to the safe ratio/level block (drops accruedBalance + cbLiqPrice). */
+export function buildSafeSafety(view: SafetyView, hasCbLoan: boolean): ViewerSafeSafety {
+  const { capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac } = view;
+  return {
+    capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac,
+    overall: deriveViewerOverall(view, hasCbLoan),
+  };
+}
+
+/** What the viewer stores from a C-safe snapshot (mirrors the payload's safe branch). */
+export interface SafeSnapshot {
+  safety: ViewerSafeSafety;
+  thresholds: { strikeLiqLtv: number; cbLtvTriggerPct: number; cbLiqFrac: number };
+  btcPriceAtSnapshot: number;
+  hasCbLoan: boolean;
+}
+
+/**
+ * Viewer-side: scale the at-snapshot safe block to the LIVE price so C-safe gauges track the market
+ * without ever receiving an absolute. Exact between owner publishes — balance/holdings are constant
+ * (owner actions republish), so the only drift is price, and LTV ∝ 1/price. (CB interest accrual over
+ * days nudges the true CB LTV up slightly between publishes; negligible for a safety gauge.)
+ * livePrice unavailable (offline / feed down) → factor 1 → returns the at-snapshot levels (fallback).
+ */
+export function scaleSafetyView(snap: SafeSnapshot, livePrice: number): ViewerSafeSafety & { strikeDropPct: number } {
+  const f = livePrice > 0 && snap.btcPriceAtSnapshot > 0 ? snap.btcPriceAtSnapshot / livePrice : 1;
+  const { strikeLiqLtv, cbLtvTriggerPct, cbLiqFrac } = snap.thresholds;
+  const capacityUsed = snap.safety.capacityUsed; // price-free
+  const strikeLtv = snap.safety.strikeLtv * f;
+  const cbLtv = snap.safety.cbLtv * f;
+  const crashLtv = strikeLtv * 5; // Strike LTV at price × 0.2 (an 80% crash) — 1/0.2 = 5
+  const creditLevel = barLevel(capacityUsed, CREDIT_WARN_USED, CREDIT_ACT_USED);
+  const strikeLevel = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82);
+  const cbLevel: SafetyLevel = snap.hasCbLoan ? barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93) : 'safe';
+  const base = worseLevel(creditLevel, strikeLevel);
+  const overall = snap.hasCbLoan ? worseLevel(base, cbLevel) : base;
+  const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - strikeLtv / strikeLiqLtv) : 0;
+  return { capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac, overall, strikeDropPct };
+}

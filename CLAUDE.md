@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (456 tests — all must pass before every commit)
+- Vitest (470 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -185,6 +185,13 @@ src/
                                 # identity subpage for a 'local' signer (leaving the page unmounts → discards the nsec).
                                 # Tap → PRF Face ID / PIN field → unwrapSecretKey (EVERY reveal) → nip19.nsecEncode →
                                 # sk.fill(0) → <SecretKeyCard/> → auto-clear ~30s / Hide / unmount. NEVER logs the key
+      SharingPage.tsx           # Viewer V2 — the 'sharing' subpage EXTRACTED from SettingsMain (+ .module.css; the FIRST
+                                # delegated subpage — SettingsMain renders <SharingPage/> for settingsPage==='sharing',
+                                # owner-only). YOUR SHARE CODE (owner npub + copy) + YOUR VIEWER (list-ready grant card:
+                                # label + npub + Active dot + "Show real figures" Toggle [viewerPrivacyTrusted] +
+                                # Revoke-with-confirm; else the add-viewer form w/ nip19 validation). Self-contained:
+                                # own store reads + draft/error/copied state + the verbatim publishViewerSnapshotNow/
+                                # publishViewerRevocationNow handlers
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
@@ -1446,6 +1453,57 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
 
 ---
 
+## Viewer V2 — C-safe/C-trusted Privacy + Sharing Revamp (store stays v19, NO bump)
+
+The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-first). Builds on the dedup
+(`selectSafetyViewInputs`/`deriveSafetyView` are the shared owner+viewer source).
+
+- **Two payloads, one `ViewerSnapshot` type (publish.ts, all fields optional → compat):**
+  - **C-safe (default):** `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot,
+    thresholds:{strikeLiqLtv, cbLtvTriggerPct, cbLiqFrac}, safety: ViewerSafeSafety }` — **NO
+    settings/records/strike/cbCollateralBtc exist in it by construction** (the privacy audit is
+    `Object.keys`). Every leaf is a health RATIO, a level string, or public price — no absolute is
+    recoverable (2 unknowns, 1 equation).
+  - **C-trusted (opt-in):** today's full `{settings, records, strike, cbCollateralBtc}` + the common
+    `{snapshotVersion:2, privacyMode:'trusted', asOf}`.
+  - **`privacyMode` absent (pre-V2 event) → treated trusted** (compat).
+- **⚠ Privacy correction (load-bearing):** the dedup put `accruedBalance` ($ debt) + `cbLiqPrice` ($ liq
+  price) on `SafetyView` — ABSOLUTES. `ViewerSafeSafety` (safetyView.ts) is the ratio/level-only projection
+  that **drops both** (keeps `cbLiqFrac`, a ratio). `buildSafeSafety(view, hasCbLoan)` builds it.
+- **Price-scaling eliminates v1's frozen-gauge tradeoff.** Between owner publishes balance/holdings are
+  constant (owner actions republish); only price drifts, and LTV ∝ 1/price. `scaleSafetyView(SafeSnapshot,
+  livePrice)` (pure, safetyView.ts, tested) = `f = snapPrice/livePrice`; `strikeLtv'/cbLtv' = ×f`;
+  `capacityUsed` unchanged (price-free); `crashLtv' = strikeLtv'×5`; re-`barLevel`s from the payload
+  thresholds; `overall'`; `strikeDropPct = 1 − strikeLtv'/liqLtv`. **`livePrice` absent → factor 1 → the
+  at-snapshot levels are the offline fallback.** (CB accrual drift between publishes is negligible for a
+  gauge.)
+- **Owner control `viewerPrivacyTrusted: boolean`** (default false) — SYNCED (`buildSettingsPayload` +
+  `SETTINGS_FIELDS`), STRIPPED from the snapshot in BOTH branches (safe has no settings; trusted's strip is
+  now 5 fields: viewerNpub/viewerPubkey/viewerLabel/**viewerPrivacyTrusted**/nostrRelays), and STRIPPED from
+  the **plan backup** (`exportPlan.ts` destructure — sharing config, not plan data). Its setter fires
+  `syncSettingsToNostr()` **and** `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once
+  (mirrors saving a viewer npub). `buildViewerSnapshotPayload(s)` branches on it.
+- **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
+  → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +
+  `viewerLastSyncAt`, **NO hydrateSettings/records/strike**; trusted/absent → clear the safe snapshot, then
+  the existing full hydrate. **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
+  (partialize-excluded, cleared in `clearViewerData`).
+- **Render (`ViewerHomeView.tsx`):** one `useViewerSafety()` seam unifies both modes into a render shape —
+  safe → `scaleSafetyView(viewerSafeSnapshot, liveBtcPrice)` (live via AppShell's `useBtcPrice()`);
+  trusted → `deriveSafetyView(selectSafetyViewInputs(s))` + computed figures. Gauges/pill/badges identical;
+  only the SUB-LINES differ — C-safe = plain V1 language + live drop% ("Safe through a ~N% dip"); C-trusted
+  = real figures (credit "$X of $Y · $Z available"; Strike/CB "Liq at ~$P · $B balance"). CB card gates on
+  the seam's `hasCbLoan` (safe mode's store `hasCbLoan` is a seed default — comes from the snapshot).
+- **Sharing page extracted → `components/Settings/SharingPage.tsx`** (+ `.module.css`, the FIRST delegated
+  subpage; SettingsMain renders `<SharingPage/>` for `settingsPage==='sharing'`, owner-only). YOUR SHARE
+  CODE (owner npub + copy) + YOUR VIEWER (list-ready grant card: label + npub + Active dot + the "Show real
+  figures" `<Toggle>` [`viewerPrivacyTrusted`] + Revoke-with-confirm; or the add-viewer form). The
+  viewer-config store reads + drafts moved out of SettingsMain (only `npubCopied` stays — the Identity page
+  also uses it).
+- **No store version bump** (additive-with-default). Suite 460 → 470.
+
+---
+
 ## Access Layer Redesign (Phase 1 — the shippable lockout fix; store unchanged, AppShell ladder UNTOUCHED)
 
 Fixes two front-door reachability defects WITHOUT touching the Bug-3-guarded AppShell auth/viewer
@@ -1885,7 +1943,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-456 tests — `npx vitest run` before every commit.
+470 tests — `npx vitest run` before every commit.
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
@@ -2531,7 +2589,7 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 |---|---|---|
 | `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
-| `personal-bloc:viewer:v1` | **Viewer Access (Phase 1, writer-side).** Combined `ViewerSnapshot` `{ settings: buildSettingsPayload, records: { entries, deletions }, strike: { usd, btcAvail, rate } }` (Option B — carries live Strike balances) NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`), not the owner's | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow` (after the success log, before `return true`); gated on `viewerPubkey` set; **log-only** on failure (`'viewer snapshot failed'`) — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`, so the owner's own sync result is independent. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (replaceable, supersedes the old snapshot) |
+| `personal-bloc:viewer:v1` | **Viewer Access — MODE-SHAPED (Viewer V2).** `ViewerSnapshot` NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (opt-in via `viewerPrivacyTrusted`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc }` + common. Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on `setViewerPrivacyTrusted`/saving a viewer npub; gated on `viewerPubkey` set; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
@@ -2651,7 +2709,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 33 Synced Settings Fields
+### All 34 Synced Settings Fields
 (`cbCollateralBtc` is a LOCAL derived cache, NOT a synced settings scalar — but Daily Mode P3 CONVERGES it cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives `cbCollateralBtc` from the merged `dayLog`.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -2661,8 +2719,10 @@ a v17-migrant holder until the one-time wrap.
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
-`pendingCollateralAdjustment`, `nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`
-(The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
+`pendingCollateralAdjustment`, `nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`, `viewerPrivacyTrusted`
+(`viewerPrivacyTrusted` (Viewer V2) syncs the owner's C-safe/C-trusted choice across the owner's devices; like the
+other three `viewer*` sharing fields it is STRIPPED from the viewer snapshot in both branches AND from the plan backup.
+The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
 `nostrRelays` (Option C) syncs across the OWNER's devices — identical-lists / replace-on-hydrate (add + remove both
 propagate). `hydrateSettings` GUARDS it: a default-looking incoming list (empty OR exactly `DEFAULT_RELAYS`,
 order-independent sorted compare) never overwrites a non-empty custom local list — skips ONLY that field, applies the

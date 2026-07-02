@@ -1,0 +1,204 @@
+.section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.groupTitle {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  letter-spacing: 0.02em;
+}
+
+.desc {
+  font-size: 11px;
+  color: var(--text-faint);
+  margin: 0;
+  line-height: 1.5;
+}
+
+/* npub card + share code */
+.npubRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--surface-2, #151b25);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+
+.npub {
+  font-family: var(--mono, monospace);
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+  word-break: break-all;
+}
+
+.actionBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.actionBtn:hover { background: var(--bg-hover); }
+
+/* Grant card (list-ready) */
+.grantCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 12px;
+  background: var(--surface-2, #151b25);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+.grantHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.grantDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--green);
+  box-shadow: 0 0 6px var(--green);
+  flex-shrink: 0;
+}
+
+.grantName {
+  font-size: 13px;
+  color: var(--text-primary);
+  font-weight: 500;
+  flex: 1;
+  min-width: 0;
+}
+
+.grantNpub {
+  font-family: var(--mono, monospace);
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--text-ghost);
+}
+
+.grantActive {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--green);
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+/* Privacy toggle row */
+.toggleRow {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.toggleLabel {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.toggleTitle {
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.toggleHint {
+  font-size: 10px;
+  color: var(--text-faint);
+  line-height: 1.4;
+}
+
+/* Revoke + confirm */
+.revokeBtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--red);
+  border-radius: 6px;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.revokeBtn:hover { background: rgba(232, 90, 79, 0.08); }
+
+.confirmRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.confirmText {
+  font-size: 12px;
+  color: var(--text-secondary);
+  flex: 1;
+  min-width: 0;
+}
+
+/* Add-a-viewer form */
+.addBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-family: inherit;
+  font-size: 13px;
+  padding: 9px 11px;
+}
+.input::placeholder { color: var(--text-faint); }
+.input:focus { outline: none; border-color: var(--orange); }
+
+.addBtn {
+  align-self: flex-start;
+  background: var(--orange);
+  border: none;
+  border-radius: 8px;
+  color: var(--bg-base);
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 8px 18px;
+  font-family: inherit;
+}
+.addBtn:hover { filter: brightness(1.05); }
+
+.error {
+  font-size: 11px;
+  color: var(--amber);
+  margin: 0;
+  line-height: 1.5;
+}
