@@ -236,7 +236,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   useEffect(() => { setSelectedMonth(currentMonth); }, [currentMonth]);
 
   const isCurrent     = isOperatingMonth(selectedMonth, currentMonth);
-  const selectedRow   = advisorRows.find((r) => r.month === selectedMonth) ?? currentRow;
+  // Months BEFORE the projection start have no engine row — render logged actuals only. Falling back to
+  // currentRow borrowed the CURRENT month's paydown flag onto logged past months (device-verified display bug).
+  const selectedRow   = advisorRows.find((r) => r.month === selectedMonth) ?? null;
   const selectedEntry = monthlyLog.find((e) => e.month === selectedMonth);
   const selectedPlan  = selectedRow ? deriveForMonth(selectedRow, income, hasCbLoan, cbPaymentStrategy) : null;
 

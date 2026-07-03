@@ -55,24 +55,40 @@ describe('deriveAdvisorStart', () => {
     expect(result.startingMonth).toBe(12);
   });
 
-  // HOTFIX — a living UNCONFIRMED daily rollup (one-ledger's normal current-month state) must NOT advance the start.
-  it('REGRESSION PIN — confirmed M1 + unconfirmed living M2 → anchors on M1 (month 2, M1 stocks), ignores M2', () => {
+  // HOTFIX — bloc/month anchor on the last CONFIRMED entry (a living unconfirmed daily rollup must NOT advance
+  // the start), but startingBtcHeld is the LIVE current position (last entry ANY status + pending) so the seed
+  // matches the SafetyDashboard collateral.
+  it('REGRESSION PIN — confirmed M1 + unconfirmed M2: bloc/month anchor on M1; startingBtcHeld = current position', () => {
     const log = [
       makeEntry(1, { confirmed: true, strikeBal: 3500, btcHeld: 0.80 }),
-      makeEntry(2, { confirmed: false, strikeBal: 7000, btcHeld: 0.95 }),   // living unconfirmed — must be ignored
+      makeEntry(2, { confirmed: false, strikeBal: 7000, btcHeld: 0.95 }),   // living unconfirmed
     ];
     const result = deriveAdvisorStart(log, 0.70, 0, /*currentStrategyMonth*/ 2, 0, /*monthStartBalance*/ 999);
     expect(result.startingMonth).toBe(2);              // last CONFIRMED (M1) + 1 — NOT M2+1=3
     expect(result.startingBlocBalance).toBe(3500);     // M1's stocks, NOT M2's 7000
-    expect(result.startingBtcHeld).toBeCloseTo(0.80);  // M1's btcHeld, NOT M2's 0.95
+    expect(result.startingBtcHeld).toBeCloseTo(0.95);  // CURRENT position (M2.btcHeld + pending 0), NOT the stale M1 anchor
   });
 
-  it('all entries unconfirmed → the empty branch (monthStartBalance base, startingMonth = currentStrategyMonth)', () => {
-    const log = [makeEntry(1, { confirmed: false }), makeEntry(2, { confirmed: false })];
-    const result = deriveAdvisorStart(log, 0.70, 0, /*current*/ 2, 0, /*monthStart*/ 5000);
-    expect(result.startingBlocBalance).toBe(5000);
+  // DEVICE REGRESSION — pending is now-relative to the LAST entry; adding it to a stale last-confirmed anchor
+  // produced negative collateral (0.150221 + −0.206442 = −0.056222 → 0.0% LTV → Buy $0). Must seed from the M2 chain.
+  it('DEVICE REGRESSION — startingBtcHeld = last-entry chain + now-relative pending (never negative)', () => {
+    const log = [
+      makeEntry(1, { btcHeld: 0.150221, btcBought: 0.150221, strikeBal: 2927.38, strikeLtv: 0.064, confirmed: true }),
+      makeEntry(2, { btcHeld: 1.038488, btcBought: 0.056222, collateralAdjustment: 0.832046, strikeBal: 4592.83, strikeLtv: 0.091, confirmed: false }),
+    ];
+    const result = deriveAdvisorStart(log, 0, 0, /*current*/ 2, /*pending*/ -0.206442, /*monthStart*/ 2927.38);
+    expect(result.startingBtcHeld).toBeCloseTo(0.832046, 6);   // 1.038488 + (−0.206442) — NOT the −0.056222 bug
+    expect(result.startingBtcHeld).toBeGreaterThan(0);
+    expect(result.startingBlocBalance).toBe(2927.38);          // M1 = last confirmed
     expect(result.startingMonth).toBe(2);
-    expect(result.startingBtcHeld).toBeCloseTo(0.70);
+  });
+
+  it('only-unconfirmed log → bloc/month use the empty-branch anchors; startingBtcHeld = last entry btcHeld + pending', () => {
+    const log = [makeEntry(1, { confirmed: false, btcHeld: 0.60 }), makeEntry(2, { confirmed: false, btcHeld: 0.90 })];
+    const result = deriveAdvisorStart(log, 0.70, 0, /*current*/ 2, /*pending*/ 0.05, /*monthStart*/ 5000);
+    expect(result.startingBlocBalance).toBe(5000);     // monthStartBalance (no confirmed anchor)
+    expect(result.startingMonth).toBe(2);              // currentStrategyMonth
+    expect(result.startingBtcHeld).toBeCloseTo(0.95);  // M2.btcHeld 0.90 + pending 0.05 — NOT advisorActualBtcHeld 0.70
   });
 });
 
