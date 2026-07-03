@@ -192,3 +192,70 @@ export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: 
   }
   return best ? best.v : (currentCbCollateralBtc ?? 0);
 }
+
+// §5b Readings-Unification — the live safety anchors + their freshness stamps.
+export interface ReadingAnchorState {
+  advisorActualBlocBalance:     number; advisorActualBlocBalanceAsOf: string | null;
+  cbLoanBalance:                number; cbLoanBalanceAsOf:            string | null;
+  cbLiquidationPrice:           number; cbLiquidationPriceAsOf:       string | null;
+}
+// Only the fields to write (empty = change nothing). asOf ← the source reading's DATE.
+export interface ReadingAnchorPatch {
+  advisorActualBlocBalance?:     number; advisorActualBlocBalanceAsOf?: string;
+  cbLoanBalance?:                number; cbLoanBalanceAsOf?:            string;
+  cbLiquidationPrice?:           number; cbLiquidationPriceAsOf?:       string;
+}
+// The reading removed/date-moved by the current mutation (the delete-fallback source proxy). `oldDate` +
+// each pre-mutation value let deriveReadingAnchors tell "this reading WAS the anchor source" via date+value.
+export interface ReadingMutationCtx { oldDate: string; strikeBal?: number; cbBal?: number; cbLiqPrice?: number }
+
+/**
+ * §5b Readings-Unification — PURE selector for the live safety anchors. Picks the DATE-latest surviving
+ * balanceReading (ties → latest ts) and returns ONLY the anchor fields to write, each with asOf ← reading.date:
+ *   strikeBal → advisorActualBlocBalance · cbBal → cbLoanBalance · cbLiqPrice → cbLiquidationPrice.
+ * - Guard (normal add / forward-edit): apply a field only if reading.date ≥ that anchor's asOf (null asOf =
+ *   never anchored → always apply). Manual/knob edits stamp asOf=today, so a stale reading can't clobber them.
+ * - Orphan re-point (delete / backdate of the source): when `removed` WAS the source — proxied by
+ *   (removed.oldDate === anchor.asOf AND removed.<field> === current anchor value; date + value, not date
+ *   alone, so an unrelated same-day delete can't clobber a knob-set anchor with a different value) — re-point
+ *   that field to the surviving date-latest reading UNCONDITIONALLY (fall off the deleted value). No surviving
+ *   reading (or it lacks the field) → left unchanged (never nulled, never points at a deleted reading).
+ * ⚠ Run this ONLY on local dayLog actions (add/update/delete) — NEVER on the sync/merge (setDayLog) path.
+ */
+export function deriveReadingAnchors(
+  dayLog: DayEvent[],
+  current: ReadingAnchorState,
+  removed?: ReadingMutationCtx,
+): ReadingAnchorPatch {
+  let latest: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
+  for (const e of dayLog) {
+    if (e.kind !== 'balanceReading') continue;
+    if (latest === null || e.date > latest.date || (e.date === latest.date && e.ts >= latest.ts)) latest = e;
+  }
+  const patch: ReadingAnchorPatch = {};
+  if (latest === null) return patch;   // no readings → orphaned anchors keep their last value
+  const R = latest;
+
+  const apply = (
+    candidate: number | undefined,
+    curValue: number,
+    curAsOf: string | null,
+    removedField: number | undefined,
+    setField: (v: number) => void,
+    setAsOf: (d: string) => void,
+  ): void => {
+    if (candidate === undefined) return;   // this reading doesn't carry the field
+    if (candidate === curValue && R.date === curAsOf) return;   // already anchored to this exact reading → no-op (idempotent seam, no redundant publish)
+    const orphaned = removed !== undefined && removed.oldDate === curAsOf && removedField === curValue;
+    if (orphaned || curAsOf === null || R.date >= curAsOf) { setField(candidate); setAsOf(R.date); }
+  };
+
+  apply(R.reading.strikeBal, current.advisorActualBlocBalance, current.advisorActualBlocBalanceAsOf,
+    removed?.strikeBal, (v) => { patch.advisorActualBlocBalance = v; }, (d) => { patch.advisorActualBlocBalanceAsOf = d; });
+  apply(R.reading.cbBal, current.cbLoanBalance, current.cbLoanBalanceAsOf,
+    removed?.cbBal, (v) => { patch.cbLoanBalance = v; }, (d) => { patch.cbLoanBalanceAsOf = d; });
+  apply(R.reading.cbLiqPrice, current.cbLiquidationPrice, current.cbLiquidationPriceAsOf,
+    removed?.cbLiqPrice, (v) => { patch.cbLiquidationPrice = v; }, (d) => { patch.cbLiquidationPriceAsOf = d; });
+
+  return patch;
+}

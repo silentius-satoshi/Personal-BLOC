@@ -85,6 +85,7 @@ export type DayEvent =
         strikeBal: number; strikeLtv: number;       // always required (read off Strike)
         cbBal?: number; cbLtv?: number;             // required at runtime iff hasCbLoan
         cbCollateral?: number;                      // CB collateral BTC — required at runtime iff hasCbLoan; feeds the derived cbCollateralBtc clock
+        cbLiqPrice?: number;                        // §5b — optional CB liquidation price; anchor input (re-anchors cbLiquidationPrice), NOT a monthly stock (never in the rollup entry)
         price?: number;                             // optional spot price at reading time
       } });
 // NOTE: btcHeld (Strike) is NOT in balanceReading — store-owned via recomputeBtcHeld/adjustCurrentCollateral.

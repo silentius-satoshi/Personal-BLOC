@@ -15,6 +15,7 @@ export interface SheetState {
   cbBal: number | null;
   cbLtv: number | null;               // PERCENT
   cbCollateral: number | null;        // BTC
+  cbLiqPriceReading: number | null;   // §5b — optional CB liq price on a reading-bearing NON-collateral event; null = leave the anchor untouched (distinct from the collateral-move liq field)
 }
 
 /**
@@ -48,7 +49,7 @@ export function buildEventsFromSheet(
 ): DayEvent[] {
   const reading: {
     strikeBal: number; strikeLtv: number;
-    cbBal?: number; cbLtv?: number; cbCollateral?: number; price?: number;
+    cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number;
   } = {
     strikeBal: s.strikeBal ?? 0,
     strikeLtv: (s.strikeLtv ?? 0) / 100,   // percent → fraction
@@ -58,6 +59,10 @@ export function buildEventsFromSheet(
     reading.cbBal = s.cbBal ?? 0;
     reading.cbLtv = (s.cbLtv ?? 0) / 100;  // percent → fraction
     reading.cbCollateral = s.cbCollateral ?? 0;
+    // §5b — an OPTIONAL liq price re-anchors cbLiquidationPrice (only on reading-bearing non-collateral
+    // events; collateral moves keep their own liq field). Blank/0 (untouched) → omitted → the seam leaves the
+    // anchor + its asOf stale (honest freshness). Only a positive value re-anchors.
+    if (s.type !== 'collateral' && s.cbLiqPriceReading !== null && s.cbLiqPriceReading > 0) reading.cbLiqPrice = s.cbLiqPriceReading;
   }
 
   const readingEvent: DayEvent = { id: idFn(), date: today, ts, kind: 'balanceReading', reading };

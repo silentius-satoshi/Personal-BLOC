@@ -7,7 +7,7 @@ import { deriveSafetyView, selectSafetyViewInputs } from '../../simulation/safet
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
 
 function daysSince(asOf: string | null): number | null {
@@ -39,13 +39,9 @@ export function SafetyDashboard() {
   const cbLtvTriggerPct        = useStore((s) => s.cbLtvTriggerPct);
   const cbLoanBalanceAsOf      = useStore((s) => s.cbLoanBalanceAsOf);
   const cbLiquidationPriceAsOf = useStore((s) => s.cbLiquidationPriceAsOf);
-  const setCbLoanBalance       = useStore((s) => s.setCbLoanBalance);
-  const setCbLiquidationPrice  = useStore((s) => s.setCbLiquidationPrice);
-  const setCbLoanBalanceAsOf      = useStore((s) => s.setCbLoanBalanceAsOf);
-  const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
+  const emitBalanceReading     = useStore((s) => s.emitBalanceReading);   // §5b — re-anchor by emitting a journaled reading
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
-  const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const creditLine               = useStore((s) => s.creditLine);
   const setCreditLine            = useStore((s) => s.setCreditLine);
   const strikeLiquidationLtvPct  = useStore((s) => s.strikeLiquidationLtvPct);
@@ -108,10 +104,8 @@ export function SafetyDashboard() {
   const liqFresh = freshnessLabel('liq price', cbLiquidationPriceAsOf);
 
   const saveReanchor = () => {
-    setCbLoanBalance(draftBal);
-    setCbLiquidationPrice(draftLiq);
-    setCbLoanBalanceAsOf(todayLocalISO());
-    setCbLiquidationPriceAsOf(todayLocalISO());
+    // §5b — emit a journaled reading (the seam re-anchors cbLoanBalance + cbLiquidationPrice + both asOf=today).
+    emitBalanceReading({ cbBal: draftBal, cbLiqPrice: draftLiq });
     setEditing(false);
   };
 
@@ -135,7 +129,9 @@ export function SafetyDashboard() {
     setStrikeEditing((v) => !v);
   };
   const saveStrike = () => {
-    setAdvisorActualBlocBalance(draftStrikeBal);
+    // §5b — emit a journaled reading (the seam re-anchors advisorActualBlocBalance + asOf=today); creditLine /
+    // strikeLiquidationLtvPct are not reading fields → keep their direct setters.
+    emitBalanceReading({ strikeBal: draftStrikeBal });
     if (strikeView === 'capacity') setCreditLine(draftCreditLine);
     else setStrikeLiquidationLtvPct(draftLiqLtv);
     setStrikeEditing(false);

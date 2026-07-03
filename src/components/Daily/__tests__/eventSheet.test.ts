@@ -22,6 +22,7 @@ const FULL: SheetState = {
   cbBal: 60000,
   cbLtv: 50,
   cbCollateral: 1.5,
+  cbLiqPriceReading: null,   // §5b — default no liq on the reading (omitted from the event)
 };
 
 describe('readingComplete', () => {
@@ -69,6 +70,21 @@ describe('buildEventsFromSheet — Set balance', () => {
     const out = buildEventsFromSheet({ ...FULL, type: 'setBalance', amount: null }, false, PRICE, TODAY, TS, idFactory());
     const r = (out[0] as Extract<typeof out[number], { kind: 'balanceReading' }>).reading;
     expect(r.strikeLtv).toBeCloseTo(0.112, 10);
+  });
+
+  it('§5b — reading.cbLiqPrice: omitted when blank/0, present when a positive value is entered', () => {
+    const blank = buildEventsFromSheet({ ...FULL, type: 'setBalance', amount: null, cbLiqPriceReading: null }, true, PRICE, TODAY, TS, idFactory());
+    expect((blank[0] as Extract<typeof blank[number], { kind: 'balanceReading' }>).reading.cbLiqPrice).toBeUndefined();
+
+    const zero = buildEventsFromSheet({ ...FULL, type: 'setBalance', amount: null, cbLiqPriceReading: 0 }, true, PRICE, TODAY, TS, idFactory());
+    expect((zero[0] as Extract<typeof zero[number], { kind: 'balanceReading' }>).reading.cbLiqPrice).toBeUndefined();
+
+    const set = buildEventsFromSheet({ ...FULL, type: 'setBalance', amount: null, cbLiqPriceReading: 61000 }, true, PRICE, TODAY, TS, idFactory());
+    expect((set[0] as Extract<typeof set[number], { kind: 'balanceReading' }>).reading.cbLiqPrice).toBe(61000);
+
+    // Never on a collateral move (that path keeps its own liq field) even if the state carries one.
+    const coll = buildEventsFromSheet({ ...FULL, type: 'collateral', amount: 0.1, collateralTarget: 'cb', cbLiqPriceReading: 61000 }, true, PRICE, TODAY, TS, idFactory());
+    expect((coll[1] as Extract<typeof coll[number], { kind: 'balanceReading' }>).reading.cbLiqPrice).toBeUndefined();
   });
 });
 

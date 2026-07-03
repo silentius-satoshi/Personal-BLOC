@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (489 tests — all must pass before every commit)
+- Vitest (508 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -744,7 +744,8 @@ store, no UI, no sync.
   date (ISO yyyy-mm-dd), ts (ms) }`. `draw`/`paydown`/`minPayment` carry `amount` (USD); `buy` carries `amount`
   (BTC) + optional `usd`; `deposit`/`withdraw` carry `amount` (BTC magnitude) + `target: 'strike' | 'cb'`;
   `cbCollateralReading` carries `cbCollateral` (BTC); `balanceReading` carries a nested `reading { strikeBal,
-  strikeLtv, cbBal?, cbLtv?, cbCollateral?, price? }`. (`minPayment` = the Strike monthly minimum paid from
+  strikeLtv, cbBal?, cbLtv?, cbCollateral?, cbLiqPrice?, price? }` (`cbLiqPrice?` = §5b anchor input, re-anchors
+  `cbLiquidationPrice`; NOT a monthly stock — never in the rollup entry). (`minPayment` = the Strike monthly minimum paid from
   income — Logging Consolidation §2b; **balance-neutral**, rolls up to `strikeMinPaid` only.)
 - **LD5 — stocks are READINGS:** balances/LTVs are read off Strike/Coinbase (the `balanceReading` event), never
   chained. **btcHeld is NOT in `balanceReading`** — Strike BTC stays store-owned via `recomputeBtcHeld` /
@@ -2008,14 +2009,73 @@ like any projected month (figures from the engine via `deriveForMonth`).
   DELETE would tombstone the month and suppress its own future rollups). `MonthlyLogOverlay` same rule (viewer
   for all; edit gated to manual; a `useEffect` forces `editing:false` for daily). `deleteLogEntry` remains only
   for legacy `manual` entries. New **`unconfirmMonth`** store action.
-- **§5b DEFERRED (committed immediate follow-up):** readings-unification — a `refreshBalanceAnchors` that
-  couples the live anchors (`advisorActualBlocBalance`/`cbLoanBalance`/`cbLiquidationPrice`) to the journal +
-  the SafetyDashboard/position-modal emit conversions + `cbLiqPrice` on the reading shape + the EventSheet
-  liq-price field. **Not built here (zero scaffolding).**
-- **⚠ R2 INTERIM REGRESSION (conscious, temporary — until §5b lands):** retiring `ConfirmLogSheet` removed its
-  CB-balance auto-accrual re-anchor (the old `handleApply` `accruedCbBalance` write). CB balance freshness now
-  relies on **SafetyDashboard re-anchors alone** (the existing staleness hints cover it). This is expected, not
-  a bug — §5b restores realtime coupling.
+- **§5b DONE (see the dedicated section below):** readings-unification — a `balanceReading` logged via the
+  Daily FAB now re-anchors the live SafetyDashboard gauges in realtime; the SafetyDashboard / Quick-Setup
+  editors emit a journaled reading; `reading.cbLiqPrice` + the EventSheet liq field re-anchor the CB
+  liquidation. **R2 RESOLVED:** a CB balance reading re-anchors `cbLoanBalance` with a fresh `asOf` (the
+  confirm-sheet auto-accrual is restored via the reading seam).
+
+---
+
+## Logging Consolidation §5b — Readings-Unification (the journal drives the live safety anchors; store stays v19)
+
+Closes the last split from the consolidation arc: a `balanceReading` used to update only the monthly rollup,
+never the three live **anchors** the SafetyDashboard reads (`advisorActualBlocBalance`, `cbLoanBalance`,
+`cbLiquidationPrice`). Now a reading **writes** them. This delivers the owner's ask (log real balances → gauges
+move in realtime) and restores the **R2** CB-accrual freshness. Most fragile surface — the seam is
+**local-action-only**; cross-device travel stays on the settings channel.
+
+- **The model (write-at-log-time, "last action wins"):** the anchors are **synced settings with 11 writers**, so
+  they can't be pure derived caches like `cbCollateralBtc`. A reading writes them once, at add/update/delete time
+  (a local action), then fires `syncSettingsToNostr()` — the anchor + its `asOf` ride the **settings** channel
+  (LWW), exactly like a manual re-anchor.
+- **Seam runs ONLY in `addDayEvent`/`updateDayEvent`/`deleteDayEvent`, NEVER in `setDayLog`** — a sync/merge must
+  not jolt this device's SafetyDashboard (the anchor arrives via settings LWW instead). **Distinction from
+  `cbCollateralBtc`:** that continuous derive DOES run in `setDayLog` (a sum over ordered events, not a synced
+  scalar); the anchor derive is local-action-only.
+- **Pure `deriveReadingAnchors(dayLog, current, removed?)`** (`logUtils.ts`, mirrors `deriveCbCollateral`) — picks
+  the **DATE-latest** surviving `balanceReading` (ties → latest `ts`; select-by-DATE, not `ts`, so editing an old
+  reading — which bumps `ts` under LWW — can't resurrect it) and returns ONLY the anchor fields to write, each
+  `asOf ← reading.date`: `strikeBal→advisorActualBlocBalance`, `cbBal→cbLoanBalance`, `cbLiqPrice→cbLiquidationPrice`.
+  **Guard:** apply only if `reading.date ≥ anchor.asOf` (null asOf → always apply). **Idempotent** (already anchored
+  to this exact reading → empty patch → no redundant publish). The store wrapper `refreshBalanceAnchors(ctx?)`
+  applies the patch + syncs; `readingCtx(before)` builds the delete-fallback proxy from the pre-mutation reading.
+- **Delete/date-move fallback (date + value proxy):** when the mutated reading's `oldDate == anchor.asOf` **AND**
+  its pre-mutation value `== the current anchor value` (proxy for "this reading WAS the source"), that anchor
+  re-points to the date-latest **survivor** unconditionally (falls off the deleted value); no survivor → unchanged
+  (never nulled). **Date + value, not date alone** — a **knob-set** anchor (Settings/Advisor/CoinbaseLoan-sidebar
+  direct-set, `asOf=today`, no emitted reading) plus deleting an *unrelated* same-day reading gives
+  `oldDate==asOf`; the value match spares any knob-set anchor whose value differs. **Documented residual:** a knob
+  value that coincidentally equals a deleted same-day reading's value still misfires — vanishingly rare +
+  self-correcting (next reading re-anchors). The **emit-converted** surfaces are immune (their write IS the
+  same-date `ts`-latest reading → the re-point lands back on it).
+- **New synced field `advisorActualBlocBalanceAsOf: string | null`** (default null; in `buildSettingsPayload` +
+  `SETTINGS_FIELDS` + `migrateState` default + both seed-resets; **no version bump**, merge-default). Gives the
+  Strike balance an `asOf` for the guard (CB already had `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf`).
+  `setAdvisorActualBlocBalance` now stamps it `= todayLocalISO()` (manual freshness → guarded from stale readings).
+  SETTINGS_FIELDS count **37 → 38**.
+- **`emitBalanceReading(overrides)`** (store action) — the emit-conversion for the SafetyDashboard inline editors
+  (Strike box `saveStrike` / CB box `saveReanchor`) + the SimpleModeView **Quick-Setup** ("position modal"): a
+  manual re-anchor becomes a journaled `balanceReading` (one write path). Synthesizes the un-edited half from
+  current derived state (`computeStrikeLtv`, `accruedCbBalance`→`cbLtv` via `cbMetrics`, `cbCollateralBtc`). The
+  **CB half is included ONLY when a CB field is overridden** (CB box) — a Strike-only re-anchor (Strike box /
+  Quick Setup) emits a Strike-only reading so it never re-bases the CB balance or fake-freshens the CB freshness
+  label. CB-box emit re-bases `cbLoanBalance` to `accruedCbBalance` + `asOf=today` (this is the **R2** restore).
+  ⚠ **Conscious consequence:** a `balanceReading` is monthly-meaningful → an emit re-rolls the current month and
+  marks it `source:'daily'` (consistent with "one Ledger").
+- **`reading.cbLiqPrice?`** (types.ts) — optional CB liq price on a reading; **anchor input, NOT a monthly stock**
+  (`rollupMonth` never puts it in the entry, like `cbCollateral`). EventSheet's reading section gains a **"New
+  Coinbase liquidation price (optional)"** field (via `SheetState.cbLiqPriceReading`, distinct from the
+  collateral-move `cbLiqPrice`; **prefill EMPTY**, `subtext` "last: $X — leave blank to keep it"). Blank/0 →
+  omitted → the seam leaves `cbLiquidationPrice` + its `asOf` stale (honest freshness); positive → re-anchors to
+  the reading's date. Hidden for CB-collateral moves (they keep their own liq field — mutually exclusive, no
+  double-write).
+- **R2 RESOLVED** (was the interim regression): a CB balance reading (FAB) or CB-box re-anchor now re-bases
+  `cbLoanBalance` to accrued + fresh `asOf`; CB freshness no longer depends on a separate manual re-anchor.
+- Tests: `src/simulation/__tests__/readingAnchors.test.ts` (guard, select-by-date, delete-fallback + knob-set
+  immunity, cbLiqPrice omit/present, Strike-only); `dailyModeStore.test.ts` §5b block (add re-anchors; `setDayLog`
+  merge folds `cbCollateralBtc` but not the anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced);
+  `eventSheet.test.ts` (`reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move).
 
 ---
 
@@ -2111,7 +2171,8 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-489 tests — `npx vitest run` before every commit.
+508 tests — `npx vitest run` before every commit.
+- `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
@@ -2879,10 +2940,10 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 37 Synced Settings Fields
+### All 38 Synced Settings Fields
 (`cbCollateralBtc` is a LOCAL derived cache, NOT a synced settings scalar — but Daily Mode P3 CONVERGES it cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives `cbCollateralBtc` from the merged `dayLog`.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
-`advisorActualBlocBalance`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
+`advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,

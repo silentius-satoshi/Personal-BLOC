@@ -87,7 +87,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const [cbBal, setCbBal]                   = useState<number | null>(null);
   const [cbLtv, setCbLtv]                   = useState<number | null>(null);
   const [cbCollateral, setCbCollateral]     = useState<number | null>(null);
-  const [cbLiqPrice, setCbLiqPrice]         = useState<number | null>(null);
+  const [cbLiqPrice, setCbLiqPrice]         = useState<number | null>(null);   // collateral-move liq (existing)
+  const [cbLiqPriceReading, setCbLiqPriceReading] = useState<number | null>(null);   // §5b — optional liq on a reading-bearing NON-collateral event (prefill empty; blank/0 → keep the anchor)
   const [confirmDelete, setConfirmDelete]   = useState(false);
 
   // On each open: ADD mode resets flow + pre-fills the reading from the latest balanceReading in dayLog
@@ -132,6 +133,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           setCbBal(editEvent.reading.cbBal ?? null);
           setCbLtv(editEvent.reading.cbLtv != null ? editEvent.reading.cbLtv * 100 : null);
           setCbCollateral(editEvent.reading.cbCollateral ?? null);
+          setCbLiqPriceReading(editEvent.reading.cbLiqPrice ?? null);   // §5b — seed the reading's liq (preserved on re-save)
           break;
       }
       return;
@@ -177,6 +179,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       }
     }
     setCbLiqPrice(cbLiquidationPrice > 0 ? cbLiquidationPrice : null);
+    setCbLiqPriceReading(null);   // §5b — always empty on open (Q2: never auto-submit the old liq → no fake freshness)
   }, [open, editEvent?.id, targetDate, initialType]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (!open) return null;
@@ -189,7 +192,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
 
-  const state: SheetState = { type, amount, collateralDir, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral };
+  const state: SheetState = { type, amount, collateralDir, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral, cbLiqPriceReading };
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
@@ -264,6 +267,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setCbLtv(null);
     setCbCollateral(null);
     setCbLiqPrice(null);
+    setCbLiqPriceReading(null);
     setConfirmDelete(false);
   }
 
@@ -289,12 +293,13 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           updated = { id, date, ts, kind: 'withdraw', amount: amount ?? 0, target: editEvent.target };
           break;
         case 'balanceReading': {
-          const reading: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; price?: number } =
+          const reading: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number } =
             { strikeBal: strikeBal ?? 0, strikeLtv: (strikeLtv ?? 0) / 100, price: btcPrice };
           if (editEvent.reading.cbBal != null) {   // CB-bearing reading → keep CB fields
             reading.cbBal = cbBal ?? 0;
             reading.cbLtv = (cbLtv ?? 0) / 100;
             reading.cbCollateral = cbCollateral ?? 0;
+            if (cbLiqPriceReading !== null && cbLiqPriceReading > 0) reading.cbLiqPrice = cbLiqPriceReading;   // §5b — preserve/edit the reading's liq
           }
           updated = { id, date, ts, kind: 'balanceReading', reading };
           break;
@@ -313,7 +318,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     }
 
     const events = buildEventsFromSheet(
-      { type, amount, collateralDir, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral },
+      { type, amount, collateralDir, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
       hasCbLoan, btcPrice, effectiveDate, Date.now(), newId,
     );
     // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
@@ -526,6 +531,18 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                 <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" />
                 {cbLtvWarn && <span className={styles.warn}>Coinbase LTV over 100% — double-check the value.</span>}
                 <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} />
+                {/* §5b — optional liq price on a reading (collateral moves have their own liq field → hidden here).
+                    Blank/0 (untouched) keeps the current anchor + its freshness; a value re-anchors to the reading's date. */}
+                {type !== 'collateral' && (
+                  <NumberInput
+                    label="New Coinbase liquidation price (optional)"
+                    value={cbLiqPriceReading ?? 0}
+                    onChange={setCbLiqPriceReading}
+                    min={0}
+                    prefix="$"
+                    subtext={cbLiquidationPrice > 0 ? `last: ${fmtUSD(cbLiquidationPrice)} — leave blank to keep it` : 'leave blank to keep the current value'}
+                  />
+                )}
               </>
             )}
           </div>

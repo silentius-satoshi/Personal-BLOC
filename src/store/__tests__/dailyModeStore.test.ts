@@ -268,3 +268,72 @@ describe('P3 — dayLog rides records sync', () => {
     expect(useStore.getState().deletedDayEvents.z).toBe(12345);
   });
 });
+
+// §5b Readings-Unification — a local reading action re-anchors the live safety anchors (add/update/delete),
+// but a sync/merge (setDayLog) does NOT (the anchor travels cross-device via the settings channel instead).
+describe('§5b — refreshBalanceAnchors seam', () => {
+  const cbReading = (strikeBal: number, cbBal: number, cbLiqPrice?: number, date = TODAY): DayEvent =>
+    ({ id: id(), date, ts: ts(), kind: 'balanceReading', reading: { strikeBal, strikeLtv: 0.12, cbBal, cbLtv: 0.5, cbCollateral: 1.4, ...(cbLiqPrice !== undefined ? { cbLiqPrice } : {}) } });
+
+  beforeEach(() => {
+    useStore.setState({
+      hasCbLoan: true,
+      advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null,
+      cbLoanBalance: 0, cbLoanBalanceAsOf: null,
+      cbLiquidationPrice: 0, cbLiquidationPriceAsOf: null,
+    } as never);
+  });
+
+  it('addDayEvent(balanceReading) re-anchors advisorActualBlocBalance / cbLoanBalance / cbLiquidationPrice + stamps asOf=today', () => {
+    useStore.getState().addDayEvent(cbReading(5000, 40000, 61000));
+    const s = useStore.getState();
+    expect(s.advisorActualBlocBalance).toBe(5000);
+    expect(s.cbLoanBalance).toBe(40000);
+    expect(s.cbLiquidationPrice).toBe(61000);
+    expect(s.advisorActualBlocBalanceAsOf).toBe(TODAY);
+    expect(s.cbLoanBalanceAsOf).toBe(TODAY);
+    expect(s.cbLiquidationPriceAsOf).toBe(TODAY);
+  });
+
+  it('a reading WITHOUT cbLiqPrice leaves cbLiquidationPrice + its asOf untouched (honest freshness)', () => {
+    useStore.setState({ cbLiquidationPrice: 55000, cbLiquidationPriceAsOf: '2025-01-01' } as never);
+    useStore.getState().addDayEvent(cbReading(5000, 40000 /* no liq */));
+    const s = useStore.getState();
+    expect(s.cbLoanBalance).toBe(40000);            // balance still re-anchors
+    expect(s.cbLiquidationPrice).toBe(55000);       // liq untouched
+    expect(s.cbLiquidationPriceAsOf).toBe('2025-01-01');
+  });
+
+  it('setDayLog (merge) folds cbCollateralBtc but does NOT move the balance anchors', () => {
+    useStore.setState({ advisorActualBlocBalance: 9000, advisorActualBlocBalanceAsOf: TODAY, cbCollateralBtc: 1.48 } as never);
+    // A merged reading arriving via the records channel — balance anchors must stay put (no seam on merge).
+    useStore.getState().setDayLog([cbReading(1234, 5678, 61000)]);
+    const s = useStore.getState();
+    expect(s.cbCollateralBtc).toBeCloseTo(1.4);   // derived from the merged reading's cbCollateral (the fold)
+    expect(s.advisorActualBlocBalance).toBe(9000); // anchor NOT jolted by the merge
+    expect(s.cbLoanBalance).toBe(0);
+  });
+
+  it('deleting the anchor-source reading falls back to the date-latest survivor', () => {
+    const older = cbReading(3000, 30000, 60000, TODAY);
+    useStore.getState().addDayEvent(older);
+    const newer = cbReading(5000, 40000, 61000, FUTURE);   // later date → becomes the source
+    useStore.getState().addDayEvent(newer);
+    expect(useStore.getState().advisorActualBlocBalance).toBe(5000);
+    useStore.getState().deleteDayEvent(newer.id);
+    // Falls back to the older (only surviving) reading, not the deleted value.
+    expect(useStore.getState().advisorActualBlocBalance).toBe(3000);
+    expect(useStore.getState().cbLoanBalance).toBe(30000);
+  });
+});
+
+// §5b — the Strike-balance freshness stamp is a synced setting.
+describe('§5b — advisorActualBlocBalanceAsOf synced setting', () => {
+  it('default null; in the settings payload; setAdvisorActualBlocBalance stamps asOf=today', () => {
+    useStore.setState({ advisorActualBlocBalanceAsOf: null } as never);
+    expect('advisorActualBlocBalanceAsOf' in buildSettingsPayload(useStore.getState())).toBe(true);
+    useStore.getState().setAdvisorActualBlocBalance(7777);
+    expect(useStore.getState().advisorActualBlocBalance).toBe(7777);
+    expect(useStore.getState().advisorActualBlocBalanceAsOf).toBe(TODAY);
+  });
+});

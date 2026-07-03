@@ -1,7 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry, DayEvent } from '../simulation/types';
-import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral } from '../simulation/logUtils';
+import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveReadingAnchors, type ReadingMutationCtx } from '../simulation/logUtils';
+import { computeStrikeLtv } from '../simulation/strikeCredit';
+import { accruedCbBalance, cbMetrics } from '../simulation/cbMetrics';
 import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety, type SafeSnapshot } from '../simulation/safetyView';   // Viewer V2 — pure (safetyView has no runtime dep on this store; type-only StoreState import) → cycle-free
 import { signerOpTimeout } from '../lib/nostr/timeout';
@@ -209,6 +211,7 @@ export interface StoreState {
   // Advisor tab inputs
   advisorStartDate:         string;
   advisorActualBlocBalance: number;   // LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
+  advisorActualBlocBalanceAsOf: string | null;   // §5b — ISO date the Strike balance was last set (manual=today, reading=reading.date); the deriveReadingAnchors freshness guard
   advisorMonthStartBalance: number;   // BLOC balance at the START of the current month — projection base ONLY (deriveAdvisorStart month-1)
   advisorActualBtcHeld:     number;   // TRUE month-0 baseline — never back-solved; current holdings derive from the log + pending
   pendingCollateralAdjustment: number;   // un-graduated collateral delta (deposit/withdrawal); SYNCED via settings; folds into the current month's entry on log
@@ -294,8 +297,10 @@ export interface StoreState {
   // Setters — Advisor tab
   setAdvisorStartDate:         (date: string) => void;
   setAdvisorActualBlocBalance: (v: number)    => void;
+  setAdvisorActualBlocBalanceAsOf: (v: string | null) => void;
   setAdvisorMonthStartBalance: (v: number)    => void;
   setAdvisorActualBtcHeld:     (v: number)    => void;
+  emitBalanceReading: (overrides: { strikeBal?: number; cbBal?: number; cbLiqPrice?: number }) => void;   // §5b — SafetyDashboard/position-modal emit a full reading (un-edited half synthesized) → the seam re-anchors
 
   advisorSkipBlocDraw:  boolean;
   advisorSkipCbPayment: boolean;
@@ -579,6 +584,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     creditLine:               s.creditLine,
     advisorStartDate:         s.advisorStartDate,
     advisorActualBlocBalance: s.advisorActualBlocBalance,
+    advisorActualBlocBalanceAsOf: s.advisorActualBlocBalanceAsOf,   // §5b — freshness travels with the balance (like cbLoanBalanceAsOf)
     advisorMonthStartBalance: s.advisorMonthStartBalance,
     advisorActualBtcHeld:     s.advisorActualBtcHeld,
     cbLoanBalance:            s.cbLoanBalance,
@@ -712,6 +718,31 @@ function strategyMonthDate(advisorStartDate: string, month: number): string {
 function refreshCbCollateralCache(): void {
   const s = useStore.getState();
   useStore.setState({ cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc) });
+}
+
+// §5b Readings-Unification seam — couple the live safety anchors (advisorActualBlocBalance / cbLoanBalance /
+// cbLiquidationPrice) to the DATE-latest balanceReading. Runs on LOCAL dayLog actions ONLY (add/update/delete),
+// NEVER in setDayLog — a sync/merge must not jolt this device's SafetyDashboard; the anchor travels cross-device
+// via the SETTINGS channel (syncSettingsToNostr) instead, like a manual re-anchor. Distinct from cbCollateralBtc's
+// continuous derive (that IS refreshed in setDayLog — a sum over ordered events, not a synced scalar). `removed` =
+// the pre-mutation reading (deleted / date-moved) for the delete-fallback source proxy (nuance 5). Idempotent
+// (deriveReadingAnchors returns an empty patch when nothing changed) → no redundant settings publish.
+function refreshBalanceAnchors(removed?: ReadingMutationCtx): void {
+  const s = useStore.getState();
+  const patch = deriveReadingAnchors(s.dayLog, {
+    advisorActualBlocBalance: s.advisorActualBlocBalance, advisorActualBlocBalanceAsOf: s.advisorActualBlocBalanceAsOf,
+    cbLoanBalance:            s.cbLoanBalance,            cbLoanBalanceAsOf:            s.cbLoanBalanceAsOf,
+    cbLiquidationPrice:       s.cbLiquidationPrice,       cbLiquidationPriceAsOf:       s.cbLiquidationPriceAsOf,
+  }, removed);
+  if (Object.keys(patch).length === 0) return;
+  useStore.setState(patch);
+  useStore.getState().syncSettingsToNostr();
+}
+
+// The pre-mutation reading context for the delete-fallback proxy — only a balanceReading can be an anchor source.
+function readingCtx(ev: DayEvent | undefined): ReadingMutationCtx | undefined {
+  if (!ev || ev.kind !== 'balanceReading') return undefined;
+  return { oldDate: ev.date, strikeBal: ev.reading.strikeBal, cbBal: ev.reading.cbBal, cbLiqPrice: ev.reading.cbLiqPrice };
 }
 
 // A day event is "monthly-meaningful" if it can affect a monthlyLog entry. cbCollateralReading is clock-only, and a
@@ -872,6 +903,8 @@ export function migrateState(persistedState: any): any {
     viewerKeyWrapMeta:    persistedState.viewerKeyWrapMeta   ?? null,
     // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
     advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
+    // §5b — Strike balance freshness stamp; additive default, no bump (merge-default pattern)
+    advisorActualBlocBalanceAsOf: persistedState.advisorActualBlocBalanceAsOf ?? null,
     // v19 — Daily Mode P2a: dayLog (LOCAL-only) + cbLtvAction; cbCollateralBtc becomes a derived cache.
     dayLog:               migratedDayLog,
     cbLtvAction:          persistedState.cbLtvAction ?? 'paydown',
@@ -943,6 +976,7 @@ export const useStore = create<StoreState>()(
 
   advisorStartDate:         todayLocalISO(),
   advisorActualBlocBalance: 0,
+  advisorActualBlocBalanceAsOf: null,   // §5b — never anchored yet (null → the reading guard always applies first time)
   advisorMonthStartBalance: 0,
   advisorActualBtcHeld:     0,
   pendingCollateralAdjustment: 0,   // default via shallow merge — no migration, store stays v11
@@ -1026,7 +1060,9 @@ export const useStore = create<StoreState>()(
   setBlocMinPaymentDueDay: (v) => { set({ blocMinPaymentDueDay: Math.max(1, Math.min(28, Math.round(v))) }); useStore.getState().syncSettingsToNostr(); },
 
   setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); useStore.getState().syncSettingsToNostr(); },
-  setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v }); useStore.getState().syncSettingsToNostr(); },
+  // §5b — a manual/knob write stamps asOf=today (freshness), so a stale reading can't clobber it (deriveReadingAnchors guard).
+  setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v, advisorActualBlocBalanceAsOf: todayLocalISO() }); useStore.getState().syncSettingsToNostr(); },
+  setAdvisorActualBlocBalanceAsOf: (v) => { set({ advisorActualBlocBalanceAsOf: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorMonthStartBalance: (v) => { set({ advisorMonthStartBalance: v }); useStore.getState().syncSettingsToNostr(); },
   setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    useStore.getState().syncSettingsToNostr(); },
   setNdpLastPaidDate:          (v) => { set({ ndpLastPaidDate: v }); useStore.getState().syncSettingsToNostr(); },
@@ -1112,6 +1148,7 @@ export const useStore = create<StoreState>()(
   addDayEvent: (event) => {
     set((s) => ({ dayLog: [...s.dayLog, event], recordsDirty: true }));
     refreshCbCollateralCache();
+    refreshBalanceAnchors();   // §5b — a new reading re-anchors the live safety gauges (no removed source on add)
     const m = monthOf(event);
     if (m !== null) rerollMonth(m);
     publishRecordsNow();
@@ -1120,6 +1157,7 @@ export const useStore = create<StoreState>()(
     const before = useStore.getState().dayLog.find((e) => e.id === event.id);
     set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? event : e)), recordsDirty: true }));
     refreshCbCollateralCache();
+    refreshBalanceAnchors(readingCtx(before));   // §5b — editing a reading re-anchors; a moved/changed source falls back via the ctx proxy
     const months = new Set<number>();
     const mb = monthOf(before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
     const ma = monthOf(event);  if (ma !== null) months.add(ma);   // and the NEW month
@@ -1131,6 +1169,7 @@ export const useStore = create<StoreState>()(
     if (!before) return;
     set((s) => ({ dayLog: s.dayLog.filter((e) => e.id !== id), deletedDayEvents: { ...s.deletedDayEvents, [id]: Date.now() }, recordsDirty: true }));
     refreshCbCollateralCache();
+    refreshBalanceAnchors(readingCtx(before));   // §5b — deleting the anchor-source reading falls back to the date-latest survivor
     const m = monthOf(before);
     if (m !== null) rerollMonth(m);
     publishRecordsNow();
@@ -1139,6 +1178,36 @@ export const useStore = create<StoreState>()(
   // cbCollateralBtc ONCE from the merged array. NO rollup / per-event derive — keeps the sync apply path actions-only.
   setDayLog: (events) => set((s) => ({ dayLog: events, cbCollateralBtc: deriveCbCollateral(events, s.cbCollateralBtc) })),
   setCbLtvAction: (v) => set({ cbLtvAction: v }),
+
+  // §5b — the emit-conversion for the SafetyDashboard inline editors + the Quick-Setup position modal: a manual
+  // re-anchor becomes a journaled balanceReading (one write path). Synthesizes the UN-edited half from current
+  // derived state — the CB balance defaults to accruedCbBalance (re-basing accrued interest to today, restoring the
+  // R2 confirm-sheet auto-accrual), the Strike LTV to computeStrikeLtv, LTVs as fractions. addDayEvent → the seam
+  // re-anchors from it. Today-dated → "last action wins" (a manual re-anchor is the newest assertion).
+  emitBalanceReading: (overrides) => {
+    const s = useStore.getState();
+    const price = s.btcPrice;
+    const btcHeld = s.getCurrentBtcHeld();
+    const strikeBal = overrides.strikeBal ?? s.advisorActualBlocBalance;
+    const reading: Extract<DayEvent, { kind: 'balanceReading' }>['reading'] = {
+      strikeBal,
+      strikeLtv: computeStrikeLtv(strikeBal, btcHeld, price),   // fraction
+      price,
+    };
+    // CB half only when a CB field is genuinely asserted (CB box) — a Strike-only re-anchor (Strike box /
+    // Quick Setup) emits a Strike-only reading so it never re-bases the CB balance or fake-freshens the CB
+    // freshness label. The FAB "Set balance" path is separate (buildEventsFromSheet) and requires both.
+    if (s.hasCbLoan && (overrides.cbBal !== undefined || overrides.cbLiqPrice !== undefined)) {
+      const cbBal = overrides.cbBal ?? accruedCbBalance(s.cbLoanBalance, s.cbAprPct, s.cbLoanBalanceAsOf);
+      reading.cbBal = cbBal;
+      reading.cbLtv = cbMetrics(cbBal, s.cbCollateralBtc, price, s.cbLtvTriggerPct).ltv;   // fraction
+      reading.cbCollateral = s.cbCollateralBtc;
+      const liq = overrides.cbLiqPrice ?? (s.cbLiquidationPrice > 0 ? s.cbLiquidationPrice : undefined);
+      if (liq !== undefined) reading.cbLiqPrice = liq;
+    }
+    const id = globalThis.crypto?.randomUUID?.() ?? `read-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    useStore.getState().addDayEvent({ id, date: todayLocalISO(), ts: Date.now(), kind: 'balanceReading', reading });
+  },
 
   // Device-local display prefs — plain set, NO syncSettingsToNostr (like devMode)
   setShowPlanIncomeBar: (v) => set({ showPlanIncomeBar: v }),
@@ -1262,7 +1331,7 @@ export const useStore = create<StoreState>()(
   clearViewerData: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
-    advisorActualBlocBalance: 0, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
+    advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
     cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
@@ -1285,7 +1354,7 @@ export const useStore = create<StoreState>()(
   resetPlanToSeeds: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
-    advisorActualBlocBalance: 0, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
+    advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
     cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
@@ -1339,7 +1408,7 @@ export const useStore = create<StoreState>()(
   hydrateSettings: (data) => {
     const SETTINGS_FIELDS = [
       'income', 'expenses', 'blocApr', 'creditLine',
-      'advisorStartDate', 'advisorActualBlocBalance', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
+      'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
       'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc removed (P2a Seam 2 — local derived cache; cross-device sync suspended P2a→P3)
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',

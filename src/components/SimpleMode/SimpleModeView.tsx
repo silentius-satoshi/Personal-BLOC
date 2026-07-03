@@ -70,7 +70,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
-  const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
+  const emitBalanceReading          = useStore((s) => s.emitBalanceReading);   // §5b — Quick-Setup save emits a journaled Strike reading
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
@@ -306,12 +306,15 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     setIncome(modalDraft.income);
     setExpenses(modalDraft.expenses);
     setCreditLine(modalDraft.creditLine);
-    setAdvisorActualBlocBalance(modalDraft.blocBalance);
     setAdvisorMonthStartBalance(modalDraft.monthStartBalance);
-    // btcHeld edits are reality edits — a dated adjustment, never the baseline
+    // btcHeld edits are reality edits — a dated adjustment, never the baseline. Do this BEFORE the emit so the
+    // reading's synthesized Strike LTV reflects the new collateral.
     if (modalDraft.btcHeld !== useStore.getState().getCurrentBtcHeld()) {
       adjustCurrentCollateral(modalDraft.btcHeld);
     }
+    // §5b — emit a journaled Strike reading (the seam re-anchors advisorActualBlocBalance + asOf=today); Strike-only
+    // (no CB assertion) so a setup save never re-bases the CB balance.
+    emitBalanceReading({ strikeBal: modalDraft.blocBalance });
     setShowSetupModal(false);
   };
 
