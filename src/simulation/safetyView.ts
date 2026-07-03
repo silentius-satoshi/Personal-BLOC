@@ -197,3 +197,83 @@ export function scaleSafetyView(snap: SafeSnapshot, livePrice: number): ViewerSa
   const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - strikeLtv / strikeLiqLtv) : 0;
   return { capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac, overall, strikeDropPct };
 }
+
+// ── The render-ready viewer-safety shape + the one seam that unifies C-safe vs C-trusted ──────────
+/** Render shape consumed by ViewerHomeView — C-safe (scaled from a snapshot) OR C-trusted (live-derived). */
+export interface ViewerSafetyResult {
+  mode: 'safe' | 'trusted';
+  capacityUsed: number; creditLevel: SafetyLevel;
+  strikeLtv: number;    strikeLevel: SafetyLevel;
+  cbLtv: number;        cbLevel: SafetyLevel;
+  hasCbLoan: boolean;   overall: SafetyLevel;
+  strikeDropPct: number;
+  figures: null | {
+    credit: { used: number; total: number; avail: number };
+    strike: { liqPrice: number; balance: number };
+    cb:     { liqPrice: number; balance: number };
+  };
+}
+
+/**
+ * PURE core of ViewerHomeView's useViewerSafety (extracted for node-testability — the hook is just the store
+ * reads + this). `safeSnap` present → C-safe path (scaleSafetyView, figures:null — no absolutes exist);
+ * null → C-trusted live-derive from `inputs` (deriveSafetyView + real $ figures).
+ */
+export function computeViewerSafety(
+  safeSnap: SafeSnapshot | null,
+  livePrice: number,
+  inputs: SafetyViewInputs,
+): ViewerSafetyResult {
+  if (safeSnap) {
+    const v = scaleSafetyView(safeSnap, livePrice);
+    return {
+      mode: 'safe',
+      capacityUsed: v.capacityUsed, creditLevel: v.creditLevel,
+      strikeLtv: v.strikeLtv, strikeLevel: v.strikeLevel,
+      cbLtv: v.cbLtv, cbLevel: v.cbLevel,
+      hasCbLoan: safeSnap.hasCbLoan, overall: v.overall,
+      strikeDropPct: v.strikeDropPct, figures: null,
+    };
+  }
+  const view = deriveSafetyView(inputs);
+  const overall = deriveViewerOverall(view, inputs.hasCbLoan);
+  const strikeLiqLtv = inputs.strikeLiquidationLtvPct / 100;
+  const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - view.strikeLtv / strikeLiqLtv) : 0;
+  const availCredit = inputs.creditLine - inputs.advisorActualBlocBalance;
+  const strikeLiqPrice = inputs.currentBtcHeld > 0
+    ? inputs.advisorActualBlocBalance / (inputs.currentBtcHeld * strikeLiqLtv)   // bloc / (btcHeld × liqLtv)
+    : 0;
+  return {
+    mode: 'trusted',
+    capacityUsed: view.capacityUsed, creditLevel: view.creditLevel,
+    strikeLtv: view.strikeLtv, strikeLevel: view.strikeLevel,
+    cbLtv: view.cbLtv, cbLevel: view.cbLevel,
+    hasCbLoan: inputs.hasCbLoan, overall, strikeDropPct,
+    figures: {
+      credit: { used: inputs.advisorActualBlocBalance, total: inputs.creditLine, avail: availCredit },
+      strike: { liqPrice: strikeLiqPrice, balance: inputs.advisorActualBlocBalance },
+      cb:     { liqPrice: view.cbLiqPrice, balance: view.accruedBalance },
+    },
+  };
+}
+
+/**
+ * Owner-side "Preview as viewer": turn a real buildViewerSnapshotPayload into the SafeSnapshot the safe path
+ * renders (mirrors viewerSync.ts's construction exactly, incl. hasCbLoan ?? false). Non-safe payload → null
+ * (the trusted preview uses the live-derive path instead). Structural param type → no ViewerSnapshot import.
+ */
+export function previewSafeSnapFromPayload(payload: {
+  privacyMode?: string;
+  safety?: ViewerSafeSafety;
+  thresholds?: SafeSnapshot['thresholds'];
+  btcPriceAtSnapshot?: number;
+  hasCbLoan?: boolean;
+}): SafeSnapshot | null {
+  if (payload.privacyMode !== 'safe') return null;
+  return {
+    safety:             payload.safety!,
+    thresholds:         payload.thresholds!,
+    btcPriceAtSnapshot: payload.btcPriceAtSnapshot!,
+    hasCbLoan:          payload.hasCbLoan ?? false,
+  };
+}

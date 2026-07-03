@@ -1,6 +1,6 @@
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
-import { deriveSafetyView, deriveViewerOverall, selectSafetyViewInputs, scaleSafetyView, type SafetyLevel } from '../../simulation/safetyView';
+import { selectSafetyViewInputs, computeViewerSafety, type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult } from '../../simulation/safetyView';
 import { fmtUSD, relativeAge } from '../../utils/format';
 import { RadialGauge } from './RadialGauge';
 import { RolePill, useGrantedRoles } from './RolePill';
@@ -20,6 +20,8 @@ import styles from './ViewerHomeView.module.css';
  */
 export interface ViewerHomeViewProps {
   onOpenSettings: () => void;
+  previewSafeSnap?: SafeSnapshot | null;   // owner "Preview as viewer": inject the snap (safe) or null (force trusted live-derive); undefined = viewer device (store-driven)
+  hideSettingsNav?: boolean;               // owner preview → hide the settings-nav affordances
 }
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -69,63 +71,23 @@ function strikeSubSafe(level: SafetyLevel, dropPct: number): string {
   return strikeSub(level);
 }
 
-interface ViewerSafetyResult {
-  mode: 'safe' | 'trusted';
-  capacityUsed: number; creditLevel: SafetyLevel;
-  strikeLtv: number;    strikeLevel: SafetyLevel;
-  cbLtv: number;        cbLevel: SafetyLevel;
-  hasCbLoan: boolean;   overall: SafetyLevel;
-  strikeDropPct: number;
-  figures: null | {
-    credit: { used: number; total: number; avail: number };
-    strike: { liqPrice: number; balance: number };
-    cb:     { liqPrice: number; balance: number };
-  };
-}
-
 /**
  * The one seam that unifies C-safe (scaled from the shared snapshot) and C-trusted (live-derived from
- * the hydrated store) into a single render-ready shape. All hooks run unconditionally before the branch.
+ * the hydrated store) into a single render-ready shape. All store reads run UNCONDITIONALLY before the pick;
+ * `injectedSafeSnap` (owner preview) wins over the store snap — a SafeSnapshot forces the safe path, `null`
+ * forces the trusted live-derive, `undefined` (viewer device) falls back to the store. Pure core =
+ * computeViewerSafety (safetyView.ts).
  */
-function useViewerSafety(): ViewerSafetyResult {
-  const safeSnap  = useStore((s) => s.viewerSafeSnapshot);
+export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerSafetyResult {
+  const storeSnap = useStore((s) => s.viewerSafeSnapshot);
   const livePrice = useStore((s) => s.btcPrice);                    // live via AppShell's useBtcPrice()
   const inputs    = useStore(useShallow(selectSafetyViewInputs));   // trusted path (subscribed either way; harmless in safe mode)
-  if (safeSnap) {
-    const v = scaleSafetyView(safeSnap, livePrice);
-    return {
-      mode: 'safe',
-      capacityUsed: v.capacityUsed, creditLevel: v.creditLevel,
-      strikeLtv: v.strikeLtv, strikeLevel: v.strikeLevel,
-      cbLtv: v.cbLtv, cbLevel: v.cbLevel,
-      hasCbLoan: safeSnap.hasCbLoan, overall: v.overall,
-      strikeDropPct: v.strikeDropPct, figures: null,
-    };
-  }
-  const view = deriveSafetyView(inputs);
-  const overall = deriveViewerOverall(view, inputs.hasCbLoan);
-  const strikeLiqLtv = inputs.strikeLiquidationLtvPct / 100;
-  const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - view.strikeLtv / strikeLiqLtv) : 0;
-  const availCredit = inputs.creditLine - inputs.advisorActualBlocBalance;
-  const strikeLiqPrice = inputs.currentBtcHeld > 0
-    ? inputs.advisorActualBlocBalance / (inputs.currentBtcHeld * strikeLiqLtv)   // bloc / (btcHeld × liqLtv)
-    : 0;
-  return {
-    mode: 'trusted',
-    capacityUsed: view.capacityUsed, creditLevel: view.creditLevel,
-    strikeLtv: view.strikeLtv, strikeLevel: view.strikeLevel,
-    cbLtv: view.cbLtv, cbLevel: view.cbLevel,
-    hasCbLoan: inputs.hasCbLoan, overall, strikeDropPct,
-    figures: {
-      credit: { used: inputs.advisorActualBlocBalance, total: inputs.creditLine, avail: availCredit },
-      strike: { liqPrice: strikeLiqPrice, balance: inputs.advisorActualBlocBalance },
-      cb:     { liqPrice: view.cbLiqPrice, balance: view.accruedBalance },
-    },
-  };
+  const safeSnap  = injectedSafeSnap !== undefined ? injectedSafeSnap : storeSnap;
+  return computeViewerSafety(safeSnap, livePrice, inputs);
 }
 
-export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
-  const s = useViewerSafety();
+export function ViewerHomeView({ onOpenSettings, previewSafeSnap, hideSettingsNav }: ViewerHomeViewProps) {
+  const s = useViewerSafety(previewSafeSnap);
   const lastSync = useStore((st) => st.viewerLastSyncAt);
   const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
   const grantedRoles = useGrantedRoles();                       // V5 — dormant (renders nothing today)
@@ -148,9 +110,11 @@ export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
             <span className={styles.brandName}>Personal ₿LOC</span>
           </div>
           <RolePill roles={grantedRoles} />
-          <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">
-            ⚙
-          </button>
+          {!hideSettingsNav && (
+            <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">
+              ⚙
+            </button>
+          )}
         </header>
 
         {/* Greeting */}
@@ -198,9 +162,11 @@ export function ViewerHomeView({ onOpenSettings }: ViewerHomeViewProps) {
         <button className={`${styles.navBtn} ${styles.navActive}`} aria-current="page">
           Home
         </button>
-        <button className={styles.navBtn} onClick={onOpenSettings}>
-          Settings
-        </button>
+        {!hideSettingsNav && (
+          <button className={styles.navBtn} onClick={onOpenSettings}>
+            Settings
+          </button>
+        )}
       </nav>
     </div>
   );

@@ -420,6 +420,8 @@ export interface StoreState {
   // to the live price. Set in applyViewerEvent on a safe-mode decrypt; cleared on trusted/revoke.
   viewerSafeSnapshot:    SafeSnapshot | null;
   setViewerSafeSnapshot: (v: SafeSnapshot | null) => void;
+  viewerPreview:         boolean;   // owner-only "Preview as viewer" — transient, NEVER persisted (must not boot into preview)
+  setViewerPreview:      (v: boolean) => void;
   // Transient (NOT persisted) — true once the in-memory store-encryption key holder (storeCrypto) is populated.
   // AppShell gates AppUnlockGate on this. Mirrors viewerUnlocked.
   storeUnlocked:         boolean;
@@ -812,7 +814,7 @@ function monthOf(ev: DayEvent | undefined): number | null {
 // Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
 // self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
 export function partializeState(state: StoreState) {
-  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
   return rest;
 }
 
@@ -1311,6 +1313,7 @@ export const useStore = create<StoreState>()(
   viewerDataLoaded:    false,
   viewerLastSyncAt:    null,
   viewerSafeSnapshot:  null,
+  viewerPreview:       false,
   storeUnlocked:       false,
   // 3a.4: write through to the standalone GATE_* keys (outside the encrypted blob) — every mutation of these gate
   // fields keeps the cold-start bootstrap copy in sync; logout/disconnect call these with false/null → removeItem.
@@ -1344,6 +1347,7 @@ export const useStore = create<StoreState>()(
   setViewerDataLoaded:   (v) => set({ viewerDataLoaded: v }),    // transient (not persisted)
   setViewerLastSyncAt:   (v) => set({ viewerLastSyncAt: v }),    // transient (not persisted)
   setViewerSafeSnapshot: (v) => set({ viewerSafeSnapshot: v }),  // transient (not persisted) — Viewer V2
+  setViewerPreview: (v) => set({ viewerPreview: v }),  // transient (not persisted) — owner preview toggle
   setStoreUnlocked:      (v) => set({ storeUnlocked: v }),       // transient (not persisted)
   // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
   // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally

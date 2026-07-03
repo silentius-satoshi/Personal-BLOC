@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore, buildSettingsPayload, buildViewerSnapshotPayload } from '../useStore';
 import { deriveCbCollateral } from '../../simulation/logUtils';
+import { previewSafeSnapFromPayload } from '../../simulation/safetyView';
 
 const LEVELS = ['safe', 'watch', 'act'];
 
@@ -157,5 +158,26 @@ describe('viewer snapshot builders', () => {
     // reset for other suites
     useStore.setState({ viewerPrivacyTrusted: false });
     useStore.getState().setViewerDisplayName(null);
+  });
+
+  // Owner "Preview as viewer" — the SafeSnapshot the preview injects can NEVER show more than the wire payload
+  // (it IS the safe branch of buildViewerSnapshotPayload). Trusted mode → null (preview uses live-derive).
+  it('previewSafeSnapFromPayload: safe payload → SafeSnapshot deep-equals the payload safe fields; trusted → null', () => {
+    useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: true } as never);
+    const payload = buildViewerSnapshotPayload(useStore.getState());
+    expect(payload.privacyMode).toBe('safe');
+    const snap = previewSafeSnapFromPayload(payload);
+    expect(snap).toEqual({
+      safety: payload.safety,
+      thresholds: payload.thresholds,
+      btcPriceAtSnapshot: payload.btcPriceAtSnapshot,
+      hasCbLoan: payload.hasCbLoan,
+    });
+
+    useStore.setState({ viewerPrivacyTrusted: true } as never);
+    const trustedPayload = buildViewerSnapshotPayload(useStore.getState());
+    expect(previewSafeSnapFromPayload(trustedPayload)).toBeNull();
+
+    useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: false } as never);
   });
 });

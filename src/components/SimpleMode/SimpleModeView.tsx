@@ -94,6 +94,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const showPlanCbBar           = useStore((s) => s.showPlanCbBar);
 
   const setSimpleMode = useStore((s) => s.setSimpleMode);
+  const setViewerPreview = useStore((s) => s.setViewerPreview);
 
   const setIncome     = useStore((s) => s.setIncome);
   const setExpenses   = useStore((s) => s.setExpenses);
@@ -332,6 +333,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
           <span className={styles.brandName}>Personal ₿LOC</span>
         </div>
         <div className={styles.headerRight}>
+          {!viewerMode && (
+            <button className={styles.settingsBtn} onClick={() => setViewerPreview(true)} aria-label="Preview as viewer" title="Preview as viewer">👁</button>
+          )}
           <button
             className={styles.modeToggleBtn}
             onClick={() => setSimpleMode(false)}

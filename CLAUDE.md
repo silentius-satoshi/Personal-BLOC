@@ -1496,12 +1496,25 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   `viewerLastSyncAt`, **NO hydrateSettings/records/strike**; trusted/absent → clear the safe snapshot, then
   the existing full hydrate. **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
   (partialize-excluded, cleared in `clearViewerData`).
-- **Render (`ViewerHomeView.tsx`):** one `useViewerSafety()` seam unifies both modes into a render shape —
-  safe → `scaleSafetyView(viewerSafeSnapshot, liveBtcPrice)` (live via AppShell's `useBtcPrice()`);
-  trusted → `deriveSafetyView(selectSafetyViewInputs(s))` + computed figures. Gauges/pill/badges identical;
-  only the SUB-LINES differ — C-safe = plain V1 language + live drop% ("Safe through a ~N% dip"); C-trusted
-  = real figures (credit "$X of $Y · $Z available"; Strike/CB "Liq at ~$P · $B balance"). CB card gates on
-  the seam's `hasCbLoan` (safe mode's store `hasCbLoan` is a seed default — comes from the snapshot).
+- **Render (`ViewerHomeView.tsx`):** one `useViewerSafety(injectedSafeSnap?)` seam unifies both modes into a
+  render shape — safe → `scaleSafetyView(viewerSafeSnapshot, liveBtcPrice)` (live via AppShell's
+  `useBtcPrice()`); trusted → `deriveSafetyView(selectSafetyViewInputs(s))` + computed figures. Gauges/pill/
+  badges identical; only the SUB-LINES differ — C-safe = plain V1 language + live drop% ("Safe through a ~N%
+  dip"); C-trusted = real figures (credit "$X of $Y · $Z available"; Strike/CB "Liq at ~$P · $B balance"). CB
+  card gates on the seam's `hasCbLoan` (safe mode's store `hasCbLoan` is a seed default — comes from the
+  snapshot). The hook's PURE core is **`computeViewerSafety(safeSnap, livePrice, inputs)`** (safetyView.ts,
+  node-tested); the hook is just the three unconditional store reads + `injectedSafeSnap !== undefined ?
+  injectedSafeSnap : storeSnap` pick.
+- **Owner "Preview as viewer" (`viewerPreview`, transient/NEVER persisted — partialize-stripped, so the app
+  can't boot into preview):** an owner-only 👁 button in the Daily + Monthly headers (gated `!viewerMode`,
+  always shown — previewing before granting access is legitimate) sets `viewerPreview`; AppShell's owner
+  simple-mode branch renders `<ViewerPreview/>` instead of the Daily/Monthly fork. `ViewerPreview` renders the
+  REAL `ViewerHomeView` from the ACTUAL `buildViewerSnapshotPayload` — **safe mode injects a locally-built
+  `SafeSnapshot`** (`previewSafeSnapFromPayload`, mirrors viewerSync's construction incl. `hasCbLoan ?? false`)
+  as `previewSafeSnap`; **trusted mode passes `null`** → the live-derive path (what a trusted viewer's hydrated
+  store shows). `hideSettingsNav` hides the settings affordances; a sticky PREVIEW top bar names the mode +
+  "✕ Exit preview". **Preview fidelity ≡ wire payload by construction** (the injected snap IS the safe branch of
+  the payload — pinned by a deep-equal test). No sync/publish/persistence/schema change; no store bump.
 - **Sharing page extracted → `components/Settings/SharingPage.tsx`** (+ `.module.css`, the FIRST delegated
   subpage; SettingsMain renders `<SharingPage/>` for `settingsPage==='sharing'`, owner-only). YOUR SHARE
   CODE (owner npub + copy) + YOUR VIEWER (list-ready grant card: label + npub + Active dot + the "Show real
@@ -2241,7 +2254,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-520 tests — `npx vitest run` before every commit.
+523 tests — `npx vitest run` before every commit.
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)

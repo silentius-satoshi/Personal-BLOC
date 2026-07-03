@@ -49,6 +49,7 @@ import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
+import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
 import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
@@ -200,6 +201,7 @@ export function AppShell() {
 
   const isOwner = isOwnerPubkey(nostrPubkey, import.meta.env.VITE_OWNER_PUBKEY as string | undefined);
   const viewerMode    = useStore((s) => s.viewerMode);
+  const viewerPreview = useStore((s) => s.viewerPreview);   // owner "Preview as viewer" (transient)
   const viewerNpubSelf = useStore((s) => s.viewerWriterPubkey);   // the owner this viewer follows (for the banner)
   const viewerKeyWrapped = useStore((s) => s.viewerKeyWrapped);   // Phase 3 — wrapped-at-rest viewer key
   const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
@@ -348,7 +350,9 @@ export function AppShell() {
         </div>
       ) : simpleMode && activeTab !== 'settings' ? (
         <div className={styles.simpleModeRoot}>
-          {simpleView === 'daily'
+          {viewerPreview && !viewerMode
+            ? <ViewerPreview />
+            : simpleView === 'daily'
             ? <DailyModeView
                 onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
                 onOpenAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}

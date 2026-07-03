@@ -5,6 +5,7 @@ import {
   selectSafetyViewInputs,
   buildSafeSafety,
   scaleSafetyView,
+  computeViewerSafety,
   CREDIT_WARN_USED,
   CREDIT_ACT_USED,
   type SafetyViewInputs,
@@ -244,5 +245,41 @@ describe('Viewer V2 — scaleSafetyView (live price-scaling; exact between publi
   it('!hasCbLoan → cbLevel forced safe regardless of scaled cbLtv', () => {
     const v = scaleSafetyView({ ...snap, hasCbLoan: false }, 50_000);
     expect(v.cbLevel).toBe('safe');
+  });
+});
+
+// Owner "Preview as viewer" — the pure seam ViewerHomeView's useViewerSafety delegates to. A SafeSnapshot
+// forces the C-safe scaled path (figures null); null forces the C-trusted live-derive (real figures).
+describe('computeViewerSafety (viewer render seam)', () => {
+  const snap: SafeSnapshot = {
+    safety: buildSafeSafety(deriveSafetyView({ ...base, advisorActualBlocBalance: 5_000 }), false),
+    thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 75, cbLiqFrac: 0.86 },
+    btcPriceAtSnapshot: 100_000,
+    hasCbLoan: false,
+  };
+
+  it('injected SafeSnapshot → mode safe, figures null, values == scaleSafetyView', () => {
+    const r = computeViewerSafety(snap, 90_000, base);
+    const scaled = scaleSafetyView(snap, 90_000);
+    expect(r.mode).toBe('safe');
+    expect(r.figures).toBeNull();
+    expect(r.strikeLtv).toBeCloseTo(scaled.strikeLtv);
+    expect(r.cbLtv).toBeCloseTo(scaled.cbLtv);
+    expect(r.overall).toBe(scaled.overall);
+    expect(r.strikeDropPct).toBeCloseTo(scaled.strikeDropPct);
+    expect(r.hasCbLoan).toBe(false);   // from the snap, not the inputs
+  });
+
+  it('null snap → mode trusted, live-derive from inputs (figures populated)', () => {
+    const inputs = { ...base, advisorActualBlocBalance: 5_000 };
+    const r = computeViewerSafety(null, 100_000, inputs);
+    const view = deriveSafetyView(inputs);
+    expect(r.mode).toBe('trusted');
+    expect(r.figures).not.toBeNull();
+    expect(r.strikeLtv).toBeCloseTo(view.strikeLtv);
+    expect(r.overall).toBe(deriveViewerOverall(view, inputs.hasCbLoan));
+    expect(r.figures!.credit.used).toBe(5_000);
+    expect(r.figures!.credit.total).toBe(inputs.creditLine);
+    expect(r.figures!.credit.avail).toBe(inputs.creditLine - 5_000);
   });
 });

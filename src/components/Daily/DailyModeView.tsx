@@ -87,6 +87,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const monthlyLog                  = useStore((s) => s.monthlyLog);
   const dayLog                      = useStore((s) => s.dayLog);
   const setSimpleMode               = useStore((s) => s.setSimpleMode);
+  const setViewerPreview            = useStore((s) => s.setViewerPreview);
   const viewerMode                  = useStore((s) => s.viewerMode);
   const confirmMonth                = useStore((s) => s.confirmMonth);
   // §2/§2b — sign-off details context
@@ -219,6 +220,9 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             <span className={styles.brandName}>Personal ₿LOC</span>
           </div>
           <div className={styles.hbtns}>
+            {!viewerMode && (
+              <button className={styles.iconBtn} onClick={() => setViewerPreview(true)} aria-label="Preview as viewer" title="Preview as viewer">👁</button>
+            )}
             <button className={styles.iconBtn} onClick={() => setSimpleMode(false)} aria-label="Switch to full app">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
                 <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
