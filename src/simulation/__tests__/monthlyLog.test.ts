@@ -54,6 +54,26 @@ describe('deriveAdvisorStart', () => {
     const result = deriveAdvisorStart(log, 0, 0, 12, 0, 0);
     expect(result.startingMonth).toBe(12);
   });
+
+  // HOTFIX — a living UNCONFIRMED daily rollup (one-ledger's normal current-month state) must NOT advance the start.
+  it('REGRESSION PIN — confirmed M1 + unconfirmed living M2 → anchors on M1 (month 2, M1 stocks), ignores M2', () => {
+    const log = [
+      makeEntry(1, { confirmed: true, strikeBal: 3500, btcHeld: 0.80 }),
+      makeEntry(2, { confirmed: false, strikeBal: 7000, btcHeld: 0.95 }),   // living unconfirmed — must be ignored
+    ];
+    const result = deriveAdvisorStart(log, 0.70, 0, /*currentStrategyMonth*/ 2, 0, /*monthStartBalance*/ 999);
+    expect(result.startingMonth).toBe(2);              // last CONFIRMED (M1) + 1 — NOT M2+1=3
+    expect(result.startingBlocBalance).toBe(3500);     // M1's stocks, NOT M2's 7000
+    expect(result.startingBtcHeld).toBeCloseTo(0.80);  // M1's btcHeld, NOT M2's 0.95
+  });
+
+  it('all entries unconfirmed → the empty branch (monthStartBalance base, startingMonth = currentStrategyMonth)', () => {
+    const log = [makeEntry(1, { confirmed: false }), makeEntry(2, { confirmed: false })];
+    const result = deriveAdvisorStart(log, 0.70, 0, /*current*/ 2, 0, /*monthStart*/ 5000);
+    expect(result.startingBlocBalance).toBe(5000);
+    expect(result.startingMonth).toBe(2);
+    expect(result.startingBtcHeld).toBeCloseTo(0.70);
+  });
 });
 
 describe('upsertEntry', () => {

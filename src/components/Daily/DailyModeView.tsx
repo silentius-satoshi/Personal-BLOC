@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { runAdvisor, getCurrentStrategyMonth, getNdpStatus } from '../../simulation/runAdvisor';
+import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
 import { deriveAdvisorStart, bucketEventToMonth } from '../../simulation/logUtils';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { deriveForMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
@@ -458,7 +458,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                 {summaryText && <div className={styles.pbNotebox}>{summaryText}</div>}
               </>
             ) : (
-              <div className={styles.empty}>Strategy complete — no plan for this month.</div>
+              <div className={styles.empty}>{isStrategyComplete(advisorStartDate) ? 'Strategy complete — no plan for this month.' : 'No plan for this month.'}</div>
             )}
           </div>
 

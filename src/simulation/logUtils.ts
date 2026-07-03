@@ -26,14 +26,18 @@ export function deriveAdvisorStart(
   startingBtcHeld:     number;
   startingMonth:       number;
 } {
-  if (monthlyLog.length === 0) {
+  // Anchor on CONFIRMED entries only — under one-ledger the current month is a LIVING unconfirmed daily rollup
+  // (confirmed===false); it must NOT advance the projection start past itself. `confirmed !== false` keeps legacy/
+  // undefined (=confirmed) + signed-off (true) entries and excludes only the living unconfirmed month.
+  const confirmed = monthlyLog.filter((e) => e.confirmed !== false);
+  if (confirmed.length === 0) {
     return {
       startingBlocBalance: monthStartBalance,   // start-of-month base; live-drawn (advisorActualBlocBalance) is a separate concept
       startingBtcHeld:     advisorActualBtcHeld + pendingCollateralAdjustment,
       startingMonth:       currentStrategyMonth,
     };
   }
-  const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
+  const sorted = [...confirmed].sort((a, b) => a.month - b.month);
   const last = sorted[sorted.length - 1];
   return {
     startingBlocBalance: last.strikeBal,
