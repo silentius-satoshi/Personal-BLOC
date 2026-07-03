@@ -1,8 +1,10 @@
 // Pure date model for the Daily Mode calendar (P4c-1a). Standalone — NO store/UI/price dependency
 // (only imports the pure bucketEventToMonth helper + the DayEvent type, mirroring dailyView.ts).
 //
-// CRITICAL: the month range uses bucketEventToMonth's STRATEGY-month definition (~30.4375 days from
-// advisorStartDate) — NOT calendar months — so a day's cell and the events bucketed to that month agree.
+// CRITICAL: the month range is defined by bucketEventToMonth's CALENDAR-ANNIVERSARY strategy month
+// (Month N = [start+(N−1) months, start+N months)) — so a day's cell and the events bucketed to that month
+// agree. This is an enumerate-AND-FILTER: we scan a generous day-offset window and keep only dates the (fixed)
+// bucketEventToMonth assigns to `month` — the filter is authoritative; STRATEGY_MONTH_DAYS only SIZES the scan.
 // All date math is UTC-based: bucketEventToMonth parses 'yyyy-mm-dd' via new Date(iso) = UTC midnight, so
 // we enumerate via getTime() + N*86400000, format back with toISOString().split('T')[0], and derive the
 // weekday via getUTCDay() (getDay() would drift a day in tz-behind-UTC locales).
@@ -19,6 +21,9 @@ export interface DayCell {
 }
 
 const DAY_MS = 86_400_000;
+// Scan-window heuristic ONLY (NOT the month definition — that's bucketEventToMonth's calendar anniversary).
+// Average days/month; the ±6 margins below make the window comfortably CONTAIN the true 28–31-day calendar
+// range for every month (the filter then keeps exactly the right dates).
 const STRATEGY_MONTH_DAYS = 30.4375;
 
 // ISO 'yyyy-mm-dd' → ms at UTC midnight (matches bucketEventToMonth's new Date(iso) parse).
@@ -29,17 +34,18 @@ const utcMsToIso = (ms: number): string => new Date(ms).toISOString().split('T')
 const utcWeekdayMon0 = (iso: string): number => (new Date(iso).getUTCDay() + 6) % 7;
 
 /**
- * Ascending ISO dates d for which bucketEventToMonth(d, advisorStartDate) === month.
- * Enumerates a safe day-offset window around [(month-1)*30.4375, month*30.4375) and keeps only dates that
- * bucket to `month` — the bucket-filter self-corrects the boundaries; iteration order gives ascending +
- * contiguous. A strategy month spans ~30–31 calendar days.
+ * Ascending ISO dates d for which bucketEventToMonth(d, advisorStartDate) === month (a CALENDAR-anniversary
+ * month). Enumerates a generous day-offset window around the naive [(month-1)*avg, month*avg) estimate and
+ * keeps only dates that bucket to `month` — the bucket-filter is authoritative + self-corrects the boundaries;
+ * iteration order gives ascending + contiguous. A strategy month spans 28–31 calendar days.
  */
 export function monthDateRange(advisorStartDate: string, month: number): string[] {
   const startMs = isoToUtcMs(advisorStartDate);
   // Clamp the low bound to 0 — never enumerate before advisorStartDate. bucketEventToMonth clamps to min 1,
   // so pre-start days would otherwise also bucket to month 1 and leak in (month 1 must begin exactly at start).
-  const loOffset = Math.max(0, Math.floor((month - 1) * STRATEGY_MONTH_DAYS) - 2);
-  const hiOffset = Math.ceil(month * STRATEGY_MONTH_DAYS) + 2;
+  // ±6 margins keep the window wider than any calendar-vs-average drift so it always contains the true range.
+  const loOffset = Math.max(0, Math.floor((month - 1) * STRATEGY_MONTH_DAYS) - 6);
+  const hiOffset = Math.ceil(month * STRATEGY_MONTH_DAYS) + 6;
   const out: string[] = [];
   for (let off = loOffset; off <= hiOffset; off++) {
     const iso = utcMsToIso(startMs + off * DAY_MS);

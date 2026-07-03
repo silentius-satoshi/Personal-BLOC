@@ -79,6 +79,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
+  const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
   const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
@@ -518,6 +519,13 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
               // (an external minimum IS a non-draw payment); roll → stamp when an NDP was recorded.
               if (blocMinPaymentSource === 'income') { setBlocStatementMinimum(null); setNdpLastPaidDate(todayLocalISO()); }
               else if (extras.ndpPaid !== undefined) { setNdpLastPaidDate(todayLocalISO()); }
+              // Carry: the signed month's ENDING Strike balance is the NEXT month's start base — ONLY when the month
+              // just signed is immediately before the active month (a past-month sign-off via the ‹›nav must not
+              // clobber the current base). Narrowed to a number: a provisional month may leave strikeBal absent.
+              if (safeViewedMonth === currentMonth - 1) {
+                const e = useStore.getState().monthlyLog.find((m) => m.month === safeViewedMonth);
+                if (e && typeof e.strikeBal === 'number') setAdvisorMonthStartBalance(e.strikeBal);
+              }
               setReviewOpen(false);
             }}
             onAddReading={() => { setReviewOpen(false); setEditEvent(undefined); setSheetInitialType('setBalance'); setSheetOpen(true); }}

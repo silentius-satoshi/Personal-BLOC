@@ -1,12 +1,18 @@
+import { bucketEventToMonth, strategyMonthIndex } from './logUtils';   // calendar-anniversary bucketing (cycle-free: logUtils → types only)
+import { todayLocalISO } from '../utils/format';
+
 export type AdvisorTier = 1 | 2 | 3 | 4;
 
+// "Today" = the user's LOCAL calendar day, bucketed by the SAME calendar-anniversary function as every event
+// date (both yyyy-mm-dd parsed UTC-midnight → compared by Y/M/D; no local/UTC mixing). Replaced Date.now() +
+// the old floor(elapsedDays/30.4375) day-arithmetic — one clock now, shared with bucketEventToMonth.
 export function getCurrentStrategyMonth(startDate: string): number {
-  const elapsed = Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375));
-  return Math.min(Math.max(1, elapsed + 1), 12);
+  return bucketEventToMonth(todayLocalISO(), startDate);
 }
 
+// Complete once past month 12 — the UNclamped index (bucketEventToMonth saturates at 12; the check needs >12).
 export function isStrategyComplete(startDate: string): boolean {
-  return Math.floor((Date.now() - new Date(startDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)) >= 12;
+  return strategyMonthIndex(todayLocalISO(), startDate) > 12;
 }
 
 export function getTier(cbLtv: number): AdvisorTier {

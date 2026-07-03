@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import type { DayEvent } from '../types';
-import { bucketEventToMonth, rollupMonth, deriveCbCollateral } from '../logUtils';
+import type { DayEvent, MonthlyLogEntry } from '../types';
+import { bucketEventToMonth, strategyMonthIndex, rollupMonth, deriveCbCollateral,
+  strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth } from '../logUtils';
 
 // Fixed absolute dates so bucketing is deterministic (bucketEventToMonth uses the event date, never Date.now()).
 const START = '2025-01-01';
@@ -29,6 +30,65 @@ describe('bucketEventToMonth', () => {
   it('clamps to 1–12', () => {
     expect(bucketEventToMonth('2020-01-01', START)).toBe(1);   // before start → clamped up to 1
     expect(bucketEventToMonth('2030-01-01', START)).toBe(12);  // far future → clamped to 12
+  });
+});
+
+// Calendar-anniversary bucketing — the fix. Month N = [start+(N−1) months, start+N months). The old
+// 30.4375-day arithmetic pulled boundary days into the wrong month (Jun-1 start → Jul 1 = 30 days = Month 1).
+describe('bucketEventToMonth — calendar anniversary (the fix)', () => {
+  const JUN = '2026-06-01';
+  it('a Jun-1 start: Jun 30 = M1, Jul 1 = M2, Jul 31 = M2, Aug 1 = M3', () => {
+    expect(bucketEventToMonth('2026-06-01', JUN)).toBe(1);
+    expect(bucketEventToMonth('2026-06-30', JUN)).toBe(1);   // last day before the Jul anniversary
+    expect(bucketEventToMonth('2026-07-01', JUN)).toBe(2);   // ← the bug: was Month 1 under 30.4375
+    expect(bucketEventToMonth('2026-07-31', JUN)).toBe(2);
+    expect(bucketEventToMonth('2026-08-01', JUN)).toBe(3);
+  });
+
+  it('short-month clamp — a Jan-31 start: Feb 28 = M2, Mar 1 = M2, Mar 31 = M3', () => {
+    const JAN31 = '2026-01-31';
+    expect(bucketEventToMonth('2026-02-28', JAN31)).toBe(2);   // Feb has no 31st → anniversary clamps to Feb 28
+    expect(bucketEventToMonth('2026-03-01', JAN31)).toBe(2);   // still before the Mar 31 anniversary
+    expect(bucketEventToMonth('2026-03-31', JAN31)).toBe(3);
+  });
+
+  it('strategyMonthIndex is UNclamped (the completion signal): pre-start <1, past-end >12', () => {
+    expect(strategyMonthIndex('2026-05-01', JUN)).toBeLessThan(1);       // before start
+    expect(strategyMonthIndex('2027-06-01', JUN)).toBe(13);              // exactly start + 12 calendar months → complete
+    expect(strategyMonthIndex('2027-05-31', JUN)).toBe(12);              // still Month 12 (last day)
+    expect(bucketEventToMonth('2027-06-01', JUN)).toBe(12);              // the bucket clamps the same date to 12
+  });
+});
+
+describe('strikeCollateralDelta', () => {
+  const dep = (amount: number, target: 'strike' | 'cb', date: string): DayEvent => ({ id: id(), date, ts: ++seq, kind: 'deposit', amount, target });
+  const wd  = (amount: number, target: 'strike' | 'cb', date: string): DayEvent => ({ id: id(), date, ts: ++seq, kind: 'withdraw', amount, target });
+  it('sums strike deposit(+)/withdraw(−) in the month; ignores target:cb + non-collateral; honors the bucket fn', () => {
+    const log = [dep(0.2, 'strike', M1), wd(0.05, 'strike', M1), dep(1, 'cb', M1), draw(500, M1)];
+    expect(strikeCollateralDelta(log, START, 1)).toBeCloseTo(0.15);
+    expect(strikeCollateralDelta(log, START, 2)).toBe(0);
+    // a boundary strike deposit that the two bucket fns place in different months
+    const boundary = [dep(0.3, 'strike', '2026-07-01')];
+    expect(strikeCollateralDelta(boundary, '2026-06-01', 2, bucketEventToMonth)).toBeCloseTo(0.3);   // calendar → M2
+    expect(strikeCollateralDelta(boundary, '2026-06-01', 2, legacyBucketEventToMonth)).toBe(0);      // legacy → M1
+  });
+});
+
+describe('sameRollupFields', () => {
+  const base = (over: Partial<MonthlyLogEntry> = {}): MonthlyLogEntry => ({
+    month: 1, date: START, btcBought: 0, income: 0, paydown: 0, strikeBal: 5000, strikeLtv: 0.1,
+    loggedAt: 1, btcHeld: 1, expensesActual: 1000, ...over,
+  });
+  it('equal when rollup fields match (0 ≡ absent); undefined entry ↔ empty fresh', () => {
+    expect(sameRollupFields(base(), { expensesActual: 1000, strikeBal: 5000, strikeLtv: 0.1 })).toBe(true);
+    expect(sameRollupFields(base({ btcBought: 0 }), { expensesActual: 1000, strikeBal: 5000, strikeLtv: 0.1 })).toBe(true);   // btcBought 0 ≡ absent
+    expect(sameRollupFields(undefined, {})).toBe(true);
+    expect(sameRollupFields(undefined, { expensesActual: 5 })).toBe(false);
+  });
+  it('differs on a changed amount / stock / provisional', () => {
+    expect(sameRollupFields(base(), { expensesActual: 999, strikeBal: 5000, strikeLtv: 0.1 })).toBe(false);
+    expect(sameRollupFields(base(), { expensesActual: 1000, strikeBal: 4000, strikeLtv: 0.1 })).toBe(false);
+    expect(sameRollupFields(base(), { expensesActual: 1000, strikeBal: 5000, strikeLtv: 0.1, provisional: true })).toBe(false);
   });
 });
 

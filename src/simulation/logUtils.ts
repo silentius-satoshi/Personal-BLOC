@@ -91,13 +91,25 @@ export function upsertEntry(
 // --- Daily Mode (P1) — pure rollup of granular DayEvents into a strategy-month entry ---
 
 /**
- * Map a calendar date to its strategy-month index (1–12). Replicates getCurrentStrategyMonth's formula
- * (runAdvisor.ts) but using the EVENT date instead of Date.now() — getCurrentStrategyMonth is Date.now()-bound and
- * can't bucket an arbitrary date, so the math is duplicated here to keep logUtils import-standalone (no cross-sim imports).
+ * UNclamped 1-based strategy-month index (may be <1 pre-start or >12 past-end) — CALENDAR-ANNIVERSARY
+ * stepping from advisorStartDate (UTC). Month N spans [start+(N−1) months, start+N months). Day-of-month
+ * clamps for 29/30/31 starts (start Jan 31 → the Feb anniversary is Feb 28/29). Both parsed at UTC-midnight
+ * (the codebase's date-only-ISO convention; mirrors strategyMonthDate). THE single source both the clamped
+ * bucket AND the >12 completion check use — replaced the old floor(elapsedDays/30.4375) day-arithmetic, which
+ * pulled boundary days into the wrong month (e.g. a Jun-1 start bucketed Jul 1 = 30 elapsed days into Month 1).
  */
+export function strategyMonthIndex(date: string, advisorStartDate: string): number {
+  const d = new Date(date), s = new Date(advisorStartDate);            // both UTC-midnight
+  let m = (d.getUTCFullYear() - s.getUTCFullYear()) * 12 + (d.getUTCMonth() - s.getUTCMonth());
+  const daysInDMonth   = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate();
+  const anniversaryDay = Math.min(s.getUTCDate(), daysInDMonth);       // clamp start-day for short months
+  if (d.getUTCDate() < anniversaryDay) m -= 1;                          // before this month's anniversary
+  return m + 1;
+}
+
+/** Strategy month for a date, clamped to 1..12. */
 export function bucketEventToMonth(date: string, advisorStartDate: string): number {
-  const elapsed = Math.floor((new Date(date).getTime() - new Date(advisorStartDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375));
-  return Math.min(Math.max(1, elapsed + 1), 12);
+  return Math.min(Math.max(1, strategyMonthIndex(date, advisorStartDate)), 12);
 }
 
 /**
@@ -117,7 +129,7 @@ export function rollupMonth(
 ): { entry: Partial<MonthlyLogEntry>; collateralDelta: number } {
   const inMonth = dayLog.filter((e) => bucketEventToMonth(e.date, advisorStartDate) === month);
   const entry: Partial<MonthlyLogEntry> = {};
-  let collateralDelta = 0;
+  const collateralDelta = strikeCollateralDelta(dayLog, advisorStartDate, month);   // single definition (reused by the reconcile)
   let hasFlow = false;
 
   for (const ev of inMonth) {
@@ -145,10 +157,7 @@ export function rollupMonth(
         break;
       case 'deposit':
       case 'withdraw':
-        if (ev.target === 'strike') {
-          collateralDelta += ev.kind === 'withdraw' ? -ev.amount : ev.amount;   // amount = magnitude; sign by kind
-          hasFlow = true;
-        }
+        if (ev.target === 'strike') hasFlow = true;   // collateralDelta summed once via strikeCollateralDelta (above)
         // target:'cb' → journal-only, ignored
         break;
       // cbCollateralReading → ignored by rollupMonth; balanceReading → handled below
@@ -175,6 +184,76 @@ export function rollupMonth(
 
   return { entry, collateralDelta };
 }
+
+/**
+ * Net target:'strike' collateral BTC for a month (deposit +, withdraw −), bucketed by `bucketFn`. PURE.
+ * The SINGLE definition of the strike-collateral summation — rollupMonth uses it (default bucket), and the
+ * one-shot reconcile compares it under the new vs. the legacy bucket to catch a boundary collateral move
+ * that no rollup-entry field would reveal (collateralDelta is returned separately from the entry).
+ */
+export function strikeCollateralDelta(
+  dayLog: DayEvent[],
+  advisorStartDate: string,
+  month: number,
+  bucketFn: (date: string, advisorStartDate: string) => number = bucketEventToMonth,
+): number {
+  let delta = 0;
+  for (const ev of dayLog) {
+    if ((ev.kind === 'deposit' || ev.kind === 'withdraw') && ev.target === 'strike'
+        && bucketFn(ev.date, advisorStartDate) === month) {
+      delta += ev.kind === 'withdraw' ? -ev.amount : ev.amount;   // amount = magnitude; sign by kind
+    }
+  }
+  return delta;
+}
+
+/**
+ * The prior strategy-month's LAST balanceReading stocks (by ts) — the carry-forward source for rollupMonth's
+ * provisional path. Extracted so the store's rerollMonth AND the reconcile's diff compute identical priorStocks.
+ */
+export function priorStocksForMonth(
+  dayLog: DayEvent[],
+  advisorStartDate: string,
+  month: number,
+): { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number } | undefined {
+  const priorReadings = dayLog
+    .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
+      e.kind === 'balanceReading' && bucketEventToMonth(e.date, advisorStartDate) === month - 1)
+    .sort((a, b) => a.ts - b.ts);
+  const pr = priorReadings.length ? priorReadings[priorReadings.length - 1].reading : undefined;
+  return pr
+    ? { strikeBal: pr.strikeBal, strikeLtv: pr.strikeLtv, cbBal: pr.cbBal, cbLtv: pr.cbLtv, cbCollateral: pr.cbCollateral }
+    : undefined;
+}
+
+// The rollup-owned keys a re-roll can change (everything rollupMonth may emit). btcHeld/collateralAdjustment/
+// source/confirmed/loggedAt/ndpPaid/miningSats are store-owned, NOT compared here.
+const ROLLUP_NUM_KEYS = ['expensesActual', 'btcBought', 'income', 'paydown', 'strikeMinPaid', 'strikeBal', 'strikeLtv', 'cbBal', 'cbLtv'] as const;
+
+/**
+ * True when the stored entry's rollup-owned fields already equal a fresh rollup (numbers normalized 0≡absent;
+ * strikeMinSource/provisional strict). The reconcile's no-op guard — skip unchanged months (preserve confirmed,
+ * no publish). `entry === undefined` ⇒ equal iff the fresh rollup is empty. Does NOT see collateralDelta (that's
+ * compared separately — see strikeCollateralDelta).
+ */
+export function sameRollupFields(entry: MonthlyLogEntry | undefined, fresh: Partial<MonthlyLogEntry>): boolean {
+  if (!entry) return Object.keys(fresh).length === 0;
+  for (const k of ROLLUP_NUM_KEYS) if ((entry[k] ?? 0) !== (fresh[k] ?? 0)) return false;
+  if ((entry.strikeMinSource ?? undefined) !== (fresh.strikeMinSource ?? undefined)) return false;
+  if ((entry.provisional ?? undefined) !== (fresh.provisional ?? undefined)) return false;
+  return true;
+}
+
+/**
+ * ⚠ RECONCILE COMPARISON ONLY — the PRE-FIX floor(elapsedDays/30.4375) bucketing. Exported solely so the
+ * one-shot reconcile can compare old-vs-new strike-collateral attribution. NEVER use this for live bucketing
+ * (use bucketEventToMonth); do not reuse elsewhere.
+ */
+export const legacyBucketEventToMonth = (date: string, advisorStartDate: string): number =>
+  Math.min(
+    Math.max(1, Math.floor((new Date(date).getTime() - new Date(advisorStartDate).getTime()) / (1000 * 60 * 60 * 24 * 30.4375)) + 1),
+    12,
+  );
 
 /**
  * Single derived clock for cbCollateralBtc (Daily Mode P2a, Seam 2). Returns the cbCollateral of the MOST-RECENT event

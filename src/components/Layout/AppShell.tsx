@@ -35,6 +35,7 @@ import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
 import { useViewerSync }          from '../../hooks/useViewerSync';
+import { useMonthBucketReconcile } from '../../hooks/useMonthBucketReconcile';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
 import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
@@ -214,6 +215,7 @@ export function AppShell() {
   useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners (viewer gets Strike from the snapshot)
   useNostrAutoRestore();
   useViewerSync();   // read-only viewer pull/sub — no-op unless viewerMode
+  useMonthBucketReconcile();   // one-shot: re-roll entries stored under the pre-fix bucketing (owner-only, once)
 
   const { triggerSync } = useNostrSync({ live: !viewerMode });   // writer sync OFF in viewerMode (by construction)
 

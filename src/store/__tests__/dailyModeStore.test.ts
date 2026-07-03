@@ -1,7 +1,8 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore, buildSettingsPayload, migrateState, partializeState } from '../useStore';
 import { todayLocalISO, toLocalISO } from '../../utils/format';
-import type { DayEvent } from '../../simulation/types';
+import { rollupMonth, priorStocksForMonth } from '../../simulation/logUtils';
+import type { DayEvent, MonthlyLogEntry } from '../../simulation/types';
 
 // Real store. advisorStartDate = today → events dated today bucket to strategy month 1 = the CURRENT month (so
 // upsertLogEntry graduates pending, exercising the C1 collateral seam). isAuthenticated:false → publishRecordsNow /
@@ -335,5 +336,66 @@ describe('§5b — advisorActualBlocBalanceAsOf synced setting', () => {
     useStore.getState().setAdvisorActualBlocBalance(7777);
     expect(useStore.getState().advisorActualBlocBalance).toBe(7777);
     expect(useStore.getState().advisorActualBlocBalanceAsOf).toBe(TODAY);
+  });
+});
+
+// Calendar-bucket reconcile — re-roll stored entries under the corrected bucketing. START 2026-06-01 so a
+// 2026-07-01 event moves M1 (legacy 30.4375) → M2 (calendar).
+describe('reconcileMonthBuckets', () => {
+  const START = '2026-06-01';
+  const dOn = (date: string): DayEvent => ({ id: id(), date, ts: ts(), kind: 'draw', amount: 1000 });
+  const rOn = (strikeBal: number, date: string): DayEvent => ({ id: id(), date, ts: ts(), kind: 'balanceReading', reading: { strikeBal, strikeLtv: 0.1 } });
+  const depOn = (amount: number, date: string): DayEvent => ({ id: id(), date, ts: ts(), kind: 'deposit', amount, target: 'strike' });
+  const seedEntry = (over: Partial<MonthlyLogEntry>): MonthlyLogEntry => ({
+    month: 1, date: START, btcBought: 0, income: 0, paydown: 0, strikeBal: 0, strikeLtv: 0,
+    loggedAt: 1, updatedAt: 1, btcHeld: BASELINE, expensesActual: 0, source: 'daily', confirmed: false, ...over,
+  });
+
+  it('moves a boundary event M1→M2: empties the stale M1 daily entry, creates M2; second run + flag', () => {
+    const dayLog = [dOn('2026-07-01'), rOn(5000, '2026-07-01')];   // both bucket to M2 under the fix
+    useStore.setState({
+      advisorStartDate: START, dayLog,
+      monthlyLog: [seedEntry({ month: 1, expensesActual: 1000, strikeBal: 5000, strikeLtv: 0.1 })],   // stale: rolled into M1 under 30.4375
+      deletedMonths: {}, isAuthenticated: false, nostrSigner: null, nostrPubkey: '', monthBucketReconcileDone: false,
+    } as never);
+
+    useStore.getState().reconcileMonthBuckets();
+    expect(useStore.getState().monthlyLog.find((e) => e.month === 1)).toBeUndefined();   // emptied
+    const m2 = useStore.getState().monthlyLog.find((e) => e.month === 2)!;
+    expect(m2.expensesActual).toBe(1000);
+    expect(m2.strikeBal).toBe(5000);
+    expect(useStore.getState().monthBucketReconcileDone).toBe(true);
+
+    const snapshot = JSON.stringify(useStore.getState().monthlyLog);
+    useStore.getState().reconcileMonthBuckets();   // idempotent
+    expect(JSON.stringify(useStore.getState().monthlyLog)).toBe(snapshot);
+  });
+
+  it('Correction 1: a boundary STRIKE deposit re-rolls BOTH neighbor months even when sameRollupFields matches', () => {
+    // Draws/readings in Jun & Jul stay put (stable rollup fields); only the Jul-1 deposit moves M1→M2.
+    const dayLog = [dOn('2026-06-15'), rOn(3000, '2026-06-15'), dOn('2026-07-20'), rOn(8000, '2026-07-20'), depOn(0.1, '2026-07-01')];
+    // Seed BOTH entries to EXACTLY the fresh rollup → sameRollupFields is TRUE, so only the collateral-delta check can fire.
+    const fresh1 = rollupMonth(dayLog, 1, START, priorStocksForMonth(dayLog, START, 1)).entry;
+    const fresh2 = rollupMonth(dayLog, 2, START, priorStocksForMonth(dayLog, START, 2)).entry;
+    useStore.setState({
+      advisorStartDate: START, dayLog,
+      monthlyLog: [
+        seedEntry({ month: 1, date: START, ...fresh1 }),
+        seedEntry({ month: 2, date: '2026-07-01', ...fresh2 }),
+      ],
+      deletedMonths: {}, isAuthenticated: false, nostrSigner: null, nostrPubkey: '', monthBucketReconcileDone: false,
+    } as never);
+
+    useStore.getState().reconcileMonthBuckets();
+    const m1 = useStore.getState().monthlyLog.find((e) => e.month === 1)!;
+    const m2 = useStore.getState().monthlyLog.find((e) => e.month === 2)!;
+    expect(m1.updatedAt).not.toBe(1);   // re-rolled despite identical rollup fields — the collateral-delta comparison caught it
+    expect(m2.updatedAt).not.toBe(1);
+  });
+
+  it('monthBucketReconcileDone: default false, rides partialize, NOT in the settings payload', () => {
+    useStore.setState({ monthBucketReconcileDone: false } as never);
+    expect('monthBucketReconcileDone' in partializeState(useStore.getState())).toBe(true);
+    expect('monthBucketReconcileDone' in buildSettingsPayload(useStore.getState())).toBe(false);
   });
 });

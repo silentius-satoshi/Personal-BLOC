@@ -1,10 +1,10 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry, DayEvent } from '../simulation/types';
-import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveReadingAnchors, type ReadingMutationCtx } from '../simulation/logUtils';
+import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveReadingAnchors, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth, type ReadingMutationCtx } from '../simulation/logUtils';
 import { computeStrikeLtv } from '../simulation/strikeCredit';
 import { accruedCbBalance, cbMetrics } from '../simulation/cbMetrics';
-import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // pure, zero imports — no circular dep
+import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // runAdvisor imports logUtils/format (leaves) — still cycle-free
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety, type SafeSnapshot } from '../simulation/safetyView';   // Viewer V2 — pure (safetyView has no runtime dep on this store; type-only StoreState import) → cycle-free
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
@@ -201,6 +201,7 @@ export interface StoreState {
   almanacLiveConsented:  boolean;   // persisted, DEVICE-LOCAL — never synced (one-time consent for the explorer fetch)
   expenseReanchorDismissedAt: number;   // avg dismissed against (0 = not dismissed); persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
   setExpenseReanchorDismissedAt: (v: number) => void;
+  monthBucketReconcileDone: boolean;   // one-shot calendar-bucket reconcile ran; persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;
   setBtcBuyingUnit:      (v: 'btc' | 'sats') => void;
@@ -229,6 +230,7 @@ export interface StoreState {
   deleteLogEntry:     (month: number) => void;
   confirmMonth:       (month: number, extras?: { expensesActual?: number; ndpPaid?: number; strikeMinPaid?: number; strikeMinSource?: 'income' | 'roll' }) => void;   // §2 — sign-off absorbs the confirm (atomic)
   unconfirmMonth:     (month: number) => void;   // §4 — flip confirmed→false, entry + rollup preserved (daily un-sign-off)
+  reconcileMonthBuckets: () => void;   // one-shot: re-roll entries stored under the pre-fix bucketing (diff-guarded)
   setShowMiningInLog: (v: boolean) => void;
 
   // Daily Mode P2a — granular daily journal (LOCAL-only this phase; records sync is P3) + the CB-LTV action pref
@@ -769,15 +771,8 @@ function rerollMonth(month: number): void {
     return;
   }
 
-  // priorStocks = the prior strategy-month's LAST balanceReading by ts.
-  const priorReadings = s.dayLog
-    .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
-      e.kind === 'balanceReading' && bucketEventToMonth(e.date, start) === month - 1)
-    .sort((a, b) => a.ts - b.ts);
-  const pr = priorReadings.length ? priorReadings[priorReadings.length - 1].reading : undefined;
-  const priorStocks = pr
-    ? { strikeBal: pr.strikeBal, strikeLtv: pr.strikeLtv, cbBal: pr.cbBal, cbLtv: pr.cbLtv, cbCollateral: pr.cbCollateral }
-    : undefined;
+  // priorStocks = the prior strategy-month's LAST balanceReading by ts (shared with the reconcile — no drift).
+  const priorStocks = priorStocksForMonth(s.dayLog, start, month);
 
   const { entry: rollupEntry, collateralDelta } = rollupMonth(s.dayLog, month, start, priorStocks);
 
@@ -905,6 +900,8 @@ export function migrateState(persistedState: any): any {
     advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
     // §5b — Strike balance freshness stamp; additive default, no bump (merge-default pattern)
     advisorActualBlocBalanceAsOf: persistedState.advisorActualBlocBalanceAsOf ?? null,
+    // calendar-bucket reconcile flag; default false so the one-shot reconcile runs once for existing installs
+    monthBucketReconcileDone: persistedState.monthBucketReconcileDone ?? false,
     // v19 — Daily Mode P2a: dayLog (LOCAL-only) + cbLtvAction; cbCollateralBtc becomes a derived cache.
     dayLog:               migratedDayLog,
     cbLtvAction:          persistedState.cbLtvAction ?? 'paydown',
@@ -964,6 +961,7 @@ export const useStore = create<StoreState>()(
   almanacLiveEnabled:   false,
   almanacLiveConsented: false,
   expenseReanchorDismissedAt: 0,
+  monthBucketReconcileDone: false,   // rides ...rest (persisted, not synced); false → the one-shot reconcile runs once
   setSimpleMode:         (v) => { set({ simpleMode: v }); useStore.getState().syncSettingsToNostr(); },
   // 3a.4: write through to the standalone GATE_* key (outside the encrypted blob) so the unlock gate can bootstrap
   // on an encrypted cold start. Mirrors setWriterKeyWrapped.
@@ -1137,6 +1135,28 @@ export const useStore = create<StoreState>()(
   unconfirmMonth: (month) => {
     const e = useStore.getState().monthlyLog.find((m) => m.month === month);
     if (e) useStore.getState().upsertLogEntry({ ...e, confirmed: false });
+  },
+
+  // One-shot reconcile after the calendar-anniversary bucketing fix — re-roll stored monthlyLog entries that were
+  // rolled under the OLD 30.4375 buckets. Diff-guarded: a month re-rolls ONLY when its fresh rollup fields differ
+  // OR a boundary strike-collateral move changed its attribution (the entry's collateralAdjustment can't be
+  // equality-tested — collateralDelta is separate + folds graduated pending — so compare the delta under the new
+  // vs. the legacy bucket). Ascending so month m−1 (priorStocks source) reconciles first. Idempotent (a re-run
+  // finds no diffs). Only CHANGED months publish (via rerollMonth→upsertLogEntry); rerollMonth's reopen-on-edit
+  // correctly reopens a changed confirmed month.
+  reconcileMonthBuckets: () => {
+    const start = useStore.getState().advisorStartDate;
+    for (let m = 1; m <= 12; m++) {
+      const s = useStore.getState();
+      const events   = s.dayLog.filter((e) => isMonthlyMeaningful(e) && bucketEventToMonth(e.date, start) === m);
+      const existing = s.monthlyLog.find((e) => e.month === m);
+      const { entry: fresh } = rollupMonth(s.dayLog, m, start, priorStocksForMonth(s.dayLog, start, m));
+      const emptiedDaily    = events.length === 0 && existing?.source === 'daily';
+      const collateralMoved = strikeCollateralDelta(s.dayLog, start, m, bucketEventToMonth)
+                            !== strikeCollateralDelta(s.dayLog, start, m, legacyBucketEventToMonth);
+      if (emptiedDaily || collateralMoved || (events.length > 0 && !sameRollupFields(existing, fresh))) rerollMonth(m);
+    }
+    set({ monthBucketReconcileDone: true });
   },
 
   // Daily Mode P2a/P3 — dayLog mutators. Each mutates dayLog, refreshes the cbCollateralBtc clock, then re-rolls any

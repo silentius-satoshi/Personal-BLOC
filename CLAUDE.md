@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (508 tests — all must pass before every commit)
+- Vitest (517 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -61,9 +61,9 @@ src/
                                 # via useShallow (re-render only when a mapped value changes)
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment), deriveAdvisorStart,
                                 # deriveCurrentPosition (both take pendingCollateralAdjustment as a REQUIRED param),
-                                # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: bucketEventToMonth
-                                # (date→strategy-month 1–12, replicates getCurrentStrategyMonth's formula with the event
-                                # date — kept inline so logUtils stays import-standalone) + rollupMonth (DayEvent[] →
+                                # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: strategyMonthIndex
+                                # (calendar-anniversary, UNclamped) + bucketEventToMonth (clamp 1–12) — THE month clock
+                                # (runAdvisor's getCurrentStrategyMonth/isStrategyComplete now delegate here) + rollupMonth (DayEvent[] →
                                 # { entry: Partial<MonthlyLogEntry>, collateralDelta }) + deriveCbCollateral (P2a:
                                 # latest cbCollateral-bearing event by ts across balanceReading + cbCollateralReading,
                                 # fallback to the cache — never undefined)
@@ -321,10 +321,10 @@ src/
                                 # withdraw carry target; balanceReading summarizes Strike + CB). Tested in __tests__/dailyView.test.ts
       calendarModel.ts          # Daily Mode P4c-1a — PURE calendar date model (no store/UI/price dep; imports only the pure
                                 # bucketEventToMonth + DayEvent type, mirroring dailyView.ts). monthDateRange(advisorStartDate,
-                                # month) = ascending ISO dates that bucket to that STRATEGY month (uses bucketEventToMonth's
-                                # 30.4375-day def — NOT strategyMonthDate's calendar-month stepping — so cells + bucketed events
-                                # AGREE; loOffset clamped ≥0 so month 1 begins exactly at start, since bucket clamps pre-start
-                                # days to month 1); weekDates(selectedDay) = 7 ISO Mon→Sun; buildDayCells(dayLog, dates) →
+                                # month) = ascending ISO dates that bucket to that STRATEGY month (via the fixed
+                                # calendar-anniversary bucketEventToMonth — now AGREES with strategyMonthDate's calendar stepping;
+                                # the 30.4375 constant only sizes the ±6 scan window; loOffset clamped ≥0 so month 1 begins exactly
+                                # at start, since bucket clamps pre-start days to month 1); weekDates(selectedDay) = 7 ISO Mon→Sun; buildDayCells(dayLog, dates) →
                                 # DayCell{date,day,weekday(Mon=0),pips} (pips: 'logged' any draw/buy/paydown/deposit/withdraw;
                                 # 'reading' any balanceReading; 'cbCollateral' a deposit target:'cb', ADDITIVE to logged). ALL
                                 # date math UTC (new Date(iso)=UTC midnight; getUTCDay, not getDay → tz-safe). Tested in
@@ -764,8 +764,9 @@ store, no UI, no sync.
   `balanceReading` by `ts` (`strikeBal`/`strikeLtv` always, `cbBal`/`cbLtv` iff present). `entry` NEVER carries
   `btcHeld`/`collateralAdjustment`/`source`/`confirmed`/`cbCollateral`. **Carry-forward** (LD6 backfill exception):
   flows present but no `balanceReading` + `priorStocks` given → stocks borrowed from `priorStocks` + `provisional:true`.
-  Empty month → `{ entry: {}, collateralDelta: 0 }`. `bucketEventToMonth(date, advisorStartDate)` replicates
-  `getCurrentStrategyMonth`'s formula with the event date (kept inline — logUtils stays import-standalone).
+  Empty month → `{ entry: {}, collateralDelta: 0 }`. `bucketEventToMonth(date, advisorStartDate)` = the
+  calendar-anniversary month clock (`getCurrentStrategyMonth` now delegates to it — see the Strategy-Month
+  Calendar Fix section). `collateralDelta` is the extracted `strikeCollateralDelta` (reused by the reconcile).
 - **LD6 — hard-require stocks at creation time:** a real month entry should be created from a `balanceReading`; the
   carry-forward `provisional` path is the explicit backfill exception (P2 enforces the creation-time requirement).
 - **`MonthlyLogEntry` gains `source?: 'manual' | 'daily'` / `confirmed?: boolean` / `provisional?: boolean`** — all
@@ -978,13 +979,15 @@ into the activity card + the month-events modal is **P4c-1b** (a separate later 
 past-dated FAB is **P4c-2**. `scope`/`selectedDay` are captured in `DailyModeView` state now so P4c-1b can
 consume them — nothing reads them yet except `<Calendar/>`.
 
-- **⚠ CRITICAL — the calendar's month range uses `bucketEventToMonth`'s 30.4375-day STRATEGY-month
-  definition** (logUtils.ts:98), NOT `strategyMonthDate`'s calendar-month `setMonth` stepping (useStore.ts) —
-  so a day's calendar cell and the events `selectMonthEvents` buckets to that month AGREE. `monthDateRange`
-  enumerates a safe day-offset window and KEEPS only dates that bucket to the target month (self-corrects
-  boundaries); every returned date round-trips `bucketEventToMonth(date,start)===month` (the load-bearing
-  test). `loOffset` is clamped ≥0 — `bucketEventToMonth` clamps pre-start days to month 1, so without it
-  month 1 would leak days before `advisorStartDate`.
+- **⚠ CRITICAL — the calendar's month range uses `bucketEventToMonth`'s CALENDAR-ANNIVERSARY STRATEGY-month
+  definition** (now agreeing with `strategyMonthDate`'s calendar stepping — see the Strategy-Month Calendar
+  Fix section), so a day's calendar cell and the events `selectMonthEvents` buckets to that month AGREE.
+  `monthDateRange` enumerates a generous day-offset window (±6, sized by the 30.4375 average — a HEURISTIC
+  ONLY, not the definition) and KEEPS only dates that bucket to the target month (the fixed
+  `bucketEventToMonth` is authoritative + self-corrects boundaries); every returned date round-trips
+  `bucketEventToMonth(date,start)===month` (the load-bearing test). `loOffset` is clamped ≥0 —
+  `bucketEventToMonth` clamps pre-start days to month 1, so without it month 1 would leak days before
+  `advisorStartDate`.
 - **Timezone-safe**: `bucketEventToMonth` parses `'yyyy-mm-dd'` via `new Date(iso)` = UTC midnight, so
   `calendarModel` does all date math in UTC (enumerate via `getTime()+N*86400000`, format with
   `toISOString().split('T')[0]`, weekday via `getUTCDay()` — `getDay()` would drift a day in tz-behind-UTC
@@ -1868,7 +1871,7 @@ interface AdvisorInputs {
 
 Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth) / 12)`
 
-**Living projection:** `getCurrentStrategyMonth(startDate)`, `isStrategyComplete(startDate)` exported from `runAdvisor.ts`. Month 1 = first month after start date. Clamps to 12.
+**Living projection:** `getCurrentStrategyMonth(startDate)`, `isStrategyComplete(startDate)` exported from `runAdvisor.ts` — both now delegate to `logUtils`'s calendar-anniversary `bucketEventToMonth`/`strategyMonthIndex` of `todayLocalISO()` (no duplicate 30.4375 clock; see the Strategy-Month Calendar Fix section). Month N = `[start+(N−1) calendar months, +N months)`; the bucket clamps 1..12, the unclamped index >12 signals completion.
 
 **Skip overrides:** `advisorSkipBlocDraw/CbPayment/BtcBuying` in store. `overriddenPlan` memo in `AdvisorMain.tsx` applies overrides to current month display only. BLOC paydown is mandatory (LTV-triggered, no skip).
 
@@ -2085,6 +2088,67 @@ move in realtime) and restores the **R2** CB-accrual freshness. Most fragile sur
 
 ---
 
+## Strategy-Month Calendar Fix — anniversary bucketing, reconcile, start-balance carry (store stays v19)
+
+**INVARIANT — a strategy month is a CALENDAR-ANNIVERSARY span, not average days.** Month N =
+`[advisorStartDate + (N−1) calendar months, + N calendar months)`. Prior art computed months by
+`floor(elapsedDays / 30.4375) + 1`, which pulled boundary days into the wrong month (a Jun-1 start
+bucketed Jul 1 = 30 elapsed days into Month 1 — the owner's bug, in BOTH the calendar grid and the
+Review/sign-off). One implementation now, in `logUtils.ts`:
+- **`strategyMonthIndex(date, advisorStartDate)`** — the UNclamped 1-based calendar-anniversary index
+  (may be <1 pre-start / >12 past-end). Day-of-month clamps for 29/30/31 starts (Jan 31 start → the Feb
+  anniversary is Feb 28/29). Both dates parsed UTC-midnight (the date-only-ISO convention; mirrors
+  `strategyMonthDate`, which already calendar-stepped — the two clocks now agree).
+- **`bucketEventToMonth` = `clamp(strategyMonthIndex, 1, 12)`.** **`runAdvisor` now imports both** (no
+  more duplicate clock): `getCurrentStrategyMonth(start) = bucketEventToMonth(todayLocalISO(), start)`;
+  `isStrategyComplete(start) = strategyMonthIndex(todayLocalISO(), start) > 12`. "Today" is
+  `todayLocalISO()` (the user's LOCAL calendar day) — a `yyyy-mm-dd` string in the same UTC-midnight
+  space as `advisorStartDate` (consistent, no local/UTC mixing). runAdvisor→logUtils/format is cycle-free
+  (both leaves). `calendarModel.monthDateRange` keeps its enumerate-AND-FILTER shape (the fixed
+  `bucketEventToMonth` is authoritative); its 30.4375 constant only SIZES the scan window (margins widened
+  to ±6 so the window always contains the 28–31-day calendar range). **Auto-fixed for free** (both read a
+  FRESH rollup via `buildMonthRollup`/`bucketEventToMonth`): the calendar grid + the Review sheet/Daily
+  activity card.
+
+- **One-shot reconcile (`reconcileMonthBuckets`, useStore):** stored `monthlyLog` entries were rolled
+  under the old buckets and don't re-roll on their own. Ascending loop 1..12; a month re-rolls (via the
+  canonical `rerollMonth`) ONLY when its fresh rollup differs OR a **boundary strike-collateral move**
+  changed its attribution. **The collateral blind spot (why the last clause exists):** `rollupMonth`
+  returns `collateralDelta` SEPARATELY from the entry and the stored `collateralAdjustment` folds in
+  graduated pending, so a moved `target:'strike'` deposit/withdraw changes NO comparable entry field —
+  caught by comparing `strikeCollateralDelta(dayLog, start, m, bucketEventToMonth)` vs the same under the
+  comparison-only, exported-solely-for-this **`legacyBucketEventToMonth`** (the pre-fix 30.4375 formula;
+  NEVER used for live bucketing). Pure helpers extracted to `logUtils` (shared with `rerollMonth`, no
+  drift): `strikeCollateralDelta` (bucket-parameterized; `rollupMonth` reuses it), `priorStocksForMonth`,
+  `sameRollupFields` (rollup-owned-keys comparator, 0≡absent). Diff-guarded ⇒ **idempotent** (a re-run
+  finds no diffs) and only CHANGED months publish. **Device-local flag `monthBucketReconcileDone`**
+  (default false; rides `partializeState`'s `...rest`, ABSENT from `SETTINGS_FIELDS`/payload; migrate
+  default `?? false`; no version bump). Invoked once via **`useMonthBucketReconcile`** (AppShell, beside
+  `useNostrAutoRestore`) — subscribes `done` + `hasData` so it fires after hydration (incl. the encrypted
+  async-rehydrate path). **⚠ NEVER in viewerMode** (a viewer's `monthlyLog` comes from the owner's
+  snapshot with an empty local `dayLog` → reconciling would delete every daily month). Cross-device:
+  each device reconciles once against its own store; records LWW converges (a device that pulls another's
+  reconciled month merges it, then its own reconcile no-ops).
+- **REOPEN PRINCIPLE (state once, inherited by future rollup-touching fixes):** *a sign-off attests
+  specific figures; any operation that changes a confirmed month's rolled figures reopens it.*
+  `rerollMonth` flips `confirmed→false` on re-roll — the diff-guard makes this correct (unchanged months
+  are skipped → `confirmed` preserved; a changed month's stale sign-off reopens, surfacing via the
+  existing reconcile banner / "awaits sign-off" pointer). The owner has no confirmed months yet.
+
+- **Start-balance carry at sign-off (`DailyModeView` `onConfirm`):** the signed month's ENDING Strike
+  balance becomes the next month's projection base — `setAdvisorMonthStartBalance(e.strikeBal)` after
+  `confirmMonth`, **gated `safeViewedMonth === currentMonth − 1`** (a past-month sign-off via the ‹›nav
+  must NOT clobber the current base; do NOT widen to `=== currentMonth`) and **narrowed
+  `typeof e.strikeBal === 'number'`** (a provisional carry-forward month may leave `strikeBal` absent →
+  don't write `undefined`/`NaN`). Fixes the "Playbook projects Month 2 from $0" report. Composes with the
+  reopen principle: re-signing a reopened `currentMonth−1` carries the CORRECTED ending balance.
+  **Documented residual:** an early sign-off of the STILL-current month won't stamp the base when the
+  clock later rolls — rare (the banner flow signs after month end, hitting the gate); the Settings field
+  stays editable (its second hint is the correction path). SettingsMain "Balance at start of this month"
+  gained a second `fieldHint`: "Auto-carried from each month's sign-off — edit only to correct…".
+
+---
+
 ## Dollar Formatting
 
 ```typescript
@@ -2177,7 +2241,8 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-508 tests — `npx vitest run` before every commit.
+517 tests — `npx vitest run` before every commit.
+- `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent

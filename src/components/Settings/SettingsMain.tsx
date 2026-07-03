@@ -708,6 +708,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
           <div className={styles.setupFieldGroup}>
             <NumberInput label="Balance at start of this month" value={advisorMonthStartBalance} onChange={setAdvisorMonthStartBalance} prefix="$" min={0} step={100} />
             <span className={styles.fieldHint}>What you owed on Strike at the start of the current month — the base for this month's projection.</span>
+            <span className={styles.fieldHint}>Auto-carried from each month's sign-off — edit only to correct the current month's starting balance.</span>
           </div>
           <div className={styles.setupFieldGroup}>
             <span className={styles.setupFieldLabel}>Strategy start date</span>

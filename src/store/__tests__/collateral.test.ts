@@ -15,10 +15,16 @@ import { useStore } from '../useStore';
 import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import type { MonthlyLogEntry } from '../../simulation/types';
 
-const monthsAgo = (n: number) =>
-  new Date(Date.now() - n * 30.4375 * 86400000).toISOString().split('T')[0];
+// The 1st of the month `monthsBack` calendar months before today (LOCAL components → matches
+// getCurrentStrategyMonth's todayLocalISO basis). Day-of-month is 1 so today's day never shifts the bucket →
+// deterministic regardless of run time. (Was monthsAgo(n) = Date.now() − n*30.4375*day under the old arithmetic.)
+const startMonthsBack = (monthsBack: number): string => {
+  const d = new Date();
+  const norm = new Date(d.getFullYear(), d.getMonth() - monthsBack, 1);
+  return `${norm.getFullYear()}-${String(norm.getMonth() + 1).padStart(2, '0')}-01`;
+};
 
-const CURRENT = 5;   // advisorStartDate = monthsAgo(4.5) → getCurrentStrategyMonth = 5
+const CURRENT = 5;   // advisorStartDate = startMonthsBack(4) → today is in strategy Month 5 (calendar anniversary)
 
 function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): MonthlyLogEntry {
   return {
@@ -44,7 +50,7 @@ function resetStore(overrides: Record<string, unknown> = {}) {
     sandboxCollateralBtc: null,
     advisorActualBtcHeld: 0.50,      // the month-0 baseline
     advisorActualBlocBalance: 0,
-    advisorStartDate: monthsAgo(4.5),
+    advisorStartDate: startMonthsBack(4),
     isAuthenticated: false,           // publishRecordsNow + syncSettingsToNostr early-return
     settingsDirty: false,
     recordsDirty: false,
