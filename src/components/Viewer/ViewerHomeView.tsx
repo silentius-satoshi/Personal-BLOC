@@ -21,7 +21,7 @@ import styles from './ViewerHomeView.module.css';
 export interface ViewerHomeViewProps {
   onOpenSettings: () => void;
   previewSafeSnap?: SafeSnapshot | null;   // owner "Preview as viewer": inject the snap (safe) or null (force trusted live-derive); undefined = viewer device (store-driven)
-  hideSettingsNav?: boolean;               // owner preview → hide the settings-nav affordances
+  preview?: boolean;                       // owner preview → hide settings-nav affordances + bottom nav; pill age reads 'live preview'
 }
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -86,9 +86,10 @@ export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerS
   return computeViewerSafety(safeSnap, livePrice, inputs);
 }
 
-export function ViewerHomeView({ onOpenSettings, previewSafeSnap, hideSettingsNav }: ViewerHomeViewProps) {
+export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: ViewerHomeViewProps) {
   const s = useViewerSafety(previewSafeSnap);
   const lastSync = useStore((st) => st.viewerLastSyncAt);
+  const livePrice = useStore((st) => st.btcPrice);              // public market data — the BTC ticker
   const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
   const grantedRoles = useGrantedRoles();                       // V5 — dormant (renders nothing today)
   const f = s.figures;
@@ -110,7 +111,7 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, hideSettingsNa
             <span className={styles.brandName}>Personal ₿LOC</span>
           </div>
           <RolePill roles={grantedRoles} />
-          {!hideSettingsNav && (
+          {!preview && (
             <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">
               ⚙
             </button>
@@ -120,8 +121,10 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, hideSettingsNa
         {/* Greeting */}
         <div className={styles.greeting}>
           <h1 className={styles.greetTitle}>Good {greetingTime()}{displayName ? `, ${displayName}` : ''}</h1>
-          <p className={styles.greetSub}>{OVERALL_COPY[s.overall]}</p>
         </div>
+
+        {/* BTC ticker — public market data */}
+        <div className={styles.priceTicker}>BTC {fmtUSD(livePrice)}</div>
 
         {/* Overall pill */}
         <div className={styles.pill}>
@@ -129,7 +132,7 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, hideSettingsNa
           <span className={styles.pillText} style={{ color: LEVEL_COLOR[s.overall] }}>
             {OVERALL_COPY[s.overall]}
           </span>
-          <span className={styles.pillAge}>{relativeAge(lastSync)}</span>
+          <span className={styles.pillAge}>{preview ? 'live preview' : relativeAge(lastSync)}</span>
         </div>
 
         {/* Status cards */}
@@ -157,17 +160,17 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, hideSettingsNa
         </div>
       </div>
 
-      {/* Bottom nav */}
-      <nav className={styles.bottomNav}>
-        <button className={`${styles.navBtn} ${styles.navActive}`} aria-current="page">
-          Home
-        </button>
-        {!hideSettingsNav && (
+      {/* Bottom nav — hidden entirely in owner preview (a lone no-op Home button is dead weight) */}
+      {!preview && (
+        <nav className={styles.bottomNav}>
+          <button className={`${styles.navBtn} ${styles.navActive}`} aria-current="page">
+            Home
+          </button>
           <button className={styles.navBtn} onClick={onOpenSettings}>
             Settings
           </button>
-        )}
-      </nav>
+        </nav>
+      )}
     </div>
   );
 }

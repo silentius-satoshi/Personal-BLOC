@@ -180,4 +180,21 @@ describe('viewer snapshot builders', () => {
 
     useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: false } as never);
   });
+
+  // Preview-local override fidelity — even when the REAL setting is trusted, a forced-safe preview (the spread
+  // { ...state, viewerPrivacyTrusted: false }) can never show more than the safe wire payload would.
+  it('preview override: forced-safe payload (from a trusted store) → SafeSnapshot deep-equals the safe wire fields', () => {
+    useStore.setState({ viewerPrivacyTrusted: true, hasCbLoan: true } as never);
+    const forcedSafePayload = buildViewerSnapshotPayload({ ...useStore.getState(), viewerPrivacyTrusted: false });
+    expect(forcedSafePayload.privacyMode).toBe('safe');
+    const snap = previewSafeSnapFromPayload(forcedSafePayload);
+    expect(snap).toEqual({
+      safety: forcedSafePayload.safety,
+      thresholds: forcedSafePayload.thresholds,
+      btcPriceAtSnapshot: forcedSafePayload.btcPriceAtSnapshot,
+      hasCbLoan: forcedSafePayload.hasCbLoan,
+    });
+
+    useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: false } as never);
+  });
 });

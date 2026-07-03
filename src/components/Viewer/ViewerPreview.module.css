@@ -1,15 +1,31 @@
+/* Outer scroll root — the sticky bar is a sibling above ViewerHomeView's .root, so it reserves its own
+   height in normal flow (no overlap of the greeting at the top, even at the tallest two-row bar state). */
+.previewRoot { position: relative; }
+
 .previewBar {
   position: sticky;
   top: 0;
   z-index: 20;
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 10px 16px;
   background: var(--surface-2);
   border-bottom: 1px solid var(--btc);
   box-shadow: 0 1px 0 rgba(247, 147, 26, 0.25);
+}
+
+.previewBarTop {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.previewBarBottom {
+  display: flex;
+  align-items: center;
+  gap: 12px;
 }
 
 .previewLabel {
@@ -36,4 +52,45 @@
 .exitBtn:hover {
   border-color: var(--btc);
   color: var(--btc);
+}
+
+/* Preview-local Safe|Trusted override — a what-if lens; never writes viewerPrivacyTrusted. */
+.modeToggle {
+  display: inline-flex;
+  flex-shrink: 0;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.modeBtn {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  padding: 4px 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.modeBtn:hover { color: var(--text-primary); }
+
+.modeBtnActive {
+  color: var(--bg-base);
+  background: var(--btc);
+}
+
+.actualCaption {
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+.driftCaption {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--amber);
 }

@@ -1512,9 +1512,19 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   REAL `ViewerHomeView` from the ACTUAL `buildViewerSnapshotPayload` — **safe mode injects a locally-built
   `SafeSnapshot`** (`previewSafeSnapFromPayload`, mirrors viewerSync's construction incl. `hasCbLoan ?? false`)
   as `previewSafeSnap`; **trusted mode passes `null`** → the live-derive path (what a trusted viewer's hydrated
-  store shows). `hideSettingsNav` hides the settings affordances; a sticky PREVIEW top bar names the mode +
-  "✕ Exit preview". **Preview fidelity ≡ wire payload by construction** (the injected snap IS the safe branch of
-  the payload — pinned by a deep-equal test). No sync/publish/persistence/schema change; no store bump.
+  store shows). The renamed `preview` prop hides the settings affordances AND the bottom nav (a lone no-op Home
+  button is dead weight) and makes the pill age read the literal `'live preview'` (the owner device's
+  `viewerLastSyncAt` is forever null → `relativeAge` would show an endless "syncing…"). A sticky PREVIEW top bar
+  names the mode + "✕ Exit preview" AND carries a preview-LOCAL **Safe|Trusted override** (`override: boolean |
+  null` local state, `effectiveTrusted = override ?? trusted`) — a pure what-if lens that **NEVER writes
+  `viewerPrivacyTrusted`**; forcing safe spreads `{ ...getState(), viewerPrivacyTrusted: false }` through
+  `buildViewerSnapshotPayload` so the mode is exercised via the REAL builder (fidelity ≡ wire payload under the
+  hypothetical setting), and an amber "previewing — actual: {Safe|Trusted}" caption flags drift. **Preview
+  fidelity ≡ wire payload by construction** (the injected snap IS the safe branch of the payload — pinned by a
+  deep-equal test, incl. the forced-safe-from-a-trusted-store override case). The viewer home (real viewer AND
+  preview) also shows a live BTC ticker (public `btcPrice`) between the greeting and the pill, and the greeting
+  sub-line was removed (the pill is the single overall-status element — it had duplicated the pill copy verbatim).
+  No sync/publish/persistence/schema change; no store bump.
 - **Sharing page extracted → `components/Settings/SharingPage.tsx`** (+ `.module.css`, the FIRST delegated
   subpage; SettingsMain renders `<SharingPage/>` for `settingsPage==='sharing'`, owner-only). YOUR SHARE
   CODE (owner npub + copy) + YOUR VIEWER (list-ready grant card: label + npub + Active dot + the "Show real
