@@ -34,6 +34,7 @@ export function SafetyDashboard() {
   const setHasCbLoan           = useStore((s) => s.setHasCbLoan);
   const cbLoanBalance          = useStore((s) => s.cbLoanBalance);
   const cbAprPct               = useStore((s) => s.cbAprPct);
+  const setCbAprPct            = useStore((s) => s.setCbAprPct);
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const cbLiquidationPrice     = useStore((s) => s.cbLiquidationPrice);
   const cbLtvTriggerPct        = useStore((s) => s.cbLtvTriggerPct);
@@ -292,7 +293,15 @@ export function SafetyDashboard() {
                   Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live)
                 </span>
                 {Math.abs(morphoRate.borrowApy - cbAprPct) > 1 && (
-                  <span className={styles.editHint}>Your APR differs — Coinbase may add a margin.</span>
+                  <span className={styles.editHint}>
+                    Your APR differs — Coinbase may add a margin.{' '}
+                    <button
+                      className={styles.editLink}
+                      onClick={() => setCbAprPct(Number(morphoRate.borrowApy!.toFixed(2)))}
+                    >
+                      Use {morphoRate.borrowApy.toFixed(2)}%
+                    </button>
+                  </span>
                 )}
               </>
             ) : (

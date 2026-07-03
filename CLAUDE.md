@@ -424,8 +424,11 @@ src/
                                 # currentTarget so typing in a field can't toggle) with .flipHint "tap to set/update"
                                 # cue + stopPropagation on the .editBox — mirrors the Strike whole-card tap (the thin
                                 # barTrackBtn is gone). The .editBox also shows a read-only live Morpho rate
-                                # reference line (via useMorphoRate, same as the Settings APR field; cbAprPct
-                                # untouched). Save → balance + liq price, both set…AsOf today. neverAnchored
+                                # reference line (via useMorphoRate, same as the Settings APR field). When
+                                # cbAprPct diverges >1pt from the live Morpho rate, the divergence hint gains a
+                                # one-tap "Use X%" apply (.editLink button → setCbAprPct(morphoRate.borrowApy),
+                                # standard synced setter) — applying it closes the gap so the hint + button
+                                # self-clear next render. Save → balance + liq price, both set…AsOf today. neverAnchored
                                 # (both asOf null) → ONE calm .anchorNudge (not three amber warnings); freshness "as
                                 # of N days"/stale "may be low" (>30d) lines apply only once anchored. Strike bar is
                                 # DECOUPLED from hasCbLoan — only the
@@ -1762,6 +1765,9 @@ Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, san
 (what-if collateral, in-memory, no write-back; see Dated Collateral Model). Editing auto-switches to
 Custom tier. `advisorActualBtcHeld` is the month-0 BASELINE only (formerly `customCollateral`,
 removed in store v6); the real position is edited in Settings/Advisor via `adjustCurrentCollateral`.
+
+**`SettingsDropdown` retired** (the header's gear-icon mini-panel, a pre-Settings-era relic duplicating
+the BLOC APR field) — BLOC APR editing is now single-homed in Settings → Strike Strategy.
 
 ---
 

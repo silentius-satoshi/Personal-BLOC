@@ -2,7 +2,6 @@ import { useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
-import { SettingsDropdown } from './SettingsDropdown';
 import { runBlocYearOne, getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getNdpStatus } from '../../simulation/runAdvisor';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
@@ -128,7 +127,6 @@ export function InputsPanel() {
 
         <div className={styles.header}>
           <span className={styles.title}>Inputs</span>
-          <SettingsDropdown />
         </div>
 
         <div className={styles.fields}>
