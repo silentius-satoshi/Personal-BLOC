@@ -11,7 +11,7 @@ import {
 } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, deriveCurrentPosition } from '../../simulation/logUtils';
-import { strikeAvailableCredit } from '../../simulation/strikeCredit';
+import { strikeAvailableCredit, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { fmtUSD } from '../../utils/format';
 import { MonthlyLogSection } from './MonthlyLogSection';
 import { MonthlyLogOverlay } from './MonthlyLogOverlay';
@@ -123,7 +123,7 @@ export function AdvisorMain() {
     () => {
       const r = runAdvisor({
         btcPrice, income, expenses,
-        blocApr, creditLine, blocLtvCeiling: 0.15,
+        blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
         cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
         cbAprPct:         hasCbLoan ? cbAprPct        : 0,

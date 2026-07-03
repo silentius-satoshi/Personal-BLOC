@@ -1,10 +1,8 @@
 .container {
+  composes: toolContainer from './toolShell.module.css';
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 20px;
 }
 
 .emptyPrompt {

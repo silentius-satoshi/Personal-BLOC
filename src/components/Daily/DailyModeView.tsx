@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
 import { deriveAdvisorStart, bucketEventToMonth } from '../../simulation/logUtils';
-import { strikeAvailableCredit } from '../../simulation/strikeCredit';
+import { strikeAvailableCredit, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { deriveForMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
@@ -121,7 +121,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const advisorRows = useMemo(
     () => runAdvisor({
       btcPrice, income, expenses,
-      blocApr, creditLine, blocLtvCeiling: 0.15,
+      blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
       cbBalance:         hasCbLoan ? cbLoanBalance    : 0,
       cbCollateralBtc:   hasCbLoan ? cbCollateralBtc  : 1,
       cbAprPct:          hasCbLoan ? cbAprPct         : 0,

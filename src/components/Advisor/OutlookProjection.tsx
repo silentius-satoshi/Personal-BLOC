@@ -6,6 +6,7 @@ import {
   type AdvisorTier,
 } from '../../simulation/runAdvisor';
 import { PL_B, GENESIS } from '../../simulation/powerLaw';
+import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { fmtUSD } from '../../utils/format';
 import styles from './AdvisorMain.module.css';
 
@@ -70,7 +71,7 @@ export function OutlookProjection({
   const result = useMemo(
     () => runAdvisor({
       btcPrice, income, expenses,
-      blocApr, creditLine, blocLtvCeiling: 0.15,
+      blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
       cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
       cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
       cbAprPct:         hasCbLoan ? cbAprPct        : 0,

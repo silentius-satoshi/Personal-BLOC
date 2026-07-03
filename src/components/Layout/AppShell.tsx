@@ -51,6 +51,7 @@ import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { LiqSimulator }     from '../Tools/LiqSimulator';
+import { EmergencyConsole } from '../Tools/EmergencyConsole';
 import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
@@ -107,7 +108,7 @@ function SortableTab({ tab, isActive, onClick, styles }: SortableTabProps) {
 }
 
 interface ToolsDropdownProps {
-  tabs:      typeof ALL_TABS_META[number][];
+  tabs:      { key: string; fullLabel: string; shortLabel: string }[];
   activeTab: string;
   onSelect:  (key: string) => void;
   styles:    Record<string, string>;
@@ -178,6 +179,7 @@ export function AppShell() {
   const setTabOrder  = useStore((s) => s.setTabOrder);
   const toolTabs     = useStore((s) => s.toolTabs);
   const hasCbLoan    = useStore((s) => s.hasCbLoan);
+  const cbPaymentStrategy = useStore((s) => s.cbPaymentStrategy);   // liqsim → Emergency Console gate + tab label
 
   const simpleMode            = useStore((s) => s.simpleMode);
   const simpleView            = useStore((s) => s.simpleView);        // Monthly Playbook vs Daily journal (device-local)
@@ -246,12 +248,19 @@ export function AppShell() {
 
   const effectiveToolKeys: readonly string[] = isMobile ? TOOL_KEYS : toolTabs;
 
-  const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key));
+  // Emergency Console: the liqsim tab reads "Emergency" in ltvTriggered mode (label-only; key stays 'liqsim').
+  const withEmergencyLabel = (t: typeof ALL_TABS_META[number]) =>
+    t.key === 'liqsim' && cbPaymentStrategy === 'ltvTriggered'
+      ? { ...t, fullLabel: 'Emergency', shortLabel: 'Emerg' }
+      : t;
+
+  const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key)).map(withEmergencyLabel);
 
   const toolTabsList = orderedKeys
     .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k) && (k !== 'coinbase' || hasCbLoan) && (k !== 'liqsim' || hasCbLoan))
     .map((k) => ALL_TABS_META.find((t) => t.key === k))
-    .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined);
+    .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined)
+    .map(withEmergencyLabel);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -425,7 +434,7 @@ export function AppShell() {
              activeTab === 'powerlaw'   ? <PowerLawMain />      :
              activeTab === 'converter'  ? <ConverterMain />     :
              activeTab === 'mining'     ? <MiningMain />        :
-             activeTab === 'liqsim'     ? <LiqSimulator />     :
+             activeTab === 'liqsim'     ? (cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole /> : <LiqSimulator />) :
              activeTab === 'almanac'    ? <AlmanacView />      :
                                           <SmartBlocMain />}
           </main>

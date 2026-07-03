@@ -1,0 +1,130 @@
+.container {
+  composes: toolContainer from './toolShell.module.css';
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.emptyPrompt {
+  max-width: 600px;
+  margin: 40px auto;
+  padding: 24px;
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+}
+
+/* ── Staleness banner ── */
+.staleBanner {
+  padding: 12px 14px;
+  border: 1px solid var(--red);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--red) 12%, transparent);
+  color: var(--text-primary);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.staleRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* ── Generic card ── */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.cardHead { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cardTitle { font-size: 13px; font-weight: 650; color: var(--text-primary); }
+.hint { font-size: 12px; color: var(--text-muted); margin: 0; line-height: 1.45; }
+
+/* ── Stage header ── */
+.stageCard {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--bg-card);
+}
+.stageTop { display: flex; align-items: center; justify-content: space-between; }
+.stageChip {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 4px 12px;
+  border-radius: 999px;
+  border: 1px solid;
+}
+.stageSafe  { color: var(--green); border-color: var(--green); background: color-mix(in srgb, var(--green) 10%, transparent); }
+.stageWatch { color: var(--amber); border-color: var(--amber); background: color-mix(in srgb, var(--amber) 10%, transparent); }
+.stageAct   { color: var(--red);   border-color: var(--red);   background: color-mix(in srgb, var(--red) 12%, transparent); }
+.stageLtv { font-size: 15px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+
+.stageStats, .calcGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.fpGrid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.stat { display: flex; flex-direction: column; gap: 2px; }
+.statLabel { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
+.statValue { font-size: 15px; font-weight: 650; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.statValueGreen { font-size: 15px; font-weight: 650; color: var(--green); font-variant-numeric: tabular-nums; }
+.statValueAmber { font-size: 15px; font-weight: 650; color: var(--amber); font-variant-numeric: tabular-nums; }
+
+/* ── Rail ── */
+.rail { position: relative; height: 8px; border-radius: 4px; background: var(--border); overflow: visible; margin-top: 4px; }
+.railTick { position: absolute; top: -2px; width: 2px; height: 12px; border-radius: 1px; }
+.railDiamond { position: absolute; top: -9px; transform: translateX(-50%); font-size: 12px; color: var(--btc); }
+.railLegend { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); }
+
+/* ── Firepower ── */
+.toggle { display: inline-flex; gap: 2px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
+.toggleBtn { font-size: 12px; font-weight: 600; color: var(--text-muted); background: transparent; border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-family: inherit; }
+.toggleActive { color: var(--text-primary); background: var(--bg-hover); }
+.fpCell { display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
+.fpWhen { font-size: 11px; color: var(--text-faint); }
+.fpBtc { font-size: 16px; font-weight: 700; color: var(--btc); font-variant-numeric: tabular-nums; }
+.fpUsd { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+
+/* ── Slider / inputs ── */
+.slider { width: 100%; accent-color: var(--orange); cursor: pointer; }
+.capFlag { font-size: 11px; font-weight: 600; color: var(--amber); }
+.numInput { width: 120px; margin-left: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; }
+
+/* ── Table ── */
+.tableWrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.th { text-align: right; padding: 6px 8px; color: var(--text-faint); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; }
+.th:first-child { text-align: left; }
+.td { text-align: right; padding: 7px 8px; color: var(--text-primary); border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.td:first-child { text-align: left; }
+.rowActive td { background: color-mix(in srgb, var(--orange) 10%, transparent); }
+
+/* ── Walls ── */
+.wall { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.wallHead { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 12px; background: var(--bg-input); border: none; color: var(--text-primary); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; }
+.wallChevron { color: var(--text-muted); }
+.wallContent { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
+.wallBody { margin: 0; font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.wallLabel { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; }
+.coupling { margin: 0; font-size: 12px; color: var(--amber); line-height: 1.45; }
+
+/* ── Checklist ── */
+.checkRow { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--text-primary); line-height: 1.4; cursor: pointer; }
+.checkRow input { margin-top: 2px; accent-color: var(--green); }
+.checkDone { color: var(--text-faint); text-decoration: line-through; }
+
+@media (max-width: 480px) {
+  .stageStats, .calcGrid { grid-template-columns: 1fr 1fr; }
+  .fpGrid { grid-template-columns: 1fr; }
+}

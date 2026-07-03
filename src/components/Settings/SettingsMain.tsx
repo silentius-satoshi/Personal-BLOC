@@ -341,6 +341,7 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const cbLtvTriggerPct       = useStore((s) => s.cbLtvTriggerPct);       const setCbLtvTriggerPct       = useStore((s) => s.setCbLtvTriggerPct);
   const cbLtvTargetPct        = useStore((s) => s.cbLtvTargetPct);        const setCbLtvTargetPct        = useStore((s) => s.setCbLtvTargetPct);
   const cbRotateBackPct       = useStore((s) => s.cbRotateBackPct);       const setCbRotateBackPct       = useStore((s) => s.setCbRotateBackPct);
+  const cbEmergencyCeilingPct = useStore((s) => s.cbEmergencyCeilingPct); const setCbEmergencyCeilingPct = useStore((s) => s.setCbEmergencyCeilingPct);
   const cbLtvAction           = useStore((s) => s.cbLtvAction);           const setCbLtvAction           = useStore((s) => s.setCbLtvAction);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
@@ -855,6 +856,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
                   />
                   <NumberInput label="Rotate-back LTV"  value={cbRotateBackPct} onChange={setCbRotateBackPct} min={0} max={85} step={1} />
                   <span className={styles.fieldHint}>When CB LTV falls below this, shift expensive Strike debt back to the cheaper CB loan.</span>
+                  <NumberInput label="Emergency ceiling %" value={cbEmergencyCeilingPct} onChange={setCbEmergencyCeilingPct} min={20} max={50} step={1} />
+                  <span className={styles.fieldHint}>Emergency Console: the Strike LTV crash-day collateral top-ups draw to (20–50%).</span>
                   {!(cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
                     <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
                       Thresholds must satisfy rotate-back &lt; target &lt; trigger &lt; 86% (Morpho liquidation).

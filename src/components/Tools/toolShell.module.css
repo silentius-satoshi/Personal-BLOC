@@ -1,0 +1,12 @@
+/* Shared tool-page container — extracted from AlmanacView's .container (the reference). Tools compose this
+   for a consistent 600px centered column + iOS-safe overflow handling, then add their own layout (flex/gap)
+   in their local .container rule. Adopted Phase 1 by EmergencyConsole + LiqSimulator; Converter / Mining /
+   PowerLaw / Almanac adoption is a device-verify-pending follow-up. */
+.toolContainer {
+  width: 100%;
+  box-sizing: border-box;
+  overflow-x: hidden;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+}

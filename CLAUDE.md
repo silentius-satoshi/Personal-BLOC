@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (517 tests — all must pass before every commit)
+- Vitest (533 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
@@ -41,7 +41,8 @@ src/
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
-    strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar)
+    strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15, and emergencyModel consumes it
+    emergencyModel.ts           # Emergency Console pure model (Phase 1) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Doctrine: collateral top-up is the PRIMARY lever (grow the CB denominator → push liq DOWN); paydown = Wall-2 fallback. CB_LADDER (69/72/75/81, liq=CB_LLTV 0.86) + STRIKE_MARGIN_CALL_LTV 0.70. classifyStage / firepower (slow=cured, fast=stuck) / drawToLtv (clamps to the 50% Strike line) / floorTable / direSwitch|wall3Sale|wall4External (paydown walls) / surplus. Imports CB_LLTV (runCoinbaseLoan) + STRIKE_MAX_DRAW_LTV/BLOC_OPERATING_CEILING (strikeCredit); NO cycle/power-law imports (§7 hard wall)
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
                                 # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
                                 # copy is GONE; the two can no longer drift). deriveSafetyView → {capacityUsed,
@@ -119,8 +120,19 @@ src/
       ViewToggle.module.css     # .viewToggle* rules (moved from AppShell.module.css)
 
     Tools/
-      LiqSimulator.tsx          # Liq Price Simulator overlay content; reads store directly, no props
-      LiqSimulator.module.css
+      LiqSimulator.tsx          # Liq Price Simulator overlay content; reads store directly, no props. Rendered
+                                # for the `liqsim` tab ONLY in `monthly` CB mode (ltvTriggered → EmergencyConsole)
+      LiqSimulator.module.css   # .container now `composes: toolContainer from './toolShell.module.css'` (600px)
+      EmergencyConsole.tsx      # Emergency Console (Phase 1) — the actionable crash-day page for `ltvTriggered`
+                                # CB mode; READ-ONLY calculator (no dayLog writes). Reads store, builds cbDebt via
+                                # accruedCbBalance (the accrual boundary) + Strike position via deriveCurrentPosition,
+                                # feeds emergencyModel. 7 sections: staleness banner / stage header + band rail /
+                                # firepower (cured|stuck toggle) / draw-to-LTV action calculator / floor table /
+                                # Walls 1–4 accordion (Wall 2 salvaged paydown slider) / session-only crash checklist
+      EmergencyConsole.module.css
+      toolShell.module.css      # Shared `.toolContainer` (Almanac's tokens: 600px centered + iOS-safe overflow).
+                                # Phase 1 adopters: EmergencyConsole + LiqSimulator. FOLLOW-UP (device-verify pending):
+                                # Converter / Mining / PowerLaw / Almanac still to adopt via `composes:`
 
     ui/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
@@ -650,6 +662,7 @@ cbPaymentStrategy:   'monthly' | 'ltvTriggered';  // default 'monthly'
 cbLtvTriggerPct:     number;                       // default 75 (percent, e.g. 75 = 75%)
 cbLtvTargetPct:      number;                       // default 65 (percent, pay down to this LTV)
 cbRotateBackPct:     number;                       // default 55 (percent, reverse-rotation gate; synced in SETTINGS_FIELDS/payload like trigger/target)
+cbEmergencyCeilingPct: number;                     // Emergency Console — target Strike LTV for crash-day collateral top-ups; default 30, CLAMPED 20–50 in the setter; synced (in SETTINGS_FIELDS/payload)
 cbLoanBalanceAsOf:      string | null;             // v13 — ISO date cbLoanBalance was last re-anchored (interest accrues daily from here); synced
 cbLiquidationPriceAsOf: string | null;             // v13 — ISO date cbLiquidationPrice was last re-entered (drifts up with interest); synced
 strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liquidation LTV, default 85 (published terms); synced
@@ -1758,6 +1771,38 @@ different artifact (Phase 1.5) — not this tool.
 
 ---
 
+## Emergency Console (Phase 1 — actionable crash-day page for `ltvTriggered`; store stays v19)
+
+Replaces the passive Liq Sim **for `ltvTriggered` CB mode only** with an actionable, **READ-ONLY**
+calculator implementing the Emergency Directive. Monthly mode keeps `LiqSimulator` untouched. NO dayLog
+writes / execution — real draws are still logged through Daily flows.
+
+- **Mode gate (`AppShell.tsx`):** the `liqsim` render branch is `cbPaymentStrategy === 'ltvTriggered' ?
+  <EmergencyConsole/> : <LiqSimulator/>`. Tab KEY stays `'liqsim'` (no tabOrder/hiddenTabs migration, still
+  `hasCbLoan`-gated); the tab LABEL swaps to `Emergency`/`Emerg` by mode via a `withEmergencyLabel` resolver
+  mapped over `mainTabs` + `toolTabsList` (label-only — `SortableTab`/`ToolsDropdown` internals unchanged; their
+  tab-prop types were widened to `{key,fullLabel,shortLabel}` strings so the override typechecks).
+- **`emergencyModel.ts` (pure, clock-free):** all debt math consumes the pre-accrued `cbDebt` — the VIEW builds
+  it via `accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf)` (cbMetrics) at the boundary, so the model
+  never touches a clock and is fixture-testable. Strike position from `deriveCurrentPosition`. Functions:
+  `classifyStage` (stage from cbLtv vs `CB_LADDER` 69/72/75/81; liq = CB_LLTV 0.86; band price = `cbDebt/(cbColl×band)`),
+  `firepower` (slow=cured `(ceiling−0.15)×skColl`, fast=stuck `(ceiling×skColl×P − skDrawn)/P`), `drawToLtv`
+  (clamped to the 50% Strike line — NOT creditLine; newSkMarginCallPrice = `newDrawn/(skColl×0.70)`), `floorTable`
+  ([20,25,30,50]% + standing), `direSwitch`/`wall3Sale`/`wall4External` (paydown-numerator walls), `surplus`.
+- **INVARIANTS:** emergency debt math **always** flows through `accruedCbBalance` (never raw `cbLoanBalance`);
+  **collateral top-up is the primary lever** (grow the CB denominator → floor DOWN; paydown is the Dire
+  Switch/Wall-2 fallback only); **`BLOC_OPERATING_CEILING` (strikeCredit.ts) is the single 0.15 definition** for
+  the advisor path; emergencyModel imports **nothing** from cycle/power-law (§7 hard wall — grep-clean).
+- **New synced setting `cbEmergencyCeilingPct`** (default 30, **clamped 20–50 in the setter**; SETTINGS_FIELDS +
+  buildSettingsPayload + migrate `?? 30` + both reset presets; rides `partializeState`'s `...rest`). Settings →
+  Coinbase Loan renders its NumberInput **only** in the `cbPaymentStrategy === 'ltvTriggered'` fragment. NO store
+  version bump (additive defaulted field).
+- **Phase 2 (Recovery/repatriation, `spareBtcOnCb`) is NOT built** — specced but deferred; not prebuilt.
+- Tests: `src/simulation/__tests__/emergencyModel.test.ts` reproduces the directive fixtures ±$1 (liq 41650.62,
+  slow floor 38842, fast floor 39621, bands 51912/47759/44222, drawToLtv(30)@48000 slow 5990.73) + clamp/wall math.
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -2266,7 +2311,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-523 tests — `npx vitest run` before every commit.
+533 tests — `npx vitest run` before every commit.
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
@@ -2283,6 +2328,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
+- `emergencyModel.test.ts` — Emergency Console Phase 1 pure model (9 cases), Directive fixtures ±$1: `classifyStage` liq 41650.62 + bands watch 51912/execute 47759/lastResort 44222; `firepower` slow floor 38842 (cured) / fast floor 39621 (stuck, crash 48000); `floorTable` ceiling-30 row; `drawToLtv(30)@48000` slow drawUsd 5990.73 + newSkLtv=0.30 + 50%-line clamp (capped); walls (direSwitch/wall3Sale/wall4External round-trip to a target liq); `surplus`; CB_LADDER fixed 69/72/75/81
 - `src/simulation/__tests__/cycleModel.test.ts` — Almanac CycleClock P1 (12 cases): `epochFromHeight` epoch-5 classification + 2028 rollover (Epoch 6/1.5625, no code change); `epochProgress.fraction` 0..1 single-source (half-open — ~1 just below endBlock, 0 at rollover) + `blocksRemaining === 1_050_000 − h` exactness; `dateAtBlock` 144-blocks≈1-day; `blockAtDate(H4.date)===H4.block`; `CYCLE_TURNS` IMG_7080 premise (14 turns, anchor high @ 6 Oct 2025, first low Mon 5 Oct 2026 @ +364d, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `nextTurnAfter` selection + null past end
 - `living.test.ts`
 - `mining.test.ts`
@@ -3036,14 +3082,14 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 38 Synced Settings Fields
+### All 39 Synced Settings Fields
 (`cbCollateralBtc` is a LOCAL derived cache, NOT a synced settings scalar — but Daily Mode P3 CONVERGES it cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives `cbCollateralBtc` from the merged `dayLog`.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
 `tabOrder`, `hiddenTabs`, `simpleMode`, `btcBuyingUnit`,
 `cbLiquidationPrice`, `cbMonthlyPayment`, `cbPaymentStrategy`,
-`cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`,
+`cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`, `cbEmergencyCeilingPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,

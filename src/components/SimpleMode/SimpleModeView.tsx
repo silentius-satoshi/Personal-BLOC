@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNdpStatus } from '../../simulation/runAdvisor';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
-import { strikeAvailableCredit, computeStrikeLtv } from '../../simulation/strikeCredit';
+import { strikeAvailableCredit, computeStrikeLtv, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
 import { buildMonthRollup } from '../Daily/calendarModel';
@@ -141,7 +141,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     () => {
       const rows = runAdvisor({
         btcPrice, income, expenses,
-        blocApr, creditLine, blocLtvCeiling: 0.15,
+        blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
         cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
         cbAprPct:         hasCbLoan ? cbAprPct         : 0,

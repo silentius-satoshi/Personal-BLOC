@@ -182,6 +182,7 @@ export interface StoreState {
   cbLtvTriggerPct:      number;
   cbLtvTargetPct:       number;
   cbRotateBackPct:      number;
+  cbEmergencyCeilingPct: number;           // Emergency Console — target Strike LTV for crash-day collateral top-ups (clamp 20–50)
   cbLoanBalanceAsOf:      string | null;   // ISO date — when cbLoanBalance was last re-anchored (interest accrues daily from here)
   cbLiquidationPriceAsOf: string | null;   // ISO date — when cbLiquidationPrice was last re-entered (drifts up as interest accrues)
   strikeLiquidationLtvPct: number;         // Strike partial-liquidation LTV (published terms: 85%)
@@ -292,6 +293,7 @@ export interface StoreState {
   setCbLtvTriggerPct:     (v: number) => void;
   setCbLtvTargetPct:      (v: number) => void;
   setCbRotateBackPct:     (v: number) => void;
+  setCbEmergencyCeilingPct: (v: number) => void;
   setCbLoanBalanceAsOf:      (v: string | null) => void;
   setCbLiquidationPriceAsOf: (v: string | null) => void;
   setStrikeLiquidationLtvPct: (v: number) => void;
@@ -608,6 +610,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     cbLtvTriggerPct:          s.cbLtvTriggerPct,
     cbLtvTargetPct:           s.cbLtvTargetPct,
     cbRotateBackPct:          s.cbRotateBackPct,
+    cbEmergencyCeilingPct:    s.cbEmergencyCeilingPct,
     cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
     cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
     strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
@@ -858,6 +861,7 @@ export function migrateState(persistedState: any): any {
     cbLtvTriggerPct:      persistedState.cbLtvTriggerPct  ?? 75,
     cbLtvTargetPct:       persistedState.cbLtvTargetPct   ?? 65,
     cbRotateBackPct:      persistedState.cbRotateBackPct  ?? 55,
+    cbEmergencyCeilingPct: persistedState.cbEmergencyCeilingPct ?? 30,
     cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,
     cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
     strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
@@ -949,6 +953,7 @@ export const useStore = create<StoreState>()(
   cbLtvTriggerPct:     75,
   cbLtvTargetPct:      65,
   cbRotateBackPct:     55,
+  cbEmergencyCeilingPct: 30,
   cbLoanBalanceAsOf:      null,
   cbLiquidationPriceAsOf: null,
   strikeLiquidationLtvPct: 85,
@@ -1052,6 +1057,7 @@ export const useStore = create<StoreState>()(
   setCbLtvTriggerPct:    (v) => { set({ cbLtvTriggerPct: v });    useStore.getState().syncSettingsToNostr(); },
   setCbLtvTargetPct:     (v) => { set({ cbLtvTargetPct: v });     useStore.getState().syncSettingsToNostr(); },
   setCbRotateBackPct:    (v) => { set({ cbRotateBackPct: v });    useStore.getState().syncSettingsToNostr(); },
+  setCbEmergencyCeilingPct: (v) => { set({ cbEmergencyCeilingPct: Math.max(20, Math.min(50, v)) }); useStore.getState().syncSettingsToNostr(); },
   setCbLoanBalanceAsOf:      (v) => { set({ cbLoanBalanceAsOf: v });      useStore.getState().syncSettingsToNostr(); },
   setCbLiquidationPriceAsOf: (v) => { set({ cbLiquidationPriceAsOf: v }); useStore.getState().syncSettingsToNostr(); },
   setStrikeLiquidationLtvPct: (v) => { set({ strikeLiquidationLtvPct: v }); useStore.getState().syncSettingsToNostr(); },
@@ -1358,7 +1364,7 @@ export const useStore = create<StoreState>()(
     advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
     cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
-    cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
+    cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55, cbEmergencyCeilingPct: 30,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
@@ -1381,7 +1387,7 @@ export const useStore = create<StoreState>()(
     advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
     cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
-    cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
+    cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55, cbEmergencyCeilingPct: 30,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
@@ -1436,7 +1442,7 @@ export const useStore = create<StoreState>()(
       'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc removed (P2a Seam 2 — local derived cache; cross-device sync suspended P2a→P3)
       'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
       'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
-      'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct',
+      'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct', 'cbEmergencyCeilingPct',
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
       'blocMinPaymentSource', 'blocStatementMinimum', 'blocMinPaymentDueDay',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
