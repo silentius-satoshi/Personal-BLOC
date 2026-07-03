@@ -1522,9 +1522,11 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   hypothetical setting), and an amber "previewing — actual: {Safe|Trusted}" caption flags drift. **Preview
   fidelity ≡ wire payload by construction** (the injected snap IS the safe branch of the payload — pinned by a
   deep-equal test, incl. the forced-safe-from-a-trusted-store override case). The viewer home (real viewer AND
-  preview) also shows a live BTC ticker (public `btcPrice`) between the greeting and the pill, and the greeting
-  sub-line was removed (the pill is the single overall-status element — it had duplicated the pill copy verbatim).
-  No sync/publish/persistence/schema change; no store bump.
+  preview — one shared render path) embeds the full live `PriceChart` (`components/SimpleMode/PriceChart.tsx`,
+  public Coinbase candles via `useBtcHistory`, self-fetching, no props/owner-data reads — privacy-clean for the
+  viewer by construction) in a `.chartSlot` between the greeting and the pill, replacing an earlier plain-text
+  BTC ticker. The greeting sub-line was removed (the pill is the single overall-status element — it had
+  duplicated the pill copy verbatim). No sync/publish/persistence/schema change; no store bump.
 - **Sharing page extracted → `components/Settings/SharingPage.tsx`** (+ `.module.css`, the FIRST delegated
   subpage; SettingsMain renders `<SharingPage/>` for `settingsPage==='sharing'`, owner-only). YOUR SHARE
   CODE (owner npub + copy) + YOUR VIEWER (list-ready grant card: label + npub + Active dot + the "Show real

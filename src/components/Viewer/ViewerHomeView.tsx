@@ -2,6 +2,7 @@ import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { selectSafetyViewInputs, computeViewerSafety, type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult } from '../../simulation/safetyView';
 import { fmtUSD, relativeAge } from '../../utils/format';
+import { PriceChart } from '../SimpleMode/PriceChart';
 import { RadialGauge } from './RadialGauge';
 import { RolePill, useGrantedRoles } from './RolePill';
 import styles from './ViewerHomeView.module.css';
@@ -89,7 +90,6 @@ export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerS
 export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: ViewerHomeViewProps) {
   const s = useViewerSafety(previewSafeSnap);
   const lastSync = useStore((st) => st.viewerLastSyncAt);
-  const livePrice = useStore((st) => st.btcPrice);              // public market data — the BTC ticker
   const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
   const grantedRoles = useGrantedRoles();                       // V5 — dormant (renders nothing today)
   const f = s.figures;
@@ -123,8 +123,10 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: Vie
           <h1 className={styles.greetTitle}>Good {greetingTime()}{displayName ? `, ${displayName}` : ''}</h1>
         </div>
 
-        {/* BTC ticker — public market data */}
-        <div className={styles.priceTicker}>BTC {fmtUSD(livePrice)}</div>
+        {/* Live price context — public candles, self-fetching, privacy-clean for the viewer by construction */}
+        <div className={styles.chartSlot}>
+          <PriceChart />
+        </div>
 
         {/* Overall pill */}
         <div className={styles.pill}>

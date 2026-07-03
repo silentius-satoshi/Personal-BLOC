@@ -47,11 +47,8 @@
 .greeting { margin: 18px 2px 14px; }
 .greetTitle { font-size: 26px; font-weight: 700; color: var(--text-primary); margin: 0; letter-spacing: -0.01em; }
 
-/* BTC ticker — understated, matching Daily's .pbSub price treatment; sits between greeting and pill */
-.priceTicker {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
+/* Live price chart slot — sits between greeting and pill; PriceChart owns its own internal spacing */
+.chartSlot {
   margin: 0 2px 14px;
 }
 
