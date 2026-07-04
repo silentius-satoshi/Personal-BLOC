@@ -31,12 +31,20 @@ export function useNostrSync(opts?: { live?: boolean }) {
       triggerSync();
       if (live) openLiveSync();   // idempotent — covers missed opens
     };
+    // An OS-level network reconnect (e.g. iOS airplane-mode toggle while foregrounded) fires neither
+    // visibilitychange nor focus — the tab never hides/shows and the window never loses/regains focus.
+    const onOnline = () => {
+      triggerSync();
+      if (live) openLiveSync();   // idempotent — mirrors onFocus's "covers missed opens"
+    };
     if (live && document.visibilityState === 'visible') openLiveSync();
     document.addEventListener('visibilitychange', handler);
     window.addEventListener('focus', onFocus);
+    window.addEventListener('online', onOnline);
     return () => {
       document.removeEventListener('visibilitychange', handler);
       window.removeEventListener('focus', onFocus);
+      window.removeEventListener('online', onOnline);
       if (live) closeLiveSync();
     };
   }, [triggerSync, live, nostrPubkey, viewerMode]);

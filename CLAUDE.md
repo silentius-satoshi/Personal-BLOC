@@ -3078,7 +3078,7 @@ not an array. D-tag constants `SETTINGS_DTAG`/`RECORDS_DTAG` are exported from p
 ---
 
 ### Sync Triggers
-Five entry points — all funnel into `syncNow()` — plus a receive-only live subscription:
+Six entry points — all funnel into `syncNow()` — plus a receive-only live subscription:
 
 | Trigger | Path |
 |---|---|
@@ -3086,6 +3086,7 @@ Five entry points — all funnel into `syncNow()` — plus a receive-only live s
 | Cold launch | `useNostrAutoRestore` (optimistic auth, reverts only if restore failed with no signer) |
 | Tab visibility | `useNostrSync` visibilitychange → visible |
 | Window focus | `useNostrSync` window `'focus'` → triggerSync — a visible desktop tab never fires visibilitychange; focus covers app/window switches |
+| Network reconnect | `useNostrSync` window `'online'` → triggerSync (+ openLiveSync when live) — catches an OS-level reconnect (e.g. iOS airplane-mode toggle) that fires neither visibilitychange nor focus |
 | Live subscription | `liveSync.ts` while visible — receive-only transport (no syncNow); applies the other device's publishes in ≈1s desktop / 2–3s iOS (NIP-46 decrypt) |
 | Manual button | "↻ Sync now" in Settings (via `useNostrSync().triggerSync`) |
 
@@ -3268,8 +3269,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `viewerUnlocked` | boolean | ❌ | In-memory; true once viewerSync's key holder is populated (post-unlock/provision) — AppShell gates the ViewerUnlockGate on it |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
 | `nostrRelays` | string[] | ✅ | From NIP-65 discovery. **Option C: now SYNCED** across the owner's devices (in `SETTINGS_FIELDS`/`buildSettingsPayload`) — replace-on-hydrate, guarded so a default-looking incoming list can't clobber a real custom local one; stripped from the viewer snapshot. **User edits go through `setNostrRelaysAndSync`** (set + `syncSettingsToNostr` → marks `settingsDirty` → publishes on its own); the plain `setNostrRelays` is retained for the `syncNow` boot bootstrap (`fetchUserRelays` discovery) so fetched/default relays don't spuriously publish |
-| `lastSettingsSyncAt` | number | ✅ | Unix ts of last relay hydration |
-| `lastRecordsSyncAt` | number | ✅ | Unix ts of last records:v1 event seen — observability ONLY, not a gate |
+| `lastSettingsSyncAt` | number | ✅ | Unix SECONDS (event.created_at) of last relay hydration |
+| `lastRecordsSyncAt` | number | ✅ | Unix SECONDS (event.created_at) of last records:v1 event seen — observability ONLY, not a gate |
 | `recordsDirty` | boolean | ✅ | Publish-needed marker + merge tie-breaker ONLY (NOT a receive gate); set on local edit or when the relay is behind; cleared on successful publish |
 | `settingsDirty` | boolean | ✅ | Per-device publish state — never synced (not in SETTINGS_FIELDS/payload); settings publish-needed marker AND settings receive gate; set synchronously by every synced setter; cleared on successful settings publish |
 | `deletedMonths` | Record<number, number> | ✅ | month → deletedAt (Unix ms) tombstones for synced deletes; cleared per-month on re-log; 90-day GC in merge |

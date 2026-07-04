@@ -46,9 +46,11 @@ const EMPTY_RELAYS: string[] = [];
 
 // Relative-time for the SYNC rows — mirrors ViewerHomeView's relativeAge m/h/d convention, but "never" when
 // unsynced and no "updated" prefix (the row already reads "Settings synced · …").
+// ts is unix SECONDS — matches event.created_at stored by sync.ts; store units must not change (the
+// watermark gate in sync.ts compares in seconds too).
 function relativeSync(ts: number | null): string {
   if (!ts) return 'never';
-  const mins = Math.floor((Date.now() - ts) / 60_000);
+  const mins = Math.floor((Date.now() / 1000 - ts) / 60);
   if (mins <= 0) return 'just now';
   if (mins < 60) return `${mins}m ago`;
   const hrs = Math.floor(mins / 60);
