@@ -3078,7 +3078,7 @@ not an array. D-tag constants `SETTINGS_DTAG`/`RECORDS_DTAG` are exported from p
 ---
 
 ### Sync Triggers
-Six entry points — all funnel into `syncNow()` — plus a receive-only live subscription:
+Seven entry points — all funnel into `syncNow()` — plus a receive-only live subscription:
 
 | Trigger | Path |
 |---|---|
@@ -3086,7 +3086,8 @@ Six entry points — all funnel into `syncNow()` — plus a receive-only live su
 | Cold launch | `useNostrAutoRestore` (optimistic auth, reverts only if restore failed with no signer) |
 | Tab visibility | `useNostrSync` visibilitychange → visible |
 | Window focus | `useNostrSync` window `'focus'` → triggerSync — a visible desktop tab never fires visibilitychange; focus covers app/window switches |
-| Network reconnect | `useNostrSync` window `'online'` → triggerSync (+ openLiveSync when live) — catches an OS-level reconnect (e.g. iOS airplane-mode toggle) that fires neither visibilitychange nor focus |
+| Network reconnect | `useNostrSync` window `'online'` → triggerSync (+ openLiveSync when live) — catches an OS-level reconnect that fires neither visibilitychange nor focus. **DESKTOP-ONLY in practice: iOS standalone PWAs NEVER fire `online`** (`navigator.onLine` stays true through an airplane-mode cycle, device-verified Jul 2026) → the dirty-gated retry below is the iOS self-heal |
+| Dirty-gated retry | `useNostrSync` second effect (`scheduleDirtyRetry`) — while `recordsDirty`/`settingsDirty`, a self-rescheduling backoff (5s→10s→20s→40s→60s, cap 60s) re-invokes `triggerSync`. **live instance only** (AppShell's `{live:true}` mount — a bare SettingsMain mount must not double-publish) + viewerMode-off. Visible ticks call triggerSync + advance backoff; hidden ticks skip the call and hold the current delay (iOS freezes hidden timers anyway). A flag transition restarts at 5s; a successful publish clears the flags → the chain tears down. The ONLY self-heal on iOS for a publish that failed offline (see Network reconnect) |
 | Live subscription | `liveSync.ts` while visible — receive-only transport (no syncNow); applies the other device's publishes in ≈1s desktop / 2–3s iOS (NIP-46 decrypt) |
 | Manual button | "↻ Sync now" in Settings (via `useNostrSync().triggerSync`) |
 

@@ -4,11 +4,44 @@ import { syncNow } from '../lib/nostr/syncNow';
 import { openLiveSync, closeLiveSync } from '../lib/nostr/liveSync';
 import { useStore } from '../store/useStore';
 
+// iOS standalone PWAs never fire window online/offline (navigator.onLine stays true through an
+// airplane-mode cycle), so an offline publish leaves recordsDirty/settingsDirty set with nothing
+// retrying. This dirty-gated backoff re-invokes triggerSync until the flags clear (successful publish).
+export const RETRY_DELAYS_MS = [5000, 10000, 20000, 40000, 60000] as const; // cap 60s
+
+/**
+ * Self-rescheduling retry chain. Returns a cleanup that cancels the pending tick.
+ * No-op (cleanup is a no-op) unless dirty && live && !viewerMode.
+ * Visible ticks call onTick() and advance the backoff; hidden ticks skip the call and
+ * keep the chain alive at the current delay (iOS freezes timers when hidden anyway).
+ */
+export function scheduleDirtyRetry(
+  args: { dirty: boolean; live: boolean; viewerMode: boolean },
+  deps: { isVisible: () => boolean; onTick: () => void },
+): () => void {
+  if (!args.dirty || !args.live || args.viewerMode) return () => {};
+  let idx = 0;
+  let timer: ReturnType<typeof setTimeout>;
+  const schedule = () => {
+    timer = setTimeout(() => {
+      if (deps.isVisible()) {
+        deps.onTick();
+        idx = Math.min(idx + 1, RETRY_DELAYS_MS.length - 1); // advance only after a real attempt
+      }
+      schedule();
+    }, RETRY_DELAYS_MS[idx]);
+  };
+  schedule();
+  return () => clearTimeout(timer);
+}
+
 export function useNostrSync(opts?: { live?: boolean }) {
   const { nostr } = useNostr();
   const viewerMode = useStore((s) => s.viewerMode);   // viewer installs run NO writer sync (read-only)
   const live = (opts?.live ?? false) && !viewerMode;
   const nostrPubkey = useStore((s) => s.nostrPubkey);   // login/disconnect cycles the live sub
+  const recordsDirty = useStore((s) => s.recordsDirty);
+  const settingsDirty = useStore((s) => s.settingsDirty);
 
   // In viewerMode the writer sync path is OFF by construction: triggerSync no-ops (no syncNow/publish).
   const triggerSync = useCallback(
@@ -48,6 +81,19 @@ export function useNostrSync(opts?: { live?: boolean }) {
       if (live) closeLiveSync();
     };
   }, [triggerSync, live, nostrPubkey, viewerMode]);
+
+  // Dirty-gated backoff retry (a self-heal for a stranded offline publish — see CLAUDE.md Sync Triggers).
+  // live-only so only the app-level instance runs it (a bare SettingsMain mount must not double-publish);
+  // viewerMode-off by construction. A flag transition re-runs the effect (fresh dirty → restart at 5s;
+  // successful sync clears the flags → the early guard tears the chain down via the prior cleanup).
+  useEffect(
+    () =>
+      scheduleDirtyRetry(
+        { dirty: recordsDirty || settingsDirty, live, viewerMode },
+        { isVisible: () => document.visibilityState === 'visible', onTick: triggerSync },
+      ),
+    [recordsDirty, settingsDirty, live, viewerMode, triggerSync],
+  );
 
   return { triggerSync };
 }
