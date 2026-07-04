@@ -19,7 +19,9 @@ import styles from './AlmanacView.module.css';
  * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
  * Mining / Power Law / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in
  * a `.faceStack` in that tool's own mobile DOM order — mining/powerlaw panel-first, sats main-first,
- * mirroring the presence/absence of AppShell's converter-only `order` override), and the gated `defense`
+ * mirroring the presence/absence of AppShell's converter-only `order` override; at ≥768px `.faceStack`
+ * goes two-column mirroring AppShell's own 280px/1fr shell grid, with `.facePanel` pinning the panel to
+ * the left column regardless of each face's own mobile DOM order), and the gated `defense`
  * face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate used by the `liqsim` tab
  * in AppShell — hidden entirely when `!hasCbLoan`). Every embedded tool brings its OWN already-shipped
  * `toolContainer`-composed width — the hub adds none of its own (§8 toolContainer adoption is now CLOSED:
@@ -138,18 +140,18 @@ export default function AlmanacView() {
         <CbDefenseTool />
       ) : face === 'mining' ? (
         <div className={styles.faceStack}>
-          <MiningInputsPanel />
+          <div className={styles.facePanel}><MiningInputsPanel /></div>
           <MiningMain />
         </div>
       ) : face === 'powerlaw' ? (
         <div className={styles.faceStack}>
-          <PowerLawSidebar />
+          <div className={styles.facePanel}><PowerLawSidebar /></div>
           <PowerLawMain />
         </div>
       ) : (
         <div className={styles.faceStack}>
           <ConverterMain />
-          <ConverterSidebar />
+          <div className={styles.facePanel}><ConverterSidebar /></div>
         </div>
       )}
 

@@ -1399,23 +1399,34 @@ byte-identical. `face` widened to `'halving' | 'cycle' | 'mining' | 'powerlaw' |
 local `useState`, default `'halving'`, nothing persisted/synced — unchanged §14.3).
 
 - **§8 toolContainer adoption is now CLOSED** — every tool shares one `src/components/Tools/toolShell.module.css`
-  `.toolContainer` (600px centered + iOS-safe overflow): `EmergencyConsole`/`LiqSimulator` adopted it in
-  Phase 1; **this change closes the deferred follow-up** for `MiningMain.module.css`, `PowerLawMain.module.css`,
-  `ConverterMain.module.css` (each `.main` now `composes: toolContainer from '../Tools/toolShell.module.css'`,
-  dropping its own width/max-width/margin/base-horizontal-padding — Mining also drops its now-redundant
+  `.toolContainer` (structural tokens: centering, iOS-safe overflow, horizontal/bottom padding + a 600px
+  DEFAULT max-width): `EmergencyConsole`/`LiqSimulator` adopted it in Phase 1; **this change closes the
+  deferred follow-up** for `MiningMain.module.css`, `PowerLawMain.module.css`, `ConverterMain.module.css`
+  (each `.main` now `composes: toolContainer from '../Tools/toolShell.module.css'`, dropping its own
+  width/margin/base-horizontal-padding — Mining also drops its now-redundant
   `@media (max-width:640px) { .main { padding:16px } }`, since toolContainer's fixed 16px horizontal already
   covers what that query existed for), and for `AlmanacView.module.css`'s own `.container` (now
   composes-only from the same file — **zero visual change**, since `.container` WAS the byte-identical
-  reference `toolContainer` was originally extracted from). Standalone tabs (Mining/PowerLaw/Converter) now
-  render at the shared 600px width too, not their old 960px/700px/full-width — an intended, uniform
-  consequence, not an Almanac-only effect.
+  reference `toolContainer` was originally extracted from). **DESKTOP-WIDTH FIX:** the 600px default
+  initially collapsed Mining (was 960px) and Converter (was 700px) on desktop — an unintended regression, not
+  the "intended" 600px-for-PowerLaw case. Fixed by RE-ASSERTING each tool's own `max-width` locally, on the
+  same `.main` rule, immediately after the `composes:` line (CSS-modules same-rule cascade: a local
+  declaration following `composes:` wins by source order) — Mining/PowerLaw → `max-width:960px`, Converter →
+  `max-width:700px`. `EmergencyConsole`/`LiqSimulator`/`AlmanacView`'s own `.container` keep the 600px
+  default unmodified (always their intended width). Mobile is unaffected either way (every viewport under
+  the relevant max-width hits `width:100%` regardless of which value is set).
 - **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
   eyebrow+sub-nav still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
   (unchanged content/props — `useChainTip()` stays the single per-mount data source for those two faces
   only); Mining/PowerLaw/Sats render each tool's own main content **stacked with its input panel** in a new
-  `.faceStack` (`display:flex; flex-direction:column; gap:16px` — no width of its own, since the tool inside
-  already brings its `toolContainer` width); `defense` renders `<CbDefenseTool/>` bare (no `.faceStack` — it
-  has no separate input panel).
+  `.faceStack` (mobile: `display:flex; flex-direction:column; gap:16px`, no width of its own, since the tool
+  inside already brings its `toolContainer` width); `defense` renders `<CbDefenseTool/>` bare (no
+  `.faceStack` — it has no separate input panel).
+- **`.faceStack` goes two-column at `≥768px`** (`display:grid; grid-template-columns:280px minmax(0,1fr);
+  gap:20px; max-width:1240px; margin:0 auto; padding:0 16px`) — mirrors `AppShell.module.css`'s own `.shell`
+  grid (`280px 1fr`) so the Almanac hub gets the same panel-width rhythm as the standalone tabs. A `.facePanel`
+  wrapper div (`order:-1; grid-column:1` at `≥768px`, no-op below it) pins the panel to the left column
+  regardless of each face's own mobile DOM order.
 - **Panel stacking mirrors each tool's own mobile DOM order** (confirmed from `AppShell.tsx`'s sidebar+main
   mount order and `AppShell.module.css`'s `[data-active-tab]` rules): mining = `<MiningInputsPanel/>` then
   `<MiningMain/>`; powerlaw = `<PowerLawSidebar/>` then `<PowerLawMain/>` (both panel-first — AppShell has NO
@@ -1423,8 +1434,9 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   `<ConverterMain/>` then `<ConverterSidebar/>` (main-first — `converter` is the ONLY tab with an explicit
   `[data-active-tab="converter"] .main { order:1 } .sidebar { order:2 }` override, at `≤767px`). All three
   panel components (`MiningInputsPanel`, `PowerLawSidebar`, `ConverterSidebar`) are props-free,
-  store/hook-connected named exports — mounted bare, identical to how `AppShell` already mounts them as each
-  tab's sidebar.
+  store/hook-connected named exports taking ZERO parameters — since none can accept a `className` prop,
+  each is mounted inside a plain `<div className={styles.facePanel}>` wrapper (not passed a prop directly),
+  otherwise identical to how `AppShell` already mounts them as each tab's sidebar.
 - **`CbDefenseTool.tsx`** (`src/components/Tools/`) — the ONE mode-gate definition
   (`cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole/> : <LiqSimulator/>`), extracted from the
   inline ternary that used to live in `AppShell.tsx`'s `liqsim` render branch. **Both mount points** — the

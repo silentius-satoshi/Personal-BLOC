@@ -1,8 +1,8 @@
-/* Shared tool-page container — extracted from AlmanacView's .container (the reference). Tools compose this
-   for a consistent 600px centered column + iOS-safe overflow handling, then add their own layout (flex/gap)
-   in their local .container/.main rule. Adopted by ALL FIVE tools: EmergencyConsole + LiqSimulator (Phase 1),
-   Mining + PowerLaw + Converter (§8 closed), and AlmanacView itself (its .container, the original reference,
-   now composes from here — zero visual change since the tokens were already byte-identical). */
+/* Shared tool-page container — extracted from AlmanacView's .container (the reference). Supplies
+   structural tokens (centering, iOS-safe overflow, horizontal/bottom padding) + a 600px DEFAULT max-width —
+   correct as-is for EmergencyConsole/LiqSimulator/AlmanacView's own .container. Wider tools RE-ASSERT their
+   own max-width locally after `composes:` (CSS-modules same-rule cascade — a local declaration following
+   composes wins by source order): Mining/PowerLaw → 960px, Converter → 700px. Adopted by ALL FIVE tools. */
 .toolContainer {
   width: 100%;
   box-sizing: border-box;

@@ -1,5 +1,6 @@
 .main {
   composes: toolContainer from '../Tools/toolShell.module.css';
+  max-width: 960px;
   --color-solo:   #FF4444;
   --color-split:  #F7931A;
   --color-pooled: #00C896;

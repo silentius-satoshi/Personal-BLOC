@@ -12,12 +12,36 @@
 }
 
 /* Panel + main stacked per each embedded tool's own mobile order (mining/powerlaw panel-first,
-   sats main-first, mirroring AppShell's converter-only `order` override). No width constraint —
-   the tool inside brings its own toolContainer width. */
+   sats main-first, mirroring AppShell's converter-only `order` override). No width constraint on
+   mobile — the tool inside brings its own toolContainer width. At ≥768px, goes two-column mirroring
+   AppShell.module.css's own .shell grid (280px 1fr). */
 .faceStack {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+@media (min-width: 768px) {
+  .faceStack {
+    display: grid;
+    grid-template-columns: 280px minmax(0, 1fr);
+    align-items: start;
+    gap: 20px;
+    max-width: 1240px;      /* 280 + 960, matching the widest embedded tool (Mining/PowerLaw) */
+    margin: 0 auto;
+    padding: 0 16px;
+  }
+}
+
+/* Pins the panel to the left grid column regardless of DOM order — a no-op on mobile (every face's DOM
+   order is already mobile-correct) and a no-op for the already-panel-first Mining/PowerLaw faces at
+   desktop width; load-bearing only for the Sats face, whose DOM stays main-first (mirroring Converter's
+   own mobile order) but whose panel must still land left on desktop. */
+.facePanel {}
+@media (min-width: 768px) {
+  .facePanel {
+    order: -1;
+    grid-column: 1;
+  }
 }
 
 .eyebrow {

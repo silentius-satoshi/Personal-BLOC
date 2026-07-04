@@ -1,5 +1,6 @@
 .main {
   composes: toolContainer from '../Tools/toolShell.module.css';
+  max-width: 960px;
   display: flex;
   flex-direction: column;
   gap: 16px;
