@@ -26,6 +26,10 @@ const STAGE_CLASS: Record<LadderStage, string> = {
   normal: styles.stageSafe, watch: styles.stageWatch, prepare: styles.stageWatch,
   execute: styles.stageAct, lastResort: styles.stageAct, liquidated: styles.stageAct,
 };
+const FILL_COLOR: Record<LadderStage, string> = {
+  normal: 'var(--green)', watch: 'var(--amber)', prepare: 'var(--amber)',
+  execute: 'var(--red)', lastResort: 'var(--red)', liquidated: 'var(--red)',
+};
 
 const DAY_MS = 86_400_000;
 
@@ -51,7 +55,7 @@ export function EmergencyConsole() {
   const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
   const cbCollateralBtc = useStore((s) => s.cbCollateralBtc);
   const ceilingPct      = useStore((s) => s.cbEmergencyCeilingPct);
-  const price           = useStore((s) => s.btcPrice);
+  const livePrice       = useStore((s) => s.btcPrice);
   const btcPriceMode    = useStore((s) => s.btcPriceMode);
   const btcPriceUpdatedAt = useStore((s) => s.btcPriceUpdatedAt);
   const income          = useStore((s) => s.income);
@@ -69,10 +73,14 @@ export function EmergencyConsole() {
   const [saleTargetLiq, setSaleTargetLiq] = useState(35_000);
   const [cashUsd, setCashUsd]       = useState(0);
   const [checked, setChecked]       = useState<Record<number, boolean>>({});
+  const [simPrice, setSimPrice]     = useState<number | null>(null);   // session-only what-if; never persisted/synced
 
   if (cbLoanBalance === 0 || cbCollateralBtc === 0) {
     return <div className={styles.emptyPrompt}>Enter your CB loan details in the CB Loan tab to use the Emergency Console.</div>;
   }
+
+  const price = simPrice ?? livePrice;   // the effective price every model consumer + readout below uses
+  const toggleSim = () => setSimPrice((sp) => (sp === null ? livePrice : null));
 
   const { btcHeld: skCollateralBtc, blocBalance: skDrawn } =
     deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
@@ -114,8 +122,16 @@ export function EmergencyConsole() {
           <div className={styles.staleRow}>
             <span>Price: {btcPriceMode === 'manual' ? 'manual entry' : priceAgeMs !== null ? `${fmtAge(priceAgeMs)} old` : 'unknown'}</span>
             <span>CB balance: {loanAgeDays !== null ? `${Math.floor(loanAgeDays)}d since re-anchor` : 'never re-anchored'}</span>
-            <span>BTC price: {fmtUSD(price)}</span>
+            <span>BTC price: {fmtUSD(livePrice)}</span>
           </div>
+        </div>
+      )}
+
+      {/* 1b — Simulate-price banner (session-only what-if; distinct amber from the red staleness banner) */}
+      {simPrice !== null && (
+        <div className={styles.simBanner}>
+          <span><strong>SIMULATING {fmtUSD(simPrice)}</strong> — live {fmtUSD(livePrice)}</span>
+          <button className={styles.simExitBtn} onClick={() => setSimPrice(null)}>Exit</button>
         </div>
       )}
 
@@ -123,14 +139,20 @@ export function EmergencyConsole() {
       <div className={styles.stageCard}>
         <div className={styles.stageTop}>
           <span className={`${styles.stageChip} ${STAGE_CLASS[stage.stage]}`}>{STAGE_LABEL[stage.stage]}</span>
-          <span className={styles.stageLtv}>{(stage.cbLtv * 100).toFixed(1)}% CB LTV</span>
+          <div className={styles.stageTopRight}>
+            <span className={styles.stageLtv}>{(stage.cbLtv * 100).toFixed(1)}% CB LTV</span>
+            <button className={`${styles.simBtn} ${simPrice !== null ? styles.simBtnActive : ''}`} onClick={toggleSim}>
+              {simPrice !== null ? 'Exit sim' : 'Simulate'}
+            </button>
+          </div>
         </div>
         <div className={styles.stageStats}>
           <div className={styles.stat}><span className={styles.statLabel}>Liq price</span><span className={styles.statValue}>{fmtUSD(stage.liqPrice)}</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>Distance</span><span className={styles.statValue}>{(stage.distancePct * 100).toFixed(1)}%</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>BTC now</span><span className={styles.statValue}>{fmtUSD(price)}</span></div>
+          <div className={styles.stat}><span className={styles.statLabel}>{simPrice !== null ? 'BTC SIM' : 'BTC now'}</span><span className={styles.statValue}>{fmtUSD(price)}</span></div>
         </div>
         <div className={styles.rail}>
+          <div className={styles.railFill} style={{ width: `${railPos(price)}%`, background: FILL_COLOR[stage.stage] }} />
           {(['lastResort', 'execute', 'prepare', 'watch'] as const).map((k) => (
             <div key={k} className={styles.railTick} style={{ left: `${railPos(stage.bandPrices[k])}%`, background: 'var(--amber)' }} title={`${k}`} />
           ))}
@@ -138,6 +160,20 @@ export function EmergencyConsole() {
           <span className={styles.railDiamond} style={{ left: `${railPos(price)}%` }}>◆</span>
         </div>
         <div className={styles.railLegend}><span>{fmtUSD(railLo)}</span><span>liq → bands → now</span><span>{fmtUSD(railHi)}</span></div>
+        {simPrice !== null && (
+          <div className={styles.simScrub}>
+            <input
+              type="range"
+              className={styles.slider}
+              min={Math.round(stage.liqPrice * 0.90)}
+              max={Math.round(livePrice * 1.10)}
+              step={100}
+              value={simPrice}
+              onChange={(e) => setSimPrice(Number(e.target.value))}
+            />
+            <span className={styles.simScrubValue}>{fmtUSD(simPrice)}</span>
+          </div>
+        )}
       </div>
 
       {/* 3 — Firepower */}

@@ -34,6 +34,32 @@
   color: var(--text-muted);
 }
 
+/* ── Simulate-price banner — amber, visually distinct from the red staleness banner ── */
+.simBanner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  border: 1px solid var(--amber);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+.simExitBtn {
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--amber);
+  background: var(--bg-input);
+  border: 1px solid var(--amber);
+  border-radius: 8px;
+  padding: 5px 12px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
 /* ── Generic card ── */
 .card {
   display: flex;
@@ -59,6 +85,23 @@
   background: var(--bg-card);
 }
 .stageTop { display: flex; align-items: center; justify-content: space-between; }
+.stageTopRight { display: flex; align-items: center; gap: 10px; }
+.simBtn {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--bg-input);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.simBtnActive {
+  color: var(--amber);
+  border-color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+}
 .stageChip {
   font-size: 12px;
   font-weight: 700;
@@ -83,9 +126,14 @@
 
 /* ── Rail ── */
 .rail { position: relative; height: 8px; border-radius: 4px; background: var(--border); overflow: visible; margin-top: 4px; }
-.railTick { position: absolute; top: -2px; width: 2px; height: 12px; border-radius: 1px; }
-.railDiamond { position: absolute; top: -9px; transform: translateX(-50%); font-size: 12px; color: var(--btc); }
+.railFill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 4px; opacity: 0.35; z-index: 0; }
+.railTick { position: absolute; top: -2px; width: 2px; height: 12px; border-radius: 1px; z-index: 1; }
+.railDiamond { position: absolute; top: -9px; transform: translateX(-50%); font-size: 12px; color: var(--btc); z-index: 2; }
 .railLegend { display: flex; justify-content: space-between; font-size: 11px; color: var(--text-faint); }
+
+.simScrub { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.simScrub .slider { flex: 1; }
+.simScrubValue { font-size: 13px; font-weight: 650; color: var(--amber); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 
 /* ── Firepower ── */
 .toggle { display: inline-flex; gap: 2px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
