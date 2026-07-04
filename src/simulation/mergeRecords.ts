@@ -19,6 +19,9 @@ const entryTs = (e: MonthlyLogEntry): number => e.updatedAt ?? e.loggedAt ?? 0;
  * union by event id; the higher-ts event wins (edits replace in place); a tombstone strictly newer than
  * the event suppresses it; an event at/after its tombstone survives (edit-after-delete) and drops it.
  * Both maps GC tombstones older than 90 days. Idempotent — applying any fetched state is always safe.
+ *
+ * CONTRACT: dayLog `ts` is the merge version clock — dayLog edits MUST carry a fresh ts (updateDayEvent
+ * bumps it to Date.now()); a preserved-ts edit ties with the stale remote copy and loses (tie → local).
  */
 export function mergeRecords(
   local: RecordsState,

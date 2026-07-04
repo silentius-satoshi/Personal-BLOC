@@ -82,6 +82,17 @@ describe('C1 — collateral seam nets each target:strike move exactly once (doub
   });
 });
 
+describe('P3 — updateDayEvent bumps ts (the merge version clock)', () => {
+  it('an edit advances ts so it strictly beats the stale remote copy (higher-ts-wins, tie→local)', () => {
+    const ev = draw(100);                                   // seq-based ts (a small integer)
+    useStore.getState().addDayEvent(ev);
+    useStore.getState().updateDayEvent({ ...(ev as any), amount: 200 });   // preserves ev.ts on the way in; store overrides
+    const stored = useStore.getState().dayLog.find((e) => e.id === ev.id)!;
+    expect(stored.ts).toBeGreaterThan(ev.ts);               // bumped to Date.now() — no longer ties the stale copy
+    expect((stored as Extract<DayEvent, { kind: 'draw' | 'paydown' }>).amount).toBe(200);
+  });
+});
+
 describe('target:cb is journal-only; cbCollateral feeds the derived clock', () => {
   it('cb deposit does not change current BTC; a cbCollateral reading updates cbCollateralBtc', () => {
     useStore.getState().addDayEvent(depo(0.1, 'cb'));

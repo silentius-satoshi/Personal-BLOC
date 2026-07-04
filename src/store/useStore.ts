@@ -1182,13 +1182,16 @@ export const useStore = create<StoreState>()(
     publishRecordsNow();
   },
   updateDayEvent: (event) => {
+    // ts is the MERGE VERSION CLOCK — every edit must bump it or the edit ties with (and loses to) the
+    // stale copy on other devices; date carries occurrence.
+    const bumped = { ...event, ts: Date.now() };
     const before = useStore.getState().dayLog.find((e) => e.id === event.id);
-    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? event : e)), recordsDirty: true }));
+    set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? bumped : e)), recordsDirty: true }));
     refreshCbCollateralCache();
     refreshBalanceAnchors(readingCtx(before));   // §5b — editing a reading re-anchors; a moved/changed source falls back via the ctx proxy
     const months = new Set<number>();
     const mb = monthOf(before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
-    const ma = monthOf(event);  if (ma !== null) months.add(ma);   // and the NEW month
+    const ma = monthOf(bumped); if (ma !== null) months.add(ma);   // and the NEW month
     for (const m of months) rerollMonth(m);
     publishRecordsNow();
   },

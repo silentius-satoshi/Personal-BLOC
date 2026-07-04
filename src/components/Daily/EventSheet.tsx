@@ -272,8 +272,10 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   }
 
   function handleSave() {
-    // EDIT mode — reconstruct the SINGLE event preserving id/date/ts, then updateDayEvent (Option A: no
-    // second event, no LD6 re-enforcement). CB-deposit edits also re-anchor the coupled liq-price scalar.
+    // EDIT mode — reconstruct the SINGLE event preserving id/date — ts is bumped by updateDayEvent as the
+    // merge version clock (a preserved ts would tie with, and lose to, the stale remote copy). Then
+    // updateDayEvent (Option A: no second event, no LD6 re-enforcement). CB-deposit edits also re-anchor the
+    // coupled liq-price scalar.
     if (isEdit && editEvent) {
       const { id, date, ts } = editEvent;
       let updated: DayEvent;

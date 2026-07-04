@@ -840,6 +840,14 @@ cross-device `cbCollateralBtc` sync suspended in P2a, and fixing two viewer bugs
 `sync.ts` *actions-only* (no new `useStore.setState` in the apply path) and reuses the tombstone/merge
 discipline verbatim.
 
+- **INVARIANT — dayLog `ts` is the MERGE VERSION CLOCK; `date` is occurrence.** Same-id conflict resolves
+  higher-ts-wins, tie → local (self-pull idempotence — pulling your own just-published copy back must not
+  thrash). Therefore **`updateDayEvent` MUST bump `ts` to `Date.now()` on every edit** (`addDayEvent` uses
+  the event's creation ts; `deleteDayEvent` already stamps `Date.now()` on its tombstone). A preserved-ts
+  edit would tie with the stale remote copy on every other device → tie→local → the edit loses everywhere
+  → permanent split-brain (the P3 edit-propagation bug — fixed). Acceptable consequences: an edited event
+  moves to edit-time in same-day ts ordering, and an edited `balanceReading` becomes the date-latest
+  reading (§5b re-anchors from it) — both correct, since the edit is the freshest statement.
 - **State (`useStore.ts`):** `deletedDayEvents: Record<string, number>` (event id → deletedAt ms, default `{}`)
   + raw `setDeletedDayEvents` (plain `set`, non-emitting, mirrors `setDeletedMonths`). **Persisted-not-synced**
   (NOT in `partializeState`'s omit → rides the rest; NOT in `SETTINGS_FIELDS`). 90-day GC happens in `mergeRecords`.
