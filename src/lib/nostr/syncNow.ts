@@ -1,7 +1,7 @@
 import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
 import { nostrLog } from './log';
-import { useStore, publishRecordsNow, publishSettingsNow } from '../../store/useStore';
+import { useStore, publishRecordsNowImmediate, publishSettingsNow } from '../../store/useStore';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
 
@@ -33,7 +33,7 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
     useStore.getState().setInitialSettingsPullDone(true);
     let recOk = true, setOk = true;
     let recLabel = 'skipped', setLabel = 'skipped';   // not dirty → no push attempted
-    if (useStore.getState().recordsDirty)  { recOk = await publishRecordsNow();  recLabel = recOk ? 'ok' : 'FAILED'; }
+    if (useStore.getState().recordsDirty)  { recOk = await publishRecordsNowImmediate();  recLabel = recOk ? 'ok' : 'FAILED'; }
     if (useStore.getState().settingsDirty && useStore.getState().initialSettingsPullDone) { setOk = await publishSettingsNow(); setLabel = setOk ? 'ok' : 'FAILED'; }
     const ok = pullOk && recOk && setOk;
     if (ok) {

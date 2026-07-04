@@ -1,12 +1,13 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockStoreState, mockPool } = vi.hoisted(() => ({
+const { mockStoreState, mockPool, mockPublishRecordsImmediate } = vi.hoisted(() => ({
   mockStoreState: {} as Record<string, any>,
   mockPool: {
     querySync: vi.fn(),
     publish:   vi.fn(),
     close:     vi.fn(),
   },
+  mockPublishRecordsImmediate: vi.fn(),   // sync.ts's repair-on-detect fires this (a named import from useStore)
 }));
 
 vi.mock('nostr-tools/pool', () => ({
@@ -16,9 +17,11 @@ vi.mock('nostr-tools/pool', () => ({
 
 vi.mock('../../../store/useStore', () => ({
   useStore: { getState: () => mockStoreState },
+  publishRecordsNowImmediate: mockPublishRecordsImmediate,
 }));
 
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
+  mockPublishRecordsImmediate.mockClear();
   Object.assign(mockStoreState, {
     lastSettingsSyncAt:      null,
     lastRecordsSyncAt:       null,
@@ -203,6 +206,7 @@ describe('fetchAndSync', () => {
 
     expect(mockStoreState.setRecordsDirty).toHaveBeenCalledWith(true);
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();   // merged === local
+    expect(mockPublishRecordsImmediate).toHaveBeenCalled();        // repair-on-detect: relay is behind → publish now
   });
 
   it('decrypt failure → resolves false, nothing applied', async () => {
@@ -235,6 +239,7 @@ describe('fetchAndSync', () => {
 
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
     expect(mockStoreState.setRecordsDirty).not.toHaveBeenCalled();
+    expect(mockPublishRecordsImmediate).not.toHaveBeenCalled();   // relay already in sync → no repair publish
     expect(mockStoreState.setLastRecordsSyncAt).toHaveBeenCalledWith(700);   // observability stamp still fires
   });
 
@@ -289,5 +294,27 @@ describe('publishEncrypted', () => {
 
     const { publishEncrypted } = await import('../publish');
     await expect(publishEncrypted(signer, 'pk', 'd-tag', { x: 1 })).rejects.toThrow();
+  });
+
+  // Same-second race guard: two publishes of the SAME d-tag within one second must not tie on created_at
+  // (a NIP-01 replaceable tie randomly keeps the older payload). Per-d-tag monotonic → strictly ordered.
+  it('same d-tag, same second → second created_at === first + 1 (no tie); different d-tags do not interfere', async () => {
+    mockPool.publish.mockReturnValue([Promise.resolve('ok')]);
+    const signer = makeSigner();
+    const FIXED = 1_700_000_000_000;                          // fixed wall clock → both floor() to the same second
+    const nowSpy = vi.spyOn(Date, 'now').mockReturnValue(FIXED);
+    const sec = Math.floor(FIXED / 1000);
+
+    const { publishEncrypted } = await import('../publish');
+    // unique tags so the module-level per-d-tag counter can't leak across other tests in this file
+    const a1 = await publishEncrypted(signer, 'pk', 'mono-x', { n: 1 });
+    const a2 = await publishEncrypted(signer, 'pk', 'mono-x', { n: 2 });   // same d-tag, same second
+    const b1 = await publishEncrypted(signer, 'pk', 'mono-y', { n: 3 });   // different d-tag
+
+    expect(a1).toBe(sec);
+    expect(a2).toBe(sec + 1);        // bumped past the tie
+    expect(b1).toBe(sec);            // independent counter — not pushed by mono-x
+
+    nowSpy.mockRestore();
   });
 });

@@ -2908,7 +2908,13 @@ vercel.json                         # Catch-all rewrite → index.html (required
 
 - `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → returns the published `created_at` on the
   FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
-  rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event)
+  rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event).
+  **`created_at` is PER-D-TAG MONOTONIC** (module-level `lastCreatedAtByDtag`): `createdAt =
+  max(floor(Date.now()/1000), last[dTag]+1)`. Second-granularity stamps would let two publishes of the
+  same **replaceable** d-tag within one second TIE on `created_at` → NIP-01 tie-break (lowest id) can
+  randomly keep the OLDER (incomplete) payload; the monotonic bump makes ties impossible within a session.
+  Per-tag counter → settings/records/viewer never interfere (covered for free; `publishRelayListNip65` is a
+  separate kind-10002 path, untouched)
 - `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
   returns boolean — mirrors `publishRecordsNow`): builds the 34-field payload from current state, dynamic
   imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
@@ -2918,15 +2924,29 @@ vercel.json                         # Catch-all rewrite → index.html (required
   SYNCHRONOUSLY (app close mid-debounce still retries next launch), then 2s debounce →
   `publishSettingsNow()`. Accepted micro-race: a setter firing during an in-flight publish re-marks
   dirty + re-schedules (~2s later); only loss window is full app close inside that ~2s
-- `publishRecordsNow()` — exported from the store; immediate (no debounce); publishes the v2
-  `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths }`; returns boolean and STILL
-  manages the flag itself (the log mutators call it standalone, outside syncNow): clears `recordsDirty` +
-  `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure (dirty stays true).
-  **Gated on `viewerMode`** (`!isAuthenticated || !nostrSigner || !nostrPubkey || viewerMode → return false`):
+- `publishRecordsNow()` / `publishRecordsNowImmediate()` — exported from the store; publish the v2
+  `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths, dayLog, dayLogDeletions }`.
+  **`publishRecordsNow()` is now a fire-and-forget TRAILING DEBOUNCE (~400ms, module-level
+  `recordsDebounceTimer`, mirrors `syncSettingsToNostr`)** — the log mutators call it standalone (outside
+  syncNow), and EventSheet's flow+reading saves as two back-to-back `addDayEvent` calls, so coalescing them
+  into ONE publish prevents two same-second publishes of the replaceable records d-tag (the created_at-tie
+  bug; belt-and-suspenders with the monotonic `created_at`). State is snapshotted at FIRE time (getState
+  inside the immediate fn); `recordsDirty` stays true until the debounced publish succeeds, so an app kill
+  mid-debounce self-heals on the next pull (`syncNow` publishes-if-dirty). **`publishRecordsNowImmediate()`
+  is the un-debounced variant** (returns the awaited boolean; manages the flags — clears `recordsDirty` +
+  `nostrReconnectNeeded` on success, sets `nostrReconnectNeeded` on failure) used by `syncNow` (honest push
+  reporting), the sync-repair path, and the viewerMode-gate test; calling it clears any pending debounce
+  (an immediate publish supersedes it → no redundant NIP-46 signer op). **Gated on `viewerMode`**
+  (`!isAuthenticated || !nostrSigner || !nostrPubkey || viewerMode → return false`, on the immediate fn):
   a read-only viewer IS authenticated with its own nsec, so the auth gate alone wouldn't stop it — the
   `viewerMode` term is the relay-side backstop for the read-only-viewer invariant. The owner has
   `viewerMode===false` so it's unaffected; the owner→viewer snapshot publish (`publishViewerSnapshotNow`,
   gated on `viewerPubkey`) is a SEPARATE path, untouched
+- **Repair-on-detect (`sync.ts`):** when a records pull detects the relay is behind
+  (`norm(merged) !== norm(remote)` → `setRecordsDirty(true)`), it also fires `void
+  publishRecordsNowImmediate()` right there — the gap self-heals immediately instead of lingering until the
+  next user action. No loop: a successful publish clears `recordsDirty`, and the next pull's
+  `norm(merged) === norm(remote)`
 - `FALLBACK_RELAYS`: = `DEFAULT_RELAYS` (damus, primal, nos.lol — relays.ts; used if NIP-65 discovery fails)
 - NIP-65 relay discovery: `syncNow` fetches the user's kind:10002 when `nostrRelays` is empty and
   stores it; subsequent publishes go to the user's own relays

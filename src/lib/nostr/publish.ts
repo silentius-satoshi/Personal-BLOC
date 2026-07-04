@@ -10,6 +10,12 @@ export const RECORDS_DTAG  = 'personal-bloc:records:v1';
 
 export const FALLBACK_RELAYS = DEFAULT_RELAYS;   // unified single source (see relays.ts)
 
+// Per-d-tag monotonic created_at clock. publishEncrypted stamps created_at at SECOND granularity, so two
+// publishes of the same replaceable d-tag within one second would tie → NIP-01 tie-break (lowest id) can
+// randomly keep the OLDER payload. Guaranteeing strict per-d-tag ordering makes ties impossible within a
+// session (covers settings/records/viewer — each d-tag has its own counter, so they never interfere).
+const lastCreatedAtByDtag: Record<string, number> = {};
+
 export async function publishEncrypted(
   signer:  NostrSigner,
   pubkey:  string,
@@ -21,7 +27,8 @@ export async function publishEncrypted(
   const plaintext  = JSON.stringify(data);
   if (!signer.nip44) throw new Error('signer missing NIP-44 support');
   const ciphertext = await withTimeout(signer.nip44.encrypt(pubkey, plaintext), opTimeoutMs, 'nip44 encrypt');
-  const createdAt  = Math.floor(Date.now() / 1000);
+  const createdAt  = Math.max(Math.floor(Date.now() / 1000), (lastCreatedAtByDtag[dTag] ?? 0) + 1);   // per-d-tag monotonic — no same-second replaceable ties
+  lastCreatedAtByDtag[dTag] = createdAt;
 
   const signed = await withTimeout(signer.signEvent({
     kind:       30078,

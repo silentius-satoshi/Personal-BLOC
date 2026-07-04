@@ -470,8 +470,22 @@ export interface StoreState {
 }
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let recordsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
-export async function publishRecordsNow(): Promise<boolean> {
+// Trailing debounce (~400ms) over the records publish. EventSheet saves a flow+reading as two back-to-back
+// addDayEvent calls, each firing this; coalescing them into ONE publish prevents two publishes of the same
+// replaceable records d-tag with an identical second-granularity created_at → NIP-01 tie-break randomly
+// keeping the first (incomplete) payload. recordsDirty stays true until the debounced publish succeeds, so
+// an app kill mid-debounce self-heals on the next pull (syncNow publishes-if-dirty). State is snapshotted at
+// FIRE time (getState() lives inside publishRecordsNowImmediate). Callers ignore the return; syncNow, the
+// sync-repair path, and the gate test call publishRecordsNowImmediate directly for the awaited boolean.
+export function publishRecordsNow(): void {
+  if (recordsDebounceTimer) clearTimeout(recordsDebounceTimer);
+  recordsDebounceTimer = setTimeout(() => { void publishRecordsNowImmediate(); }, 400);
+}
+
+export async function publishRecordsNowImmediate(): Promise<boolean> {
+  if (recordsDebounceTimer) { clearTimeout(recordsDebounceTimer); recordsDebounceTimer = null; }   // an immediate publish supersedes any pending debounce — avoids a redundant signer op (NIP-46 round-trip)
   const state = useStore.getState();
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode) return false;   // publish didn't happen (incl. read-only viewer — relay-side backstop)
   useStore.getState().setNostrSyncing(true);
