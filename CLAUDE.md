@@ -1390,40 +1390,63 @@ and simple-mode. One container, no mode branching. `AppShell.module.css` carries
 `.main { grid-column: 1 / -1 }`) matching the liqsim/settings pattern — the empty 280px rail
 no longer renders in full-mode.
 
-### Hub expansion — Mining / Power Law / gated defense faces (Almanac becomes a 5-face hub)
+### Hub expansion — Mining / Power Law / Sats / gated defense faces (Almanac becomes a 6-face hub)
 
-`AlmanacView` widened from 2 live faces (Halving/Cycle) + 2 disabled "soon" placeholders to a full 5-face
-hub: **Halving / Cycle / Mining / Power Law / defense**. Locked design — **EMBED with per-face width**: the
-Almanac is only the roof (eyebrow + sub-nav); each tool keeps its own already-shipped container
-byte-identical. `face` widened to `'halving' | 'cycle' | 'mining' | 'powerlaw' | 'defense'` (still local
-`useState`, default `'halving'`, nothing persisted/synced — unchanged §14.3).
+`AlmanacView` widened from 2 live faces (Halving/Cycle) + 2 disabled "soon" placeholders to a full **6-face**
+hub: **Halving / Cycle / Mining / Power Law / Sats / defense**. Locked design — **EMBED with per-face
+width**: the Almanac is only the roof (eyebrow + sub-nav); each tool keeps its own already-shipped container
+byte-identical. `face` widened to `'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense'` (still
+local `useState`, default `'halving'`, nothing persisted/synced — unchanged §14.3).
 
-- **Render restructure:** the root wraps in a NEW full-width `.shell` (`width:100%`, no max-width/padding);
-  the eyebrow+sub-nav still sit inside the existing 600px `.container`; Halving/Cycle are re-wrapped in a
-  SECOND `.container` (unchanged content/props — `useChainTip()` stays the single per-mount data source for
-  those two faces only); Mining/PowerLaw/defense render OUTSIDE any `.container` — `<MiningMain/>` brings
-  its own 960px `.main`, `<PowerLawMain/>` brings its own full-width chart, `<CbDefenseTool/>` brings its
-  own 600px `toolShell` — so none of the three tools is double-wrapped or resized by the hub.
-- **`CbDefenseTool.tsx`** (NEW, `src/components/Tools/`) — the ONE mode-gate definition
+- **§8 toolContainer adoption is now CLOSED** — every tool shares one `src/components/Tools/toolShell.module.css`
+  `.toolContainer` (600px centered + iOS-safe overflow): `EmergencyConsole`/`LiqSimulator` adopted it in
+  Phase 1; **this change closes the deferred follow-up** for `MiningMain.module.css`, `PowerLawMain.module.css`,
+  `ConverterMain.module.css` (each `.main` now `composes: toolContainer from '../Tools/toolShell.module.css'`,
+  dropping its own width/max-width/margin/base-horizontal-padding — Mining also drops its now-redundant
+  `@media (max-width:640px) { .main { padding:16px } }`, since toolContainer's fixed 16px horizontal already
+  covers what that query existed for), and for `AlmanacView.module.css`'s own `.container` (now
+  composes-only from the same file — **zero visual change**, since `.container` WAS the byte-identical
+  reference `toolContainer` was originally extracted from). Standalone tabs (Mining/PowerLaw/Converter) now
+  render at the shared 600px width too, not their old 960px/700px/full-width — an intended, uniform
+  consequence, not an Almanac-only effect.
+- **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
+  eyebrow+sub-nav still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
+  (unchanged content/props — `useChainTip()` stays the single per-mount data source for those two faces
+  only); Mining/PowerLaw/Sats render each tool's own main content **stacked with its input panel** in a new
+  `.faceStack` (`display:flex; flex-direction:column; gap:16px` — no width of its own, since the tool inside
+  already brings its `toolContainer` width); `defense` renders `<CbDefenseTool/>` bare (no `.faceStack` — it
+  has no separate input panel).
+- **Panel stacking mirrors each tool's own mobile DOM order** (confirmed from `AppShell.tsx`'s sidebar+main
+  mount order and `AppShell.module.css`'s `[data-active-tab]` rules): mining = `<MiningInputsPanel/>` then
+  `<MiningMain/>`; powerlaw = `<PowerLawSidebar/>` then `<PowerLawMain/>` (both panel-first — AppShell has NO
+  `order` override for either tab, so they fall back to plain DOM order, sidebar before main); sats =
+  `<ConverterMain/>` then `<ConverterSidebar/>` (main-first — `converter` is the ONLY tab with an explicit
+  `[data-active-tab="converter"] .main { order:1 } .sidebar { order:2 }` override, at `≤767px`). All three
+  panel components (`MiningInputsPanel`, `PowerLawSidebar`, `ConverterSidebar`) are props-free,
+  store/hook-connected named exports — mounted bare, identical to how `AppShell` already mounts them as each
+  tab's sidebar.
+- **`CbDefenseTool.tsx`** (`src/components/Tools/`) — the ONE mode-gate definition
   (`cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole/> : <LiqSimulator/>`), extracted from the
   inline ternary that used to live in `AppShell.tsx`'s `liqsim` render branch. **Both mount points** — the
-  `liqsim` tab (`AppShell.tsx`) AND the Almanac's `defense` face — now render `<CbDefenseTool/>`, so they
-  can never disagree on which tool is showing. `AppShell.tsx` no longer imports `LiqSimulator`/
-  `EmergencyConsole` directly (it was the sole importer of both; now imports `CbDefenseTool` only). Tab
-  label logic (`withEmergencyLabel` in `AppShell.tsx`) is UNCHANGED — it still computes the `liqsim` tab's
-  label independently of this component.
-- **Sub-nav:** Mining/Power Law buttons lost their `disabled`/`subnavBtnSoon`/`soonTag` treatment and now
-  set `face` like Halving/Cycle (the `.subnavBtnSoon`/`.soonTag` CSS rules stay in the module, unused but
-  harmless). A new **defense button renders ONLY when `hasCbLoan`** (a fresh `useStore` read in
-  `AlmanacView` — its first store reads beyond the Almanac-live-toggle fields), labeled `🚨 Emergency` /
-  `Liq Sim` by `cbPaymentStrategy`, mirroring the `liqsim` tab's own label rule. A guard `useEffect` falls
-  back to `'halving'` if the defense face is showing and `hasCbLoan` flips false mid-session.
+  `liqsim` tab (`AppShell.tsx`) AND the Almanac's `defense` face — render `<CbDefenseTool/>`, so they can
+  never disagree on which tool is showing. Tab label logic (`withEmergencyLabel` in `AppShell.tsx`) is
+  UNCHANGED — it still computes the `liqsim` tab's label independently of this component.
+- **Sub-nav:** Mining/Power Law buttons set `face` like Halving/Cycle (no disabled/soon treatment). A new
+  **Sats button (`丰 Sats`, mirroring the `converter` tab's own shortLabel/fullLabel) is ALWAYS visible** —
+  not gated. A **defense button renders ONLY when `hasCbLoan`**, labeled `🚨 Emergency` / `Liq Sim` by
+  `cbPaymentStrategy`, mirroring the `liqsim` tab's own label rule. A guard `useEffect` falls back to
+  `'halving'` if the defense face is showing and `hasCbLoan` flips false mid-session. `.subnav` already had
+  `overflow-x:auto` + hidden scrollbar + `flex:none` buttons (pre-existing) — scrolls gracefully at 6 buttons
+  with no CSS change needed.
 - **ISOLATION WALL restated (unchanged):** `cycleModel`/`HalvingClock`/`CycleClock` import nothing from the
   risk/position core (§2); `emergencyModel` imports nothing from `cycleModel`/power-law (§7). Co-locating
-  all five faces under one hub is navigation only — it crosses neither wall.
-- `tabOrder`/`hiddenTabs`/`ALL_TABS_META`/`ActiveTab` are UNTOUCHED — this is purely a face added inside the
-  existing `almanac` tab's content, not a new tab. No store fields added; only new *reads* of the
-  already-existing `hasCbLoan`/`cbPaymentStrategy`. No persistence/sync changes.
+  all six faces under one hub is navigation only — it crosses neither wall.
+- `tabOrder`/`hiddenTabs`/`ALL_TABS_META`/`ActiveTab` are UNTOUCHED — this is purely faces added inside the
+  existing `almanac` tab's content, not new tabs. No store fields added; only reads of the already-existing
+  `hasCbLoan`/`cbPaymentStrategy`. No persistence/sync changes. `AppShell.tsx`/`AppShell.module.css`
+  untouched by this change — the standalone-tab experience for all four tools uses the same components,
+  same AppShell wrapper; only each tool's own inner container CSS changed, uniformly for both the tab and
+  the Almanac-hub render paths.
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 

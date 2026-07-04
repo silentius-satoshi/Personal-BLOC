@@ -1,12 +1,11 @@
 .main {
+  composes: toolContainer from '../Tools/toolShell.module.css';
   --color-solo:   #FF4444;
   --color-split:  #F7931A;
   --color-pooled: #00C896;
-  padding: 24px;
   display: flex;
   flex-direction: column;
   gap: 16px;
-  max-width: 960px;
 }
 
 .topBar {
@@ -42,8 +41,3 @@
   gap: 10px;
 }
 
-@media (max-width: 640px) {
-  .main {
-    padding: 16px;
-  }
-}

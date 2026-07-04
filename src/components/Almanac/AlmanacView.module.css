@@ -8,12 +8,16 @@
 }
 
 .container {
-  width: 100%;
-  box-sizing: border-box;
-  overflow-x: hidden;
-  max-width: 600px;
-  margin: 0 auto;
-  padding: 0 16px 32px;
+  composes: toolContainer from '../Tools/toolShell.module.css';
+}
+
+/* Panel + main stacked per each embedded tool's own mobile order (mining/powerlaw panel-first,
+   sats main-first, mirroring AppShell's converter-only `order` override). No width constraint —
+   the tool inside brings its own toolContainer width. */
+.faceStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .eyebrow {

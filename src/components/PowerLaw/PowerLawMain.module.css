@@ -1,4 +1,5 @@
 .main {
+  composes: toolContainer from '../Tools/toolShell.module.css';
   display: flex;
   flex-direction: column;
   gap: 16px;

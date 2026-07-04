@@ -5,28 +5,37 @@ import FreshnessBadge from './FreshnessBadge';
 import AlmanacConsentSheet from './AlmanacConsentSheet';
 import { useChainTip } from '../../hooks/useChainTip';
 import { useStore } from '../../store/useStore';
+import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
 import { MiningMain } from '../Mining/MiningMain';
+import { PowerLawSidebar } from '../PowerLaw/PowerLawSidebar';
 import { PowerLawMain } from '../PowerLaw/PowerLawMain';
+import { ConverterMain } from '../Converter/ConverterMain';
+import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { CbDefenseTool } from '../Tools/CbDefenseTool';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for five faces: Halving Clock / Cycle Clock (both
- * cycleModel-only, rendered inside the shared 600px `.container`), Mining / Power Law (each embeds the
- * REAL `MiningMain`/`PowerLawMain` tool with its OWN already-shipped container/width — no double-wrapping),
- * and the gated `defense` face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate
- * used by the `liqsim` tab in AppShell — hidden entirely when `!hasCbLoan`). Holds the local face state
- * (DEFAULT halving, §14.3 — nothing persisted, nothing synced). P3: the single useChainTip lives HERE and
- * feeds the SAME height/mode to the two clock faces, so switching faces is pure presentation and never
- * remounts the data layer (§14.5 by construction) — Mining/PowerLaw/defense don't consume it at all.
- * The eyebrow badge is the live-block-height toggle (device-local; one-time consent on first enable).
+ * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for SIX faces: Halving Clock / Cycle Clock (both
+ * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
+ * Mining / Power Law / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in
+ * a `.faceStack` in that tool's own mobile DOM order — mining/powerlaw panel-first, sats main-first,
+ * mirroring the presence/absence of AppShell's converter-only `order` override), and the gated `defense`
+ * face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate used by the `liqsim` tab
+ * in AppShell — hidden entirely when `!hasCbLoan`). Every embedded tool brings its OWN already-shipped
+ * `toolContainer`-composed width — the hub adds none of its own (§8 toolContainer adoption is now CLOSED:
+ * EmergencyConsole/LiqSimulator, Mining/PowerLaw/Converter, and AlmanacView's own `.container` all compose
+ * from the same `toolShell.module.css`). Holds the local face state (DEFAULT halving, §14.3 — nothing
+ * persisted, nothing synced). P3: the single useChainTip lives HERE and feeds the SAME height/mode to the
+ * two clock faces, so switching faces is pure presentation and never remounts the data layer (§14.5 by
+ * construction) — Mining/PowerLaw/Sats/defense don't consume it at all. The eyebrow badge is the
+ * live-block-height toggle (device-local; one-time consent on first enable).
  *
  * ISOLATION WALL (restated, unchanged): cycleModel/HalvingClock/CycleClock import nothing from the
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
- * five faces under one hub is navigation only — it crosses neither wall.
+ * six faces under one hub is navigation only — it crosses neither wall.
  */
 export default function AlmanacView() {
-  const [face, setFace] = useState<'halving' | 'cycle' | 'mining' | 'powerlaw' | 'defense'>('halving');
+  const [face, setFace] = useState<'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense'>('halving');
   const [consentOpen, setConsentOpen] = useState(false);
 
   const tip = useChainTip();
@@ -98,6 +107,13 @@ export default function AlmanacView() {
           >
             ₿ Power Law
           </button>
+          <button
+            type="button"
+            className={`${styles.subnavBtn} ${face === 'sats' ? styles.subnavBtnOn : ''}`}
+            onClick={() => setFace('sats')}
+          >
+            丰 Sats
+          </button>
           {hasCbLoan && (
             <button
               type="button"
@@ -121,9 +137,20 @@ export default function AlmanacView() {
       ) : face === 'defense' ? (
         <CbDefenseTool />
       ) : face === 'mining' ? (
-        <MiningMain />
+        <div className={styles.faceStack}>
+          <MiningInputsPanel />
+          <MiningMain />
+        </div>
+      ) : face === 'powerlaw' ? (
+        <div className={styles.faceStack}>
+          <PowerLawSidebar />
+          <PowerLawMain />
+        </div>
       ) : (
-        <PowerLawMain />
+        <div className={styles.faceStack}>
+          <ConverterMain />
+          <ConverterSidebar />
+        </div>
       )}
 
       <AlmanacConsentSheet
