@@ -1,5 +1,6 @@
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
+import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
 
 function gitSha(): string {
@@ -9,7 +10,19 @@ function gitSha(): string {
 }
 
 export default defineConfig({
-  plugins: [react()],
+  plugins: [
+    react(),
+    // Workbox full-manifest precaching (real offline support). injectManifest → we own src/sw.ts.
+    VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
+      registerType: 'autoUpdate',
+      injectRegister: null,   // registered manually via registerSW in main.tsx — avoids a double injection
+      manifest: false,        // keep the existing public/manifest.json + its <link> untouched
+      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png,woff2}'] },
+    }),
+  ],
   define: {
     __BUILD_SHA__:  JSON.stringify(gitSha()),
     __BUILD_TIME__: JSON.stringify(new Date().toISOString()),

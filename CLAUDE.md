@@ -17,7 +17,7 @@ Deployed to Vercel.
 - Vitest (533 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
-- PWA: `public/manifest.json` + `public/sw.js` (network-first service worker)
+- PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
 
 ---
 
@@ -587,9 +587,18 @@ api/
     ownerAuth.js               # SHARED NIP-98 validator (validateOwnerRequest) for all three Strike proxies — _-prefixed so Vercel does NOT route it; plain ESM .js (imports in Vercel node AND vitest). validateToken (kind/ts/url/method + verifyEvent) → handles BOTH false-return AND throw → unpack → pubkey===OWNER_PUBKEY else 403. Co-located ownerAuth.d.ts so the TS test imports it under tsc -b
 
 public/
-  manifest.json                # PWA: name "Personal ₿LOC", theme #E8836A
-  sw.js                        # Network-first service worker
+  manifest.json                # PWA: name "Personal ₿LOC", theme #E8836A (untouched; kept with its index.html <link>)
   icon.svg                     # Dark bg, orange ₿
+  # NB: the hand-rolled public/sw.js is GONE — the SW is now src/sw.ts, built to dist/sw.js by vite-plugin-pwa
+
+src/
+  sw.ts                        # Custom Workbox service worker (vite-plugin-pwa injectManifest). precacheAndRoute(
+                               # self.__WB_MANIFEST) — precaches the FULL build (per-deploy versioned, atomic
+                               # activation) + cleanupOutdatedCaches; NavigationRoute→createHandlerBoundToURL('/index.html')
+                               # SPA fallback; skipWaiting + clientsClaim (autoUpdate); activate deletes the legacy
+                               # 'personal-bloc-v1' cache. NO runtime caching (cross-origin price/candles/relays stay
+                               # network-only). Compiled by tsconfig.worker.json (WebWorker lib, no DOM); registered from
+                               # main.tsx via registerSW({ immediate: true })
 ```
 
 ---
@@ -2458,6 +2467,20 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 **⚠️ The typecheck gate:** root `tsconfig.json` is references-only (`"files": []`), so `tsc` / `tsc --noEmit` is a NO-OP that compiles nothing and always reports 0 — it never catches type errors. The real typecheck is **`npx tsc -b`** (build mode, what `npm run build` runs). Vercel's `vite build` strips types with esbuild and does **not** typecheck, so type errors only surface via `tsc -b` locally.
 
 `vercel.json`: `{ "buildCommand": "vite build", "outputDirectory": "dist", "framework": "vite" }`
+
+**PWA / offline (Workbox via vite-plugin-pwa `injectManifest`):** `src/sw.ts` is the custom SW; the plugin
+injects the full-build precache manifest (`self.__WB_MANIFEST`) and emits `dist/sw.js` — every hashed
+asset (index/js/css/svg) is precached, **per-deploy versioned + atomically activated**, with a
+`NavigationRoute → '/index.html'` SPA fallback, so an offline launch no longer white-screens (the old
+hand-rolled `sw.js` precached only `/` + `/index.html` and network-first'd the rest). On first activation of
+the new SW the legacy `personal-bloc-v1` cache is deleted. **Cross-origin APIs (price/candles/relays) are
+intentionally network-only** — no runtime caching; the stores carry last-known values and a failed poll is
+handled gracefully. Registration is `registerSW({ immediate: true })` in `main.tsx` (autoUpdate; the inline
+`index.html` script is gone), with `injectRegister: null` in the plugin config to avoid a double injection.
+`src/sw.ts` typechecks under a dedicated **`tsconfig.worker.json`** (WebWorker lib, no DOM; referenced from
+the root tsconfig, excluded from `tsconfig.app.json`) so `tsc -b` stays clean. **Vercel builds it via its
+`vite build` buildCommand** (the plugin runs in `vite build`, not `tsc -b`). Note for the parked
+security-hardening batch: SW response-caching policy now lives in `src/sw.ts`.
 
 **Build-version display:** `__BUILD_SHA__` / `__BUILD_TIME__` vite `define` constants (vite.config.ts:
 Vercel `VERCEL_GIT_COMMIT_SHA` → local `git rev-parse --short HEAD` fallback → `'dev'`), ambient
