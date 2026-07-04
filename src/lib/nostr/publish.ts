@@ -54,6 +54,13 @@ const publishReports: PublishReport[] = [];
 function pushReport(r: PublishReport): void { publishReports.push(r); if (publishReports.length > 10) publishReports.shift(); }
 export function getPublishReports(): readonly PublishReport[] { return publishReports; }
 
+// nostr-tools 2.23.5 footgun: SimplePool.publish RESOLVES a connection failure as the string
+// "connection failure: …" (pool.js catch → return String("connection failure: " + err)) instead of
+// rejecting, so an offline publish would count as N fake acks. Normalize these to rejections before the
+// quorum (see publishSignedToRelays) — an ack must mean a real relay OK frame.
+export const isConnectionFailure = (reason: unknown): boolean =>
+  typeof reason === 'string' && reason.startsWith('connection failure:');
+
 /**
  * Await an ACK QUORUM over the per-relay publish promises. Resolves once `acks >= quorum`; rejects the
  * MOMENT the quorum becomes unreachable (`pubs.length - rejections < quorum`, AggregateError of the
@@ -88,11 +95,13 @@ export async function awaitAckQuorum(
   });
 }
 
-// Shared publish-and-await-ack tail: resolve once an ACK QUORUM of min(2, relays.length) confirms (was
+// Shared publish-and-await-ack tail: resolve once an ACK QUORUM of min(2, pubs.length) confirms (was
 // first-ack — a single lying/dying relay could clear the dirty flags; device-confirmed Jul 2026). Rejects
 // on quorum-unreachable or 12s timeout; closes the pool after all settle. Records a PublishReport per
 // attempt (perRelay filled via onOutcome). Consumed by publishEncrypted (kind-30078) AND
-// publishRelayListNip65 (plain kind-10002) — both inherit the quorum.
+// publishRelayListNip65 (plain kind-10002) — both inherit the quorum. The pubs are normalized so a
+// nostr-tools "connection failure: …" STRING RESOLUTION (offline; see isConnectionFailure) becomes a
+// rejection before the quorum — an ack counts only a genuine relay OK frame.
 function publishSignedToRelays(
   signed:    Parameters<SimplePool['publish']>[1],
   relays:    string[],
@@ -101,7 +110,11 @@ function publishSignedToRelays(
 ): Promise<number> {
   const pool = new SimplePool();
   const startedAt = Date.now();
-  const pubs = pool.publish(relays, signed);                 // Promise[] (one per relay)
+  const pubs = pool.publish(relays, signed).map((p) =>       // Promise[] (one per relay)
+    p.then((reason) => {
+      if (isConnectionFailure(reason)) throw new Error(String(reason));   // an ack must be a real OK frame, not an offline connection-failure string
+      return reason;
+    }));
   Promise.allSettled(pubs).finally(() => pool.close(relays)); // close after all settle; do NOT block the return
   const quorum = Math.min(2, pubs.length);                    // pubs.length === relays.length normally; using pubs guards the URL-dedup case (quorum can never exceed the actual publish attempts)
   const perRelay: PublishReport['perRelay'] = relays.map((url) => ({ url, status: 'pending' }));

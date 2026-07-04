@@ -2965,8 +2965,14 @@ vercel.json                         # Catch-all rewrite → index.html (required
   timeoutMs, onOutcome?)`** (resolves at `acks >= quorum`; rejects the moment the quorum is unreachable
   [`pubs.length - rejections < quorum`, AggregateError of the reasons] or on the 12s timeout ["publish
   timeout — quorum not reached"]; `onOutcome` fires per settle regardless of resolve/reject state, feeding
-  instrumentation). Other relays continue in the background; pool closes after ALL settle; the watermark
-  isn't stamped for a lost event. Per attempt it records a **`PublishReport`** into a module-level ring
+  instrumentation). ⚠ **nostr-tools 2.23.5 footgun:** `SimplePool.publish` **RESOLVES** a connection
+  failure as the STRING `"connection failure: …"` (`pool.js` `ensureRelay` catch → `return String(...)`,
+  not a rejection; `maxWaitForConnection` 3000ms), so an offline publish would count as N fake acks at
+  ~3001ms and clear the dirty flags. `publishSignedToRelays` NORMALIZES these to rejections via the
+  exported `isConnectionFailure` (maps each `pub` to `throw` on the prefix) **before** the quorum — an ack
+  counts only a genuine relay OK frame; the normalized rejection flows into `onOutcome`/the PUBLISH ACKS
+  panel as a reject row. Genuine relay rejections (inside `r.publish`) already rethrow. Other relays
+  continue in the background; pool closes after ALL settle; the watermark isn't stamped for a lost event. Per attempt it records a **`PublishReport`** into a module-level ring
   buffer (last 10, `getPublishReports()` — `{label (dTag/kind), createdAt, startedAt, perRelay:[{url,
   status:ack|reject|pending, ms?, err?}], outcome:ok|fail}`; metadata only — no amounts, safe for Copy
   Diagnostics), filled via `onOutcome`, and `nostrLog('warn', …)` when the quorum is met but a relay

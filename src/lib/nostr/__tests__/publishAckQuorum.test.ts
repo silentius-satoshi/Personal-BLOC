@@ -7,7 +7,7 @@ vi.mock('nostr-tools/pool', () => ({
   SimplePool: vi.fn(function() { return { publish: vi.fn(() => []), close: vi.fn() }; }),
 }));
 
-import { awaitAckQuorum } from '../publish';
+import { awaitAckQuorum, isConnectionFailure } from '../publish';
 
 function deferred<T = void>() {
   let resolve!: (v: T) => void;
@@ -76,5 +76,58 @@ describe('awaitAckQuorum', () => {
 
   it('rejects immediately on an empty relay set', async () => {
     await expect(awaitAckQuorum([], 2, 12000)).rejects.toThrow('no relays');
+  });
+});
+
+describe('isConnectionFailure', () => {
+  it('true only for the "connection failure:" string prefix', () => {
+    expect(isConnectionFailure('connection failure: timeout')).toBe(true);
+    expect(isConnectionFailure('connection failure: x')).toBe(true);
+  });
+  it('false for genuine resolutions and non-strings', () => {
+    expect(isConnectionFailure('')).toBe(false);
+    expect(isConnectionFailure('ok')).toBe(false);
+    expect(isConnectionFailure('connectionfailure')).toBe(false);
+    expect(isConnectionFailure(undefined)).toBe(false);
+    expect(isConnectionFailure(null)).toBe(false);
+    expect(isConnectionFailure(42)).toBe(false);
+  });
+});
+
+// The exact map publishSignedToRelays applies to pool.publish's promises before the quorum: a nostr-tools
+// "connection failure: …" string RESOLUTION becomes a rejection so it can't count as a fake ack.
+const normalize = (p: Promise<unknown>) =>
+  p.then((r) => { if (isConnectionFailure(r)) throw new Error(String(r)); return r; });
+
+describe('connection-failure normalization → quorum', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.clearAllTimers(); vi.useRealTimers(); });
+
+  it('all four resolving with "connection failure: …" → unreachable reject, onOutcome ok=false each', async () => {
+    const pubs = [0, 1, 2, 3].map(() => normalize(Promise.resolve('connection failure: dial timeout')));
+    const outcomes: { i: number; ok: boolean; err?: unknown }[] = [];
+    let err: unknown;
+    await awaitAckQuorum(pubs, 2, 12000, (i, ok, e) => outcomes.push({ i, ok, err: e })).catch((e) => { err = e; });
+    await Promise.allSettled(pubs);
+    await Promise.resolve();
+
+    expect(err).toBeInstanceOf(AggregateError);
+    expect(outcomes.length).toBeGreaterThanOrEqual(2);
+    expect(outcomes.every((o) => o.ok === false)).toBe(true);
+    expect(String((outcomes[0].err as Error).message)).toMatch(/connection failure/);
+  });
+
+  it('2 genuine resolutions ("" / undefined) + 2 connection-failures → resolves on the 2 real acks', async () => {
+    const pubs = ['', undefined, 'connection failure: a', 'connection failure: b']
+      .map((r) => normalize(Promise.resolve(r)));
+    const outcomes: { i: number; ok: boolean }[] = [];
+    let resolved = false;
+    await awaitAckQuorum(pubs, 2, 12000, (i, ok) => outcomes.push({ i, ok })).then(() => { resolved = true; });
+    await Promise.allSettled(pubs);
+    await Promise.resolve();
+
+    expect(resolved).toBe(true);
+    expect(outcomes.filter((o) => o.ok === true)).toHaveLength(2);   // '' and undefined are real acks
+    expect(outcomes.filter((o) => o.ok === false)).toHaveLength(2);  // both connection-failures rejected
   });
 });
