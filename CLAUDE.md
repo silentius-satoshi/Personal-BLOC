@@ -2482,6 +2482,11 @@ the root tsconfig, excluded from `tsconfig.app.json`) so `tsc -b` stays clean. *
 `vite build` buildCommand** (the plugin runs in `vite build`, not `tsc -b`). Note for the parked
 security-hardening batch: SW response-caching policy now lives in `src/sw.ts`.
 
+**Crash diagnostics:** a top-level `ErrorBoundary` + `GlobalErrorOverlay` (`src/components/Layout/ErrorBoundary.tsx`,
+wrapped around `<NostrProvider><App/></NostrProvider>` in `main.tsx`) — white-screen crashes now render
+on-device diagnostics (message/stack/component-stack, copy + reload) instead of a blank page; built for
+offline-boot debugging, kept permanently (not a temp probe).
+
 **Build-version display:** `__BUILD_SHA__` / `__BUILD_TIME__` vite `define` constants (vite.config.ts:
 Vercel `VERCEL_GIT_COMMIT_SHA` → local `git rev-parse --short HEAD` fallback → `'dev'`), ambient
 declarations in `src/vite-env.d.ts`, rendered at the bottom of Settings (`.buildInfo`).
