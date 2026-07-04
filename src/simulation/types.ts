@@ -83,14 +83,18 @@ export type DayEvent =
   | (DayEventBase & { kind: 'cbCollateralReading'; cbCollateral: number /* BTC — CB-only; feeds the derived cbCollateralBtc clock */ })
   | (DayEventBase & { kind: 'balanceReading'; reading: {
         strikeBal: number; strikeLtv: number;       // always required (read off Strike)
+        strikeCollateral?: number;                  // Strike collateral BTC — reading-anchored (Collateral-Truth v20); feeds the derived strikeCollateralBtc clock via deriveStrikeCollateral
         cbBal?: number; cbLtv?: number;             // required at runtime iff hasCbLoan
         cbCollateral?: number;                      // CB collateral BTC — required at runtime iff hasCbLoan; feeds the derived cbCollateralBtc clock
         cbLiqPrice?: number;                        // §5b — optional CB liquidation price; anchor input (re-anchors cbLiquidationPrice), NOT a monthly stock (never in the rollup entry)
         price?: number;                             // optional spot price at reading time
       } });
-// NOTE: btcHeld (Strike) is NOT in balanceReading — store-owned via recomputeBtcHeld/adjustCurrentCollateral.
+// NOTE: Strike collateral (btcHeld) is READING-ANCHORED (Collateral-Truth v20) — DERIVED via
+//       deriveStrikeCollateral = the strikeCollateral-bearing reading latest by (date, then ts) + target:'strike'
+//       deposit/withdraw moves strictly after it. NOT synced as a setting (local derived cache strikeCollateralBtc,
+//       converges cross-device via the dayLog on the records channel). Buys NEVER count toward Strike collateral.
 //       cbCollateralBtc is DERIVED = latest cbCollateral-bearing event by ts (balanceReading or cbCollateralReading); NOT synced as a setting.
-//       deposit/withdraw target:'strike' feeds collateralDelta (P2 seam); target:'cb' is journal-only (CB collateral comes from the reading).
+//       deposit/withdraw target:'strike' feeds collateralDelta (rollup report-only) + the strike derive; target:'cb' is journal-only (CB collateral comes from the reading).
 
 // --- Monthly Log ---
 

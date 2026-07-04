@@ -285,6 +285,40 @@ export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: 
   return best ? best.v : (currentCbCollateralBtc ?? 0);
 }
 
+/**
+ * Collateral-Truth v20 — the READING-ANCHORED Strike-collateral derive (mirrors deriveCbCollateral, but
+ * single-source: only balanceReading.reading.strikeCollateral — there is no strikeCollateralReading kind).
+ * THE definition of current Strike collateral (getCurrentBtcHeld):
+ *   anchor = the strikeCollateral-bearing balanceReading latest by (DATE, then ts) — same idiom as
+ *            deriveReadingAnchors; result = anchor.strikeCollateral + Σ of target:'strike' deposit/withdraw
+ *            moves STRICTLY AFTER the anchor (e.date > anchor.date, or e.date === anchor.date && e.ts >
+ *            anchor.ts), signed by kind (deposit +, withdraw −; amount = magnitude — same convention as
+ *            strikeCollateralDelta). No anchor → fallback ?? 0 (never undefined — runAdvisor needs a number).
+ *
+ * ⚠ Ordering differs from deriveCbCollateral's pure-ts on PURPOSE. A backfilled (past-dated) strike move
+ * dated BEFORE the anchor is already reflected in that reading's stated total and must NOT be re-summed;
+ * date-primary with a ts tiebreak encodes exactly that. And the ts tiebreak is STRICT (> not ≥) so an
+ * atomic flow+reading sharing a ts (LD6 — the sheet emits the deposit and its reading with the same ts)
+ * is NOT double-counted: the reading already states the post-move total. Buys are invisible by construction.
+ */
+export function deriveStrikeCollateral(dayLog: DayEvent[], fallback?: number): number {
+  let anchor: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
+  for (const e of dayLog) {
+    if (e.kind !== 'balanceReading' || e.reading.strikeCollateral === undefined) continue;
+    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts)) anchor = e;
+  }
+  if (anchor === null) return fallback ?? 0;
+
+  let total = anchor.reading.strikeCollateral as number;
+  for (const e of dayLog) {
+    if ((e.kind === 'deposit' || e.kind === 'withdraw') && e.target === 'strike'
+        && (e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts))) {
+      total += e.kind === 'withdraw' ? -e.amount : e.amount;   // amount = magnitude; sign by kind
+    }
+  }
+  return total;
+}
+
 // §5b Readings-Unification — the live safety anchors + their freshness stamps.
 export interface ReadingAnchorState {
   advisorActualBlocBalance:     number; advisorActualBlocBalanceAsOf: string | null;
