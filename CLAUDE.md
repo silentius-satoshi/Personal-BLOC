@@ -215,7 +215,18 @@ src/
                                 # never balances/amounts/log contents); the panel itself may show position figures.
                                 # SYNC STATE grid also carries a BTC-PRICE-AGE row (store price + "Ns/Nm ago", ⚠ stale
                                 # >5min, from btcPriceUpdatedAt; 5s now-tick so a dead poll's age climbs visibly) —
-                                # DevPanel-ONLY, rendered in JSX not the syncState object (kept out of Copy Diagnostics)
+                                # DevPanel-ONLY, rendered in JSX not the syncState object (kept out of Copy Diagnostics).
+                                # SERVICE WORKER section (container-local — reads only navigator.serviceWorker/caches/
+                                # matchMedia, no store): display mode (standalone PWA vs browser tab), controller,
+                                # registration installing/waiting/active states, a fired registration.update() result,
+                                # caches.keys(), per-workbox-precache-* cache entry count + /index.html match
+                                # (cache.match with ignoreSearch — precached URLs carry a __WB_REVISION__ query param),
+                                # per-same-origin-script cache match, and a confirm-gated "Re-register SW + reload"
+                                # repair (unregister all → clear all caches → re-register /sw.js → reload). Exists
+                                # because the index.html ?swdebug probe can't be reached once installed as a
+                                # Home-Screen PWA, and on iOS the PWA's storage/SW registration is ISOLATED from
+                                # Safari — a Safari-tab probe can't see the installed container at all; DevPanel
+                                # (devMode-gated) is reachable from WITHIN the running PWA container itself
       DevPanel.module.css
 
     Summary/

@@ -56,6 +56,15 @@ export function DevPanel() {
   const [vProbing, setVProbing]         = useState(false);
   const [vProbeStatus, setVProbeStatus] = useState('');
   const [vRefetching, setVRefetching]   = useState(false);
+  const [swStatus, setSwStatus] = useState<{
+    controller: string;
+    registration: string[];
+    cacheKeys: string;
+    precacheDetails: string[];
+    scriptMatches: string[];
+    updateResult: string;
+  } | null>(null);
+  const [swLoading, setSwLoading] = useState(false);
 
   // 5s tick so the btc-price age below climbs visibly — a frozen price (dead poll) shows the age growing
   // past 60s/2m, which is the whole point of the diagnostic (a render-only age could look static).
@@ -64,6 +73,98 @@ export function DevPanel() {
     const id = setInterval(() => setNow(Date.now()), 5_000);
     return () => clearInterval(id);
   }, []);
+
+  // Container-local SW diagnostics — the index.html ?swdebug probe can't be reached from inside an
+  // installed PWA (and on iOS a Safari-tab probe can't see the PWA's isolated storage/SW registration at
+  // all), so this is the one surface reachable from WITHIN the running container itself.
+  const refreshSwStatus = async () => {
+    setSwLoading(true);
+    try {
+      const controller = ('serviceWorker' in navigator) && navigator.serviceWorker.controller
+        ? navigator.serviceWorker.controller.scriptURL
+        : 'NO CONTROLLER';
+
+      const registration: string[] = [];
+      let updateResult = 'no registration';
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          if (reg.installing) registration.push(`installing: ${reg.installing.scriptURL} [${reg.installing.state}]`);
+          if (reg.waiting)    registration.push(`waiting: ${reg.waiting.scriptURL} [${reg.waiting.state}]`);
+          if (reg.active)     registration.push(`active: ${reg.active.scriptURL} [${reg.active.state}]`);
+          if (registration.length === 0) registration.push('registration exists, no workers');
+          try {
+            await reg.update();
+            updateResult = 'update() resolved';
+          } catch (e) {
+            updateResult = `update() rejected: ${e instanceof Error ? e.message : String(e)}`;
+          }
+        } else {
+          registration.push('no registration');
+        }
+      } else {
+        registration.push('serviceWorker not supported');
+      }
+
+      let cacheKeysList: string[] = [];
+      const precacheDetails: string[] = [];
+      const scriptMatches: string[] = [];
+      if ('caches' in window) {
+        cacheKeysList = await caches.keys();
+        const workboxCaches = cacheKeysList.filter((k) => k.indexOf('workbox-precache') === 0);
+        for (const name of workboxCaches) {
+          const cache = await caches.open(name);
+          const entries = await cache.keys();
+          // ignoreSearch required — precached URLs carry a __WB_REVISION__ query param.
+          const hasIndex = !!(await cache.match('/index.html', { ignoreSearch: true }));
+          precacheDetails.push(`${name}: ${entries.length} entries, /index.html ${hasIndex ? 'OK' : 'MISS'}`);
+        }
+        for (const s of Array.from(document.scripts)) {
+          if (!s.src) continue;
+          let sameOrigin = false;
+          try { sameOrigin = new URL(s.src, location.href).origin === location.origin; } catch { /* noop */ }
+          if (!sameOrigin) continue;
+          const match = await caches.match(s.src);
+          scriptMatches.push(`${s.src}: ${match ? 'OK' : 'MISS'}`);
+        }
+      }
+
+      setSwStatus({
+        controller,
+        registration,
+        cacheKeys: cacheKeysList.length ? cacheKeysList.join(', ') : '(none)',
+        precacheDetails: precacheDetails.length ? precacheDetails : ['no workbox-precache-* cache found'],
+        scriptMatches,
+        updateResult,
+      });
+    } finally {
+      setSwLoading(false);
+    }
+  };
+
+  useEffect(() => { void refreshSwStatus(); }, []);
+
+  const displayMode = window.matchMedia('(display-mode: standalone)').matches
+    ? 'standalone (PWA container)'
+    : 'browser tab';
+
+  // Repair for a stuck/absent registration — nukes everything SW-related then re-registers + reloads.
+  const repairSw = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    // eslint-disable-next-line no-alert
+    if (!window.confirm('This unregisters the service worker, clears all caches, and reloads. You must be ONLINE afterward for the app to re-download. Continue?')) return;
+    try {
+      const regs = await navigator.serviceWorker.getRegistrations();
+      await Promise.all(regs.map((r) => r.unregister()));
+      const keys = await caches.keys();
+      await Promise.all(keys.map((k) => caches.delete(k)));
+      await navigator.serviceWorker.register('/sw.js');
+    } catch (e) {
+      nostrLog('warn', `SW repair failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      window.location.reload();
+    }
+  };
 
   const syncState = {
     method:        nostrSigningMethod ?? '—',
@@ -249,6 +350,32 @@ export function DevPanel() {
           {btcPrice ? `$${Math.round(btcPrice).toLocaleString()}` : '—'} · {fmtPriceAge(btcPriceUpdatedAt, now)}
         </span>
       </div>
+
+      <div className={styles.sectionTitle}>
+        SERVICE WORKER
+        <button className={styles.btnGhost} onClick={refreshSwStatus} disabled={swLoading}>Refresh</button>
+      </div>
+      <div className={styles.grid}>
+        <span className={styles.key}>display mode</span><span className={styles.val}>{displayMode}</span>
+        <span className={styles.key}>controller</span><span className={styles.val}>{swStatus?.controller ?? '…'}</span>
+        <span className={styles.key}>registration</span>
+        <span className={styles.val}>
+          {swStatus ? swStatus.registration.map((l, i) => <div key={i}>{l}</div>) : '…'}
+        </span>
+        <span className={styles.key}>update()</span><span className={styles.val}>{swStatus?.updateResult ?? '…'}</span>
+        <span className={styles.key}>caches.keys()</span><span className={styles.val}>{swStatus?.cacheKeys ?? '…'}</span>
+        <span className={styles.key}>precache detail</span>
+        <span className={styles.val}>
+          {swStatus ? swStatus.precacheDetails.map((l, i) => <div key={i}>{l}</div>) : '…'}
+        </span>
+        <span className={styles.key}>script cache match</span>
+        <span className={styles.val}>
+          {swStatus ? swStatus.scriptMatches.map((l, i) => <div key={i}>{l}</div>) : '…'}
+        </span>
+      </div>
+      <button className={styles.btn} style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={repairSw}>
+        Re-register SW + reload
+      </button>
 
       <div className={styles.sectionTitle}>COLLATERAL</div>
       <div className={styles.grid}>
