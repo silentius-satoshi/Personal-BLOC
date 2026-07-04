@@ -21,6 +21,117 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="manifest" href="/manifest.json" />
 
+    <!-- SW diagnostic — dependency-free, runs before/without the app bundle. Activates on ?swdebug or a
+         6s watchdog if the app never sets window.__APP_BOOTED (main.tsx sets it as its first line), so it
+         never paints on a normal boot. Decisive signal: a 'personal-bloc-v1' cache key means the OLD
+         hand-rolled SW is still active; a 'workbox-precache-*' key means the new Workbox SW installed. -->
+    <script>
+    (function () {
+      function activateNow() {
+        if (document.getElementById('sw-diag-panel')) return;
+        var panel = document.createElement('div');
+        panel.id = 'sw-diag-panel';
+        panel.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#0d0d0d;color:#e5e5e5;' +
+          'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:16px;' +
+          'overflow:auto;z-index:2147483647;white-space:pre-wrap;';
+        var header = document.createElement('div');
+        header.textContent = 'SW DIAG';
+        header.style.cssText = 'font-weight:bold;font-size:14px;color:#ff6b6b;margin-bottom:10px;';
+        panel.appendChild(header);
+        document.body.appendChild(panel);
+
+        function appendLine(text) {
+          var el = document.createElement('div');
+          el.textContent = text;
+          panel.appendChild(el);
+        }
+
+        appendLine('navigator.onLine: ' + navigator.onLine);
+
+        if ('serviceWorker' in navigator) {
+          var controller = navigator.serviceWorker.controller;
+          appendLine(controller ? ('controller: ' + controller.scriptURL + ' (controlling)') : 'controller: NO CONTROLLER');
+
+          navigator.serviceWorker.getRegistration().then(function (reg) {
+            if (!reg) { appendLine('registration: none'); return; }
+            var any = false;
+            if (reg.installing) { appendLine('installing: ' + reg.installing.scriptURL + ' [' + reg.installing.state + ']'); any = true; }
+            if (reg.waiting)   { appendLine('waiting: '   + reg.waiting.scriptURL   + ' [' + reg.waiting.state   + ']'); any = true; }
+            if (reg.active)    { appendLine('active: '    + reg.active.scriptURL    + ' [' + reg.active.state    + ']'); any = true; }
+            if (!any) appendLine('registration: no workers');
+          }, function (e) {
+            appendLine('getRegistration failed: ' + (e && e.message ? e.message : e));
+          });
+        } else {
+          appendLine('serviceWorker: not supported');
+        }
+
+        if ('caches' in window) {
+          caches.keys().then(function (keys) {
+            appendLine('caches.keys(): ' + (keys.length ? keys.join(', ') : '(none)'));
+
+            var hasOld = false, workboxCache = null, i;
+            for (i = 0; i < keys.length; i++) {
+              if (keys[i] === 'personal-bloc-v1') hasOld = true;
+              if (keys[i].indexOf('workbox-precache') === 0) workboxCache = keys[i];
+            }
+            if (hasOld) appendLine('WARNING: legacy personal-bloc-v1 cache present (old hand-rolled SW)');
+            if (workboxCache) {
+              appendLine('workbox precache: ' + workboxCache);
+              caches.open(workboxCache).then(function (cache) {
+                return cache.keys();
+              }).then(function (reqs) {
+                appendLine(workboxCache + ' entry count: ' + reqs.length);
+              });
+            } else {
+              appendLine('no workbox-precache-* cache found');
+            }
+
+            var scripts = document.scripts, s;
+            for (s = 0; s < scripts.length; s++) {
+              (function (src) {
+                if (!src) return;
+                var sameOrigin = false;
+                try { sameOrigin = (new URL(src, location.href)).origin === location.origin; } catch (e) {}
+                if (!sameOrigin) return;
+                caches.match(src).then(function (match) {
+                  appendLine('script ' + src + ': ' + (match ? 'OK' : 'MISS'));
+                });
+              })(scripts[s].src);
+            }
+          }, function (e) {
+            appendLine('caches.keys() failed: ' + (e && e.message ? e.message : e));
+          });
+        } else {
+          appendLine('caches API: not supported');
+        }
+
+        window.addEventListener('error', function (e) {
+          appendLine('window.onerror: ' + e.message);
+        });
+        window.addEventListener('unhandledrejection', function (e) {
+          var reason = e.reason;
+          appendLine('unhandledrejection: ' + (reason && reason.message ? reason.message : String(reason)));
+        });
+      }
+
+      function whenBodyReady(cb) {
+        if (document.body) { cb(); return; }
+        document.addEventListener('DOMContentLoaded', cb);
+      }
+
+      if (location.search.indexOf('swdebug') !== -1) {
+        whenBodyReady(activateNow);
+      }
+
+      setTimeout(function () {
+        if (!window.__APP_BOOTED) {
+          whenBodyReady(activateNow);
+        }
+      }, 6000);
+    })();
+    </script>
+
     <!-- SEO -->
     <title>Personal ₿LOC</title>
     <meta
