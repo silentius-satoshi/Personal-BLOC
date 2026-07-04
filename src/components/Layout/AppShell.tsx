@@ -50,8 +50,7 @@ import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
-import { LiqSimulator }     from '../Tools/LiqSimulator';
-import { EmergencyConsole } from '../Tools/EmergencyConsole';
+import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
@@ -434,7 +433,7 @@ export function AppShell() {
              activeTab === 'powerlaw'   ? <PowerLawMain />      :
              activeTab === 'converter'  ? <ConverterMain />     :
              activeTab === 'mining'     ? <MiningMain />        :
-             activeTab === 'liqsim'     ? (cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole /> : <LiqSimulator />) :
+             activeTab === 'liqsim'     ? <CbDefenseTool />     :
              activeTab === 'almanac'    ? <AlmanacView />      :
                                           <SmartBlocMain />}
           </main>

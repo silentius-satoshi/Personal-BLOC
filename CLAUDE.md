@@ -120,8 +120,11 @@ src/
       ViewToggle.module.css     # .viewToggle* rules (moved from AppShell.module.css)
 
     Tools/
+      CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
+                                # zero props. Shared by BOTH mount points — the `liqsim` tab (AppShell) and the
+                                # Almanac's gated `defense` face — so they can never disagree on which tool shows
       LiqSimulator.tsx          # Liq Price Simulator overlay content; reads store directly, no props. Rendered
-                                # for the `liqsim` tab ONLY in `monthly` CB mode (ltvTriggered → EmergencyConsole)
+                                # via CbDefenseTool ONLY in `monthly` CB mode (ltvTriggered → EmergencyConsole)
       LiqSimulator.module.css   # .container now `composes: toolContainer from './toolShell.module.css'` (600px)
       EmergencyConsole.tsx      # Emergency Console (Phase 1) — the actionable crash-day page for `ltvTriggered`
                                 # CB mode; READ-ONLY calculator (no dayLog writes). Reads store, builds cbDebt via
@@ -1386,6 +1389,41 @@ and simple-mode. One container, no mode branching. `AppShell.module.css` carries
 `[data-active-tab="almanac"]` sidebar-collapse rules (`.sidebar { display: none }` +
 `.main { grid-column: 1 / -1 }`) matching the liqsim/settings pattern — the empty 280px rail
 no longer renders in full-mode.
+
+### Hub expansion — Mining / Power Law / gated defense faces (Almanac becomes a 5-face hub)
+
+`AlmanacView` widened from 2 live faces (Halving/Cycle) + 2 disabled "soon" placeholders to a full 5-face
+hub: **Halving / Cycle / Mining / Power Law / defense**. Locked design — **EMBED with per-face width**: the
+Almanac is only the roof (eyebrow + sub-nav); each tool keeps its own already-shipped container
+byte-identical. `face` widened to `'halving' | 'cycle' | 'mining' | 'powerlaw' | 'defense'` (still local
+`useState`, default `'halving'`, nothing persisted/synced — unchanged §14.3).
+
+- **Render restructure:** the root wraps in a NEW full-width `.shell` (`width:100%`, no max-width/padding);
+  the eyebrow+sub-nav still sit inside the existing 600px `.container`; Halving/Cycle are re-wrapped in a
+  SECOND `.container` (unchanged content/props — `useChainTip()` stays the single per-mount data source for
+  those two faces only); Mining/PowerLaw/defense render OUTSIDE any `.container` — `<MiningMain/>` brings
+  its own 960px `.main`, `<PowerLawMain/>` brings its own full-width chart, `<CbDefenseTool/>` brings its
+  own 600px `toolShell` — so none of the three tools is double-wrapped or resized by the hub.
+- **`CbDefenseTool.tsx`** (NEW, `src/components/Tools/`) — the ONE mode-gate definition
+  (`cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole/> : <LiqSimulator/>`), extracted from the
+  inline ternary that used to live in `AppShell.tsx`'s `liqsim` render branch. **Both mount points** — the
+  `liqsim` tab (`AppShell.tsx`) AND the Almanac's `defense` face — now render `<CbDefenseTool/>`, so they
+  can never disagree on which tool is showing. `AppShell.tsx` no longer imports `LiqSimulator`/
+  `EmergencyConsole` directly (it was the sole importer of both; now imports `CbDefenseTool` only). Tab
+  label logic (`withEmergencyLabel` in `AppShell.tsx`) is UNCHANGED — it still computes the `liqsim` tab's
+  label independently of this component.
+- **Sub-nav:** Mining/Power Law buttons lost their `disabled`/`subnavBtnSoon`/`soonTag` treatment and now
+  set `face` like Halving/Cycle (the `.subnavBtnSoon`/`.soonTag` CSS rules stay in the module, unused but
+  harmless). A new **defense button renders ONLY when `hasCbLoan`** (a fresh `useStore` read in
+  `AlmanacView` — its first store reads beyond the Almanac-live-toggle fields), labeled `🚨 Emergency` /
+  `Liq Sim` by `cbPaymentStrategy`, mirroring the `liqsim` tab's own label rule. A guard `useEffect` falls
+  back to `'halving'` if the defense face is showing and `hasCbLoan` flips false mid-session.
+- **ISOLATION WALL restated (unchanged):** `cycleModel`/`HalvingClock`/`CycleClock` import nothing from the
+  risk/position core (§2); `emergencyModel` imports nothing from `cycleModel`/power-law (§7). Co-locating
+  all five faces under one hub is navigation only — it crosses neither wall.
+- `tabOrder`/`hiddenTabs`/`ALL_TABS_META`/`ActiveTab` are UNTOUCHED — this is purely a face added inside the
+  existing `almanac` tab's content, not a new tab. No store fields added; only new *reads* of the
+  already-existing `hasCbLoan`/`cbPaymentStrategy`. No persistence/sync changes.
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 

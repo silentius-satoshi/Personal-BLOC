@@ -1,6 +1,12 @@
 /* Almanac container + sub-nav (P2) — ported re-tokenized from the preview .alm-eyebrow / .subnav.
    Active button = green-tinted (preview .subnav button.on); "soon" buttons disabled at opacity .5. */
 
+/* Hub expansion — full-width root, no max-width/padding: each face owns its own layout (Mining's 960px
+   .main, Power Law's full-width chart, the CB tools' 600px toolShell) so it isn't squeezed into .container. */
+.shell {
+  width: 100%;
+}
+
 .container {
   width: 100%;
   box-sizing: border-box;
