@@ -3,6 +3,7 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
 import type { ViewerSafeSafety } from '../../simulation/safetyView'; // type-only — no runtime cycle
 import { withTimeout } from './timeout';
+import { nostrLog } from './log';
 import { DEFAULT_RELAYS } from './relays';
 
 export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
@@ -37,28 +38,87 @@ export async function publishEncrypted(
     content:    ciphertext,
   }), opTimeoutMs, 'signEvent');
 
-  return publishSignedToRelays(signed, relays, createdAt);
+  return publishSignedToRelays(signed, relays, createdAt, dTag);
 }
 
-// Shared publish-and-await-ack tail: resolve on the FIRST relay ack, reject only if ALL reject or after 12s, close
-// the pool after all settle. Consumed by publishEncrypted (kind-30078) AND publishRelayListNip65 (plain kind-10002).
+// Per-relay publish instrumentation (last 10 attempts) — DevPanel "PUBLISH ACKS". Metadata only
+// (relay URLs, latencies, statuses, d-tag/kind label) — never amounts, safe for Copy Diagnostics.
+export interface PublishReport {
+  label:     string;            // dTag or 'kind:10002'
+  createdAt: number;            // unix seconds
+  startedAt: number;            // Date.now() ms
+  perRelay:  { url: string; status: 'ack' | 'reject' | 'pending'; ms?: number; err?: string }[];
+  outcome:   'ok' | 'fail';
+}
+const publishReports: PublishReport[] = [];
+function pushReport(r: PublishReport): void { publishReports.push(r); if (publishReports.length > 10) publishReports.shift(); }
+export function getPublishReports(): readonly PublishReport[] { return publishReports; }
+
+/**
+ * Await an ACK QUORUM over the per-relay publish promises. Resolves once `acks >= quorum`; rejects the
+ * MOMENT the quorum becomes unreachable (`pubs.length - rejections < quorum`, AggregateError of the
+ * rejection reasons) or on timeout. `onOutcome` fires for EVERY settle regardless of the resolve/reject
+ * state (so instrumentation keeps filling after quorum is met). Pure — the caller passes plain promises,
+ * so it's node-testable without a pool.
+ */
+export async function awaitAckQuorum(
+  pubs:      Promise<unknown>[],
+  quorum:    number,
+  timeoutMs: number,
+  onOutcome?: (i: number, ok: boolean, err?: unknown) => void,
+): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    if (pubs.length === 0) { reject(new Error('no relays')); return; }
+    let acks = 0, rejections = 0, done = false;
+    const errs: unknown[] = [];
+    const timer = setTimeout(() => { if (!done) { done = true; reject(new Error('publish timeout — quorum not reached')); } }, timeoutMs);
+    const finish = (fn: () => void) => { if (!done) { done = true; clearTimeout(timer); fn(); } };
+    pubs.forEach((p, i) => {
+      p.then(() => {
+        acks++;
+        onOutcome?.(i, true);
+        if (acks >= quorum) finish(resolve);
+      }).catch((err) => {
+        rejections++;
+        errs.push(err);
+        onOutcome?.(i, false, err);
+        if (pubs.length - rejections < quorum) finish(() => reject(new AggregateError(errs, 'quorum unreachable')));
+      });
+    });
+  });
+}
+
+// Shared publish-and-await-ack tail: resolve once an ACK QUORUM of min(2, relays.length) confirms (was
+// first-ack — a single lying/dying relay could clear the dirty flags; device-confirmed Jul 2026). Rejects
+// on quorum-unreachable or 12s timeout; closes the pool after all settle. Records a PublishReport per
+// attempt (perRelay filled via onOutcome). Consumed by publishEncrypted (kind-30078) AND
+// publishRelayListNip65 (plain kind-10002) — both inherit the quorum.
 function publishSignedToRelays(
   signed:    Parameters<SimplePool['publish']>[1],
   relays:    string[],
   createdAt: number,
+  label:     string,
 ): Promise<number> {
   const pool = new SimplePool();
+  const startedAt = Date.now();
   const pubs = pool.publish(relays, signed);                 // Promise[] (one per relay)
   Promise.allSettled(pubs).finally(() => pool.close(relays)); // close after all settle; do NOT block the return
-  return new Promise<number>((resolve, reject) => {
-    let settled = false, rejections = 0;
-    const timer = setTimeout(() => { if (!settled) { settled = true; reject(new Error('publish timeout — no relay accepted')); } }, 12000);
-    if (pubs.length === 0) { clearTimeout(timer); reject(new Error('no relays')); return; }
-    for (const p of pubs) {
-      p.then(() => { if (!settled) { settled = true; clearTimeout(timer); resolve(createdAt); } })
-       .catch((err) => { rejections++; if (!settled && rejections === pubs.length) { settled = true; clearTimeout(timer); reject(new AggregateError([err], 'All relays rejected the event')); } });
-    }
-  });
+  const quorum = Math.min(2, pubs.length);                    // pubs.length === relays.length normally; using pubs guards the URL-dedup case (quorum can never exceed the actual publish attempts)
+  const perRelay: PublishReport['perRelay'] = relays.map((url) => ({ url, status: 'pending' }));
+  const report: PublishReport = { label, createdAt, startedAt, perRelay, outcome: 'fail' };
+  pushReport(report);   // add to ring now; mutate in place as outcomes arrive
+  const onOutcome = (i: number, ok: boolean, err?: unknown) => {
+    perRelay[i] = {
+      url: relays[i], status: ok ? 'ack' : 'reject', ms: Date.now() - startedAt,
+      ...(err !== undefined ? { err: err instanceof Error ? err.message : String(err) } : {}),
+    };
+  };
+  return awaitAckQuorum(pubs, quorum, 12000, onOutcome).then(() => {
+    report.outcome = 'ok';
+    const rejected = perRelay.filter((r) => r.status === 'reject');
+    if (rejected.length) nostrLog('warn', `publish ${label}: quorum met but ${rejected.length} relay(s) rejected: ${rejected.map((r) => r.url).join(', ')}`);
+    return createdAt;
+  }).catch((err) => { report.outcome = 'fail'; throw err; });
 }
 
 /**
@@ -81,7 +141,7 @@ export async function publishRelayListNip65(
     content:    '',
     tags:       relays.map((url) => ['r', url]),   // flat — no read/write markers
   }), opTimeoutMs, 'signEvent');
-  return publishSignedToRelays(signed, publishTo, createdAt);
+  return publishSignedToRelays(signed, publishTo, createdAt, 'kind:10002');
 }
 
 export async function publishSettings(

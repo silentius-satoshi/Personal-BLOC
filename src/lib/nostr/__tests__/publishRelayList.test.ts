@@ -1,10 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-// Mock the pool so publish resolves immediately (first-ack path) — no live relay.
+// Mock the pool so publish resolves immediately — one promise PER relay (real SimplePool behavior; the
+// quorum tail needs pubs.length === relays.length, else a 2-relay list with 1 pub trips "unreachable").
 const { mockPool } = vi.hoisted(() => ({
   mockPool: {
     querySync: vi.fn(),
-    publish:   vi.fn(() => [Promise.resolve()]),   // one relay, acks immediately
+    publish:   vi.fn((rlys: string[]) => rlys.map(() => Promise.resolve())),   // acks immediately, one per relay
     close:     vi.fn(),
   },
 }));

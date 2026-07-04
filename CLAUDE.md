@@ -207,8 +207,15 @@ src/
                                 # Revoke-with-confirm; else the add-viewer form w/ nip19 validation). Self-contained:
                                 # own store reads + draft/error/copied state + the verbatim publishViewerSnapshotNow/
                                 # publishViewerRevocationNow handlers
-      DevPanel.tsx              # Dev diagnostics (devMode only): sync state, COLLATERAL (baseline/pending/
-                                # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics,
+      DevPanel.tsx              # Dev diagnostics (devMode only): sync state, PUBLISH ACKS, COLLATERAL (baseline/pending/
+                                # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics.
+                                # ALL sections are COLLAPSIBLE via a local <Section title/action?/defaultOpen?> (returns a
+                                # FRAGMENT — header + conditional body stay flex siblings of .panel so layout is unchanged
+                                # when open; header reuses .sectionTitle with a ▸/▾ chevron; action buttons stopPropagation
+                                # so they don't toggle; session-only open state). defaultOpen: SYNC STATE only. PUBLISH ACKS
+                                # (after SYNC STATE) renders getPublishReports() newest-first — per-attempt label/age/outcome
+                                # + per-relay url·status·Nms lines; a ghost Refresh re-snapshots the in-place-mutated buffer;
+                                # copyDiagnostics adds lastPublish (newest report, metadata only).
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
                                 # ASYMMETRIC flag toggle that reloads — Enable RAW, Disable decrypts-first; dev tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
@@ -2814,8 +2821,11 @@ src/
                                     # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN
                                     # (unencrypted) kind-10002 relay list (flat r tags, no read/write markers); MUST NOT
                                     # route through publishEncrypted/signer.nip44 (10002 is public). Both share the
-                                    # private publishSignedToRelays tail (first-ack/all-reject/12s-timeout, pool close
-                                    # after allSettled) — extracted from publishEncrypted, whose signature is unchanged
+                                    # private publishSignedToRelays tail (now QUORUM-ACK min(2,pubs.length) via the pure
+                                    # exported awaitAckQuorum, was first-ack; gains a `label` param + records a PublishReport;
+                                    # 12s-timeout, pool close after allSettled) — extracted from publishEncrypted, whose
+                                    # signature is unchanged. Exports awaitAckQuorum + PublishReport + getPublishReports (ring
+                                    # buffer, last 10) for DevPanel PUBLISH ACKS + Copy Diagnostics (metadata only)
     keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
                                     # PBKDF2→HKDF→AES-GCM via WebCrypto; wrap/unwrap/probe; key in MEMORY only,
                                     # never persisted). Shared infra: writer local-key now, viewer key later.
@@ -2945,9 +2955,22 @@ vercel.json                         # Catch-all rewrite → index.html (required
 
 ### Publishing Architecture
 
-- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → returns the published `created_at` on the
-  FIRST relay ACK; other relays continue in the background; pool closes after ALL settle; 12s timeout;
-  rejects AggregateError only if every relay rejects (watermark must not be stamped for a lost event).
+- `publishEncrypted()` — NIP-44 self-encrypt → kind:30078 → returns the published `created_at` once an
+  **ACK QUORUM of `min(2, pubs.length)`** confirms (pubs = the per-relay publish promises, === relays
+  normally; deriving from pubs guards the URL-dedup case so quorum can't exceed the actual attempts) (was
+  FIRST relay ACK — a single lying/dying relay
+  could ACK an event retrievable from NO relay, clearing `recordsDirty`/`settingsDirty` and defeating the
+  dirty-gated retry; device-confirmed Jul 2026). The shared tail `publishSignedToRelays(signed, relays,
+  createdAt, label)` computes the quorum + awaits the pure exported **`awaitAckQuorum(pubs, quorum,
+  timeoutMs, onOutcome?)`** (resolves at `acks >= quorum`; rejects the moment the quorum is unreachable
+  [`pubs.length - rejections < quorum`, AggregateError of the reasons] or on the 12s timeout ["publish
+  timeout — quorum not reached"]; `onOutcome` fires per settle regardless of resolve/reject state, feeding
+  instrumentation). Other relays continue in the background; pool closes after ALL settle; the watermark
+  isn't stamped for a lost event. Per attempt it records a **`PublishReport`** into a module-level ring
+  buffer (last 10, `getPublishReports()` — `{label (dTag/kind), createdAt, startedAt, perRelay:[{url,
+  status:ack|reject|pending, ms?, err?}], outcome:ok|fail}`; metadata only — no amounts, safe for Copy
+  Diagnostics), filled via `onOutcome`, and `nostrLog('warn', …)` when the quorum is met but a relay
+  rejected (names the relay). `publishRelayListNip65` (kind-10002) shares the tail → inherits the quorum.
   **`created_at` is PER-D-TAG MONOTONIC** (module-level `lastCreatedAtByDtag`): `createdAt =
   max(floor(Date.now()/1000), last[dTag]+1)`. Second-granularity stamps would let two publishes of the
   same **replaceable** d-tag within one second TIE on `created_at` → NIP-01 tie-break (lowest id) can

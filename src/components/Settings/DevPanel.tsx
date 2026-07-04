@@ -1,7 +1,8 @@
-import { useEffect, useState, useSyncExternalStore } from 'react';
+import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore, storeEncEnabled } from '../../store/useStore';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
+import { getPublishReports } from '../../lib/nostr/publish';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
@@ -11,6 +12,30 @@ import styles from './DevPanel.module.css';
 // never balances, amounts, incomes, expenses, or monthlyLog entry contents.
 
 const fmtTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleString() : 'never');   // unix SECONDS
+
+// Collapsible section wrapper — session-only open state (no persistence). Returns a FRAGMENT so the
+// header + body stay flex siblings of .panel and the existing gap/margin layout is unchanged when open.
+// The header reuses .sectionTitle (flex space-between); an optional action button (Refresh/Clear) sits on
+// the right and stopPropagation's so it doesn't toggle the section.
+function Section({ title, action, defaultOpen = false, children }:
+  { title: string; action?: ReactNode; defaultOpen?: boolean; children: ReactNode }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <>
+      <div
+        className={styles.sectionTitle}
+        role="button"
+        tabIndex={0}
+        onClick={() => setOpen((o) => !o)}
+        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setOpen((o) => !o); } }}
+      >
+        <span>{open ? '▾' : '▸'} {title}</span>
+        {action ? <span onClick={(e) => e.stopPropagation()}>{action}</span> : null}
+      </div>
+      {open && children}
+    </>
+  );
+}
 
 // btcPriceUpdatedAt is in MILLISECONDS (Date.now()) — fmtTs above is for unix seconds, not reusable here.
 const fmtPriceAge = (ts: number | null, now: number) => {
@@ -56,6 +81,8 @@ export function DevPanel() {
   const [vProbing, setVProbing]         = useState(false);
   const [vProbeStatus, setVProbeStatus] = useState('');
   const [vRefetching, setVRefetching]   = useState(false);
+  // PUBLISH ACKS — reports are mutated in place after being pushed, so Refresh re-snapshots live state.
+  const [publishReports, setPublishReports] = useState(() => [...getPublishReports()]);
   const [swStatus, setSwStatus] = useState<{
     controller: string;
     registration: string[];
@@ -276,6 +303,7 @@ export function DevPanel() {
       builtAt: __BUILD_TIME__,
       now:     new Date().toISOString(),
       state:   { ...syncState, pendingNonZero: pendingAdj !== 0 },   // boolean only — amounts stay out
+      lastPublish: getPublishReports().at(-1) ?? null,               // per-relay ack metadata (no amounts)
       log:     getNostrLog(),
     };
     try {
@@ -328,119 +356,148 @@ export function DevPanel() {
 
   return (
     <div className={styles.panel}>
-      <div className={styles.sectionTitle}>SYNC STATE</div>
-      <div className={styles.grid}>
-        <span className={styles.key}>method</span><span className={styles.val}>{syncState.method}</span>
-        <span className={styles.key}>pubkey</span><span className={styles.val}>{syncState.pubkey}</span>
-        <span className={styles.key}>relays</span>
-        <span className={styles.val}>
-          {nostrRelays.length ? nostrRelays.map((r) => <div key={r}>{r}</div>) : '—'}
-        </span>
-        <span className={styles.key}>settings sync</span><span className={styles.val}>{syncState.settingsSync}</span>
-        <span className={styles.key}>records sync</span><span className={styles.val}>{syncState.recordsSync}</span>
-        <span className={styles.key}>recordsDirty</span><span className={styles.val}>{String(recordsDirty)}</span>
-        <span className={styles.key}>reconnectNeeded</span><span className={styles.val}>{String(nostrReconnectNeeded)}</span>
-        <span className={styles.key}>syncing</span><span className={styles.val}>{String(nostrSyncing)}</span>
-        <span className={styles.key}>log entries</span><span className={styles.val}>{monthlyLogCount}</span>
-        <span className={styles.key}>tombstones</span><span className={styles.val}>{tombstoneCount}</span>
-        <span className={styles.key}>device</span><span className={styles.val}>{syncState.device}</span>
-        <span className={styles.key}>build</span><span className={styles.val}>{__BUILD_SHA__}</span>
-        <span className={styles.key}>btc price</span>
-        <span className={styles.val}>
-          {btcPrice ? `$${Math.round(btcPrice).toLocaleString()}` : '—'} · {fmtPriceAge(btcPriceUpdatedAt, now)}
-        </span>
-      </div>
+      <Section title="SYNC STATE" defaultOpen>
+        <div className={styles.grid}>
+          <span className={styles.key}>method</span><span className={styles.val}>{syncState.method}</span>
+          <span className={styles.key}>pubkey</span><span className={styles.val}>{syncState.pubkey}</span>
+          <span className={styles.key}>relays</span>
+          <span className={styles.val}>
+            {nostrRelays.length ? nostrRelays.map((r) => <div key={r}>{r}</div>) : '—'}
+          </span>
+          <span className={styles.key}>settings sync</span><span className={styles.val}>{syncState.settingsSync}</span>
+          <span className={styles.key}>records sync</span><span className={styles.val}>{syncState.recordsSync}</span>
+          <span className={styles.key}>recordsDirty</span><span className={styles.val}>{String(recordsDirty)}</span>
+          <span className={styles.key}>reconnectNeeded</span><span className={styles.val}>{String(nostrReconnectNeeded)}</span>
+          <span className={styles.key}>syncing</span><span className={styles.val}>{String(nostrSyncing)}</span>
+          <span className={styles.key}>log entries</span><span className={styles.val}>{monthlyLogCount}</span>
+          <span className={styles.key}>tombstones</span><span className={styles.val}>{tombstoneCount}</span>
+          <span className={styles.key}>device</span><span className={styles.val}>{syncState.device}</span>
+          <span className={styles.key}>build</span><span className={styles.val}>{__BUILD_SHA__}</span>
+          <span className={styles.key}>btc price</span>
+          <span className={styles.val}>
+            {btcPrice ? `$${Math.round(btcPrice).toLocaleString()}` : '—'} · {fmtPriceAge(btcPriceUpdatedAt, now)}
+          </span>
+        </div>
+      </Section>
 
-      <div className={styles.sectionTitle}>
-        SERVICE WORKER
-        <button className={styles.btnGhost} onClick={refreshSwStatus} disabled={swLoading}>Refresh</button>
-      </div>
-      <div className={styles.grid}>
-        <span className={styles.key}>display mode</span><span className={styles.val}>{displayMode}</span>
-        <span className={styles.key}>controller</span><span className={styles.val}>{swStatus?.controller ?? '…'}</span>
-        <span className={styles.key}>registration</span>
-        <span className={styles.val}>
-          {swStatus ? swStatus.registration.map((l, i) => <div key={i}>{l}</div>) : '…'}
-        </span>
-        <span className={styles.key}>update()</span><span className={styles.val}>{swStatus?.updateResult ?? '…'}</span>
-        <span className={styles.key}>caches.keys()</span><span className={styles.val}>{swStatus?.cacheKeys ?? '…'}</span>
-        <span className={styles.key}>precache detail</span>
-        <span className={styles.val}>
-          {swStatus ? swStatus.precacheDetails.map((l, i) => <div key={i}>{l}</div>) : '…'}
-        </span>
-        <span className={styles.key}>script cache match</span>
-        <span className={styles.val}>
-          {swStatus ? swStatus.scriptMatches.map((l, i) => <div key={i}>{l}</div>) : '…'}
-        </span>
-      </div>
-      <button className={styles.btn} style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={repairSw}>
-        Re-register SW + reload
-      </button>
+      <Section
+        title="PUBLISH ACKS"
+        action={<button className={styles.btnGhost} onClick={() => setPublishReports([...getPublishReports()])}>Refresh</button>}
+      >
+        <div className={styles.logList}>
+          {publishReports.length === 0 && <div className={styles.logEmpty}>no publishes yet</div>}
+          {[...publishReports].reverse().map((r, i) => (
+            <div key={`${r.label}-${r.createdAt}-${i}`} className={styles.grid}>
+              <span className={styles.key}>{r.label}</span>
+              <span
+                className={styles.val}
+                style={{ color: r.outcome === 'ok' ? 'var(--green)' : 'var(--red)' }}
+              >
+                {r.outcome} · {Math.max(0, Math.round(now / 1000 - r.createdAt))}s ago
+              </span>
+              {r.perRelay.map((p) => (
+                <span key={p.url} className={styles.val} style={{ gridColumn: '1 / -1' }}>
+                  {p.url} · {p.status}{p.ms != null ? ` · ${p.ms}ms` : ''}{p.err ? ` · ${p.err}` : ''}
+                </span>
+              ))}
+            </div>
+          ))}
+        </div>
+      </Section>
 
-      <div className={styles.sectionTitle}>COLLATERAL</div>
-      <div className={styles.grid}>
-        <span className={styles.key}>baseline</span><span className={styles.val}>{baselineBtc.toFixed(5)} ₿</span>
-        <span className={styles.key}>pending</span>
-        <span className={styles.val} style={pendingAdj !== 0 ? { color: 'var(--orange)' } : undefined}>
-          {pendingAdj === 0 ? '0' : `${pendingAdj > 0 ? '+' : ''}${pendingAdj.toFixed(5)}`} ₿
-        </span>
-        <span className={styles.key}>current</span><span className={styles.val}>{currentBtcHeld.toFixed(5)} ₿</span>
-      </div>
+      <Section
+        title="SERVICE WORKER"
+        action={<button className={styles.btnGhost} onClick={refreshSwStatus} disabled={swLoading}>Refresh</button>}
+      >
+        <div className={styles.grid}>
+          <span className={styles.key}>display mode</span><span className={styles.val}>{displayMode}</span>
+          <span className={styles.key}>controller</span><span className={styles.val}>{swStatus?.controller ?? '…'}</span>
+          <span className={styles.key}>registration</span>
+          <span className={styles.val}>
+            {swStatus ? swStatus.registration.map((l, i) => <div key={i}>{l}</div>) : '…'}
+          </span>
+          <span className={styles.key}>update()</span><span className={styles.val}>{swStatus?.updateResult ?? '…'}</span>
+          <span className={styles.key}>caches.keys()</span><span className={styles.val}>{swStatus?.cacheKeys ?? '…'}</span>
+          <span className={styles.key}>precache detail</span>
+          <span className={styles.val}>
+            {swStatus ? swStatus.precacheDetails.map((l, i) => <div key={i}>{l}</div>) : '…'}
+          </span>
+          <span className={styles.key}>script cache match</span>
+          <span className={styles.val}>
+            {swStatus ? swStatus.scriptMatches.map((l, i) => <div key={i}>{l}</div>) : '…'}
+          </span>
+        </div>
+        <button className={styles.btn} style={{ borderColor: 'var(--red)', color: 'var(--red)' }} onClick={repairSw}>
+          Re-register SW + reload
+        </button>
+      </Section>
 
-      <div className={styles.sectionTitle}>VIEWER ACCESS</div>
-      <div className={styles.grid}>
-        <span className={styles.key}>role</span><span className={styles.val}>{viewerMode ? 'viewer' : 'owner/writer'}</span>
-        <span className={styles.key}>publishes to (viewerPubkey)</span><span className={styles.val}>{viewerPubkey ? `${viewerPubkey.slice(0, 8)}…${viewerPubkey.slice(-8)}` : '— (no viewer set)'}</span>
-        <span className={styles.key}>reads from (writerPubkey)</span><span className={styles.val}>{viewerWriterPubkey ? `${viewerWriterPubkey.slice(0, 8)}…${viewerWriterPubkey.slice(-8)}` : '—'}</span>
-        <span className={styles.key}>plaintext key present</span><span className={styles.val}>{String(!!viewerSecretKey)}</span>
-        <span className={styles.key}>key wrapped</span><span className={styles.val}>{String(!!viewerKeyWrapped)}</span>
-        <span className={styles.key}>unlocked</span><span className={styles.val}>{String(viewerUnlocked)}</span>
-        <span className={styles.key}>data loaded</span><span className={styles.val}>{String(viewerDataLoaded)}</span>
-        <span className={styles.key}>my pubkey</span><span className={styles.val}>{nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—'}</span>
-      </div>
-      <div className={styles.probeRow}>
-        <button className={styles.btn} onClick={runViewerProbe} disabled={vProbing}>Test viewer link</button>
-        {viewerMode && <button className={styles.btn} onClick={runViewerRefetch} disabled={vRefetching}>Re-fetch now</button>}
-        <span className={styles.probeStatus}>{vProbeStatus}</span>
-      </div>
+      <Section title="COLLATERAL">
+        <div className={styles.grid}>
+          <span className={styles.key}>baseline</span><span className={styles.val}>{baselineBtc.toFixed(5)} ₿</span>
+          <span className={styles.key}>pending</span>
+          <span className={styles.val} style={pendingAdj !== 0 ? { color: 'var(--orange)' } : undefined}>
+            {pendingAdj === 0 ? '0' : `${pendingAdj > 0 ? '+' : ''}${pendingAdj.toFixed(5)}`} ₿
+          </span>
+          <span className={styles.key}>current</span><span className={styles.val}>{currentBtcHeld.toFixed(5)} ₿</span>
+        </div>
+      </Section>
 
-      <div className={styles.sectionTitle}>AT-REST ENCRYPTION</div>
-      <div className={styles.grid}>
-        <span className={styles.key}>flag (storeEncEnabled)</span>
-        <span className={styles.val}>{flagOn ? 'ON' : 'off'}{flagOn !== storeEncEnabled ? ' (reload to apply)' : ''}</span>
-        <span className={styles.key}>blob state</span><span className={styles.val}>{blobState}</span>
-        <span className={styles.key}>store key in memory</span><span className={styles.val}>{String(keyInMemory)}</span>
-        <span className={styles.key}>GATE_* keys</span><span className={styles.val}>{gateKeysSummary}</span>
-      </div>
-      <button className={styles.btn} onClick={toggleFlag}>
-        {flagOn ? 'Disable' : 'Enable'} at-rest encryption flag (reloads)
-      </button>
+      <Section title="VIEWER ACCESS">
+        <div className={styles.grid}>
+          <span className={styles.key}>role</span><span className={styles.val}>{viewerMode ? 'viewer' : 'owner/writer'}</span>
+          <span className={styles.key}>publishes to (viewerPubkey)</span><span className={styles.val}>{viewerPubkey ? `${viewerPubkey.slice(0, 8)}…${viewerPubkey.slice(-8)}` : '— (no viewer set)'}</span>
+          <span className={styles.key}>reads from (writerPubkey)</span><span className={styles.val}>{viewerWriterPubkey ? `${viewerWriterPubkey.slice(0, 8)}…${viewerWriterPubkey.slice(-8)}` : '—'}</span>
+          <span className={styles.key}>plaintext key present</span><span className={styles.val}>{String(!!viewerSecretKey)}</span>
+          <span className={styles.key}>key wrapped</span><span className={styles.val}>{String(!!viewerKeyWrapped)}</span>
+          <span className={styles.key}>unlocked</span><span className={styles.val}>{String(viewerUnlocked)}</span>
+          <span className={styles.key}>data loaded</span><span className={styles.val}>{String(viewerDataLoaded)}</span>
+          <span className={styles.key}>my pubkey</span><span className={styles.val}>{nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—'}</span>
+        </div>
+        <div className={styles.probeRow}>
+          <button className={styles.btn} onClick={runViewerProbe} disabled={vProbing}>Test viewer link</button>
+          {viewerMode && <button className={styles.btn} onClick={runViewerRefetch} disabled={vRefetching}>Re-fetch now</button>}
+          <span className={styles.probeStatus}>{vProbeStatus}</span>
+        </div>
+      </Section>
 
-      <div className={styles.sectionTitle}>SIGNER PROBE</div>
-      <div className={styles.probeRow}>
-        <button className={styles.btn} onClick={runProbe} disabled={probing}>Test signer</button>
-        <span className={styles.probeStatus}>{probeStatus}</span>
-      </div>
+      <Section title="AT-REST ENCRYPTION">
+        <div className={styles.grid}>
+          <span className={styles.key}>flag (storeEncEnabled)</span>
+          <span className={styles.val}>{flagOn ? 'ON' : 'off'}{flagOn !== storeEncEnabled ? ' (reload to apply)' : ''}</span>
+          <span className={styles.key}>blob state</span><span className={styles.val}>{blobState}</span>
+          <span className={styles.key}>store key in memory</span><span className={styles.val}>{String(keyInMemory)}</span>
+          <span className={styles.key}>GATE_* keys</span><span className={styles.val}>{gateKeysSummary}</span>
+        </div>
+        <button className={styles.btn} onClick={toggleFlag}>
+          {flagOn ? 'Disable' : 'Enable'} at-rest encryption flag (reloads)
+        </button>
+      </Section>
 
-      <div className={styles.sectionTitle}>
-        LOG
-        <button className={styles.btnGhost} onClick={clearNostrLog}>Clear</button>
-      </div>
-      <div className={styles.logList}>
-        {log.length === 0 && <div className={styles.logEmpty}>no entries</div>}
-        {[...log].reverse().map((e, i) => (
-          <div key={`${e.ts}-${i}`} className={styles.logRow}>
-            <span className={styles.logTime}>
-              {new Date(e.ts).toLocaleTimeString(undefined, { hour12: false })}
-            </span>
-            <span className={e.level === 'error' ? styles.logError : e.level === 'warn' ? styles.logWarn : styles.logInfo}>
-              {e.level}
-            </span>
-            <span className={styles.logMsg}>{e.msg}</span>
-            {e.data && <div className={styles.logData}>{e.data}</div>}
-          </div>
-        ))}
-      </div>
+      <Section title="SIGNER PROBE">
+        <div className={styles.probeRow}>
+          <button className={styles.btn} onClick={runProbe} disabled={probing}>Test signer</button>
+          <span className={styles.probeStatus}>{probeStatus}</span>
+        </div>
+      </Section>
+
+      <Section title="LOG" action={<button className={styles.btnGhost} onClick={clearNostrLog}>Clear</button>}>
+        <div className={styles.logList}>
+          {log.length === 0 && <div className={styles.logEmpty}>no entries</div>}
+          {[...log].reverse().map((e, i) => (
+            <div key={`${e.ts}-${i}`} className={styles.logRow}>
+              <span className={styles.logTime}>
+                {new Date(e.ts).toLocaleTimeString(undefined, { hour12: false })}
+              </span>
+              <span className={e.level === 'error' ? styles.logError : e.level === 'warn' ? styles.logWarn : styles.logInfo}>
+                {e.level}
+              </span>
+              <span className={styles.logMsg}>{e.msg}</span>
+              {e.data && <div className={styles.logData}>{e.data}</div>}
+            </div>
+          ))}
+        </div>
+      </Section>
 
       <button className={styles.btn} onClick={copyDiagnostics}>
         {copied ? 'Copied ✓' : 'Copy diagnostics'}
