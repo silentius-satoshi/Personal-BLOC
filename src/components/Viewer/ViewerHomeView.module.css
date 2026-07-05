@@ -90,7 +90,7 @@
   border-radius: 999px;
   padding: 2px 9px;
 }
-.cardSub { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.4; }
+.cardSub { font-size: 13px; color: var(--text-muted); margin: 0; line-height: 1.4; white-space: pre-line; }
 
 /* Bottom nav */
 .bottomNav {

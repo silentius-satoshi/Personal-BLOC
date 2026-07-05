@@ -94,11 +94,11 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: Vie
   const grantedRoles = useGrantedRoles();                       // V5 — dormant (renders nothing today)
   const f = s.figures;
 
-  const creditSub = f ? `${fmtUSD(f.credit.used)} of ${fmtUSD(f.credit.total)} · ${fmtUSD(f.credit.avail)} available`
+  const creditSub = f ? `${fmtUSD(f.credit.used)} of ${fmtUSD(f.credit.total)}\n${fmtUSD(f.credit.avail)} available`
                       : CREDIT_SUB[s.creditLevel];
-  const strikeSubLine = f ? `Liq at ~${fmtUSD(f.strike.liqPrice)} · ${fmtUSD(f.strike.balance)} balance`
+  const strikeSubLine = f ? `Liq at ~${fmtUSD(f.strike.liqPrice)}\n${fmtUSD(f.strike.balance)} balance`
                           : strikeSubSafe(s.strikeLevel, s.strikeDropPct);
-  const cbSub = f ? `Liq at ~${fmtUSD(f.cb.liqPrice)} · ${fmtUSD(f.cb.balance)} balance`
+  const cbSub = f ? `Liq at ~${fmtUSD(f.cb.liqPrice)}\n${fmtUSD(f.cb.balance)} balance`
                   : CB_SUB[s.cbLevel];
 
   return (

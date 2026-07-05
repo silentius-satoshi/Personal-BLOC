@@ -1596,13 +1596,22 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
   keeping an eye / Action needed" + "updated Nm ago" from `viewerLastSyncAt`) → 3 `<RadialGauge>`
   cards (Strike credit / Strike LTV / Coinbase LTV, the CB card gated on `hasCbLoan`; each a gauge +
   Safe/Fair/Poor badge + a plain C-safe sub-line) → minimal bottom nav (Home + Settings). Local
-  `LEVEL_COLOR` mirrors SafetyDashboard.
+  `LEVEL_COLOR` mirrors SafetyDashboard. Trusted-mode StatusCard subtext (`creditSub`/`strikeSubLine`/
+  `cbSub`) is TWO-LINE (`\n`-joined + `.cardSub`'s `white-space: pre-line`) — e.g. "$X of $Y" / "$Z
+  available" — reading cleanly beside the fixed 120px ring; safe-mode subs (short single phrases) are
+  unaffected (no `\n`, render as before).
 - **`src/components/Viewer/RadialGauge.tsx`** (+ `.module.css`) — lightweight presentational SVG
   donut (stroke-dasharray fill, props `{pct,color,label}`, center "{pct}%", `role="img"`). NOT the
   Almanac `CycleDial` (coordinate-system-specialized). The `stroke-dashoffset` CSS transition on the
   progress circle was REMOVED (device-evidenced iOS WebKit ghost-arc artifact when an animating stroke
   shares an element with the `transform="rotate(-90 ...)"` attribute; trusted-mode-only, since safe
   mode's static snapshot `pct` never re-triggered the transition) — the gauge now renders statically.
+  `.gauge` is also a FIXED-SIZE flex child (`flex: 0 0 auto` — no shrink): as a flex child of `.card`
+  alongside `.cardBody`, it previously shrank unevenly under text pressure (device-measured 92/104/100px
+  instead of 120×120, worse in trusted mode's longer subtext); that uneven safe↔trusted resize is what
+  left iOS's stale-scale raster behind the fresh ring (device-confirmed — backgrounding the PWA
+  re-rasterizes and clears the ghost until the next toggle). Independent of, and stacked with, the
+  transition-removal fix above.
 - **`AppShell.tsx`** — a new render branch `viewerMode && viewerDataLoaded && activeTab !== 'settings'
   && activeTab !== 'almanac'` → `<ViewerHomeView onOpenSettings={…}/>`, inserted AFTER the
   `PrivateAppNotice` owner gate and BEFORE the `simpleMode` branches. So the viewer home REPLACES

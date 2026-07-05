@@ -3,6 +3,7 @@
   width: 120px;
   height: 120px;
   display: block;
+  flex: 0 0 auto;
 }
 
 .track {
