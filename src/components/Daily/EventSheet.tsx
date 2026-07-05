@@ -189,6 +189,21 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setCbLiqPriceReading(null);   // §5b — always empty on open (Q2: never auto-submit the old liq → no fake freshness)
   }, [open, editEvent?.id, targetDate, initialType]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Effective collateral target — no toggle without a CB loan (implicitly Strike). Hoisted above the early
+  // return below so the track effect (which depends on it) stays an unconditionally-called hook.
+  const effectiveTarget = hasCbLoan ? collateralTarget : 'strike';
+
+  // v20 — auto-track the Strike-collateral field to the POST-move total (current ± amount) while the user hasn't
+  // manually edited it. A strike collateral move / pledged buy states the new total; everything else = current
+  // (an idempotent re-anchor). A manual edit (onChange sets touched) freezes it — venue truth wins. Guarded on
+  // `open` (like the prefill effect) so it doesn't churn state while the sheet is closed; MUST stay above the
+  // early return below — a hook after a conditional return violates the Rules of Hooks (React #310).
+  useEffect(() => {
+    if (!open) return;
+    if (strikeCollateralTouched) return;
+    setStrikeCollateral(autoStrikeCollateral(currentBtcHeld, { type, collateralDir, effectiveTarget, amount, pledgeToStrike }));
+  }, [open, type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
+
   if (!open) return null;
 
   const today = todayLocalISO();
@@ -203,17 +218,6 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
-
-  // Effective collateral target — no toggle without a CB loan (implicitly Strike).
-  const effectiveTarget = hasCbLoan ? collateralTarget : 'strike';
-
-  // v20 — auto-track the Strike-collateral field to the POST-move total (current ± amount) while the user hasn't
-  // manually edited it. A strike collateral move / pledged buy states the new total; everything else = current
-  // (an idempotent re-anchor). A manual edit (onChange sets touched) freezes it — venue truth wins.
-  useEffect(() => {
-    if (strikeCollateralTouched) return;
-    setStrikeCollateral(autoStrikeCollateral(currentBtcHeld, { type, collateralDir, effectiveTarget, amount, pledgeToStrike }));
-  }, [type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
 
   // For a balanceReading edit, show/require CB reading fields based on the ORIGINAL reading (faithful to
   // when it was logged), not the current hasCbLoan. Add mode keys on hasCbLoan as before.
