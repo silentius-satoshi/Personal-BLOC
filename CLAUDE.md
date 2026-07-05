@@ -464,9 +464,11 @@ src/
                                 # Poor badge, no-grace note in amber/red) → Strike bar (body tap flips capacity-used
                                 # ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
                                 # computeStrikeLtv(advisorActualBlocBalance, getCurrentBtcHeld(), price) — the
-                                # CURRENT position, not the frozen baseline. The liquidation-view cushion row
-                                # prefixes the anchored collateral amount ("₿X.XXXXX collateral · " via a plain
-                                # getCurrentBtcHeld() selector) ahead of the LTV/liq/crash figures — display-only.
+                                # CURRENT position, not the frozen baseline. The liquidation-view cushion row shows
+                                # the anchored collateral amount + an 80%-crash stress figure ("₿X.XXXXX collateral ·
+                                # 80% crash → Z%", .cushion-styled — muted, matching the CB section's cushion idiom)
+                                # via the plain getCurrentBtcHeld() selector; the LTV/liq segment was dropped as
+                                # redundant with the bar header's own LTV value — display-only.
                                 # Card is a <div role=button> (was
                                 # <button>) with a view-aware inline EDIT control (.editLink, stopPropagation so it
                                 # doesn't flip): capacity edits BLOC balance + credit line, liquidation edits BLOC

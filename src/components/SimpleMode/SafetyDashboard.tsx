@@ -187,7 +187,7 @@ export function SafetyDashboard() {
           {strikeView === 'capacity' ? (
             <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used · avail {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
           ) : (
-            <span className={styles.ltvNow}>₿{currentBtcHeld.toFixed(5)} collateral · {(strikeLtv * 100).toFixed(1)}% LTV · liq {strikeLiquidationLtvPct}% · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
+            <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} collateral · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
           )}
           <span className={styles.flipHint}>
             {strikeEditing ? 'editing…' : strikeView === 'capacity' ? '⇄ liquidation' : '⇄ capacity'}
