@@ -23,6 +23,7 @@ describe('viewer snapshot builders', () => {
     expect('viewerPubkey' in payload).toBe(true);
     expect('viewerLabel' in payload).toBe(true);
     expect('viewerPrivacyTrusted' in payload).toBe(true);   // V2 — the sharing toggle syncs across owner devices
+    expect('viewerKeyVersion' in payload).toBe(true);        // derivation v1 — sharing config, syncs across owner devices
     expect(payload.viewerNpub).toBe('npub1exampleviewer');
     expect(payload.viewerPubkey).toBe('a'.repeat(64));
     expect(payload.viewerLabel).toBe("Dad's iPhone");
@@ -81,6 +82,7 @@ describe('viewer snapshot builders', () => {
     expect('viewerPubkey' in snapSettings).toBe(false);
     expect('viewerLabel' in snapSettings).toBe(false);
     expect('viewerPrivacyTrusted' in snapSettings).toBe(false);
+    expect('viewerKeyVersion' in snapSettings).toBe(false);   // derivation v1 — the viewer never sees the version
     expect('nostrRelays' in snapSettings).toBe(false);
     // but still carries the real settings the viewer needs
     expect('income' in snapSettings).toBe(true);
@@ -134,10 +136,10 @@ describe('viewer snapshot builders', () => {
     expect('dayLog' in (snap.records as object)).toBe(false);
   });
 
-  it("C-trusted settings deep-equal buildSettingsPayload minus viewer config + viewerPrivacyTrusted + nostrRelays", () => {
+  it("C-trusted settings deep-equal buildSettingsPayload minus viewer config + viewerPrivacyTrusted + viewerKeyVersion + nostrRelays", () => {
     useStore.setState({ viewerPrivacyTrusted: true });
     const s = useStore.getState();
-    const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, nostrRelays: _r, ...ownerMinusViewerConfig } = buildSettingsPayload(s);
+    const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, viewerKeyVersion: _v, nostrRelays: _r, ...ownerMinusViewerConfig } = buildSettingsPayload(s);
     expect(buildViewerSnapshotPayload(s).settings).toEqual(ownerMinusViewerConfig);
   });
 

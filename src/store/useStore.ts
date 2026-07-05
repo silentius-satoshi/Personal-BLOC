@@ -369,6 +369,10 @@ export interface StoreState {
   // Viewer V2 — C-safe/C-trusted privacy. false (default) = C-safe (health ratios only); true = C-trusted
   // (full figures). Owner sharing config: SYNCED across the owner's devices, STRIPPED from the viewer snapshot.
   viewerPrivacyTrusted: boolean;
+  // Viewer-key derivation v1 — the version byte for deterministic viewer-key derivation (deriveViewerKeyFromNsec).
+  // Owner sharing config: SYNCED across the owner's devices (so re-derivation is stable everywhere), STRIPPED from
+  // the viewer snapshot. Default 1; bumping it re-derives a NEW viewer key (rotation) — no rotation UI yet.
+  viewerKeyVersion:    number;
   // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
   // viewer of the writer at viewerWriterPubkey, decrypting the viewer:v1 snapshot with viewerSecretKey.
   // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
@@ -397,6 +401,7 @@ export interface StoreState {
   setViewerPubkey:       (v: string | null) => void;
   setViewerLabel:        (v: string | null) => void;
   setViewerPrivacyTrusted: (v: boolean) => void;
+  setViewerKeyVersion:   (v: number) => void;
   setViewerMode:         (v: boolean) => void;
   setViewerWriterPubkey: (v: string | null) => void;
   setViewerSecretKey:    (v: string | null) => void;
@@ -638,6 +643,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     viewerPubkey:             s.viewerPubkey,
     viewerLabel:              s.viewerLabel,
     viewerPrivacyTrusted:     s.viewerPrivacyTrusted,   // Viewer V2 — sharing config; stripped from the viewer snapshot + the plan backup
+    viewerKeyVersion:         s.viewerKeyVersion,       // Viewer-key derivation v1 — sharing config; stripped from the viewer snapshot
   };
 }
 
@@ -671,7 +677,7 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
     snapshotVersion: 2,
     privacyMode: 'trusted',
     asOf,
-    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),
+    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, viewerKeyVersion: _v, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
     cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
@@ -912,6 +918,7 @@ export function migrateState(persistedState: any): any {
     viewerPubkey:         persistedState.viewerPubkey ?? null,
     viewerLabel:          persistedState.viewerLabel  ?? null,
     viewerPrivacyTrusted: persistedState.viewerPrivacyTrusted ?? false,   // Viewer V2 — additive default (C-safe), no version bump
+    viewerKeyVersion:     persistedState.viewerKeyVersion ?? 1,           // Viewer-key derivation v1 — additive default, no version bump
     // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
     viewerMode:           persistedState.viewerMode          ?? false,
     viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
@@ -1324,6 +1331,7 @@ export const useStore = create<StoreState>()(
   viewerPubkey:       null,
   viewerLabel:        null,
   viewerPrivacyTrusted: false,   // Viewer V2 — default C-safe (privacy-first)
+  viewerKeyVersion:    1,        // Viewer-key derivation v1 — default version
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
@@ -1358,6 +1366,7 @@ export const useStore = create<StoreState>()(
   // Viewer V2 — sync the mode across the owner's devices AND republish the snapshot NOW so the viewer
   // switches shape immediately (mirrors saving a viewer npub). publishViewerSnapshotNow is fire-and-forget.
   setViewerPrivacyTrusted: (v) => { set({ viewerPrivacyTrusted: v }); useStore.getState().syncSettingsToNostr(); void publishViewerSnapshotNow(); },
+  setViewerKeyVersion:   (v) => { set({ viewerKeyVersion: v }); useStore.getState().syncSettingsToNostr(); },   // sharing config — sync across owner devices
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
@@ -1461,7 +1470,7 @@ export const useStore = create<StoreState>()(
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       // pendingCollateralAdjustment RETIRED (Collateral-Truth v20) — Strike collateral is reading-anchored (records channel); a stale value in an old remote payload is ignored by omission
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
-      'viewerNpub', 'viewerPubkey', 'viewerLabel', 'viewerPrivacyTrusted',
+      'viewerNpub', 'viewerPubkey', 'viewerLabel', 'viewerPrivacyTrusted', 'viewerKeyVersion',
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {

@@ -1,7 +1,10 @@
-import { useState } from 'react';
-import { nip19 } from 'nostr-tools';
+import { useState, useRef, useEffect } from 'react';
+import { nip19, getPublicKey } from 'nostr-tools';
 import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
+import { unwrapSecretKey } from '../../lib/nostr/keyVault';
+import { deriveViewerKeyFromNsec } from '../../lib/nostr/viewerKey';
 import { Toggle } from '../ui/Toggle';
+import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import styles from './SharingPage.module.css';
 
 /**
@@ -14,6 +17,7 @@ import styles from './SharingPage.module.css';
  */
 export function SharingPage() {
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
+  const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const viewerNpub          = useStore((s) => s.viewerNpub);
   const viewerLabel         = useStore((s) => s.viewerLabel);
   const viewerPrivacyTrusted = useStore((s) => s.viewerPrivacyTrusted);
@@ -131,6 +135,19 @@ export function SharingPage() {
         </div>
       )}
 
+      {/* GENERATE FROM IDENTITY (local signer only) — deterministically derive the viewer's key from your own
+          nsec. Regenerable anytime (no separate backup); hand the shown nsec to the viewer in person. */}
+      {nostrSigningMethod === 'local' && (
+        <>
+          <div className={styles.groupTitle} style={{ marginTop: 20 }}>GENERATE A VIEWER KEY</div>
+          <p className={styles.desc}>
+            Derive the viewer's key from your own identity — it stays reproducible, so you can regenerate the exact
+            same key anytime without a separate backup. Hand the shown key to the viewer in person.
+          </p>
+          <GenerateViewerKeyBlock />
+        </>
+      )}
+
       {/* PREVIEW — see exactly what a viewer sees (safe or trusted), previewable before granting access */}
       <div className={styles.groupTitle} style={{ marginTop: 20 }}>PREVIEW</div>
       <p className={styles.desc}>Open a live preview of the viewer experience, with a Safe / Trusted toggle.</p>
@@ -140,6 +157,120 @@ export function SharingPage() {
       >
         👁 Preview as viewer
       </button>
+    </div>
+  );
+}
+
+const GEN_AUTO_CLEAR_MS = 30_000;
+
+/**
+ * Owner-side "Generate viewer key" — LOCAL-SIGNER-ONLY (the raw owner sk is reachable only via the Face-ID/PIN
+ * unwrap; nip07/nip46 never expose it, so the parent hides this). Unwraps the owner key → deterministically
+ * derives the viewer key (deriveViewerKeyFromNsec) → sets viewerPubkey/viewerNpub → publishes the snapshot →
+ * reveals the viewer nsec via SecretKeyCard (auto-clears ~30s; leaving the page unmounts → discards it).
+ * ⚠ Never logs key material. Mirrors RevealRecoveryKey's unwrap/reveal/auto-clear pattern.
+ */
+function GenerateViewerKeyBlock() {
+  const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
+  const setViewerNpub   = useStore((s) => s.setViewerNpub);
+  const setViewerPubkey = useStore((s) => s.setViewerPubkey);
+  const isPin = wrapMeta?.scheme === 'pin';
+
+  const [revealedNsec, setRevealedNsec] = useState<string | null>(null);
+  const [showPin, setShowPin] = useState(false);
+  const [pin, setPin]         = useState('');
+  const [busy, setBusy]       = useState(false);
+  const [error, setError]     = useState<string | null>(null);
+  const timerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const clearTimer = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
+  useEffect(() => clearTimer, []);   // unmount (leaving the page) discards the revealed nsec
+
+  const clearReveal = () => { clearTimer(); setRevealedNsec(null); };
+
+  const doGenerate = async () => {
+    setBusy(true);
+    setError(null);
+    let ownerSk: Uint8Array | null = null;
+    let derived: Uint8Array | null = null;
+    try {
+      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewerKeyVersion } = useStore.getState();
+      if (!writerKeyWrapped || !writerKeyWrapMeta || !pk) { setError('No local key on this device.'); return; }
+      ownerSk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, writerKeyWrapMeta.scheme === 'pin' ? pin : undefined);
+      derived = await deriveViewerKeyFromNsec(ownerSk, pk, viewerKeyVersion);
+      const hex = getPublicKey(derived);
+      // Replace-guard — never silently swap out a live viewer. Re-deriving the SAME key (existing === hex) is the
+      // friction-free determinism/recovery path and skips the confirm.
+      const existing = useStore.getState().viewerPubkey;
+      if (existing && existing !== hex) {
+        // eslint-disable-next-line no-alert
+        if (!window.confirm(
+          'A different viewer key is already connected. Replacing it means the current viewer ' +
+          'device stops receiving updates until it signs in with the new key. Replace?'
+        )) { return; }   // ownerSk + derived zeroed by the finally
+      }
+      setViewerPubkey(hex);
+      setViewerNpub(nip19.npubEncode(hex));
+      void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates once they sign in
+      setRevealedNsec(nip19.nsecEncode(derived));   // the nsec STRING carries the value for the reveal window
+      setShowPin(false);
+      setPin('');
+      clearTimer();
+      timerRef.current = setTimeout(clearReveal, GEN_AUTO_CLEAR_MS);
+    } catch {
+      setError(isPin ? 'Could not unlock — check your PIN and try again.' : 'Could not unlock — try again.');
+    } finally {
+      ownerSk?.fill(0);
+      derived?.fill(0);
+      setBusy(false);
+    }
+  };
+
+  const onGenerateTap = () => {
+    setError(null);
+    if (isPin) setShowPin(true);   // PIN scheme → collect the PIN first
+    else doGenerate();             // PRF → Face ID directly
+  };
+
+  if (revealedNsec) {
+    return (
+      <div className={styles.genBlock}>
+        <SecretKeyCard nsec={revealedNsec} />
+        <div className={styles.revealFoot}>
+          <button type="button" className={styles.actionBtn} onClick={clearReveal}>Hide</button>
+          <span className={styles.desc}>The viewer's key — regenerable anytime. Auto-hides in ~30s.</span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={styles.genBlock}>
+      {showPin ? (
+        <div className={styles.pinRow}>
+          <input
+            className={styles.input}
+            type="password"
+            inputMode="numeric"
+            placeholder="PIN"
+            value={pin}
+            onChange={(e) => { setPin(e.target.value); setError(null); }}
+            disabled={busy}
+          />
+          <button type="button" className={styles.genBtn} onClick={doGenerate} disabled={busy || pin.length < 4}>
+            {busy ? 'Deriving…' : 'Generate'}
+          </button>
+          <button type="button" className={styles.actionBtn} onClick={() => { setShowPin(false); setPin(''); setError(null); }} disabled={busy}>
+            Cancel
+          </button>
+        </div>
+      ) : (
+        <button type="button" className={styles.genBtn} onClick={onGenerateTap} disabled={busy}>
+          {busy ? 'Deriving…' : '🔑 Generate viewer key'}
+        </button>
+      )}
+      {error && <p className={styles.error}>{error}</p>}
+      <span className={styles.desc}>Requires {isPin ? 'your PIN' : 'Face ID'} — shown only on this device, never stored in plain text.</span>
     </div>
   );
 }

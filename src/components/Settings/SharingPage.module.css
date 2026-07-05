@@ -202,3 +202,40 @@
   margin: 0;
   line-height: 1.5;
 }
+
+/* Generate-viewer-key block (local signer only) */
+.genBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.genBtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid var(--orange);
+  border-radius: 6px;
+  color: var(--orange);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  font-family: inherit;
+  transition: background 0.12s;
+}
+.genBtn:hover:not(:disabled) { background: rgba(232, 131, 106, 0.10); }
+.genBtn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.pinRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.revealFoot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}

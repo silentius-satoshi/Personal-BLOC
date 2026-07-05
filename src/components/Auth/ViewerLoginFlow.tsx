@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
 import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
 import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
@@ -39,6 +39,22 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
     const sk = generateSecretKey();
     return { sk, npub: nip19.npubEncode(getPublicKey(sk)) };
   });
+  // Viewer-key derivation v1 — 'generate' (self-provision, default) OR 'paste' (enter the nsec the owner
+  // derived + handed over). Both models coexist; the active key is wrapped identically on Done.
+  const [keyMode, setKeyMode] = useState<'generate' | 'paste'>('generate');
+  const [pastedNsec, setPastedNsec] = useState('');
+  // Decode + validate the pasted nsec → { sk, npub } (null while empty/invalid → gates Done + shows confirmation).
+  const pastedKey = useMemo(() => {
+    const t = pastedNsec.trim();
+    if (!t) return null;
+    try {
+      const d = nip19.decode(t);
+      if (d.type !== 'nsec') return null;
+      const sk = d.data as Uint8Array;
+      return { sk, npub: nip19.npubEncode(getPublicKey(sk)) };
+    } catch { return null; }
+  }, [pastedNsec]);
+  const activeKey = keyMode === 'paste' ? pastedKey : viewerKey;
   const [ownerNpub, setOwnerNpub]     = useState('');
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [copied, setCopied]           = useState(false);
@@ -56,6 +72,7 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   }, []);
 
   const handleViewerDone = async () => {
+    if (!activeKey) { setViewerError('Paste a valid nsec (the key the owner gave you)'); return; }
     const input = ownerNpub.trim();
     let decoded;
     try { decoded = nip19.decode(input); }
@@ -66,11 +83,11 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
     try {
       const method = viewerMethod ?? await probeKeyVaultCapability();
       const { ciphertext, meta } = await wrapSecretKey(
-        viewerKey.sk, method, method === 'pin' ? viewerPin : undefined, method !== 'pin' ? viewerLabel : undefined,
+        activeKey.sk, method, method === 'pin' ? viewerPin : undefined, method !== 'pin' ? viewerLabel : undefined,
       );
       setViewerKeyWrapped(ciphertext);
       setViewerKeyWrapMeta(meta);
-      setUnwrappedViewerKey(viewerKey.sk);   // unlock this session immediately (no re-prompt) — NO plaintext stored
+      setUnwrappedViewerKey(activeKey.sk);   // unlock this session immediately (no re-prompt) — NO plaintext stored
       clearViewerData();   // start clean — wipe any residual owner/prior-viewer data BEFORE viewerMode triggers the first fetch
       setViewerWriterPubkey(decoded.data as string);
       setViewerMode(true);
@@ -83,7 +100,7 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   };
 
   const viewerCanDone =
-    !!ownerNpub.trim() && !viewerBusy &&
+    !!ownerNpub.trim() && !viewerBusy && !!activeKey &&
     (viewerMethod !== 'pin' || (viewerPin.length >= 4 && viewerPin === viewerPinConfirm));
 
   // V3 name step — empty = skip (null → the nameless greeting). Always callable; Continue never disables.
@@ -142,18 +159,54 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
             their plan and balances — you can never change their inputs.
           </p>
           <div className={styles.fields}>
-            <div className={styles.fieldGroup}>
-              <span className={styles.fieldLabel}>Your viewer key (send to the owner)</span>
-              <div className={styles.fieldInput}>
-                <input className={styles.dateInput} type="text" readOnly value={viewerKey.npub} onFocus={(e) => e.target.select()} />
-              </div>
+            <div className={styles.modeToggle}>
               <button
-                className={styles.skip}
-                onClick={() => { navigator.clipboard?.writeText(viewerKey.npub); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                type="button"
+                className={`${styles.modeBtn} ${keyMode === 'generate' ? styles.modeBtnActive : ''}`}
+                onClick={() => { setKeyMode('generate'); setViewerError(null); }}
               >
-                {copied ? 'Copied ✓' : 'Copy'}
+                Generate a new key
+              </button>
+              <button
+                type="button"
+                className={`${styles.modeBtn} ${keyMode === 'paste' ? styles.modeBtnActive : ''}`}
+                onClick={() => { setKeyMode('paste'); setViewerError(null); }}
+              >
+                I was given a key
               </button>
             </div>
+            {keyMode === 'generate' ? (
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Your viewer key (send to the owner)</span>
+                <div className={styles.fieldInput}>
+                  <input className={styles.dateInput} type="text" readOnly value={viewerKey.npub} onFocus={(e) => e.target.select()} />
+                </div>
+                <button
+                  className={styles.skip}
+                  onClick={() => { navigator.clipboard?.writeText(viewerKey.npub); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
+                >
+                  {copied ? 'Copied ✓' : 'Copy'}
+                </button>
+              </div>
+            ) : (
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>The key the owner gave you (nsec)</span>
+                <div className={styles.fieldInput}>
+                  <input
+                    className={styles.dateInput}
+                    type="text"
+                    placeholder="nsec1…"
+                    value={pastedNsec}
+                    onChange={(e) => { setPastedNsec(e.target.value); setViewerError(null); }}
+                  />
+                </div>
+                {pastedNsec.trim() && (
+                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', color: pastedKey ? 'var(--green)' : 'var(--red)' }}>
+                    {pastedKey ? `✓ ${pastedKey.npub.slice(0, 14)}…${pastedKey.npub.slice(-6)}` : 'Not a valid nsec'}
+                  </span>
+                )}
+              </div>
+            )}
             <div className={styles.fieldGroup}>
               <span className={styles.fieldLabel}>The owner's npub</span>
               <div className={styles.fieldInput}>

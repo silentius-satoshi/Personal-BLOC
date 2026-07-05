@@ -3002,6 +3002,15 @@ src/
                                     # syncNow→setIsAuthenticated(true)→sk.fill(0)). Extracted VERBATIM from NostrAuthGate's
                                     # import body → BOTH the import path AND OwnerKeySetup K3 call it (zero drift).
                                     # ⚠ NEVER logs the nsec. NostrSigner from './signers' (sibling re-export)
+    viewerKey.ts                    # Viewer-key derivation v1 — deriveViewerKeyFromNsec(sk, ownerPubkeyHex, version=1)
+                                    # → deterministic 32-byte viewer secret key. WebCrypto DIRECTLY (crypto.subtle), NOT
+                                    # keyVault's helpers/info labels (own crypto domain). HKDF-SHA256: ikm=owner sk,
+                                    # salt=SHA-256(utf8(ownerPubkeyHex)), info=`personal-bloc/viewer-key/v${version}`,
+                                    # deriveBits 256; if out-of-range (~2^-128) append `/${counter}` to info + re-derive
+                                    # (validity gate = getPublicKey try/catch, no extra deps). Deterministic in
+                                    # (ownerSk, ownerPubkeyHex, version) → the owner regenerates the SAME viewer nsec
+                                    # anytime (no separate backup). Does NOT mutate sk; returns a fresh array the caller
+                                    # zeroes. ⚠ Never logs/persists key material
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
                                     # SINGLE-FLIGHT (Bug 2 fix): the public restoreSigner wraps doRestoreSigner in a
                                     # module-level in-flight promise (mirrors syncNow) — concurrent callers (gate escape
@@ -3292,6 +3301,41 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
 | `personal-bloc:viewer:v1` | **Viewer Access — MODE-SHAPED (Viewer V2).** `ViewerSnapshot` NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (opt-in via `viewerPrivacyTrusted`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common (both collateral scalars are derived-from-dayLog, trusted-only + optional — the SAFE payload carries NEITHER by construction; C-P4). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on `setViewerPrivacyTrusted`/saving a viewer npub; gated on `viewerPubkey` set; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
+### Viewer-key derivation v1 — deterministic owner-derived viewer key (store stays v19, NO bump)
+
+An ALTERNATIVE to the viewer generating its own key: the owner **deterministically derives** the viewer's
+keypair from the owner's OWN nsec, so the owner can regenerate the exact same viewer key at any time (no
+separate backup) and hand it off in person. Additive — the generate-your-own model stays; this is a second
+option on both sides.
+- **`src/lib/nostr/viewerKey.ts`** — `deriveViewerKeyFromNsec(ownerSk, ownerPubkeyHex, version=1)` (see the Key
+  Files entry for the HKDF formula + counter-bump). Deterministic in (ownerSk, ownerPubkeyHex, version).
+- **`viewerKeyVersion`** (settings, default 1) — the version byte. **SYNCED** (in `SETTINGS_FIELDS` +
+  `buildSettingsPayload` + `migrateState` default + initial state + a `setViewerKeyVersion` that syncs), so
+  re-derivation is stable across the owner's devices; **STRIPPED** from the trusted viewer snapshot (added to
+  the line-674 rest-omit destructure alongside `viewerNpub/viewerPubkey/viewerLabel/viewerPrivacyTrusted/
+  nostrRelays`; the safe branch carries no settings). No store version bump (additive merge-default, mirrors
+  `viewerPrivacyTrusted`).
+- **Owner affordance (`SharingPage.tsx` `GenerateViewerKeyBlock`)** — LOCAL-SIGNER-ONLY (gated
+  `nostrSigningMethod === 'local'`; nip07/nip46 never expose the raw sk → the block is hidden). Unwrap the owner
+  key (Face ID / PIN, mirrors `RevealRecoveryKey`) → derive → `hex = getPublicKey(derived)` → **replace-guard**
+  (`window.confirm` when `viewerPubkey` exists and differs — re-deriving the SAME key skips the confirm, keeping
+  the determinism/recovery path friction-free) → `setViewerPubkey(hex)`/`setViewerNpub` →
+  `publishViewerSnapshotNow()` → reveal the viewer nsec via `<SecretKeyCard>` (auto-clear ~30s, unmount discards
+  it). Both owner sk + derived key zeroed in `finally`; ⚠ never logs key material.
+- **In-person handoff** — the owner shows/copies the derived nsec (`SecretKeyCard`); the viewer enters it via the
+  paste toggle below. **NIP-49 remote (ncryptsec-under-passphrase) handoff is DEFERRED** to a follow-up
+  (`nostr-tools/nip49` `encrypt`/`decrypt` verified available; not wired this phase).
+- **Viewer paste toggle (`ViewerLoginFlow.tsx`)** — the connect step gains a **Generate a new key** (default,
+  existing) vs **I was given a key** (`keyMode`) toggle. Paste mode: an nsec input → `nip19.decode` (type
+  `nsec`) → `pastedKey {sk, npub}` (with an inline ✓npub / "Not a valid nsec" confirmation);
+  `activeKey = keyMode === 'paste' ? pastedKey : viewerKey` feeds the UNCHANGED wrap/handshake path
+  (`wrapSecretKey`→`setViewerKeyWrapped/Meta`→`setUnwrappedViewerKey`→…). `viewerCanDone` also requires
+  `!!activeKey`.
+- Tests: `src/lib/nostr/__tests__/viewerKey.test.ts` (determinism; domain separation by version/pubkey/sk; valid
+  secp key; input-not-mutated + distinct-output zeroing contract); `viewerSnapshot.test.ts` extended
+  (`viewerKeyVersion` IN `buildSettingsPayload`, OUT of the trusted snapshot settings, added to the deep-equal
+  strip). SETTINGS_FIELDS count 38 → 39.
+
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
 The owner can provision a **viewer** (e.g. a family member) who gets a continuously-updated, **read-only**
@@ -3415,7 +3459,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 38 Synced Settings Fields
+### All 39 Synced Settings Fields
 (`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -3426,8 +3470,11 @@ a v17-migrant holder until the one-time wrap.
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
-`nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`, `viewerPrivacyTrusted`
-(`viewerPrivacyTrusted` (Viewer V2) syncs the owner's C-safe/C-trusted choice across the owner's devices; like the
+`nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`, `viewerPrivacyTrusted`, `viewerKeyVersion`
+(`viewerKeyVersion` (Viewer-key derivation v1) is the version byte for deterministic viewer-key derivation
+(`deriveViewerKeyFromNsec`); it syncs across the owner's devices so re-derivation is stable everywhere, and — like the
+other `viewer*` sharing fields — is STRIPPED from the viewer snapshot in the trusted branch (the safe branch carries
+no settings block). `viewerPrivacyTrusted` (Viewer V2) syncs the owner's C-safe/C-trusted choice across the owner's devices; like the
 other three `viewer*` sharing fields it is STRIPPED from the viewer snapshot in both branches AND from the plan backup.
 The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
 `nostrRelays` (Option C) syncs across the OWNER's devices — identical-lists / replace-on-hydrate (add + remove both
