@@ -47,6 +47,7 @@ export function SafetyDashboard() {
   const setCreditLine            = useStore((s) => s.setCreditLine);
   const strikeLiquidationLtvPct  = useStore((s) => s.strikeLiquidationLtvPct);
   const setStrikeLiquidationLtvPct = useStore((s) => s.setStrikeLiquidationLtvPct);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored Strike collateral — readout only
 
   const viewerMode = useStore((s) => s.viewerMode);   // read-only viewer → inline editors disabled (view-flip still allowed)
   const [strikeView, setStrikeView] = useState<'capacity' | 'liquidation'>('capacity');
@@ -186,7 +187,7 @@ export function SafetyDashboard() {
           {strikeView === 'capacity' ? (
             <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used · avail {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
           ) : (
-            <span className={styles.ltvNow}>{(strikeLtv * 100).toFixed(1)}% LTV · liq {strikeLiquidationLtvPct}% · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
+            <span className={styles.ltvNow}>₿{currentBtcHeld.toFixed(5)} collateral · {(strikeLtv * 100).toFixed(1)}% LTV · liq {strikeLiquidationLtvPct}% · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
           )}
           <span className={styles.flipHint}>
             {strikeEditing ? 'editing…' : strikeView === 'capacity' ? '⇄ liquidation' : '⇄ capacity'}
