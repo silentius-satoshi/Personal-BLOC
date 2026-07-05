@@ -464,10 +464,15 @@ src/
                                 # Poor badge, no-grace note in amber/red) → Strike bar (body tap flips capacity-used
                                 # ↔ liquidation gauge vs strikeLiquidationLtvPct; LTV via
                                 # computeStrikeLtv(advisorActualBlocBalance, getCurrentBtcHeld(), price) — the
-                                # CURRENT position, not the frozen baseline. The liquidation-view cushion row shows
-                                # the anchored collateral amount + an 80%-crash stress figure ("₿X.XXXXX collateral ·
-                                # 80% crash → Z%", .cushion-styled — muted, matching the CB section's cushion idiom)
-                                # via the plain getCurrentBtcHeld() selector; the LTV/liq segment was dropped as
+                                # CURRENT position, not the frozen baseline. The liquidation-view cushion row NOW
+                                # mirrors the CB card's own liq-cushion format (superseding the earlier 80%-crash
+                                # stress figure): "₿X.XXXXX · $Y above liq ~$Z · W% drop away · $B balance"
+                                # (.cushion-styled — muted, matching the CB section's cushion idiom), where
+                                # strikeLiqPrice = advisorActualBlocBalance / (getCurrentBtcHeld() × strikeLiqLtv)
+                                # (0 when collateral is 0) — the EXACT formula safetyView.ts's trusted
+                                # computeViewerSafety branch uses for the viewer's strike.liqPrice figure, so the
+                                # two surfaces can't disagree; strikeDropUsd/strikeDropPct are the $ / % distance
+                                # from the live btcPrice to that liq price. The LTV/liq segment was dropped as
                                 # redundant with the bar header's own LTV value — display-only.
                                 # Card is a <div role=button> (was
                                 # <button>) with a view-aware inline EDIT control (.editLink, stopPropagation so it
@@ -1627,7 +1632,10 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
   instead of 120×120, worse in trusted mode's longer subtext); that uneven safe↔trusted resize is what
   left iOS's stale-scale raster behind the fresh ring (device-confirmed — backgrounding the PWA
   re-rasterizes and clears the ghost until the next toggle). Independent of, and stacked with, the
-  transition-removal fix above.
+  transition-removal fix above. **Precision:** the center text shows ONE-DECIMAL precision with the
+  trailing zero stripped (`clamped % 1 === 0 ? clamped.toFixed(0) : clamped.toFixed(1)`) — was
+  `Math.round`, which could misrepresent e.g. 8.8% as "9%". `ViewerHomeView`'s `StatusCard` mirrors the
+  same clamp+format via a local `gaugePctLabel` helper so its `aria-label` always matches the visible text.
 - **`AppShell.tsx`** — a new render branch `viewerMode && viewerDataLoaded && activeTab !== 'settings'
   && activeTab !== 'almanac'` → `<ViewerHomeView onOpenSettings={…}/>`, inserted AFTER the
   `PrivateAppNotice` owner gate and BEFORE the `simpleMode` branches. So the viewer home REPLACES

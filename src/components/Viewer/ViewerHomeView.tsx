@@ -33,6 +33,13 @@ const LEVEL_COLOR: Record<SafetyLevel, string> = {
 
 const BADGE: Record<SafetyLevel, string> = { safe: 'Safe', watch: 'Fair', act: 'Poor' };
 
+// Mirrors RadialGauge's own clamp + one-decimal (trailing-zero-stripped) formatting, so the a11y
+// label always matches the visible gauge text.
+function gaugePctLabel(pct: number): string {
+  const clamped = Math.max(0, Math.min(100, pct));
+  return clamped % 1 === 0 ? clamped.toFixed(0) : clamped.toFixed(1);
+}
+
 const OVERALL_COPY: Record<SafetyLevel, string> = {
   safe: 'All positions safe',
   watch: 'Worth keeping an eye',
@@ -190,7 +197,7 @@ function StatusCard({
 }) {
   return (
     <div className={styles.card}>
-      <RadialGauge pct={pct} color={LEVEL_COLOR[level]} label={`${label} ${Math.round(pct)}%`} />
+      <RadialGauge pct={pct} color={LEVEL_COLOR[level]} label={`${label} ${gaugePctLabel(pct)}%`} />
       <div className={styles.cardBody}>
         <div className={styles.cardLabel}>{label}</div>
         <span className={styles.badge} style={{ color: LEVEL_COLOR[level], borderColor: LEVEL_COLOR[level] }}>

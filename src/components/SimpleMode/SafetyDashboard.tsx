@@ -73,7 +73,7 @@ export function SafetyDashboard() {
   // creditLevel is intentionally NOT destructured — the owner's capacity bar is ALWAYS green (the
   // viewer colors it via creditLevel; wiring it up here is the single most likely future regression).
   const {
-    capacityUsed, strikeLtv, strikeLevel, crashLtv,
+    capacityUsed, strikeLtv, strikeLevel,
     cbLtv, cbLevel, accruedBalance, cbLiqPrice, cbLiqFrac,
   } = view;
   const activeLiqPrice = cbLiqPrice; // alias → downstream JSX names unchanged
@@ -90,6 +90,12 @@ export function SafetyDashboard() {
   // Strike available credit — the LTV-capped truth (matches the trio pill + viewer figures); NOT naive creditLine − drawn.
   const cap = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
+  // Strike liquidation cushion — mirrors safetyView.ts's trusted computeViewerSafety formula exactly.
+  const strikeLiqPrice = currentBtcHeld > 0
+    ? advisorActualBlocBalance / (currentBtcHeld * strikeLiqLtv)
+    : 0;
+  const strikeDropUsd = Math.max(0, btcPrice - strikeLiqPrice);
+  const strikeDropPct = btcPrice > 0 ? strikeDropUsd / btcPrice : 0;
   const strikeFillPct = strikeView === 'capacity'
     ? Math.max(0, Math.min(100, capacityUsed * 100))
     : Math.max(0, Math.min(100, (strikeLtv / strikeLiqLtv) * 100));
@@ -190,7 +196,7 @@ export function SafetyDashboard() {
           {strikeView === 'capacity' ? (
             <span className={styles.cushion}>{fmtUSD(advisorActualBlocBalance)} of {fmtUSD(cap.limit)} · {fmtUSD(cap.available)} available</span>
           ) : (
-            <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} collateral · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
+            <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} · {fmtUSD(strikeDropUsd)} above liq ~{fmtUSD(strikeLiqPrice)} · {(strikeDropPct * 100).toFixed(0)}% drop away · {fmtUSD(advisorActualBlocBalance)} balance</span>
           )}
           <span className={styles.flipHint}>
             {strikeEditing ? 'editing…' : strikeView === 'capacity' ? '⇄ liquidation' : '⇄ capacity'}

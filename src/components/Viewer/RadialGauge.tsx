@@ -20,6 +20,7 @@ const C = 2 * Math.PI * R;
 export function RadialGauge({ pct, color, label }: RadialGaugeProps) {
   const clamped = Math.max(0, Math.min(100, pct));
   const offset = C * (1 - clamped / 100);
+  const shown = clamped % 1 === 0 ? clamped.toFixed(0) : clamped.toFixed(1);
   return (
     <svg
       className={styles.gauge}
@@ -48,7 +49,7 @@ export function RadialGauge({ pct, color, label }: RadialGaugeProps) {
         transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
       />
       <text className={styles.value} x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fill={color}>
-        {Math.round(clamped)}%
+        {shown}%
       </text>
     </svg>
   );
