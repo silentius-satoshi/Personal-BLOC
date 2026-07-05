@@ -20,8 +20,7 @@ export function LiqSimulator() {
   const cbCollateralBtc          = useStore((s) => s.cbCollateralBtc);
   const cbAprPct                 = useStore((s) => s.cbAprPct);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
-  const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const blocApr                  = useStore((s) => s.blocApr);
   const storePrice               = useStore((s) => s.btcPrice);
   const monthlyLog               = useStore((s) => s.monthlyLog);
@@ -37,9 +36,9 @@ export function LiqSimulator() {
     );
   }
 
-  // Derive true current Strike position from monthly log
+  // Current Strike position — reading-anchored collateral (v20) + last-logged BLOC balance
   const { btcHeld: sk_collateral, blocBalance: sk_drawn } =
-    deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
+    deriveCurrentPosition(monthlyLog, currentBtcHeld, advisorActualBlocBalance);
 
   // Derived constants
   const cb_div    = cbCollateralBtc * CB_LLTV;

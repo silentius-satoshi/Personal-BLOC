@@ -62,8 +62,7 @@ export function EmergencyConsole() {
   const expenses        = useStore((s) => s.expenses);
   const blocApr         = useStore((s) => s.blocApr);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
-  const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const monthlyLog      = useStore((s) => s.monthlyLog);
 
   const [assumption, setAssumption] = useState<'cured' | 'stuck'>('stuck');
@@ -83,7 +82,7 @@ export function EmergencyConsole() {
   const toggleSim = () => setSimPrice((sp) => (sp === null ? livePrice : null));
 
   const { btcHeld: skCollateralBtc, blocBalance: skDrawn } =
-    deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
+    deriveCurrentPosition(monthlyLog, currentBtcHeld, advisorActualBlocBalance);
 
   // The accrual boundary — the model consumes the ALREADY-accrued CB debt.
   const cbDebt = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);

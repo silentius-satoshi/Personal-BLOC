@@ -83,9 +83,7 @@ export function AdvisorMain() {
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const advisorMonthStartBalance = useStore((s) => s.advisorMonthStartBalance);
-  const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
-  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const advisorSkipBlocDraw      = useStore((s) => s.advisorSkipBlocDraw);
   const advisorSkipCbPayment     = useStore((s) => s.advisorSkipCbPayment);
   const advisorSkipBtcBuying     = useStore((s) => s.advisorSkipBtcBuying);
@@ -99,7 +97,7 @@ export function AdvisorMain() {
   const [overlayInitialMonth, setOverlayInitialMonth] = useState(0);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
-  const position      = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
+  const position      = deriveCurrentPosition(monthlyLog, currentBtcHeld, advisorActualBlocBalance);
   const availCredit   = strikeAvailableCredit(creditLine, position.btcHeld, btcPrice, position.blocBalance);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
@@ -110,13 +108,12 @@ export function AdvisorMain() {
   const { startingBlocBalance, startingBtcHeld, startingMonth } = useMemo(
     () => deriveAdvisorStart(
       monthlyLog,
-      advisorActualBtcHeld,
+      currentBtcHeld,
       advisorActualBlocBalance,
       currentMonth,
-      pendingCollateralAdjustment,
       advisorMonthStartBalance,
     ),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance],
+    [monthlyLog, currentBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, advisorMonthStartBalance],
   );
 
   const result = useMemo(

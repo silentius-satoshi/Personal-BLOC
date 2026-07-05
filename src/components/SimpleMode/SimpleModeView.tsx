@@ -73,10 +73,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const emitBalanceReading          = useStore((s) => s.emitBalanceReading);   // §5b — Quick-Setup save emits a journaled Strike reading
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
-  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
-  const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
-  const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
+  const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
   const dayLog                      = useStore((s) => s.dayLog);   // §3 — month-to-date ledger progress
@@ -133,8 +130,8 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance],
+    () => deriveAdvisorStart(monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance),
+    [monthlyLog, currentBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, advisorMonthStartBalance],
   );
 
   const advisorRows = useMemo(
@@ -310,13 +307,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     setExpenses(modalDraft.expenses);
     setCreditLine(modalDraft.creditLine);
     setAdvisorMonthStartBalance(modalDraft.monthStartBalance);
-    // btcHeld edits are reality edits — a dated adjustment, never the baseline. Do this BEFORE the emit so the
-    // reading's synthesized Strike LTV reflects the new collateral.
-    if (modalDraft.btcHeld !== useStore.getState().getCurrentBtcHeld()) {
-      adjustCurrentCollateral(modalDraft.btcHeld);
-    }
-    // §5b — emit a journaled Strike reading (the seam re-anchors advisorActualBlocBalance + asOf=today); Strike-only
-    // (no CB assertion) so a setup save never re-bases the CB balance.
+    // Collateral-Truth v20 — Strike collateral is reading-anchored; the read-only "BTC held" field no longer
+    // commits here (the reading-emitter for collateral lands in C-P3). §5b — emit a journaled Strike reading
+    // (the seam re-anchors advisorActualBlocBalance + asOf=today); Strike-only (no CB re-base).
     emitBalanceReading({ strikeBal: modalDraft.blocBalance });
     setShowSetupModal(false);
   };
@@ -852,7 +845,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                     <ModalField label="Amount Drawn"      prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
                     <ModalField label="Balance at start of this month" prefix="$" value={modalDraft.monthStartBalance} onChange={(v) => setModalDraft(d => ({ ...d, monthStartBalance: v }))}
                       hint="What you owed on Strike at the start of the current month — the base for this month's projection." />
-                    <ModalField label="BTC held"         prefix="₿" value={modalDraft.btcHeld}     onChange={(v) => setModalDraft(d => ({ ...d, btcHeld: v }))} step={0.001} />
+                    {/* Collateral-Truth v20 — "BTC held" is reading-anchored; the collateral reading-emitter returns in C-P3. */}
                   </div>
                   <div className={styles.modalActions}>
                     <button className={styles.modalCancel} onClick={() => setShowSetupModal(false)}>Cancel</button>

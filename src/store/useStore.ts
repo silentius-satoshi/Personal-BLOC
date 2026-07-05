@@ -1,10 +1,9 @@
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
 import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry, DayEvent } from '../simulation/types';
-import { upsertEntry, recomputeBtcHeld, deriveCurrentPosition, bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveReadingAnchors, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth, type ReadingMutationCtx } from '../simulation/logUtils';
+import { upsertEntry, recomputeBtcHeld, bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveStrikeCollateral, deriveReadingAnchors, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth, type ReadingMutationCtx } from '../simulation/logUtils';
 import { computeStrikeLtv } from '../simulation/strikeCredit';
 import { accruedCbBalance, cbMetrics } from '../simulation/cbMetrics';
-import { getCurrentStrategyMonth } from '../simulation/runAdvisor';   // runAdvisor imports logUtils/format (leaves) — still cycle-free
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety, type SafeSnapshot } from '../simulation/safetyView';   // Viewer V2 — pure (safetyView has no runtime dep on this store; type-only StoreState import) → cycle-free
 import { signerOpTimeout } from '../lib/nostr/timeout';
 import { nostrLog } from '../lib/nostr/log';
@@ -174,7 +173,8 @@ export interface StoreState {
 
   // CB Loan tab inputs
   cbLoanBalance:        number;
-  cbCollateralBtc:      number;
+  cbCollateralBtc:      number;   // derived cache (deriveCbCollateral over dayLog); NOT synced
+  strikeCollateralBtc:  number;   // Collateral-Truth v20 — derived cache (deriveStrikeCollateral over dayLog); reading-anchored; NOT synced (rides ...rest)
   cbAprPct:             number;
   cbMonthlyPayment:     number;
   cbLiquidationPrice:   number;
@@ -215,12 +215,10 @@ export interface StoreState {
   advisorActualBlocBalance: number;   // LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
   advisorActualBlocBalanceAsOf: string | null;   // §5b — ISO date the Strike balance was last set (manual=today, reading=reading.date); the deriveReadingAnchors freshness guard
   advisorMonthStartBalance: number;   // BLOC balance at the START of the current month — projection base ONLY (deriveAdvisorStart month-1)
-  advisorActualBtcHeld:     number;   // TRUE month-0 baseline — never back-solved; current holdings derive from the log + pending
-  pendingCollateralAdjustment: number;   // un-graduated collateral delta (deposit/withdrawal); SYNCED via settings; folds into the current month's entry on log
+  advisorActualBtcHeld:     number;   // TRUE month-0 baseline — never back-solved; feeds recomputeBtcHeld's historical chain + migrate fallback (NOT current position)
   sandboxCollateralBtc:     number | null;   // Smart BLOC what-if collateral — in-memory ONLY (not persisted/synced); null = tracks current
   setSandboxCollateralBtc:  (v: number | null) => void;
-  getCurrentBtcHeld:        () => number;   // (last.btcHeld ?? baseline) + pending — THE reality read
-  adjustCurrentCollateral:  (targetTotal: number) => void;   // dated-adjustment write: delta lands in pending
+  getCurrentBtcHeld:        () => number;   // deriveStrikeCollateral(dayLog, strikeCollateralBtc) — reading-anchored current Strike collateral
   ndpLastPaidDate:          string | null;
   setNdpLastPaidDate:       (date: string | null) => void;
   // Monthly log
@@ -634,7 +632,6 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
-    pendingCollateralAdjustment: s.pendingCollateralAdjustment,
     nostrRelays:              s.nostrRelays,   // C: relay list syncs across the owner's devices (guarded on hydrate; stripped from the viewer snapshot)
     // Writer-side viewer config — synced in the OWNER's settings:v1 only; STRIPPED from the viewer snapshot below.
     viewerNpub:               s.viewerNpub,
@@ -741,6 +738,13 @@ function refreshCbCollateralCache(): void {
   useStore.setState({ cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc) });
 }
 
+// Collateral-Truth v20 — the Strike-collateral equivalent: refresh the derived strikeCollateralBtc cache
+// (reading-anchored) from the current dayLog. Mirrors refreshCbCollateralCache; called beside it in the mutators.
+function refreshStrikeCollateralCache(): void {
+  const s = useStore.getState();
+  useStore.setState({ strikeCollateralBtc: deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc) });
+}
+
 // §5b Readings-Unification seam — couple the live safety anchors (advisorActualBlocBalance / cbLoanBalance /
 // cbLiquidationPrice) to the DATE-latest balanceReading. Runs on LOCAL dayLog actions ONLY (add/update/delete),
 // NEVER in setDayLog — a sync/merge must not jolt this device's SafetyDashboard; the anchor travels cross-device
@@ -793,7 +797,7 @@ function rerollMonth(month: number): void {
   // priorStocks = the prior strategy-month's LAST balanceReading by ts (shared with the reconcile — no drift).
   const priorStocks = priorStocksForMonth(s.dayLog, start, month);
 
-  const { entry: rollupEntry, collateralDelta } = rollupMonth(s.dayLog, month, start, priorStocks);
+  const { entry: rollupEntry } = rollupMonth(s.dayLog, month, start, priorStocks);   // collateralDelta retired (v20) — Strike collateral is reading-anchored, not chained from rollup
 
   // Partial→Full bridge: spread the rollup onto the EXISTING month (preserve miningSats/ndpPaid/loggedAt), or onto a
   // full numeric seed for a NEW month (NEVER onto {} — would leave required fields undefined). recomputeBtcHeld (inside
@@ -812,14 +816,8 @@ function rerollMonth(month: number): void {
   };
   const confirmed = base.confirmed === true ? false : (base.confirmed ?? false);   // reopen-on-edit (LD4); new = false
   useStore.getState().upsertLogEntry({ ...base, ...rollupEntry, source: 'daily', confirmed });
-
-  // SEAM 1 — AFTER upsert (which graduated any prior pending into this month's collateralAdjustment). Feed the WHOLE
-  // month's net target:'strike' BTC as an absolute target, subtracting the already-graduated existingAdj so earlier
-  // same-month deposits aren't counted twice. Only when there's a target:'strike' move (collateralDelta !== 0).
-  if (collateralDelta !== 0) {
-    const existingAdj = useStore.getState().monthlyLog.find((e) => e.month === month)?.collateralAdjustment ?? 0;
-    useStore.getState().adjustCurrentCollateral(useStore.getState().getCurrentBtcHeld() - existingAdj + collateralDelta);
-  }
+  // Seam-1 retired (Collateral-Truth v20): target:'strike' moves feed getCurrentBtcHeld via deriveStrikeCollateral
+  // (reading-anchored), not a pending adjustment. The mutators refresh strikeCollateralBtc directly.
 }
 
 // The strategy month a monthly-meaningful event affects (clock-only / journal-only events → null, no re-roll).
@@ -837,9 +835,16 @@ export function partializeState(state: StoreState) {
 
 // Persist migrate — exported so it's unit-testable (same reason as partializeState).
 export function migrateState(persistedState: any): any {
-  const { customCollateral, ...rest } = persistedState;
+  // v20 (Collateral-Truth): strip pendingCollateralAdjustment so it can't ride ...rest; seed strikeCollateralBtc.
+  const { customCollateral, pendingCollateralAdjustment: _pendingDrop, ...rest } = persistedState;
   const sorted = [...(persistedState.monthlyLog ?? [])]
     .sort((a: any, b: any) => a.month - b.month);
+  // Seed = faithful old getCurrentBtcHeld from the RAW blob (last entry's btcHeld, else the baseline) + pending,
+  // computed BEFORE the back-solve loops below touch anything. A degenerate entry lacking btcHeld → baseline.
+  const rawLast = sorted.at(-1);
+  const seedStrikeCollateral =
+    (rawLast?.btcHeld ?? persistedState.advisorActualBtcHeld ?? 0)
+    + (persistedState.pendingCollateralAdjustment ?? 0);
   const cumBought = sorted.reduce((s: number, e: any) => s + (e.btcBought ?? 0), 0);
   const month0Baseline = (persistedState.advisorActualBtcHeld ?? customCollateral ?? 0) - cumBought;
   let running = month0Baseline;
@@ -926,6 +931,10 @@ export function migrateState(persistedState: any): any {
     dayLog:               migratedDayLog,
     cbLtvAction:          persistedState.cbLtvAction ?? 'paydown',
     cbCollateralBtc:      deriveCbCollateral(migratedDayLog as DayEvent[], persistedState.cbCollateralBtc),
+    // v20 (Collateral-Truth) — reading-anchored Strike collateral. CACHE-SEED ONLY (no synthetic dayLog event —
+    // clean journals). No legacy reading carries strikeCollateral → deriveStrikeCollateral returns this fallback
+    // → getCurrentBtcHeld is byte-identical pre/post migration.
+    strikeCollateralBtc:  persistedState.strikeCollateralBtc ?? seedStrikeCollateral,
   };
 }
 
@@ -960,6 +969,7 @@ export const useStore = create<StoreState>()(
 
   cbLoanBalance:       60000,
   cbCollateralBtc:     1.48,
+  strikeCollateralBtc: 0,   // Collateral-Truth v20 — reading-anchored derived cache; fresh install = deriveStrikeCollateral([], 0) = 0
   cbAprPct:            4.77,
   cbMonthlyPayment:    0,
   cbLiquidationPrice:  0,
@@ -998,20 +1008,11 @@ export const useStore = create<StoreState>()(
   advisorActualBlocBalanceAsOf: null,   // §5b — never anchored yet (null → the reading guard always applies first time)
   advisorMonthStartBalance: 0,
   advisorActualBtcHeld:     0,
-  pendingCollateralAdjustment: 0,   // default via shallow merge — no migration, store stays v11
   sandboxCollateralBtc:     null,
   setSandboxCollateralBtc:  (v) => set({ sandboxCollateralBtc: v }),
   getCurrentBtcHeld: (): number => {
     const s: StoreState = useStore.getState();
-    return deriveCurrentPosition(s.monthlyLog, s.advisorActualBtcHeld, s.advisorActualBlocBalance, s.pendingCollateralAdjustment).btcHeld;
-  },
-  adjustCurrentCollateral: (targetTotal: number): void => {
-    const delta = targetTotal - useStore.getState().getCurrentBtcHeld();
-    if (delta === 0) return;
-    // No recompute needed — pending is additive in the derives, so current/LTV/liq are instantly right.
-    set((s) => ({ pendingCollateralAdjustment: s.pendingCollateralAdjustment + delta }));
-    nostrLog('info', 'collateral adjustment recorded');   // NO amounts — the LOG ring must stay paste-safe
-    useStore.getState().syncSettingsToNostr();   // pending is SYNCED state — must publish
+    return deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc);   // Collateral-Truth v20 — reading-anchored
   },
   ndpLastPaidDate:          null,
 
@@ -1101,45 +1102,33 @@ export const useStore = create<StoreState>()(
       nostrLog('warn', 'monthly write blocked — month is daily-owned');
       return;
     }
-    let graduated = false;
     set((state) => {
-      // Graduation: fold pending into the CURRENT month's entry only. Past-month edits preserve the
-      // stored adjustment and never graduate. Re-editing a logged current month with pending=0 reads
-      // existingAdj off the LOGGED entry — never wipes a graduated deposit. Both commit paths
-      // (Simple Mode confirm + Advisor inline) land here.
-      const isCurrent   = entry.month === getCurrentStrategyMonth(state.advisorStartDate);
+      // Collateral-Truth v20 — graduation retired. collateralAdjustment is NEVER written again; existing
+      // stored values stay (historical ledger — never "fix" the data). recomputeBtcHeld still runs for the
+      // historical btcHeld chain (display + sync-norm stability). Strike collateral is now reading-anchored
+      // (deriveStrikeCollateral over dayLog), independent of this entry.
       const existingAdj = state.monthlyLog.find((e) => e.month === entry.month)?.collateralAdjustment ?? 0;
-      const collateralAdjustment = isCurrent ? existingAdj + state.pendingCollateralAdjustment : existingAdj;
-      graduated = isCurrent && state.pendingCollateralAdjustment !== 0;
-      const stamped = { ...entry, updatedAt: Date.now(), collateralAdjustment };
+      const stamped = { ...entry, updatedAt: Date.now(), collateralAdjustment: existingAdj };
       const { [entry.month]: _gone, ...restDel } = state.deletedMonths;   // re-log clears the tombstone
       return {
         monthlyLog: recomputeBtcHeld(upsertEntry(state.monthlyLog, stamped), state.advisorActualBtcHeld),
         deletedMonths: restDel,
         recordsDirty: true,
-        pendingCollateralAdjustment: isCurrent ? 0 : state.pendingCollateralAdjustment,
       };
     });
     publishRecordsNow();
-    if (graduated) useStore.getState().syncSettingsToNostr();   // pending→0 must reach the relay or the other device shows inflated current
   },
   deleteLogEntry: (month) => {
-    let restoredAdj = 0;
     set((state) => {
-      // Un-logging the CURRENT month must NOT erase a real deposit — its adjustment returns to
-      // pending and re-graduates on the next log. Past-month deletes do NOT restore (the dated
-      // record is gone — consistent). Recompute fixes the surviving chain (stale-btcHeld gap).
-      const isCurrent = month === getCurrentStrategyMonth(state.advisorStartDate);
-      restoredAdj = isCurrent ? (state.monthlyLog.find((e) => e.month === month)?.collateralAdjustment ?? 0) : 0;
+      // Collateral-Truth v20 — restore-on-delete retired (no pending). recomputeBtcHeld fixes the surviving
+      // historical chain (stale-btcHeld gap); current Strike collateral is reading-anchored, unaffected.
       return {
         monthlyLog: recomputeBtcHeld(state.monthlyLog.filter((e) => e.month !== month), state.advisorActualBtcHeld),
         deletedMonths: { ...state.deletedMonths, [month]: Date.now() },
         recordsDirty: true,
-        pendingCollateralAdjustment: state.pendingCollateralAdjustment + restoredAdj,
       };
     });
     publishRecordsNow();
-    if (restoredAdj !== 0) useStore.getState().syncSettingsToNostr();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
 
@@ -1190,6 +1179,7 @@ export const useStore = create<StoreState>()(
   addDayEvent: (event) => {
     set((s) => ({ dayLog: [...s.dayLog, event], recordsDirty: true }));
     refreshCbCollateralCache();
+    refreshStrikeCollateralCache();   // Collateral-Truth v20 — reading-anchored Strike collateral cache
     refreshBalanceAnchors();   // §5b — a new reading re-anchors the live safety gauges (no removed source on add)
     const m = monthOf(event);
     if (m !== null) rerollMonth(m);
@@ -1202,6 +1192,7 @@ export const useStore = create<StoreState>()(
     const before = useStore.getState().dayLog.find((e) => e.id === event.id);
     set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? bumped : e)), recordsDirty: true }));
     refreshCbCollateralCache();
+    refreshStrikeCollateralCache();   // Collateral-Truth v20 — reading-anchored Strike collateral cache
     refreshBalanceAnchors(readingCtx(before));   // §5b — editing a reading re-anchors; a moved/changed source falls back via the ctx proxy
     const months = new Set<number>();
     const mb = monthOf(before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
@@ -1214,6 +1205,7 @@ export const useStore = create<StoreState>()(
     if (!before) return;
     set((s) => ({ dayLog: s.dayLog.filter((e) => e.id !== id), deletedDayEvents: { ...s.deletedDayEvents, [id]: Date.now() }, recordsDirty: true }));
     refreshCbCollateralCache();
+    refreshStrikeCollateralCache();   // Collateral-Truth v20 — reading-anchored Strike collateral cache
     refreshBalanceAnchors(readingCtx(before));   // §5b — deleting the anchor-source reading falls back to the date-latest survivor
     const m = monthOf(before);
     if (m !== null) rerollMonth(m);
@@ -1221,7 +1213,7 @@ export const useStore = create<StoreState>()(
   },
   // P3 — raw write-back from the records merge (sync.ts). FOLDS the Seam-2 derive: set dayLog AND recompute
   // cbCollateralBtc ONCE from the merged array. NO rollup / per-event derive — keeps the sync apply path actions-only.
-  setDayLog: (events) => set((s) => ({ dayLog: events, cbCollateralBtc: deriveCbCollateral(events, s.cbCollateralBtc) })),
+  setDayLog: (events) => set((s) => ({ dayLog: events, cbCollateralBtc: deriveCbCollateral(events, s.cbCollateralBtc), strikeCollateralBtc: deriveStrikeCollateral(events, s.strikeCollateralBtc) })),
   setCbLtvAction: (v) => set({ cbLtvAction: v }),
 
   // §5b — the emit-conversion for the SafetyDashboard inline editors + the Quick-Setup position modal: a manual
@@ -1379,13 +1371,12 @@ export const useStore = create<StoreState>()(
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
     advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
-    cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
+    cbLoanBalance: 60000, cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55, cbEmergencyCeilingPct: 30,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
-    pendingCollateralAdjustment: 0,
     monthlyLog: [], deletedMonths: {},
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     viewerNpub: null, viewerPubkey: null, viewerLabel: null,
@@ -1402,13 +1393,12 @@ export const useStore = create<StoreState>()(
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
     advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
-    cbLoanBalance: 60000, cbCollateralBtc: 1.48, cbAprPct: 4.77, hasCbLoan: false,
+    cbLoanBalance: 60000, cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: 4.77, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55, cbEmergencyCeilingPct: 30,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
-    pendingCollateralAdjustment: 0,
     monthlyLog: [], deletedMonths: {},
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
   }),
@@ -1463,7 +1453,7 @@ export const useStore = create<StoreState>()(
       'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
       'blocMinPaymentSource', 'blocStatementMinimum', 'blocMinPaymentDueDay',
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
-      'pendingCollateralAdjustment',
+      // pendingCollateralAdjustment RETIRED (Collateral-Truth v20) — Strike collateral is reading-anchored (records channel); a stale value in an old remote payload is ignored by omission
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
       'viewerNpub', 'viewerPubkey', 'viewerLabel', 'viewerPrivacyTrusted',
     ] as const;
@@ -1495,7 +1485,7 @@ export const useStore = create<StoreState>()(
     }),
     {
       name: 'personal-bloc-store',
-      version: 19,
+      version: 20,
       // Zustand v5: storage MUST be explicit — `undefined` DISABLES persistence (it does NOT default to
       // localStorage; that was older-Zustand behavior). Plain `window.localStorage` (zustand's own default form):
       // in the browser it's the real store; under Node (tests, no `window`) the getter throws → createJSONStorage
@@ -1531,6 +1521,7 @@ export const useStore = create<StoreState>()(
         // reloads, not just the version bump) — derive from the rehydrated dayLog, falling back to the stored cache.
         if (state) {
           state.cbCollateralBtc = deriveCbCollateral(state.dayLog ?? [], state.cbCollateralBtc);
+          state.strikeCollateralBtc = deriveStrikeCollateral(state.dayLog ?? [], state.strikeCollateralBtc);   // Collateral-Truth v20
         }
       },
     }

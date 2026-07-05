@@ -20,7 +20,7 @@ const ts = () => ++seq;
 const draw    = (amount: number, date = TODAY): DayEvent => ({ id: id(), date, ts: ts(), kind: 'draw', amount });
 const buy     = (amount: number, usd: number | undefined, date = TODAY): DayEvent => ({ id: id(), date, ts: ts(), kind: 'buy', amount, usd });
 const depo    = (amount: number, target: 'strike' | 'cb', date = TODAY): DayEvent => ({ id: id(), date, ts: ts(), kind: 'deposit', amount, target });
-const reading = (r: { strikeBal: number; strikeLtv: number; cbCollateral?: number }, date = TODAY): DayEvent => ({ id: id(), date, ts: ts(), kind: 'balanceReading', reading: r });
+const reading = (r: { strikeBal: number; strikeLtv: number; strikeCollateral?: number; cbCollateral?: number }, date = TODAY): DayEvent => ({ id: id(), date, ts: ts(), kind: 'balanceReading', reading: r });
 const cbColl  = (v: number, date = TODAY): DayEvent => ({ id: id(), date, ts: ts(), kind: 'cbCollateralReading', cbCollateral: v });
 
 const month1 = () => useStore.getState().monthlyLog.find((e) => e.month === 1);
@@ -30,12 +30,12 @@ beforeEach(() => {
   useStore.setState({
     monthlyLog: [], deletedMonths: {}, dayLog: [], deletedDayEvents: {},
     recordsDirty: false,
-    pendingCollateralAdjustment: 0,
     advisorActualBtcHeld: BASELINE,
     advisorActualBlocBalance: 0,
     advisorStartDate: TODAY,
     hasCbLoan: false,
     cbCollateralBtc: 1.48,
+    strikeCollateralBtc: BASELINE,     // reading-anchored cache seed (fallback when no strikeCollateral reading)
     cbLtvAction: 'paydown',
     isAuthenticated: false, nostrSigner: null, nostrPubkey: '',
   } as never);
@@ -63,22 +63,26 @@ describe('addDayEvent — Route 2 rollup', () => {
   });
 });
 
-describe('C1 — collateral seam nets each target:strike move exactly once (double-count guard)', () => {
-  it('two deposits, then edit-one and delete-one, each netting once', () => {
-    useStore.getState().addDayEvent(depo(0.1, 'strike'));
-    expect(cur()).toBeCloseTo(BASELINE + 0.1);              // 0.60
+describe('C1 — reading-anchored Strike collateral (v20 — reading states the total; post-anchor moves add once)', () => {
+  it('reading anchors; a later deposit adds once; edit/delete re-derive from the anchor', () => {
+    // The reading states the collateral total directly (the sheet emits it with the post-move amount).
+    useStore.getState().addDayEvent(reading({ strikeBal: 1000, strikeLtv: 0.1, strikeCollateral: BASELINE + 0.1 }));
+    expect(cur()).toBeCloseTo(BASELINE + 0.1);              // 0.60 (anchor)
 
-    const second = depo(0.05, 'strike');
-    useStore.getState().addDayEvent(second);
-    expect(cur()).toBeCloseTo(BASELINE + 0.15);             // 0.65 — NOT 0.65-on-top-of-0.6
+    const dep = depo(0.05, 'strike');                       // ts strictly after the reading → +0.05
+    useStore.getState().addDayEvent(dep);
+    expect(cur()).toBeCloseTo(BASELINE + 0.15);             // 0.65 — summed once, not double
 
-    // grab the first deposit's id to edit it
-    const first = useStore.getState().dayLog.find((e) => e.kind === 'deposit' && (e as any).amount === 0.1)!;
-    useStore.getState().updateDayEvent({ ...(first as any), amount: 0.2 });
-    expect(cur()).toBeCloseTo(BASELINE + 0.25);             // 0.75 (0.2 + 0.05)
+    useStore.getState().updateDayEvent({ ...(dep as any), amount: 0.15 });   // edit the post-anchor deposit
+    expect(cur()).toBeCloseTo(BASELINE + 0.25);             // 0.75 (0.60 + 0.15) — still once
 
-    useStore.getState().deleteDayEvent(second.id);
-    expect(cur()).toBeCloseTo(BASELINE + 0.2);              // 0.70 (0.2 only) — still nets once
+    useStore.getState().deleteDayEvent(dep.id);
+    expect(cur()).toBeCloseTo(BASELINE + 0.1);              // 0.60 — back to the reading total
+  });
+
+  it('a bare deposit with NO strikeCollateral reading does not move current (semantic shift)', () => {
+    useStore.getState().addDayEvent(depo(0.1, 'strike'));   // no anchor → fallback cache (BASELINE)
+    expect(cur()).toBeCloseTo(BASELINE);
   });
 });
 
@@ -97,7 +101,6 @@ describe('target:cb is journal-only; cbCollateral feeds the derived clock', () =
   it('cb deposit does not change current BTC; a cbCollateral reading updates cbCollateralBtc', () => {
     useStore.getState().addDayEvent(depo(0.1, 'cb'));
     expect(cur()).toBeCloseTo(BASELINE);                    // unchanged — target:cb contributes 0
-    expect(useStore.getState().pendingCollateralAdjustment).toBe(0);
 
     useStore.getState().addDayEvent(cbColl(1.6));
     expect(useStore.getState().cbCollateralBtc).toBeCloseTo(1.6);
@@ -168,6 +171,12 @@ describe('C2 — Seam 2 (cbCollateralBtc is a derived cache, not synced)', () =>
     const payload = buildSettingsPayload(useStore.getState());
     expect('cbCollateralBtc' in payload).toBe(false);
   });
+
+  it('v20 — strikeCollateralBtc + pendingCollateralAdjustment are ABSENT from the settings payload', () => {
+    const payload = buildSettingsPayload(useStore.getState());
+    expect('strikeCollateralBtc' in payload).toBe(false);        // derived cache — never rides settings LWW
+    expect('pendingCollateralAdjustment' in payload).toBe(false); // retired
+  });
 });
 
 describe('M2 — Monthly write guard', () => {
@@ -228,6 +237,31 @@ describe('migration v18→19', () => {
   });
 });
 
+describe('migration v19→20 (Collateral-Truth — reading-anchored Strike collateral)', () => {
+  it('seeds strikeCollateralBtc from the old-math current position, strips pending, getCurrentBtcHeld unchanged', () => {
+    // Old getCurrentBtcHeld = (last entry btcHeld) + pending = 1.038488 + (−0.206442) = 0.832046.
+    const out: any = migrateState({
+      monthlyLog: [
+        { month: 1, btcBought: 0.15, income: 0, paydown: 0, strikeBal: 2927, strikeLtv: 0.06, loggedAt: 1, btcHeld: 0.150221, expensesActual: 100 },
+        { month: 2, btcBought: 0.06, income: 0, paydown: 0, strikeBal: 4592, strikeLtv: 0.09, loggedAt: 2, btcHeld: 1.038488, expensesActual: 100 },
+      ],
+      advisorActualBtcHeld: 0.150221,
+      pendingCollateralAdjustment: -0.206442,
+      hasCbLoan: false,
+    });
+    expect(out.strikeCollateralBtc).toBeCloseTo(0.832046, 6);   // seed = last.btcHeld + pending
+    expect('pendingCollateralAdjustment' in out).toBe(false);   // stripped from the migrated shape
+    // No legacy reading carries strikeCollateral → derive returns the seed → getCurrentBtcHeld identical.
+    useStore.setState({ dayLog: out.dayLog ?? [], strikeCollateralBtc: out.strikeCollateralBtc } as never);
+    expect(useStore.getState().getCurrentBtcHeld()).toBeCloseTo(0.832046, 6);
+  });
+
+  it('empty log → seed = advisorActualBtcHeld + pending', () => {
+    const out: any = migrateState({ monthlyLog: [], advisorActualBtcHeld: 0.7, pendingCollateralAdjustment: 0.05, hasCbLoan: false });
+    expect(out.strikeCollateralBtc).toBeCloseTo(0.75);
+  });
+});
+
 describe('persistence', () => {
   it('partialize output includes dayLog + cbLtvAction', () => {
     useStore.getState().addDayEvent(draw(100));
@@ -239,6 +273,12 @@ describe('persistence', () => {
   it('partialize output includes deletedDayEvents (persists via rest like deletedMonths)', () => {
     const out: any = partializeState(useStore.getState());
     expect('deletedDayEvents' in out).toBe(true);
+  });
+
+  it('v20 — strikeCollateralBtc persists (rides ...rest); pendingCollateralAdjustment is gone', () => {
+    const out: any = partializeState(useStore.getState());
+    expect('strikeCollateralBtc' in out).toBe(true);              // derived cache persisted (not synced)
+    expect('pendingCollateralAdjustment' in out).toBe(false);     // retired field
   });
 });
 

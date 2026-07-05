@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
@@ -36,10 +35,7 @@ export function AdvisorSidebar() {
 
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
-  const advisorActualBtcHeld     = useStore((s) => s.advisorActualBtcHeld);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
-  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());
-  const adjustCurrentCollateral  = useStore((s) => s.adjustCurrentCollateral);
+  const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const monthlyLog               = useStore((s) => s.monthlyLog);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
@@ -48,9 +44,6 @@ export function AdvisorSidebar() {
   const hasCbLoan     = useStore((s) => s.hasCbLoan);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
-  // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; a draft keeps
-  // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
-  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
@@ -123,7 +116,7 @@ export function AdvisorSidebar() {
       </div>
 
       {monthlyLog.length > 0 && (() => {
-        const { lastLoggedMonth } = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
+        const { lastLoggedMonth } = deriveCurrentPosition(monthlyLog, currentBtcHeld, advisorActualBlocBalance);
         const projFrom = Math.min((lastLoggedMonth ?? 0) + 1, 12);
         return (
           <div className={styles.section}>
@@ -134,29 +127,18 @@ export function AdvisorSidebar() {
         );
       })()}
 
-      <div
-        className={styles.section}
-        onBlur={() => {
-          if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) adjustCurrentCollateral(btcHeldDraft);
-          setBtcHeldDraft(null);
-        }}
-      >
+      <div className={styles.section}>
         <span className={styles.label}>CURRENT BTC HELD</span>
         <NumberInput
-          value={btcHeldDraft ?? currentBtcHeld}
-          onChange={setBtcHeldDraft}
+          value={currentBtcHeld}
+          onChange={() => {}}
           prefix="₿"
-          min={0}
-          step={0.001}
+          decimals={8}
+          readOnly
         />
         <p className={styles.hint}>
-          Edits record a dated collateral adjustment for this month
+          Your current BTC in Strike — read from your logged balance readings
         </p>
-        {pendingCollateralAdjustment !== 0 && (
-          <p className={styles.hint} style={{ color: 'var(--orange)' }}>
-            {pendingCollateralAdjustment > 0 ? '+' : ''}{pendingCollateralAdjustment.toFixed(5)} ₿ pending — dates to Month {currentMonth} when logged
-          </p>
-        )}
       </div>
 
       {/* §2b — the annual NDP only exists while minimums are ROLLED into the line. In income mode the

@@ -36,7 +36,6 @@ import { disconnectNostr, reconnectNostr } from '../../lib/nostr/disconnect';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
-import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './SettingsMain.module.css';
 
@@ -277,13 +276,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
-  const adjustCurrentCollateral     = useStore((s) => s.adjustCurrentCollateral);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
   const strikeBtcAvailable          = useStore((s) => s.strikeBtcAvailable);
   const strikeApiConnected          = useStore((s) => s.strikeApiConnected);
-  // Reality edit — commit on blur only (NumberInput fires onChange per keystroke; the draft keeps
-  // pending from churning while typing). Edits record a dated adjustment, never touch the baseline.
-  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const [npubCopied, setNpubCopied]     = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
@@ -632,27 +626,16 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               );
             })()}
           </div>
-          <div
-            className={styles.setupFieldGroup}
-            onBlur={() => {
-              if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) adjustCurrentCollateral(btcHeldDraft);
-              setBtcHeldDraft(null);
-            }}
-          >
+          <div className={styles.setupFieldGroup}>
             <NumberInput
               label="Current BTC collateral"
-              value={btcHeldDraft ?? currentBtcHeld}
-              onChange={setBtcHeldDraft}
+              value={currentBtcHeld}
+              onChange={() => {}}
               prefix="₿"
-              min={0}
-              step={0.001}
+              decimals={8}
+              readOnly
             />
-            <span className={styles.fieldHint}>Your current BTC in Strike. Edits record a dated adjustment this month — feeds Advisor projections and Liq Sim.</span>
-            {pendingCollateralAdjustment !== 0 && (
-              <span className={styles.fieldHint} style={{ color: 'var(--orange)' }}>
-                {pendingCollateralAdjustment > 0 ? '+' : ''}{pendingCollateralAdjustment.toFixed(5)} ₿ pending — dates to Month {getCurrentStrategyMonth(advisorStartDate)} when logged
-              </span>
-            )}
+            <span className={styles.fieldHint}>Your current BTC in Strike — read from your logged balance readings. Feeds Advisor projections and Liq Sim.</span>
           </div>
           {strikeApiConnected && strikeBtcAvailable !== null && (
             <div className={styles.setupFieldGroup}>

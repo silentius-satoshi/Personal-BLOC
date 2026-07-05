@@ -80,9 +80,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
-  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);
-  const pendingCollateralAdjustment = useStore((s) => s.pendingCollateralAdjustment);
-  const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
+  const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const monthlyLog                  = useStore((s) => s.monthlyLog);
   const dayLog                      = useStore((s) => s.dayLog);
@@ -114,8 +112,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const needsReview   = needsConfirm;
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance),
-    [monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, currentMonth, pendingCollateralAdjustment, advisorMonthStartBalance],
+    () => deriveAdvisorStart(monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance),
+    [monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance],
   );
 
   const advisorRows = useMemo(

@@ -13,8 +13,8 @@ import styles from './AdvisorMain.module.css';
 // THE shared scenario projection — rendered by BOTH AdvisorMain (Section 4) and Simple Mode's
 // Outlook segment. Owns the growth-scenario picker + its own runAdvisor call so both hosts get
 // byte-identical scenario behavior from one source. The starting position arrives as props
-// (each host derives it via deriveAdvisorStart, threading pendingCollateralAdjustment), so a
-// pending deposit flows into the projection on both surfaces.
+// (each host derives it via deriveAdvisorStart, forwarding the reading-anchored current Strike
+// collateral from getCurrentBtcHeld), so a logged collateral change flows into the projection on both surfaces.
 
 interface OutlookProjectionProps {
   startingBlocBalance: number;

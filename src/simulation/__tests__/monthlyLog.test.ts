@@ -18,77 +18,61 @@ function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): Mon
   };
 }
 
+// Collateral-Truth v20 — deriveAdvisorStart(monthlyLog, currentStrikeCollateral, baseBlocBalance,
+// currentStrategyMonth, monthStartBalance). startingBtcHeld ≡ the passed currentStrikeCollateral
+// (reading-anchored, = getCurrentBtcHeld()); bloc/month still anchor on the last CONFIRMED entry.
 describe('deriveAdvisorStart', () => {
-  it('empty log → startingBlocBalance is monthStartBalance (the new param), NOT advisorActualBlocBalance', () => {
+  it('empty log → startingBlocBalance is monthStartBalance (the param), NOT advisorActualBlocBalance', () => {
     // advisorActualBlocBalance=9999 (live drawn) must be ignored; monthStartBalance=5000 is the projection base.
-    const result = deriveAdvisorStart([], 0.70, 9999, 4, 0, 5000);
+    const result = deriveAdvisorStart([], 0.70, 9999, 4, 5000);
     expect(result.startingBlocBalance).toBe(5000);
-    expect(result.startingBtcHeld).toBe(0.70);
+    expect(result.startingBtcHeld).toBe(0.70);   // = the passed currentStrikeCollateral
     expect(result.startingMonth).toBe(4);
   });
 
   it('uses most recent entry strikeBal as startingBlocBalance', () => {
     const log = [makeEntry(1, { strikeBal: 3500 }), makeEntry(2, { strikeBal: 7000 }), makeEntry(3, { strikeBal: 9180 })];
-    const result = deriveAdvisorStart(log, 0.70, 0, 4, 0, 0);
+    const result = deriveAdvisorStart(log, 0.70, 0, 4, 0);
     expect(result.startingBlocBalance).toBe(9180);
   });
 
-  it('uses last entry btcHeld as startingBtcHeld', () => {
-    const log = [
-      makeEntry(1, { btcBought: 0.05, btcHeld: 0.75 }),
-      makeEntry(2, { btcBought: 0.03, btcHeld: 0.78 }),
-      makeEntry(3, { btcBought: 0.02, btcHeld: 0.80 }),
-    ];
-    const result = deriveAdvisorStart(log, 0.70, 0, 4, 0, 0);
-    expect(result.startingBtcHeld).toBeCloseTo(0.80);
+  it('startingBtcHeld = the passed currentStrikeCollateral (reading-anchored)', () => {
+    const log = [makeEntry(1, { btcHeld: 0.75 }), makeEntry(2, { btcHeld: 0.78 }), makeEntry(3, { btcHeld: 0.80 })];
+    const result = deriveAdvisorStart(log, 0.80, 0, 4, 0);
+    expect(result.startingBtcHeld).toBeCloseTo(0.80);   // the passed value, NOT chained from the log
   });
 
   it('sets startingMonth to last.month + 1', () => {
     const log = [makeEntry(3)];
-    const result = deriveAdvisorStart(log, 0, 0, 1, 0, 0);
+    const result = deriveAdvisorStart(log, 0, 0, 1, 0);
     expect(result.startingMonth).toBe(4);
   });
 
   it('clamps startingMonth to 12 when last entry is month 12', () => {
     const log = [makeEntry(12)];
-    const result = deriveAdvisorStart(log, 0, 0, 12, 0, 0);
+    const result = deriveAdvisorStart(log, 0, 0, 12, 0);
     expect(result.startingMonth).toBe(12);
   });
 
-  // HOTFIX — bloc/month anchor on the last CONFIRMED entry (a living unconfirmed daily rollup must NOT advance
-  // the start), but startingBtcHeld is the LIVE current position (last entry ANY status + pending) so the seed
-  // matches the SafetyDashboard collateral.
-  it('REGRESSION PIN — confirmed M1 + unconfirmed M2: bloc/month anchor on M1; startingBtcHeld = current position', () => {
+  // Bloc/month anchor on the last CONFIRMED entry (a living unconfirmed daily rollup must NOT advance the
+  // start); startingBtcHeld is the passed reading-anchored current collateral (= getCurrentBtcHeld()).
+  it('REGRESSION PIN — confirmed M1 + unconfirmed M2: bloc/month anchor on M1; startingBtcHeld = current collateral', () => {
     const log = [
       makeEntry(1, { confirmed: true, strikeBal: 3500, btcHeld: 0.80 }),
       makeEntry(2, { confirmed: false, strikeBal: 7000, btcHeld: 0.95 }),   // living unconfirmed
     ];
-    const result = deriveAdvisorStart(log, 0.70, 0, /*currentStrategyMonth*/ 2, 0, /*monthStartBalance*/ 999);
+    const result = deriveAdvisorStart(log, 0.95, 0, /*currentStrategyMonth*/ 2, /*monthStartBalance*/ 999);
     expect(result.startingMonth).toBe(2);              // last CONFIRMED (M1) + 1 — NOT M2+1=3
     expect(result.startingBlocBalance).toBe(3500);     // M1's stocks, NOT M2's 7000
-    expect(result.startingBtcHeld).toBeCloseTo(0.95);  // CURRENT position (M2.btcHeld + pending 0), NOT the stale M1 anchor
+    expect(result.startingBtcHeld).toBeCloseTo(0.95);  // the passed current collateral
   });
 
-  // DEVICE REGRESSION — pending is now-relative to the LAST entry; adding it to a stale last-confirmed anchor
-  // produced negative collateral (0.150221 + −0.206442 = −0.056222 → 0.0% LTV → Buy $0). Must seed from the M2 chain.
-  it('DEVICE REGRESSION — startingBtcHeld = last-entry chain + now-relative pending (never negative)', () => {
-    const log = [
-      makeEntry(1, { btcHeld: 0.150221, btcBought: 0.150221, strikeBal: 2927.38, strikeLtv: 0.064, confirmed: true }),
-      makeEntry(2, { btcHeld: 1.038488, btcBought: 0.056222, collateralAdjustment: 0.832046, strikeBal: 4592.83, strikeLtv: 0.091, confirmed: false }),
-    ];
-    const result = deriveAdvisorStart(log, 0, 0, /*current*/ 2, /*pending*/ -0.206442, /*monthStart*/ 2927.38);
-    expect(result.startingBtcHeld).toBeCloseTo(0.832046, 6);   // 1.038488 + (−0.206442) — NOT the −0.056222 bug
-    expect(result.startingBtcHeld).toBeGreaterThan(0);
-    expect(result.startingBlocBalance).toBe(2927.38);          // M1 = last confirmed
-    expect(result.startingMonth).toBe(2);
-  });
-
-  it('only-unconfirmed log → bloc/month use the empty-branch anchors; startingBtcHeld = last entry btcHeld + pending', () => {
+  it('only-unconfirmed log → bloc/month use the empty-branch anchors; startingBtcHeld = passed collateral', () => {
     const log = [makeEntry(1, { confirmed: false, btcHeld: 0.60 }), makeEntry(2, { confirmed: false, btcHeld: 0.90 })];
-    const result = deriveAdvisorStart(log, 0.70, 0, /*current*/ 2, /*pending*/ 0.05, /*monthStart*/ 5000);
+    const result = deriveAdvisorStart(log, 0.95, 0, /*current*/ 2, /*monthStart*/ 5000);
     expect(result.startingBlocBalance).toBe(5000);     // monthStartBalance (no confirmed anchor)
     expect(result.startingMonth).toBe(2);              // currentStrategyMonth
-    expect(result.startingBtcHeld).toBeCloseTo(0.95);  // M2.btcHeld 0.90 + pending 0.05 — NOT advisorActualBtcHeld 0.70
+    expect(result.startingBtcHeld).toBeCloseTo(0.95);  // the passed reading-anchored collateral
   });
 });
 
@@ -122,8 +106,10 @@ describe('recomputeBtcHeld', () => {
       makeEntry(5, { btcBought: 0.01 }),
       makeEntry(7, { btcBought: 0.02 }),
     ], base);
-    const result = deriveAdvisorStart(log, base, 0, 8, 0, 0);
-    expect(result.startingBtcHeld).toBeCloseTo(log.find((e) => e.month === 7)!.btcHeld);
+    // startingBtcHeld is the passed reading-anchored collateral; feed the recomputed month-7 chain value.
+    const m7Held = log.find((e) => e.month === 7)!.btcHeld;
+    const result = deriveAdvisorStart(log, m7Held, 0, 8, 0);
+    expect(result.startingBtcHeld).toBeCloseTo(m7Held);
     expect(result.startingBtcHeld).toBeCloseTo(1.03);
   });
 
@@ -228,19 +214,22 @@ describe('dated collateral adjustments (spec v4)', () => {
     expect(result[1].btcHeld).toBeCloseTo(0.78);
   });
 
-  it('deriveCurrentPosition adds pending on top of last.btcHeld', () => {
-    const log = [makeEntry(1, { btcHeld: 0.80 })];
-    expect(deriveCurrentPosition(log, 0.70, 0, 0.05).btcHeld).toBeCloseTo(0.85);
+  it('deriveCurrentPosition btcHeld = the passed currentStrikeCollateral (logged)', () => {
+    const log = [makeEntry(1, { btcHeld: 0.80, strikeBal: 3000 })];
+    const pos = deriveCurrentPosition(log, 0.85, 0);
+    expect(pos.btcHeld).toBeCloseTo(0.85);   // reading-anchored — the passed value, not last.btcHeld
+    expect(pos.blocBalance).toBe(3000);      // still the last entry's strikeBal
+    expect(pos.lastLoggedMonth).toBe(1);
   });
 
-  it('deriveCurrentPosition empty log → baseline + pending', () => {
-    expect(deriveCurrentPosition([], 0.70, 0, -0.10).btcHeld).toBeCloseTo(0.60);
+  it('deriveCurrentPosition empty log → btcHeld = the passed collateral', () => {
+    expect(deriveCurrentPosition([], 0.60, 0).btcHeld).toBeCloseTo(0.60);
   });
 
-  it('deriveAdvisorStart adds pending to startingBtcHeld (logged and empty)', () => {
+  it('deriveAdvisorStart startingBtcHeld = the passed collateral (logged and empty)', () => {
     const log = [makeEntry(3, { btcHeld: 0.80 })];
-    expect(deriveAdvisorStart(log, 0.70, 0, 4, 0.05, 0).startingBtcHeld).toBeCloseTo(0.85);
-    expect(deriveAdvisorStart([], 0.70, 0, 4, 0.05, 0).startingBtcHeld).toBeCloseTo(0.75);
+    expect(deriveAdvisorStart(log, 0.85, 0, 4, 0).startingBtcHeld).toBeCloseTo(0.85);
+    expect(deriveAdvisorStart([], 0.75, 0, 4, 0).startingBtcHeld).toBeCloseTo(0.75);
   });
 });
 

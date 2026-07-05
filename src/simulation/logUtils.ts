@@ -12,28 +12,25 @@ export function recomputeBtcHeld(
   });
 }
 
-// pendingCollateralAdjustment is REQUIRED (not defaulted) on both derives — a default 0 would let an
-// unthreaded surface silently show stale current; the compiler must flag every call site.
-// startingBtcHeld reads the LIVE current position (last entry ANY confirmed status + pending, via
-// deriveCurrentPosition) so the advisor seed and the SafetyDashboard collateral can never disagree —
-// pendingCollateralAdjustment is a NOW-relative delta and must be added to the current anchor, never to a
-// stale last-confirmed one (that produced negative collateral → 0.0% LTV → Buy $0 on device).
-// startingBlocBalance/startingMonth stay anchored on the last CONFIRMED entry (so a living unconfirmed month
-// doesn't advance the projection start).
+// Collateral-Truth v20 — btcHeld (current Strike collateral) is READING-ANCHORED: callers pass the value
+// from getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc). The derives no longer chain
+// it (pending/graduation retired). startingBtcHeld = the passed currentStrikeCollateral so the advisor seed and
+// the SafetyDashboard collateral can never disagree (ONE definition of current position, via
+// deriveCurrentPosition). startingBlocBalance/startingMonth stay anchored on the last CONFIRMED entry (so a
+// living unconfirmed month doesn't advance the projection start).
 export function deriveAdvisorStart(
   monthlyLog: MonthlyLogEntry[],
-  advisorActualBtcHeld: number,
+  currentStrikeCollateral: number,    // = getCurrentBtcHeld() (reading-anchored current Strike collateral)
   advisorActualBlocBalance: number,   // forwarded to deriveCurrentPosition (position base only — startingBlocBalance still comes from monthStartBalance / last confirmed strikeBal)
   currentStrategyMonth: number,
-  pendingCollateralAdjustment: number,
   monthStartBalance: number,   // BLOC balance at the START of the current month — projection base (NOT live drawn)
 ): {
   startingBlocBalance: number;
   startingBtcHeld:     number;
   startingMonth:       number;
 } {
-  // ONE definition of current position (shared with the safety anchors); pending is always now-relative.
-  const position = deriveCurrentPosition(monthlyLog, advisorActualBtcHeld, advisorActualBlocBalance, pendingCollateralAdjustment);
+  // ONE definition of current position (shared with the safety anchors).
+  const position = deriveCurrentPosition(monthlyLog, currentStrikeCollateral, advisorActualBlocBalance);
 
   // Anchor bloc/month on CONFIRMED entries only — under one-ledger the current month is a LIVING unconfirmed daily
   // rollup (confirmed===false); it must NOT advance the projection start past itself. `confirmed !== false` keeps
@@ -55,19 +52,20 @@ export function deriveAdvisorStart(
   };
 }
 
+// btcHeld = the passed currentStrikeCollateral (reading-anchored — see deriveStrikeCollateral); blocBalance /
+// lastLoggedMonth come from the last logged entry (or the base when the log is empty).
 export function deriveCurrentPosition(
   monthlyLog: MonthlyLogEntry[],
-  baseBtcHeld: number,
+  currentStrikeCollateral: number,
   baseBlocBalance: number,
-  pendingCollateralAdjustment: number,
 ): { btcHeld: number; blocBalance: number; lastLoggedMonth: number | null } {
   if (monthlyLog.length === 0) {
-    return { btcHeld: baseBtcHeld + pendingCollateralAdjustment, blocBalance: baseBlocBalance, lastLoggedMonth: null };
+    return { btcHeld: currentStrikeCollateral, blocBalance: baseBlocBalance, lastLoggedMonth: null };
   }
   const sorted = [...monthlyLog].sort((a, b) => a.month - b.month);
   const last   = sorted[sorted.length - 1];
   return {
-    btcHeld:         last.btcHeld + pendingCollateralAdjustment,
+    btcHeld:         currentStrikeCollateral,
     blocBalance:     last.strikeBal,
     lastLoggedMonth: last.month,
   };

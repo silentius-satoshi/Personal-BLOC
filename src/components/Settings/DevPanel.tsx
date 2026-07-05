@@ -62,8 +62,7 @@ export function DevPanel() {
   // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
   // they must NOT enter syncState / Copy Diagnostics (paste-safe rule).
   const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
-  const pendingAdj           = useStore((s) => s.pendingCollateralAdjustment);
-  const currentBtcHeld       = useStore((s) => s.getCurrentBtcHeld());
+  const currentBtcHeld       = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored (v20)
   // Viewer access — handshake metadata (presence/pubkeys only; NEVER the secret key value)
   const viewerMode           = useStore((s) => s.viewerMode);
   const viewerPubkey         = useStore((s) => s.viewerPubkey);         // owner side: who I publish to
@@ -302,7 +301,7 @@ export function DevPanel() {
       build:   __BUILD_SHA__,
       builtAt: __BUILD_TIME__,
       now:     new Date().toISOString(),
-      state:   { ...syncState, pendingNonZero: pendingAdj !== 0 },   // boolean only — amounts stay out
+      state:   { ...syncState },   // amounts stay out (paste-safe)
       lastPublish: getPublishReports().at(-1) ?? null,               // per-relay ack metadata (no amounts)
       log:     getNostrLog(),
     };
@@ -435,11 +434,7 @@ export function DevPanel() {
       <Section title="COLLATERAL">
         <div className={styles.grid}>
           <span className={styles.key}>baseline</span><span className={styles.val}>{baselineBtc.toFixed(5)} ₿</span>
-          <span className={styles.key}>pending</span>
-          <span className={styles.val} style={pendingAdj !== 0 ? { color: 'var(--orange)' } : undefined}>
-            {pendingAdj === 0 ? '0' : `${pendingAdj > 0 ? '+' : ''}${pendingAdj.toFixed(5)}`} ₿
-          </span>
-          <span className={styles.key}>current</span><span className={styles.val}>{currentBtcHeld.toFixed(5)} ₿</span>
+          <span className={styles.key}>current (reading-anchored)</span><span className={styles.val}>{currentBtcHeld.toFixed(5)} ₿</span>
         </div>
       </Section>
 
