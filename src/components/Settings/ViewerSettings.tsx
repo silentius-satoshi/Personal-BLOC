@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { fetchViewerSnapshot, resetViewerSession } from '../../lib/nostr/viewerSync';
+import { fetchViewerSnapshot, resetViewerSession, getViewerNpub } from '../../lib/nostr/viewerSync';
 import { relativeAge } from '../../utils/format';
 import styles from './ViewerSettings.module.css';
 
@@ -20,10 +20,12 @@ export function ViewerSettings() {
   const setAlmanacLiveEnabled   = useStore((s) => s.setAlmanacLiveEnabled);
   const setAlmanacLiveConsented = useStore((s) => s.setAlmanacLiveConsented);
   const lastSync             = useStore((s) => s.viewerLastSyncAt);
+  const npub                 = getViewerNpub();   // available — a viewer reaches Settings only after unlocking (holder populated)
 
   // Inline name edit — tap the row → field + Save/Cancel; empty Save clears to null (nameless greeting).
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft]     = useState('');
+  const [npubCopied, setNpubCopied]   = useState(false);
 
   // Refresh feedback — success/failure via a before/after viewerLastSyncAt compare (a successful fetch
   // always re-stamps it; fetchViewerSnapshot swallows network errors internally, so no rejection to await).
@@ -82,6 +84,21 @@ export function ViewerSettings() {
           <span className={styles.rowTitle}>Your name</span>
           <span className={styles.rowValue}>{viewerDisplayName ?? 'Not set'}</span>
           <span className={styles.chevron}>›</span>
+        </div>
+      )}
+
+      {npub && (
+        <div className={styles.row}>
+          <span className={styles.rowTitle}>Your viewing key</span>
+          <span className={styles.rowValue}>
+            {`${npub.slice(0, 10)}…${npub.slice(-6)}`}
+            <button
+              className={styles.copyBtn}
+              onClick={() => { navigator.clipboard?.writeText(npub); setNpubCopied(true); setTimeout(() => setNpubCopied(false), 1500); }}
+            >
+              {npubCopied ? 'Copied ✓' : 'Copy'}
+            </button>
+          </span>
         </div>
       )}
 

@@ -3274,7 +3274,12 @@ a v17-migrant holder until the one-time wrap.
   structural guarantee.
 - **Owner-gate amendment:** all three auth-gate branches (LocalUnlockGate/NostrAuthGate/PrivateAppNotice) gain
   `&& !viewerMode` so a viewer install short-circuits straight to the app render (the spec's `|| viewerMode`
-  carve-out). A slim amber **"👁 Viewing … · read-only"** banner sits atop the app body in viewerMode.
+  carve-out). The slim amber **"👁 Viewing … · read-only"** banner that used to sit atop the app body in
+  viewerMode was REMOVED (redundant — the viewer experience is inherently read-only by construction;
+  reclaims headspace). Its copy-my-npub affordance moved into `ViewerSettings` ("Your viewing key" row,
+  YOU group) so a connected viewer can still retrieve/share their npub; `ViewerWaitingGate`'s own
+  copy-npub button (the pending/revoked-case affordance, shown BEFORE a viewer reaches Settings) is
+  unaffected.
 - **Data-remanence guard (decrypted data must not outlive the viewer key).** A viewer's hydrated financial data
   lives in the persisted Zustand store; clearing the viewer *key* alone left it rendering after revoke/reset (a
   revoked viewer correctly got "invalid MAC" — encryption held — but the OLD numbers still showed). Two parts:

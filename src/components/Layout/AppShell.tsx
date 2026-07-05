@@ -41,7 +41,7 @@ import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
 import { ViewerWaitingGate } from '../Auth/ViewerWaitingGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
-import { resetViewerSession, getViewerNpub } from '../../lib/nostr/viewerSync';
+import { resetViewerSession } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
 import { BrandingDropdown }  from './BrandingDropdown';
 import { SettingsMain }      from '../Settings/SettingsMain';
@@ -198,12 +198,10 @@ export function AppShell() {
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
   const [unlockEscape, setUnlockEscape] = useState(false);
-  const [bannerCopied, setBannerCopied] = useState(false);
 
   const isOwner = isOwnerPubkey(nostrPubkey, import.meta.env.VITE_OWNER_PUBKEY as string | undefined);
   const viewerMode    = useStore((s) => s.viewerMode);
   const viewerPreview = useStore((s) => s.viewerPreview);   // owner "Preview as viewer" (transient)
-  const viewerNpubSelf = useStore((s) => s.viewerWriterPubkey);   // the owner this viewer follows (for the banner)
   const viewerKeyWrapped = useStore((s) => s.viewerKeyWrapped);   // Phase 3 — wrapped-at-rest viewer key
   const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
   const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
@@ -291,26 +289,6 @@ export function AppShell() {
             if (enableSimple) setSimpleMode(true);
           }}
         />
-      )}
-
-      {viewerMode && (
-        <div className={styles.viewerBanner}>
-          👁 Viewing {viewerNpubSelf ? `${viewerNpubSelf.slice(0, 8)}…` : 'a shared plan'} · read-only
-          {(() => {
-            const myNpub = getViewerNpub();
-            return myNpub ? (
-              <>
-                {' · '}
-                <button
-                  className={styles.viewerBannerCopyBtn}
-                  onClick={() => { navigator.clipboard?.writeText(myNpub); setBannerCopied(true); setTimeout(() => setBannerCopied(false), 1500); }}
-                >
-                  {bannerCopied ? 'copied ✓' : 'copy my npub'}
-                </button>
-              </>
-            ) : null;
-          })()}
-        </div>
       )}
 
       {onboardingComplete && viewerMode && viewerKeyWrapped && !viewerUnlocked && !import.meta.env.DEV ? (

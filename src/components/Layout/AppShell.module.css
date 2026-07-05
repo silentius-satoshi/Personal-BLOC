@@ -306,25 +306,3 @@
 }
 .nostrReconnect:hover { background: rgba(232,131,106,0.12); }
 
-/* Viewer-mode (read-only) banner — slim sticky bar atop the app body */
-.viewerBanner {
-  position: sticky;
-  top: 0;
-  z-index: 50;
-  text-align: center;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--bg-base);
-  background: var(--amber);
-  padding: 5px 10px;
-}
-
-.viewerBannerCopyBtn {
-  font: inherit;
-  color: inherit;
-  background: none;
-  border: none;
-  padding: 0;
-  text-decoration: underline;
-  cursor: pointer;
-}
