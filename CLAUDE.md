@@ -1979,6 +1979,20 @@ the Bug-3 render ladder + sync banners), only the dead toggle UI is removed. **C
   `nip19.nsecEncode(sk)` → `sk.fill(0)` immediately → `<SecretKeyCard/>` → **auto-re-blur/clear after ~30s** (or
   Hide, or unmount). ⚠ Never logs the key.
 - **No store version bump.** Suite unchanged at 456 (UI-only; flow is device territory).
+- **Settings Phase 2 Step 2 — COMPLETE (gap audit against HEAD confirmed everything above is shipped; no
+  further code):** the Identity & Security page ships the 5-group structure — **IDENTITY CARD → SYNC → THIS
+  DEVICE → RECOVERY → security-note footer** (+ the `!nostrPubkey` "No identity connected" fallback), rows
+  already organized into those labeled groups. The **"Enable Nostr Lock" inert toggle is already removed** (no
+  `nostrAuthEnabled`/`setNostrAuthEnabled` control anywhere in `SettingsMain.tsx`; every remaining `Toggle` is
+  wired to a real action). **RECOVERY** already carries `<RevealRecoveryKey/>` (local-only — the "prove the
+  wrapped key still unwraps" decrypt path: `unwrapSecretKey → nsecEncode → SecretKeyCard`, auto-clear ~30s) +
+  the **conditional decrypt-back** ("Turn off at-rest encryption", `showDecryptBack`/`handleDecryptBack`) +
+  Backup plan + Reset-&-re-sync. The **nip46 reconnect-flash guard** is live at `useNostrAutoRestore.ts:21`
+  (`if (nostrSigningMethod === 'nip46' && !nostrLogin) return;`, before the optimistic auth), with redundant
+  lower-layer defense at `session.ts` (the nip46 restore worker throws on missing login). **Deliberate scope
+  call:** **at-rest encryption STATE stays DevPanel-only** — no user-facing "On/Off" row on the Identity page
+  (encryption is OFF-by-default, dev-gated maturation; the only user-facing surface is the conditional RECOVERY
+  decrypt-back + the footer note).
 
 ---
 
