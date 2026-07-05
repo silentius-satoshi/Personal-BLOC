@@ -675,6 +675,7 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
     cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
+    strikeCollateralBtc: deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc),   // C-P4 — the reading-anchored Strike scalar; viewer raw-sets it (dayLog stays []). SAFE branch must NOT carry it
   };
 }
 

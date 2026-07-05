@@ -196,8 +196,8 @@ export const VIEWER_DTAG = 'personal-bloc:viewer:v1';
 
 // V2 — MODE-SHAPED. Every field optional so a SAFE payload (health only) and a TRUSTED payload (today's
 // full data) are the same type, and old (pre-V2) events without privacyMode still typecheck + read as
-// trusted. A SAFE payload carries ONLY the common + safe keys — no settings/records/strike/cbCollateralBtc
-// exist in it by construction (the privacy audit is Object.keys). A TRUSTED payload adds today's block.
+// trusted. A SAFE payload carries ONLY the common + safe keys — no settings/records/strike/cbCollateralBtc/
+// strikeCollateralBtc exist in it by construction (the privacy audit is Object.keys). A TRUSTED payload adds today's block.
 export interface ViewerSnapshot {
   // common (v2)
   snapshotVersion?: number;              // 2
@@ -214,6 +214,7 @@ export interface ViewerSnapshot {
   records?:  { entries: unknown[]; deletions: Record<number, number> };
   strike?:   { usd: number | null; btcAvail: number | null; rate: number | null };
   cbCollateralBtc?: number;   // P3 (BUG2) — the derived CB-collateral scalar; the viewer raw-sets it (never gets the dayLog journal)
+  strikeCollateralBtc?: number;   // C-P4 (BUG2 mirror) — the derived reading-anchored Strike-collateral scalar; the viewer raw-sets it (never gets the dayLog journal)
 }
 
 export async function publishViewerSnapshot(

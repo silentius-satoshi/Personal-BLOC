@@ -739,7 +739,7 @@ showMiningInLog:          boolean;            // default false
 
 ## Dated Collateral Model — ⚠ SUPERSEDED at v20 by reading-anchored Strike collateral
 
-> **Collateral-Truth Consolidation (store v20, C-P2):** Current Strike collateral is now **reading-anchored**,
+> **Collateral-Truth Consolidation — C-P1→C-P4 COMPLETE (store v20):** Current Strike collateral is **reading-anchored**,
 > NOT computed from the log chain. `getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc)`
 > — the `strikeCollateral`-bearing `balanceReading` latest by (date, then ts) + `target:'strike'`
 > deposit/withdraw moves STRICTLY after it (see the §deriveStrikeCollateral in `logUtils.ts`). **RETIRED:**
@@ -750,7 +750,12 @@ showMiningInLog:          boolean;            // default false
 > reading anchors. **Buys never count** toward Strike collateral. `deriveCurrentPosition`/`deriveAdvisorStart`
 > now take `currentStrikeCollateral` (from `getCurrentBtcHeld()`), not baseBtcHeld/pending. `recomputeBtcHeld`
 > / per-entry `btcHeld` / `advisorActualBtcHeld` are KEPT for the historical chain + sync-norm + migrate
-> fallback (no live position consumer reads them). The rest of this section is HISTORICAL (pre-v20).
+> fallback (no live position consumer reads them). **C-P3** = the write UI (EventSheet required `strikeCollateral`
+> field + auto-track to the post-move total, buy "pledge to Strike" toggle, `emitBalanceReading` collateral
+> override, the three collateral inputs re-editable as reading-emitters). **C-P4** = the trusted viewer receives
+> `strikeCollateralBtc` as a derived-from-dayLog scalar (raw-set in `viewerSync`, viewer dayLog stays `[]`; SAFE
+> payload excludes it), so the viewer's `getCurrentBtcHeld()`/Strike figures are correct. The rest of this section
+> is HISTORICAL (pre-v20).
 
 The (pre-v20) computed-chain model, kept for history:
 
@@ -943,10 +948,21 @@ discipline verbatim.
   `records` still carries `{ entries, deletions }` only — the viewer gets the **scalar, not the journal**
   (no `dayLog` in the snapshot).
 - **VIEWER BUG3 (raw-set — `viewerSync.ts`):** `applyViewerEvent` raw-sets `useStore.setState({ cbCollateralBtc:
-  snap.cbCollateralBtc ?? useStore.getState().cbCollateralBtc })` — **MUST NOT** use `setCbCollateralBtc` (P2a
-  made it emit a `cbCollateralReading` → would inject a spurious event into the VIEWER's own `dayLog`). The
-  viewer's `dayLog` stays `[]`; the `??` fallback preserves the value for a legacy/pre-P3 owner snapshot. The
-  revoked path returns before this via `clearViewerData()`.
+  snap.cbCollateralBtc ?? useStore.getState().cbCollateralBtc, strikeCollateralBtc: snap.strikeCollateralBtc ??
+  useStore.getState().strikeCollateralBtc })` (C-P4 folds the Strike scalar into the SAME setState) — **MUST NOT**
+  use `setCbCollateralBtc`/`emitBalanceReading` (they emit a `cbCollateralReading`/`balanceReading` → would inject
+  a spurious event into the VIEWER's own `dayLog`). The viewer's `dayLog` stays `[]`; the `??` fallbacks preserve
+  the values for a legacy/pre-P3 (cb) or pre-C-P4 (strike) owner snapshot. The revoked path returns before this
+  via `clearViewerData()`.
+- **C-P4 (the Strike scalar — mirrors BUG2/BUG3):** `buildViewerSnapshotPayload`'s TRUSTED branch adds
+  `strikeCollateralBtc: deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc)` (the reading-anchored current
+  Strike collateral, scalar not journal); the SAFE branch NEVER carries it (privacy audit is `Object.keys`).
+  Fixes a real defect: the trusted viewer's `dayLog` is `[]`, so without the scalar its `strikeCollateralBtc`
+  cache stayed 0 → `getCurrentBtcHeld()`=0 → wrong (zero-collateral) Strike LTV/liq figures. The viewer sources
+  current Strike collateral via `getCurrentBtcHeld` → `deriveStrikeCollateral(dayLog=[], strikeCollateralBtc)` =
+  the hydrated cache (no per-entry `btcHeld` chain read for current position), so the raw-set lands in exactly
+  what the viewer renders. `ViewerSnapshot.strikeCollateralBtc?` is optional → the revocation tombstone still
+  typechecks. **Collateral-Truth Consolidation C-P1→C-P4 is COMPLETE.**
 
 ---
 
@@ -2517,8 +2533,8 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). Seed-clobber Fix B: the FIRST pull (`!initialSettingsPullDone`) hydrates real remote settings even when `settingsDirty` is spuriously true (the fixture default is `initialSettingsPullDone: true` = established session)
-- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache) + snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
-- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious cbCollateralReading injected into the viewer's journal); a pre-P3 snapshot without the scalar keeps the existing value (?? fallback); a revoked snapshot → clearViewerData, scalar NOT applied
+- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
+- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 - `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
@@ -2872,7 +2888,7 @@ src/
                                     # flips auth off; a failed sync with a live signer does not
   lib/nostr/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload
-                                    # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar).
+                                    # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar) + strikeCollateralBtc (C-P4 scalar, trusted-only).
                                     # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN
                                     # (unencrypted) kind-10002 relay list (flat r tags, no read/write markers); MUST NOT
                                     # route through publishEncrypted/signer.nip44 (10002 is public). Both share the
@@ -2946,10 +2962,10 @@ src/
                                     # with the VIEWER's key (NSecSigner(hexToBytes(viewerSecretKey).slice())).
                                     # fetchViewerSnapshot (batch) + open/closeViewerSync (singleton live sub) →
                                     # applyViewerEvent → read-only hydrate (hydrateSettings/setMonthlyLog/
-                                    # setDeletedMonths/setStrike*); NEVER publishes/dirties. P3 (BUG3): raw-sets
-                                    # cbCollateralBtc from snap.cbCollateralBtc via useStore.setState — NEVER setCbCollateralBtc
-                                    # (it would inject a cbCollateralReading into the viewer's OWN dayLog); the viewer's dayLog
-                                    # stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
+                                    # setDeletedMonths/setStrike*); NEVER publishes/dirties. P3/C-P4 (BUG3): raw-sets
+                                    # cbCollateralBtc + strikeCollateralBtc from snap via ONE useStore.setState — NEVER
+                                    # setCbCollateralBtc/emitBalanceReading (they'd inject a reading into the viewer's OWN dayLog);
+                                    # the viewer's dayLog stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
@@ -3188,7 +3204,7 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 |---|---|---|
 | `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
-| `personal-bloc:viewer:v1` | **Viewer Access — MODE-SHAPED (Viewer V2).** `ViewerSnapshot` NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (opt-in via `viewerPrivacyTrusted`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc }` + common. Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on `setViewerPrivacyTrusted`/saving a viewer npub; gated on `viewerPubkey` set; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
+| `personal-bloc:viewer:v1` | **Viewer Access — MODE-SHAPED (Viewer V2).** `ViewerSnapshot` NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (opt-in via `viewerPrivacyTrusted`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common (both collateral scalars are derived-from-dayLog, trusted-only + optional — the SAFE payload carries NEITHER by construction; C-P4). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on `setViewerPrivacyTrusted`/saving a viewer npub; gated on `viewerPubkey` set; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 

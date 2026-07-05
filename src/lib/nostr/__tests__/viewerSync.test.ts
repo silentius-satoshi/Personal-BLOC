@@ -43,6 +43,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     nostrSigningMethod:  'local',
     nostrRelays:         ['wss://r'],
     cbCollateralBtc:     0.5,             // sentinel — proves raw-set overwrites / revoked leaves it
+    strikeCollateralBtc: 0.7,             // C-P4 sentinel — same raw-set/fallback/revoked semantics
     dayLog:              [],
     hydrateSettings:     vi.fn(),
     setMonthlyLog:       vi.fn(),
@@ -69,40 +70,43 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     mockPool.querySync.mockResolvedValue([{ content: 'ct', created_at: 1, tags: [] }]);
   });
 
-  it('BUG3: raw-sets cbCollateralBtc from the snapshot AND leaves dayLog empty (no spurious cbCollateralReading)', async () => {
+  it('BUG3: raw-sets cb+strike collateral scalars from the snapshot AND leaves dayLog empty (no spurious readings)', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 3.33,
+      settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 3.33, strikeCollateralBtc: 4.44,
     }));
 
     await fetchViewerSnapshot();
 
-    expect(mockState.cbCollateralBtc).toBeCloseTo(3.33);   // raw set via useStore.setState
-    expect(mockState.dayLog).toEqual([]);                  // viewer journal untouched
+    expect(mockState.cbCollateralBtc).toBeCloseTo(3.33);     // raw set via useStore.setState
+    expect(mockState.strikeCollateralBtc).toBeCloseTo(4.44); // C-P4 — raw set in the SAME setState
+    expect(mockState.dayLog).toEqual([]);                    // viewer journal untouched
     expect(mockState.setCbCollateralBtc).not.toHaveBeenCalled();   // NEVER the emitting setter
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
     expect(mockState.clearViewerData).not.toHaveBeenCalled();
   });
 
-  it('a pre-P3 snapshot without cbCollateralBtc leaves the existing value (fallback)', async () => {
+  it('a pre-P3/pre-C-P4 snapshot without the scalars leaves the existing values (fallback)', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null,   // no cbCollateralBtc
+      settings: {}, records: { entries: [], deletions: {} }, strike: null,   // no cbCollateralBtc / strikeCollateralBtc
     }));
 
     await fetchViewerSnapshot();
 
-    expect(mockState.cbCollateralBtc).toBeCloseTo(0.5);    // unchanged — ?? fallback to the current value
+    expect(mockState.cbCollateralBtc).toBeCloseTo(0.5);      // unchanged — ?? fallback to the current value
+    expect(mockState.strikeCollateralBtc).toBeCloseTo(0.7);  // C-P4 — unchanged fallback
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
   });
 
-  it('a revoked snapshot wipes via clearViewerData and does NOT apply the scalar', async () => {
+  it('a revoked snapshot wipes via clearViewerData and does NOT apply either scalar', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      revoked: true, settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 9.99,
+      revoked: true, settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 9.99, strikeCollateralBtc: 8.88,
     }));
 
     await fetchViewerSnapshot();
 
     expect(mockState.clearViewerData).toHaveBeenCalled();
-    expect(mockState.cbCollateralBtc).toBeCloseTo(0.5);    // NOT overwritten — revoked returns before the scalar set
+    expect(mockState.cbCollateralBtc).toBeCloseTo(0.5);      // NOT overwritten — revoked returns before the scalar set
+    expect(mockState.strikeCollateralBtc).toBeCloseTo(0.7);  // C-P4 — likewise untouched
     expect(mockState.setViewerDataLoaded).not.toHaveBeenCalled();
   });
 

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore, buildSettingsPayload, buildViewerSnapshotPayload } from '../useStore';
-import { deriveCbCollateral } from '../../simulation/logUtils';
+import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
 import { previewSafeSnapFromPayload } from '../../simulation/safetyView';
 
 const LEVELS = ['safe', 'watch', 'act'];
@@ -42,6 +42,7 @@ describe('viewer snapshot builders', () => {
     expect('records' in snap).toBe(false);
     expect('strike' in snap).toBe(false);
     expect('cbCollateralBtc' in snap).toBe(false);
+    expect('strikeCollateralBtc' in snap).toBe(false);   // C-P4 — the Strike scalar is trusted-only
   });
 
   it('C-safe payload: every leaf is a number / level-string / mode flag — and NO $ absolutes in safety', () => {
@@ -85,11 +86,11 @@ describe('viewer snapshot builders', () => {
     expect('income' in snapSettings).toBe(true);
   });
 
-  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3)', () => {
+  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4)', () => {
     useStore.setState({ viewerPrivacyTrusted: true });
     const snap = buildViewerSnapshotPayload(useStore.getState());
     expect(Object.keys(snap).sort()).toEqual(
-      ['asOf', 'cbCollateralBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike'],
+      ['asOf', 'cbCollateralBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc'],
     );
     expect(snap.records).toHaveProperty('entries');
     expect(snap.records).toHaveProperty('deletions');
@@ -108,6 +109,18 @@ describe('viewer snapshot builders', () => {
     const snap = buildViewerSnapshotPayload(s);
     expect(snap.cbCollateralBtc).toBe(deriveCbCollateral(s.dayLog, s.cbCollateralBtc));   // single source — cannot drift
     expect(snap.cbCollateralBtc).toBeCloseTo(2.25);   // newest reading, not the 0.99 cache
+  });
+
+  it('C-P4 (BUG2 mirror): C-trusted snapshot carries strikeCollateralBtc derived from dayLog (scalar, not the cache)', () => {
+    useStore.setState({
+      viewerPrivacyTrusted: true,
+      dayLog: [{ id: 's1', date: '2026-01-05', ts: 5000, kind: 'balanceReading', reading: { strikeBal: 3000, strikeLtv: 0.1, strikeCollateral: 0.83 } }],
+      strikeCollateralBtc: 0.11,
+    } as never);
+    const s = useStore.getState();
+    const snap = buildViewerSnapshotPayload(s);
+    expect(snap.strikeCollateralBtc).toBe(deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc));   // single source — cannot drift
+    expect(snap.strikeCollateralBtc).toBeCloseTo(0.83);   // the reading's strikeCollateral, not the 0.11 cache
   });
 
   it("P3: the C-trusted snapshot's records carry entries + deletions but NOT the raw dayLog journal", () => {

@@ -151,10 +151,14 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       s.setStrikeBtcAvailable(snap.strike.btcAvail);
       s.setStrikeRate(snap.strike.rate);
     }
-    // P3 (BUG2 + BUG3) — receive the owner's derived CB-collateral scalar. RAW set, NEVER setCbCollateralBtc:
-    // that setter emits a cbCollateralReading (P2a Seam 2) → would inject a spurious event into the VIEWER's own
-    // dayLog. The viewer's dayLog stays []. Fallback keeps the current value for a legacy/pre-P3 owner snapshot.
-    useStore.setState({ cbCollateralBtc: snap.cbCollateralBtc ?? useStore.getState().cbCollateralBtc });
+    // P3/C-P4 (BUG2 + BUG3) — receive the owner's derived collateral scalars (CB + reading-anchored Strike). RAW
+    // set, NEVER the emitting setters (setCbCollateralBtc emits a cbCollateralReading; emitBalanceReading emits a
+    // balanceReading) → either would inject a spurious event into the VIEWER's own dayLog. The viewer's dayLog stays
+    // []. Fallbacks keep the current values for a legacy/pre-P3 (cb) or pre-C-P4 (strike) owner snapshot.
+    useStore.setState({
+      cbCollateralBtc:     snap.cbCollateralBtc     ?? useStore.getState().cbCollateralBtc,
+      strikeCollateralBtc: snap.strikeCollateralBtc ?? useStore.getState().strikeCollateralBtc,
+    });
     s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
     s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)
     nostrLog('info', 'viewer snapshot hydrated');
