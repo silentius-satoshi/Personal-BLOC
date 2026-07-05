@@ -3011,6 +3011,12 @@ src/
                                     # (ownerSk, ownerPubkeyHex, version) → the owner regenerates the SAME viewer nsec
                                     # anytime (no separate backup). Does NOT mutate sk; returns a fresh array the caller
                                     # zeroes. ⚠ Never logs/persists key material
+    handoffToken.ts                 # Viewer handoff v2 — buildHandoffToken(keyPart, ownerNpub) → `<keyPart>:<ownerNpub>`
+                                    # + parseHandoffToken → {kind:'nsec'|'ncryptsec', keyPart, ownerNpub|null}. PURE (nip19
+                                    # bech32 only, NO crypto): trim, split on ':' (>2→null), classify keyPart by prefix,
+                                    # validate the npub half decodes as npub; bare key (no ':') → ownerNpub null (back-compat).
+                                    # Owner builds it in SharingPage (keyPart = nip49.encrypt(derived,passphrase) or
+                                    # nip19.nsecEncode); viewer parses + nip49.decrypts it in ViewerLoginFlow
     session.ts                      # restoreSigner — rebuild signer from persisted login (no fetch/sync); exports NostrParam.
                                     # SINGLE-FLIGHT (Bug 2 fix): the public restoreSigner wraps doRestoreSigner in a
                                     # module-level in-flight promise (mirrors syncNow) — concurrent callers (gate escape
@@ -3301,12 +3307,13 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
 | `personal-bloc:viewer:v1` | **Viewer Access — MODE-SHAPED (Viewer V2).** `ViewerSnapshot` NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (opt-in via `viewerPrivacyTrusted`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common (both collateral scalars are derived-from-dayLog, trusted-only + optional — the SAFE payload carries NEITHER by construction; C-P4). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on `setViewerPrivacyTrusted`/saving a viewer npub; gated on `viewerPubkey` set; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
-### Viewer-key derivation v1 — deterministic owner-derived viewer key (store stays v19, NO bump)
+### Viewer-key derivation v1 + handoff v2 — deterministic owner-derived viewer key + combined token (store stays v19, NO bump)
 
 An ALTERNATIVE to the viewer generating its own key: the owner **deterministically derives** the viewer's
 keypair from the owner's OWN nsec, so the owner can regenerate the exact same viewer key at any time (no
-separate backup) and hand it off in person. Additive — the generate-your-own model stays; this is a second
-option on both sides.
+separate backup) and hand it off. Additive — the generate-your-own model stays; this is a second option on both
+sides. **Handoff v2** wraps the key in a single token (`<keyPart>:<ownerNpub>`) that also carries the owner's
+npub and supports an encrypted (NIP-49) key part for remote transport (see the Handoff v2 bullet below).
 - **`src/lib/nostr/viewerKey.ts`** — `deriveViewerKeyFromNsec(ownerSk, ownerPubkeyHex, version=1)` (see the Key
   Files entry for the HKDF formula + counter-bump). Deterministic in (ownerSk, ownerPubkeyHex, version).
 - **`viewerKeyVersion`** (settings, default 1) — the version byte. **SYNCED** (in `SETTINGS_FIELDS` +
@@ -3322,18 +3329,35 @@ option on both sides.
   the determinism/recovery path friction-free) → `setViewerPubkey(hex)`/`setViewerNpub` →
   `publishViewerSnapshotNow()` → reveal the viewer nsec via `<SecretKeyCard>` (auto-clear ~30s, unmount discards
   it). Both owner sk + derived key zeroed in `finally`; ⚠ never logs key material.
-- **In-person handoff** — the owner shows/copies the derived nsec (`SecretKeyCard`); the viewer enters it via the
-  paste toggle below. **NIP-49 remote (ncryptsec-under-passphrase) handoff is DEFERRED** to a follow-up
-  (`nostr-tools/nip49` `encrypt`/`decrypt` verified available; not wired this phase).
-- **Viewer paste toggle (`ViewerLoginFlow.tsx`)** — the connect step gains a **Generate a new key** (default,
-  existing) vs **I was given a key** (`keyMode`) toggle. Paste mode: an nsec input → `nip19.decode` (type
-  `nsec`) → `pastedKey {sk, npub}` (with an inline ✓npub / "Not a valid nsec" confirmation);
-  `activeKey = keyMode === 'paste' ? pastedKey : viewerKey` feeds the UNCHANGED wrap/handshake path
-  (`wrapSecretKey`→`setViewerKeyWrapped/Meta`→`setUnwrappedViewerKey`→…). `viewerCanDone` also requires
-  `!!activeKey`.
+- **Handoff v2 — combined token (`src/lib/nostr/handoffToken.ts`).** The owner hands the viewer ONE string:
+  `<keyPart>:<ownerNpub>` (bech32 excludes `:` → unambiguous). `keyPart` = a bare `nsec1…` (in-person) OR a
+  passphrase-encrypted `ncryptsec1…` (NIP-49, safe for remote transport); the `ownerNpub` half means the viewer
+  no longer needs the owner's npub via a second channel. `buildHandoffToken`/`parseHandoffToken` (PURE — `nip19`
+  bech32 only, NO crypto): parse trims, splits on `:` (>2 parts → null), classifies `keyPart` by prefix, and
+  validates the npub half decodes as an npub; a bare key with no `:` → `ownerNpub: null` (back-compat).
+- **Owner path (`SharingPage.tsx` `GenerateViewerKeyBlock`)** — an optional **passphrase** input above the
+  generate button; after derive + replace-guard, `keyPart = pass ? nip49.encrypt(derived, pass) :
+  nip19.nsecEncode(derived)` (encode/encrypt BEFORE `derived.fill(0)`), then `buildHandoffToken(keyPart,
+  npubEncode(ownerPubkey))` → revealed via `<SecretKeyCard hint=…>` (same ~30s auto-clear/Hide/unmount). All v1
+  semantics (derive, replace-guard, publish, zeroing) unchanged.
+- **Viewer path (`ViewerLoginFlow.tsx` paste mode)** — the input is now the **token**; `parseHandoffToken` →
+  `parsed`. `nsec` → `nip19.decode`; `ncryptsec` → a **passphrase field** + `nip49.decrypt(keyPart, passphrase)`
+  in try/catch (wrong passphrase → null → friendly "Wrong passphrase"). ⚠ The passphrase is **DEBOUNCED 450ms**
+  before it reaches the decrypt memo — `nip49.decrypt` is SYNCHRONOUS scrypt (default logn 16), so decrypting per
+  keystroke would freeze the mobile main thread (the field uses `tokenPassphrase`, the memo + hint use
+  `debouncedPassphrase`). The token's npub half **prefills + locks** (`readOnly`) the owner-npub field
+  (`lockedOwnerNpub`; null → editable for generate mode / bare-nsec). `handleViewerDone` /
+  `wrapSecretKey(activeKey.sk)` UNCHANGED; `viewerCanDone`'s `!!activeKey` already gates a failed decrypt.
+- **`SecretKeyCard`** — one optional additive `hint?` prop (default password-manager copy); RevealRecoveryKey +
+  OwnerKeySetup omit it (byte-identical), SharingPage passes a token hint.
+- **⚠ Transitional back-compat:** the owner side no longer emits a bare nsec anywhere (it always builds a token);
+  bare-nsec paste acceptance is temporary, kept only until the existing viewer device is re-provisioned via a
+  token. **`parseHandoffToken`'s `null`-`ownerNpub` branch is the single deletion point.**
 - Tests: `src/lib/nostr/__tests__/viewerKey.test.ts` (determinism; domain separation by version/pubkey/sk; valid
-  secp key; input-not-mutated + distinct-output zeroing contract); `viewerSnapshot.test.ts` extended
-  (`viewerKeyVersion` IN `buildSettingsPayload`, OUT of the trusted snapshot settings, added to the deep-equal
+  secp key; input-not-mutated + distinct-output zeroing contract); `handoffToken.test.ts` (build/parse roundtrip
+  for both kinds; bare-nsec back-compat; garbage/>1-colon/trailing-colon/bad-npub → null; whitespace trim; a full
+  NIP-49 encrypt→token→parse→decrypt byte-equal roundtrip + wrong-passphrase throw); `viewerSnapshot.test.ts`
+  extended (`viewerKeyVersion` IN `buildSettingsPayload`, OUT of the trusted snapshot settings, in the deep-equal
   strip). SETTINGS_FIELDS count 38 → 39.
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)

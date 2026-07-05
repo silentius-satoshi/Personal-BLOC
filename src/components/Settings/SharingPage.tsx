@@ -1,8 +1,10 @@
 import { useState, useRef, useEffect } from 'react';
 import { nip19, getPublicKey } from 'nostr-tools';
+import * as nip49 from 'nostr-tools/nip49';
 import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
 import { unwrapSecretKey } from '../../lib/nostr/keyVault';
 import { deriveViewerKeyFromNsec } from '../../lib/nostr/viewerKey';
+import { buildHandoffToken } from '../../lib/nostr/handoffToken';
 import { Toggle } from '../ui/Toggle';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import styles from './SharingPage.module.css';
@@ -136,13 +138,15 @@ export function SharingPage() {
       )}
 
       {/* GENERATE FROM IDENTITY (local signer only) — deterministically derive the viewer's key from your own
-          nsec. Regenerable anytime (no separate backup); hand the shown nsec to the viewer in person. */}
+          nsec. Regenerable anytime (no separate backup); hand the shown token to the viewer. A passphrase makes
+          the token safe to send remotely (NIP-49); leave it blank for in-person handoff. */}
       {nostrSigningMethod === 'local' && (
         <>
           <div className={styles.groupTitle} style={{ marginTop: 20 }}>GENERATE A VIEWER KEY</div>
           <p className={styles.desc}>
             Derive the viewer's key from your own identity — it stays reproducible, so you can regenerate the exact
-            same key anytime without a separate backup. Hand the shown key to the viewer in person.
+            same key anytime without a separate backup. The token includes your npub, so the viewer pastes just one
+            string. Set a passphrase to send it remotely (encrypted); leave it blank for in-person handoff.
           </p>
           <GenerateViewerKeyBlock />
         </>
@@ -167,8 +171,9 @@ const GEN_AUTO_CLEAR_MS = 30_000;
  * Owner-side "Generate viewer key" — LOCAL-SIGNER-ONLY (the raw owner sk is reachable only via the Face-ID/PIN
  * unwrap; nip07/nip46 never expose it, so the parent hides this). Unwraps the owner key → deterministically
  * derives the viewer key (deriveViewerKeyFromNsec) → sets viewerPubkey/viewerNpub → publishes the snapshot →
- * reveals the viewer nsec via SecretKeyCard (auto-clears ~30s; leaving the page unmounts → discards it).
- * ⚠ Never logs key material. Mirrors RevealRecoveryKey's unwrap/reveal/auto-clear pattern.
+ * reveals a HANDOFF TOKEN (`<keyPart>:<ownerNpub>`) via SecretKeyCard (auto-clears ~30s; leaving the page
+ * unmounts → discards it). keyPart = a passphrase-encrypted ncryptsec (remote-safe, NIP-49) when a passphrase is
+ * set, else a bare nsec (in-person). ⚠ Never logs key material. Mirrors RevealRecoveryKey's unwrap/reveal pattern.
  */
 function GenerateViewerKeyBlock() {
   const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
@@ -176,7 +181,8 @@ function GenerateViewerKeyBlock() {
   const setViewerPubkey = useStore((s) => s.setViewerPubkey);
   const isPin = wrapMeta?.scheme === 'pin';
 
-  const [revealedNsec, setRevealedNsec] = useState<string | null>(null);
+  const [revealedToken, setRevealedToken] = useState<string | null>(null);
+  const [handoffPassphrase, setHandoffPassphrase] = useState('');   // optional — encrypts the token for remote handoff
   const [showPin, setShowPin] = useState(false);
   const [pin, setPin]         = useState('');
   const [busy, setBusy]       = useState(false);
@@ -184,9 +190,9 @@ function GenerateViewerKeyBlock() {
   const timerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
-  useEffect(() => clearTimer, []);   // unmount (leaving the page) discards the revealed nsec
+  useEffect(() => clearTimer, []);   // unmount (leaving the page) discards the revealed token
 
-  const clearReveal = () => { clearTimer(); setRevealedNsec(null); };
+  const clearReveal = () => { clearTimer(); setRevealedToken(null); };
 
   const doGenerate = async () => {
     setBusy(true);
@@ -212,7 +218,11 @@ function GenerateViewerKeyBlock() {
       setViewerPubkey(hex);
       setViewerNpub(nip19.npubEncode(hex));
       void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates once they sign in
-      setRevealedNsec(nip19.nsecEncode(derived));   // the nsec STRING carries the value for the reveal window
+      // Build the handoff token. Encode/encrypt the derived key BEFORE the finally zeros it; the token STRING
+      // carries the value for the reveal window.
+      const pass = handoffPassphrase.trim();
+      const keyPart = pass ? nip49.encrypt(derived, pass) : nip19.nsecEncode(derived);
+      setRevealedToken(buildHandoffToken(keyPart, nip19.npubEncode(pk)));
       setShowPin(false);
       setPin('');
       clearTimer();
@@ -232,13 +242,18 @@ function GenerateViewerKeyBlock() {
     else doGenerate();             // PRF → Face ID directly
   };
 
-  if (revealedNsec) {
+  if (revealedToken) {
+    const isEncrypted = handoffPassphrase.trim().length > 0;
     return (
       <div className={styles.genBlock}>
-        <SecretKeyCard nsec={revealedNsec} />
+        <SecretKeyCard nsec={revealedToken} hint="Hand this to the viewer — it includes your npub." />
         <div className={styles.revealFoot}>
           <button type="button" className={styles.actionBtn} onClick={clearReveal}>Hide</button>
-          <span className={styles.desc}>The viewer's key — regenerable anytime. Auto-hides in ~30s.</span>
+          <span className={styles.desc}>
+            {isEncrypted
+              ? "Encrypted — safe to send remotely. Share the passphrase separately. Auto-hides in ~30s."
+              : "Plaintext — hand it over in person. Auto-hides in ~30s."}
+          </span>
         </div>
       </div>
     );
@@ -246,6 +261,14 @@ function GenerateViewerKeyBlock() {
 
   return (
     <div className={styles.genBlock}>
+      <input
+        className={styles.input}
+        type="text"
+        placeholder="Passphrase for remote handoff (optional)"
+        value={handoffPassphrase}
+        onChange={(e) => { setHandoffPassphrase(e.target.value); setError(null); }}
+        disabled={busy}
+      />
       {showPin ? (
         <div className={styles.pinRow}>
           <input

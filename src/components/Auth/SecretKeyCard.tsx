@@ -10,9 +10,10 @@ import styles from './SecretKeyCard.module.css';
 export interface SecretKeyCardProps {
   nsec: string;
   onCopied?: () => void;
+  hint?: string;   // footer caption override (default: password-manager advice); e.g. a handoff-token hint
 }
 
-export function SecretKeyCard({ nsec, onCopied }: SecretKeyCardProps) {
+export function SecretKeyCard({ nsec, onCopied, hint }: SecretKeyCardProps) {
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied]     = useState(false);
 
@@ -38,7 +39,7 @@ export function SecretKeyCard({ nsec, onCopied }: SecretKeyCardProps) {
         <button type="button" className={styles.copyBtn} onClick={copy}>
           {copied ? 'Copied ✓' : 'Copy'}
         </button>
-        <span className={styles.hint}>Best kept in a password manager.</span>
+        <span className={styles.hint}>{hint ?? 'Best kept in a password manager.'}</span>
       </div>
     </div>
   );

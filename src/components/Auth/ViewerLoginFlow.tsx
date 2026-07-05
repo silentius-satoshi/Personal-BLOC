@@ -1,7 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import { generateSecretKey, getPublicKey, nip19 } from 'nostr-tools';
+import * as nip49 from 'nostr-tools/nip49';
 import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
 import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
+import { parseHandoffToken } from '../../lib/nostr/handoffToken';
 import { useStore } from '../../store/useStore';
 import styles from './ViewerLoginFlow.module.css';
 
@@ -39,23 +41,42 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
     const sk = generateSecretKey();
     return { sk, npub: nip19.npubEncode(getPublicKey(sk)) };
   });
-  // Viewer-key derivation v1 — 'generate' (self-provision, default) OR 'paste' (enter the nsec the owner
+  // Viewer-key derivation v1 — 'generate' (self-provision, default) OR 'paste' (enter the handoff TOKEN the owner
   // derived + handed over). Both models coexist; the active key is wrapped identically on Done.
   const [keyMode, setKeyMode] = useState<'generate' | 'paste'>('generate');
-  const [pastedNsec, setPastedNsec] = useState('');
-  // Decode + validate the pasted nsec → { sk, npub } (null while empty/invalid → gates Done + shows confirmation).
+  const [pastedToken, setPastedToken] = useState('');
+  // Passphrase for an ncryptsec token. DEBOUNCED (450ms) before it feeds the decrypt memo — nip49.decrypt is
+  // SYNCHRONOUS scrypt (default logn 16), so decrypting per keystroke would freeze the mobile main thread.
+  const [tokenPassphrase, setTokenPassphrase] = useState('');
+  const [debouncedPassphrase, setDebouncedPassphrase] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPassphrase(tokenPassphrase), 450);
+    return () => clearTimeout(t);
+  }, [tokenPassphrase]);
+  // Parse the token (structure only — cheap; no crypto). Feeds the passphrase-field gate + the owner-npub lock.
+  const parsed = useMemo(() => (keyMode === 'paste' ? parseHandoffToken(pastedToken) : null), [keyMode, pastedToken]);
+  // Decode the key part → { sk, npub } (null while empty/invalid/wrong-passphrase → gates Done + shows confirmation).
   const pastedKey = useMemo(() => {
-    const t = pastedNsec.trim();
-    if (!t) return null;
+    if (keyMode !== 'paste' || !parsed) return null;
     try {
-      const d = nip19.decode(t);
-      if (d.type !== 'nsec') return null;
-      const sk = d.data as Uint8Array;
+      let sk: Uint8Array;
+      if (parsed.kind === 'ncryptsec') {
+        if (!debouncedPassphrase) return null;                 // need the passphrase first
+        sk = nip49.decrypt(parsed.keyPart, debouncedPassphrase);   // sync scrypt; throws on wrong passphrase
+      } else {
+        const d = nip19.decode(parsed.keyPart);
+        if (d.type !== 'nsec') return null;
+        sk = d.data as Uint8Array;
+      }
       return { sk, npub: nip19.npubEncode(getPublicKey(sk)) };
     } catch { return null; }
-  }, [pastedNsec]);
+  }, [keyMode, parsed, debouncedPassphrase]);
   const activeKey = keyMode === 'paste' ? pastedKey : viewerKey;
   const [ownerNpub, setOwnerNpub]     = useState('');
+  // Owner npub carried by the token → prefill + lock the field (shown for confirmation). Null → editable
+  // (generate mode / bare-nsec back-compat token with no npub half).
+  const lockedOwnerNpub = keyMode === 'paste' ? (parsed?.ownerNpub ?? null) : null;
+  const effectiveOwnerNpub = lockedOwnerNpub ?? ownerNpub;
   const [viewerError, setViewerError] = useState<string | null>(null);
   const [copied, setCopied]           = useState(false);
   const [viewerBusy, setViewerBusy]   = useState(false);
@@ -72,8 +93,8 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   }, []);
 
   const handleViewerDone = async () => {
-    if (!activeKey) { setViewerError('Paste a valid nsec (the key the owner gave you)'); return; }
-    const input = ownerNpub.trim();
+    if (!activeKey) { setViewerError('Enter the key the owner gave you'); return; }
+    const input = effectiveOwnerNpub.trim();
     let decoded;
     try { decoded = nip19.decode(input); }
     catch { setViewerError('Not a valid npub'); return; }
@@ -100,7 +121,7 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   };
 
   const viewerCanDone =
-    !!ownerNpub.trim() && !viewerBusy && !!activeKey &&
+    !!effectiveOwnerNpub.trim() && !viewerBusy && !!activeKey &&
     (viewerMethod !== 'pin' || (viewerPin.length >= 4 && viewerPin === viewerPinConfirm));
 
   // V3 name step — empty = skip (null → the nameless greeting). Always callable; Continue never disables.
@@ -190,32 +211,57 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
               </div>
             ) : (
               <div className={styles.fieldGroup}>
-                <span className={styles.fieldLabel}>The key the owner gave you (nsec)</span>
+                <span className={styles.fieldLabel}>The handoff token from the owner</span>
                 <div className={styles.fieldInput}>
                   <input
                     className={styles.dateInput}
                     type="text"
-                    placeholder="nsec1…"
-                    value={pastedNsec}
-                    onChange={(e) => { setPastedNsec(e.target.value); setViewerError(null); }}
+                    placeholder="nsec1…:npub1…  or  ncryptsec1…:npub1…"
+                    value={pastedToken}
+                    onChange={(e) => { setPastedToken(e.target.value); setViewerError(null); }}
                   />
                 </div>
-                {pastedNsec.trim() && (
-                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', color: pastedKey ? 'var(--green)' : 'var(--red)' }}>
-                    {pastedKey ? `✓ ${pastedKey.npub.slice(0, 14)}…${pastedKey.npub.slice(-6)}` : 'Not a valid nsec'}
+                {pastedToken.trim() && !parsed && (
+                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', color: 'var(--red)' }}>
+                    Not a valid token
+                  </span>
+                )}
+                {pastedKey && (
+                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', color: 'var(--green)' }}>
+                    ✓ {pastedKey.npub.slice(0, 14)}…{pastedKey.npub.slice(-6)}
+                  </span>
+                )}
+              </div>
+            )}
+            {keyMode === 'paste' && parsed?.kind === 'ncryptsec' && (
+              <div className={styles.fieldGroup}>
+                <span className={styles.fieldLabel}>Passphrase (from the owner)</span>
+                <div className={styles.fieldInput}>
+                  <input
+                    className={styles.dateInput}
+                    type="password"
+                    placeholder="Passphrase"
+                    value={tokenPassphrase}
+                    onChange={(e) => { setTokenPassphrase(e.target.value); setViewerError(null); }}
+                  />
+                </div>
+                {debouncedPassphrase && !pastedKey && (
+                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', color: 'var(--red)' }}>
+                    Wrong passphrase
                   </span>
                 )}
               </div>
             )}
             <div className={styles.fieldGroup}>
-              <span className={styles.fieldLabel}>The owner's npub</span>
+              <span className={styles.fieldLabel}>The owner's npub{lockedOwnerNpub ? ' (from the token)' : ''}</span>
               <div className={styles.fieldInput}>
                 <input
                   className={styles.dateInput}
                   type="text"
                   placeholder="npub1…"
-                  value={ownerNpub}
-                  onChange={(e) => { setOwnerNpub(e.target.value); setViewerError(null); }}
+                  value={effectiveOwnerNpub}
+                  readOnly={!!lockedOwnerNpub}
+                  onChange={(e) => { if (!lockedOwnerNpub) { setOwnerNpub(e.target.value); setViewerError(null); } }}
                 />
               </div>
             </div>
