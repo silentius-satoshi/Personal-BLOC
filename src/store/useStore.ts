@@ -302,7 +302,7 @@ export interface StoreState {
   setAdvisorActualBlocBalanceAsOf: (v: string | null) => void;
   setAdvisorMonthStartBalance: (v: number)    => void;
   setAdvisorActualBtcHeld:     (v: number)    => void;
-  emitBalanceReading: (overrides: { strikeBal?: number; cbBal?: number; cbLiqPrice?: number }) => void;   // §5b — SafetyDashboard/position-modal emit a full reading (un-edited half synthesized) → the seam re-anchors
+  emitBalanceReading: (overrides: { strikeBal?: number; strikeCollateral?: number; cbBal?: number; cbLiqPrice?: number }) => void;   // §5b — SafetyDashboard/position-modal emit a full reading (un-edited half synthesized) → the seam re-anchors. v20: strikeCollateral override → collateral anchor (LTV from the NEW collateral)
 
   advisorSkipBlocDraw:  boolean;
   advisorSkipCbPayment: boolean;
@@ -1225,11 +1225,15 @@ export const useStore = create<StoreState>()(
     const s = useStore.getState();
     const price = s.btcPrice;
     const btcHeld = s.getCurrentBtcHeld();
+    // v20 — a strikeCollateral override makes this a COLLATERAL anchor: the reading carries it and the LTV is
+    // computed against the NEW collateral (not getCurrentBtcHeld). Absent → byte-identical to today (debt re-anchor).
+    const collateral = overrides.strikeCollateral ?? btcHeld;
     const strikeBal = overrides.strikeBal ?? s.advisorActualBlocBalance;
     const reading: Extract<DayEvent, { kind: 'balanceReading' }>['reading'] = {
       strikeBal,
-      strikeLtv: computeStrikeLtv(strikeBal, btcHeld, price),   // fraction
+      strikeLtv: computeStrikeLtv(strikeBal, collateral, price),   // fraction — from the NEW collateral when overridden
       price,
+      ...(overrides.strikeCollateral !== undefined ? { strikeCollateral: overrides.strikeCollateral } : {}),
     };
     // CB half only when a CB field is genuinely asserted (CB box) — a Strike-only re-anchor (Strike box /
     // Quick Setup) emits a Strike-only reading so it never re-bases the CB balance or fake-freshens the CB

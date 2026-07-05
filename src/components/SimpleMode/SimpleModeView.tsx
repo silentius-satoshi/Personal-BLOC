@@ -307,10 +307,14 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     setExpenses(modalDraft.expenses);
     setCreditLine(modalDraft.creditLine);
     setAdvisorMonthStartBalance(modalDraft.monthStartBalance);
-    // Collateral-Truth v20 — Strike collateral is reading-anchored; the read-only "BTC held" field no longer
-    // commits here (the reading-emitter for collateral lands in C-P3). §5b — emit a journaled Strike reading
-    // (the seam re-anchors advisorActualBlocBalance + asOf=today); Strike-only (no CB re-base).
-    emitBalanceReading({ strikeBal: modalDraft.blocBalance });
+    // §5b — emit a journaled Strike reading (the seam re-anchors advisorActualBlocBalance + asOf=today); Strike-only
+    // (no CB re-base). v20 — when "BTC held" (collateral) changed too, MERGE strikeCollateral into the SAME emission
+    // (the LTV is then computed from the new collateral) rather than emitting twice.
+    const collChanged = modalDraft.btcHeld !== useStore.getState().getCurrentBtcHeld();
+    emitBalanceReading({
+      strikeBal: modalDraft.blocBalance,
+      ...(collChanged ? { strikeCollateral: modalDraft.btcHeld } : {}),
+    });
     setShowSetupModal(false);
   };
 
@@ -845,7 +849,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                     <ModalField label="Amount Drawn"      prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
                     <ModalField label="Balance at start of this month" prefix="$" value={modalDraft.monthStartBalance} onChange={(v) => setModalDraft(d => ({ ...d, monthStartBalance: v }))}
                       hint="What you owed on Strike at the start of the current month — the base for this month's projection." />
-                    {/* Collateral-Truth v20 — "BTC held" is reading-anchored; the collateral reading-emitter returns in C-P3. */}
+                    <ModalField label="BTC held"         prefix="₿" value={modalDraft.btcHeld}     onChange={(v) => setModalDraft(d => ({ ...d, btcHeld: v }))} step={0.001} />
                   </div>
                   <div className={styles.modalActions}>
                     <button className={styles.modalCancel} onClick={() => setShowSetupModal(false)}>Cancel</button>

@@ -4,7 +4,7 @@ import { useStore } from '../../store/useStore';
 import { bucketEventToMonth } from '../../simulation/logUtils';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
-import { readingComplete, buildEventsFromSheet, type SheetType, type SheetState } from './eventSheetModel';
+import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, type SheetType, type SheetState } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { DayEvent, DayEventKind } from '../../simulation/types';
@@ -84,6 +84,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const [collateralTarget, setCollTarget]   = useState<'strike' | 'cb'>('strike');
   const [strikeBal, setStrikeBal]           = useState<number | null>(null);
   const [strikeLtv, setStrikeLtv]           = useState<number | null>(null);
+  const [strikeCollateral, setStrikeCollateral]       = useState<number | null>(null);   // v20 — reading-anchored Strike collateral
+  const [strikeCollateralTouched, setStrikeCollTouched] = useState(false);                // manual edit stops the auto-track
+  const [pledgeToStrike, setPledgeToStrike] = useState(false);                            // buy-only — emit a paired strike deposit
   const [cbBal, setCbBal]                   = useState<number | null>(null);
   const [cbLtv, setCbLtv]                   = useState<number | null>(null);
   const [cbCollateral, setCbCollateral]     = useState<number | null>(null);
@@ -130,6 +133,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           setType('setBalance');
           setStrikeBal(editEvent.reading.strikeBal);
           setStrikeLtv(editEvent.reading.strikeLtv * 100);   // fraction → percent for display
+          setStrikeCollateral(editEvent.reading.strikeCollateral ?? currentBtcHeld);   // v20 — venue truth on edit
+          setStrikeCollTouched(true);
           setCbBal(editEvent.reading.cbBal ?? null);
           setCbLtv(editEvent.reading.cbLtv != null ? editEvent.reading.cbLtv * 100 : null);
           setCbCollateral(editEvent.reading.cbCollateral ?? null);
@@ -143,6 +148,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setAmount(null);
     setCollateralDir('deposit');
     setCollTarget('strike');
+    setPledgeToStrike(false);
+    setStrikeCollTouched(false);   // v20 — the track effect sets strikeCollateral from getCurrentBtcHeld ± move
 
     // P4c-2 — recompute past-ness here (effectiveDate/isPast are declared after this effect closes).
     const effDate = targetDate ?? todayLocalISO();
@@ -192,13 +199,21 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
 
-  const state: SheetState = { type, amount, collateralDir, collateralTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral, cbLiqPriceReading };
+  const state: SheetState = { type, amount, collateralDir, collateralTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading };
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
 
   // Effective collateral target — no toggle without a CB loan (implicitly Strike).
   const effectiveTarget = hasCbLoan ? collateralTarget : 'strike';
+
+  // v20 — auto-track the Strike-collateral field to the POST-move total (current ± amount) while the user hasn't
+  // manually edited it. A strike collateral move / pledged buy states the new total; everything else = current
+  // (an idempotent re-anchor). A manual edit (onChange sets touched) freezes it — venue truth wins.
+  useEffect(() => {
+    if (strikeCollateralTouched) return;
+    setStrikeCollateral(autoStrikeCollateral(currentBtcHeld, { type, collateralDir, effectiveTarget, amount, pledgeToStrike }));
+  }, [type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
 
   // For a balanceReading edit, show/require CB reading fields based on the ORIGINAL reading (faithful to
   // when it was logged), not the current hasCbLoan. Add mode keys on hasCbLoan as before.
@@ -263,6 +278,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setCollTarget('strike');
     setStrikeBal(null);
     setStrikeLtv(null);
+    setStrikeCollateral(null);
+    setStrikeCollTouched(false);
+    setPledgeToStrike(false);
     setCbBal(null);
     setCbLtv(null);
     setCbCollateral(null);
@@ -295,8 +313,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           updated = { id, date, ts, kind: 'withdraw', amount: amount ?? 0, target: editEvent.target };
           break;
         case 'balanceReading': {
-          const reading: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number } =
-            { strikeBal: strikeBal ?? 0, strikeLtv: (strikeLtv ?? 0) / 100, price: btcPrice };
+          const reading: { strikeBal: number; strikeLtv: number; strikeCollateral?: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number } =
+            { strikeBal: strikeBal ?? 0, strikeLtv: (strikeLtv ?? 0) / 100, strikeCollateral: strikeCollateral ?? currentBtcHeld, price: btcPrice };   // v20 — Strike collateral (outside the CB block)
           if (editEvent.reading.cbBal != null) {   // CB-bearing reading → keep CB fields
             reading.cbBal = cbBal ?? 0;
             reading.cbLtv = (cbLtv ?? 0) / 100;
@@ -320,8 +338,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     }
 
     const events = buildEventsFromSheet(
-      { type, amount, collateralDir, collateralTarget: effectiveTarget, strikeBal, strikeLtv, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
-      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId,
+      { type, amount, collateralDir, collateralTarget: effectiveTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
+      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId, currentBtcHeld,
     );
     // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
     // the store carry-forwards prior stocks + marks the month provisional (logUtils rollupMonth).
@@ -511,6 +529,35 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           </div>
         )}
 
+        {/* Buy — optional "Pledged to Strike" toggle (add path only). ON emits a paired deposit target:'strike'
+            (the buy's BTC pledged as collateral) so the buy DOES move Strike collateral; OFF keeps buys unpledged. */}
+        {type === 'buy' && !isEdit && (
+          <div className={styles.section}>
+            <span className={styles.sectionLabel}>Pledged to Strike?</span>
+            <div className={styles.targetToggle} role="tablist" aria-label="Pledge to Strike">
+              <button
+                role="tab"
+                aria-selected={!pledgeToStrike}
+                className={`${styles.targetBtn} ${!pledgeToStrike ? styles.targetBtnActive : ''}`}
+                onClick={() => setPledgeToStrike(false)}
+              >
+                No
+              </button>
+              <button
+                role="tab"
+                aria-selected={pledgeToStrike}
+                className={`${styles.targetBtn} ${pledgeToStrike ? styles.targetBtnActive : ''}`}
+                onClick={() => setPledgeToStrike(true)}
+              >
+                Pledge to Strike
+              </button>
+            </div>
+            <div className={styles.note}>
+              {pledgeToStrike ? 'Adds a Strike collateral deposit for this buy.' : 'Held as spendable BTC — not pledged as collateral.'}
+            </div>
+          </div>
+        )}
+
         {/* Reading section — in ADD mode it's the bundled hard-require; in EDIT mode it shows ONLY for a
             balanceReading edit (a flow edit touches just the flow, never its separate reading row).
             §2b — minPayment is reading-free (a one-field sheet). */}
@@ -527,6 +574,14 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" />
             <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" />
             {strikeLtvWarn && <span className={styles.warn}>Strike LTV over 100% — double-check the value.</span>}
+            <NumberInput
+              label="Strike collateral (BTC)"
+              value={strikeCollateral ?? 0}
+              onChange={(v) => { setStrikeCollateral(v); setStrikeCollTouched(true); }}
+              min={0}
+              prefix="₿"
+              decimals={8}
+            />
             {showCbReading && (
               <>
                 <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />

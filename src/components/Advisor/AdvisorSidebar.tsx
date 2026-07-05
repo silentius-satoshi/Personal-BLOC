@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
@@ -36,6 +37,7 @@ export function AdvisorSidebar() {
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
+  const emitBalanceReading       = useStore((s) => s.emitBalanceReading);
   const monthlyLog               = useStore((s) => s.monthlyLog);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
@@ -44,6 +46,9 @@ export function AdvisorSidebar() {
   const hasCbLoan     = useStore((s) => s.hasCbLoan);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
+  // Reality edit — commit on blur only (draft keeps the reading from churning while typing). v20: editing emits a
+  // journaled balanceReading carrying strikeCollateral → the seam re-anchors getCurrentBtcHeld.
+  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
   const ndpBalance    = advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15;
@@ -127,17 +132,23 @@ export function AdvisorSidebar() {
         );
       })()}
 
-      <div className={styles.section}>
+      <div
+        className={styles.section}
+        onBlur={() => {
+          if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) emitBalanceReading({ strikeCollateral: btcHeldDraft });
+          setBtcHeldDraft(null);
+        }}
+      >
         <span className={styles.label}>CURRENT BTC HELD</span>
         <NumberInput
-          value={currentBtcHeld}
-          onChange={() => {}}
+          value={btcHeldDraft ?? currentBtcHeld}
+          onChange={setBtcHeldDraft}
           prefix="₿"
-          decimals={8}
-          readOnly
+          min={0}
+          step={0.001}
         />
         <p className={styles.hint}>
-          Your current BTC in Strike — read from your logged balance readings
+          Your current BTC in Strike — edits log a balance reading that re-anchors your collateral
         </p>
       </div>
 

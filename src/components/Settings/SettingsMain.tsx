@@ -276,8 +276,11 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
+  const emitBalanceReading          = useStore((s) => s.emitBalanceReading);
   const strikeBtcAvailable          = useStore((s) => s.strikeBtcAvailable);
   const strikeApiConnected          = useStore((s) => s.strikeApiConnected);
+  // Reality edit — commit on blur; v20: emits a journaled balanceReading carrying strikeCollateral → re-anchors current.
+  const [btcHeldDraft, setBtcHeldDraft] = useState<number | null>(null);
   const [npubCopied, setNpubCopied]     = useState(false);
   const [recoveryBusy, setRecoveryBusy] = useState(false);
   const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
@@ -626,16 +629,22 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
               );
             })()}
           </div>
-          <div className={styles.setupFieldGroup}>
+          <div
+            className={styles.setupFieldGroup}
+            onBlur={() => {
+              if (btcHeldDraft !== null && btcHeldDraft !== currentBtcHeld) emitBalanceReading({ strikeCollateral: btcHeldDraft });
+              setBtcHeldDraft(null);
+            }}
+          >
             <NumberInput
               label="Current BTC collateral"
-              value={currentBtcHeld}
-              onChange={() => {}}
+              value={btcHeldDraft ?? currentBtcHeld}
+              onChange={setBtcHeldDraft}
               prefix="₿"
-              decimals={8}
-              readOnly
+              min={0}
+              step={0.001}
             />
-            <span className={styles.fieldHint}>Your current BTC in Strike — read from your logged balance readings. Feeds Advisor projections and Liq Sim.</span>
+            <span className={styles.fieldHint}>Your current BTC in Strike. Edits log a balance reading that re-anchors your collateral — feeds Advisor projections and Liq Sim.</span>
           </div>
           {strikeApiConnected && strikeBtcAvailable !== null && (
             <div className={styles.setupFieldGroup}>

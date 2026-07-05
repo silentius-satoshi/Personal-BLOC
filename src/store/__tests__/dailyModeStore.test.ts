@@ -390,6 +390,31 @@ describe('§5b — advisorActualBlocBalanceAsOf synced setting', () => {
   });
 });
 
+// C-P3 — emitBalanceReading with a strikeCollateral override becomes a COLLATERAL anchor.
+describe('emitBalanceReading — strikeCollateral override (v20)', () => {
+  const latestReading = () => {
+    const rs = useStore.getState().dayLog.filter((e) => e.kind === 'balanceReading');
+    return (rs[rs.length - 1] as Extract<DayEvent, { kind: 'balanceReading' }>).reading;
+  };
+
+  it('with the override → getCurrentBtcHeld anchors to the value; strikeLtv from the new collateral', () => {
+    useStore.setState({ advisorActualBlocBalance: 30000, btcPrice: 100000, hasCbLoan: false } as never);
+    useStore.getState().emitBalanceReading({ strikeCollateral: 0.8 });
+    expect(useStore.getState().getCurrentBtcHeld()).toBeCloseTo(0.8);   // reading anchors current
+    const r = latestReading();
+    expect(r.strikeCollateral).toBeCloseTo(0.8);
+    expect(r.strikeLtv).toBeCloseTo(30000 / (0.8 * 100000));            // LTV from the NEW collateral (0.375)
+  });
+
+  it('without the override → the emitted reading carries NO strikeCollateral; current unchanged', () => {
+    useStore.setState({ strikeCollateralBtc: BASELINE, dayLog: [], advisorActualBlocBalance: 30000, btcPrice: 100000 } as never);
+    const before = useStore.getState().getCurrentBtcHeld();
+    useStore.getState().emitBalanceReading({ strikeBal: 25000 });       // debt-only re-anchor
+    expect(latestReading().strikeCollateral).toBeUndefined();
+    expect(useStore.getState().getCurrentBtcHeld()).toBeCloseTo(before);
+  });
+});
+
 // Calendar-bucket reconcile — re-roll stored entries under the corrected bucketing. START 2026-06-01 so a
 // 2026-07-01 event moves M1 (legacy 30.4375) → M2 (calendar).
 describe('reconcileMonthBuckets', () => {

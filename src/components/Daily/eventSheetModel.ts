@@ -12,6 +12,8 @@ export interface SheetState {
   collateralTarget: 'strike' | 'cb';  // only meaningful when type === 'collateral' (and hasCbLoan)
   strikeBal: number | null;
   strikeLtv: number | null;           // PERCENT as typed by the user (e.g. 11.2 = 11.2%)
+  strikeCollateral: number | null;    // BTC — v20 reading-anchored Strike collateral (POST-move total on a strike move; auto-tracked)
+  pledgeToStrike: boolean;            // buy-only — ON emits a paired deposit target:'strike' (add path)
   cbBal: number | null;
   cbLtv: number | null;               // PERCENT
   cbCollateral: number | null;        // BTC
@@ -20,13 +22,31 @@ export interface SheetState {
 
 /**
  * The Save gate's reading half (D1): the balance-reading fields must be non-empty.
- * strikeBal + strikeLtv always; + cbBal + cbLtv + cbCollateral iff hasCbLoan.
+ * strikeBal + strikeLtv + strikeCollateral (v20) always; + cbBal + cbLtv + cbCollateral iff hasCbLoan.
  * The flow/collateral amount>0 gate is checked in the component (a separate clause of the Save gate).
  */
 export function readingComplete(s: SheetState, hasCbLoan: boolean): boolean {
-  if (s.strikeBal === null || s.strikeLtv === null) return false;
+  if (s.strikeBal === null || s.strikeLtv === null || s.strikeCollateral === null) return false;
   if (hasCbLoan && (s.cbBal === null || s.cbLtv === null || s.cbCollateral === null)) return false;
   return true;
+}
+
+/**
+ * v20 — the POST-move Strike collateral total for the reading paired with a target:'strike' move. PURE, so the
+ * EventSheet's auto-track (untouched field) and its unit tests share one definition. The reading MUST state the
+ * post-move total because the flow + reading share a ts and deriveStrikeCollateral EXCLUDES the same-ts move.
+ *  - collateral + effectiveTarget 'strike' → base + (deposit +, withdraw −)·amount
+ *  - buy + pledgeToStrike                  → base + amount (the pledged buy adds a strike deposit)
+ *  - anything else (setBalance/draw/paydown/unpledged buy/cb move) → base (unchanged; an idempotent re-anchor)
+ */
+export function autoStrikeCollateral(
+  base: number,
+  s: { type: SheetType; collateralDir: 'deposit' | 'withdraw'; effectiveTarget: 'strike' | 'cb'; amount: number | null; pledgeToStrike: boolean },
+): number {
+  const amt = s.amount ?? 0;
+  if (s.type === 'collateral' && s.effectiveTarget === 'strike') return base + (s.collateralDir === 'withdraw' ? -amt : amt);
+  if (s.type === 'buy' && s.pledgeToStrike) return base + amt;
+  return base;
 }
 
 /**
@@ -46,13 +66,15 @@ export function buildEventsFromSheet(
   today: string,
   ts: number,
   idFn: () => string,
+  currentStrikeCollateral: number,   // v20 — fallback if s.strikeCollateral is null (readingComplete gates non-null; defensive)
 ): DayEvent[] {
   const reading: {
-    strikeBal: number; strikeLtv: number;
+    strikeBal: number; strikeLtv: number; strikeCollateral?: number;
     cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number;
   } = {
     strikeBal: s.strikeBal ?? 0,
     strikeLtv: (s.strikeLtv ?? 0) / 100,   // percent → fraction
+    strikeCollateral: s.strikeCollateral ?? currentStrikeCollateral,   // BTC — no conversion; the POST-move total
     price: btcPrice,
   };
   if (hasCbLoan) {
@@ -79,8 +101,15 @@ export function buildEventsFromSheet(
       // Balance-neutral; reading-free (a one-field sheet). No atomic balanceReading — paying the billed
       // minimum doesn't move the position, so LD6 doesn't apply.
       return [{ id: idFn(), date: today, ts, kind: 'minPayment', amount }];
-    case 'buy':
-      return [{ id: idFn(), date: today, ts, kind: 'buy', amount, usd: amount * btcPrice }, readingEvent];
+    case 'buy': {
+      const buyEvent: DayEvent = { id: idFn(), date: today, ts, kind: 'buy', amount, usd: amount * btcPrice };
+      // v20 pledge — ON emits a paired deposit target:'strike' (the buy's BTC pledged as collateral). Three events,
+      // shared date+ts, independent ids; the reading states the post-move total (currentStrikeCollateral + amount).
+      if (s.pledgeToStrike) {
+        return [buyEvent, { id: idFn(), date: today, ts, kind: 'deposit', amount, target: 'strike' }, readingEvent];
+      }
+      return [buyEvent, readingEvent];
+    }
     case 'collateral':
       return [
         {

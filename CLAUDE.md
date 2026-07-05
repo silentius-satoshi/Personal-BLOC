@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (562 tests — all must pass before every commit)
+- Vitest (571 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -417,13 +417,27 @@ src/
                                 # out the original deposit amount in edit mode (currentBtcHeld − editEvent.amount + amount)
                                 # so it doesn't double-count (the edited deposit is already in currentBtcHeld via the C1
                                 # seam); add mode + non-deposit edits subtract 0 — readout only, no data effect.
-                                # EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
+                                # v20 (C-P3): a REQUIRED "Strike collateral (BTC)" NumberInput after the Strike-LTV field on
+                                # every reading-bearing sheet (readingComplete gates strikeCollateral!==null). AUTO-TRACK: an
+                                # untouched field = autoStrikeCollateral(getCurrentBtcHeld(), move) = the POST-move total
+                                # (current±amount for a strike collateral move, current+amount for a pledged buy, else
+                                # current) — via a track useEffect gated on !strikeCollateralTouched; a manual edit sets
+                                # touched (venue truth) + freezes it. This is LOAD-BEARING: the flow + its reading share a ts
+                                # and deriveStrikeCollateral EXCLUDES the same-ts move, so the reading MUST state the post-move
+                                # total. A buy-only "Pledged to Strike" Off|On toggle (add path, targetToggle styling) → ON
+                                # emits [buy, deposit target:'strike' amount=buy, reading]. buildEventsFromSheet gains a
+                                # currentStrikeCollateral arg (= getCurrentBtcHeld()). EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
-                                # case-collision with EventSheet.tsx): SheetType/SheetState + readingComplete(s,hasCbLoan)
-                                # (the reading half of the Save gate) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,
-                                # idFn) → DayEvent[] ([reading] | [flow,reading] | [deposit,reading]; fresh id per event;
-                                # flow+reading share date+ts; usd=amount*price for buy; **LTV percent ÷100 → fraction** to
-                                # match the stored decimal convention). Tested in __tests__/eventSheet.test.ts
+                                # case-collision with EventSheet.tsx): SheetType/SheetState (v20 += strikeCollateral:number|null
+                                # + pledgeToStrike:boolean) + readingComplete(s,hasCbLoan) (Save gate — v20 ALSO requires
+                                # strikeCollateral!==null) + autoStrikeCollateral(base,s) (v20 PURE — POST-move total: strike
+                                # collateral move → base±amount, pledged buy → base+amount, else base; shared by the sheet's
+                                # auto-track + its tests) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,idFn,
+                                # currentStrikeCollateral) → DayEvent[] ([reading] | [flow,reading] | [deposit,reading];
+                                # v20 buy pledge → [buy,deposit target:'strike' amount=buy,reading]; reading.strikeCollateral =
+                                # s.strikeCollateral ?? currentStrikeCollateral, BTC no conversion; fresh id per event;
+                                # flow+reading share date+ts; usd=amount*price for buy; **LTV percent ÷100 → fraction**).
+                                # Tested in __tests__/eventSheet.test.ts
     SimpleMode/
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
                                 # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
@@ -763,9 +777,9 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment   // ⚠ R
 
 | Surface | Role |
 |---|---|
-| Settings "Current BTC collateral" | REALITY — **READ-ONLY at v20/C-P2** (shows `getCurrentBtcHeld`, reading-anchored). A read-only "Initial BTC collateral" line (`advisorActualBtcHeld`, month-0 baseline) sits ABOVE it. Editing returns in C-P3 as a `balanceReading`-emitter (`strikeCollateral`); `adjustCurrentCollateral` retired |
-| Advisor "CURRENT BTC HELD" | REALITY — **READ-ONLY at v20/C-P2** (same; reading-anchored) |
-| Simple Mode Quick Setup "BTC held" | REALITY — **field removed at v20/C-P2** (no collateral commit; the reading-emitter returns in C-P3). The setup save still emits a Strike-DEBT reading (`emitBalanceReading`) |
+| Settings "Current BTC collateral" | REALITY — editable (C-P3): draft/onBlur → `emitBalanceReading({ strikeCollateral })` (a journaled reading re-anchors `getCurrentBtcHeld`; `strikeBal` defaults to the live drawn balance). A read-only "Initial BTC collateral" line (`advisorActualBtcHeld`, month-0 baseline) sits ABOVE it |
+| Advisor "CURRENT BTC HELD" | REALITY — same draft/onBlur → `emitBalanceReading({ strikeCollateral })` (C-P3) |
+| Simple Mode Quick Setup "BTC held" | REALITY — editable `ModalField` (C-P3); `handleSaveSetup` keeps `emitBalanceReading({ strikeBal })` for the debt field and MERGES `strikeCollateral` into that SAME emission only when the collateral changed (never two emissions) |
 | Simple Mode displays / Liq Sim | REALITY — `getCurrentBtcHeld` = reading-anchored `deriveStrikeCollateral` |
 | Smart BLOC tab (InputsPanel, TierCards, MonthBreakdown, useSimulation) | SANDBOX — `sandboxCollateralBtc ?? current`, ephemeral, no write-back |
 | Settings "Spendable BTC (dry powder)" | NOT collateral — read-only live figure from the Strike API (`strikeBtcAvailable`); see Strike Dry-Powder note below |
@@ -2266,6 +2280,12 @@ move in realtime) and restores the **R2** CB-accrual freshness. Most fragile sur
   **CB half is included ONLY when a CB field is overridden** (CB box) — a Strike-only re-anchor (Strike box /
   Quick Setup) emits a Strike-only reading so it never re-bases the CB balance or fake-freshens the CB freshness
   label. CB-box emit re-bases `cbLoanBalance` to `accruedCbBalance` + `asOf=today` (this is the **R2** restore).
+  **v20 (C-P3): a `strikeCollateral?` override** makes the emit a COLLATERAL anchor — the reading carries
+  `strikeCollateral` AND `strikeLtv` is computed against the **NEW** collateral (not `getCurrentBtcHeld()`); absent
+  → byte-identical to today (no `strikeCollateral` key; a debt re-anchor). Only the collateral inputs
+  (Settings/Advisor "current BTC" + Quick-Setup "BTC held" when changed) pass it — the SafetyDashboard Strike/CB
+  debt re-anchors NEVER do, so a debt re-anchor can't hijack the collateral anchor. The CB-half gate is unchanged
+  (keyed on `cbBal`/`cbLiqPrice`).
   ⚠ **Conscious consequence:** a `balanceReading` is monthly-meaningful → an emit re-rolls the current month and
   marks it `source:'daily'` (consistent with "one Ledger").
 - **`reading.cbLiqPrice?`** (types.ts) — optional CB liq price on a reading; **anchor input, NOT a monthly stock**
@@ -2449,7 +2469,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 - `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, hydrate cross-device, and a remote event lacking them doesn't clobber (whitelist skips absent)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
-- `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids
+- `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids. **v20 (C-P3):** `readingComplete` false when strikeCollateral null; reading carries strikeCollateral from `s.strikeCollateral` (falls back to the `currentStrikeCollateral` arg); manual override wins; `autoStrikeCollateral` post-move total (deposit+/withdraw−/pledged-buy+/else current); pledge ON → [buy,deposit target:'strike' amount=buy,reading] shared date+ts distinct ids, pledge OFF → [buy,reading]
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
