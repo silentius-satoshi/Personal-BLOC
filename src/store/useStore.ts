@@ -249,9 +249,9 @@ export interface StoreState {
   setShowPlanStrikeBar: (v: boolean) => void;
   setShowPlanCbBar:     (v: boolean) => void;
 
-  // Consumer-shell view (Monthly Playbook vs Daily journal) — device-local UI pref (NOT synced, like devMode)
-  simpleView:    'monthly' | 'daily';
-  setSimpleView: (v: 'monthly' | 'daily') => void;
+  // Consumer-shell view (Dashboard / Daily journal / Monthly Playbook) — device-local UI pref (NOT synced, like devMode)
+  simpleView:    'dashboard' | 'monthly' | 'daily';
+  setSimpleView: (v: 'dashboard' | 'monthly' | 'daily') => void;
 
   // Setters — shared
   setIncome: (v: number) => void;
@@ -1032,8 +1032,9 @@ export const useStore = create<StoreState>()(
   showPlanStrikeBar: true,
   showPlanCbBar:     true,
 
-  // Default to the Daily view; the custom merge fills this for existing users (no version bump).
-  simpleView: 'daily',
+  // Default to the Dashboard (owner IA — dashboard-first); the custom merge fills this for existing
+  // users (migrate-default only — a persisted choice is preserved, no version bump).
+  simpleView: 'dashboard',
 
   setIncome:   (v) => { set({ income: v });   useStore.getState().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); useStore.getState().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits

@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { selectSafetyViewInputs, computeViewerSafety, type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult } from '../../simulation/safetyView';
@@ -23,6 +24,7 @@ export interface ViewerHomeViewProps {
   onOpenSettings: () => void;
   previewSafeSnap?: SafeSnapshot | null;   // owner "Preview as viewer": inject the snap (safe) or null (force trusted live-derive); undefined = viewer device (store-driven)
   preview?: boolean;                       // owner preview → hide settings-nav affordances + bottom nav; pill age reads 'live preview'
+  ownerNav?: ReactNode;                    // owner IA — the 5-icon header cluster (Dashboard active). Present ⇒ owner-dashboard mount: replaces the lone ⚙, suppresses the bottom nav, pill reads 'live'. viewer/preview never pass it → unchanged.
 }
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -94,7 +96,7 @@ export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerS
   return computeViewerSafety(safeSnap, livePrice, inputs);
 }
 
-export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: ViewerHomeViewProps) {
+export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, ownerNav }: ViewerHomeViewProps) {
   const s = useViewerSafety(previewSafeSnap);
   const lastSync = useStore((st) => st.viewerLastSyncAt);
   const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
@@ -118,7 +120,9 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: Vie
             <span className={styles.brandName}>Personal ₿LOC</span>
           </div>
           <RolePill roles={grantedRoles} />
-          {!preview && (
+          {ownerNav ? (
+            ownerNav
+          ) : !preview && (
             <button className={styles.iconBtn} onClick={onOpenSettings} aria-label="Settings">
               ⚙
             </button>
@@ -141,7 +145,7 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: Vie
           <span className={styles.pillText} style={{ color: LEVEL_COLOR[s.overall] }}>
             {OVERALL_COPY[s.overall]}
           </span>
-          <span className={styles.pillAge}>{preview ? 'live preview' : relativeAge(lastSync)}</span>
+          <span className={styles.pillAge}>{preview ? 'live preview' : ownerNav ? 'live' : relativeAge(lastSync)}</span>
         </div>
 
         {/* Status cards */}
@@ -169,8 +173,8 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview }: Vie
         </div>
       </div>
 
-      {/* Bottom nav — hidden entirely in owner preview (a lone no-op Home button is dead weight) */}
-      {!preview && (
+      {/* Bottom nav — hidden in owner preview AND on the owner dashboard (ownerNav supersedes it) */}
+      {!preview && !ownerNav && (
         <nav className={styles.bottomNav}>
           <button className={`${styles.navBtn} ${styles.navActive}`} aria-current="page">
             Home

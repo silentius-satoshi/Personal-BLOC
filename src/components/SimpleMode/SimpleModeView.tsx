@@ -12,6 +12,7 @@ import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
 import { ViewToggle } from '../Layout/ViewToggle';
+import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
 
@@ -24,8 +25,8 @@ const LEVEL_COLOR: Record<SafetyLevel, string> = {
 interface SimpleModeViewProps {
   onOpenSettings: () => void;
   onOpenAlmanac:  () => void;
-  simpleView: 'monthly' | 'daily';
-  setSimpleView: (v: 'monthly' | 'daily') => void;
+  simpleView: 'dashboard' | 'monthly' | 'daily';
+  setSimpleView: (v: 'dashboard' | 'monthly' | 'daily') => void;
 }
 
 const fmtPct = (n: number) => `${Math.round(n * 100)}%`;
@@ -91,7 +92,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const showPlanCbBar           = useStore((s) => s.showPlanCbBar);
 
   const setSimpleMode = useStore((s) => s.setSimpleMode);
-  const setViewerPreview = useStore((s) => s.setViewerPreview);
 
   const setIncome     = useStore((s) => s.setIncome);
   const setExpenses   = useStore((s) => s.setExpenses);
@@ -329,31 +329,14 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
           <span className={styles.brandMark}>₿</span>
           <span className={styles.brandName}>Personal ₿LOC</span>
         </div>
-        <div className={styles.headerRight}>
-          {!viewerMode && (
-            <button className={styles.settingsBtn} onClick={() => setViewerPreview(true)} aria-label="Preview as viewer" title="Preview as viewer">👁</button>
-          )}
-          <button
-            className={styles.modeToggleBtn}
-            onClick={() => setSimpleMode(false)}
-            aria-label="Switch to full app"
-          >
-            <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-              <rect x="1" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
-              <rect x="9" y="1" width="6" height="6" rx="1" fill="currentColor" opacity="0.7"/>
-              <rect x="1" y="9" width="6" height="6" rx="1" fill="currentColor"/>
-              <rect x="9" y="9" width="6" height="6" rx="1" fill="currentColor"/>
-            </svg>
-          </button>
-          <button className={styles.settingsBtn} onClick={onOpenAlmanac} aria-label="Almanac">
-            <svg width="16" height="16" viewBox="0 0 640 640" fill="currentColor" aria-hidden="true">
-              <path d="M480 576L192 576C139 576 96 533 96 480L96 160C96 107 139 64 192 64L496 64C522.5 64 544 85.5 544 112L544 400C544 420.9 530.6 438.7 512 445.3L512 512C529.7 512 544 526.3 544 544C544 561.7 529.7 576 512 576L480 576zM192 448C174.3 448 160 462.3 160 480C160 497.7 174.3 512 192 512L448 512L448 448L192 448zM224 216C224 229.3 234.7 240 248 240L424 240C437.3 240 448 229.3 448 216C448 202.7 437.3 192 424 192L248 192C234.7 192 224 202.7 224 216zM248 288C234.7 288 224 298.7 224 312C224 325.3 234.7 336 248 336L424 336C437.3 336 448 325.3 448 312C448 298.7 437.3 288 424 288L248 288z"/>
-            </svg>
-          </button>
-          <button className={styles.settingsBtn} onClick={onOpenSettings} title="Settings">
-            ⚙
-          </button>
-        </div>
+        <HeaderNavCluster
+          active="journal"
+          onDashboard={() => setSimpleView('dashboard')}
+          onJournal={() => setSimpleView('daily')}
+          onFullMode={() => setSimpleMode(false)}
+          onAlmanac={onOpenAlmanac}
+          onSettings={onOpenSettings}
+        />
       </div>
 
       <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />

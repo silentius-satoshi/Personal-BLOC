@@ -21,6 +21,11 @@ export function SharingPage() {
   const setViewerPubkey     = useStore((s) => s.setViewerPubkey);
   const setViewerLabel      = useStore((s) => s.setViewerLabel);
   const setViewerPrivacyTrusted = useStore((s) => s.setViewerPrivacyTrusted);
+  // Preview-as-viewer trigger (relocated here from the journal headers) — sets the transient flag AND
+  // leaves Settings so AppShell's branch J renders the (unchanged) ViewerPreview overlay.
+  const setViewerPreview        = useStore((s) => s.setViewerPreview);
+  const setActiveTab            = useStore((s) => s.setActiveTab);
+  const previousTab             = useStore((s) => s.previousTab);
 
   const [draft, setDraft]           = useState('');
   const [labelDraft, setLabelDraft] = useState('');
@@ -125,6 +130,16 @@ export function SharingPage() {
           <button className={styles.addBtn} onClick={addViewer}>Add</button>
         </div>
       )}
+
+      {/* PREVIEW — see exactly what a viewer sees (safe or trusted), previewable before granting access */}
+      <div className={styles.groupTitle} style={{ marginTop: 20 }}>PREVIEW</div>
+      <p className={styles.desc}>Open a live preview of the viewer experience, with a Safe / Trusted toggle.</p>
+      <button
+        className={styles.actionBtn}
+        onClick={() => { setViewerPreview(true); setActiveTab(previousTab); }}
+      >
+        👁 Preview as viewer
+      </button>
     </div>
   );
 }

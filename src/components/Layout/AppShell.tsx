@@ -50,6 +50,7 @@ import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
+import { HeaderNavCluster }  from './HeaderNavCluster';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
@@ -338,6 +339,21 @@ export function AppShell() {
         <div className={styles.simpleModeRoot}>
           {viewerPreview && !viewerMode
             ? <ViewerPreview />
+            : simpleView === 'dashboard'
+            ? <ViewerHomeView
+                previewSafeSnap={null}   // owner Dashboard — trusted LIVE derive (no snap, no banner, no Safe/Trusted toggle)
+                onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
+                ownerNav={
+                  <HeaderNavCluster
+                    active="dashboard"
+                    onDashboard={() => setSimpleView('dashboard')}
+                    onJournal={() => setSimpleView('daily')}
+                    onFullMode={() => setSimpleMode(false)}
+                    onAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}
+                    onSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
+                  />
+                }
+              />
             : simpleView === 'daily'
             ? <DailyModeView
                 onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}

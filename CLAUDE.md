@@ -117,10 +117,20 @@ src/
                                 # passes simpleView/setSimpleView as props to DailyModeView/SimpleModeView
                                 # (ViewToggle lives inside each view, not here)
       AppShell.module.css
-      ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — rendered inside BOTH
-                                # DailyModeView and SimpleModeView (between header + SafetyDashboard).
-                                # Props: simpleView + setSimpleView. CSS in ViewToggle.module.css.
+      ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — JOURNAL's INNER control,
+                                # rendered inside BOTH DailyModeView and SimpleModeView (between header +
+                                # SafetyDashboard). Props: simpleView (widened to the 3-value union, renders
+                                # only Daily/Monthly) + setSimpleView. CSS in ViewToggle.module.css.
       ViewToggle.module.css     # .viewToggle* rules (moved from AppShell.module.css)
+      HeaderNavCluster.tsx      # Owner IA — the SINGLE 5-icon header cluster (Dashboard · Journal · Full mode ·
+                                # Almanac · Settings) = owner primary nav; identical on every simple-mode surface.
+                                # Props {active:'dashboard'|'journal', onDashboard/onJournal/onFullMode/onAlmanac/
+                                # onSettings}. Four app icons are inline <svg> (Full mode + Almanac reuse the
+                                # existing glyphs verbatim; Dashboard=gauge, Journal=ledger); Settings is the ⚙
+                                # glyph unchanged. Rendered in DailyModeView + SimpleModeView headers (active
+                                # 'journal') and injected into ViewerHomeView via ownerNav (active 'dashboard').
+                                # GROWTH INVARIANT: fixed at 5 — new tools become Almanac faces, never header icons.
+      HeaderNavCluster.module.css # boxed 34×34 .iconBtn + .iconBtnActive (--btc accent) highlight
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
@@ -977,11 +987,13 @@ The first Daily Mode UI surface. **READ-ONLY** — it proves the dayLog/rollup d
 UI lands. NO event sheets / `addDayEvent`/`updateDayEvent`/`deleteDayEvent` wiring / FAB (P4b); NO Week|Month
 calendar / scrubbing / reconcile / dry-powder readout (P4c).
 
-- **`simpleView: 'monthly' | 'daily'`** (store, default `'daily'`) — DEVICE-LOCAL UI pref selecting the
-  consumer-shell view. NOT synced (absent from `SETTINGS_FIELDS`/`buildSettingsPayload`); rides `partializeState`'s
+- **`simpleView: 'dashboard' | 'monthly' | 'daily'`** (store, default `'dashboard'` — Owner IA dashboard-first;
+  was `'daily'`) — DEVICE-LOCAL UI pref selecting the consumer-shell view (Dashboard / Daily journal / Monthly
+  Playbook). NOT synced (absent from `SETTINGS_FIELDS`/`buildSettingsPayload`); rides `partializeState`'s
   `...rest` (NOT in the omit destructure); **no version bump** — the custom `merge` (`{...current, ...persisted}`)
-  fills it for existing users from `current`. Setter `setSimpleView` is a plain `set` (no `syncSettingsToNostr`),
-  mirroring `showPlanStrikeBar`.
+  fills it for existing users from `current`, so the new default is **migrate-default only** (a persisted choice
+  is preserved, never clobbered mid-session). Setter `setSimpleView` is a plain `set` (no `syncSettingsToNostr`),
+  mirroring `showPlanStrikeBar`. (Owner IA, see the dedicated section below.)
 - **Copy relabel "Simple Mode" → "Monthly Mode"** (copy only; the `simpleMode` store field + all code identifiers
   unchanged): SettingsMain Display row subtitle + the Display-subpage toggle title. The AppShell tab-bar button that
   ENTERS the consumer shell (`setSimpleMode(true)`) is relabeled **`aria-label="Switch to simple view"`** (generic —
@@ -993,10 +1005,12 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
   `cbPaydownDraw`, monthly shows `plan.cbPayment`). Month indicator only — no scrubber.
 - **Daily | Monthly toggle** — a segmented control (`<ViewToggle>` from `src/components/Layout/ViewToggle.tsx`;
-  `.viewToggle*` in `ViewToggle.module.css`) bound to `simpleView`; rendered INSIDE each view (DailyModeView +
+  `.viewToggle*` in `ViewToggle.module.css`) bound to `simpleView`; rendered INSIDE each JOURNAL view (DailyModeView +
   SimpleModeView) immediately after its header and before `<SafetyDashboard>` (header → toggle → SafetyDashboard),
   matching the preview layout. `AppShell` passes `simpleView`/`setSimpleView` as props to both views; the toggle
   block was removed from AppShell. Button order: Daily-left, Monthly-right. Consumer shell only — full-app path untouched.
+  (Owner IA: this is now JOURNAL's INNER control — it SURVIVES; primary surface navigation is the `HeaderNavCluster`,
+  not this toggle. Its `simpleView` prop type is widened to the 3-value union but it still renders only Daily/Monthly.)
 
 ### P4a RESTYLE — DailyModeView aligned to `mode-toggle-preview.html`
 
@@ -1700,9 +1714,12 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   node-tested); the hook is just the three unconditional store reads + `injectedSafeSnap !== undefined ?
   injectedSafeSnap : storeSnap` pick.
 - **Owner "Preview as viewer" (`viewerPreview`, transient/NEVER persisted — partialize-stripped, so the app
-  can't boot into preview):** an owner-only 👁 button in the Daily + Monthly headers (gated `!viewerMode`,
-  always shown — previewing before granting access is legitimate) sets `viewerPreview`; AppShell's owner
-  simple-mode branch renders `<ViewerPreview/>` instead of the Daily/Monthly fork. `ViewerPreview` renders the
+  can't boot into preview):** the trigger sets `viewerPreview`; AppShell's owner simple-mode branch (J) renders
+  `<ViewerPreview/>` instead of the Dashboard/Daily/Monthly fork. **Owner IA — the trigger RELOCATED** from the
+  journal headers (the old 👁 button, now retired) into **Settings → Sharing (`SharingPage.tsx`, a "👁 Preview as
+  viewer" button)**; it does `setViewerPreview(true); setActiveTab(previousTab);` so leaving Settings (branch H)
+  drops into branch J where `viewerPreview && !viewerMode` shows the overlay. `ViewerPreview` itself is UNCHANGED
+  (its banner + Safe/Trusted toggle stay — that is its job). `ViewerPreview` renders the
   REAL `ViewerHomeView` from the ACTUAL `buildViewerSnapshotPayload` — **safe mode injects a locally-built
   `SafeSnapshot`** (`previewSafeSnapFromPayload`, mirrors viewerSync's construction incl. `hasCbLoan ?? false`)
   as `previewSafeSnap`; **trusted mode passes `null`** → the live-derive path (what a trusted viewer's hydrated
@@ -1774,6 +1791,53 @@ Three small viewer-side phases. Builds on Viewer V2.
 - **No store version bump.** Tests: `viewerDisplayName` absent from BOTH payload builders + `resetViewerSession`
   clears name/mode/writer/key/onboarding (472 total). `viewerDisplayName` added to the device-local
   persisted-but-unsynced list.
+
+---
+
+## Owner IA — dashboard-first + 5-icon header cluster (store stays v19, NO bump)
+
+Promotes the owner's top-right header buttons into the **primary navigation** and adds a live owner Dashboard.
+**⚠ AppShell's render-ladder auth/unlock/viewerMode gates (branches A–G) are UNTOUCHED** — all changes live in
+the owner view-switching branch J (`simpleMode && activeTab !== 'settings'`) and the view components. The actual
+viewer (father's device, `viewerMode`) is caught by branch G before J, so viewerMode is untouched by construction.
+
+- **`HeaderNavCluster` (`components/Layout/`, NEW) — the SINGLE 5-icon cluster = owner primary nav**, byte-identical
+  on every simple-mode surface: **Dashboard · Journal · Full mode · Almanac · Settings**. The four app icons are
+  inline `<svg>` (Full mode = the existing 4-rect grid glyph reused verbatim; Almanac = the existing book glyph
+  reused verbatim; Dashboard = a gauge glyph; Journal = a ledger glyph); **Settings is the ⚙ glyph, unchanged**.
+  The active surface's icon gets `.iconBtnActive` (--btc accent). Handlers: Dashboard→`setSimpleView('dashboard')`,
+  Journal→`setSimpleView('daily')` (enters Journal; the inner `ViewToggle` then flips daily↔monthly),
+  Full mode→`setSimpleMode(false)` (into the existing tab shell), Almanac/Settings→the view's existing
+  `onOpenAlmanac`/`onOpenSettings`. Rendered in DailyModeView + SimpleModeView headers (`active="journal"`) and
+  injected into ViewerHomeView via the `ownerNav` prop (`active="dashboard"`).
+- **Dashboard surface = `ViewerHomeView` reused owner-side with TRUSTED-LIVE inputs.** AppShell branch J gains a
+  `simpleView === 'dashboard'` case mounting `<ViewerHomeView previewSafeSnap={null} ownerNav={<HeaderNavCluster
+  active="dashboard" …/>} …/>`. `previewSafeSnap={null}` forces the trusted live-derive path (the exact data path
+  preview-Trusted uses) — **no preview banner, no Safe/Trusted toggle**; owners always see live truth. The ONE
+  additive `ViewerHomeView` change (never a fork): optional `ownerNav?: ReactNode` — when present it (a) renders in
+  the header actions IN PLACE of the lone ⚙ (the cluster carries Settings), (b) suppresses the bottom Home|Settings
+  nav (`{!preview && !ownerNav && …}`), (c) pill age reads `'live'` (`preview ? 'live preview' : ownerNav ? 'live'
+  : relativeAge(lastSync)` — the owner device's `viewerLastSyncAt` is null). Viewer + ViewerPreview never pass
+  `ownerNav` → byte-identical to before.
+- **`simpleView` gains `'dashboard'` and it is the DEFAULT** (`'dashboard' | 'monthly' | 'daily'`, default now
+  `'dashboard'`). Persisted device-local (rides `...rest`, never synced) → **migrate-default only**: the custom
+  merge preserves an existing user's persisted choice; no store version bump. DailyModeView/SimpleModeView/ViewToggle
+  prop types widened to the 3-value union (the two journal views still render only for daily/monthly; ViewToggle
+  still renders only its 2 buttons). A viewer never reaches branch J (branch G catches it), so the default is
+  owner-only-relevant.
+- **JOURNAL = the existing Daily/Monthly surface; its inner `ViewToggle` SURVIVES** (NOT subsumed into the cluster).
+- **Preview relocated + 👁 retired:** the old header 👁 "Preview as viewer" buttons (DailyModeView/SimpleModeView)
+  are removed (dead `setViewerPreview` selectors dropped); the trigger moved to Settings → Sharing (`SharingPage`,
+  "👁 Preview as viewer" → `setViewerPreview(true); setActiveTab(previousTab)`). `ViewerPreview` unchanged.
+- **GROWTH INVARIANT (documented, NOT built):** the cluster is **fixed at 5 icons** — every future tool becomes an
+  **Almanac face** (the existing face-registration pattern), NEVER a new header icon; no grid-modal launcher — the
+  Almanac IS the app hub.
+- Tests: `src/store/__tests__/simpleView.test.ts` (default `'dashboard'`; setter accepts all 3; device-local /
+  absent from `buildSettingsPayload`; rides `partializeState`; migrate-default no-clobber). The dashboard's
+  live-figures path is the already-green `computeViewerSafety(null,…) → trusted` case in `safetyView.test.ts`.
+  The repo has **no component-render harness** (no testing-library/jsdom, zero `.test.tsx`), so the JSX assertions
+  (svg-not-emoji cluster, Journal toggle retained, preview trigger in Settings, 👁 gone) are covered by `tsc -b` +
+  build + manual — a deliberate scope call (no harness introduced).
 
 ---
 
@@ -2597,8 +2661,8 @@ reports should include the Copy Diagnostics output from the failing device.
 publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
-plan-card status-bar visibility, default true), `simpleView` (`'monthly'|'daily'` consumer-shell view,
-default `'daily'` — Daily Mode P4a), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
+plan-card status-bar visibility, default true), `simpleView` (`'dashboard'|'monthly'|'daily'` consumer-shell view,
+default `'dashboard'` — Owner IA dashboard-first; migrate-default only), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
 null; cleared on `resetViewerSession`), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device; **persisted in
 STANDALONE localStorage `personal-bloc-writer-key-wrapped`/`-meta`, NOT inside the persist blob** — they're the

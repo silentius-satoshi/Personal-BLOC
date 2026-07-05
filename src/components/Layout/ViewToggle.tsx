@@ -1,8 +1,10 @@
 import styles from './ViewToggle.module.css';
 
 interface ViewToggleProps {
-  simpleView: 'monthly' | 'daily';
-  setSimpleView: (v: 'monthly' | 'daily') => void;
+  // Journal's inner Daily|Monthly control. simpleView may also be 'dashboard' (owner IA) — that simply
+  // matches neither button (this toggle only renders on the daily/monthly Journal surface).
+  simpleView: 'dashboard' | 'monthly' | 'daily';
+  setSimpleView: (v: 'dashboard' | 'monthly' | 'daily') => void;
 }
 
 export function ViewToggle({ simpleView, setSimpleView }: ViewToggleProps) {
