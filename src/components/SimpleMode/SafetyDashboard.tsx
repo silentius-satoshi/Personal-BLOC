@@ -185,7 +185,7 @@ export function SafetyDashboard() {
         </div>
         <div className={styles.cushionRow}>
           {strikeView === 'capacity' ? (
-            <span className={styles.ltvNow}>{(capacityUsed * 100).toFixed(0)}% of credit line used · avail {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
+            <span className={styles.cushion}>{(capacityUsed * 100).toFixed(0)}% of credit line used · avail {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
           ) : (
             <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} collateral · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
           )}
