@@ -61,6 +61,7 @@
 
 .chartArea {
   min-height: 120px;
+  overflow: hidden;
 }
 
 .placeholder {

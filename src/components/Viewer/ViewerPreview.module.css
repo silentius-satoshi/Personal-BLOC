@@ -10,7 +10,7 @@
   flex-direction: column;
   gap: 8px;
   padding: 10px 16px;
-  background: var(--surface-2);
+  background: var(--bg-base);
   border-bottom: 1px solid var(--btc);
   box-shadow: 0 1px 0 rgba(247, 147, 26, 0.25);
 }
