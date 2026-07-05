@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { CB_LLTV, CB_WARN_LTV } from '../../simulation/runCoinbaseLoan';
 import { worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs } from '../../simulation/safetyView';
+import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
@@ -86,6 +87,8 @@ export function SafetyDashboard() {
   const cbFillColor = LEVEL_COLOR[cbLevel];
   const cbBadge    = cbLevel === 'safe' ? 'Safe' : cbLevel === 'watch' ? 'Fair' : 'Poor';
   // ── Strike bar display (from view) ────────────────────────────────────
+  // Strike available credit — the LTV-capped truth (matches the trio pill + viewer figures); NOT naive creditLine − drawn.
+  const cap = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);
   const strikeLiqLtv  = strikeLiquidationLtvPct / 100;
   const strikeFillPct = strikeView === 'capacity'
     ? Math.max(0, Math.min(100, capacityUsed * 100))
@@ -185,7 +188,7 @@ export function SafetyDashboard() {
         </div>
         <div className={styles.cushionRow}>
           {strikeView === 'capacity' ? (
-            <span className={styles.cushion}>{(capacityUsed * 100).toFixed(0)}% of credit line used · avail {fmtUSD(Math.max(0, creditLine - advisorActualBlocBalance))}</span>
+            <span className={styles.cushion}>{fmtUSD(advisorActualBlocBalance)} of {fmtUSD(cap.limit)} · {fmtUSD(cap.available)} available</span>
           ) : (
             <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} collateral · 80% crash → {(crashLtv * 100).toFixed(0)}%</span>
           )}
@@ -244,7 +247,7 @@ export function SafetyDashboard() {
         </div>
 
         <div className={styles.cushionRow}>
-          <span className={styles.cushion}>{fmtUSD(liqDropUsd)} above liq · {(liqDropPct * 100).toFixed(0)}% drop away</span>
+          <span className={styles.cushion}>{fmtUSD(liqDropUsd)} above liq ~{fmtUSD(cbLiqPrice)} · {(liqDropPct * 100).toFixed(0)}% drop away · {fmtUSD(accruedBalance)} balance</span>
         </div>
         {neverAnchored && (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>

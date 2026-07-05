@@ -1,5 +1,5 @@
 import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from './cbMetrics';
-import { computeStrikeLtv } from './strikeCredit';
+import { computeStrikeLtv, strikeAvailableCredit } from './strikeCredit';
 import { CB_LLTV } from './runCoinbaseLoan';
 import type { StoreState } from '../store/useStore'; // TYPE-only → erased at compile → no runtime cycle
 
@@ -239,7 +239,9 @@ export function computeViewerSafety(
   const overall = deriveViewerOverall(view, inputs.hasCbLoan);
   const strikeLiqLtv = inputs.strikeLiquidationLtvPct / 100;
   const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - view.strikeLtv / strikeLiqLtv) : 0;
-  const availCredit = inputs.creditLine - inputs.advisorActualBlocBalance;
+  // Strike available credit — the LTV-capped truth (min(creditLine, collateral·price·50%) − drawn),
+  // NOT the naive creditLine − drawn (which overstated drawable credit by the LTV gap). total = binding limit.
+  const cap = strikeAvailableCredit(inputs.creditLine, inputs.currentBtcHeld, inputs.btcPrice, inputs.advisorActualBlocBalance);
   const strikeLiqPrice = inputs.currentBtcHeld > 0
     ? inputs.advisorActualBlocBalance / (inputs.currentBtcHeld * strikeLiqLtv)   // bloc / (btcHeld × liqLtv)
     : 0;
@@ -250,7 +252,7 @@ export function computeViewerSafety(
     cbLtv: view.cbLtv, cbLevel: view.cbLevel,
     hasCbLoan: inputs.hasCbLoan, overall, strikeDropPct,
     figures: {
-      credit: { used: inputs.advisorActualBlocBalance, total: inputs.creditLine, avail: availCredit },
+      credit: { used: inputs.advisorActualBlocBalance, total: cap.limit, avail: cap.available },
       strike: { liqPrice: strikeLiqPrice, balance: inputs.advisorActualBlocBalance },
       cb:     { liqPrice: view.cbLiqPrice, balance: view.accruedBalance },
     },

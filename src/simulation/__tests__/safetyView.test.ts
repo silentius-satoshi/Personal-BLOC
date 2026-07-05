@@ -12,6 +12,7 @@ import {
   type SafeSnapshot,
 } from '../safetyView';
 import { cbMetrics, accruedCbBalance } from '../cbMetrics';
+import { strikeAvailableCredit } from '../strikeCredit';
 import { CB_LLTV } from '../runCoinbaseLoan';
 import type { StoreState } from '../../store/useStore';
 
@@ -281,5 +282,29 @@ describe('computeViewerSafety (viewer render seam)', () => {
     expect(r.figures!.credit.used).toBe(5_000);
     expect(r.figures!.credit.total).toBe(inputs.creditLine);
     expect(r.figures!.credit.avail).toBe(inputs.creditLine - 5_000);
+  });
+
+  // Decision A — figures.credit uses the LTV-capped truth (strikeAvailableCredit), NOT naive creditLine − drawn.
+  it('LTV-bound fixture (collateral cap < creditLine): total = binding limit, not the credit line', () => {
+    const inputs = { ...base, creditLine: 100_000, advisorActualBlocBalance: 5_000 }; // ltvCap = 1×100k×0.5 = 50k < 100k
+    const r = computeViewerSafety(null, 100_000, inputs);
+    const cap = strikeAvailableCredit(inputs.creditLine, inputs.currentBtcHeld, inputs.btcPrice, inputs.advisorActualBlocBalance);
+    expect(cap.limit).toBe(50_000);           // collateral-bound, below the 100k line
+    expect(r.figures!.credit.used).toBe(5_000);
+    expect(r.figures!.credit.total).toBe(cap.limit);        // 50_000, NOT creditLine 100_000
+    expect(r.figures!.credit.total).toBe(50_000);
+    expect(r.figures!.credit.avail).toBe(cap.available);    // 45_000
+    expect(r.figures!.credit.avail).toBe(45_000);
+  });
+
+  it('line-bound fixture (cap > line): total = creditLine', () => {
+    const inputs = { ...base, advisorActualBlocBalance: 5_000 }; // ltvCap 50k > line 10k → limit = line
+    const r = computeViewerSafety(null, 100_000, inputs);
+    const cap = strikeAvailableCredit(inputs.creditLine, inputs.currentBtcHeld, inputs.btcPrice, inputs.advisorActualBlocBalance);
+    expect(cap.limit).toBe(inputs.creditLine);   // 10_000 — line-bound
+    expect(r.figures!.credit.used).toBe(5_000);
+    expect(r.figures!.credit.total).toBe(cap.limit);       // === creditLine
+    expect(r.figures!.credit.avail).toBe(cap.available);   // 5_000
+    expect(r.figures!.credit.avail).toBe(5_000);
   });
 });
