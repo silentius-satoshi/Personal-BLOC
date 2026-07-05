@@ -1599,7 +1599,10 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
   `LEVEL_COLOR` mirrors SafetyDashboard.
 - **`src/components/Viewer/RadialGauge.tsx`** (+ `.module.css`) — lightweight presentational SVG
   donut (stroke-dasharray fill, props `{pct,color,label}`, center "{pct}%", `role="img"`). NOT the
-  Almanac `CycleDial` (coordinate-system-specialized).
+  Almanac `CycleDial` (coordinate-system-specialized). The `stroke-dashoffset` CSS transition on the
+  progress circle was REMOVED (device-evidenced iOS WebKit ghost-arc artifact when an animating stroke
+  shares an element with the `transform="rotate(-90 ...)"` attribute; trusted-mode-only, since safe
+  mode's static snapshot `pct` never re-triggered the transition) — the gauge now renders statically.
 - **`AppShell.tsx`** — a new render branch `viewerMode && viewerDataLoaded && activeTab !== 'settings'
   && activeTab !== 'almanac'` → `<ViewerHomeView onOpenSettings={…}/>`, inserted AFTER the
   `PrivateAppNotice` owner gate and BEFORE the `simpleMode` branches. So the viewer home REPLACES

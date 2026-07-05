@@ -46,7 +46,6 @@ export function RadialGauge({ pct, color, label }: RadialGaugeProps) {
         strokeDasharray={C}
         strokeDashoffset={offset}
         transform={`rotate(-90 ${SIZE / 2} ${SIZE / 2})`}
-        style={{ transition: 'stroke-dashoffset 0.5s cubic-bezier(0.2, 0.7, 0.2, 1)' }}
       />
       <text className={styles.value} x="50%" y="50%" textAnchor="middle" dominantBaseline="central" fill={color}>
         {Math.round(clamped)}%
