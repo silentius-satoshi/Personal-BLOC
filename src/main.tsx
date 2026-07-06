@@ -9,6 +9,14 @@ import './styles/global.css';
 import App from './App.tsx';
 import { NostrProvider } from './providers/NostrProvider';
 import { ErrorBoundary, GlobalErrorOverlay } from './components/Layout/ErrorBoundary';
+import { haptics, hapticsSupport } from './lib/haptics';
+
+// Device-gate probe: console access to the haptics adapter (harmless in prod,
+// also guarantees the module isn't tree-shaken out before P1 adds real consumers).
+(window as unknown as Record<string, unknown>).__bloc = {
+  hapticsSupport,
+  haptics,
+};
 
 // Workbox SW (vite-plugin-pwa, autoUpdate) — registers immediately; reloads clients when a new deploy's SW activates.
 registerSW({ immediate: true });
