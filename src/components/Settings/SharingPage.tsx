@@ -268,6 +268,10 @@ function GenerateViewerKeyBlock() {
         value={handoffPassphrase}
         onChange={(e) => { setHandoffPassphrase(e.target.value); setError(null); }}
         disabled={busy}
+        autoCapitalize="none"
+        autoCorrect="off"
+        spellCheck={false}
+        autoComplete="off"
       />
       {showPin ? (
         <div className={styles.pinRow}>

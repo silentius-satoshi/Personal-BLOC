@@ -45,8 +45,8 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   // derived + handed over). Both models coexist; the active key is wrapped identically on Done.
   const [keyMode, setKeyMode] = useState<'generate' | 'paste'>('generate');
   const [pastedToken, setPastedToken] = useState('');
-  // Passphrase for an ncryptsec token. DEBOUNCED (450ms) before it feeds the decrypt memo — nip49.decrypt is
-  // SYNCHRONOUS scrypt (default logn 16), so decrypting per keystroke would freeze the mobile main thread.
+  // Passphrase for an ncryptsec token. DEBOUNCED (450ms) before it feeds the decrypt effect below — nip49.decrypt
+  // is SYNCHRONOUS scrypt (default logn 16), so decrypting per keystroke would freeze the mobile main thread.
   const [tokenPassphrase, setTokenPassphrase] = useState('');
   const [debouncedPassphrase, setDebouncedPassphrase] = useState('');
   useEffect(() => {
@@ -55,22 +55,40 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   }, [tokenPassphrase]);
   // Parse the token (structure only — cheap; no crypto). Feeds the passphrase-field gate + the owner-npub lock.
   const parsed = useMemo(() => (keyMode === 'paste' ? parseHandoffToken(pastedToken) : null), [keyMode, pastedToken]);
+  // ncryptsec decrypt runs in an EFFECT, not a memo — nip49.decrypt is SYNCHRONOUS scrypt, and running it inside
+  // a memo blocks the same render/paint that commits the debounced passphrase, so "Checking passphrase…" would
+  // never actually paint before the freeze. The 30ms setTimeout yields one frame so it does.
+  const [decryptState, setDecryptState] = useState<{ key: { sk: Uint8Array; npub: string } | null; checking: boolean }>(
+    { key: null, checking: false },
+  );
+  useEffect(() => {
+    const trimmed = debouncedPassphrase.trim();   // symmetric with the owner's handoffPassphrase.trim() at encrypt time
+    if (parsed?.kind !== 'ncryptsec' || !trimmed) {
+      setDecryptState({ key: null, checking: false });
+      return;
+    }
+    setDecryptState({ key: null, checking: true });   // never carry a stale key while re-checking a new passphrase
+    const t = setTimeout(() => {
+      try {
+        const sk = nip49.decrypt(parsed.keyPart, trimmed);   // sync scrypt — runs AFTER the checking state paints
+        setDecryptState({ key: { sk, npub: nip19.npubEncode(getPublicKey(sk)) }, checking: false });
+      } catch {
+        setDecryptState({ key: null, checking: false });
+      }
+    }, 30);
+    return () => clearTimeout(t);   // a stale in-flight decrypt must not land after a newer keystroke
+  }, [parsed, debouncedPassphrase]);
   // Decode the key part → { sk, npub } (null while empty/invalid/wrong-passphrase → gates Done + shows confirmation).
   const pastedKey = useMemo(() => {
     if (keyMode !== 'paste' || !parsed) return null;
+    if (parsed.kind === 'ncryptsec') return decryptState.key;
     try {
-      let sk: Uint8Array;
-      if (parsed.kind === 'ncryptsec') {
-        if (!debouncedPassphrase) return null;                 // need the passphrase first
-        sk = nip49.decrypt(parsed.keyPart, debouncedPassphrase);   // sync scrypt; throws on wrong passphrase
-      } else {
-        const d = nip19.decode(parsed.keyPart);
-        if (d.type !== 'nsec') return null;
-        sk = d.data as Uint8Array;
-      }
+      const d = nip19.decode(parsed.keyPart);
+      if (d.type !== 'nsec') return null;
+      const sk = d.data as Uint8Array;
       return { sk, npub: nip19.npubEncode(getPublicKey(sk)) };
     } catch { return null; }
-  }, [keyMode, parsed, debouncedPassphrase]);
+  }, [keyMode, parsed, decryptState]);
   const activeKey = keyMode === 'paste' ? pastedKey : viewerKey;
   const [ownerNpub, setOwnerNpub]     = useState('');
   // Owner npub carried by the token → prefill + lock the field (shown for confirmation). Null → editable
@@ -243,9 +261,18 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
                     placeholder="Passphrase"
                     value={tokenPassphrase}
                     onChange={(e) => { setTokenPassphrase(e.target.value); setViewerError(null); }}
+                    autoCapitalize="none"
+                    autoCorrect="off"
+                    spellCheck={false}
+                    autoComplete="off"
                   />
                 </div>
-                {debouncedPassphrase && !pastedKey && (
+                {decryptState.checking && (
+                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default' }}>
+                    Checking passphrase…
+                  </span>
+                )}
+                {!decryptState.checking && debouncedPassphrase.trim() && !pastedKey && (
                   <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', color: 'var(--red)' }}>
                     Wrong passphrase
                   </span>

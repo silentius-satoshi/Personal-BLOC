@@ -3342,12 +3342,22 @@ npub and supports an encrypted (NIP-49) key part for remote transport (see the H
   semantics (derive, replace-guard, publish, zeroing) unchanged.
 - **Viewer path (`ViewerLoginFlow.tsx` paste mode)** — the input is now the **token**; `parseHandoffToken` →
   `parsed`. `nsec` → `nip19.decode`; `ncryptsec` → a **passphrase field** + `nip49.decrypt(keyPart, passphrase)`
-  in try/catch (wrong passphrase → null → friendly "Wrong passphrase"). ⚠ The passphrase is **DEBOUNCED 450ms**
-  before it reaches the decrypt memo — `nip49.decrypt` is SYNCHRONOUS scrypt (default logn 16), so decrypting per
-  keystroke would freeze the mobile main thread (the field uses `tokenPassphrase`, the memo + hint use
-  `debouncedPassphrase`). The token's npub half **prefills + locks** (`readOnly`) the owner-npub field
-  (`lockedOwnerNpub`; null → editable for generate mode / bare-nsec). `handleViewerDone` /
-  `wrapSecretKey(activeKey.sk)` UNCHANGED; `viewerCanDone`'s `!!activeKey` already gates a failed decrypt.
+  in try/catch (wrong passphrase → null → friendly "Wrong passphrase"). Both passphrase inputs (owner's in
+  `SharingPage` + viewer's here) carry `autoCapitalize="none" autoCorrect="off" spellCheck={false}
+  autoComplete="off"` — iOS silently autocapitalizes/autocorrects an un-suppressed field, which would make the
+  encrypted and decrypted strings permanently disagree. ⚠ The passphrase is **DEBOUNCED 450ms**
+  (`tokenPassphrase` → `debouncedPassphrase`) — `nip49.decrypt` is SYNCHRONOUS scrypt (default logn 16), so
+  decrypting per keystroke would freeze the mobile main thread. The decrypt itself runs in a **`useEffect`, NOT a
+  memo** (`decryptState: {key, checking}`): the effect trims `debouncedPassphrase` (**symmetric** with the
+  owner's `handoffPassphrase.trim()` at encrypt time — an untrimmed viewer-side passphrase would silently
+  mismatch a trimmed owner-side one), sets `{key:null, checking:true}` (never carries a stale key from a prior
+  passphrase while re-checking), then a 30ms `setTimeout` yields one frame so **"Checking passphrase…"** actually
+  paints before the blocking `nip49.decrypt` call runs (cleaned up on re-fire so a stale in-flight decrypt can't
+  land after a newer keystroke); success → `{key,checking:false}`, throw → `{key:null,checking:false}`. The
+  `pastedKey` memo's `ncryptsec` branch is just `decryptState.key` (no crypto in the memo). "Wrong passphrase"
+  renders only `!checking && trimmed && !key`. The token's npub half **prefills + locks** (`readOnly`) the
+  owner-npub field (`lockedOwnerNpub`; null → editable for generate mode / bare-nsec). `handleViewerDone` /
+  `wrapSecretKey(activeKey.sk)` UNCHANGED; `viewerCanDone`'s `!!activeKey` already gates a failed/in-flight decrypt.
 - **`SecretKeyCard`** — one optional additive `hint?` prop (default password-manager copy); RevealRecoveryKey +
   OwnerKeySetup omit it (byte-identical), SharingPage passes a token hint.
 - **⚠ Transitional back-compat:** the owner side no longer emits a bare nsec anywhere (it always builds a token);
