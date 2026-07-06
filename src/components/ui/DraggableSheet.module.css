@@ -1,0 +1,46 @@
+/* DraggableSheet (Gesture & Motion System — P1). The shared drag-to-dismiss bottom-sheet shell —
+   reproduces the byte-identical `.scrim`/`.sheet`/`.grab` idiom the adopters delete from their own CSS.
+   Motion (translate/opacity) is applied via inline style by the component, not here. */
+
+.scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  z-index: 9000;
+  padding: 0;
+}
+
+.sheet {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 460px;
+  /* max-height comes from the component's maxHeight prop (inline) — shells differ (92vh / 88vh). */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 8px 18px 22px;
+  /* The compositor owns vertical scroll; drag-to-dismiss rides on top at scrollTop 0. */
+  touch-action: pan-y;
+}
+
+.grab {
+  width: 36px;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--line);
+  margin: 10px auto 2px;
+  flex-shrink: 0;
+  touch-action: none;
+  transition: background var(--motion-fast) var(--ease-standard);
+}
+
+.sheet[data-tracking] .grab {
+  background: var(--text-muted);
+}

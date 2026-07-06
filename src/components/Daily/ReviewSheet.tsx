@@ -7,8 +7,8 @@
 //    provisional via the rollup) OR "Confirm as provisional" (confirmMonth — provisional SURVIVES; honest).
 // Mostly-presentational: it holds only the sign-off field drafts (seeded fresh each open — it unmounts when
 // closed) and hands them back via onConfirm(extras); the host owns confirmMonth + the side-effects.
-import { useState } from 'react';
-import { createPortal } from 'react-dom';
+import { useState, useRef } from 'react';
+import { DraggableSheet } from '../ui/DraggableSheet';
 import { fmtUSD } from '../../utils/format';
 import type { MonthRollup } from './calendarModel';
 import styles from './ReviewSheet.module.css';
@@ -48,7 +48,23 @@ export function ReviewSheet({
   const [ndpChecked, setNdpChecked] = useState(false);
   const [ndpPaid, setNdpPaid]       = useState(Math.round(ndpPrefill));
 
+  // P1 DraggableSheet dirty-guard — this sheet mounts fresh each open (useState initializers re-run), so the
+  // baseline = the same initializer expressions, captured once. A pristine review may drag-dismiss; any edit
+  // to a sign-off field guards it (dismissal becomes tap-only).
+  const baseRef = useRef({
+    expenses: Math.round(rollup.streams.draw),
+    strikeMin: Math.round(strikeMinPrefill),
+    ndpChecked: false,
+    ndpPaid: Math.round(ndpPrefill),
+  });
+
   if (!open) return null;
+
+  const dirty =
+    expenses !== baseRef.current.expenses ||
+    strikeMin !== baseRef.current.strikeMin ||
+    ndpChecked !== baseRef.current.ndpChecked ||
+    ndpPaid !== baseRef.current.ndpPaid;
 
   const buildExtras = (): ConfirmExtras => ({
     expensesActual: expenses,
@@ -56,12 +72,10 @@ export function ReviewSheet({
     ...(!isIncome && ndpActive && ndpChecked ? { ndpPaid } : {}),
   });
 
-  return createPortal(
-    <div className={styles.scrim} onClick={onClose}>
-      <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.grab} />
+  return (
+    <DraggableSheet open={open} onDismiss={onClose} dirty={dirty} maxHeight="88vh" labelledBy="reviewSheetTitle">
         <div className={styles.head}>
-          <span className={styles.title}>Review Month {month}</span>
+          <span id="reviewSheetTitle" className={styles.title}>Review Month {month}</span>
         </div>
 
         {/* Rolled-up totals (read-only, the hero) */}
@@ -161,8 +175,6 @@ export function ReviewSheet({
             <button className={styles.primaryBtn} onClick={() => onConfirm(buildExtras())}>Confirm</button>
           </div>
         )}
-      </div>
-    </div>,
-    document.body,
+    </DraggableSheet>
   );
 }

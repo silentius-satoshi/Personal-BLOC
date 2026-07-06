@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (642 tests — all must pass before every commit)
+- Vitest (644 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -175,6 +175,40 @@ src/
       ScenarioPills.tsx
       GrowthPresetPills.tsx
       LtvTypePills.tsx
+      DraggableSheet.tsx        # Gesture & Motion System P1 — the SHARED drag-to-dismiss bottom-sheet shell
+                                # ({ open, onDismiss, dirty?, labelledBy?, maxHeight?='92vh', scrollRef?, children }).
+                                # createPortal→body; reproduces the byte-identical .scrim/.sheet/.grab idiom the
+                                # adopters (EventSheet/ReviewSheet/AlmanacConsentSheet) DELETE from their own CSS.
+                                # Gesture via usePointerDrag (axis 'y', slop 8, armThreshold 24, commitThreshold =
+                                # measuredHeight×0.45 [read live — the hook reads config per event], commitVelocity
+                                # 900). onMove writes transform/opacity DIRECTLY (rAF-batched, no React state):
+                                # downward tracks 1:1 (dirty → rubberBand cap at 25%), upward → native scroll when
+                                # the content is scrollable else rubberBand 24px; scrim.opacity = 1−clamp(ty/h) (the
+                                # scrim IS the progress bar). onEnd dismiss = committed && dy>0 && !dirty → exit
+                                # (translateY 100% --ease-standard/--motion-standard) then onDismiss; else spring
+                                # back (--ease-spring/--motion-settle). Entry: translateY 100%→0 280ms
+                                # --ease-decelerate + scrim fade (inline style, one transform channel shared with
+                                # drag/spring/exit; transition cleared to none during tracking). DIRTY-GUARD
+                                # (non-negotiable 1): 25% cap + one haptics.warn() on first arm + release ALWAYS
+                                # springs back → dismissing a dirty sheet is TAP-ONLY (children's Cancel/X). onArm is
+                                # DIRECTION-GATED (dyRef>0 else return) so an upward content-scroll fires no haptic;
+                                # clean → haptics.tick(). SCROLL COEXISTENCE: handlePointerDown live-reads
+                                # (scrollRef ?? sheet).scrollTop — >0 → the pointer belongs to native scroll (the
+                                # sheet IS its own scroller; touch-action:pan-y). KEYBOARD GUARD: onFocusCapture/
+                                # onBlurCapture on input/textarea/select → enabled:false while focused (iOS keyboard-
+                                # viewport math not fought). REDUCED-MOTION (useReducedMotion): entry/exit instant,
+                                # drag renders no continuous translation (snaps at commit/cancel) — still functions.
+                                # a11y: role=dialog/aria-modal/aria-labelledby on the SHEET, grabber aria-hidden;
+                                # scrim stays a plain div (aria-hidden there would hide the dialog — deliberate
+                                # deviation from the literal spec). Adopters keep their own if(!open)return null (so
+                                # open is effectively always true while mounted; entry animates on mount, drag-exit
+                                # animates, tap-close stays instant). Consumers: EventSheet (dirty = staged amount ||
+                                # strikeCollateralTouched || cbLiqPriceReading — conservative, interaction-based),
+                                # ReviewSheet (dirty = any sign-off field ≠ its fresh-mount initializer baseline),
+                                # AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
+                                # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
+      DraggableSheet.module.css # .scrim/.sheet/.grab (the shared shell — max-height comes from the prop, inline);
+                                # .grab 36×5 radius 3, eases to --text-muted while the sheet has [data-tracking]
 
     Inputs/
       InputsPanel.tsx           # Smart BLOC sidebar — .scrollArea + sticky .recommendations
@@ -2670,6 +2704,9 @@ visible tap equivalent; motion explains causality, never decoration.
   8) it axis-locks ONLY when the dominant axis beats the cross axis by `axisLockRatio` (default 1.4) AND matches
   `config.axis`, else CANCELS (releases to native scroll). `armThreshold`/`commitThreshold`/`commitVelocity` are
   REQUIRED (per-surface); commit on release = `|primaryDelta| ≥ commitThreshold` OR `|velocity| ≥ commitVelocity`.
+  **P1 arm-on-lock fix:** the move that crosses `slop` + passes the axis test evaluates `armThreshold` in the SAME
+  call (`dominantMag ≥ armThreshold ? 'armed' : 'axisLocked'`), so a single-move flick (`down→one big move→up`)
+  reaches the velocity-commit branch instead of cancelling from `axisLocked`.
   A `cancel` event (incl. synthesized second-pointer) cancels from any non-terminal phase. Also `createGesture`,
   `velocity` (px/s over a 3-sample rolling window along the locked axis; 0 if <2 samples or Δt=0), `primaryDelta`,
   `rubberBand(pull,max) = pull*max/(pull+max)` (sign-preserving, asymptote < max). Consumed by `usePointerDrag`
@@ -2705,8 +2742,8 @@ visible tap equivalent; motion explains causality, never decoration.
 
 ## Test Suite
 
-642 tests — `npx vitest run` before every commit.
-- `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System P0 pure state machine (23 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. (usePointerDrag/haptics/useReducedMotion DOM behavior defers to the P1 device gate — `hapticsSupport()` from the console.)
+644 tests — `npx vitest run` before every commit.
+- `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (25 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the P1 device gate.)
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)

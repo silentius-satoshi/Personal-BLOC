@@ -167,11 +167,15 @@ export function advance(
         if (!beatsCross || dominant !== config.axis) {
           return { ...state, dx, dy, phase: 'cancelled' };
         }
+        // Evaluate armThreshold in the SAME call: at the lock, lockedAxis === config.axis so the primary
+        // delta is dominantMag. A single large move (a flick) that both crosses slop AND passes
+        // armThreshold must land in 'armed' — else a down→one-big-move→up would cancel from 'axisLocked'
+        // without ever reaching the velocity-commit branch.
         return {
           ...state,
           dx,
           dy,
-          phase: 'axisLocked',
+          phase: dominantMag >= config.armThreshold ? 'armed' : 'axisLocked',
           lockedAxis: dominant,
           samples: pushSample(state.samples, { t: event.t, x: event.x, y: event.y }),
         };

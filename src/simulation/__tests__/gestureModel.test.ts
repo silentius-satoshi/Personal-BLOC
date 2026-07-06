@@ -70,6 +70,13 @@ describe('axis lock', () => {
 });
 
 describe('arm / disarm', () => {
+  it('arms on the SAME move that crosses slop when |delta| >= armThreshold', () => {
+    // WHY: a single large move (a flick) must land in 'armed', not 'axisLocked' — otherwise the release
+    // never reaches the velocity-commit branch. (The P0-flagged arm-on-lock fix.)
+    const s = run(CFG, [ev('down', 0, 0, 0), ev('move', 70, 0, 16)]);
+    expect(s.phase).toBe('armed');
+  });
+
   it('arms when the primary delta crosses armThreshold', () => {
     // WHY: 70 ≥ 64 arms the gesture.
     const s = run(CFG, [ev('down', 0, 0, 0), ev('move', 20, 0, 16), ev('move', 70, 0, 32)]);
@@ -110,6 +117,21 @@ describe('commit / cancel on release', () => {
       ev('move', 90, 0, 16),
       ev('up', 90, 0, 16),
     ]);
+    expect(s.phase).toBe('committed');
+  });
+
+  it('commits a single-move flick via the velocity path (arm-on-lock fix)', () => {
+    // WHY: down → one 100px move → up. Distance 100 < commitThreshold 200, but velocity
+    // 100px/20ms = 5000px/s ≥ 900 commits. Pre-fix this cancelled from axisLocked (never armed).
+    const flickCfg: GestureConfig = {
+      axis: 'y',
+      slop: 8,
+      axisLockRatio: 1.4,
+      armThreshold: 40,
+      commitThreshold: 200,
+      commitVelocity: 900,
+    };
+    const s = run(flickCfg, [ev('down', 0, 0, 0), ev('move', 0, 100, 20), ev('up', 0, 100, 30)]);
     expect(s.phase).toBe('committed');
   });
 

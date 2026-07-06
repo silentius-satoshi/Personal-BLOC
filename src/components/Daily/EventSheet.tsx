@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { createPortal } from 'react-dom';
+import { DraggableSheet } from '../ui/DraggableSheet';
 import { useStore } from '../../store/useStore';
 import { bucketEventToMonth } from '../../simulation/logUtils';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
@@ -395,13 +395,17 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     isCurrent: paydownMonth === getCurrentStrategyMonth(advisorStartDate),
   });
 
-  return createPortal(
-    <div className={styles.scrim} onClick={handleClose}>
-      <div className={styles.sheet} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.grab} />
+  // P1 DraggableSheet dirty-guard — CONSERVATIVE, interaction-based (never under-guards STAGED input): a
+  // staged flow amount, a manually-touched Strike collateral, or an entered §5b liq re-anchor. A pristine
+  // just-opened sheet (no amount) flick-dismisses freely; editing a prefilled reading in setBalance without
+  // touching collateral is NOT guarded (those readings are re-derivable). Avoids snapshotting the seed effect
+  // (which also feeds the strikeCollateral auto-track — a snapshot would race its setState).
+  const dirty = (amount != null && amount > 0) || strikeCollateralTouched || cbLiqPriceReading != null;
 
+  return (
+    <DraggableSheet open={open} onDismiss={handleClose} dirty={dirty} maxHeight="92vh" labelledBy="eventSheetTitle">
         <div>
-          <div className={styles.sheetTitle}>{isEdit ? 'Edit event' : 'Log an event'}</div>
+          <div id="eventSheetTitle" className={styles.sheetTitle}>{isEdit ? 'Edit event' : 'Log an event'}</div>
           <div className={styles.sheetSub}>
             {isEdit && editEvent
               ? `${fmtDay(editEvent.date)} · Month ${month}`
@@ -627,8 +631,6 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           </div>
         )}
 
-      </div>
-    </div>,
-    document.body,
+    </DraggableSheet>
   );
 }
