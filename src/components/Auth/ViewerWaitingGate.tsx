@@ -1,17 +1,14 @@
-import { useState } from 'react';
-import { getViewerNpub } from '../../lib/nostr/viewerSync';
 import styles from './NostrAuthGate.module.css';
 
 /**
  * Data-remanence guard: shown to a viewer (unlocked, holder populated) until a VALID snapshot decrypt sets
  * viewerDataLoaded. Prevents stale persisted store data from rendering for a key that can't decrypt the owner's
- * snapshot. A REVOKED viewer unlocks fine (valid key) but never decrypts the re-sealed snapshot, so the "Reset
- * viewing key" escape is essential — without it the viewer is trapped here forever.
+ * snapshot. A REVOKED or ROTATED-OUT viewer unlocks fine (valid key) but never decrypts the re-sealed snapshot,
+ * so the "Reset viewing key" escape is essential — without it the viewer is trapped here forever. Handoff v4:
+ * PASTE-ONLY — the owner mints + hands over a token, so there's no "send the owner your npub" affordance;
+ * recovery is asking the owner for a new token and resetting to reconnect.
  */
 export function ViewerWaitingGate({ onReset }: { onReset: () => void }) {
-  const [copied, setCopied] = useState(false);
-  const npub = getViewerNpub();   // available — a viewer reaches this gate only AFTER unlocking (holder populated)
-
   return (
     <div className={styles.overlay}>
       <div className={styles.card}>
@@ -19,23 +16,9 @@ export function ViewerWaitingGate({ onReset }: { onReset: () => void }) {
         <h1 className={styles.title}>Personal ₿LOC</h1>
         <p className={styles.subtitle}>Waiting for the owner's data…</p>
         <p className={styles.hint}>
-          If this doesn't load, the owner may not have shared with this key yet (or revoked it). Reset to follow a
-          different owner — no data is lost.
+          If this doesn't load, the owner may not have shared with this key yet (or rotated it). Ask the owner
+          for a new handoff token, then reset below to reconnect — no data is lost.
         </p>
-        {npub && (
-          <>
-            <p className={styles.hint}>Send the owner your viewing key:</p>
-            <p className={styles.hint} style={{ fontFamily: 'monospace', wordBreak: 'break-all' }}>
-              {npub.slice(0, 16)}…{npub.slice(-8)}
-            </p>
-            <button
-              className={styles.ghostBtn}
-              onClick={() => { navigator.clipboard?.writeText(npub); setCopied(true); setTimeout(() => setCopied(false), 1500); }}
-            >
-              {copied ? 'Copied ✓' : 'Copy my npub'}
-            </button>
-          </>
-        )}
         <button className={styles.ghostBtn} onClick={onReset}>
           Reset viewing key
         </button>
