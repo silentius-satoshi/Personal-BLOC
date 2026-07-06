@@ -1,38 +1,35 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useStore, buildSettingsPayload, buildViewerSnapshotPayload } from '../useStore';
+import { useStore, buildSettingsPayload, buildViewerSnapshotPayload, type ViewerSlot } from '../useStore';
 import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
 import { previewSafeSnapFromPayload } from '../../simulation/safetyView';
 
 const LEVELS = ['safe', 'watch', 'act'];
 
+// A trusted-tier slot 0 — forces buildViewerSnapshotPayload down its C-trusted branch (Multi-viewer M1:
+// the tier is read from viewers[0]).
+const trustedSlot: ViewerSlot = { index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'trusted', keyVersion: 1 };
+
 describe('viewer snapshot builders', () => {
   beforeEach(() => {
-    // Reset the viewer config + privacy mode between cases (other state is irrelevant to these assertions).
-    useStore.getState().setViewerNpub(null);
-    useStore.getState().setViewerPubkey(null);
-    useStore.getState().setViewerLabel(null);
-    useStore.setState({ viewerPrivacyTrusted: false });   // default = C-safe
+    // Reset the roster between cases (empty ⇒ the default C-safe branch). Raw set — no publish side effects.
+    useStore.setState({ viewers: [], nextViewerIndex: 0 } as never);
   });
 
-  it("buildSettingsPayload INCLUDES the owner's viewer config (synced in the owner's own settings:v1)", () => {
-    useStore.getState().setViewerNpub('npub1exampleviewer');
-    useStore.getState().setViewerPubkey('a'.repeat(64));
-    useStore.getState().setViewerLabel("Dad's iPhone");
+  it("buildSettingsPayload INCLUDES the owner's viewer roster (synced in the owner's own settings:v1)", () => {
+    useStore.getState().addViewerSlot({ pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'safe', keyVersion: 1 });
     const payload = buildSettingsPayload(useStore.getState());
-    expect('viewerNpub' in payload).toBe(true);
-    expect('viewerPubkey' in payload).toBe(true);
-    expect('viewerLabel' in payload).toBe(true);
-    expect('viewerPrivacyTrusted' in payload).toBe(true);   // V2 — the sharing toggle syncs across owner devices
-    expect('viewerKeyVersion' in payload).toBe(true);        // derivation v1 — sharing config, syncs across owner devices
-    expect(payload.viewerNpub).toBe('npub1exampleviewer');
-    expect(payload.viewerPubkey).toBe('a'.repeat(64));
-    expect(payload.viewerLabel).toBe("Dad's iPhone");
+    expect('viewers' in payload).toBe(true);
+    expect('nextViewerIndex' in payload).toBe(true);
+    const roster = payload.viewers as ViewerSlot[];
+    expect(roster.length).toBe(1);
+    expect(roster[0]).toMatchObject({ index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'safe', keyVersion: 1 });
+    expect(payload.nextViewerIndex).toBe(1);
     // sanity: it also carries real synced settings
     expect('income' in payload).toBe(true);
     expect('advisorMonthStartBalance' in payload).toBe(true);
   });
 
-  // ── Viewer V2 — C-SAFE (default): the by-construction privacy proof ──────────────────────────────
+  // ── Viewer V2 — C-SAFE (default / empty roster): the by-construction privacy proof ──────────────────
   it('C-safe (default) payload has EXACTLY the safe keys — NO settings/records/strike/cbCollateralBtc', () => {
     const snap = buildViewerSnapshotPayload(useStore.getState());
     expect(Object.keys(snap).sort()).toEqual(
@@ -69,27 +66,29 @@ describe('viewer snapshot builders', () => {
     expect('cbLiqPrice' in safety).toBe(false);
   });
 
+  // ── Per-tier build (M1): slot-0 tier selects the branch ──────────────────────────────────────────
+  it("a slot-0 tier:'safe' builds the safe payload; tier:'trusted' builds the trusted payload", () => {
+    useStore.setState({ viewers: [{ ...trustedSlot, tier: 'safe' }], nextViewerIndex: 1 } as never);
+    expect(buildViewerSnapshotPayload(useStore.getState()).privacyMode).toBe('safe');
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
+    expect(buildViewerSnapshotPayload(useStore.getState()).privacyMode).toBe('trusted');
+  });
+
   // ── C-TRUSTED (opt-in): today's full payload ──────────────────────────────────────────────────
-  it("C-trusted payload STRIPS the owner's viewer config + viewerPrivacyTrusted from settings", () => {
-    useStore.setState({ viewerPrivacyTrusted: true });
-    useStore.getState().setViewerNpub('npub1exampleviewer');
-    useStore.getState().setViewerPubkey('a'.repeat(64));
-    useStore.getState().setViewerLabel("Dad's iPhone");
+  it("C-trusted payload STRIPS the owner's viewer roster from settings", () => {
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const snap = buildViewerSnapshotPayload(useStore.getState());
     expect(snap.privacyMode).toBe('trusted');
     const snapSettings = snap.settings as Record<string, unknown>;
-    expect('viewerNpub' in snapSettings).toBe(false);
-    expect('viewerPubkey' in snapSettings).toBe(false);
-    expect('viewerLabel' in snapSettings).toBe(false);
-    expect('viewerPrivacyTrusted' in snapSettings).toBe(false);
-    expect('viewerKeyVersion' in snapSettings).toBe(false);   // derivation v1 — the viewer never sees the version
+    expect('viewers' in snapSettings).toBe(false);
+    expect('nextViewerIndex' in snapSettings).toBe(false);
     expect('nostrRelays' in snapSettings).toBe(false);
     // but still carries the real settings the viewer needs
     expect('income' in snapSettings).toBe(true);
   });
 
   it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4)', () => {
-    useStore.setState({ viewerPrivacyTrusted: true });
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const snap = buildViewerSnapshotPayload(useStore.getState());
     expect(Object.keys(snap).sort()).toEqual(
       ['asOf', 'cbCollateralBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc'],
@@ -103,7 +102,7 @@ describe('viewer snapshot builders', () => {
 
   it('P3 (BUG2): C-trusted snapshot carries cbCollateralBtc derived from dayLog (scalar, not the journal)', () => {
     useStore.setState({
-      viewerPrivacyTrusted: true,
+      viewers: [trustedSlot], nextViewerIndex: 1,
       dayLog: [{ id: 'c1', date: '2026-01-05', ts: 5000, kind: 'cbCollateralReading', cbCollateral: 2.25 }],
       cbCollateralBtc: 0.99,
     } as never);
@@ -115,7 +114,7 @@ describe('viewer snapshot builders', () => {
 
   it('C-P4 (BUG2 mirror): C-trusted snapshot carries strikeCollateralBtc derived from dayLog (scalar, not the cache)', () => {
     useStore.setState({
-      viewerPrivacyTrusted: true,
+      viewers: [trustedSlot], nextViewerIndex: 1,
       dayLog: [{ id: 's1', date: '2026-01-05', ts: 5000, kind: 'balanceReading', reading: { strikeBal: 3000, strikeLtv: 0.1, strikeCollateral: 0.83 } }],
       strikeCollateralBtc: 0.11,
     } as never);
@@ -127,7 +126,7 @@ describe('viewer snapshot builders', () => {
 
   it("P3: the C-trusted snapshot's records carry entries + deletions but NOT the raw dayLog journal", () => {
     useStore.setState({
-      viewerPrivacyTrusted: true,
+      viewers: [trustedSlot], nextViewerIndex: 1,
       dayLog: [{ id: 'c1', date: '2026-01-05', ts: 5000, kind: 'cbCollateralReading', cbCollateral: 2.25 }],
     } as never);
     const snap = buildViewerSnapshotPayload(useStore.getState());
@@ -136,11 +135,11 @@ describe('viewer snapshot builders', () => {
     expect('dayLog' in (snap.records as object)).toBe(false);
   });
 
-  it("C-trusted settings deep-equal buildSettingsPayload minus viewer config + viewerPrivacyTrusted + viewerKeyVersion + nostrRelays", () => {
-    useStore.setState({ viewerPrivacyTrusted: true });
+  it("C-trusted settings deep-equal buildSettingsPayload minus the viewer roster + nostrRelays", () => {
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const s = useStore.getState();
-    const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, viewerKeyVersion: _v, nostrRelays: _r, ...ownerMinusViewerConfig } = buildSettingsPayload(s);
-    expect(buildViewerSnapshotPayload(s).settings).toEqual(ownerMinusViewerConfig);
+    const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, ...ownerMinusRoster } = buildSettingsPayload(s);
+    expect(buildViewerSnapshotPayload(s).settings).toEqual(ownerMinusRoster);
   });
 
   it('viewer-side fields (Phase 2) are device-local — never in the settings payload', () => {
@@ -161,24 +160,24 @@ describe('viewer snapshot builders', () => {
     useStore.getState().setViewerDisplayName('Dad');
     // owner settings payload
     expect('viewerDisplayName' in buildSettingsPayload(useStore.getState())).toBe(false);
-    // C-safe snapshot (no settings block at all)
-    useStore.setState({ viewerPrivacyTrusted: false });
+    // C-safe snapshot (empty roster ⇒ no settings block at all)
+    useStore.setState({ viewers: [] } as never);
     const safe = buildViewerSnapshotPayload(useStore.getState());
     expect('settings' in safe).toBe(false);
     expect('viewerDisplayName' in safe).toBe(false);
     // C-trusted snapshot settings
-    useStore.setState({ viewerPrivacyTrusted: true });
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const trusted = buildViewerSnapshotPayload(useStore.getState());
     expect('viewerDisplayName' in (trusted.settings as Record<string, unknown>)).toBe(false);
     // reset for other suites
-    useStore.setState({ viewerPrivacyTrusted: false });
+    useStore.setState({ viewers: [] } as never);
     useStore.getState().setViewerDisplayName(null);
   });
 
   // Owner "Preview as viewer" — the SafeSnapshot the preview injects can NEVER show more than the wire payload
   // (it IS the safe branch of buildViewerSnapshotPayload). Trusted mode → null (preview uses live-derive).
   it('previewSafeSnapFromPayload: safe payload → SafeSnapshot deep-equals the payload safe fields; trusted → null', () => {
-    useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: true } as never);
+    useStore.setState({ viewers: [], hasCbLoan: true } as never);
     const payload = buildViewerSnapshotPayload(useStore.getState());
     expect(payload.privacyMode).toBe('safe');
     const snap = previewSafeSnapFromPayload(payload);
@@ -189,18 +188,18 @@ describe('viewer snapshot builders', () => {
       hasCbLoan: payload.hasCbLoan,
     });
 
-    useStore.setState({ viewerPrivacyTrusted: true } as never);
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const trustedPayload = buildViewerSnapshotPayload(useStore.getState());
     expect(previewSafeSnapFromPayload(trustedPayload)).toBeNull();
 
-    useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: false } as never);
+    useStore.setState({ viewers: [], hasCbLoan: false } as never);
   });
 
-  // Preview-local override fidelity — even when the REAL setting is trusted, a forced-safe preview (the spread
-  // { ...state, viewerPrivacyTrusted: false }) can never show more than the safe wire payload would.
+  // Preview-local override fidelity — even when the REAL slot-0 tier is trusted, a forced-safe preview (the spread
+  // { ...state, viewers: [] }) can never show more than the safe wire payload would.
   it('preview override: forced-safe payload (from a trusted store) → SafeSnapshot deep-equals the safe wire fields', () => {
-    useStore.setState({ viewerPrivacyTrusted: true, hasCbLoan: true } as never);
-    const forcedSafePayload = buildViewerSnapshotPayload({ ...useStore.getState(), viewerPrivacyTrusted: false });
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1, hasCbLoan: true } as never);
+    const forcedSafePayload = buildViewerSnapshotPayload({ ...useStore.getState(), viewers: [] });
     expect(forcedSafePayload.privacyMode).toBe('safe');
     const snap = previewSafeSnapFromPayload(forcedSafePayload);
     expect(snap).toEqual({
@@ -210,6 +209,6 @@ describe('viewer snapshot builders', () => {
       hasCbLoan: forcedSafePayload.hasCbLoan,
     });
 
-    useStore.setState({ viewerPrivacyTrusted: false, hasCbLoan: false } as never);
+    useStore.setState({ viewers: [], hasCbLoan: false } as never);
   });
 });

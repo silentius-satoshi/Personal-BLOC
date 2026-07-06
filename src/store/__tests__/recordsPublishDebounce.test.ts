@@ -23,7 +23,7 @@ describe('records publish debounce (P3 coalescing)', () => {
     publishRecords.mockClear();
     useStore.setState({
       isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk',
-      viewerMode: false, viewerPubkey: null, nostrSigningMethod: 'local',
+      viewerMode: false, viewers: [], nostrSigningMethod: 'local',
       nostrRelays: [], dayLog: [], monthlyLog: [], deletedMonths: {}, deletedDayEvents: {},
       recordsDirty: false,
     } as never);

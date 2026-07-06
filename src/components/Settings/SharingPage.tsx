@@ -20,13 +20,13 @@ import styles from './SharingPage.module.css';
 export function SharingPage() {
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
-  const viewerNpub          = useStore((s) => s.viewerNpub);
-  const viewerLabel         = useStore((s) => s.viewerLabel);
-  const viewerPrivacyTrusted = useStore((s) => s.viewerPrivacyTrusted);
-  const setViewerNpub       = useStore((s) => s.setViewerNpub);
-  const setViewerPubkey     = useStore((s) => s.setViewerPubkey);
-  const setViewerLabel      = useStore((s) => s.setViewerLabel);
-  const setViewerPrivacyTrusted = useStore((s) => s.setViewerPrivacyTrusted);
+  // Multi-viewer roster (M1) — this UI still operates on SLOT 0 only (the roster UI is M3). slot0 is the
+  // single provisioned viewer; its tier drives the "Show real figures" toggle.
+  const viewers             = useStore((s) => s.viewers);
+  const addViewerSlot       = useStore((s) => s.addViewerSlot);
+  const updateViewerSlot    = useStore((s) => s.updateViewerSlot);
+  const removeViewerSlot    = useStore((s) => s.removeViewerSlot);
+  const slot0               = viewers[0] ?? null;
   // Preview-as-viewer trigger (relocated here from the journal headers) — sets the transient flag AND
   // leaves Settings so AppShell's branch J renders the (unchanged) ViewerPreview overlay.
   const setViewerPreview        = useStore((s) => s.setViewerPreview);
@@ -61,19 +61,23 @@ export function SharingPage() {
     try {
       const decoded = nip19.decode(input);
       if (decoded.type !== 'npub') { setError('Not a valid npub'); return; }
-      setViewerNpub(input);
-      setViewerPubkey(decoded.data as string);
-      const label = labelDraft.trim();
-      if (label) setViewerLabel(label);
+      addViewerSlot({ pubkeyHex: decoded.data as string, npub: input, label: labelDraft.trim() || 'Viewer', tier: 'safe', keyVersion: 1 });
       setError(null);
       void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates without waiting for an owner edit
     } catch { setError('Not a valid npub'); }
   };
 
   const revoke = () => {
-    void publishViewerRevocationNow();   // tombstone WHILE viewerPubkey is still set
-    setViewerNpub(null); setViewerPubkey(null); setViewerLabel(null);
+    if (!slot0) return;
+    void publishViewerRevocationNow();   // tombstone WHILE slot 0's pubkey is still set
+    removeViewerSlot(slot0.index);
     setDraft(''); setLabelDraft(''); setError(null); setConfirmRevoke(false);
+  };
+
+  const setTier = (v: boolean) => {
+    if (!slot0) return;
+    updateViewerSlot(slot0.index, { tier: v ? 'trusted' : 'safe' });
+    void publishViewerSnapshotNow();   // updateViewerSlot only syncs settings — republish so the viewer switches shape now
   };
 
   return (
@@ -88,13 +92,13 @@ export function SharingPage() {
 
       {/* YOUR VIEWER */}
       <div className={styles.groupTitle} style={{ marginTop: 20 }}>YOUR VIEWER</div>
-      {viewerNpub ? (
+      {slot0 ? (
         <div className={styles.grantCard}>
           <div className={styles.grantHead}>
             <span className={styles.grantDot} />
             <span className={styles.grantName}>
-              {viewerLabel || 'Viewer'}{' '}
-              <span className={styles.grantNpub}>({viewerNpub.slice(0, 12)}…{viewerNpub.slice(-6)})</span>
+              {slot0.label || 'Viewer'}{' '}
+              <span className={styles.grantNpub}>({slot0.npub.slice(0, 12)}…{slot0.npub.slice(-6)})</span>
             </span>
             <span className={styles.grantActive}>Active</span>
           </div>
@@ -103,7 +107,7 @@ export function SharingPage() {
               <span className={styles.toggleTitle}>Show real figures</span>
               <span className={styles.toggleHint}>Off: health only · On: balances + liquidation prices</span>
             </div>
-            <Toggle value={viewerPrivacyTrusted} onChange={setViewerPrivacyTrusted} />
+            <Toggle value={slot0.tier === 'trusted'} onChange={setTier} />
           </div>
           {confirmRevoke ? (
             <div className={styles.confirmRow}>
@@ -177,10 +181,10 @@ const GEN_AUTO_CLEAR_MS = 30_000;
  */
 function GenerateViewerKeyBlock() {
   const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
-  const viewerPubkey    = useStore((s) => s.viewerPubkey);
-  const setViewerNpub   = useStore((s) => s.setViewerNpub);
-  const setViewerPubkey = useStore((s) => s.setViewerPubkey);
-  const setViewerKeyVersion = useStore((s) => s.setViewerKeyVersion);
+  // Multi-viewer roster (M1) — this block still mints/rotates SLOT 0 only (roster UI is M3).
+  const viewerPubkey     = useStore((s) => s.viewers[0]?.pubkeyHex ?? null);
+  const addViewerSlot    = useStore((s) => s.addViewerSlot);
+  const updateViewerSlot = useStore((s) => s.updateViewerSlot);
   const isPin = wrapMeta?.scheme === 'pin';
 
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
@@ -203,14 +207,16 @@ function GenerateViewerKeyBlock() {
     let ownerSk: Uint8Array | null = null;
     let derived: Uint8Array | null = null;
     try {
-      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewerKeyVersion } = useStore.getState();
+      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewers } = useStore.getState();
       if (!writerKeyWrapped || !writerKeyWrapMeta || !pk) { setError('No local key on this device.'); return; }
+      const slot0 = viewers[0] ?? null;   // M1: mint/rotate slot 0
+      const keyVersion = slot0?.keyVersion ?? 1;
       ownerSk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, writerKeyWrapMeta.scheme === 'pin' ? pin : undefined);
-      derived = await deriveViewerKeyFromNsec(ownerSk, pk, viewerKeyVersion);
+      derived = await deriveViewerKeyFromNsec(ownerSk, pk, keyVersion);   // 3-arg (indexed derivation is M2)
       const hex = getPublicKey(derived);
       // Replace-guard — never silently swap out a live viewer. Re-deriving the SAME key (existing === hex) is the
       // friction-free determinism/recovery path and skips the confirm. Rotation SUPPRESSES it (already confirmed).
-      const existing = useStore.getState().viewerPubkey;
+      const existing = slot0?.pubkeyHex ?? null;
       if (!opts?.skipReplaceGuard && existing && existing !== hex) {
         // eslint-disable-next-line no-alert
         if (!window.confirm(
@@ -218,8 +224,9 @@ function GenerateViewerKeyBlock() {
           'device stops receiving updates until it signs in with the new key. Replace?'
         )) { return; }   // ownerSk + derived zeroed by the finally
       }
-      setViewerPubkey(hex);
-      setViewerNpub(nip19.npubEncode(hex));
+      const npub = nip19.npubEncode(hex);
+      if (slot0) updateViewerSlot(slot0.index, { pubkeyHex: hex, npub });   // rotation preserves tier/keyVersion
+      else addViewerSlot({ pubkeyHex: hex, npub, label: 'Viewer', tier: 'safe', keyVersion: 1 });
       void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates once they sign in
       // Build the handoff token. Encode/encrypt the derived key BEFORE the finally zeros it; the token STRING
       // carries the value for the reveal window.
@@ -258,7 +265,9 @@ function GenerateViewerKeyBlock() {
       'Rotating invalidates the current viewer key — the viewer\'s device will stop receiving updates until they ' +
       'sign in again with a new token. Rotate?'
     )) return;
-    setViewerKeyVersion(useStore.getState().viewerKeyVersion + 1);   // sync set → getState() below reads the bumped value
+    const slot0 = useStore.getState().viewers[0];
+    if (!slot0) return;
+    updateViewerSlot(slot0.index, { keyVersion: slot0.keyVersion + 1 });   // sync set → doGenerate reads the bumped keyVersion
     setSkipGuard(true);
     if (isPin) setShowPin(true);
     else doGenerate({ skipReplaceGuard: true });

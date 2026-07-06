@@ -15,6 +15,18 @@ import type { NostrSigner } from '@nostrify/nostrify';
 
 export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
 
+// Multi-viewer roster (M1) — one provisioned viewer. `index` is stable + monotonic (never reused after
+// removal); `pubkeyHex` is the derived viewer pubkey the snapshot encrypts to; `tier`/`keyVersion` are
+// per-viewer (M2 rotation bumps a single slot). SYNCED in the owner's settings, STRIPPED from viewer payloads.
+export interface ViewerSlot {
+  index:      number;
+  pubkeyHex:  string;
+  npub:       string;
+  label:      string;
+  tier:       'safe' | 'trusted';
+  keyVersion: number;
+}
+
 // At-rest store encryption — standalone localStorage flag, read once at module load. Lives OUTSIDE the persisted
 // store blob (you can't read a setting stored inside the thing it gates). Persist is FLAG-CONDITIONAL since 3a.2:
 // flag on → the encrypted `encryptedStorage` adapter; flag off (default) → plain `window.localStorage` (see the
@@ -359,20 +371,14 @@ export interface StoreState {
   // Writer local-key (iOS Face-ID signer) — device-local, NEVER synced (excluded from any relay payload).
   writerKeyWrapped:   string | null;      // AES-GCM ciphertext (base64) of the writer nsec
   writerKeyWrapMeta:  WrapMeta | null;    // { iv, scheme, credentialId?, salt }
-  // Viewer access (Phase 1, writer-side) — the provisioned viewer's npub/hex pubkey + the owner's nickname for
-  // them. SYNCED in the OWNER's own settings:v1 (so viewer config + removal propagate across the owner's devices)
-  // but STRIPPED from the viewer snapshot (the viewer must never learn who else the owner shares with, nor the
-  // owner's private nickname for them). Public npubs — no secret leak. Gates publishViewerSnapshotNow.
-  viewerNpub:         string | null;
-  viewerPubkey:       string | null;      // hex — NIP-44 encrypt target for the viewer snapshot
-  viewerLabel:        string | null;      // owner-assigned nickname for the viewer (e.g. "Dad's iPhone")
-  // Viewer V2 — C-safe/C-trusted privacy. false (default) = C-safe (health ratios only); true = C-trusted
-  // (full figures). Owner sharing config: SYNCED across the owner's devices, STRIPPED from the viewer snapshot.
-  viewerPrivacyTrusted: boolean;
-  // Viewer-key derivation v1 — the version byte for deterministic viewer-key derivation (deriveViewerKeyFromNsec).
-  // Owner sharing config: SYNCED across the owner's devices (so re-derivation is stable everywhere), STRIPPED from
-  // the viewer snapshot. Default 1; bumping it re-derives a NEW viewer key (rotation) — no rotation UI yet.
-  viewerKeyVersion:    number;
+  // Multi-viewer roster (M1) — REPLACES the old single-viewer scalars (viewerNpub/viewerPubkey/viewerLabel/
+  // viewerPrivacyTrusted/viewerKeyVersion). Each ViewerSlot is one provisioned viewer: derived pubkey (the
+  // NIP-44 encrypt target), display npub, owner nickname, per-viewer tier + keyVersion. SYNCED in the OWNER's
+  // settings:v1 (roster + removals propagate across the owner's devices) but STRIPPED from every viewer
+  // snapshot (a viewer must NEVER learn who else the owner shares with, their tiers, or key versions).
+  // nextViewerIndex is a monotonic counter — an index is NEVER reused after removal.
+  viewers:            ViewerSlot[];
+  nextViewerIndex:    number;
   // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
   // viewer of the writer at viewerWriterPubkey, decrypting the viewer:v1 snapshot with viewerSecretKey.
   // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
@@ -397,11 +403,9 @@ export interface StoreState {
   setNostrLogin:         (v: string | null) => void;
   setWriterKeyWrapped:   (v: string | null) => void;
   setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
-  setViewerNpub:         (v: string | null) => void;
-  setViewerPubkey:       (v: string | null) => void;
-  setViewerLabel:        (v: string | null) => void;
-  setViewerPrivacyTrusted: (v: boolean) => void;
-  setViewerKeyVersion:   (v: number) => void;
+  addViewerSlot:         (slot: Omit<ViewerSlot, 'index'>) => void;
+  updateViewerSlot:      (index: number, patch: Partial<ViewerSlot>) => void;
+  removeViewerSlot:      (index: number) => void;
   setViewerMode:         (v: boolean) => void;
   setViewerWriterPubkey: (v: string | null) => void;
   setViewerSecretKey:    (v: string | null) => void;
@@ -597,8 +601,8 @@ export async function publishRelayListToNip65(): Promise<boolean> {
 }
 
 // THE settings payload — single source built from current state, consumed by BOTH publishSettingsNow AND the
-// viewer snapshot so the two can never drift. The owner's writer-side viewer config (viewerNpub/viewerPubkey/
-// viewerLabel) IS carried here (syncs across the owner's devices) but is STRIPPED from the viewer snapshot below.
+// viewer snapshot so the two can never drift. The owner's viewer roster (viewers/nextViewerIndex) IS carried
+// here (syncs across the owner's devices) but is STRIPPED from the viewer snapshot below.
 export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
   return {
     income:                   s.income,
@@ -638,12 +642,9 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
     nostrRelays:              s.nostrRelays,   // C: relay list syncs across the owner's devices (guarded on hydrate; stripped from the viewer snapshot)
-    // Writer-side viewer config — synced in the OWNER's settings:v1 only; STRIPPED from the viewer snapshot below.
-    viewerNpub:               s.viewerNpub,
-    viewerPubkey:             s.viewerPubkey,
-    viewerLabel:              s.viewerLabel,
-    viewerPrivacyTrusted:     s.viewerPrivacyTrusted,   // Viewer V2 — sharing config; stripped from the viewer snapshot + the plan backup
-    viewerKeyVersion:         s.viewerKeyVersion,       // Viewer-key derivation v1 — sharing config; stripped from the viewer snapshot
+    // Multi-viewer roster (M1) — synced in the OWNER's settings:v1 only; STRIPPED from every viewer snapshot below.
+    viewers:                  s.viewers,
+    nextViewerIndex:          s.nextViewerIndex,
   };
 }
 
@@ -652,7 +653,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
 // settings/records/strike/cbCollateralBtc keys). C-TRUSTED (opt-in): today's full payload. See safetyView.ts.
 export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/publish').ViewerSnapshot {
   const asOf = Date.now();
-  if (!s.viewerPrivacyTrusted) {
+  if (s.viewers[0]?.tier !== 'trusted') {   // M1: slot-0 tier (empty roster ⇒ safe, the default). M2 fans out per-viewer.
     // C-SAFE — the owner runs the dashboard's EXACT inputs (deriveSafetyView ∘ selectSafetyViewInputs), then
     // ships only the ratio/level block (buildSafeSafety drops the two $ absolutes) + config ratios + price.
     const view = deriveSafetyView(selectSafetyViewInputs(s));
@@ -670,14 +671,14 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
       safety: buildSafeSafety(view, s.hasCbLoan),
     };
   }
-  // C-TRUSTED (Option B): today's full payload. STRIP the owner's sharing/transport config (viewerNpub/
-  // viewerPubkey/viewerLabel/viewerPrivacyTrusted/nostrRelays) — the viewer must never see who else the owner
-  // shares with, the owner's nickname/mode choice for them, nor the owner's relay set.
+  // C-TRUSTED (Option B): today's full payload. STRIP the owner's sharing/transport config (the viewers roster
+  // + nextViewerIndex + nostrRelays) — the viewer must never see who else the owner shares with, their tiers/key
+  // versions, nor the owner's relay set.
   return {
     snapshotVersion: 2,
     privacyMode: 'trusted',
     asOf,
-    settings: (() => { const { viewerNpub: _n, viewerPubkey: _p, viewerLabel: _l, viewerPrivacyTrusted: _t, viewerKeyVersion: _v, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),
+    settings: (() => { const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
     cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
@@ -689,12 +690,13 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
 // recordsDirty/settingsDirty/nostrReconnectNeeded/nostrSyncing — the owner's own sync result is independent.
 export async function publishViewerSnapshotNow(): Promise<void> {
   const s = useStore.getState();
-  if (!s.viewerPubkey || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  const target = s.viewers[0]?.pubkeyHex;   // M1: single viewer (slot 0). M2 fans out one publish per slot.
+  if (!target || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
   try {
     const { publishViewerSnapshot } = await import('../lib/nostr/publish');
     await publishViewerSnapshot(
       s.nostrSigner,
-      s.viewerPubkey,
+      target,
       buildViewerSnapshotPayload(s),
       s.nostrRelays.length ? s.nostrRelays : undefined,
       signerOpTimeout(s.nostrSigningMethod),
@@ -706,16 +708,17 @@ export async function publishViewerSnapshotNow(): Promise<void> {
 }
 
 // Real-time revocation: seal a TOMBSTONE (empty payload + revoked:true) to the current viewer so their next
-// live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. Call BEFORE clearing
-// viewerPubkey — the gate reads getState().viewerPubkey synchronously at call start. Fire-and-forget, log-only.
+// live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. Call BEFORE removing the
+// slot — the gate reads getState().viewers[0] synchronously at call start. Fire-and-forget, log-only.
 export async function publishViewerRevocationNow(): Promise<void> {
   const s = useStore.getState();
-  if (!s.viewerPubkey || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  const target = s.viewers[0]?.pubkeyHex;   // M1: single viewer (slot 0)
+  if (!target || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
   try {
     const { publishViewerSnapshot } = await import('../lib/nostr/publish');
     await publishViewerSnapshot(
       s.nostrSigner,
-      s.viewerPubkey,
+      target,
       { settings: {}, records: { entries: [], deletions: {} }, strike: { usd: null, btcAvail: null, rate: null }, revoked: true },
       s.nostrRelays.length ? s.nostrRelays : undefined,
       signerOpTimeout(s.nostrSigningMethod),
@@ -843,7 +846,13 @@ export function partializeState(state: StoreState) {
 // Persist migrate — exported so it's unit-testable (same reason as partializeState).
 export function migrateState(persistedState: any): any {
   // v20 (Collateral-Truth): strip pendingCollateralAdjustment so it can't ride ...rest; seed strikeCollateralBtc.
-  const { customCollateral, pendingCollateralAdjustment: _pendingDrop, ...rest } = persistedState;
+  // v21 (Multi-viewer M1): strip the 5 old single-viewer scalars so a stale value can't ride ...rest — the roster
+  // starts EMPTY (clean-cut, no back-compat; the owner re-adds viewers fresh).
+  const {
+    customCollateral, pendingCollateralAdjustment: _pendingDrop,
+    viewerNpub: _vn, viewerPubkey: _vp, viewerLabel: _vl, viewerPrivacyTrusted: _vt, viewerKeyVersion: _vk,
+    ...rest
+  } = persistedState;
   const sorted = [...(persistedState.monthlyLog ?? [])]
     .sort((a: any, b: any) => a.month - b.month);
   // Seed = faithful old getCurrentBtcHeld from the RAW blob (last entry's btcHeld, else the baseline) + pending,
@@ -912,13 +921,10 @@ export function migrateState(persistedState: any): any {
     nostrAuthEnabled:     !!seedNostrPubkey,   // pin: derived; gated by the GATE key
     nostrSigningMethod:   seedNostrPubkey ? (seedNostrSigningMethod ?? persistedState.nostrSigningMethod) : null,   // GATE-first (consistent with merge); blob fallback
     nostrPubkey:          seedNostrPubkey ? (persistedState.nostrPubkey ?? seedNostrPubkey) : null,
-    // Viewer access (Phase 1, writer-side) — SYNCED in the owner's settings:v1 (stripped from the viewer
-    // snapshot). Additive nullable defaults, no version bump.
-    viewerNpub:           persistedState.viewerNpub   ?? null,
-    viewerPubkey:         persistedState.viewerPubkey ?? null,
-    viewerLabel:          persistedState.viewerLabel  ?? null,
-    viewerPrivacyTrusted: persistedState.viewerPrivacyTrusted ?? false,   // Viewer V2 — additive default (C-safe), no version bump
-    viewerKeyVersion:     persistedState.viewerKeyVersion ?? 1,           // Viewer-key derivation v1 — additive default, no version bump
+    // Multi-viewer roster (M1, store v21) — the 5 old single-viewer scalars are DROPPED (stripped above);
+    // the roster starts EMPTY. Clean-cut: the owner re-adds viewers fresh (the only existing viewer was a test key).
+    viewers:              [],
+    nextViewerIndex:      0,
     // Viewer access (Phase 2, viewer-side) — v17, device-local, never synced.
     viewerMode:           persistedState.viewerMode          ?? false,
     viewerWriterPubkey:   persistedState.viewerWriterPubkey  ?? null,
@@ -1327,11 +1333,8 @@ export const useStore = create<StoreState>()(
   nostrLogin:         null,
   writerKeyWrapped:   seedWriterKeyWrapped,
   writerKeyWrapMeta:  seedWriterKeyWrapMeta,
-  viewerNpub:         null,
-  viewerPubkey:       null,
-  viewerLabel:        null,
-  viewerPrivacyTrusted: false,   // Viewer V2 — default C-safe (privacy-first)
-  viewerKeyVersion:    1,        // Viewer-key derivation v1 — default version
+  viewers:            [],   // Multi-viewer roster (M1) — empty on fresh install; the owner adds viewers via Sharing
+  nextViewerIndex:    0,
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
@@ -1359,14 +1362,23 @@ export const useStore = create<StoreState>()(
   // Write through to the standalone localStorage keys (persisted OUTSIDE the encrypted blob — see WK_*_KEY).
   setWriterKeyWrapped:   (v) => { try { v == null ? localStorage.removeItem(WK_WRAPPED_KEY) : localStorage.setItem(WK_WRAPPED_KEY, v); } catch { /* noop */ } set({ writerKeyWrapped: v }); },
   setWriterKeyWrapMeta:  (v) => { try { v == null ? localStorage.removeItem(WK_META_KEY) : localStorage.setItem(WK_META_KEY, JSON.stringify(v)); } catch { /* noop */ } set({ writerKeyWrapMeta: v }); },
-  // Writer-side viewer config — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
-  setViewerNpub:         (v) => { set({ viewerNpub: v });   useStore.getState().syncSettingsToNostr(); },
-  setViewerPubkey:       (v) => { set({ viewerPubkey: v }); useStore.getState().syncSettingsToNostr(); },
-  setViewerLabel:        (v) => { set({ viewerLabel: v });  useStore.getState().syncSettingsToNostr(); },
-  // Viewer V2 — sync the mode across the owner's devices AND republish the snapshot NOW so the viewer
-  // switches shape immediately (mirrors saving a viewer npub). publishViewerSnapshotNow is fire-and-forget.
-  setViewerPrivacyTrusted: (v) => { set({ viewerPrivacyTrusted: v }); useStore.getState().syncSettingsToNostr(); void publishViewerSnapshotNow(); },
-  setViewerKeyVersion:   (v) => { set({ viewerKeyVersion: v }); useStore.getState().syncSettingsToNostr(); },   // sharing config — sync across owner devices
+  // Multi-viewer roster (M1) — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
+  // addViewerSlot assigns index = nextViewerIndex then increments it (monotonic — an index is NEVER reused).
+  addViewerSlot: (slot) => {
+    const { viewers, nextViewerIndex } = useStore.getState();
+    set({ viewers: [...viewers, { ...slot, index: nextViewerIndex }], nextViewerIndex: nextViewerIndex + 1 });
+    useStore.getState().syncSettingsToNostr();
+  },
+  updateViewerSlot: (index, patch) => {
+    const { viewers } = useStore.getState();
+    set({ viewers: viewers.map((v) => (v.index === index ? { ...v, ...patch } : v)) });
+    useStore.getState().syncSettingsToNostr();
+  },
+  removeViewerSlot: (index) => {
+    const { viewers } = useStore.getState();
+    set({ viewers: viewers.filter((v) => v.index !== index) });   // index NOT reused (nextViewerIndex never regresses)
+    useStore.getState().syncSettingsToNostr();
+  },
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
@@ -1394,7 +1406,7 @@ export const useStore = create<StoreState>()(
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     monthlyLog: [], deletedMonths: {},
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
-    viewerNpub: null, viewerPubkey: null, viewerLabel: null,
+    viewers: [], nextViewerIndex: 0,   // Multi-viewer roster (M1) — reset the owner-config roster to seed
     viewerDataLoaded: false,
     viewerSafeSnapshot: null,   // Viewer V2 — drop the C-safe snapshot too (data-remanence)
     initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
@@ -1403,7 +1415,7 @@ export const useStore = create<StoreState>()(
   // Owner-recovery reset (escape hatch). Mirrors clearViewerData's financial/records/strike seed-reset but for the
   // OWNER. Pure local set — NO syncSettingsToNostr / NO publish (resetAndResync controls when/whether the pull runs).
   // Deliberately PRESERVES: writerKeyWrapped/Meta (standalone — needed to re-auth), nostr identity/relays, device
-  // prefs, and viewerNpub/Pubkey/Label (re-hydrate from the pull). Reachable ONLY from the escape hatch.
+  // prefs, and the viewers roster (re-hydrate from the pull). Reachable ONLY from the escape hatch.
   resetPlanToSeeds: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
@@ -1470,7 +1482,7 @@ export const useStore = create<StoreState>()(
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       // pendingCollateralAdjustment RETIRED (Collateral-Truth v20) — Strike collateral is reading-anchored (records channel); a stale value in an old remote payload is ignored by omission
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
-      'viewerNpub', 'viewerPubkey', 'viewerLabel', 'viewerPrivacyTrusted', 'viewerKeyVersion',
+      'viewers', 'nextViewerIndex',        // Multi-viewer roster (M1) — synced; empty-incoming guarded below
     ] as const;
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {
@@ -1495,12 +1507,24 @@ export const useStore = create<StoreState>()(
         delete (update as Record<string, unknown>).nostrRelays;   // keep the local list
       }
     }
+    // Roster guard (M1, mirrors the relay guard): an EMPTY incoming viewers roster (a fresh/un-established session)
+    // must never clobber a populated local roster. Skip the roster FIELDS (viewers + nextViewerIndex together, so
+    // the monotonic counter never regresses); a genuinely populated incoming roster still hydrates.
+    if ('viewers' in update) {
+      const incoming = update.viewers as ViewerSlot[] | undefined;
+      const localRoster = useStore.getState().viewers;
+      const incomingEmpty = !Array.isArray(incoming) || incoming.length === 0;
+      if (incomingEmpty && localRoster.length > 0) {
+        delete (update as Record<string, unknown>).viewers;
+        delete (update as Record<string, unknown>).nextViewerIndex;
+      }
+    }
     set(update);
   },
     }),
     {
       name: 'personal-bloc-store',
-      version: 20,
+      version: 21,
       // Zustand v5: storage MUST be explicit — `undefined` DISABLES persistence (it does NOT default to
       // localStorage; that was older-Zustand behavior). Plain `window.localStorage` (zustand's own default form):
       // in the browser it's the real store; under Node (tests, no `window`) the getter throws → createJSONStorage

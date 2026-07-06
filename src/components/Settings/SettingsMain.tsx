@@ -984,8 +984,8 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
       )}
 
       {/* Plan Export / Backup Tool — EXPORT phase only (read-only; import/restore is a later build).
-          Plan-only: downloadPlanBackup strips the sharing/transport config (viewerNpub/viewerPubkey/
-          viewerLabel/nostrRelays) and includes the full records set (incl. raw dayLog). Owner-only. */}
+          Plan-only: downloadPlanBackup strips the sharing/transport config (the viewers roster +
+          nextViewerIndex + nostrRelays) and includes the full records set (incl. raw dayLog). Owner-only. */}
       {settingsPage === 'backup' && !viewerMode && (
         <div className={styles.section}>
           <p className={styles.cbLoanToggleDesc}>

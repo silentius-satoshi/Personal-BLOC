@@ -65,7 +65,7 @@ export function DevPanel() {
   const currentBtcHeld       = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored (v20)
   // Viewer access — handshake metadata (presence/pubkeys only; NEVER the secret key value)
   const viewerMode           = useStore((s) => s.viewerMode);
-  const viewerPubkey         = useStore((s) => s.viewerPubkey);         // owner side: who I publish to
+  const viewerPubkey         = useStore((s) => s.viewers[0]?.pubkeyHex ?? null);   // owner side: who I publish to (M1: slot 0)
   const viewerWriterPubkey   = useStore((s) => s.viewerWriterPubkey);   // viewer side: who I read from
   const viewerSecretKey      = useStore((s) => s.viewerSecretKey);      // viewer side (presence only — plaintext migrant)
   const viewerKeyWrapped     = useStore((s) => s.viewerKeyWrapped);     // Phase 3 (presence only — never the value)
@@ -275,9 +275,10 @@ export function DevPanel() {
         if (!s.nostrPubkey) { setVProbeStatus('not logged in'); pool.close(s.nostrRelays); setVProbing(false); return; }
         const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.nostrPubkey], '#d': [VIEWER_DTAG] });
         pool.close(s.nostrRelays);
-        if (!s.viewerPubkey) { setVProbeStatus(`no viewer configured — ${events.length} viewer:v1 events on relays`); }
+        const ownerViewerPubkey = s.viewers[0]?.pubkeyHex;   // M1: slot 0
+        if (!ownerViewerPubkey) { setVProbeStatus(`no viewer configured — ${events.length} viewer:v1 events on relays`); }
         else if (!events.length) { setVProbeStatus('NO viewer:v1 event published yet — change a setting/month to publish one (saving the npub alone does NOT publish)'); }
-        else { const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a)); setVProbeStatus(`published ✓ — ${events.length} event(s), latest ${Math.round(Date.now() / 1000 - latest.created_at)}s ago, sealed to ${s.viewerPubkey.slice(0, 8)}…`); }
+        else { const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a)); setVProbeStatus(`published ✓ — ${events.length} event(s), latest ${Math.round(Date.now() / 1000 - latest.created_at)}s ago, sealed to ${ownerViewerPubkey.slice(0, 8)}…`); }
       }
     } catch (e) {
       setVProbeStatus(`probe error: ${e instanceof Error ? e.message : String(e)}`);

@@ -6,18 +6,19 @@ import { buildPlanBackup } from '../exportPlan';
 // no mocking needed (it never writes, never touches sync/auth).
 
 describe('buildPlanBackup — plan-only scope', () => {
-  it('excludes the sharing/transport config (viewerNpub/viewerPubkey/viewerLabel/viewerPrivacyTrusted/nostrRelays)', () => {
+  it('excludes the sharing/transport config (viewers roster + nextViewerIndex + nostrRelays)', () => {
     useStore.setState({
-      viewerNpub: 'npub1test', viewerPubkey: 'abc123', viewerLabel: 'Dad', viewerPrivacyTrusted: true, nostrRelays: ['wss://r.example'],
+      viewers: [{ index: 0, pubkeyHex: 'abc123', npub: 'npub1test', label: 'Dad', tier: 'trusted', keyVersion: 1 }],
+      nextViewerIndex: 1, nostrRelays: ['wss://r.example'],
     } as never);
 
     const backup = buildPlanBackup(useStore.getState());
 
-    expect('viewerNpub' in backup.plan.settings).toBe(false);
-    expect('viewerPubkey' in backup.plan.settings).toBe(false);
-    expect('viewerLabel' in backup.plan.settings).toBe(false);
-    expect('viewerPrivacyTrusted' in backup.plan.settings).toBe(false);
+    expect('viewers' in backup.plan.settings).toBe(false);
+    expect('nextViewerIndex' in backup.plan.settings).toBe(false);
     expect('nostrRelays' in backup.plan.settings).toBe(false);
+    // restore for other suites
+    useStore.setState({ viewers: [], nextViewerIndex: 0 } as never);
   });
 
   it('includes a sampling of real plan settings', () => {

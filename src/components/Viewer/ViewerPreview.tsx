@@ -9,16 +9,16 @@ const noop = () => {};
 
 /**
  * Owner-only "Preview as viewer" — renders the REAL ViewerHomeView from the ACTUAL viewer-snapshot pipeline.
- * A preview-LOCAL Safe/Trusted override (a pure what-if lens — NEVER writes viewerPrivacyTrusted) lets the owner
+ * A preview-LOCAL Safe/Trusted override (a pure what-if lens — NEVER writes a viewer's tier) lets the owner
  * sanity-check the other mode. Safe: force the real payload down its safe branch (spread { ...state,
- * viewerPrivacyTrusted: false }) → previewSafeSnapFromPayload → inject the SafeSnapshot (ViewerHomeView scales it
+ * viewers: [] } → empty roster ⇒ safe) → previewSafeSnapFromPayload → inject the SafeSnapshot (ViewerHomeView scales it
  * to live price). Trusted: inject null → the live-derive path (what a trusted viewer's hydrated store shows).
  * Fidelity ≡ wire payload by construction. Gated to the owner simple-mode branch in AppShell; `viewerPreview` is
  * transient (never persisted).
  */
 export function ViewerPreview() {
-  const trusted = useStore((s) => s.viewerPrivacyTrusted);
-  const label   = useStore((s) => s.viewerLabel);
+  const trusted = useStore((s) => s.viewers[0]?.tier === 'trusted');   // M1: slot 0
+  const label   = useStore((s) => s.viewers[0]?.label ?? null);
   const setViewerPreview = useStore((s) => s.setViewerPreview);
   const inputs    = useStore(useShallow(selectSafetyViewInputs));   // stable ref while values unchanged
   const btcPrice  = useStore((s) => s.btcPrice);
@@ -31,8 +31,9 @@ export function ViewerPreview() {
     () => (effectiveTrusted
       ? null
       // force the SAFE branch through the REAL builder (fidelity ≡ wire payload under the hypothetical setting);
-      // the spread is load-bearing — without it a trusted store yields a trusted payload → previewSafeSnap null
-      : previewSafeSnapFromPayload(buildViewerSnapshotPayload({ ...useStore.getState(), viewerPrivacyTrusted: false }))),
+      // the spread is load-bearing — swap the roster to empty so the builder takes its safe branch (empty ⇒ safe),
+      // without it a trusted slot-0 yields a trusted payload → previewSafeSnap null
+      : previewSafeSnapFromPayload(buildViewerSnapshotPayload({ ...useStore.getState(), viewers: [] }))),
     [effectiveTrusted, inputs, btcPrice, hasCbLoan],   // bound slices — preview recomputes on owner edits
   );
 

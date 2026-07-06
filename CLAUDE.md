@@ -1693,12 +1693,13 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   thresholds; `overall'`; `strikeDropPct = 1 − strikeLtv'/liqLtv`. **`livePrice` absent → factor 1 → the
   at-snapshot levels are the offline fallback.** (CB accrual drift between publishes is negligible for a
   gauge.)
-- **Owner control `viewerPrivacyTrusted: boolean`** (default false) — SYNCED (`buildSettingsPayload` +
-  `SETTINGS_FIELDS`), STRIPPED from the snapshot in BOTH branches (safe has no settings; trusted's strip is
-  now 5 fields: viewerNpub/viewerPubkey/viewerLabel/**viewerPrivacyTrusted**/nostrRelays), and STRIPPED from
-  the **plan backup** (`exportPlan.ts` destructure — sharing config, not plan data). Its setter fires
-  `syncSettingsToNostr()` **and** `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once
-  (mirrors saving a viewer npub). `buildViewerSnapshotPayload(s)` branches on it.
+- **Owner control — the C-safe/C-trusted tier.** ⚠ **SUPERSEDED at Multi-viewer M1:** the global
+  `viewerPrivacyTrusted` boolean is GONE — the tier is now **per-viewer** (`ViewerSlot.tier: 'safe'|'trusted'`,
+  default `'safe'`, part of the synced `viewers` roster). `buildViewerSnapshotPayload` branches on
+  `viewers[0]?.tier === 'trusted'` (M1 slot-0; M2 per-viewer). The roster is STRIPPED from the snapshot in BOTH
+  branches (safe has no settings; trusted's strip is now `viewers`/`nextViewerIndex`/`nostrRelays`) AND from the
+  **plan backup** (`exportPlan.ts`). SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
+  `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
 - **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
   → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +
   `viewerLastSyncAt`, **NO hydrateSettings/records/strike**; trusted/absent → clear the safe snapshot, then
@@ -3322,12 +3323,10 @@ bullet). `parseHandoffToken` requires exactly 2 parts (`ownerNpub` non-null; bar
 an owner-side **key-rotation** affordance (honors the handoff passphrase).
 - **`src/lib/nostr/viewerKey.ts`** — `deriveViewerKeyFromNsec(ownerSk, ownerPubkeyHex, version=1)` (see the Key
   Files entry for the HKDF formula + counter-bump). Deterministic in (ownerSk, ownerPubkeyHex, version).
-- **`viewerKeyVersion`** (settings, default 1) — the version byte. **SYNCED** (in `SETTINGS_FIELDS` +
-  `buildSettingsPayload` + `migrateState` default + initial state + a `setViewerKeyVersion` that syncs), so
-  re-derivation is stable across the owner's devices; **STRIPPED** from the trusted viewer snapshot (added to
-  the line-674 rest-omit destructure alongside `viewerNpub/viewerPubkey/viewerLabel/viewerPrivacyTrusted/
-  nostrRelays`; the safe branch carries no settings). No store version bump (additive merge-default, mirrors
-  `viewerPrivacyTrusted`).
+- **Key version** — ⚠ **SUPERSEDED at Multi-viewer M1 (store v21):** the global `viewerKeyVersion` scalar is
+  GONE — the version byte is now **per-slot** (`ViewerSlot.keyVersion`, part of the synced `viewers` roster;
+  rotation bumps a single slot's version). Historically (v1→handoff-v4) it was a standalone synced setting
+  stripped from the viewer snapshot; it's absorbed into the roster, which is stripped wholesale.
 - **Owner affordance (`SharingPage.tsx` `GenerateViewerKeyBlock`)** — LOCAL-SIGNER-ONLY (gated
   `nostrSigningMethod === 'local'`; nip07/nip46 never expose the raw sk → the block is hidden). Unwrap the owner
   key (Face ID / PIN, mirrors `RevealRecoveryKey`) → derive → `hex = getPublicKey(derived)` → **replace-guard**
@@ -3387,8 +3386,43 @@ an owner-side **key-rotation** affordance (honors the handoff passphrase).
   contract); `handoffToken.test.ts` (build/parse roundtrip for both kinds; bare-nsec → null + 2-part-required;
   garbage/>1-colon/trailing-colon/bad-npub → null; whitespace trim; a full
   NIP-49 encrypt→token→parse→decrypt byte-equal roundtrip + wrong-passphrase throw); `viewerSnapshot.test.ts`
-  extended (`viewerKeyVersion` IN `buildSettingsPayload`, OUT of the trusted snapshot settings, in the deep-equal
-  strip). SETTINGS_FIELDS count 38 → 39.
+  (rewritten at M1 — the roster `viewers`/`nextViewerIndex` IN `buildSettingsPayload`, OUT of the trusted snapshot
+  settings + plan backup, per-tier build). SETTINGS_FIELDS count 39 → **36** at Multi-viewer M1 (−5 scalars +2 roster).
+
+### Multi-Viewer M1 — sharing roster replaces the single-viewer scalars (store v20→v21)
+
+The first milestone of multi-viewer support. **Store-only** — indexed key derivation, per-viewer d-tag publish
+fan-out, and the SharingPage roster UI are later milestones (M2/M3). The 5 single-viewer scalars
+(`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyTrusted`/`viewerKeyVersion`) become a
+`viewers: ViewerSlot[]` roster + a monotonic `nextViewerIndex`, both synced settings. **Clean-cut, NO
+back-compat** (the only existing viewer was a test key): migration DROPS the old scalars and starts the roster
+EMPTY; the owner re-adds viewers fresh.
+
+- **`ViewerSlot`** (`useStore.ts`, exported) `= { index, pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`.
+  `index` is stable + monotonic (never reused after removal — `nextViewerIndex` never regresses). `pubkeyHex` is
+  the NIP-44 encrypt target; `tier`/`keyVersion` are per-viewer.
+- **Setters** `addViewerSlot(Omit<ViewerSlot,'index'>)` (assigns `index = nextViewerIndex`, increments),
+  `updateViewerSlot(index, patch)` (merge by index), `removeViewerSlot(index)` (filter by index) — each
+  `syncSettingsToNostr()` (existing convention).
+- **Payload/strip:** `viewers` + `nextViewerIndex` join `buildSettingsPayload` + `SETTINGS_FIELDS` (count 39→**36**),
+  and are STRIPPED from the trusted `buildViewerSnapshotPayload` settings (the roster invariant — a viewer never
+  sees who else the owner shares with, tiers, or key versions) AND from `exportPlan.ts`'s plan backup. The safe
+  snapshot branch carries no settings block at all.
+- **Tier source (M1 slot-0 / temporary):** `buildViewerSnapshotPayload` reads `s.viewers[0]?.tier === 'trusted'`
+  (empty roster ⇒ safe, the default); `publishViewerSnapshotNow`/`publishViewerRevocationNow` target
+  `s.viewers[0]?.pubkeyHex`. M2 fans out one encrypted publish per slot on `viewerDTag(pubkeyHex)`.
+- **Skip-guard (`hydrateSettings`, mirrors the relay guard):** an EMPTY incoming `viewers` never clobbers a
+  populated local roster — skips BOTH `viewers` + `nextViewerIndex` (so the counter can't regress); a populated
+  incoming roster hydrates. Publish-side is already covered by `initialSettingsPullDone` (Fix C/D).
+- **Component slot-0 adapters (throwaway until M3):** `SharingPage` (add→`addViewerSlot`, tier toggle→
+  `updateViewerSlot`+republish, revoke→`removeViewerSlot`; `GenerateViewerKeyBlock` mints/rotates slot 0 —
+  derivation stays 3-arg, indexed labels are M2), `DevPanel` (`viewers[0]?.pubkeyHex`), `ViewerPreview`
+  (tier/label from `viewers[0]`; the safe-force spread swaps `viewers: []` to take the safe branch). `clearViewerData`
+  resets `viewers: []`/`nextViewerIndex: 0`.
+- **Migration v21** (`migrateState`): strip the 5 old keys from the `...rest` destructure; seed `viewers: []` +
+  `nextViewerIndex: 0` unconditionally; `version: 20 → 21`. Tests: `viewerRoster.test.ts` (migration drop/empty,
+  setter monotonic-index/no-reuse/merge, skip-guard) + the rewritten `viewerSnapshot.test.ts` (per-tier build +
+  roster strip). Suite 592 → 601.
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
@@ -3515,7 +3549,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 39 Synced Settings Fields
+### All 36 Synced Settings Fields
 (`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -3526,13 +3560,16 @@ a v17-migrant holder until the one-time wrap.
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
-`nostrRelays`, `viewerNpub`, `viewerPubkey`, `viewerLabel`, `viewerPrivacyTrusted`, `viewerKeyVersion`
-(`viewerKeyVersion` (Viewer-key derivation v1) is the version byte for deterministic viewer-key derivation
-(`deriveViewerKeyFromNsec`); it syncs across the owner's devices so re-derivation is stable everywhere, and — like the
-other `viewer*` sharing fields — is STRIPPED from the viewer snapshot in the trusted branch (the safe branch carries
-no settings block). `viewerPrivacyTrusted` (Viewer V2) syncs the owner's C-safe/C-trusted choice across the owner's devices; like the
-other three `viewer*` sharing fields it is STRIPPED from the viewer snapshot in both branches AND from the plan backup.
-The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
+`nostrRelays`, `viewers`, `nextViewerIndex`
+(`viewers` + `nextViewerIndex` (Multi-viewer M1, store v21) are the sharing roster — they REPLACE the 5 old
+single-viewer scalars (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyTrusted`/`viewerKeyVersion`), which
+were dropped clean-cut. Each `ViewerSlot` = `{ index, pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`;
+`nextViewerIndex` is monotonic (an index is NEVER reused). Both sync across the owner's devices so the roster +
+removals propagate, but are STRIPPED from EVERY viewer snapshot (a viewer must never learn who else the owner shares
+with, their tiers, or key versions) AND from the plan backup. `hydrateSettings` GUARDS them: an EMPTY incoming
+`viewers` never clobbers a populated local roster (skips both `viewers` + `nextViewerIndex` so the counter can't
+regress — mirrors the relay guard). Per-tier snapshot: `buildViewerSnapshotPayload` reads `viewers[0]?.tier` (M1
+single-viewer / slot-0; M2 fans out per-viewer on their own d-tags). The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
 `nostrRelays` (Option C) syncs across the OWNER's devices — identical-lists / replace-on-hydrate (add + remove both
 propagate). `hydrateSettings` GUARDS it: a default-looking incoming list (empty OR exactly `DEFAULT_RELAYS`,
 order-independent sorted compare) never overwrites a non-empty custom local list — skips ONLY that field, applies the
@@ -3541,9 +3578,6 @@ User edits publish on their OWN via `setNostrRelaysAndSync` (the plain `setNostr
 and Restore-defaults DOES publish `DEFAULT_RELAYS`, so the receiver-side guard is the load-bearing protector that keeps
 that from wiping the other device's custom list (guard + trigger are complementary).
 STRIPPED from `buildViewerSnapshotPayload` (owner transport config — a viewer reads via its own relay set).
-`viewerNpub`/`viewerPubkey`/`viewerLabel` (the owner's writer-side sharing config + the owner's nickname for the
-viewer) sync so viewer access propagates across the owner's devices — but `buildViewerSnapshotPayload` STRIPS all
-three so the viewer never sees the owner's sharing config.
 The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
 LWW handles them like income or APR. `advisorChecklist` was REMOVED — per-month ritual ticking is
 multi-writer ephemeral state, incompatible with LWW settings; that's why the skips sync and the
@@ -3603,7 +3637,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Zustand v16 migration | Adds `advisorMonthStartBalance` (start-of-month BLOC balance — projection base, distinct from live-drawn `advisorActualBlocBalance`); default `persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0` (mid-month installs seed from the current live balance; fresh = 0). SYNCED (in `SETTINGS_FIELDS`/payload — real strategy state) |
 | Zustand v17 migration | Adds Viewer Access Phase-2 fields `viewerMode` (default `?? false`), `viewerWriterPubkey`/`viewerSecretKey` (default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload/partialize-exclusion). `viewerSecretKey` was plaintext (wrapped at rest in v18) |
 | Zustand v18 migration | Viewer Access **Phase 3** — adds `viewerKeyWrapped`/`viewerKeyWrapMeta` (wrapped-at-rest viewer key: AES-GCM ciphertext + `WrapMeta`, default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced.** **Back-compat: LEAVES any existing plaintext `viewerSecretKey` in place** (wrapping needs a Face ID gesture, impossible in migrate — the one-time wrap-setup screen clears it). Transient `viewerUnlocked` (not persisted). |
-| Zustand v20 migration | **Collateral-Truth Consolidation (C-P2)** — Strike collateral becomes reading-anchored. **Strips** `pendingCollateralAdjustment` (added to the destructure so it can't ride `...rest`). **Seeds** `strikeCollateralBtc` = the old-math current position from the RAW blob BEFORE stripping: `(rawLast?.btcHeld ?? advisorActualBtcHeld ?? 0) + pendingCollateralAdjustment` — CACHE-SEED ONLY (no synthetic dayLog event; clean journals). No legacy `balanceReading` carries `strikeCollateral` → `deriveStrikeCollateral` returns the fallback = seed → `getCurrentBtcHeld` is byte-identical pre/post. `advisorActualBtcHeld` STAYS (synced; historical chain + fallback). **Determinism residual:** un-converged `pending` across devices at migrate time seeds divergent caches (not synced) until the first `strikeCollateral`-bearing reading re-anchors both — self-correcting (pending is normally 0). Current store version = 20 |
+| Zustand v20 migration | **Collateral-Truth Consolidation (C-P2)** — Strike collateral becomes reading-anchored. **Strips** `pendingCollateralAdjustment` (added to the destructure so it can't ride `...rest`). **Seeds** `strikeCollateralBtc` = the old-math current position from the RAW blob BEFORE stripping: `(rawLast?.btcHeld ?? advisorActualBtcHeld ?? 0) + pendingCollateralAdjustment` — CACHE-SEED ONLY (no synthetic dayLog event; clean journals). No legacy `balanceReading` carries `strikeCollateral` → `deriveStrikeCollateral` returns the fallback = seed → `getCurrentBtcHeld` is byte-identical pre/post. `advisorActualBtcHeld` STAYS (synced; historical chain + fallback). **Determinism residual:** un-converged `pending` across devices at migrate time seeds divergent caches (not synced) until the first `strikeCollateral`-bearing reading re-anchors both — self-correcting (pending is normally 0). |
+| Zustand v21 migration | **Multi-viewer M1** — the sharing roster (`viewers: ViewerSlot[]` + `nextViewerIndex`) REPLACES the 5 single-viewer scalars (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyTrusted`/`viewerKeyVersion`). **Clean-cut, NO back-compat** (the only existing viewer was a test key): the migrate destructure STRIPS the 5 old keys so a stale value can't ride `...rest`, and unconditionally seeds `viewers: []` + `nextViewerIndex: 0` (the owner re-adds viewers fresh). `ViewerSlot = { index (stable, monotonic, never reused), pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`. Setters `addViewerSlot`/`updateViewerSlot`/`removeViewerSlot` (each `syncSettingsToNostr`). Both fields in `buildSettingsPayload` + `SETTINGS_FIELDS` (count 39 → **36**); STRIPPED from the trusted viewer snapshot + the plan backup; `hydrateSettings` skip-guard (empty incoming roster never clobbers a populated local one, mirrors the relay guard). `buildViewerSnapshotPayload` tier now reads `viewers[0]?.tier` (M1 slot-0 single-viewer; M2 = per-viewer d-tag fan-out). Components (SharingPage/DevPanel/ViewerPreview) TEMPORARILY operate on `viewers[0]` until the M3 roster UI. Current store version = 21 |
 | Zustand v19 migration | **Daily Mode P2a** — backfills legacy `monthlyLog` entries with `source:'manual'`/`confirmed:true` (only where undefined); adds `dayLog` (`?? []`, LOCAL-only) + `cbLtvAction` (`?? 'paydown'`). **C2 seed:** a `hasCbLoan` user with a `cbCollateralBtc` gets ONE seeded `cbCollateralReading` into dayLog so `deriveCbCollateral` reproduces the pre-migration value; then `cbCollateralBtc = deriveCbCollateral(dayLog, persisted)`. `migrate`/`partialize` were EXTRACTED to exported `migrateState`/`partializeState` (unit-testable — the persist API is unavailable under Node) |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
