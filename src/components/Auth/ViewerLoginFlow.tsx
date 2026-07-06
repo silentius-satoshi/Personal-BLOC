@@ -39,12 +39,12 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
   // token; the viewer only pastes it here. The old viewer-generates-its-own-key model is retired (SharingPage
   // has no field to receive a viewer-supplied npub, so a self-generated key could never be authorized).
   const [pastedToken, setPastedToken] = useState('');
-  // Passphrase for an ncryptsec token. DEBOUNCED (450ms) before it feeds the decrypt effect below — nip49.decrypt
+  // Passphrase for an ncryptsec token. DEBOUNCED (3000ms) before it feeds the decrypt effect below — nip49.decrypt
   // is SYNCHRONOUS scrypt (default logn 16), so decrypting per keystroke would freeze the mobile main thread.
   const [tokenPassphrase, setTokenPassphrase] = useState('');
   const [debouncedPassphrase, setDebouncedPassphrase] = useState('');
   useEffect(() => {
-    const t = setTimeout(() => setDebouncedPassphrase(tokenPassphrase), 450);
+    const t = setTimeout(() => setDebouncedPassphrase(tokenPassphrase), 3000);
     return () => clearTimeout(t);
   }, [tokenPassphrase]);
   // Parse the token (structure only — cheap; no crypto). Feeds the passphrase-field gate + the owner-npub lock.

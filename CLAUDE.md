@@ -3376,7 +3376,7 @@ an owner-side **key-rotation** affordance (honors the handoff passphrase).
   in try/catch (wrong passphrase → null → friendly "Wrong passphrase"). Both passphrase inputs (owner's in
   `SharingPage` + viewer's here) carry `autoCapitalize="none" autoCorrect="off" spellCheck={false}
   autoComplete="off"` — iOS silently autocapitalizes/autocorrects an un-suppressed field, which would make the
-  encrypted and decrypted strings permanently disagree. ⚠ The passphrase is **DEBOUNCED 450ms**
+  encrypted and decrypted strings permanently disagree. ⚠ The passphrase is **DEBOUNCED 3000ms**
   (`tokenPassphrase` → `debouncedPassphrase`) — `nip49.decrypt` is SYNCHRONOUS scrypt (default logn 16), so
   decrypting per keystroke would freeze the mobile main thread. The decrypt itself runs in a **`useEffect`, NOT a
   memo** (`decryptState: {key, checking}`): the effect trims `debouncedPassphrase` (**symmetric** with the
