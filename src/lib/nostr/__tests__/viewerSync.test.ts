@@ -32,7 +32,8 @@ vi.mock('../../../store/useStore', () => ({
   },
 }));
 
-import { fetchViewerSnapshot, setUnwrappedViewerKey } from '../viewerSync';
+import { fetchViewerSnapshot, setUnwrappedViewerKey, getViewerPubkeyHex } from '../viewerSync';
+import { viewerDTag } from '../publish';
 
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
   Object.keys(mockState).forEach((k) => delete mockState[k]);
@@ -65,7 +66,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     resetStore();
-    setUnwrappedViewerKey(new Uint8Array(32));   // populate the in-memory holder → getViewerSigner builds the mock NSecSigner
+    setUnwrappedViewerKey(new Uint8Array(32).fill(1));   // VALID scalar → getViewerPubkeyHex (real getPublicKey) works; getViewerSigner builds the mock NSecSigner
     mockPool.close.mockReturnValue(undefined);
     mockPool.querySync.mockResolvedValue([{ content: 'ct', created_at: 1, tags: [] }]);
   });
@@ -141,5 +142,30 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.setViewerSafeSnapshot).toHaveBeenCalledWith(null);
     expect(mockState.hydrateSettings).toHaveBeenCalled();
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
+  });
+});
+
+describe('viewerSync — M2 per-viewer d-tag filter', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    resetStore();
+    setUnwrappedViewerKey(new Uint8Array(32).fill(1));   // valid scalar → real getPublicKey
+    mockPool.close.mockReturnValue(undefined);
+    mockPool.querySync.mockResolvedValue([]);   // no events → fetch returns after querySync; the filter is still recorded
+  });
+
+  it("fetchViewerSnapshot queries with authors=[writer] and #d = viewerDTag(the viewer's OWN pubkey)", async () => {
+    await fetchViewerSnapshot();
+    expect(mockPool.querySync).toHaveBeenCalledTimes(1);
+    const filterArg = mockPool.querySync.mock.calls[0][1] as Record<string, unknown>;
+    const myHex = getViewerPubkeyHex()!;   // the viewer's own pubkey (from the in-memory holder)
+    expect(filterArg['#d']).toEqual([viewerDTag(myHex)]);
+    expect(filterArg.authors).toEqual(['o'.repeat(64)]);   // the writer (owner) pubkey — authors, NOT the d-tag
+    expect(filterArg.kinds).toEqual([30078]);
+  });
+
+  it('viewerDTag is v2 + per-pubkey — two pubkeys yield two DISTINCT d-tags', () => {
+    expect(viewerDTag('abc')).toBe('personal-bloc:viewer:v2:abc');
+    expect(viewerDTag('aaa')).not.toBe(viewerDTag('bbb'));
   });
 });

@@ -237,14 +237,17 @@ export function DevPanel() {
     setVProbing(true); setVProbeStatus('querying relays…');
     try {
       const { SimplePool } = await import('nostr-tools/pool');
-      const { VIEWER_DTAG } = await import('../../lib/nostr/publish');
+      const { viewerDTag } = await import('../../lib/nostr/publish');
+      const { getViewerPubkeyHex } = await import('../../lib/nostr/viewerSync');
       const pool = new SimplePool();
       if (s.viewerMode) {
         // VIEWER side: fetch + decrypt (via the in-memory holder — works for a wrapped Phase-3 viewer, no plaintext)
         if (!s.viewerWriterPubkey) {
           setVProbeStatus('viewer not provisioned (missing writerPubkey)'); pool.close(s.nostrRelays); setVProbing(false); return;
         }
-        const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.viewerWriterPubkey], '#d': [VIEWER_DTAG] });
+        const myHex = getViewerPubkeyHex();   // M2 — this viewer's own d-tag
+        if (!myHex) { setVProbeStatus('viewer key not unlocked — unlock first'); pool.close(s.nostrRelays); setVProbing(false); return; }
+        const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.viewerWriterPubkey], '#d': [viewerDTag(myHex)] });
         pool.close(s.nostrRelays);
         if (!events.length) {
           setVProbeStatus(`NO viewer:v1 event on relays from ${s.viewerWriterPubkey.slice(0, 8)}… — owner hasn't published (did they change a setting AFTER adding your npub?) or wrong owner npub/relays`); setVProbing(false); return;
@@ -271,13 +274,13 @@ export function DevPanel() {
           setVProbeStatus(`event found but DECRYPT FAILED — key/pubkey mismatch: ${e instanceof Error ? e.message : String(e)}`);
         }
       } else {
-        // OWNER side: confirm my published viewer:v1 exists (can't decrypt — sealed to the viewer)
+        // OWNER side: confirm my published viewer:v2 exists (can't decrypt — sealed to the viewer)
         if (!s.nostrPubkey) { setVProbeStatus('not logged in'); pool.close(s.nostrRelays); setVProbing(false); return; }
-        const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.nostrPubkey], '#d': [VIEWER_DTAG] });
+        const ownerViewerPubkey = s.viewers[0]?.pubkeyHex;   // M2: slot 0's d-tag (roster UI is M3)
+        if (!ownerViewerPubkey) { setVProbeStatus('no viewer configured'); pool.close(s.nostrRelays); setVProbing(false); return; }
+        const events = await pool.querySync(s.nostrRelays, { kinds: [30078], authors: [s.nostrPubkey], '#d': [viewerDTag(ownerViewerPubkey)] });
         pool.close(s.nostrRelays);
-        const ownerViewerPubkey = s.viewers[0]?.pubkeyHex;   // M1: slot 0
-        if (!ownerViewerPubkey) { setVProbeStatus(`no viewer configured — ${events.length} viewer:v1 events on relays`); }
-        else if (!events.length) { setVProbeStatus('NO viewer:v1 event published yet — change a setting/month to publish one (saving the npub alone does NOT publish)'); }
+        if (!events.length) { setVProbeStatus('NO viewer:v2 event published yet — change a setting/month to publish one (saving the npub alone does NOT publish)'); }
         else { const latest = events.reduce((a, b) => (b.created_at > a.created_at ? b : a)); setVProbeStatus(`published ✓ — ${events.length} event(s), latest ${Math.round(Date.now() / 1000 - latest.created_at)}s ago, sealed to ${ownerViewerPubkey.slice(0, 8)}…`); }
       }
     } catch (e) {

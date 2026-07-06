@@ -188,11 +188,14 @@ export async function publishRecords(
   return publishEncrypted(signer, pubkey, RECORDS_DTAG, payload, relays, opTimeoutMs);
 }
 
-// Viewer access (Phase 1, writer-side) — ONE combined snapshot sealed to a configured viewer's pubkey
-// (Option B: includes live Strike balances). The owner's device NIP-44-encrypts to the viewer's pubkey;
-// only that viewer can decrypt. Fire-and-forget at the publish layer — the caller (publishViewerSnapshotNow)
-// owns the gating + log-only failure handling.
-export const VIEWER_DTAG = 'personal-bloc:viewer:v1';
+// Viewer access — ONE combined snapshot sealed to a configured viewer's pubkey (Option B: includes live
+// Strike balances). The owner's device NIP-44-encrypts to the viewer's pubkey; only that viewer can decrypt.
+// Fire-and-forget at the publish layer — the caller (publishViewerSnapshotNow) owns gating + log-only failure.
+//
+// Multi-viewer M2: addressing is PER-VIEWER (kind-30078 is one live event per author+d-tag, so N viewers on
+// one d-tag would overwrite each other). Each viewer gets `personal-bloc:viewer:v2:<pubkeyHex>`. CLEAN-CUT —
+// the v1 d-tag is deleted (no transitional read); after deploy the owner rotates + re-provisions the viewer.
+export const viewerDTag = (pubkeyHex: string) => `personal-bloc:viewer:v2:${pubkeyHex}`;
 
 // V2 — MODE-SHAPED. Every field optional so a SAFE payload (health only) and a TRUSTED payload (today's
 // full data) are the same type, and old (pre-V2) events without privacyMode still typecheck + read as
@@ -224,5 +227,6 @@ export async function publishViewerSnapshot(
   relays?:      string[],
   opTimeoutMs?: number,
 ): Promise<number> {
-  return publishEncrypted(writerSigner, viewerPubkey, VIEWER_DTAG, payload, relays, opTimeoutMs);
+  // M2 — per-viewer d-tag (a pure function of the target pubkey); covers both snapshots + revocation tombstones.
+  return publishEncrypted(writerSigner, viewerPubkey, viewerDTag(viewerPubkey), payload, relays, opTimeoutMs);
 }

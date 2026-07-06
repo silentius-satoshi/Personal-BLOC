@@ -50,7 +50,7 @@ describe('handoffToken build/parse', () => {
 describe('handoff token — NIP-49 encrypt→decrypt roundtrip end-to-end', () => {
   it('derives a viewer key, encrypts into a token, parses, decrypts → byte-equal', async () => {
     const ownerSk = generateSecretKey();
-    const derived = await deriveViewerKeyFromNsec(ownerSk, getPublicKey(ownerSk), 1);
+    const derived = await deriveViewerKeyFromNsec(ownerSk, getPublicKey(ownerSk), 1, 0);   // M2: 4-arg (keyVersion, index)
     const passphrase = 'correct horse battery staple';
 
     const keyPart = nip49.encrypt(derived, passphrase, 1);   // low logn keeps scrypt fast in CI

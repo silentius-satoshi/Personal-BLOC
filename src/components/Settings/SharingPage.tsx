@@ -69,7 +69,7 @@ export function SharingPage() {
 
   const revoke = () => {
     if (!slot0) return;
-    void publishViewerRevocationNow();   // tombstone WHILE slot 0's pubkey is still set
+    void publishViewerRevocationNow(slot0.pubkeyHex);   // tombstone THIS slot's d-tag (capture pubkey before removal)
     removeViewerSlot(slot0.index);
     setDraft(''); setLabelDraft(''); setError(null); setConfirmRevoke(false);
   };
@@ -207,12 +207,15 @@ function GenerateViewerKeyBlock() {
     let ownerSk: Uint8Array | null = null;
     let derived: Uint8Array | null = null;
     try {
-      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewers } = useStore.getState();
+      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewers, nextViewerIndex } = useStore.getState();
       if (!writerKeyWrapped || !writerKeyWrapMeta || !pk) { setError('No local key on this device.'); return; }
-      const slot0 = viewers[0] ?? null;   // M1: mint/rotate slot 0
+      const slot0 = viewers[0] ?? null;   // M1 UI still mints/rotates slot 0 (roster UI is M3)
       const keyVersion = slot0?.keyVersion ?? 1;
+      // M2 — derivation is PER-SLOT-INDEXED. Add-path: index = nextViewerIndex, the SAME value addViewerSlot
+      // will assign below (the key is bound to that index — this coupling must hold). Rotate: reuse slot0.index.
+      const index = slot0 ? slot0.index : nextViewerIndex;
       ownerSk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, writerKeyWrapMeta.scheme === 'pin' ? pin : undefined);
-      derived = await deriveViewerKeyFromNsec(ownerSk, pk, keyVersion);   // 3-arg (indexed derivation is M2)
+      derived = await deriveViewerKeyFromNsec(ownerSk, pk, keyVersion, index);   // 4-arg indexed (M2)
       const hex = getPublicKey(derived);
       // Replace-guard — never silently swap out a live viewer. Re-deriving the SAME key (existing === hex) is the
       // friction-free determinism/recovery path and skips the confirm. Rotation SUPPRESSES it (already confirmed).

@@ -23,9 +23,8 @@ describe('Option C — settings payload carries nostrRelays (owner sync), viewer
 
   it("buildViewerSnapshotPayload's settings does NOT carry nostrRelays (owner transport config)", () => {
     seedLocal([A, B, C]);
-    // Multi-viewer M1 — a trusted slot 0 forces the C-trusted branch (only it carries a settings block).
-    useStore.setState({ viewers: [{ index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1x', label: 'Dad', tier: 'trusted', keyVersion: 1 }], nextViewerIndex: 1 } as never);
-    const snapSettings = buildViewerSnapshotPayload(useStore.getState()).settings as Record<string, unknown>;
+    // Multi-viewer M2 — the C-trusted branch (only it carries a settings block) via the explicit tier param.
+    const snapSettings = buildViewerSnapshotPayload(useStore.getState(), 'trusted').settings as Record<string, unknown>;
     expect('nostrRelays' in snapSettings).toBe(false);
     // sanity: it still carries the real synced settings a viewer needs
     expect('income' in snapSettings).toBe(true);

@@ -1695,8 +1695,8 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   gauge.)
 - **Owner control — the C-safe/C-trusted tier.** ⚠ **SUPERSEDED at Multi-viewer M1:** the global
   `viewerPrivacyTrusted` boolean is GONE — the tier is now **per-viewer** (`ViewerSlot.tier: 'safe'|'trusted'`,
-  default `'safe'`, part of the synced `viewers` roster). `buildViewerSnapshotPayload` branches on
-  `viewers[0]?.tier === 'trusted'` (M1 slot-0; M2 per-viewer). The roster is STRIPPED from the snapshot in BOTH
+  default `'safe'`, part of the synced `viewers` roster). `buildViewerSnapshotPayload(s, tier)` branches on the
+  explicit `tier` param (M2 — the fan-out passes each `slot.tier`; M1's `viewers[0]` read was removed). The roster is STRIPPED from the snapshot in BOTH
   branches (safe has no settings; trusted's strip is now `viewers`/`nextViewerIndex`/`nostrRelays`) AND from the
   **plan backup** (`exportPlan.ts`). SharingPage's tier `<Toggle>` calls `updateViewerSlot(index,{tier})` +
   `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
@@ -3004,15 +3004,17 @@ src/
                                     # syncNow→setIsAuthenticated(true)→sk.fill(0)). Extracted VERBATIM from NostrAuthGate's
                                     # import body → BOTH the import path AND OwnerKeySetup K3 call it (zero drift).
                                     # ⚠ NEVER logs the nsec. NostrSigner from './signers' (sibling re-export)
-    viewerKey.ts                    # Viewer-key derivation v1 — deriveViewerKeyFromNsec(sk, ownerPubkeyHex, version=1)
-                                    # → deterministic 32-byte viewer secret key. WebCrypto DIRECTLY (crypto.subtle), NOT
-                                    # keyVault's helpers/info labels (own crypto domain). HKDF-SHA256: ikm=owner sk,
-                                    # salt=SHA-256(utf8(ownerPubkeyHex)), info=`personal-bloc/viewer-key/v${version}`,
-                                    # deriveBits 256; if out-of-range (~2^-128) append `/${counter}` to info + re-derive
-                                    # (validity gate = getPublicKey try/catch, no extra deps). Deterministic in
-                                    # (ownerSk, ownerPubkeyHex, version) → the owner regenerates the SAME viewer nsec
-                                    # anytime (no separate backup). Does NOT mutate sk; returns a fresh array the caller
-                                    # zeroes. ⚠ Never logs/persists key material
+    viewerKey.ts                    # Viewer-key derivation — deriveViewerKeyFromNsec(sk, ownerPubkeyHex, keyVersion, index)
+                                    # → deterministic 32-byte viewer secret key. M2: 4-ARG, PER-SLOT-INDEXED. WebCrypto
+                                    # DIRECTLY (crypto.subtle), NOT keyVault's helpers/info labels (own crypto domain).
+                                    # HKDF-SHA256: ikm=owner sk, salt=SHA-256(utf8(ownerPubkeyHex)),
+                                    # info=`personal-bloc/viewer-key/v${keyVersion}/i${index}`, deriveBits 256; if
+                                    # out-of-range (~2^-128) append `/${counter}` to info + re-derive (validity gate =
+                                    # getPublicKey try/catch, no extra deps). Deterministic in (ownerSk, ownerPubkeyHex,
+                                    # keyVersion, index) → the owner regenerates the SAME viewer nsec for that slot anytime
+                                    # (no separate backup). The index makes every roster slot's key distinct at the same
+                                    # keyVersion; keyVersion is per-slot (rotation bumps it). Does NOT mutate sk; returns a
+                                    # fresh array the caller zeroes. ⚠ Never logs/persists key material
     handoffToken.ts                 # Viewer handoff v3 — buildHandoffToken(keyPart, ownerNpub) → `<keyPart>:<ownerNpub>`
                                     # + parseHandoffToken → {kind:'nsec'|'ncryptsec', keyPart, ownerNpub} (ownerNpub NON-NULL).
                                     # PURE (nip19 bech32 only, NO crypto): trim, split on ':' (EXACTLY 2 parts required — bare
@@ -3062,8 +3064,9 @@ src/
                                     # closeLiveSync); transport only, every event → applyRemoteEvent; opened on
                                     # visible, torn down on hidden, fresh since−60s each open
     viewerSync.ts                   # Viewer Access Phase 2 (READ-ONLY) — the mirror of liveSync, but reads the
-                                    # OWNER's snapshot (authors:[viewerWriterPubkey], #d:[VIEWER_DTAG]) and decrypts
-                                    # with the VIEWER's key (NSecSigner(hexToBytes(viewerSecretKey).slice())).
+                                    # OWNER's snapshot (authors:[viewerWriterPubkey], #d:[viewerDTag(myPubkey)] — M2
+                                    # per-viewer addressing; getViewerPubkeyHex() computes the viewer's own pubkey from
+                                    # the in-memory holder) and decrypts with the VIEWER's key (NSecSigner(...)).
                                     # fetchViewerSnapshot (batch) + open/closeViewerSync (singleton live sub) →
                                     # applyViewerEvent → read-only hydrate (hydrateSettings/setMonthlyLog/
                                     # setDeletedMonths/setStrike*); NEVER publishes/dirties. P3/C-P4 (BUG3): raw-sets
@@ -3308,7 +3311,7 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 |---|---|---|
 | `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
-| `personal-bloc:viewer:v1` | **Viewer Access — MODE-SHAPED (Viewer V2).** `ViewerSnapshot` NIP-44-encrypted to the configured **viewer's** pubkey (`viewerPubkey`). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (opt-in via `viewerPrivacyTrusted`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common (both collateral scalars are derived-from-dayLog, trusted-only + optional — the SAFE payload carries NEITHER by construction; C-P4). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on `setViewerPrivacyTrusted`/saving a viewer npub; gated on `viewerPubkey` set; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** publishes the same d-tag with an empty payload + `revoked: true` (tombstone) via `publishViewerRevocationNow()` → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
+| `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common. Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
 ### Viewer-key derivation v1 + handoff v4 — deterministic owner-minted viewer key + combined token + rotation (store stays v19, NO bump)
 
@@ -3321,8 +3324,9 @@ authorized since `SharingPage` has no field to receive a viewer npub). **The tok
 carries the owner's npub and supports an encrypted (NIP-49) key part for remote transport (see the Handoff
 bullet). `parseHandoffToken` requires exactly 2 parts (`ownerNpub` non-null; bare-nsec retired at v3). Plus
 an owner-side **key-rotation** affordance (honors the handoff passphrase).
-- **`src/lib/nostr/viewerKey.ts`** — `deriveViewerKeyFromNsec(ownerSk, ownerPubkeyHex, version=1)` (see the Key
-  Files entry for the HKDF formula + counter-bump). Deterministic in (ownerSk, ownerPubkeyHex, version).
+- **`src/lib/nostr/viewerKey.ts`** — `deriveViewerKeyFromNsec(ownerSk, ownerPubkeyHex, keyVersion, index)` (M2:
+  4-arg, per-slot-indexed — label `personal-bloc/viewer-key/v${keyVersion}/i${index}`; see the Key Files entry
+  for the HKDF formula + counter-bump). Deterministic in (ownerSk, ownerPubkeyHex, keyVersion, index).
 - **Key version** — ⚠ **SUPERSEDED at Multi-viewer M1 (store v21):** the global `viewerKeyVersion` scalar is
   GONE — the version byte is now **per-slot** (`ViewerSlot.keyVersion`, part of the synced `viewers` roster;
   rotation bumps a single slot's version). Historically (v1→handoff-v4) it was a standalone synced setting
@@ -3408,9 +3412,10 @@ EMPTY; the owner re-adds viewers fresh.
   and are STRIPPED from the trusted `buildViewerSnapshotPayload` settings (the roster invariant — a viewer never
   sees who else the owner shares with, tiers, or key versions) AND from `exportPlan.ts`'s plan backup. The safe
   snapshot branch carries no settings block at all.
-- **Tier source (M1 slot-0 / temporary):** `buildViewerSnapshotPayload` reads `s.viewers[0]?.tier === 'trusted'`
-  (empty roster ⇒ safe, the default); `publishViewerSnapshotNow`/`publishViewerRevocationNow` target
-  `s.viewers[0]?.pubkeyHex`. M2 fans out one encrypted publish per slot on `viewerDTag(pubkeyHex)`.
+- **Tier source (M1 slot-0 — ⚠ SUPERSEDED by M2):** M1 read `s.viewers[0]?.tier` inside
+  `buildViewerSnapshotPayload` and targeted `s.viewers[0]?.pubkeyHex`. M2 replaced this: the tier is an explicit
+  param `buildViewerSnapshotPayload(s, tier)` and `publishViewerSnapshotNow` FANS OUT one encrypted publish per
+  slot on `viewerDTag(pubkeyHex)`; `publishViewerRevocationNow(pubkeyHex)` is per-slot. (See the M2 section.)
 - **Skip-guard (`hydrateSettings`, mirrors the relay guard):** an EMPTY incoming `viewers` never clobbers a
   populated local roster — skips BOTH `viewers` + `nextViewerIndex` (so the counter can't regress); a populated
   incoming roster hydrates. Publish-side is already covered by `initialSettingsPullDone` (Fix C/D).
@@ -3423,6 +3428,44 @@ EMPTY; the owner re-adds viewers fresh.
   `nextViewerIndex: 0` unconditionally; `version: 20 → 21`. Tests: `viewerRoster.test.ts` (migration drop/empty,
   setter monotonic-index/no-reuse/merge, skip-guard) + the rewritten `viewerSnapshot.test.ts` (per-tier build +
   roster strip). Suite 592 → 601.
+
+### Multi-Viewer M2 — indexed derivation + per-viewer d-tag publish fan-out (store stays v21)
+
+The PLUMBING for N viewers (the roster UI stays slot-0 until M3). Kind-30078 is parameterized-replaceable (one
+live event per author+d-tag), so N viewers on one d-tag would overwrite each other. M2 makes derivation
+per-slot-indexed and publishing per-viewer-addressed. **CLEAN-CUT: no old-label / no old-d-tag compat** — after
+deploy the owner rotates slot 0 and re-provisions the (test) viewer device.
+
+- **Derivation (`viewerKey.ts`):** `deriveViewerKeyFromNsec(sk, ownerPubkeyHex, keyVersion, index)` — 4-ARG,
+  index required; info `personal-bloc/viewer-key/v${keyVersion}/i${index}` (counter-bump unchanged). Each roster
+  slot derives a distinct key at the same keyVersion; keyVersion is per-slot (rotation bumps it). Regression pin:
+  the new label is NOT reproducible by the old index-less `…/v${version}` label (tested with a local HKDF helper;
+  the old code path is gone).
+- **Addressing (`publish.ts`):** `viewerDTag(pubkeyHex) = 'personal-bloc:viewer:v2:' + pubkeyHex`. `VIEWER_DTAG`
+  (v1) is DELETED. `publishViewerSnapshot` computes `viewerDTag(viewerPubkey)` internally (covers snapshots +
+  revocation tombstones).
+- **Fan-out (`publishViewerSnapshotNow`, useStore):** iterates `s.viewers` (empty ⇒ no-op, same gate shape);
+  builds the payload **once per distinct tier** (`Map<tier, ViewerSnapshot>`, at most 2 builds) via
+  `buildViewerSnapshotPayload(s, tier)` — the tier is now an **explicit required param** (the M1 slot-0 read is
+  removed; it moved into the loop). Encrypts N times: `Promise.allSettled(viewers.map(slot =>
+  publishViewerSnapshot(signer, slot.pubkeyHex, payloadFor(slot.tier), …)))` — **failure isolation**, one slot's
+  relay failure never aborts the rest. Per-slot reporting is automatic: each publish pushes its OWN
+  `PublishReport` labeled by `viewerDTag(slot.pubkeyHex)` (distinct per viewer); a final `nostrLog('info',
+  'viewer fan-out: N ok / M failed')`.
+- **Revocation (`publishViewerRevocationNow(viewerPubkeyHex)`, useStore):** PER-SLOT — takes the target pubkey
+  (was slot-0), tombstones only that viewer's d-tag. `SharingPage.revoke` captures `slot0.pubkeyHex` before
+  `removeViewerSlot`.
+- **Viewer side (`viewerSync.ts`):** new `getViewerPubkeyHex()` (the viewer's own pubkey from the in-memory
+  holder); the subscription/fetch filter uses `'#d': [viewerDTag(myPubkeyHex)]`. `DevPanel`'s two probes moved to
+  `viewerDTag` (owner probe → `viewers[0].pubkeyHex`; viewer probe → `getViewerPubkeyHex()`).
+- **SharingPage derive:** add-path derives with `index = nextViewerIndex` (the value `addViewerSlot` WILL assign
+  — coupling commented); rotate-path with `slot.index` + the bumped `slot.keyVersion`.
+- **`ViewerPreview` safe-force:** now `buildViewerSnapshotPayload(state, 'safe')` (the required tier param
+  replaced the `{ ...state, viewers: [] }` spread — fidelity preserved).
+- Tests: `viewerKey.test.ts` (index domain separation + regression pin), `viewerFanout.test.ts` (NEW — 2-tier
+  fan-out to the right pubkeys, once-per-tier reference-equal build, `allSettled` isolation, per-slot revocation),
+  `viewerSync.test.ts` (`#d` = `viewerDTag(myPubkey)` + v2 shape), and the tier-param call-site updates in
+  `viewerSnapshot.test.ts`/`relaySync.test.ts`. Suite 601 → 610.
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 
@@ -3441,11 +3484,11 @@ a v17-migrant holder until the one-time wrap.
   destructure) so the viewer never learns who else the owner shares with, the owner's nickname for them, nor the
   owner's relay set — the **load-bearing boundary**, guarded by `viewerSnapshot.test.ts` + `relaySync.test.ts`
   (payload HAS them; snapshot.settings does NOT).
-- **`buildViewerSnapshotPayload(s)`** = `{ settings: buildSettingsPayload(s) minus viewerNpub/viewerPubkey/viewerLabel,
-  records: { entries: monthlyLog, deletions: deletedMonths }, strike: { usd, btcAvail, rate } }`.
-  `publishViewerSnapshotNow()` seals it to `viewerPubkey` via `publishViewerSnapshot` (`VIEWER_DTAG =
-  'personal-bloc:viewer:v1'`, NIP-44 to the viewer's key). Fire-and-forget, log-only — see the Published Event
-  Types table.
+- **`buildViewerSnapshotPayload(s, tier)`** (M2 — required tier param) = the mode-shaped payload (see Viewer V2).
+  `publishViewerSnapshotNow()` FANS OUT (M2): one `publishViewerSnapshot` per roster slot, each sealed to
+  `slot.pubkeyHex` on `viewerDTag(slot.pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` (the v1 d-tag is
+  deleted), payload built once per tier, `Promise.allSettled` isolation. Fire-and-forget, log-only — see the
+  Published Event Types table.
 - **`viewerNpub` / `viewerPubkey` / `viewerLabel`** (writer-side, the provisioned viewer + the owner's nickname for
   them): **SYNCED in the owner's own settings:v1** (public npubs — NIP-44 to self, no secret leak; viewer
   set/removed on one owner device propagates to all, and editing on any device publishes the snapshot because it
@@ -3467,7 +3510,8 @@ a v17-migrant holder until the one-time wrap.
   simple-mode dashboard. (Historically Phase 2 had the viewer `generateSecretKey` its own key + show its npub
   for the owner to add — RETIRED at Handoff v4.)
 - **`viewerSync.ts`** (mirrors `liveSync.ts`): batch `fetchViewerSnapshot()` + a singleton live sub, both
-  filtered `{ kinds:[30078], authors:[viewerWriterPubkey], '#d':[VIEWER_DTAG] }` (SINGLE filter at 2.23.5).
+  filtered `{ kinds:[30078], authors:[viewerWriterPubkey], '#d':[viewerDTag(getViewerPubkeyHex())] }` (M2 —
+  the viewer's OWN d-tag; SINGLE filter at 2.23.5).
   Builds one `NSecSigner(hexToBytes(viewerSecretKey).slice())` (**`.slice()` — the writer-signer ref bug**),
   `nip44.decrypt(viewerWriterPubkey, …)` → `{ settings, records, strike }` → **read-only hydrate**
   (`hydrateSettings`/`setMonthlyLog`(via `recomputeBtcHeld`)/`setDeletedMonths`/`setStrike*`). NEVER sets dirty

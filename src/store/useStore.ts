@@ -651,9 +651,9 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
 // Viewer snapshot — MODE-SHAPED (Viewer V2). Default C-SAFE: a tiny payload of health ratios + config
 // ratios + public price. NO absolute exists in it BY CONSTRUCTION (the privacy audit is Object.keys — no
 // settings/records/strike/cbCollateralBtc keys). C-TRUSTED (opt-in): today's full payload. See safetyView.ts.
-export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/publish').ViewerSnapshot {
+export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'trusted'): import('../lib/nostr/publish').ViewerSnapshot {
   const asOf = Date.now();
-  if (s.viewers[0]?.tier !== 'trusted') {   // M1: slot-0 tier (empty roster ⇒ safe, the default). M2 fans out per-viewer.
+  if (tier !== 'trusted') {   // M2: tier is an explicit param (the slot-0 read moved into the fan-out loop) — built once per tier.
     // C-SAFE — the owner runs the dashboard's EXACT inputs (deriveSafetyView ∘ selectSafetyViewInputs), then
     // ships only the ratio/level block (buildSafeSafety drops the two $ absolutes) + config ratios + price.
     const view = deriveSafetyView(selectSafetyViewInputs(s));
@@ -686,39 +686,46 @@ export function buildViewerSnapshotPayload(s: StoreState): import('../lib/nostr/
   };
 }
 
-// Fire-and-forget viewer snapshot — gated on a viewer being set; log-only on failure. MUST NOT touch
-// recordsDirty/settingsDirty/nostrReconnectNeeded/nostrSyncing — the owner's own sync result is independent.
+// Fire-and-forget viewer snapshot — M2 FAN-OUT: one NIP-44 publish per roster slot, each sealed to that
+// viewer's pubkey on its own d-tag (viewerDTag). Gated on the roster being non-empty; log-only on failure.
+// MUST NOT touch recordsDirty/settingsDirty/nostrReconnectNeeded/nostrSyncing — the owner's own sync result
+// is independent. The payload is built ONCE PER DISTINCT TIER (at most 2 builds), encrypted N times.
 export async function publishViewerSnapshotNow(): Promise<void> {
   const s = useStore.getState();
-  const target = s.viewers[0]?.pubkeyHex;   // M1: single viewer (slot 0). M2 fans out one publish per slot.
-  if (!target || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  if (!s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  const signer = s.nostrSigner;
+  const relays = s.nostrRelays.length ? s.nostrRelays : undefined;
+  const timeout = signerOpTimeout(s.nostrSigningMethod);
   try {
     const { publishViewerSnapshot } = await import('../lib/nostr/publish');
-    await publishViewerSnapshot(
-      s.nostrSigner,
-      target,
-      buildViewerSnapshotPayload(s),
-      s.nostrRelays.length ? s.nostrRelays : undefined,
-      signerOpTimeout(s.nostrSigningMethod),
+    const byTier = new Map<'safe' | 'trusted', import('../lib/nostr/publish').ViewerSnapshot>();
+    const payloadFor = (tier: 'safe' | 'trusted') => {
+      if (!byTier.has(tier)) byTier.set(tier, buildViewerSnapshotPayload(s, tier));   // build once per tier
+      return byTier.get(tier)!;
+    };
+    // FAILURE ISOLATION — allSettled so one slot's relay failure never aborts the rest. Each publish records
+    // its OWN PublishReport (labeled by viewerDTag(pubkeyHex)) via the shared publish tail.
+    const results = await Promise.allSettled(
+      s.viewers.map((slot) => publishViewerSnapshot(signer, slot.pubkeyHex, payloadFor(slot.tier), relays, timeout)),
     );
-    nostrLog('info', 'viewer snapshot published');
+    const ok = results.filter((r) => r.status === 'fulfilled').length;
+    nostrLog('info', `viewer fan-out: ${ok} ok / ${results.length - ok} failed (${results.length} viewers)`);
   } catch (e) {
-    nostrLog('warn', 'viewer snapshot failed', e);
+    nostrLog('warn', 'viewer fan-out failed', e);
   }
 }
 
-// Real-time revocation: seal a TOMBSTONE (empty payload + revoked:true) to the current viewer so their next
-// live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. Call BEFORE removing the
-// slot — the gate reads getState().viewers[0] synchronously at call start. Fire-and-forget, log-only.
-export async function publishViewerRevocationNow(): Promise<void> {
+// Real-time revocation (M2 — PER-SLOT): seal a TOMBSTONE (empty payload + revoked:true) to ONE viewer's d-tag
+// so their next live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. The caller
+// passes the target pubkey (captured BEFORE removeViewerSlot). Fire-and-forget, log-only.
+export async function publishViewerRevocationNow(viewerPubkeyHex: string): Promise<void> {
   const s = useStore.getState();
-  const target = s.viewers[0]?.pubkeyHex;   // M1: single viewer (slot 0)
-  if (!target || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  if (!viewerPubkeyHex || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
   try {
     const { publishViewerSnapshot } = await import('../lib/nostr/publish');
     await publishViewerSnapshot(
       s.nostrSigner,
-      target,
+      viewerPubkeyHex,
       { settings: {}, records: { entries: [], deletions: {} }, strike: { usd: null, btcAvail: null, rate: null }, revoked: true },
       s.nostrRelays.length ? s.nostrRelays : undefined,
       signerOpTimeout(s.nostrSigningMethod),

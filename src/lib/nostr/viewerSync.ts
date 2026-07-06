@@ -1,5 +1,6 @@
 // Viewer-side read-only sync (Phase 2). The MIRROR of liveSync.ts, but it reads the OWNER's snapshot
-// (authors:[viewerWriterPubkey], #d:[VIEWER_DTAG]) and decrypts it with the VIEWER's own key.
+// (authors:[viewerWriterPubkey], #d:[viewerDTag(myPubkey)] — M2 per-viewer addressing) and decrypts it with
+// the VIEWER's own key.
 //
 // READ-ONLY by construction: this module ONLY hydrates the store from the owner's viewer:v1 snapshot. It NEVER
 // publishes, NEVER sets dirty flags. The writer publish/sync path (useNostrSync/syncNow/openLiveSync) is gated
@@ -16,7 +17,7 @@ import { getPublicKey } from 'nostr-tools/pure';
 import { nip19 } from 'nostr-tools';
 import { NSecSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
-import { VIEWER_DTAG, type ViewerSnapshot } from './publish';
+import { viewerDTag, type ViewerSnapshot } from './publish';
 import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { signerOpTimeout } from './timeout';
@@ -65,6 +66,13 @@ export function getViewerNpub(): string | null {
   try { return nip19.npubEncode(getPublicKey(unwrappedViewerKey.slice())); } catch { return null; }
 }
 
+/** The viewer's OWN hex pubkey (M2 — the viewer's snapshot is addressed to viewerDTag(thisPubkey)). null
+ *  pre-unlock. Used to build the subscription/fetch #d filter from the in-memory holder. */
+export function getViewerPubkeyHex(): string | null {
+  if (!unwrappedViewerKey) return null;
+  try { return getPublicKey(unwrappedViewerKey.slice()); } catch { return null; }
+}
+
 function getViewerSigner(): NSecSigner | null {
   if (!unwrappedViewerKey) return null;
   if (cachedSigner) return cachedSigner;
@@ -87,10 +95,10 @@ function backfillFromPlaintext(viewerSecretKey: string | null): void {
   if (!unwrappedViewerKey && viewerSecretKey) setUnwrappedViewerKey(hexToBytes(viewerSecretKey).slice());
 }
 
-const filter = (writerPubkey: string) => ({
+const filter = (writerPubkey: string, viewerPubkeyHex: string) => ({
   kinds:   [30078],
   authors: [writerPubkey],
-  '#d':    [VIEWER_DTAG],
+  '#d':    [viewerDTag(viewerPubkeyHex)],   // M2 — this viewer's own d-tag
 });
 
 // Decrypt the owner's snapshot with the viewer key and hydrate the store READ-ONLY. Shared by the batch
@@ -170,9 +178,11 @@ export async function fetchViewerSnapshot(): Promise<void> {
   const { viewerMode, viewerWriterPubkey, viewerSecretKey, nostrRelays } = useStore.getState();
   backfillFromPlaintext(viewerSecretKey);
   if (!viewerMode || !viewerWriterPubkey || !unwrappedViewerKey) return;
+  const myHex = getViewerPubkeyHex();   // holder is non-null past the guard above
+  if (!myHex) return;
   const pool = new SimplePool();
   try {
-    const events = await pool.querySync(nostrRelays, filter(viewerWriterPubkey));
+    const events = await pool.querySync(nostrRelays, filter(viewerWriterPubkey, myHex));
     pool.close(nostrRelays);
     // Nothing shared (wrong writerPubkey / revoked) — no authorized data to show, so wipe stale residue.
     if (!events.length) { useStore.getState().clearViewerData(); return; }
@@ -191,11 +201,13 @@ export function openViewerSync(): void {
   const { viewerMode, viewerWriterPubkey, viewerSecretKey, nostrRelays } = useStore.getState();
   backfillFromPlaintext(viewerSecretKey);
   if (!viewerMode || !viewerWriterPubkey || !unwrappedViewerKey || !nostrRelays.length) return;
+  const myHex = getViewerPubkeyHex();   // holder is non-null past the guard above
+  if (!myHex) return;
   pool = new SimplePool();
   subRelays = nostrRelays;
   sub = pool.subscribeMany(
     nostrRelays,
-    { ...filter(viewerWriterPubkey), since: Math.floor(Date.now() / 1000) - 60 },
+    { ...filter(viewerWriterPubkey, myHex), since: Math.floor(Date.now() / 1000) - 60 },
     { onevent: (event) => { void applyViewerEvent(event); } },
   );
   nostrLog('info', `viewer sub open (${nostrRelays.length} relays)`);
