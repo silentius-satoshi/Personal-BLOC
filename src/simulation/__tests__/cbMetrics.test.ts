@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { cbMetrics, accruedCbBalance, barLevel, worseLevel } from '../cbMetrics';
+import { cbMetrics, accruedCbBalance, barLevel, cbBarLevel, CB_ACT_LTV_FACTOR, worseLevel } from '../cbMetrics';
 import { CB_LLTV } from '../runCoinbaseLoan';
 
 // Shared baseline: $60k loan, 1.48 ₿ collateral, $100k BTC, 75% trigger.
@@ -90,6 +90,16 @@ describe('safety state selection (barLevel / worseLevel)', () => {
     expect(worseLevel('safe', 'watch')).toBe('watch');
     expect(worseLevel('act', 'safe')).toBe('act');
     expect(worseLevel('safe', 'safe')).toBe('safe');
+  });
+
+  it('cbBarLevel = the CB gauge zone (green below trigger, amber to cbLiqFrac×0.93, red above)', () => {
+    // trigger 75, cbLiqFrac = CB_LLTV (0.86) → act boundary 0.86 × 0.93 ≈ 0.7998.
+    expect(CB_ACT_LTV_FACTOR).toBe(0.93);
+    expect(cbBarLevel(0.57, 75, CB_LLTV)).toBe('safe');   // 57% under a 75% trigger → GREEN (the headline case)
+    expect(cbBarLevel(0.76, 75, CB_LLTV)).toBe('watch');  // above trigger, below act boundary → amber
+    expect(cbBarLevel(0.81, 75, CB_LLTV)).toBe('act');    // ≥ 0.86×0.93 → red
+    // identical to the raw call it wraps (regression pin against the extracted 0.93)
+    expect(cbBarLevel(0.76, 75, CB_LLTV)).toBe(barLevel(0.76, 0.75, CB_LLTV * 0.93));
   });
 
   it('Strike liquidation gauge: default 85% ceiling places a known LTV correctly', () => {

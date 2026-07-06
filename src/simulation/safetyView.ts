@@ -1,4 +1,4 @@
-import { cbMetrics, accruedCbBalance, barLevel, worseLevel, type SafetyLevel } from './cbMetrics';
+import { cbMetrics, accruedCbBalance, barLevel, cbBarLevel, worseLevel, type SafetyLevel } from './cbMetrics';
 import { computeStrikeLtv, strikeAvailableCredit } from './strikeCredit';
 import { CB_LLTV } from './runCoinbaseLoan';
 import type { StoreState } from '../store/useStore'; // TYPE-only → erased at compile → no runtime cycle
@@ -22,6 +22,15 @@ import type { StoreState } from '../store/useStore'; // TYPE-only → erased at 
 
 export type { SafetyLevel } from './cbMetrics';
 export { worseLevel };
+
+/** The single SafetyLevel → CSS-var color map. Lifted here (was module-private in SafetyDashboard) so
+ *  every level-colored surface — the owner SafetyDashboard bars AND the Almanac Ledger CB LTV cells —
+ *  reads one map and can never drift. */
+export const LEVEL_COLOR: Record<SafetyLevel, string> = {
+  safe:  'var(--green)',
+  watch: 'var(--amber)',
+  act:   'var(--red)',
+};
 
 /** NEW for V1 — the credit gauge gets a risk band the owner UI lacks (capacity is "room", not risk
  *  in the owner view, so its bar is always green there). green < 75% used, amber 75-90%, red >= 90%. */
@@ -100,7 +109,7 @@ export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
       cbLiqPrice > 0 && cbCollateralBtc > 0
         ? accruedBalance / (cbCollateralBtc * cbLiqPrice)
         : CB_LLTV;
-    cbLevel = barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93);
+    cbLevel = cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac);
   }
 
   return {
@@ -191,7 +200,7 @@ export function scaleSafetyView(snap: SafeSnapshot, livePrice: number): ViewerSa
   const crashLtv = strikeLtv * 5; // Strike LTV at price × 0.2 (an 80% crash) — 1/0.2 = 5
   const creditLevel = barLevel(capacityUsed, CREDIT_WARN_USED, CREDIT_ACT_USED);
   const strikeLevel = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82);
-  const cbLevel: SafetyLevel = snap.hasCbLoan ? barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * 0.93) : 'safe';
+  const cbLevel: SafetyLevel = snap.hasCbLoan ? cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac) : 'safe';
   const base = worseLevel(creditLevel, strikeLevel);
   const overall = snap.hasCbLoan ? worseLevel(base, cbLevel) : base;
   const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - strikeLtv / strikeLiqLtv) : 0;

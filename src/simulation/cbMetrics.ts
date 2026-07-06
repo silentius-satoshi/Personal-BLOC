@@ -49,6 +49,19 @@ export function barLevel(ltv: number, warnAt: number, actAt: number): SafetyLeve
   return 'safe';
 }
 
+/** The 'act' (red) boundary factor for the CB gauge: red once cbLtv reaches cbLiqFrac × this. */
+export const CB_ACT_LTV_FACTOR = 0.93;
+
+/**
+ * The CB (Coinbase/Morpho) gauge zone classifier — the SINGLE source of the CB bar's green/amber/red.
+ * green (safe) below the trigger (default 75% → 0.75), amber (watch) up to cbLiqFrac × CB_ACT_LTV_FACTOR,
+ * red (act) at/above that. Consumed by safetyView (owner dashboard + viewer scaler) AND the Almanac
+ * Ledger face so a CB LTV colors identically everywhere (e.g. 57% under the default trigger stays green).
+ */
+export function cbBarLevel(cbLtv: number, cbLtvTriggerPct: number, cbLiqFrac: number): SafetyLevel {
+  return barLevel(cbLtv, cbLtvTriggerPct / 100, cbLiqFrac * CB_ACT_LTV_FACTOR);
+}
+
 /** The more severe of two levels — the state line follows the NEARER (worse) bar. */
 export function worseLevel(a: SafetyLevel, b: SafetyLevel): SafetyLevel {
   const rank: Record<SafetyLevel, number> = { safe: 0, watch: 1, act: 2 };

@@ -1,0 +1,215 @@
+/* Almanac Ledger face (M-L1). Tokens only — zero new hex. The visual signature is the 2px LTV
+   micro-meter (spec C); everything else is restraint. Renders bare in AlmanacView (own width). */
+
+.face {
+  width: 100%;
+  max-width: 960px;      /* matches the hub's widest tools (Mining/PowerLaw) */
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  box-sizing: border-box;
+}
+
+.head {
+  margin: 4px 2px 0;
+}
+.title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.framing {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+  margin: 12px 2px 14px;
+}
+/* Mirrors SharingPage.module.css .actionBtn — the app's control vocabulary. */
+.actionBtn {
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  font-family: inherit;
+  flex-shrink: 0;
+  transition: background 0.12s;
+}
+.actionBtn:hover { background: var(--bg-hover); }
+
+.tableWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+
+/* Column headers — the app's eyebrow/label voice. */
+.th {
+  text-align: right;
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+
+/* Numeric body cells — tabular-nums is load-bearing for the column scan. Row rules = 1px --line-2. */
+.td {
+  text-align: right;
+  padding: 13px 10px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--line-2);
+}
+
+/* Ink hierarchy: flows read primary, stocks read secondary. */
+.flow { color: var(--text-primary); }
+.stock { color: var(--text-secondary); }
+
+/* The Month column — left-aligned, secondary. Sticky + scrim only on mobile (horizontal scroll). */
+.moCell {
+  text-align: left;
+  color: var(--text-secondary);
+}
+@media (max-width: 767px) {
+  .moCell {
+    position: sticky;
+    left: 0;
+    background: var(--bg-card);
+    z-index: 1;
+  }
+  .moCell::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    width: 12px;
+    transform: translateX(100%);
+    background: linear-gradient(90deg, var(--bg-card), transparent);
+    pointer-events: none;
+  }
+}
+
+/* Provisional rows: Month cell only — muted italic (figures stay full-strength). */
+.moProvisional {
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* Needs-review (confirmed === false) — token-pure low-alpha amber tint. */
+.rowReview {
+  background: color-mix(in srgb, var(--amber) 9%, transparent);
+}
+
+/* Row hover only where it makes sense (fine pointer + desktop width). */
+@media (hover: hover) and (min-width: 768px) {
+  .table tbody tr:hover { background: var(--bg-hover); }
+}
+
+/* The BTC-quantity prefix — the ONLY ornament. */
+.btcPre {
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+
+/* Footnote marker on the Paydown cell. */
+.note {
+  color: var(--text-muted);
+  font-size: 9px;
+  margin-left: 1px;
+}
+
+/* SIGNATURE — the LTV micro-meter beneath the number (spec C). */
+.ltvCell {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+.meterTrack {
+  width: 100%;
+  min-width: 44px;
+  height: 2px;
+  background: var(--line-2);
+  border-radius: 1px;
+  overflow: hidden;
+}
+.meterFill {
+  display: block;
+  height: 100%;
+  border-radius: 1px;
+}
+
+/* The accounting close — a double hairline (two 1px --line rules 3px apart). */
+.closeRule td {
+  height: 3px;
+  padding: 0;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+
+/* Totals — numerals primary; label muted small caps. No zone color, no meter (point-in-time close). */
+.totalTd {
+  text-align: right;
+  padding: 13px 10px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-primary);
+  font-weight: 600;
+}
+.totalLabel {
+  text-align: left;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.empty {
+  padding: 24px 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-muted);
+}
+
+.footnote {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-faint);
+}
+
+/* Motion — the ONE animation: staggered row fade-in on mount; disabled under reduced motion. */
+@keyframes ledgerRowIn {
+  from { opacity: 0; transform: translateY(-3px); }
+  to   { opacity: 1; transform: none; }
+}
+.table tbody tr {
+  animation: ledgerRowIn 200ms ease-out both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .table tbody tr { animation: none !important; }
+}

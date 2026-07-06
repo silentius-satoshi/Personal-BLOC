@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CB_LLTV, CB_WARN_LTV } from '../../simulation/runCoinbaseLoan';
 import { worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
-import { deriveSafetyView, selectSafetyViewInputs } from '../../simulation/safetyView';
+import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
@@ -22,12 +22,6 @@ function freshnessLabel(kind: 'balance' | 'liq price', asOf: string | null): { t
   if (d === 0)    return { text: `${kind} updated today`, stale: false };
   return { text: `${kind} as of ${d} day${d === 1 ? '' : 's'} ago`, stale: d > 30 };
 }
-
-const LEVEL_COLOR: Record<SafetyLevel, string> = {
-  safe:  'var(--green)',
-  watch: 'var(--amber)',
-  act:   'var(--red)',
-};
 
 export function SafetyDashboard() {
   const btcPrice               = useStore((s) => s.btcPrice);

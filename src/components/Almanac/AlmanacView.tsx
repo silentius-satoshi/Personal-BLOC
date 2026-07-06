@@ -12,6 +12,8 @@ import { PowerLawMain } from '../PowerLaw/PowerLawMain';
 import { ConverterMain } from '../Converter/ConverterMain';
 import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { CbDefenseTool } from '../Tools/CbDefenseTool';
+import LedgerFace from './LedgerFace';
+import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
 /**
@@ -37,7 +39,7 @@ import styles from './AlmanacView.module.css';
  * six faces under one hub is navigation only — it crosses neither wall.
  */
 export default function AlmanacView() {
-  const [face, setFace] = useState<'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense'>('halving');
+  const [face, setFace] = useState<'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger'>('halving');
   const [consentOpen, setConsentOpen] = useState(false);
 
   const tip = useChainTip();
@@ -47,12 +49,19 @@ export default function AlmanacView() {
   const setAlmanacLiveConsented = useStore((s) => s.setAlmanacLiveConsented);
   const hasCbLoan = useStore((s) => s.hasCbLoan);
   const cbPaymentStrategy = useStore((s) => s.cbPaymentStrategy);
+  const monthlyLog = useStore((s) => s.monthlyLog);
+  const ledgerAvailable = ledgerFaceAvailable(monthlyLog);
 
   // If the defense face is showing and the CB loan gets turned off, fall back — the face would otherwise
   // render a tool with nothing to show.
   useEffect(() => {
     if (face === 'defense' && !hasCbLoan) setFace('halving');
   }, [face, hasCbLoan]);
+
+  // If the ledger face is showing and the log empties, fall back (mirrors the defense pattern).
+  useEffect(() => {
+    if (face === 'ledger' && !ledgerAvailable) setFace('halving');
+  }, [face, ledgerAvailable]);
 
   const handleBadgeTap = () => {
     if (almanacLiveEnabled) {
@@ -125,6 +134,15 @@ export default function AlmanacView() {
               {cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim'}
             </button>
           )}
+          {ledgerAvailable && (
+            <button
+              type="button"
+              className={`${styles.subnavBtn} ${face === 'ledger' ? styles.subnavBtnOn : ''}`}
+              onClick={() => setFace('ledger')}
+            >
+              ▤ Ledger
+            </button>
+          )}
         </div>
       </div>
 
@@ -138,6 +156,8 @@ export default function AlmanacView() {
         </div>
       ) : face === 'defense' ? (
         <CbDefenseTool />
+      ) : face === 'ledger' ? (
+        <LedgerFace />
       ) : face === 'mining' ? (
         <div className={styles.faceStack}>
           <div className={styles.facePanel}><MiningInputsPanel /></div>

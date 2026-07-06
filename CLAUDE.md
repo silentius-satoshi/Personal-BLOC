@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (571 tests — all must pass before every commit)
+- Vitest (619 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -1572,6 +1572,66 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   same AppShell wrapper; only each tool's own inner container CSS changed, uniformly for both the tab and
   the Almanac-hub render paths.
 
+### M-L1 — Ledger face (seventh Almanac face) + CSV export (store unchanged, NO bump)
+
+A SEVENTH Almanac face **Ledger** — a READ-ONLY accounting table of `monthlyLog` + CSV copy/download.
+**WRITES NOTHING** (collision note: the "one Ledger writes actuals" invariant in the Logging Consolidation
+arc refers to the *Daily* writing surface — this table is a pure projection/export, not that Ledger). The
+`face` union widens in place to add `'ledger'` (still local `useState`, default `'halving'`, nothing
+persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
+- **Data-presence gate:** the sub-nav Ledger button (LAST position, glyph `▤`) renders only when
+  `ledgerFaceAvailable(monthlyLog)` (= `monthlyLog.length > 0`) — a safe viewer with an empty log never
+  sees it. A fallback `useEffect` (mirrors the defense pattern) sends `face → 'halving'` if the log empties
+  while Ledger is showing. `AlmanacView` gains a `monthlyLog` selector for the gate; `LedgerFace` reads the
+  store itself. Rendered BARE in the ternary (own container, like `<CbDefenseTool/>`).
+- **`src/lib/ledgerCsv.ts`** (PURE, no React) — `ledgerFaceAvailable(monthlyLog)` + `buildLedgerCsv(entries,
+  {hasCbLoan, showMining})`. CSV columns = the visible columns PLUS an ISO `Date` col:
+  `Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, Strike LTV [+ CB bal, CB LTV iff
+  hasCbLoan] [+ Mining sats iff showMining]`. `Mo`=`entry.month` (int), `Date`=`entry.date` (ISO). Raw
+  decimals (no $/₿/% ornament; `strikeLtv`/`cbLtv` stay the stored 0.1483 decimal). Missing optional cells →
+  empty. RFC-4180 `csvCell` escaping. **CRLF**, no trailing newline, **NO totals row**. Sort = single-key
+  `a.month - b.month` (the real monthlyLog convention; dayLog's `(ts,id)` two-key sort is unrelated).
+- **`src/components/Almanac/LedgerFace.tsx`** (+ `.module.css`) — face chrome (mono-uppercase "Ledger"
+  title + framing line) → CSV actions (`.actionBtn` vocabulary mirrored from SharingPage: **Copy CSV** via
+  `navigator.clipboard.writeText` in try/catch with a "Copied ✓"/"Copy failed" flash + **Download .csv** via
+  Blob→`<a download>` mirroring `downloadPlanBackup`, filename `personal-bloc-ledger-${todayLocalISO()}.csv`;
+  BOTH always present — Copy is the reliable iOS-PWA fallback for the open-instead-of-save caveat) → the
+  `<table>`. **Totals row** in `<tfoot>` (comment the distinction): FLOWS SUMMED (income/paydown/btcBought/
+  miningSats), STOCKS SHOW LATEST (last month's strikeBal/btcHeld/strikeLtv/cbBal/cbLtv). `ndpPaid`/
+  `strikeMinPaid` → a `†` superscript on the Paydown cell + one footnote line.
+- **Visual-spec decisions (LOCKED — future faces should stay coherent):**
+  - **Type:** every numeric cell `var(--mono)` + `font-variant-numeric: tabular-nums`, right-aligned; Month
+    cell left-aligned `--text-secondary`; headers 10–11px uppercase `0.08em` `--text-muted`.
+  - **Ink hierarchy:** flow columns (Income→BTC, Paydown, BTC bought) `--text-primary`; stock columns
+    (Strike bal, Strike col) `--text-secondary`. **BTC-quantity cells get a `₿` prefix in `--text-faint` —
+    the ONLY ornament** (dollar cells are bare grouped integers, no `$`).
+  - **LTV zone colors — Strike vs CB differ:** **Strike LTV** by fixed named consts `LTV_AMBER_AT 0.10 /
+    LTV_RED_AT 0.13` (`<0.10 green / 0.10–0.13 amber / >0.13 red`, Strike-ONLY). **CB LTV** by the app's
+    SHARED CB gauge logic — `LEVEL_COLOR[cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac)]` — so a 57% CB LTV
+    under the default 75% trigger renders green exactly like the SafetyDashboard (NOT Strike's thresholds).
+  - **SIGNATURE meter:** a 2px hairline beneath each LTV number (track `--line-2`, fill = the zone color).
+    Strike meter fills to `STRIKE_METER_CEIL 0.15`; CB meter fills to `CB_LLTV` (0.86) and uses the CB zone
+    color. Translates the ring-gauge language into table idiom.
+  - **Ledger close:** the totals row sits below a DOUBLE hairline (`.closeRule` = two 1px `--line` rules 3px
+    apart); totals numerals `--text-primary`, label `--text-muted` small caps.
+  - **Row states:** 1px `--line-2` row rules, hover `--bg-hover` at `≥768px` only. **Provisional** → Month
+    cell only `--text-muted` italic (figures NOT dimmed). **confirmed===false** → row tint
+    `color-mix(in srgb, var(--amber) 9%, transparent)` (token-pure amber — no literal rgba).
+  - **Mobile (<768px):** `overflow-x:auto` with the Month column `position:sticky` (`--bg-card` fill + a 12px
+    right-edge fade scrim); `≥768px` full-width, no scroll.
+  - **Motion:** the ONE animation — `ledgerRowIn` staggered row fade-in (15ms/row, 200ms ease-out), disabled
+    under `prefers-reduced-motion` (the app's first reduced-motion guard, intentional).
+- **CB zone-coloring extraction (drift-proof shared source):** the CB gauge's zone boundary + color map were
+  not importable before. `CB_ACT_LTV_FACTOR` (0.93) + `cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac)` now
+  live in `cbMetrics.ts` (de-dups the two inline `0.93` literals `safetyView.ts` had at `deriveSafetyView` +
+  `scaleSafetyView`, both now call `cbBarLevel` — behavior-identical, guarded by `safetyView.test.ts`).
+  `LEVEL_COLOR` (`{safe:--green, watch:--amber, act:--red}`) lifted from `SafetyDashboard.tsx` (module-private)
+  into `safetyView.ts` and imported by BOTH `SafetyDashboard` and `LedgerFace` — one shared color source.
+- Tests: `src/lib/__tests__/ledgerCsv.test.ts` (column toggles, legacy-missing→empty, CRLF/no-totals,
+  sort + fixture roundtrip, `ledgerFaceAvailable`) + a `cbBarLevel` case in `cbMetrics.test.ts` (57%→green,
+  band boundaries, regression pin against the extracted 0.93). No component-render harness in the repo, so
+  the JSX (meters/zone colors/sticky column/motion) is covered by `tsc -b` + build + manual.
+
 ### P3 — live block height (opt-in fetch; store stays v19)
 
 The Almanac height is now REAL and updating — but **sovereign-first: DEFAULT OFF**. With the toggle off the
@@ -2582,7 +2642,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-562 tests — `npx vitest run` before every commit.
+619 tests — `npx vitest run` before every commit.
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
