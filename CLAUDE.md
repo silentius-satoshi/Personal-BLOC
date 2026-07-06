@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (619 tests — all must pass before every commit)
+- Vitest (642 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -103,6 +103,24 @@ src/
                                 # keyed on the STABLE urls.join(',') (no re-subscribe thrash); functional setState
                                 # early-returns on no-change. Probes ONLY the urls passed in (SettingsMain gates on
                                 # settingsPage==='network' ? nostrRelays : EMPTY_RELAYS — no sockets unless viewing it)
+    usePointerDrag.ts           # Gesture & Motion System P0 — the single gesture PRIMITIVE. A THIN React adapter over
+                                # the pure src/lib/gestureModel.ts state machine, Pointer Events only (touch/mouse/pen).
+                                # usePointerDrag(config & {onMove?,onArm?,onDisarm?,onEnd,enabled?}) → {onPointerDown}.
+                                # setPointerCapture on down; listeners attached { passive: true } (CSS touch-action does
+                                # the scroll-blocking — NEVER preventDefault mid-gesture); pointermove feeds advance()
+                                # and rAF-BATCHES onMove (one style write per frame, the codebase's first
+                                # requestAnimationFrame — replaces the setInterval idiom for continuous tracking);
+                                # onArm/onDisarm fire on the armed-boundary transition; onEnd(dx,dy,velocity,committed)
+                                # on up/cancel. A second pointerId mid-drag synthesizes a cancel. All motion writes are
+                                # the CALLER's job (transform/opacity only). enabled:false → onPointerDown is inert.
+                                # Config kept in a ref so callbacks stay current without re-binding; unmount detaches +
+                                # cancels the pending frame. NO consumer yet (P0 is foundation-only; P1+ wire it)
+    useReducedMotion.ts         # Gesture & Motion System P0 — matchMedia('(prefers-reduced-motion: reduce)') → boolean,
+                                # subscribed via addEventListener('change') with cleanup (usePageVisibility pattern);
+                                # synchronous initial read; safe-default false when matchMedia is missing (node/test env).
+                                # The JS side of the reduced-motion policy — lets finger-tracking motion drivers SNAP
+                                # between rest states instead of animating (gestures still FUNCTION; the global.css block
+                                # strips CSS transitions/animations). NO consumer yet (P1+)
 
   store/
     useStore.ts                 # Zustand store — all state, persisted to localStorage
@@ -2621,10 +2639,55 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 /* Daily Mode P4a (mode-toggle-preview.html) — layered surfaces + accents, additive: */
 --surface #0e1219 / --surface-2 #151b25 / --surface-3 #1c2431  --line / --line-2 (translucent white borders)
 --btc #f7931a (bitcoin accent, distinct from --orange)  --mono (mono font stack)
+/* Gesture & Motion System P0 — springs as duration+easing pairs (CSS transitions AND WAAPI): */
+--motion-fast 120ms / --motion-standard 200ms / --motion-settle 320ms
+--ease-standard / --ease-decelerate (cubic-beziers)  --ease-spring / --ease-spring-soft (linear() spring curves)
 ```
 `--bg-base: #09090E` (= `--bg-app`) is defined in `tokens.css` — it had been referenced in 25 places across
 15 files but never defined (resolved transparent: 23 `background:` uses masked by the dark app bg, 2
 `color:` uses = invisible dark-on-bright button text in SafetyDashboard, both fixed by the one definition).
+
+**Motion vocabulary (Gesture & Motion System P0):** springs (`--ease-spring`/`--ease-spring-soft`, `linear()`
+approximations, Safari 17.2+) belong on anything that *moved under a finger* (sheets, swiped rows); beziers
+(`--ease-standard`/`--ease-decelerate`) on anything that merely *appears* (fades, scrim). `transform`/`opacity`
+only — no layout property is animated. A global `@media (prefers-reduced-motion: reduce)` block in `global.css`
+collapses all CSS transitions to 80ms cross-fades (was 1-of-78 modules; now one global policy); the JS side reads
+`useReducedMotion` to snap finger-tracking motion between rest states. Gestures still FUNCTION under reduced motion.
+
+---
+
+## Gesture & Motion System (P0 — foundation layer; no consumer surfaces changed)
+
+Pure infrastructure for native-app touch fidelity — the base every later phase (sheets, journal gestures,
+edge-back, micro-interactions) consumes. **Zero new dependencies.** P0 ships the primitives ONLY; nothing renders
+differently yet. NON-NEGOTIABLES (design.md §0): no gesture ever commits a financial write (swipes reveal/navigate/
+dismiss/stage — commit is always an explicit labeled tap); emergency surfaces stay gesture-free; every gesture has a
+visible tap equivalent; motion explains causality, never decoration.
+
+- **`src/lib/gestureModel.ts`** (PURE, no React, no DOM) — the single gesture STATE MACHINE, fully node-testable.
+  `advance(state, event, config): GestureState` = `(state, event) → state'`, states `idle → tracking → axisLocked →
+  armed → committed|cancelled` (committed/cancelled TERMINAL → `advance` is their identity). Beyond `slop` (default
+  8) it axis-locks ONLY when the dominant axis beats the cross axis by `axisLockRatio` (default 1.4) AND matches
+  `config.axis`, else CANCELS (releases to native scroll). `armThreshold`/`commitThreshold`/`commitVelocity` are
+  REQUIRED (per-surface); commit on release = `|primaryDelta| ≥ commitThreshold` OR `|velocity| ≥ commitVelocity`.
+  A `cancel` event (incl. synthesized second-pointer) cancels from any non-terminal phase. Also `createGesture`,
+  `velocity` (px/s over a 3-sample rolling window along the locked axis; 0 if <2 samples or Δt=0), `primaryDelta`,
+  `rubberBand(pull,max) = pull*max/(pull+max)` (sign-preserving, asymptote < max). Consumed by `usePointerDrag`
+  (thin adapter) — see hooks/.
+- **`src/lib/haptics.ts`** — capability-honest haptics, no faking. `haptics = { tick, confirm, warn }` +
+  `hapticsSupport(): 'vibrate'|'ios-switch'|'none'` (detected once, cached). Ladder: `navigator.vibrate()` patterns
+  (Android/Chromium) → an iOS ≥18 hidden `<input type="checkbox" switch>` toggled programmatically (the ONE
+  WebKit-sanctioned system haptic; intensity not controllable → tick/confirm/warn all map to the single toggle) →
+  no-op. Guards `typeof document === 'undefined'` → `'none'`, never throws. ⚠ **USER-ACTIVATION REQUIRED
+  (ios-switch path):** WebKit fires the haptic ONLY within a user-gesture context — call `haptics.*` from pointer/
+  key handlers exclusively; a call from a timer/interval/rAF is a silent no-op on iOS by design, not a bug. Called
+  at exactly two moment-types: a gesture crossing `armed` (`tick`) and a `confirm` landing; `warn` on a blocked
+  action. Every haptic has a same-instant visual twin (§5.4) — the visual channel is primary, haptics are seasoning.
+- **`src/hooks/usePointerDrag.ts` / `src/hooks/useReducedMotion.ts`** — see the hooks/ file list above.
+- **Test:** `src/simulation/__tests__/gestureModel.test.ts` (23 cases, node/no-DOM: slop, axis-lock ratio + wrong
+  axis, arm/disarm both directions, commit-by-distance + commit-by-velocity, velocity window math + 0-guards,
+  rubberBand monotonic/sign-preserving, terminal identity, cancel from every phase). The hook/haptics DOM behavior
+  defers to the P1 device gate (`hapticsSupport()` from the console).
 
 ---
 
@@ -2642,7 +2705,8 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 
 ## Test Suite
 
-619 tests — `npx vitest run` before every commit.
+642 tests — `npx vitest run` before every commit.
+- `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System P0 pure state machine (23 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. (usePointerDrag/haptics/useReducedMotion DOM behavior defers to the P1 device gate — `hapticsSupport()` from the console.)
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)

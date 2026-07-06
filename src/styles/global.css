@@ -64,3 +64,15 @@ table {
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-ghost);
 }
+
+/* Gesture & Motion System — P0. Global reduced-motion policy: collapse all CSS transitions/animations
+   to brief opacity cross-fades. Gestures still FUNCTION (the JS side reads useReducedMotion to snap
+   between rest states) — only the continuous rendering of motion is stripped. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 80ms !important;
+    scroll-behavior: auto !important;
+  }
+}

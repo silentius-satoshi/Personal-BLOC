@@ -31,4 +31,16 @@
 
   /* Almanac CycleClock P1 — low/floor projection-marker accent (additive). */
   --maroon:    #8B3A3A;
+
+  /* Gesture & Motion System — P0. Springs as duration+easing pairs consumable by
+     CSS transitions AND WAAPI. linear() approximates true spring curves (Safari 17.2+). */
+  --motion-fast:      120ms;
+  --motion-standard:  200ms;
+  --motion-settle:    320ms;
+  --ease-standard:    cubic-bezier(0.2, 0, 0, 1);
+  --ease-decelerate:  cubic-bezier(0, 0, 0, 1);
+  --ease-spring:      linear(0, 0.243 9.8%, 0.85 24.3%, 1.061 35.4%, 1.084 41.6%,
+                      1.075 48.2%, 1.005 77.3%, 0.999 89.4%, 1);
+  --ease-spring-soft: linear(0, 0.161 8.1%, 0.673 21.9%, 0.966 33.6%, 1.033 42.6%,
+                      1.026 51.6%, 1.001 79.9%, 1);
 }
