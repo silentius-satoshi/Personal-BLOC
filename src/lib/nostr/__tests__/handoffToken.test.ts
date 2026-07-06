@@ -21,8 +21,13 @@ describe('handoffToken build/parse', () => {
     expect(parsed).toEqual({ kind: 'ncryptsec', keyPart: nc, ownerNpub: OWNER_NPUB });
   });
 
-  it('bare-nsec back-compat — no ":" → ownerNpub is null', () => {
-    expect(parseHandoffToken(NSEC)).toEqual({ kind: 'nsec', keyPart: NSEC, ownerNpub: null });
+  it('bare nsec with no ":" → null (token-only; bare-nsec back-compat retired)', () => {
+    expect(parseHandoffToken(NSEC)).toBeNull();
+  });
+
+  it('requires exactly 2 parts — a single-part ncryptsec with no npub half → null', () => {
+    const nc = nip49.encrypt(new Uint8Array(32).fill(3), 'pw', 1);   // low logn = fast scrypt
+    expect(parseHandoffToken(nc)).toBeNull();
   });
 
   it('trims surrounding whitespace before parsing', () => {

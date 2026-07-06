@@ -5,7 +5,7 @@
 // bech32's charset excludes ':' → the join/split is unambiguous.
 //
 // PURE — no crypto here. nip19 is bech32 (de)coding, used only to VALIDATE the npub half; encrypt/decrypt of the
-// key part happens in the caller (nip49). Back-compat: a bare key with no ':' parses with ownerNpub = null.
+// key part happens in the caller (nip49). Tokens are strictly `<keyPart>:<ownerNpub>` (both halves required).
 
 import { nip19 } from 'nostr-tools';
 
@@ -13,7 +13,7 @@ export type HandoffKind = 'nsec' | 'ncryptsec';
 export interface ParsedHandoff {
   kind: HandoffKind;
   keyPart: string;
-  ownerNpub: string | null;   // null = bare-key back-compat (no npub half)
+  ownerNpub: string;   // always present — tokens are 2-part
 }
 
 /** Join a key part + the owner's npub into a handoff token. */
@@ -22,15 +22,16 @@ export function buildHandoffToken(keyPart: string, ownerNpub: string): string {
 }
 
 /**
- * Parse a handoff token. Returns null on anything malformed. Classifies the key part by PREFIX only
+ * Parse a handoff token. Returns null on anything malformed. Requires EXACTLY 2 parts (`<keyPart>:<ownerNpub>`) —
+ * a bare key with no ':' is rejected (bare-nsec back-compat retired). Classifies the key part by PREFIX only
  * (`nsec1…`/`ncryptsec1…`) — full key/passphrase validity is the caller's crypto step. Validates the npub half
- * (when present) decodes as an npub.
+ * decodes as an npub.
  */
 export function parseHandoffToken(raw: string): ParsedHandoff | null {
   const t = (raw ?? '').trim();
   if (!t) return null;
   const parts = t.split(':');
-  if (parts.length > 2) return null;   // 0 or 1 ':' expected
+  if (parts.length !== 2) return null;   // exactly one ':' expected — token-only, no bare key
 
   const keyPart = parts[0].trim();
   let kind: HandoffKind;
@@ -38,15 +39,12 @@ export function parseHandoffToken(raw: string): ParsedHandoff | null {
   else if (keyPart.startsWith('ncryptsec1')) kind = 'ncryptsec';
   else return null;
 
-  let ownerNpub: string | null = null;
-  if (parts.length === 2) {
-    const ownerRaw = parts[1].trim();
-    if (!ownerRaw) return null;   // trailing ':' with an empty half → malformed
-    try {
-      const d = nip19.decode(ownerRaw);
-      if (d.type !== 'npub') return null;
-    } catch { return null; }
-    ownerNpub = ownerRaw;
-  }
+  const ownerNpub = parts[1].trim();
+  if (!ownerNpub) return null;   // empty npub half → malformed
+  try {
+    const d = nip19.decode(ownerNpub);
+    if (d.type !== 'npub') return null;
+  } catch { return null; }
+
   return { kind, keyPart, ownerNpub };
 }

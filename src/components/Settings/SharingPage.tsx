@@ -177,8 +177,10 @@ const GEN_AUTO_CLEAR_MS = 30_000;
  */
 function GenerateViewerKeyBlock() {
   const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
+  const viewerPubkey    = useStore((s) => s.viewerPubkey);
   const setViewerNpub   = useStore((s) => s.setViewerNpub);
   const setViewerPubkey = useStore((s) => s.setViewerPubkey);
+  const setViewerKeyVersion = useStore((s) => s.setViewerKeyVersion);
   const isPin = wrapMeta?.scheme === 'pin';
 
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
@@ -187,6 +189,7 @@ function GenerateViewerKeyBlock() {
   const [pin, setPin]         = useState('');
   const [busy, setBusy]       = useState(false);
   const [error, setError]     = useState<string | null>(null);
+  const [skipGuard, setSkipGuard] = useState(false);   // bridges the rotation intent across the PIN-collection step
   const timerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
@@ -194,7 +197,7 @@ function GenerateViewerKeyBlock() {
 
   const clearReveal = () => { clearTimer(); setRevealedToken(null); };
 
-  const doGenerate = async () => {
+  const doGenerate = async (opts?: { skipReplaceGuard?: boolean }) => {
     setBusy(true);
     setError(null);
     let ownerSk: Uint8Array | null = null;
@@ -206,9 +209,9 @@ function GenerateViewerKeyBlock() {
       derived = await deriveViewerKeyFromNsec(ownerSk, pk, viewerKeyVersion);
       const hex = getPublicKey(derived);
       // Replace-guard — never silently swap out a live viewer. Re-deriving the SAME key (existing === hex) is the
-      // friction-free determinism/recovery path and skips the confirm.
+      // friction-free determinism/recovery path and skips the confirm. Rotation SUPPRESSES it (already confirmed).
       const existing = useStore.getState().viewerPubkey;
-      if (existing && existing !== hex) {
+      if (!opts?.skipReplaceGuard && existing && existing !== hex) {
         // eslint-disable-next-line no-alert
         if (!window.confirm(
           'A different viewer key is already connected. Replacing it means the current viewer ' +
@@ -232,14 +235,33 @@ function GenerateViewerKeyBlock() {
     } finally {
       ownerSk?.fill(0);
       derived?.fill(0);
+      setSkipGuard(false);
       setBusy(false);
     }
   };
 
   const onGenerateTap = () => {
     setError(null);
-    if (isPin) setShowPin(true);   // PIN scheme → collect the PIN first
-    else doGenerate();             // PRF → Face ID directly
+    setSkipGuard(false);
+    if (isPin) setShowPin(true);              // PIN scheme → collect the PIN first
+    else doGenerate({ skipReplaceGuard: false });   // PRF → Face ID directly
+  };
+
+  // Rotate — bump the derivation version (invalidating the current viewer key) then regenerate with the new
+  // version, replace-guard suppressed (rotation is already confirmed; a second dialog is noise). No rollback if
+  // derive fails after the bump: the version stays bumped (synced) but no key was handed out — re-running uses the
+  // new version, determinism preserved.
+  const onRotateTap = () => {
+    setError(null);
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(
+      'Rotating invalidates the current viewer key — the viewer\'s device will stop receiving updates until they ' +
+      'sign in again with a new token. Rotate?'
+    )) return;
+    setViewerKeyVersion(useStore.getState().viewerKeyVersion + 1);   // sync set → getState() below reads the bumped value
+    setSkipGuard(true);
+    if (isPin) setShowPin(true);
+    else doGenerate({ skipReplaceGuard: true });
   };
 
   if (revealedToken) {
@@ -284,17 +306,24 @@ function GenerateViewerKeyBlock() {
             onChange={(e) => { setPin(e.target.value); setError(null); }}
             disabled={busy}
           />
-          <button type="button" className={styles.genBtn} onClick={doGenerate} disabled={busy || pin.length < 4}>
+          <button type="button" className={styles.genBtn} onClick={() => doGenerate({ skipReplaceGuard: skipGuard })} disabled={busy || pin.length < 4}>
             {busy ? 'Deriving…' : 'Generate'}
           </button>
-          <button type="button" className={styles.actionBtn} onClick={() => { setShowPin(false); setPin(''); setError(null); }} disabled={busy}>
+          <button type="button" className={styles.actionBtn} onClick={() => { setShowPin(false); setPin(''); setSkipGuard(false); setError(null); }} disabled={busy}>
             Cancel
           </button>
         </div>
       ) : (
-        <button type="button" className={styles.genBtn} onClick={onGenerateTap} disabled={busy}>
-          {busy ? 'Deriving…' : '🔑 Generate viewer key'}
-        </button>
+        <>
+          <button type="button" className={styles.genBtn} onClick={onGenerateTap} disabled={busy}>
+            {busy ? 'Deriving…' : '🔑 Generate viewer key'}
+          </button>
+          {viewerPubkey && (
+            <button type="button" className={styles.actionBtn} onClick={onRotateTap} disabled={busy}>
+              ↻ Rotate viewer key
+            </button>
+          )}
+        </>
       )}
       {error && <p className={styles.error}>{error}</p>}
       <span className={styles.desc}>Requires {isPin ? 'your PIN' : 'Face ID'} — shown only on this device, never stored in plain text.</span>

@@ -90,9 +90,9 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
     } catch { return null; }
   }, [keyMode, parsed, decryptState]);
   const activeKey = keyMode === 'paste' ? pastedKey : viewerKey;
-  const [ownerNpub, setOwnerNpub]     = useState('');
-  // Owner npub carried by the token → prefill + lock the field (shown for confirmation). Null → editable
-  // (generate mode / bare-nsec back-compat token with no npub half).
+  const [ownerNpub, setOwnerNpub]     = useState('');   // editable owner-npub — GENERATE mode only
+  // Owner npub carried by the token → prefill + lock the field (shown for confirmation). In paste mode it's
+  // ALWAYS token-sourced (bare-nsec retired); null only for generate mode or a not-yet-valid pasted token.
   const lockedOwnerNpub = keyMode === 'paste' ? (parsed?.ownerNpub ?? null) : null;
   const effectiveOwnerNpub = lockedOwnerNpub ?? ownerNpub;
   const [viewerError, setViewerError] = useState<string | null>(null);
@@ -280,15 +280,17 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
               </div>
             )}
             <div className={styles.fieldGroup}>
-              <span className={styles.fieldLabel}>The owner's npub{lockedOwnerNpub ? ' (from the token)' : ''}</span>
+              <span className={styles.fieldLabel}>The owner's npub{keyMode === 'paste' ? ' (from the token)' : ''}</span>
               <div className={styles.fieldInput}>
                 <input
                   className={styles.dateInput}
                   type="text"
                   placeholder="npub1…"
-                  value={effectiveOwnerNpub}
-                  readOnly={!!lockedOwnerNpub}
-                  onChange={(e) => { if (!lockedOwnerNpub) { setOwnerNpub(e.target.value); setViewerError(null); } }}
+                  // Paste mode: read-only, sourced purely from the token (empty until a valid 2-part token is pasted).
+                  // Generate mode: editable owner-npub state.
+                  value={keyMode === 'paste' ? (parsed?.ownerNpub ?? '') : effectiveOwnerNpub}
+                  readOnly={keyMode === 'paste' || !!lockedOwnerNpub}
+                  onChange={(e) => { if (keyMode !== 'paste' && !lockedOwnerNpub) { setOwnerNpub(e.target.value); setViewerError(null); } }}
                 />
               </div>
             </div>
