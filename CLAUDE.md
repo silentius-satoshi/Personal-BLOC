@@ -213,13 +213,18 @@ src/
                                 # identity subpage for a 'local' signer (leaving the page unmounts → discards the nsec).
                                 # Tap → PRF Face ID / PIN field → unwrapSecretKey (EVERY reveal) → nip19.nsecEncode →
                                 # sk.fill(0) → <SecretKeyCard/> → auto-clear ~30s / Hide / unmount. NEVER logs the key
-      SharingPage.tsx           # Viewer V2 — the 'sharing' subpage EXTRACTED from SettingsMain (+ .module.css; the FIRST
-                                # delegated subpage — SettingsMain renders <SharingPage/> for settingsPage==='sharing',
-                                # owner-only). YOUR SHARE CODE (owner npub + copy) + YOUR VIEWER (list-ready grant card:
-                                # label + npub + Active dot + "Show real figures" Toggle [viewerPrivacyTrusted] +
-                                # Revoke-with-confirm; else the add-viewer form w/ nip19 validation). Self-contained:
-                                # own store reads + draft/error/copied state + the verbatim publishViewerSnapshotNow/
-                                # publishViewerRevocationNow handlers
+      SharingPage.tsx           # Viewer M3 — the 'sharing' subpage (+ .module.css; SettingsMain renders <SharingPage/>
+                                # for settingsPage==='sharing', owner-only). YOUR SHARE CODE (owner npub + copy) + YOUR
+                                # VIEWERS = <ViewerRoster/> (LOCAL-SIGNER-gated: a non-local device shows a note) + a
+                                # PREVIEW trigger. ViewerRoster lists every provisioned viewer (one .grantCard each:
+                                # label · npub · tier chip · "Show real figures" per-row Toggle [slot.tier] · ↻ Rotate ·
+                                # Remove-with-confirm) + the ADD flow (label + Safe|Trusted picker + optional passphrase →
+                                # Face-ID/PIN unwrap → deriveViewerKeyFromNsec(pk, keyVersion, index) → addViewerSlot →
+                                # publishViewerSnapshotNow → SecretKeyCard token reveal ~30s). ONE shared derive engine
+                                # for add + rotate; `rotatingIndex` (null ⇒ ADD) carries the intent through the PIN step.
+                                # The owner MINTS every viewer key — NO viewer-supplied-npub add path (died at Handoff v4).
+                                # NO replace-guard (add = fresh nextViewerIndex; rotate = the only confirmed overwrite).
+                                # Per-row Remove → publishViewerRevocationNow(slot.pubkeyHex) + removeViewerSlot
       DevPanel.tsx              # Dev diagnostics (devMode only): sync state, PUBLISH ACKS, COLLATERAL (baseline/pending/
                                 # current — ON-DEVICE only), signer probe, Nostr log ring, copy-diagnostics.
                                 # ALL sections are COLLAPSIBLE via a local <Section title/action?/defaultOpen?> (returns a
@@ -3331,7 +3336,10 @@ an owner-side **key-rotation** affordance (honors the handoff passphrase).
   GONE — the version byte is now **per-slot** (`ViewerSlot.keyVersion`, part of the synced `viewers` roster;
   rotation bumps a single slot's version). Historically (v1→handoff-v4) it was a standalone synced setting
   stripped from the viewer snapshot; it's absorbed into the roster, which is stripped wholesale.
-- **Owner affordance (`SharingPage.tsx` `GenerateViewerKeyBlock`)** — LOCAL-SIGNER-ONLY (gated
+- **Owner affordance** — ⚠ **the `GenerateViewerKeyBlock` component + its replace-guard/rotation described in
+  the next three bullets are SUPERSEDED by Multi-viewer M3** (`ViewerRoster`, per-slot add/rotate/remove,
+  replace-guard deleted — see the M3 section). The historical single-slot design (kept for context):
+  **`GenerateViewerKeyBlock`** — LOCAL-SIGNER-ONLY (gated
   `nostrSigningMethod === 'local'`; nip07/nip46 never expose the raw sk → the block is hidden). Unwrap the owner
   key (Face ID / PIN, mirrors `RevealRecoveryKey`) → derive → `hex = getPublicKey(derived)` → **replace-guard**
   (`window.confirm` when `viewerPubkey` exists and differs — re-deriving the SAME key skips the confirm, keeping
@@ -3419,10 +3427,9 @@ EMPTY; the owner re-adds viewers fresh.
 - **Skip-guard (`hydrateSettings`, mirrors the relay guard):** an EMPTY incoming `viewers` never clobbers a
   populated local roster — skips BOTH `viewers` + `nextViewerIndex` (so the counter can't regress); a populated
   incoming roster hydrates. Publish-side is already covered by `initialSettingsPullDone` (Fix C/D).
-- **Component slot-0 adapters (throwaway until M3):** `SharingPage` (add→`addViewerSlot`, tier toggle→
-  `updateViewerSlot`+republish, revoke→`removeViewerSlot`; `GenerateViewerKeyBlock` mints/rotates slot 0 —
-  derivation stays 3-arg, indexed labels are M2), `DevPanel` (`viewers[0]?.pubkeyHex`), `ViewerPreview`
-  (tier/label from `viewers[0]`; the safe-force spread swaps `viewers: []` to take the safe branch). `clearViewerData`
+- **Component slot-0 adapters (⚠ SUPERSEDED by M3 for SharingPage — the roster UI shipped):** `SharingPage`'s
+  slot-0 grant card + `GenerateViewerKeyBlock` are gone (→ `ViewerRoster`, see the M3 section); `DevPanel`
+  (`viewers[0]?.pubkeyHex`) + `ViewerPreview` (tier/label from `viewers[0]`) stay slot-0 reads. `clearViewerData`
   resets `viewers: []`/`nextViewerIndex: 0`.
 - **Migration v21** (`migrateState`): strip the 5 old keys from the `...rest` destructure; seed `viewers: []` +
   `nextViewerIndex: 0` unconditionally; `version: 20 → 21`. Tests: `viewerRoster.test.ts` (migration drop/empty,
@@ -3466,6 +3473,34 @@ deploy the owner rotates slot 0 and re-provisions the (test) viewer device.
   fan-out to the right pubkeys, once-per-tier reference-equal build, `allSettled` isolation, per-slot revocation),
   `viewerSync.test.ts` (`#d` = `viewerDTag(myPubkey)` + v2 shape), and the tier-param call-site updates in
   `viewerSnapshot.test.ts`/`relaySync.test.ts`. Suite 601 → 610.
+
+### Multi-Viewer M3 — SharingPage roster UI (owner-mints-only; store unchanged v21)
+
+The UI catches up to the M1/M2 plumbing: the slot-0 grant card + `GenerateViewerKeyBlock` are replaced by a
+`ViewerRoster` that lists N viewers. **The owner MINTS every viewer key — there is no other add path** (the
+legacy npub-paste "Add" form is DELETED; a viewer-supplied npub can't occur since Handoff v4).
+
+- **`ViewerRoster`** (`SharingPage.tsx`, LOCAL-SIGNER-gated — the whole block, since every action derives from
+  the raw owner sk; a non-local device shows a note, share-code + preview stay ungated) — one `.grantCard` per
+  `viewers` slot: label · truncated npub · tier chip · a per-row "Show real figures" `<Toggle>`
+  (`updateViewerSlot(slot.index,{tier})` + `publishViewerSnapshotNow()`) · **↻ Rotate** · **Remove** (inline
+  `confirmRemoveIndex` → `publishViewerRevocationNow(slot.pubkeyHex)` + `removeViewerSlot`). Below it an ADD block
+  (label + Safe|Trusted picker + optional passphrase + "🔑 Add viewer").
+- **ONE shared derive engine (`doDerive`)** for add + rotate. `rotatingIndex: number | null` (null ⇒ ADD)
+  carries the intent through the PIN step. ADD: `index = nextViewerIndex` (the same value `addViewerSlot` will
+  assign — M2 coupling), `keyVersion = 1` → `addViewerSlot({…,tier:addTier,keyVersion:1})`. ROTATE(slot):
+  confirm → `updateViewerSlot(slot.index,{keyVersion:slot.keyVersion+1})` → `index = slot.index`, the bumped kv →
+  `updateViewerSlot(slot.index,{pubkeyHex,npub})` (preserves tier). Both: unwrap → `deriveViewerKeyFromNsec(pk,
+  keyVersion, index)` → `publishViewerSnapshotNow()` (fan-out) → `SecretKeyCard` token reveal (~30s, passphrase
+  path unchanged, keys zeroed).
+- **REPLACE-GUARD + `skipGuard` DELETED** — ADD always uses a fresh index (nothing to overwrite); ROTATE is the
+  only intentional overwrite and is confirmed by its own dialog. (Supersedes the handoff-v4
+  `GenerateViewerKeyBlock` replace-guard.)
+- **Preview trigger UNCHANGED** — `ViewerPreview` already carries its own Safe|Trusted override toggle, so it
+  renders either tier on demand; no tier selector at the trigger, ViewerPreview untouched. (Residual: its
+  "actual" baseline reads `viewers[0]?.tier` — a generic tier lens, not per-specific-viewer; acceptable.)
+- **CSS:** reuses all existing classes; only new rule `.rowActions` (flex row for Rotate+Remove + the tier
+  picker). **Tests:** none (UI; store logic unchanged) — suite stays 610.
 
 ### Viewer Access (Phase 1 writer-side + Phase 2 read client)
 

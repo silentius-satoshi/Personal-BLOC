@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { nip19, getPublicKey } from 'nostr-tools';
 import * as nip49 from 'nostr-tools/nip49';
-import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow } from '../../store/useStore';
+import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, type ViewerSlot } from '../../store/useStore';
 import { unwrapSecretKey } from '../../lib/nostr/keyVault';
 import { deriveViewerKeyFromNsec } from '../../lib/nostr/viewerKey';
 import { buildHandoffToken } from '../../lib/nostr/handoffToken';
@@ -10,34 +10,24 @@ import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import styles from './SharingPage.module.css';
 
 /**
- * Sharing subpage (Viewer V2) — the owner's viewer-access home, extracted from SettingsMain.
- * Owner-only (SettingsMain gates it `!viewerMode`). Two sections:
+ * Sharing subpage (Viewer M3) — the owner's viewer-access home, extracted from SettingsMain.
+ * Owner-only (SettingsMain gates it `!viewerMode`). Sections:
  *  - YOUR SHARE CODE: the owner's npub to hand out.
- *  - YOUR VIEWER: the single grant card (list-ready for multi-viewer) with the C-safe/C-trusted
- *    privacy toggle + revoke, or the add-a-viewer form when empty.
- * Reads the store directly; owns its own draft/error/copied local state (verbatim handlers).
+ *  - YOUR VIEWERS: the ROSTER (local-signer-only) — <ViewerRoster/> lists every provisioned viewer with a
+ *    per-row tier toggle · Rotate · Remove, plus the add-a-viewer derive flow. The owner MINTS every viewer
+ *    key (there is no viewer-supplied-npub path — that model died at Handoff v4).
+ *  - PREVIEW: open the live viewer experience (its own Safe|Trusted toggle).
  */
 export function SharingPage() {
-  const nostrPubkey         = useStore((s) => s.nostrPubkey);
-  const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
-  // Multi-viewer roster (M1) — this UI still operates on SLOT 0 only (the roster UI is M3). slot0 is the
-  // single provisioned viewer; its tier drives the "Show real figures" toggle.
-  const viewers             = useStore((s) => s.viewers);
-  const addViewerSlot       = useStore((s) => s.addViewerSlot);
-  const updateViewerSlot    = useStore((s) => s.updateViewerSlot);
-  const removeViewerSlot    = useStore((s) => s.removeViewerSlot);
-  const slot0               = viewers[0] ?? null;
+  const nostrPubkey        = useStore((s) => s.nostrPubkey);
+  const nostrSigningMethod = useStore((s) => s.nostrSigningMethod);
   // Preview-as-viewer trigger (relocated here from the journal headers) — sets the transient flag AND
   // leaves Settings so AppShell's branch J renders the (unchanged) ViewerPreview overlay.
-  const setViewerPreview        = useStore((s) => s.setViewerPreview);
-  const setActiveTab            = useStore((s) => s.setActiveTab);
-  const previousTab             = useStore((s) => s.previousTab);
+  const setViewerPreview = useStore((s) => s.setViewerPreview);
+  const setActiveTab     = useStore((s) => s.setActiveTab);
+  const previousTab      = useStore((s) => s.previousTab);
 
-  const [draft, setDraft]           = useState('');
-  const [labelDraft, setLabelDraft] = useState('');
-  const [error, setError]           = useState<string | null>(null);
   const [npubCopied, setNpubCopied] = useState(false);
-  const [confirmRevoke, setConfirmRevoke] = useState(false);
 
   if (!nostrPubkey) {
     return (
@@ -56,30 +46,6 @@ export function SharingPage() {
     setTimeout(() => setNpubCopied(false), 1500);
   };
 
-  const addViewer = () => {
-    const input = draft.trim();
-    try {
-      const decoded = nip19.decode(input);
-      if (decoded.type !== 'npub') { setError('Not a valid npub'); return; }
-      addViewerSlot({ pubkeyHex: decoded.data as string, npub: input, label: labelDraft.trim() || 'Viewer', tier: 'safe', keyVersion: 1 });
-      setError(null);
-      void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates without waiting for an owner edit
-    } catch { setError('Not a valid npub'); }
-  };
-
-  const revoke = () => {
-    if (!slot0) return;
-    void publishViewerRevocationNow(slot0.pubkeyHex);   // tombstone THIS slot's d-tag (capture pubkey before removal)
-    removeViewerSlot(slot0.index);
-    setDraft(''); setLabelDraft(''); setError(null); setConfirmRevoke(false);
-  };
-
-  const setTier = (v: boolean) => {
-    if (!slot0) return;
-    updateViewerSlot(slot0.index, { tier: v ? 'trusted' : 'safe' });
-    void publishViewerSnapshotNow();   // updateViewerSlot only syncs settings — republish so the viewer switches shape now
-  };
-
   return (
     <div className={styles.section}>
       {/* YOUR SHARE CODE */}
@@ -90,73 +56,16 @@ export function SharingPage() {
         <button className={styles.actionBtn} onClick={copyOwnerNpub}>{npubCopied ? 'Copied ✓' : 'Copy'}</button>
       </div>
 
-      {/* YOUR VIEWER */}
-      <div className={styles.groupTitle} style={{ marginTop: 20 }}>YOUR VIEWER</div>
-      {slot0 ? (
-        <div className={styles.grantCard}>
-          <div className={styles.grantHead}>
-            <span className={styles.grantDot} />
-            <span className={styles.grantName}>
-              {slot0.label || 'Viewer'}{' '}
-              <span className={styles.grantNpub}>({slot0.npub.slice(0, 12)}…{slot0.npub.slice(-6)})</span>
-            </span>
-            <span className={styles.grantActive}>Active</span>
-          </div>
-          <div className={styles.toggleRow}>
-            <div className={styles.toggleLabel}>
-              <span className={styles.toggleTitle}>Show real figures</span>
-              <span className={styles.toggleHint}>Off: health only · On: balances + liquidation prices</span>
-            </div>
-            <Toggle value={slot0.tier === 'trusted'} onChange={setTier} />
-          </div>
-          {confirmRevoke ? (
-            <div className={styles.confirmRow}>
-              <span className={styles.confirmText}>Stop sharing with this viewer?</span>
-              <button className={styles.revokeBtn} onClick={revoke}>Revoke</button>
-              <button className={styles.actionBtn} onClick={() => setConfirmRevoke(false)}>Cancel</button>
-            </div>
-          ) : (
-            <button className={styles.revokeBtn} onClick={() => setConfirmRevoke(true)}>Revoke</button>
-          )}
-        </div>
+      {/* YOUR VIEWERS — the roster (mint / tier / rotate / remove). LOCAL-SIGNER-ONLY: every action derives from
+          the raw owner key, and viewers can only be minted locally, so a non-local device has none to manage. */}
+      <div className={styles.groupTitle} style={{ marginTop: 20 }}>YOUR VIEWERS</div>
+      {nostrSigningMethod === 'local' ? (
+        <ViewerRoster />
       ) : (
-        <div className={styles.addBlock}>
-          <p className={styles.desc}>Add someone to follow your plan, read-only.</p>
-          <input
-            className={styles.input}
-            type="text"
-            placeholder="Nickname (e.g. Dad's iPhone)"
-            value={labelDraft}
-            onChange={(e) => setLabelDraft(e.target.value)}
-          />
-          <input
-            className={styles.input}
-            type="text"
-            placeholder="Their npub1…"
-            value={draft}
-            onChange={(e) => { setDraft(e.target.value); setError(null); }}
-          />
-          {error && <p className={styles.error}>{error}</p>}
-          <button className={styles.addBtn} onClick={addViewer}>Add</button>
-        </div>
+        <p className={styles.desc}>Viewer sharing needs a local key (Face ID / PIN) on this device.</p>
       )}
 
-      {/* GENERATE FROM IDENTITY (local signer only) — deterministically derive the viewer's key from your own
-          nsec. Regenerable anytime (no separate backup); hand the shown token to the viewer. A passphrase makes
-          the token safe to send remotely (NIP-49); leave it blank for in-person handoff. */}
-      {nostrSigningMethod === 'local' && (
-        <>
-          <div className={styles.groupTitle} style={{ marginTop: 20 }}>GENERATE A VIEWER KEY</div>
-          <p className={styles.desc}>
-            Derive the viewer's key from your own identity — it stays reproducible, so you can regenerate the exact
-            same key anytime without a separate backup. The token includes your npub, so the viewer pastes just one
-            string. Set a passphrase to send it remotely (encrypted); leave it blank for in-person handoff.
-          </p>
-          <GenerateViewerKeyBlock />
-        </>
-      )}
-
-      {/* PREVIEW — see exactly what a viewer sees (safe or trusted), previewable before granting access */}
+      {/* PREVIEW — see exactly what a viewer sees (the overlay carries its own Safe / Trusted toggle). */}
       <div className={styles.groupTitle} style={{ marginTop: 20 }}>PREVIEW</div>
       <p className={styles.desc}>Open a live preview of the viewer experience, with a Safe / Trusted toggle.</p>
       <button
@@ -172,72 +81,84 @@ export function SharingPage() {
 const GEN_AUTO_CLEAR_MS = 30_000;
 
 /**
- * Owner-side "Generate viewer key" — LOCAL-SIGNER-ONLY (the raw owner sk is reachable only via the Face-ID/PIN
- * unwrap; nip07/nip46 never expose it, so the parent hides this). Unwraps the owner key → deterministically
- * derives the viewer key (deriveViewerKeyFromNsec) → sets viewerPubkey/viewerNpub → publishes the snapshot →
- * reveals a HANDOFF TOKEN (`<keyPart>:<ownerNpub>`) via SecretKeyCard (auto-clears ~30s; leaving the page
- * unmounts → discards it). keyPart = a passphrase-encrypted ncryptsec (remote-safe, NIP-49) when a passphrase is
- * set, else a bare nsec (in-person). ⚠ Never logs key material. Mirrors RevealRecoveryKey's unwrap/reveal pattern.
+ * Viewer roster (M3) — LOCAL-SIGNER-ONLY (the raw owner sk is reachable only via the Face-ID/PIN unwrap;
+ * nip07/nip46 never expose it, so the parent hides this). Lists every provisioned viewer with a per-row tier
+ * toggle · Rotate · Remove, plus the add-a-viewer flow. Both ADD and ROTATE share ONE derive engine
+ * (unwrap → deriveViewerKeyFromNsec → reveal a HANDOFF TOKEN via SecretKeyCard, auto-clears ~30s / unmount).
+ * `rotatingIndex` carries the add-vs-rotate intent through the PIN step (null ⇒ ADD). No replace-guard: ADD
+ * always uses a fresh index (nothing to overwrite) and ROTATE is confirmed (the only intentional overwrite).
+ * ⚠ Never logs key material; keys zeroed after encode. Mirrors RevealRecoveryKey's unwrap/reveal pattern.
  */
-function GenerateViewerKeyBlock() {
-  const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
-  // Multi-viewer roster (M1) — this block still mints/rotates SLOT 0 only (roster UI is M3).
-  const viewerPubkey     = useStore((s) => s.viewers[0]?.pubkeyHex ?? null);
+function ViewerRoster() {
+  const wrapMeta         = useStore((s) => s.writerKeyWrapMeta);
+  const viewers          = useStore((s) => s.viewers);
   const addViewerSlot    = useStore((s) => s.addViewerSlot);
   const updateViewerSlot = useStore((s) => s.updateViewerSlot);
+  const removeViewerSlot = useStore((s) => s.removeViewerSlot);
   const isPin = wrapMeta?.scheme === 'pin';
 
+  // Derive engine
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
   const [handoffPassphrase, setHandoffPassphrase] = useState('');   // optional — encrypts the token for remote handoff
   const [showPin, setShowPin] = useState(false);
   const [pin, setPin]         = useState('');
   const [busy, setBusy]       = useState(false);
   const [error, setError]     = useState<string | null>(null);
-  const [skipGuard, setSkipGuard] = useState(false);   // bridges the rotation intent across the PIN-collection step
-  const timerRef              = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [rotatingIndex, setRotatingIndex] = useState<number | null>(null);   // null ⇒ the pending derive is an ADD
+  // Add inputs
+  const [addLabel, setAddLabel] = useState('');
+  const [addTier, setAddTier]   = useState<'safe' | 'trusted'>('safe');
+  // Per-row remove confirm
+  const [confirmRemoveIndex, setConfirmRemoveIndex] = useState<number | null>(null);
+  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const clearTimer = () => { if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; } };
   useEffect(() => clearTimer, []);   // unmount (leaving the page) discards the revealed token
 
   const clearReveal = () => { clearTimer(); setRevealedToken(null); };
 
-  const doGenerate = async (opts?: { skipReplaceGuard?: boolean }) => {
+  // Per-row tier toggle — republish so the viewer switches shape now (updateViewerSlot only syncs settings).
+  const setTier = (slot: ViewerSlot, trusted: boolean) => {
+    updateViewerSlot(slot.index, { tier: trusted ? 'trusted' : 'safe' });
+    void publishViewerSnapshotNow();
+  };
+
+  // Per-row remove — tombstone THIS slot's d-tag (capture the pubkey before removal), then drop the row.
+  const remove = (slot: ViewerSlot) => {
+    void publishViewerRevocationNow(slot.pubkeyHex);
+    removeViewerSlot(slot.index);
+    setConfirmRemoveIndex(null);
+  };
+
+  // The shared derive engine — ADD (rotatingIndex === null) or ROTATE (a slot index).
+  const doDerive = async () => {
     setBusy(true);
     setError(null);
     let ownerSk: Uint8Array | null = null;
     let derived: Uint8Array | null = null;
     try {
-      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewers, nextViewerIndex } = useStore.getState();
+      const { writerKeyWrapped, writerKeyWrapMeta, nostrPubkey: pk, viewers: roster, nextViewerIndex } = useStore.getState();
       if (!writerKeyWrapped || !writerKeyWrapMeta || !pk) { setError('No local key on this device.'); return; }
-      const slot0 = viewers[0] ?? null;   // M1 UI still mints/rotates slot 0 (roster UI is M3)
-      const keyVersion = slot0?.keyVersion ?? 1;
-      // M2 — derivation is PER-SLOT-INDEXED. Add-path: index = nextViewerIndex, the SAME value addViewerSlot
-      // will assign below (the key is bound to that index — this coupling must hold). Rotate: reuse slot0.index.
-      const index = slot0 ? slot0.index : nextViewerIndex;
+      const rotateSlot = rotatingIndex !== null ? (roster.find((v) => v.index === rotatingIndex) ?? null) : null;
+      if (rotatingIndex !== null && !rotateSlot) { setError('That viewer no longer exists.'); return; }
+      // M2 coupling — derivation is PER-SLOT-INDEXED. ADD: index = nextViewerIndex, the SAME value addViewerSlot
+      // will assign below (the key is bound to that index). ROTATE: reuse the slot's index + its already-bumped kv.
+      const index      = rotateSlot ? rotateSlot.index      : nextViewerIndex;
+      const keyVersion = rotateSlot ? rotateSlot.keyVersion : 1;
       ownerSk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, writerKeyWrapMeta.scheme === 'pin' ? pin : undefined);
       derived = await deriveViewerKeyFromNsec(ownerSk, pk, keyVersion, index);   // 4-arg indexed (M2)
-      const hex = getPublicKey(derived);
-      // Replace-guard — never silently swap out a live viewer. Re-deriving the SAME key (existing === hex) is the
-      // friction-free determinism/recovery path and skips the confirm. Rotation SUPPRESSES it (already confirmed).
-      const existing = slot0?.pubkeyHex ?? null;
-      if (!opts?.skipReplaceGuard && existing && existing !== hex) {
-        // eslint-disable-next-line no-alert
-        if (!window.confirm(
-          'A different viewer key is already connected. Replacing it means the current viewer ' +
-          'device stops receiving updates until it signs in with the new key. Replace?'
-        )) { return; }   // ownerSk + derived zeroed by the finally
-      }
+      const hex  = getPublicKey(derived);
       const npub = nip19.npubEncode(hex);
-      if (slot0) updateViewerSlot(slot0.index, { pubkeyHex: hex, npub });   // rotation preserves tier/keyVersion
-      else addViewerSlot({ pubkeyHex: hex, npub, label: 'Viewer', tier: 'safe', keyVersion: 1 });
+      if (rotateSlot) updateViewerSlot(rotateSlot.index, { pubkeyHex: hex, npub });   // rotation preserves tier + bumped kv
+      else addViewerSlot({ pubkeyHex: hex, npub, label: addLabel.trim() || 'Viewer', tier: addTier, keyVersion: 1 });
       void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates once they sign in
-      // Build the handoff token. Encode/encrypt the derived key BEFORE the finally zeros it; the token STRING
-      // carries the value for the reveal window.
+      // Build the handoff token. Encode/encrypt the derived key BEFORE the finally zeros it.
       const pass = handoffPassphrase.trim();
       const keyPart = pass ? nip49.encrypt(derived, pass) : nip19.nsecEncode(derived);
       setRevealedToken(buildHandoffToken(keyPart, nip19.npubEncode(pk)));
       setShowPin(false);
       setPin('');
+      if (!rotateSlot) { setAddLabel(''); setAddTier('safe'); }   // reset the add form on a successful add
       clearTimer();
       timerRef.current = setTimeout(clearReveal, GEN_AUTO_CLEAR_MS);
     } catch {
@@ -245,35 +166,32 @@ function GenerateViewerKeyBlock() {
     } finally {
       ownerSk?.fill(0);
       derived?.fill(0);
-      setSkipGuard(false);
+      setRotatingIndex(null);
       setBusy(false);
     }
   };
 
-  const onGenerateTap = () => {
+  const startAdd = () => {
     setError(null);
-    setSkipGuard(false);
-    if (isPin) setShowPin(true);              // PIN scheme → collect the PIN first
-    else doGenerate({ skipReplaceGuard: false });   // PRF → Face ID directly
+    setRotatingIndex(null);
+    if (isPin) setShowPin(true);   // PIN scheme → collect the PIN first
+    else doDerive();               // PRF → Face ID directly
   };
 
-  // Rotate — bump the derivation version (invalidating the current viewer key) then regenerate with the new
-  // version, replace-guard suppressed (rotation is already confirmed; a second dialog is noise). No rollback if
-  // derive fails after the bump: the version stays bumped (synced) but no key was handed out — re-running uses the
+  // Rotate — bump the slot's derivation version (invalidating its current key) then regenerate. No rollback if
+  // derive fails after the bump: the version stays bumped/synced but no key was handed out — re-running uses the
   // new version, determinism preserved.
-  const onRotateTap = () => {
+  const startRotate = (slot: ViewerSlot) => {
     setError(null);
     // eslint-disable-next-line no-alert
     if (!window.confirm(
-      'Rotating invalidates the current viewer key — the viewer\'s device will stop receiving updates until they ' +
-      'sign in again with a new token. Rotate?'
+      'Rotating invalidates this viewer\'s current key — their device stops receiving updates until they sign in ' +
+      'again with a new token. Rotate?'
     )) return;
-    const slot0 = useStore.getState().viewers[0];
-    if (!slot0) return;
-    updateViewerSlot(slot0.index, { keyVersion: slot0.keyVersion + 1 });   // sync set → doGenerate reads the bumped keyVersion
-    setSkipGuard(true);
+    updateViewerSlot(slot.index, { keyVersion: slot.keyVersion + 1 });   // sync set → doDerive reads the bumped keyVersion
+    setRotatingIndex(slot.index);
     if (isPin) setShowPin(true);
-    else doGenerate({ skipReplaceGuard: true });
+    else doDerive();
   };
 
   if (revealedToken) {
@@ -285,8 +203,8 @@ function GenerateViewerKeyBlock() {
           <button type="button" className={styles.actionBtn} onClick={clearReveal}>Hide</button>
           <span className={styles.desc}>
             {isEncrypted
-              ? "Encrypted — safe to send remotely. Share the passphrase separately. Auto-hides in ~30s."
-              : "Plaintext — hand it over in person. Auto-hides in ~30s."}
+              ? 'Encrypted — safe to send remotely. Share the passphrase separately. Auto-hides in ~30s.'
+              : 'Plaintext — hand it over in person. Auto-hides in ~30s.'}
           </span>
         </div>
       </div>
@@ -294,51 +212,111 @@ function GenerateViewerKeyBlock() {
   }
 
   return (
-    <div className={styles.genBlock}>
-      <input
-        className={styles.input}
-        type="text"
-        placeholder="Passphrase for remote handoff (optional)"
-        value={handoffPassphrase}
-        onChange={(e) => { setHandoffPassphrase(e.target.value); setError(null); }}
-        disabled={busy}
-        autoCapitalize="none"
-        autoCorrect="off"
-        spellCheck={false}
-        autoComplete="off"
-      />
-      {showPin ? (
-        <div className={styles.pinRow}>
-          <input
-            className={styles.input}
-            type="password"
-            inputMode="numeric"
-            placeholder="PIN"
-            value={pin}
-            onChange={(e) => { setPin(e.target.value); setError(null); }}
-            disabled={busy}
-          />
-          <button type="button" className={styles.genBtn} onClick={() => doGenerate({ skipReplaceGuard: skipGuard })} disabled={busy || pin.length < 4}>
-            {busy ? 'Deriving…' : 'Generate'}
+    <>
+      {/* Roster — one card per provisioned viewer */}
+      {viewers.map((slot) => (
+        <div key={slot.index} className={styles.grantCard}>
+          <div className={styles.grantHead}>
+            <span className={styles.grantDot} />
+            <span className={styles.grantName}>
+              {slot.label || 'Viewer'}{' '}
+              <span className={styles.grantNpub}>({slot.npub.slice(0, 12)}…{slot.npub.slice(-6)})</span>
+            </span>
+            <span className={styles.grantActive}>{slot.tier === 'trusted' ? 'TRUSTED' : 'SAFE'}</span>
+          </div>
+          <div className={styles.toggleRow}>
+            <div className={styles.toggleLabel}>
+              <span className={styles.toggleTitle}>Show real figures</span>
+              <span className={styles.toggleHint}>Off: health only · On: balances + liquidation prices</span>
+            </div>
+            <Toggle value={slot.tier === 'trusted'} onChange={(v) => setTier(slot, v)} />
+          </div>
+          {confirmRemoveIndex === slot.index ? (
+            <div className={styles.confirmRow}>
+              <span className={styles.confirmText}>Their device stops receiving updates. Remove?</span>
+              <button className={styles.revokeBtn} onClick={() => remove(slot)}>Remove</button>
+              <button className={styles.actionBtn} onClick={() => setConfirmRemoveIndex(null)}>Cancel</button>
+            </div>
+          ) : (
+            <div className={styles.rowActions}>
+              <button type="button" className={styles.actionBtn} onClick={() => startRotate(slot)} disabled={busy}>↻ Rotate</button>
+              <button type="button" className={styles.revokeBtn} onClick={() => setConfirmRemoveIndex(slot.index)}>Remove</button>
+            </div>
+          )}
+        </div>
+      ))}
+
+      {/* Add a viewer — mint a key from your own identity (regenerable; the token includes your npub). */}
+      <div className={styles.genBlock}>
+        <p className={styles.desc}>
+          Add a viewer — a key is derived from your identity (regenerable, no separate backup). Hand them the shown
+          token. Set a passphrase to send it remotely (encrypted); leave it blank for in-person handoff.
+        </p>
+        <input
+          className={styles.input}
+          type="text"
+          placeholder="Nickname (e.g. Dad's iPhone)"
+          value={addLabel}
+          onChange={(e) => setAddLabel(e.target.value)}
+          disabled={busy || showPin}
+        />
+        <div className={styles.rowActions}>
+          <button
+            type="button"
+            className={addTier === 'safe' ? styles.genBtn : styles.actionBtn}
+            onClick={() => setAddTier('safe')}
+            disabled={busy || showPin}
+          >
+            Safe
           </button>
-          <button type="button" className={styles.actionBtn} onClick={() => { setShowPin(false); setPin(''); setSkipGuard(false); setError(null); }} disabled={busy}>
-            Cancel
+          <button
+            type="button"
+            className={addTier === 'trusted' ? styles.genBtn : styles.actionBtn}
+            onClick={() => setAddTier('trusted')}
+            disabled={busy || showPin}
+          >
+            Trusted
           </button>
         </div>
-      ) : (
-        <>
-          <button type="button" className={styles.genBtn} onClick={onGenerateTap} disabled={busy}>
-            {busy ? 'Deriving…' : '🔑 Generate viewer key'}
-          </button>
-          {viewerPubkey && (
-            <button type="button" className={styles.actionBtn} onClick={onRotateTap} disabled={busy}>
-              ↻ Rotate viewer key
+        <span className={styles.toggleHint}>Safe: health only · Trusted: balances + liquidation prices</span>
+        <input
+          className={styles.input}
+          type="text"
+          placeholder="Passphrase for remote handoff (optional)"
+          value={handoffPassphrase}
+          onChange={(e) => { setHandoffPassphrase(e.target.value); setError(null); }}
+          disabled={busy}
+          autoCapitalize="none"
+          autoCorrect="off"
+          spellCheck={false}
+          autoComplete="off"
+        />
+        {showPin ? (
+          <div className={styles.pinRow}>
+            <input
+              className={styles.input}
+              type="password"
+              inputMode="numeric"
+              placeholder="PIN"
+              value={pin}
+              onChange={(e) => { setPin(e.target.value); setError(null); }}
+              disabled={busy}
+            />
+            <button type="button" className={styles.genBtn} onClick={doDerive} disabled={busy || pin.length < 4}>
+              {busy ? 'Deriving…' : (rotatingIndex !== null ? 'Rotate' : 'Add')}
             </button>
-          )}
-        </>
-      )}
-      {error && <p className={styles.error}>{error}</p>}
-      <span className={styles.desc}>Requires {isPin ? 'your PIN' : 'Face ID'} — shown only on this device, never stored in plain text.</span>
-    </div>
+            <button type="button" className={styles.actionBtn} onClick={() => { setShowPin(false); setPin(''); setRotatingIndex(null); setError(null); }} disabled={busy}>
+              Cancel
+            </button>
+          </div>
+        ) : (
+          <button type="button" className={styles.genBtn} onClick={startAdd} disabled={busy}>
+            {busy ? 'Deriving…' : '🔑 Add viewer'}
+          </button>
+        )}
+        {error && <p className={styles.error}>{error}</p>}
+        <span className={styles.desc}>Requires {isPin ? 'your PIN' : 'Face ID'} — shown only on this device, never stored in plain text.</span>
+      </div>
+    </>
   );
 }
