@@ -5,6 +5,7 @@ import {
   velocity,
   primaryDelta,
   rubberBand,
+  resolveScrollClaim,
   type GestureConfig,
   type GestureEvent,
   type GestureState,
@@ -257,5 +258,56 @@ describe('cancel event', () => {
       ev('cancel', 70, 0, 20),
     ]);
     expect(s.phase).toBe('cancelled');
+  });
+});
+
+describe('resolveScrollClaim (P1.3 scroll/drag handoff)', () => {
+  it('claims a downward stroke at the top', () => {
+    // WHY: scrollTop 0 + finger going down → the sheet owns the frame.
+    expect(resolveScrollClaim({ claimed: false }, { scrollTop: 0, goingDown: true, dyClaim: 0 }))
+      .toEqual({ claim: true, claimed: true });
+  });
+
+  it('does NOT claim while content is scrolled', () => {
+    // WHY: scrollTop > 0 → native scroll owns it (content scrolls back toward the top).
+    expect(resolveScrollClaim({ claimed: false }, { scrollTop: 60, goingDown: true, dyClaim: 0 }))
+      .toEqual({ claim: false, claimed: false });
+  });
+
+  it('does NOT claim an upward stroke at the top', () => {
+    // WHY: going up at the top = scroll to reveal lower content → native scroll.
+    expect(resolveScrollClaim({ claimed: false }, { scrollTop: 0, goingDown: false, dyClaim: 0 }))
+      .toEqual({ claim: false, claimed: false });
+  });
+
+  it('stays claimed once claimed even if scrollTop later reads > 0', () => {
+    // WHY: once the sheet owns the stroke it keeps it (WebKit may report a transient scrollTop) until release.
+    expect(resolveScrollClaim({ claimed: true }, { scrollTop: 80, goingDown: true, dyClaim: 40 }))
+      .toEqual({ claim: true, claimed: true });
+  });
+
+  it('releases (two-way handoff) when the finger returns to the claim point', () => {
+    // WHY: dyClaim <= 0 hands control back to native scroll for the same finger.
+    expect(resolveScrollClaim({ claimed: true }, { scrollTop: 0, goingDown: false, dyClaim: 0 }))
+      .toEqual({ claim: false, claimed: false });
+    expect(resolveScrollClaim({ claimed: true }, { scrollTop: 0, goingDown: false, dyClaim: -5 }))
+      .toEqual({ claim: false, claimed: false });
+  });
+
+  it('re-claims after a release when back at the top going down', () => {
+    // WHY: after handing off, a fresh at-top downward stroke can re-own the frame.
+    expect(resolveScrollClaim({ claimed: false }, { scrollTop: 0, goingDown: true, dyClaim: 0 }))
+      .toEqual({ claim: true, claimed: true });
+  });
+
+  it('measures release from the CLAIM point, not touchstart', () => {
+    // WHY: the claim occurred after 180px of downward travel (claimStartY there); the finger reverses 20px UP
+    // from the claim point → dyClaim = -20 → RELEASE. Measured from touchstart it'd be +160 (still down) and
+    // would NOT release — the claim-relative baseline is what makes scroll-then-claim strokes hand off correctly.
+    expect(resolveScrollClaim({ claimed: true }, { scrollTop: 0, goingDown: false, dyClaim: -20 }))
+      .toEqual({ claim: false, claimed: false });
+    // Still travelling down from the claim point (dyClaim > 0) → stays claimed.
+    expect(resolveScrollClaim({ claimed: true }, { scrollTop: 0, goingDown: true, dyClaim: 160 }))
+      .toEqual({ claim: true, claimed: true });
   });
 });

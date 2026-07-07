@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (644 tests — all must pass before every commit)
+- Vitest (651 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -189,12 +189,20 @@ src/
                                 # 900). onMove writes transform/opacity DIRECTLY (rAF-batched, no React state):
                                 # downward tracks 1:1 (dirty → rubberBand cap at 25%), upward → native scroll when
                                 # the content is scrollable else rubberBand 24px; BACKDROP.opacity = 1−clamp(ty/h) (the
-                                # backdrop IS the progress bar). P1.2 Bug D: .sheet has overscroll-behavior-y:contain
-                                # (kills the iOS inner rubber-band that steals an at-top downward drag) + on the first
-                                # onMove dy>0 the sheet's touch-action flips to 'none' for the rest of the gesture
-                                # (lockedDownRef; restored to 'pan-y' at onEnd + reset at pointerdown) — belt-and-
-                                # suspenders, applies only after a downward lock from scrollTop 0 so it can't regress
-                                # the scrolled case. onEnd dismiss = committed && dy>0 && !dirty → exit
+                                # backdrop IS the progress bar). onMove is a SHARED handler (applyMove/applyArmHaptic/
+                                # finishGesture — extracted so both gesture sources call one impl). P1.3 SCROLL/DRAG
+                                # HANDOFF (replaces P1.2's scrollTop-gate + touch-action-flip, BOTH disproved by device
+                                # gates): .sheet has NO touch-action (only overscroll-behavior-y:contain kept); ONE
+                                # scoped non-passive touchmove listener on the sheet (active only while open) decides
+                                # per frame via the pure resolveScrollClaim(gestureModel): claim a DOWNWARD stroke only
+                                # at scrollTop<=0, stay claimed until the finger returns to/above the CLAIM point
+                                # (dyClaim = y−claimStartY, a two-way release), preventDefault while claimed. When a
+                                # claim occurs but the pointer pipeline is already TERMINAL (a scroll-triggered
+                                # pointercancel — pointer can't resume mid-touch) the touch handler TAKES OVER as the
+                                # source for the SAME model (createGesture/advance('down'|'move'|'up'|'cancel') → the
+                                # shared applyMove/applyArmHaptic/finishGesture); touchDrivingRef ⇒ exactly one source
+                                # drives; a terminal touch-drive clears claim+driver together (endTouchDrive). onEnd
+                                # dismiss = committed && dy>0 && !dirty → exit
                                 # (translateY 100% --ease-standard/--motion-standard) then onDismiss; else spring
                                 # back (--ease-spring/--motion-settle). Entry: translateY 100%→0 280ms
                                 # --ease-decelerate + scrim fade (inline style, one transform channel shared with
@@ -208,13 +216,13 @@ src/
                                 # freshly-opened sheet (ADD or EDIT, incl. a seeded amount) is clean until the user
                                 # edits a field (P1 device-gate Bug A fix — replaced the earlier heuristic that
                                 # mis-read a seeded edit-mode amount as dirty). `data-dirty` + `data-testid=
-                                # "draggable-sheet"` on the sheet (e2e/diagnostic). SCROLL COEXISTENCE: handlePointerDown
-                                # live-reads (scrollRef ?? sheet).scrollTop — >0 → the pointer belongs to native scroll
-                                # (the sheet IS its own scroller; touch-action:pan-y). KEYBOARD GUARD: onFocusCapture/
-                                # onBlurCapture → enabled:false while focused, PLUS handlePointerDown live-reads
-                                # document.activeElement (INPUT/TEXTAREA/SELECT → bail) to catch the iOS
-                                # blur-races-pointerdown window where the state guard already flipped (P1 Bug B).
-                                # REDUCED-MOTION (useReducedMotion): entry/exit instant,
+                                # "draggable-sheet"` on the sheet (e2e/diagnostic). FOCUS GUARD (P1.3 Fix 2, replaces
+                                # the P1.2 activeElement-bail which made the sheet undraggable after ANY field tap since
+                                # iOS keeps focus — H1): handlePointerDown reads document.activeElement — if it's an
+                                # INPUT/TEXTAREA/SELECT AND the press is ON that field (e.target===ae or contained) →
+                                # return (typing, no drag); pressing ANYWHERE ELSE → blur() the field (keyboard closes)
+                                # and the drag proceeds. The old inputFocused state / onFocusCapture-onBlurCapture /
+                                # enabled:!inputFocused wiring is DELETED. REDUCED-MOTION (useReducedMotion): entry/exit instant,
                                 # drag renders no continuous translation (snaps at commit/cancel) — still functions.
                                 # a11y: role=dialog/aria-modal/aria-labelledby on the SHEET, grabber aria-hidden;
                                 # scrim stays a plain div (aria-hidden there would hide the dialog — deliberate
@@ -229,8 +237,9 @@ src/
                                 # surface. AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
       DraggableSheet.module.css # .root (fixed positioning) + .backdrop (absolute, rgba(0,0,0,.65) — the opacity
-                                # target) + .sheet (position:relative/z-index:1, overscroll-behavior-y:contain,
-                                # touch-action:pan-y; max-height from the prop, inline) + .grab (36×5 radius 3, eases
+                                # target) + .sheet (position:relative/z-index:1, overscroll-behavior-y:contain, NO
+                                # touch-action [P1.3 — the non-passive touchmove handoff owns scroll-vs-drag]; max-height
+                                # from the prop, inline) + .grab (36×5 radius 3, eases
                                 # to --text-muted while the sheet has [data-tracking]). P1.2: was a single .scrim>.sheet
 
     Inputs/
@@ -2733,7 +2742,15 @@ visible tap equivalent; motion explains causality, never decoration.
   A `cancel` event (incl. synthesized second-pointer) cancels from any non-terminal phase. Also `createGesture`,
   `velocity` (px/s over a 3-sample rolling window along the locked axis; 0 if <2 samples or Δt=0), `primaryDelta`,
   `rubberBand(pull,max) = pull*max/(pull+max)` (sign-preserving, asymptote < max). Consumed by `usePointerDrag`
-  (thin adapter) — see hooks/.
+  (thin adapter) — see hooks/. **P1.3 `resolveScrollClaim({claimed},{scrollTop,goingDown,dyClaim}) →
+  {claim,claimed}`** (pure) — the bottom-sheet scroll/drag handoff rule: claim a downward stroke only at
+  `scrollTop<=0`; stay claimed until `dyClaim<=0` (release measured from the CLAIM point, not touchstart) hands
+  control back to native scroll. Consumed by DraggableSheet's non-passive touchmove listener.
+- **`src/lib/gestureDebug.ts` + `src/components/ui/GestureDebugOverlay.tsx`** — ⚠ TEMPORARY (P1.3, deletable):
+  a mutable singleton + subscribe (no store field) publishing live sheet-gesture state (phase/dy/scrollTop@down/
+  claimed/activeTag@down/bail/cancelCount); `publishGestureDebug` is a no-op when off (zero cost). The overlay
+  (mounted in the sheet portal, self-gates to null) renders it bottom-left; a DevPanel "GESTURE DEBUG" toggle
+  flips `setGestureDebugEnabled`. For diagnosing the touch handoff on real iOS; remove once device-confirmed.
 - **`src/lib/haptics.ts`** — capability-honest haptics, no faking. `haptics = { tick, confirm, warn }` +
   `hapticsSupport(): 'vibrate'|'none'` (detected once, cached). Ladder (P1.2 lock-down): `navigator.vibrate()`
   patterns (Android/Chromium) → `'none'` for EVERYTHING else, **including iOS**. ⚠ **iOS has NO programmatic
@@ -2766,8 +2783,8 @@ visible tap equivalent; motion explains causality, never decoration.
 
 ## Test Suite
 
-644 tests — `npx vitest run` before every commit.
-- `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (25 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the P1 device gate.)
+651 tests — `npx vitest run` before every commit.
+- `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
@@ -2846,11 +2863,14 @@ opens the consent sheet. Gestures drive `page.mouse` (real pointer events, captu
 **Covers:** dirty-guard (clean flick-dismiss + `data-dirty`, cap-no-dismiss after a keystroke), keyboard
 guard (zero movement while focused), scroll coexistence (scrolled → drag blocked), reduced-motion (no
 continuous transform, still dismisses), P1.2 Bug E (sheet computed-opacity stays '1' mid-drag while the
-`sheet-backdrop` fades), P1.2 Bug D (downward drag from a mid-content field label dismisses). **CANNOT
-cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS has NO programmatic path —
-`hapticsSupport()` is `'none'` there), the iOS inner-scroller **overscroll bounce** (Bug D's actual failure
-mode — Chromium has no inner rubber-band, so that spec PASSES on HEAD; it pins only the Chromium-visible
-path), the iOS blur-races-pointerdown timing, the standalone-PWA container, true 60fps.
+`sheet-backdrop` fades), P1.2 Bug D (downward drag from a mid-content field label dismisses), P1.3 focus-then-
+drag (a focused field + press elsewhere → blur + drag + dismiss; H1) + keyboard guard (press the focused field
+itself → no drag). **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
+coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
+`pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the
+claim RULE is unit-tested (`resolveScrollClaim`) instead; the iOS blur-races-pointerdown timing; the
+standalone-PWA container; true 60fps.
 
 **⚠️ The typecheck gate:** root `tsconfig.json` is references-only (`"files": []`), so `tsc` / `tsc --noEmit` is a NO-OP that compiles nothing and always reports 0 — it never catches type errors. The real typecheck is **`npx tsc -b`** (build mode, what `npm run build` runs). Vercel's `vite build` strips types with esbuild and does **not** typecheck, so type errors only surface via `tsc -b` locally.
 

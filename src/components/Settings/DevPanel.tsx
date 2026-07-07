@@ -1,6 +1,7 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore, storeEncEnabled } from '../../store/useStore';
 import { haptics, hapticsSupport } from '../../lib/haptics';
+import { isGestureDebugEnabled, setGestureDebugEnabled, subscribeGestureDebug } from '../../lib/gestureDebug';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
 import { getPublishReports } from '../../lib/nostr/publish';
@@ -57,6 +58,19 @@ function HapticsProbe() {
         <button className={styles.btn} onClick={() => fire('warn')}>warn</button>
       </div>
     </>
+  );
+}
+
+/** ⚠ TEMPORARY (P1.3) — toggles the on-device sheet-gesture debug overlay (deletable scaffolding). */
+function GestureDebugToggle() {
+  const on = useSyncExternalStore(subscribeGestureDebug, isGestureDebugEnabled, () => false);
+  return (
+    <div className={styles.probeRow}>
+      <button className={styles.btn} onClick={() => setGestureDebugEnabled(!on)}>
+        Gesture debug: {on ? 'ON' : 'off'}
+      </button>
+      <span className={styles.probeStatus}>overlay bottom-left while a sheet is open</span>
+    </div>
   );
 }
 
@@ -505,6 +519,10 @@ export function DevPanel() {
 
       <Section title="HAPTICS PROBE">
         <HapticsProbe />
+      </Section>
+
+      <Section title="GESTURE DEBUG">
+        <GestureDebugToggle />
       </Section>
 
       <Section title="LOG" action={<button className={styles.btnGhost} onClick={clearNostrLog}>Clear</button>}>

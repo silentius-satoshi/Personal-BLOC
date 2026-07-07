@@ -107,6 +107,27 @@ export function rubberBand(pull: number, max: number): number {
   return sign * ((p * max) / (p + max));
 }
 
+/**
+ * P1.3 scroll/drag handoff (PURE) — decides, per touchmove, whether the SHEET owns this frame (drag) or
+ * NATIVE SCROLL does. The bottom-sheet handoff rule:
+ *  - claim a downward stroke only at the top of the content (`scrollTop <= 0 && goingDown`);
+ *  - once claimed, stay claimed (even if scrollTop later reads >0) until the finger returns to/above the
+ *    CLAIM point — a two-way release that hands control back to native scroll for the SAME finger.
+ *
+ * ⚠ `dyClaim = y − claimStartY` is measured from the CLAIM point, NOT touchstart. For an at-top stroke the two
+ * coincide; for a scroll-then-claim stroke the release must trigger relative to where the drag actually began.
+ * `claimStartY` is the caller's responsibility (recorded at the false→true transition).
+ */
+export function resolveScrollClaim(
+  state: { claimed: boolean },
+  input: { scrollTop: number; goingDown: boolean; dyClaim: number },
+): { claim: boolean; claimed: boolean } {
+  let claimed = state.claimed;
+  if (claimed && input.dyClaim <= 0) claimed = false; // two-way release, measured from the claim point
+  const claim = claimed || (input.scrollTop <= 0 && input.goingDown);
+  return { claim, claimed: claim };
+}
+
 function pushSample(samples: GestureSample[], sample: GestureSample): GestureSample[] {
   const next = [...samples, sample];
   return next.length > MAX_SAMPLES ? next.slice(next.length - MAX_SAMPLES) : next;

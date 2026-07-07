@@ -81,37 +81,44 @@ test.describe('EventSheet gesture behavior', () => {
     await expect(s).toBeVisible(); // sprang back, not dismissed
   });
 
-  test('keyboard guard — focused input → drag produces zero movement', async ({ page }) => {
+  test('keyboard guard — pressing the FOCUSED field itself does not drag (typing context)', async ({ page }) => {
     const s = await openEventSheet(page);
     const amount = s.locator('input').first();
-    await amount.click(); // keep it focused
+    await amount.click(); // focus it
     await expect(amount).toBeFocused();
     const box = await s.boundingBox();
-    await dragDown(page, s, Math.round((box!.height ?? 500) * 0.6), { release: false });
-    const ty = translateYpx(await sheetTransform(s));
-    expect(ty).toBe(0); // guard blocked the gesture entirely
+    // Start the drag ON the focused input → typing context → no drag.
+    await dragDownFrom(page, amount, Math.round((box!.height ?? 500) * 0.6), { release: false });
+    expect(translateYpx(await sheetTransform(s))).toBe(0);
     await page.mouse.up();
     await expect(s).toBeVisible();
+    await expect(amount).toBeFocused(); // still focused (never blurred — you pressed the field)
   });
 
-  test('scroll coexistence — scrolled content blocks the drag until scrollTop 0', async ({ page }) => {
-    // Shrink the viewport so the sheet content overflows and can scroll.
-    await page.setViewportSize({ width: 390, height: 500 });
+  test('focus-then-drag — pressing elsewhere with a field focused blurs + drags (H1)', async ({ page }) => {
     const s = await openEventSheet(page);
-    // Force a scrolled position.
-    await s.evaluate((el) => { (el as HTMLElement).scrollTop = 60; });
-    const scrolled = await s.evaluate((el) => (el as HTMLElement).scrollTop);
-    test.skip(scrolled === 0, 'sheet content did not overflow — cannot exercise scroll gate');
+    const amount = s.locator('input').first();
+    await amount.click(); // focus a field
+    await expect(amount).toBeFocused();
+    const label = s.getByText(/draw amount/i).first();
     const box = await s.boundingBox();
-    await dragDown(page, s, Math.round((box!.height ?? 400) * 0.6), { release: false });
-    expect(translateYpx(await sheetTransform(s))).toBe(0); // native scroll owns the pointer
+    // Drag starting on a NON-input label while the field is focused. HEAD: the activeElement guard bails on ANY
+    // focused input → no blur, no drag. Fixed: pressing elsewhere blurs the field and the drag proceeds.
+    await dragDownFrom(page, label, Math.round((box!.height ?? 500) * 0.6), { release: false });
+    const activeTag = await page.evaluate(() => document.activeElement?.tagName ?? '');
+    expect(activeTag).not.toBe('INPUT');                        // the field was blurred
+    expect(translateYpx(await sheetTransform(s))).toBeGreaterThan(0); // the sheet is tracking the drag
     await page.mouse.up();
-    await expect(s).toBeVisible();
-    // Back at the top, the drag dismisses.
-    await s.evaluate((el) => { (el as HTMLElement).scrollTop = 0; });
-    await dragDown(page, s, Math.round((box!.height ?? 400) * 0.7));
-    await expect(s).toHaveCount(0);
+    await page.waitForTimeout(50);
+    await expect(s).toHaveCount(0);                             // released past threshold → dismissed
   });
+
+  // The scroll/drag handoff (native-scroll-vs-sheet ownership) needs REAL touch + native scroll + pointercancel
+  // coordination that Chromium's mouse pipeline can't reproduce: synthetic touch events drive no pointer pipeline
+  // and start no native scroll, so there's nothing to hand off. The claim RULE is unit-tested (resolveScrollClaim
+  // in gestureModel.test.ts); the integrated behavior is verified in the iOS device gate. See helpers.ts note.
+  test.fixme('scroll coexistence — scrolled content owns the drag until scrollTop 0 (device gate)', async () => {});
+  test.fixme('jitter handoff — down-then-up hands back to native scroll (device gate)', async () => {});
 
   test('reduced-motion — no continuous transform but release still dismisses', async ({ page }) => {
     await page.emulateMedia({ reducedMotion: 'reduce' });

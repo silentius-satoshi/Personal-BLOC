@@ -35,10 +35,10 @@
   flex-direction: column;
   gap: 14px;
   padding: 8px 18px 22px;
-  /* The compositor owns vertical scroll; drag-to-dismiss rides on top at scrollTop 0. */
-  touch-action: pan-y;
-  /* P1.2 Bug D — contain the inner rubber-band so an at-top downward drag can't be stolen by iOS overscroll
-     bounce (html/body already have overscroll-behavior:none — this closes the last bouncing scroller). */
+  /* P1.3 — NO touch-action here: the scoped non-passive touchmove listener in DraggableSheet decides
+     scroll-vs-drag per frame via selective preventDefault (resolveScrollClaim). (P1.2's touch-action:pan-y +
+     mid-gesture flip were disproved by two device gates.) overscroll-behavior-y:contain stays — it stops the
+     inner rubber-band from chaining to the page. */
   overscroll-behavior-y: contain;
 }
 
