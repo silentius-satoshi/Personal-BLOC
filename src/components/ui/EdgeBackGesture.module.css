@@ -1,0 +1,46 @@
+/* EdgeBackGesture (P3) — iOS-style edge swipe-back. The page (children) slides right over an under-layer
+   (the surface back-nav reveals) at scale .92→1 + dim .4→0. overflow-x:clip clips the off-right page
+   WITHOUT forcing a vertical scroll container (so the page still scrolls the document normally). */
+
+.wrap {
+  position: relative;
+  overflow-x: clip;
+}
+
+.under {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  transform: scale(0.92);
+  transform-origin: 50% 50%;
+  will-change: transform;
+}
+
+.dim {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background: #000;
+  pointer-events: none;
+}
+
+.page {
+  position: relative;
+  z-index: 1;
+  background: var(--bg-base);
+  will-change: transform;
+}
+
+/* 20px left-edge capture strip. touch-action: pan-y (NOT none) — vertical strokes scroll natively through
+   the bezel; the horizontal axis is ours. top/bottom:0 (not height:100%) so it stretches to the wrap's full
+   rendered height even when that height is auto. */
+.zone {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 20px;
+  z-index: 2;
+  touch-action: pan-y;
+}

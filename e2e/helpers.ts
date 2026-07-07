@@ -111,6 +111,45 @@ export async function openMonthModalTwo(page: Page): Promise<void> {
   await expect(page.getByTestId('event-row')).toHaveCount(2);
 }
 
+/** Horizontal mouse drag from (startX, startY) by `dxPx` (negative = left). Real pointer events; a fast
+ *  flick uses fewer steps + no inter-step wait (high release velocity). Used by the P3 navigation specs. */
+export async function mouseDragX(page: Page, startX: number, startY: number, dxPx: number, opts: { fast?: boolean } = {}): Promise<void> {
+  const { fast = false } = opts;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  const n = fast ? 3 : 12;
+  for (let i = 1; i <= n; i++) {
+    await page.mouse.move(startX + (dxPx * i) / n, startY);
+    if (!fast) await page.waitForTimeout(8);
+  }
+  await page.waitForTimeout(fast ? 0 : 25);
+  await page.mouse.up();
+  await page.waitForTimeout(40);
+}
+
+/** seedAndGoto (daily journal) → open the simple-mode Settings subpage (AppShell Branch H, edge-back wrapped). */
+export async function openSettingsSimple(page: Page): Promise<void> {
+  await seedAndGoto(page);
+  await page.getByLabel('Settings').click();
+  await expect(page.getByTestId('edge-back-zone')).toBeVisible();
+}
+
+/** seedAndGoto (daily journal) → open the simple-mode Almanac subpage (AppShell Branch I, edge-back wrapped). */
+export async function openAlmanacSimple(page: Page): Promise<void> {
+  await seedAndGoto(page);
+  await page.getByLabel('Almanac').click();
+  await expect(page.getByTestId('edge-back-zone')).toBeVisible();
+}
+
+/** The Almanac face-host SwipeStrip viewport box (the only SwipeStrip on that surface). */
+export async function faceHostBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
+  const vp = page.locator('[class*="viewport"]').first();
+  await expect(vp).toBeVisible();
+  const box = await vp.boundingBox();
+  if (!box) throw new Error('face host viewport has no bounding box');
+  return box;
+}
+
 /** Seed a mid-strategy plan (current month ≥ 2) + land on DailyModeView. */
 export async function seedJournalMonths(page: Page): Promise<void> {
   await page.addInitScript(MULTI_MONTH_SEED);

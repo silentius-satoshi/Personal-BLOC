@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
+import { SwipeStrip } from '../ui/SwipeStrip';
 import HalvingClock from './HalvingClock';
 import CycleClock from './CycleClock';
 import FreshnessBadge from './FreshnessBadge';
@@ -38,8 +39,20 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
  * six faces under one hub is navigation only — it crosses neither wall.
  */
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger';
+
+/** A neighbour pane while paging (P3): the face LABEL only — the real face (with its heavy Power Law/Mining
+ *  data hooks) materialises at rest after the snap commits (§14.5 + perf). aria-hidden — decorative. */
+function FacePreviewCard({ label }: { label: string }) {
+  return (
+    <div className={styles.previewCard} aria-hidden="true">
+      <span className={styles.previewLabel}>{label}</span>
+    </div>
+  );
+}
+
 export default function AlmanacView() {
-  const [face, setFace] = useState<'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger'>('halving');
+  const [face, setFace] = useState<Face>('halving');
   const [consentOpen, setConsentOpen] = useState(false);
 
   const tip = useChainTip();
@@ -73,6 +86,42 @@ export default function AlmanacView() {
     }
   };
 
+  // SINGLE source for BOTH the sub-nav pills AND the swipe pager — they can never disagree on which faces
+  // exist or their order. Gated faces (defense/ledger) are simply absent from the array.
+  const visibleFaces: { key: Face; label: string }[] = [
+    { key: 'halving',  label: '◔ Halving Clock' },
+    { key: 'cycle',    label: '₿ Cycle Clock' },
+    { key: 'mining',   label: '⛏ Mining' },
+    { key: 'powerlaw', label: '₿ Power Law' },
+    { key: 'sats',     label: '丰 Sats' },
+    ...(hasCbLoan ? [{ key: 'defense' as Face, label: cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim' }] : []),
+    ...(ledgerAvailable ? [{ key: 'ledger' as Face, label: '▤ Ledger' }] : []),
+  ];
+  const idx = visibleFaces.findIndex((f) => f.key === face);
+
+  // The REAL face content for a face key (offset-0 pane). Pure presentation — face paging never remounts the
+  // hub's useChainTip (§14.5).
+  const renderFace = (f: Face): ReactNode => {
+    if (f === 'halving')  return <div className={styles.container}><HalvingClock height={tip.height} mode={tip.mode} /></div>;
+    if (f === 'cycle')    return <div className={styles.container}><CycleClock height={tip.height} mode={tip.mode} onSwitchToHalving={() => setFace('halving')} /></div>;
+    if (f === 'defense')  return <CbDefenseTool />;
+    if (f === 'ledger')   return <LedgerFace />;
+    if (f === 'mining')   return <div className={styles.faceStack}><div className={styles.facePanel}><MiningInputsPanel /></div><MiningMain /></div>;
+    if (f === 'powerlaw') return <div className={styles.faceStack}><div className={styles.facePanel}><PowerLawSidebar /></div><PowerLawMain /></div>;
+    return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
+  };
+
+  const renderPane = (offset: -1 | 0 | 1): ReactNode => {
+    if (offset === 0) return renderFace(face);
+    const target = visibleFaces[idx + offset];
+    return target ? <FacePreviewCard label={target.label} /> : null;
+  };
+  const onPage = (dir: -1 | 1) => { const t = visibleFaces[idx + dir]; if (t) setFace(t.key); };
+  const canPage = (dir: -1 | 1): boolean => idx + dir >= 0 && idx + dir < visibleFaces.length;
+  // Charts always win over face paging (PowerLaw's recharts); the left 20px belongs to EdgeBackGesture.
+  const shouldStart = (e: ReactPointerEvent) =>
+    !(e.target as Element)?.closest?.('.recharts-wrapper, canvas, [data-gesture-exempt]') && e.clientX >= 20;
+
   return (
     <div className={styles.shell}>
       <div className={styles.container}>
@@ -90,90 +139,27 @@ export default function AlmanacView() {
         </div>
 
         <div className={styles.subnav}>
-          <button
-            type="button"
-            className={`${styles.subnavBtn} ${face === 'halving' ? styles.subnavBtnOn : ''}`}
-            onClick={() => setFace('halving')}
-          >
-            ◔ Halving Clock
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavBtn} ${face === 'cycle' ? styles.subnavBtnOn : ''}`}
-            onClick={() => setFace('cycle')}
-          >
-            ₿ Cycle Clock
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavBtn} ${face === 'mining' ? styles.subnavBtnOn : ''}`}
-            onClick={() => setFace('mining')}
-          >
-            ⛏ Mining
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavBtn} ${face === 'powerlaw' ? styles.subnavBtnOn : ''}`}
-            onClick={() => setFace('powerlaw')}
-          >
-            ₿ Power Law
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavBtn} ${face === 'sats' ? styles.subnavBtnOn : ''}`}
-            onClick={() => setFace('sats')}
-          >
-            丰 Sats
-          </button>
-          {hasCbLoan && (
+          {visibleFaces.map((f) => (
             <button
+              key={f.key}
               type="button"
-              className={`${styles.subnavBtn} ${face === 'defense' ? styles.subnavBtnOn : ''}`}
-              onClick={() => setFace('defense')}
+              className={`${styles.subnavBtn} ${face === f.key ? styles.subnavBtnOn : ''}`}
+              onClick={() => setFace(f.key)}
             >
-              {cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim'}
+              {f.label}
             </button>
-          )}
-          {ledgerAvailable && (
-            <button
-              type="button"
-              className={`${styles.subnavBtn} ${face === 'ledger' ? styles.subnavBtnOn : ''}`}
-              onClick={() => setFace('ledger')}
-            >
-              ▤ Ledger
-            </button>
-          )}
+          ))}
         </div>
       </div>
 
-      {face === 'halving' || face === 'cycle' ? (
-        <div className={styles.container}>
-          {face === 'halving' ? (
-            <HalvingClock height={tip.height} mode={tip.mode} />
-          ) : (
-            <CycleClock height={tip.height} mode={tip.mode} onSwitchToHalving={() => setFace('halving')} />
-          )}
-        </div>
-      ) : face === 'defense' ? (
-        <CbDefenseTool />
-      ) : face === 'ledger' ? (
-        <LedgerFace />
-      ) : face === 'mining' ? (
-        <div className={styles.faceStack}>
-          <div className={styles.facePanel}><MiningInputsPanel /></div>
-          <MiningMain />
-        </div>
-      ) : face === 'powerlaw' ? (
-        <div className={styles.faceStack}>
-          <div className={styles.facePanel}><PowerLawSidebar /></div>
-          <PowerLawMain />
-        </div>
-      ) : (
-        <div className={styles.faceStack}>
-          <ConverterMain />
-          <div className={styles.facePanel}><ConverterSidebar /></div>
-        </div>
-      )}
+      {/* P3 — faces page via SwipeStrip (neighbours are lightweight preview cards; the real face lands at
+          rest). Charts + the left edge-back zone are excluded via shouldStart. Highlight updates at commit. */}
+      <SwipeStrip
+        onPage={onPage}
+        canPage={canPage}
+        renderPane={renderPane}
+        shouldStart={shouldStart}
+      />
 
       <AlmanacConsentSheet
         open={consentOpen}

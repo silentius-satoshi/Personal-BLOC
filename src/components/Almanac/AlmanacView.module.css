@@ -98,6 +98,23 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* P3 face-swipe neighbour pane — a light label card; the real face materialises at rest. */
+.previewCard {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  margin: 0 16px;
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface-2);
+}
+.previewLabel {
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--text-muted);
+}
 .soonTag {
   font-family: var(--mono);
   font-size: 8px;

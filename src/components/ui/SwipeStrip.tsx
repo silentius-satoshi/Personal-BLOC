@@ -23,6 +23,12 @@ export interface SwipeStripProps {
   renderPane: (offset: -1 | 0 | 1) => ReactNode;
   /** Fired when the horizontal gesture axis-locks (coexistence: cancels a pending long-press). */
   onSwipeStart?: () => void;
+  /**
+   * Optional pointerdown gate (default → always start). Return false to REFUSE the paging gesture for this
+   * press — the pointer falls through to the content (charts, the left edge-back zone). Receives the whole
+   * event so a guard can read both `e.target` and `e.clientX`. P2 call sites omit it (unaffected).
+   */
+  shouldStart?: (e: React.PointerEvent) => boolean;
   disabled?: boolean;
   labelledBy?: string;
 }
@@ -31,7 +37,7 @@ const COMMIT_FRACTION = 0.35;
 const COMMIT_VELOCITY = 800;
 const SNAP_MS = 320; // --motion-settle
 
-export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, disabled, labelledBy }: SwipeStripProps) {
+export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, shouldStart, disabled, labelledBy }: SwipeStripProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const stripRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
@@ -98,7 +104,7 @@ export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, disabled
         ref={stripRef}
         className={styles.strip}
         style={{ transform: `translateX(${restPct}%)` }}
-        onPointerDown={disabled ? undefined : drag.onPointerDown}
+        onPointerDown={disabled ? undefined : (e) => { if (shouldStart && !shouldStart(e)) return; drag.onPointerDown(e); }}
       >
         <div className={styles.pane} aria-hidden="true" style={{ pointerEvents: 'none' }}>{renderPane(-1)}</div>
         <div className={styles.pane}>{renderPane(0)}</div>

@@ -140,7 +140,15 @@ src/
       AppShell.tsx              # ALL_TABS_META array, tab bar DndContext, sidebar/main routing,
                                 # hiddenTabs guard useEffect, [data-active-tab] on shell div;
                                 # passes simpleView/setSimpleView as props to DailyModeView/SimpleModeView
-                                # (ViewToggle lives inside each view, not here)
+                                # (ViewToggle lives inside each view, not here). GESTURE P3: Branch J's owner journal
+                                # fork (dashboard→ViewerHomeView(ownerNav) / daily→DailyModeView / monthly→SimpleModeView)
+                                # is extracted to a local renderOwnerJournal() (Branch J = viewerPreview&&!viewerMode ?
+                                # <ViewerPreview/> : renderOwnerJournal()); renderSimpleUnder = viewerMode ?
+                                # <ViewerHomeView/> : renderOwnerJournal() (the surface back-nav reveals). Branch H
+                                # (simple-mode Settings) + Branch I (simple-mode Almanac) — the two ← Back surfaces — are
+                                # each wrapped in <EdgeBackGesture onBack={()=>setActiveTab(previousTab)}
+                                # renderUnder={renderSimpleUnder}> (iOS edge-swipe-back parallax; shared by owner+viewer).
+                                # No other branch mounts it (gates/onboarding/full-mode shell untouched).
       AppShell.module.css
       ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — JOURNAL's INNER control,
                                 # rendered inside BOTH DailyModeView and SimpleModeView (between header +
@@ -244,8 +252,8 @@ src/
                                 # surface. AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
       SwipeStrip.tsx            # Gesture & Motion System P2 — shared horizontal 3-pane PAGER (Calendar month/week +
-                                # MonthlyLogOverlay months; Almanac faces later). Props {onPage(dir),canPage(dir),
-                                # renderPane(offset:-1|0|1),onSwipeStart?,disabled?}. 300%-wide strip at rest
+                                # MonthlyLogOverlay months; P3 Almanac faces). Props {onPage(dir),canPage(dir),
+                                # renderPane(offset:-1|0|1),onSwipeStart?,shouldStart?,disabled?}. 300%-wide strip at rest
                                 # translateX(-33.3%); usePointerDrag axis 'x' (touch-action:pan-y → vertical scroll
                                 # never stolen), commitThreshold=0.35×measured-width, commitVelocity 800. onMove tracks
                                 # dx (rubberBand 32 at a !canPage boundary); onEnd committed&&canPage → DOUBLE-BUFFERED
@@ -253,6 +261,31 @@ src/
                                 # spring back. ONE haptics.tick on COMMIT only (no arm haptic — paging isn't
                                 # consequential). onSwipeStart (first onMove) cancels a pending child long-press. Real
                                 # state changes ONLY at rest (design.md §3.1). reduced-motion: no continuous track.
+                                # P3: OPTIONAL shouldStart(e: React.PointerEvent) → boolean gate on the strip's
+                                # onPointerDown (default → always start; P2 call sites Calendar/MonthlyLogOverlay omit it,
+                                # unaffected) — return false to REFUSE paging so the pointer falls through (AlmanacView
+                                # passes one refusing charts [.recharts-wrapper/canvas/[data-gesture-exempt]] + the left
+                                # 20px which belongs to EdgeBackGesture).
+      EdgeBackGesture.tsx       # Gesture & Motion System P3 — iOS-style edge-swipe-back (standalone PWAs have no system
+                                # swipe-back). Props {onBack(), renderUnder?(), disabled?, children}. A 20px left-edge
+                                # capture .zone (z-index above content, touch-action:PAN-Y not none — vertical strokes
+                                # scroll natively THROUGH the bezel; the contested axis is HORIZONTAL, which pan-y leaves
+                                # to our pointer stream; fallback if WebKit still cancels = P1 selective-preventDefault
+                                # scoped to the zone) drives usePointerDrag (axis 'x', slop 8, armThreshold 24,
+                                # commitThreshold=½ measured width, commitVelocity 700). onMove (dx>0 only; leftward
+                                # rubberBands 16) translates the .page right 1:1 while renderUnder() rides in behind at
+                                # scale(.92→1) + a .dim overlay .4→0 (iOS parallax); onEnd committed&&dx>0 → animate off-
+                                # right (--ease-standard) then onBack(), else spring back (--ease-spring) + unmount the
+                                # under-layer. NO haptics on back-nav (paging policy). renderUnder mounts at pointerdown
+                                # (during slop, hiding the mount cost); AppShell passes a viewerMode-branched
+                                # renderSimpleUnder (owner journal / viewer home — the exact surface back-nav reveals).
+                                # TAP FORWARDING: a sub-slop cancel (movement < slop = a tap) re-dispatches the tap to the
+                                # content beneath via zone.pointerEvents='none' + document.elementFromPoint(x,y)?.click()
+                                # — the left 20px is never a dead strip. reduced-motion: no continuous track, committed →
+                                # onBack immediately. a11y: zone aria-hidden (the visible ← Back button is the accessible
+                                # path). MOUNTS ONLY on AppShell Branch H/I (simple-mode Settings/Almanac ← Back surfaces),
+                                # NEVER on an auth/viewer gate, onboarding, or the full-mode shell (grep-proven: 2 sites).
+                                # EdgeBackGesture.module.css alongside (.wrap overflow-x:clip, .under, .dim, .page, .zone).
       SwipeStrip.module.css     # .viewport (overflow hidden, touch-action pan-y) + .strip (300%, flex) + .pane (1/3)
       Snackbar.tsx              # Gesture & Motion System P2 — transient bottom toast (portal, above safe-area,
                                 # --surface-3, message + one action, 5s auto-dismiss + progress hairline, role=status).
@@ -1778,6 +1811,28 @@ badge + an off-mode `~`/`est.` precision marker differ.
   unmigrated). Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).
   Suite 419 → 425.
 
+### Gesture P3 — Almanac face swipe (presentation only; store unchanged)
+
+The face host is wrapped in `<SwipeStrip>` so faces PAGE by horizontal swipe (the sub-nav pills remain the tap
+equivalent — non-negotiable 3). No data/store change.
+- **`visibleFaces: { key: Face; label: string }[]`** is the SINGLE source computed once — it drives BOTH the
+  sub-nav pill map (replaced the 7 inline buttons) AND the strip's paging, so they can never disagree on which
+  faces exist or their order. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`) are simply
+  absent from the array. `idx = findIndex(face)`; `onPage(dir)=setFace(visibleFaces[idx+dir].key)`;
+  `canPage(dir)` bounds-checks (rubber-band at the first/last face, no wraparound).
+- **NEIGHBOUR PANES ARE PREVIEWS, NOT REAL FACES** (sanctioned deviation from "adjacent faces ride in", §14.5 +
+  perf): `renderPane(offset!==0)` renders a lightweight `FacePreviewCard` (the target's label on `--surface-2`,
+  aria-hidden); the REAL face (`renderFace(face)`, offset 0) — with its heavy Power Law/Mining data hooks —
+  materialises ONLY at rest after the snap commits. Real neighbours would pre-mount those hooks on every peek.
+- **`shouldStart(e)`** refuses paging when the pointerdown target is inside a chart
+  (`.recharts-wrapper`/`canvas`/`[data-gesture-exempt]` — PowerLaw's recharts always wins) OR at `e.clientX < 20`
+  (the left 20px belongs to EdgeBackGesture in the simple-mode Almanac subpage — positional priority, no races).
+- **Sub-nav highlight updates at snap-COMMIT** (the `setFace` re-render), not continuously — sanctioned deviation
+  (the pill sub-nav has no underline to interpolate; redesign is out of scope).
+- `useChainTip` stays at the hub (called once) — face paging is pure presentation, never remounts the data layer.
+- Tests: `e2e/navigation.spec.ts` (face swipe halving→cycle; gated-face skip while `!hasCbLoan`; chart exclusion;
+  edge-coordination — a left-bezel drag backs out instead of paging).
+
 ---
 
 ## Viewer Experience Revamp (V1 — the dedicated viewer home; store stays v19, NO bump)
@@ -2934,7 +2989,16 @@ long-press (600ms) opens the pre-dated add sheet + short-press just selects; swi
 Snackbar → UNDO restores; one-open-row (`data-open`); ⭐ a fast flick NEVER deletes (non-negotiable 1). Selectors:
 `data-testid="day-cell"`/`data-date` (the visible CENTER pane is filtered by viewport-x since the SwipeStrip
 renders 3 panes), `event-row`/`swipe-delete-btn`; a month-scope cell needs `scrollIntoViewIfNeeded` (below the
-fold); the double-buffered snap needs retrying label assertions. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+fold); the double-buffered snap needs retrying label assertions. **P3 `navigation.spec.ts`:** edge-swipe-back from
+Settings returns to the journal (drag from x=8 past 50% width); a mid-page drag (x=60) does NOT back-nav; TAP
+FORWARDING (a tap over the zone at the ← Back button's 16–20px overlap forwards + navigates — the left 20px isn't
+dead); gate exclusion (the journal never mounts `data-testid="edge-back-zone"`; gates are dev-bypass-unreachable so
+the component-level grep covers them); Almanac face swipe halving→cycle (distinctive face text); gated-face skip
+(`!hasCbLoan` → no defense pill through the whole strip); chart exclusion (a drag starting inside `.recharts-wrapper`
+does NOT page — the PowerLaw face's `/api/blockchain.info` route is `page.route`-fulfilled with valid data so the
+chart renders, since PowerLawMain gates it on `!loading && !error`); edge-coordination on Almanac (a left-bezel drag
+backs out instead of paging). Helper `mouseDragX` drives raw `page.mouse` from a coordinate; `faceHostBox` finds the
+Almanac SwipeStrip viewport. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the

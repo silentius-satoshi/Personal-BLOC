@@ -51,6 +51,7 @@ import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
+import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView          from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
@@ -281,6 +282,37 @@ export function AppShell() {
     }
   }, [hiddenTabs, activeTab]);
 
+  const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
+  const goAlmanac  = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); };
+
+  // Branch J's owner journal fork (dashboard/daily/monthly) — shared by Branch J AND the edge-back
+  // under-layer (renderSimpleUnder), so the parallax backdrop is EXACTLY the surface back-nav reveals.
+  const renderOwnerJournal = () =>
+    simpleView === 'dashboard' ? (
+      <ViewerHomeView
+        previewSafeSnap={null}   // owner Dashboard — trusted LIVE derive (no snap, no banner, no Safe/Trusted toggle)
+        onOpenSettings={goSettings}
+        ownerNav={
+          <HeaderNavCluster
+            active="dashboard"
+            onDashboard={() => setSimpleView('dashboard')}
+            onJournal={() => setSimpleView('daily')}
+            onFullMode={() => setSimpleMode(false)}
+            onAlmanac={goAlmanac}
+            onSettings={goSettings}
+          />
+        }
+      />
+    ) : simpleView === 'daily' ? (
+      <DailyModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} simpleView={simpleView} setSimpleView={setSimpleView} />
+    ) : (
+      <SimpleModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} simpleView={simpleView} setSimpleView={setSimpleView} />
+    );
+
+  // The surface an edge-back reveals: owner → the journal (Branch J); viewer → the read-only home (Branch G).
+  const renderSimpleUnder = () =>
+    viewerMode ? <ViewerHomeView onOpenSettings={goSettings} /> : renderOwnerJournal();
+
   return (
     <>
       {!onboardingComplete && (
@@ -315,58 +347,35 @@ export function AppShell() {
           onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
         />
       ) : simpleMode && activeTab === 'settings' ? (
-        <div className={styles.simpleModeSettings}>
-          <div className={styles.simpleModeSettingsHeader}>
-            <button
-              className={styles.simpleModeBackBtn}
-              onClick={() => setActiveTab(previousTab)}
-            >
-              ← Back
-            </button>
-            <span className={styles.simpleModeSettingsTitle}>Settings</span>
+        // Branch H — edge-swipe-back reveals the previous surface (owner journal / viewer home) with iOS parallax.
+        <EdgeBackGesture onBack={() => setActiveTab(previousTab)} renderUnder={renderSimpleUnder}>
+          <div className={styles.simpleModeSettings}>
+            <div className={styles.simpleModeSettingsHeader}>
+              <button
+                className={styles.simpleModeBackBtn}
+                onClick={() => setActiveTab(previousTab)}
+              >
+                ← Back
+              </button>
+              <span className={styles.simpleModeSettingsTitle}>Settings</span>
+            </div>
+            <SettingsMain hideHeader />
           </div>
-          <SettingsMain hideHeader />
-        </div>
+        </EdgeBackGesture>
       ) : simpleMode && activeTab === 'almanac' ? (
-        <div className={styles.simpleModeSettings}>
-          <div className={styles.simpleModeSettingsHeader}>
-            <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
-            <span className={styles.simpleModeSettingsTitle}>Almanac</span>
+        // Branch I — same edge-swipe-back wrapper.
+        <EdgeBackGesture onBack={() => setActiveTab(previousTab)} renderUnder={renderSimpleUnder}>
+          <div className={styles.simpleModeSettings}>
+            <div className={styles.simpleModeSettingsHeader}>
+              <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
+              <span className={styles.simpleModeSettingsTitle}>Almanac</span>
+            </div>
+            <AlmanacView />
           </div>
-          <AlmanacView />
-        </div>
+        </EdgeBackGesture>
       ) : simpleMode && activeTab !== 'settings' ? (
         <div className={styles.simpleModeRoot}>
-          {viewerPreview && !viewerMode
-            ? <ViewerPreview />
-            : simpleView === 'dashboard'
-            ? <ViewerHomeView
-                previewSafeSnap={null}   // owner Dashboard — trusted LIVE derive (no snap, no banner, no Safe/Trusted toggle)
-                onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
-                ownerNav={
-                  <HeaderNavCluster
-                    active="dashboard"
-                    onDashboard={() => setSimpleView('dashboard')}
-                    onJournal={() => setSimpleView('daily')}
-                    onFullMode={() => setSimpleMode(false)}
-                    onAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}
-                    onSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
-                  />
-                }
-              />
-            : simpleView === 'daily'
-            ? <DailyModeView
-                onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
-                onOpenAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}
-                simpleView={simpleView}
-                setSimpleView={setSimpleView}
-              />
-            : <SimpleModeView
-                onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
-                onOpenAlmanac={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); }}
-                simpleView={simpleView}
-                setSimpleView={setSimpleView}
-              />}
+          {viewerPreview && !viewerMode ? <ViewerPreview /> : renderOwnerJournal()}
         </div>
       ) : (
         <div className={styles.shell} data-active-tab={activeTab}>
