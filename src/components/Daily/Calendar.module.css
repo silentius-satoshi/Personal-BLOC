@@ -102,6 +102,12 @@
   align-items: center;
   gap: 4px;
   font-family: inherit;
+  touch-action: pan-y;   /* P2 — vertical scroll native; the SwipeStrip axis-locks x for paging */
+}
+/* P2 — long-press fill cue: the cell bg eases to --surface-3 across the 500ms hold, reverts instantly on cancel. */
+.cell[data-holding] {
+  background: var(--surface-3);
+  transition: background 500ms var(--ease-standard);
 }
 .wdl {
   font-family: var(--mono);

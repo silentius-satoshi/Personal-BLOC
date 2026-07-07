@@ -250,6 +250,7 @@ export interface StoreState {
   addDayEvent:    (event: DayEvent) => void;
   updateDayEvent: (event: DayEvent) => void;
   deleteDayEvent: (id: string) => void;
+  undoDayEventDeletion: (event: DayEvent) => void;   // P2 — restore a just-deleted event (Snackbar undo)
   setDayLog:      (events: DayEvent[]) => void;   // P3 — raw write-back from records merge; folds the Seam-2 cbCollateralBtc derive
   setCbLtvAction: (v: 'paydown' | 'addCollateral') => void;
 
@@ -1230,6 +1231,29 @@ export const useStore = create<StoreState>()(
     refreshStrikeCollateralCache();   // Collateral-Truth v20 — reading-anchored Strike collateral cache
     refreshBalanceAnchors(readingCtx(before));   // §5b — deleting the anchor-source reading falls back to the date-latest survivor
     const m = monthOf(before);
+    if (m !== null) rerollMonth(m);
+    publishRecordsNow();
+  },
+  // P2 undo (Snackbar) — restore a just-deleted event. The store discarded the object on delete, so the CALLER
+  // passes the retained DayEvent. Re-add with a FRESH ts (Date.now()) + strip the tombstone — the canonical
+  // edit-after-delete revive (mergeRecords: an event survives iff tombstone.ts is NOT strictly > event.ts, so a
+  // bumped-ts restore beats any tombstone already published within the 5s window on every device). Mirrors the
+  // add/delete mutators' cache/reroll/publish tail.
+  undoDayEventDeletion: (event) => {
+    const restored = { ...event, ts: Date.now() };
+    set((s) => {
+      const rest = { ...s.deletedDayEvents };
+      delete rest[event.id];
+      return {
+        dayLog: [...s.dayLog.filter((e) => e.id !== event.id), restored],   // filter guards a double-undo
+        deletedDayEvents: rest,
+        recordsDirty: true,
+      };
+    });
+    refreshCbCollateralCache();
+    refreshStrikeCollateralCache();
+    refreshBalanceAnchors(readingCtx(restored));
+    const m = monthOf(restored);
     if (m !== null) rerollMonth(m);
     publishRecordsNow();
   },

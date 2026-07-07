@@ -5,6 +5,7 @@ import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
 import { fmtUSD, toLocalISO } from '../../utils/format';
 import type { MonthlyLogEntry } from '../../simulation/types';
+import { SwipeStrip } from '../ui/SwipeStrip';
 import styles from './MonthlyLogOverlay.module.css';
 
 type AdvisorMonthRow = ReturnType<typeof runAdvisor>['rows'][number];
@@ -90,7 +91,6 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
   const [form, setForm] = useState<OverlayForm>(emptyForm);
   const [saved, setSaved] = useState(false);
 
-  const touchStartX = useRef<number | null>(null);
   const didInit = useRef(false);   // first effect run is the initial mount — don't clobber the seeded editing state
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
@@ -146,18 +146,6 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
     return () => window.removeEventListener('keydown', handler);
   }, [onClose]);
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartX.current = e.touches[0].clientX;
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (touchStartX.current === null) return;
-    const delta = e.changedTouches[0].clientX - touchStartX.current;
-    if (delta < -50) setCurrentIdx((i) => Math.min(11, i + 1));
-    if (delta >  50) setCurrentIdx((i) => Math.max(0, i - 1));
-    touchStartX.current = null;
-  };
-
   const handleSave = () => {
     const monthNum  = currentIdx + 1;
     const entry: MonthlyLogEntry = {
@@ -185,11 +173,10 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
 
   const monthNum    = currentIdx + 1;
   const loggedEntry = monthlyLog.find((e) => e.month === monthNum) ?? null;
-  const isLogged    = !!loggedEntry;
   // §4 — a daily-owned month is a VIEWER here; edits belong in the Ledger (a manual write is re-clobbered by
-  // the next re-roll and dropped by the store's M2 guard). Legacy/manual months stay editable.
+  // the next re-roll and dropped by the store's M2 guard). Legacy/manual months stay editable. (isLogged/
+  // isCurrent are now derived per-pane inside renderMonthCard; only the active month's daily-ness gates editing.)
   const isDaily     = loggedEntry?.source === 'daily';
-  const isCurrent   = monthNum === currentMonth;
 
   useEffect(() => { if (isDaily) setEditing(false); }, [isDaily, monthNum]);
 
@@ -208,24 +195,34 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
     </>
   );
 
-  function renderCard() {
-    if (isLogged) {
+  // P2 — parameterized by month so the SwipeStrip can render adjacent panes. `active` (the center pane) gets
+  // the full stateful card (edit form / LOG button — the single-instance form state is tied to currentIdx);
+  // neighbors render the read-only view (no form). Real state (currentIdx) changes only at rest, after a page.
+  function renderMonthCard(mn: number, active: boolean) {
+    const logged  = monthlyLog.find((e) => e.month === mn) ?? null;
+    const isLog   = !!logged;
+    const isDailyM = logged?.source === 'daily';
+    const isCur   = mn === currentMonth;
+    const row     = months.find((r) => r.month === mn);
+
+    if (isLog && logged) {
+      const showForm = active && editing && !isDailyM;
       return (
         <div className={styles.card}>
           <div className={styles.cardHeader}>
             <div className={styles.cardHeaderLeft}>
               <span className={styles.badgeLogged}>✓ LOGGED</span>
-              <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, monthNum)}</span>
+              <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, mn)}</span>
             </div>
-            {!editing && !isDaily && (
+            {active && !editing && !isDailyM && (
               <button className={styles.editBtn} onClick={() => setEditing(true)}>Edit</button>
             )}
-            {!editing && isDaily && (
+            {active && !editing && isDailyM && (
               <span className={styles.ledgerHint}>Edit in the Ledger</span>
             )}
           </div>
 
-          {editing ? (
+          {showForm ? (
             <>
               <div className={styles.formGrid}>{sharedFields}</div>
               <div className={styles.cardActions}>
@@ -235,31 +232,31 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
             </>
           ) : (
             <div className={styles.viewGrid}>
-              <ViewRow label="BTC Bought"     value={`+${loggedEntry.btcBought.toFixed(5)} ₿`} green />
-              {(loggedEntry.collateralAdjustment ?? 0) !== 0 && (
-                <ViewRow label="ADJ" value={`${loggedEntry.collateralAdjustment! > 0 ? '+' : ''}${loggedEntry.collateralAdjustment!.toFixed(5)} ₿`} />
+              <ViewRow label="BTC Bought"     value={`+${logged.btcBought.toFixed(5)} ₿`} green />
+              {(logged.collateralAdjustment ?? 0) !== 0 && (
+                <ViewRow label="ADJ" value={`${logged.collateralAdjustment! > 0 ? '+' : ''}${logged.collateralAdjustment!.toFixed(5)} ₿`} />
               )}
-              <ViewRow label="Income → BTC"   value={fmtUSD(loggedEntry.income)} />
-              <ViewRow label="BLOC Paydown"   value={fmtUSD(loggedEntry.paydown)} />
-              <ViewRow label="Strike Balance" value={fmtUSD(loggedEntry.strikeBal)} />
-              <ViewRow label="Strike LTV"     value={`${(loggedEntry.strikeLtv * 100).toFixed(2)}%`} />
-              {hasCbLoan && loggedEntry.cbBal != null && <ViewRow label="CB Balance" value={fmtUSD(loggedEntry.cbBal)} />}
-              {hasCbLoan && loggedEntry.cbLtv != null && <ViewRow label="CB LTV"     value={`${(loggedEntry.cbLtv * 100).toFixed(1)}%`} />}
-              {showMiningInLog && loggedEntry.miningSats != null && <ViewRow label="Mining Sats" value={loggedEntry.miningSats.toLocaleString()} />}
+              <ViewRow label="Income → BTC"   value={fmtUSD(logged.income)} />
+              <ViewRow label="BLOC Paydown"   value={fmtUSD(logged.paydown)} />
+              <ViewRow label="Strike Balance" value={fmtUSD(logged.strikeBal)} />
+              <ViewRow label="Strike LTV"     value={`${(logged.strikeLtv * 100).toFixed(2)}%`} />
+              {hasCbLoan && logged.cbBal != null && <ViewRow label="CB Balance" value={fmtUSD(logged.cbBal)} />}
+              {hasCbLoan && logged.cbLtv != null && <ViewRow label="CB LTV"     value={`${(logged.cbLtv * 100).toFixed(1)}%`} />}
+              {showMiningInLog && logged.miningSats != null && <ViewRow label="Mining Sats" value={logged.miningSats.toLocaleString()} />}
             </div>
           )}
-          {saved && <p className={styles.savedNote}>✓ Saved</p>}
+          {active && saved && <p className={styles.savedNote}>✓ Saved</p>}
         </div>
       );
     }
 
-    if (isCurrent) {
+    if (isCur && active) {
       return (
         <div className={styles.card}>
           <div className={styles.cardHeader}>
             <div className={styles.cardHeaderLeft}>
               <span className={styles.badgeCurrent}>CURRENT MONTH</span>
-              <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, monthNum)}</span>
+              <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, mn)}</span>
             </div>
           </div>
           <div className={styles.btcBoughtHighlight}>
@@ -288,14 +285,13 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
       );
     }
 
-    // Future or past — read-only projected values
-    const row = months.find((r) => r.month === monthNum);
+    // Read-only projected values (future/past, OR the current month as a NEIGHBOR pane).
     return (
       <div className={styles.card}>
         <div className={styles.cardHeader}>
           <div className={styles.cardHeaderLeft}>
-            <span className={styles.badgeFuture}>PROJECTED</span>
-            <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, monthNum)}</span>
+            <span className={isCur ? styles.badgeCurrent : styles.badgeFuture}>{isCur ? 'CURRENT MONTH' : 'PROJECTED'}</span>
+            <span className={styles.cardDate}>{getMonthLabel(advisorStartDate, mn)}</span>
           </div>
         </div>
         {row ? (
@@ -317,8 +313,6 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
       <div
         className={styles.modalCard}
         onClick={(e) => e.stopPropagation()}
-        onTouchStart={handleTouchStart}
-        onTouchEnd={handleTouchEnd}
       >
       {/* Header */}
       <div className={styles.header}>
@@ -339,7 +333,12 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
         </button>
 
         <div className={styles.cardScroll}>
-          {renderCard()}
+          {/* P2 — SwipeStrip replaces the legacy touch handlers; pages months, real state changes at rest. */}
+          <SwipeStrip
+            onPage={(dir) => setCurrentIdx((i) => Math.min(11, Math.max(0, i + dir)))}
+            canPage={(dir) => (dir === -1 ? currentIdx > 0 : currentIdx < 11)}
+            renderPane={(offset) => renderMonthCard(currentIdx + 1 + offset, offset === 0)}
+          />
         </div>
 
         <button

@@ -10,6 +10,7 @@ import { Calendar } from './Calendar';
 import { buildDayActivity, buildMonthRollup } from './calendarModel';
 import { EventSheet, isEditableKind } from './EventSheet';
 import { MonthEventsModal } from './MonthEventsModal';
+import { Snackbar } from '../ui/Snackbar';
 import { ReviewSheet } from './ReviewSheet';
 import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
@@ -30,6 +31,13 @@ function getMonthLabel(advisorStartDate: string, monthNum: number): string {
   const [y, m] = advisorStartDate.split('-').map(Number);
   const d = new Date(y, m - 1 + (monthNum - 1), 1);
   return d.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+}
+
+// P2 — UTC ±days shift of a yyyy-mm-dd string (week paging).
+function shiftDay(iso: string, days: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d) + days * 86_400_000);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
 }
 
 // ISO yyyy-mm-dd → "Mon D" (local, no UTC shift — parse the parts).
@@ -88,6 +96,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const setSimpleMode               = useStore((s) => s.setSimpleMode);
   const viewerMode                  = useStore((s) => s.viewerMode);
   const confirmMonth                = useStore((s) => s.confirmMonth);
+  const deleteDayEvent              = useStore((s) => s.deleteDayEvent);          // P2 — swipe-to-delete
+  const undoDayEventDeletion        = useStore((s) => s.undoDayEventDeletion);    // P2 — snackbar undo
   // §2/§2b — sign-off details context
   const blocStatementMinimum    = useStore((s) => s.blocStatementMinimum);
   const blocMinPaymentDueDay    = useStore((s) => s.blocMinPaymentDueDay);
@@ -181,6 +191,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const [sheetInitialType, setSheetInitialType] = useState<SheetType | undefined>(undefined); // P4c-3b — add-mode initial type
   const [scope, setScope]                   = useState<'week' | 'month'>('week');
   const [selectedDay, setSelectedDay]       = useState<string>(todayLocalISO());
+  const [undoEvent, setUndoEvent]           = useState<DayEvent | null>(null);    // P2 — deleted event held for undo
 
   // P4c-3b-ii — entering Month scope opens on the current month; navigate back from there.
   useEffect(() => { if (scope === 'month') setViewedMonth(currentMonth); }, [scope, currentMonth]);
@@ -265,6 +276,14 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             onNextMonth={() => setViewedMonth((m) => Math.min(currentMonth, m + 1))}
             canPrevMonth={safeViewedMonth > 1}
             canNextMonth={safeViewedMonth < currentMonth}
+            onPrevWeek={() => setSelectedDay((d) => shiftDay(d, -7))}
+            onNextWeek={() => setSelectedDay((d) => shiftDay(d, 7))}
+            canPrevWeek={selectedDay > advisorStartDate}   // don't page before the strategy start
+            canNextWeek={selectedDay < today}              // don't page into a fully-future week
+            onLongPressDay={(iso) => {
+              if (viewerMode || iso > today) return;       // same future guard as the FAB
+              setSelectedDay(iso); setEditEvent(undefined); setSheetInitialType(undefined); setSheetOpen(true);
+            }}
           />
 
           {/* P4c-3b — reconcile banner: Month scope, owner-only, when the VIEWED month is unconfirmed.
@@ -471,6 +490,17 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
         viewerMode={viewerMode}
         onClose={() => setMonthModalOpen(false)}
         onEditEvent={(ev) => { setMonthModalOpen(false); setEditEvent(ev); setSheetOpen(true); }}
+        onDeleteEvent={(ev) => { deleteDayEvent(ev.id); setUndoEvent(ev); }}
+      />
+
+      {/* P2 — undo the last swipe-delete (5s). undoDayEventDeletion re-adds with a fresh ts, beating the
+          already-published tombstone via edit-after-delete (mergeRecords). Lives here so it survives the modal. */}
+      <Snackbar
+        open={!!undoEvent}
+        message="Event deleted"
+        actionLabel="Undo"
+        onAction={() => { if (undoEvent) undoDayEventDeletion(undoEvent); }}
+        onDismiss={() => setUndoEvent(null)}
       />
 
       {/* P4b-1 add / P4b-2 edit — Daily-only write path. FAB opens add mode; a log-row tap opens edit mode.

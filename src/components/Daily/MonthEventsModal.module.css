@@ -23,12 +23,43 @@
 .dayHeader { font-family: var(--mono); font-size: 11px; color: var(--text-faint); letter-spacing: 0.03em; }
 
 .row {
+  position: relative;   /* P2 — slides above the delete panel */
+  z-index: 1;
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 10px;
   padding: 12px 13px;
   background: var(--surface); border: 1px solid var(--line); border-radius: 13px;
+  touch-action: pan-y;   /* P2 — vertical list scroll native; usePointerDrag axis-locks x for the reveal */
 }
 .rowClickable { cursor: pointer; transition: border-color 0.12s; }
 .rowClickable:hover { border-color: var(--line-2); }
+
+/* P2 — swipe-to-delete geometry (design.md §3.3). */
+.rowOuter { max-height: 200px; overflow: hidden; transition: none; }
+.rowOuter.collapsing {   /* the ONE sanctioned height animation — a collapse-out on Delete tap, not tracked motion */
+  max-height: 0; opacity: 0;
+  transition: max-height 200ms var(--ease-standard), opacity 200ms var(--ease-standard);
+}
+.swipeWrap { position: relative; overflow: hidden; border-radius: 13px; }
+.deletePanel {
+  position: absolute; top: 0; right: 0; bottom: 0; width: 96px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--red); border-radius: 13px;
+}
+.deleteReveal {
+  display: flex; align-items: center; gap: 5px;
+  background: none; border: none; cursor: pointer;
+  color: #fff; font-size: 11px; font-weight: 700; letter-spacing: 0.06em; font-family: inherit;
+}
+/* a11y Delete — off-screen but focusable; visible when focused (deletion never requires the gesture). */
+.a11yDelete {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+  background: var(--red); color: #fff; cursor: pointer;
+}
+.a11yDelete:focus {
+  position: static; width: auto; height: auto; margin: 0; clip: auto;
+  padding: 4px 8px; border-radius: 8px; font-size: 12px; font-weight: 700;
+}
 .rowType { display: flex; align-items: center; gap: 9px; font-size: 13px; color: var(--text-primary); font-weight: 550; }
 .rowAmt { font-family: var(--mono); font-size: 13px; text-align: right; }
 .amtPos { color: var(--btc); }

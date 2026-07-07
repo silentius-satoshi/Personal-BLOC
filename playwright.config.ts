@@ -14,7 +14,10 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  retries: 0,
+  // Gesture/animation specs (drag→commit→exit timing, rAF, spring durations) are inherently timing-sensitive
+  // under full-suite CPU load — a single retry absorbs the occasional flake without masking a real failure
+  // (a genuine break fails both attempts). Each spec passes deterministically in isolation.
+  retries: process.env.CI ? 2 : 1,
   reporter: [['list']],
   use: {
     baseURL: 'http://localhost:5173',

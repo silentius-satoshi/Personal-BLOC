@@ -115,6 +115,13 @@ src/
                                 # the CALLER's job (transform/opacity only). enabled:false → onPointerDown is inert.
                                 # Config kept in a ref so callbacks stay current without re-binding; unmount detaches +
                                 # cancels the pending frame. NO consumer yet (P0 is foundation-only; P1+ wire it)
+    useLongPress.ts             # Gesture & Motion System P2 — stationary press-and-hold (Pointer Events, passive).
+                                # useLongPress({onLongPress,ms=500,slop=8,onProgressStart?,onProgressEnd?,enabled?}) →
+                                # {handlers,holding,shouldSuppressClick,cancel}. pointerdown arms a timer; move>slop or
+                                # up/cancel clears it; fires once (haptics.tick). shouldSuppressClick() swallows the
+                                # click after a fired press. Calendar day cells use it → onLongPressDay opens the
+                                # pre-dated add sheet; the SwipeStrip's onSwipeStart cancels a pending press (the strip
+                                # captures the pointer, so the cell's own move handler can't clear it).
     useReducedMotion.ts         # Gesture & Motion System P0 — matchMedia('(prefers-reduced-motion: reduce)') → boolean,
                                 # subscribed via addEventListener('change') with cleanup (usePageVisibility pattern);
                                 # synchronous initial read; safe-default false when matchMedia is missing (node/test env).
@@ -236,6 +243,20 @@ src/
                                 # fill-from-current / ±step shortcut) → onChangeCapture fully covers the financial
                                 # surface. AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
+      SwipeStrip.tsx            # Gesture & Motion System P2 — shared horizontal 3-pane PAGER (Calendar month/week +
+                                # MonthlyLogOverlay months; Almanac faces later). Props {onPage(dir),canPage(dir),
+                                # renderPane(offset:-1|0|1),onSwipeStart?,disabled?}. 300%-wide strip at rest
+                                # translateX(-33.3%); usePointerDrag axis 'x' (touch-action:pan-y → vertical scroll
+                                # never stolen), commitThreshold=0.35×measured-width, commitVelocity 800. onMove tracks
+                                # dx (rubberBand 32 at a !canPage boundary); onEnd committed&&canPage → DOUBLE-BUFFERED
+                                # snap (animate to target, THEN in one commit onPage + reset to rest — no flash) else
+                                # spring back. ONE haptics.tick on COMMIT only (no arm haptic — paging isn't
+                                # consequential). onSwipeStart (first onMove) cancels a pending child long-press. Real
+                                # state changes ONLY at rest (design.md §3.1). reduced-motion: no continuous track.
+      SwipeStrip.module.css     # .viewport (overflow hidden, touch-action pan-y) + .strip (300%, flex) + .pane (1/3)
+      Snackbar.tsx              # Gesture & Motion System P2 — transient bottom toast (portal, above safe-area,
+                                # --surface-3, message + one action, 5s auto-dismiss + progress hairline, role=status).
+                                # The action is a labeled TAP (undo restores data — never a gesture). Snackbar.module.css alongside.
       DraggableSheet.module.css # .root (fixed positioning) + .backdrop (absolute, rgba(0,0,0,.65) — the opacity
                                 # target) + .sheet (position:relative/z-index:1, overscroll-behavior-y:contain, NO
                                 # touch-action [P1.3 — the non-passive touchmove handoff owns scroll-vs-drag]; max-height
@@ -2746,11 +2767,8 @@ visible tap equivalent; motion explains causality, never decoration.
   {claim,claimed}`** (pure) — the bottom-sheet scroll/drag handoff rule: claim a downward stroke only at
   `scrollTop<=0`; stay claimed until `dyClaim<=0` (release measured from the CLAIM point, not touchstart) hands
   control back to native scroll. Consumed by DraggableSheet's non-passive touchmove listener.
-- **`src/lib/gestureDebug.ts` + `src/components/ui/GestureDebugOverlay.tsx`** — ⚠ TEMPORARY (P1.3, deletable):
-  a mutable singleton + subscribe (no store field) publishing live sheet-gesture state (phase/dy/scrollTop@down/
-  claimed/activeTag@down/bail/cancelCount); `publishGestureDebug` is a no-op when off (zero cost). The overlay
-  (mounted in the sheet portal, self-gates to null) renders it bottom-left; a DevPanel "GESTURE DEBUG" toggle
-  flips `setGestureDebugEnabled`. For diagnosing the touch handoff on real iOS; remove once device-confirmed.
+- (P1.3's temporary `gestureDebug.ts` + `GestureDebugOverlay.tsx` + the DevPanel GESTURE DEBUG toggle were
+  DELETED in P2 — the touch handoff is device-proven.)
 - **`src/lib/haptics.ts`** — capability-honest haptics, no faking. `haptics = { tick, confirm, warn }` +
   `hapticsSupport(): 'vibrate'|'none'` (detected once, cached). Ladder (P1.2 lock-down): `navigator.vibrate()`
   patterns (Android/Chromium) → `'none'` for EVERYTHING else, **including iOS**. ⚠ **iOS has NO programmatic
@@ -2766,6 +2784,50 @@ visible tap equivalent; motion explains causality, never decoration.
   axis, arm/disarm both directions, commit-by-distance + commit-by-velocity, velocity window math + 0-guards,
   rubberBand monotonic/sign-preserving, terminal identity, cancel from every phase). The hook/haptics DOM behavior
   defers to the P1 device gate (`hapticsSupport()` from the console).
+
+---
+
+## Gesture & Motion System (P2 — Journal gestures)
+
+Gestures on the Journal, all riding `usePointerDrag` (pointer events; Chromium-e2e-able unlike the P1.3 touch
+handoff). NON-NEGOTIABLE 1 governs: no gesture commits a financial write — swipes REVEAL/NAVIGATE; deletes are a
+TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffolding (device-proven).
+
+- **`SwipeStrip` (components/ui)** — the shared pager; see the ui/ file list. Calendar + MonthlyLogOverlay adopt it.
+- **`useLongPress` (hooks)** + **`Snackbar` (components/ui)** — see the hooks/ + ui/ lists.
+- **Calendar (`components/Daily/Calendar.tsx`)** — the wdRow+grid unit is wrapped in `<SwipeStrip>`; `renderPane`
+  renders the target month/week purely (`monthDateRange(currentMonth+offset)` / `weekDates(shiftISO(selectedDay,
+  offset*7))`). MONTH paging reuses the existing `onPrevMonth`/`onNextMonth`/`canPrev/NextMonth`; WEEK paging is
+  NEW (`onPrevWeek`/`onNextWeek`/`canPrev/NextWeek` — DailyModeView shifts `selectedDay` ±7, bounds
+  `advisorStartDate..today`). Nav buttons remain (gesture additive). Each day cell is a `<DayCell>` sub-component
+  (hooks-in-a-map → its own `useLongPress`) with `data-testid="day-cell"`/`data-date`; a 500ms hold → new
+  `onLongPressDay` → DailyModeView selects the day + opens the pre-dated add sheet (future-day guarded like the
+  FAB); `data-holding` eases the cell bg to `--surface-3` over the hold. The SwipeStrip's `onSwipeStart` cancels a
+  pending long-press (the strip captures the pointer).
+- **Swipe-to-delete (`components/Daily/MonthEventsModal.tsx`)** — editable rows wrap in a local `SwipeDeleteRow`
+  (design.md §3.3): usePointerDrag axis 'x', LEFT-only (rightward → rubberBand 16, reveals nothing), track
+  0→96px, **armThreshold 64** (arm → icon settles + `haptics.tick`), **`commitThreshold`/`commitVelocity`
+  Infinity — NO velocity/full-swipe delete, velocity NEVER deletes ledger data (non-negotiable 1)**. The arm is
+  DIRECTION-GATED (`onArm: dxRef>=0 → return`; rest-open requires `armedRef && dx<0`) — same class as P1's
+  DraggableSheet dy>0 gate. Release armed → row rests OPEN at 96px (spring); else springs shut. Delete = a TAP on
+  the revealed button → 200ms `max-height` collapse (the ONE sanctioned height animation) → `onDeleteEvent(ev)`.
+  ONE row open at a time (`openRowId`; scrolling the list closes it; `data-open` on the row). a11y: an off-screen
+  focusable `Delete` button (visible on focus) → deletion never requires the gesture. Non-editable/viewer rows
+  stay inert (no swipe).
+- **Undo (`Snackbar` + store `undoDayEventDeletion(event)`)** — DailyModeView holds the deleted `DayEvent` (the
+  store discarded it) and shows a 5s Snackbar; UNDO calls `undoDayEventDeletion` which re-adds the event with a
+  FRESH `ts=Date.now()` + strips the `deletedDayEvents` tombstone (mirrors add/delete's cache/reroll/publish tail).
+  **LWW guarantee:** `deleteDayEvent` publishes the tombstone via the 400ms-debounced `publishRecordsNow`, so it
+  likely reaches relays within the window; undo does NOT need to beat it — per `mergeRecords` a dayLog event is
+  suppressed only when `tombstone.ts > event.ts` (strict), so a `ts=Date.now()`≥tombstone restore SURVIVES on
+  every device and drops the stale tombstone (the canonical edit-after-delete revive). `recordsDirty` + syncNow
+  make it durable if the immediate publish fails.
+- **MonthlyLogOverlay migration (`components/Advisor/MonthlyLogOverlay.tsx`)** — the legacy `handleTouchStart`/
+  `handleTouchEnd` ±50px month-swipe (the app's LAST pre-standard gesture code) is DELETED; the card region is a
+  `<SwipeStrip>` (onPage → `setCurrentIdx` 0..11, canPage → idx bounds). `renderCard()` → `renderMonthCard(mn,
+  active)` — the `active` (center) pane renders the full stateful card (edit form / LOG button, single-instance
+  form state tied to currentIdx); neighbors (±1) render the read-only view (logged→view grid; else projected).
+  Nav buttons + dots + keyboard nav stay.
 
 ---
 
@@ -2852,7 +2914,9 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 **E2E gesture harness (Playwright, `npm run e2e`) — the app's first e2e layer, opt-in, NOT in `vitest`.**
 `@playwright/test` (chromium only) + `playwright.config.ts` (mobile-emulated 390×844, `hasTouch`/`isMobile`,
 `serviceWorkers:'block'`, **`workers:1`/`fullyParallel:false`** — gesture/rAF/spring timing flakes under
-parallel CPU contention; run serially) + `e2e/*.spec.ts` + `e2e/helpers.ts`. `vite.config.ts` `test.exclude:
+parallel CPU contention; run serially. **`retries:1`** (2 in CI) — the drag→commit→exit-timing sheet specs are
+inherently timing-sensitive under full-suite load and occasionally flake (each passes deterministically in
+isolation); a single retry absorbs it without masking a real break) + `e2e/*.spec.ts` + `e2e/helpers.ts`. `vite.config.ts` `test.exclude:
 ['e2e/**', …]` keeps `vitest run` from collecting the `.spec.ts` files (vitest's default include globs
 `*.spec.ts`). **Reach:** the dev server bypasses every auth/viewer gate via `import.meta.env.DEV`, so a
 3-field `addInitScript` localStorage seed (`onboardingComplete/simpleMode/simpleView:'daily'` + the
@@ -2865,7 +2929,12 @@ guard (zero movement while focused), scroll coexistence (scrolled → drag block
 continuous transform, still dismisses), P1.2 Bug E (sheet computed-opacity stays '1' mid-drag while the
 `sheet-backdrop` fades), P1.2 Bug D (downward drag from a mid-content field label dismisses), P1.3 focus-then-
 drag (a focused field + press elsewhere → blur + drag + dismiss; H1) + keyboard guard (press the focused field
-itself → no drag). **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+itself → no drag). **P2 `journal.spec.ts`:** calendar month swipe pages (multi-month seed) + boundary rubber-band;
+long-press (600ms) opens the pre-dated add sheet + short-press just selects; swipe-to-delete reveal → tap DELETE →
+Snackbar → UNDO restores; one-open-row (`data-open`); ⭐ a fast flick NEVER deletes (non-negotiable 1). Selectors:
+`data-testid="day-cell"`/`data-date` (the visible CENTER pane is filtered by viewport-x since the SwipeStrip
+renders 3 panes), `event-row`/`swipe-delete-btn`; a month-scope cell needs `scrollIntoViewIfNeeded` (below the
+fold); the double-buffered snap needs retrying label assertions. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the

@@ -1,0 +1,72 @@
+/* Snackbar (Gesture & Motion System — P2). Fixed above the bottom safe-area, centered, over sheets. */
+
+.wrap {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  z-index: 10000;
+  display: flex;
+  justify-content: center;
+  padding: 0 16px;
+  pointer-events: none; /* the card re-enables pointer events */
+}
+
+.card {
+  position: relative;
+  overflow: hidden;
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+  max-width: 460px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 12px 14px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  animation: snackIn var(--motion-standard) var(--ease-decelerate);
+}
+
+@keyframes snackIn {
+  from { transform: translateY(12px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+
+.msg {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.action {
+  flex: none;
+  background: none;
+  border: none;
+  color: var(--btc);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px 6px;
+  cursor: pointer;
+}
+
+.progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 100%;
+  transform-origin: left center;
+  background: var(--btc);
+  opacity: 0.55;
+  animation: snackProgress linear forwards;
+}
+
+@keyframes snackProgress {
+  from { transform: scaleX(1); }
+  to   { transform: scaleX(0); }
+}

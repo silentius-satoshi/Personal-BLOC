@@ -7,8 +7,6 @@ import {
   type GestureConfig, type GestureState,
 } from '../../lib/gestureModel';
 import { haptics } from '../../lib/haptics';
-import { publishGestureDebug, getGestureDebugSnapshot } from '../../lib/gestureDebug';
-import { GestureDebugOverlay } from './GestureDebugOverlay';
 import styles from './DraggableSheet.module.css';
 
 /**
@@ -160,7 +158,6 @@ export function DraggableSheet({
   // ── Shared gesture handlers — called by BOTH the pointer source and the touch-driven source ────────────
   const applyMove = useCallback((dy: number) => {
     dyRef.current = dy;
-    publishGestureDebug({ phase: 'move', dy, claimed: claimedRef.current });
     if (reducedRef.current) return; // snap-only under reduced motion — no continuous render
     const el = sheetRef.current;
     const sc = backdropRef.current;
@@ -195,7 +192,6 @@ export function DraggableSheet({
   const finishGesture = useCallback((dy: number, committed: boolean) => {
     const el = sheetRef.current;
     if (el) el.removeAttribute('data-tracking');
-    publishGestureDebug({ phase: committed ? 'end' : 'cancel' });
     const dismiss = committed && dy > 0 && !dirtyRef.current;
     if (dismiss) runExit();
     else settleBack();
@@ -229,7 +225,6 @@ export function DraggableSheet({
       const ae = document.activeElement;
       if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) {
         if (e.target === ae || (ae as Element).contains?.(e.target as Node)) {
-          publishGestureDebug({ phase: 'down', lastBail: 'focus', activeTagAtDown: ae.tagName, scrollTopAtDown: scroller()?.scrollTop ?? 0 });
           return; // pressing the focused field → typing context, no drag
         }
         (ae as HTMLElement).blur();
@@ -238,7 +233,6 @@ export function DraggableSheet({
       warnedRef.current = false;
       pointerActiveRef.current = true;
       if (sheetRef.current) sheetRef.current.setAttribute('data-tracking', 'true');
-      publishGestureDebug({ phase: 'down', lastBail: 'none', activeTagAtDown: document.activeElement?.tagName ?? '', scrollTopAtDown: scroller()?.scrollTop ?? 0, dy: 0 });
       drag.onPointerDown(e);
     },
     [drag, scroller],
@@ -299,7 +293,6 @@ export function DraggableSheet({
       }
 
       lastTouchYRef.current = y;
-      publishGestureDebug({ claimed: claimedRef.current });
     };
 
     const onTouchEnd = (e: TouchEvent) => {
@@ -314,10 +307,6 @@ export function DraggableSheet({
       claimStartYRef.current = 0;
     };
 
-    const onPointerCancelDbg = () => {
-      publishGestureDebug({ phase: 'cancel', cancelCount: getGestureDebugSnapshot().cancelCount + 1 });
-    };
-
     // passive:false is scoped to THIS sheet element, active only while it's open — page-scroll threads are
     // untouched. This is the standard iOS/production bottom-sheet pattern; the "never preventDefault" rule is
     // about page-level listeners, not a per-sheet handoff.
@@ -325,13 +314,11 @@ export function DraggableSheet({
     el.addEventListener('touchmove', onTouchMove, { passive: false });
     el.addEventListener('touchend', onTouchEnd, { passive: true });
     el.addEventListener('touchcancel', onTouchEnd, { passive: true });
-    el.addEventListener('pointercancel', onPointerCancelDbg, { passive: true });
     return () => {
       el.removeEventListener('touchstart', onTouchStart);
       el.removeEventListener('touchmove', onTouchMove);
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
-      el.removeEventListener('pointercancel', onPointerCancelDbg);
     };
   }, [open, scrollRef, cfg, applyMove, applyArmHaptic, endTouchDrive]);
 
@@ -365,7 +352,6 @@ export function DraggableSheet({
         <div className={styles.grab} aria-hidden="true" />
         {children}
       </div>
-      <GestureDebugOverlay />
     </div>,
     document.body,
   );

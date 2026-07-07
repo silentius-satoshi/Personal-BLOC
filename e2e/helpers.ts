@@ -51,6 +51,115 @@ const EVENT_SEED = `
   })();
 `;
 
+/** Seed with a draw event on today + land on DailyModeView (Week scope). */
+export async function seedJournal(page: Page): Promise<void> {
+  await page.addInitScript(EVENT_SEED);
+  await page.goto('/');
+  await expect(
+    page.getByLabel('Log an event'),
+    'e2e seed failed to reach DailyModeView — store version in e2e/helpers.ts likely stale',
+  ).toBeVisible({ timeout: 15_000 });
+}
+
+// Seed with advisorStartDate ~45 days ago (→ current strategy month 2) + a draw on today, so month paging
+// has a real neighbour (month 1) to page to.
+const MULTI_MONTH_SEED = `
+  window.__APP_BOOTED = true;
+  (function () {
+    var now = new Date();
+    var t = function (d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+    var start = new Date(now.getTime() - 45 * 86400000);
+    localStorage.setItem('personal-bloc-store', JSON.stringify({
+      state: {
+        onboardingComplete: true, simpleMode: true, simpleView: 'daily', advisorStartDate: t(start),
+        dayLog: [{ id: 'e2e-draw-1', date: t(now), ts: now.getTime(), kind: 'draw', amount: 500 }]
+      },
+      version: ${STORE_VERSION}
+    }));
+    localStorage.setItem('personal-bloc-onboarded', '1');
+  })();
+`;
+
+// Seed TWO events on different days (today + yesterday) → the month modal shows two swipeable rows.
+const TWO_EVENT_SEED = `
+  window.__APP_BOOTED = true;
+  (function () {
+    var now = new Date();
+    var t = function (d) { return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0'); };
+    var yday = new Date(now.getTime() - 86400000);
+    localStorage.setItem('personal-bloc-store', JSON.stringify({
+      state: {
+        onboardingComplete: true, simpleMode: true, simpleView: 'daily',
+        dayLog: [
+          { id: 'e2e-draw-1', date: t(now),  ts: now.getTime(),        kind: 'draw', amount: 500 },
+          { id: 'e2e-draw-2', date: t(yday), ts: now.getTime() - 1000, kind: 'draw', amount: 250 }
+        ]
+      },
+      version: ${STORE_VERSION}
+    }));
+    localStorage.setItem('personal-bloc-onboarded', '1');
+  })();
+`;
+
+/** Two-event variant of openMonthModal (for the one-open-row spec). */
+export async function openMonthModalTwo(page: Page): Promise<void> {
+  await page.addInitScript(TWO_EVENT_SEED);
+  await page.goto('/');
+  await expect(page.getByLabel('Log an event')).toBeVisible({ timeout: 15_000 });
+  await page.getByRole('tab', { name: 'Month', exact: true }).click();
+  await page.getByText(/from \d+ day/).click();
+  await expect(page.getByTestId('event-row')).toHaveCount(2);
+}
+
+/** Seed a mid-strategy plan (current month ≥ 2) + land on DailyModeView. */
+export async function seedJournalMonths(page: Page): Promise<void> {
+  await page.addInitScript(MULTI_MONTH_SEED);
+  await page.goto('/');
+  await expect(page.getByLabel('Log an event')).toBeVisible({ timeout: 15_000 });
+}
+
+/** The first day-cell whose box lies inside the viewport — the SwipeStrip's CENTER pane (neighbour panes sit
+ *  off-screen left/right and are pointer-events:none). Works regardless of which day is selected. */
+export async function firstVisibleCell(page: Page): Promise<Locator> {
+  const cells = page.getByTestId('day-cell');
+  const vw = page.viewportSize()!.width;
+  const n = await cells.count();
+  for (let i = 0; i < n; i++) {
+    const b = await cells.nth(i).boundingBox();
+    if (b && b.x >= 0 && b.x + b.width <= vw + 1) return cells.nth(i);
+  }
+  throw new Error('no visible day cell');
+}
+
+/** Switch to Month scope + open the month-events modal (needs a seeded event so "from N entries" shows). */
+export async function openMonthModal(page: Page): Promise<Locator> {
+  await seedJournal(page);
+  await page.getByRole('tab', { name: 'Month', exact: true }).click();
+  await page.getByText(/from \d+ day/).click();
+  const modal = page.getByTestId('event-row').first();
+  await expect(modal).toBeVisible();
+  return modal;
+}
+
+/** Horizontal drag by `dxPx` (negative = left) from a locator's center, via page.mouse (pointer events). */
+export async function swipeX(page: Page, target: Locator, dxPx: number, opts: { fast?: boolean; release?: boolean } = {}): Promise<void> {
+  const { fast = false, release = true } = opts;
+  await target.scrollIntoViewIfNeeded();   // month-scope calendar sits below the fold — bring it on-screen
+  const box = await target.boundingBox();
+  if (!box) throw new Error('swipe target has no bounding box');
+  const startX = box.x + box.width / 2;
+  const y = box.y + box.height / 2;
+  await page.mouse.move(startX, y);
+  await page.mouse.down();
+  const n = fast ? 3 : 12;
+  for (let i = 1; i <= n; i++) {
+    await page.mouse.move(startX + (dxPx * i) / n, y);
+    if (!fast) await page.waitForTimeout(8);
+  }
+  await page.waitForTimeout(fast ? 0 : 25);
+  if (release) { await page.mouse.up(); await page.waitForTimeout(40); }
+}
+
 /** Seed with a draw event, navigate, open its EventSheet in EDIT mode via the log-row tap. */
 export async function openEventSheetEdit(page: Page): Promise<Locator> {
   await page.addInitScript(EVENT_SEED);

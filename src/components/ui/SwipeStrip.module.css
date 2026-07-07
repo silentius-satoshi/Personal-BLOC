@@ -1,0 +1,21 @@
+/* SwipeStrip (Gesture & Motion System — P2) — horizontal 3-pane pager. The viewport clips; the strip is 300%
+   wide and translates. Vertical scroll is never stolen (touch-action: pan-y → the gesture axis-locks x). */
+
+.viewport {
+  overflow: hidden;
+  width: 100%;
+  touch-action: pan-y;
+}
+
+.strip {
+  display: flex;
+  width: 300%;
+  /* transform applied inline (rest / drag / snap); transition set inline per phase. */
+  will-change: transform;
+}
+
+.pane {
+  width: calc(100% / 3);
+  flex: 0 0 calc(100% / 3);
+  min-width: 0;
+}
