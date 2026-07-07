@@ -377,6 +377,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                         <div
                           key={ev.id}
                           className={`${styles.logRow} ${editable ? styles.logRowClickable : ''}`}
+                          data-testid={editable ? 'log-row' : undefined}
                           role={editable ? 'button' : undefined}
                           tabIndex={editable ? 0 : undefined}
                           onClick={editable ? openEdit : undefined}

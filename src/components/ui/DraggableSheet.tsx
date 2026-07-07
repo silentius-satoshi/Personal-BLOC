@@ -33,6 +33,9 @@ export interface DraggableSheetProps {
   maxHeight?: string;
   /** The scroll container to gate drag-to-dismiss on (defaults to the sheet element itself). */
   scrollRef?: RefObject<HTMLElement>;
+  /** Fired on any real user `<input>` edit inside the sheet (wired to onChangeCapture) — the child uses
+   *  it to set its own `touched`/`dirty`. Programmatic setState never triggers it (only DOM input events). */
+  onUserInput?: () => void;
   children: ReactNode;
 }
 
@@ -43,6 +46,7 @@ export function DraggableSheet({
   labelledBy,
   maxHeight = MAX_HEIGHT_DEFAULT,
   scrollRef,
+  onUserInput,
   children,
 }: DraggableSheetProps): React.ReactPortal | null {
   const scrimRef = useRef<HTMLDivElement>(null);
@@ -179,6 +183,11 @@ export function DraggableSheet({
   const handlePointerDown = useCallback(
     (e: React.PointerEvent) => {
       if (inputFocused) return;
+      // Bug B — live activeElement read: on iOS the input's `blur` can race ahead of `pointerdown`, so the
+      // `inputFocused` state may already be false while the keyboard is still up. Reading document.activeElement
+      // at pointerdown catches that window (belt-and-suspenders with the state guard above).
+      const ae = document.activeElement;
+      if (ae && /^(INPUT|TEXTAREA|SELECT)$/.test(ae.tagName)) return;
       const s = scroller();
       if (s && s.scrollTop > 0) return; // not at top → native scroll owns this pointer.
       dyRef.current = 0;
@@ -217,9 +226,12 @@ export function DraggableSheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby={labelledBy}
+        data-testid="draggable-sheet"
+        data-dirty={dirty ? 'true' : 'false'}
         onPointerDown={handlePointerDown}
         onFocusCapture={onFocusIn}
         onBlurCapture={onFocusOut}
+        onChangeCapture={onUserInput}
         onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.grab} aria-hidden="true" />

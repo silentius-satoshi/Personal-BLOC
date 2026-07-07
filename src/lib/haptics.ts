@@ -18,8 +18,15 @@
 
 export type HapticsSupport = 'vibrate' | 'ios-switch' | 'none';
 
+/** ios-switch firing variant (TEMPORARY — the DevPanel probe selects at runtime; the device tells us which
+ *  fires the system haptic, then we lock it in and delete the selector). */
+export type IosHapticVariant = 'a' | 'b' | 'c';
+
 let cachedSupport: HapticsSupport | null = null;
 let iosSwitchEl: HTMLInputElement | null = null;
+let iosLabelEl: HTMLLabelElement | null = null;
+let iosVariant: IosHapticVariant = 'a';
+let hostInteractive = false;
 
 function detectSupport(): HapticsSupport {
   if (typeof document === 'undefined' || typeof navigator === 'undefined') return 'none';
@@ -44,19 +51,31 @@ export function hapticsSupport(): HapticsSupport {
   return cachedSupport;
 }
 
+function hostStyle(): string {
+  // pointer-events togglable — some WebKit builds suppress haptics on non-interactable elements, so the
+  // probe can flip this to test. Kept 1px/opacity:0/off-screen either way (never visible/tabbable).
+  const pe = hostInteractive ? 'auto' : 'none';
+  return `position:fixed;width:1px;height:1px;opacity:0;pointer-events:${pe};left:-9999px;top:0;`;
+}
+
 function ensureIosSwitch(): HTMLInputElement | null {
-  if (iosSwitchEl) return iosSwitchEl;
+  if (iosSwitchEl) {
+    iosLabelEl!.style.cssText = hostStyle();   // re-apply in case hostInteractive changed
+    return iosSwitchEl;
+  }
   if (typeof document === 'undefined' || !document.body) return null;
   try {
+    const label = document.createElement('label');
+    label.setAttribute('aria-hidden', 'true');
+    label.style.cssText = hostStyle();
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.setAttribute('switch', '');
-    input.setAttribute('aria-hidden', 'true');
     input.tabIndex = -1;
-    input.style.cssText =
-      'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px;top:0;';
-    document.body.appendChild(input);
+    label.appendChild(input);   // label wraps input → label.click() toggles the switch (variant a)
+    document.body.appendChild(label);
     iosSwitchEl = input;
+    iosLabelEl = label;
     return input;
   } catch {
     return null;
@@ -67,14 +86,34 @@ function fireIosSwitch(): void {
   // USER-ACTIVATION REQUIRED (ios-switch path): WebKit fires the system haptic on switch toggle ONLY
   // within a user-gesture context. Call haptics.* from pointer/key event handlers exclusively — a call
   // from a timer/interval/rAF outside a gesture is a silent no-op on iOS by design, not a bug.
-  const el = ensureIosSwitch();
-  if (!el) return;
+  const input = ensureIosSwitch();
+  if (!input) return;
   try {
-    el.click();
+    switch (iosVariant) {
+      case 'a':
+        iosLabelEl!.click();
+        break;
+      case 'b':
+        input.click();
+        break;
+      case 'c':
+        input.checked = !input.checked;
+        input.dispatchEvent(new MouseEvent('click', { bubbles: true }));
+        break;
+    }
   } catch {
     // ignore — haptics are seasoning, never load-bearing.
   }
 }
+
+/** TEMPORARY (Bug C diagnosis) — runtime controls the DevPanel Haptics probe uses to find the firing variant. */
+export function setHapticsVariant(v: IosHapticVariant): void { iosVariant = v; }
+export function getHapticsVariant(): IosHapticVariant { return iosVariant; }
+export function setHapticsHostInteractive(on: boolean): void {
+  hostInteractive = on;
+  if (iosLabelEl) iosLabelEl.style.cssText = hostStyle();
+}
+export function getHapticsHostInteractive(): boolean { return hostInteractive; }
 
 function fire(pattern: number | number[]): void {
   switch (hapticsSupport()) {

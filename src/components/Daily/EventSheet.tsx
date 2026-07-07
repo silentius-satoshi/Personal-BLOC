@@ -93,6 +93,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const [cbLiqPrice, setCbLiqPrice]         = useState<number | null>(null);   // collateral-move liq (existing)
   const [cbLiqPriceReading, setCbLiqPriceReading] = useState<number | null>(null);   // §5b — optional liq on a reading-bearing NON-collateral event (prefill empty; blank/0 → keep the anchor)
   const [confirmDelete, setConfirmDelete]   = useState(false);
+  const [touched, setTouched]               = useState(false);   // P1 dirty-guard — flips only on real user input
 
   // On each open: ADD mode resets flow + pre-fills the reading from the latest balanceReading in dayLog
   // (today) OR leaves the reading fields EMPTY (past date — "skip" must genuinely skip; a seeded reading
@@ -102,6 +103,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   useEffect(() => {
     if (!open) return;
     setConfirmDelete(false);
+    setTouched(false);   // P1 — a fresh open (add OR edit) is clean until the user edits a field
 
     if (editEvent) {
       switch (editEvent.kind) {
@@ -395,15 +397,15 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     isCurrent: paydownMonth === getCurrentStrategyMonth(advisorStartDate),
   });
 
-  // P1 DraggableSheet dirty-guard — CONSERVATIVE, interaction-based (never under-guards STAGED input): a
-  // staged flow amount, a manually-touched Strike collateral, or an entered §5b liq re-anchor. A pristine
-  // just-opened sheet (no amount) flick-dismisses freely; editing a prefilled reading in setBalance without
-  // touching collateral is NOT guarded (those readings are re-derivable). Avoids snapshotting the seed effect
-  // (which also feeds the strikeCollateral auto-track — a snapshot would race its setState).
-  const dirty = (amount != null && amount > 0) || strikeCollateralTouched || cbLiqPriceReading != null;
+  // P1 DraggableSheet dirty-guard — a `touched` flag flipped ONLY by real user input (DraggableSheet's
+  // onChangeCapture on any descendant <input> edit). Race-free vs the seed effect + the strikeCollateral
+  // auto-track (both mutate state programmatically → never emit a DOM change event). So a freshly-opened
+  // sheet — ADD or EDIT (a seeded amount no longer counts) — is clean and flick-dismissable until the user
+  // edits a field; config pills/toggles don't stage a financial value → they stay clean by design.
+  const dirty = touched;
 
   return (
-    <DraggableSheet open={open} onDismiss={handleClose} dirty={dirty} maxHeight="92vh" labelledBy="eventSheetTitle">
+    <DraggableSheet open={open} onDismiss={handleClose} dirty={dirty} maxHeight="92vh" labelledBy="eventSheetTitle" onUserInput={() => setTouched(true)}>
         <div>
           <div id="eventSheetTitle" className={styles.sheetTitle}>{isEdit ? 'Edit event' : 'Log an event'}</div>
           <div className={styles.sheetSub}>

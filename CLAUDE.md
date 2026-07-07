@@ -192,20 +192,31 @@ src/
                                 # (non-negotiable 1): 25% cap + one haptics.warn() on first arm + release ALWAYS
                                 # springs back → dismissing a dirty sheet is TAP-ONLY (children's Cancel/X). onArm is
                                 # DIRECTION-GATED (dyRef>0 else return) so an upward content-scroll fires no haptic;
-                                # clean → haptics.tick(). SCROLL COEXISTENCE: handlePointerDown live-reads
-                                # (scrollRef ?? sheet).scrollTop — >0 → the pointer belongs to native scroll (the
-                                # sheet IS its own scroller; touch-action:pan-y). KEYBOARD GUARD: onFocusCapture/
-                                # onBlurCapture on input/textarea/select → enabled:false while focused (iOS keyboard-
-                                # viewport math not fought). REDUCED-MOTION (useReducedMotion): entry/exit instant,
+                                # clean → haptics.tick(). DIRTY comes from the child via a `touched` flag flipped by
+                                # DraggableSheet's `onUserInput` prop (wired to onChangeCapture on the sheet → fires on
+                                # any real descendant <input> edit; programmatic setState never trips it) — so a
+                                # freshly-opened sheet (ADD or EDIT, incl. a seeded amount) is clean until the user
+                                # edits a field (P1 device-gate Bug A fix — replaced the earlier heuristic that
+                                # mis-read a seeded edit-mode amount as dirty). `data-dirty` + `data-testid=
+                                # "draggable-sheet"` on the sheet (e2e/diagnostic). SCROLL COEXISTENCE: handlePointerDown
+                                # live-reads (scrollRef ?? sheet).scrollTop — >0 → the pointer belongs to native scroll
+                                # (the sheet IS its own scroller; touch-action:pan-y). KEYBOARD GUARD: onFocusCapture/
+                                # onBlurCapture → enabled:false while focused, PLUS handlePointerDown live-reads
+                                # document.activeElement (INPUT/TEXTAREA/SELECT → bail) to catch the iOS
+                                # blur-races-pointerdown window where the state guard already flipped (P1 Bug B).
+                                # REDUCED-MOTION (useReducedMotion): entry/exit instant,
                                 # drag renders no continuous translation (snaps at commit/cancel) — still functions.
                                 # a11y: role=dialog/aria-modal/aria-labelledby on the SHEET, grabber aria-hidden;
                                 # scrim stays a plain div (aria-hidden there would hide the dialog — deliberate
                                 # deviation from the literal spec). Adopters keep their own if(!open)return null (so
                                 # open is effectively always true while mounted; entry animates on mount, drag-exit
-                                # animates, tap-close stays instant). Consumers: EventSheet (dirty = staged amount ||
-                                # strikeCollateralTouched || cbLiqPriceReading — conservative, interaction-based),
-                                # ReviewSheet (dirty = any sign-off field ≠ its fresh-mount initializer baseline),
-                                # AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
+                                # animates, tap-close stays instant). Consumers: EventSheet + ReviewSheet each hold a
+                                # `touched` useState (reset on open) flipped by onUserInput → dirty=touched (P1 Bug A);
+                                # config pills/toggles are button clicks (no <input> change) → stay clean by design,
+                                # which is correct (a bare pill tap stages no financial value). AUDIT (P1 fix): neither
+                                # sheet has any onClick that programmatically mutates a staged financial value (no
+                                # fill-from-current / ±step shortcut) → onChangeCapture fully covers the financial
+                                # surface. AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
       DraggableSheet.module.css # .scrim/.sheet/.grab (the shared shell — max-height comes from the prop, inline);
                                 # .grab 36×5 radius 3, eases to --text-muted while the sheet has [data-tracking]
@@ -2720,6 +2731,11 @@ visible tap equivalent; motion explains causality, never decoration.
   key handlers exclusively; a call from a timer/interval/rAF is a silent no-op on iOS by design, not a bug. Called
   at exactly two moment-types: a gesture crossing `armed` (`tick`) and a `confirm` landing; `warn` on a blocked
   action. Every haptic has a same-instant visual twin (§5.4) — the visual channel is primary, haptics are seasoning.
+  **⚠ TEMPORARY (Bug C diagnosis — device haptics were silent despite `ios-switch`):** the ios-switch host is now a
+  `<label>`-wrapped switch, and `fireIosSwitch` branches on a runtime `iosVariant` (a=`label.click()` / b=`input.click()`
+  / c=`checked=!checked`+dispatched `click`) with a `hostInteractive` pointer-events toggle — `setHapticsVariant`/
+  `setHapticsHostInteractive` exports driven by the **DevPanel HAPTICS PROBE** (tick/confirm/warn fired from real tap
+  handlers + a `support` readout). The DEVICE tells us which variant fires; lock it in + delete the selector next pass.
 - **`src/hooks/usePointerDrag.ts` / `src/hooks/useReducedMotion.ts`** — see the hooks/ file list above.
 - **Test:** `src/simulation/__tests__/gestureModel.test.ts` (23 cases, node/no-DOM: slop, axis-lock ratio + wrong
   axis, arm/disarm both directions, commit-by-distance + commit-by-velocity, velocity window math + 0-guards,
@@ -2805,6 +2821,24 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 ```
 
 `npm run build` = `tsc -b && vite build` — this is the REAL typecheck gate. Run it (not bare `tsc`) before every commit.
+
+**⚠️ Store-version bump discipline:** a `useStore` persist `version` bump (a new `migrateState` case) MUST also update `STORE_VERSION` in `e2e/helpers.ts` (the localStorage SEED version) — a stale value drops the e2e seed into the migrate/onboarding path and `seedAndGoto`'s landing assertion fails loudly (rather than every spec timing out on a hidden onboarding modal).
+
+**E2E gesture harness (Playwright, `npm run e2e`) — the app's first e2e layer, opt-in, NOT in `vitest`.**
+`@playwright/test` (chromium only) + `playwright.config.ts` (mobile-emulated 390×844, `hasTouch`/`isMobile`,
+`serviceWorkers:'block'`, **`workers:1`/`fullyParallel:false`** — gesture/rAF/spring timing flakes under
+parallel CPU contention; run serially) + `e2e/*.spec.ts` + `e2e/helpers.ts`. `vite.config.ts` `test.exclude:
+['e2e/**', …]` keeps `vitest run` from collecting the `.spec.ts` files (vitest's default include globs
+`*.spec.ts`). **Reach:** the dev server bypasses every auth/viewer gate via `import.meta.env.DEV`, so a
+3-field `addInitScript` localStorage seed (`onboardingComplete/simpleMode/simpleView:'daily'` + the
+`personal-bloc-onboarded` GATE key + `window.__APP_BOOTED=true` to suppress index.html's 6s boot-watchdog
+overlay) lands on DailyModeView; the FAB (`getByLabel('Log an event')`) opens EventSheet, a seeded `dayLog`
+draw event + `data-testid="log-row"` tap opens EDIT mode, `getByLabel('Almanac')` → the live-height badge
+opens the consent sheet. Gestures drive `page.mouse` (real pointer events, capture-capable) from the grabber.
+**Covers:** dirty-guard (clean flick-dismiss + `data-dirty`, cap-no-dismiss after a keystroke), keyboard
+guard (zero movement while focused), scroll coexistence (scrolled → drag blocked), reduced-motion (no
+continuous transform, still dismisses). **CANNOT cover** (→ the iOS device gate stays MANDATORY): real
+WebKit system haptics, the iOS blur-races-pointerdown timing, the standalone-PWA container, true 60fps.
 
 **⚠️ The typecheck gate:** root `tsconfig.json` is references-only (`"files": []`), so `tsc` / `tsc --noEmit` is a NO-OP that compiles nothing and always reports 0 — it never catches type errors. The real typecheck is **`npx tsc -b`** (build mode, what `npm run build` runs). Vercel's `vite build` strips types with esbuild and does **not** typecheck, so type errors only surface via `tsc -b` locally.
 

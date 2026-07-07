@@ -1,5 +1,9 @@
 import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore, storeEncEnabled } from '../../store/useStore';
+import {
+  haptics, hapticsSupport, setHapticsVariant, getHapticsVariant,
+  setHapticsHostInteractive, getHapticsHostInteractive, type IosHapticVariant,
+} from '../../lib/haptics';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
 import { getPublishReports } from '../../lib/nostr/publish';
@@ -33,6 +37,47 @@ function Section({ title, action, defaultOpen = false, children }:
         {action ? <span onClick={(e) => e.stopPropagation()}>{action}</span> : null}
       </div>
       {open && children}
+    </>
+  );
+}
+
+/**
+ * TEMPORARY (Bug C diagnosis) — fires haptics.* DIRECTLY from tap handlers (the user-activation context
+ * iOS requires), with a runtime ios-switch variant selector (a/b/c) + host pointer-events toggle so the
+ * DEVICE tells us which variant fires the system haptic. Collapses to the winning variant next pass.
+ * Metadata-only (satisfies the panel privacy rule).
+ */
+function HapticsProbe() {
+  const [variant, setVariant] = useState<IosHapticVariant>(getHapticsVariant());
+  const [hostOn, setHostOn] = useState(getHapticsHostInteractive());
+  const [last, setLast] = useState('—');
+  const fire = (name: 'tick' | 'confirm' | 'warn') => { haptics[name](); setLast(`${name} @ ${new Date().toLocaleTimeString()}`); };
+  return (
+    <>
+      <div className={styles.grid}>
+        <span className={styles.key}>support</span><span className={styles.val}>{hapticsSupport()}</span>
+        <span className={styles.key}>last fired</span><span className={styles.val}>{last}</span>
+      </div>
+      <div className={styles.probeRow}>
+        <span className={styles.probeStatus}>ios variant</span>
+        <select
+          value={variant}
+          onChange={(e) => { const v = e.target.value as IosHapticVariant; setVariant(v); setHapticsVariant(v); }}
+          style={{ background: 'var(--bg-input)', color: 'var(--text-primary)', border: '1px solid var(--border)', borderRadius: 4, padding: '2px 6px' }}
+        >
+          <option value="a">a · label.click()</option>
+          <option value="b">b · input.click()</option>
+          <option value="c">c · checked+dispatch</option>
+        </select>
+        <button className={styles.btnGhost} onClick={() => { const n = !hostOn; setHostOn(n); setHapticsHostInteractive(n); }}>
+          host pointer-events: {hostOn ? 'auto' : 'none'}
+        </button>
+      </div>
+      <div className={styles.probeRow}>
+        <button className={styles.btn} onClick={() => fire('tick')}>tick</button>
+        <button className={styles.btn} onClick={() => fire('confirm')}>confirm</button>
+        <button className={styles.btn} onClick={() => fire('warn')}>warn</button>
+      </div>
     </>
   );
 }
@@ -478,6 +523,10 @@ export function DevPanel() {
           <button className={styles.btn} onClick={runProbe} disabled={probing}>Test signer</button>
           <span className={styles.probeStatus}>{probeStatus}</span>
         </div>
+      </Section>
+
+      <Section title="HAPTICS PROBE">
+        <HapticsProbe />
       </Section>
 
       <Section title="LOG" action={<button className={styles.btnGhost} onClick={clearNostrLog}>Clear</button>}>

@@ -10,3 +10,9 @@ dist-ssr/
 npm-debug.log*
 .vercel
 .claude/settings.local.json
+
+# Playwright e2e
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/

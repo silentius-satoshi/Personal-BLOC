@@ -7,7 +7,7 @@
 //    provisional via the rollup) OR "Confirm as provisional" (confirmMonth — provisional SURVIVES; honest).
 // Mostly-presentational: it holds only the sign-off field drafts (seeded fresh each open — it unmounts when
 // closed) and hands them back via onConfirm(extras); the host owns confirmMonth + the side-effects.
-import { useState, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { DraggableSheet } from '../ui/DraggableSheet';
 import { fmtUSD } from '../../utils/format';
 import type { MonthRollup } from './calendarModel';
@@ -48,23 +48,15 @@ export function ReviewSheet({
   const [ndpChecked, setNdpChecked] = useState(false);
   const [ndpPaid, setNdpPaid]       = useState(Math.round(ndpPrefill));
 
-  // P1 DraggableSheet dirty-guard — this sheet mounts fresh each open (useState initializers re-run), so the
-  // baseline = the same initializer expressions, captured once. A pristine review may drag-dismiss; any edit
-  // to a sign-off field guards it (dismissal becomes tap-only).
-  const baseRef = useRef({
-    expenses: Math.round(rollup.streams.draw),
-    strikeMin: Math.round(strikeMinPrefill),
-    ndpChecked: false,
-    ndpPaid: Math.round(ndpPrefill),
-  });
+  // P1 DraggableSheet dirty-guard — a `touched` flag flipped only by real user input (DraggableSheet's
+  // onChangeCapture). Reset on each open (robust whether the sheet mounts fresh or stays mounted). A pristine
+  // review flick-dismisses; any edit to a sign-off field guards it (dismissal becomes tap-only).
+  const [touched, setTouched] = useState(false);
+  useEffect(() => { if (open) setTouched(false); }, [open]);
 
   if (!open) return null;
 
-  const dirty =
-    expenses !== baseRef.current.expenses ||
-    strikeMin !== baseRef.current.strikeMin ||
-    ndpChecked !== baseRef.current.ndpChecked ||
-    ndpPaid !== baseRef.current.ndpPaid;
+  const dirty = touched;
 
   const buildExtras = (): ConfirmExtras => ({
     expensesActual: expenses,
@@ -73,7 +65,7 @@ export function ReviewSheet({
   });
 
   return (
-    <DraggableSheet open={open} onDismiss={onClose} dirty={dirty} maxHeight="88vh" labelledBy="reviewSheetTitle">
+    <DraggableSheet open={open} onDismiss={onClose} dirty={dirty} maxHeight="88vh" labelledBy="reviewSheetTitle" onUserInput={() => setTouched(true)}>
         <div className={styles.head}>
           <span id="reviewSheetTitle" className={styles.title}>Review Month {month}</span>
         </div>

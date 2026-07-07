@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { defineConfig, configDefaults } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { execSync } from 'node:child_process'
@@ -29,5 +29,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // Playwright e2e specs live in e2e/*.spec.ts — vitest's default include globs *.spec.ts, so exclude
+    // them or `vitest run` would collect the Playwright suites (they import @playwright/test). Keep e2e
+    // strictly on `npm run e2e`.
+    exclude: ['e2e/**', ...configDefaults.exclude],
   },
 })
