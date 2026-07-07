@@ -1,11 +1,11 @@
-/* DraggableSheet (Gesture & Motion System — P1). The shared drag-to-dismiss bottom-sheet shell —
-   reproduces the byte-identical `.scrim`/`.sheet`/`.grab` idiom the adopters delete from their own CSS.
-   Motion (translate/opacity) is applied via inline style by the component, not here. */
+/* DraggableSheet (Gesture & Motion System — P1). The shared drag-to-dismiss bottom-sheet shell.
+   Motion (translate/opacity) is applied via inline style by the component, not here.
+   P1.2 Bug E — .root is positioning-only; .backdrop (a SIBLING of .sheet) is the sole opacity target so
+   animating it never fades the sheet. */
 
-.scrim {
+.root {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.65);
   display: flex;
   align-items: flex-end;
   justify-content: center;
@@ -13,7 +13,16 @@
   padding: 0;
 }
 
+.backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  /* opacity animated inline by the component (drag progress / entry / exit / spring). */
+}
+
 .sheet {
+  position: relative;   /* paint above the absolute .backdrop (Bug E) */
+  z-index: 1;
   background: var(--surface-2);
   border: 1px solid var(--line);
   border-radius: 20px 20px 0 0;
@@ -28,6 +37,9 @@
   padding: 8px 18px 22px;
   /* The compositor owns vertical scroll; drag-to-dismiss rides on top at scrollTop 0. */
   touch-action: pan-y;
+  /* P1.2 Bug D — contain the inner rubber-band so an at-top downward drag can't be stolen by iOS overscroll
+     bounce (html/body already have overscroll-behavior:none — this closes the last bouncing scroller). */
+  overscroll-behavior-y: contain;
 }
 
 .grab {

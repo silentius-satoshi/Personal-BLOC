@@ -105,6 +105,7 @@ interface DragOpts {
   steps?: number;
   fast?: boolean; // fewer steps + no settle delay → high release velocity (a flick)
   release?: boolean; // default true; false leaves the pointer down (to inspect mid-drag)
+  startOffsetY?: number; // px below the sheet's top to begin the drag (default 8 = the grabber)
 }
 
 /**
@@ -113,11 +114,11 @@ interface DragOpts {
  * release:false). A short settle wait lets the hook's rAF-batched onMove flush before callers read transform.
  */
 export async function dragDown(page: Page, s: Locator, dyPx: number, opts: DragOpts = {}): Promise<void> {
-  const { steps = 12, fast = false, release = true } = opts;
+  const { steps = 12, fast = false, release = true, startOffsetY = 8 } = opts;
   const box = await s.boundingBox();
   if (!box) throw new Error('sheet has no bounding box');
   const startX = box.x + box.width / 2;
-  const startY = box.y + 8; // the grabber
+  const startY = box.y + startOffsetY; // default = the grabber
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   const n = fast ? 3 : steps;
@@ -126,6 +127,31 @@ export async function dragDown(page: Page, s: Locator, dyPx: number, opts: DragO
     if (!fast) await page.waitForTimeout(8);
   }
   await page.waitForTimeout(fast ? 0 : 25); // let the last rAF onMove flush
+  if (release) {
+    await page.mouse.up();
+    await page.waitForTimeout(30);
+  }
+}
+
+/**
+ * Drag downward by `dyPx` STARTING FROM the center of `startEl` (a non-input content element — a field label /
+ * section header). Proves the content region owns the downward drag, not only the grabber. Do NOT pass an
+ * <input> — mousedown would focus it and the keyboard guard would (correctly) bail the gesture.
+ */
+export async function dragDownFrom(page: Page, startEl: Locator, dyPx: number, opts: DragOpts = {}): Promise<void> {
+  const { steps = 12, fast = false, release = true } = opts;
+  const box = await startEl.boundingBox();
+  if (!box) throw new Error('start element has no bounding box');
+  const startX = box.x + box.width / 2;
+  const startY = box.y + box.height / 2;
+  await page.mouse.move(startX, startY);
+  await page.mouse.down();
+  const n = fast ? 3 : steps;
+  for (let i = 1; i <= n; i++) {
+    await page.mouse.move(startX, startY + (dyPx * i) / n);
+    if (!fast) await page.waitForTimeout(8);
+  }
+  await page.waitForTimeout(fast ? 0 : 25);
   if (release) {
     await page.mouse.up();
     await page.waitForTimeout(30);

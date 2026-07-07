@@ -8,9 +8,12 @@ import styles from './DraggableSheet.module.css';
 
 /**
  * DraggableSheet (Gesture & Motion System — P1) — the shared drag-to-dismiss bottom-sheet shell.
- * The app's static `.scrim`/`.sheet` sheets adopt this: track-with-finger, flick-to-close, the scrim
- * IS the progress indicator. All motion is `transform`/`opacity` only (direct style writes, rAF-batched
- * by usePointerDrag).
+ * Track-with-finger, flick-to-close; the BACKDROP is the progress indicator. All motion is
+ * `transform`/`opacity` only (direct style writes, rAF-batched by usePointerDrag).
+ *
+ * P1.2 Bug E — DOM structure: `.root` (positioning only, never opacity-animated) wraps a SIBLING
+ * `.backdrop` (the opacity target) + the `.sheet`. The sheet is NOT a child of the faded element, so
+ * animating backdrop opacity never fades the sheet itself.
  *
  * NON-NEGOTIABLE 1 — no gesture commits a financial write: when `dirty`, the drag caps at 25% + one warn
  * haptic, and release always springs back. Dismissing a dirty sheet is tap-only (the children's Cancel/X).
@@ -49,7 +52,7 @@ export function DraggableSheet({
   onUserInput,
   children,
 }: DraggableSheetProps): React.ReactPortal | null {
-  const scrimRef = useRef<HTMLDivElement>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const reduced = useReducedMotion();
 
@@ -59,6 +62,7 @@ export function DraggableSheet({
   // Per-gesture scratch (refs so the drag callbacks never re-bind).
   const dyRef = useRef(0);
   const warnedRef = useRef(false);
+  const lockedDownRef = useRef(false);   // P1.2 Bug D — true once this gesture flips the sheet's touch-action off
   const dirtyRef = useRef(dirty);
   dirtyRef.current = dirty;
   const reducedRef = useRef(reduced);
@@ -72,7 +76,7 @@ export function DraggableSheet({
   // Entry animation on mount + height measure (single transform channel, shared with drag/spring/exit).
   useLayoutEffect(() => {
     const el = sheetRef.current;
-    const sc = scrimRef.current;
+    const sc = backdropRef.current;
     if (!open || !el) return;
     setHeightPx(el.offsetHeight);
     if (reduced) {
@@ -99,7 +103,7 @@ export function DraggableSheet({
 
   const settleBack = useCallback(() => {
     const el = sheetRef.current;
-    const sc = scrimRef.current;
+    const sc = backdropRef.current;
     if (el) {
       el.style.transition = reducedRef.current ? 'none' : 'transform var(--motion-settle) var(--ease-spring)';
       el.style.transform = 'translateY(0)';
@@ -112,7 +116,7 @@ export function DraggableSheet({
 
   const runExit = useCallback(() => {
     const el = sheetRef.current;
-    const sc = scrimRef.current;
+    const sc = backdropRef.current;
     if (reducedRef.current) {
       onDismiss();
       return;
@@ -138,9 +142,16 @@ export function DraggableSheet({
     enabled: !inputFocused,
     onMove: (_dx, dy) => {
       dyRef.current = dy;
+      // P1.2 Bug D — once a downward lock is confirmed (dy>0; onMove only runs when handlePointerDown did NOT
+      // bail, i.e. scrollTop was 0 at start), take the sheet's touch-action off for the rest of the gesture so
+      // WebKit can't initiate a no-op boundary scroll / inner rubber-band that steals the drag. Restored at onEnd.
+      if (dy > 0 && !lockedDownRef.current && sheetRef.current) {
+        lockedDownRef.current = true;
+        sheetRef.current.style.touchAction = 'none';
+      }
       if (reducedRef.current) return; // snap-only under reduced motion — no continuous render.
       const el = sheetRef.current;
-      const sc = scrimRef.current;
+      const sc = backdropRef.current;
       if (!el) return;
       const h = heightPx || el.offsetHeight || 1;
       let ty: number;
@@ -173,7 +184,11 @@ export function DraggableSheet({
     },
     onEnd: (_dx, dy, _v, committed) => {
       const el = sheetRef.current;
-      if (el) el.removeAttribute('data-tracking');
+      if (el) {
+        el.removeAttribute('data-tracking');
+        if (lockedDownRef.current) el.style.touchAction = 'pan-y'; // P1.2 Bug D — restore native scroll
+      }
+      lockedDownRef.current = false;
       const dismiss = committed && dy > 0 && !dirtyRef.current;
       if (dismiss) runExit();
       else settleBack();
@@ -192,7 +207,11 @@ export function DraggableSheet({
       if (s && s.scrollTop > 0) return; // not at top → native scroll owns this pointer.
       dyRef.current = 0;
       warnedRef.current = false;
-      sheetRef.current?.setAttribute('data-tracking', 'true');
+      lockedDownRef.current = false;
+      if (sheetRef.current) {
+        sheetRef.current.setAttribute('data-tracking', 'true');
+        sheetRef.current.style.touchAction = 'pan-y'; // reset before a new gesture may flip it (Bug D)
+      }
       drag.onPointerDown(e);
     },
     [drag, inputFocused, scroller],
@@ -218,7 +237,10 @@ export function DraggableSheet({
   if (!open) return null;
 
   return createPortal(
-    <div ref={scrimRef} className={styles.scrim} onClick={handleScrimTap}>
+    // P1.2 Bug E — .root is positioning-only (never opacity-animated); the .backdrop sibling is the sole
+    // opacity target, so the sheet (its sibling, not its child) never fades while dragging.
+    <div className={styles.root}>
+      <div ref={backdropRef} className={styles.backdrop} data-testid="sheet-backdrop" onClick={handleScrimTap} />
       <div
         ref={sheetRef}
         className={styles.sheet}

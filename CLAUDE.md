@@ -177,14 +177,24 @@ src/
       LtvTypePills.tsx
       DraggableSheet.tsx        # Gesture & Motion System P1 — the SHARED drag-to-dismiss bottom-sheet shell
                                 # ({ open, onDismiss, dirty?, labelledBy?, maxHeight?='92vh', scrollRef?, children }).
-                                # createPortal→body; reproduces the byte-identical .scrim/.sheet/.grab idiom the
-                                # adopters (EventSheet/ReviewSheet/AlmanacConsentSheet) DELETE from their own CSS.
+                                # createPortal→body. P1.2 Bug E STRUCTURE: .root (positioning only, NEVER
+                                # opacity-animated) wraps a SIBLING .backdrop (the sole opacity target) + the .sheet
+                                # (position:relative/z-index:1 → paints above the backdrop) — so animating backdrop
+                                # opacity never fades the sheet itself (the pre-P1.2 scrim>sheet ancestor-opacity bug,
+                                # device-confirmed). handleScrimTap lives on the backdrop's onClick; the sheet keeps
+                                # onClick stopPropagation for safety. Adopters (EventSheet/ReviewSheet/
+                                # AlmanacConsentSheet) DELETE their own .scrim/.sheet/.grab CSS.
                                 # Gesture via usePointerDrag (axis 'y', slop 8, armThreshold 24, commitThreshold =
                                 # measuredHeight×0.45 [read live — the hook reads config per event], commitVelocity
                                 # 900). onMove writes transform/opacity DIRECTLY (rAF-batched, no React state):
                                 # downward tracks 1:1 (dirty → rubberBand cap at 25%), upward → native scroll when
-                                # the content is scrollable else rubberBand 24px; scrim.opacity = 1−clamp(ty/h) (the
-                                # scrim IS the progress bar). onEnd dismiss = committed && dy>0 && !dirty → exit
+                                # the content is scrollable else rubberBand 24px; BACKDROP.opacity = 1−clamp(ty/h) (the
+                                # backdrop IS the progress bar). P1.2 Bug D: .sheet has overscroll-behavior-y:contain
+                                # (kills the iOS inner rubber-band that steals an at-top downward drag) + on the first
+                                # onMove dy>0 the sheet's touch-action flips to 'none' for the rest of the gesture
+                                # (lockedDownRef; restored to 'pan-y' at onEnd + reset at pointerdown) — belt-and-
+                                # suspenders, applies only after a downward lock from scrollTop 0 so it can't regress
+                                # the scrolled case. onEnd dismiss = committed && dy>0 && !dirty → exit
                                 # (translateY 100% --ease-standard/--motion-standard) then onDismiss; else spring
                                 # back (--ease-spring/--motion-settle). Entry: translateY 100%→0 280ms
                                 # --ease-decelerate + scrim fade (inline style, one transform channel shared with
@@ -218,8 +228,10 @@ src/
                                 # fill-from-current / ±step shortcut) → onChangeCapture fully covers the financial
                                 # surface. AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
-      DraggableSheet.module.css # .scrim/.sheet/.grab (the shared shell — max-height comes from the prop, inline);
-                                # .grab 36×5 radius 3, eases to --text-muted while the sheet has [data-tracking]
+      DraggableSheet.module.css # .root (fixed positioning) + .backdrop (absolute, rgba(0,0,0,.65) — the opacity
+                                # target) + .sheet (position:relative/z-index:1, overscroll-behavior-y:contain,
+                                # touch-action:pan-y; max-height from the prop, inline) + .grab (36×5 radius 3, eases
+                                # to --text-muted while the sheet has [data-tracking]). P1.2: was a single .scrim>.sheet
 
     Inputs/
       InputsPanel.tsx           # Smart BLOC sidebar — .scrollArea + sticky .recommendations
@@ -2723,19 +2735,15 @@ visible tap equivalent; motion explains causality, never decoration.
   `rubberBand(pull,max) = pull*max/(pull+max)` (sign-preserving, asymptote < max). Consumed by `usePointerDrag`
   (thin adapter) — see hooks/.
 - **`src/lib/haptics.ts`** — capability-honest haptics, no faking. `haptics = { tick, confirm, warn }` +
-  `hapticsSupport(): 'vibrate'|'ios-switch'|'none'` (detected once, cached). Ladder: `navigator.vibrate()` patterns
-  (Android/Chromium) → an iOS ≥18 hidden `<input type="checkbox" switch>` toggled programmatically (the ONE
-  WebKit-sanctioned system haptic; intensity not controllable → tick/confirm/warn all map to the single toggle) →
-  no-op. Guards `typeof document === 'undefined'` → `'none'`, never throws. ⚠ **USER-ACTIVATION REQUIRED
-  (ios-switch path):** WebKit fires the haptic ONLY within a user-gesture context — call `haptics.*` from pointer/
-  key handlers exclusively; a call from a timer/interval/rAF is a silent no-op on iOS by design, not a bug. Called
-  at exactly two moment-types: a gesture crossing `armed` (`tick`) and a `confirm` landing; `warn` on a blocked
-  action. Every haptic has a same-instant visual twin (§5.4) — the visual channel is primary, haptics are seasoning.
-  **⚠ TEMPORARY (Bug C diagnosis — device haptics were silent despite `ios-switch`):** the ios-switch host is now a
-  `<label>`-wrapped switch, and `fireIosSwitch` branches on a runtime `iosVariant` (a=`label.click()` / b=`input.click()`
-  / c=`checked=!checked`+dispatched `click`) with a `hostInteractive` pointer-events toggle — `setHapticsVariant`/
-  `setHapticsHostInteractive` exports driven by the **DevPanel HAPTICS PROBE** (tick/confirm/warn fired from real tap
-  handlers + a `support` readout). The DEVICE tells us which variant fires; lock it in + delete the selector next pass.
+  `hapticsSupport(): 'vibrate'|'none'` (detected once, cached). Ladder (P1.2 lock-down): `navigator.vibrate()`
+  patterns (Android/Chromium) → `'none'` for EVERYTHING else, **including iOS**. ⚠ **iOS has NO programmatic
+  haptic path (device-verified Jul 2026):** WebKit's `<input switch>` system haptic fires ONLY on a physical user
+  tap of the control, not on synthetic activation — all three variants (`label.click()`/`input.click()`/`checked+
+  dispatch`) × both host pointer-events states were silent, so the entire ios-switch path was DELETED. Called at
+  exactly two moment-types: a gesture crossing `armed` (`tick`) + a `confirm` landing; `warn` on a blocked action —
+  no-ops on iOS/desktop, live on Android. Every haptic has a same-instant visual twin (§5.4) — the VISUAL channel
+  is the primary feedback channel; haptics are seasoning where the platform allows them. (design.md §1.3's iOS ≥18
+  haptics-table row is superseded → `none`; design.md is owner-maintained and not edited here.)
 - **`src/hooks/usePointerDrag.ts` / `src/hooks/useReducedMotion.ts`** — see the hooks/ file list above.
 - **Test:** `src/simulation/__tests__/gestureModel.test.ts` (23 cases, node/no-DOM: slop, axis-lock ratio + wrong
   axis, arm/disarm both directions, commit-by-distance + commit-by-velocity, velocity window math + 0-guards,
@@ -2837,8 +2845,12 @@ draw event + `data-testid="log-row"` tap opens EDIT mode, `getByLabel('Almanac')
 opens the consent sheet. Gestures drive `page.mouse` (real pointer events, capture-capable) from the grabber.
 **Covers:** dirty-guard (clean flick-dismiss + `data-dirty`, cap-no-dismiss after a keystroke), keyboard
 guard (zero movement while focused), scroll coexistence (scrolled → drag blocked), reduced-motion (no
-continuous transform, still dismisses). **CANNOT cover** (→ the iOS device gate stays MANDATORY): real
-WebKit system haptics, the iOS blur-races-pointerdown timing, the standalone-PWA container, true 60fps.
+continuous transform, still dismisses), P1.2 Bug E (sheet computed-opacity stays '1' mid-drag while the
+`sheet-backdrop` fades), P1.2 Bug D (downward drag from a mid-content field label dismisses). **CANNOT
+cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS has NO programmatic path —
+`hapticsSupport()` is `'none'` there), the iOS inner-scroller **overscroll bounce** (Bug D's actual failure
+mode — Chromium has no inner rubber-band, so that spec PASSES on HEAD; it pins only the Chromium-visible
+path), the iOS blur-races-pointerdown timing, the standalone-PWA container, true 60fps.
 
 **⚠️ The typecheck gate:** root `tsconfig.json` is references-only (`"files": []`), so `tsc` / `tsc --noEmit` is a NO-OP that compiles nothing and always reports 0 — it never catches type errors. The real typecheck is **`npx tsc -b`** (build mode, what `npm run build` runs). Vercel's `vite build` strips types with esbuild and does **not** typecheck, so type errors only surface via `tsc -b` locally.
 

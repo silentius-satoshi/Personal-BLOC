@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { openEventSheet, openEventSheetEdit, dragDown, sheetTransform, translateYpx } from './helpers';
+import { openEventSheet, openEventSheetEdit, dragDown, dragDownFrom, sheetTransform, translateYpx } from './helpers';
 
 test.describe('EventSheet gesture behavior', () => {
   test('clean open is not dirty and flick-dismisses', async ({ page }) => {
@@ -8,6 +8,28 @@ test.describe('EventSheet gesture behavior', () => {
     await expect(s).toHaveAttribute('data-dirty', 'false');
     const box = await s.boundingBox();
     await dragDown(page, s, Math.round((box!.height ?? 500) * 0.6));
+    await expect(s).toHaveCount(0); // dismissed
+  });
+
+  test('Bug E — the SHEET stays opaque while dragging; only the backdrop fades', async ({ page }) => {
+    const s = await openEventSheet(page);
+    const backdrop = page.getByTestId('sheet-backdrop');
+    const box = await s.boundingBox();
+    await dragDown(page, s, Math.round((box!.height ?? 500) * 0.4), { release: false });
+    const sheetOpacity = await s.evaluate((el) => getComputedStyle(el as HTMLElement).opacity);
+    const backdropOpacity = await backdrop.evaluate((el) => parseFloat(getComputedStyle(el as HTMLElement).opacity));
+    expect(sheetOpacity).toBe('1');          // sheet never receives an opacity write
+    expect(backdropOpacity).toBeLessThan(1); // the backdrop IS the progress indicator
+    await page.mouse.up();
+  });
+
+  test('Bug D — a downward drag from mid-content (not the grabber) dismisses', async ({ page }) => {
+    const s = await openEventSheet(page);
+    // Start from a non-input content element (a field label) — proves the content region owns the drag.
+    const startEl = s.getByText(/draw amount/i).first();
+    await expect(startEl).toBeVisible();
+    const box = await s.boundingBox();
+    await dragDownFrom(page, startEl, Math.round((box!.height ?? 500) * 0.7));
     await expect(s).toHaveCount(0); // dismissed
   });
 
