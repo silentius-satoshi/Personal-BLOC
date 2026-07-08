@@ -5,6 +5,11 @@ import { getProxyAuthHeader } from '../lib/nostr/proxyAuth';
 
 const POLL_INTERVAL_MS = 60_000;
 
+// "No Strike key configured" is a property of the DEPLOYMENT, not the user — so this lives at module scope,
+// not in the Zustand store. Once a 503 confirms it, every subsequent poll in this session is a wasted signing
+// + fetch round-trip; skip them. A reload re-probes once (the deployment could change).
+let strikeProxyUnconfigured = false;
+
 /** `enabled` gates the fetch on the authenticated OWNER (AppShell passes `isAuthenticated && isOwner`) —
  *  an un-authenticated visitor or a non-owner key never triggers the Strike proxy. */
 export function useStrikeData(enabled: boolean): void {
@@ -16,6 +21,7 @@ export function useStrikeData(enabled: boolean): void {
   const isVisible = usePageVisibility();
 
   const fetchAll = async () => {
+      if (strikeProxyUnconfigured) return;
       // NIP-98: each request is signed with the owner's Nostr key (Authorization: Nostr <base64>) — no bundle
       // secret. The owner-gate (enabled) means the signer is normally present; bail safely if it isn't.
       const signer = useStore.getState().nostrSigner;
@@ -33,7 +39,10 @@ export function useStrikeData(enabled: boolean): void {
         ]);
 
         // 503 = key not configured — silent, no error state
-        if (balanceRes.status === 503 || rateRes.status === 503) return;
+        if (balanceRes.status === 503 || rateRes.status === 503) {
+          strikeProxyUnconfigured = true;
+          return;
+        }
 
         if (!balanceRes.ok || !rateRes.ok) {
           setStrikeApiConnected(false);
