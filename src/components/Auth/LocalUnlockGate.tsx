@@ -3,6 +3,7 @@ import { useNostr } from '@nostrify/react';
 import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow } from '../../lib/nostr/syncNow';
 import { resetAndResync } from '../../lib/store/escapeHatch';
+import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
 import styles from './NostrAuthGate.module.css';
 
@@ -47,10 +48,10 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
       <div className={styles.card}>
         <div className={styles.logo}>₿</div>
         <h1 className={styles.title}>Personal ₿LOC</h1>
-        <p className={styles.subtitle}>Unlock with Face ID to continue</p>
+        <p className={styles.subtitle}>Unlock with {biometricLabel()} to continue</p>
 
         <button className={styles.primaryBtn} onClick={unlock} disabled={loading}>
-          {loading ? 'Unlocking…' : '🔒 Unlock with Face ID'}
+          {loading ? 'Unlocking…' : `🔒 Unlock with ${biometricLabel()}`}
         </button>
         <button className={styles.ghostBtn} onClick={onReauth} disabled={loading}>
           Use a different login

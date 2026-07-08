@@ -7,6 +7,7 @@ import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { probeKeyVaultCapability, type WrapMethod } from '../../lib/nostr/keyVault';
+import { biometricLabel } from '../../lib/biometricLabel';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
 import { useNostr } from '@nostrify/react';
@@ -41,7 +42,6 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const abortRef                              = useRef<AbortController | null>(null);
 
   const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-  const isIOS    = /iPhone|iPad|iPod/i.test(navigator.userAgent);
 
   const hasNip07 = typeof window !== 'undefined' && !!(window as any).nostr;
 
@@ -306,9 +306,9 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
           hasWrappedKey && !forceImport ? (
             <>
               {/* #6: a wrapped key already lives on this device — unlock it (Face ID) instead of re-importing the nsec */}
-              <p className={styles.hint}>A saved key is on this device. Unlock it with Face ID, or import a different key.</p>
+              <p className={styles.hint}>A saved key is on this device. Unlock it with {biometricLabel()}, or import a different key.</p>
               <button className={styles.primaryBtn} onClick={handleUnlockExisting} disabled={loading}>
-                {loading ? 'Unlocking…' : '🔒 Unlock with Face ID'}
+                {loading ? 'Unlocking…' : `🔒 Unlock with ${biometricLabel()}`}
               </button>
               <button className={styles.ghostBtn} onClick={() => { setForceImport(true); setError(null); }} disabled={loading}>
                 Use a different key
@@ -323,7 +323,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
               <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
               <span>
                 <strong>⚠ Back up your nsec first — this is not a backup.</strong> This stores an <em>encrypted copy</em>
-                on this device, unlocked by Face ID, for convenience. If this device is lost, reset, or Face ID
+                on this device, unlocked by {biometricLabel()}, for convenience. If this device is lost, reset, or {biometricLabel()}
                 enrollment changes, this copy can be gone — and without your nsec saved elsewhere, all your
                 encrypted data is permanently unrecoverable. I have my nsec backed up somewhere safe outside this device.
               </span>
@@ -348,7 +348,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             )}
             {localMethod === 'pin' && (
               <>
-                <p className={styles.hint}>Face ID unavailable — set a PIN to encrypt the key (min 4 digits).</p>
+                <p className={styles.hint}>{biometricLabel()} unavailable — set a PIN to encrypt the key (min 4 digits).</p>
                 <input className={styles.input} type="password" inputMode="numeric" placeholder="PIN"
                   value={pin} onChange={(e) => setPin(e.target.value)} disabled={loading || !backupConfirmed} />
                 <input className={styles.input} type="password" inputMode="numeric" placeholder="Confirm PIN"
@@ -356,7 +356,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
               </>
             )}
             <button className={styles.primaryBtn} onClick={handleLocal} disabled={loading || !localCanContinue}>
-              {loading ? 'Setting up…' : localMethod === 'pin' ? 'Encrypt & continue' : 'Continue with Face ID'}
+              {loading ? 'Setting up…' : localMethod === 'pin' ? 'Encrypt & continue' : `Continue with ${biometricLabel()}`}
             </button>
             <button className={styles.ghostBtn} onClick={() => { setShowLocal(false); setError(null); }} disabled={loading}>
               ← Back
@@ -385,11 +385,9 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             >
               Connect Bunker (iOS / Remote Signer)
             </button>
-            {isIOS && (
-              <button className={styles.secondaryBtn} onClick={openLocal} disabled={loading}>
-                Use a local key (Face ID)
-              </button>
-            )}
+            <button className={styles.secondaryBtn} onClick={openLocal} disabled={loading}>
+              Use a local key ({biometricLabel()})
+            </button>
             {/* #4: a locked-out local user who hit "Use a different login" can return to the Face ID unlock gate.
                 backLabel defaults to "← Back" (Settings door + fork login); the unlock escape passes the original. */}
             {onBack && (

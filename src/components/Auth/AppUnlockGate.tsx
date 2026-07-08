@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { deriveStoreKey } from '../../lib/nostr/keyVault';
 import { setStoreKey } from '../../lib/store/storeCrypto';
+import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
 import styles from './NostrAuthGate.module.css';
 
@@ -61,7 +62,7 @@ export function AppUnlockGate() {
         )}
 
         <button className={styles.primaryBtn} onClick={unlock} disabled={!canUnlock}>
-          {loading ? 'Unlocking…' : pinMode ? 'Unlock' : '🔒 Unlock with Face ID'}
+          {loading ? 'Unlocking…' : pinMode ? 'Unlock' : `🔒 Unlock with ${biometricLabel()}`}
         </button>
 
         {error && <p className={styles.error}>{error}</p>}

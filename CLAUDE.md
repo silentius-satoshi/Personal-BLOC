@@ -3215,18 +3215,20 @@ instead of bare console.warn, and log messages never include amounts.
 | NIP-07 browser extension | NLogin.fromExtension() | Desktop; auto-restores on reload |
 | Remote signer QR | NLogin.fromNostrConnect() | Desktop QR scanned with Primal iOS; persists across reload (nostrLogin) |
 | Remote signer deep link | NLogin.fromNostrConnect() | Mobile two-step: warm relay → tap Open Signer App → approve → callback; persists across reload |
-| Local key (Face ID) | `NSecSigner` + `keyVault` | **iOS-only** (Step 4); encrypted local nsec, Face-ID(PRF)/PIN unlock. Import behind a HARD BACKUP GATE; on relaunch an "authenticated-but-locked" `LocalUnlockGate` (gesture-driven unlock), NOT the full login. nip07/nip46 keep optimistic auto-restore |
+| Local key (biometric) | `NSecSigner` + `keyVault` | **All platforms** (Step 4; the iOS-only gate was removed in R1). Encrypted local nsec, WebAuthn-PRF/PIN unlock; label is PLATFORM-HONEST via `src/lib/biometricLabel.ts` — "Face ID" on iOS, "passkey" elsewhere (Touch ID / Windows Hello / QR-to-phone). Import behind a HARD BACKUP GATE; on relaunch an "authenticated-but-locked" `LocalUnlockGate` (gesture-driven unlock), NOT the full login. nip07/nip46 keep optimistic auto-restore |
 
 ### Writer local-key signer (Nostr Step 4) — `keyVault` + `'local'` method
 
-Third auth option (additive; NIP-07/46 untouched): an **encrypted local nsec, iOS-only, Face-ID-unlocked**,
-to give iOS one-tap reliability without the NIP-46 deeplink/QR race. Built on a NEW **identity-agnostic
+Third auth option (additive; NIP-07/46 untouched): an **encrypted local nsec, biometric-unlocked, on ALL
+platforms** (R1 removed the original iOS-only gate + made the labels platform-honest via `biometricLabel` —
+"Face ID" on iOS, "passkey" elsewhere), giving one-tap reliability without the NIP-46 deeplink/QR race. Built on a NEW **identity-agnostic
 `src/lib/nostr/keyVault.ts`** (PRF primary / PIN fallback, client-side, no server: PBKDF2→HKDF→AES-GCM via
 WebCrypto; `wrapSecretKey`/`unwrapSecretKey`/`probeKeyVaultCapability`; unwrapped key in MEMORY ONLY,
 never persisted) — shared infra the queued viewer-access phase reuses.
 - **HARD BACKUP GATE (load-bearing):** the device copy is convenience, never the only copy — the wrap path
   is structurally unreachable until the user checks "I have my nsec backed up outside this device"
-  (`NostrAuthGate` local flow, iOS-gated via `isIOS`). Losing the only copy = permanent data loss.
+  (`NostrAuthGate` local flow; R1 removed the iOS-only entry gate so this flow is reachable on all platforms).
+  Losing the only copy = permanent data loss.
 - **Launch-unlock gate (the wrinkle):** `useNostrAutoRestore` does NOT optimistically auth for `'local'`
   (Face ID needs a user gesture); `AppShell` renders `LocalUnlockGate` (a NEW branch BEFORE `NostrAuthGate`,
   gated `nostrSigningMethod==='local' && nostrPubkey && !nostrSigner && !isAuthenticated`) — tap to unlock →
@@ -3338,8 +3340,10 @@ src/
   components/Auth/
     NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring; calls markSignerFresh()
                                     # after setting the signer so syncNow doesn't rebuild a duplicate
-                                    # NConnectSigner session post-login. + the iOS-only "Use a local key
-                                    # (Face ID)" flow (hard backup gate → nsec decode → keyVault wrap → NSecSigner).
+                                    # NConnectSigner session post-login. + the all-platform "Use a local key"
+                                    # flow (R1 removed the iOS-only entry gate; label is platform-honest via
+                                    # `src/lib/biometricLabel.ts` — "Face ID" on iOS / "passkey" elsewhere)
+                                    # (hard backup gate → nsec decode → keyVault wrap → NSecSigner).
                                     # #4: optional onBack prop renders a back button in the main options view; its label
                                     # is the Phase-2 `backLabel?` prop (default "← Back"). AppShell's locked-out-unlock
                                     # escape passes backLabel="← Back to Face ID unlock" (+ onBack=()=>setUnlockEscape(false)
