@@ -128,6 +128,65 @@
   margin: 8px 0;
 }
 
+/* R2b-2 — the Recovery Key entry: a STACKED title+sublabel row (the card is align-items/text-align center,
+   so this must opt out of both). Mirrors ChoosePathView's .path/.pathTitle/.pathSub, but built from THIS
+   file's tokens so nothing depends on the onboarding-modal stylesheet. */
+.methodBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  gap: 3px;
+  width: 100%;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 13px 18px;
+  cursor: pointer;
+  font-family: inherit;
+  margin-top: 8px;
+  transition: border-color 0.12s, color 0.12s;
+}
+.methodBtn:hover:not(:disabled) { border-color: var(--text-ghost); }
+.methodBtn:disabled { opacity: 0.45; cursor: default; }
+.methodTitle { font-size: 14px; font-weight: 650; color: var(--text-primary); }
+.methodSub   { font-size: 12px; color: var(--text-ghost); line-height: 1.4; }
+
+/* Advanced sign-in disclosure — collapsed by default; the chevron rotates via [data-open]. */
+.disclosureBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 10px 2px;
+  color: var(--text-ghost);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.disclosureBtn:hover:not(:disabled) { color: var(--text-primary); }
+.disclosureBtn:disabled { opacity: 0.45; cursor: default; }
+
+.chevron {
+  display: inline-block;
+  font-size: 16px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.chevron[data-open] { transform: rotate(90deg); }
+
+.disclosurePanel {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: 100%;
+}
+
 .qrView {
   display: flex;
   flex-direction: column;

@@ -27,7 +27,11 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
       const relays = await fetchUserRelays(nostrPubkey);
       useStore.getState().setNostrRelays(relays);
     }
-    const pullOk = await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
+    const { ok: pullOk, planFound } = await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
+    // R2b-2: record whether this key has a plan on the relays — set EXACTLY ONCE per session (the store action
+    // holds a module-level latch), so the notice's Dismiss (which writes null) can never be re-opened by the
+    // next foreground sync. Viewer installs never reach doSyncNow, and a backup-gated key returns above.
+    useStore.getState().recordRemotePlanFound(planFound);
     // The settings pull query has now resolved this session (whether it hydrated real data or the relay was
     // empty). Set regardless of pullOk — a decrypt failure must not permanently block publishing; a brand-new
     // owner with an empty relay must still be able to publish. Set only in this normal-completion path (a THROW

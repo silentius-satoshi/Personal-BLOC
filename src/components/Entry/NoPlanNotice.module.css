@@ -1,0 +1,41 @@
+/* R2b-2 — mirrors SimpleModeView's .reanchorBanner, the app's only other dismissible banner. Amber-tinted,
+   noticeable but not alarming; a text "Dismiss" rather than a ✕ (no ✕-dismiss precedent exists). */
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(232, 168, 74, 0.08);
+  border: 1px solid rgba(232, 168, 74, 0.3);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 0 2px 14px;   /* matches ViewerHomeView's .greeting / .chartSlot horizontal inset + rhythm */
+}
+
+.text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  flex: 1;
+  min-width: 180px;
+}
+
+.dismiss {
+  flex-shrink: 0;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s, background 0.12s;
+}
+
+.dismiss:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}

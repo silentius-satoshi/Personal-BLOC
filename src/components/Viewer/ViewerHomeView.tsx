@@ -25,6 +25,7 @@ export interface ViewerHomeViewProps {
   previewSafeSnap?: SafeSnapshot | null;   // owner "Preview as viewer": inject the snap (safe) or null (force trusted live-derive); undefined = viewer device (store-driven)
   preview?: boolean;                       // owner preview → hide settings-nav affordances + bottom nav; pill age reads 'live preview'
   ownerNav?: ReactNode;                    // owner IA — the 5-icon header cluster (Dashboard active). Present ⇒ owner-dashboard mount: replaces the lone ⚙, suppresses the bottom nav, pill reads 'live'. viewer/preview never pass it → unchanged.
+  notice?: ReactNode;                      // R2b-2 — a slim owner-only card above the greeting (NoPlanNotice). Rendered ONLY when ownerNav is present, so it can never reach a viewer or pollute Preview-as-viewer fidelity.
 }
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -96,7 +97,7 @@ export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerS
   return computeViewerSafety(safeSnap, livePrice, inputs);
 }
 
-export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, ownerNav }: ViewerHomeViewProps) {
+export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, ownerNav, notice }: ViewerHomeViewProps) {
   const s = useViewerSafety(previewSafeSnap);
   const lastSync = useStore((st) => st.viewerLastSyncAt);
   const displayName = useStore((st) => st.viewerDisplayName);   // V3 — device-local, never synced
@@ -128,6 +129,10 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
             </button>
           )}
         </header>
+
+        {/* R2b-2 — owner-only notice slot. `ownerNav` is the owner-dashboard discriminator (the real viewer and
+            ViewerPreview never pass it), so this can't leak into a viewer surface. */}
+        {ownerNav && notice}
 
         {/* Greeting */}
         <div className={styles.greeting}>

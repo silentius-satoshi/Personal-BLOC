@@ -49,6 +49,7 @@ import { OnboardingModal }   from '../Onboarding/OnboardingModal';
 import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
+import { NoPlanNotice }      from '../Entry/NoPlanNotice';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
@@ -297,6 +298,7 @@ export function AppShell() {
       <ViewerHomeView
         previewSafeSnap={null}   // owner Dashboard — trusted LIVE derive (no snap, no banner, no Safe/Trusted toggle)
         onOpenSettings={goSettings}
+        notice={<NoPlanNotice />}   // R2b-2 — the ONLY `notice` call site; self-gating, owner-only (gates D/E/F already passed)
         ownerNav={
           <HeaderNavCluster
             active="dashboard"

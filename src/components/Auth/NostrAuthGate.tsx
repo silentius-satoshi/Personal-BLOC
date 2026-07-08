@@ -7,6 +7,8 @@ import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { probeKeyVaultCapability, type WrapMethod } from '../../lib/nostr/keyVault';
+import { skFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Key';
+import { classifyRecoveryInput } from '../../lib/nostr/recoveryInput';
 import { biometricLabel } from '../../lib/biometricLabel';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
@@ -30,6 +32,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const { nostr }     = useNostr();
 
   const [showBunker, setShowBunker]           = useState(false);
+  const [showAdvanced, setShowAdvanced]       = useState(false);   // R2b-2: extension / QR / bunker live behind this, collapsed by default
   const [bunkerUri, setBunkerUri]             = useState('');
   const [loading, setLoading]                 = useState(false);
   const [error, setError]                     = useState<string | null>(null);
@@ -45,12 +48,13 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
 
   const hasNip07 = typeof window !== 'undefined' && !!(window as any).nostr;
 
-  // ── Local-key (iOS Face-ID signer) flow ──────────────────────────────────────
+  // ── Recovery Key (local-key / Face-ID signer) flow ───────────────────────────
   const [showLocal, setShowLocal]         = useState(false);
   const hasWrappedKey = !!useStore((s) => s.writerKeyWrapped);   // #6: a wrapped key survives a local→nip46→local switch
   const [forceImport, setForceImport]     = useState(false);     // #6: user chose to import a different key
   const [backupConfirmed, setBackupConfirmed] = useState(false);
-  const [nsecInput, setNsecInput]         = useState('');
+  const [recoveryInput, setRecoveryInput] = useState('');   // R2b-2: an nsec OR a 12-word phrase (was nsecInput)
+  const [reveal, setReveal]               = useState(false);   // proofread a typed phrase (masked by default)
   const [localMethod, setLocalMethod]     = useState<WrapMethod | null>(null);
   const [pin, setPin]                     = useState('');
   const [pinConfirm, setPinConfirm]       = useState('');
@@ -67,7 +71,8 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setShowLocal(true);
     setForceImport(false);
     setBackupConfirmed(false);
-    setNsecInput('');
+    setRecoveryInput('');   // the ONLY scrub site for the secret input (see the residual note below)
+    setReveal(false);
     setLocalMethod(null);
     setPin('');
     setPinConfirm('');
@@ -80,16 +85,37 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setError(null);
     let sk: Uint8Array | null = null;
     try {
-      let decoded;
-      try { decoded = nip19.decode(nsecInput.trim()); }
-      catch { setError('Not a valid nsec'); setLoading(false); return; }
-      if (decoded.type !== 'nsec') { setError('That key is not an nsec'); setLoading(false); return; }
-      sk = decoded.data as Uint8Array;
+      // R2b-2 dual-format: classify by SHAPE, then let the format's own crypto own the verdict.
+      const input = classifyRecoveryInput(recoveryInput);
+      if (input.kind === 'nsec') {
+        let decoded;
+        try { decoded = nip19.decode(input.value); }
+        catch { setError('Not a valid nsec'); setLoading(false); return; }
+        if (decoded.type !== 'nsec') { setError('That key is not an nsec'); setLoading(false); return; }
+        sk = decoded.data as Uint8Array;
+      } else if (input.kind === 'words') {
+        try { sk = skFromWords(input.value); }
+        catch (e) {
+          // InvalidSeedWordsError's message is user-facing prose by contract (nip06Key.ts) — render it verbatim.
+          setError(e instanceof InvalidSeedWordsError ? e.message : 'Not a valid Recovery Key');
+          setLoading(false);
+          return;
+        }
+      } else {
+        setError('Enter your 12-word Recovery Key, or an nsec.');
+        setLoading(false);
+        return;
+      }
 
       const method = localMethod ?? await probeKeyVaultCapability();
-      // Backup gate (R2a-1): the user pasted an nsec they already hold elsewhere (the hard backup gate above
+      // Backup gate (R2a-1): the user holds this key elsewhere already (the hard backup gate above
       // enforces that) → never gated. Stamped BEFORE establishLocalOwner's internal syncNow.
       useStore.getState().setKeyProvenance('imported');
+      // ⚠ R2b-2 INVARIANT — an IMPORTED phrase wraps the DERIVED SK (payloadKind 'sk'), never the entropy.
+      // establishLocalOwner's wrapSecretKey call is 4-arg, so 'sk' is the default; do not "fix" this into
+      // entropy storage. R2c's word-quiz re-display exists for keys BORN IN-APP ('nip06-entropy'); an
+      // imported-words plan's Recovery Key is the phrase the user already holds, so unwrapRecoveryPayload
+      // correctly reports 'sk' and RevealRecoveryKey falls back to nsec display.
       await establishLocalOwner(sk, method, nostr, { pin, keyLabel });   // shared with OwnerKeySetup K3
       onSuccess();
     } catch (err: any) {
@@ -124,7 +150,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   };
 
   const localCanContinue =
-    backupConfirmed && !!nsecInput.trim() &&
+    backupConfirmed && !!recoveryInput.trim() &&
     (localMethod !== 'pin' || (pin.length >= 4 && pin === pinConfirm));
 
   const handleNip07 = async () => {
@@ -329,20 +355,35 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             <label className={styles.hint} style={{ display: 'flex', gap: 8, textAlign: 'left', alignItems: 'flex-start' }}>
               <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
               <span>
-                <strong>⚠ Back up your nsec first — this is not a backup.</strong> This stores an <em>encrypted copy</em>
+                <strong>⚠ Back up your Recovery Key first — this is not a backup.</strong> This stores an <em>encrypted copy</em>
                 on this device, unlocked by {biometricLabel()}, for convenience. If this device is lost, reset, or {biometricLabel()}
-                enrollment changes, this copy can be gone — and without your nsec saved elsewhere, all your
-                encrypted data is permanently unrecoverable. I have my nsec backed up somewhere safe outside this device.
+                enrollment changes, this copy can be gone — and without your Recovery Key saved elsewhere, all your
+                encrypted data is permanently unrecoverable. I have my Recovery Key (12 words or nsec) backed up
+                somewhere safe outside this device.
               </span>
             </label>
             <input
               className={styles.input}
-              type="password"
-              placeholder="nsec1…"
-              value={nsecInput}
-              onChange={(e) => setNsecInput(e.target.value)}
+              type={reveal ? 'text' : 'password'}
+              placeholder="nsec1… or your 12 words"
+              value={recoveryInput}
+              onChange={(e) => setRecoveryInput(e.target.value)}
               disabled={loading || !backupConfirmed}
+              // ⚠ LOAD-BEARING: iOS silently autocapitalizes/autocorrects a typed phrase, which would mangle the
+              // words into a checksum failure (or, worse, a valid-but-different phrase). Same discipline as
+              // ViewerLoginFlow's passphrase field. autoComplete off keeps the secret out of browser autofill.
+              autoComplete="off"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
+            <button
+              className={styles.ghostBtn}
+              onClick={() => setReveal((v) => !v)}
+              disabled={loading || !backupConfirmed}
+            >
+              {reveal ? 'Hide' : 'Show'}
+            </button>
             {localMethod !== 'pin' && (
               <input
                 className={styles.input}
@@ -372,29 +413,49 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
           )
         ) : !showBunker ? (
           <>
-            {hasNip07 && (
-              <button className={styles.primaryBtn} onClick={handleNip07} disabled={loading}>
-                {loading ? 'Connecting…' : '⚡ Sign in with Extension'}
-              </button>
+            {/* R2b-2 IA: the Recovery Key is THE door. The three protocol methods below are for people who
+                already know they want them — collapsed by default, order + handlers unchanged. */}
+            <button className={styles.methodBtn} onClick={openLocal} disabled={loading}>
+              <span className={styles.methodTitle}>Use my Recovery Key</span>
+              <span className={styles.methodSub}>12 words or nsec — unlocks or imports on this device</span>
+            </button>
+
+            <button
+              className={styles.disclosureBtn}
+              onClick={() => setShowAdvanced((v) => !v)}
+              aria-expanded={showAdvanced}
+              aria-controls="advanced-signin"
+              disabled={loading}
+            >
+              <span>Advanced sign-in</span>
+              <span className={styles.chevron} data-open={showAdvanced || undefined} aria-hidden="true">›</span>
+            </button>
+
+            {showAdvanced && (
+              <div id="advanced-signin" className={styles.disclosurePanel}>
+                {hasNip07 && (
+                  <button className={styles.primaryBtn} onClick={handleNip07} disabled={loading}>
+                    {loading ? 'Connecting…' : '⚡ Sign in with Extension'}
+                  </button>
+                )}
+                {hasNip07 && <div className={styles.divider} />}
+                <button
+                  className={styles.secondaryBtn}
+                  onClick={generateSession}
+                  disabled={loading}
+                >
+                  {isMobile ? 'Open Signer App' : 'Scan QR Code'}
+                </button>
+                <button
+                  className={styles.secondaryBtn}
+                  onClick={() => { setShowBunker(true); setError(null); }}
+                  disabled={loading}
+                >
+                  Connect Bunker (iOS / Remote Signer)
+                </button>
+              </div>
             )}
-            {hasNip07 && <div className={styles.divider} />}
-            <button
-              className={styles.secondaryBtn}
-              onClick={generateSession}
-              disabled={loading}
-            >
-              {isMobile ? 'Open Signer App' : 'Scan QR Code'}
-            </button>
-            <button
-              className={styles.secondaryBtn}
-              onClick={() => { setShowBunker(true); setError(null); }}
-              disabled={loading}
-            >
-              Connect Bunker (iOS / Remote Signer)
-            </button>
-            <button className={styles.secondaryBtn} onClick={openLocal} disabled={loading}>
-              Use a local key ({biometricLabel()})
-            </button>
+
             {/* #4: a locked-out local user who hit "Use a different login" can return to the Face ID unlock gate.
                 backLabel defaults to "← Back" (Settings door + fork login); the unlock escape passes the original. */}
             {onBack && (

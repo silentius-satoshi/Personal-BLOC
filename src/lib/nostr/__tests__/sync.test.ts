@@ -93,7 +93,7 @@ describe('fetchAndSync', () => {
     ]);
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toBe(true);
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: true });
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
@@ -209,7 +209,9 @@ describe('fetchAndSync', () => {
     expect(mockPublishRecordsImmediate).toHaveBeenCalled();        // repair-on-detect: relay is behind → publish now
   });
 
-  it('decrypt failure → resolves false, nothing applied', async () => {
+  // R2b-2: ok=false, but planFound stays TRUE — an unreachable signer must NEVER be reported as "no plan
+  // found on this key" (that would fire the NoPlanNotice on a user whose plan is sitting right there).
+  it('decrypt failure → ok:false, nothing applied, but planFound stays true (events existed)', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {});   // silence the nostrLog mirror
     resetStore();
     mockPool.querySync.mockResolvedValue([
@@ -220,11 +222,33 @@ describe('fetchAndSync', () => {
     signer.nip44.decrypt = vi.fn().mockRejectedValue(new Error('signer offline'));
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(signer, 'pk', ['wss://r'])).resolves.toBe(false);
+    await expect(fetchAndSync(signer, 'pk', ['wss://r'])).resolves.toEqual({ ok: false, planFound: true });
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
     warnSpy.mockRestore();
+  });
+
+  // R2b-2: the case the whole notice exists for — a valid key with nothing published under it.
+  it('empty relay → ok:true, planFound:false, nothing applied', async () => {
+    resetStore();
+    mockPool.querySync.mockResolvedValue([]);
+
+    const { fetchAndSync } = await import('../sync');
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: false });
+
+    expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
+    expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
+  });
+
+  // An event with no `d` tag is skipped by the latestByDTag loop, so it must not count as a plan either.
+  it('a d-tag-less event does not count as a plan (planFound:false)', async () => {
+    resetStore();
+    const noDTag = { ...makeEvent('personal-bloc:settings:v1', 800), tags: [] };
+    mockPool.querySync.mockResolvedValue([noDTag]);
+
+    const { fetchAndSync } = await import('../sync');
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: false });
   });
 
   it('remote payload identical to local state → no apply, no dirty', async () => {
@@ -266,7 +290,7 @@ describe('fetchAndSync', () => {
     ]);
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toBe(true);
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: true });
 
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();   // entries applied
     expect(mockStoreState.setDayLog).toHaveBeenCalledWith([]);     // dayLog defaulted to [] (no throw)

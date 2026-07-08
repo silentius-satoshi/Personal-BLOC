@@ -91,12 +91,19 @@ export async function applyRemoteEvent(
   return true;
 }
 
-/** Returns true if no decrypt failure occurred (parse failures are data-level skips, not signer failures). */
+/** The result of one owner pull.
+ *  `ok`        — true if no decrypt failure occurred (parse failures are data-level skips, not signer failures).
+ *  `planFound` — R2b-2: did ANY owner plan event exist on the relays? Deliberately INDEPENDENT of `ok`. */
+export interface FetchAndSyncResult {
+  ok: boolean;
+  planFound: boolean;
+}
+
 export async function fetchAndSync(
   signer: NostrSigner,
   pubkey: string,
   relays: string[] = FALLBACK_RELAYS,
-): Promise<boolean> {
+): Promise<FetchAndSyncResult> {
   const pool = new SimplePool();
 
   const events = await pool.querySync(relays, {
@@ -124,5 +131,11 @@ export async function fetchAndSync(
     const ok = await applyRemoteEvent(signer, pubkey, event, opTimeoutMs);
     if (!ok) { decryptFailed = true; break; }   // rest would fail identically
   }
-  return !decryptFailed;   // reconnect-flag management lives in syncNow (sole caller)
+  // reconnect-flag management lives in syncNow (sole caller).
+  // planFound reads latestByDTag, which is built BEFORE the decrypt loop and whose keys can only be the two
+  // owner d-tags (the query filters authors:[pubkey] + #d:[SETTINGS_DTAG, RECORDS_DTAG], and the loop above
+  // `continue`s on a missing d-tag). So it means "an owner plan exists on the relays" and stays TRUE even when
+  // a decrypt failure sets ok=false — an unreachable signer must never be reported as "no plan found".
+  // Decrypt/apply semantics are untouched.
+  return { ok: !decryptFailed, planFound: latestByDTag.size > 0 };
 }

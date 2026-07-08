@@ -478,6 +478,15 @@ export interface StoreState {
   // dirty-trigger, so a seed-default store can never clobber real relay data on fresh-install→login.
   initialSettingsPullDone:    boolean;
   setInitialSettingsPullDone: (v: boolean) => void;
+  // R2b-2 — did this session's FIRST owner pull find a plan on the relays? Transient (NOT persisted/synced;
+  // in partializeState's omit list). null = not yet determined, OR the notice was dismissed. Signing in with a
+  // key that has no plan must SAY SO rather than silently rendering a seed-default dashboard.
+  //   recordRemotePlanFound — syncNow's write. Latched: exactly once per session (see the module-level flag).
+  //   setRemotePlanFound    — the notice's Dismiss (→ null). Does NOT unlatch, so the next foreground sync
+  //                           cannot re-open a dismissed notice.
+  remotePlanFound:       boolean | null;
+  setRemotePlanFound:    (v: boolean | null) => void;
+  recordRemotePlanFound: (v: boolean) => void;
   nostrReconnectNeeded:    boolean;
   setNostrReconnectNeeded: (v: boolean) => void;
 
@@ -499,6 +508,12 @@ export interface StoreState {
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let recordsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+// R2b-2 — the remotePlanFound SESSION LATCH. Module-scoped (like the timers above), so it resets on every boot.
+// ⚠ Why a latch and not just `remotePlanFound === null`: Dismiss writes null, so a bare null-check would let the
+// NEXT foreground syncNow re-write `false` and resurrect the notice. The latch makes "syncNow sets it exactly
+// once per session" and "the notice is one-time" true simultaneously — on the first pull the field IS null, so
+// both conditions agree; afterwards only the latch holds.
+let remotePlanFoundResolved = false;
 
 // Trailing debounce (~400ms) over the records publish. EventSheet saves a flow+reading as two back-to-back
 // addDayEvent calls, each firing this; coalescing them into ONE publish prevents two publishes of the same
@@ -871,7 +886,7 @@ function monthOf(ev: DayEvent | undefined): number | null {
 // Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
 // self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
 export function partializeState(state: StoreState) {
-  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, remotePlanFound, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
   return rest;
 }
 
@@ -1554,6 +1569,14 @@ export const useStore = create<StoreState>()(
   setNostrSyncing: (v) => set({ nostrSyncing: v }),
   initialSettingsPullDone:    false,   // session-transient — reset each boot (never persisted/synced)
   setInitialSettingsPullDone: (v) => set({ initialSettingsPullDone: v }),
+  // R2b-2 — see the interface doc + the remotePlanFoundResolved latch above.
+  remotePlanFound:    null,   // session-transient — not yet determined
+  setRemotePlanFound: (v) => set({ remotePlanFound: v }),   // Dismiss (→ null); deliberately does NOT unlatch
+  recordRemotePlanFound: (v) => {
+    if (remotePlanFoundResolved) return;   // exactly once per session — a dismissed notice can't be re-opened
+    remotePlanFoundResolved = true;
+    set({ remotePlanFound: v });
+  },
   nostrReconnectNeeded:    false,
   setNostrReconnectNeeded: (v) => set({ nostrReconnectNeeded: v }),
 

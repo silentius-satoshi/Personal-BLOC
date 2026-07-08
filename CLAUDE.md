@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (703 tests — all must pass before every commit)
+- Vitest (723 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -2126,10 +2126,14 @@ render ladder (that ladder refactor is deferred Phase 3):
 
 - **`src/components/Entry/ChoosePathView.tsx`** (+ `.module.css`) — the sovereign 3-path first-run
   fork that REPLACES OnboardingModal's step-1 welcome. Pure presentational, renders as the step-1
-  content inside the modal. Props `{onStartNew, onLogIn, onConnectShared}`. Brand ring + tagline +
-  3 cards (Start a new plan [accented `--btc`] / Log in to my plan / Connect to a shared plan) +
-  footer. **"Start a new plan" copy is softened** ("set up a fresh plan") — it still routes to the
-  numbers wizard; owner key-generation is the committed **Phase 1.5** fast-follow, NOT this phase.
+  content inside the modal. Props `{onStartNew, onLogIn, onConnectShared}` (prop names unchanged).
+  Brand ring + tagline + 3 cards + footer. **R2b-2 — the copy is IDENTITY-FRAMED, not protocol-framed:
+  the fork asks what the user HAS, never what technology they hold, and the word "Nostr" appears nowhere
+  (it now lives behind Advanced sign-in in NostrAuthGate).** Card 1 (accented `--btc`, `onStartNew`) =
+  **"Get started"** / "Free, on this device — we'll create a key for you" → OwnerKeySetup, then the
+  numbers wizard. Card 2 (`onLogIn`) = **"I have a plan or a key"** / "Sign in with your Recovery Key,
+  extension, or signer — we'll load your plan, or start fresh on your key" (the second clause is the
+  honest promise the `remotePlanFound` notice keeps). Card 3 (`onConnectShared`) unchanged.
 - **`src/components/Auth/ViewerLoginFlow.tsx`** (+ `.module.css`) — the viewer-login flow EXTRACTED
   VERBATIM from OnboardingModal (byte-identical crypto/key sequence: `wrapSecretKey` →
   `setUnwrappedViewerKey` → `clearViewerData` → `setViewerWriterPubkey` → `setViewerMode(true)`).
@@ -2945,7 +2949,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-703 tests — `npx vitest run` before every commit.
+723 tests — `npx vitest run` before every commit.
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
 - `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
@@ -2991,7 +2995,9 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 - `src/hooks/__tests__/useRelayStatus.test.ts` — P3 pure `readyStateToStatus` mapping (1→connected, 0→connecting, 2/3/other→offline); the hook's socket lifecycle is device-verified, not unit-tested
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
-- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). Seed-clobber Fix B: the FIRST pull (`!initialSettingsPullDone`) hydrates real remote settings even when `settingsDirty` is spuriously true (the fixture default is `initialSettingsPullDone: true` = established session)
+- `src/lib/nostr/__tests__/recoveryInput.test.ts` — R2b-2 shape classification (pure, node): `nsec1…` → `nsec` trimmed; a MALFORMED `nsec1garbage` still routes to the nsec door (nip19.decode owns the verdict); UPPERCASE `NSEC1…` → not nsec (bech32 is lowercase) → single token → unknown; exactly 12 tokens → `words`; newlines/tabs/doubled-spaces collapse to single spaces; **12 NONSENSE tokens → `words`, then `skFromWords` throws `InvalidSeedWordsError`** (the classifier/validator boundary); a real phrase round-trips classifier → skFromWords → 32-byte sk; unknown table (empty, whitespace-only, 11 tokens, 13 tokens, single word, garbage, an npub)
+- `src/store/__tests__/remotePlanFound.test.ts` — R2b-2 (`vi.hoisted` localStorage shim): defaults null; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (session-transient — persisting it would surface a stale `false` on the next boot before any pull ran). Set-once latch asserted as ONE lifecycle `it` (the latch is module-level and vitest isolates the registry per FILE, not per `it`): record(false) → false; record(true) → still false; setRemotePlanFound(null) [Dismiss] → null; **record(false) again → still null** (a bare `=== null` guard instead of the latch would resurrect the notice here)
+- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). Seed-clobber Fix B: the FIRST pull (`!initialSettingsPullDone`) hydrates real remote settings even when `settingsDirty` is spuriously true (the fixture default is `initialSettingsPullDone: true` = established session)
 - `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 33-key literal) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
 - `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
@@ -3112,7 +3118,7 @@ location for existing plaintext users), write-through on set, and EXCLUDED from 
 mode, the owner it follows, and a v17-migrant plaintext-nsec holder), and `viewerKeyWrapped`/`viewerKeyWrapMeta`
 (Phase 3 — the viewer key wrapped at rest via keyVault; key material, MUST never leave the device). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
-`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`).
+`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`/`remotePlanFound`).
 **At-rest store encryption — ⚠ USER-FACING FLOW REVERTED (lockout-proof).** The Phase B/C user flow (Settings
 "Encrypt local data" toggle + `AppUnlockGate`/`StoreMigrationGate` render branches + the conditional encrypted
 persist adapter) **locked users out twice on real iOS and has been removed.** The user-facing flow stays reverted —
@@ -3207,6 +3213,50 @@ contents; collateral is represented by a `pendingNonZero` boolean). The on-devic
 figures in its COLLATERAL section — that's the point of on-device verification. `nostrLog()`
 (lib/nostr/log.ts) is the standard for Nostr-layer logging (console mirror + ring) — new code uses it
 instead of bare console.warn, and log messages never include amounts.
+
+---
+
+## "No plan found on this key" — `remotePlanFound` (R2b-2; no store version bump)
+
+Sign in with a key that has nothing published under it and the app used to render a **seed-default dashboard
+with no explanation** — the user could not tell "my plan failed to load" from "this key has no plan yet." The
+entry fork now *promises* "we'll load your plan, or start fresh on your key"; this is the code that keeps the
+second half of that promise honest.
+
+- **`fetchAndSync` → `{ ok, planFound }`** (was a bare boolean; its 3 test assertions + `syncNow.ts` updated).
+  `planFound = latestByDTag.size > 0`, computed **before** the decrypt loop from a map whose keys can only be the
+  two owner d-tags. So it survives `ok: false` — ⚠ **an unreachable signer must NEVER be reported as "no plan
+  found"** (pinned by a test: decrypt failure + events present → `{ ok: false, planFound: true }`). A d-tag-less
+  event doesn't count either (the build loop `continue`s past it). Decrypt/apply semantics are untouched.
+- **Store `remotePlanFound: boolean | null`** — SESSION-TRANSIENT (in `partializeState`'s omit destructure,
+  pinned by a test; never in `buildSettingsPayload`/`SETTINGS_FIELDS`/either snapshot). `null` = not yet
+  determined **or** dismissed.
+  - `recordRemotePlanFound(v)` — syncNow's first-pull write. **LATCHED** by a module-level
+    `remotePlanFoundResolved` (beside the debounce timers), so it fires exactly once per session.
+  - `setRemotePlanFound(v)` — the notice's **Dismiss** (`→ null`). Deliberately does **not** unlatch.
+- **⚠ Why a latch and not a bare `=== null` check.** Dismiss writes `null`, so a bare null-guard would let the
+  **next foreground `syncNow`** re-write `false` and resurrect the banner. The latch makes "syncNow sets it
+  exactly once per session" and "the notice is one-time" true simultaneously: on the first pull the field *is*
+  null, so both conditions agree; afterwards only the latch holds.
+- **Dismissal is per-session by design** — the field is transient and the latch is module-scoped, so a **reload
+  on a still-empty plan may re-show the notice; the user's first edit ends it permanently** (the settings
+  publish means the next pull sees `planFound: true`).
+- **Never touched by viewers or gated keys.** A `viewerMode` install never reaches `doSyncNow` (`useNostrSync`'s
+  effect early-returns and `triggerSync` no-ops); a backup-gated generated key returns at `syncNow.ts`'s gate
+  before `fetchAndSync`. `clearViewerData` deliberately does not reset it.
+- **`components/Entry/NoPlanNotice.tsx`** (+ `.module.css`) — self-gating: renders `null` unless
+  `remotePlanFound === false && keyProvenance !== 'generated'` (a freshly generated key obviously has no plan;
+  the notice would be noise — and it's gated out of syncNow anyway, so the field stays `null` for it). Copy:
+  *"No plan found on this key — starting fresh. Your first edits will create it."* Visual language clones
+  `SimpleModeView`'s `.reanchorBanner` (the app's only other dismissible banner); a text **Dismiss**, not a ✕
+  (no ✕-dismiss precedent exists).
+- **⚠ OWNER-ONLY BY CONSTRUCTION.** `ViewerHomeView` gains `notice?: ReactNode`, rendered `{ownerNav && notice}`
+  after `</header>`. `AppShell`'s `simpleView === 'dashboard'` arm of `renderOwnerJournal()` is the **only** call
+  site that passes it, and it sits after gates D/E/F (`isAuthenticated && isOwner` guaranteed). The real viewer,
+  the edge-back under-layer, and `ViewerPreview` pass neither `ownerNav` nor `notice` → the notice cannot leak
+  into a viewer surface or corrupt Preview-as-viewer fidelity. **Never add a branch to AppShell's gate ternary**
+  — anything there replaces the whole app. Accepted scope: an owner on Journal or in full mode sees it on their
+  next Dashboard visit (Dashboard is the default `simpleView`, so a fresh sign-in lands there).
 
 ---
 
@@ -3597,7 +3647,29 @@ src/
                                     # section shows "Unlock with Face ID" (handleUnlockExisting → setNostrSigningMethod
                                     # ('local') → restoreSigner) instead of forcing an nsec re-import; a "Use a different
                                     # key" ghost sets forceImport to reveal the import form, and a 'pubkey mismatch' throw
-                                    # (different account) catch-and-falls-back to import with a message
+                                    # (different account) catch-and-falls-back to import with a message.
+                                    # R2b-2 IA: the options view leads with a STACKED "Use my Recovery Key" row
+                                    # (.methodBtn/.methodTitle/.methodSub — the card is align-items/text-align CENTER, so
+                                    # the stacked row must opt out of both) subtitled "12 words or nsec — unlocks or imports
+                                    # on this device" → openLocal (unchanged). The three PROTOCOL methods (nip07 extension,
+                                    # its divider, QR remote-signer, bunker) collapse under an "Advanced sign-in" disclosure
+                                    # (.disclosureBtn + aria-expanded/aria-controls + a [data-open] chevron; .disclosurePanel),
+                                    # COLLAPSED BY DEFAULT, order + handlers byte-identical. onBack sits outside the panel;
+                                    # the #6 unlock-existing branch, the QR/bunker sub-views, and the viewer path
+                                    # (ViewerLoginFlow — a different component) are untouched.
+                                    # R2b-2 DUAL-FORMAT IMPORT: the paste field takes an nsec OR 12 words (state renamed
+                                    # nsecInput → recoveryInput; placeholder "nsec1… or your 12 words"). handleLocal calls
+                                    # classifyRecoveryInput → 'nsec' runs the existing nip19.decode path VERBATIM; 'words'
+                                    # runs skFromWords, rendering InvalidSeedWordsError.message verbatim (it is user-facing
+                                    # prose by contract); 'unknown' errors naming BOTH forms. Provenance stays 'imported' for
+                                    # both, stamped in the same place; the finally's sk.fill(0) already zeroes either result.
+                                    # The field carries autoComplete/autoCorrect/autoCapitalize/spellCheck OFF — ⚠ LOAD-BEARING:
+                                    # iOS silently autocapitalizes/autocorrects a typed phrase (same fix as ViewerLoginFlow's
+                                    # passphrase). A Show/Hide reveal toggle (type password⇄text, reset in openLocal) lets the
+                                    # user proofread a phrase. The backup-gate checkbox copy now says "Recovery Key (12 words
+                                    # or nsec)" instead of "nsec". ⚠ RESIDUAL (pre-existing, NOT introduced by R2b-2):
+                                    # openLocal is the ONLY scrub site — recoveryInput/pin/pinConfirm survive a successful
+                                    # handleLocal and the ← Back buttons in React state until re-entry
     LocalUnlockGate.tsx             # "Authenticated-but-locked" relaunch screen for the 'local' method —
                                     # gesture-driven "Unlock with Face ID" (restoreSigner→unwrap) + Retry +
                                     # "Use a different login" escape; reuses NostrAuthGate.module.css
@@ -3746,8 +3818,20 @@ src/
                                     # method, signer) → nip98.getToken (kind-27235, Authorization: Nostr <base64>),
                                     # cached ~50s per (url,method) in-memory so NIP-46 doesn't round-trip per 60s
                                     # poll. resetProxyAuthCache() is test-only. See NIP-98 Proxy Auth
+    recoveryInput.ts                # R2b-2 — PURE, zero imports. classifyRecoveryInput(raw) → {kind:'nsec'|'words'|
+                                    # 'unknown'}. SHAPE ONLY, never validity: `nsec1` prefix (case-sensitive) → nsec;
+                                    # else exactly RECOVERY_WORD_COUNT (12) whitespace tokens → words (collapsed to
+                                    # single spaces); else unknown. nip19.decode / skFromWords own their own verdicts,
+                                    # so 12 nonsense tokens classify as `words` and are rejected downstream with a real
+                                    # message. ⚠ Do NOT add validation here — it would duplicate (and drift from) two
+                                    # separate crypto contracts
     sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
-                                    # fetchAndSync → boolean (decrypt health; breaks loop on first decrypt fail);
+                                    # fetchAndSync → { ok, planFound } (R2b-2; was a bare boolean). `ok` = decrypt health
+                                    # (breaks loop on first decrypt fail). `planFound` = latestByDTag.size > 0 — computed
+                                    # BEFORE the decrypt loop from a map whose keys can only be the two owner d-tags (the
+                                    # query filters authors+#d, and the build loop `continue`s on a missing d-tag), so it
+                                    # means "an owner plan exists on the relays" and stays TRUE when ok=false. ⚠ An
+                                    # unreachable signer must NEVER be reported as "no plan found";
                                     # settings watermark (read FRESH per event) + records MERGE (mergeRecords, 4-field:
                                     # entries+deletions+dayLog+dayLogDeletions). P3: generalized norm() canonicalizes all
                                     # four; write-back via setDayLog (folds the cbCollateralBtc derive) + setDeletedDayEvents
@@ -4391,6 +4475,11 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 | Constraint | Rule |
 |---|---|
+| `fetchAndSync` return shape | `{ ok, planFound }`, not a boolean. `planFound` is computed from `latestByDTag` **before** the decrypt loop and is INDEPENDENT of `ok` — a decrypt failure with events present must stay `planFound: true`, or an unreachable signer fires the "no plan found on this key" notice at a user whose plan is sitting right there |
+| Imported words wrap `'sk'` | An imported 12-word phrase wraps the **derived secret key**, never the entropy (`establishLocalOwner`'s `wrapSecretKey` call stays 4-arg → `payloadKind` defaults to `'sk'`). R2c's word-quiz re-display is for keys **born in-app** (`'nip06-entropy'`); an imported-words plan's Recovery Key is the phrase the user already holds. **Do not "fix" this into entropy storage** |
+| `classifyRecoveryInput` | SHAPE only, never validity. `nip19.decode` and `skFromWords` own their own verdicts, so 12 nonsense tokens classify as `words` and are rejected downstream with a real message. Adding validation here would duplicate — and could drift from — two separate crypto contracts |
+| `remotePlanFound` | Session-transient (in `partializeState`'s omit list), never synced. `recordRemotePlanFound` is **latched** to fire once per session; `setRemotePlanFound(null)` (Dismiss) does NOT unlatch, so the next foreground sync can't resurrect the notice. Dismissal is per-session by design; the first edit ends it permanently |
+| The `NoPlanNotice` mount | Owner-only **by construction**: `ViewerHomeView` renders `{ownerNav && notice}`, and AppShell's dashboard arm is the only `notice=` call site. Never add a branch to AppShell's gate ternary — anything there replaces the whole app |
 | `WrapMeta.payloadKind` | **Absent ⇒ `'sk'`** — the compatibility contract for every key wrapped before R2a-2. Never make it required; never infer the kind from payload byte length. The unwrap branch tests `!== 'nip06-entropy'` (not `=== 'sk'`) so absent / `'sk'` / any future unknown kind all fall through the legacy path and a wrapped key can never become unreadable |
 | `unwrapSecretKey` return type | **ALWAYS the 32-byte SECRET KEY**, whatever the stored payload. Its four call sites must never be made payload-aware. To read the payload as stored (entropy, for R2c's words) use `unwrapRecoveryPayload` |
 | NIP-06 derivation constants | `m/44'/1237'/0'/0/0`, **account 0**, **no BIP-39 passphrase**, **English wordlist**. Never parameterize them in `nip06Key.ts`. A failure of the published-vector test is DATA LOSS (every written-down phrase would derive a different key), not a stale fixture |
