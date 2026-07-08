@@ -1,20 +1,26 @@
 import { useState, useRef, useEffect } from 'react';
-import { generateSecretKey, nip19 } from 'nostr-tools';
+import { nip19 } from 'nostr-tools';
 import { useNostr } from '@nostrify/react';
 import { probeKeyVaultCapability, type WrapMethod } from '../../lib/nostr/keyVault';
+import { generatePlanKey } from '../../lib/nostr/nip06Key';
 import { establishLocalOwner } from '../../lib/nostr/establishOwner';
 import { useStore } from '../../store/useStore';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
+import { WordGrid } from './WordGrid';
 import styles from './OwnerKeySetup.module.css';
 
 /**
  * Phase 1.5 — "Start a new plan" mints a real owner identity BEFORE the numbers wizard. Three steps:
- *   K1 Create your key   → generateSecretKey() on tap (raw key held in a ref, never in the store)
- *   K2 Save recovery key → SecretKeyCard (blurred nsec) + a mandatory "I saved it" ack
- *   K3 Protect it        → keyVault wrap (Face ID / PIN) → establishLocalOwner → onComplete()
+ *   K1 Create your key   → generatePlanKey() on tap (R2b-1: 128-bit NIP-06 entropy → 12 words; entropy + a
+ *                          display-only sk held in refs, never in the store)
+ *   K2 Save recovery key → WordGrid (blurred 12 words) + a hygiene line + an Advanced-nsec disclosure + a
+ *                          mandatory "I saved it" ack
+ *   K3 Protect it        → keyVault wrap (Face ID / PIN) of the ENTROPY (payloadKind 'nip06-entropy') via
+ *                          establishLocalOwner → onComplete()
  *
  * onComplete fires post-establish (OnboardingModal advances to the numbers wizard). onBack is K1-only
- * (→ fork). onLogIn serves the existing-key guard's [Log in] (→ loginFlow). ⚠ Never logs the nsec.
+ * (→ fork). onLogIn serves the existing-key guard's [Log in] (→ loginFlow). ⚠ Never logs key material; the
+ * `words` string is a transient secret (a JS string can't be zeroed — see nip06Key.ts header).
  */
 export interface OwnerKeySetupProps {
   onComplete: () => void;
@@ -27,8 +33,11 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
   const hasExistingKey = !!useStore((s) => s.writerKeyWrapped) || !!useStore((s) => s.nostrPubkey);
 
   const [step, setStep]   = useState<'intro' | 'save' | 'protect'>('intro');
-  const skRef             = useRef<Uint8Array | null>(null);   // raw key — mutable buffer, never re-rendered
-  const [nsec, setNsec]   = useState<string | null>(null);     // bech32 for display only
+  const entropyRef        = useRef<Uint8Array | null>(null);   // 16 bytes — THE WRAPPED PAYLOAD (never re-rendered)
+  const skRef             = useRef<Uint8Array | null>(null);   // 32 bytes — display-only (the Advanced nsec)
+  const [words, setWords] = useState<string[] | null>(null);   // ⚠ transient secret — rendered by K2, cleared below
+  const [nsec, setNsec]   = useState<string | null>(null);     // bech32 for the Advanced disclosure only
+  const [showNsec, setShowNsec] = useState(false);
   const [ack, setAck]     = useState(false);
   const [method, setMethod] = useState<WrapMethod | null>(null);
   const [pin, setPin]                 = useState('');
@@ -36,8 +45,8 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
   const [busy, setBusy]   = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Zero the key on unmount (covers back-out / navigation without establishing).
-  useEffect(() => () => { skRef.current?.fill(0); }, []);
+  // Zero BOTH key buffers on unmount (covers back-out / navigation without establishing).
+  useEffect(() => () => { entropyRef.current?.fill(0); skRef.current?.fill(0); }, []);
 
   // Probe Face-ID/PIN capability when we reach the protect step (so K3 can show a PIN field if needed).
   useEffect(() => {
@@ -48,17 +57,25 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
   }, [step]);
 
   const handleGenerate = () => {
-    const sk = generateSecretKey();
+    // R2b-1 — mint a NIP-06 plan key: 128-bit entropy → 12 words → sk. The ENTROPY is what we wrap at rest
+    // (so R2c can re-display the words); the sk is display-only here (the Advanced nsec).
+    const { entropy, words: phrase, sk } = generatePlanKey();
+    entropyRef.current = entropy;
     skRef.current = sk;
+    setWords(phrase.split(' '));
     setNsec(nip19.nsecEncode(sk));
     setError(null);
     setStep('save');
   };
 
   const handleStartOver = () => {
+    entropyRef.current?.fill(0);
+    entropyRef.current = null;
     skRef.current?.fill(0);
     skRef.current = null;
+    setWords(null);
     setNsec(null);
+    setShowNsec(false);
     setAck(false);
     setPin('');
     setPinConfirm('');
@@ -67,7 +84,7 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
   };
 
   const handleProtect = async () => {
-    if (!skRef.current) return;
+    if (!entropyRef.current) return;
     setBusy(true);
     setError(null);
     try {
@@ -85,9 +102,12 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
       useStore.getState().setBackupVerifiedAt(Date.now());   // INTERIM (R2a-1 → R2c): K2's mandatory ack is today's backup bar — until the
                                                              // R2c ceremony (word-quiz verify) ships, completing the ack counts as verification
                                                              // so no new-plan user regresses below current behavior. R2c replaces this line.
-      // keyLabel omitted — K3 is a single "Enable Face ID" step (no name field).
-      await establishLocalOwner(skRef.current, m, nostr, { pin });
-      skRef.current = null;   // helper zeroed it on success
+      // R2b-1: wrap the ENTROPY as 'nip06-entropy' so R2c can re-derive the words; establishLocalOwner derives
+      // the signing sk from it internally. keyLabel omitted — K3 is a single "Enable Face ID" step (no name field).
+      await establishLocalOwner(entropyRef.current, m, nostr, { pin, payloadKind: 'nip06-entropy' });
+      entropyRef.current = null;   // helper zeroed the payload on success
+      skRef.current?.fill(0); skRef.current = null;   // the display-only sk is ours to zero
+      setWords(null); setNsec(null);
       onComplete();
     } catch (e: any) {
       // ROLL BACK the backup-gate stamps (R2a-1). They were written before the establish (the syncNow inside it
@@ -97,7 +117,7 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
       // logs in instead; and the stale backupVerifiedAt would be a false backup attestation for a discarded key.
       useStore.getState().setKeyProvenance(null);
       useStore.getState().setBackupVerifiedAt(null);
-      // sk is intact (the helper zeros only after its awaits) — stay on K3 so the user can retry.
+      // the entropy is intact (the helper zeros only after its awaits) — stay on K3 so the user can retry.
       setError(e?.message ?? 'Could not protect the key — try again');
     } finally {
       setBusy(false);
@@ -145,10 +165,29 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
             <>
               <h2 className={styles.title}>Save your recovery key</h2>
               <p className={styles.subtitle}>
-                This key <strong>is</strong> your plan. If you lose it and this device, no one can recover
-                your data — there is no server and no reset.
+                These 12 words <strong>are</strong> your plan. If you lose them and this device, no one can
+                recover your data — there is no server and no reset.
               </p>
-              {nsec && <SecretKeyCard nsec={nsec} />}
+              {words && <WordGrid words={words} />}
+              <p className={styles.hygiene}>
+                Generate fresh words here — never reuse your Bitcoin wallet's seed phrase, and never use these
+                words as a Bitcoin wallet. Same format, different job.
+              </p>
+              <button
+                type="button"
+                className={styles.advBtn}
+                onClick={() => setShowNsec((v) => !v)}
+                aria-expanded={showNsec}
+                aria-controls="owner-key-nsec"
+              >
+                <span>Advanced: show as nsec</span>
+                <span className={styles.advChevron} data-open={showNsec || undefined} aria-hidden="true">›</span>
+              </button>
+              {showNsec && nsec && (
+                <div id="owner-key-nsec" className={styles.advPanel}>
+                  <SecretKeyCard nsec={nsec} />
+                </div>
+              )}
               <label className={styles.ackRow}>
                 <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
                 <span>I've saved my recovery key somewhere safe</span>

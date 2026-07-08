@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (723 tests — all must pass before every commit)
+- Vitest (724 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -2192,14 +2192,32 @@ NostrAuthGate's import path so the two identity-establish paths can't drift).
   Props `{ nsec, onCopied? }`. `--surface-2` bg / btc-tinted border.
 - **`src/components/Onboarding/OwnerKeySetup.tsx`** (+ css) — the K1→K2→K3 sequence; own `.overlay`/`.modal`
   chrome mirroring `ViewerLoginFlow`, `--btc` primaries. Internal `step: 'intro'|'save'|'protect'`, props
-  `{ onComplete, onBack, onLogIn }`. **sk in a `useRef`** generated on the K1 tap (NOT mount), zeroed on
-  Start-over / unmount / establish. **K1** intro + "Generate my key" + **existing-key guard** (if
+  `{ onComplete, onBack, onLogIn }`. **R2b-1 — K1 mints a NIP-06 plan key** via `generatePlanKey()` (was
+  `generateSecretKey()`): 128-bit WebCrypto entropy → 12 words → sk. **TWO refs**, both generated on the K1 tap
+  (NOT mount) and zeroed on Start-over / unmount / successful establish: **`entropyRef`** (16 bytes — THE WRAPPED
+  PAYLOAD) and **`skRef`** (32 bytes — display-only, feeds the Advanced-nsec). `words: string[]` lives in React
+  state *because K2 renders it* — ⚠ a transient secret (a JS string can't be zeroed), never in the store / logs /
+  Error messages, cleared at the same three points; it joins the documented pre-existing residual (`nsec` has had
+  this property since Phase 1.5). **K1** intro + "Generate my key" + **existing-key guard** (if
   `writerKeyWrapped || nostrPubkey` present → "This device already has a key" + [Log in]→`onLogIn` /
-  [← Back]; never regenerate over an identity). **K2** `<SecretKeyCard/>` + mandatory ack checkbox
-  (Continue disabled until checked) + "Start over" (no Back). **K3** `probeKeyVaultCapability` → single
-  "Enable Face ID" (biometric) or the ViewerLoginFlow PIN+confirm UI (PIN); Success →
-  `establishLocalOwner` → `onComplete`. `onLogIn` is a small justified extension of the spec's
+  [← Back]; never regenerate over an identity). **K2** `<WordGrid words={words}/>` (blurred 12 words) + a
+  seed-phrase **hygiene line** ("Generate fresh words here — never reuse your Bitcoin wallet's seed phrase…
+  Same format, different job.") + an **"Advanced: show as nsec"** disclosure (`.advBtn`/`.advChevron`/`.advPanel`)
+  rendering the existing `<SecretKeyCard nsec={nip19.nsecEncode(sk)}/>` for Nostr natives + the mandatory ack
+  checkbox (Continue disabled until checked, **unchanged**) + "Start over" (no Back). **K3** `probeKeyVaultCapability`
+  → single "Enable Face ID" (biometric) or the ViewerLoginFlow PIN+confirm UI (PIN); Success →
+  `establishLocalOwner(entropyRef.current, m, nostr, { pin, payloadKind: 'nip06-entropy' })` (wraps the ENTROPY;
+  the sk is derived internally) → `onComplete`. **The R2a-1 bridge stamp pair (`setKeyProvenance('generated')` +
+  `setBackupVerifiedAt(Date.now())`) is byte-identical and still immediately precedes the establish** — the
+  `// R2c replaces this line` bridge comment stands. `onLogIn` is a small justified extension of the spec's
   `{onComplete,onBack}` (the guard's [Log in] needs to reach the loginFlow).
+- **`src/components/Onboarding/WordGrid.tsx`** (+ css, NEW, R2b-1) — the 12-word recovery display. Mirrors
+  `SecretKeyCard`'s blur/reveal + Copy pattern and reuses its visual language (btc-tinted `--surface-2` card,
+  `--mono`, `filter: blur(6px)` + `user-select:none`, the `pointer-events:none` "Tap to reveal" pill, the
+  `Copy → Copied ✓` 2s flash over `words.join(' ')`). Numbered 1–12 `<ol>` grid, `repeat(3,1fr)` → 2 cols under
+  360px. **NOT a `<button>` wrapper** (unlike SecretKeyCard): a grid is flow content, invalid inside `<button>`, so
+  the reveal surface is the repo's `role="button" tabIndex={0}` + Enter/Space `keydown` idiom with an `aria-label`
+  swap. Props `{ words: string[]; onCopied? }`. ⚠ Never logs. Reveal-only in R2b-1; R2b-3 adds `mode: 'input'`.
 - **`OnboardingModal`** gains a `keySetup` sub-state mirroring `viewerFlow`/`loginFlow` (early-return
   `<OwnerKeySetup onComplete={→setStep(2)} onBack={→fork} onLogIn={→setLoginFlow(true)}/>`); `onStartNew` →
   `setKeySetup(true)` (was `setStep(2)`). The numbers wizard + `handleDone` are untouched.
@@ -2949,13 +2967,13 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-723 tests — `npx vitest run` before every commit.
+724 tests — `npx vitest run` before every commit.
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
 - `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
-- `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (2 cases, mocked wrapSecretKey/syncNow/NSecSigner): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the sk; PRF path forwards the passkey label (not a pin)
+- `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (3 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed
 - `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
@@ -3268,7 +3286,12 @@ re-typed. **R2c's ceremony needs BIP-39 words.** R2a-2 lays the crypto foundatio
 `src/lib/nostr/nip06Key.ts` (pure NIP-06 derivation) + a `payloadKind` discriminator on the wrap meta, so a
 wrapped blob can hold either the raw key or the **128-bit entropy those words encode**.
 
-**No wrap call site adopts entropy yet — that is R2b.** Every existing wrapped key keeps working byte-identically.
+**Entropy adoption — R2b-1 (done):** `OwnerKeySetup` K1 now mints via `generatePlanKey()` and K3 wraps the
+entropy as `payloadKind: 'nip06-entropy'` (the first non-test consumer of `generatePlanKey`). **Imported keys
+still wrap `'sk'`** (`NostrAuthGate` passes no `payloadKind`). Every existing wrapped key keeps working
+byte-identically (absent `payloadKind` ⇒ `'sk'`); `restoreSigner`/`unwrapSecretKey` already handle both branches.
+`RevealRecoveryKey` still shows the derived **nsec** for a `'nip06-entropy'` key (it calls `unwrapSecretKey`) —
+R2c switches it to `unwrapRecoveryPayload` to re-display the words.
 
 ### ⚠ THE COMPATIBILITY CONTRACT: absent `payloadKind` means `'sk'`
 
@@ -3763,12 +3786,19 @@ src/
                                     # interpolate the words. ⚠ THE WORDS STRING IS A TRANSIENT SECRET — a JS string cannot
                                     # be zeroed; never persist/log it or hold it in state outliving its screen. The
                                     # ZEROABLE forms are entropy (16B) + sk (32B): CALLERS OWN ZEROING BOTH
-    establishOwner.ts               # Phase 1.5 — establishLocalOwner(sk, method, nostr, opts?): the SINGLE local-owner
+    establishOwner.ts               # Phase 1.5 — establishLocalOwner(payload, method, nostr, opts?): the SINGLE local-owner
                                     # establish path (wrap→persist writerKey→NSecSigner+setNostrSigner→markSignerFresh→
                                     # setNostrPubkey(getPublicKey(sk))→setNostrSigningMethod('local')→fire-and-forget
-                                    # syncNow→setIsAuthenticated(true)→sk.fill(0)). Extracted VERBATIM from NostrAuthGate's
+                                    # syncNow→setIsAuthenticated(true)→zero). Extracted VERBATIM from NostrAuthGate's
                                     # import body → BOTH the import path AND OwnerKeySetup K3 call it (zero drift).
-                                    # ⚠ NEVER logs the nsec. NostrSigner from './signers' (sibling re-export)
+                                    # R2b-1: opts gains payloadKind?:PayloadKind (default 'sk' → import/legacy path, absent
+                                    # from NostrAuthGate's call → unchanged); it is forwarded as wrapSecretKey's 5th arg.
+                                    # ⚠ The signing sk is DERIVED from the payload it just WRAPPED (payload for 'sk';
+                                    # deriveSkFromEntropy(payload) for 'nip06-entropy'), NEVER accepted from the caller — so
+                                    # the identity we authenticate as is provably the one unwrapSecretKey later re-derives
+                                    # from this exact ciphertext (a caller-supplied sk could silently disagree → the wrapped
+                                    # key would never unlock the identity). Zeroes BOTH the caller's payload AND the derived
+                                    # sk. ⚠ NEVER logs key material. NostrSigner from './signers' (sibling re-export)
     viewerKey.ts                    # Viewer-key derivation — deriveViewerKeyFromNsec(sk, ownerPubkeyHex, keyVersion, index)
                                     # → deterministic 32-byte viewer secret key. M2: 4-ARG, PER-SLOT-INDEXED. WebCrypto
                                     # DIRECTLY (crypto.subtle), NOT keyVault's helpers/info labels (own crypto domain).
@@ -4476,7 +4506,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Constraint | Rule |
 |---|---|
 | `fetchAndSync` return shape | `{ ok, planFound }`, not a boolean. `planFound` is computed from `latestByDTag` **before** the decrypt loop and is INDEPENDENT of `ok` — a decrypt failure with events present must stay `planFound: true`, or an unreachable signer fires the "no plan found on this key" notice at a user whose plan is sitting right there |
-| Imported words wrap `'sk'` | An imported 12-word phrase wraps the **derived secret key**, never the entropy (`establishLocalOwner`'s `wrapSecretKey` call stays 4-arg → `payloadKind` defaults to `'sk'`). R2c's word-quiz re-display is for keys **born in-app** (`'nip06-entropy'`); an imported-words plan's Recovery Key is the phrase the user already holds. **Do not "fix" this into entropy storage** |
+| Imported words wrap `'sk'` | An imported 12-word phrase wraps the **derived secret key**, never the entropy (`NostrAuthGate` passes no `payloadKind` → `establishLocalOwner` defaults it to `'sk'`). R2c's word-quiz re-display is for keys **born in-app** (`'nip06-entropy'`, minted by `OwnerKeySetup`); an imported-words plan's Recovery Key is the phrase the user already holds. **Do not "fix" this into entropy storage** |
+| `establishLocalOwner` derives its own sk | The signing sk is DERIVED from the payload it just wrapped (`payloadKind==='nip06-entropy' ? deriveSkFromEntropy(payload) : payload`), NEVER accepted from the caller. This makes the authenticated identity provably equal to the one `unwrapSecretKey` re-derives from that exact ciphertext — a caller-supplied sk could silently disagree and the wrapped key would never unlock the identity. Never pass an sk alongside an entropy payload |
 | `classifyRecoveryInput` | SHAPE only, never validity. `nip19.decode` and `skFromWords` own their own verdicts, so 12 nonsense tokens classify as `words` and are rejected downstream with a real message. Adding validation here would duplicate — and could drift from — two separate crypto contracts |
 | `remotePlanFound` | Session-transient (in `partializeState`'s omit list), never synced. `recordRemotePlanFound` is **latched** to fire once per session; `setRemotePlanFound(null)` (Dismiss) does NOT unlatch, so the next foreground sync can't resurrect the notice. Dismissal is per-session by design; the first edit ends it permanently |
 | The `NoPlanNotice` mount | Owner-only **by construction**: `ViewerHomeView` renders `{ownerNav && notice}`, and AppShell's dashboard arm is the only `notice=` call site. Never add a branch to AppShell's gate ternary — anything there replaces the whole app |

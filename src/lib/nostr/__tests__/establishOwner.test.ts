@@ -31,6 +31,7 @@ vi.mock('../syncNow', () => ({
 import { getPublicKey, generateSecretKey } from 'nostr-tools';
 import { establishLocalOwner } from '../establishOwner';
 import { wrapSecretKey } from '../keyVault';
+import { generatePlanKey } from '../nip06Key';   // R2b-1 — NOT mocked; real entropy → words → sk derivation
 import { syncNow, markSignerFresh } from '../syncNow';
 import { useStore } from '../../../store/useStore';
 
@@ -68,8 +69,8 @@ describe('establishLocalOwner — the shared local-owner establish path', () => 
     expect(after.isAuthenticated).toBe(true);
     expect(after.nostrSigner).toBeTruthy();
 
-    // wrap args: PIN path forwards the pin, no keyLabel.
-    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'pin', '1234', undefined);
+    // wrap args: PIN path forwards the pin, no keyLabel; R2b-1 5th arg defaults to 'sk' (imported/legacy path).
+    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'pin', '1234', undefined, 'sk');
     expect(markSignerFresh).toHaveBeenCalledOnce();
     expect(syncNow).toHaveBeenCalledOnce();
 
@@ -84,8 +85,25 @@ describe('establishLocalOwner — the shared local-owner establish path', () => 
   it('forwards the passkey label (not a pin) on the PRF path', async () => {
     const sk = generateSecretKey();
     await establishLocalOwner(sk, 'prf', {} as any, { keyLabel: 'my laptop' });
-    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'prf', undefined, 'my laptop');
+    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'prf', undefined, 'my laptop', 'sk');
     expect(useStore.getState().nostrSigningMethod).toBe('local');
     expect(useStore.getState().isAuthenticated).toBe(true);
+  });
+
+  // R2b-1 — the generated-key path: the payload is 16 bytes of NIP-06 entropy, wrapped as 'nip06-entropy'.
+  it("derives the signing identity from the entropy payload it wrapped (never from a caller-supplied sk)", async () => {
+    const { entropy, sk } = generatePlanKey();
+    const expectedPubkey = getPublicKey(sk.slice());   // the identity the wrapped ciphertext must unlock to
+
+    await establishLocalOwner(entropy, 'pin', {} as any, { pin: '1234', payloadKind: 'nip06-entropy' });
+
+    // the 16-byte entropy is the payload; the kind is recorded so unwrapSecretKey re-derives on unlock
+    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'pin', '1234', undefined, 'nip06-entropy');
+    // ⚠ the load-bearing assertion: pubkey was DERIVED internally from the payload, never passed in
+    expect(useStore.getState().nostrPubkey).toBe(expectedPubkey);
+    expect(useStore.getState().nostrSigningMethod).toBe('local');
+    expect(useStore.getState().isAuthenticated).toBe(true);
+    // the caller's entropy buffer is zeroed
+    expect(Array.from(entropy).every((b) => b === 0)).toBe(true);
   });
 });

@@ -1,0 +1,107 @@
+/* R2b-1 — the 12-word recovery display. Mirrors SecretKeyCard.module.css (btc-tinted card + blur/reveal). */
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px solid rgba(247, 147, 26, 0.28);   /* btc-tinted */
+  border-radius: 12px;
+  padding: 14px;
+}
+
+.gridArea {
+  position: relative;
+  padding: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  transition: filter 0.15s;
+}
+
+.cell {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.num {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 15px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.word {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  word-break: break-all;
+}
+
+.blurred {
+  filter: blur(6px);
+  user-select: none;
+}
+
+.revealPill {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--btc);
+  background: rgba(9, 9, 14, 0.72);
+  border: 1px solid rgba(247, 147, 26, 0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.copyBtn {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--btc);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 14px;
+  font-family: inherit;
+  transition: border-color 0.12s, opacity 0.12s;
+}
+
+.copyBtn:hover { opacity: 0.85; }
+
+.hint {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: right;
+}
+
+@media (max-width: 360px) {
+  .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
