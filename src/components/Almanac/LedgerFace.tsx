@@ -105,7 +105,11 @@ export default function LedgerFace() {
       {rows.length === 0 ? (
         <div className={styles.empty}>No months logged yet.</div>
       ) : (
-        <div className={styles.tableWrap}>
+        <>
+        {/* data-gesture-exempt: the Almanac face-pager (shouldStart) refuses this element, and the scoped
+            AlmanacView rule gives it touch-action:pan-x — the wide table scrolls horizontally without paging
+            faces or moving the page vertically. */}
+        <div className={styles.tableWrap} data-gesture-exempt>
           <table className={styles.table}>
             <thead>
               <tr>
@@ -205,11 +209,13 @@ export default function LedgerFace() {
               </tr>
             </tfoot>
           </table>
-
-          {anyNote && (
-            <div className={styles.footnote}>† includes a non-draw / minimum payment.</div>
-          )}
         </div>
+
+        {/* Footnote sits OUTSIDE .tableWrap so the horizontal scrollbar can't overlay it (P3.1 fix). */}
+        {anyNote && (
+          <div className={styles.footnote}>† includes a non-draw / minimum payment.</div>
+        )}
+        </>
       )}
     </div>
   );

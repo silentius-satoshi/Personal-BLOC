@@ -113,8 +113,8 @@ export async function openMonthModalTwo(page: Page): Promise<void> {
 
 /** Horizontal mouse drag from (startX, startY) by `dxPx` (negative = left). Real pointer events; a fast
  *  flick uses fewer steps + no inter-step wait (high release velocity). Used by the P3 navigation specs. */
-export async function mouseDragX(page: Page, startX: number, startY: number, dxPx: number, opts: { fast?: boolean } = {}): Promise<void> {
-  const { fast = false } = opts;
+export async function mouseDragX(page: Page, startX: number, startY: number, dxPx: number, opts: { fast?: boolean; release?: boolean } = {}): Promise<void> {
+  const { fast = false, release = true } = opts;
   await page.mouse.move(startX, startY);
   await page.mouse.down();
   const n = fast ? 3 : 12;
@@ -123,8 +123,7 @@ export async function mouseDragX(page: Page, startX: number, startY: number, dxP
     if (!fast) await page.waitForTimeout(8);
   }
   await page.waitForTimeout(fast ? 0 : 25);
-  await page.mouse.up();
-  await page.waitForTimeout(40);
+  if (release) { await page.mouse.up(); await page.waitForTimeout(40); }   // release:false → inspect mid-drag
 }
 
 /** seedAndGoto (daily journal) → open the simple-mode Settings subpage (AppShell Branch H, edge-back wrapped). */

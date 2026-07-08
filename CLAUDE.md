@@ -148,7 +148,12 @@ src/
                                 # (simple-mode Settings) + Branch I (simple-mode Almanac) — the two ← Back surfaces — are
                                 # each wrapped in <EdgeBackGesture onBack={()=>setActiveTab(previousTab)}
                                 # renderUnder={renderSimpleUnder}> (iOS edge-swipe-back parallax; shared by owner+viewer).
-                                # No other branch mounts it (gates/onboarding/full-mode shell untouched).
+                                # No other branch mounts it (gates/onboarding/full-mode shell untouched). P3.1 NESTED
+                                # BACK-CHAIN: a `settingsBackRef` receives SettingsMain's one-level-back handler (via its
+                                # registerBack prop); Branch H's edge onBack = settingsEdgeBack (subpage→list first, else
+                                # exit Settings) and renderUnder = settingsBackRef.current ? null (bg one level deep) :
+                                # renderSimpleUnder() — nav depth = parallax depth. The visible header ← Back is
+                                # unchanged (a separate app-exit control). Branch I (Almanac, no subpages) unchanged.
       AppShell.module.css
       ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — JOURNAL's INNER control,
                                 # rendered inside BOTH DailyModeView and SimpleModeView (between header +
@@ -256,16 +261,26 @@ src/
                                 # renderPane(offset:-1|0|1),onSwipeStart?,shouldStart?,disabled?}. 300%-wide strip at rest
                                 # translateX(-33.3%); usePointerDrag axis 'x' (touch-action:pan-y → vertical scroll
                                 # never stolen), commitThreshold=0.35×measured-width, commitVelocity 800. onMove tracks
-                                # dx (rubberBand 32 at a !canPage boundary); onEnd committed&&canPage → DOUBLE-BUFFERED
-                                # snap (animate to target, THEN in one commit onPage + reset to rest — no flash) else
-                                # spring back. ONE haptics.tick on COMMIT only (no arm haptic — paging isn't
+                                # dx (P3.1: rubberBand 20 — stiffer — at a !canPage boundary); onEnd committed&&canPage →
+                                # DOUBLE-BUFFERED snap (animate to target, THEN in one commit onPage + reset to rest — no
+                                # flash) else spring back — BOTH ease --ease-spring-SOFT (P3.1, calmer/less overshoot than
+                                # --ease-spring). ONE haptics.tick on COMMIT only (no arm haptic — paging isn't
                                 # consequential). onSwipeStart (first onMove) cancels a pending child long-press. Real
                                 # state changes ONLY at rest (design.md §3.1). reduced-motion: no continuous track.
                                 # P3: OPTIONAL shouldStart(e: React.PointerEvent) → boolean gate on the strip's
                                 # onPointerDown (default → always start; P2 call sites Calendar/MonthlyLogOverlay omit it,
                                 # unaffected) — return false to REFUSE paging so the pointer falls through (AlmanacView
                                 # passes one refusing charts [.recharts-wrapper/canvas/[data-gesture-exempt]] + the left
-                                # 20px which belongs to EdgeBackGesture).
+                                # 20px which belongs to EdgeBackGesture). P3.1: renderPane gains a 2nd arg
+                                # renderPane(offset, live) — `live` is a `dragging` state true from gesture start (set in
+                                # the onPointerDown wrapper after shouldStart passes) until the snap/spring settles;
+                                # offset 0 is always live. Consumers can mount REAL neighbour content only while live
+                                # (AlmanacView mounts the adjacent faces during a gesture, null at rest — no heavy hooks on
+                                # a peek). CLOBBER GUARD (load-bearing): `dragging` is cleared ONLY at settle (in the snap
+                                # setTimeout / spring-back setTimeout / reduced-motion branch), when the transform is
+                                # already at restPct → the JSX inline-transform re-render write is a no-op and can't fight
+                                # an in-flight animation. P2 call sites ignore the 2nd arg (identical output; 2 harmless
+                                # extra renders/swipe).
       EdgeBackGesture.tsx       # Gesture & Motion System P3 — iOS-style edge-swipe-back (standalone PWAs have no system
                                 # swipe-back). Props {onBack(), renderUnder?(), disabled?, children}. A 20px left-edge
                                 # capture .zone (z-index above content, touch-action:PAN-Y not none — vertical strokes
@@ -276,9 +291,14 @@ src/
                                 # rubberBands 16) translates the .page right 1:1 while renderUnder() rides in behind at
                                 # scale(.92→1) + a .dim overlay .4→0 (iOS parallax); onEnd committed&&dx>0 → animate off-
                                 # right (--ease-standard) then onBack(), else spring back (--ease-spring) + unmount the
-                                # under-layer. NO haptics on back-nav (paging policy). renderUnder mounts at pointerdown
-                                # (during slop, hiding the mount cost); AppShell passes a viewerMode-branched
-                                # renderSimpleUnder (owner journal / viewer home — the exact surface back-nav reveals).
+                                # under-layer. P3.1: after the exit onBack it ALSO setPage(0,'none')+setDragging(false) so
+                                # an IN-PLACE onBack (nested settings back → the list) snaps the revealed content to
+                                # center (no-op for a top-level unmount — React flushes it before paint); the under-layer
+                                # is gated on `renderUnder()` returning CONTENT (a null return → the page slides over
+                                # plain app-bg, no dim gap — used one level deep in nested settings). NO haptics on
+                                # back-nav (paging policy). renderUnder mounts at pointerdown (during slop, hiding the
+                                # mount cost); AppShell passes a viewerMode-branched renderSimpleUnder (owner journal /
+                                # viewer home — the exact surface back-nav reveals).
                                 # TAP FORWARDING: a sub-slop cancel (movement < slop = a tap) re-dispatches the tap to the
                                 # content beneath via zone.pointerEvents='none' + document.elementFromPoint(x,y)?.click()
                                 # — the left 20px is never a dead strip. reduced-motion: no continuous track, committed →
@@ -337,7 +357,11 @@ src/
                                 # tappable → cbloan subpage; a useEffect bounces 'cbloan'→'menu' if the loan is turned off
                                 # while there. simpleMode embed (hideHeader): menu omits the app-back button, subpages still
                                 # render their ← Settings sub-header. AUTH UNTOUCHED (NOSTR IDENTITY verbatim — Phase 2 will
-                                # rework it). Still owns the local ALL_TABS constant + 5-tap devMode build row
+                                # rework it). Still owns the local ALL_TABS constant + 5-tap devMode build row. P3.1: an
+                                # optional registerBack?(fn|null) prop reports a one-level-back handler to the host — a
+                                # useEffect([settingsPage,registerBack]) BEFORE the viewerMode early-return calls
+                                # registerBack(settingsPage==='menu' ? null : ()=>setSettingsPage('menu')) (cleanup null),
+                                # so AppShell's edge-swipe-back chains subpage→list then exits (mirrors the visible ← Settings)
       SettingsMain.module.css   # + Phase 1: .settingsMenu/.settingsRow(+Disabled/Icon/Body/Title/Subtitle/Toggle/Chevron)
                                 # + .subHeader/.subBackBtn/.subTitle (theme tokens; additive — no existing class changed).
                                 # + Phase 1 polish: .setupDateInput gains box-sizing:border-box + min-width:0 +
@@ -1736,7 +1760,11 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   BOTH always present — Copy is the reliable iOS-PWA fallback for the open-instead-of-save caveat) → the
   `<table>`. **Totals row** in `<tfoot>` (comment the distinction): FLOWS SUMMED (income/paydown/btcBought/
   miningSats), STOCKS SHOW LATEST (last month's strikeBal/btcHeld/strikeLtv/cbBal/cbLtv). `ndpPaid`/
-  `strikeMinPaid` → a `†` superscript on the Paydown cell + one footnote line.
+  `strikeMinPaid` → a `†` superscript on the Paydown cell + one footnote line. **P3.1:** the `.tableWrap`
+  (`overflow-x:auto` scroll container) carries `data-gesture-exempt` → the Almanac face-pager (`shouldStart`)
+  refuses it + the scoped `.shell [data-gesture-exempt]{touch-action:pan-x}` rule gives it horizontal-only
+  ownership (scrolls without paging faces / moving the page vertically); the `.footnote` was MOVED OUT of
+  `.tableWrap` (now a sibling below) so the horizontal scrollbar no longer overlays the caption.
 - **Visual-spec decisions (LOCKED — future faces should stay coherent):**
   - **Type:** every numeric cell `var(--mono)` + `font-variant-numeric: tabular-nums`, right-aligned; Month
     cell left-aligned `--text-secondary`; headers 10–11px uppercase `0.08em` `--text-muted`.
@@ -1820,18 +1848,26 @@ equivalent — non-negotiable 3). No data/store change.
   faces exist or their order. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`) are simply
   absent from the array. `idx = findIndex(face)`; `onPage(dir)=setFace(visibleFaces[idx+dir].key)`;
   `canPage(dir)` bounds-checks (rubber-band at the first/last face, no wraparound).
-- **NEIGHBOUR PANES ARE PREVIEWS, NOT REAL FACES** (sanctioned deviation from "adjacent faces ride in", §14.5 +
-  perf): `renderPane(offset!==0)` renders a lightweight `FacePreviewCard` (the target's label on `--surface-2`,
-  aria-hidden); the REAL face (`renderFace(face)`, offset 0) — with its heavy Power Law/Mining data hooks —
-  materialises ONLY at rest after the snap commits. Real neighbours would pre-mount those hooks on every peek.
+- **REAL NEIGHBOUR FACES** (P3.1 — the P3 `FacePreviewCard` placeholder is REVERSED, owner decision):
+  `renderPane(offset, live)` — `offset===0` → `renderFace(face)`; `offset!==0` → `live && t ? renderFace(t.key) :
+  null`, so the actual adjacent face mounts DURING a gesture/snap (SwipeStrip's `live`=`dragging`) and unmounts at
+  rest — no heavy Power Law/Mining hooks on a peek. **SS §14.5's invariant still holds** — the HUB `useChainTip`
+  (data LAYER) is never remounted; a neighbour face mounting its OWN hooks transiently during a gesture is the
+  accepted cost. `renderFace(key)` is shared by center + neighbours. `FacePreviewCard` + its CSS deleted.
 - **`shouldStart(e)`** refuses paging when the pointerdown target is inside a chart
   (`.recharts-wrapper`/`canvas`/`[data-gesture-exempt]` — PowerLaw's recharts always wins) OR at `e.clientX < 20`
   (the left 20px belongs to EdgeBackGesture in the simple-mode Almanac subpage — positional priority, no races).
+- **P3.1 CHART/EXEMPT AXIS OWNERSHIP** (`AlmanacView.module.css`, SCOPED to `.shell` — never global): charts
+  (`.recharts-wrapper`/`canvas`) get `touch-action: none` (own BOTH axes for scrubbing); `[data-gesture-exempt]`
+  scroll containers get `touch-action: pan-x` (own horizontal, block vertical — the Ledger table needs its
+  horizontal scroll, so a blanket `none` would trap its columns). Stops native VERTICAL scroll from stealing a
+  chart scrub. Trade-off (owner-accepted): a vertical page-scroll stroke can't START on a chart/exempt element.
 - **Sub-nav highlight updates at snap-COMMIT** (the `setFace` re-render), not continuously — sanctioned deviation
   (the pill sub-nav has no underline to interpolate; redesign is out of scope).
-- `useChainTip` stays at the hub (called once) — face paging is pure presentation, never remounts the data layer.
-- Tests: `e2e/navigation.spec.ts` (face swipe halving→cycle; gated-face skip while `!hasCbLoan`; chart exclusion;
-  edge-coordination — a left-bezel drag backs out instead of paging).
+- `useChainTip` stays at the hub (called once) — face paging is pure presentation, never remounts the DATA layer.
+- Tests: `e2e/navigation.spec.ts` (face swipe halving→cycle; REAL-neighbour-mid-drag; gated-face skip while
+  `!hasCbLoan`; chart-axis — horizontal scrub with vertical wobble neither pages nor scrolls; edge-coordination —
+  a left-bezel drag backs out instead of paging).
 
 ---
 
@@ -2997,8 +3033,15 @@ the component-level grep covers them); Almanac face swipe halving→cycle (disti
 (`!hasCbLoan` → no defense pill through the whole strip); chart exclusion (a drag starting inside `.recharts-wrapper`
 does NOT page — the PowerLaw face's `/api/blockchain.info` route is `page.route`-fulfilled with valid data so the
 chart renders, since PowerLawMain gates it on `!loading && !error`); edge-coordination on Almanac (a left-bezel drag
-backs out instead of paging). Helper `mouseDragX` drives raw `page.mouse` from a coordinate; `faceHostBox` finds the
-Almanac SwipeStrip viewport. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+backs out instead of paging). **P3.1 additions:** REAL-neighbour-mid-drag (`mouseDragX release:false` → the incoming
+Cycle face's DOM text `Open Halving Clock` — CycleClock's cross-link, owned ONLY by the incoming face — is present
+mid-drag, vs 0 at rest — proving real neighbours, not a preview); NESTED edge-back (open a Settings subpage → one
+edge-back lands on the LIST [subpage `← Settings` gone, the row back], a second → journal — **run against HEAD first,
+it FAILS**, proving the repro); chart-axis (a horizontal scrub with ±30 vertical wobble on the chart neither pages nor
+changes `document.scrollingElement.scrollTop` — ⚠ the scrollTop half passes TRIVIALLY in Chromium since synthetic
+`page.mouse` can't drive native touch-scroll; the real vertical-ownership proof is the device gate). Helper
+`mouseDragX(...,{release?})` drives raw `page.mouse` from a coordinate; `faceHostBox` finds the Almanac SwipeStrip
+viewport. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the

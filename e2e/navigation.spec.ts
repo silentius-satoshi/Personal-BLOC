@@ -51,6 +51,35 @@ test.describe('Navigation gestures (P3)', () => {
     await expect(page.getByText('Open Halving Clock')).toBeVisible();  // Cycle Clock content (after the snap)
   });
 
+  test('face paging mounts the REAL neighbour face mid-drag (not a preview)', async ({ page }) => {
+    await openAlmanacSimple(page);
+    await expect(page.getByText('Next halving')).toBeVisible();          // halving center
+    await expect(page.getByText('Open Halving Clock')).toHaveCount(0);   // neighbour NOT mounted at rest
+    const box = await faceHostBox(page);
+    // Hold the drag (release:false) toward cycle → the incoming Cycle face mounts in the neighbour pane.
+    await mouseDragX(page, box.x + box.width / 2, box.y + 120, -160, { release: false });
+    // ⚠ 'Open Halving Clock' is CycleClock's onSwitchToHalving cross-link (CycleClock.tsx:119-120), owned ONLY
+    // by the INCOMING Cycle face — NOT the outgoing Halving face (whose string is 'Next halving'). Do NOT swap
+    // this for a Halving-owned string; that would also match the OUTGOING pane and defeat the test.
+    await expect(page.getByText('Open Halving Clock')).toHaveCount(1);   // REAL neighbour, not a preview label
+    await page.mouse.up();                                               // release → snap
+  });
+
+  test('nested edge-back goes ONE level (subpage → list → journal)', async ({ page }) => {
+    await openSettingsSimple(page);
+    await page.getByText('Identity & Security').click();                 // open a subpage
+    await expect(page.getByRole('button', { name: '← Settings' })).toBeVisible();
+    const h = page.viewportSize()!.height / 2;
+    // First edge-back → ONE level → the settings LIST (subpage back-btn gone, the row visible again).
+    await mouseDragX(page, 8, h, 234);
+    await expect(page.getByRole('button', { name: '← Settings' })).toHaveCount(0);
+    await expect(page.getByText('Identity & Security')).toBeVisible();   // back on the list (the ROW)
+    await expect(page.getByTestId('edge-back-zone')).toBeVisible();      // still inside Settings
+    // Second edge-back → exits Settings → journal.
+    await mouseDragX(page, 8, h, 234);
+    await expect(page.getByLabel('Log an event')).toBeVisible();
+  });
+
   test('gated faces (defense) never appear while !hasCbLoan', async ({ page }) => {
     await openAlmanacSimple(page);
     // The sub-nav renders ONLY visibleFaces; with the default seed (!hasCbLoan) defense is absent from it.
@@ -61,7 +90,7 @@ test.describe('Navigation gestures (P3)', () => {
     await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
   });
 
-  test('chart exclusion — a drag starting on the Power Law chart does NOT page', async ({ page }) => {
+  test('chart axis ownership — a horizontal scrub (with vertical wobble) on the chart neither pages nor scrolls', async ({ page }) => {
     // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both).
     await page.route(/blockchain\.info/, (r) =>
       r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) }));
@@ -71,9 +100,24 @@ test.describe('Navigation gestures (P3)', () => {
     const chart = page.locator('.recharts-wrapper').first();
     await expect(chart).toBeVisible({ timeout: 8000 });
     const box = (await chart.boundingBox())!;
-    await mouseDragX(page, box.x + box.width / 2, box.y + box.height / 2, -220); // pointerdown INSIDE the chart
-    // shouldStart refused → no page → the chart is still shown (didn't advance to Sats).
+    const scrollBefore = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+    // Horizontal drag with a ±30px vertical wobble, STARTING inside the chart.
+    const sx = box.x + box.width / 2, sy = box.y + box.height / 2;
+    await page.mouse.move(sx, sy);
+    await page.mouse.down();
+    for (let i = 1; i <= 12; i++) {
+      await page.mouse.move(sx - (220 * i) / 12, sy + (i % 2 === 0 ? 30 : -30));
+      await page.waitForTimeout(8);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(60);
+    // shouldStart refused the pager → still on the Power Law face (chart present). This half IS meaningful.
     await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
+    // Page did not scroll vertically. ⚠ touch-action governs native TOUCH scroll, which synthetic page.mouse
+    // cannot drive — so this assertion passes trivially in Chromium; the REAL vertical-ownership proof is the
+    // iOS device gate (like the P1.3 handoff fixmes). Kept as a guard + intent marker.
+    const scrollAfter = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
+    expect(scrollAfter).toBe(scrollBefore);
   });
 
   test('edge coordination on Almanac — a left-bezel drag backs out, does not page', async ({ page }) => {

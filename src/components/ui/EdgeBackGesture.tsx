@@ -90,10 +90,12 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
       }
       const doBack = committed && dx > 0;
       if (doBack) {
-        if (reducedRef.current) { onBack(); return; }
+        if (reducedRef.current) { onBack(); setDragging(false); return; }
         setPage(width(), 'transform var(--motion-standard) var(--ease-standard)');
         paintUnder(1);
-        window.setTimeout(onBack, EXIT_MS);
+        // Reset AFTER onBack so an IN-PLACE onBack (nested settings back → the list) snaps the revealed content
+        // to center. No-op for a top-level unmount (React flushes the unmount before paint).
+        window.setTimeout(() => { onBack(); setPage(0, 'none'); setDragging(false); }, EXIT_MS);
         return;
       }
       // Spring back to rest, then unmount the under-layer.
@@ -110,11 +112,16 @@ export function EdgeBackGesture({ onBack, renderUnder, disabled, children }: Edg
     drag.onPointerDown(e);
   };
 
+  // renderUnder() may legitimately return null (e.g. AppShell's nested-settings case reveals plain app-bg one
+  // level deep) — only mount the under-layer + dim when there's actual content, so a null under-layer slides
+  // the page over plain app-bg with no black dim gap.
+  const underContent = dragging && renderUnder ? renderUnder() : null;
+
   return (
     <div ref={wrapRef} className={styles.wrap}>
-      {dragging && renderUnder && (
+      {underContent && (
         <div ref={underRef} className={styles.under} aria-hidden="true">
-          {renderUnder()}
+          {underContent}
           <div ref={dimRef} className={styles.dim} style={{ opacity: 0.4 }} />
         </div>
       )}

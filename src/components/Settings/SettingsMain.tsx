@@ -164,9 +164,15 @@ function SettingsRow({ icon, title, subtitle, onClick, styles }: SettingsRowProp
 
 interface SettingsMainProps {
   hideHeader?: boolean;
+  /**
+   * P3.1 nested back-chain: SettingsMain reports a one-level-back handler to its host so an edge-swipe-back can
+   * mirror the visible ← Back. Called with `() => setSettingsPage('menu')` while a subpage is open, `null` on
+   * the main list (and on cleanup). The host (AppShell Branch H) chains: subpage-back first, else exit Settings.
+   */
+  registerBack?: (fn: (() => void) | null) => void;
 }
 
-export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
+export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainProps) {
   const hiddenTabs          = useStore((s) => s.hiddenTabs);
   const toggleTabVisibility = useStore((s) => s.toggleTabVisibility);
   const previousTab         = useStore((s) => s.previousTab);
@@ -245,6 +251,14 @@ export function SettingsMain({ hideHeader = false }: SettingsMainProps) {
   useEffect(() => {
     if (settingsPage === 'cbloan' && !hasCbLoan) setSettingsPage('menu');
   }, [settingsPage, hasCbLoan]);
+
+  // P3.1 nested back-chain — report a one-level-back handler while a subpage is open (null on the list). Placed
+  // BEFORE the viewerMode early-return so it runs on both paths (viewer stays 'menu' → always null; ViewerSettings
+  // is flat). Host edge-back mirrors the visible ← Settings.
+  useEffect(() => {
+    registerBack?.(settingsPage === 'menu' ? null : () => setSettingsPage('menu'));
+    return () => registerBack?.(null);
+  }, [settingsPage, registerBack]);
 
   const nostrPubkey         = useStore((s) => s.nostrPubkey);
   const nostrSyncing        = useStore((s) => s.nostrSyncing);

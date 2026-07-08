@@ -1,4 +1,4 @@
-import { useCallback, useRef, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { usePointerDrag } from '../../hooks/usePointerDrag';
 import { useReducedMotion } from '../../hooks/useReducedMotion';
 import { rubberBand } from '../../lib/gestureModel';
@@ -19,8 +19,12 @@ export interface SwipeStripProps {
   onPage: (dir: -1 | 1) => void;
   /** Whether paging in `dir` is allowed (boundary → rubber-band instead). */
   canPage: (dir: -1 | 1) => boolean;
-  /** Render the pane at `offset` (−1 prev / 0 current / +1 next). Pure/cheap — no store writes. */
-  renderPane: (offset: -1 | 0 | 1) => ReactNode;
+  /**
+   * Render the pane at `offset` (−1 prev / 0 current / +1 next). `live` is true from gesture start until the
+   * snap settles (false at rest) — a consumer can use it to mount REAL neighbour content only during a gesture
+   * (e.g. Almanac faces with heavy hooks) instead of at rest. offset 0 is always live. Pure/cheap — no store writes.
+   */
+  renderPane: (offset: -1 | 0 | 1, live: boolean) => ReactNode;
   /** Fired when the horizontal gesture axis-locks (coexistence: cancels a pending long-press). */
   onSwipeStart?: () => void;
   /**
@@ -44,6 +48,10 @@ export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, shouldSt
   const reducedRef = useRef(reduced);
   reducedRef.current = reduced;
   const movedRef = useRef(false);
+  // True from gesture start (pointerdown accepted) until the snap/spring settles — drives `live` neighbour
+  // panes. Cleared ONLY at settle (when the transform is already at rest), so the strip's JSX inline transform
+  // re-render can never clobber an in-flight animation (see onEnd / the clobber-guard note).
+  const [dragging, setDragging] = useState(false);
 
   const width = useCallback(() => viewportRef.current?.clientWidth ?? 0, []);
 
@@ -70,7 +78,7 @@ export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, shouldSt
       if (reducedRef.current) return; // no continuous tracking under reduced motion
       const w = width() || 1;
       const dir: -1 | 1 = dx < 0 ? 1 : -1;
-      const eff = canPage(dir) ? dx : rubberBand(dx, 32);
+      const eff = canPage(dir) ? dx : rubberBand(dx, 20);
       setTransform(restPct + (eff / w) * 100, 'none');
     },
     onEnd: (dx, _dy, _v, committed) => {
@@ -78,22 +86,27 @@ export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, shouldSt
       const dir: -1 | 1 = dx < 0 ? 1 : -1;
       const doPage = committed && dx !== 0 && canPage(dir);
       if (!doPage) {
-        // spring back to rest
-        setTransform(restPct, reducedRef.current ? 'none' : 'transform var(--motion-settle) var(--ease-spring)');
+        // spring back to rest (--ease-spring-soft — calmer than --ease-spring), then clear `dragging` AT SETTLE
+        // (transform already at rest → the re-render's inline-transform write is a no-op).
+        setTransform(restPct, reducedRef.current ? 'none' : 'transform var(--motion-settle) var(--ease-spring-soft)');
+        if (reducedRef.current) setDragging(false);
+        else window.setTimeout(() => setDragging(false), SNAP_MS);
         return;
       }
       haptics.tick(); // commit-only (Android in practice; no arm haptic for navigation)
       if (reducedRef.current) {
         onPage(dir); // reduced motion: no snap animation, swap panes immediately (global CSS fades)
         setTransform(restPct, 'none');
+        setDragging(false);
         return;
       }
       // Double-buffered snap: animate to the target pane, then in ONE commit page + reset to rest (no flash —
       // the incoming pane already rendered the target content).
-      setTransform(dir === 1 ? -200 / 3 : 0, 'transform var(--motion-settle) var(--ease-spring)');
+      setTransform(dir === 1 ? -200 / 3 : 0, 'transform var(--motion-settle) var(--ease-spring-soft)');
       window.setTimeout(() => {
         onPage(dir);
         setTransform(restPct, 'none');
+        setDragging(false); // at settle: transform is restPct → the re-render write is a no-op
       }, SNAP_MS);
     },
   });
@@ -104,11 +117,11 @@ export function SwipeStrip({ onPage, canPage, renderPane, onSwipeStart, shouldSt
         ref={stripRef}
         className={styles.strip}
         style={{ transform: `translateX(${restPct}%)` }}
-        onPointerDown={disabled ? undefined : (e) => { if (shouldStart && !shouldStart(e)) return; drag.onPointerDown(e); }}
+        onPointerDown={disabled ? undefined : (e) => { if (shouldStart && !shouldStart(e)) return; setDragging(true); drag.onPointerDown(e); }}
       >
-        <div className={styles.pane} aria-hidden="true" style={{ pointerEvents: 'none' }}>{renderPane(-1)}</div>
-        <div className={styles.pane}>{renderPane(0)}</div>
-        <div className={styles.pane} aria-hidden="true" style={{ pointerEvents: 'none' }}>{renderPane(1)}</div>
+        <div className={styles.pane} aria-hidden="true" style={{ pointerEvents: 'none' }}>{renderPane(-1, dragging)}</div>
+        <div className={styles.pane}>{renderPane(0, true)}</div>
+        <div className={styles.pane} aria-hidden="true" style={{ pointerEvents: 'none' }}>{renderPane(1, dragging)}</div>
       </div>
     </div>
   );

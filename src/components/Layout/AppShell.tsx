@@ -285,6 +285,11 @@ export function AppShell() {
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
   const goAlmanac  = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); };
 
+  // P3.1 nested settings back-chain: SettingsMain reports its one-level-back handler here (null on the list).
+  // The Branch-H edge gesture chains subpage→list first, else exits Settings — mirroring the visible ← Back.
+  const settingsBackRef = useRef<(() => void) | null>(null);
+  const settingsEdgeBack = () => { const b = settingsBackRef.current; if (b) b(); else setActiveTab(previousTab); };
+
   // Branch J's owner journal fork (dashboard/daily/monthly) — shared by Branch J AND the edge-back
   // under-layer (renderSimpleUnder), so the parallax backdrop is EXACTLY the surface back-nav reveals.
   const renderOwnerJournal = () =>
@@ -347,8 +352,12 @@ export function AppShell() {
           onOpenSettings={() => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); }}
         />
       ) : simpleMode && activeTab === 'settings' ? (
-        // Branch H — edge-swipe-back reveals the previous surface (owner journal / viewer home) with iOS parallax.
-        <EdgeBackGesture onBack={() => setActiveTab(previousTab)} renderUnder={renderSimpleUnder}>
+        // Branch H — edge-swipe-back chains one level (subpage → list) then exits Settings. renderUnder reveals
+        // the journal parallax ONLY from the list; from a subpage it goes plain app-bg (nav depth = parallax depth).
+        <EdgeBackGesture
+          onBack={settingsEdgeBack}
+          renderUnder={() => (settingsBackRef.current ? null : renderSimpleUnder())}
+        >
           <div className={styles.simpleModeSettings}>
             <div className={styles.simpleModeSettingsHeader}>
               <button
@@ -359,7 +368,7 @@ export function AppShell() {
               </button>
               <span className={styles.simpleModeSettingsTitle}>Settings</span>
             </div>
-            <SettingsMain hideHeader />
+            <SettingsMain hideHeader registerBack={(fn) => { settingsBackRef.current = fn; }} />
           </div>
         </EdgeBackGesture>
       ) : simpleMode && activeTab === 'almanac' ? (

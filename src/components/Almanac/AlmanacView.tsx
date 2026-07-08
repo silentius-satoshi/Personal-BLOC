@@ -41,16 +41,6 @@ import styles from './AlmanacView.module.css';
  */
 type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger';
 
-/** A neighbour pane while paging (P3): the face LABEL only — the real face (with its heavy Power Law/Mining
- *  data hooks) materialises at rest after the snap commits (§14.5 + perf). aria-hidden — decorative. */
-function FacePreviewCard({ label }: { label: string }) {
-  return (
-    <div className={styles.previewCard} aria-hidden="true">
-      <span className={styles.previewLabel}>{label}</span>
-    </div>
-  );
-}
-
 export default function AlmanacView() {
   const [face, setFace] = useState<Face>('halving');
   const [consentOpen, setConsentOpen] = useState(false);
@@ -111,10 +101,13 @@ export default function AlmanacView() {
     return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
   };
 
-  const renderPane = (offset: -1 | 0 | 1): ReactNode => {
+  // Neighbours render the REAL adjacent face, but ONLY while a gesture/snap is live (SwipeStrip's `live`) —
+  // at rest they're null, so heavy faces (Power Law/Mining hooks) never mount on a peek. The center is always
+  // real. (Owner decision — replaced the P3 FacePreviewCard placeholder.)
+  const renderPane = (offset: -1 | 0 | 1, live: boolean): ReactNode => {
     if (offset === 0) return renderFace(face);
-    const target = visibleFaces[idx + offset];
-    return target ? <FacePreviewCard label={target.label} /> : null;
+    const t = visibleFaces[idx + offset];
+    return live && t ? renderFace(t.key) : null;
   };
   const onPage = (dir: -1 | 1) => { const t = visibleFaces[idx + dir]; if (t) setFace(t.key); };
   const canPage = (dir: -1 | 1): boolean => idx + dir >= 0 && idx + dir < visibleFaces.length;
