@@ -168,7 +168,7 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
                 These 12 words <strong>are</strong> your plan. If you lose them and this device, no one can
                 recover your data — there is no server and no reset.
               </p>
-              {words && <WordGrid words={words} />}
+              {words && <WordGrid mode="reveal" words={words} />}
               <p className={styles.hygiene}>
                 Generate fresh words here — never reuse your Bitcoin wallet's seed phrase, and never use these
                 words as a Bitcoin wallet. Same format, different job.

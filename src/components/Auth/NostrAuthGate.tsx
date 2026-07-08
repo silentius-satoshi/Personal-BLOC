@@ -9,6 +9,8 @@ import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { probeKeyVaultCapability, type WrapMethod } from '../../lib/nostr/keyVault';
 import { skFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Key';
 import { classifyRecoveryInput } from '../../lib/nostr/recoveryInput';
+import { phraseStatus } from '../../lib/recoveryGrid';
+import { WordGrid } from '../Onboarding/WordGrid';
 import { biometricLabel } from '../../lib/biometricLabel';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
@@ -53,8 +55,10 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const hasWrappedKey = !!useStore((s) => s.writerKeyWrapped);   // #6: a wrapped key survives a local→nip46→local switch
   const [forceImport, setForceImport]     = useState(false);     // #6: user chose to import a different key
   const [backupConfirmed, setBackupConfirmed] = useState(false);
-  const [recoveryInput, setRecoveryInput] = useState('');   // R2b-2: an nsec OR a 12-word phrase (was nsecInput)
-  const [reveal, setReveal]               = useState(false);   // proofread a typed phrase (masked by default)
+  const [recoveryTab, setRecoveryTab]     = useState<'words' | 'nsec'>('words');   // R2b-3: default to the word grid
+  const [gridValues, setGridValues]       = useState<string[]>(() => Array(12).fill(''));   // R2b-3 words tab — ⚠ transient secret
+  const [recoveryInput, setRecoveryInput] = useState('');   // the nsec tab's field (R2b-2 was dual-format; now nsec-only)
+  const [reveal, setReveal]               = useState(false);   // proofread a typed nsec (masked by default)
   const [localMethod, setLocalMethod]     = useState<WrapMethod | null>(null);
   const [pin, setPin]                     = useState('');
   const [pinConfirm, setPinConfirm]       = useState('');
@@ -71,7 +75,9 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setShowLocal(true);
     setForceImport(false);
     setBackupConfirmed(false);
-    setRecoveryInput('');   // the ONLY scrub site for the secret input (see the residual note below)
+    setRecoveryTab('words');
+    setGridValues(Array(12).fill(''));   // ⚠ transient secret — reset here (the ONLY scrub site; see residual note below)
+    setRecoveryInput('');
     setReveal(false);
     setLocalMethod(null);
     setPin('');
@@ -86,7 +92,10 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     let sk: Uint8Array | null = null;
     try {
       // R2b-2 dual-format: classify by SHAPE, then let the format's own crypto own the verdict.
-      const input = classifyRecoveryInput(recoveryInput);
+      // R2b-3: the raw string comes from the active tab — the word grid (joined) or the nsec field. handleLocal
+      // stays a SINGLE path; the tab only chooses what feeds classifyRecoveryInput.
+      const raw = recoveryTab === 'words' ? gridValues.map((v) => v.trim()).join(' ') : recoveryInput;
+      const input = classifyRecoveryInput(raw);
       if (input.kind === 'nsec') {
         let decoded;
         try { decoded = nip19.decode(input.value); }
@@ -112,7 +121,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       // enforces that) → never gated. Stamped BEFORE establishLocalOwner's internal syncNow.
       useStore.getState().setKeyProvenance('imported');
       // ⚠ R2b-2 INVARIANT — an IMPORTED phrase wraps the DERIVED SK (payloadKind 'sk'), never the entropy.
-      // establishLocalOwner's wrapSecretKey call is 4-arg, so 'sk' is the default; do not "fix" this into
+      // NostrAuthGate passes no payloadKind, so establishLocalOwner defaults it to 'sk'; do not "fix" this into
       // entropy storage. R2c's word-quiz re-display exists for keys BORN IN-APP ('nip06-entropy'); an
       // imported-words plan's Recovery Key is the phrase the user already holds, so unwrapRecoveryPayload
       // correctly reports 'sk' and RevealRecoveryKey falls back to nsec display.
@@ -149,8 +158,11 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     }
   };
 
+  // R2b-3: gate on the CHECKSUM in the words tab (skFromWords on submit is still the authority); the nsec tab
+  // keeps the original non-empty check.
   const localCanContinue =
-    backupConfirmed && !!recoveryInput.trim() &&
+    backupConfirmed &&
+    (recoveryTab === 'words' ? phraseStatus(gridValues) === 'valid' : !!recoveryInput.trim()) &&
     (localMethod !== 'pin' || (pin.length >= 4 && pin === pinConfirm));
 
   const handleNip07 = async () => {
@@ -362,28 +374,68 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                 somewhere safe outside this device.
               </span>
             </label>
-            <input
-              className={styles.input}
-              type={reveal ? 'text' : 'password'}
-              placeholder="nsec1… or your 12 words"
-              value={recoveryInput}
-              onChange={(e) => setRecoveryInput(e.target.value)}
-              disabled={loading || !backupConfirmed}
-              // ⚠ LOAD-BEARING: iOS silently autocapitalizes/autocorrects a typed phrase, which would mangle the
-              // words into a checksum failure (or, worse, a valid-but-different phrase). Same discipline as
-              // ViewerLoginFlow's passphrase field. autoComplete off keeps the secret out of browser autofill.
-              autoComplete="off"
-              autoCorrect="off"
-              autoCapitalize="none"
-              spellCheck={false}
-            />
-            <button
-              className={styles.ghostBtn}
-              onClick={() => setReveal((v) => !v)}
-              disabled={loading || !backupConfirmed}
-            >
-              {reveal ? 'Hide' : 'Show'}
-            </button>
+            {/* R2b-3 — Recovery phrase | nsec. The word grid is the default; Nostr natives switch to the raw field. */}
+            <div className={styles.recoveryTabs} role="tablist" aria-label="Recovery Key format">
+              <button
+                role="tab" type="button" aria-selected={recoveryTab === 'words'}
+                className={`${styles.recoveryTab} ${recoveryTab === 'words' ? styles.recoveryTabActive : ''}`}
+                onClick={() => { setRecoveryTab('words'); setError(null); }}
+                disabled={loading || !backupConfirmed}
+              >Recovery phrase (12 words)</button>
+              <button
+                role="tab" type="button" aria-selected={recoveryTab === 'nsec'}
+                className={`${styles.recoveryTab} ${recoveryTab === 'nsec' ? styles.recoveryTabActive : ''}`}
+                onClick={() => { setRecoveryTab('nsec'); setError(null); }}
+                disabled={loading || !backupConfirmed}
+              >nsec</button>
+            </div>
+
+            {recoveryTab === 'words' ? (
+              <>
+                <WordGrid
+                  mode="input"
+                  values={gridValues}
+                  onChange={setGridValues}
+                  onNsecPasted={(v) => { setRecoveryTab('nsec'); setRecoveryInput(v); setError(null); }}
+                  onSubmitAttempt={() => { if (localCanContinue) handleLocal(); }}
+                />
+                {(() => {
+                  const status = phraseStatus(gridValues);
+                  return (
+                    <p className={`${styles.checksumLine} ${status === 'valid' ? styles.checksumValid : status === 'bad-checksum' ? styles.checksumBad : ''}`}>
+                      {status === 'incomplete' ? 'phrase incomplete'
+                        : status === 'valid' ? '✓ valid recovery phrase'
+                        : "checksum doesn't match — check your words"}
+                    </p>
+                  );
+                })()}
+              </>
+            ) : (
+              <>
+                <input
+                  className={styles.input}
+                  type={reveal ? 'text' : 'password'}
+                  placeholder="nsec1…"
+                  value={recoveryInput}
+                  onChange={(e) => setRecoveryInput(e.target.value)}
+                  disabled={loading || !backupConfirmed}
+                  // ⚠ LOAD-BEARING: iOS silently autocapitalizes/autocorrects, which would mangle an nsec.
+                  // Same discipline as ViewerLoginFlow's passphrase field. autoComplete off keeps the secret
+                  // out of browser autofill.
+                  autoComplete="off"
+                  autoCorrect="off"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                />
+                <button
+                  className={styles.ghostBtn}
+                  onClick={() => setReveal((v) => !v)}
+                  disabled={loading || !backupConfirmed}
+                >
+                  {reveal ? 'Hide' : 'Show'}
+                </button>
+              </>
+            )}
             {localMethod !== 'pin' && (
               <input
                 className={styles.input}

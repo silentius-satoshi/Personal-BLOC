@@ -105,3 +105,77 @@
 @media (max-width: 360px) {
   .grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
+
+/* ── R2b-3 input mode ──────────────────────────────────────────────────────── */
+.inputCard {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.inputGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px 8px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inputCell {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.inputNum {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--text-faint);
+  width: 15px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.box {
+  flex: 1;
+  min-width: 0;
+  box-sizing: border-box;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  color: var(--text-primary);
+  font-family: var(--mono);
+  font-size: 12px;
+  outline: none;
+  padding: 7px 8px;
+  transition: border-color 0.12s;
+}
+
+.box:focus { border-color: var(--orange); }
+
+/* per-box validity tint — neutral until first blur (touched), then green / amber */
+.boxOk  { border-color: var(--green); }
+.boxBad { border-color: var(--amber); }
+
+.suggestRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 30px;   /* reserve a row so the grid doesn't jump as suggestions appear/clear */
+}
+
+.suggestBtn {
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  color: var(--btc);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 5px 12px;
+  transition: opacity 0.12s;
+}
+
+.suggestBtn:hover { opacity: 0.85; }
