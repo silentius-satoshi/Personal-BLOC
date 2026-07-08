@@ -87,9 +87,13 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       sk = decoded.data as Uint8Array;
 
       const method = localMethod ?? await probeKeyVaultCapability();
+      // Backup gate (R2a-1): the user pasted an nsec they already hold elsewhere (the hard backup gate above
+      // enforces that) → never gated. Stamped BEFORE establishLocalOwner's internal syncNow.
+      useStore.getState().setKeyProvenance('imported');
       await establishLocalOwner(sk, method, nostr, { pin, keyLabel });   // shared with OwnerKeySetup K3
       onSuccess();
     } catch (err: any) {
+      useStore.getState().setKeyProvenance(null);   // R2a-1 rollback: stamped pre-establish; a throw must not freeze it (write-once)
       setError(err?.message ?? 'Could not set up the local key');
     } finally {
       sk?.fill(0);   // best-effort zero (the NSecSigner holds its own copy for the session)
@@ -132,6 +136,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       markSignerFresh();
       setNostrPubkey(pubkey);
       setNostrSigningMethod('nip07');
+      useStore.getState().setKeyProvenance('external');   // R2a-1: key lives in the extension — nothing for us to back up. Stamped BEFORE syncNow.
       syncNow(nostr);
       setIsAuthenticated(true);
       onSuccess();
@@ -160,6 +165,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       setNostrSigningMethod('nip46');
       setNostrBunkerUri(bunkerUri);
       useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey }));
+      useStore.getState().setKeyProvenance('external');   // R2a-1: key lives in the remote signer — nothing for us to back up. Stamped BEFORE syncNow.
       syncNow(nostr);
       setIsAuthenticated(true);
       onSuccess();
@@ -209,6 +215,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
         setNostrPubkey(login.pubkey);
         setNostrSigningMethod('nip46');
         useStore.getState().setNostrLogin(JSON.stringify({ ...login, pubkey: login.pubkey }));
+        useStore.getState().setKeyProvenance('external');   // R2a-1: key lives in the remote signer — nothing for us to back up. Stamped BEFORE syncNow.
         syncNow(nostr);
         setIsAuthenticated(true);
         onSuccess();

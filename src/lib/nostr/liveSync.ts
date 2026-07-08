@@ -9,6 +9,7 @@ import { applyRemoteEvent, type RemoteEvent } from './sync';
 import { signerOpTimeout } from './timeout';
 import { SETTINGS_DTAG, RECORDS_DTAG } from './publish';
 import { nostrLog } from './log';
+import { isBackupGateSatisfied } from '../backupGate';
 
 let sub: ReturnType<SimplePool['subscribeMany']> | null = null;
 let pool: SimplePool | null = null;
@@ -25,8 +26,9 @@ async function handleLiveEvent(event: RemoteEvent): Promise<void> {
 
 export function openLiveSync(): void {
   if (sub) return;   // singleton, idempotent
-  const { nostrPubkey, nostrRelays } = useStore.getState();
-  if (!nostrPubkey || !nostrRelays.length) return;
+  const { nostrPubkey, nostrRelays, keyProvenance, backupVerifiedAt } = useStore.getState();
+  // Backup gate: a generated-but-unverified key opens no subscription (the engine is silent end to end).
+  if (!nostrPubkey || !nostrRelays.length || !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })) return;
   pool = new SimplePool();
   subRelays = nostrRelays;
   // since−60s overlap is deliberate: appliers are idempotent — overlap is free, gaps are expensive.

@@ -549,6 +549,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 s.setNostrPubkey(null);
                 s.setNostrSigner(null);
                 s.setIsAuthenticated(false);
+                s.setKeyProvenance(null);      // R2a-1: identity teardown — provenance dies with the identity (see disconnectNostr)
+                s.setBackupVerifiedAt(null);
                 clearStoreEncryptionState();   // also clear the enc flag + {ct,iv} blob + key — next launch is a clean plaintext slate (no locked-out encrypted blob)
                 window.location.reload();
               }}

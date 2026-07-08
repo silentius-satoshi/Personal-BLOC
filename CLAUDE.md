@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (651 tests — all must pass before every commit)
+- Vitest (681 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -131,6 +131,15 @@ src/
 
   store/
     useStore.ts                 # Zustand store — all state, persisted to localStorage
+
+  lib/
+    backupGate.ts               # R2a-1 — the backup-gate predicate. PURE, ZERO imports (no cycle):
+                                # isBackupGateSatisfied({keyProvenance, backupVerifiedAt}) = keyProvenance !== 'generated'
+                                # || backupVerifiedAt != null. A key this device GENERATED is the only copy until the
+                                # user proves they saved it → nothing syncs/publishes. 'imported'/'external' are satisfied
+                                # by construction (the user holds the key elsewhere); null = LEGACY (pre-R2 plan), satisfied
+                                # STRUCTURALLY via the persist merge — deliberately NO migration. Consulted at exactly the
+                                # layer isAuthenticated is (11 guard sites); NEVER on viewer paths. See § Backup Gate
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware)
@@ -2936,7 +2945,9 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-651 tests — `npx vitest run` before every commit.
+681 tests — `npx vitest run` before every commit.
+- `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
+- `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
@@ -2980,7 +2991,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
 - `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, fetchAndSync boolean (decrypt failure → false, nothing applied), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). Seed-clobber Fix B: the FIRST pull (`!initialSettingsPullDone`) hydrates real remote settings even when `settingsDirty` is spuriously true (the fixture default is `initialSettingsPullDone: true` = established session)
-- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
+- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 33-key literal) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
 - `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
@@ -3086,7 +3097,10 @@ publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
 plan-card status-bar visibility, default true), `simpleView` (`'dashboard'|'monthly'|'daily'` consumer-shell view,
 default `'dashboard'` — Owner IA dashboard-first; migrate-default only), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
-null; cleared on `resetViewerSession`), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
+null; cleared on `resetViewerSession`), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
+default null; **WRITE-ONCE** with `null` as the explicit identity-teardown clear; cleared by `disconnectNostr` +
+"Remove local key" + `gateHydratedIdentity`'s signed-out branch. Its partner `backupVerifiedAt` is the exception
+that IS synced — see § Backup Gate), `writerKeyWrapped`/`writerKeyWrapMeta` (the writer
 local-key signer's encrypted nsec + wrap meta — key material, MUST never leave the device; **persisted in
 STANDALONE localStorage `personal-bloc-writer-key-wrapped`/`-meta`, NOT inside the persist blob** — they're the
 credential that UNLOCKS the encrypted store, so they must be readable before/without decryption (else the
@@ -3192,6 +3206,162 @@ contents; collateral is represented by a `pendingNonZero` boolean). The on-devic
 figures in its COLLATERAL section — that's the point of on-device verification. `nostrLog()`
 (lib/nostr/log.ts) is the standard for Nostr-layer logging (console mirror + ring) — new code uses it
 instead of bare console.warn, and log messages never include amounts.
+
+---
+
+## Backup Gate (R2a-1 — store plumbing + sync-engine gating; store stays v21, NO bump)
+
+A key this device **generated** is the only copy of the plan until the user proves they saved it. Relays hold
+ciphertext, so a lost sole key is permanently unrecoverable data. Before R2a-1 the only "I saved it" signals
+were two **ephemeral `useState` booleans** (`OwnerKeySetup.tsx` `ack`, `NostrAuthGate.tsx` `backupConfirmed`)
+that died on unmount — `keyVault.ts` already stated the unenforced contract: *"the caller enforces the backup
+gate."* R2a-1 makes it real at the data layer. **No verification UI ships here** (that is R2c).
+
+- **`src/lib/backupGate.ts`** (PURE, ZERO imports → no cycle) — the single predicate:
+  `isBackupGateSatisfied({ keyProvenance, backupVerifiedAt }) = keyProvenance !== 'generated' || backupVerifiedAt != null`.
+  (`!= null`, not truthiness — a `backupVerifiedAt` of `0` counts as verified.)
+- **`KeyProvenance = 'generated' | 'imported' | 'external'`** — how *this device's* identity was established.
+  `'imported'` (pasted nsec) and `'external'` (NIP-07 extension / NIP-46 remote signer) mean the user already
+  holds the key elsewhere → **never gated**.
+- **⚠ STRUCTURAL GRANDFATHERING — `keyProvenance: null` = a plan established before R2 = satisfied. There is
+  DELIBERATELY NO MIGRATION and no store version bump.** The custom persist `merge`
+  (`{ ...current, ...gateHydratedIdentity(persisted, …) }`) fills the absent key from `current` (= `null`) on
+  every rehydrate, for every existing user. Adding a `migrateState` case would be the only way to get this wrong.
+  `exportPlan.ts`'s hand-copied `storeVersion: 21` therefore stays correct.
+
+### Store fields
+
+| Field | Persist | Sync | Notes |
+|---|---|---|---|
+| `keyProvenance: KeyProvenance \| null` | ✅ (rides `partializeState`'s `...rest`) | ❌ **never** | Absent from `buildSettingsPayload` — an ALLOWLIST, so it's absent from both snapshot tiers + the plan backup for free. **WRITE-ONCE.** |
+| `backupVerifiedAt: number \| null` | ✅ | ✅ (`buildSettingsPayload` + `SETTINGS_FIELDS`, 36→**37**) | The attestation travels with the plan. **ONE-WAY LATCH** on hydrate. STRIPPED from the trusted viewer snapshot (4th strip key). ⚠ It does NOT un-gate a gated peer — see below. |
+
+- **`setKeyProvenance(p)` — write-once, `null` is an explicit CLEAR.** A *different* non-null over a non-null is
+  ignored (+`console.warn`); the SAME value is a silent no-op (an establish retry must not warn). The `null`
+  write is **identity teardown**: without it, `generate → never verify → disconnect → import a different nsec`
+  would leave `'generated'` frozen with `backupVerifiedAt: null` → **sync permanently gated with no UI to fix
+  it**. Provenance is identity-scoped, so it dies with the identity.
+  - `disconnectNostr()` + SettingsMain **"Remove local key"** → clear BOTH.
+  - `reconnectNostr()` + `escapeHatch.resetAndResync()` **RETAIN** the identity → deliberately do NOT clear.
+  - **`gateHydratedIdentity` nulls both on the signed-out branch** (no `GATE_PUBKEY_KEY`). Same authority rule as
+    the identity fields, and for the same reason: disconnect's persist-blob write isn't guaranteed to land before
+    `reload()`, so a stale `'generated'` in the blob could re-gate a device that has since imported a key.
+- **`setBackupVerifiedAt(ts, nostr?)`** — stamping OPENS the gate, so it must also **wake the engine**:
+  (a) `set` the field, (b) **if authenticated**, mark `settingsDirty` **DIRECTLY** — `syncSettingsToNostr`
+  early-returns on `!initialSettingsPullDone`, which is still `false` *precisely because the gate held `syncNow`
+  off all session* — and (c) run the SAME initial-pull-then-publish sequence a fresh authentication runs:
+  `syncNow` (cf. `establishOwner.ts`). **No second wake mechanism.** ⚠ **ORDER: `set()` FIRST**, so the gate
+  reads satisfied inside `doSyncNow`'s and the publish guards' `useStore.getState()` reads. `syncNow` is
+  **dynamic-imported** (cycle-safe, mirroring `publishSettingsNow`'s `publish.ts` import) and `.catch`-logged.
+  `nostr` is optional (tests assert state without a signer; `OwnerKeySetup` relies on `establishLocalOwner`'s own
+  internal `syncNow` as the wake). `ts === null` is the teardown clear: no dirty, no wake.
+- **⚠ THE PRE-AUTH GUARD IS LOAD-BEARING (seed-clobber, Fix C).** `settingsDirty` is **persisted** (rides
+  `partializeState`'s `...rest`), and `doSyncNow` flips `initialSettingsPullDone(true)` **before** its
+  publish-if-dirty step — so **Fix D's seed-guard is structurally unreachable from inside `syncNow`**, and Fix C
+  ("nothing may dirty pre-pull") is the ONLY thing protecting the first sync. The K2 bridge calls
+  `setBackupVerifiedAt` on an **unauthenticated, untouched-SEED store**. Dirtying there would (a) publish the
+  seed as the owner's first settings event before the numbers wizard runs — breaking Phase 1.5's stated
+  invariant *"nothing publishes (not dirty; Fix D refuses seed defaults)"* — and (b) if the establish then
+  **throws** (Face ID cancelled), persist `settingsDirty: true` into a later **real** login, publishing the seed
+  payload over the owner's real relay settings under whole-object LWW. So pre-auth only the field is set; it
+  rides the wizard's first genuine settings publish (it's in `buildSettingsPayload`).
+- **Establish-failure ROLLBACK.** Every stamp lands *before* the establish (which owns the wake), and
+  `setKeyProvenance` is write-once — so a throw would freeze `'generated'` for a key that never existed,
+  silently rejecting the later correct `'imported'`/`'external'` stamp, and leave a false backup attestation.
+  `OwnerKeySetup.handleProtect`'s catch clears **both**; `NostrAuthGate.handleLocal`'s catch clears provenance.
+- **Edits made while gated are NOT lost.** `syncSettingsToNostr` is gated → they never mark dirty, but they still
+  persist locally. On verification, `publishSettingsNow` builds the payload from **current state**, so everything
+  ships. A generated-unverified key is by definition a brand-new plan with no peer device.
+- **`backupVerifiedAt` does NOT un-gate a peer.** A gated device runs **no sync at all, not even a pull**, so it
+  can never *receive* the field. It needn't: only the sole **generating** device is ever gated, and no other
+  device can hold `'generated'` for the same key (importing that nsec yields `'imported'`). The field is synced
+  so the attestation travels with the plan and imported/external peers can see it — not as an un-gate channel.
+
+### Hydrate skip-guard — the one-way latch
+
+`hydrateSettings`' whitelist applies any value `!== undefined`, so a `null` **hydrates**. The device that
+publishes an explicit `null` is a **new-bundle peer** that is legacy (`keyProvenance: null` → gate satisfied →
+syncs freely) or not-yet-verified; it would clobber a verified device's timestamp and **re-gate it**. A *stale
+pre-R2 bundle* omits the field entirely (`undefined` → the whitelist skips it) and is already safe. Guard: an
+incoming `null` never overwrites a non-null local value. **Third member of the whole-object-LWW skip-guard
+class** (`nostrRelays`, `viewers`, this) — the entire class is scheduled for **structural deletion at Phase 4e**,
+when settings move to plan-events and absent vs null vs set become first-class in the fold.
+
+### Gated engine entry points (the predicate is added to the EXISTING guard, never deeper)
+
+`isBackupGateSatisfied(...)` is consulted at exactly the layer `isAuthenticated` already is. One predicate,
+11 sites:
+
+| File | Guard |
+|---|---|
+| `useStore.ts` | `publishRecordsNowImmediate` (also the `viewerMode` backstop) |
+| `useStore.ts` | `publishSettingsNow` (bails BEFORE `setNostrSyncing` / the seed-guard) |
+| `useStore.ts` | `publishRelayListToNip65` |
+| `useStore.ts` | `publishViewerSnapshotNow` |
+| `useStore.ts` | `publishViewerRevocationNow` |
+| `useStore.ts` | `syncSettingsToNostr` (the mark-dirty trigger) |
+| `syncNow.ts` | `doSyncNow` — a gated key runs **no sync at all, not even a pull** (a pull sets `initialSettingsPullDone`, which would re-arm publishing) |
+| `liveSync.ts` | `openLiveSync` |
+| `useNostrSync.ts` | `scheduleDirtyRetry` (`args.backupGateOk`) |
+| `useNostrSync.ts` | `triggerSync` (live `getState()` read, mirroring `viewerMode`) |
+| `useNostrSync.ts` | the orchestration effect |
+
+- **`useNostrSync` SUBSCRIBES both fields** (`useStore((s) => s.keyProvenance)` etc.) and adds the derived
+  `backupGateOk` to **both effects' dep arrays** — otherwise a verification flip wouldn't re-run them and the
+  live sub would never open.
+- `publishRecordsNow` (the 400ms debounce) has no guard of its own — covered at fire time by
+  `publishRecordsNowImmediate`. `importRelaysFromNip65` is a **read**, not a publish → **not gated**.
+  `useNostrAutoRestore` calls `syncNow` → covered transitively.
+- **NEVER consulted on viewer paths**: `viewerSync.ts` publishes nothing, and every owner publish path already
+  fails its `viewerMode`/auth guard before the predicate is reached. A viewer's `keyProvenance` is `null` anyway.
+
+### Provenance is stamped BEFORE establishment (load-bearing)
+
+`establishLocalOwner()` calls `syncNow(nostr)` **internally**, and the three `NostrAuthGate` handlers call it
+*before* `setIsAuthenticated(true)`. A provenance write placed **after** would let a generated key's very first
+sync publish ungated. `establishLocalOwner` itself is untouched — it is shared verbatim by the generated and
+imported paths and cannot distinguish them, so every **call site** stamps first:
+
+| Site | Stamp |
+|---|---|
+| `OwnerKeySetup.handleProtect` (before `establishLocalOwner`) | `'generated'` **+ the interim K2 bridge** |
+| `NostrAuthGate.handleLocal` (paste-nsec import, before `establishLocalOwner`) | `'imported'` |
+| `NostrAuthGate.handleNip07` / `handleNip46` / the nostrconnect effect (each before its `syncNow`) | `'external'` |
+
+Not stamped: `handleUnlockExisting`, `LocalUnlockGate`, `useNostrAutoRestore` (returning users — provenance is
+already set, or legacy `null`), and viewer establishment (`ViewerLoginFlow`).
+
+### ⚠ INTERIM — the K2 verification bridge (R2a-1 → R2c)
+
+R2a-1 ships the gate but **no verification ceremony**. Shipping the gate alone would *regress* every new-plan
+user, because `OwnerKeySetup`'s K2 mandatory "I saved it" ack is today's backup bar and already blocks progress.
+So until R2c (the word-quiz verify) lands, **completing the K2 ack counts as verification** — `OwnerKeySetup`
+stamps `setBackupVerifiedAt(Date.now())` alongside `setKeyProvenance('generated')`. **R2c replaces exactly that
+one line.** Net behavior change for a generated key in R2a-1: **none** — the plumbing is live and testable, and
+the gate becomes *load-bearing* the moment R2c swaps the stamp for a real ceremony. A test pins the pair
+(`src/store/__tests__/backupGate.test.ts` → "K2 bridge"), so removing the bridge without a ceremony fails loudly.
+
+### ⚠ TWO KNOWN GATE-BYPASSES — inert today, MUST be closed by R2c
+
+Both are harmless while the K2 bridge stamps `backupVerifiedAt` (the gate is always satisfied for a generated
+key), and both become one-tap bypasses the moment R2c removes that line. **Do not ship R2c without closing them.**
+
+1. **Escape hatch erases the gate state.** `escapeHatch.resetAndResync()` → `clearStoreEncryptionState()` →
+   `localStorage.removeItem('personal-bloc-store')`. `keyProvenance` and `backupVerifiedAt` ride that blob
+   (`partializeState`'s `...rest`), while the identity survives in the standalone `GATE_*` keys. So after the
+   escape hatch the device returns as `keyProvenance: null` → grandfathered → **gate silently disabled forever**
+   (nothing re-stamps: `handleUnlockExisting` never calls `setKeyProvenance`). This also makes `disconnect.ts`'s
+   comment (*"resetAndResync … deliberately do NOT clear these"*) factually wrong. **Fix:** persist the pair in
+   standalone localStorage keys, seeded at module init + write-through in the setters — the exact
+   `writerKeyWrapped` / `GATE_METHOD_KEY` precedent. Both must move together: keeping only `keyProvenance`
+   outside the blob would strand a generated device at `'generated'` + `null` with the pull gated off → lockout.
+2. **Disconnect → "Unlock with Face ID" launders provenance.** `disconnectNostr()` clears the pair but
+   **retains `writerKeyWrapped`**; `NostrAuthGate.handleUnlockExisting` then re-establishes the SAME
+   never-backed-up generated key via `restoreSigner` and stamps nothing → `keyProvenance: null` → satisfied.
+   **Fix:** scope provenance to the **key material**, not the session — retain it across `disconnectNostr`
+   (only "Remove local key", which deletes `writerKeyWrapped`, should clear it) and make the establishment call
+   sites clear-then-stamp, since `establishLocalOwner` *replaces* the key material. That reordering is what makes
+   the retain safe (it is the write-once escape the teardown clear currently provides).
 
 ---
 
@@ -4045,7 +4215,7 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 36 Synced Settings Fields
+### All 37 Synced Settings Fields
 (`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -4056,8 +4226,15 @@ a v17-migrant holder until the one-time wrap.
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
-`nostrRelays`, `viewers`, `nextViewerIndex`
-(`viewers` + `nextViewerIndex` (Multi-viewer M1, store v21) are the sharing roster — they REPLACE the 5 old
+`nostrRelays`, `backupVerifiedAt`, `viewers`, `nextViewerIndex`
+(`backupVerifiedAt` (R2a-1) is synced so the backup attestation travels with the plan (an imported/external peer
+device sees it). ⚠ It does NOT un-gate a gated peer — a gated device runs no sync at all, not even a pull, and
+needn't, since only the sole GENERATING device is ever gated. It is a **ONE-WAY LATCH** on hydrate (an incoming `null` never clobbers a latched local value —
+the third member of the whole-object-LWW skip-guard class alongside `nostrRelays`/`viewers`), STRIPPED from the
+trusted viewer snapshot (the owner's key-custody state is not the viewer's business), and RETAINED in the plan
+backup (a restore lands on a device whose `keyProvenance` is null → satisfied → harmless). Its partner
+`keyProvenance` is device-local and NEVER synced — see § Backup Gate.
+`viewers` + `nextViewerIndex` (Multi-viewer M1, store v21) are the sharing roster — they REPLACE the 5 old
 single-viewer scalars (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyTrusted`/`viewerKeyVersion`), which
 were dropped clean-cut. Each `ViewerSlot` = `{ index, pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`;
 `nextViewerIndex` is monotonic (an index is NEVER reused). Both sync across the owner's devices so the roster +
@@ -4090,6 +4267,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `nostrPubkey` | string | ✅ | Hex pubkey |
 | `nostrSigningMethod` | `'nip07' \| 'nip46' \| 'local' \| null` | ✅ | Login path used (`'local'` = iOS Face-ID signer) |
 | `writerKeyWrapped` / `writerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Encrypted writer nsec + wrap meta — **NEVER synced** (not in SETTINGS_FIELDS) |
+| `keyProvenance` | `'generated' \| 'imported' \| 'external' \| null` | ✅ (device-local) | R2a-1 backup gate. **WRITE-ONCE** (`null` = identity-teardown clear). **NEVER synced.** `null` = legacy plan = gate satisfied (structural, no migration). See § Backup Gate |
+| `backupVerifiedAt` | `number \| null` | ✅ | R2a-1 backup gate. **SYNCED** (in SETTINGS_FIELDS/payload) so verifying on one owner device un-gates the others; **ONE-WAY LATCH** on hydrate; STRIPPED from the trusted viewer snapshot. Setter marks `settingsDirty` + wakes `syncNow` |
 | `viewerKeyWrapped` / `viewerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Phase 3 — wrapped-at-rest viewer nsec + wrap meta — **NEVER synced**. Unwrapped bytes live only in viewerSync's in-memory holder |
 | `viewerUnlocked` | boolean | ❌ | In-memory; true once viewerSync's key holder is populated (post-unlock/provision) — AppShell gates the ViewerUnlockGate on it |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
@@ -4111,6 +4290,13 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 | Constraint | Rule |
 |---|---|
+| Backup gate — no migration | `keyProvenance: null` = a pre-R2 plan = **satisfied**. Grandfathering is STRUCTURAL (the persist `merge` fills the absent key from `current`). **NEVER add a `migrateState` case for `keyProvenance`/`backupVerifiedAt`** — that is the only way to break every existing owner. No store version bump; `exportPlan.ts`'s `storeVersion: 21` stays correct |
+| `setKeyProvenance` | **WRITE-ONCE**: a *different* non-null over a non-null is ignored + warns; the SAME value is a silent no-op. `null` is the explicit **identity-teardown CLEAR** (`disconnectNostr`, "Remove local key", `gateHydratedIdentity`'s signed-out branch). `reconnectNostr` + `resetAndResync` RETAIN the identity → must NOT clear. Without the clear, generate→never-verify→disconnect→import-a-different-nsec is a permanent sync lockout |
+| Provenance stamp ordering | `setKeyProvenance(...)` is stamped **BEFORE** `establishLocalOwner`/`syncNow` at every establishment call site — both call `syncNow` internally/immediately, so a stamp placed after would let a generated key's first sync publish ungated. `establishLocalOwner` is shared by the generated + imported paths and cannot distinguish them → the CALL SITES own the stamp |
+| `setBackupVerifiedAt` | `set()` the field FIRST, then wake via `syncNow` (dynamic-imported, cycle-safe) — the gate must read satisfied inside `doSyncNow`'s guards. Marks `settingsDirty` DIRECTLY (`syncSettingsToNostr` early-returns on `!initialSettingsPullDone`, still false because the gate held sync off). **No second wake mechanism.** `null` = teardown clear (no dirty, no wake) |
+| `backupVerifiedAt` hydrate | **ONE-WAY LATCH** — an incoming `null` never clobbers a non-null local (a legacy/unverified peer would otherwise re-gate a verified device). Third member of the whole-object-LWW skip-guard class (`nostrRelays`, `viewers`, this); the class is scheduled for structural deletion at Phase 4e |
+| Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green |
+| K2 bridge (INTERIM) | `OwnerKeySetup` stamps `setBackupVerifiedAt(Date.now())` beside `setKeyProvenance('generated')` because R2a-1 ships **no verification ceremony** — the K2 mandatory ack is today's backup bar. **R2c replaces exactly that one line** with the word-quiz verify. A test pins the pair, so removing the bridge without a ceremony fails loudly |
 | `SummaryBar fmtUSD` | Local sign-preserving — NEVER replace with shared version |
 | Power Law A constants | Three independent values — never `PL_A_FAIR × scalar` |
 | Mining electricity | Fiat overhead — 100% sats kept, never deducted |
@@ -4154,7 +4340,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `SettingsMain` ALL_TABS | Keep in sync with `AppShell` `ALL_TABS_META` |
 | `computeLiquidationAnalysis` | Standalone — no imports from runBLOC/runAdvisor/runBlocYearOne |
 | `cbLiquidationPrice` | Synced to Nostr (settings payload) along with cbMonthlyPayment/cbPaymentStrategy/cbLtvTriggerPct/cbLtvTargetPct/cbRotateBackPct; 0 = not set; guard with `liquidationPrice === 0` check before rendering modeler |
-| `disconnectNostr` | Full sign-out — clears all nostr state INCL. `nostrPubkey` (auth auto-clears under the B1 pin) + removes the standalone GATE_* keys synchronously via the setters, then `window.location.reload()` to rebuild NPool clean; in lib/nostr/disconnect.ts. **Sign-out authority lives in the persist `merge`, not the racy blob:** the blob write isn't guaranteed to land before `reload()`, so a stale un-flushed `nostrPubkey` would (under the pin) resurrect auth — `gateHydratedIdentity` in the store's `merge` gates identity on the SYNCHRONOUS `GATE_PUBKEY_KEY` (removed by disconnect), so a stale blob can't sign you back in. (The fix is in `merge`, which runs on EVERY rehydrate; `migrate` only fires on a version bump, so it can't cover the same-version disconnect→reload.) **`merge`/`gateHydratedIdentity` gate BOTH `nostrPubkey` AND `nostrSigningMethod` on the live GATE keys (`GATE_PUBKEY_KEY` + `GATE_METHOD_KEY`), GATE-first with blob fallback — the racy blob is NEVER authoritative for identity. (A method-only gap once let a local-key login hydrate the stale blob `nip46` → nonexistent bunker signer → nip44 decrypt/probe timeouts → default data; gating method on the live `GATE_METHOD_KEY` fixed it.)** |
+| `disconnectNostr` | Full sign-out — clears all nostr state INCL. `nostrPubkey` (auth auto-clears under the B1 pin) + the R2a-1 backup-gate pair `keyProvenance`/`backupVerifiedAt` (identity-scoped — see § Backup Gate) + removes the standalone GATE_* keys synchronously via the setters, then `window.location.reload()` to rebuild NPool clean; in lib/nostr/disconnect.ts. **Sign-out authority lives in the persist `merge`, not the racy blob:** the blob write isn't guaranteed to land before `reload()`, so a stale un-flushed `nostrPubkey` would (under the pin) resurrect auth — `gateHydratedIdentity` in the store's `merge` gates identity on the SYNCHRONOUS `GATE_PUBKEY_KEY` (removed by disconnect), so a stale blob can't sign you back in. (The fix is in `merge`, which runs on EVERY rehydrate; `migrate` only fires on a version bump, so it can't cover the same-version disconnect→reload.) **`merge`/`gateHydratedIdentity` gate BOTH `nostrPubkey` AND `nostrSigningMethod` on the live GATE keys (`GATE_PUBKEY_KEY` + `GATE_METHOD_KEY`), GATE-first with blob fallback — the racy blob is NEVER authoritative for identity. (A method-only gap once let a local-key login hydrate the stale blob `nip46` → nonexistent bunker signer → nip44 decrypt/probe timeouts → default data; gating method on the live `GATE_METHOD_KEY` fixed it.)** R2a-1: the signed-out branch (`!gatePubkey`) ALSO nulls `keyProvenance`/`backupVerifiedAt` — same authority rule, same reason (a stale `'generated'` in an un-flushed blob would re-gate a device that has since imported a key, and `setKeyProvenance` is write-once). |
 | `resetAndResync` (escape hatch) | RELOAD-BASED recovery that can NEVER erase relay data: `clearStoreEncryptionState()` (enc flag + pending-decrypt + on-disk `{ct,iv}` blob + in-memory key) → `window.location.reload()`. Identity retained → the normal boot local-unlock → `syncNow` repopulates from the relay into the clean plaintext slate (no bespoke in-line pull). Imports NO publish symbol (structural) + the boot sync is dirty-gated, so a freshly-pulled clean state can't push over real relay data. Returns void (it reloads — callers drop result handling). In `lib/store/escapeHatch.ts`; buttons in Settings + LocalUnlockGate. (`resetPlanToSeeds` is now app-orphaned — left as a store action.) See `clearStoreEncryptionState` / the teardown-desync fix |
 | `reconnectNostr` | Revoke-recovery — clears only the dead SESSION (`nostrSigner`/`nostrLogin`/`nostrBunkerUri`/`isAuthenticated`) but **RETAINS the identity (`nostrPubkey` + `nostrSigningMethod`)** so the B1-pinned `nostrAuthEnabled` stays true → the auth gate (`nostrAuthEnabled && !nostrSigner`) reappears on the NIP-46 login; `nostrLogin` cleared so `restoreSigner` can't revive the dead session. (Pre-B1 it cleared pubkey + relied on an independent `nostrAuthEnabled`; that's gone now — clearing pubkey would clear auth.) The bottom-right `⚠ Reconnect` affordance AND the Settings "Reconnect" button both call it; in lib/nostr/disconnect.ts. NOTE: reconnect reload shows a brief (~1.5s) optimistic-auth flash before the gate (autoRestore early-returns only for `'local'`); a follow-up autoRestore guard is deferred to Step 2/3 |
 | nostr-tools pin | EXACT 2.23.5 — verified with Primal NIP-44; do NOT downgrade to 2.13 (breaks @nostrify peer compat) |

@@ -79,11 +79,24 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
         setError('Set a PIN (min 4 digits, matching) to protect your key.');
         return;
       }
+      // Backup gate (R2a-1) — stamped BEFORE establishLocalOwner, whose internal syncNow is the wake. A stamp
+      // placed after would let this generated key's very first sync publish ungated.
+      useStore.getState().setKeyProvenance('generated');
+      useStore.getState().setBackupVerifiedAt(Date.now());   // INTERIM (R2a-1 → R2c): K2's mandatory ack is today's backup bar — until the
+                                                             // R2c ceremony (word-quiz verify) ships, completing the ack counts as verification
+                                                             // so no new-plan user regresses below current behavior. R2c replaces this line.
       // keyLabel omitted — K3 is a single "Enable Face ID" step (no name field).
       await establishLocalOwner(skRef.current, m, nostr, { pin });
       skRef.current = null;   // helper zeroed it on success
       onComplete();
     } catch (e: any) {
+      // ROLL BACK the backup-gate stamps (R2a-1). They were written before the establish (the syncNow inside it
+      // is the wake), so a throw here — Face ID cancelled, PRF unsupported, wrapSecretKey rejects — would leave
+      // a stamp for an identity that never came into being. setKeyProvenance is WRITE-ONCE, so a frozen
+      // 'generated' would silently reject the later correct 'imported'/'external' stamp if the user backs out and
+      // logs in instead; and the stale backupVerifiedAt would be a false backup attestation for a discarded key.
+      useStore.getState().setKeyProvenance(null);
+      useStore.getState().setBackupVerifiedAt(null);
       // sk is intact (the helper zeros only after its awaits) — stay on K3 so the user can retry.
       setError(e?.message ?? 'Could not protect the key — try again');
     } finally {

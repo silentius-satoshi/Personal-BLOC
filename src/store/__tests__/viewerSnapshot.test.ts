@@ -74,16 +74,50 @@ describe('viewer snapshot builders', () => {
   });
 
   // ── C-TRUSTED (opt-in): today's full payload ──────────────────────────────────────────────────
-  it("C-trusted payload STRIPS the owner's viewer roster from settings", () => {
-    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);   // roster present → must be stripped
+  it("C-trusted payload STRIPS the owner's viewer roster + relays + backupVerifiedAt from settings", () => {
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1, backupVerifiedAt: 1_700_000_000_000 } as never);   // all present → must be stripped
     const snap = buildViewerSnapshotPayload(useStore.getState(), 'trusted');
     expect(snap.privacyMode).toBe('trusted');
     const snapSettings = snap.settings as Record<string, unknown>;
     expect('viewers' in snapSettings).toBe(false);
     expect('nextViewerIndex' in snapSettings).toBe(false);
     expect('nostrRelays' in snapSettings).toBe(false);
+    expect('backupVerifiedAt' in snapSettings).toBe(false);   // R2a-1 — the owner's key-custody state is not the viewer's business
     // but still carries the real settings the viewer needs
     expect('income' in snapSettings).toBe(true);
+    useStore.setState({ backupVerifiedAt: null } as never);
+  });
+
+  // ⚠ PRIVACY AUDIT — brittle BY DESIGN. The deep-equal test below is only DIFFERENTIAL (it derives its
+  // expectation from buildSettingsPayload), so a newly-synced field would silently leak into every trusted
+  // viewer's snapshot and still pass. This EXHAUSTIVE key set is the backstop: adding a synced setting must
+  // be a conscious decision to expose (add it here) or to strip (add it to the destructure in
+  // buildViewerSnapshotPayload). Do not "fix" a failure here by pasting in the new key without deciding.
+  it("C-trusted settings has EXACTLY the expected key set — no synced field leaks in unnoticed", () => {
+    useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1, backupVerifiedAt: 1_700_000_000_000 } as never);
+    const snap = buildViewerSnapshotPayload(useStore.getState(), 'trusted');
+    expect(Object.keys(snap.settings as Record<string, unknown>).sort()).toEqual([
+      'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
+      'advisorMonthStartBalance', 'advisorSkipBlocDraw', 'advisorSkipBtcBuying', 'advisorSkipCbPayment',
+      'advisorStartDate', 'blocApr', 'blocMinPaymentDueDay', 'blocMinPaymentSource', 'blocStatementMinimum',
+      'btcBuyingUnit', 'cbAprPct', 'cbEmergencyCeilingPct', 'cbLiquidationPrice', 'cbLiquidationPriceAsOf',
+      'cbLoanBalance', 'cbLoanBalanceAsOf', 'cbLtvTargetPct', 'cbLtvTriggerPct', 'cbMonthlyPayment',
+      'cbPaymentStrategy', 'cbRotateBackPct', 'creditLine', 'expenses', 'hasCbLoan', 'hiddenTabs',
+      'income', 'ndpLastPaidDate', 'simpleMode', 'strikeLiquidationLtvPct', 'tabOrder',
+    ]);
+    useStore.setState({ backupVerifiedAt: null } as never);
+  });
+
+  it('R2a-1: keyProvenance is device-local — absent from BOTH snapshot tiers and the settings payload', () => {
+    useStore.setState({ keyProvenance: 'generated' } as never);
+    const s = useStore.getState();
+    expect('keyProvenance' in buildSettingsPayload(s)).toBe(false);
+    const safe = buildViewerSnapshotPayload(s, 'safe');
+    expect('keyProvenance' in safe).toBe(false);
+    expect('settings' in safe).toBe(false);   // the safe tier has no settings block at all
+    const trusted = buildViewerSnapshotPayload(s, 'trusted');
+    expect('keyProvenance' in (trusted.settings as Record<string, unknown>)).toBe(false);
+    useStore.setState({ keyProvenance: null } as never);
   });
 
   it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4)', () => {
@@ -130,11 +164,11 @@ describe('viewer snapshot builders', () => {
     expect('dayLog' in (snap.records as object)).toBe(false);
   });
 
-  it("C-trusted settings deep-equal buildSettingsPayload minus the viewer roster + nostrRelays", () => {
+  it("C-trusted settings deep-equal buildSettingsPayload minus the viewer roster + nostrRelays + backupVerifiedAt", () => {
     useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const s = useStore.getState();
-    const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, ...ownerMinusRoster } = buildSettingsPayload(s);
-    expect(buildViewerSnapshotPayload(s, 'trusted').settings).toEqual(ownerMinusRoster);
+    const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, ...ownerMinusStripped } = buildSettingsPayload(s);
+    expect(buildViewerSnapshotPayload(s, 'trusted').settings).toEqual(ownerMinusStripped);
   });
 
   it('viewer-side fields (Phase 2) are device-local — never in the settings payload', () => {

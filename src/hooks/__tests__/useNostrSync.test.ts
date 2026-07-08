@@ -23,7 +23,7 @@ describe('scheduleDirtyRetry', () => {
   it('dirty=true schedules and fires triggerSync at 5s then 10s', () => {
     const onTick = vi.fn();
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true },
       { isVisible: () => true, onTick },
     );
 
@@ -37,7 +37,7 @@ describe('scheduleDirtyRetry', () => {
   it('flags clearing cancels the chain (cleanup clears the pending tick)', () => {
     const onTick = vi.fn();
     const cleanup = scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true },
       { isVisible: () => true, onTick },
     );
 
@@ -52,7 +52,7 @@ describe('scheduleDirtyRetry', () => {
   it('live=false never schedules', () => {
     const onTick = vi.fn();
     const cleanup = scheduleDirtyRetry(
-      { dirty: true, live: false, viewerMode: false },
+      { dirty: true, live: false, viewerMode: false, backupGateOk: true },
       { isVisible: () => true, onTick },
     );
 
@@ -64,7 +64,19 @@ describe('scheduleDirtyRetry', () => {
   it('viewerMode never schedules', () => {
     const onTick = vi.fn();
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: true },
+      { dirty: true, live: true, viewerMode: true, backupGateOk: true },
+      { isVisible: () => true, onTick },
+    );
+
+    vi.advanceTimersByTime(60000);
+    expect(onTick).not.toHaveBeenCalled();
+  });
+
+  // Backup gate (R2a-1): a generated-but-unverified key runs no retry chain — the engine is silent end to end.
+  it('backupGateOk=false never schedules', () => {
+    const onTick = vi.fn();
+    scheduleDirtyRetry(
+      { dirty: true, live: true, viewerMode: false, backupGateOk: false },
       { isVisible: () => true, onTick },
     );
 
@@ -76,7 +88,7 @@ describe('scheduleDirtyRetry', () => {
     const onTick = vi.fn();
     let visible = false;
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true },
       { isVisible: () => visible, onTick },
     );
 

@@ -10,10 +10,12 @@ import { nostrLog } from '../lib/nostr/log';
 import { todayLocalISO } from '../utils/format';
 import { DEFAULT_RELAYS, importNip65RelayList } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
 import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
+import { isBackupGateSatisfied, type KeyProvenance } from '../lib/backupGate';   // pure leaf, zero imports → no cycle
 import type { WrapMeta } from '../lib/nostr/keyVault';
+import type { NostrParam } from '../lib/nostr/session';   // type-only — the runtime syncNow import is dynamic (cycle-safe)
 import type { NostrSigner } from '@nostrify/nostrify';
 
-export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry };
+export type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, MonthlyLogEntry, KeyProvenance };
 
 // Multi-viewer roster (M1) — one provisioned viewer. `index` is stable + monotonic (never reused after
 // removal); `pubkeyHex` is the derived viewer pubkey the snapshot encrypts to; `tier`/`keyVersion` are
@@ -120,13 +122,16 @@ const {
  * before the synchronous reload, leaving a stale `nostrPubkey` that (under the B1 pin) resurrects auth. Gating the
  * hydrate on the GATE key makes sign-out authoritative. Applied in the persist `merge` so it runs on EVERY rehydrate
  * (unlike migrate(), which fires only on a version bump — useStore.ts module note above). Pure (gatePubkey passed in)
- * so it's unit-testable without localStorage. Only the 3 identity fields are touched; all other persisted data passes
+ * so it's unit-testable without localStorage. Only the identity fields are touched; all other persisted data passes
  * through untouched. BOTH identity fields (pubkey AND method) are gated on the live GATE keys — the racy blob is
  * never authoritative for identity (a stale blob `nostrSigningMethod` would point at the wrong signer → timeouts).
+ * R2a-1: the backup-gate fields are identity-scoped too, so the signed-out branch nulls them for the same reason —
+ * disconnect clears them, but its blob write may not land, and a stale 'generated' + null would re-gate a device
+ * that has since imported a key (setKeyProvenance is write-once).
  */
 export function gateHydratedIdentity(persisted: any, gatePubkey: string | null, gateMethod: string | null) {
   if (!gatePubkey) {
-    return { ...persisted, nostrPubkey: null, nostrSigningMethod: null, nostrAuthEnabled: false };
+    return { ...persisted, nostrPubkey: null, nostrSigningMethod: null, nostrAuthEnabled: false, keyProvenance: null, backupVerifiedAt: null };
   }
   return {
     ...persisted,
@@ -372,6 +377,19 @@ export interface StoreState {
   // Writer local-key (iOS Face-ID signer) — device-local, NEVER synced (excluded from any relay payload).
   writerKeyWrapped:   string | null;      // AES-GCM ciphertext (base64) of the writer nsec
   writerKeyWrapMeta:  WrapMeta | null;    // { iv, scheme, credentialId?, salt }
+  // Backup gate (R2a-1) — see src/lib/backupGate.ts + CLAUDE.md § Backup Gate.
+  // keyProvenance: how this device's identity was established. DEVICE-LOCAL PERSISTED, NEVER synced
+  //   (rides partializeState's ...rest; absent from buildSettingsPayload → and thus from both snapshot
+  //   branches + the plan backup, all of which derive from that allowlist). WRITE-ONCE (a null write is
+  //   the explicit identity-teardown clear). null = LEGACY (pre-R2 plan) = gate satisfied, structurally.
+  // backupVerifiedAt: ms timestamp the user proved they saved the recovery key. PERSISTED **and** SYNCED
+  //   (in buildSettingsPayload + SETTINGS_FIELDS) so the attestation travels with the plan and an
+  //   imported/external peer device sees it. ⚠ It does NOT "un-gate" a gated peer: a gated device runs no
+  //   sync at all (not even a pull), so it can never RECEIVE this field — and it needn't, because only the
+  //   sole GENERATING device is ever gated, and no other device can hold 'generated' for the same key.
+  //   STRIPPED from the trusted viewer snapshot. A ONE-WAY LATCH — see hydrateSettings' skip-guard.
+  keyProvenance:      KeyProvenance | null;
+  backupVerifiedAt:   number | null;
   // Multi-viewer roster (M1) — REPLACES the old single-viewer scalars (viewerNpub/viewerPubkey/viewerLabel/
   // viewerPrivacyTrusted/viewerKeyVersion). Each ViewerSlot is one provisioned viewer: derived pubkey (the
   // NIP-44 encrypt target), display npub, owner nickname, per-viewer tier + keyVersion. SYNCED in the OWNER's
@@ -404,6 +422,8 @@ export interface StoreState {
   setNostrLogin:         (v: string | null) => void;
   setWriterKeyWrapped:   (v: string | null) => void;
   setWriterKeyWrapMeta:  (v: WrapMeta | null) => void;
+  setKeyProvenance:      (v: KeyProvenance | null) => void;
+  setBackupVerifiedAt:   (v: number | null, nostr?: NostrParam) => void;
   addViewerSlot:         (slot: Omit<ViewerSlot, 'index'>) => void;
   updateViewerSlot:      (index: number, patch: Partial<ViewerSlot>) => void;
   removeViewerSlot:      (index: number) => void;
@@ -495,7 +515,7 @@ export function publishRecordsNow(): void {
 export async function publishRecordsNowImmediate(): Promise<boolean> {
   if (recordsDebounceTimer) { clearTimeout(recordsDebounceTimer); recordsDebounceTimer = null; }   // an immediate publish supersedes any pending debounce — avoids a redundant signer op (NIP-46 round-trip)
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode) return false;   // publish didn't happen (incl. read-only viewer — relay-side backstop)
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;   // publish didn't happen (incl. read-only viewer — relay-side backstop; and an unbacked-up generated key)
   useStore.getState().setNostrSyncing(true);
   try {
     const { publishRecords } = await import('../lib/nostr/publish');
@@ -523,7 +543,7 @@ export async function publishRecordsNowImmediate(): Promise<boolean> {
 
 export async function publishSettingsNow(): Promise<boolean> {
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;   // publish didn't happen
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;   // publish didn't happen (incl. an unbacked-up generated key)
   // Backstop (closes parked backlog #6): never publish the UNTOUCHED SEED over real relay data before this
   // session has pulled a baseline. Cheap sentinel check — enough to catch the fresh-install seed store.
   if (!state.initialSettingsPullDone
@@ -580,7 +600,7 @@ export async function importRelaysFromNip65(): Promise<{ found: boolean; count: 
 
 export async function publishRelayListToNip65(): Promise<boolean> {
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey) return false;
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;
   useStore.getState().setNostrSyncing(true);
   try {
     const { publishRelayListNip65 } = await import('../lib/nostr/publish');
@@ -643,6 +663,9 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
     nostrRelays:              s.nostrRelays,   // C: relay list syncs across the owner's devices (guarded on hydrate; stripped from the viewer snapshot)
+    // Backup gate (R2a-1) — verifying on ONE owner device un-gates the owner's others. One-way latch (guarded on
+    // hydrate); STRIPPED from the trusted viewer snapshot below. keyProvenance is device-local → NOT here.
+    backupVerifiedAt:         s.backupVerifiedAt,
     // Multi-viewer roster (M1) — synced in the OWNER's settings:v1 only; STRIPPED from every viewer snapshot below.
     viewers:                  s.viewers,
     nextViewerIndex:          s.nextViewerIndex,
@@ -674,12 +697,13 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
   }
   // C-TRUSTED (Option B): today's full payload. STRIP the owner's sharing/transport config (the viewers roster
   // + nextViewerIndex + nostrRelays) — the viewer must never see who else the owner shares with, their tiers/key
-  // versions, nor the owner's relay set.
+  // versions, nor the owner's relay set — AND backupVerifiedAt (R2a-1: the owner's key-custody state is none of
+  // the viewer's business; it also gates nothing viewer-side).
   return {
     snapshotVersion: 2,
     privacyMode: 'trusted',
     asOf,
-    settings: (() => { const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, ...rest } = buildSettingsPayload(s); return rest; })(),
+    settings: (() => { const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
     cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
@@ -693,7 +717,7 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
 // is independent. The payload is built ONCE PER DISTINCT TIER (at most 2 builds), encrypted N times.
 export async function publishViewerSnapshotNow(): Promise<void> {
   const s = useStore.getState();
-  if (!s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  if (!s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
   const signer = s.nostrSigner;
   const relays = s.nostrRelays.length ? s.nostrRelays : undefined;
   const timeout = signerOpTimeout(s.nostrSigningMethod);
@@ -721,7 +745,7 @@ export async function publishViewerSnapshotNow(): Promise<void> {
 // passes the target pubkey (captured BEFORE removeViewerSlot). Fire-and-forget, log-only.
 export async function publishViewerRevocationNow(viewerPubkeyHex: string): Promise<void> {
   const s = useStore.getState();
-  if (!viewerPubkeyHex || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;
+  if (!viewerPubkeyHex || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
   try {
     const { publishViewerSnapshot } = await import('../lib/nostr/publish');
     await publishViewerSnapshot(
@@ -1364,6 +1388,11 @@ export const useStore = create<StoreState>()(
   nostrLogin:         null,
   writerKeyWrapped:   seedWriterKeyWrapped,
   writerKeyWrapMeta:  seedWriterKeyWrapMeta,
+  // Backup gate (R2a-1). Both null on a fresh install AND — via the custom persist `merge`, which fills absent
+  // keys from `current` — for every plan established before R2. That is the STRUCTURAL grandfathering: a legacy
+  // owner has keyProvenance null → isBackupGateSatisfied() → true → never gated. Deliberately NO migration.
+  keyProvenance:      null,
+  backupVerifiedAt:   null,
   viewers:            [],   // Multi-viewer roster (M1) — empty on fresh install; the owner adds viewers via Sharing
   nextViewerIndex:    0,
   viewerMode:          false,
@@ -1393,6 +1422,47 @@ export const useStore = create<StoreState>()(
   // Write through to the standalone localStorage keys (persisted OUTSIDE the encrypted blob — see WK_*_KEY).
   setWriterKeyWrapped:   (v) => { try { v == null ? localStorage.removeItem(WK_WRAPPED_KEY) : localStorage.setItem(WK_WRAPPED_KEY, v); } catch { /* noop */ } set({ writerKeyWrapped: v }); },
   setWriterKeyWrapMeta:  (v) => { try { v == null ? localStorage.removeItem(WK_META_KEY) : localStorage.setItem(WK_META_KEY, JSON.stringify(v)); } catch { /* noop */ } set({ writerKeyWrapMeta: v }); },
+
+  // Backup gate (R2a-1). WRITE-ONCE: provenance is a property of the identity, stamped once at establishment
+  // (always BEFORE the establishing syncNow, or a generated key's first sync publishes ungated). A null write
+  // is the explicit identity-teardown CLEAR (disconnectNostr / "Remove local key"); resetAndResync RETAINS the
+  // identity and must NOT clear. Overwriting one non-null with a different non-null is a bug → warn + ignore
+  // (otherwise generate→disconnect→import would leave 'generated' frozen with no verification UI to un-gate it).
+  setKeyProvenance: (v) => {
+    const cur = useStore.getState().keyProvenance;
+    if (v !== null && cur !== null) {
+      if (cur !== v) console.warn(`keyProvenance already set (${cur}) — ignoring ${v}`);
+      return;
+    }
+    set({ keyProvenance: v });
+  },
+  // Stamping verification OPENS the gate, so it must also WAKE the engine. It (a) sets the field, (b) marks
+  // settingsDirty DIRECTLY — syncSettingsToNostr early-returns on !initialSettingsPullDone, which is still
+  // false precisely because the gate held syncNow off all session — and (c) runs the SAME initial-pull-then-
+  // publish sequence a fresh authentication runs: syncNow (cf. establishOwner.ts). No second wake mechanism.
+  // ⚠ ORDER: set() FIRST, so the gate reads satisfied inside doSyncNow's guards + the publish guards.
+  // `nostr` is optional (tests assert state without a signer; OwnerKeySetup relies on establishLocalOwner's
+  // own internal syncNow as the wake). v === null is the teardown clear: no dirty, no wake.
+  // syncNow is DYNAMIC-imported to avoid the useStore ↔ syncNow cycle (same as publish.ts below).
+  //
+  // ⚠ THE PRE-AUTH GUARD IS LOAD-BEARING (seed-clobber, Fix C). `settingsDirty` is PERSISTED (it rides
+  // partializeState's ...rest) and doSyncNow flips initialSettingsPullDone(true) BEFORE its publish-if-dirty
+  // step — so Fix D's seed-guard is structurally unreachable from inside syncNow, and Fix C (nothing may
+  // dirty pre-pull) is the ONLY thing protecting the first sync. The K2 bridge calls this on an
+  // unauthenticated, untouched-SEED store; dirtying there would (a) publish the seed as the owner's first
+  // settings event before the numbers wizard runs, and (b) if the establish then THROWS (Face ID cancelled),
+  // leave settingsDirty:true persisted into a later real login → a seed payload published over the owner's
+  // real relay settings under whole-object LWW. So: pre-auth, only the field is set. It rides the wizard's
+  // first genuine settings publish (it's in buildSettingsPayload), exactly as Phase 1.5 documents.
+  setBackupVerifiedAt: (v, nostr) => {
+    if (v == null) { set({ backupVerifiedAt: null }); return; }
+    set({ backupVerifiedAt: v });
+    const s = useStore.getState();
+    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;   // pre-auth stamp (K2 bridge) — never dirty a seed store
+    set({ settingsDirty: true });
+    if (nostr) void import('../lib/nostr/syncNow').then((m) => m.syncNow(nostr)).catch((e) => nostrLog('warn', 'backup-verify wake failed', e));
+  },
+
   // Multi-viewer roster (M1) — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
   // addViewerSlot assigns index = nextViewerIndex then increments it (monotonic — an index is NEVER reused).
   addViewerSlot: (slot) => {
@@ -1473,7 +1543,7 @@ export const useStore = create<StoreState>()(
   // publishes ~2s later; the only loss window is the app fully closing inside that ~2s — negligible.
   syncSettingsToNostr: () => {
     const s = useStore.getState();
-    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;   // pre-login edits must NOT mark dirty (would block first hydrate)
+    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;   // pre-login edits must NOT mark dirty (would block first hydrate); an unbacked-up generated key must not dirty either — setBackupVerifiedAt marks dirty itself when the gate opens
     if (!s.initialSettingsPullDone) return;   // don't dirty/publish before the first pull establishes a baseline (prevents a benign post-auth setter dirtying the seed store → seed-clobber)
     set({ settingsDirty: true });
     if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
@@ -1513,6 +1583,7 @@ export const useStore = create<StoreState>()(
       'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
       // pendingCollateralAdjustment RETIRED (Collateral-Truth v20) — Strike collateral is reading-anchored (records channel); a stale value in an old remote payload is ignored by omission
       'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
+      'backupVerifiedAt',                  // Backup gate (R2a-1) — synced; null-incoming guarded below (one-way latch)
       'viewers', 'nextViewerIndex',        // Multi-viewer roster (M1) — synced; empty-incoming guarded below
     ] as const;
     const update: Partial<StoreState> = {};
@@ -1548,6 +1619,18 @@ export const useStore = create<StoreState>()(
       if (incomingEmpty && localRoster.length > 0) {
         delete (update as Record<string, unknown>).viewers;
         delete (update as Record<string, unknown>).nextViewerIndex;
+      }
+    }
+    // Verification is a ONE-WAY LATCH: an incoming null must never un-verify a device that already latched.
+    // Who publishes an explicit null: a NEW-BUNDLE peer that is legacy (provenance null) or not-yet-verified —
+    // a stale pre-R2 bundle omits the field entirely (undefined → whitelist skips it) and is already safe.
+    // Third member of the whole-object-LWW skip-guard class (nostrRelays, viewers, this) — the entire class is
+    // scheduled for structural deletion at Phase 4e when settings move to plan-events (absent vs null vs set
+    // become first-class in the fold).
+    if ('backupVerifiedAt' in update) {
+      const incoming = update.backupVerifiedAt as number | null | undefined;
+      if (incoming == null && useStore.getState().backupVerifiedAt != null) {
+        delete (update as Record<string, unknown>).backupVerifiedAt;
       }
     }
     set(update);

@@ -2,6 +2,7 @@ import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
 import { nostrLog } from './log';
 import { useStore, publishRecordsNowImmediate, publishSettingsNow } from '../../store/useStore';
+import { isBackupGateSatisfied } from '../backupGate';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
 
@@ -9,8 +10,10 @@ let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from us
 export function markSignerFresh(): void { lastReconnectAt = Date.now(); }
 
 async function doSyncNow(nostr: NostrParam): Promise<boolean> {
-  const { nostrPubkey, nostrSigningMethod } = useStore.getState();
-  if (!nostrPubkey) return false;
+  const { nostrPubkey, nostrSigningMethod, keyProvenance, backupVerifiedAt } = useStore.getState();
+  // Backup gate: a generated-but-unverified key runs NO sync at all — not even a pull (a pull sets
+  // initialSettingsPullDone, which would re-arm publishing). Consulted at the same layer as the pubkey check.
+  if (!nostrPubkey || !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })) return false;
   let signer = useStore.getState().nostrSigner;
   if (!signer || (nostrSigningMethod === 'nip46' && Date.now() - lastReconnectAt > 20000)) {
     const fresh = await restoreSigner(nostr);

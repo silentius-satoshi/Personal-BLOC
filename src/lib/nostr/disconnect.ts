@@ -13,6 +13,14 @@ export function disconnectNostr(): void {
   s.setNostrLogin(null);
   s.setNostrAuthEnabled(false);
   s.setIsAuthenticated(false);
+  // Backup gate (R2a-1): provenance is a property of the IDENTITY, so it dies with it. Without this clear, a
+  // generate→never-verify→disconnect→import-a-different-nsec sequence would leave keyProvenance frozen at
+  // 'generated' (write-once) with backupVerifiedAt null → sync permanently gated with no way out. The persist
+  // blob write isn't guaranteed to land before reload(), so `gateHydratedIdentity` nulls both again on the next
+  // rehydrate whenever GATE_PUBKEY_KEY is absent (signed out) — same authority rule as the identity fields.
+  // ⚠ reconnectNostr + resetAndResync RETAIN the identity and deliberately do NOT clear these.
+  s.setKeyProvenance(null);
+  s.setBackupVerifiedAt(null);
   window.location.reload();
 }
 

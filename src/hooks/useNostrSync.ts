@@ -3,6 +3,7 @@ import { useNostr } from '@nostrify/react';
 import { syncNow } from '../lib/nostr/syncNow';
 import { openLiveSync, closeLiveSync } from '../lib/nostr/liveSync';
 import { useStore } from '../store/useStore';
+import { isBackupGateSatisfied } from '../lib/backupGate';
 
 // iOS standalone PWAs never fire window online/offline (navigator.onLine stays true through an
 // airplane-mode cycle), so an offline publish leaves recordsDirty/settingsDirty set with nothing
@@ -11,15 +12,15 @@ export const RETRY_DELAYS_MS = [5000, 10000, 20000, 40000, 60000] as const; // c
 
 /**
  * Self-rescheduling retry chain. Returns a cleanup that cancels the pending tick.
- * No-op (cleanup is a no-op) unless dirty && live && !viewerMode.
+ * No-op (cleanup is a no-op) unless dirty && live && !viewerMode && backupGateOk.
  * Visible ticks call onTick() and advance the backoff; hidden ticks skip the call and
  * keep the chain alive at the current delay (iOS freezes timers when hidden anyway).
  */
 export function scheduleDirtyRetry(
-  args: { dirty: boolean; live: boolean; viewerMode: boolean },
+  args: { dirty: boolean; live: boolean; viewerMode: boolean; backupGateOk: boolean },
   deps: { isVisible: () => boolean; onTick: () => void },
 ): () => void {
-  if (!args.dirty || !args.live || args.viewerMode) return () => {};
+  if (!args.dirty || !args.live || args.viewerMode || !args.backupGateOk) return () => {};
   let idx = 0;
   let timer: ReturnType<typeof setTimeout>;
   const schedule = () => {
@@ -42,15 +43,23 @@ export function useNostrSync(opts?: { live?: boolean }) {
   const nostrPubkey = useStore((s) => s.nostrPubkey);   // login/disconnect cycles the live sub
   const recordsDirty = useStore((s) => s.recordsDirty);
   const settingsDirty = useStore((s) => s.settingsDirty);
+  // Backup gate — subscribed (not read via getState) so a verification flip RE-RUNS both effects below,
+  // attaching the listeners + opening the live sub. Without the subscription the engine would stay asleep.
+  const keyProvenance = useStore((s) => s.keyProvenance);
+  const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);
+  const backupGateOk = isBackupGateSatisfied({ keyProvenance, backupVerifiedAt });
 
   // In viewerMode the writer sync path is OFF by construction: triggerSync no-ops (no syncNow/publish).
+  // Same for a generated-but-unverified key (read live via getState, mirroring viewerMode).
   const triggerSync = useCallback(
-    () => (useStore.getState().viewerMode ? Promise.resolve(false) : syncNow(nostr)),
+    () => (useStore.getState().viewerMode || !isBackupGateSatisfied(useStore.getState())
+      ? Promise.resolve(false)
+      : syncNow(nostr)),
     [nostr],
   );
 
   useEffect(() => {
-    if (viewerMode) return;   // no visibility/focus listeners → no openLiveSync, no auto syncNow
+    if (viewerMode || !backupGateOk) return;   // no visibility/focus listeners → no openLiveSync, no auto syncNow
     const handler = () => {
       if (document.visibilityState === 'visible') {
         if (live) openLiveSync();
@@ -80,7 +89,7 @@ export function useNostrSync(opts?: { live?: boolean }) {
       window.removeEventListener('online', onOnline);
       if (live) closeLiveSync();
     };
-  }, [triggerSync, live, nostrPubkey, viewerMode]);
+  }, [triggerSync, live, nostrPubkey, viewerMode, backupGateOk]);
 
   // Dirty-gated backoff retry (a self-heal for a stranded offline publish — see CLAUDE.md Sync Triggers).
   // live-only so only the app-level instance runs it (a bare SettingsMain mount must not double-publish);
@@ -89,10 +98,10 @@ export function useNostrSync(opts?: { live?: boolean }) {
   useEffect(
     () =>
       scheduleDirtyRetry(
-        { dirty: recordsDirty || settingsDirty, live, viewerMode },
+        { dirty: recordsDirty || settingsDirty, live, viewerMode, backupGateOk },
         { isVisible: () => document.visibilityState === 'visible', onTick: triggerSync },
       ),
-    [recordsDirty, settingsDirty, live, viewerMode, triggerSync],
+    [recordsDirty, settingsDirty, live, viewerMode, backupGateOk, triggerSync],
   );
 
   return { triggerSync };
