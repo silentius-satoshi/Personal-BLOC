@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { wrapSecretKey, unwrapSecretKey, deriveStoreKey, deriveStoreKeyFromNsec, encryptBlob, decryptBlob } from '../keyVault';
+import { getPublicKey } from 'nostr-tools/pure';
+import { wrapSecretKey, unwrapSecretKey, unwrapRecoveryPayload, deriveStoreKey, deriveStoreKeyFromNsec, encryptBlob, decryptBlob, type WrapMeta } from '../keyVault';
+import { deriveSkFromEntropy } from '../nip06Key';
 
 // PIN path only — the PRF (WebAuthn/Face ID) path needs a platform authenticator and is verified on-device.
 // These exercise the shared PBKDF2 → HKDF → AES-GCM crypto via Node's WebCrypto.
@@ -121,5 +123,59 @@ describe('keyVault — deriveStoreKeyFromNsec (3a.1)', () => {
     const before = Array.from(skA);
     await deriveStoreKeyFromNsec(skA, pubA);
     expect(Array.from(skA)).toEqual(before);
+  });
+});
+
+// R2a-2 — the payloadKind discriminator. PIN wrap path, as above.
+describe('keyVault — payloadKind (R2a-2)', () => {
+  const entropy = Uint8Array.from({ length: 16 }, (_, i) => i + 1);
+
+  it("wrapping entropy records the kind, and unwrapSecretKey DERIVES the 32-byte sk (not a passthrough)", async () => {
+    const { ciphertext, meta } = await wrapSecretKey(entropy, 'pin', '1234', undefined, 'nip06-entropy');
+    expect(meta.payloadKind).toBe('nip06-entropy');
+
+    const out = await unwrapSecretKey(ciphertext, meta, '1234');
+    expect(out).toHaveLength(32);   // ← 32, not the 16-byte payload: this is what proves derivation happened
+    expect(getPublicKey(out)).toBe(getPublicKey(deriveSkFromEntropy(entropy)));
+  });
+
+  it("a new 'sk' wrap records payloadKind:'sk' and round-trips byte-identically", async () => {
+    const { ciphertext, meta } = await wrapSecretKey(sk, 'pin', '1234');   // default kind
+    expect(meta.payloadKind).toBe('sk');
+    expect(Array.from(await unwrapSecretKey(ciphertext, meta, '1234'))).toEqual(Array.from(sk));
+  });
+
+  // ⚠ THE COMPATIBILITY CONTRACT. Every key wrapped before R2a-2 has meta WITHOUT payloadKind, persisted
+  // through JSON (useStore's WK_META_KEY / the persist blob). Absence must mean 'sk' forever.
+  it("LEGACY: meta with NO payloadKind unwraps as 'sk', byte-identically, even after a JSON round-trip", async () => {
+    const { ciphertext, meta } = await wrapSecretKey(sk, 'pin', '1234');
+    const { payloadKind: _drop, ...stripped } = meta;
+    const legacyMeta = JSON.parse(JSON.stringify(stripped)) as WrapMeta;   // exactly how it is persisted + re-read
+    expect('payloadKind' in legacyMeta).toBe(false);
+
+    expect(Array.from(await unwrapSecretKey(ciphertext, legacyMeta, '1234'))).toEqual(Array.from(sk));
+    const { payloadKind, bytes } = await unwrapRecoveryPayload(ciphertext, legacyMeta, '1234');
+    expect(payloadKind).toBe('sk');                       // absent ⇒ 'sk'
+    expect(Array.from(bytes)).toEqual(Array.from(sk));
+  });
+
+  it('unwrapRecoveryPayload returns the payload AS STORED (entropy stays 16 bytes — it must NOT derive)', async () => {
+    const { ciphertext, meta } = await wrapSecretKey(entropy, 'pin', '1234', undefined, 'nip06-entropy');
+    const { payloadKind, bytes } = await unwrapRecoveryPayload(ciphertext, meta, '1234');
+    expect(payloadKind).toBe('nip06-entropy');
+    expect(bytes).toHaveLength(16);
+    expect(Array.from(bytes)).toEqual(Array.from(entropy));
+  });
+
+  it('an unknown future payloadKind falls through the legacy path rather than becoming unreadable', async () => {
+    const { ciphertext, meta } = await wrapSecretKey(sk, 'pin', '1234');
+    const futureMeta = { ...meta, payloadKind: 'something-new-in-2030' } as unknown as WrapMeta;
+    expect(Array.from(await unwrapSecretKey(ciphertext, futureMeta, '1234'))).toEqual(Array.from(sk));
+  });
+
+  it('unwrapRecoveryPayload still enforces the malformed-meta guard and the PIN requirement', async () => {
+    await expect(unwrapRecoveryPayload('AAAA', { iv: '', salt: '', scheme: 'pin' } as any, '1234')).rejects.toThrow('malformed');
+    const { ciphertext, meta } = await wrapSecretKey(sk, 'pin', '1234');
+    await expect(unwrapRecoveryPayload(ciphertext, meta)).rejects.toThrow('PIN required');
   });
 });

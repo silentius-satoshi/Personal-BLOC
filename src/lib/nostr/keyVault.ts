@@ -1,6 +1,10 @@
-// Identity-agnostic encrypted-key vault. Wraps a 32-byte secret behind Face ID (WebAuthn PRF) or a PIN,
+// Identity-agnostic encrypted-key vault. Wraps a recovery payload behind Face ID (WebAuthn PRF) or a PIN,
 // using WebCrypto (PBKDF2/HKDF → AES-GCM). Knows NOTHING about "writer" vs "viewer" — both consume it
 // unchanged (the writer local-key signer builds on it now; the queued viewer-access phase reuses it).
+//
+// R2a-2: the payload is discriminated by `WrapMeta.payloadKind` — a raw secret key ('sk', the default and the
+// only thing that existed before) or the NIP-06 entropy behind the recovery words ('nip06-entropy').
+// ABSENT MEANS 'sk'; unwrapSecretKey still always returns the SECRET KEY. See WrapMeta + unwrapSecretKey.
 //
 // SECURITY: the unwrapped key is returned in memory only and NEVER persisted by this module. The device
 // copy of a wrapped key is convenience, never the only copy (the caller enforces the backup gate).
@@ -17,13 +21,26 @@ import {
   bufferToBase64URLString,
   base64URLStringToBuffer,
 } from '@simplewebauthn/browser';
+import { deriveSkFromEntropy } from './nip06Key';   // one-way: nip06Key NEVER imports keyVault (no cycle)
 
 export type WrapMethod = 'prf' | 'pin';
+
+/** What the wrapped ciphertext actually holds (R2a-2). `'sk'` = a raw 32-byte secp256k1 secret key (every key
+ *  wrapped before R2a-2). `'nip06-entropy'` = the 16 bytes of BIP-39 entropy the recovery WORDS encode, from
+ *  which the sk is re-derived on unwrap — see nip06Key.ts. */
+export type PayloadKind = 'sk' | 'nip06-entropy';
+
 export interface WrapMeta {
   iv: string;            // base64 — AES-GCM nonce
   scheme: WrapMethod;
   credentialId?: string; // base64url — PRF passkey id (prf scheme only)
   salt: string;          // base64 — HKDF salt (also PBKDF2 salt for the pin scheme)
+  /** ⚠ ABSENT MEANS 'sk'. This default is the COMPATIBILITY CONTRACT for every key wrapped before R2a-2 —
+   *  writer and viewer, on every device already in the field. Their persisted meta has no such key, and it
+   *  is JSON round-tripped through an unvalidated `as WrapMeta` cast (useStore's WK_META_KEY / the persist
+   *  blob), so absence is the normal, permanent state for them. NEVER make this required, and NEVER infer the
+   *  kind from the payload's byte length. The mirror of this comment lives at the unwrap read site below. */
+  payloadKind?: PayloadKind;
 }
 
 const PBKDF2_ITERS = 600_000;
@@ -136,12 +153,15 @@ export async function probeKeyVaultCapability(): Promise<WrapMethod> {
   return 'pin';
 }
 
-/** Encrypt a 32-byte secret. Returns base64 ciphertext + meta to re-derive the unwrap key. */
+/** Encrypt the recovery payload — a 32-byte secret key (`payloadKind: 'sk'`, the default) or the 16 bytes of
+ *  NIP-06/BIP-39 entropy behind it (`'nip06-entropy'`). Returns base64 ciphertext + meta to re-derive the
+ *  unwrap key. `payloadKind` is recorded on EVERY wrap; only pre-R2a-2 metas lack it (see WrapMeta). */
 export async function wrapSecretKey(
-  sk: Uint8Array,
+  payload: Uint8Array,
   method: WrapMethod,
   pin?: string,
   label?: string,
+  payloadKind: PayloadKind = 'sk',
 ): Promise<{ ciphertext: string; meta: WrapMeta }> {
   const salt = randomBytes(16);
   const iv = randomBytes(12);
@@ -156,20 +176,17 @@ export async function wrapSecretKey(
     ikm = reg.ikm;
   }
   const aesKey = await deriveAesKey(ikm, salt);
-  const ct = await subtle().encrypt({ name: 'AES-GCM', iv: bs(iv) }, aesKey, bs(sk));
+  const ct = await subtle().encrypt({ name: 'AES-GCM', iv: bs(iv) }, aesKey, bs(payload));
   return {
     ciphertext: toB64(new Uint8Array(ct)),
-    meta: { iv: toB64(iv), scheme: method, credentialId, salt: toB64(salt) },
+    meta: { iv: toB64(iv), scheme: method, credentialId, salt: toB64(salt), payloadKind },
   };
 }
 
-/** Decrypt → key in MEMORY ONLY (returned to the caller; never persisted here). Throws on wrong PIN /
- *  cancelled Face ID / tampered ciphertext. */
-export async function unwrapSecretKey(
-  ciphertext: string,
-  meta: WrapMeta,
-  pin?: string,
-): Promise<Uint8Array> {
+/** The shared auth + decrypt path (PIN/PRF → IKM → HKDF → AES-GCM), returning the STORED payload bytes
+ *  verbatim. Extracted unchanged from the pre-R2a-2 unwrapSecretKey body so both readers below share one
+ *  authentication flow (one Face ID prompt, one PBKDF2 run) and can never drift. */
+async function decryptWrapped(ciphertext: string, meta: WrapMeta, pin?: string): Promise<Uint8Array> {
   if (!meta || !meta.iv || !meta.salt || !meta.scheme) throw new Error('malformed wrap meta');
   const salt = fromB64(meta.salt);
   const iv = fromB64(meta.iv);
@@ -184,6 +201,45 @@ export async function unwrapSecretKey(
   const aesKey = await deriveAesKey(ikm, salt);
   const pt = await subtle().decrypt({ name: 'AES-GCM', iv: bs(iv) }, aesKey, bs(fromB64(ciphertext)));
   return new Uint8Array(pt);
+}
+
+/** Decrypt → THE SECRET KEY, in MEMORY ONLY (returned to the caller; never persisted here). Throws on wrong
+ *  PIN / cancelled Face ID / tampered ciphertext.
+ *
+ *  ⚠ RETURN CONTRACT: this ALWAYS yields the 32-byte secret key, whatever the stored payload is. Callers
+ *  (session.restoreSigner, RevealRecoveryKey, SharingPage, ViewerUnlockGate) depend on that and must never be
+ *  made payload-aware. To see the payload AS STORED — e.g. entropy, to render recovery words — use
+ *  {@link unwrapRecoveryPayload}. */
+export async function unwrapSecretKey(
+  ciphertext: string,
+  meta: WrapMeta,
+  pin?: string,
+): Promise<Uint8Array> {
+  const bytes = await decryptWrapped(ciphertext, meta, pin);
+  // ⚠ ABSENT MEANS 'sk' (mirror of the WrapMeta comment). Testing `!== 'nip06-entropy'` rather than
+  // `=== 'sk'` is deliberate: absent, 'sk', and any future unknown kind all fall through this legacy path,
+  // which is byte-identical to the pre-R2a-2 behavior — a wrapped key can never become unreadable.
+  if (meta.payloadKind !== 'nip06-entropy') return bytes;
+  try {
+    return deriveSkFromEntropy(bytes);
+  } finally {
+    bytes.fill(0);   // the intermediate entropy never outlives this call
+  }
+}
+
+/** Decrypt → the payload AS STORED, with its kind. Same auth flow as unwrapSecretKey (one prompt). Exists for
+ *  the R2c backup ceremony, which needs the ENTROPY to render/verify recovery words rather than the derived
+ *  key. ⚠ CALLER ZEROES `bytes`.
+ *
+ *  Note for R2c: a `'sk'` payload has NO words — a raw secp key is not BIP-39-derived. Legacy keys must fall
+ *  back to nsec display (today's RevealRecoveryKey), not be presented as an unverifiable phrase. */
+export async function unwrapRecoveryPayload(
+  ciphertext: string,
+  meta: WrapMeta,
+  pin?: string,
+): Promise<{ payloadKind: PayloadKind; bytes: Uint8Array }> {
+  const bytes = await decryptWrapped(ciphertext, meta, pin);
+  return { payloadKind: meta.payloadKind ?? 'sk', bytes };   // absent ⇒ 'sk'
 }
 
 // ── At-rest store encryption (Phase A — primitives only, no store wiring) ─────────

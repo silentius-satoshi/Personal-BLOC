@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (681 tests — all must pass before every commit)
+- Vitest (703 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -2945,7 +2945,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-681 tests — `npx vitest run` before every commit.
+703 tests — `npx vitest run` before every commit.
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
 - `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
@@ -2982,7 +2982,8 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
 - `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
-- `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom); + Phase-A store-key suite: deriveStoreKey round-trips encryptBlob/decryptBlob, is independent of the nsec-wrap key (same pin+salt, different HKDF info → can't cross-decrypt) while the wrap path still unwraps, wrong-pin blob rejects, random IV per encrypt; + 3a.1 `deriveStoreKeyFromNsec` suite: deterministic (same nsec+pubkey round-trips), nsec-dependent + pubkey-salted (cross-decrypt throws), independent from the nsec-wrap key (can't decrypt the wrap ciphertext), and does not mutate the caller sk
+- `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom); + Phase-A store-key suite: deriveStoreKey round-trips encryptBlob/decryptBlob, is independent of the nsec-wrap key (same pin+salt, different HKDF info → can't cross-decrypt) while the wrap path still unwraps, wrong-pin blob rejects, random IV per encrypt; + 3a.1 `deriveStoreKeyFromNsec` suite: deterministic (same nsec+pubkey round-trips), nsec-dependent + pubkey-salted (cross-decrypt throws), independent from the nsec-wrap key (can't decrypt the wrap ciphertext), and does not mutate the caller sk; + R2a-2 `payloadKind` suite: wrapping entropy records the kind and `unwrapSecretKey` returns a **32-byte** sk (not the 16-byte payload — that length assertion is what proves derivation rather than passthrough) whose pubkey matches `deriveSkFromEntropy`; a new `'sk'` wrap records `payloadKind:'sk'`; **LEGACY** — meta with the field stripped AND JSON round-tripped (exactly how `WK_META_KEY` persists it) unwraps byte-identically as `'sk'`; `unwrapRecoveryPayload` returns the payload AS STORED (entropy stays 16 bytes, it must NOT derive) and reports `'sk'` for absent; a made-up FUTURE `payloadKind` falls through the legacy path rather than becoming unreadable; the malformed-meta + PIN-required guards still fire through the new reader
+- `src/lib/nostr/__tests__/nip06Key.test.ts` — R2a-2 NIP-06 derivation (17 cases, node/real WebCrypto). **The published-vector case PINS the derivation path** (`m/44'/1237'/0'/0/0`, account 0, no passphrase): `leader monkey parrot ring guide accident before fence cannon height naive bean` → sk `7f7ff03d…ba9a` / pubkey `17162c…cd917` / `nsec10allq0…`, plus an independent cross-check that the spec's own npub decodes to the same pubkey. ⚠ **A failure here is DATA LOSS, not a stale fixture.** Also: 16 bytes → 12 words; `skFromWords ∘ wordsFromEntropy === deriveSkFromEntropy` (round-trip); deterministic + distinct-per-entropy; entropy not mutated; `generatePlanKey` self-consistency (both derivation routes reach the same sk, pubkey matches) + fresh entropy per call; `InvalidSeedWordsError` on bad checksum (`'abandon'×12` — ⚠ the canonical `abandon×11 + about` IS valid, so it can't be used here), on a non-English word (`ábaco`), and on empty/whitespace; the error message never leaks the words; `skFromWords` normalizes a hand-typed phrase (padded/doubled spaces, newlines, mixed case)
 - `src/lib/nostr/__tests__/ownerGate.test.ts` — `isOwnerPubkey`: matches the owner, rejects a non-owner/null key when configured, unset/empty env → true (no lockout)
 - `src/lib/nostr/__tests__/proxyAuth.test.ts` — `getProxyAuthHeader` token cache: caches within ~50s (signs once), re-signs after expiry / on url change / on method change, returns the `"Nostr "` scheme prefix (mock signer, stubbed `Date.now`, `resetProxyAuthCache` per case)
 - `src/lib/nostr/__tests__/relays.test.ts` — `normalizeRelayUrl` (passthrough/trailing-slash/lowercase/prepend-wss/reject-http/reject-garbage/localhost-ws/reject-nonlocalhost-ws), `addRelay` (append/dup/invalid), `DEFAULT_RELAYS` shape; + P2 `importNip65RelayList` (mocked pool: found→all-r-tags flat + normalize/dedupe, newest-event-wins, no-event→{found:false}, throw→{found:false}, no-usable-r-tags→{found:true,relays:[]})
@@ -3206,6 +3207,70 @@ contents; collateral is represented by a `pendingNonZero` boolean). The on-devic
 figures in its COLLATERAL section — that's the point of on-device verification. `nostrLog()`
 (lib/nostr/log.ts) is the standard for Nostr-layer logging (console mirror + ring) — new code uses it
 instead of bare console.warn, and log messages never include amounts.
+
+---
+
+## Recovery-key payload kinds (R2a-2 — `payloadKind` + NIP-06 derivation; no store change)
+
+R2a-1 made the backup gate real, but the artifact the owner must back up is a raw 32-byte secp256k1 key rendered
+as a bech32 `nsec`. An nsec can't be verified by a word quiz, can't be written down reliably, and can't be
+re-typed. **R2c's ceremony needs BIP-39 words.** R2a-2 lays the crypto foundation and nothing else:
+`src/lib/nostr/nip06Key.ts` (pure NIP-06 derivation) + a `payloadKind` discriminator on the wrap meta, so a
+wrapped blob can hold either the raw key or the **128-bit entropy those words encode**.
+
+**No wrap call site adopts entropy yet — that is R2b.** Every existing wrapped key keeps working byte-identically.
+
+### ⚠ THE COMPATIBILITY CONTRACT: absent `payloadKind` means `'sk'`
+
+`WrapMeta.payloadKind?: 'sk' | 'nip06-entropy'` is **optional forever**. Every key wrapped before R2a-2 — writer
+*and* viewer, on every device already in the field — has meta with no such key, JSON round-tripped through an
+unvalidated `as WrapMeta` cast (`useStore`'s standalone `WK_META_KEY`, and the persist blob for the viewer). So
+absence is their normal, permanent state. **Never make it required. Never infer the kind from the payload's byte
+length.** The rule is stated at the type AND mirrored at the unwrap read site.
+
+The unwrap branch tests **`!== 'nip06-entropy'`**, not `=== 'sk'`, deliberately: absent, `'sk'`, and any future
+unknown kind all fall through the legacy path unchanged, so a wrapped key can never become unreadable by a
+version skew. (Pinned by a test that unwraps a meta carrying a made-up future kind.)
+
+### keyVault surface
+
+- **`wrapSecretKey(payload, method, pin?, label?, payloadKind = 'sk')`** — first param renamed `payload` (it may
+  now be 16-byte entropy). The kind is **recorded on every wrap**, including `'sk'`. It is a *defaulted 5th
+  positional*, not an options-object refactor: `establishOwner.test.ts` asserts `toHaveBeenCalledWith(...)` with
+  **exact arity 4**, and the 4-arg call sites are out of scope here. (An options-object cleanup belongs with R2b,
+  which touches those call sites anyway.)
+- **`decryptWrapped(ciphertext, meta, pin?)`** (private) — the pre-R2a-2 `unwrapSecretKey` body extracted
+  **verbatim** (malformed-meta guard → PIN/PRF IKM → HKDF → AES-GCM → `new Uint8Array(pt)`). Both public readers
+  share it, so they can never drift and a read costs **one** Face ID prompt / one PBKDF2 run.
+- **`unwrapSecretKey` — RETURN CONTRACT UNCHANGED: it ALWAYS yields the 32-byte secret key.** When the payload is
+  entropy it calls `deriveSkFromEntropy` and zeroes the intermediate entropy in a `finally`. Its four call sites
+  (`session.restoreSigner`, `RevealRecoveryKey`, `SharingPage`, `ViewerUnlockGate`) are untouched and must never
+  be made payload-aware.
+- **`unwrapRecoveryPayload(ciphertext, meta, pin?) → { payloadKind, bytes }`** (NEW) — same auth flow, returns the
+  payload **as stored** (`meta.payloadKind ?? 'sk'`) so R2c can render/verify words. **Caller zeroes `bytes`.**
+  ⚠ **R2c note:** a `'sk'` payload has **no words** (a raw secp key is not BIP-39-derived) — legacy keys must fall
+  back to nsec display (today's `RevealRecoveryKey`), never be presented as an unverifiable phrase.
+
+### nip06Key.ts
+
+Path **`m/44'/1237'/0'/0/0`**, **account 0**, **no BIP-39 passphrase** — all three are `nostr-tools`
+`privateKeyFromSeedWords` defaults, all three pinned by the published-vector test
+(`leader monkey parrot ring guide accident before fence cannon height naive bean` → sk `7f7ff03d…ba9a`, pubkey
+`17162c…cd917`, `nsec10allq0…`; the pubkey is cross-confirmed by decoding the spec's own npub). ⚠ **Treat a
+failure of that test as data loss, not a stale fixture** — it would mean every recovery phrase ever written down
+now derives a different key. (The commonly-quoted *second* NIP-06 vector does **not** reproduce against this
+library and is deliberately not pinned.)
+
+`validateWords` → `@scure/bip39`'s `validateMnemonic`, which **returns `false` rather than throwing**, so
+`skFromWords` checks explicitly and raises `InvalidSeedWordsError` — the repo's **first `Error` subclass**
+(everything else throws a bare `new Error`, discriminated at most by substring). The UI catch blocks do
+`setError(e.message)`, so its message is user-facing prose and must never interpolate the words.
+
+**Import direction `keyVault → nip06Key → nostr-tools`; nip06Key never imports keyVault.** The import is
+**static, deliberately**: `keyVault` is already in the main chunk (`storeCrypto → useStore`), R2b/R2c pull
+nip06Key into onboarding anyway, and the SW precaches the full build — so a lazy chunk would buy nothing while
+adding an async boundary inside the Face-ID unlock path. **Measured cost: +14.2 kB gz on the main chunk**
+(413.4 → 427.6), dominated by `@scure/bip32`'s HDKey/curve math — unavoidable, since NIP-06 *is* BIP-32.
 
 ---
 
@@ -3496,6 +3561,13 @@ nostr-tools: 2.23.5    ← pinned exact; NIP-44 + Primal decrypt verified workin
 @nostrify/react: ^0.6.2
 websocket-ts: 2.3.0    ← pinned exact as a DIRECT dep at the tree-resolved version (no dupe copy);
                          used to cap NRelay1's reconnect backoff (see NostrProvider)
+@scure/bip39: 2.0.1    ← pinned exact as a DIRECT dep at nostr-tools 2.23.5's ALREADY-RESOLVED transitive
+                         version (same discipline as websocket-ts). Adding it must NOT change the tree:
+                         verify `npm ls @scure/bip39` still shows one 2.0.1 (deduped) and that the lockfile
+                         diff is ONLY the added key under packages[""].dependencies. Needed directly because
+                         nostr-tools/nip06 exposes no entropy→mnemonic function (see nip06Key.ts).
+                         ⚠ The wordlist subpath needs the LITERAL `.js`: '@scure/bip39/wordlists/english.js'
+                         — the package's exports map has no extensionless key (ERR_PACKAGE_PATH_NOT_EXPORTED).
 
 ---
 
@@ -3589,7 +3661,36 @@ src/
                                     # 3a.1: deriveStoreKeyFromNsec(sk, pubkeyHex) — derives the store key from the
                                     # NSEC ITSELF (HKDF: salt=SHA256(pubkeyHex), info=STORE_ENC_INFO), no separate
                                     # credential. Deterministic + stable across reinstalls; independent from the
-                                    # nsec-WRAP key (distinct info); copies sk (never mutates caller). In memory only
+                                    # nsec-WRAP key (distinct info); copies sk (never mutates caller). In memory only.
+                                    # R2a-2: WrapMeta gains `payloadKind?: 'sk' | 'nip06-entropy'` — ⚠ ABSENT MEANS
+                                    # 'sk' (see § Recovery-key payload kinds). wrapSecretKey's first param is renamed
+                                    # `payload` + gains a DEFAULTED 5th positional `payloadKind` (recorded on every
+                                    # wrap; 5th-positional, not an options object, so the 4-arg call sites + their
+                                    # arity-exact toHaveBeenCalledWith assertions in establishOwner.test.ts stay valid).
+                                    # The old unwrap body is extracted VERBATIM into a private decryptWrapped() so both
+                                    # readers share ONE auth flow (one Face ID prompt / one PBKDF2 run). unwrapSecretKey
+                                    # KEEPS its return contract (ALWAYS the 32-byte secret key; derives via
+                                    # deriveSkFromEntropy + zeroes the intermediate entropy when the payload is entropy).
+                                    # NEW unwrapRecoveryPayload → {payloadKind, bytes} returns the payload AS STORED for
+                                    # the R2c ceremony (caller zeroes). Imports nip06Key (one-way; nip06Key never imports
+                                    # keyVault). NO wrap call site adopts entropy yet — that is R2b
+    nip06Key.ts                     # R2a-2 — NIP-06 plan-key derivation, the BIP-39 foundation for R2c's word-quiz
+                                    # backup ceremony. PURE, node-testable, imports NOTHING from keyVault (keyVault
+                                    # imports THIS — one-way, no cycle). PATH m/44'/1237'/0'/0/0, ACCOUNT 0, NO BIP-39
+                                    # passphrase (nostr-tools privateKeyFromSeedWords defaults) — both pinned by the
+                                    # published-vector test; ⚠ changing either silently derives a DIFFERENT key from the
+                                    # same words = undetectable permanent data loss. ENGLISH WORDLIST ONLY (v1) — the
+                                    # words are a written-down recovery artifact, so the language is part of the contract;
+                                    # widening it later is additive to skFromWords, never a re-derivation.
+                                    # ENTROPY_BYTES 16 (128-bit → 12 words); wordsFromEntropy / deriveSkFromEntropy /
+                                    # skFromWords (normalizes trim+collapse-whitespace+lowercase, then validateWords —
+                                    # which RETURNS FALSE rather than throwing, so the check must be explicit) /
+                                    # generatePlanKey() → {entropy, words, sk, pubkeyHex}. InvalidSeedWordsError is the
+                                    # repo's FIRST Error subclass (everything else throws bare `new Error`); the UI catch
+                                    # blocks render e.message verbatim, so the message is user-facing prose and must NEVER
+                                    # interpolate the words. ⚠ THE WORDS STRING IS A TRANSIENT SECRET — a JS string cannot
+                                    # be zeroed; never persist/log it or hold it in state outliving its screen. The
+                                    # ZEROABLE forms are entropy (16B) + sk (32B): CALLERS OWN ZEROING BOTH
     establishOwner.ts               # Phase 1.5 — establishLocalOwner(sk, method, nostr, opts?): the SINGLE local-owner
                                     # establish path (wrap→persist writerKey→NSecSigner+setNostrSigner→markSignerFresh→
                                     # setNostrPubkey(getPublicKey(sk))→setNostrSigningMethod('local')→fire-and-forget
@@ -4290,6 +4391,10 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 | Constraint | Rule |
 |---|---|
+| `WrapMeta.payloadKind` | **Absent ⇒ `'sk'`** — the compatibility contract for every key wrapped before R2a-2. Never make it required; never infer the kind from payload byte length. The unwrap branch tests `!== 'nip06-entropy'` (not `=== 'sk'`) so absent / `'sk'` / any future unknown kind all fall through the legacy path and a wrapped key can never become unreadable |
+| `unwrapSecretKey` return type | **ALWAYS the 32-byte SECRET KEY**, whatever the stored payload. Its four call sites must never be made payload-aware. To read the payload as stored (entropy, for R2c's words) use `unwrapRecoveryPayload` |
+| NIP-06 derivation constants | `m/44'/1237'/0'/0/0`, **account 0**, **no BIP-39 passphrase**, **English wordlist**. Never parameterize them in `nip06Key.ts`. A failure of the published-vector test is DATA LOSS (every written-down phrase would derive a different key), not a stale fixture |
+| The words string | A **transient secret** — a JS string cannot be zeroed. Never persist/log it, never put it in an Error message, never hold it in state outliving its screen. The zeroable forms are `entropy` (16B) and `sk` (32B); **callers own zeroing both** |
 | Backup gate — no migration | `keyProvenance: null` = a pre-R2 plan = **satisfied**. Grandfathering is STRUCTURAL (the persist `merge` fills the absent key from `current`). **NEVER add a `migrateState` case for `keyProvenance`/`backupVerifiedAt`** — that is the only way to break every existing owner. No store version bump; `exportPlan.ts`'s `storeVersion: 21` stays correct |
 | `setKeyProvenance` | **WRITE-ONCE**: a *different* non-null over a non-null is ignored + warns; the SAME value is a silent no-op. `null` is the explicit **identity-teardown CLEAR** (`disconnectNostr`, "Remove local key", `gateHydratedIdentity`'s signed-out branch). `reconnectNostr` + `resetAndResync` RETAIN the identity → must NOT clear. Without the clear, generate→never-verify→disconnect→import-a-different-nsec is a permanent sync lockout |
 | Provenance stamp ordering | `setKeyProvenance(...)` is stamped **BEFORE** `establishLocalOwner`/`syncNow` at every establishment call site — both call `syncNow` internally/immediately, so a stamp placed after would let a generated key's first sync publish ungated. `establishLocalOwner` is shared by the generated + imported paths and cannot distinguish them → the CALL SITES own the stamp |
