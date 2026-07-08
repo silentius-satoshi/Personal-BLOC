@@ -75,6 +75,34 @@
 .hideBtn:hover:not(:disabled) { border-color: var(--text-secondary); color: var(--text-primary); }
 .hideBtn:disabled { opacity: 0.5; cursor: not-allowed; }
 
+/* R2c-1 — "Advanced: show as nsec" disclosure for an entropy key (mirrors OwnerKeySetup's .advBtn/.advChevron/.advPanel). */
+.advBtn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  background: none;
+  border: none;
+  padding: 6px 2px;
+  color: var(--text-ghost);
+  font-size: 12px;
+  font-weight: 500;
+  font-family: inherit;
+  cursor: pointer;
+  transition: color 0.12s;
+}
+.advBtn:hover { color: var(--text-secondary); }
+
+.advChevron {
+  display: inline-block;
+  font-size: 15px;
+  line-height: 1;
+  transition: transform 0.15s ease;
+}
+.advChevron[data-open] { transform: rotate(90deg); }
+
+.advPanel { width: 100%; }
+
 .note {
   font-size: 11px;
   color: var(--text-faint);

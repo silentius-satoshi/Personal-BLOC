@@ -21,6 +21,7 @@ import { ViewerSettings } from './ViewerSettings';
 import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { RevealRecoveryKey } from './RevealRecoveryKey';
+import { RecoveryKeyCeremony } from './RecoveryKeyCeremony';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
@@ -191,6 +192,9 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const [settingsPage, setSettingsPage] = useState<SettingsPage>('menu');
   // Access Layer Redesign Phase 1 — the persistent front-door flows (each renders its own overlay).
   const [accessFlow, setAccessFlow] = useState<null | 'login' | 'viewer'>(null);
+  // R2c-1 — the backup ceremony (own overlay; NOT a subpage — a guided reveal+quiz must own the screen).
+  const [ceremonyOpen, setCeremonyOpen] = useState(false);
+  const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);   // for the "Backed up ✓" chip on the entry row
 
   // Network subpage (P1) — local relay list management.
   const nostrRelays    = useStore((s) => s.nostrRelays);
@@ -566,8 +570,14 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             </button>
           )}
 
-          {/* RECOVERY — reveal key (local) · backup plan · reset & re-sync · decrypt-back (when enc on) */}
+          {/* RECOVERY — save (ceremony) · reveal key (local) · backup plan · reset & re-sync · decrypt-back (when enc on) */}
           <div className={styles.settingsGroupLabel}>RECOVERY</div>
+          {/* R2c-1 — the guided backup ceremony (the primary CTA); RevealRecoveryKey below is the quiet view-only utility. */}
+          {nostrSigningMethod === 'local' && (
+            <button className={styles.nostrReconnectBtn} onClick={() => setCeremonyOpen(true)}>
+              Save your Recovery Key{backupVerifiedAt != null && <span className={styles.backedUpChip}> · Backed up ✓ {new Date(backupVerifiedAt).toLocaleDateString()}</span>}
+            </button>
+          )}
           {nostrSigningMethod === 'local' && <RevealRecoveryKey />}
           <button className={styles.nostrReconnectBtn} onClick={() => setSettingsPage('backup')}>Backup plan</button>
           <button onClick={handleResetAndResync} disabled={recoveryBusy} className={styles.nostrReconnectBtn}>
@@ -1023,6 +1033,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
       {accessFlow === 'viewer' && (
         <ViewerLoginFlow onDone={() => { setSimpleMode(true); setAccessFlow(null); }} onBack={() => setAccessFlow(null)} />
       )}
+      {/* R2c-1 — the backup ceremony overlay (own screen; stamps backupVerifiedAt on verified success). */}
+      {ceremonyOpen && <RecoveryKeyCeremony onClose={() => setCeremonyOpen(false)} />}
     </div>
   );
 }

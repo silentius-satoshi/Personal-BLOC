@@ -325,6 +325,8 @@
   flex-shrink: 0;
 }
 .nostrReconnectBtn:hover { background: rgba(232,131,106,0.10); }
+/* R2c-1 — "Backed up ✓ <date>" chip inside the Save-your-Recovery-Key button. */
+.backedUpChip { color: var(--green); font-weight: 600; }
 
 .nostrWarning {
   font-size: 11px;

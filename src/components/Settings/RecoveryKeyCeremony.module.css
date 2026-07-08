@@ -1,0 +1,173 @@
+/* R2c-1 — the backup ceremony overlay. Self-contained chrome mirroring OwnerKeySetup/NostrAuthGate. */
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 99999;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.modal {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 32px 28px;
+  width: 100%;
+  max-width: 400px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin: auto;
+}
+
+.brandRing {
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  border: 1px solid rgba(247, 147, 26, 0.35);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 24px;
+  color: var(--btc);
+  align-self: center;
+}
+
+.title {
+  font-size: 19px;
+  font-weight: 700;
+  color: var(--text-primary);
+  margin: 0;
+  text-align: center;
+  line-height: 1.35;
+}
+
+.body {
+  font-size: 13px;
+  color: var(--text-ghost);
+  line-height: 1.5;
+  margin: 0;
+  text-align: left;
+}
+
+.chip {
+  align-self: center;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--green);
+  background: rgba(78, 203, 130, 0.10);
+  border: 1px solid rgba(78, 203, 130, 0.30);
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+.primary {
+  width: 100%;
+  padding: 13px 20px;
+  background: var(--btc);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  font-family: inherit;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  margin-top: 4px;
+}
+.primary:hover:not(:disabled) { opacity: 0.9; }
+.primary:disabled { opacity: 0.45; cursor: default; }
+
+.ghost {
+  background: none;
+  border: none;
+  color: var(--text-faint);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 6px 0;
+  font-family: inherit;
+  transition: color 0.12s;
+}
+.ghost:hover:not(:disabled) { color: var(--text-secondary); }
+.ghost:disabled { opacity: 0.5; cursor: default; }
+
+.pinInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  padding: 10px 12px;
+  color-scheme: dark;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.12s;
+}
+.pinInput:focus { border-color: var(--btc); }
+
+.error {
+  font-size: 12px;
+  color: var(--red);
+  margin: 0;
+  line-height: 1.4;
+  text-align: center;
+}
+
+.aids {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.aidBtn {
+  flex: 1;
+  min-width: 110px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s;
+}
+.aidBtn:hover { border-color: var(--text-ghost); color: var(--text-primary); }
+
+.qrPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;   /* white so the QR + printed words read on paper */
+  border-radius: 10px;
+}
+.qrWords {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 4px 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #111;
+  width: 100%;
+}
+.qrNum { color: #999; }
+.qrNsec {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: #111;
+  word-break: break-all;
+  width: 100%;
+}

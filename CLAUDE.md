@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (743 tests — all must pass before every commit)
+- Vitest (755 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -149,6 +149,12 @@ src/
                                 # isWord(w) (per-box tint, WORD_SET membership). ⚠ CAPTURE UX ONLY — skFromWords on submit is
                                 # the validity authority; green/checksum are HINTS (same discipline as recoveryInput not
                                 # owning validity). Tested in src/lib/__tests__/recoveryGrid.test.ts
+    recoveryQuiz.ts             # R2c-1 — PURE verify-step logic for RecoveryKeyCeremony. pickQuizIndices(rand = Math.random)
+                                # → two DISTINCT indices 0–11, LOOP-FREE (b = (a+offset)%12) so a constant rand can't hang it;
+                                # `rand` is injectable for deterministic tests (this ESTABLISHES the rand-injection convention —
+                                # the repo had none). checkQuizAnswers(words, indices, answers) (trim+lowercase, POSITION-
+                                # sensitive → transposed answers fail). checkNsecTail(nsec, input) (last-6, input trimmed only,
+                                # CASE-SENSITIVE as bech32 is lowercase). Tested in src/lib/__tests__/recoveryQuiz.test.ts
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware)
@@ -389,10 +395,34 @@ src/
                                 # + Access Phase 2: .identityCard hero (--surface-2 + orange ring) /.identityRing/
                                 # .identityNpub(+Text/CopyHint)/.identityMeta/.identityChip/.identityStatus/
                                 # .identityDotOn(green)/.identityDotWarn(amber) + .syncRow/.syncRowLabel/.syncRowValue
-      RevealRecoveryKey.tsx     # Access Phase 2 — lost-my-backup escape hatch (+ .module.css). Rendered ONLY in the
-                                # identity subpage for a 'local' signer (leaving the page unmounts → discards the nsec).
-                                # Tap → PRF Face ID / PIN field → unwrapSecretKey (EVERY reveal) → nip19.nsecEncode →
-                                # sk.fill(0) → <SecretKeyCard/> → auto-clear ~30s / Hide / unmount. NEVER logs the key
+      RevealRecoveryKey.tsx     # Access Phase 2 → R2c-1 — lost-my-backup escape hatch, VIEW-ONLY (+ .module.css).
+                                # Rendered ONLY in the identity subpage for a 'local' signer (leaving the page unmounts →
+                                # discards the material). Tap → PRF Face ID / PIN field → **unwrapRecoveryPayload** (EVERY
+                                # reveal) → branch on payloadKind: 'nip06-entropy' → <WordGrid mode="reveal"> of
+                                # wordsFromEntropy(bytes) + an "Advanced: show as nsec" disclosure that derives
+                                # nip19.nsecEncode(deriveSkFromEntropy(bytesRef)) ONLY when opened, zeroing the derived sk
+                                # right after encoding (bytesRef held for the disclosure, zeroed on Hide / ~30s auto-clear /
+                                # unmount); 'sk'/absent → nip19.nsecEncode(bytes) + bytes.fill(0) now → <SecretKeyCard/>
+                                # (unchanged). ⚠ It NEVER verifies or stamps backupVerifiedAt — it is the utility; the
+                                # ceremony is the flow. NEVER logs key material
+      RecoveryKeyCeremony.tsx   # R2c-1 — the REAL backup ceremony (+ .module.css): explain → reveal → verify → done.
+                                # Own overlay (accessFlow-style, z-index 99999) — NOT a settingsPage subpage (a guided
+                                # reveal+quiz must own the screen + must not inherit the subpage back-chain / edge-swipe
+                                # that could escape mid-quiz). Entry = a "Save your Recovery Key" button in the identity
+                                # RECOVERY group (local-signer-gated, above RevealRecoveryKey) with a "Backed up ✓ <date>"
+                                # chip when backupVerifiedAt != null. EXPLAIN copy is owner-facing prose (body 3 —
+                                # "generated fresh … never use as a Bitcoin wallet" — renders ONLY for payloadKind
+                                # 'nip06-entropy'). REVEAL reuses RevealRecoveryKey's unlock shape (PIN row / passkey-on-tap)
+                                # → unwrapRecoveryPayload → derives words/nsec and ⚠ ZEROS bytes IMMEDIATELY (earliest —
+                                # verify + "view again" read only the strings, never bytes; contrast RevealRecoveryKey which
+                                # retains bytes for its on-open Advanced-nsec); WordGrid reveal (its own Copy) / SecretKeyCard
+                                # + save aids: Save… (navigator.share, rendered only when it exists) + Show printable QR
+                                # (QRCodeSVG of the secret string + human-readable numbered words / nsec on white). VERIFY —
+                                # entropy: a 2-word quiz (pickQuizIndices, re-randomized on every fail, unlimited attempts,
+                                # "← View words again"); sk: the nsec last-6. SUCCESS → setBackupVerifiedAt(Date.now(),
+                                # nostr) — the setter's OWN dirty+syncNow self-wake un-gates sync; ⚠ NO second wake added.
+                                # IDEMPOTENT: an already-stamped user runs it end-to-end as a re-verify (never a dead end);
+                                # success re-stamps (monotonic-forward). ⚠ Never logs; strings nulled on done/close/unmount
       SharingPage.tsx           # Viewer M3 — the 'sharing' subpage (+ .module.css; SettingsMain renders <SharingPage/>
                                 # for settingsPage==='sharing', owner-only). YOUR SHARE CODE (owner npub + copy) + YOUR
                                 # VIEWERS = <ViewerRoster/> (LOCAL-SIGNER-gated: a non-local device shows a note) + a
@@ -2992,7 +3022,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-743 tests — `npx vitest run` before every commit.
+755 tests — `npx vitest run` before every commit.
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
 - `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
@@ -3038,6 +3068,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 - `src/hooks/__tests__/useRelayStatus.test.ts` — P3 pure `readyStateToStatus` mapping (1→connected, 0→connecting, 2/3/other→offline); the hook's socket lifecycle is device-verified, not unit-tested
 - `src/lib/nostr/__tests__/ownerAuth.test.ts` — `validateOwnerRequest` (imported from `api/_lib/ownerAuth.js`): valid owner-signed token → `{ ok: true }`; wrong/non-owner key → 403; expired ts / url mismatch / method mismatch / malformed token / missing header / unset owner → 401 (real schnorr via `finalizeEvent` + test keys)
 - `src/hooks/__tests__/useMorphoRate.test.ts` — pure `parseMorphoRate` (GraphQL `state.borrowApy`/`netBorrowApy` fraction → percent ×100; per-field independence; malformed/empty/null → nulls, no crash)
+- `src/lib/__tests__/recoveryQuiz.test.ts` — R2c-1 ceremony verify logic (pure, node, injected `rand`, 12 cases): `pickQuizIndices` (an injected sequence yields the expected distinct pair; both ∈ 0–11; **a CONSTANT rand still returns two distinct indices** — the loop-free proof; default `Math.random` over 500 draws always distinct+in-range); `checkQuizAnswers` (correct → true; one wrong → false; **transposed answers → false**; trims+lowercases); `checkNsecTail` (last-6 → true; input trimmed; wrong → false; **case-sensitive** — an upper-cased tail of a lowercase nsec fails)
 - `src/lib/__tests__/recoveryGrid.test.ts` — R2b-3 capture-grid logic (pure, node, real wordlist + validateWords, 19 cases): `distributePaste` (12-exact from any focus → 'fill-from-start'; 5@focus9 → 3 tokens truncated at box 12; 5@focus0 → all 5; single/zero → []; 2@box12 → 1); `suggestWords` ('ab' → abandon/ability/able/about capped at 4; case-insensitive; custom max; 'zzz'/''→[]; a full word still returns itself); `phraseStatus` (NIP-06 vector → valid; **one word swapped to ANOTHER valid word → 'bad-checksum'** — all words valid, checksum fails; normalizes case+whitespace; any empty / <12 → incomplete); `isWord` (case/whitespace-insensitive membership)
 - `src/lib/nostr/__tests__/recoveryInput.test.ts` — R2b-2 shape classification (pure, node): `nsec1…` → `nsec` trimmed; a MALFORMED `nsec1garbage` still routes to the nsec door (nip19.decode owns the verdict); UPPERCASE `NSEC1…` → not nsec (bech32 is lowercase) → single token → unknown; exactly 12 tokens → `words`; newlines/tabs/doubled-spaces collapse to single spaces; **12 NONSENSE tokens → `words`, then `skFromWords` throws `InvalidSeedWordsError`** (the classifier/validator boundary); a real phrase round-trips classifier → skFromWords → 32-byte sk; unknown table (empty, whitespace-only, 11 tokens, 13 tokens, single word, garbage, an npub)
 - `src/store/__tests__/remotePlanFound.test.ts` — R2b-2 (`vi.hoisted` localStorage shim): defaults null; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (session-transient — persisting it would surface a stale `false` on the next boot before any pull ran). Set-once latch asserted as ONE lifecycle `it` (the latch is module-level and vitest isolates the registry per FILE, not per `it`): record(false) → false; record(true) → still false; setRemotePlanFound(null) [Dismiss] → null; **record(false) again → still null** (a bare `=== null` guard instead of the latch would resurrect the notice here)
@@ -3802,9 +3833,10 @@ src/
                                     # readers share ONE auth flow (one Face ID prompt / one PBKDF2 run). unwrapSecretKey
                                     # KEEPS its return contract (ALWAYS the 32-byte secret key; derives via
                                     # deriveSkFromEntropy + zeroes the intermediate entropy when the payload is entropy).
-                                    # NEW unwrapRecoveryPayload → {payloadKind, bytes} returns the payload AS STORED for
-                                    # the R2c ceremony (caller zeroes). Imports nip06Key (one-way; nip06Key never imports
-                                    # keyVault). NO wrap call site adopts entropy yet — that is R2b
+                                    # unwrapRecoveryPayload → {payloadKind, bytes} returns the payload AS STORED (caller
+                                    # zeroes) — R2c-1 gave it its FIRST TWO consumers: RecoveryKeyCeremony (reveal) +
+                                    # RevealRecoveryKey (both branch on payloadKind to show words vs nsec). Imports nip06Key
+                                    # (one-way; nip06Key never imports keyVault). Entropy adoption at keygen shipped in R2b-1
     nip06Key.ts                     # R2a-2 — NIP-06 plan-key derivation, the BIP-39 foundation for R2c's word-quiz
                                     # backup ceremony. PURE, node-testable, imports NOTHING from keyVault (keyVault
                                     # imports THIS — one-way, no cycle). PATH m/44'/1237'/0'/0/0, ACCOUNT 0, NO BIP-39
@@ -4541,6 +4573,9 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 | Constraint | Rule |
 |---|---|
+| Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
+| `RevealRecoveryKey` is view-only | It reveals words/nsec for inspection and **NEVER** verifies or stamps `backupVerifiedAt` — that is the ceremony's job. It is the utility; the ceremony is the flow. Both branch on `payloadKind` (entropy → words, sk → nsec) via `unwrapRecoveryPayload`, never `unwrapSecretKey` |
+| Ceremony idempotency | An already-stamped user (bridge-era or a prior ceremony) MUST run explain→reveal→verify→done end-to-end as a re-verify — never a dead end; success re-stamps (monotonic-forward). The explain step shows a `Backed up ✓ <date>` chip but does not short-circuit |
 | `fetchAndSync` return shape | `{ ok, planFound }`, not a boolean. `planFound` is computed from `latestByDTag` **before** the decrypt loop and is INDEPENDENT of `ok` — a decrypt failure with events present must stay `planFound: true`, or an unreachable signer fires the "no plan found on this key" notice at a user whose plan is sitting right there |
 | Imported words wrap `'sk'` | An imported 12-word phrase wraps the **derived secret key**, never the entropy (`NostrAuthGate` passes no `payloadKind` → `establishLocalOwner` defaults it to `'sk'`). R2c's word-quiz re-display is for keys **born in-app** (`'nip06-entropy'`, minted by `OwnerKeySetup`); an imported-words plan's Recovery Key is the phrase the user already holds. **Do not "fix" this into entropy storage** |
 | Recovery grid is capture UX only | `recoveryGrid.ts` / `WordGrid` input mode / the checksum gate are all HINTS. `skFromWords` on submit is the sole validity authority (it normalizes + derives). Continue may gate on `phraseStatus==='valid'`, but a green box or a ✓ line never authorizes anything the derivation wouldn't. Same discipline as `classifyRecoveryInput` not owning validity |
