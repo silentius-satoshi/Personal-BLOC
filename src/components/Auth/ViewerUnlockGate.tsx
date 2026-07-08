@@ -7,6 +7,7 @@ import {
   type WrapMethod,
 } from '../../lib/nostr/keyVault';
 import { setUnwrappedViewerKey, fetchViewerSnapshot } from '../../lib/nostr/viewerSync';
+import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
 import styles from './NostrAuthGate.module.css';
 
@@ -71,12 +72,13 @@ export function ViewerUnlockGate({ onReset }: { onReset: () => void }) {
   };
 
   const title    = 'Personal ₿LOC';
-  const subtitle = isSetup ? 'Protect your viewing key with Face ID' : 'Unlock to view';
+  // Method-aware (mirrors the hint below): a PIN-only device must not read "…with passkey" above "Lock it behind a PIN".
+  const subtitle = isSetup ? `Protect your viewing key with ${method === 'pin' ? 'a PIN' : biometricLabel()}` : 'Unlock to view';
   const btnLabel = loading
     ? (isSetup ? 'Protecting…' : 'Unlocking…')
     : pinMode
       ? (isSetup ? 'Encrypt & continue' : 'Unlock')
-      : (isSetup ? 'Protect with Face ID' : '🔒 Unlock with Face ID');
+      : (isSetup ? `Protect with ${biometricLabel()}` : `🔒 Unlock with ${biometricLabel()}`);
 
   return (
     <div className={styles.overlay}>
@@ -87,7 +89,7 @@ export function ViewerUnlockGate({ onReset }: { onReset: () => void }) {
 
         {isSetup && (
           <p className={styles.hint}>
-            Your viewing key is currently stored unprotected. Lock it behind {method === 'pin' ? 'a PIN' : 'Face ID'} —
+            Your viewing key is currently stored unprotected. Lock it behind {method === 'pin' ? 'a PIN' : biometricLabel()} —
             this changes nothing you can see; the owner's plan stays read-only.
           </p>
         )}
@@ -95,7 +97,7 @@ export function ViewerUnlockGate({ onReset }: { onReset: () => void }) {
         {pinMode && (
           <>
             {isSetup && method === 'pin' && (
-              <p className={styles.hint}>Face ID unavailable — set a PIN to encrypt the key (min 4 digits).</p>
+              <p className={styles.hint}>{biometricLabel()} unavailable — set a PIN to encrypt the key (min 4 digits).</p>
             )}
             <input
               className={styles.input}

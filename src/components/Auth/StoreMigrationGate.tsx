@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { deriveStoreKey } from '../../lib/nostr/keyVault';
 import { setStoreKey } from '../../lib/store/storeCrypto';
 import { migratePlaintextToEncrypted, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
+import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
 import styles from './NostrAuthGate.module.css';
 
@@ -59,7 +60,7 @@ export function StoreMigrationGate({ mode }: { mode: 'encrypt' | 'decrypt' }) {
   const subtitle = mode === 'encrypt' ? 'Encrypt your local data' : 'Unlock to turn off encryption';
   const action = loading
     ? (mode === 'encrypt' ? 'Encrypting…' : 'Decrypting…')
-    : pinMode ? (mode === 'encrypt' ? 'Encrypt' : 'Decrypt') : '🔒 Continue with Face ID';
+    : pinMode ? (mode === 'encrypt' ? 'Encrypt' : 'Decrypt') : `🔒 Continue with ${biometricLabel()}`;
 
   return (
     <div className={styles.overlay}>

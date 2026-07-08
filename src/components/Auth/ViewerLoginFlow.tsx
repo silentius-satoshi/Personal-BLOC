@@ -4,6 +4,7 @@ import * as nip49 from 'nostr-tools/nip49';
 import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
 import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
 import { parseHandoffToken } from '../../lib/nostr/handoffToken';
+import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
 import styles from './ViewerLoginFlow.module.css';
 
@@ -252,7 +253,10 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
                 />
               </div>
             </div>
-            {viewerMethod !== 'pin' && (
+            {/* Progressive disclosure: the wrap step (device protection) appears only once the token +
+                passphrase have resolved a real key. viewerCanDone already requires activeKey, so gating the
+                fields here can never make an un-enterable state submittable. */}
+            {activeKey && viewerMethod !== 'pin' && (
               <div className={styles.fieldGroup}>
                 <span className={styles.fieldLabel}>Name this viewer (optional)</span>
                 <div className={styles.fieldInput}>
@@ -266,10 +270,13 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
                 </div>
               </div>
             )}
-            {viewerMethod === 'pin' && (
+            {activeKey && viewerMethod === 'pin' && (
               <>
                 <div className={styles.fieldGroup}>
-                  <span className={styles.fieldLabel}>Set a PIN to protect the key (min 4 digits)</span>
+                  <span className={styles.fieldLabel}>Create a PIN for this device (min 4 digits)</span>
+                  <span className={styles.skip} style={{ fontStyle: 'normal', cursor: 'default', textAlign: 'left' }}>
+                    This protects your viewing key on this device. You choose it — it is not the owner's passphrase, and the owner never needs it.
+                  </span>
                   <div className={styles.fieldInput}>
                     <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="PIN"
                       value={viewerPin} onChange={(e) => { setViewerPin(e.target.value); setViewerError(null); }} />
@@ -286,7 +293,7 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
             )}
           </div>
           <p className={styles.subtitle} style={{ fontSize: 12 }}>
-            🔒 Your viewing key is protected by {viewerMethod === 'pin' ? 'a PIN' : 'Face ID'} and never stored unencrypted.
+            🔒 Your viewing key is protected on this device by {viewerMethod === 'pin' ? 'a PIN you set' : biometricLabel()} and never stored unencrypted.
             You can reset it anytime without losing data.
           </p>
           {viewerError && <p className={styles.subtitle} style={{ color: 'var(--red)' }}>{viewerError}</p>}

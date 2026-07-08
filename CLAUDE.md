@@ -3221,7 +3221,9 @@ instead of bare console.warn, and log messages never include amounts.
 
 Third auth option (additive; NIP-07/46 untouched): an **encrypted local nsec, biometric-unlocked, on ALL
 platforms** (R1 removed the original iOS-only gate + made the labels platform-honest via `biometricLabel` —
-"Face ID" on iOS, "passkey" elsewhere), giving one-tap reliability without the NIP-46 deeplink/QR race. Built on a NEW **identity-agnostic
+"Face ID" on iOS, "passkey" elsewhere; **R1.5** completed the sweep across the viewer surfaces
+`ViewerLoginFlow`/`ViewerUnlockGate` + `StoreMigrationGate`, so `src/lib/biometricLabel.ts` is now the SINGLE
+source for that label — never re-inline the UA check), giving one-tap reliability without the NIP-46 deeplink/QR race. Built on a NEW **identity-agnostic
 `src/lib/nostr/keyVault.ts`** (PRF primary / PIN fallback, client-side, no server: PBKDF2→HKDF→AES-GCM via
 WebCrypto; `wrapSecretKey`/`unwrapSecretKey`/`probeKeyVaultCapability`; unwrapped key in MEMORY ONLY,
 never persisted) — shared infra the queued viewer-access phase reuses.
@@ -3361,7 +3363,15 @@ src/
                                     # OnboardingModal (byte-identical crypto: wrapSecretKey→setUnwrappedViewerKey
                                     # →clearViewerData→setViewerWriterPubkey→setViewerMode(true); only the final
                                     # onComplete(true) became an onDone() prop). Self-contained overlay (own
-                                    # .overlay/.modal) → reusable from BOTH onboarding AND Settings. Props {onDone,onBack}
+                                    # .overlay/.modal) → reusable from BOTH onboarding AND Settings. Props {onDone,onBack}.
+                                    # R1.5 PROGRESSIVE DISCLOSURE: the wrap-step field groups (the viewerMethod!=='pin'
+                                    # "Name this viewer" group AND the viewerMethod==='pin' PIN/confirm groups) are gated
+                                    # on `activeKey` — token + passphrase resolve FIRST, device protection appears after.
+                                    # Safe because viewerCanDone already requires !!activeKey (probe/wrapSecretKey/
+                                    # handleViewerDone byte-identical). R1.5 LAYER-HONEST COPY: the PIN label reads
+                                    # "Create a PIN for this device" + a hint naming the two layers ("it is not the
+                                    # owner's passphrase, and the owner never needs it") — the viewer's DEVICE PIN and the
+                                    # owner's HANDOFF PASSPHRASE ("Passphrase (from the owner)") must never be conflated
     SecretKeyCard.tsx               # Phase 1.5 — SHARED blurred-nsec recovery-key card: bech32 nsec in --mono
                                     # (word-break), blurred by default (tap-to-reveal pill) + one-tap Copy
                                     # (flash "Copied ✓") + "Best kept in a password manager." Props {nsec,onCopied?}.
