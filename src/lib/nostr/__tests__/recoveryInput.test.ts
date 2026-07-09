@@ -6,6 +6,8 @@ import { skFromWords, InvalidSeedWordsError } from '../nip06Key';
 
 const VECTOR_WORDS = 'leader monkey parrot ring guide accident before fence cannon height naive bean';
 const VECTOR_NSEC  = 'nsec10allq0gjx7fddtzef0ax00mdps9t2kmtrldkyjfs8l5xruwvh2dq0lhhkp';
+// Shape-only fixture — the classifier never decrypts, so this needs the prefix, not a valid payload.
+const NCRYPTSEC    = 'ncryptsec1qgg9947rlpvqu76pj5ecreduf9jxhselq2nae2kghhvd5g7dgjtcxfqtd67p9m0w57lspw8gsq6yphnm8623nsl8xn9j4jdzz84zm3frztj3z7s35vpzmqf6ksu8r89qk5z2zxfmu5gv8th8wclt0h4p';
 
 describe('classifyRecoveryInput — nsec', () => {
   it("an nsec1… string classifies as nsec, trimmed", () => {
@@ -18,6 +20,29 @@ describe('classifyRecoveryInput — nsec', () => {
 
   it('an UPPERCASE NSEC1… is not an nsec (bech32 nsecs are lowercase) → single token → unknown', () => {
     expect(classifyRecoveryInput(VECTOR_NSEC.toUpperCase())).toEqual({ kind: 'unknown' });
+  });
+});
+
+// R2c-7a — the fourth kind. Shape-only: nip49.decrypt (and the passphrase) own the verdict, never this.
+describe('classifyRecoveryInput — encrypted (ncryptsec)', () => {
+  it('an ncryptsec1… string classifies as encrypted, trimmed', () => {
+    expect(classifyRecoveryInput(`  ${NCRYPTSEC}  `)).toEqual({ kind: 'encrypted', value: NCRYPTSEC });
+  });
+
+  it('the prefix check is the ONLY test — a malformed ncryptsec1… still routes to the decrypt door', () => {
+    expect(classifyRecoveryInput('ncryptsec1garbage')).toEqual({ kind: 'encrypted', value: 'ncryptsec1garbage' });
+  });
+
+  // ⚠ PINS THE DISJOINTNESS. The two prefixes diverge at char 2 (`ns…` vs `nc…`), so no check order can confuse
+  // them. If a future edit ever makes one a prefix of the other, these two fail together.
+  it('ncryptsec1 and nsec1 are disjoint prefixes — neither can misclassify as the other', () => {
+    expect('ncryptsec1'.startsWith('nsec1')).toBe(false);
+    expect(classifyRecoveryInput(NCRYPTSEC).kind).toBe('encrypted');
+    expect(classifyRecoveryInput(VECTOR_NSEC).kind).toBe('nsec');
+  });
+
+  it('an UPPERCASE NCRYPTSEC1… is not encrypted (bech32 is lowercase) → single token → unknown', () => {
+    expect(classifyRecoveryInput(NCRYPTSEC.toUpperCase())).toEqual({ kind: 'unknown' });
   });
 });
 

@@ -19,7 +19,7 @@ export type WordGridProps =
       mode: 'input';
       values: string[];
       onChange: (v: string[]) => void;
-      onNsecPasted: (nsec: string) => void;   // a pasted nsec routes OUT of the grid → the parent's nsec tab
+      onKeyPasted: (key: string) => void;   // a pasted KEY (nsec or ncryptsec) routes OUT of the grid → the parent's key tab
       onSubmitAttempt?: () => void;            // Enter on the last box
     };
 
@@ -80,12 +80,12 @@ function RevealGrid({ words, onCopied }: { words: string[]; onCopied?: () => voi
 function InputGrid({
   values,
   onChange,
-  onNsecPasted,
+  onKeyPasted,
   onSubmitAttempt,
 }: {
   values: string[];
   onChange: (v: string[]) => void;
-  onNsecPasted: (nsec: string) => void;
+  onKeyPasted: (key: string) => void;
   onSubmitAttempt?: () => void;
 }) {
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
@@ -121,7 +121,8 @@ function InputGrid({
   const handlePaste = (e: React.ClipboardEvent, i: number) => {
     const text = e.clipboardData.getData('text');
     const c = classifyRecoveryInput(text);
-    if (c.kind === 'nsec') { e.preventDefault(); onNsecPasted(c.value); return; }
+    // A pasted KEY (bare nsec, or R2c-7a's encrypted ncryptsec) belongs on the key tab, not in a word box.
+    if (c.kind === 'nsec' || c.kind === 'encrypted') { e.preventDefault(); onKeyPasted(c.value); return; }
     const tokens = text.trim().split(/\s+/).filter(Boolean);
     const r = distributePaste(tokens, i);
     if (r === 'fill-from-start') { e.preventDefault(); onChange([...tokens]); return; }
