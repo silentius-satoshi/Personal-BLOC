@@ -2,7 +2,9 @@
 //
 // PURE, zero imports. This decides only WHICH DOOR the input goes through, never whether it is VALID:
 //   nsec  → nip19.decode owns the verdict (bech32 checksum, type tag)
-//   words → skFromWords owns the verdict (BIP-39 checksum, English wordlist)
+//   words → nip06Key owns the verdict (BIP-39 checksum, English wordlist). Both of its doors share one
+//           normalize+validate contract and throw the same InvalidSeedWordsError: entropyFromWords (what the
+//           import path calls since R2c-4b) and skFromWords.
 // So a 12-token string of nonsense classifies as `words` and is then rejected downstream with a real,
 // user-facing InvalidSeedWordsError message. Do NOT add validation here — a classifier that also validated
 // would have to duplicate (and could drift from) two separate crypto contracts.

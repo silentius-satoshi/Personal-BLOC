@@ -11,7 +11,7 @@ import styles from './WordGrid.module.css';
  *                      Recovery-phrase tab.
  *
  * ⚠ Purely a UI — never logs the words; the caller owns their lifecycle (a JS string can't be zeroed).
- * ⚠ CAPTURE UX ONLY in input mode — validity is a HINT here; skFromWords on submit is the authority.
+ * ⚠ CAPTURE UX ONLY in input mode — validity is a HINT here; entropyFromWords on submit is the authority.
  */
 export type WordGridProps =
   | { mode: 'reveal'; words: string[]; onCopied?: () => void }

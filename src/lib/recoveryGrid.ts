@@ -1,8 +1,8 @@
 // R2b-3 — pure logic for the 12-box recovery-phrase capture grid (WordGrid input mode).
 //
 // Node-testable, no React/DOM. ⚠ CAPTURE UX ONLY — none of this owns the validity verdict. `phraseStatus`/
-// `isWord` power the live hints (checksum line, per-box tint); the authoritative check is `skFromWords` on
-// submit (nip06Key.ts), which normalizes + derives. The grid's green is a hint, the derivation is the verdict —
+// `isWord` power the live hints (checksum line, per-box tint); the authoritative check is `entropyFromWords` on
+// submit (nip06Key.ts), which normalizes + validates. The grid's green is a hint, the derivation is the verdict —
 // the same discipline as classifyRecoveryInput not owning validity (recoveryInput.ts).
 
 import { validateWords } from 'nostr-tools/nip06';

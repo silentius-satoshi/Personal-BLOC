@@ -5,6 +5,7 @@ import {
   ENTROPY_BYTES,
   InvalidSeedWordsError,
   deriveSkFromEntropy,
+  entropyFromWords,
   generatePlanKey,
   skFromWords,
   wordsFromEntropy,
@@ -121,5 +122,59 @@ describe('nip06Key — skFromWords normalizes a hand-typed phrase', () => {
     const messy = `  Leader   MONKEY parrot\nring guide  accident before fence
                    cannon height naive Bean  `;
     expect(hex(skFromWords(messy))).toBe(VECTOR_SK_HEX);
+  });
+});
+
+// R2c-4b — entropyFromWords is the inverse of wordsFromEntropy. An IMPORTED phrase is now wrapped as its
+// entropy ('nip06-entropy'), so the ceremony can re-display and quiz the user's real words. The identity
+// equality below is the property that whole change rests on.
+describe('nip06Key — entropyFromWords (the inverse of wordsFromEntropy)', () => {
+  it('entropyFromWords(wordsFromEntropy(e)) === e — the round-trip', () => {
+    expect(hex(entropyFromWords(wordsFromEntropy(entropyA)))).toBe(hex(entropyA));
+    expect(hex(entropyFromWords(wordsFromEntropy(entropyB)))).toBe(hex(entropyB));
+  });
+
+  it('returns exactly ENTROPY_BYTES (16) bytes', () => {
+    expect(entropyFromWords(VECTOR_WORDS)).toHaveLength(ENTROPY_BYTES);
+  });
+
+  // ⚠ THE LOAD-BEARING PROPERTY. Wrapping the entropy instead of the sk must not change the identity the user
+  // signs in as. If this ever fails, every words-import silently authenticates as a DIFFERENT key.
+  it('deriveSkFromEntropy(entropyFromWords(w)) === skFromWords(w) — identity preservation (published vector)', () => {
+    expect(hex(deriveSkFromEntropy(entropyFromWords(VECTOR_WORDS)))).toBe(hex(skFromWords(VECTOR_WORDS)));
+    expect(hex(deriveSkFromEntropy(entropyFromWords(VECTOR_WORDS)))).toBe(VECTOR_SK_HEX);
+    expect(getPublicKey(deriveSkFromEntropy(entropyFromWords(VECTOR_WORDS)))).toBe(VECTOR_PUBKEY);
+  });
+
+  it('normalizes a hand-typed phrase exactly as skFromWords does', () => {
+    const messy = `  Leader   MONKEY parrot\nring guide  accident before fence
+                   cannon height naive Bean  `;
+    expect(hex(entropyFromWords(messy))).toBe(hex(entropyFromWords(VECTOR_WORDS)));
+  });
+
+  it('bad checksum → InvalidSeedWordsError (same posture as skFromWords)', () => {
+    const badChecksum = 'abandon '.repeat(12).trim();
+    expect(() => entropyFromWords(badChecksum)).toThrow(InvalidSeedWordsError);
+  });
+
+  it('non-English word / empty → InvalidSeedWordsError', () => {
+    const nonEnglish = [...VECTOR_WORDS.split(' ').slice(0, 11), 'ábaco'].join(' ');
+    expect(() => entropyFromWords(nonEnglish)).toThrow(InvalidSeedWordsError);
+    expect(() => entropyFromWords('')).toThrow(InvalidSeedWordsError);
+    expect(() => entropyFromWords('   ')).toThrow(InvalidSeedWordsError);
+  });
+
+  // ⚠ @scure/base's alphabet decoder throws `Unknown letter: "<word>"` — it interpolates the offending SEED
+  // WORD. entropyFromWords must validate first AND rethrow, so no library message can ever reach a UI that
+  // renders e.message verbatim.
+  it('the error message never leaks the words', () => {
+    try {
+      entropyFromWords(VECTOR_WORDS.replace('leader', 'zzzz'));
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(InvalidSeedWordsError);
+      expect((e as Error).message).not.toContain('zzzz');
+      expect((e as Error).message).not.toContain('monkey');
+    }
   });
 });

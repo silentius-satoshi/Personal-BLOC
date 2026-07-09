@@ -6,8 +6,8 @@ import { establishLocalOwner } from '../../lib/nostr/establishOwner';
 import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow, markSignerFresh } from '../../lib/nostr/syncNow';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
-import { probeKeyVaultCapability, type WrapMethod } from '../../lib/nostr/keyVault';
-import { skFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Key';
+import { probeKeyVaultCapability, type WrapMethod, type PayloadKind } from '../../lib/nostr/keyVault';
+import { entropyFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Key';
 import { classifyRecoveryInput } from '../../lib/nostr/recoveryInput';
 import { phraseStatus } from '../../lib/recoveryGrid';
 import { WordGrid } from '../Onboarding/WordGrid';
@@ -89,7 +89,10 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const handleLocal = async () => {
     setLoading(true);
     setError(null);
-    let sk: Uint8Array | null = null;
+    // The bytes we WRAP AT REST. 'sk' → the 32-byte secret key itself; 'nip06-entropy' → the 16 bytes behind
+    // the recovery phrase (establishLocalOwner derives the signing sk from them internally).
+    let payload: Uint8Array | null = null;
+    let payloadKind: PayloadKind = 'sk';
     try {
       // R2b-2 dual-format: classify by SHAPE, then let the format's own crypto own the verdict.
       // R2b-3: the raw string comes from the active tab — the word grid (joined) or the nsec field. handleLocal
@@ -101,9 +104,9 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
         try { decoded = nip19.decode(input.value); }
         catch { setError('Not a valid nsec'); setLoading(false); return; }
         if (decoded.type !== 'nsec') { setError('That key is not an nsec'); setLoading(false); return; }
-        sk = decoded.data as Uint8Array;
+        payload = decoded.data as Uint8Array;   // payloadKind stays 'sk' — see the asymmetry note below
       } else if (input.kind === 'words') {
-        try { sk = skFromWords(input.value); }
+        try { payload = entropyFromWords(input.value); payloadKind = 'nip06-entropy'; }
         catch (e) {
           // InvalidSeedWordsError's message is user-facing prose by contract (nip06Key.ts) — render it verbatim.
           setError(e instanceof InvalidSeedWordsError ? e.message : 'Not a valid Recovery Key');
@@ -120,18 +123,21 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       // Backup gate (R2a-1): the user holds this key elsewhere already (the hard backup gate above
       // enforces that) → never gated. Stamped BEFORE establishLocalOwner's internal syncNow.
       useStore.getState().setKeyProvenance('imported');
-      // ⚠ R2b-2 INVARIANT — an IMPORTED phrase wraps the DERIVED SK (payloadKind 'sk'), never the entropy.
-      // NostrAuthGate passes no payloadKind, so establishLocalOwner defaults it to 'sk'; do not "fix" this into
-      // entropy storage. R2c's word-quiz re-display exists for keys BORN IN-APP ('nip06-entropy'); an
-      // imported-words plan's Recovery Key is the phrase the user already holds, so unwrapRecoveryPayload
-      // correctly reports 'sk' and RevealRecoveryKey falls back to nsec display.
-      await establishLocalOwner(sk, method, nostr, { pin, keyLabel });   // shared with OwnerKeySetup K3
+      // ⚠ R2c-4b INVARIANT — SUPERSEDES R2b-2's "imported words wrap 'sk'". The two formats are ASYMMETRIC:
+      //   words → 'nip06-entropy'. We store the 16 bytes BEHIND the phrase, so RevealRecoveryKey and the R2c-1
+      //           ceremony can re-derive and word-quiz the user's ACTUAL words instead of an nsec they never saw.
+      //           Identity is preserved: deriveSkFromEntropy(entropyFromWords(w)) === skFromWords(w) (pinned).
+      //   nsec  → 'sk', forever. A raw secret key has NO mnemonic — there is nothing to re-display, so
+      //           unwrapRecoveryPayload reports 'sk' and the reveal/ceremony fall back to nsec display.
+      // (R2b-2 said "do not fix this into entropy storage" — correct then, because no ceremony existed to verify
+      // words. R2c-1 shipped it, which is exactly what justifies the reversal.)
+      await establishLocalOwner(payload, method, nostr, { pin, keyLabel, payloadKind });   // shared with OwnerKeySetup K3
       onSuccess();
     } catch (err: any) {
       useStore.getState().setKeyProvenance(null);   // R2a-1 rollback: stamped pre-establish; a throw must not freeze it (write-once)
       setError(err?.message ?? 'Could not set up the local key');
     } finally {
-      sk?.fill(0);   // best-effort zero (the NSecSigner holds its own copy for the session)
+      payload?.fill(0);   // best-effort zero of the sk OR the entropy (NSecSigner holds its own copy for the session)
       setLoading(false);
     }
   };
@@ -158,8 +164,8 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     }
   };
 
-  // R2b-3: gate on the CHECKSUM in the words tab (skFromWords on submit is still the authority); the nsec tab
-  // keeps the original non-empty check.
+  // R2b-3: gate on the CHECKSUM in the words tab (entropyFromWords on submit is still the authority — the
+  // checksum line is only a hint); the nsec tab keeps the original non-empty check.
   const localCanContinue =
     backupConfirmed &&
     (recoveryTab === 'words' ? phraseStatus(gridValues) === 'valid' : !!recoveryInput.trim()) &&

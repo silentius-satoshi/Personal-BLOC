@@ -10,6 +10,11 @@
 // (try other wordlists on validation failure) — it never re-derives an existing key, because the entropy →
 // words mapping is what the wordlist selects, and an existing key's entropy is already wrapped at rest.
 //
+// `entropyFromWords` is the exact INVERSE of `wordsFromEntropy`. Because the NIP-06 path is deterministic, the
+// two doors agree: deriveSkFromEntropy(entropyFromWords(w)) === skFromWords(w) for every valid phrase (pinned by
+// test). That identity is what lets an IMPORTED phrase be stored as its entropy — so the ceremony can re-display
+// and quiz the user's real words — without changing the key they sign in as (R2c-4b).
+//
 // ⚠ THE WORDS STRING IS A TRANSIENT SECRET. A JS string cannot be zeroed — it lives until the GC collects it.
 // Callers must never persist it, log it (`nostrLog` included), put it in an Error message, or hold it in React
 // state that outlives the screen showing it. The ZEROABLE representations are `entropy` (16 bytes) and `sk`
@@ -19,7 +24,7 @@
 
 import { privateKeyFromSeedWords, validateWords } from 'nostr-tools/nip06';
 import { getPublicKey } from 'nostr-tools/pure';
-import { entropyToMnemonic } from '@scure/bip39';
+import { entropyToMnemonic, mnemonicToEntropy } from '@scure/bip39';
 import { wordlist } from '@scure/bip39/wordlists/english.js';   // ⚠ the `.js` is REQUIRED — @scure/bip39's exports map has no extensionless subpath
 
 /** 128 bits → a 12-word phrase. */
@@ -49,15 +54,56 @@ export function deriveSkFromEntropy(entropy: Uint8Array): Uint8Array {
 }
 
 /**
- * A hand-typed phrase → the NIP-06 secret key. Normalizes first (trim, collapse inner whitespace, lowercase)
- * — that normalization is what makes a phrase copied off paper work, so it is part of the contract, not an
- * incidental convenience. Throws {@link InvalidSeedWordsError} on a bad checksum or a non-English word
- * (`validateWords` returns false rather than throwing, so the check must be explicit).
+ * Trim, collapse inner whitespace, lowercase. This is what makes a phrase copied off paper work, so it is part
+ * of the recovery contract, not an incidental convenience — SHARED by both doors into this module
+ * (`skFromWords`, `entropyFromWords`) so they can never drift. (@scure's own `normalize` splits on a SINGLE
+ * space and would reject a doubled-space phrase outright, so this must run first.)
+ */
+function normalizeWords(words: string): string {
+  return words.trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+/** Validate a normalized phrase, or throw the typed, word-free error. */
+function assertValidWords(normalized: string): void {
+  // `validateWords` RETURNS FALSE rather than throwing, so the check must be explicit.
+  if (!normalized || !validateWords(normalized)) throw new InvalidSeedWordsError();
+}
+
+/**
+ * A hand-typed phrase → the NIP-06 secret key. Normalizes + validates first. Throws
+ * {@link InvalidSeedWordsError} on a bad checksum or a non-English word.
  */
 export function skFromWords(words: string): Uint8Array {
-  const normalized = words.trim().toLowerCase().replace(/\s+/g, ' ');
-  if (!normalized || !validateWords(normalized)) throw new InvalidSeedWordsError();
+  const normalized = normalizeWords(words);
+  assertValidWords(normalized);
   return privateKeyFromSeedWords(normalized);
+}
+
+/**
+ * A hand-typed phrase → its 16 bytes of NIP-06 entropy. The exact INVERSE of {@link wordsFromEntropy}.
+ *
+ * IDENTITY-SAFE: the NIP-06 path is deterministic, so for any valid phrase `w`
+ *   `deriveSkFromEntropy(entropyFromWords(w))` === `skFromWords(w)`
+ * — pinned by test. That equality is what lets an IMPORTED phrase be wrapped as its entropy
+ * (payloadKind 'nip06-entropy') without changing the identity the user is signing in as (R2c-4b).
+ *
+ * ⚠ Validates BEFORE decoding, and rethrows any decode failure as {@link InvalidSeedWordsError}. Two reasons,
+ * both load-bearing: (1) callers render `InvalidSeedWordsError.message` verbatim, so a raw library throw would
+ * silently downgrade the curated prose; (2) `mnemonicToEntropy` bottoms out in @scure/base's alphabet decoder,
+ * which throws `Unknown letter: "<word>"` — it INTERPOLATES THE OFFENDING SEED WORD into its message, which
+ * this module's header forbids. `assertValidWords` catches that case first; the try/catch makes the leak
+ * structurally impossible.
+ *
+ * ⚠ CALLER OWNS ZEROING the returned buffer (`.fill(0)`).
+ */
+export function entropyFromWords(words: string): Uint8Array {
+  const normalized = normalizeWords(words);
+  assertValidWords(normalized);
+  try {
+    return mnemonicToEntropy(normalized, wordlist);
+  } catch {
+    throw new InvalidSeedWordsError();   // never surface a library message — it can contain a seed word
+  }
 }
 
 /**

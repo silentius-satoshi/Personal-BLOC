@@ -31,7 +31,7 @@ vi.mock('../syncNow', () => ({
 import { getPublicKey, generateSecretKey } from 'nostr-tools';
 import { establishLocalOwner } from '../establishOwner';
 import { wrapSecretKey } from '../keyVault';
-import { generatePlanKey } from '../nip06Key';   // R2b-1 — NOT mocked; real entropy → words → sk derivation
+import { generatePlanKey, entropyFromWords, skFromWords } from '../nip06Key';   // NOT mocked; real entropy → words → sk derivation
 import { syncNow, markSignerFresh } from '../syncNow';
 import { useStore } from '../../../store/useStore';
 
@@ -105,5 +105,30 @@ describe('establishLocalOwner — the shared local-owner establish path', () => 
     expect(useStore.getState().isAuthenticated).toBe(true);
     // the caller's entropy buffer is zeroed
     expect(Array.from(entropy).every((b) => b === 0)).toBe(true);
+  });
+
+  // R2c-4b — the IMPORTED-WORDS path. NostrAuthGate now feeds entropyFromWords(phrase) with payloadKind
+  // 'nip06-entropy' (reversing R2b-2's "imported words wrap 'sk'"), so the ceremony can re-display the user's
+  // real phrase. ⚠ The identity must be unchanged: the wrapped entropy must unlock to the SAME key the phrase
+  // derives to. (The published NIP-06 vector — see nip06Key.test.ts.)
+  it("a words-import wraps the ENTROPY and authenticates as the phrase's own identity", async () => {
+    const VECTOR_WORDS = 'leader monkey parrot ring guide accident before fence cannon height naive bean';
+    const entropy = entropyFromWords(VECTOR_WORDS);
+    const expectedPubkey = getPublicKey(skFromWords(VECTOR_WORDS));   // the phrase's identity, derived independently
+
+    await establishLocalOwner(entropy, 'pin', {} as any, { pin: '1234', payloadKind: 'nip06-entropy' });
+
+    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'pin', '1234', undefined, 'nip06-entropy');
+    // ⚠ the load-bearing assertion: wrapping entropy instead of the sk did NOT change who we signed in as.
+    expect(useStore.getState().nostrPubkey).toBe(expectedPubkey);
+    expect(useStore.getState().isAuthenticated).toBe(true);
+    expect(Array.from(entropy).every((b) => b === 0)).toBe(true);   // caller's buffer zeroed
+  });
+
+  // The ASYMMETRY: an imported nsec has no mnemonic, so it stays 'sk' forever.
+  it('an nsec import still wraps the raw sk (no mnemonic exists to re-display)', async () => {
+    const sk = generateSecretKey();
+    await establishLocalOwner(sk, 'pin', {} as any, { pin: '1234' });   // no payloadKind → defaults to 'sk'
+    expect(wrapSecretKey).toHaveBeenCalledWith(expect.any(Uint8Array), 'pin', '1234', undefined, 'sk');
   });
 });
