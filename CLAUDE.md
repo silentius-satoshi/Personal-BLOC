@@ -3784,7 +3784,7 @@ cleanup. Additive UI + one transient store field; the gate plumbing / ceremony i
 | NIP-07 browser extension | NLogin.fromExtension() | Desktop; auto-restores on reload |
 | Remote signer QR | NLogin.fromNostrConnect() | Desktop QR scanned with Primal iOS; persists across reload (nostrLogin) |
 | Remote signer deep link | NLogin.fromNostrConnect() | Mobile two-step: warm relay → tap Open Signer App → approve → callback; persists across reload |
-| Local key (biometric) | `NSecSigner` + `keyVault` | **All platforms** (Step 4; the iOS-only gate was removed in R1). Encrypted local nsec, WebAuthn-PRF/PIN unlock; label is PLATFORM-HONEST via `src/lib/biometricLabel.ts` — "Face ID" on iOS, "passkey" elsewhere (Touch ID / Windows Hello / QR-to-phone). Import behind a HARD BACKUP GATE; on relaunch an "authenticated-but-locked" `LocalUnlockGate` (gesture-driven unlock), NOT the full login. nip07/nip46 keep optimistic auto-restore |
+| Local key (biometric) | `NSecSigner` + `keyVault` | **All platforms** (Step 4; the iOS-only gate was removed in R1). Encrypted local nsec, WebAuthn-PRF/PIN unlock; label is PLATFORM-HONEST via `src/lib/biometricLabel.ts` — "Face ID" on iOS, "passkey" elsewhere (Touch ID / Windows Hello / QR-to-phone). Import gates ONLY on a valid resolved key per tab (the backup-attestation checkbox was retired as tautological — the paste proves possession); on relaunch an "authenticated-but-locked" `LocalUnlockGate` (gesture-driven unlock), NOT the full login. nip07/nip46 keep optimistic auto-restore |
 
 ### Writer local-key signer (Nostr Step 4) — `keyVault` + `'local'` method
 
@@ -3796,10 +3796,24 @@ source for that label — never re-inline the UA check), giving one-tap reliabil
 `src/lib/nostr/keyVault.ts`** (PRF primary / PIN fallback, client-side, no server: PBKDF2→HKDF→AES-GCM via
 WebCrypto; `wrapSecretKey`/`unwrapSecretKey`/`probeKeyVaultCapability`; unwrapped key in MEMORY ONLY,
 never persisted) — shared infra the queued viewer-access phase reuses.
-- **HARD BACKUP GATE (load-bearing):** the device copy is convenience, never the only copy — the wrap path
-  is structurally unreachable until the user checks "I have my nsec backed up outside this device"
-  (`NostrAuthGate` local flow; R1 removed the iOS-only entry gate so this flow is reachable on all platforms).
-  Losing the only copy = permanent data loss.
+- **✅ RETIRED (copy-truth fix) — the import-path "hard backup gate" attestation checkbox.** `NostrAuthGate`'s
+  Recovery-key import used to gate the whole form on `backupConfirmed` ("I have my nsec backed up outside this
+  device"). **That attestation was TAUTOLOGICAL: on the IMPORT path the user is pasting a key they already hold,
+  so the paste IS the proof of possession.** It gated nothing real and trained reflexive ticking, eroding the acks
+  that DO mean something (`OwnerKeySetup` K2, the ceremony's verify). Import now gates ONLY on the real
+  precondition — a valid RESOLVED key for the active tab (`localCanContinue`: words checksum via `phraseStatus` /
+  `keyTabReady` = not-a-handoff-token + kind resolved + an ncryptsec actually decrypted) plus a confirmed PIN when
+  there is no passkey. **Never re-add an attestation checkbox to the import path.**
+  ⚠ The `OwnerKeySetup` **K2 ack is INDEPENDENT state (`ack`) and stays** — a freshly MINTED key exists nowhere
+  else, so there the attestation is real (it gates Continue only; it has not stamped `backupVerifiedAt` since R2c-4a).
+- **On-device notice — state only what is TRUE.** The import path shows a PASSIVE (non-gating) hint: *"The app
+  keeps your key protected on this device, but that's not a backup — keep the key you just pasted somewhere safe.
+  If you lose this device without it, your plan can't be recovered."* ⚠ It deliberately does **NOT** claim that
+  plan DATA is encrypted at rest. The **KEY** is always keyVault-wrapped (passkey/PIN) — unconditionally true —
+  but plan data is **plaintext at rest today** (`storeEncEnabled` is off by default; default-on is Phase 5). The
+  prior copy asserted "this stores an encrypted copy on this device… all your encrypted data is permanently
+  unrecoverable," which was FALSE. Do not restore that claim before Phase 5 actually ships.
+- The device copy is convenience, never the only copy. Losing the only copy = permanent data loss.
 - **Launch-unlock gate (the wrinkle):** `useNostrAutoRestore` does NOT optimistically auth for `'local'`
   (Face ID needs a user gesture); `AppShell` renders `LocalUnlockGate` (a NEW branch BEFORE `NostrAuthGate`,
   gated `nostrSigningMethod==='local' && nostrPubkey && !nostrSigner && !isAuthenticated`) — tap to unlock →
@@ -3921,7 +3935,11 @@ src/
                                     # NConnectSigner session post-login. + the all-platform "Use a local key"
                                     # flow (R1 removed the iOS-only entry gate; label is platform-honest via
                                     # `src/lib/biometricLabel.ts` — "Face ID" on iOS / "passkey" elsewhere)
-                                    # (hard backup gate → nsec decode → keyVault wrap → NSecSigner).
+                                    # (valid-key gate → nsec decode → keyVault wrap → NSecSigner; the old backup-
+                                    # attestation checkbox is RETIRED — see § the local-key signer. The form's only
+                                    # precondition is localCanContinue, and a PASSIVE hint states the true posture:
+                                    # the KEY is wrapped, that is not a backup. It must NOT claim plan-data
+                                    # encryption-at-rest — that is plaintext today, Phase 5 flips it).
                                     # #4: optional onBack prop renders a back button in the main options view; its label
                                     # is the Phase-2 `backLabel?` prop (default "← Back"). AppShell's locked-out-unlock
                                     # escape passes backLabel="← Back to Face ID unlock" (+ onBack=()=>setUnlockEscape(false)
@@ -4874,6 +4892,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Constraint | Rule |
 |---|---|
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
+| Never claim plan-data encryption-at-rest before Phase 5 | Two different things are encrypted, and the copy must not conflate them. The **KEY** is always keyVault-wrapped (passkey/PIN) — unconditionally true. **Plan DATA is plaintext at rest today** (`storeEncEnabled` off by default; default-on is Phase 5). `NostrAuthGate`'s import notice once said "this stores an encrypted copy on this device… all your **encrypted data** is permanently unrecoverable" — false, and it made a security promise the code didn't keep. Any copy touching at-rest posture states only that the key is protected and that this is **not a backup** |
+| No attestation checkbox on the IMPORT path | Importing means the user is pasting a key they already hold — **the paste IS the proof of possession**, so "I have my key backed up" attests to nothing and trains reflexive ticking, eroding the acks that DO mean something. `localCanContinue` gates only on a valid RESOLVED key per tab (words checksum / nsec decode / ncryptsec decrypted) + a confirmed PIN when there's no passkey. ⚠ `OwnerKeySetup` K2's ack is **independent state** (`ack`) and legitimate — a freshly minted key exists nowhere else. Never merge the two |
 | The ceremony verifies the artifact the user SAVED, not the one on screen | Verify branches on `verifyEncrypted` (a snapshot of `encryptOn` taken at Continue-time in `goVerify`). PLAINTEXT → the word quiz / nsec last-6. ENCRYPTED → **passphrase re-entry**, because the saved artifact is a passphrase-locked ncryptsec and the words on the grid are not what they saved — a forgotten passphrase is the only thing that can lose the plan. **Never quiz the words on the encrypted path.** `checkBackupPassphrase` **trims both sides** (the ceremony encrypts with `filePass.trim()`, so the trimmed passphrase is what opens the file; comparing untrimmed false-mismatches a re-entry that would decrypt it perfectly). The `setBackupVerifiedAt` stamp is byte-identical across both paths — only the comparison before it differs |
 | No save, no Continue | `savedOnce` gates `Continue` in the reveal step; it is set by `doDownload` / `downloadQR` / a **resolved** `share` (an iOS share-sheet cancel rejects with `AbortError` and must not open the gate — and guard `if (!navigator.share) return` FIRST, since `await navigator.share?.()` resolves `undefined` and would open it). ⚠ It **resets inside `invalidateArtifact`**: the same change that stales the cached artifact stales what the user already saved (download plaintext → toggle encrypt ON → the file on disk is not the encrypted backup they're about to be quizzed on). Without this gate a user walks the ceremony, answers the quiz off the on-screen grid, and stamps `backupVerifiedAt` with the key living only in RAM — the gate that un-gates sync satisfied by nothing |
 | `RevealRecoveryKey` is view-only | It reveals words/nsec for inspection and **NEVER** verifies or stamps `backupVerifiedAt` — that is the ceremony's job. It is the utility; the ceremony is the flow. Both branch on `payloadKind` (entropy → words, sk → nsec) via `unwrapRecoveryPayload`, never `unwrapSecretKey` |

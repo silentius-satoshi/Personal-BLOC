@@ -56,7 +56,6 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const [showLocal, setShowLocal]         = useState(false);
   const hasWrappedKey = !!useStore((s) => s.writerKeyWrapped);   // #6: a wrapped key survives a local→nip46→local switch
   const [forceImport, setForceImport]     = useState(false);     // #6: user chose to import a different key
-  const [backupConfirmed, setBackupConfirmed] = useState(false);
   const [recoveryTab, setRecoveryTab]     = useState<'words' | 'key'>('words');   // R2b-3: default to the word grid
   const [gridValues, setGridValues]       = useState<string[]>(() => Array(12).fill(''));   // R2b-3 words tab — ⚠ transient secret
   const [recoveryInput, setRecoveryInput] = useState('');   // the "Recovery key" tab's field — an nsec OR an ncryptsec (R2c-7a)
@@ -132,7 +131,6 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const openLocal = () => {
     setShowLocal(true);
     setForceImport(false);
-    setBackupConfirmed(false);
     setRecoveryTab('words');
     setGridValues(Array(12).fill(''));   // ⚠ transient secret — reset here (the ONLY scrub site; see residual note below)
     setRecoveryInput('');
@@ -263,8 +261,11 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     !pastedIsHandoffToken &&
     keyInput.kind !== 'unknown' &&
     (keyInput.kind !== 'encrypted' || (encryptedShapeOk && decryptState.sk != null));
+  // The ONLY precondition is a valid, resolved key for the active tab (+ a confirmed PIN when there's no passkey).
+  // There is deliberately NO "I backed it up" attestation here: on the IMPORT path the user is pasting a key they
+  // already hold, so the paste IS the proof of possession. A checkbox asserting it would gate nothing and would
+  // train reflexive ticking — eroding the acks that DO mean something (OwnerKeySetup K2, the ceremony's verify).
   const localCanContinue =
-    backupConfirmed &&
     (recoveryTab === 'words' ? phraseStatus(gridValues) === 'valid' : keyTabReady) &&
     (localMethod !== 'pin' || (pin.length >= 4 && pin === pinConfirm));
 
@@ -467,16 +468,14 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             </>
           ) : (
           <>
-            <label className={styles.hint} style={{ display: 'flex', gap: 8, textAlign: 'left', alignItems: 'flex-start' }}>
-              <input type="checkbox" checked={backupConfirmed} onChange={(e) => setBackupConfirmed(e.target.checked)} style={{ marginTop: 3, flexShrink: 0 }} />
-              <span>
-                <strong>⚠ Back up your Recovery Key first — this is not a backup.</strong> This stores an <em>encrypted copy</em>
-                on this device, unlocked by {biometricLabel()}, for convenience. If this device is lost, reset, or {biometricLabel()}
-                enrollment changes, this copy can be gone — and without your Recovery Key saved elsewhere, all your
-                encrypted data is permanently unrecoverable. I have my Recovery Key (12 words or nsec) backed up
-                somewhere safe outside this device.
-              </span>
-            </label>
+            {/* PASSIVE notice — not a checkbox, gates nothing. ⚠ It states ONLY what is true today: the KEY is
+                always keyVault-wrapped (passkey/PIN), unconditionally. It deliberately does NOT claim that plan
+                DATA is encrypted at rest — store-enc is off by default and default-on is Phase 5. The prior copy
+                asserted "all your encrypted data is permanently unrecoverable," which was false. */}
+            <p className={styles.hint}>
+              The app keeps your key protected on this device, but that's not a backup — keep the key you just
+              pasted somewhere safe. If you lose this device without it, your plan can't be recovered.
+            </p>
             {/* R2b-3 — Recovery phrase | Recovery key. The word grid is the default; Nostr natives switch to the
                 raw field. R2c-7a: the key tab is prefix-aware and takes an nsec OR an encrypted (NIP-49) key.
                 The label deliberately never says "ncryptsec" — that token is jargon. */}
@@ -485,13 +484,13 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                 role="tab" type="button" aria-selected={recoveryTab === 'words'}
                 className={`${styles.recoveryTab} ${recoveryTab === 'words' ? styles.recoveryTabActive : ''}`}
                 onClick={() => { setRecoveryTab('words'); setError(null); }}
-                disabled={loading || !backupConfirmed}
+                disabled={loading}
               >Recovery phrase (12 words)</button>
               <button
                 role="tab" type="button" aria-selected={recoveryTab === 'key'}
                 className={`${styles.recoveryTab} ${recoveryTab === 'key' ? styles.recoveryTabActive : ''}`}
                 onClick={() => { setRecoveryTab('key'); setError(null); }}
-                disabled={loading || !backupConfirmed}
+                disabled={loading}
               >Recovery key</button>
             </div>
 
@@ -529,7 +528,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                   placeholder="Paste your recovery key — nsec or encrypted"
                   value={recoveryInput}
                   onChange={(e) => setRecoveryInput(e.target.value)}
-                  disabled={loading || !backupConfirmed}
+                  disabled={loading}
                   // ⚠ LOAD-BEARING: iOS silently autocapitalizes/autocorrects, which would mangle an nsec.
                   // Same discipline as ViewerLoginFlow's passphrase field. autoComplete off keeps the secret
                   // out of browser autofill.
@@ -541,7 +540,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                 <button
                   className={styles.ghostBtn}
                   onClick={() => setReveal((v) => !v)}
-                  disabled={loading || !backupConfirmed}
+                  disabled={loading}
                 >
                   {reveal ? 'Hide' : 'Show'}
                 </button>
@@ -576,7 +575,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                       placeholder="Passphrase to unlock this key"
                       value={keyPassphrase}
                       onChange={(e) => { setKeyPassphrase(e.target.value); setError(null); }}
-                      disabled={loading || !backupConfirmed}
+                      disabled={loading}
                       autoComplete="off"
                       autoCorrect="off"
                       autoCapitalize="none"
@@ -615,16 +614,16 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                 placeholder="Name this key (e.g. my laptop)"
                 value={keyLabel}
                 onChange={(e) => setKeyLabel(e.target.value)}
-                disabled={loading || !backupConfirmed}
+                disabled={loading}
               />
             )}
             {localMethod === 'pin' && (
               <>
                 <p className={styles.hint}>{biometricLabel()} unavailable — set a PIN to encrypt the key (min 4 digits).</p>
                 <input className={styles.input} type="password" inputMode="numeric" placeholder="PIN"
-                  value={pin} onChange={(e) => setPin(e.target.value)} disabled={loading || !backupConfirmed} />
+                  value={pin} onChange={(e) => setPin(e.target.value)} disabled={loading} />
                 <input className={styles.input} type="password" inputMode="numeric" placeholder="Confirm PIN"
-                  value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value)} disabled={loading || !backupConfirmed} />
+                  value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value)} disabled={loading} />
               </>
             )}
             <button className={styles.primaryBtn} onClick={handleLocal} disabled={loading || !localCanContinue}>
