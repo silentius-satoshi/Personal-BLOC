@@ -3042,7 +3042,8 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-775 tests — `npx vitest run` before every commit.
+790 tests — `npx vitest run` before every commit.
+- `src/lib/nostr/__tests__/ncryptsec.test.ts` — R2c-7a-fix, the two layers that let the Recovery-key tab tell a malformed payload from a wrong passphrase (15 cases, real `nip49` output, `logn:1` so scrypt stays fast). **Layer 1 `isWellFormedNcryptsec`:** a real encrypt output → true; **a full handoff token (`ncryptsec + ':' + npub`) → false** (the exact input R2c-7a misreported as "Wrong passphrase" — it still prefix-matches as `encrypted`, so only the shape gate catches it); truncated / bare nsec / trailing newline / uppercase / garbage → false; **a 1-char typo PASSES** (documented hole — length + charset intact → Layer 2 owns it); `NCRYPTSEC_LENGTH === 162` pinned across `logn` 1/8/16 (a silent length change would disable the gate; `logn:20` is omitted — 2²⁰ scrypt rounds blow the 5s timeout for zero extra coverage, and `logn` is one payload byte so it cannot affect length). **Layer 2 `classifyNcryptsecError`:** `decrypt(valid, wrongPass)` → `'passphrase'`; broken checksum / wrong prefix / full token → `'malformed'`; a non-Error throw → `'malformed'` (safe default); discriminates on `'invalid tag'` specifically
 - `src/store/__tests__/backupNagDismissed.test.ts` — R2c-2 session-transient dismissal (mirrors `remotePlanFound.test.ts`): default `false`; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (persisting it would keep the nag dismissed across launches, defeating the ladder); `dismissBackupNag()` sets true. NO module latch (single writer)
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
 - `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
@@ -3870,6 +3871,28 @@ src/
                                     # ceremony/RevealRecoveryKey show the user's REAL words); nsec → the raw sk as 'sk'
                                     # FOREVER (a raw key has no mnemonic; nothing to re-display). Provenance stays 'imported'
                                     # for both, stamped in the same place; the finally's payload.fill(0) zeroes either result.
+                                    # R2c-7a-fix KEY-FIELD ERROR PRECEDENCE (strict, mutually exclusive; each suppresses
+                                    # the passphrase field — a payload we can't parse must never be blamed on the
+                                    # passphrase): (1) pastedIsHandoffToken = recoveryInput.trim().includes(':') →
+                                    # "That's a viewer share code, not your Recovery Key." ⚠ NEVER auto-strip the suffix:
+                                    # the key inside a SharingPage token is a VIEWER key, so importing it as the owner is
+                                    # a silent CATEGORY ERROR. `:` isn't in the bech32 alphabet (nor in 12 words), so a
+                                    # colon anywhere means "token" — we test .includes(':') and NOT parseHandoffToken(…)
+                                    # !== null, because that returns null for a MALFORMED token which would then fall
+                                    # through and be misreported; it also catches a plaintext `nsec1…:npub1…` token that
+                                    # classifies as 'nsec'. Guarded again in handleLocal (defense in depth) so a token can
+                                    # never reach establishLocalOwner. (2) kind==='encrypted' && !isWellFormedNcryptsec →
+                                    # "That doesn't look like a valid key — check for a truncated paste." (also shown when
+                                    # decryptState.error==='malformed', i.e. a checksum typo that only surfaced inside
+                                    # decrypt). (3) only a WELL-FORMED ncryptsec shows the passphrase field, so "Wrong
+                                    # passphrase" finally means what it says (decryptState.error==='passphrase'). The
+                                    # words/unknown hints are suppressed for a token (`garbage:npub1…` classifies as
+                                    # 'unknown' and would otherwise double-error). ⚠ SCOPE: this branch is CORRECT-BUT-
+                                    # INPUT-STARVED BY DESIGN, not dead code — owner-key ncryptsec input arrives with
+                                    # R2c-7b (encrypted backup export) / R2c-7a-2 (bare-nsec remediation). Until then the
+                                    # only well-formed ncryptsec obtainable is the viewer key inside a share token, which
+                                    # (1) rejects. (So R2c-7a's manual gate "mint a viewer token to get a real ncryptsec"
+                                    # was never a valid acceptance test.)
                                     # R2c-7a ENCRYPTED KEY: the key tab is PREFIX-AWARE and takes an nsec OR a NIP-49
                                     # ncryptsec. A memoized keyInput = classifyRecoveryInput(recoveryInput) (stable effect
                                     # dep) drives everything. kind==='encrypted' reveals an UNLOCK-passphrase field whose
@@ -4092,7 +4115,27 @@ src/
                                     # prefix edit can't quietly introduce a collision. nip19.decode / nip49.decrypt /
                                     # nip06Key own their own verdicts, so 12 nonsense tokens classify as `words` and are
                                     # rejected downstream with a real message. ⚠ Do NOT add validation here — it would
-                                    # duplicate (and drift from) three separate crypto contracts
+                                    # duplicate (and drift from) three separate crypto contracts. ⚠ It also has NO ':'
+                                    # logic and NO ncryptsec shape check — those live in ncryptsec.ts + NostrAuthGate
+    ncryptsec.ts                    # R2c-7a-fix — PURE, zero imports. The two layers that let the Recovery-key tab
+                                    # fail HONESTLY. Exists because nip49 exports only encrypt/decrypt (no shape check)
+                                    # and decrypt runs ~1s of SYNCHRONOUS scrypt before it can tell you anything.
+                                    # LAYER 1 isWellFormedNcryptsec(s) — prefix + exact NCRYPTSEC_LENGTH (162) + bech32
+                                    # charset. No crypto → safe per keystroke. Gates whether the passphrase field even
+                                    # appears, so a malformed payload is never blamed on the passphrase. Rejects a
+                                    # `:npub` handoff-token suffix, truncation, a bare nsec, newline damage. ⚠ Does NOT
+                                    # verify the CHECKSUM (that would need bech32 from @scure/base — NOT a direct dep),
+                                    # so a 1-char typo passes → LAYER 2. 162 is deterministic: the payload is fixed-width
+                                    # (1+1+16+24+1+48 = 91 bytes → 146 words → 9+1+146+6), and `logn` is one byte OF it.
+                                    # LAYER 2 classifyNcryptsecError(e) → 'malformed' | 'passphrase'. nip49.decrypt runs
+                                    # every structural check (bech32 → prefix → version) BEFORE scrypt, so only the final
+                                    # AEAD step can fail on the passphrase: 'invalid tag' ⇒ passphrase, everything else
+                                    # ('Invalid checksum in …', 'Unknown letter: …', 'invalid prefix …', 'invalid
+                                    # version …') ⇒ malformed. ⚠ POSITIVE TEST on 'invalid tag' DELIBERATELY — if a dep
+                                    # renames it we degrade to calling a wrong passphrase "malformed" (confusing, never
+                                    # imports a key); the inverse default IS the R2c-7a bug. ⚠ NEVER render e.message:
+                                    # bech32 echoes the ENTIRE ncryptsec into it (and 'Unknown letter' the offending
+                                    # char) — same leak class as entropyFromWords
     sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
                                     # fetchAndSync → { ok, planFound } (R2b-2; was a bare boolean). `ok` = decrypt health
                                     # (breaks loop on first decrypt fail). `planFound` = latestByDTag.size > 0 — computed
@@ -4748,6 +4791,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Ceremony idempotency | An already-stamped user (bridge-era or a prior ceremony) MUST run explain→reveal→verify→done end-to-end as a re-verify — never a dead end; success re-stamps (monotonic-forward). The explain step shows a `Backed up ✓ <date>` chip but does not short-circuit |
 | `fetchAndSync` return shape | `{ ok, planFound }`, not a boolean. `planFound` is computed from `latestByDTag` **before** the decrypt loop and is INDEPENDENT of `ok` — a decrypt failure with events present must stay `planFound: true`, or an unreachable signer fires the "no plan found on this key" notice at a user whose plan is sitting right there |
 | Import `payloadKind` is THREE-WAY asymmetric: **words → `'nip06-entropy'`, nsec → `'sk'`, ncryptsec → `'sk'`** | **By construction.** `NostrAuthGate.handleLocal` passes `payloadKind: 'nip06-entropy'` for the words branch (R2c-4b) — we store the 16 bytes *behind* the phrase so `RevealRecoveryKey` + the R2c-1 ceremony can re-derive and word-quiz the user's ACTUAL words. Identity is preserved because the NIP-06 path is deterministic: `deriveSkFromEntropy(entropyFromWords(w)) === skFromWords(w)` (pinned by `nip06Key.test.ts` + `establishOwner.test.ts`). The **nsec** branch stays `'sk'` **forever** — a raw secret key has **no mnemonic**, so there is nothing to re-display and `unwrapRecoveryPayload` correctly falls back to nsec display. The **encrypted (ncryptsec, R2c-7a)** branch inherits the nsec case exactly: NIP-49 decrypts *to* a raw secret key, so no phrase ever existed and none can be shown. ⚠ The words rule **SUPERSEDES the R2b-2 rule** ("imported words wrap the derived sk … do not fix this into entropy storage") — correct then, because no ceremony existed to verify words; R2c-1 shipped one, which is exactly what justifies the reversal. **No migration:** users who imported words *before* R2c-4b still hold an `'sk'` ciphertext (we'd need their phrase to convert) and keep seeing an nsec — the absent⇒`'sk'` compat contract covers them |
+| Never auto-strip a handoff token's `:npub` suffix | A pasted `<keyPart>:<ownerNpub>` in the Recovery-key tab is **rejected**, not repaired: the key inside a `SharingPage` token is a **viewer** key (`deriveViewerKeyFromNsec`), so stripping the suffix and importing it would silently authenticate the owner as their own viewer — a category error. Detected by `.includes(':')` (a colon is not in the bech32 alphabet, nor in 12 words), **not** `parseHandoffToken(…) !== null`, which returns null for a malformed token that would then fall through. Guarded in the render **and** in `handleLocal` |
+| Malformed payload ≠ wrong passphrase | `nip49.decrypt` runs every structural check (bech32 → prefix → version) **before** scrypt, so only the final AEAD step can fail on the passphrase. Two layers keep them apart: `isWellFormedNcryptsec` gates whether the passphrase field appears at all, and `classifyNcryptsecError` positive-tests `'invalid tag'` for the rest. **Never collapse them back into one `catch`** — that was the R2c-7a bug (it blamed the user for a corrupted paste). ⚠ And never render the caught `e.message`: bech32 echoes the entire ncryptsec into it |
 | The encrypted branch's payload MUST be `.slice()`d | `NostrAuthGate.handleLocal`'s encrypted branch reads its sk out of **React state** (`decryptState.sk`, produced by the debounced decrypt effect). `establishLocalOwner` zeros the payload on success and the `finally` zeros it on failure, so passing the state buffer directly means a **failed** establish (Face ID cancelled) zeros it **in place** — and the retry hands `establishLocalOwner` 32 zero bytes, which it **wraps and persists to `writerKeyWrapped` BEFORE deriving the pubkey**, then throws. Net: a corrupted credential on disk for an identity that never existed. The nsec/words branches are immune only because each attempt re-derives a fresh buffer from the input string. **Never "optimize away" the copy** |
 | Recovery grid is capture UX only | `recoveryGrid.ts` / `WordGrid` input mode / the checksum gate are all HINTS. `skFromWords` on submit is the sole validity authority (it normalizes + derives). Continue may gate on `phraseStatus==='valid'`, but a green box or a ✓ line never authorizes anything the derivation wouldn't. Same discipline as `classifyRecoveryInput` not owning validity |
 | `handleLocal` is one path | The Recovery-phrase / nsec tab only chooses the raw string fed to `classifyRecoveryInput` (words: `gridValues` joined; nsec: the field). Everything from classification onward — decode/`skFromWords` → `'imported'` stamp → `establishLocalOwner` → `sk.fill(0)` — is a single byte-identical sequence. Do not fork it per tab |

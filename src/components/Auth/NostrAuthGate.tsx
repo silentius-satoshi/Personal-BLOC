@@ -10,6 +10,7 @@ import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { probeKeyVaultCapability, type WrapMethod, type PayloadKind } from '../../lib/nostr/keyVault';
 import { entropyFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Key';
 import { classifyRecoveryInput } from '../../lib/nostr/recoveryInput';
+import { isWellFormedNcryptsec, classifyNcryptsecError } from '../../lib/nostr/ncryptsec';
 import { phraseStatus } from '../../lib/recoveryGrid';
 import { WordGrid } from '../Onboarding/WordGrid';
 import { biometricLabel } from '../../lib/biometricLabel';
@@ -66,8 +67,27 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const [keyLabel, setKeyLabel]           = useState('');   // names the passkey (PRF path only)
 
   // ── R2c-7a — encrypted-key (NIP-49 ncryptsec) unlock. Mirrors ViewerLoginFlow's PROVEN pattern verbatim. ──
+  //
+  // ⚠ SCOPE (R2c-7a-fix): this branch is CORRECT-BUT-INPUT-STARVED BY DESIGN, not dead code. Owner-key
+  // ncryptsec input arrives with R2c-7b (encrypted backup export) / R2c-7a-2 (bare-nsec remediation). Until one
+  // of them ships a producer, the only well-formed ncryptsec a user could obtain is the VIEWER key inside a
+  // SharingPage handoff token — which `pastedIsHandoffToken` below rejects outright, because importing a viewer
+  // key as the owner identity is a silent category error. So: it awaits its producer.
+  //
   // Memoized because classifyRecoveryInput returns a fresh object each render and this is an effect dep.
   const keyInput = useMemo(() => classifyRecoveryInput(recoveryInput), [recoveryInput]);
+
+  // A handoff token is `<keyPart>:<ownerNpub>` (handoffToken.ts). `:` is NOT in the bech32 alphabet, so it can
+  // never appear in a legitimate nsec/ncryptsec — nor in 12 words. A colon anywhere therefore means "token".
+  // ⚠ We test `.includes(':')` rather than `parseHandoffToken(...) !== null` on purpose: parseHandoffToken
+  // returns null for a MALFORMED token (bad npub half), which would fall through and be misreported. This also
+  // catches a plaintext `nsec1…:npub1…` token, which classifies as 'nsec' and would otherwise die with a bare
+  // "Not a valid nsec". NEVER auto-strip the suffix — the key inside is a viewer key.
+  const pastedIsHandoffToken = recoveryInput.trim().includes(':');
+  // LAYER 1 — cheap shape gate (no crypto). Only a well-formed ncryptsec earns a passphrase field, so a
+  // malformed payload can never be misreported as a wrong passphrase.
+  const encryptedShapeOk = keyInput.kind === 'encrypted' && isWellFormedNcryptsec(keyInput.value);
+  const showPassphraseField = encryptedShapeOk && !pastedIsHandoffToken;
   // ⚠ NOT the device PIN. This passphrase DECRYPTS the pasted ncryptsec; the PIN below protects the key at rest
   // on this device. Both fields can be on screen at once — the R1.5 passphrase-vs-PIN confusion — so the labels
   // are state-specific, never a generic "Passphrase". (R2c-7a-2 adds the inverse ENCRYPT passphrase here too.)
@@ -82,20 +102,25 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   // The decrypt runs in an EFFECT, not a memo: a memo would block the same render/paint that commits the
   // debounced passphrase, so "Checking passphrase…" would never actually paint before the freeze. The 30ms
   // setTimeout yields exactly one frame so it does.
-  const [decryptState, setDecryptState] = useState<{ sk: Uint8Array | null; checking: boolean }>({ sk: null, checking: false });
+  // `error` distinguishes the two failures R2c-7a conflated. LAYER 2: after the shape gate, the only structural
+  // failure left inside decrypt is a bech32 CHECKSUM (a 1-char typo keeps length + charset) — classify it
+  // rather than blaming the passphrase. ⚠ Never render the caught e.message: bech32 echoes the whole ncryptsec.
+  const [decryptState, setDecryptState] = useState<{ sk: Uint8Array | null; checking: boolean; error: null | 'malformed' | 'passphrase' }>(
+    { sk: null, checking: false, error: null },
+  );
   useEffect(() => {
     const trimmed = debouncedPassphrase.trim();   // symmetric with the trim at encrypt time
-    if (keyInput.kind !== 'encrypted' || !trimmed) {
-      setDecryptState({ sk: null, checking: false });
+    if (!showPassphraseField || !trimmed) {
+      setDecryptState({ sk: null, checking: false, error: null });
       return;
     }
-    setDecryptState({ sk: null, checking: true });   // never carry a stale key while re-checking a new passphrase
+    setDecryptState({ sk: null, checking: true, error: null });   // never carry a stale key while re-checking
     const t = setTimeout(() => {
-      try { setDecryptState({ sk: nip49.decrypt(keyInput.value, trimmed), checking: false }); }
-      catch { setDecryptState({ sk: null, checking: false }); }
+      try { setDecryptState({ sk: nip49.decrypt(keyInput.value, trimmed), checking: false, error: null }); }
+      catch (e) { setDecryptState({ sk: null, checking: false, error: classifyNcryptsecError(e) }); }
     }, 30);
     return () => clearTimeout(t);   // a stale in-flight decrypt must not land after a newer keystroke
-  }, [keyInput, debouncedPassphrase]);
+  }, [keyInput, debouncedPassphrase, showPassphraseField]);
 
   useEffect(() => {
     if (!showLocal) return;
@@ -113,7 +138,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setRecoveryInput('');
     setKeyPassphrase('');                // R2c-7a — ⚠ transient secrets, same scrub site
     setDebouncedPassphrase('');
-    setDecryptState({ sk: null, checking: false });
+    setDecryptState({ sk: null, checking: false, error: null });
     setReveal(false);
     setLocalMethod(null);
     setPin('');
@@ -134,6 +159,14 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       // R2b-3: the raw string comes from the active tab — the word grid (joined) or the nsec field. handleLocal
       // stays a SINGLE path; the tab only chooses what feeds classifyRecoveryInput.
       const raw = recoveryTab === 'words' ? gridValues.map((v) => v.trim()).join(' ') : recoveryInput;
+      // Defense in depth: localCanContinue already blocks this, but a handoff token must NEVER reach
+      // establishLocalOwner — the key inside it is a VIEWER key, so importing it would silently authenticate
+      // the owner as their own viewer. A clear rejection beats the wrong identity.
+      if (recoveryTab === 'key' && raw.trim().includes(':')) {
+        setError("That's a viewer share code, not your Recovery Key.");
+        setLoading(false);
+        return;
+      }
       const input = classifyRecoveryInput(raw);
       if (input.kind === 'nsec') {
         let decoded;
@@ -143,6 +176,11 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
         payload = decoded.data as Uint8Array;   // payloadKind stays 'sk' — see the asymmetry note below
       } else if (input.kind === 'encrypted') {
         // R2c-7a — the sk came from the DEBOUNCED decrypt effect; never re-decrypt here (blocking scrypt).
+        if (!isWellFormedNcryptsec(input.value)) {
+          setError("That doesn't look like a valid key — check for a truncated paste.");
+          setLoading(false);
+          return;
+        }
         if (!decryptState.sk) { setError('Enter the passphrase that unlocks this key.'); setLoading(false); return; }
         // ⚠ .slice() IS LOAD-BEARING. establishLocalOwner zeros the payload on success, and the `finally` below
         // zeros it on failure. The nsec/words branches re-derive a FRESH buffer from the input string each
@@ -220,8 +258,11 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   // and an ncryptsec can't submit until its passphrase has actually decrypted. (12 words pasted into the key
   // field DO submit: classifyRecoveryInput resolves them to 'words' and handleLocal imports them correctly down
   // the entropy path — we only nudge the user toward the phrase tab.)
+  // R2c-7a-fix: a handoff token or a malformed ncryptsec can NEVER submit — both are rejected at the key field.
   const keyTabReady =
-    keyInput.kind !== 'unknown' && (keyInput.kind !== 'encrypted' || decryptState.sk != null);
+    !pastedIsHandoffToken &&
+    keyInput.kind !== 'unknown' &&
+    (keyInput.kind !== 'encrypted' || (encryptedShapeOk && decryptState.sk != null));
   const localCanContinue =
     backupConfirmed &&
     (recoveryTab === 'words' ? phraseStatus(gridValues) === 'valid' : keyTabReady) &&
@@ -505,12 +546,29 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                   {reveal ? 'Hide' : 'Show'}
                 </button>
 
-                {/* R2c-7a — the UNLOCK passphrase, shown only for an encrypted key. Debounced 3000ms; the decrypt
-                    runs in an effect (see the state block) so "Checking passphrase…" paints before the scrypt
-                    freeze. ⚠ The label is state-SPECIFIC on purpose: a device PIN field can be on screen at the
-                    same time, and R2c-7a-2 will add the inverse ENCRYPT passphrase to this very screen. A generic
-                    "Passphrase" would be ambiguous in both directions (the R1.5 confusion). */}
-                {keyInput.kind === 'encrypted' && (
+                {/* R2c-7a-fix — KEY-FIELD errors, in strict precedence. Each is mutually exclusive, and each
+                    suppresses the passphrase field: a payload we can't even parse must never be blamed on the
+                    passphrase (the R2c-7a bug). ⚠ Never render the caught e.message here — bech32's errors echo
+                    the entire ncryptsec, and "Unknown letter" echoes the offending character. */}
+                {pastedIsHandoffToken ? (
+                  <p className={styles.hint} style={{ color: 'var(--red)' }}>
+                    That's a viewer share code, not your Recovery Key.
+                  </p>
+                ) : (keyInput.kind === 'encrypted' && !encryptedShapeOk) ||
+                    decryptState.error === 'malformed' ? (
+                  // Shape gate (paste time) OR a bech32 checksum that only surfaced inside decrypt (1-char typo).
+                  <p className={styles.hint} style={{ color: 'var(--red)' }}>
+                    That doesn't look like a valid key — check for a truncated paste.
+                  </p>
+                ) : null}
+
+                {/* The UNLOCK passphrase, shown ONLY for a well-formed ncryptsec — so "Wrong passphrase" can
+                    finally mean what it says. Debounced 3000ms; the decrypt runs in an effect (see the state
+                    block) so "Checking passphrase…" paints before the scrypt freeze. ⚠ The label is
+                    state-SPECIFIC on purpose: a device PIN field can be on screen at the same time, and R2c-7a-2
+                    will add the inverse ENCRYPT passphrase to this very screen. A generic "Passphrase" would be
+                    ambiguous in both directions (the R1.5 confusion). */}
+                {showPassphraseField && (
                   <>
                     <input
                       className={styles.input}
@@ -528,7 +586,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                       This unlocks the encrypted key you pasted — it is not your device PIN.
                     </p>
                     {decryptState.checking && <p className={styles.hint}>Checking passphrase…</p>}
-                    {!decryptState.checking && debouncedPassphrase.trim() && !decryptState.sk && (
+                    {decryptState.error === 'passphrase' && (
                       <p className={styles.hint} style={{ color: 'var(--red)' }}>
                         Wrong passphrase — check and try again.
                       </p>
@@ -536,13 +594,14 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                   </>
                 )}
 
-                {/* A disabled Continue must never be mute. */}
-                {keyInput.kind === 'words' && (
+                {/* A disabled Continue must never be mute. Both suppressed for a handoff token, which already
+                    has its own (more specific) error above — e.g. `garbage:npub1…` classifies as 'unknown'. */}
+                {!pastedIsHandoffToken && keyInput.kind === 'words' && (
                   <p className={styles.hint}>
                     That looks like a recovery phrase — switch to the phrase tab for word-by-word entry.
                   </p>
                 )}
-                {keyInput.kind === 'unknown' && recoveryInput.trim() && (
+                {!pastedIsHandoffToken && keyInput.kind === 'unknown' && recoveryInput.trim() && (
                   <p className={styles.hint}>
                     Not a recognized key. Paste an nsec, an encrypted key, or use the phrase tab.
                   </p>
