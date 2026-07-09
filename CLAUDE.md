@@ -3615,8 +3615,8 @@ cleanup. Additive UI + one transient store field; the gate plumbing / ceremony i
 
 | Rung | Surface | Condition | Copy / action |
 |---|---|---|---|
-| **1 — Badge** (ambient) | Amber `.badgeDot` on the Settings ⚙: simple-mode `HeaderNavCluster` (all 3 instances — the cluster reads the gate directly) AND full-mode `BrandingDropdown` trigger (the ⚙ item lives in a collapsed portal → the dot rides the always-visible `.brandingBtn`) | gate unsatisfied | decoration only (5-icon invariant holds) |
-| **2 — Nag** (active) | `BackupNagCard` (`components/Entry/`), rides `ViewerHomeView`'s `notice` slot | `keyProvenance === 'generated'` && `!gate` && `hasLoggedData(s)` && `!backupNagDismissed` | "Your plan now has real data, and it exists only on this phone. Save your Recovery Key — it takes a minute." + **Save it now** (opens the ceremony) + **Dismiss** (`dismissBackupNag()`, session-transient) |
+| **1 — Badge** (ambient) | Amber `.badgeDot` on the Settings ⚙: simple-mode `HeaderNavCluster` (all 3 instances — the cluster reads the gate directly) AND full-mode `BrandingDropdown` trigger (the ⚙ item lives in a collapsed portal → the dot rides the always-visible `.brandingBtn`). **R2c-5 extends this into a BREADCRUMB CHAIN** — see below | gate unsatisfied | decoration only (5-icon invariant holds) |
+| **2 — Nag** (active) | `BackupNagCard` (`components/Entry/`), rides `ViewerHomeView`'s `notice` slot **AND (R2c-5) mounts standalone on BOTH journal surfaces** — `DailyModeView` + `SimpleModeView`, in the post-header slot before `<ViewToggle>` (an owner who lives in the Journal would never see the dashboard one) | `keyProvenance === 'generated'` && `!gate` && `hasLoggedData(s)` && `!backupNagDismissed` | "Your plan now has real data, and it exists only on this phone. Save your Recovery Key — it takes a minute." + **Save it now** (opens the ceremony) + **Dismiss** (`dismissBackupNag()`, session-transient) |
 | **3 — Hard gate** | `BackupGateInterstitial` (`components/Settings/`) replaces the Sharing + Network page bodies | gate unsatisfied | "Save your Recovery Key first" / "Sharing your plan and syncing to relays create copies only your key can open. Prove you've saved it, then this unlocks." + **Save my Recovery Key** + ghost **← Back** |
 
 - **The shared notice slot + mutual exclusivity.** `AppShell.tsx` (dashboard arm) passes
@@ -3624,6 +3624,31 @@ cleanup. Additive UI + one transient store field; the gate plumbing / ceremony i
   passed). The two are **mutually exclusive by construction**: `NoPlanNotice` gates `keyProvenance !== 'generated'`,
   the nag gates `keyProvenance === 'generated'` — at most one ever renders. Both self-gate + are owner-only via
   `ViewerHomeView`'s `{ownerNav && notice}` (a viewer gets neither `ownerNav` nor `notice`).
+- **R2c-5 — the nag ALSO mounts on both journal surfaces** (`DailyModeView`, `SimpleModeView`), in the
+  post-header slot before `<ViewToggle>` (the structural parallel of the dashboard's post-`</header>` notice).
+  `BackupNagCard` is drop-in there: it self-gates, reads the store directly (no props), and owns its own
+  ceremony overlay. **Owner-only twice over:** both surfaces are reachable only via `AppShell`'s
+  `renderOwnerJournal()` — the `!viewerMode` branch (Branch J / `renderSimpleUnder`'s else), *and* the card
+  gates on `keyProvenance === 'generated'` (null for a viewer). **`NoPlanNotice` stays dashboard-only**, so the
+  two never co-mount on the Journal (and would still be mutually exclusive if they did). **Dismiss is shared:**
+  `backupNagDismissed` is session store state → dismissing on the dashboard also dismisses on the Journal for
+  that session. **One nag, one dismiss** — intended.
+- **R2c-5 — the BADGE BREADCRUMB CHAIN** (⚙ nav icon → **Identity & Security** row → **Save your Recovery Key**
+  button). Rung 1's dot used to light with no trail; now a skipper is led all the way into the ceremony.
+  `SettingsRow` gained an additive `alert?: boolean` (default false → every other row byte-identical) rendering
+  a `.rowBadgeDot` on the row icon; the RECOVERY button gets the inline `.btnBadgeDot`. Both reuse the
+  `HeaderNavCluster`/`BrandingDropdown` amber-dot language + `--amber` token, so the chain reads as one signal.
+  `SettingsMain` **reuses its existing `backupGated`** (computed once, also feeding the Sharing/Network
+  interstitials — never recomputed). The button dot and the `Backed up ✓` chip are **mutually exclusive by
+  construction** (`backupGated ⇒ backupVerifiedAt == null`). All three dots + the nag subscribe
+  `keyProvenance` + `backupVerifiedAt`, so the ceremony's stamp clears every one **reactively — no imperative
+  cleanup**. Dots are `aria-hidden` decoration (row/button text is the accessible name).
+  ⚠ **The Identity row's dot also requires `nostrSigningMethod === 'local'`** so the breadcrumb never points at
+  a page with no ceremony (the "Save your Recovery Key" button + `RevealRecoveryKey` render only for a local
+  signer). This is **a NO-OP today and DEFENSIVE, not a live fix**: a `'generated'` key is always minted locally
+  by `OwnerKeySetup` (which sets method `'local'`) and `disconnectNostr` clears provenance, so
+  `backupGated ⇒ local`. It makes the "generated key on an external signer" state — which shouldn't exist —
+  render correctly rather than misleadingly. **Don't delete it as dead code.**
 - **`hasLoggedData(s)`** (`src/lib/hasLoggedData.ts`, PURE, type-only `StoreState` import) `= s.dayLog.length > 0
   || s.monthlyLog.length > 0` — the nag's data gate ("there's something worth losing"). `Pick`-typed so a node
   test needs no full-state fixture; the nag reads it reactively via `useStore(hasLoggedData)`. **No new store

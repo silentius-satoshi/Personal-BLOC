@@ -144,9 +144,12 @@ interface SettingsRowProps {
   subtitle?: string;
   onClick:   () => void;
   styles:    Record<string, string>;
+  /** R2c-5 — amber dot on the row icon (the backup breadcrumb). Additive: default false → every other row is
+   *  byte-identical. Decorative (aria-hidden); the row title is the accessible name. */
+  alert?:    boolean;
 }
 
-function SettingsRow({ icon, title, subtitle, onClick, styles }: SettingsRowProps) {
+function SettingsRow({ icon, title, subtitle, onClick, styles, alert = false }: SettingsRowProps) {
   return (
     <div
       className={styles.settingsRow}
@@ -155,7 +158,10 @@ function SettingsRow({ icon, title, subtitle, onClick, styles }: SettingsRowProp
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
     >
-      <span className={styles.settingsRowIcon}>{icon}</span>
+      <span className={styles.settingsRowIcon}>
+        {icon}
+        {alert && <span className={styles.rowBadgeDot} aria-hidden="true" />}
+      </span>
       <div className={styles.settingsRowBody}>
         <span className={styles.settingsRowTitle}>{title}</span>
         {subtitle && <span className={styles.settingsRowSubtitle}>{subtitle}</span>}
@@ -440,7 +446,15 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 (a duplicate sign-in row over-promises). Serves pre-1.5 local-owner-not-authed + post-key-removal. */}
             {!viewerMode && !isAuthenticated && <SettingsRow icon="🔑" title="Connect Nostr identity" subtitle="Sign in to sync this plan across devices" onClick={() => setAccessFlow('login')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Connect to a shared plan" subtitle="Switch this device to viewing someone's plan" onClick={() => { if (window.confirm('This switches this device to viewing someone else’s plan and clears your current plan. Continue?')) setAccessFlow('viewer'); }} styles={styles} />}
-            {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} />}
+            {/* R2c-5 breadcrumb rung 2 — reuses the `backupGated` already computed above (never recomputed).
+                ⚠ The `nostrSigningMethod === 'local'` term keeps the breadcrumb from pointing at a page with no
+                ceremony: the "Save your Recovery Key" button + RevealRecoveryKey render ONLY for a local signer,
+                so on a NIP-07/NIP-46 signer the Identity page has nothing to reach. Today this is a NO-OP —
+                a 'generated' key is always minted locally by OwnerKeySetup (which sets method 'local'), and
+                disconnectNostr clears provenance, so backupGated ⇒ local. It is DEFENSIVE, not a live fix:
+                it makes the "generated key on an external signer" state (which shouldn't exist) render
+                correctly rather than misleadingly. Don't delete it as dead code. */}
+            {!viewerMode && <SettingsRow icon="🔑" title="Identity & Security" subtitle="Nostr login, sync, recovery" onClick={() => setSettingsPage('identity')} styles={styles} alert={backupGated && nostrSigningMethod === 'local'} />}
             {!viewerMode && <SettingsRow icon="💾" title="Backup" subtitle="Download a copy of your plan" onClick={() => setSettingsPage('backup')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Sharing" subtitle="Give someone read-only viewer access" onClick={() => setSettingsPage('sharing')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date" onClick={() => setSettingsPage('strike')} styles={styles} />}
@@ -577,9 +591,15 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
 
           {/* RECOVERY — save (ceremony) · reveal key (local) · backup plan · reset & re-sync · decrypt-back (when enc on) */}
           <div className={styles.settingsGroupLabel}>RECOVERY</div>
-          {/* R2c-1 — the guided backup ceremony (the primary CTA); RevealRecoveryKey below is the quiet view-only utility. */}
+          {/* R2c-1 — the guided backup ceremony (the primary CTA); RevealRecoveryKey below is the quiet view-only utility.
+              R2c-5 breadcrumb rung 3 (the terminus): the amber dot and the "Backed up ✓" chip are MUTUALLY
+              EXCLUSIVE by construction — backupGated ⇒ backupVerifiedAt == null, and the chip renders only when
+              backupVerifiedAt != null. Tapping already opens the ceremony; the dot adds no wiring.
+              ⚠ All three breadcrumb dots + the nag subscribe keyProvenance + backupVerifiedAt, so the ceremony's
+              stamp clears every one of them reactively. No imperative cleanup anywhere. */}
           {nostrSigningMethod === 'local' && (
             <button className={styles.nostrReconnectBtn} onClick={() => setCeremonyOpen(true)}>
+              {backupGated && <span className={styles.btnBadgeDot} aria-hidden="true" />}
               Save your Recovery Key{backupVerifiedAt != null && <span className={styles.backedUpChip}> · Backed up ✓ {new Date(backupVerifiedAt).toLocaleDateString()}</span>}
             </button>
           )}

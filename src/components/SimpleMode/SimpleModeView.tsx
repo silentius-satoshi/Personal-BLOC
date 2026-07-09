@@ -13,6 +13,7 @@ import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
+import { BackupNagCard } from '../Entry/BackupNagCard';
 import { barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
 
@@ -338,6 +339,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
           onSettings={onOpenSettings}
         />
       </div>
+
+      {/* R2c-5 — see DailyModeView: the same self-gating, owner-only nag, with a session-shared dismiss. */}
+      <BackupNagCard />
 
       <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />
 

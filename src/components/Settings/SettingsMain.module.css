@@ -532,6 +532,33 @@
   flex-shrink: 0;
   width: 22px;
   text-align: center;
+  position: relative;   /* anchors .rowBadgeDot (R2c-5) */
+}
+
+/* R2c-5 — the backup breadcrumb dot. Same amber-dot language as HeaderNavCluster/BrandingDropdown's .badgeDot,
+   so the chain (⚙ nav icon → Identity & Security row → Save-your-Recovery-Key button) reads as one signal. */
+.rowBadgeDot {
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 1.5px solid var(--bg-card);   /* matches .settingsRow's background */
+  pointer-events: none;
+}
+
+/* Inline variant for the RECOVERY "Save your Recovery Key" button — an absolute corner dot on a text button
+   would read as a stray pixel. */
+.btnBadgeDot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--amber);
+  margin-right: 7px;
+  vertical-align: middle;
 }
 
 .settingsRowBody {

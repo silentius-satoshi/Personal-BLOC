@@ -15,6 +15,7 @@ import { ReviewSheet } from './ReviewSheet';
 import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
+import { BackupNagCard } from '../Entry/BackupNagCard';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
@@ -237,6 +238,13 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             onSettings={onOpenSettings}
           />
         </div>
+
+        {/* R2c-5 — the backup nag also rides the Journal (an owner who lives here would never see the dashboard
+            one). Self-gating + owner-only twice over: this surface is the !viewerMode branch of AppShell's
+            renderOwnerJournal, AND the card gates on keyProvenance === 'generated' (null for a viewer).
+            `backupNagDismissed` is session state, so a dismiss here also dismisses on the dashboard — one nag,
+            one dismiss. Clears reactively when the ceremony stamps backupVerifiedAt. */}
+        <BackupNagCard />
 
         <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />
 
