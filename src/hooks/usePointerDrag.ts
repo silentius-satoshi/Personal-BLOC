@@ -52,15 +52,17 @@ export function usePointerDrag(config: UsePointerDragConfig): {
     const active = activeRef.current;
     if (!active) return;
     if (active.raf !== null) cancelAnimationFrame(active.raf);
-    active.el.removeEventListener('pointermove', active.move as EventListener);
-    active.el.removeEventListener('pointerup', active.up as EventListener);
-    active.el.removeEventListener('pointercancel', active.cancel as EventListener);
+    window.removeEventListener('pointermove', active.move as EventListener);
+    window.removeEventListener('pointerup', active.up as EventListener);
+    window.removeEventListener('pointercancel', active.cancel as EventListener);
     try {
+      // Safe no-op when capture was never taken (a tap, or a sub-arm drag) — releasing an uncaptured pointer
+      // throws InvalidStateError, which this catch swallows.
       (active.el as Element & { releasePointerCapture?: (id: number) => void }).releasePointerCapture?.(
         active.pointerId,
       );
     } catch {
-      // capture may already be gone — harmless.
+      // capture may already be gone / never taken — harmless.
     }
     activeRef.current = null;
   }, []);
@@ -87,12 +89,11 @@ export function usePointerDrag(config: UsePointerDragConfig): {
         return;
       }
 
+      // ⚠ Capture is DEFERRED to the armed boundary (see active.move), NOT taken here. Eager pointer capture
+      // retargets the terminal pointerup/click to `el`, so a child button's click was swallowed on desktop
+      // mouse (every DraggableSheet child). We keep `el` only as the capture target on arm + the release
+      // target in teardown.
       const el = e.currentTarget;
-      try {
-        el.setPointerCapture(e.pointerId);
-      } catch {
-        // Non-capturable target (test env / detached) — proceed without capture.
-      }
 
       const active: ActiveDrag = {
         pointerId: e.pointerId,
@@ -110,7 +111,17 @@ export function usePointerDrag(config: UsePointerDragConfig): {
         active.state = advance(active.state, toEvent('move', ev), cfgRef.current);
         const nextPhase = active.state.phase;
 
-        if (prevPhase !== 'armed' && nextPhase === 'armed') cfgRef.current.onArm?.();
+        if (prevPhase !== 'armed' && nextPhase === 'armed') {
+          // Capture NOW (only once a real drag is recognized): keeps tracking past the element bounds AND
+          // retargets the terminal pointerup/click so a committed drag releasing over a child fires no stray
+          // click on it. A tap never reaches 'armed' → never captured → its native click survives.
+          try {
+            el.setPointerCapture(active.pointerId);
+          } catch {
+            // Non-capturable target (test env / detached) — proceed without capture.
+          }
+          cfgRef.current.onArm?.();
+        }
         if (prevPhase === 'armed' && nextPhase !== 'armed') cfgRef.current.onDisarm?.();
 
         if (nextPhase === 'cancelled') {
@@ -142,9 +153,13 @@ export function usePointerDrag(config: UsePointerDragConfig): {
         cfgRef.current.onEnd(dx, dy, 0, false);
       };
 
-      el.addEventListener('pointermove', active.move as EventListener, { passive: true });
-      el.addEventListener('pointerup', active.up as EventListener, { passive: true });
-      el.addEventListener('pointercancel', active.cancel as EventListener, { passive: true });
+      // Listeners on `window`, NOT `el`: pre-arm there is no capture yet, so a drag whose travel-to-arm exceeds
+      // the element bounds (e.g. EdgeBackGesture's 20px zone vs its 24px armThreshold) would lose the move
+      // stream if listeners lived on `el`. `window` receives every pointermove regardless of position, and is
+      // touch-neutral (pointer events bubble to `window` whether or not capture is later taken).
+      window.addEventListener('pointermove', active.move as EventListener, { passive: true });
+      window.addEventListener('pointerup', active.up as EventListener, { passive: true });
+      window.addEventListener('pointercancel', active.cancel as EventListener, { passive: true });
 
       activeRef.current = active;
     },

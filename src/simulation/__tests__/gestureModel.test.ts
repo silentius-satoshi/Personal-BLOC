@@ -96,6 +96,28 @@ describe('arm / disarm', () => {
   });
 });
 
+describe('capture-on-arm contract (usePointerDrag defers setPointerCapture to the armed boundary)', () => {
+  // usePointerDrag captures the pointer ONLY on the tracking→armed transition, so a tap/sub-arm press keeps its
+  // native click (the desktop drag-swallow fix). These pin the exact phases at DraggableSheet's config
+  // (axis:'y', slop:8, armThreshold:24) that gate whether capture is taken.
+  const SHEET: GestureConfig = { axis: 'y', slop: 8, axisLockRatio: 1.4, armThreshold: 24, commitThreshold: 200, commitVelocity: 900 };
+
+  it('a tap (down→up, no move) never arms → cancelled → capture never taken, native click survives', () => {
+    const s = run(SHEET, [ev('down', 0, 0, 0), ev('up', 0, 0, 16)]);
+    expect(s.phase).toBe('cancelled');
+  });
+
+  it('a sub-armThreshold drag (20px < 24) stays axisLocked, never armed → still no capture', () => {
+    const s = run(SHEET, [ev('down', 0, 0, 0), ev('move', 0, 20, 16)]);
+    expect(s.phase).toBe('axisLocked');
+  });
+
+  it('crossing armThreshold (30px >= 24) reaches armed → the frame usePointerDrag captures', () => {
+    const s = run(SHEET, [ev('down', 0, 0, 0), ev('move', 0, 30, 16)]);
+    expect(s.phase).toBe('armed');
+  });
+});
+
 describe('commit / cancel on release', () => {
   it('commits by distance when released past commitThreshold', () => {
     // WHY: 130 ≥ 120 commits regardless of velocity.
