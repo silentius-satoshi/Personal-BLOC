@@ -1,13 +1,18 @@
 import { useState, useRef, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
-import { QRCodeSVG } from 'qrcode.react';
+import * as nip49 from 'nostr-tools/nip49';
+import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { useNostr } from '@nostrify/react';
 import { unwrapRecoveryPayload } from '../../lib/nostr/keyVault';
-import { wordsFromEntropy } from '../../lib/nostr/nip06Key';
+import { wordsFromEntropy, skFromWords } from '../../lib/nostr/nip06Key';
 import { pickQuizIndices, checkQuizAnswers, checkNsecTail } from '../../lib/recoveryQuiz';
+import { downloadBlob } from '../../lib/backup/downloadFile';
+import { buildRecoveryFileText, recoveryFileName, type RecoveryArtifactKind } from '../../lib/backup/recoveryFile';
+import { todayLocalISO } from '../../utils/format';
 import { useStore } from '../../store/useStore';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import { WordGrid } from '../Onboarding/WordGrid';
+import { Toggle } from '../ui/Toggle';
 import styles from './RecoveryKeyCeremony.module.css';
 
 /**
@@ -16,9 +21,13 @@ import styles from './RecoveryKeyCeremony.module.css';
  * Identity → RECOVERY. IDEMPOTENT: an already-verified user runs it end-to-end as a re-verify (never a dead end).
  *
  * ⚠ SECRET LIFECYCLE (earliest-possible zeroing): the unwrapped bytes are zeroed the INSTANT the display strings
- * are derived in reveal — verify and "view words again" read only the strings, never the bytes. A cleanup effect
- * zeros bytesRef defensively. The words/nsec strings are transient (a JS string can't be zeroed) and nulled on
- * done/close/unmount. Nothing is logged.
+ * are derived in reveal — verify, "view words again", AND the save aids read only the strings, never the bytes. A
+ * cleanup effect zeros bytesRef defensively. The words/nsec strings are transient (a JS string can't be zeroed) and
+ * nulled on done/close/unmount. Nothing is logged.
+ *
+ * R2c-7b — the SAVE AIDS produce real files: a plaintext .txt by default (a mnemonic backup is meant to be readable
+ * off paper), an optional NIP-49 encrypted .txt, a printable QR, and a QR .png. The encrypted export is the FIRST
+ * owner-key ncryptsec this app produces — it is exactly what R2c-7a's Recovery-key import branch consumes.
  */
 export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   const { nostr } = useNostr();
@@ -37,6 +46,17 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   const bytesRef            = useRef<Uint8Array | null>(null);    // held only in the instant between unwrap + zero
   const [showQR, setShowQR] = useState(false);
 
+  // R2c-7b save aids. `artifact` caches the encrypted string for the CURRENT passphrase; `qrValue` is whatever the
+  // on-screen QR encodes. Both are invalidated the moment the toggle or passphrase changes, so the QR on screen can
+  // never disagree with what a download would write.
+  const [encryptOn, setEncryptOn] = useState(false);
+  const [filePass, setFilePass]   = useState('');
+  const [artifact, setArtifact]   = useState<string | null>(null);
+  const [qrValue, setQrValue]     = useState<string | null>(null);
+  const [encrypting, setEncrypting] = useState(false);
+  const [aidError, setAidError]   = useState<string | null>(null);
+  const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+
   const [indices, setIndices]     = useState<[number, number]>([0, 1]);
   const [ans0, setAns0]           = useState('');
   const [ans1, setAns1]           = useState('');
@@ -44,13 +64,94 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const zeroBytes = () => { bytesRef.current?.fill(0); bytesRef.current = null; };
-  const clearSecrets = () => { zeroBytes(); setWords(null); setNsec(null); setShowQR(false); };
+  const clearAids = () => {
+    setEncryptOn(false); setFilePass(''); setArtifact(null); setQrValue(null);
+    setEncrypting(false); setAidError(null); setShowQR(false);
+  };
+  const clearSecrets = () => { zeroBytes(); setWords(null); setNsec(null); clearAids(); };
 
   useEffect(() => () => zeroBytes(), []);   // defensive: zero on unmount (covers an unmount mid-reveal)
 
   const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
   const secretStr = () => (words ? words.join(' ') : nsec ?? '');
-  const share = () => { void navigator.share?.({ text: secretStr() }).catch(() => {}); };
+
+  const kind: RecoveryArtifactKind = encryptOn ? 'ncryptsec' : words ? 'words' : 'nsec';
+  const passReady = !encryptOn || filePass.trim().length > 0;
+  const aidsDisabled = !passReady || encrypting;
+
+  /**
+   * Any change to the encryption inputs invalidates the prepared artifact AND the QR that encodes it, and bumps
+   * `prepRef` so an in-flight encryption can't land afterwards. ⚠ Without that token an encrypt started under the
+   * OLD passphrase (the inputs are live during the 30ms paint yield) would resolve into the cache, and the next
+   * Download would write a file locked with a passphrase the user never typed. Same hazard, and the same fix, as
+   * R2c-7a's clearTimeout on the stale in-flight decrypt.
+   */
+  const prepRef = useRef(0);
+  const invalidateArtifact = () => {
+    prepRef.current++;
+    setArtifact(null); setQrValue(null); setShowQR(false); setAidError(null);
+  };
+
+  /**
+   * ⚠ The sk is re-derived from the DISPLAY STRINGS, never from retained bytes — that is what keeps `doUnlock`'s
+   * earliest-possible zeroing intact (contrast RevealRecoveryKey, which holds bytesRef for its nsec disclosure).
+   * `skFromWords(words) === deriveSkFromEntropy(entropy)` for every valid phrase (pinned in nip06Key.test.ts).
+   * The derived buffer is zeroed immediately, on success and on throw.
+   *
+   * ⚠ `.trim()` is SYMMETRIC with every decrypt site (SharingPage encrypt, ViewerLoginFlow + NostrAuthGate
+   * decrypt). An untrimmed passphrase here would silently never restore.
+   */
+  const encryptArtifact = (): string => {
+    const sk = words ? skFromWords(words.join(' ')) : (nip19.decode(nsec!).data as Uint8Array);
+    try { return nip49.encrypt(sk, filePass.trim()); } finally { sk.fill(0); }
+  };
+
+  /**
+   * The single artifact gate behind all three aids. Plaintext is synchronous; encryption is a deliberate one-shot
+   * (no debounce — unlike 7a's decrypt, nothing here reacts to typing), yielding one frame so "Encrypting…" paints
+   * before ~1s of synchronous scrypt blocks the thread. Well inside navigator.share's transient-activation window.
+   */
+  const ensureArtifact = async (): Promise<string | null> => {
+    setAidError(null);
+    if (!encryptOn) return secretStr();
+    if (artifact) return artifact;
+    const token = prepRef.current;
+    setEncrypting(true);
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      const value = encryptArtifact();
+      if (prepRef.current !== token) return null;   // the inputs changed mid-encrypt → this result is stale
+      setArtifact(value);
+      return value;
+    } catch {
+      setAidError("Couldn't encrypt — try again.");   // ⚠ never e.message (it can echo the key)
+      return null;
+    } finally {
+      setEncrypting(false);
+    }
+  };
+
+  const share = async () => { const a = await ensureArtifact(); if (a) void navigator.share?.({ text: a }).catch(() => {}); };
+
+  const doDownload = async () => {
+    const a = await ensureArtifact();
+    if (!a) return;
+    const blob = new Blob([buildRecoveryFileText(kind, a)], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, recoveryFileName(kind, todayLocalISO()));
+  };
+
+  const toggleQR = async () => {
+    if (showQR) { setShowQR(false); return; }
+    const a = await ensureArtifact();
+    if (!a) return;
+    setQrValue(a);
+    setShowQR(true);
+  };
+
+  // The hidden <QRCodeCanvas> gives us a native canvas — no SVG serialization, no Image load, no WebKit taint risk.
+  const downloadQR = () => {
+    qrCanvasRef.current?.toBlob((b) => { if (b) downloadBlob(b, recoveryFileName(kind, todayLocalISO(), true)); });
+  };
 
   const doUnlock = async () => {
     setBusy(true);
@@ -146,22 +247,68 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
           <>
             <h2 className={styles.title}>Save your Recovery Key</h2>
             {words ? <WordGrid mode="reveal" words={words} /> : nsec ? <SecretKeyCard nsec={nsec} /> : null}
+
+            <div className={styles.encryptBox}>
+              <Toggle
+                value={encryptOn}
+                onChange={(v) => { setEncryptOn(v); invalidateArtifact(); }}
+                label="Encrypt this backup with a passphrase"
+                disabled={encrypting}
+              />
+              {encryptOn && (
+                <>
+                  {/* State-specific copy (R1.5 rule): this is the ENCRYPT direction of the widget R2c-7a uses to
+                      DECRYPT, and a device-PIN field can be on screen at the same time. Never label it "Passphrase". */}
+                  <label className={styles.aidLabel} htmlFor="rk-file-pass">Passphrase to encrypt this file</label>
+                  <input
+                    id="rk-file-pass"
+                    className={styles.pinInput}
+                    type="password"
+                    placeholder="Passphrase"
+                    value={filePass}
+                    onChange={(e) => { setFilePass(e.target.value); invalidateArtifact(); }}
+                    disabled={encrypting}
+                    /* Without these, iOS mangles the string and encrypt/decrypt permanently disagree. */
+                    autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+                  />
+                  <p className={styles.aidHint}>
+                    You'll need this exact passphrase to restore — it is not your device PIN, and we can't recover it.
+                  </p>
+                </>
+              )}
+              {/* Only an entropy key HAS words to lose; for an sk key the restore is a key either way. */}
+              {words && <p className={styles.aidHint}>Encrypted backups restore as a key, not your 12 words.</p>}
+            </div>
+
             <div className={styles.aids}>
-              {canShare && <button type="button" className={styles.aidBtn} onClick={share}>Save…</button>}
-              <button type="button" className={styles.aidBtn} onClick={() => setShowQR((v) => !v)}>
+              <button type="button" className={styles.aidBtn} onClick={doDownload} disabled={aidsDisabled}>
+                {encrypting ? 'Encrypting…' : 'Download'}
+              </button>
+              {canShare && (
+                <button type="button" className={styles.aidBtn} onClick={share} disabled={aidsDisabled}>Save…</button>
+              )}
+              <button type="button" className={styles.aidBtn} onClick={toggleQR} disabled={aidsDisabled && !showQR}>
                 {showQR ? 'Hide QR' : 'Show printable QR'}
               </button>
             </div>
-            {showQR && (
+            {aidError && <p className={styles.error}>{aidError}</p>}
+            {showQR && qrValue && (
               <div className={styles.qrPanel}>
-                <QRCodeSVG value={secretStr()} size={220} />
-                {words ? (
+                <QRCodeSVG value={qrValue} size={220} />
+                {/* Hidden, print-resolution twin — the only reason it exists is canvas.toBlob(). It draws purely
+                    from props, so display:none is safe. marginSize=4 is the spec quiet zone: the on-screen SVG can
+                    omit it because the white .qrPanel pads it, but a bare PNG would scan unreliably without it. */}
+                <QRCodeCanvas ref={qrCanvasRef} value={qrValue} size={512} marginSize={4} style={{ display: 'none' }} />
+                {encryptOn ? (
+                  <code className={styles.qrNsec}>{qrValue}</code>
+                ) : words ? (
                   <ol className={styles.qrWords}>
                     {words.map((w, i) => <li key={i}><span className={styles.qrNum}>{i + 1}</span> {w}</li>)}
                   </ol>
                 ) : (
                   <code className={styles.qrNsec}>{nsec}</code>
                 )}
+                <button type="button" className={styles.qrBtn} onClick={downloadQR}>Download QR</button>
               </div>
             )}
             <button className={styles.primary} onClick={goVerify}>Continue</button>

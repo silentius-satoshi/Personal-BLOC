@@ -141,6 +141,44 @@
   transition: border-color 0.12s, color 0.12s;
 }
 .aidBtn:hover { border-color: var(--text-ghost); color: var(--text-primary); }
+.aidBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+.aidBtn:disabled:hover { border-color: var(--border); color: var(--text-secondary); }
+
+/* R2c-7b — the encrypt toggle + its passphrase field. */
+.encryptBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+}
+.aidLabel {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.aidHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+}
+
+/* Lives on the WHITE .qrPanel — .aidBtn's --text-secondary would be invisible there. */
+.qrBtn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  color: #111;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  font-family: inherit;
+}
+.qrBtn:hover { border-color: #111; }
 
 .qrPanel {
   display: flex;

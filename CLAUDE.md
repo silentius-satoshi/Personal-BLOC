@@ -425,9 +425,45 @@ src/
                                 # 'nip06-entropy'). REVEAL reuses RevealRecoveryKey's unlock shape (PIN row / passkey-on-tap)
                                 # → unwrapRecoveryPayload → derives words/nsec and ⚠ ZEROS bytes IMMEDIATELY (earliest —
                                 # verify + "view again" read only the strings, never bytes; contrast RevealRecoveryKey which
-                                # retains bytes for its on-open Advanced-nsec); WordGrid reveal (its own Copy) / SecretKeyCard
-                                # + save aids: Save… (navigator.share, rendered only when it exists) + Show printable QR
-                                # (QRCodeSVG of the secret string + human-readable numbered words / nsec on white). VERIFY —
+                                # retains bytes for its on-open Advanced-nsec); WordGrid reveal (its own Copy) / SecretKeyCard.
+                                # R2c-7b SAVE AIDS — three aids over ONE `ensureArtifact()` gate: **Download** (a .txt via the
+                                # shared downloadBlob + the pure buildRecoveryFileText/recoveryFileName), **Save…**
+                                # (navigator.share, rendered only when it exists — an iOS enhancement ALONGSIDE the download,
+                                # never instead of it; the download is the universal floor since desktop has no share), and
+                                # **Show printable QR** (QRCodeSVG of the artifact + numbered words / nsec on white, plus a
+                                # **Download QR** .png). ⚠ The PNG comes from a HIDDEN <QRCodeCanvas ref size=512
+                                # marginSize=4 style=display:none> → canvas.toBlob() — qrcode.react@4 forwards a real
+                                # HTMLCanvasElement ref and draws purely from props, so there is NO SVG→PNG rasterization
+                                # (no XMLSerializer, no Image load, no WebKit canvas-taint risk). marginSize=4 is the spec
+                                # quiet zone: the on-screen SVG omits it because the white .qrPanel pads it, but a bare PNG
+                                # would scan unreliably. ENCRYPT TOGGLE (default OFF; shared ui/Toggle — owner-only surface,
+                                # so its viewerMode self-disable is moot) → a passphrase field whose copy is STATE-SPECIFIC
+                                # per the R1.5 rule ("Passphrase to encrypt this file" / "…it is not your device PIN, and we
+                                # can't recover it") because it is the ENCRYPT direction of the widget R2c-7a uses to DECRYPT
+                                # and a device-PIN field can be on screen simultaneously; the 4 iOS suppressions are
+                                # mandatory (an autocapitalized passphrase would never decrypt). ON → the artifact becomes
+                                # ncryptsec = nip49.encrypt(sk, filePass.trim()) — ⚠ `.trim()` is SYMMETRIC with every
+                                # decrypt site (SharingPage encrypt, ViewerLoginFlow + NostrAuthGate decrypt); an untrimmed
+                                # passphrase here would silently never restore. ⚠ THE SK IS RE-DERIVED FROM THE DISPLAY
+                                # STRINGS (skFromWords(words) for entropy, nip19.decode(nsec).data for sk), NEVER from
+                                # retained bytes — that is what keeps the earliest-zeroing invariant above intact; the
+                                # derived buffer is zeroed in a `finally`, on success and on throw. Plaintext is the DEFAULT
+                                # (a mnemonic backup is meant to be readable off paper; filename + header are the honest
+                                # mitigation) and an entropy key shows the asymmetry line "Encrypted backups restore as a
+                                # key, not your 12 words" (an ncryptsec decrypts TO an sk → payloadKind 'sk' → the word grid
+                                # never returns; the line is hidden for an sk key, where the restore is a key either way).
+                                # ⚠ ENCRYPT IS A ONE-SHOT ON TAP, NOT DEBOUNCED (unlike 7a's decrypt, nothing here reacts to
+                                # typing) — it yields 30ms so "Encrypting…" paints before ~1s of synchronous scrypt, well
+                                # inside navigator.share's 5s transient-activation window. A monotonic `prepRef` token +
+                                # disabling the toggle/passphrase while `encrypting` kill the stale-result race (the inputs
+                                # are live during the paint yield; without the token an encrypt started under the OLD
+                                # passphrase would land in the cache and Download would write a file locked with a passphrase
+                                # the user never typed — the same hazard, and the same fix, as 7a's clearTimeout). Errors →
+                                # a generic "Couldn't encrypt — try again." (⚠ NEVER e.message). `artifact`/`qrValue` are
+                                # invalidated on any toggle/passphrase change, so the QR on screen can never disagree with
+                                # what Download writes. ⭐ THE ENCRYPTED EXPORT IS THE FIRST OWNER-KEY ncryptsec THIS APP
+                                # PRODUCES — it is exactly R2c-7a's acceptance-test input (see § Recovery-key encrypted
+                                # import). VERIFY —
                                 # entropy: a 2-word quiz (pickQuizIndices, re-randomized on every fail, unlimited attempts,
                                 # "← View words again"); sk: the nsec last-6. SUCCESS → setBackupVerifiedAt(Date.now(),
                                 # nostr) — the setter's OWN dirty+syncNow self-wake un-gates sync; ⚠ NO second wake added.
@@ -2381,8 +2417,22 @@ different artifact (Phase 1.5) — not this tool.
   special handling since it's a derived cache reconstructable from the exported `dayLog`). Wrapper:
   `{ format: 'personal-bloc-plan-backup', schemaVersion: 1, storeVersion: 19, exportedAt (UTC ISO —
   correct here, a machine timestamp not a user-facing "today"), plan: { settings, records } }`.
-  `downloadPlanBackup(s)` serializes + triggers a browser-standard Blob/`<a download>` save, filename
+  `downloadPlanBackup(s)` serializes + calls the SHARED `downloadBlob` (below), filename
   `personal-bloc-backup-{todayLocalISO()}.json` (the LOCAL date, per the date-fix convention).
+- **`src/lib/backup/downloadFile.ts`** (R2c-7b) — `downloadBlob(blob, filename)`, the browser-standard
+  anchor/`download`/click/`revokeObjectURL` save, EXTRACTED VERBATIM from `downloadPlanBackup` (the
+  iOS-verified original). Two callers: the plan backup + the Recovery Key ceremony's save aids — one
+  implementation, so they can't drift. iOS caveat (unchanged): a standalone PWA may OPEN the file rather
+  than save it, which is why every download surface also offers a copy/share alternative.
+- **`src/lib/backup/recoveryFile.ts`** (R2c-7b, PURE; + `__tests__/recoveryFile.test.ts`) — the ceremony's
+  downloadable-backup content. `RecoveryArtifactKind = 'words' | 'nsec' | 'ncryptsec'` — a THREE-KIND union
+  (not `(kind, encrypted)`) so the impossible `('ncryptsec', false)` combination is unrepresentable.
+  `buildRecoveryFileText(kind, artifact)` = a warning header + blank line + artifact + trailing newline
+  (plaintext → "anyone with this file can open your plan…"; encrypted → "(ENCRYPTED) — you need your
+  passphrase to restore this…"). `recoveryFileName(kind, today, qr?)` → `personal-bloc-recovery-key[-qr]-
+  {DO-NOT-SHARE|encrypted}-{today}.{txt|png}`. ⚠ `DO-NOT-SHARE` is the mitigation for a PLAINTEXT file; an
+  encrypted file's mitigation is the passphrase, so its name carries `-encrypted` instead. ⚠ These functions
+  HANDLE the secret but never own its lifecycle — never log/persist `artifact` here.
 - **`SettingsMain.tsx` — "Backup" subpage** — `'backup'` added to `SettingsPage`/`SUBPAGE_TITLES`; a
   menu row (💾, `!viewerMode`-gated) placed right after "Identity & Security" (recovery-adjacent); the
   subpage is one paragraph + an "Export plan" button (`styles.syncButton`, calls
@@ -3042,7 +3092,9 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-790 tests — `npx vitest run` before every commit.
+803 tests — `npx vitest run` before every commit.
+- `src/lib/__tests__/bufferAliasing.test.ts` — R2c-7b, the executable form of the R2c-7a **`.slice()` Critical Constraints row** (3 cases, pure, no React). Reconstructs the hazard: a `Uint8Array` in a struct (React state) + a consumer that PERSISTS its argument then zeros it in a `finally` before throwing (`establishLocalOwner`'s real ordering — wrap+persist BEFORE deriving the pubkey). **ALIASED** → the throw zeros `state.sk` in place, and the retry persists 32 ZERO bytes (a corrupted credential for an identity that never existed). **COPIED** → `.slice()` sacrifices the copy, `state.sk` survives, the retry persists the real key. Plus `.slice()` is a copy not a view. ⚠ It does NOT exercise NostrAuthGate's retry (no render harness — house rule); it makes "copy a buffer you're about to zero" fail loudly if a refactor deletes the copy as redundant
+- `src/lib/backup/__tests__/recoveryFile.test.ts` — R2c-7b pure file builder (10 cases): plaintext-words body, plaintext-nsec body, encrypted-ncryptsec body (`(ENCRYPTED)` + names the passphrase, and does NOT say "never share it" — a different mitigation); a `PERSONAL BLOC RECOVERY KEY` header precedes a blank line + the artifact for ALL THREE kinds (the header is the honest mitigation for a plaintext artifact — never droppable by kind); exactly one trailing newline; filenames per kind (plaintext → `DO-NOT-SHARE`, encrypted → `-encrypted` and NOT `DO-NOT-SHARE`, `qr` → `.png` keeping the marker)
 - `src/lib/nostr/__tests__/ncryptsec.test.ts` — R2c-7a-fix, the two layers that let the Recovery-key tab tell a malformed payload from a wrong passphrase (15 cases, real `nip49` output, `logn:1` so scrypt stays fast). **Layer 1 `isWellFormedNcryptsec`:** a real encrypt output → true; **a full handoff token (`ncryptsec + ':' + npub`) → false** (the exact input R2c-7a misreported as "Wrong passphrase" — it still prefix-matches as `encrypted`, so only the shape gate catches it); truncated / bare nsec / trailing newline / uppercase / garbage → false; **a 1-char typo PASSES** (documented hole — length + charset intact → Layer 2 owns it); `NCRYPTSEC_LENGTH === 162` pinned across `logn` 1/8/16 (a silent length change would disable the gate; `logn:20` is omitted — 2²⁰ scrypt rounds blow the 5s timeout for zero extra coverage, and `logn` is one payload byte so it cannot affect length). **Layer 2 `classifyNcryptsecError`:** `decrypt(valid, wrongPass)` → `'passphrase'`; broken checksum / wrong prefix / full token → `'malformed'`; a non-Error throw → `'malformed'` (safe default); discriminates on `'invalid tag'` specifically
 - `src/store/__tests__/backupNagDismissed.test.ts` — R2c-2 session-transient dismissal (mirrors `remotePlanFound.test.ts`): default `false`; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (persisting it would keep the nag dismissed across launches, defeating the ladder); `dismissBackupNag()` sets true. NO module latch (single writer)
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
@@ -3887,12 +3939,18 @@ src/
                                     # decrypt). (3) only a WELL-FORMED ncryptsec shows the passphrase field, so "Wrong
                                     # passphrase" finally means what it says (decryptState.error==='passphrase'). The
                                     # words/unknown hints are suppressed for a token (`garbage:npub1…` classifies as
-                                    # 'unknown' and would otherwise double-error). ⚠ SCOPE: this branch is CORRECT-BUT-
-                                    # INPUT-STARVED BY DESIGN, not dead code — owner-key ncryptsec input arrives with
-                                    # R2c-7b (encrypted backup export) / R2c-7a-2 (bare-nsec remediation). Until then the
-                                    # only well-formed ncryptsec obtainable is the viewer key inside a share token, which
-                                    # (1) rejects. (So R2c-7a's manual gate "mint a viewer token to get a real ncryptsec"
-                                    # was never a valid acceptance test.)
+                                    # 'unknown' and would otherwise double-error). ⚠ SCOPE — ✅ NO LONGER INPUT-STARVED:
+                                    # **R2c-7b's encrypted backup export is this branch's producer** (RecoveryKeyCeremony →
+                                    # encrypt toggle → Download → a `-encrypted-<date>.txt` holding an owner-key ncryptsec),
+                                    # so the ROUND-TRIP is the real acceptance test — export → sign out → paste → passphrase →
+                                    # establishes to the SAME pubkey. (R2c-7a-2 bare-nsec remediation is still unbuilt.) It
+                                    # was starved at 7a/7a-fix: the only well-formed ncryptsec then obtainable was the VIEWER
+                                    # key inside a share token, which (1) rejects — so R2c-7a's manual gate "mint a viewer
+                                    # token to get a real ncryptsec" was never a valid acceptance test. ⚠ An imported
+                                    # ncryptsec wraps payloadKind 'sk' (it decrypts TO a raw key), so a user who exported an
+                                    # ENCRYPTED backup of an entropy key and restores from it gets an nsec, not their 12
+                                    # words — the asymmetry the ceremony's helper line warns about, and why plaintext is the
+                                    # export default.
                                     # R2c-7a ENCRYPTED KEY: the key tab is PREFIX-AWARE and takes an nsec OR a NIP-49
                                     # ncryptsec. A memoized keyInput = classifyRecoveryInput(recoveryInput) (stable effect
                                     # dep) drives everything. kind==='encrypted' reveals an UNLOCK-passphrase field whose
@@ -4031,9 +4089,10 @@ src/
                                     # mnemonicToEntropy bottoms out in @scure/base's alphabet decoder which throws
                                     # `Unknown letter: "<word>"` — it INTERPOLATES THE SEED WORD, which this module forbids;
                                     # the try/catch makes that leak structurally impossible. Caller zeroes the buffer) /
-                                    # generatePlanKey() → {entropy, words, sk, pubkeyHex}. skFromWords is now APP-ORPHANED
-                                    # (no production caller — entropyFromWords replaced it in NostrAuthGate) but stays: it is
-                                    # the published-vector-pinned canonical derivation + the LHS of the identity equality.
+                                    # generatePlanKey() → {entropy, words, sk, pubkeyHex}. skFromWords is NO LONGER app-orphaned
+                                    # (R2c-7b: RecoveryKeyCeremony's encrypt path calls it to re-derive the sk FROM THE DISPLAYED
+                                    # WORDS rather than retain the entropy bytes) — and it remains the published-vector-pinned
+                                    # canonical derivation + the LHS of the identity equality.
                                     # InvalidSeedWordsError is the
                                     # repo's FIRST Error subclass (everything else throws bare `new Error`); the UI catch
                                     # blocks render e.message verbatim, so the message is user-facing prose and must NEVER
@@ -4793,7 +4852,10 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Import `payloadKind` is THREE-WAY asymmetric: **words → `'nip06-entropy'`, nsec → `'sk'`, ncryptsec → `'sk'`** | **By construction.** `NostrAuthGate.handleLocal` passes `payloadKind: 'nip06-entropy'` for the words branch (R2c-4b) — we store the 16 bytes *behind* the phrase so `RevealRecoveryKey` + the R2c-1 ceremony can re-derive and word-quiz the user's ACTUAL words. Identity is preserved because the NIP-06 path is deterministic: `deriveSkFromEntropy(entropyFromWords(w)) === skFromWords(w)` (pinned by `nip06Key.test.ts` + `establishOwner.test.ts`). The **nsec** branch stays `'sk'` **forever** — a raw secret key has **no mnemonic**, so there is nothing to re-display and `unwrapRecoveryPayload` correctly falls back to nsec display. The **encrypted (ncryptsec, R2c-7a)** branch inherits the nsec case exactly: NIP-49 decrypts *to* a raw secret key, so no phrase ever existed and none can be shown. ⚠ The words rule **SUPERSEDES the R2b-2 rule** ("imported words wrap the derived sk … do not fix this into entropy storage") — correct then, because no ceremony existed to verify words; R2c-1 shipped one, which is exactly what justifies the reversal. **No migration:** users who imported words *before* R2c-4b still hold an `'sk'` ciphertext (we'd need their phrase to convert) and keep seeing an nsec — the absent⇒`'sk'` compat contract covers them |
 | Never auto-strip a handoff token's `:npub` suffix | A pasted `<keyPart>:<ownerNpub>` in the Recovery-key tab is **rejected**, not repaired: the key inside a `SharingPage` token is a **viewer** key (`deriveViewerKeyFromNsec`), so stripping the suffix and importing it would silently authenticate the owner as their own viewer — a category error. Detected by `.includes(':')` (a colon is not in the bech32 alphabet, nor in 12 words), **not** `parseHandoffToken(…) !== null`, which returns null for a malformed token that would then fall through. Guarded in the render **and** in `handleLocal` |
 | Malformed payload ≠ wrong passphrase | `nip49.decrypt` runs every structural check (bech32 → prefix → version) **before** scrypt, so only the final AEAD step can fail on the passphrase. Two layers keep them apart: `isWellFormedNcryptsec` gates whether the passphrase field appears at all, and `classifyNcryptsecError` positive-tests `'invalid tag'` for the rest. **Never collapse them back into one `catch`** — that was the R2c-7a bug (it blamed the user for a corrupted paste). ⚠ And never render the caught `e.message`: bech32 echoes the entire ncryptsec into it |
-| The encrypted branch's payload MUST be `.slice()`d | `NostrAuthGate.handleLocal`'s encrypted branch reads its sk out of **React state** (`decryptState.sk`, produced by the debounced decrypt effect). `establishLocalOwner` zeros the payload on success and the `finally` zeros it on failure, so passing the state buffer directly means a **failed** establish (Face ID cancelled) zeros it **in place** — and the retry hands `establishLocalOwner` 32 zero bytes, which it **wraps and persists to `writerKeyWrapped` BEFORE deriving the pubkey**, then throws. Net: a corrupted credential on disk for an identity that never existed. The nsec/words branches are immune only because each attempt re-derives a fresh buffer from the input string. **Never "optimize away" the copy** |
+| The encrypted branch's payload MUST be `.slice()`d | `NostrAuthGate.handleLocal`'s encrypted branch reads its sk out of **React state** (`decryptState.sk`, produced by the debounced decrypt effect). `establishLocalOwner` zeros the payload on success and the `finally` zeros it on failure, so passing the state buffer directly means a **failed** establish (Face ID cancelled) zeros it **in place** — and the retry hands `establishLocalOwner` 32 zero bytes, which it **wraps and persists to `writerKeyWrapped` BEFORE deriving the pubkey**, then throws. Net: a corrupted credential on disk for an identity that never existed. The nsec/words branches are immune only because each attempt re-derives a fresh buffer from the input string. **Never "optimize away" the copy** — R2c-7b made this rule executable in `src/lib/__tests__/bufferAliasing.test.ts`, which pins the mechanism (not the UI); deleting a `.slice()` now fails a test instead of shipping silently |
+| The ceremony's save aids derive the sk from the STRINGS, never retained bytes | `RecoveryKeyCeremony` zeros the unwrapped payload the instant the display strings exist (`bytes.fill(0); // ⚠ zero NOW`), so its encrypt path re-derives via `skFromWords(words.join(' '))` / `nip19.decode(nsec).data` and zeros THAT buffer in a `finally`. Valid because `skFromWords(w) === deriveSkFromEntropy(entropyFromWords(w))` (pinned in `nip06Key.test.ts`) and the strings are already in state — deriving from them adds no new exposure. **Never retain `bytesRef` past reveal to "avoid the re-derive"**; that is `RevealRecoveryKey`'s deliberate exception (it needs bytes for its on-open Advanced-nsec), not the ceremony's |
+| Encrypt is a one-shot on tap; guard the stale result | `nip49.encrypt` is ~1s of SYNCHRONOUS scrypt, so the ceremony yields 30ms for the "Encrypting…" paint — during which the toggle and passphrase field are LIVE. A monotonic `prepRef` token (plus `disabled={encrypting}`) discards a result whose inputs changed mid-flight; without it, an encrypt started under the OLD passphrase lands in the cache and Download writes a file locked with a passphrase **the user never typed**. Same hazard, same fix, as R2c-7a's `clearTimeout` on the stale in-flight decrypt. ⚠ Do NOT debounce it like the decrypt — nothing here reacts to typing, and the 5s `navigator.share` transient-activation window comfortably covers the tap→yield→scrypt path |
+| The QR PNG comes from `QRCodeCanvas`, not SVG rasterization | `qrcode.react@4` forwards a real `HTMLCanvasElement` ref and draws purely from props (verified in its source), so a hidden `display:none` canvas + `canvas.toBlob()` needs no `XMLSerializer`, no `Image` load, and carries no WebKit canvas-taint risk. It must pass `marginSize={4}` (the spec quiet zone): the on-screen `QRCodeSVG` can omit it only because the white `.qrPanel` pads it, but a bare PNG would scan unreliably |
 | Recovery grid is capture UX only | `recoveryGrid.ts` / `WordGrid` input mode / the checksum gate are all HINTS. `skFromWords` on submit is the sole validity authority (it normalizes + derives). Continue may gate on `phraseStatus==='valid'`, but a green box or a ✓ line never authorizes anything the derivation wouldn't. Same discipline as `classifyRecoveryInput` not owning validity |
 | `handleLocal` is one path | The Recovery-phrase / nsec tab only chooses the raw string fed to `classifyRecoveryInput` (words: `gridValues` joined; nsec: the field). Everything from classification onward — decode/`skFromWords` → `'imported'` stamp → `establishLocalOwner` → `sk.fill(0)` — is a single byte-identical sequence. Do not fork it per tab |
 | `establishLocalOwner` derives its own sk | The signing sk is DERIVED from the payload it just wrapped (`payloadKind==='nip06-entropy' ? deriveSkFromEntropy(payload) : payload`), NEVER accepted from the caller. This makes the authenticated identity provably equal to the one `unwrapSecretKey` re-derives from that exact ciphertext — a caller-supplied sk could silently disagree and the wrapped key would never unlock the identity. Never pass an sk alongside an entropy payload |

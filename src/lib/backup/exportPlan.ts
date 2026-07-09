@@ -1,5 +1,6 @@
 import { buildSettingsPayload, type StoreState } from '../../store/useStore';
 import { todayLocalISO } from '../../utils/format';
+import { downloadBlob } from './downloadFile';
 
 /**
  * Plan Export / Backup Tool — EXPORT phase only (read-only; no import/restore, no store writes).
@@ -48,12 +49,5 @@ export function downloadPlanBackup(s: StoreState): void {
   const backup = buildPlanBackup(s);
   const json = JSON.stringify(backup, null, 2);
   const blob = new Blob([json], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = `personal-bloc-backup-${todayLocalISO()}.json`;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  downloadBlob(blob, `personal-bloc-backup-${todayLocalISO()}.json`);   // the shared, iOS-verified save pattern
 }
