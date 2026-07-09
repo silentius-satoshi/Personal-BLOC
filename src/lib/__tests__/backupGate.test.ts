@@ -7,6 +7,8 @@ import { isBackupGateSatisfied } from '../backupGate';
 const T = 1_700_000_000_000;
 
 describe('isBackupGateSatisfied', () => {
+  // R2c-4a retired the K2 bridge, so this is PRODUCTION REALITY, not a hypothetical: every freshly generated
+  // key sits in this state from the end of onboarding until the R2c-1 ceremony verifies the save.
   it("'generated' + no verification → NOT satisfied (the whole point)", () => {
     expect(isBackupGateSatisfied({ keyProvenance: 'generated', backupVerifiedAt: null })).toBe(false);
   });

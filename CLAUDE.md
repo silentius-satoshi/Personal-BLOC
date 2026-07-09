@@ -2262,15 +2262,17 @@ NostrAuthGate's import path so the two identity-establish paths can't drift).
   this property since Phase 1.5). **K1** intro + "Generate my key" + **existing-key guard** (if
   `writerKeyWrapped || nostrPubkey` present → "This device already has a key" + [Log in]→`onLogIn` /
   [← Back]; never regenerate over an identity). **K2** `<WordGrid words={words}/>` (blurred 12 words) + a
-  seed-phrase **hygiene line** ("Generate fresh words here — never reuse your Bitcoin wallet's seed phrase…
-  Same format, different job.") + an **"Advanced: show as nsec"** disclosure (`.advBtn`/`.advChevron`/`.advPanel`)
+  seed-phrase **hygiene line** — the DISPLAY variant, mirroring RecoveryKeyCeremony verbatim ("These words were
+  generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job.")
+  + an **"Advanced: show as nsec"** disclosure (`.advBtn`/`.advChevron`/`.advPanel`)
   rendering the existing `<SecretKeyCard nsec={nip19.nsecEncode(sk)}/>` for Nostr natives + the mandatory ack
-  checkbox (Continue disabled until checked, **unchanged**) + "Start over" (no Back). **K3** `probeKeyVaultCapability`
+  checkbox (Continue disabled until checked; **R2c-4a: the ack gates Continue ONLY — it no longer stamps
+  `backupVerifiedAt`**) + "Start over" (no Back). **K3** `probeKeyVaultCapability`
   → single "Enable Face ID" (biometric) or the ViewerLoginFlow PIN+confirm UI (PIN); Success →
   `establishLocalOwner(entropyRef.current, m, nostr, { pin, payloadKind: 'nip06-entropy' })` (wraps the ENTROPY;
-  the sk is derived internally) → `onComplete`. **The R2a-1 bridge stamp pair (`setKeyProvenance('generated')` +
-  `setBackupVerifiedAt(Date.now())`) is byte-identical and still immediately precedes the establish** — the
-  `// R2c replaces this line` bridge comment stands. `onLogIn` is a small justified extension of the spec's
+  the sk is derived internally) → `onComplete`. **R2c-4a RETIRED the bridge: only `setKeyProvenance('generated')`
+  precedes the establish now** (the `setBackupVerifiedAt(Date.now())` line is gone; the catch-block still clears
+  both). A generated key therefore enters UNVERIFIED and stays gated until the R2c-1 ceremony. `onLogIn` is a small justified extension of the spec's
   `{onComplete,onBack}` (the guard's [Log in] needs to reach the loginFlow).
 - **`src/components/Onboarding/WordGrid.tsx`** (+ css) — the 12-word recovery grid, **dual-mode** (a `WordGrid`
   dispatcher over two internal components so hooks stay unconditional). Props are a discriminated union on `mode`.
@@ -3552,20 +3554,31 @@ imported paths and cannot distinguish them, so every **call site** stamps first:
 Not stamped: `handleUnlockExisting`, `LocalUnlockGate`, `useNostrAutoRestore` (returning users — provenance is
 already set, or legacy `null`), and viewer establishment (`ViewerLoginFlow`).
 
-### ⚠ INTERIM — the K2 verification bridge (R2a-1 → R2c)
+### ✅ RETIRED — the K2 verification bridge (R2a-1 → R2c-4a)
 
-R2a-1 ships the gate but **no verification ceremony**. Shipping the gate alone would *regress* every new-plan
-user, because `OwnerKeySetup`'s K2 mandatory "I saved it" ack is today's backup bar and already blocks progress.
-So until R2c (the word-quiz verify) lands, **completing the K2 ack counts as verification** — `OwnerKeySetup`
-stamps `setBackupVerifiedAt(Date.now())` alongside `setKeyProvenance('generated')`. **R2c replaces exactly that
-one line.** Net behavior change for a generated key in R2a-1: **none** — the plumbing is live and testable, and
-the gate becomes *load-bearing* the moment R2c swaps the stamp for a real ceremony. A test pins the pair
-(`src/store/__tests__/backupGate.test.ts` → "K2 bridge"), so removing the bridge without a ceremony fails loudly.
+**HISTORICAL.** R2a-1 shipped the gate but no verification ceremony, so `OwnerKeySetup` K2's mandatory "I saved
+it" ack was wired to stamp `setBackupVerifiedAt(Date.now())` beside `setKeyProvenance('generated')` — an interim
+bridge so no new-plan user regressed. **R2c-4a DELETED that stamp.** An ack is a promise, not a verification.
 
-### ⚠ TWO KNOWN GATE-BYPASSES — inert today, MUST be closed by R2c
+**Current behavior:** a freshly generated key enters **`generated` + UNVERIFIED**, so R2a-1's 11 gate sites hold
+sync/publish off (no settings/records publish, no relay sync, no viewer snapshot) until the user completes the
+**R2c-1 ceremony** (`RecoveryKeyCeremony`, reveal → word-quiz → `setBackupVerifiedAt`), which is now the **SOLE**
+opener of the gate. The **R2c-2 ladder** (⚙ badge → dashboard nag → Sharing/Network interstitial) is what makes
+that path discoverable. `OwnerKeySetup` still stamps provenance only, still BEFORE `establishLocalOwner` (whose
+internal `syncNow` is the wake); its catch-block still clears both (provenance because `setKeyProvenance` is
+WRITE-ONCE; `backupVerifiedAt` as belt-and-braces against a stray prior-session stamp).
 
-Both are harmless while the K2 bridge stamps `backupVerifiedAt` (the gate is always satisfied for a generated
-key), and both become one-tap bypasses the moment R2c removes that line. **Do not ship R2c without closing them.**
+⚠ **`backupGate.test.ts`'s "K2 bridge" test never actually pinned the bridge** — it drives the store setters
+directly and never reads `OwnerKeySetup`'s source, so it stayed green through the retirement. Its old comment
+claimed otherwise; R2c-4a re-labeled it (`'the ceremony stamp pair … leaves the gate SATISFIED'`) and re-labeled
+the pre-auth-stamp test as **defensive** (no caller stamps pre-auth now). The pure-predicate case
+`'generated' + no verification → NOT satisfied` (`src/lib/__tests__/backupGate.test.ts`) now describes
+**production reality**, not a hypothetical.
+
+### ⚠ TWO KNOWN GATE-BYPASSES — NOW LIVE (R2c-4a made the gate load-bearing); close in R2c-4b
+
+Both were harmless while the K2 bridge stamped `backupVerifiedAt` (the gate was always satisfied for a generated
+key). **R2c-4a removed that stamp, so these are now real one-tap bypasses.** Close them in R2c-4b.
 
 1. **Escape hatch erases the gate state.** `escapeHatch.resetAndResync()` → `clearStoreEncryptionState()` →
    `localStorage.removeItem('personal-bloc-store')`. `keyProvenance` and `backupVerifiedAt` ride that blob
@@ -3816,7 +3829,10 @@ src/
                                     # default 'words', reset in openLocal; .recoveryTabs/.recoveryTab/.recoveryTabActive, this
                                     # file's own tokens). WORDS tab = <WordGrid mode="input"> over gridValues (12 boxes, reset
                                     # in openLocal) + a single parent-owned CHECKSUM line (phraseStatus → "phrase incomplete" /
-                                    # "✓ valid recovery phrase" / "checksum doesn't match — check your words"); a pasted nsec
+                                    # "✓ valid recovery phrase" / "checksum doesn't match — check your words") + (R2c-4a) the
+                                    # CAPTURE-variant hygiene hint BELOW the checksum line, words tab only, reusing .hint:
+                                    # "Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."
+                                    # (below, not above, so it never interrupts the grid→live-status feedback path); a pasted nsec
                                     # (onNsecPasted) flips to the nsec tab with the field filled; onSubmitAttempt (Enter on box
                                     # 12) submits if valid. NSEC tab = the SAME single field as before (password + Show/Hide +
                                     # the 4 iOS suppressions), placeholder reverted to "nsec1…". handleLocal is STILL ONE PATH —
@@ -4664,7 +4680,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `setBackupVerifiedAt` | `set()` the field FIRST, then wake via `syncNow` (dynamic-imported, cycle-safe) — the gate must read satisfied inside `doSyncNow`'s guards. Marks `settingsDirty` DIRECTLY (`syncSettingsToNostr` early-returns on `!initialSettingsPullDone`, still false because the gate held sync off). **No second wake mechanism.** `null` = teardown clear (no dirty, no wake) |
 | `backupVerifiedAt` hydrate | **ONE-WAY LATCH** — an incoming `null` never clobbers a non-null local (a legacy/unverified peer would otherwise re-gate a verified device). Third member of the whole-object-LWW skip-guard class (`nostrRelays`, `viewers`, this); the class is scheduled for structural deletion at Phase 4e |
 | Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green |
-| K2 bridge (INTERIM) | `OwnerKeySetup` stamps `setBackupVerifiedAt(Date.now())` beside `setKeyProvenance('generated')` because R2a-1 ships **no verification ceremony** — the K2 mandatory ack is today's backup bar. **R2c replaces exactly that one line** with the word-quiz verify. A test pins the pair, so removing the bridge without a ceremony fails loudly |
+| K2 bridge — RETIRED (R2c-4a) | `OwnerKeySetup` stamps **provenance only**. The K2 ack gates **Continue**, never the backup gate — it no longer writes `backupVerifiedAt`. A generated key enters `generated` + UNVERIFIED and stays sync/publish-gated until the **R2c-1 ceremony** stamps it; the R2c-2 ladder routes the user there. **Never re-add a stamp to onboarding** — an ack is a promise, not a verification. (⚠ `backupGate.test.ts` cannot catch a re-added bridge: it drives the setters directly, never the component.) |
+| Seed-phrase hygiene copy — two variants, don't cross them | **DISPLAY** (we minted the words; `OwnerKeySetup` K2 + `RecoveryKeyCeremony` explain, one identical string): *"These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job."* **CAPTURE** (the user is typing words IN; `NostrAuthGate`'s word-grid tab only, never the nsec tab): *"Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."* The capture line sits BELOW the live checksum line so it never interrupts the grid→status feedback path |
 | `SummaryBar fmtUSD` | Local sign-preserving — NEVER replace with shared version |
 | Power Law A constants | Three independent values — never `PL_A_FAIR × scalar` |
 | Mining electricity | Fiat overhead — 100% sats kept, never deducted |

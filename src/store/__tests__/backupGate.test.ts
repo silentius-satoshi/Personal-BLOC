@@ -92,10 +92,12 @@ describe('setBackupVerifiedAt', () => {
 
   // ⚠ SEED-CLOBBER (Fix C). settingsDirty is PERSISTED, and doSyncNow flips initialSettingsPullDone(true)
   // BEFORE its publish step — so Fix D's seed-guard can never fire there and Fix C is the only protection.
-  // The K2 bridge stamps on an unauthenticated SEED store: dirtying there would publish seed defaults as the
-  // owner's first settings event, and — if the establish then throws — persist a dirty seed store into a later
+  // A pre-auth stamp would land on an unauthenticated SEED store: dirtying there would publish seed defaults as
+  // the owner's first settings event, and — if an establish then throws — persist a dirty seed store into a later
   // REAL login, publishing seeds over the owner's real relay settings under whole-object LWW.
-  it('a PRE-AUTH stamp (the K2 bridge) sets the field but must NOT mark settingsDirty', () => {
+  // R2c-4a retired the K2 bridge, so nothing stamps pre-auth today — this guard is now DEFENSIVE (it keeps any
+  // future pre-auth caller from re-opening the seed-clobber hole). The ceremony stamps post-auth.
+  it('a PRE-AUTH stamp sets the field but must NOT mark settingsDirty (defensive — no caller does this now)', () => {
     unauth();
     useStore.setState({ settingsDirty: false } as never);
     useStore.getState().setBackupVerifiedAt(T);
@@ -151,15 +153,18 @@ describe('hydrateSettings — backupVerifiedAt is a ONE-WAY LATCH', () => {
 });
 
 describe('gate integration', () => {
-  // The interim K2 bridge: OwnerKeySetup stamps BOTH before establishLocalOwner's internal syncNow, so a
-  // freshly generated key is NOT gated in R2a-1. Removing the bridge line at R2c without a ceremony
-  // replacing it fails this test loudly.
-  it('K2 bridge — the generated stamp pair leaves the gate SATISFIED', () => {
+  // R2c-4a: OwnerKeySetup stamps ONLY provenance; the R2c-1 ceremony is the sole writer of backupVerifiedAt.
+  // This is the post-ceremony state. (⚠ This test drives the store setters directly — it never reads
+  // OwnerKeySetup's source, so it can NOT detect whether the retired K2 bridge comes back. The pre-R2c-4a
+  // comment here claimed it would; that was never true.)
+  it('the ceremony stamp pair (generated + verifiedAt) leaves the gate SATISFIED', () => {
     useStore.getState().setKeyProvenance('generated');
     useStore.getState().setBackupVerifiedAt(T);
     expect(isBackupGateSatisfied(useStore.getState())).toBe(true);
   });
 
+  // R2c-4a made this PRODUCTION REALITY, not a hypothetical: it is the state of every freshly generated key
+  // between finishing onboarding and completing the ceremony.
   it('a generated key WITHOUT verification is gated', () => {
     useStore.getState().setKeyProvenance('generated');
     expect(isBackupGateSatisfied(useStore.getState())).toBe(false);

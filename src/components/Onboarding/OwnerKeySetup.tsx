@@ -14,7 +14,10 @@ import styles from './OwnerKeySetup.module.css';
  *   K1 Create your key   → generatePlanKey() on tap (R2b-1: 128-bit NIP-06 entropy → 12 words; entropy + a
  *                          display-only sk held in refs, never in the store)
  *   K2 Save recovery key → WordGrid (blurred 12 words) + a hygiene line + an Advanced-nsec disclosure + a
- *                          mandatory "I saved it" ack
+ *                          mandatory "I saved it" ack. ⚠ R2c-4a: the ack gates CONTINUE ONLY — it no longer
+ *                          stamps backupVerifiedAt (the interim bridge is retired). The key enters
+ *                          generated + UNVERIFIED; the R2c-2 ladder routes the user to the R2c-1 ceremony,
+ *                          which is the only real verification.
  *   K3 Protect it        → keyVault wrap (Face ID / PIN) of the ENTROPY (payloadKind 'nip06-entropy') via
  *                          establishLocalOwner → onComplete()
  *
@@ -99,9 +102,10 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
       // Backup gate (R2a-1) — stamped BEFORE establishLocalOwner, whose internal syncNow is the wake. A stamp
       // placed after would let this generated key's very first sync publish ungated.
       useStore.getState().setKeyProvenance('generated');
-      useStore.getState().setBackupVerifiedAt(Date.now());   // INTERIM (R2a-1 → R2c): K2's mandatory ack is today's backup bar — until the
-                                                             // R2c ceremony (word-quiz verify) ships, completing the ack counts as verification
-                                                             // so no new-plan user regresses below current behavior. R2c replaces this line.
+      // R2c-4a — the key enters GENERATED + UNVERIFIED. The interim bridge that stamped backupVerifiedAt here
+      // (on K2's ack) is RETIRED: an ack is a promise, not a verification. Now that the R2c-1 ceremony (reveal →
+      // word-quiz → stamp) exists it is the SOLE opener of the gate, and the R2c-2 ladder (badge → nag →
+      // interstitial) is what routes the user to it. Sync/publish stay gated until the save is actually proven.
       // R2b-1: wrap the ENTROPY as 'nip06-entropy' so R2c can re-derive the words; establishLocalOwner derives
       // the signing sk from it internally. keyLabel omitted — K3 is a single "Enable Face ID" step (no name field).
       await establishLocalOwner(entropyRef.current, m, nostr, { pin, payloadKind: 'nip06-entropy' });
@@ -110,11 +114,12 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
       setWords(null); setNsec(null);
       onComplete();
     } catch (e: any) {
-      // ROLL BACK the backup-gate stamps (R2a-1). They were written before the establish (the syncNow inside it
+      // ROLL BACK the backup-gate provenance (R2a-1). It is written before the establish (the syncNow inside it
       // is the wake), so a throw here — Face ID cancelled, PRF unsupported, wrapSecretKey rejects — would leave
       // a stamp for an identity that never came into being. setKeyProvenance is WRITE-ONCE, so a frozen
       // 'generated' would silently reject the later correct 'imported'/'external' stamp if the user backs out and
-      // logs in instead; and the stale backupVerifiedAt would be a false backup attestation for a discarded key.
+      // logs in instead. R2c-4a: backupVerifiedAt is no longer stamped here, but the clear stays — belt-and-braces
+      // against a stray stamp from a prior session / re-entry attesting to a key that was just discarded.
       useStore.getState().setKeyProvenance(null);
       useStore.getState().setBackupVerifiedAt(null);
       // the entropy is intact (the helper zeros only after its awaits) — stay on K3 so the user can retry.
@@ -169,9 +174,11 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
                 recover your data — there is no server and no reset.
               </p>
               {words && <WordGrid mode="reveal" words={words} />}
+              {/* DISPLAY variant — the words are already minted. Mirrors RecoveryKeyCeremony's explain copy verbatim.
+                  (The CAPTURE variant, for a user typing words IN, lives in NostrAuthGate's word grid.) */}
               <p className={styles.hygiene}>
-                Generate fresh words here — never reuse your Bitcoin wallet's seed phrase, and never use these
-                words as a Bitcoin wallet. Same format, different job.
+                These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same
+                format, different job.
               </p>
               <button
                 type="button"

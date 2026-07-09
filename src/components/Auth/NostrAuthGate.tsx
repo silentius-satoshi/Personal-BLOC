@@ -409,6 +409,12 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                     </p>
                   );
                 })()}
+                {/* CAPTURE variant of the seed-phrase hygiene line (the user is typing words IN — contrast
+                    OwnerKeySetup K2 / the ceremony, which DISPLAY words we minted). Sits BELOW the checksum
+                    line so it never interrupts the grid → live-status feedback path. Words tab only. */}
+                <p className={styles.hint}>
+                  Never type your Bitcoin wallet's seed phrase here — a plan uses its own words.
+                </p>
               </>
             ) : (
               <>
