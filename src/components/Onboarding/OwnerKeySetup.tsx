@@ -33,7 +33,15 @@ export interface OwnerKeySetupProps {
 
 export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProps) {
   const { nostr } = useNostr();
-  const hasExistingKey = !!useStore((s) => s.writerKeyWrapped) || !!useStore((s) => s.nostrPubkey);
+  // ⚠ HOOK-ORDER: these MUST be two separate, unconditional useStore calls. Written as
+  //   `!!useStore((s) => s.writerKeyWrapped) || !!useStore((s) => s.nostrPubkey)`
+  // the `||` SHORT-CIRCUITS: while writerKeyWrapped is null the second useStore runs, but the moment K3's
+  // establishLocalOwner calls setWriterKeyWrapped the left side turns truthy and the second useStore is never
+  // called — the hook count drops mid-flow and React throws #311 ("rendered more hooks than during the previous
+  // render") right as onboarding completes. A hook may never sit on the right of `||`, `&&`, or `?:`.
+  const writerKeyWrapped = useStore((s) => s.writerKeyWrapped);
+  const nostrPubkey      = useStore((s) => s.nostrPubkey);
+  const hasExistingKey   = !!writerKeyWrapped || !!nostrPubkey;
 
   const [step, setStep]   = useState<'intro' | 'save' | 'protect'>('intro');
   const entropyRef        = useRef<Uint8Array | null>(null);   // 16 bytes — THE WRAPPED PAYLOAD (never re-rendered)
