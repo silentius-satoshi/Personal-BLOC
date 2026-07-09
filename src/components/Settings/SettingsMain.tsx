@@ -22,6 +22,8 @@ import { NostrAuthGate } from '../Auth/NostrAuthGate';
 import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { RevealRecoveryKey } from './RevealRecoveryKey';
 import { RecoveryKeyCeremony } from './RecoveryKeyCeremony';
+import { BackupGateInterstitial } from './BackupGateInterstitial';
+import { isBackupGateSatisfied } from '../../lib/backupGate';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
@@ -195,6 +197,9 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   // R2c-1 — the backup ceremony (own overlay; NOT a subpage — a guided reveal+quiz must own the screen).
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
   const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);   // for the "Backed up ✓" chip on the entry row
+  // R2c-2 ladder rung 3 — Sharing/Network are the hard-gate pages (a generated-unverified key can't publish).
+  const keyProvenance = useStore((s) => s.keyProvenance);
+  const backupGated   = !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt });
 
   // Network subpage (P1) — local relay list management.
   const nostrRelays    = useStore((s) => s.nostrRelays);
@@ -233,7 +238,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   };
   // P3: live per-relay status dots. Unconditional call (rules of hooks), but probe sockets open ONLY while the
   // Network subpage is visible (EMPTY_RELAYS otherwise → no sockets). See useRelayStatus for the owned-probe model.
-  const relayStatus = useRelayStatus(settingsPage === 'network' ? nostrRelays : EMPTY_RELAYS);
+  const relayStatus = useRelayStatus(settingsPage === 'network' && !backupGated ? nostrRelays : EMPTY_RELAYS);   // no probe sockets behind the interstitial
 
   // Hidden dev-mode activation: 5 taps on the Build row (reset after 2.5s of inactivity).
   const tapCount  = useRef(0);
@@ -605,7 +610,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
 
       {settingsPage === 'sharing' && !viewerMode && (
       <div className={styles.section}>
-        <SharingPage />
+        {backupGated ? <BackupGateInterstitial onBack={() => setSettingsPage('menu')} /> : <SharingPage />}
       </div>
       )}
 
@@ -941,7 +946,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
       </div>
       )}
 
-      {settingsPage === 'network' && !viewerMode && (
+      {settingsPage === 'network' && !viewerMode && backupGated && (
+      <div className={styles.section}>
+        <BackupGateInterstitial onBack={() => setSettingsPage('menu')} />
+      </div>
+      )}
+
+      {settingsPage === 'network' && !viewerMode && !backupGated && (
       <div className={styles.section}>
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>YOUR RELAYS</div>

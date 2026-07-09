@@ -20,6 +20,19 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+/* R2c-2 — backup-gate alert dot on the always-visible branding trigger (.wrapper is position:relative). */
+.badgeDot {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 1.5px solid var(--bg-base);
+  pointer-events: none;
+}
+
 .logo {
   font-size: 16px;
   color: var(--orange);

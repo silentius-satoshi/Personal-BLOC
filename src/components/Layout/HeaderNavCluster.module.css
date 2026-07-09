@@ -28,3 +28,21 @@
   background: var(--surface-3);
 }
 .iconBtnActive:hover { color: var(--btc); }
+
+/* R2c-2 — backup-gate alert dot. The wrap only anchors the dot; it stays a flex item of .cluster. */
+.settingsWrap {
+  position: relative;
+  display: inline-flex;
+  flex-shrink: 0;
+}
+.badgeDot {
+  position: absolute;
+  top: -2px;
+  right: -2px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--amber);
+  border: 1.5px solid var(--surface);
+  pointer-events: none;
+}

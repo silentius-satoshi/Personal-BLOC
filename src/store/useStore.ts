@@ -487,6 +487,13 @@ export interface StoreState {
   remotePlanFound:       boolean | null;
   setRemotePlanFound:    (v: boolean | null) => void;
   recordRemotePlanFound: (v: boolean) => void;
+  // R2c-2 — has the owner dismissed the dashboard backup-nag THIS session? Session-transient (NOT persisted/
+  // synced; in partializeState's omit list, absent from buildSettingsPayload/SETTINGS_FIELDS). Simpler than
+  // remotePlanFound — NO module latch: a single writer (the Dismiss button) sets it, nothing re-writes it
+  // mid-session, so it stays dismissed until the next boot resets it. That per-session reappearance IS the
+  // escalation ladder (the nag returns each launch while the gate is unsatisfied and the plan has data).
+  backupNagDismissed:    boolean;
+  dismissBackupNag:      () => void;
   nostrReconnectNeeded:    boolean;
   setNostrReconnectNeeded: (v: boolean) => void;
 
@@ -886,7 +893,7 @@ function monthOf(ev: DayEvent | undefined): number | null {
 // Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
 // self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
 export function partializeState(state: StoreState) {
-  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, remotePlanFound, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, remotePlanFound, backupNagDismissed, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
   return rest;
 }
 
@@ -1577,6 +1584,9 @@ export const useStore = create<StoreState>()(
     remotePlanFoundResolved = true;
     set({ remotePlanFound: v });
   },
+  // R2c-2 — session-transient nag dismissal (no latch needed — single writer; see the interface doc).
+  backupNagDismissed: false,
+  dismissBackupNag:   () => set({ backupNagDismissed: true }),
   nostrReconnectNeeded:    false,
   setNostrReconnectNeeded: (v) => set({ nostrReconnectNeeded: v }),
 

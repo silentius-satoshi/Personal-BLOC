@@ -1,3 +1,5 @@
+import { useStore } from '../../store/useStore';
+import { isBackupGateSatisfied } from '../../lib/backupGate';
 import styles from './HeaderNavCluster.module.css';
 
 /**
@@ -29,6 +31,13 @@ export function HeaderNavCluster({
   onSettings,
 }: HeaderNavClusterProps) {
   const cls = (on: boolean) => `${styles.iconBtn}${on ? ` ${styles.iconBtnActive}` : ''}`;
+  // R2c-2 ladder rung 1 — an amber dot on ⚙ while the backup gate is unsatisfied. Read the gate directly here so
+  // one edit badges all three simple-mode surfaces (Dashboard/Journal/Monthly). Owner-only by construction: a
+  // viewer never receives ownerNav → never mounts this cluster, and a viewer's keyProvenance is null anyway →
+  // gate satisfied → no dot. Clears reactively when the ceremony flips backupVerifiedAt.
+  const keyProvenance    = useStore((s) => s.keyProvenance);
+  const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);
+  const settingsAlert    = !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt });
   return (
     <div className={styles.cluster}>
       {/* Dashboard — gauge/donut glyph */}
@@ -77,8 +86,11 @@ export function HeaderNavCluster({
         </svg>
       </button>
 
-      {/* Settings — the ⚙ glyph, unchanged */}
-      <button className={styles.iconBtn} onClick={onSettings} aria-label="Settings" title="Settings">⚙</button>
+      {/* Settings — the ⚙ glyph, unchanged; wrapped only to anchor the R2c-2 backup-alert dot */}
+      <span className={styles.settingsWrap}>
+        <button className={styles.iconBtn} onClick={onSettings} aria-label={settingsAlert ? 'Settings — save your Recovery Key' : 'Settings'} title="Settings">⚙</button>
+        {settingsAlert && <span className={styles.badgeDot} aria-hidden="true" />}
+      </span>
     </div>
   );
 }

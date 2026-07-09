@@ -1,0 +1,60 @@
+/* R2c-2 — the dashboard backup nag. Shares NoPlanNotice's amber-banner language (they ride the same slot),
+   but leads with a btc-accented primary CTA since it's an action prompt, not just an FYI. */
+.notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  background: rgba(232, 168, 74, 0.08);
+  border: 1px solid rgba(232, 168, 74, 0.3);
+  border-radius: 10px;
+  padding: 12px 14px;
+  margin: 0 2px 14px;   /* matches NoPlanNotice / ViewerHomeView rhythm */
+}
+
+.text {
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.4;
+  flex: 1;
+  min-width: 180px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.primary {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  border: none;
+  border-radius: 6px;
+  background: var(--btc);
+  color: #fff;
+  cursor: pointer;
+  transition: opacity 0.12s;
+}
+.primary:hover { opacity: 0.9; }
+
+.dismiss {
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: border-color 0.12s, color 0.12s;
+}
+.dismiss:hover {
+  border-color: var(--amber);
+  color: var(--amber);
+}

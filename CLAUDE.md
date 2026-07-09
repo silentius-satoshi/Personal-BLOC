@@ -140,6 +140,10 @@ src/
                                 # by construction (the user holds the key elsewhere); null = LEGACY (pre-R2 plan), satisfied
                                 # STRUCTURALLY via the persist merge — deliberately NO migration. Consulted at exactly the
                                 # layer isAuthenticated is (11 guard sites); NEVER on viewer paths. See § Backup Gate
+    hasLoggedData.ts            # R2c-2 — PURE, type-only StoreState import. hasLoggedData(s) = dayLog.length>0 ||
+                                # monthlyLog.length>0 — the dashboard backup-nag's data gate ("something worth losing").
+                                # Pick-typed (minimal test fixtures); nag reads it via useStore(hasLoggedData). See § Backup
+                                # Gate Escalation Ladder
     recoveryGrid.ts             # R2b-3 — PURE logic for WordGrid's input mode (12-box capture). Imports wordlist
                                 # (@scure/bip39/wordlists/english.js) + validateWords (nostr-tools/nip06) + RECOVERY_WORD_COUNT.
                                 # distributePaste(tokens,focusedIndex) → 'fill-from-start' (12 exact) | [] (0/1 token →
@@ -423,6 +427,14 @@ src/
                                 # nostr) — the setter's OWN dirty+syncNow self-wake un-gates sync; ⚠ NO second wake added.
                                 # IDEMPOTENT: an already-stamped user runs it end-to-end as a re-verify (never a dead end);
                                 # success re-stamps (monotonic-forward). ⚠ Never logs; strings nulled on done/close/unmount
+      BackupGateInterstitial.tsx # R2c-2 ladder rung 3 (+ .module.css) — the hard gate that REPLACES the Sharing +
+                                # Network page bodies while the backup gate is unsatisfied ("Save your Recovery Key
+                                # first"). Self-contained: owns its own ceremonyOpen + renders <RecoveryKeyCeremony/>;
+                                # ghost ← Back = onBack (SettingsMain wires it to setSettingsPage('menu')). For a
+                                # generated-unverified key the engine is idle anyway (R2a-1) → these pages silently no-op
+                                # → the interstitial converts that into a path forward. Mounted at both SettingsMain
+                                # branches (sharing ternary + gated network sibling; useRelayStatus also gated so no
+                                # probe sockets open behind it). See § Backup Gate Escalation Ladder
       SharingPage.tsx           # Viewer M3 — the 'sharing' subpage (+ .module.css; SettingsMain renders <SharingPage/>
                                 # for settingsPage==='sharing', owner-only). YOUR SHARE CODE (owner npub + copy) + YOUR
                                 # VIEWERS = <ViewerRoster/> (LOCAL-SIGNER-gated: a non-local device shows a note) + a
@@ -3022,7 +3034,9 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-755 tests — `npx vitest run` before every commit.
+763 tests — `npx vitest run` before every commit.
+- `src/lib/__tests__/hasLoggedData.test.ts` — R2c-2 nag data gate (4 cases): empty `dayLog`+`monthlyLog` → false; one dayLog event → true; one monthly record → true; both → true (Pick-typed helper, minimal fixtures)
+- `src/store/__tests__/backupNagDismissed.test.ts` — R2c-2 session-transient dismissal (mirrors `remotePlanFound.test.ts`): default `false`; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (persisting it would keep the nag dismissed across launches, defeating the ladder); `dismissBackupNag()` sets true. NO module latch (single writer)
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
 - `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (21 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks); `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (32 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
@@ -3193,7 +3207,9 @@ location for existing plaintext users), write-through on set, and EXCLUDED from 
 mode, the owner it follows, and a v17-migrant plaintext-nsec holder), and `viewerKeyWrapped`/`viewerKeyWrapMeta`
 (Phase 3 — the viewer key wrapped at rest via keyVault; key material, MUST never leave the device). New per-device
 prefs follow this pattern, NOT the in-memory exclusion list (which is for transient fields like
-`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`/`remotePlanFound`).
+`nostrSyncing`/`sandboxCollateralBtc`/`viewerUnlocked`/`viewerDataLoaded`/`storeUnlocked`/`remotePlanFound`/
+`backupNagDismissed` (R2c-2 — the dashboard backup-nag's session dismissal; single-writer, NO module latch;
+resets each boot so the nag returns while the gate is unsatisfied — that's the escalation ladder)).
 **At-rest store encryption — ⚠ USER-FACING FLOW REVERTED (lockout-proof).** The Phase B/C user flow (Settings
 "Encrypt local data" toggle + `AppUnlockGate`/`StoreMigrationGate` render branches + the conditional encrypted
 persist adapter) **locked users out twice on real iOS and has been removed.** The user-facing flow stays reverted —
@@ -3557,6 +3573,49 @@ key), and both become one-tap bypasses the moment R2c removes that line. **Do no
    (only "Remove local key", which deletes `writerKeyWrapped`, should clear it) and make the establishment call
    sites clear-then-stamp, since `establishLocalOwner` *replaces* the key material. That reordering is what makes
    the retain safe (it is the write-once escape the teardown clear currently provides).
+
+---
+
+## Backup Gate Escalation Ladder (R2c-2 — badge → nag → hard gate; store stays v21, NO bump)
+
+R2c-1 shipped the real ceremony (`RecoveryKeyCeremony`) but a generated-unverified owner has no prompt to open
+it. R2c-2 adds a **three-rung escalation ladder** so the owner is guided to back up their key with rising
+urgency. All three rungs read ONE predicate — `!isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })`
+(imported from `src/lib/backupGate.ts`, never re-derived) — and are **owner-only by construction** (a viewer's
+`keyProvenance` is null → gate satisfied; and none of the mount points render for a viewer). On ceremony success
+the gate flips satisfied and **every rung self-clears reactively** (all subscribe the two fields) — NO imperative
+cleanup. Additive UI + one transient store field; the gate plumbing / ceremony internals / `OwnerKeySetup`
+(bridge = R2c-3) / viewer components are untouched.
+
+| Rung | Surface | Condition | Copy / action |
+|---|---|---|---|
+| **1 — Badge** (ambient) | Amber `.badgeDot` on the Settings ⚙: simple-mode `HeaderNavCluster` (all 3 instances — the cluster reads the gate directly) AND full-mode `BrandingDropdown` trigger (the ⚙ item lives in a collapsed portal → the dot rides the always-visible `.brandingBtn`) | gate unsatisfied | decoration only (5-icon invariant holds) |
+| **2 — Nag** (active) | `BackupNagCard` (`components/Entry/`), rides `ViewerHomeView`'s `notice` slot | `keyProvenance === 'generated'` && `!gate` && `hasLoggedData(s)` && `!backupNagDismissed` | "Your plan now has real data, and it exists only on this phone. Save your Recovery Key — it takes a minute." + **Save it now** (opens the ceremony) + **Dismiss** (`dismissBackupNag()`, session-transient) |
+| **3 — Hard gate** | `BackupGateInterstitial` (`components/Settings/`) replaces the Sharing + Network page bodies | gate unsatisfied | "Save your Recovery Key first" / "Sharing your plan and syncing to relays create copies only your key can open. Prove you've saved it, then this unlocks." + **Save my Recovery Key** + ghost **← Back** |
+
+- **The shared notice slot + mutual exclusivity.** `AppShell.tsx` (dashboard arm) passes
+  `notice={<><NoPlanNotice /><BackupNagCard /></>}` — the ONLY `notice` call site, owner-only (gates D/E/F
+  passed). The two are **mutually exclusive by construction**: `NoPlanNotice` gates `keyProvenance !== 'generated'`,
+  the nag gates `keyProvenance === 'generated'` — at most one ever renders. Both self-gate + are owner-only via
+  `ViewerHomeView`'s `{ownerNav && notice}` (a viewer gets neither `ownerNav` nor `notice`).
+- **`hasLoggedData(s)`** (`src/lib/hasLoggedData.ts`, PURE, type-only `StoreState` import) `= s.dayLog.length > 0
+  || s.monthlyLog.length > 0` — the nag's data gate ("there's something worth losing"). `Pick`-typed so a node
+  test needs no full-state fixture; the nag reads it reactively via `useStore(hasLoggedData)`. **No new store
+  field for the data check** (computed).
+- **`backupNagDismissed`** (transient store field, default false; `dismissBackupNag()` sets true). Session-only —
+  in `partializeState`'s omit list, absent from `buildSettingsPayload`/`SETTINGS_FIELDS`. **Simpler than
+  `remotePlanFound` — NO module latch** (single writer: the Dismiss button; nothing re-writes it mid-session), so
+  it resets each boot → the nag returns next launch while unsatisfied (that reappearance IS the ladder).
+- **Interstitial mount points — both at the `SettingsMain` branch boundary** (keeps `setSettingsPage('menu')` in
+  scope for the ghost back; leaves `SharingPage` + the network relay content untouched; the shared `← Settings`
+  sub-header stays as chrome): `sharing` (`backupGated ? <BackupGateInterstitial …/> : <SharingPage/>`) and
+  `network` (a gated sibling branch; `useRelayStatus` is also gated `&& !backupGated` so no probe sockets open
+  behind the interstitial). **2 mount points today**; more later (R3 link-device, paid tier). *For a
+  generated-unverified key the engine is idle anyway (R2a-1), so these pages silently no-op today — the
+  interstitial converts silent failure into a path forward.*
+- **Ceremony-from-anywhere.** `RecoveryKeyCeremony` is self-contained (`{ onClose }`). The nag and the interstitial
+  each own a LOCAL `ceremonyOpen` and render the overlay themselves — exactly as `SettingsMain` does. No lifted
+  state, no cross-component navigation; the reactive self-clear (above) handles teardown.
 
 ---
 
@@ -4584,6 +4643,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `classifyRecoveryInput` | SHAPE only, never validity. `nip19.decode` and `skFromWords` own their own verdicts, so 12 nonsense tokens classify as `words` and are rejected downstream with a real message. Adding validation here would duplicate — and could drift from — two separate crypto contracts |
 | `remotePlanFound` | Session-transient (in `partializeState`'s omit list), never synced. `recordRemotePlanFound` is **latched** to fire once per session; `setRemotePlanFound(null)` (Dismiss) does NOT unlatch, so the next foreground sync can't resurrect the notice. Dismissal is per-session by design; the first edit ends it permanently |
 | The `NoPlanNotice` mount | Owner-only **by construction**: `ViewerHomeView` renders `{ownerNav && notice}`, and AppShell's dashboard arm is the only `notice=` call site. Never add a branch to AppShell's gate ternary — anything there replaces the whole app |
+| Backup ladder mutual exclusivity | The dashboard notice slot renders `<><NoPlanNotice /><BackupNagCard /></>` — the two are **mutually exclusive by construction** (`NoPlanNotice` gates `keyProvenance !== 'generated'`, the R2c-2 nag gates `=== 'generated'`), so at most one shows. Both self-gate + are owner-only (`{ownerNav && notice}`). All three ladder rungs (badge/nag/interstitial) read `isBackupGateSatisfied` — never re-derive it — and self-clear reactively on the ceremony's `backupVerifiedAt` flip; write no imperative cleanup. `backupNagDismissed` has NO module latch (single writer, resets each boot — the reappearance IS the ladder) |
 | `WrapMeta.payloadKind` | **Absent ⇒ `'sk'`** — the compatibility contract for every key wrapped before R2a-2. Never make it required; never infer the kind from payload byte length. The unwrap branch tests `!== 'nip06-entropy'` (not `=== 'sk'`) so absent / `'sk'` / any future unknown kind all fall through the legacy path and a wrapped key can never become unreadable |
 | `unwrapSecretKey` return type | **ALWAYS the 32-byte SECRET KEY**, whatever the stored payload. Its four call sites must never be made payload-aware. To read the payload as stored (entropy, for R2c's words) use `unwrapRecoveryPayload` |
 | NIP-06 derivation constants | `m/44'/1237'/0'/0/0`, **account 0**, **no BIP-39 passphrase**, **English wordlist**. Never parameterize them in `nip06Key.ts`. A failure of the published-vector test is DATA LOSS (every written-down phrase would derive a different key), not a stale fixture |

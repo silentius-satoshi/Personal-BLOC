@@ -50,6 +50,7 @@ import { SimpleModeView }    from '../SimpleMode/SimpleModeView';
 import { DailyModeView }     from '../Daily/DailyModeView';
 import { ViewerHomeView }    from '../Viewer/ViewerHomeView';
 import { NoPlanNotice }      from '../Entry/NoPlanNotice';
+import { BackupNagCard }     from '../Entry/BackupNagCard';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
@@ -298,7 +299,11 @@ export function AppShell() {
       <ViewerHomeView
         previewSafeSnap={null}   // owner Dashboard — trusted LIVE derive (no snap, no banner, no Safe/Trusted toggle)
         onOpenSettings={goSettings}
-        notice={<NoPlanNotice />}   // R2b-2 — the ONLY `notice` call site; self-gating, owner-only (gates D/E/F already passed)
+        // The ONLY `notice` call site; both notices self-gate + are owner-only (gates D/E/F already passed).
+        // MUTUALLY EXCLUSIVE by construction: NoPlanNotice gates keyProvenance !== 'generated' (R2b-2); the
+        // R2c-2 backup nag gates keyProvenance === 'generated' && !gate && hasLoggedData — so at most one ever
+        // renders. The nag's Dismiss is session-transient → it returns next launch while unsatisfied (the ladder).
+        notice={<><NoPlanNotice /><BackupNagCard /></>}
         ownerNav={
           <HeaderNavCluster
             active="dashboard"
