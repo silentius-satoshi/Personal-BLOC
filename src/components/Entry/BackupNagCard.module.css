@@ -13,12 +13,26 @@
   margin: 0 2px 14px;   /* matches NoPlanNotice / ViewerHomeView rhythm */
 }
 
+/* R2c-5b — title + body (the copy no longer claims data exists, so it leads with the state and then the ask). */
 .text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  line-height: 1.4;
+}
+
+.body {
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.4;
-  flex: 1;
-  min-width: 180px;
 }
 
 .actions {

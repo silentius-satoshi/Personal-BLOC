@@ -328,6 +328,23 @@
 /* R2c-1 — "Backed up ✓ <date>" chip inside the Save-your-Recovery-Key button. */
 .backedUpChip { color: var(--green); font-weight: 600; }
 
+/* R2c-5b — the two terminal states of the ceremony CTA, symmetric and mutually exclusive by construction
+   (backupGated ⇒ backupVerifiedAt == null). */
+.notBackedUpChip { color: var(--amber); font-weight: 600; }
+
+/* The gated CTA. Geometry is UNCHANGED from .nostrReconnectBtn — only colour/weight — so the button doesn't
+   jump when the ceremony flips the gate. */
+.recoveryCtaAlert {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: color-mix(in srgb, var(--amber) 12%, transparent);
+  font-weight: 600;
+}
+
+.recoveryCtaAlert:hover {
+  background: color-mix(in srgb, var(--amber) 20%, transparent);
+}
+
 .nostrWarning {
   font-size: 11px;
   color: var(--amber);
@@ -532,33 +549,21 @@
   flex-shrink: 0;
   width: 22px;
   text-align: center;
-  position: relative;   /* anchors .rowBadgeDot (R2c-5) */
 }
 
-/* R2c-5 — the backup breadcrumb dot. Same amber-dot language as HeaderNavCluster/BrandingDropdown's .badgeDot,
-   so the chain (⚙ nav icon → Identity & Security row → Save-your-Recovery-Key button) reads as one signal. */
-.rowBadgeDot {
-  position: absolute;
-  top: -3px;
-  right: -3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--amber);
-  border: 1.5px solid var(--bg-card);   /* matches .settingsRow's background */
-  pointer-events: none;
+/* R2c-5b — the backup breadcrumb HIGHLIGHT (replaced R2c-5's 8px icon dot, too subtle for a directional cue).
+   Matches the nag/interstitial amber language. The left accent is an INSET SHADOW, not a border-left, so the
+   row's content never shifts when the gate flips. The chain: ambient dot on the nav ⚙ → this highlighted row →
+   the highlighted CTA button inside. */
+.settingsRowAlert {
+  border-color: color-mix(in srgb, var(--amber) 45%, transparent);
+  background: color-mix(in srgb, var(--amber) 8%, var(--bg-card));
+  box-shadow: inset 3px 0 0 var(--amber);
 }
 
-/* Inline variant for the RECOVERY "Save your Recovery Key" button — an absolute corner dot on a text button
-   would read as a stray pixel. */
-.btnBadgeDot {
-  display: inline-block;
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--amber);
-  margin-right: 7px;
-  vertical-align: middle;
+.settingsRowAlert:hover {
+  border-color: color-mix(in srgb, var(--amber) 65%, transparent);
+  background: color-mix(in srgb, var(--amber) 13%, var(--bg-card));
 }
 
 .settingsRowBody {

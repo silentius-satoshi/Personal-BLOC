@@ -23,6 +23,7 @@ import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { RevealRecoveryKey } from './RevealRecoveryKey';
 import { RecoveryKeyCeremony } from './RecoveryKeyCeremony';
 import { BackupGateInterstitial } from './BackupGateInterstitial';
+import { BackupNagCard } from '../Entry/BackupNagCard';
 import { isBackupGateSatisfied } from '../../lib/backupGate';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { useNostrSync } from '../../hooks/useNostrSync';
@@ -144,24 +145,23 @@ interface SettingsRowProps {
   subtitle?: string;
   onClick:   () => void;
   styles:    Record<string, string>;
-  /** R2c-5 — amber dot on the row icon (the backup breadcrumb). Additive: default false → every other row is
-   *  byte-identical. Decorative (aria-hidden); the row title is the accessible name. */
+  /** Amber highlight on the whole row (the backup breadcrumb). Additive: default false → every other row is
+   *  byte-identical. R2c-5b REPLACED the R2c-5 icon dot with this: an 8px dot is an ambient idiom (right on the
+   *  nav ⚙, where there's no room for more) but reads as a mystery pixel on a row. Two signals for one state
+   *  would be noise, so the row highlight stands alone. Purely visual — `alert` is not a behavior flag. */
   alert?:    boolean;
 }
 
 function SettingsRow({ icon, title, subtitle, onClick, styles, alert = false }: SettingsRowProps) {
   return (
     <div
-      className={styles.settingsRow}
+      className={`${styles.settingsRow}${alert ? ` ${styles.settingsRowAlert}` : ''}`}
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onClick(); } }}
     >
-      <span className={styles.settingsRowIcon}>
-        {icon}
-        {alert && <span className={styles.rowBadgeDot} aria-hidden="true" />}
-      </span>
+      <span className={styles.settingsRowIcon}>{icon}</span>
       <div className={styles.settingsRowBody}>
         <span className={styles.settingsRowTitle}>{title}</span>
         {subtitle && <span className={styles.settingsRowSubtitle}>{subtitle}</span>}
@@ -438,6 +438,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             </p>
           )}
 
+          {/* R2c-5b — the nag also greets a user who opens Settings. Menu-only (never a subpage), and OUTSIDE
+              .settingsMenu so its own margins don't fight that container's flex gap. Owner-only structurally
+              (the viewerMode early-return to <ViewerSettings/> precedes this) AND by its own self-gate.
+              ⚠ It owns a SECOND, independent ceremonyOpen overlay alongside SettingsMain's own (for the RECOVERY
+              button). Harmless: separate local state, and a single tap can only open one. */}
+          <BackupNagCard />
+
           <div className={styles.settingsMenu}>
             {/* Access Layer Redesign Phase 1 — persistent front-door doors (the lockout fix). Top of menu,
                 no drill-down, so they're found the moment Settings opens. Owner-only (a viewer's exit is V4). */}
@@ -446,7 +453,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 (a duplicate sign-in row over-promises). Serves pre-1.5 local-owner-not-authed + post-key-removal. */}
             {!viewerMode && !isAuthenticated && <SettingsRow icon="🔑" title="Connect Nostr identity" subtitle="Sign in to sync this plan across devices" onClick={() => setAccessFlow('login')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Connect to a shared plan" subtitle="Switch this device to viewing someone's plan" onClick={() => { if (window.confirm('This switches this device to viewing someone else’s plan and clears your current plan. Continue?')) setAccessFlow('viewer'); }} styles={styles} />}
-            {/* R2c-5 breadcrumb rung 2 — reuses the `backupGated` already computed above (never recomputed).
+            {/* Breadcrumb rung 2 — reuses the `backupGated` already computed above (never recomputed).
+                ⚠⚠ THIS ROW STAYS NAVIGATION. Do NOT "helpfully" wire it to open the ceremony when backupGated.
+                The row opens the identity subpage, where reveal-key / backup-plan / reset-&-re-sync /
+                decrypt-back all live — a gated user still needs every one of them. Auto-triggering on transient
+                gate state would silently change what the row DOES once the user verifies. The highlight says
+                "the thing you want is in here"; the button inside is the trigger. The ceremony has exactly two
+                triggers: the nag's "Save it now" and RECOVERY's "Save your Recovery Key".
                 ⚠ The `nostrSigningMethod === 'local'` term keeps the breadcrumb from pointing at a page with no
                 ceremony: the "Save your Recovery Key" button + RevealRecoveryKey render ONLY for a local signer,
                 so on a NIP-07/NIP-46 signer the Identity page has nothing to reach. Today this is a NO-OP —
@@ -592,15 +605,21 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           {/* RECOVERY — save (ceremony) · reveal key (local) · backup plan · reset & re-sync · decrypt-back (when enc on) */}
           <div className={styles.settingsGroupLabel}>RECOVERY</div>
           {/* R2c-1 — the guided backup ceremony (the primary CTA); RevealRecoveryKey below is the quiet view-only utility.
-              R2c-5 breadcrumb rung 3 (the terminus): the amber dot and the "Backed up ✓" chip are MUTUALLY
-              EXCLUSIVE by construction — backupGated ⇒ backupVerifiedAt == null, and the chip renders only when
-              backupVerifiedAt != null. Tapping already opens the ceremony; the dot adds no wiring.
-              ⚠ All three breadcrumb dots + the nag subscribe keyProvenance + backupVerifiedAt, so the ceremony's
-              stamp clears every one of them reactively. No imperative cleanup anywhere. */}
+              Breadcrumb rung 3 — THE TERMINUS. This button and the nag's "Save it now" are the ONLY two ceremony
+              triggers (see the Identity row's comment for why the row is not a third).
+              R2c-5b: the gated state is now a full amber highlight + a "· Not backed up" chip mirroring the green
+              "· Backed up ✓" one, rather than a bare dot. The two chips are MUTUALLY EXCLUSIVE by construction:
+              backupGated ⇒ backupVerifiedAt == null, and the chip renders only when backupVerifiedAt != null.
+              ⚠ The nav ⚙ dot, the row highlight, this button and the nag all subscribe keyProvenance +
+              backupVerifiedAt, so the ceremony's stamp clears every one reactively. No imperative cleanup. */}
           {nostrSigningMethod === 'local' && (
-            <button className={styles.nostrReconnectBtn} onClick={() => setCeremonyOpen(true)}>
-              {backupGated && <span className={styles.btnBadgeDot} aria-hidden="true" />}
-              Save your Recovery Key{backupVerifiedAt != null && <span className={styles.backedUpChip}> · Backed up ✓ {new Date(backupVerifiedAt).toLocaleDateString()}</span>}
+            <button
+              className={`${styles.nostrReconnectBtn}${backupGated ? ` ${styles.recoveryCtaAlert}` : ''}`}
+              onClick={() => setCeremonyOpen(true)}
+            >
+              Save your Recovery Key
+              {backupGated && <span className={styles.notBackedUpChip}> · Not backed up</span>}
+              {backupVerifiedAt != null && <span className={styles.backedUpChip}> · Backed up ✓ {new Date(backupVerifiedAt).toLocaleDateString()}</span>}
             </button>
           )}
           {nostrSigningMethod === 'local' && <RevealRecoveryKey />}

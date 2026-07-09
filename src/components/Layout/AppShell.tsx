@@ -301,8 +301,9 @@ export function AppShell() {
         onOpenSettings={goSettings}
         // The ONLY `notice` call site; both notices self-gate + are owner-only (gates D/E/F already passed).
         // MUTUALLY EXCLUSIVE by construction: NoPlanNotice gates keyProvenance !== 'generated' (R2b-2); the
-        // R2c-2 backup nag gates keyProvenance === 'generated' && !gate && hasLoggedData — so at most one ever
-        // renders. The nag's Dismiss is session-transient → it returns next launch while unsatisfied (the ladder).
+        // backup nag gates keyProvenance === 'generated' && !gate — so at most one ever renders. (R2c-5b: the
+        // nag no longer waits for logged data; an unverified generated key is the danger by itself.)
+        // The nag's Dismiss is session-transient → it returns next launch while unsatisfied (the ladder).
         notice={<><NoPlanNotice /><BackupNagCard /></>}
         ownerNav={
           <HeaderNavCluster
