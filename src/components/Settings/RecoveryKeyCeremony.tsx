@@ -5,7 +5,7 @@ import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { useNostr } from '@nostrify/react';
 import { unwrapRecoveryPayload } from '../../lib/nostr/keyVault';
 import { wordsFromEntropy, skFromWords } from '../../lib/nostr/nip06Key';
-import { pickQuizIndices, checkQuizAnswers, checkNsecTail } from '../../lib/recoveryQuiz';
+import { pickQuizIndices, checkQuizAnswers, checkNsecTail, checkBackupPassphrase } from '../../lib/recoveryQuiz';
 import { downloadBlob } from '../../lib/backup/downloadFile';
 import { buildRecoveryFileText, recoveryFileName, type RecoveryArtifactKind } from '../../lib/backup/recoveryFile';
 import { todayLocalISO } from '../../utils/format';
@@ -56,17 +56,23 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   const [encrypting, setEncrypting] = useState(false);
   const [aidError, setAidError]   = useState<string | null>(null);
   const qrCanvasRef = useRef<HTMLCanvasElement>(null);
+  // R2c-7b-fix — Continue is gated on an actual save. Without it a user could walk the whole ceremony, answer the
+  // quiz off the on-screen grid, and have backupVerifiedAt stamped with the key living only in RAM.
+  const [savedOnce, setSavedOnce] = useState(false);
 
   const [indices, setIndices]     = useState<[number, number]>([0, 1]);
   const [ans0, setAns0]           = useState('');
   const [ans1, setAns1]           = useState('');
   const [tail, setTail]           = useState('');
+  const [verifyPass, setVerifyPass]   = useState('');   // encrypted path: passphrase re-entry
+  // Snapshot of encryptOn taken at Continue-time, so the verify question can't change mid-verify (see goVerify).
+  const [verifyEncrypted, setVerifyEncrypted] = useState(false);
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
   const zeroBytes = () => { bytesRef.current?.fill(0); bytesRef.current = null; };
   const clearAids = () => {
     setEncryptOn(false); setFilePass(''); setArtifact(null); setQrValue(null);
-    setEncrypting(false); setAidError(null); setShowQR(false);
+    setEncrypting(false); setAidError(null); setShowQR(false); setSavedOnce(false);
   };
   const clearSecrets = () => { zeroBytes(); setWords(null); setNsec(null); clearAids(); };
 
@@ -85,11 +91,15 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
    * OLD passphrase (the inputs are live during the 30ms paint yield) would resolve into the cache, and the next
    * Download would write a file locked with a passphrase the user never typed. Same hazard, and the same fix, as
    * R2c-7a's clearTimeout on the stale in-flight decrypt.
+   *
+   * ⚠ It also clears `savedOnce` (R2c-7b-fix): the same change that staled the cache staled whatever the user
+   * already saved. Download plaintext, then toggle encrypt ON, and the file on disk is NOT the encrypted backup
+   * you are about to be quizzed on — you must save again.
    */
   const prepRef = useRef(0);
   const invalidateArtifact = () => {
     prepRef.current++;
-    setArtifact(null); setQrValue(null); setShowQR(false); setAidError(null);
+    setArtifact(null); setQrValue(null); setShowQR(false); setAidError(null); setSavedOnce(false);
   };
 
   /**
@@ -131,13 +141,23 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const share = async () => { const a = await ensureArtifact(); if (a) void navigator.share?.({ text: a }).catch(() => {}); };
+  /**
+   * ⚠ `savedOnce` is set only when share RESOLVES. An iOS share-sheet CANCEL rejects with AbortError, and a
+   * cancelled share is not a saved backup — it must not open the Continue gate.
+   */
+  const share = async () => {
+    if (!navigator.share) return;   // ⚠ NOT `navigator.share?.()` — that resolves undefined and would open the gate
+    const a = await ensureArtifact();
+    if (!a) return;
+    try { await navigator.share({ text: a }); setSavedOnce(true); } catch { /* cancelled → not a save */ }
+  };
 
   const doDownload = async () => {
     const a = await ensureArtifact();
     if (!a) return;
     const blob = new Blob([buildRecoveryFileText(kind, a)], { type: 'text/plain;charset=utf-8' });
     downloadBlob(blob, recoveryFileName(kind, todayLocalISO()));
+    setSavedOnce(true);
   };
 
   const toggleQR = async () => {
@@ -149,8 +169,13 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   };
 
   // The hidden <QRCodeCanvas> gives us a native canvas — no SVG serialization, no Image load, no WebKit taint risk.
+  // A saved QR IS a saved backup, so it opens the Continue gate like any other save.
   const downloadQR = () => {
-    qrCanvasRef.current?.toBlob((b) => { if (b) downloadBlob(b, recoveryFileName(kind, todayLocalISO(), true)); });
+    qrCanvasRef.current?.toBlob((b) => {
+      if (!b) return;
+      downloadBlob(b, recoveryFileName(kind, todayLocalISO(), true));
+      setSavedOnce(true);
+    });
   };
 
   const doUnlock = async () => {
@@ -176,18 +201,33 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   // explain → reveal. Passkey unlocks on THIS tap (the WebAuthn user-activation); PIN routes to the PIN sub-UI.
   const onShowKey = () => { setError(null); if (isPin) setStep('reveal'); else doUnlock(); };
 
+  /**
+   * ⚠ SNAPSHOT the encryption mode here. Verify asks about the artifact the user actually SAVED, and the reveal
+   * step's toggle is unreachable while verifying — so freezing `encryptOn` at Continue-time keeps a stray toggle
+   * from changing the question mid-verify. Going BACK re-enters goVerify, which re-snapshots (correct: the user
+   * must re-save anyway, since invalidateArtifact cleared savedOnce).
+   */
   const goVerify = () => {
+    setVerifyEncrypted(encryptOn);
     if (words) setIndices(pickQuizIndices());
-    setVerifyError(null); setAns0(''); setAns1(''); setTail('');
+    setVerifyError(null); setAns0(''); setAns1(''); setTail(''); setVerifyPass('');
     setStep('verify');
   };
 
   const submitVerify = () => {
-    const ok = words ? checkQuizAnswers(words, indices, [ans0, ans1]) : nsec ? checkNsecTail(nsec, tail) : false;
+    // Verify what the user must actually REMEMBER: an encrypted backup is a passphrase-locked ncryptsec, so the
+    // words on the grid are not what they saved — the passphrase is the only thing that can lose the plan.
+    const ok = verifyEncrypted
+      ? checkBackupPassphrase(filePass, verifyPass)
+      : words ? checkQuizAnswers(words, indices, [ans0, ans1])
+      : nsec ? checkNsecTail(nsec, tail)
+      : false;
     if (ok) {
       useStore.getState().setBackupVerifiedAt(Date.now(), nostr);   // the setter self-wakes (dirty + syncNow) — no second wake here
       clearSecrets();
       setStep('done');
+    } else if (verifyEncrypted) {
+      setVerifyError("That doesn't match the passphrase you just set.");
     } else {
       setVerifyError("That doesn't match — check your saved copy.");
       if (words) { setIndices(pickQuizIndices()); setAns0(''); setAns1(''); }   // re-randomize on every failed attempt
@@ -311,7 +351,11 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
                 <button type="button" className={styles.qrBtn} onClick={downloadQR}>Download QR</button>
               </div>
             )}
-            <button className={styles.primary} onClick={goVerify}>Continue</button>
+            {/* R2c-7b-fix — no save, no Continue. savedOnce resets whenever the artifact changes (invalidateArtifact). */}
+            <button className={styles.primary} onClick={goVerify} disabled={!savedOnce}>Continue</button>
+            {!savedOnce && (
+              <p className={styles.aidHint}>Download or save your Recovery Key first — then confirm you've saved it.</p>
+            )}
             <button className={styles.ghost} onClick={close}>Close</button>
           </>
         )}
@@ -319,7 +363,24 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
         {step === 'verify' && (
           <>
             <h2 className={styles.title}>Confirm you saved it</h2>
-            {words ? (
+            {verifyEncrypted ? (
+              /* The saved artifact is a passphrase-locked ncryptsec — the words on the grid are NOT what they saved. */
+              <>
+                <p className={styles.body}>
+                  Re-enter your backup passphrase to confirm you'll remember it — without it, your encrypted backup
+                  can't be opened.
+                </p>
+                <input
+                  className={styles.pinInput}
+                  type="password"
+                  placeholder="Backup passphrase"
+                  value={verifyPass}
+                  onChange={(e) => { setVerifyPass(e.target.value); setVerifyError(null); }}
+                  autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+                  aria-label="Re-enter your backup passphrase"
+                />
+              </>
+            ) : words ? (
               <>
                 <p className={styles.body}>Enter word #{indices[0] + 1} and word #{indices[1] + 1} from your saved copy.</p>
                 <input
@@ -356,10 +417,17 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
               </>
             )}
             {verifyError && <p className={styles.error}>{verifyError}</p>}
-            <button className={styles.primary} onClick={submitVerify} disabled={words ? (!ans0.trim() || !ans1.trim()) : !tail.trim()}>
+            <button
+              className={styles.primary}
+              onClick={submitVerify}
+              disabled={verifyEncrypted ? !verifyPass.trim() : words ? (!ans0.trim() || !ans1.trim()) : !tail.trim()}
+            >
               Confirm
             </button>
-            <button className={styles.ghost} onClick={() => { setVerifyError(null); setStep('reveal'); }}>← View words again</button>
+            {/* Both paths return to reveal — an encrypted user going back to re-download is valid. */}
+            <button className={styles.ghost} onClick={() => { setVerifyError(null); setStep('reveal'); }}>
+              {verifyEncrypted ? '← Back to save' : '← View words again'}
+            </button>
           </>
         )}
 

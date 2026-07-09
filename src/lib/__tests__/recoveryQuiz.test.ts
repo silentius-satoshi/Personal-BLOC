@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { pickQuizIndices, checkQuizAnswers, checkNsecTail } from '../recoveryQuiz';
+import { pickQuizIndices, checkQuizAnswers, checkNsecTail, checkBackupPassphrase } from '../recoveryQuiz';
 
 // R2c-1 — pure ceremony verify logic. Node; rand injected for determinism.
 
@@ -76,5 +76,45 @@ describe('checkNsecTail', () => {
 
   it('is case-sensitive (bech32 is lowercase)', () => {
     expect(checkNsecTail(NSEC, NSEC.slice(-6).toUpperCase())).toBe(false);
+  });
+});
+
+// R2c-7b-fix — the ENCRYPTED path's verify. The saved artifact is a passphrase-locked ncryptsec, so this is what
+// stands between the user and an unopenable backup.
+describe('checkBackupPassphrase', () => {
+  it('an exact match → true', () => {
+    expect(checkBackupPassphrase('correct horse battery', 'correct horse battery')).toBe(true);
+  });
+
+  // ⚠ THE LOAD-BEARING CASE. The ceremony encrypts with filePass.trim(), so the passphrase that actually opens the
+  // file is the trimmed one. Comparing untrimmed would reject a re-entry that WOULD decrypt it.
+  it('trims BOTH sides — surrounding whitespace on either input still matches', () => {
+    expect(checkBackupPassphrase('  hunter two  ', 'hunter two')).toBe(true);
+    expect(checkBackupPassphrase('hunter two', '  hunter two\n')).toBe(true);
+    expect(checkBackupPassphrase(' hunter two ', '\thunter two  ')).toBe(true);
+  });
+
+  it('inner whitespace is significant (unlike a seed phrase, this is not normalized)', () => {
+    expect(checkBackupPassphrase('hunter two', 'huntertwo')).toBe(false);
+    expect(checkBackupPassphrase('hunter two', 'hunter  two')).toBe(false);
+  });
+
+  it('is case-sensitive', () => {
+    expect(checkBackupPassphrase('Hunter Two', 'hunter two')).toBe(false);
+  });
+
+  it('a real mismatch → false', () => {
+    expect(checkBackupPassphrase('correct horse battery', 'correct horse staple')).toBe(false);
+  });
+
+  // Nothing can confirm by submitting nothing, even if the expected passphrase were somehow blank.
+  it('an empty expected passphrase never passes', () => {
+    expect(checkBackupPassphrase('', '')).toBe(false);
+    expect(checkBackupPassphrase('   ', '   ')).toBe(false);
+    expect(checkBackupPassphrase('', 'anything')).toBe(false);
+  });
+
+  it('an empty re-entry against a real passphrase → false', () => {
+    expect(checkBackupPassphrase('hunter two', '   ')).toBe(false);
   });
 });
