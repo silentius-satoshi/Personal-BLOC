@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { useNostr } from '@nostrify/react';
 import { restoreSigner } from '../../lib/nostr/session';
 import { syncNow } from '../../lib/nostr/syncNow';
-import { resetAndResync } from '../../lib/store/escapeHatch';
+import { resetAndResync, resetAndResyncConfirmMessage } from '../../lib/store/escapeHatch';
 import { biometricLabel } from '../../lib/biometricLabel';
+import { isBackupGateSatisfied } from '../../lib/backupGate';
 import { useStore } from '../../store/useStore';
 import { PassphraseInput } from '../ui/PassphraseInput';
 import styles from './NostrAuthGate.module.css';
@@ -20,6 +21,8 @@ import styles from './NostrAuthGate.module.css';
 export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
   const { nostr } = useNostr();
   const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
+  const keyProvenance    = useStore((s) => s.keyProvenance);
+  const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);
   const [pin, setPin]         = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState<string | null>(null);
@@ -49,7 +52,11 @@ export function LocalUnlockGate({ onReauth }: { onReauth: () => void }) {
   // blob + in-memory key) and reload. The identity is retained, so the normal boot unlock → syncNow repopulates from
   // the relay into a clean plaintext slate (resetAndResync is reload-based now — see escapeHatch).
   const resetAndResyncFromGate = () => {
-    if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
+    // R2c-6-final: a generated-unverified key has no relay copy → the confirm warns of permanent loss. ⚠ On an
+    // ENCRYPTED cold start (flag-on, locked blob) backupVerifiedAt reads null, so this branch may show for an
+    // actually-verified key — accepted (the enc flag is dev-only, off by default).
+    const neverSynced = !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt });
+    if (!window.confirm(resetAndResyncConfirmMessage(neverSynced))) return;
     setLoading(true);
     resetAndResync(nostr);   // clears encryption state + reloads
   };

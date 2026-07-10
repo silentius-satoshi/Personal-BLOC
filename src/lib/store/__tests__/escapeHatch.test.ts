@@ -20,7 +20,7 @@ vi.mock('../../nostr/relays', async (importOriginal) => ({
   fetchUserRelays: vi.fn(),
 }));
 
-import { resetAndResync } from '../escapeHatch';
+import { resetAndResync, resetAndResyncConfirmMessage } from '../escapeHatch';
 import { setStoreKey, isStoreUnlocked } from '../storeCrypto';
 import * as storeMod from '../../../store/useStore';
 
@@ -92,5 +92,22 @@ describe('resetAndResync (reload-based teardown)', () => {
   it('THE STRUCTURAL GUARANTEE — the module references NO publish symbol (a push is impossible by construction)', () => {
     const src = readFileSync(new URL('../escapeHatch.ts', import.meta.url), 'utf8');
     expect(src).not.toMatch(/publishSettingsNow|publishRecordsNow/);
+  });
+});
+
+// R2c-6-final (bypass 1): a generated-unverified key has no relay copy, so "reloads from the relays" is a lie and
+// resetting deletes the plan permanently — the confirm must say so.
+describe('resetAndResyncConfirmMessage', () => {
+  it('warns of permanent loss (never promises the relay) when never synced', () => {
+    const msg = resetAndResyncConfirmMessage(true);
+    expect(msg).toContain('deletes it permanently');
+    expect(msg).toContain('Save your Recovery Key first');
+    expect(msg).not.toMatch(/reloads it from the relays|stays on the relay/);
+  });
+
+  it('the normal branch promises the relay + warns about unsynced changes', () => {
+    const msg = resetAndResyncConfirmMessage(false);
+    expect(msg).toContain('reloads it from the relays');
+    expect(msg).toContain('not yet synced will be lost');
   });
 });

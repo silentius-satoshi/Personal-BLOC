@@ -216,3 +216,85 @@
 }
 
 .startOver:hover { color: var(--text-ghost); }
+
+/* R2c-6a — K2 save aids + word quiz (mirrors RecoveryKeyCeremony's aid styling). */
+.aids {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.aidBtn {
+  flex: 1;
+  min-width: 110px;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 12px;
+  font-family: inherit;
+  transition: border-color 0.12s, color 0.12s;
+}
+.aidBtn:hover { border-color: var(--text-ghost); color: var(--text-primary); }
+
+.aidHint {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin: 0;
+  line-height: 1.45;
+  text-align: center;
+}
+
+.qrPanel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 16px;
+  background: #fff;   /* white so the QR reads on paper */
+  border-radius: 10px;
+}
+.qrBtn {
+  background: none;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  color: #111;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 8px 16px;
+  font-family: inherit;
+}
+
+.quizBox {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.quizInput {
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--bg-base);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-family: inherit;
+  outline: none;
+  padding: 10px 12px;
+  color-scheme: dark;
+  -webkit-appearance: none;
+  appearance: none;
+  transition: border-color 0.12s;
+}
+.quizInput:focus { border-color: var(--btc); }
+
+.skipHint {
+  font-size: 11px;
+  color: var(--text-faint);
+  text-align: center;
+  line-height: 1.4;
+  margin: 0;
+}

@@ -79,16 +79,19 @@ const GATE_ONBOARDED_KEY = 'personal-bloc-onboarded';
 const GATE_AUTH_KEY      = 'personal-bloc-nostr-auth';       // 'nostrAuthEnabled'
 const GATE_METHOD_KEY    = 'personal-bloc-nostr-method';     // 'nostrSigningMethod'
 const GATE_PUBKEY_KEY    = 'personal-bloc-nostr-pubkey';     // 'nostrPubkey'
+const GATE_PROVENANCE_KEY = 'personal-bloc-provenance';      // 'keyProvenance' — standalone so it survives the escape hatch (bypass 1)
 
 const {
   gOnboarded: seedOnboardingComplete,
   gAuth:      seedNostrAuthEnabled,
   gMethod:    seedNostrSigningMethod,
   gPubkey:    seedNostrPubkey,
+  gProvenance: seedKeyProvenance,
 } = (() => {
   let onboarded = false;
   let method: 'nip07' | 'nip46' | 'local' | null = null;
   let pubkey: string | null = null;
+  let provenance: 'generated' | 'imported' | 'external' | null = null;
   try {
     onboarded = localStorage.getItem(GATE_ONBOARDED_KEY) === '1';
     const m   = localStorage.getItem(GATE_METHOD_KEY);
@@ -108,12 +111,31 @@ const {
         }
       }
     }
+    // R2c-6-final (bypass 1): keyProvenance must survive the escape hatch (which nukes the blob but keeps GATE
+    // keys), so it gets its own standalone key. ⚠ Its back-fill is gated on PROVENANCE ALONE — the combined
+    // all-absent gate above is skipped on every post-3a.4 install (GATE keys present), which is exactly the
+    // population the escape-hatch bypass threatens.
+    const p = localStorage.getItem(GATE_PROVENANCE_KEY);
+    provenance = (p === 'generated' || p === 'imported' || p === 'external') ? p : null;
+    if (provenance == null) {
+      const raw = localStorage.getItem('personal-bloc-store');
+      if (raw) {
+        const o = JSON.parse(raw);
+        if (o && o.ct == null && o.iv == null) {   // plaintext blob ONLY
+          const kp = (o.state ?? {}).keyProvenance;
+          if (kp === 'generated' || kp === 'imported' || kp === 'external') {
+            provenance = kp;
+            localStorage.setItem(GATE_PROVENANCE_KEY, kp);
+          }
+        }
+      }
+    }
     // B1: nostrAuthEnabled is DERIVED from pubkey presence — mirror GATE_AUTH_KEY to GATE_PUBKEY_KEY so the 3a.4
     // encrypted-cold-start gate still fires (GATE_AUTH_KEY present whenever GATE_PUBKEY_KEY is) AND any legacy
     // desync (the half-state: auth flag out of step with pubkey) self-heals on launch.
     if (pubkey) localStorage.setItem(GATE_AUTH_KEY, '1'); else localStorage.removeItem(GATE_AUTH_KEY);
   } catch { /* noop */ }
-  return { gOnboarded: onboarded, gAuth: !!pubkey, gMethod: method, gPubkey: pubkey };
+  return { gOnboarded: onboarded, gAuth: !!pubkey, gMethod: method, gPubkey: pubkey, gProvenance: provenance };
 })();
 
 /**
@@ -128,8 +150,13 @@ const {
  * R2a-1: the backup-gate fields are identity-scoped too, so the signed-out branch nulls them for the same reason —
  * disconnect clears them, but its blob write may not land, and a stale 'generated' + null would re-gate a device
  * that has since imported a key (setKeyProvenance is write-once).
+ * R2c-6-final (bypass 1): keyProvenance is gated on its own live GATE_PROVENANCE_KEY (standalone-authoritative),
+ * because the escape hatch nukes the blob but keeps the GATE keys — without this, a reset would refill provenance
+ * to null (= legacy grandfather = satisfied) and a generated-unverified key would ungate itself. ⚠ ASYMMETRY:
+ * backupVerifiedAt needs NO standalone key — it's a SYNCED plan field, so a VERIFIED key re-hydrates it from the
+ * relay on the post-reset pull; an unverified key's null (empty relay) is correct. It passes through ...persisted.
  */
-export function gateHydratedIdentity(persisted: any, gatePubkey: string | null, gateMethod: string | null) {
+export function gateHydratedIdentity(persisted: any, gatePubkey: string | null, gateMethod: string | null, gateProvenance: string | null) {
   if (!gatePubkey) {
     return { ...persisted, nostrPubkey: null, nostrSigningMethod: null, nostrAuthEnabled: false, keyProvenance: null, backupVerifiedAt: null };
   }
@@ -137,6 +164,7 @@ export function gateHydratedIdentity(persisted: any, gatePubkey: string | null, 
     ...persisted,
     nostrPubkey: persisted?.nostrPubkey ?? gatePubkey,
     nostrSigningMethod: gateMethod ?? persisted?.nostrSigningMethod ?? null,   // LIVE GATE_METHOD_KEY authoritative; blob fallback (fixes local-login hydrating stale nip46)
+    keyProvenance: gateProvenance ?? persisted?.keyProvenance ?? null,          // LIVE GATE_PROVENANCE_KEY authoritative — survives the escape hatch (bypass 1)
     nostrAuthEnabled: true,   // pin: GATE affirms identity
   };
 }
@@ -1410,10 +1438,12 @@ export const useStore = create<StoreState>()(
   nostrLogin:         null,
   writerKeyWrapped:   seedWriterKeyWrapped,
   writerKeyWrapMeta:  seedWriterKeyWrapMeta,
-  // Backup gate (R2a-1). Both null on a fresh install AND — via the custom persist `merge`, which fills absent
-  // keys from `current` — for every plan established before R2. That is the STRUCTURAL grandfathering: a legacy
-  // owner has keyProvenance null → isBackupGateSatisfied() → true → never gated. Deliberately NO migration.
-  keyProvenance:      null,
+  // Backup gate (R2a-1). Null on a fresh install AND — via the custom persist `merge`, which fills absent keys
+  // from `current` — for every plan established before R2. That is the STRUCTURAL grandfathering: a legacy owner
+  // has keyProvenance null → isBackupGateSatisfied() → true → never gated. Deliberately NO migration.
+  // R2c-6-final: standalone-seeded from GATE_PROVENANCE_KEY (survives the escape hatch — bypass 1); the `merge`
+  // still overrides authoritatively on rehydrate.
+  keyProvenance:      seedKeyProvenance,
   backupVerifiedAt:   null,
   viewers:            [],   // Multi-viewer roster (M1) — empty on fresh install; the owner adds viewers via Sharing
   nextViewerIndex:    0,
@@ -1456,6 +1486,10 @@ export const useStore = create<StoreState>()(
       if (cur !== v) console.warn(`keyProvenance already set (${cur}) — ignoring ${v}`);
       return;
     }
+    // R2c-6-final: write through to the standalone GATE_PROVENANCE_KEY (outside the blob) so provenance survives
+    // the escape hatch. AFTER the write-once guard so an ignored write never touches storage. The null clear-branch
+    // (disconnectNostr / "Remove local key") removeItem's it — provenance dies with the identity.
+    try { v == null ? localStorage.removeItem(GATE_PROVENANCE_KEY) : localStorage.setItem(GATE_PROVENANCE_KEY, v); } catch { /* noop */ }
     set({ keyProvenance: v });
   },
   // Stamping verification OPENS the gate, so it must also WAKE the engine. It (a) sets the field, (b) marks
@@ -1689,9 +1723,10 @@ export const useStore = create<StoreState>()(
       // rehydrate (same-version included); migrate only fires on a version bump, so it can't cover this path. All
       // non-identity persisted fields pass through unchanged.
       merge: (persisted, current) => {
-        const gatePubkey = (() => { try { return localStorage.getItem(GATE_PUBKEY_KEY); } catch { return null; } })();
-        const gateMethod = (() => { try { return localStorage.getItem(GATE_METHOD_KEY); } catch { return null; } })();
-        return { ...current, ...gateHydratedIdentity(persisted, gatePubkey, gateMethod) } as typeof current;
+        const gatePubkey     = (() => { try { return localStorage.getItem(GATE_PUBKEY_KEY); } catch { return null; } })();
+        const gateMethod     = (() => { try { return localStorage.getItem(GATE_METHOD_KEY); } catch { return null; } })();
+        const gateProvenance = (() => { try { return localStorage.getItem(GATE_PROVENANCE_KEY); } catch { return null; } })();
+        return { ...current, ...gateHydratedIdentity(persisted, gatePubkey, gateMethod, gateProvenance) } as typeof current;
       },
       migrate: migrateState,
       onRehydrateStorage: () => (state) => {

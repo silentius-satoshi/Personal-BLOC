@@ -21,6 +21,7 @@ import { clearStoreEncryptionState } from './storeCrypto';
  *     personal-bloc-nostr-pubkey                identity
  *     personal-bloc-nostr-auth                  identity
  *     personal-bloc-nostr-method                identity
+ *     personal-bloc-provenance                  identity — keyProvenance (standalone; survives the escape hatch)
  *     bloc-nostr-log             (sessionStorage) relay/sync metadata for the departing identity
  *
  *   DEVICE-LEVEL — retained (the only one):
@@ -50,6 +51,7 @@ export function wipeLocalPlanData(): void {
     'personal-bloc-nostr-pubkey',
     'personal-bloc-nostr-auth',
     'personal-bloc-nostr-method',
+    'personal-bloc-provenance',
   ]) {
     try { localStorage.removeItem(key); } catch { /* noop */ }
   }

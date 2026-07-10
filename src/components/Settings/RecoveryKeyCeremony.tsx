@@ -34,8 +34,10 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
   const { nostr } = useNostr();
   const wrapMeta = useStore((s) => s.writerKeyWrapMeta);
   const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);
+  const keyProvenance = useStore((s) => s.keyProvenance);
   const isPin = wrapMeta?.scheme === 'pin';
   const isEntropy = wrapMeta?.payloadKind === 'nip06-entropy';
+  const isImported = keyProvenance === 'imported';   // R2c-6a: never claim generated-fresh for a restored phrase
 
   const [step, setStep]     = useState<'explain' | 'reveal' | 'verify' | 'done'>('explain');
   const [pin, setPin]       = useState('');
@@ -253,7 +255,9 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
             <p className={styles.body}>This is the master key to your plan. Anyone with it can open your plan; without it, no one — including us — can recover it.</p>
             <p className={styles.body}>Your passkey unlocks this device. The Recovery Key is the way back in when your devices are gone. A synced passkey (iCloud, Google) is NOT a backup.</p>
             {isEntropy && (
-              <p className={styles.body}>These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job.</p>
+              isImported
+                ? <p className={styles.body}>These are the words you restored this plan with — keep them safe.</p>
+                : <p className={styles.body}>These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job.</p>
             )}
             <button className={styles.primary} onClick={onShowKey} disabled={busy}>
               {busy ? 'Unlocking…' : 'Show my Recovery Key'}

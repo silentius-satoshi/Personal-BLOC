@@ -76,6 +76,22 @@ describe('setKeyProvenance — write-once, null is an explicit clear', () => {
     useStore.getState().setKeyProvenance('imported');
     expect(useStore.getState().keyProvenance).toBe('imported');
   });
+
+  // R2c-6-final (bypass 1): keyProvenance writes through to a STANDALONE localStorage key so it survives the escape
+  // hatch (which nukes the blob but keeps the GATE keys).
+  it('writes through to the standalone GATE_PROVENANCE_KEY (stamp writes, null clears)', () => {
+    useStore.getState().setKeyProvenance('generated');
+    expect(localStorage.getItem('personal-bloc-provenance')).toBe('generated');
+    useStore.getState().setKeyProvenance(null);
+    expect(localStorage.getItem('personal-bloc-provenance')).toBeNull();
+  });
+
+  it('an ignored write-once conflict does NOT touch the standalone key', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    useStore.getState().setKeyProvenance('generated');
+    useStore.getState().setKeyProvenance('imported');   // ignored (write-once)
+    expect(localStorage.getItem('personal-bloc-provenance')).toBe('generated');
+  });
 });
 
 describe('setBackupVerifiedAt', () => {
@@ -177,16 +193,30 @@ describe('gate integration', () => {
   // Identity teardown: disconnect clears both, but its persist-blob write may not land before reload().
   // gateHydratedIdentity re-nulls them whenever GATE_PUBKEY_KEY is absent — same authority rule as identity.
   it('gateHydratedIdentity nulls both on the signed-out branch (a stale blob cannot re-gate)', () => {
-    const out = gateHydratedIdentity({ keyProvenance: 'generated', backupVerifiedAt: null, income: 4000 }, null, null);
+    const out = gateHydratedIdentity({ keyProvenance: 'generated', backupVerifiedAt: null, income: 4000 }, null, null, null);
     expect(out.keyProvenance).toBeNull();
     expect(out.backupVerifiedAt).toBeNull();
     expect(out.income).toBe(4000);   // non-identity data passes through untouched
   });
 
-  it('gateHydratedIdentity leaves both alone when signed in', () => {
-    const out = gateHydratedIdentity({ keyProvenance: 'generated', backupVerifiedAt: T }, 'pk', 'local');
+  it('gateHydratedIdentity leaves both alone when signed in (blob fallback when no standalone provenance)', () => {
+    const out = gateHydratedIdentity({ keyProvenance: 'generated', backupVerifiedAt: T }, 'pk', 'local', null);
     expect(out.keyProvenance).toBe('generated');
     expect(out.backupVerifiedAt).toBe(T);
+  });
+
+  // R2c-6-final (bypass 1): the standalone GATE_PROVENANCE_KEY is authoritative over the blob. The escape hatch
+  // nukes the blob (persisted.keyProvenance absent) but keeps the standalone key → provenance survives → a
+  // generated-unverified key stays gated instead of ungating itself to null=grandfathered.
+  it('gateHydratedIdentity prefers the standalone provenance over the blob (escape-hatch survival)', () => {
+    const out = gateHydratedIdentity({ backupVerifiedAt: null }, 'pk', 'local', 'generated');   // blob has NO keyProvenance
+    expect(out.keyProvenance).toBe('generated');
+    expect(isBackupGateSatisfied({ keyProvenance: out.keyProvenance, backupVerifiedAt: out.backupVerifiedAt ?? null })).toBe(false);
+  });
+
+  it('gateHydratedIdentity: standalone wins even when the blob disagrees', () => {
+    const out = gateHydratedIdentity({ keyProvenance: 'imported' }, 'pk', 'local', 'generated');
+    expect(out.keyProvenance).toBe('generated');
   });
 });
 

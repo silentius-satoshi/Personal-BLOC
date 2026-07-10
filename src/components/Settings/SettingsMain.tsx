@@ -28,7 +28,7 @@ import { isBackupGateSatisfied } from '../../lib/backupGate';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
-import { resetAndResync } from '../../lib/store/escapeHatch';
+import { resetAndResync, resetAndResyncConfirmMessage } from '../../lib/store/escapeHatch';
 import { migrateEncryptedToPlaintext, blobIsPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
@@ -283,6 +283,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
   const wrapScheme          = useStore((s) => s.writerKeyWrapMeta?.scheme);   // 'prf' | 'pin' — how the user unlocks
+  // R2c-6a: scheme-honest local-key label — a PIN key is never promised a biometric.
+  const localMethodLabel    = wrapScheme === 'pin' ? 'PIN · local key' : `${biometricLabel()} · local key`;
   const isAuthenticated     = useStore((s) => s.isAuthenticated);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const lastSettingsSyncAt  = useStore((s) => s.lastSettingsSyncAt);
@@ -317,7 +319,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const [recoveryMsg, setRecoveryMsg]   = useState<string | null>(null);
 
   const handleResetAndResync = () => {
-    if (!window.confirm('This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?')) return;
+    // R2c-6-final: for a generated-unverified key (backupGated) the relay is empty — the confirm warns of permanent loss.
+    if (!window.confirm(resetAndResyncConfirmMessage(backupGated))) return;
     setRecoveryBusy(true);
     setRecoveryMsg(null);
     resetAndResync(nostr);   // reload-based: clears encryption state + reloads; the normal boot unlock → syncNow repopulates from the relay
@@ -564,7 +567,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               </button>
               <div className={styles.identityMeta}>
                 <span className={styles.identityChip}>
-                  {nostrSigningMethod === 'local' ? 'Face ID · local key' : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}
+                  {nostrSigningMethod === 'local' ? localMethodLabel : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}
                 </span>
                 <span className={styles.identityStatus}>
                   <span className={nostrReconnectNeeded ? styles.identityDotWarn : styles.identityDotOn} />
@@ -586,7 +589,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           <div className={styles.settingsGroupLabel}>THIS DEVICE</div>
           <div className={styles.syncRow}>
             <span className={styles.syncRowLabel}>Signing method</span>
-            <span className={styles.syncRowValue}>{nostrSigningMethod === 'local' ? 'Face ID · local key' : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}</span>
+            <span className={styles.syncRowValue}>{nostrSigningMethod === 'local' ? localMethodLabel : nostrSigningMethod === 'nip07' ? 'Extension (NIP-07)' : 'Remote signer (NIP-46)'}</span>
           </div>
           {nostrSigningMethod !== 'local' && nostrReconnectNeeded && (
             <button className={styles.nostrReconnectBtn} onClick={() => reconnectNostr()}>Reconnect</button>

@@ -19,3 +19,16 @@ export function resetAndResync(_nostr?: NostrParam): void {
   clearStoreEncryptionState();
   window.location.reload();
 }
+
+/**
+ * The confirm copy for the escape hatch, honest per state. ⚠ For a generated-and-never-verified key the sync engine
+ * has been gated off since minute one (R2a-1), so the relay holds NOTHING — "reloads from the relays" is a LIE and
+ * resetting is permanent deletion. Pass `neverSynced = !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })`
+ * (never re-derived). String-only, so escapeHatch keeps its structural no-publish guarantee.
+ */
+export function resetAndResyncConfirmMessage(neverSynced: boolean): string {
+  if (neverSynced) {
+    return '⚠ This plan has never been backed up or synced — resetting deletes it permanently. Save your Recovery Key first if you want to keep it.';
+  }
+  return 'This clears local data on this device and reloads it from the relays. Your Nostr key and relay data are safe. Any local changes not yet synced will be lost. Continue?';
+}

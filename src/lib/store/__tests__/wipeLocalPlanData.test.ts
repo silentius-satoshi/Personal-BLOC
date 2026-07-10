@@ -27,6 +27,7 @@ const PLAN_LOCAL_KEYS = [
   'personal-bloc-nostr-pubkey',
   'personal-bloc-nostr-auth',
   'personal-bloc-nostr-method',
+  'personal-bloc-provenance',                 // identity — keyProvenance (standalone; survives the escape hatch)
 ];
 const PLAN_SESSION_KEYS = ['bloc-nostr-log'];
 const DEVICE_LOCAL_KEYS = ['bloc-device-tag'];
