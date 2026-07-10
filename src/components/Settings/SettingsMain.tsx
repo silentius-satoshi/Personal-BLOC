@@ -36,7 +36,7 @@ import { useRelayStatus } from '../../hooks/useRelayStatus';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { disconnectNostr, reconnectNostr, signOutLocal } from '../../lib/nostr/disconnect';
+import { disconnectNostr, reconnectNostr, signOutLocal, signOut, signOutConfirmMessage } from '../../lib/nostr/disconnect';
 import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
@@ -498,6 +498,22 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             {!viewerMode && <SettingsRow icon="🌐" title="Network" subtitle="Relays & connections" onClick={() => setSettingsPage('network')} styles={styles} />}
             <SettingsRow icon="ℹ️" title="About" subtitle="Build info" onClick={() => setSettingsPage('about')} styles={styles} />
           </div>
+
+          {/* Sign out — LAST item, the conventional place people scroll to. Deliberately OUTSIDE .settingsMenu so
+              its margins don't fight that container's flex gap (same rationale as BackupNagCard above it).
+              Owner-only STRUCTURALLY: the viewerMode early-return to <ViewerSettings/> precedes this whole block.
+              Method-aware — see signOut()'s header for why nip07 must not use reconnectNostr. */}
+          {nostrPubkey && nostrSigningMethod && (
+            <button
+              className={styles.signOutBottom}
+              onClick={() => {
+                if (!window.confirm(signOutConfirmMessage(nostrSigningMethod, wrapScheme))) return;
+                signOut(nostrSigningMethod);
+              }}
+            >
+              Sign out
+            </button>
+          )}
         </>
       )}
 

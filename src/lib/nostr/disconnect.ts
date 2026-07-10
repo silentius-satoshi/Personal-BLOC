@@ -1,4 +1,5 @@
 import { useStore } from '../../store/useStore';
+import { biometricLabel } from '../biometricLabel';
 
 export function disconnectNostr(): void {
   const s = useStore.getState();
@@ -57,4 +58,54 @@ export function signOutLocal(): void {
   // Shared teardown, reused verbatim (no duplication): clears signer/bunkerUri/login/isAuthenticated, retains the
   // identity + gate fields + wrapped key, reloads.
   reconnectNostr();
+}
+
+export type SigningMethod = 'nip07' | 'nip46' | 'local' | null;
+
+/**
+ * Method-aware SIGN OUT — the user-facing "get me out of this session" action, dispatched to whichever existing
+ * teardown actually achieves it for the signer in use. Surfaced at the bottom of the Settings menu and in the
+ * full-mode dropdown.
+ *
+ * ⚠ WHY nip07 → disconnectNostr, and why that is NOT the "harder" action here.
+ *
+ * DESTRUCTIVENESS IS A PROPERTY OF WHAT'S AT STAKE, NOT OF THE FUNCTION. A nip07 user has no on-device key — it
+ * lives in the extension. `disconnectNostr` clears nostrPubkey/nostrSigningMethod/keyProvenance/backupVerifiedAt,
+ * and every one of those is re-stamped on the next extension login (keyProvenance → 'external', which makes
+ * isBackupGateSatisfied true by construction; backupVerifiedAt is irrelevant to that predicate). Re-login is one
+ * approval. So for nip07 it is the *reversible* sign-out.
+ *
+ * ⚠ And it is the ONLY teardown auto-restore cannot silently undo. `reconnectNostr` retains nostrPubkey (hence
+ * nostrAuthEnabled), and after its reload `useNostrAutoRestore` early-returns ONLY for 'local' and for
+ * (nip46 && !nostrLogin) — a nip07 session falls through to setIsAuthenticated(true) → restoreSigner →
+ * NLogin.fromExtension(), which an authorized extension answers SILENTLY. The user would tap Sign out, the page
+ * would reload, and they would still be signed in. NEVER collapse this to `external → reconnectNostr`.
+ *
+ * Accepted duplication: for nip07 this is the same act as THIS DEVICE's "Disconnect" — two framings (a
+ * discoverable exit vs. in-context identity management) of one function.
+ */
+export function signOut(method: SigningMethod): void {
+  if (method === 'local') { signOutLocal(); return; }        // key stays on device → LocalUnlockGate
+  if (method === 'nip46') { reconnectNostr(); return; }      // nostrLogin cleared → NostrAuthGate; pubkey kept
+  if (method === 'nip07') { disconnectNostr(); return; }     // see above — the only thing auto-restore can't undo
+  // null → nothing to sign out of (a viewer, or never signed in). The call sites gate on the method, so this is
+  // defensive: silently do nothing rather than reload.
+}
+
+/**
+ * The confirm copy for {@link signOut}. ⚠ It must describe the MECHANISM the dispatch actually runs — never
+ * promise retention a teardown does not provide, and never promise a biometric a PIN-scheme key does not have
+ * (the P0 lesson).
+ */
+export function signOutConfirmMessage(method: SigningMethod, scheme?: 'prf' | 'pin'): string {
+  if (method === 'local') {
+    const unlockWith = scheme === 'pin' ? 'your PIN' : biometricLabel();
+    return `Sign out of this device? Your key stays saved here — unlock with ${unlockWith} to sign back in.`;
+  }
+  if (method === 'nip46') {
+    return "Sign out? Your key stays in your remote signer — you'll re-approve to sign back in.";
+  }
+  // ⚠ nip07 makes NO identity-retention claim: disconnectNostr clears the app-side record. The KEY is safe in the
+  // extension and re-login is one approval — which is exactly, and only, what this says.
+  return "Sign out? You'll re-approve with your extension to sign back in.";
 }
