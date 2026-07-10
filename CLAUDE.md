@@ -14,7 +14,7 @@ Deployed to Vercel.
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (755 tests — all must pass before every commit)
+- Vitest (851 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -3151,8 +3151,9 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-827 tests — `npx vitest run` before every commit.
-- `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim
+851 tests — `npx vitest run` before every commit.
+- `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
+- `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
 - `src/lib/__tests__/bufferAliasing.test.ts` — R2c-7b, the executable form of the R2c-7a **`.slice()` Critical Constraints row** (3 cases, pure, no React). Reconstructs the hazard: a `Uint8Array` in a struct (React state) + a consumer that PERSISTS its argument then zeros it in a `finally` before throwing (`establishLocalOwner`'s real ordering — wrap+persist BEFORE deriving the pubkey). **ALIASED** → the throw zeros `state.sk` in place, and the retry persists 32 ZERO bytes (a corrupted credential for an identity that never existed). **COPIED** → `.slice()` sacrifices the copy, `state.sk` survives, the retry persists the real key. Plus `.slice()` is a copy not a view. ⚠ It does NOT exercise NostrAuthGate's retry (no render harness — house rule); it makes "copy a buffer you're about to zero" fail loudly if a refactor deletes the copy as redundant
 - `src/lib/backup/__tests__/recoveryFile.test.ts` — R2c-7b pure file builder (10 cases): plaintext-words body, plaintext-nsec body, encrypted-ncryptsec body (`(ENCRYPTED)` + names the passphrase, and does NOT say "never share it" — a different mitigation); a `PERSONAL BLOC RECOVERY KEY` header precedes a blank line + the artifact for ALL THREE kinds (the header is the honest mitigation for a plaintext artifact — never droppable by kind); exactly one trailing newline; filenames per kind (plaintext → `DO-NOT-SHARE`, encrypted → `-encrypted` and NOT `DO-NOT-SHARE`, `qr` → `.png` keeping the marker)
 - `src/lib/nostr/__tests__/ncryptsec.test.ts` — R2c-7a-fix, the two layers that let the Recovery-key tab tell a malformed payload from a wrong passphrase (15 cases, real `nip49` output, `logn:1` so scrypt stays fast). **Layer 1 `isWellFormedNcryptsec`:** a real encrypt output → true; **a full handoff token (`ncryptsec + ':' + npub`) → false** (the exact input R2c-7a misreported as "Wrong passphrase" — it still prefix-matches as `encrypted`, so only the shape gate catches it); truncated / bare nsec / trailing newline / uppercase / garbage → false; **a 1-char typo PASSES** (documented hole — length + charset intact → Layer 2 owns it); `NCRYPTSEC_LENGTH === 162` pinned across `logn` 1/8/16 (a silent length change would disable the gate; `logn:20` is omitted — 2²⁰ scrypt rounds blow the 5s timeout for zero extra coverage, and `logn` is one payload byte so it cannot affect length). **Layer 2 `classifyNcryptsecError`:** `decrypt(valid, wrongPass)` → `'passphrase'`; broken checksum / wrong prefix / full token → `'malformed'`; a non-Error throw → `'malformed'` (safe default); discriminates on `'invalid tag'` specifically
@@ -3796,6 +3797,72 @@ cleanup. Additive UI + one transient store field; the gate plumbing / ceremony i
 
 ---
 
+## Remanence — identity-forget wipes the plan; sign-out retains it (R2c-6b; store unchanged, NO bump)
+
+**The bug (found on device):** after a nip07 disconnect the persisted plan blob SURVIVED. `disconnectNostr` cleared
+identity *fields* only; it never touched `localStorage['personal-bloc-store']`. AppShell's auth gates all condition on
+`nostrAuthEnabled` → now false → the ladder falls straight through to Branch J and the **identity-less shell renders
+the full hydrated plan to whoever opens the tab next**. Same hole in "Remove local key" (nulled key material +
+provenance, left the blob).
+
+**The rule.** **IDENTITY-FORGET** (`disconnectNostr`; Settings → THIS DEVICE → "Remove local key" and "Disconnect")
+wipes plan-scoped storage via **`wipeLocalPlanData()`**. **SIGN-OUT** (`signOutLocal`, nip46 `reconnectNostr`) retains
+it — the same user returns to the same plan behind the lock, so wiping would force a relay re-pull and lose anything
+not yet synced. `resetAndResync` retains `WK_* + onboarded + GATE_*` (it nukes only the blob, via
+`clearStoreEncryptionState`) and is therefore a **re-hydrate, not a forget** — that key-set difference is the whole
+distinction between the two functions.
+
+**`src/lib/store/wipeLocalPlanData.ts`** (NEW; sibling of `escapeHatch.ts` so the latter's structural "references no
+publish symbol" test stays unentangled). Reuses `clearStoreEncryptionState()` (which already covers the blob + enc
+flag + pending-decrypt marker + the in-memory `storeKey`) then removes the rest. **No `reload()` inside** — callers own
+reload ordering (the `signOutLocal` lesson: navigation ends execution).
+
+⚠ **THE KEY INVENTORY IS THE CONTRACT** (duplicated as the function's doc comment; `wipeLocalPlanData.test.ts` asserts
+it exhaustively — a new storage key added without classifying it here fails the suite):
+
+| Key | Store | Class |
+|---|---|---|
+| `personal-bloc-store` | local | PLAN — the persist blob (plaintext or `{ct,iv}`) |
+| `personal-bloc-store-enc-enabled` | local | PLAN — at-rest enc flag for that blob |
+| `personal-bloc-store-enc-pending-decrypt` | local | PLAN — migration marker for that blob |
+| `personal-bloc-writer-key-wrapped` / `-meta` | local | PLAN — wrapped nsec + wrap meta (key material) |
+| `personal-bloc-onboarded` | local | PLAN — ⚠ gates the entry fork, see below |
+| `personal-bloc-nostr-pubkey` / `-auth` / `-method` | local | PLAN (identity) — also removed by the setters; wiped here too so the fn is correct STANDALONE |
+| `bloc-nostr-log` | **session** | PLAN — relay/sync metadata for the departing identity |
+| `bloc-device-tag` | local | **DEVICE — RETAIN** (the only retained key) |
+
+- ⚠ **`personal-bloc-onboarded` is NOT blob-resident.** It's the standalone `GATE_ONBOARDED_KEY`, seeded into the
+  store's INITIAL state at module init. **Wiping only `personal-bloc-store` leaves `onboardingComplete: true` → the
+  fresh entry fork never renders** — the same bug, half-fixed. Removing it is what lands a forgotten device on
+  `ChoosePathView`.
+- ⚠ **Never sweep by `personal-bloc-` prefix** — `bloc-device-tag` and `bloc-nostr-log` don't carry it. A prefix sweep
+  misses the log ring and tempts a "fix" that eats the device tag.
+- ⚠ Not storage keys: `personal-bloc-plan-backup*` / `personal-bloc-recovery-key*` are `downloadBlob` **filenames**.
+  There is **no** disclaimer/consent ack key (grep-verified — the `disclaimer` hits in `src/` are CSS class names).
+
+**`nip07` sign-out wipes, BY DESIGN.** `signOut('nip07')` routes to `disconnectNostr` (it is the only teardown
+auto-restore can't silently undo — see the Critical Constraints row), so the bottom "Sign out" now removes the plan.
+That is right for the shared-desktop context an extension lives in: the data follows the identity off the device, and
+one extension approval re-hydrates it from the relay. Its confirm says exactly that. `local`/`nip46` sign-out keep
+their copy verbatim — neither wipes.
+
+**Confirm copy must be true in every state.** `identityForgetConfirmMessage(kind, neverSynced)` (pure, `disconnect.ts`)
+backs the two Settings confirms. `neverSynced = !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })` — imported
+from `lib/backupGate`, **never re-derived** (SettingsMain reuses its existing `backupGated`). The normal branch promises
+the relay copy AND warns "Any changes not yet synced will be lost"; the `neverSynced` branch **must not** promise a relay
+copy at all — a `generated` key with no `backupVerifiedAt` has had all 11 R2a-1 gate sites holding sync/publish off
+since minute one, so **the relay holds NOTHING** and forgetting the identity deletes the plan permanently ("⚠ This plan
+has never been backed up or synced — {disconnecting | removing this key} deletes it permanently. Save your Recovery Key
+first…"). Destructive-weight styling is already present: both call sites are `.nostrDisconnectBtn` (red); only
+`.signOutBtn` stays neutral.
+
+**"Remove local key" DELEGATES** (`SettingsMain`): it keeps its two local-key-specific clears
+(`setWriterKeyWrapped(null)` / `setWriterKeyWrapMeta(null)`) then calls `disconnectNostr()` — which owns the identity
+clears, the backup-gate clears, the wipe, and the reload. Its hand-rolled teardown sequence is gone (no duplication,
+no drift), and it lands on the same fresh fork.
+
+---
+
 ## Nostr Integration (Steps 1–3 ✅ Complete)
 
 ### Status
@@ -4394,6 +4461,13 @@ src/
                                     # entry beside its destructive sibling "Remove local key") and calls signOutLocal
                                     # directly. Viewers are excluded structurally (SettingsMain early-returns
                                     # <ViewerSettings/>; a viewer's nostrSigningMethod is null).
+                                    # identityForgetConfirmMessage(kind:'disconnect'|'remove-key', neverSynced) —
+                                    # PURE copy for the two Settings identity-forget confirms. Both wipe (they route
+                                    # through disconnectNostr) so both say so + warn "changes not yet synced will be
+                                    # lost". ⚠ neverSynced = !isBackupGateSatisfied(...) (imported, never re-derived):
+                                    # a generated + unverified key has had sync gated off since minute one, so the
+                                    # relay holds NOTHING and the copy must NOT promise a relay copy — it warns of
+                                    # permanent deletion instead. See § Remanence
                                     # signOutLocal (R2c-6b) — NON-DESTRUCTIVE local sign out. Sets
                                     # setNostrAuthEnabled(true) then DELEGATES to reconnectNostr (no duplicated
                                     # clears; reconnectNostr's body is untouched). ⚠ The setter runs BEFORE the
@@ -4409,7 +4483,10 @@ src/
                                     # gated nostrSigningMethod === 'local'. ⚠ NOT for nip07/46 — their existing
                                     # "Disconnect" IS their sign-out (the key lives in the extension/bunker); a
                                     # second control would be two words for one action.
-                                    # disconnectNostr — clears state + window.location.reload() to flush NPool
+                                    # disconnectNostr — the ONE identity-FORGET: clears state, then calls
+                                    # wipeLocalPlanData() as its LAST mutation (⚠ a store set() after it re-persists
+                                    # the blob), then window.location.reload() to flush NPool. Lands on the fresh
+                                    # entry fork. reconnectNostr/signOutLocal deliberately do NOT wipe (§ Remanence)
     signers.ts                      # connectNip07 only (connectNip46/connectNip46QR + SignerContext deleted)
   lib/store/
     storeCrypto.ts                  # At-rest store encryption (Phase B) — in-memory storeKey holder (getStoreKey/
@@ -4422,7 +4499,19 @@ src/
                                     # pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key) so a
                                     # later plaintext-adapter load can't misread a stale {ct,iv} envelope → seeds (the
                                     # "settings revert to defaults" desync). FIRST action of BOTH teardown paths
-                                    # ("Remove local key" + escapeHatch.resetAndResync), which reload after
+                                    # (escapeHatch.resetAndResync + wipeLocalPlanData), which reload after
+    wipeLocalPlanData.ts            # R2c-6b — wipeLocalPlanData(): void. The plan-data wipe for the IDENTITY-FORGET
+                                    # paths (disconnectNostr, which "Remove local key" delegates to). Reuses
+                                    # clearStoreEncryptionState() (blob + enc flag + pending-decrypt + in-memory key),
+                                    # then removes WK_* + personal-bloc-onboarded + the 3 GATE_* identity keys +
+                                    # sessionStorage 'bloc-nostr-log'. RETAINS 'bloc-device-tag' (the only device-level
+                                    # key). ⚠ THE CLASSIFIED KEY INVENTORY IN ITS DOC COMMENT IS THE CONTRACT — a new
+                                    # storage key must be classified there; wipeLocalPlanData.test.ts asserts it
+                                    # exhaustively. ⚠ personal-bloc-onboarded is standalone, NOT blob-resident: wiping
+                                    # only the blob leaves onboardingComplete true → the fresh entry fork never renders
+                                    # (the same bug, half-fixed). ⚠ NEVER sweep by 'personal-bloc-' prefix (bloc-device-
+                                    # tag / bloc-nostr-log don't carry it). NO reload() inside — callers own ordering.
+                                    # NOT called by signOutLocal / reconnectNostr / resetAndResync. See § Remanence
     storeMigration.ts               # migratePlaintextToEncrypted (3a.3: WIRED — restoreSigner calls it inline at
                                     # unlock, between setStoreKey + rehydrate) / migrateEncryptedToPlaintext (still
                                     # unused until 3a.5 opt-OUT). VERIFY-BEFORE-DELETE: never overwrite the source
@@ -5023,6 +5112,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
 | NEVER collapse the sign-out dispatch to `external → reconnectNostr` | `reconnectNostr` retains `nostrPubkey`, and `useNostrAutoRestore` early-returns only for `'local'` and for `(nip46 && !nostrLogin)` — so a **nip07** session falls through to `setIsAuthenticated(true)` → `restoreSigner` → `NLogin.fromExtension()`, which an authorized extension answers **silently**. Sign out would reload and leave the user signed in: a control that visibly does nothing. `signOut()` therefore routes `nip07 → disconnectNostr` (the only teardown auto-restore can't undo), `nip46 → reconnectNostr`, `local → signOutLocal`. This is not "the harder action" for nip07 — **destructiveness is a property of what's at stake**, and a nip07 user has no on-device key; the cleared fields re-stamp on the next one-approval login. Pinned by `disconnect.test.ts` ("'nip07' → disconnectNostr, NOT reconnectNostr") |
+| An identity-forget must never leave the plan blob readable | Clearing identity *fields* is not forgetting an identity. AppShell's auth gates all condition on `nostrAuthEnabled` — once false, the ladder falls through to Branch J and renders **whatever is in the persist blob** to whoever opens the tab next. So `disconnectNostr` (and "Remove local key", which delegates to it) calls **`wipeLocalPlanData()` as its LAST mutation before `reload()`** — zustand's persist writes the blob synchronously on every `set()`, so a store setter placed after the wipe resurrects it. Removing `personal-bloc-onboarded` is what produces the fresh entry fork; **wiping only `personal-bloc-store` does not**, because `onboardingComplete` is standalone-seeded at module init. **Never sweep by `personal-bloc-` prefix** — `bloc-device-tag` and `bloc-nostr-log` don't carry it. Sign-out (`signOutLocal`, nip46 `reconnectNostr`) must NOT wipe: the same user returns to the same plan behind the lock. Pinned by `disconnect.test.ts` + `wipeLocalPlanData.test.ts` |
 | Sign out must NEVER clear `keyProvenance` / `backupVerifiedAt` (local) | These two are what `isBackupGateSatisfied` reads. Clearing them on sign-out would re-gate sync and resurrect the backup nag **every time a verified user unlocks** — turning a reversible action into a repeated interrogation. `signOutLocal` (→ `reconnectNostr`) retains them, along with the identity and the wrapped key; only `disconnectNostr` and "Remove local key" clear them, because those destroy the identity. **The two exits must also READ as different weights** — "Sign out" is neutral (`.signOutBtn`), "Remove local key" is red (`.nostrDisconnectBtn`) — since a user who mistakes the destructive one for sign-out loses their only on-device key. Pinned by `disconnect.test.ts` |
 | ✅ FIXED (P0) — every unlock surface for a `scheme:'pin'` key MUST collect and forward the PIN | `restoreSigner(nostr, pin?)` forwards the pin to `unwrapSecretKey(wrapped, meta, pin)`, which **already accepted it** (keyVault unchanged) and ignores it for a PRF key. Both unlock surfaces branch on `writerKeyWrapMeta?.scheme === 'pin'` and render a PIN `PassphraseInput`: `LocalUnlockGate` and `NostrAuthGate.handleUnlockExisting` (#6). Before this, `restoreSigner` passed **no pin** and `LocalUnlockGate` rendered **zero inputs**, so keyVault threw `'PIN required'` → the gate showed a bare `Unlock failed` → **total lockout**, exitable only through the destructive escape hatch. Reachable via OwnerKeySetup's K3 PIN fallback or any browser without a platform authenticator. **Any NEW unlock surface must do the same** — `useNostrAutoRestore` deliberately skips `'local'` (unlock needs a gesture), so it needs no pin |
 | ⚠ The `restoreSigner` single-flight guard is PIN-AWARE — do not simplify it back | `syncNow` calls `restoreSigner(nostr)` with **no pin**, and it can run concurrently with the unlock gate (the Bug-2 history). For a `scheme:'pin'` key that pinless promise is **already doomed** (`'PIN required'` → caught → `null`). A plain `if (restoreInFlight) return restoreInFlight` would hand the user that doomed promise and report failure **on a correct PIN**. Rule: **a pin-bearing call never joins a pinless in-flight restore**; every other combination shares as before (a pinless `syncNow` joining a pinned unlock is desirable — it gets the real signer). WebAuthn's one-ceremony rule is preserved because the PRF path never passes a pin, so two PRF callers always match and always share; the only case that starts a second worker is pin-scheme, which runs PBKDF2, not WebAuthn. The in-flight `.finally` carries an **ownership check** so a superseded promise can't null the slot its replacement owns. Only a `boolean` is held at module scope — never the pin. Pinned by `restoreSignerSingleFlight.test.ts` |

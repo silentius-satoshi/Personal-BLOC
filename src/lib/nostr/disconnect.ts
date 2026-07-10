@@ -1,6 +1,13 @@
 import { useStore } from '../../store/useStore';
 import { biometricLabel } from '../biometricLabel';
+import { wipeLocalPlanData } from '../store/wipeLocalPlanData';
 
+/**
+ * Full identity FORGET: clears the identity and wipes the plan from this device's storage.
+ *
+ * ⚠ This is the app's only wiping teardown. reconnectNostr / signOutLocal / resetAndResync all RETAIN plan data —
+ * see wipeLocalPlanData for the rule and the key inventory.
+ */
 export function disconnectNostr(): void {
   const s = useStore.getState();
   // NConnectSigner exposes no public close/dispose API — reload rebuilds the pool clean.
@@ -22,6 +29,12 @@ export function disconnectNostr(): void {
   // ⚠ reconnectNostr + resetAndResync RETAIN the identity and deliberately do NOT clear these.
   s.setKeyProvenance(null);
   s.setBackupVerifiedAt(null);
+  // Remanence (R2c-6b): the setters clear identity FIELDS, not the persisted plan. Without this, the next load
+  // renders the full hydrated plan to whoever opens the tab — the auth gates all condition on nostrAuthEnabled,
+  // which is now false, so the ladder falls straight through to the app.
+  // ⚠ MUST be the LAST mutation before reload(): zustand's persist writes the blob synchronously on every set(),
+  // so any store setter placed after this call would resurrect the blob we just removed.
+  wipeLocalPlanData();
   window.location.reload();
 }
 
@@ -37,6 +50,8 @@ export function reconnectNostr(): void {
   s.setNostrLogin(null);
   s.setIsAuthenticated(false);
   // nostrPubkey + nostrSigningMethod intentionally retained; auth derives from the retained pubkey.
+  // ⚠ NO wipeLocalPlanData: this drops a SESSION, it does not forget the identity. The same user re-authenticates
+  // into the same plan — wiping would force a full relay re-pull and lose anything not yet synced.
   window.location.reload();
 }
 
@@ -44,9 +59,10 @@ export function reconnectNostr(): void {
  * Local-key SIGN OUT — NON-DESTRUCTIVE, and deliberately distinct from Settings' "Remove local key" (which nulls
  * writerKeyWrapped, clears the identity + keyProvenance/backupVerifiedAt, and wipes the encrypted blob).
  *
- * Signing out retains EVERYTHING that matters: the wrapped key, the identity (pubkey + method), and — load-bearing —
- * keyProvenance + backupVerifiedAt. So a VERIFIED key that signs out and back in stays verified: no backup ladder,
- * no nag. The user lands on LocalUnlockGate ("authenticated but locked") and unlocks with Face ID / PIN.
+ * Signing out retains EVERYTHING that matters: the wrapped key, the identity (pubkey + method), the plan data, and —
+ * load-bearing — keyProvenance + backupVerifiedAt. So a VERIFIED key that signs out and back in stays verified: no
+ * backup ladder, no nag. The user lands on LocalUnlockGate ("authenticated but locked") and unlocks with Face ID / PIN.
+ * It delegates to reconnectNostr, which never wipes — the plan waits behind the lock.
  */
 export function signOutLocal(): void {
   // ⚠ INVARIANT PIN, not dead code. A local sign-out must land AUTHENTICATED-but-LOCKED, never a full logout.
@@ -99,13 +115,37 @@ export function signOut(method: SigningMethod): void {
  */
 export function signOutConfirmMessage(method: SigningMethod, scheme?: 'prf' | 'pin'): string {
   if (method === 'local') {
+    // → signOutLocal → reconnectNostr: nothing is wiped, the plan waits behind the lock.
     const unlockWith = scheme === 'pin' ? 'your PIN' : biometricLabel();
     return `Sign out of this device? Your key stays saved here — unlock with ${unlockWith} to sign back in.`;
   }
   if (method === 'nip46') {
+    // → reconnectNostr: session only. Identity and plan both retained.
     return "Sign out? Your key stays in your remote signer — you'll re-approve to sign back in.";
   }
-  // ⚠ nip07 makes NO identity-retention claim: disconnectNostr clears the app-side record. The KEY is safe in the
-  // extension and re-login is one approval — which is exactly, and only, what this says.
-  return "Sign out? You'll re-approve with your extension to sign back in.";
+  // nip07 → disconnectNostr, which WIPES. The copy says so: the data follows the identity off the device, which is
+  // right for the shared-desktop context an extension lives in. ⚠ It makes NO identity-retention claim, and no
+  // neverSynced branch is needed — a nip07 key is keyProvenance 'external', so the backup gate is satisfied by
+  // construction and its plan has always been free to sync.
+  return "Sign out? This removes your plan from this device — you'll re-approve with your extension and it re-syncs from your relays.";
+}
+
+/**
+ * The confirm copy for the two IDENTITY-FORGET actions in Settings → THIS DEVICE. Both wipe plan-scoped storage
+ * (they route through {@link disconnectNostr}), so both must say so.
+ *
+ * ⚠ `neverSynced` is the edge where "your plan stays on the relay" is a LIE. Pass
+ * `!isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })` (from lib/backupGate — never re-derive it): a
+ * `generated` key with no `backupVerifiedAt` has had every sync and publish path gated off since minute one, so the
+ * relay holds NOTHING and forgetting the identity deletes the plan permanently.
+ */
+export function identityForgetConfirmMessage(kind: 'disconnect' | 'remove-key', neverSynced: boolean): string {
+  if (neverSynced) {
+    const verb = kind === 'disconnect' ? 'disconnecting' : 'removing this key';
+    return `⚠ This plan has never been backed up or synced — ${verb} deletes it permanently. Save your Recovery Key first if you want to keep it.`;
+  }
+  if (kind === 'disconnect') {
+    return 'Disconnect this identity from this device? Your plan stays on the relay but is removed from this device. Any changes not yet synced will be lost.';
+  }
+  return "Remove the encrypted key and plan data from this device? Your plan stays on the relay — make sure your Recovery Key is backed up, you'll need it to sign in again. Any changes not yet synced will be lost.";
 }

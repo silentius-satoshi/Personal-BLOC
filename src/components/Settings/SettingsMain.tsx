@@ -30,13 +30,13 @@ import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync } from '../../lib/store/escapeHatch';
 import { migrateEncryptedToPlaintext, blobIsPlaintext } from '../../lib/store/storeMigration';
-import { isStoreUnlocked, clearStoreEncryptionState } from '../../lib/store/storeCrypto';
+import { isStoreUnlocked } from '../../lib/store/storeCrypto';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { useRelayStatus } from '../../hooks/useRelayStatus';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { disconnectNostr, reconnectNostr, signOutLocal, signOut, signOutConfirmMessage } from '../../lib/nostr/disconnect';
+import { disconnectNostr, reconnectNostr, signOutLocal, signOut, signOutConfirmMessage, identityForgetConfirmMessage } from '../../lib/nostr/disconnect';
 import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
@@ -608,18 +608,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             <button
               className={styles.nostrDisconnectBtn}
               onClick={() => {
-                if (!window.confirm('Remove the encrypted key from this device? Make sure your nsec is backed up — you’ll need it to log in again.')) return;
+                if (!window.confirm(identityForgetConfirmMessage('remove-key', backupGated))) return;
                 const s = useStore.getState();
+                // The two local-key-specific clears disconnectNostr lacks. Everything else it owns: the identity,
+                // keyProvenance/backupVerifiedAt, the plan wipe (enc flag + {ct,iv} blob + key + the rest), reload.
                 s.setWriterKeyWrapped(null);
                 s.setWriterKeyWrapMeta(null);
-                s.setNostrSigningMethod(null);
-                s.setNostrPubkey(null);
-                s.setNostrSigner(null);
-                s.setIsAuthenticated(false);
-                s.setKeyProvenance(null);      // R2a-1: identity teardown — provenance dies with the identity (see disconnectNostr)
-                s.setBackupVerifiedAt(null);
-                clearStoreEncryptionState();   // also clear the enc flag + {ct,iv} blob + key — next launch is a clean plaintext slate (no locked-out encrypted blob)
-                window.location.reload();
+                disconnectNostr();
               }}
             >
               Remove local key
@@ -628,7 +623,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           ) : (
             <button
               className={styles.nostrDisconnectBtn}
-              onClick={() => { if (window.confirm('Disconnect this identity from this device? Your plan stays on the relay.')) disconnectNostr(); }}
+              onClick={() => { if (window.confirm(identityForgetConfirmMessage('disconnect', backupGated))) disconnectNostr(); }}
             >
               Disconnect
             </button>
