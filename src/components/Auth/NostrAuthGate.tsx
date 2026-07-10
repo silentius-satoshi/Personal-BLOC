@@ -59,7 +59,12 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   // ── Recovery Key (local-key / Face-ID signer) flow ───────────────────────────
   const [showLocal, setShowLocal]         = useState(false);
   const hasWrappedKey = !!useStore((s) => s.writerKeyWrapped);   // #6: a wrapped key survives a local→nip46→local switch
+  const wrapMeta = useStore((s) => s.writerKeyWrapMeta);         // #6: a scheme:'pin' key needs a PIN to unlock
   const [forceImport, setForceImport]     = useState(false);     // #6: user chose to import a different key
+  // ⚠ DISTINCT from `pin` below: that one SETS a new PIN on the import form. Conflating them would let a stale
+  // import value leak into an unlock (and vice-versa). Scrubbed in openLocal alongside the other transients.
+  const [unlockPin, setUnlockPin]         = useState('');
+  const unlockPinMode = wrapMeta?.scheme === 'pin';
   const [recoveryTab, setRecoveryTab]     = useState<'words' | 'key'>('words');   // R2b-3: default to the word grid
   const [gridValues, setGridValues]       = useState<string[]>(() => Array(12).fill(''));   // R2b-3 words tab — ⚠ transient secret
   const [recoveryInput, setRecoveryInput] = useState('');   // the "Recovery key" tab's field — an nsec OR an ncryptsec (R2c-7a)
@@ -167,6 +172,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setLocalMethod(null);
     setPin('');
     setPinConfirm('');
+    setUnlockPin('');   // #6 unlock PIN — transient, scrubbed with the rest
     setKeyLabel('');
     setError(null);
     // R2c-7a-2 — ⚠ transient secrets, same scrub site
@@ -358,8 +364,9 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setError(null);
     try {
       useStore.getState().setNostrSigningMethod('local');   // restore local context (may have flipped on a method switch) so restoreSigner's local branch runs
-      const signer = await restoreSigner(nostr);
-      if (!signer) throw new Error('Unlock failed');
+      // Same P0 fix as LocalUnlockGate: a scheme:'pin' key must supply its PIN or keyVault throws 'PIN required'.
+      const signer = await restoreSigner(nostr, unlockPinMode ? unlockPin : undefined);
+      if (!signer) throw new Error(unlockPinMode ? 'Could not unlock — check your PIN and try again.' : 'Unlock failed');
       setIsAuthenticated(true);
       onSuccess();
     } catch (e: any) {
@@ -636,10 +643,29 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             </>
           ) : hasWrappedKey && !forceImport ? (
             <>
-              {/* #6: a wrapped key already lives on this device — unlock it (Face ID) instead of re-importing the nsec */}
-              <p className={styles.hint}>A saved key is on this device. Unlock it with {biometricLabel()}, or import a different key.</p>
-              <button className={styles.primaryBtn} onClick={handleUnlockExisting} disabled={loading}>
-                {loading ? 'Unlocking…' : `🔒 Unlock with ${biometricLabel()}`}
+              {/* #6: a wrapped key already lives on this device — unlock it (Face ID / PIN) instead of re-importing */}
+              <p className={styles.hint}>
+                {unlockPinMode
+                  ? 'A saved key is on this device. Enter its PIN, or import a different key.'
+                  : `A saved key is on this device. Unlock it with ${biometricLabel()}, or import a different key.`}
+              </p>
+              {unlockPinMode && (
+                <PassphraseInput
+                  className={styles.input}
+                  inputMode="numeric"
+                  placeholder="PIN"
+                  value={unlockPin}
+                  onChange={(v) => { setUnlockPin(v); setError(null); }}
+                  disabled={loading}
+                  aria-label="PIN"
+                />
+              )}
+              <button
+                className={styles.primaryBtn}
+                onClick={handleUnlockExisting}
+                disabled={loading || (unlockPinMode && unlockPin.length < 4)}
+              >
+                {loading ? 'Unlocking…' : unlockPinMode ? '🔒 Unlock' : `🔒 Unlock with ${biometricLabel()}`}
               </button>
               <button className={styles.ghostBtn} onClick={() => { setForceImport(true); setError(null); }} disabled={loading}>
                 Use a different key

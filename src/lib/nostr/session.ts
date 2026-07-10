@@ -33,7 +33,7 @@ export async function waitForNostrExtension(timeoutMs = 3000): Promise<boolean> 
  * NO relay fetch, NO sync here. Returns the fresh signer, or null on any failure.
  * The inner worker — call the single-flight `restoreSigner` wrapper below, never this directly.
  */
-async function doRestoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
+async function doRestoreSigner(nostr: NostrParam, pin?: string): Promise<NostrSigner | null> {
   const { nostrSigningMethod, nostrPubkey, nostrLogin } = useStore.getState();
   if (!nostrPubkey) return null;
   try {
@@ -68,7 +68,9 @@ async function doRestoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
       // wrapped key) since this restore was queued — re-read LIVE state and bail BEFORE WebAuthn, returning the
       // current signer, so no spurious Face ID / passkey prompt fires.
       if (useStore.getState().nostrSigningMethod !== 'local') return useStore.getState().nostrSigner;
-      const sk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta);   // → triggers Face ID / PIN
+      // `pin` is REQUIRED for a scheme:'pin' key (keyVault throws 'PIN required' without it) and IGNORED for a
+      // PRF key, so the passkey path is byte-identical when callers pass nothing. The unlock UI collects it.
+      const sk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, pin);   // → triggers Face ID / PIN
       const signer = new NSecSigner(sk.slice()) as unknown as NostrSigner;
       if (await signer.getPublicKey() !== nostrPubkey) throw new Error('pubkey mismatch');
       // 3a.1: derive the at-rest store key from the nsec while we have it (flag-gated; DERIVATION ONLY — no
@@ -99,15 +101,34 @@ async function doRestoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
 }
 
 let restoreInFlight: Promise<NostrSigner | null> | null = null;
+/** Whether the in-flight restore carries a pin. A BOOLEAN — the pin itself is never retained at module scope. */
+let restoreInFlightPinned = false;
 
 /**
  * Single-flight: concurrent callers share ONE restore (and the SAME signer). WebAuthn permits only one ceremony
  * at a time — launching two (e.g. the LocalUnlockGate escape AND a reactive syncNow) aborts one (AbortError) and
  * loops the other (NotAllowedError). Mirrors syncNow's in-flight guard; module-level (one ceremony per browser);
  * `.finally` clears it so later non-concurrent restores work.
+ *
+ * `pin` is supplied ONLY by the unlock UI for a scheme:'pin' key (LocalUnlockGate / NostrAuthGate's #6).
+ *
+ * ⚠ THE GUARD IS PIN-AWARE, and that is load-bearing. `syncNow` calls `restoreSigner(nostr)` with NO pin, and it
+ * can run concurrently with the gate's unlock (the Bug-2 history). For a scheme:'pin' key that pinless promise is
+ * ALREADY DOOMED — keyVault throws 'PIN required' → caught → null. A plain `if (restoreInFlight) return it` would
+ * hand the user that doomed promise and report failure on a CORRECT PIN. So: a pin-bearing call never joins a
+ * pinless in-flight restore. Every other combination shares exactly as before — including a pinless syncNow
+ * joining a pinned unlock, which is desirable (it gets the real signer).
+ *
+ * WebAuthn's one-ceremony rule is preserved: the PRF path NEVER passes a pin, so two PRF callers always match
+ * (undefined/undefined) and always share. The only case that starts a second worker is scheme:'pin', which runs
+ * PBKDF2, not WebAuthn.
  */
-export function restoreSigner(nostr: NostrParam): Promise<NostrSigner | null> {
-  if (restoreInFlight) return restoreInFlight;
-  restoreInFlight = doRestoreSigner(nostr).finally(() => { restoreInFlight = null; });
-  return restoreInFlight;
+export function restoreSigner(nostr: NostrParam, pin?: string): Promise<NostrSigner | null> {
+  if (restoreInFlight && !(pin !== undefined && !restoreInFlightPinned)) return restoreInFlight;
+  const p = doRestoreSigner(nostr, pin);
+  restoreInFlight = p;
+  restoreInFlightPinned = pin !== undefined;
+  // Ownership check: a superseded promise settling later must not null the slot its replacement now owns.
+  p.finally(() => { if (restoreInFlight === p) { restoreInFlight = null; restoreInFlightPinned = false; } });
+  return p;
 }
