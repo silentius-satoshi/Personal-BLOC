@@ -3976,6 +3976,36 @@ src/
                                     # ceremony/RevealRecoveryKey show the user's REAL words); nsec → the raw sk as 'sk'
                                     # FOREVER (a raw key has no mnemonic; nothing to re-display). Provenance stays 'imported'
                                     # for both, stamped in the same place; the finally's payload.fill(0) zeroes either result.
+                                    # R2c-7a-2 BARE-NSEC REMEDIATION: the `nsec` branch NO LONGER falls through to
+                                    # establishLocalOwner. A raw nsec is an UNPROTECTED key, so after the (unchanged)
+                                    # decode+validate it captures `pendingSkRef.current = decoded.data.slice()` (a
+                                    # defensive copy — the raw decode buffer, still assigned to `payload`, is zeroed by the
+                                    # existing finally) + `setRemediating(true)` and RETURNS. The remediating branch renders
+                                    # FIRST inside `showLocal` (before the hasWrappedKey/#6 ternary): "Protect this key
+                                    # first" → an ENCRYPT-direction passphrase field (R1.5 state-specific label: "Passphrase
+                                    # to encrypt this backup"; a device-PIN field was on the previous screen) → **Download
+                                    # encrypted backup** (nip49.encrypt(sk, pass.trim()) → buildRecoveryFileText('ncryptsec')
+                                    # + recoveryFileName('ncryptsec', todayLocalISO()) → downloadBlob) → **Continue**
+                                    # (disabled until `bareNsecSaved`) → the SAME establish tail (method resolve →
+                                    # setKeyProvenance('imported') → establishLocalOwner(…, payloadKind:'sk') → onSuccess;
+                                    # catch → provenance rollback). ⚠ THE GATE IS ON **WHEN**, NOT **WHAT** — a bare nsec
+                                    # still wraps 'sk' (a raw key has no mnemonic); the three-way payloadKind asymmetry is
+                                    # untouched. The 'encrypted' + 'words' branches SKIP remediation entirely (an ncryptsec
+                                    # already arrives protected; words are the richer artifact) and still fall through to
+                                    # `establishLocalOwner(payload, method, nostr, {pin,keyLabel,payloadKind})` unchanged.
+                                    # FOUR DISCIPLINES, each mirroring the ceremony: (1) ⚠ `establishLocalOwner(sk.slice())`
+                                    # — NOT the held ref, and the ref is zeroed on SUCCESS/Back/openLocal/unmount but NEVER
+                                    # in a finally: establishLocalOwner wraps+persists BEFORE deriving the pubkey and zeros
+                                    # its arg either way, so zeroing the held buffer would make a cancelled-Face-ID RETRY
+                                    # wrap 32 zero bytes (the bufferAliasing.test.ts hazard). A failed establish therefore
+                                    # leaves Continue retryable. (2) ⚠ nip49.encrypt is ~1s of SYNCHRONOUS scrypt → yield 30ms
+                                    # so "Encrypting…" paints before the freeze; no prepRef needed (one-shot on tap + the
+                                    # passphrase input is disabled while encrypting, so inputs can't change mid-encrypt).
+                                    # (3) STALENESS: editing the passphrase resets `bareNsecSaved` (the prior download is
+                                    # locked with the OLD passphrase). (4) Save… sets saved ONLY on a RESOLVED
+                                    # navigator.share (an iOS cancel rejects AbortError), guarded by `if (!navigator.share)
+                                    # return` first. Errors → generic "Couldn't encrypt — try again." (⚠ never e.message).
+                                    # pendingSkRef is a REF not state so the unmount cleanup zeroes the CURRENT buffer.
                                     # R2c-7a-fix KEY-FIELD ERROR PRECEDENCE (strict, mutually exclusive; each suppresses
                                     # the passphrase field — a payload we can't parse must never be blamed on the
                                     # passphrase): (1) pastedIsHandoffToken = recoveryInput.trim().includes(':') →
@@ -3996,7 +4026,9 @@ src/
                                     # **R2c-7b's encrypted backup export is this branch's producer** (RecoveryKeyCeremony →
                                     # encrypt toggle → Download → a `-encrypted-<date>.txt` holding an owner-key ncryptsec),
                                     # so the ROUND-TRIP is the real acceptance test — export → sign out → paste → passphrase →
-                                    # establishes to the SAME pubkey. (R2c-7a-2 bare-nsec remediation is still unbuilt.) It
+                                    # establishes to the SAME pubkey. **R2c-7a-2 (bare-nsec remediation) is the SECOND
+                                    # producer** — a pasted raw nsec must now save an encrypted backup before it establishes,
+                                    # and that backup pastes straight back into this branch. It
                                     # was starved at 7a/7a-fix: the only well-formed ncryptsec then obtainable was the VIEWER
                                     # key inside a share token, which (1) rejects — so R2c-7a's manual gate "mint a viewer
                                     # token to get a real ncryptsec" was never a valid acceptance test. ⚠ An imported
@@ -4899,6 +4931,9 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Constraint | Rule |
 |---|---|
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
+| A bare nsec must save an encrypted backup BEFORE it establishes | R2c-7a-2: the `nsec` branch of `handleLocal` captures the sk and returns; establishment happens only from the remediation step's Continue, gated on `bareNsecSaved`. The friction is the point twice over — the app refuses to swallow an unprotected key, and the step *produces* the encrypted backup the user demonstrably lacked (it is also R2c-7a's second producer). ⚠ **The gate is on WHEN, not WHAT:** a bare nsec still wraps `payloadKind: 'sk'` — a raw key has no mnemonic. `'encrypted'` (already protected) and `'words'` (richer artifact) skip remediation and fall through unchanged. Never route them through it |
+| A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` | `establishLocalOwner` **wraps and persists `writerKeyWrapped` before deriving the pubkey**, then zeros its argument on success *and* on failure. So always pass a `.slice()`, and zero the long-lived buffer only on success, Back, scrub, and unmount. Zeroing it in the `finally` means a cancelled Face ID wipes it in place and the user's **retry** wraps 32 zero bytes — a corrupted credential for an identity that never existed (pinned by `src/lib/__tests__/bufferAliasing.test.ts`). Applies to `decryptState.sk` (R2c-7a) and `pendingSkRef` (R2c-7a-2) alike |
+| `nip49.encrypt` is ~1s of SYNCHRONOUS scrypt — yield before it | Setting `encrypting` state and calling `nip49.encrypt` in the same tick means React never commits the "Encrypting…" render; the button just freezes. Every encrypt site (`RecoveryKeyCeremony.ensureArtifact`, `NostrAuthGate.buildEncryptedBackup`) does `setEncrypting(true)` → `await new Promise(r => setTimeout(r, 30))` → encrypt. A `prepRef` stale-guard is needed only where inputs stay live during the yield; a one-shot tap with `disabled={encrypting}` inputs does not need one |
 | A hook may never sit to the right of `\|\|`, `&&`, or `?:` | Short-circuit evaluation makes it a **conditional hook**, and the hook count changes the render the left operand flips — React #311. This is how `OwnerKeySetup`'s `hasExistingKey = !!useStore(…writerKeyWrapped) \|\| !!useStore(…nostrPubkey)` crashed onboarding the instant `establishLocalOwner` set `writerKeyWrapped`. Assign each `useStore` to its own `const` on its own line, then combine the VALUES. ⚠ Neither `tsc -b` nor a grep for indented/after-return hooks catches this shape (both calls sit on one line at normal indentation), and there is no render harness — so it is invisible until it crashes on device. The repo is currently clean of it (grep: hooks after `\|\|`/`&&`/ternary → none) |
 | Reproducing onboarding-transition crashes | `npm run dev` DOES reproduce bugs inside `OnboardingModal`/`OwnerKeySetup` — they render regardless of AppShell's gate ladder. But every AppShell gate branch is suffixed `&& !import.meta.env.DEV`, so a crash in the **auth/viewer gates** will NOT reproduce in dev; that needs a scratch neuter of those suffixes (never committed). Headless chromium has no platform authenticator → `probeKeyVaultCapability()` returns `'pin'`, so the whole mint→protect flow is driveable end-to-end **without a passkey** |
 | Never claim plan-data encryption-at-rest before Phase 5 | Two different things are encrypted, and the copy must not conflate them. The **KEY** is always keyVault-wrapped (passkey/PIN) — unconditionally true. **Plan DATA is plaintext at rest today** (`storeEncEnabled` off by default; default-on is Phase 5). `NostrAuthGate`'s import notice once said "this stores an encrypted copy on this device… all your **encrypted data** is permanently unrecoverable" — false, and it made a security promise the code didn't keep. Any copy touching at-rest posture states only that the key is protected and that this is **not a backup** |

@@ -12,6 +12,9 @@ import { entropyFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Ke
 import { classifyRecoveryInput } from '../../lib/nostr/recoveryInput';
 import { isWellFormedNcryptsec, classifyNcryptsecError } from '../../lib/nostr/ncryptsec';
 import { phraseStatus } from '../../lib/recoveryGrid';
+import { downloadBlob } from '../../lib/backup/downloadFile';
+import { buildRecoveryFileText, recoveryFileName } from '../../lib/backup/recoveryFile';
+import { todayLocalISO } from '../../utils/format';
 import { WordGrid } from '../Onboarding/WordGrid';
 import { biometricLabel } from '../../lib/biometricLabel';
 import type { NostrSigner } from '../../lib/nostr/signers';
@@ -64,6 +67,24 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const [pin, setPin]                     = useState('');
   const [pinConfirm, setPinConfirm]       = useState('');
   const [keyLabel, setKeyLabel]           = useState('');   // names the passkey (PRF path only)
+
+  // ── R2c-7a-2 — bare-nsec remediation. A pasted RAW nsec is an unprotected key, so it does not establish on
+  // paste: it routes through a download-gated protect step that PRODUCES the encrypted backup the user lacked.
+  // ⚠ This gates WHEN the key establishes, never WHAT gets wrapped — a bare nsec still wraps payloadKind 'sk'.
+  // The 'encrypted' branch already arrives protected and the 'words' branch is the richer artifact; both skip this.
+  //
+  // ⚠ The sk lives in a REF, not state: the unmount cleanup below must zero the CURRENT buffer, and an effect
+  // closing over a state Uint8Array reads a stale value and zeroes nothing. Same bytesRef+flag shape as
+  // RecoveryKeyCeremony. `remediating` is the render flag.
+  const pendingSkRef                      = useRef<Uint8Array | null>(null);   // ⚠ transient secret
+  const [remediating, setRemediating]     = useState(false);
+  const [bareNsecPass, setBareNsecPass]   = useState('');   // ⚠ transient secret (encrypt direction)
+  const [bareNsecSaved, setBareNsecSaved] = useState(false);
+  const [encrypting, setEncrypting]       = useState(false);
+  const [aidError, setAidError]           = useState<string | null>(null);
+
+  const zeroPendingSk = () => { pendingSkRef.current?.fill(0); pendingSkRef.current = null; };
+  useEffect(() => () => { pendingSkRef.current?.fill(0); }, []);   // defensive: zero on unmount
 
   // ── R2c-7a — encrypted-key (NIP-49 ncryptsec) unlock. Mirrors ViewerLoginFlow's PROVEN pattern verbatim. ──
   //
@@ -143,6 +164,13 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setPinConfirm('');
     setKeyLabel('');
     setError(null);
+    // R2c-7a-2 — ⚠ transient secrets, same scrub site
+    zeroPendingSk();
+    setRemediating(false);
+    setBareNsecPass('');
+    setBareNsecSaved(false);
+    setEncrypting(false);
+    setAidError(null);
   };
 
   const handleLocal = async () => {
@@ -171,7 +199,13 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
         try { decoded = nip19.decode(input.value); }
         catch { setError('Not a valid nsec'); setLoading(false); return; }
         if (decoded.type !== 'nsec') { setError('That key is not an nsec'); setLoading(false); return; }
-        payload = decoded.data as Uint8Array;   // payloadKind stays 'sk' — see the asymmetry note below
+        // R2c-7a-2 — ⛔ a bare nsec does NOT establish here. It is an unprotected key, so it routes through the
+        // remediation step (encrypt → save → Continue), which calls the SAME establish tail. payloadKind stays
+        // 'sk' either way — the gate is on WHEN, not WHAT.
+        payload = decoded.data as Uint8Array;    // the `finally` zeros this raw decode buffer
+        pendingSkRef.current = payload.slice();  // ⚠ defensive copy — never alias the decode buffer into a long-lived ref
+        setRemediating(true);
+        return;
       } else if (input.kind === 'encrypted') {
         // R2c-7a — the sk came from the DEBOUNCED decrypt effect; never re-decrypt here (blocking scrypt).
         if (!isWellFormedNcryptsec(input.value)) {
@@ -227,6 +261,90 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       payload?.fill(0);   // best-effort zero of the sk OR the entropy (NSecSigner holds its own copy for the session)
       setLoading(false);
     }
+  };
+
+  // ── R2c-7a-2 — the remediation step's handlers ───────────────────────────────
+
+  /**
+   * Encrypt the held sk under the user's passphrase and build the artifact.
+   *
+   * ⚠ `nip49.encrypt` is ~1s of SYNCHRONOUS scrypt (see RecoveryKeyCeremony's ensureArtifact). Setting
+   * `encrypting` and calling it in the same tick means React never commits the "Encrypting…" render — the button
+   * would just freeze. So yield 30ms first, exactly as the ceremony does. No prepRef stale-guard is needed: this
+   * is a one-shot on tap and the passphrase input is disabled while encrypting, so the inputs cannot change
+   * mid-encrypt.
+   *
+   * ⚠ `.trim()` is SYMMETRIC with every decrypt site (ViewerLoginFlow, the key tab above, the ceremony). An
+   * untrimmed passphrase here would silently never restore.
+   * ⚠ The sk is already in hand — derive nothing, and do NOT zero it here (Continue still needs it).
+   */
+  const buildEncryptedBackup = async (): Promise<string | null> => {
+    const sk = pendingSkRef.current;
+    if (!sk) return null;
+    setAidError(null);
+    setEncrypting(true);
+    await new Promise((r) => setTimeout(r, 30));
+    try {
+      return nip49.encrypt(sk, bareNsecPass.trim());
+    } catch {
+      setAidError("Couldn't encrypt — try again.");   // ⚠ never e.message (nip49/bech32 errors echo key material)
+      return null;
+    } finally {
+      setEncrypting(false);
+    }
+  };
+
+  const downloadBackup = async () => {
+    const ncryptsec = await buildEncryptedBackup();
+    if (!ncryptsec) return;
+    const blob = new Blob([buildRecoveryFileText('ncryptsec', ncryptsec)], { type: 'text/plain;charset=utf-8' });
+    downloadBlob(blob, recoveryFileName('ncryptsec', todayLocalISO()));
+    setBareNsecSaved(true);
+  };
+
+  /** ⚠ savedOnce ONLY on resolve: an iOS share-sheet cancel rejects with AbortError, and a cancelled share is not
+   *  a save. And guard `!navigator.share` FIRST — `await navigator.share?.()` resolves undefined and would open
+   *  the gate (both lessons from R2c-7b-fix). */
+  const shareBackup = async () => {
+    if (!navigator.share) return;
+    const ncryptsec = await buildEncryptedBackup();
+    if (!ncryptsec) return;
+    try { await navigator.share({ text: ncryptsec }); setBareNsecSaved(true); } catch { /* cancelled → not a save */ }
+  };
+
+  /** The SAME establish tail the inline branches use — method resolve, provenance stamp, rollback, zeroing. */
+  const continueAfterBackup = async () => {
+    const sk = pendingSkRef.current;
+    if (!sk) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const method = localMethod ?? await probeKeyVaultCapability();
+      useStore.getState().setKeyProvenance('imported');   // R2a-1: stamped BEFORE establishLocalOwner's internal syncNow
+      // ⚠ .slice() IS LOAD-BEARING (bufferAliasing.test.ts). establishLocalOwner WRAPS AND PERSISTS the payload to
+      // writerKeyWrapped *before* deriving the pubkey, then zeros it in a `finally` — on success AND on failure.
+      // Passing the held buffer would let a cancelled Face ID zero it in place, and the RETRY would wrap 32 zero
+      // bytes: a corrupted credential for an identity that never existed. The copy absorbs the zeroing, so a
+      // failed establish leaves `pendingSkRef` intact and Continue stays retryable.
+      await establishLocalOwner(sk.slice(), method, nostr, { pin, keyLabel, payloadKind: 'sk' });
+      zeroPendingSk();          // success only — the key is now wrapped at rest
+      setBareNsecPass('');
+      onSuccess();
+    } catch (err: any) {
+      useStore.getState().setKeyProvenance(null);   // R2a-1 rollback: write-once, must not freeze on a throw
+      setError(err?.message ?? 'Could not set up the local key');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const cancelRemediation = () => {
+    zeroPendingSk();
+    setRemediating(false);
+    setBareNsecPass('');
+    setBareNsecSaved(false);
+    setAidError(null);
+    setError(null);
   };
 
   // #6: a wrapped key already exists — unlock it (Face ID) via restoreSigner instead of forcing an nsec re-import.
@@ -452,7 +570,72 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             )}
           </div>
         ) : showLocal ? (
-          hasWrappedKey && !forceImport ? (
+          remediating ? (
+            /* R2c-7a-2 — a bare nsec is an unprotected key. It does not establish until the user has SAVED an
+               encrypted backup of it. The friction produces the artifact they demonstrably lacked. */
+            <>
+              <h2 className={styles.title}>Protect this key first</h2>
+              <p className={styles.hint}>
+                You pasted an unprotected key. Set a passphrase and save an encrypted backup — then we'll finish
+                setting up this device. Without a protected backup, losing this device means losing your plan.
+              </p>
+
+              {/* State-SPECIFIC label (R1.5 rule): this is the ENCRYPT direction, and a device-PIN field was on
+                  the previous screen. A generic "Passphrase" would be ambiguous in both directions. */}
+              <label className={styles.hint} htmlFor="bare-nsec-pass">Passphrase to encrypt this backup</label>
+              <input
+                id="bare-nsec-pass"
+                className={styles.input}
+                type="password"
+                placeholder="Passphrase"
+                value={bareNsecPass}
+                // ⚠ STALENESS: a prior download is locked with the OLD passphrase, so editing it invalidates the
+                // save (the ceremony's savedOnce / invalidateArtifact invariant).
+                onChange={(e) => { setBareNsecPass(e.target.value); setBareNsecSaved(false); setAidError(null); }}
+                disabled={encrypting || loading}
+                // ⚠ Without these, iOS mangles the string and encrypt/decrypt permanently disagree.
+                autoComplete="off"
+                autoCorrect="off"
+                autoCapitalize="none"
+                spellCheck={false}
+              />
+              <p className={styles.hint}>
+                You'll need this exact passphrase to restore it — it is not your device PIN, and we can't recover it.
+              </p>
+
+              <button
+                className={styles.primaryBtn}
+                onClick={downloadBackup}
+                disabled={!bareNsecPass.trim() || encrypting || loading}
+              >
+                {encrypting ? 'Encrypting…' : 'Download encrypted backup'}
+              </button>
+              {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+                <button
+                  className={styles.ghostBtn}
+                  onClick={shareBackup}
+                  disabled={!bareNsecPass.trim() || encrypting || loading}
+                >
+                  Save…
+                </button>
+              )}
+              {aidError && <p className={styles.hint} style={{ color: 'var(--red)' }}>{aidError}</p>}
+
+              <button
+                className={styles.primaryBtn}
+                onClick={continueAfterBackup}
+                disabled={!bareNsecSaved || loading || encrypting}
+              >
+                {loading ? 'Setting up…' : 'Continue'}
+              </button>
+              {!bareNsecSaved && (
+                <p className={styles.hint}>Save the encrypted backup first — then continue.</p>
+              )}
+              <button className={styles.ghostBtn} onClick={cancelRemediation} disabled={loading || encrypting}>
+                ← Back
+              </button>
+            </>
+          ) : hasWrappedKey && !forceImport ? (
             <>
               {/* #6: a wrapped key already lives on this device — unlock it (Face ID) instead of re-importing the nsec */}
               <p className={styles.hint}>A saved key is on this device. Unlock it with {biometricLabel()}, or import a different key.</p>
