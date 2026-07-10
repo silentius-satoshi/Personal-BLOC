@@ -9,6 +9,7 @@ import {
 import { setUnwrappedViewerKey, fetchViewerSnapshot } from '../../lib/nostr/viewerSync';
 import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import styles from './NostrAuthGate.module.css';
 
 /**
@@ -99,23 +100,21 @@ export function ViewerUnlockGate({ onReset }: { onReset: () => void }) {
             {isSetup && method === 'pin' && (
               <p className={styles.hint}>{biometricLabel()} unavailable — set a PIN to encrypt the key (min 4 digits).</p>
             )}
-            <input
+            <PassphraseInput
               className={styles.input}
-              type="password"
               inputMode="numeric"
               placeholder="PIN"
               value={pin}
-              onChange={(e) => setPin(e.target.value)}
+              onChange={setPin}
               disabled={loading}
             />
             {isSetup && (
-              <input
+              <PassphraseInput
                 className={styles.input}
-                type="password"
                 inputMode="numeric"
                 placeholder="Confirm PIN"
                 value={pinConfirm}
-                onChange={(e) => setPinConfirm(e.target.value)}
+                onChange={setPinConfirm}
                 disabled={loading}
               />
             )}

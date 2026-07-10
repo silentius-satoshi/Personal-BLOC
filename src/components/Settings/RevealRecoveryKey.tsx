@@ -5,6 +5,7 @@ import { wordsFromEntropy, deriveSkFromEntropy } from '../../lib/nostr/nip06Key'
 import { useStore } from '../../store/useStore';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import { WordGrid } from '../Onboarding/WordGrid';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import styles from './RevealRecoveryKey.module.css';
 
 /**
@@ -113,13 +114,12 @@ export function RevealRecoveryKey() {
     <div className={styles.wrap}>
       {showPin ? (
         <div className={styles.pinRow}>
-          <input
+          <PassphraseInput
             className={styles.pinInput}
-            type="password"
             inputMode="numeric"
             placeholder="PIN"
             value={pin}
-            onChange={(e) => { setPin(e.target.value); setError(null); }}
+            onChange={(v) => { setPin(v); setError(null); }}
             disabled={busy}
           />
           <button

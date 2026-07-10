@@ -233,6 +233,30 @@ src/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
       NumberInput.tsx           # prefix/suffix/decimals props (avoid suffix inside input)
       Toggle.tsx
+      PassphraseInput.tsx       # R2c-7a-2-polish — THE masked-entry widget (+ .module.css). A controlled input +
+                                # focus-guarded Show/Hide toggle, adopted at ALL 16 RENDERED masked fields:
+                                # NostrAuthGate (remediation encrypt · ncryptsec unlock · PIN · Confirm PIN),
+                                # RecoveryKeyCeremony (PIN unlock · encrypt · verify re-entry), ViewerLoginFlow
+                                # (token pass · PIN ×2), OwnerKeySetup (PIN ×2), ViewerUnlockGate (PIN ×2),
+                                # RevealRecoveryKey (PIN), SharingPage (PIN). ⚠ NOT AppUnlockGate/StoreMigrationGate
+                                # — both UNRENDERED (retained verbatim as the Option-3a rebuild basis), so a
+                                # `grep type="password" src` should show exactly those two and nothing else.
+                                # ⚠ THE FOUR iOS SUPPRESSIONS ARE BAKED IN (autoComplete/autoCorrect/autoCapitalize/
+                                # spellCheck), not props — iOS autocapitalizes an unsuppressed field, which would make
+                                # the encrypt and decrypt sides permanently disagree. One default beats 16 chances to
+                                # forget one. ⚠ FOCUS GUARD: the toggle is `onPointerDown` + `preventDefault()` (the
+                                # WordGrid suggestion-strip idiom) + tabIndex={-1} — an onClick-only toggle blurs the
+                                # field first, and on iOS the keyboard collapses and the caret is lost mid-passphrase.
+                                # Show/Hide TEXT, not an emoji glyph (matches NostrAuthGate's own recovery-key
+                                # Show/Hide + SecretKeyCard's "Tap to reveal"; renders identically everywhere).
+                                # `className` passthrough is REQUIRED — hosts use 3 different input classes
+                                # (.input/.pinInput/.dateInput) and each keeps its exact look. `inputMode="numeric"`
+                                # passthrough keeps the PIN keypad in BOTH masked and revealed states. ⚠ `.wrap` is
+                                # `flex:1 1 auto; min-width:0` and NOT `width:100%`: several hosts put the input in a
+                                # flex row where the INPUT carried `flex:1` (.pinRow, .fieldInput) — interposing the
+                                # wrapper makes IT the flex child, and a hard width:100% would wrap the adjacent
+                                # button onto a new line. The input's width/box-sizing/padding-right are INLINE
+                                # (the host's class sets padding; CSS-module source order can't be relied on to win)
       ScenarioPills.tsx
       GrowthPresetPills.tsx
       LtvTypePills.tsx
@@ -4022,6 +4046,16 @@ src/
                                     # decrypt). (3) only a WELL-FORMED ncryptsec shows the passphrase field, so "Wrong
                                     # passphrase" finally means what it says (decryptState.error==='passphrase'). The
                                     # words/unknown hints are suppressed for a token (`garbage:npub1…` classifies as
+                                    # R2c-7a-2-polish: the passphrase field's three feedback branches are MUTUALLY
+                                    # EXCLUSIVE over the existing decryptState — `checking` → "Checking passphrase…",
+                                    # `error==='passphrase'` → "Wrong passphrase…", and (NEW) `!checking && sk &&
+                                    # !error` → a green "✓ Key unlocked" (styles.checksumLine + .checksumValid, the
+                                    # same classes the word grid's "✓ valid recovery phrase" uses). Without the
+                                    # success branch a CORRECT passphrase merely made "Checking…" vanish after ~4s
+                                    # (3000ms debounce + ~1s scrypt) while Continue quietly enabled — which reads as
+                                    # "nothing happened". Display-only: no new state, no effect, no decrypt/debounce/
+                                    # trim change. (ViewerLoginFlow's token passphrase has the same shape and was
+                                    # deliberately left alone — it already surfaces the decoded viewer npub.)
                                     # 'unknown' and would otherwise double-error). ⚠ SCOPE — ✅ NO LONGER INPUT-STARVED:
                                     # **R2c-7b's encrypted backup export is this branch's producer** (RecoveryKeyCeremony →
                                     # encrypt toggle → Download → a `-encrypted-<date>.txt` holding an owner-key ncryptsec),
@@ -4931,6 +4965,8 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | Constraint | Rule |
 |---|---|
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
+| Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
+| ⚠ STANDING DEFECT — a `scheme:'pin'` local key cannot be unlocked after reload | `session.ts:71` calls `unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta)` with **no `pin` argument, ever**, and `keyVault.ts:195` throws `'PIN required'` when `meta.scheme === 'pin'` and no pin is supplied. `LocalUnlockGate` renders **zero inputs** (`grep -c 'input'` → 0), so there is nowhere to type one; `useNostrAutoRestore` and `NostrAuthGate.handleUnlockExisting` route through the same `restoreSigner` and are equally stuck. The user sees `PIN required` on the gate and only the escape hatch exits. Reachable via OwnerKeySetup's K3 PIN path or any device with no platform authenticator (the PRF probe is what normally saves us). **Found during R2c-7a-2-polish STEP 0; NOT fixed there** (the fix touches `restoreSigner`'s signature — single-flighted and shared with a gesture-less auto-restore caller — plus the gate ladder). Scope it deliberately |
 | A bare nsec must save an encrypted backup BEFORE it establishes | R2c-7a-2: the `nsec` branch of `handleLocal` captures the sk and returns; establishment happens only from the remediation step's Continue, gated on `bareNsecSaved`. The friction is the point twice over — the app refuses to swallow an unprotected key, and the step *produces* the encrypted backup the user demonstrably lacked (it is also R2c-7a's second producer). ⚠ **The gate is on WHEN, not WHAT:** a bare nsec still wraps `payloadKind: 'sk'` — a raw key has no mnemonic. `'encrypted'` (already protected) and `'words'` (richer artifact) skip remediation and fall through unchanged. Never route them through it |
 | A held key buffer is zeroed on success/teardown, NEVER in an establish `finally` | `establishLocalOwner` **wraps and persists `writerKeyWrapped` before deriving the pubkey**, then zeros its argument on success *and* on failure. So always pass a `.slice()`, and zero the long-lived buffer only on success, Back, scrub, and unmount. Zeroing it in the `finally` means a cancelled Face ID wipes it in place and the user's **retry** wraps 32 zero bytes — a corrupted credential for an identity that never existed (pinned by `src/lib/__tests__/bufferAliasing.test.ts`). Applies to `decryptState.sk` (R2c-7a) and `pendingSkRef` (R2c-7a-2) alike |
 | `nip49.encrypt` is ~1s of SYNCHRONOUS scrypt — yield before it | Setting `encrypting` state and calling `nip49.encrypt` in the same tick means React never commits the "Encrypting…" render; the button just freezes. Every encrypt site (`RecoveryKeyCeremony.ensureArtifact`, `NostrAuthGate.buildEncryptedBackup`) does `setEncrypting(true)` → `await new Promise(r => setTimeout(r, 30))` → encrypt. A `prepRef` stale-guard is needed only where inputs stay live during the yield; a one-shot tap with `disabled={encrypting}` inputs does not need one |

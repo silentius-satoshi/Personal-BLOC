@@ -6,6 +6,7 @@ import { unwrapSecretKey } from '../../lib/nostr/keyVault';
 import { deriveViewerKeyFromNsec } from '../../lib/nostr/viewerKey';
 import { buildHandoffToken } from '../../lib/nostr/handoffToken';
 import { Toggle } from '../ui/Toggle';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import styles from './SharingPage.module.css';
 
@@ -293,13 +294,12 @@ function ViewerRoster() {
         />
         {showPin ? (
           <div className={styles.pinRow}>
-            <input
+            <PassphraseInput
               className={styles.input}
-              type="password"
               inputMode="numeric"
               placeholder="PIN"
               value={pin}
-              onChange={(e) => { setPin(e.target.value); setError(null); }}
+              onChange={(v) => { setPin(v); setError(null); }}
               disabled={busy}
             />
             <button type="button" className={styles.genBtn} onClick={doDerive} disabled={busy || pin.length < 4}>

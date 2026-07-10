@@ -7,6 +7,7 @@ import { establishLocalOwner } from '../../lib/nostr/establishOwner';
 import { useStore } from '../../store/useStore';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import { WordGrid } from './WordGrid';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import styles from './OwnerKeySetup.module.css';
 
 /**
@@ -229,15 +230,15 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
                   <div className={styles.fieldGroup}>
                     <span className={styles.fieldLabel}>Set a PIN to protect the key (min 4 digits)</span>
                     <div className={styles.fieldInput}>
-                      <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="PIN"
-                        value={pin} onChange={(e) => { setPin(e.target.value); setError(null); }} />
+                      <PassphraseInput className={styles.dateInput} inputMode="numeric" placeholder="PIN"
+                        value={pin} onChange={(v) => { setPin(v); setError(null); }} />
                     </div>
                   </div>
                   <div className={styles.fieldGroup}>
                     <span className={styles.fieldLabel}>Confirm PIN</span>
                     <div className={styles.fieldInput}>
-                      <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="Confirm PIN"
-                        value={pinConfirm} onChange={(e) => { setPinConfirm(e.target.value); setError(null); }} />
+                      <PassphraseInput className={styles.dateInput} inputMode="numeric" placeholder="Confirm PIN"
+                        value={pinConfirm} onChange={(v) => { setPinConfirm(v); setError(null); }} />
                     </div>
                   </div>
                 </div>

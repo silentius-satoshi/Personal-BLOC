@@ -6,6 +6,7 @@ import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
 import { parseHandoffToken } from '../../lib/nostr/handoffToken';
 import { biometricLabel } from '../../lib/biometricLabel';
 import { useStore } from '../../store/useStore';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import styles from './ViewerLoginFlow.module.css';
 
 /**
@@ -216,16 +217,11 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
               <div className={styles.fieldGroup}>
                 <span className={styles.fieldLabel}>Passphrase (from the owner)</span>
                 <div className={styles.fieldInput}>
-                  <input
+                  <PassphraseInput
                     className={styles.dateInput}
-                    type="password"
                     placeholder="Passphrase"
                     value={tokenPassphrase}
-                    onChange={(e) => { setTokenPassphrase(e.target.value); setViewerError(null); }}
-                    autoCapitalize="none"
-                    autoCorrect="off"
-                    spellCheck={false}
-                    autoComplete="off"
+                    onChange={(v) => { setTokenPassphrase(v); setViewerError(null); }}
                   />
                 </div>
                 {decryptState.checking && (
@@ -278,15 +274,15 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
                     This protects your viewing key on this device. You choose it — it is not the owner's passphrase, and the owner never needs it.
                   </span>
                   <div className={styles.fieldInput}>
-                    <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="PIN"
-                      value={viewerPin} onChange={(e) => { setViewerPin(e.target.value); setViewerError(null); }} />
+                    <PassphraseInput className={styles.dateInput} inputMode="numeric" placeholder="PIN"
+                      value={viewerPin} onChange={(v) => { setViewerPin(v); setViewerError(null); }} />
                   </div>
                 </div>
                 <div className={styles.fieldGroup}>
                   <span className={styles.fieldLabel}>Confirm PIN</span>
                   <div className={styles.fieldInput}>
-                    <input className={styles.dateInput} type="password" inputMode="numeric" placeholder="Confirm PIN"
-                      value={viewerPinConfirm} onChange={(e) => { setViewerPinConfirm(e.target.value); setViewerError(null); }} />
+                    <PassphraseInput className={styles.dateInput} inputMode="numeric" placeholder="Confirm PIN"
+                      value={viewerPinConfirm} onChange={(v) => { setViewerPinConfirm(v); setViewerError(null); }} />
                   </div>
                 </div>
               </>

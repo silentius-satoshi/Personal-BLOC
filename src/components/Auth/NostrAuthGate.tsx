@@ -16,6 +16,7 @@ import { downloadBlob } from '../../lib/backup/downloadFile';
 import { buildRecoveryFileText, recoveryFileName } from '../../lib/backup/recoveryFile';
 import { todayLocalISO } from '../../utils/format';
 import { WordGrid } from '../Onboarding/WordGrid';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import { biometricLabel } from '../../lib/biometricLabel';
 import type { NostrSigner } from '../../lib/nostr/signers';
 import { useStore } from '../../store/useStore';
@@ -82,6 +83,10 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
   const [bareNsecSaved, setBareNsecSaved] = useState(false);
   const [encrypting, setEncrypting]       = useState(false);
   const [aidError, setAidError]           = useState<string | null>(null);
+
+  // Web Share exists on iOS and on desktop Chrome/Safari; it is absent elsewhere. The "Save…" button RENDERS only
+  // where it works — Download is the universal path. Same predicate as RecoveryKeyCeremony's `canShare`.
+  const canShare = typeof navigator !== 'undefined' && typeof navigator.share === 'function';
 
   const zeroPendingSk = () => { pendingSkRef.current?.fill(0); pendingSkRef.current = null; };
   useEffect(() => () => { pendingSkRef.current?.fill(0); }, []);   // defensive: zero on unmount
@@ -583,21 +588,15 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
               {/* State-SPECIFIC label (R1.5 rule): this is the ENCRYPT direction, and a device-PIN field was on
                   the previous screen. A generic "Passphrase" would be ambiguous in both directions. */}
               <label className={styles.hint} htmlFor="bare-nsec-pass">Passphrase to encrypt this backup</label>
-              <input
+              <PassphraseInput
                 id="bare-nsec-pass"
                 className={styles.input}
-                type="password"
                 placeholder="Passphrase"
                 value={bareNsecPass}
                 // ⚠ STALENESS: a prior download is locked with the OLD passphrase, so editing it invalidates the
                 // save (the ceremony's savedOnce / invalidateArtifact invariant).
-                onChange={(e) => { setBareNsecPass(e.target.value); setBareNsecSaved(false); setAidError(null); }}
+                onChange={(v) => { setBareNsecPass(v); setBareNsecSaved(false); setAidError(null); }}
                 disabled={encrypting || loading}
-                // ⚠ Without these, iOS mangles the string and encrypt/decrypt permanently disagree.
-                autoComplete="off"
-                autoCorrect="off"
-                autoCapitalize="none"
-                spellCheck={false}
               />
               <p className={styles.hint}>
                 You'll need this exact passphrase to restore it — it is not your device PIN, and we can't recover it.
@@ -610,7 +609,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
               >
                 {encrypting ? 'Encrypting…' : 'Download encrypted backup'}
               </button>
-              {typeof navigator !== 'undefined' && typeof navigator.share === 'function' && (
+              {canShare && (
                 <button
                   className={styles.ghostBtn}
                   onClick={shareBackup}
@@ -752,26 +751,29 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
                     ambiguous in both directions (the R1.5 confusion). */}
                 {showPassphraseField && (
                   <>
-                    <input
+                    <PassphraseInput
                       className={styles.input}
-                      type="password"
                       placeholder="Passphrase to unlock this key"
                       value={keyPassphrase}
-                      onChange={(e) => { setKeyPassphrase(e.target.value); setError(null); }}
+                      onChange={(v) => { setKeyPassphrase(v); setError(null); }}
                       disabled={loading}
-                      autoComplete="off"
-                      autoCorrect="off"
-                      autoCapitalize="none"
-                      spellCheck={false}
                     />
                     <p className={styles.hint}>
                       This unlocks the encrypted key you pasted — it is not your device PIN.
                     </p>
+                    {/* Three MUTUALLY EXCLUSIVE branches over the existing decryptState — checking / wrong / ✓.
+                        Display-only: no new state, no effect, no change to the 3000ms debounce or the decrypt. */}
                     {decryptState.checking && <p className={styles.hint}>Checking passphrase…</p>}
                     {decryptState.error === 'passphrase' && (
                       <p className={styles.hint} style={{ color: 'var(--red)' }}>
                         Wrong passphrase — check and try again.
                       </p>
+                    )}
+                    {/* Without this, a CORRECT passphrase just makes "Checking…" vanish after ~4s (debounce +
+                        scrypt) while Continue quietly enables — which reads as "nothing happened". Mirrors the
+                        word grid's own '✓ valid recovery phrase' line (same classes, same voice). */}
+                    {!decryptState.checking && decryptState.sk && !decryptState.error && (
+                      <p className={`${styles.checksumLine} ${styles.checksumValid}`}>✓ Key unlocked</p>
                     )}
                   </>
                 )}
@@ -803,10 +805,10 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
             {localMethod === 'pin' && (
               <>
                 <p className={styles.hint}>{biometricLabel()} unavailable — set a PIN to encrypt the key (min 4 digits).</p>
-                <input className={styles.input} type="password" inputMode="numeric" placeholder="PIN"
-                  value={pin} onChange={(e) => setPin(e.target.value)} disabled={loading} />
-                <input className={styles.input} type="password" inputMode="numeric" placeholder="Confirm PIN"
-                  value={pinConfirm} onChange={(e) => setPinConfirm(e.target.value)} disabled={loading} />
+                <PassphraseInput className={styles.input} inputMode="numeric" placeholder="PIN"
+                  value={pin} onChange={setPin} disabled={loading} />
+                <PassphraseInput className={styles.input} inputMode="numeric" placeholder="Confirm PIN"
+                  value={pinConfirm} onChange={setPinConfirm} disabled={loading} />
               </>
             )}
             <button className={styles.primaryBtn} onClick={handleLocal} disabled={loading || !localCanContinue}>

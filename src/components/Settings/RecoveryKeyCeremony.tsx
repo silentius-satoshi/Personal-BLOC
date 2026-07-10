@@ -13,6 +13,7 @@ import { useStore } from '../../store/useStore';
 import { SecretKeyCard } from '../Auth/SecretKeyCard';
 import { WordGrid } from '../Onboarding/WordGrid';
 import { Toggle } from '../ui/Toggle';
+import { PassphraseInput } from '../ui/PassphraseInput';
 import styles from './RecoveryKeyCeremony.module.css';
 
 /**
@@ -266,13 +267,12 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
           // Only the PIN scheme reaches here (passkey unlocks before entering the reveal step).
           <>
             <h2 className={styles.title}>Enter your PIN</h2>
-            <input
+            <PassphraseInput
               className={styles.pinInput}
-              type="password"
               inputMode="numeric"
               placeholder="PIN"
               value={pin}
-              onChange={(e) => { setPin(e.target.value); setError(null); }}
+              onChange={(v) => { setPin(v); setError(null); }}
               disabled={busy}
             />
             <button className={styles.primary} onClick={doUnlock} disabled={busy || pin.length < 4}>
@@ -300,16 +300,13 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
                   {/* State-specific copy (R1.5 rule): this is the ENCRYPT direction of the widget R2c-7a uses to
                       DECRYPT, and a device-PIN field can be on screen at the same time. Never label it "Passphrase". */}
                   <label className={styles.aidLabel} htmlFor="rk-file-pass">Passphrase to encrypt this file</label>
-                  <input
+                  <PassphraseInput
                     id="rk-file-pass"
                     className={styles.pinInput}
-                    type="password"
                     placeholder="Passphrase"
                     value={filePass}
-                    onChange={(e) => { setFilePass(e.target.value); invalidateArtifact(); }}
+                    onChange={(v) => { setFilePass(v); invalidateArtifact(); }}
                     disabled={encrypting}
-                    /* Without these, iOS mangles the string and encrypt/decrypt permanently disagree. */
-                    autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
                   />
                   <p className={styles.aidHint}>
                     You'll need this exact passphrase to restore — it is not your device PIN, and we can't recover it.
@@ -370,13 +367,11 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
                   Re-enter your backup passphrase to confirm you'll remember it — without it, your encrypted backup
                   can't be opened.
                 </p>
-                <input
+                <PassphraseInput
                   className={styles.pinInput}
-                  type="password"
                   placeholder="Backup passphrase"
                   value={verifyPass}
-                  onChange={(e) => { setVerifyPass(e.target.value); setVerifyError(null); }}
-                  autoComplete="off" autoCorrect="off" autoCapitalize="none" spellCheck={false}
+                  onChange={(v) => { setVerifyPass(v); setVerifyError(null); }}
                   aria-label="Re-enter your backup passphrase"
                 />
               </>

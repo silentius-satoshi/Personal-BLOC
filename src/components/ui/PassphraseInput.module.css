@@ -1,0 +1,31 @@
+/* The shared masked-entry widget. The INPUT keeps its host's class (styles.input / .pinInput / .dateInput), so
+   this file only owns the positioning wrapper and the Show/Hide toggle. */
+/* ⚠ `flex: 1 1 auto; min-width: 0` and NOT `width: 100%`. Several hosts put the input inside a flex row where the
+   INPUT itself carried `flex: 1` (RevealRecoveryKey/SharingPage `.pinRow`, ViewerLoginFlow/OwnerKeySetup
+   `.fieldInput`). Interposing this wrapper makes IT the flex child, so it must inherit that growth; a hard
+   `width: 100%` would instead overflow the row and wrap the adjacent button onto a new line. In a plain block
+   context `flex` is ignored and a block-level div fills its parent anyway. */
+.wrap {
+  position: relative;
+  display: block;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.toggle {
+  position: absolute;
+  top: 50%;
+  right: 8px;
+  transform: translateY(-50%);
+  background: none;
+  border: none;
+  padding: 4px 6px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+  transition: color 0.12s;
+}
+.toggle:hover:not(:disabled) { color: var(--text-primary); }
+.toggle:disabled { opacity: 0.4; cursor: not-allowed; }
