@@ -38,3 +38,23 @@ export function reconnectNostr(): void {
   // nostrPubkey + nostrSigningMethod intentionally retained; auth derives from the retained pubkey.
   window.location.reload();
 }
+
+/**
+ * Local-key SIGN OUT — NON-DESTRUCTIVE, and deliberately distinct from Settings' "Remove local key" (which nulls
+ * writerKeyWrapped, clears the identity + keyProvenance/backupVerifiedAt, and wipes the encrypted blob).
+ *
+ * Signing out retains EVERYTHING that matters: the wrapped key, the identity (pubkey + method), and — load-bearing —
+ * keyProvenance + backupVerifiedAt. So a VERIFIED key that signs out and back in stays verified: no backup ladder,
+ * no nag. The user lands on LocalUnlockGate ("authenticated but locked") and unlocks with Face ID / PIN.
+ */
+export function signOutLocal(): void {
+  // ⚠ INVARIANT PIN, not dead code. A local sign-out must land AUTHENTICATED-but-LOCKED, never a full logout.
+  // Today this is redundant — nostrAuthEnabled DERIVES from the retained pubkey (setNostrPubkey sets the two in
+  // lockstep; gateHydratedIdentity pins it true on every rehydrate) — but if that derivation ever changes, this
+  // line visibly contradicts the regression instead of letting sign-out silently become a logout.
+  // ⚠ MUST run BEFORE reconnectNostr: its reload() is the LAST statement, and navigation ends execution.
+  useStore.getState().setNostrAuthEnabled(true);
+  // Shared teardown, reused verbatim (no duplication): clears signer/bunkerUri/login/isAuthenticated, retains the
+  // identity + gate fields + wrapped key, reloads.
+  reconnectNostr();
+}

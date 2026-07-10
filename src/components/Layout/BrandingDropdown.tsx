@@ -2,6 +2,8 @@ import { useRef, useEffect, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { isBackupGateSatisfied } from '../../lib/backupGate';
+import { signOutLocal } from '../../lib/nostr/disconnect';
+import { biometricLabel } from '../../lib/biometricLabel';
 import styles from './BrandingDropdown.module.css';
 
 export function BrandingDropdown() {
@@ -17,6 +19,11 @@ export function BrandingDropdown() {
   const keyProvenance    = useStore((s) => s.keyProvenance);
   const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);
   const settingsAlert    = !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt });
+  // Sign out is LOCAL-ONLY: external signers (nip07/46) sign out via Settings → Disconnect, and a viewer's method
+  // is null — so this one condition covers owner-only + local-only. (Each useStore call stays unconditional.)
+  const nostrSigningMethod = useStore((s) => s.nostrSigningMethod);
+  const wrapScheme         = useStore((s) => s.writerKeyWrapMeta?.scheme);
+  const canSignOut         = nostrSigningMethod === 'local';
 
   useEffect(() => {
     if (!open) return;
@@ -68,6 +75,25 @@ export function BrandingDropdown() {
             <span className={styles.dropdownIcon}>⚙</span>
             Settings
           </button>
+          {canSignOut && (
+            <>
+              <div className={styles.dropdownDivider} />
+              {/* Non-destructive: the wrapped key stays on the device (and so does the verified-backup state).
+                  "Remove local key" — the destructive one — deliberately lives only in Settings. */}
+              <button
+                className={styles.dropdownItem}
+                onClick={() => {
+                  const unlockWith = wrapScheme === 'pin' ? 'your PIN' : biometricLabel();
+                  if (!window.confirm(`Sign out of this device? Your key stays saved here — unlock with ${unlockWith} to sign back in.`)) return;
+                  setOpen(false);
+                  signOutLocal();
+                }}
+              >
+                <span className={styles.dropdownIcon}>⎋</span>
+                Sign out
+              </button>
+            </>
+          )}
         </div>,
         document.body
       )}

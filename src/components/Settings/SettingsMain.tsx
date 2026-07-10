@@ -36,7 +36,8 @@ import { useRelayStatus } from '../../hooks/useRelayStatus';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { disconnectNostr, reconnectNostr } from '../../lib/nostr/disconnect';
+import { disconnectNostr, reconnectNostr, signOutLocal } from '../../lib/nostr/disconnect';
+import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
@@ -281,6 +282,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const { nostr }           = useNostr();   // for the escape-hatch reset & re-sync
   const { rate: morphoRate, loading: morphoLoading } = useMorphoRate();   // live cbBTC/USDC Base rate — reference only
   const nostrSigningMethod  = useStore((s) => s.nostrSigningMethod);
+  const wrapScheme          = useStore((s) => s.writerKeyWrapMeta?.scheme);   // 'prf' | 'pin' — how the user unlocks
   const isAuthenticated     = useStore((s) => s.isAuthenticated);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const lastSettingsSyncAt  = useStore((s) => s.lastSettingsSyncAt);
@@ -574,6 +576,19 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             <button className={styles.nostrReconnectBtn} onClick={() => reconnectNostr()}>Reconnect</button>
           )}
           {nostrSigningMethod === 'local' ? (
+            <>
+            {/* Sign out sits ABOVE Remove local key: it's the common action, and the two must read as different
+                weights — neutral/reversible vs red/destructive. Conflating them costs the user their only key. */}
+            <button
+              className={styles.signOutBtn}
+              onClick={() => {
+                const unlockWith = wrapScheme === 'pin' ? 'your PIN' : biometricLabel();
+                if (!window.confirm(`Sign out of this device? Your key stays saved here — unlock with ${unlockWith} to sign back in.`)) return;
+                signOutLocal();
+              }}
+            >
+              Sign out
+            </button>
             <button
               className={styles.nostrDisconnectBtn}
               onClick={() => {
@@ -593,6 +608,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             >
               Remove local key
             </button>
+            </>
           ) : (
             <button
               className={styles.nostrDisconnectBtn}
