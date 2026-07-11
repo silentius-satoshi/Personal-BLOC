@@ -2,6 +2,11 @@
 // 6s window, so the diagnostic panel never paints unless something is actually blocking the app.
 (window as unknown as { __APP_BOOTED?: boolean }).__APP_BOOTED = true;
 
+// C0 — MUST be the FIRST import: on the VITE_DEMO deploy this seeds localStorage, and useStore's module-init IIFEs
+// read localStorage at import time. ESM evaluates imports depth-first in source order, and demoSeed pulls no store,
+// so its side effect lands before App → AppShell → useStore evaluates. (No-op on the owner build — flag unset.)
+import './lib/demo/demoSeed';
+
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { registerSW } from 'virtual:pwa-register';

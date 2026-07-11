@@ -53,6 +53,7 @@ import { NoPlanNotice }      from '../Entry/NoPlanNotice';
 import { BackupNagCard }     from '../Entry/BackupNagCard';
 import { ViewerPreview }     from '../Viewer/ViewerPreview';
 import { HeaderNavCluster }  from './HeaderNavCluster';
+import { DemoBanner }        from './DemoBanner';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
 import AlmanacView          from '../Almanac/AlmanacView';
@@ -328,6 +329,7 @@ export function AppShell() {
 
   return (
     <>
+      {import.meta.env.VITE_DEMO === '1' && <DemoBanner />}
       {!onboardingComplete && (
         <OnboardingModal
           onComplete={(enableSimple) => {

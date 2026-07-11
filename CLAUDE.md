@@ -8,6 +8,43 @@ Deployed to Vercel.
 
 ---
 
+## Commercialization (C0)
+
+**Topology — ONE repo, TWO Vercel projects, split by build-time env flags:**
+
+| Env var | Owner project | Public project | Effect |
+|---|---|---|---|
+| `VITE_OWNER_PUBKEY` | ✅ (owner hex) | ✅ (SAME owner hex) | the private/owner gate — a non-owner authed key → `PrivateAppNotice` |
+| `VITE_LANDING` | — | `1` | serve `LandingPage` at `/` (App.tsx branch) |
+| `VITE_DEMO` | — | `1` | seed the sandbox showcase plan + mount `DemoBanner` |
+| `VITE_REPO_URL` | — | repo URL | "View source" link on the landing page |
+
+The **owner project sets no C0 flag → byte-identical to today** (landing/demo branches are dead code, tree-shaken).
+The **public project** serves marketing at `/` and the interactive sandbox app at `/app` (vercel.json rewrites every
+path to index.html; App.tsx's pathname switch routes `/` → landing when `VITE_LANDING=1`, everything else → AppShell).
+
+**Demo mechanics.** `src/lib/demo/demoSeed.ts` (imported FIRST in main.tsx, before the store's module-init IIFEs read
+localStorage) writes a curated showcase plan on EVERY load — the re-write IS the reload-reset. It seeds
+`onboarded=1` + a plan blob with **NO Nostr identity**, so AppShell's ladder skips onboarding (onboarded), the auth
+gates (`nostrAuthEnabled` derives from pubkey → false), and the viewer gates (viewerMode false) → **Branch J renders
+the hydrated plan** — the exact identity-less-shell state R2c-6b documented. **Publish is impossible by construction:**
+every publish path guards `!isAuthenticated || !nostrSigner || !nostrPubkey`, and no signer can exist without an
+identity. NO AppShell gate change is needed (only the one `DemoBanner` line). The showcase is Month 8 of a 12-month
+strategy, manual price for determinism (Strike LTV green, CB LTV ~72% watch band), 7 confirmed history months.
+
+**Free-riding closure.** The public deploy ALSO sets `VITE_OWNER_PUBKEY` (the owner's hex), so a visitor who signs in
+with their own real key on the demo domain hits `PrivateAppNotice` (`isAuthenticated && !isOwner`) — the demo domain
+cannot be adopted as free hosting. Deployment requirement, no code.
+
+**License.** `LICENSE` at root = **FSL-1.1-MIT** (Functional Source License v1.1, MIT future grant; Licensor
+`silentius-satoshi`), making the landing's "source-available under FSL-1.1-MIT" claim true. package.json has no
+`license` field (unchanged).
+
+Files: `src/pages/LandingPage.tsx`/`.module.css`, `src/lib/demo/demoSeed.ts`,
+`src/components/Layout/DemoBanner.tsx`/`.module.css`, `LICENSE`.
+
+---
+
 ## Tech Stack
 
 - React 18 + Vite + TypeScript
@@ -143,6 +180,19 @@ src/
     useStore.ts                 # Zustand store — all state, persisted to localStorage
 
   lib/
+    demo/
+      demoSeed.ts               # C0 — sandbox demo seed. PURE buildDemoSeedState(today) (exported, tested) + a
+                                # top-level side-effect block gated `if (import.meta.env.VITE_DEMO === '1')` that
+                                # writes the showcase plan to localStorage on EVERY load (that re-write IS the
+                                # reload-reset). Seeds onboarded=1, REMOVES identity GATE keys + writer keys + the
+                                # enc flag (no stale leak), writes the plan blob at DEMO_SEED_STORE_VERSION (=21, must
+                                # equal the persist version). Showcase: advisorStartDate = today−7mo (Month 8), manual
+                                # btcPrice for a deterministic dashboard (Strike LTV green, CB LTV ~72% watch band),
+                                # 7 confirmed source:'manual' months (≥1 paydown), a Month-8 dayLog with a
+                                # strikeCollateral-bearing balanceReading, monthBucketReconcileDone:true (or the
+                                # one-shot reconcile deletes the seeded history), NO identity/viewer fields.
+                                # ⚠ Imports ONLY utils/format + type-only shapes — must never pull useStore (main.tsx
+                                # imports it FIRST, before the store's module-init IIFEs read localStorage)
     backupGate.ts               # R2a-1 — the backup-gate predicate. PURE, ZERO imports (no cycle):
                                 # isBackupGateSatisfied({keyProvenance, backupVerifiedAt}) = keyProvenance !== 'generated'
                                 # || backupVerifiedAt != null. A key this device GENERATED is the only copy until the
@@ -210,6 +260,10 @@ src/
                                 # 'journal') and injected into ViewerHomeView via ownerNav (active 'dashboard').
                                 # GROWTH INVARIANT: fixed at 5 — new tools become Almanac faces, never header icons.
       HeaderNavCluster.module.css # boxed 34×34 .iconBtn + .iconBtnActive (--btc accent) highlight
+      DemoBanner.tsx            # C0 — slim fixed-top sandbox strip (+ .module.css). Mounted by ONE AppShell line
+                                # `{import.meta.env.VITE_DEMO === '1' && <DemoBanner/>}` (first child of the top-level
+                                # fragment → over every branch). "Sandbox — example plan, edits reset on reload · Get
+                                # the real thing →" linking '/'. Flag unset on the owner build → dead branch, tree-shaken
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
@@ -3233,7 +3287,7 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 
 `npm run build` = `tsc -b && vite build` — this is the REAL typecheck gate. Run it (not bare `tsc`) before every commit.
 
-**⚠️ Store-version bump discipline:** a `useStore` persist `version` bump (a new `migrateState` case) MUST also update `STORE_VERSION` in `e2e/helpers.ts` (the localStorage SEED version) — a stale value drops the e2e seed into the migrate/onboarding path and `seedAndGoto`'s landing assertion fails loudly (rather than every spec timing out on a hidden onboarding modal).
+**⚠️ Store-version bump discipline:** a `useStore` persist `version` bump (a new `migrateState` case) MUST also update **TWO** SEED-version constants — `STORE_VERSION` in `e2e/helpers.ts` (the e2e localStorage seed) AND `DEMO_SEED_STORE_VERSION` in `src/lib/demo/demoSeed.ts` (the C0 sandbox-demo seed). A stale `STORE_VERSION` drops the e2e seed into the migrate/onboarding path and `seedAndGoto`'s landing assertion fails loudly; a stale `DEMO_SEED_STORE_VERSION` drops the demo seed into `migrateState` on the public deploy (harmless-to-loud depending on the migration). Both are pinned to the persist version by their own tests.
 
 **E2E gesture harness (Playwright, `npm run e2e`) — the app's first e2e layer, opt-in, NOT in `vitest`.**
 `@playwright/test` (chromium only) + `playwright.config.ts` (mobile-emulated 390×844, `hasTouch`/`isMobile`,
@@ -4071,6 +4125,12 @@ src/
                                     # default is UNBOUNDED doubling — strands NIP-46 after an offline period)
   pages/
     RemoteLoginSuccessPage.tsx      # Callback page Primal opens after approval
+    LandingPage.tsx                 # C0 — commercial marketing page (+ .module.css), served at '/' on the PUBLIC
+                                    # deploy (VITE_LANDING=1) via App.tsx. Self-contained (no store/sim/NostrProvider);
+                                    # hero + interactive LtvDemo widget (drags BTC price → LTV → Safe/Watch/Act via the
+                                    # REAL band constants barLevel/CB_WARN_LTV 0.65/CB_LLTV + LEVEL_COLOR — can't drift)
+                                    # + features + steps + pricing (self-host free · hosted over Lightning) + FAQ +
+                                    # footer. Reads only VITE_REPO_URL (env + fallback); all demo CTAs → internal '/app'
   components/Auth/
     NostrAuthGate.tsx               # Auth gate; NLogin.fromNostrConnect() wiring; calls markSignerFresh()
                                     # after setting the signer so syncNow doesn't rebuild a duplicate
