@@ -100,7 +100,7 @@ function ViewerRoster() {
 
   // Derive engine
   const [revealedToken, setRevealedToken] = useState<string | null>(null);
-  const [handoffPassphrase, setHandoffPassphrase] = useState('');   // optional — encrypts the token for remote handoff
+  const [handoffPassphrase, setHandoffPassphrase] = useState('');   // REQUIRED — tokens are always ncryptsec (encrypts the key part)
   const [showPin, setShowPin] = useState(false);
   const [pin, setPin]         = useState('');
   const [busy, setBusy]       = useState(false);
@@ -147,16 +147,23 @@ function ViewerRoster() {
       // version (stored kv + 1).
       const index      = rotateSlot ? rotateSlot.index          : nextViewerIndex;
       const keyVersion = rotateSlot ? rotateSlot.keyVersion + 1 : 1;   // target version, not stored version
+      // Tokens are ALWAYS ncryptsec (R2c-7a-2 no-unprotected-key-artifacts). Require the passphrase BEFORE the
+      // unwrap so we fail without prompting Face ID; the return hits the finally → busy/rotatingIndex reset.
+      const pass = handoffPassphrase.trim();
+      if (!pass) { setError('Set a handoff passphrase first — tokens are always encrypted.'); return; }
       ownerSk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, writerKeyWrapMeta.scheme === 'pin' ? pin : undefined);
       derived = await deriveViewerKeyFromNsec(ownerSk, pk, keyVersion, index);   // 4-arg indexed (M2)
       const hex  = getPublicKey(derived);
       const npub = nip19.npubEncode(hex);
+      const oldPubkeyHex = rotateSlot?.pubkeyHex;   // capture BEFORE the atomic swap (for the rotate revocation)
       if (rotateSlot) updateViewerSlot(rotateSlot.index, { pubkeyHex: hex, npub, keyVersion });   // atomic: pubkey + target kv together (tier preserved)
       else addViewerSlot({ pubkeyHex: hex, npub, label: addLabel.trim() || 'Viewer', tier: addTier, keyVersion: 1 });
       void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates once they sign in
-      // Build the handoff token. Encode/encrypt the derived key BEFORE the finally zeros it.
-      const pass = handoffPassphrase.trim();
-      const keyPart = pass ? nip49.encrypt(derived, pass) : nip19.nsecEncode(derived);
+      // Rotation = revoke-old + issue-new, atomically from the roster's perspective: tombstone the OLD d-tag so the
+      // old viewer device wipes + exits to the waiting gate on its next live event / reconnect (the Remove mechanism).
+      if (rotateSlot && oldPubkeyHex && oldPubkeyHex !== hex) void publishViewerRevocationNow(oldPubkeyHex);
+      // Build the handoff token — ALWAYS ncryptsec. Encrypt the derived key BEFORE the finally zeros it.
+      const keyPart = nip49.encrypt(derived, pass);
       setRevealedToken(buildHandoffToken(keyPart, nip19.npubEncode(pk)));
       setShowPin(false);
       setPin('');
@@ -198,16 +205,13 @@ function ViewerRoster() {
   };
 
   if (revealedToken) {
-    const isEncrypted = handoffPassphrase.trim().length > 0;
     return (
       <div className={styles.genBlock}>
         <SecretKeyCard nsec={revealedToken} hint="Hand this to the viewer — it includes your npub." />
         <div className={styles.revealFoot}>
           <button type="button" className={styles.actionBtn} onClick={clearReveal}>Hide</button>
           <span className={styles.desc}>
-            {isEncrypted
-              ? 'Encrypted — safe to send remotely. Share the passphrase separately. Auto-hides in ~30s.'
-              : 'Plaintext — hand it over in person. Auto-hides in ~30s.'}
+            Encrypted — safe to send remotely. Share the passphrase separately. Auto-hides in ~30s.
           </span>
         </div>
       </div>
@@ -253,7 +257,7 @@ function ViewerRoster() {
       <div className={styles.genBlock}>
         <p className={styles.desc}>
           Add a viewer — a key is derived from your identity (regenerable, no separate backup). Hand them the shown
-          token. Set a passphrase to send it remotely (encrypted); leave it blank for in-person handoff.
+          token. A passphrase is required — the token is always encrypted; share the passphrase separately.
         </p>
         <input
           className={styles.input}
@@ -285,7 +289,7 @@ function ViewerRoster() {
         <input
           className={styles.input}
           type="text"
-          placeholder="Passphrase for remote handoff (optional)"
+          placeholder="Passphrase (required — encrypts the token)"
           value={handoffPassphrase}
           onChange={(e) => { setHandoffPassphrase(e.target.value); setError(null); }}
           disabled={busy}

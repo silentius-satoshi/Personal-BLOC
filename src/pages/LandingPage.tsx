@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, type MouseEvent as ReactMouseEvent } from 'react';
 import { barLevel, type SafetyLevel } from '../simulation/cbMetrics';
 import { CB_WARN_LTV, CB_LLTV } from '../simulation/runCoinbaseLoan';
 import { LEVEL_COLOR } from '../simulation/safetyView';
@@ -159,6 +159,30 @@ const FAQ = [
 ];
 
 export function LandingPage() {
+  // ⚠ bfcache backdoor fix. landing → /app is a full anchor nav, so '/' stays in history; on an onboarded/viewer
+  // device a Safari edge-swipe-back restores THIS page from bfcache WITHOUT re-running App.tsx's onboarded check
+  // (a bfcache restore doesn't re-execute the module). location.replace removes '/' from history → the back-swipe
+  // exits the site instead of restoring the marketing snapshot.
+  const goApp = (e: ReactMouseEvent) => {
+    // Let the browser handle modified/non-primary clicks (cmd/ctrl/shift/alt/middle = open-in-new-tab etc.) — the
+    // exact desktop affordances href was kept for; a new-tab open doesn't touch THIS tab's history, so the fix holds.
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey || e.button !== 0) return;
+    e.preventDefault();
+    window.location.replace('/app');
+  };
+
+  // Belt: cover a bfcache restore reached through any other path. pageshow(persisted) re-reads the standalone
+  // onboarded GATE key and bounces to /app — App's onboarded branch doesn't re-run on a bfcache restore.
+  useEffect(() => {
+    const onShow = (e: PageTransitionEvent) => {
+      if (!e.persisted) return;
+      try { if (localStorage.getItem('personal-bloc-onboarded') === '1') window.location.replace('/app'); }
+      catch { /* ignore */ }
+    };
+    window.addEventListener('pageshow', onShow);
+    return () => window.removeEventListener('pageshow', onShow);
+  }, []);
+
   return (
     <div className={styles.page}>
       {/* Nav — the single "View source" instance + the front-door sign-up/log-in CTA (→ /app → onboarding fork) */}
@@ -166,7 +190,7 @@ export function LandingPage() {
         <span className={styles.navBrand}>₿ Personal ₿LOC</span>
         <span className={styles.navActions}>
           <a className={styles.ctaGhost} href={REPO_URL} target="_blank" rel="noreferrer">View source</a>
-          <a className={styles.ctaPrimary} href="/app">Sign up / Log in</a>
+          <a className={styles.ctaPrimary} href="/app" onClick={goApp}>Sign up / Log in</a>
         </span>
       </nav>
 
@@ -180,7 +204,7 @@ export function LandingPage() {
           A sovereign planner for accumulating Bitcoin with a Line of Credit — your key, your plan, no accounts.
         </p>
         <div className={styles.ctaRow}>
-          <a className={styles.ctaPrimary} href="/app">Get started — it's free</a>
+          <a className={styles.ctaPrimary} href="/app" onClick={goApp}>Get started — it's free</a>
           {SANDBOX_URL && (
             <a className={styles.ctaGhost} href={SANDBOX_URL} target="_blank" rel="noreferrer">Try the sandbox</a>
           )}
@@ -242,7 +266,7 @@ export function LandingPage() {
             <div className={styles.priceBig}>Free</div>
             <div className={styles.priceSub}>for now</div>
             <p className={styles.priceBody}>Use the full app while we build. Your plan is yours — export or leave anytime.</p>
-            <a className={styles.ctaGhost} href="/app">Get started</a>
+            <a className={styles.ctaGhost} href="/app" onClick={goApp}>Get started</a>
           </div>
           <div className={`${styles.priceCard} ${styles.priceCardFeatured}`}>
             <span className={styles.priceChip}>Coming soon</span>
@@ -267,7 +291,7 @@ export function LandingPage() {
           </div>
           <div className={styles.footerCol}>
             <span className={styles.footerColTitle}>Product</span>
-            <a className={styles.footerLink} href="/app">Get started</a>
+            <a className={styles.footerLink} href="/app" onClick={goApp}>Get started</a>
             {SANDBOX_URL && <a className={styles.footerLink} href={SANDBOX_URL} target="_blank" rel="noreferrer">Sandbox</a>}
             <a className={styles.footerLink} href="#pricing">Pricing</a>
           </div>

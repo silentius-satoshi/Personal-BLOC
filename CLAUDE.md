@@ -32,7 +32,12 @@ straight in their app at `/`.
 **The funnel — no new auth plumbing.** Every landing CTA links `/app` → `AppShell` → `!onboardingComplete` →
 `OnboardingModal` opens on the `ChoosePathView` fork (Get started / I have a plan or a key / Connect to a shared plan).
 **That fork IS the sign-up/log-in surface** — no params, no deep links. Completing onboarding flips the GATE key to
-`'1'` → `/` renders the app (landing skipped).
+`'1'` → `/` renders the app (landing skipped). ⚠ The landing's four internal `/app` CTAs use `window.location.replace`
+(a shared `goApp` onClick that falls through on modified/middle clicks so new-tab opens still work) — NOT a pushed
+anchor nav — so `/` is removed from history; plus a `pageshow(persisted)` belt re-reads the standalone
+`personal-bloc-onboarded` GATE key and bounces to `/app` when onboarded. Both close a Safari edge-swipe-back
+bfcache backdoor: a bfcache restore doesn't re-run App's onboarded branch, so without these an onboarded/viewer
+device could restore the marketing landing over its app.
 
 **Landing UI (C2 v2 — `LandingPage.tsx`/`.module.css`).** Nav bar (brand + "View source" + "Sign up / Log in" →
 `/app`). Hero: two-line headline "Borrow against your bitcoin. / Never sell." (2nd line `--btc`) + the verbatim
@@ -5095,10 +5100,13 @@ legacy npub-paste "Add" form is DELETED; a viewer-supplied npub can't occur sinc
   assign — M2 coupling), `keyVersion = 1` → `addViewerSlot({…,tier:addTier,keyVersion:1})`. ROTATE(slot) is ATOMIC
   (derive-at-target, commit-on-success — NO pre-bump): confirm → `doDerive` derives at the TARGET version
   (stored kv + 1) → ONE atomic `updateViewerSlot(slot.index,{pubkeyHex,npub,keyVersion})` on success (preserves
-  tier); cancel/failure = true no-op (slot untouched, old key keeps working). `keyVersion` always means "version
-  of the key currently issued," never "next." Both: unwrap → `deriveViewerKeyFromNsec(pk,
-  keyVersion, index)` → `publishViewerSnapshotNow()` (fan-out) → `SecretKeyCard` token reveal (~30s, passphrase
-  path unchanged, keys zeroed).
+  tier) → `publishViewerRevocationNow(oldPubkeyHex)` (revoke the OLD d-tag so the old viewer device wipes + exits
+  to the waiting gate on its next live event / reconnect — the Remove mechanism); cancel/failure = true no-op
+  (slot untouched, old key keeps working). `keyVersion` always means "version of the key currently issued," never
+  "next." Both: unwrap → `deriveViewerKeyFromNsec(pk, keyVersion, index)` → `publishViewerSnapshotNow()` (fan-out)
+  → `SecretKeyCard` token reveal (~30s, keys zeroed). **Handoff tokens are ALWAYS ncryptsec** — a passphrase is
+  REQUIRED for BOTH add and rotate (empty → inline error BEFORE the unwrap, nothing derived/published; the
+  R2c-7a-2 no-unprotected-key-artifacts doctrine); there is NO plaintext-nsec branch.
 - **REPLACE-GUARD + `skipGuard` DELETED** — ADD always uses a fresh index (nothing to overwrite); ROTATE is the
   only intentional overwrite and is confirmed by its own dialog. (Supersedes the handoff-v4
   `GenerateViewerKeyBlock` replace-guard.)

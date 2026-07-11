@@ -71,4 +71,20 @@ describe('viewer fan-out (M2)', () => {
     expect(callFor(pkSafe)?.[2]).toMatchObject({ revoked: true });
     expect(callFor(pkTrusted)).toBeUndefined();   // the other slot is untouched
   });
+
+  it('rotate sequence: snapshot to the NEW pubkey + revocation tombstone to the OLD', async () => {
+    // The revoke-old + issue-new orchestration lives in SharingPage.doDerive (no render harness); this drives the
+    // SAME store fns in the SAME order a rotation does, to pin the store-level effect. Old key TRUSTED → new key.
+    const pkNew = 'n'.repeat(64);
+    useStore.setState({ viewers: [slot(0, pkTrusted, 'trusted')], nextViewerIndex: 1 } as never);
+    // Atomic commit — swap pubkeyHex + npub + bumped keyVersion (what updateViewerSlot does in doDerive).
+    useStore.getState().updateViewerSlot(0, { pubkeyHex: pkNew, npub: `npub1${pkNew.slice(0, 6)}`, keyVersion: 2 });
+    await publishViewerSnapshotNow();          // fan-out now targets the NEW pubkey
+    await publishViewerRevocationNow(pkTrusted); // tombstone the OLD d-tag
+    // Snapshot went to the new key (live payload), not a tombstone.
+    expect(callFor(pkNew)?.[2]).toMatchObject({ privacyMode: 'trusted' });
+    expect(callFor(pkNew)?.[2]).not.toMatchObject({ revoked: true });
+    // Revocation tombstone went to the old key.
+    expect(callFor(pkTrusted)?.[2]).toMatchObject({ revoked: true });
+  });
 });
