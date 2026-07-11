@@ -1,5 +1,6 @@
 import { buildSettingsPayload, type StoreState } from '../../store/useStore';
 import { todayLocalISO } from '../../utils/format';
+import { CURRENT_STORE_VERSION } from '../storeVersion';
 import { downloadBlob } from './downloadFile';
 
 /**
@@ -31,7 +32,7 @@ export function buildPlanBackup(s: StoreState): PlanBackup {
   return {
     format: 'personal-bloc-plan-backup',
     schemaVersion: 1,
-    storeVersion: 21,   // mirrors the store's persist `version` (useStore.ts) — keep in sync
+    storeVersion: CURRENT_STORE_VERSION,   // single source (src/lib/storeVersion.ts) — mirrors the store's persist `version`
     exportedAt: new Date().toISOString(),   // machine timestamp — UTC ISO is correct (not a user-facing "today")
     plan: {
       settings: planSettings,

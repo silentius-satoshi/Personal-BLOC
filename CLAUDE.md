@@ -2595,11 +2595,64 @@ different artifact (Phase 1.5) — not this tool.
 - **Device-local/session fields are naturally absent** (not in `buildSettingsPayload`/the records
   set) — `devMode`, `viewerMode`, `settingsDirty`, `initialSettingsPullDone`, nostr identity fields
   never need explicit stripping.
-- **Not built (explicitly deferred):** import/restore — will validate `format`/`schemaVersion`/
-  `storeVersion` (migrating an older `storeVersion` if the store schema has since advanced) and write
-  the plan back to the store; the settings-clobber fix (`initialSettingsPullDone`) makes a post-import
-  publish safe (publishes the restored plan AFTER an initial pull, not seed defaults). Separate spec +
-  device-check, since it writes state and interacts with sync. No store version bump this phase.
+- **Import/restore SHIPPED** — see the next section (was deferred here).
+
+---
+
+## Plan Import / Restore (the restore counterpart; store unchanged, NO bump)
+
+Loads a `PlanBackup` file back in: **pick → validate fully → summary → destructive confirm → ATOMIC
+replace → normal sync resumes.** Owner-only (mounted inside SettingsMain's `!viewerMode` tree).
+
+**Semantic — MERGE-FORWARD, not time-travel** (stated verbatim in the confirm copy): settings are
+whole-object LWW (the imported settings republish with a fresh `created_at` and win); records are
+union+tombstones (`mergeRecords`), so the next relay pull unions back any day/month events created
+*after* the backup. True point-in-time rollback is Phase 4f event-replay.
+
+- **`src/lib/storeVersion.ts` (NEW, zero-import):** `CURRENT_STORE_VERSION` — the SINGLE store-version
+  constant, consumed by the persist `version`, `exportPlan`, `demoSeed` (`DEMO_SEED_STORE_VERSION`), and
+  the validator's gate. `e2e/helpers.ts` keeps its own pinned literal (Playwright can't import `src/`).
+- **`src/store/settingsFields.ts` (NEW, zero-import):** `SETTINGS_FIELDS` lifted out of
+  `hydrateSettings`' closure (single source; `hydrateSettings` now imports it). Two derived subsets:
+  **`VALIDATE_WHITELIST`** = `SETTINGS_FIELDS − {viewers, nextViewerIndex, nostrRelays}` (a file key
+  outside it → reject as tampered/foreign — the transport fields must never be restored), and
+  **`APPLY_FIELDS`** = that `− backupVerifiedAt`.
+- **⚠ THE CRITICAL VALIDATE↔APPLY SPLIT.** `backupVerifiedAt` **is** in the validate whitelist (every
+  export carries it — must not reject) but is **NOT** in `APPLY_FIELDS` — `applyPlanBackup` **never
+  writes it** (and `keyProvenance` is never in the payload). *The stamp attests KEY custody, not plan
+  data — a backup restores a plan onto whatever key the device holds.* Without this, importing any
+  export onto a generated-unverified key would open R2a-1's eleven gate sites for an un-backed-up key.
+  A gated key imports fine (data lands local-only, engine gated) and **stays gated** — the gate opens
+  only via the real ceremony. Pinned by tests.
+- **`src/lib/backup/validatePlanBackup.ts` (NEW, PURE/node-tested):** `validatePlanBackup(raw) → {ok,
+  backup, summary} | {ok:false, reason}`. Imports only `CURRENT_STORE_VERSION`, `VALIDATE_WHITELIST`,
+  and TYPE-only `PlanBackup` (so it never pulls useStore). Checks (all before any store touch): format
+  string · `schemaVersion===1 && storeVersion===CURRENT_STORE_VERSION` (**lean-reject** mismatch,
+  version-honest message) · every settings key ∈ `VALIDATE_WHITELIST` (unknown/transport → reject) ·
+  four record collections present + per-event/entry shape-checks · **tombstone maps accepted as
+  `Record<string,number>`** (JSON stringifies `deletedMonths`' numeric keys — do NOT reject on key
+  typeof) · counts capped ≤100k (OOM guard) · `ImportSummary` (exportedAt + counts + income/expenses/
+  balances preview).
+- **`applyPlanBackup(backup)` store action (`useStore.ts`) — ONE atomic `set()`:** (a) settings
+  partition filtered to `APPLY_FIELDS`; (b) records wholesale (`monthlyLog`/`deletedMonths`/`dayLog`/
+  `deletedDayEvents` — the PlanBackup record names match the store field names 1:1; per-entry `btcHeld`
+  restored verbatim as historical ledger); (c) `cbCollateralBtc`/`strikeCollateralBtc` folded from the
+  imported `dayLog` in the SAME commit (the `setDayLog` discipline; the §5b `deriveReadingAnchors` seam
+  is NOT run — imported settings already carry the anchor scalars+asOf); (d) `settingsDirty`/
+  `recordsDirty` + **`initialSettingsPullDone:true`** (load-bearing twice: blocks `sync.ts`'s first-pull
+  exception from hydrating remote OVER the import, and lets publish proceed). Then kicks
+  `syncSettingsToNostr()` + `publishRecordsNow()` (both gate/auth/viewer-guarded → no-op for a gated/
+  unauth/viewer key).
+- **`RestoreBackupFlow.tsx` (+ `.module.css`, NEW):** ceremony-style overlay (`{onClose}`, own
+  `.overlay`/`.modal` z-index 99999, no portal — the `RecoveryKeyCeremony` pattern; owns the screen so
+  no back-chain/edge-swipe escapes mid-restore). Steps `pick → validating → summary → applying → done
+  → error`; `<input type="file" accept="application/json">` + `FileReader.readAsText`, 10 MB cap before
+  parse (net-new — no prior file-input in the repo). Mounted from the SettingsMain **Backup** subpage
+  via a `restoreOpen` boolean beside "Export plan" (mirrors `ceremonyOpen`); owner-only by construction.
+- **Tests:** `validatePlanBackup.test.ts` (round-trip of a real `buildPlanBackup`, all rejections,
+  string-keyed `deletedMonths` accepted, the gate test, + a drift-guard pinning `VALIDATE_WHITELIST`/
+  `APPLY_FIELDS` against `buildSettingsPayload` keys) + `applyPlanBackup.test.ts` (gated key stays gated,
+  transport untouched, `initialSettingsPullDone` set, caches match the imported dayLog). No store bump.
 
 ---
 
@@ -3324,7 +3377,7 @@ npm run build && npx vitest run && git add . && git commit -m "..." && git push 
 
 `npm run build` = `tsc -b && vite build` — this is the REAL typecheck gate. Run it (not bare `tsc`) before every commit.
 
-**⚠️ Store-version bump discipline:** a `useStore` persist `version` bump (a new `migrateState` case) MUST also update **TWO** SEED-version constants — `STORE_VERSION` in `e2e/helpers.ts` (the e2e localStorage seed) AND `DEMO_SEED_STORE_VERSION` in `src/lib/demo/demoSeed.ts` (the C0 sandbox-demo seed). A stale `STORE_VERSION` drops the e2e seed into the migrate/onboarding path and `seedAndGoto`'s landing assertion fails loudly; a stale `DEMO_SEED_STORE_VERSION` drops the demo seed into `migrateState` on the public deploy (harmless-to-loud depending on the migration). Both are pinned to the persist version by their own tests.
+**⚠️ Store-version bump discipline:** the store version is now the **single constant `CURRENT_STORE_VERSION`** in `src/lib/storeVersion.ts` (zero-import leaf) — it drives the `useStore` persist `version`, `exportPlan.ts`'s `storeVersion`, `demoSeed.ts`'s `DEMO_SEED_STORE_VERSION`, and `validatePlanBackup.ts`'s version gate. A `migrateState` bump therefore means: **bump `CURRENT_STORE_VERSION` + the standalone `STORE_VERSION` literal in `e2e/helpers.ts`** (Playwright can't resolve `src/` imports, so e2e keeps its own pinned copy). A stale `STORE_VERSION` drops the e2e seed into the migrate/onboarding path and `seedAndGoto`'s landing assertion fails loudly. `validatePlanBackup` lean-rejects any backup whose `storeVersion !== CURRENT_STORE_VERSION`, so a version bump makes older exports un-restorable until 4f schema negotiation.
 
 **E2E gesture harness (Playwright, `npm run e2e`) — the app's first e2e layer, opt-in, NOT in `vitest`.**
 `@playwright/test` (chromium only) + `playwright.config.ts` (mobile-emulated 390×844, `hasTouch`/`isMobile`,

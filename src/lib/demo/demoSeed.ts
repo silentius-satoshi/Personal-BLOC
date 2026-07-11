@@ -13,11 +13,13 @@
 // CB gauge out of the intended watch band on a volatile day).
 
 import { toLocalISO } from '../../utils/format';
+import { CURRENT_STORE_VERSION } from '../storeVersion';   // zero-import module → does NOT violate the never-import-useStore constraint
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
 
-// ⚠ MUST equal the store's persist `version` (src/store/useStore.ts). Bump ALONGSIDE any migrateState bump — same
-// discipline as e2e/helpers.ts's STORE_VERSION (both are in the Build & Deploy bump checklist in CLAUDE.md).
-export const DEMO_SEED_STORE_VERSION = 21;
+// ⚠ MUST equal the store's persist `version` (src/store/useStore.ts). Sourced from the single CURRENT_STORE_VERSION
+// constant; e2e/helpers.ts keeps its own pinned copy (Playwright can't resolve src imports) — both in the CLAUDE.md
+// Build & Deploy bump checklist.
+export const DEMO_SEED_STORE_VERSION = CURRENT_STORE_VERSION;
 
 /** Add `n` calendar months to `d`, clamping the day for short target months (matches bucketEventToMonth's
  *  calendar-anniversary stepping). Local-date construction so it pairs with toLocalISO. */

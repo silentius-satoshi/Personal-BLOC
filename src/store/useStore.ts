@@ -11,6 +11,9 @@ import { todayLocalISO } from '../utils/format';
 import { DEFAULT_RELAYS, importNip65RelayList } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
 import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
 import { isBackupGateSatisfied, type KeyProvenance } from '../lib/backupGate';   // pure leaf, zero imports → no cycle
+import { CURRENT_STORE_VERSION } from '../lib/storeVersion';   // single source for the persist version (zero-import leaf)
+import { SETTINGS_FIELDS, APPLY_FIELDS } from './settingsFields';   // single source for the synced-settings whitelist + apply subset
+import type { PlanBackup } from '../lib/backup/exportPlan';   // type-only — Plan Import/Restore apply
 import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { NostrParam } from '../lib/nostr/session';   // type-only — the runtime syncNow import is dynamic (cycle-safe)
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -539,6 +542,7 @@ export interface StoreState {
   deletedDayEvents:      Record<string, number>;   // P3 — event id → deletedAt (Unix ms); tombstones for synced dayLog deletes (persisted-not-synced, like deletedMonths; 90-day GC in merge)
   setDeletedDayEvents:   (v: Record<string, number>) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
+  applyPlanBackup:      (backup: PlanBackup) => void;   // Plan Import/Restore — atomic replace of this device's plan
 }
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1638,21 +1642,7 @@ export const useStore = create<StoreState>()(
   setDeletedDayEvents: (v) => set({ deletedDayEvents: v }),   // P3 — raw, non-emitting (mirrors setDeletedMonths)
 
   hydrateSettings: (data) => {
-    const SETTINGS_FIELDS = [
-      'income', 'expenses', 'blocApr', 'creditLine',
-      'advisorStartDate', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorMonthStartBalance', 'advisorActualBtcHeld',
-      'cbLoanBalance', 'cbAprPct', 'hasCbLoan',   // cbCollateralBtc removed (P2a Seam 2 — local derived cache; cross-device sync suspended P2a→P3)
-      'ndpLastPaidDate', 'tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit',
-      'cbLiquidationPrice', 'cbMonthlyPayment', 'cbPaymentStrategy',
-      'cbLtvTriggerPct', 'cbLtvTargetPct', 'cbRotateBackPct', 'cbEmergencyCeilingPct',
-      'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
-      'blocMinPaymentSource', 'blocStatementMinimum', 'blocMinPaymentDueDay',
-      'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
-      // pendingCollateralAdjustment RETIRED (Collateral-Truth v20) — Strike collateral is reading-anchored (records channel); a stale value in an old remote payload is ignored by omission
-      'nostrRelays',                       // C: synced relay list (guarded below — replace-on-hydrate)
-      'backupVerifiedAt',                  // Backup gate (R2a-1) — synced; null-incoming guarded below (one-way latch)
-      'viewers', 'nextViewerIndex',        // Multi-viewer roster (M1) — synced; empty-incoming guarded below
-    ] as const;
+    // SETTINGS_FIELDS lifted to src/store/settingsFields.ts (single source — shared with Plan Import/Restore's validator)
     const update: Partial<StoreState> = {};
     for (const field of SETTINGS_FIELDS) {
       if (field in data && data[field] !== undefined) {
@@ -1702,10 +1692,46 @@ export const useStore = create<StoreState>()(
     }
     set(update);
   },
+
+  // Plan Import/Restore — ATOMIC replace of this device's plan with a validated backup. ONE set(), four things:
+  //  (a) settings partition filtered to APPLY_FIELDS (transport fields + backupVerifiedAt untouched by construction;
+  //      keyProvenance is never in the payload). ⚠ The stamp attests KEY custody, not plan data — a backup restores a
+  //      plan onto whatever key the device holds; importing must NOT open the R2a-1 gate for an un-backed-up key.
+  //  (b) records wholesale (the PlanBackup record names match the store field names 1:1; per-entry btcHeld is historical
+  //      ledger, restored verbatim — current Strike collateral comes from (c)).
+  //  (c) the cbCollateralBtc/strikeCollateralBtc derived caches folded in the SAME commit (the setDayLog discipline —
+  //      dayLog ⇒ caches stays structural). The §5b deriveReadingAnchors seam is NOT run: the imported settings already
+  //      carry the anchor scalars + asOf, and setting settings directly (not via addDayEvent) can't fire it anyway.
+  //  (d) settingsDirty/recordsDirty + initialSettingsPullDone TRUE — the last is load-bearing twice: it stops sync.ts's
+  //      first-pull exception from hydrating remote OVER the imported settings, and lets publish proceed.
+  // The caller (validatePlanBackup) has fully validated `backup` before this runs.
+  applyPlanBackup: (backup) => {
+    const r = backup.plan.records;
+    const dayLog = r.dayLog as DayEvent[];
+    const cur = useStore.getState();
+    const update: Partial<StoreState> = {
+      monthlyLog: r.monthlyLog as MonthlyLogEntry[],
+      deletedMonths: r.deletedMonths,
+      dayLog,
+      deletedDayEvents: r.deletedDayEvents,
+      cbCollateralBtc: deriveCbCollateral(dayLog, cur.cbCollateralBtc),
+      strikeCollateralBtc: deriveStrikeCollateral(dayLog, cur.strikeCollateralBtc),
+      settingsDirty: true,
+      recordsDirty: true,
+      initialSettingsPullDone: true,
+    };
+    for (const [k, v] of Object.entries(backup.plan.settings)) {
+      if (APPLY_FIELDS.has(k) && v !== undefined) (update as Record<string, unknown>)[k] = v;
+    }
+    set(update);   // ONE atomic commit — no intermediate render between the old and new plan
+    // Normal sync resumes: publish the imported plan promptly (both guarded → no-op for a gated/unauth/viewer key).
+    useStore.getState().syncSettingsToNostr();
+    publishRecordsNow();
+  },
     }),
     {
       name: 'personal-bloc-store',
-      version: 21,
+      version: CURRENT_STORE_VERSION,
       // Zustand v5: storage MUST be explicit — `undefined` DISABLES persistence (it does NOT default to
       // localStorage; that was older-Zustand behavior). Plain `window.localStorage` (zustand's own default form):
       // in the browser it's the real store; under Node (tests, no `window`) the getter throws → createJSONStorage

@@ -26,6 +26,7 @@ import { BackupGateInterstitial } from './BackupGateInterstitial';
 import { BackupNagCard } from '../Entry/BackupNagCard';
 import { isBackupGateSatisfied } from '../../lib/backupGate';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
+import { RestoreBackupFlow } from './RestoreBackupFlow';
 import { useNostrSync } from '../../hooks/useNostrSync';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync, resetAndResyncConfirmMessage } from '../../lib/store/escapeHatch';
@@ -203,6 +204,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const [accessFlow, setAccessFlow] = useState<null | 'login' | 'viewer'>(null);
   // R2c-1 — the backup ceremony (own overlay; NOT a subpage — a guided reveal+quiz must own the screen).
   const [ceremonyOpen, setCeremonyOpen] = useState(false);
+  // Plan Import/Restore — the restore overlay (own screen mid-restore; mirrors ceremonyOpen).
+  const [restoreOpen, setRestoreOpen] = useState(false);
   const backupVerifiedAt = useStore((s) => s.backupVerifiedAt);   // for the "Backed up ✓" chip on the entry row
   // R2c-2 ladder rung 3 — Sharing/Network are the hard-gate pages (a generated-unverified key can't publish).
   const keyProvenance = useStore((s) => s.keyProvenance);
@@ -1102,6 +1105,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           <button className={styles.syncButton} onClick={() => downloadPlanBackup(useStore.getState())}>
             Export plan
           </button>
+          <p className={styles.cbLoanToggleDesc}>
+            Restore replaces this device’s plan with a backup file. Settings from the backup win; day and month
+            events you logged after the backup merge back from your relays on the next sync.
+          </p>
+          <button className={styles.syncButton} onClick={() => setRestoreOpen(true)}>
+            Restore from backup
+          </button>
         </div>
       )}
 
@@ -1115,6 +1125,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
       )}
       {/* R2c-1 — the backup ceremony overlay (own screen; stamps backupVerifiedAt on verified success). */}
       {ceremonyOpen && <RecoveryKeyCeremony onClose={() => setCeremonyOpen(false)} />}
+      {/* Plan Import/Restore — the restore overlay (own screen; owner-only, mounted inside the !viewerMode tree). */}
+      {restoreOpen && <RestoreBackupFlow onClose={() => setRestoreOpen(false)} />}
     </div>
   );
 }
