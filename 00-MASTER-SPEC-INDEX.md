@@ -1,5 +1,14 @@
 # Personal ₿LOC — Master Spec Index
 
+## ACTIVE — Master Roadmap v1 (Jul 2026)
+
+The forward plan toward the ultimate version lives in **`master-roadmap-v1`** (with `phase-0-ground-truth-spec-v1`
+and `phase-4a-plan-events-design-lock-spec-v1`). Locked: D1 event-sourcing scoped to synced plan-state only ·
+D2 single active writer device (hard cutover + one-way v1 bridge for rollback) · D3 Scenario Diff/Pin interleaved
+as Phase 3. Phases: 0 Ground Truth → 1 Monolith Cleave → 2 Crypto Worker → 3 Feature Checkpoint → 4 Event-Sourced
+Plan Core → 5 Viewer Availability → 6 Mission Features → 7 Sweep. NOTE: the baseline header below is stale
+(v15/v18-era) — full index rebuild is scheduled as Phase 7.
+
 **Current shipped baseline: store **v18** · 220/220 tests · HEAD `6673a2b` (branch `main`). Viewer-access arc (Phases 1–3) COMPLETE.**
 **Last rebuilt:** after the **security arc** (writer local-nsec signer → owner-pubkey gate → NIP-98 proxy auth) + the position-box relayout arc. Historical record of what shipped. **The security arc is now CONFIRMED on-device (iOS Face-ID local signer, owner-gate, NIP-98 all verified Jun 18).** The OPEN tail's live queue is now just the position-box eyeball + the queued viewer-access spec.
 
