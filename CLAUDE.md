@@ -43,10 +43,15 @@ collateral (₿) + borrowed ($), held as raw strings and coerced/clamped only at
 plus a price slider; drag the price down to watch LTV, a Safe/Watch/Act (or LIQUIDATED) verdict pill, the gauge fill,
 and a plain-English story line ("Liquidation at $X — bitcoin would have to fall N%…") all react. ⚠ The band math flows
 through the REAL app thresholds (`barLevel`/`CB_WARN_LTV`/`CB_LLTV`/`LEVEL_COLOR` — imports unchanged) so the demo
-can't drift from the app. Then a hairline **feature triptych** (Safety dashboard · Monthly playbook ·
-Censorship-resistant by design — "encrypted sync over Nostr — open relays no company can shut off"), a one-row
-`01/02/03` steps line, and a two-line footer (strip: FSL-1.1-MIT · self-host free | Hosted — Lightning coming soon |
-Source/Sandbox[gated]/Get started; + a not-financial-advice **disclaimer**). The C0 pricing + FAQ sections are gone.
+can't drift from the app. **Below the widget (C3 v3 — sectioned):** eyebrow-labeled sections with vertical rhythm —
+**Features** (title "Plan, log, and defend bitcoin-backed loans — private by design." + 3 cards, icons centered:
+Safety dashboard · Monthly playbook · Censorship-resistant by design "encrypted sync over Nostr — open relays no
+company can shut off"), **How it works** (3 columns w/ hairline dividers + one-line descriptions), **FAQ** (a
+native `<details>`/`<summary>` accordion — zero JS, keyboard/a11y-free — 4 items), **Pricing** (`id="pricing"`, TWO
+cards: Early access "Free / for now" → Get started; Hosted featured w/ a "COMING SOON" chip, unpriced "Coming soon" +
+an INERT `aria-disabled` ghost CTA — **NO self-host card**), and a 3-column **footer** (brand + the
+not-financial-advice **disclaimer** under it · Product links · Resources links incl. License → `${REPO_URL}/blob/main/LICENSE`
++ Nostr) with a bottom "© 2026 · Your keys, your plan" bar. The C0 pricing + FAQ sections returned here in v3.
 
 **Sandbox is origin-destructive.** `src/lib/demo/demoSeed.ts` (imported FIRST in main.tsx, before the store's
 module-init IIFEs read localStorage) writes a curated showcase plan on EVERY load — the re-write IS the reload-reset —

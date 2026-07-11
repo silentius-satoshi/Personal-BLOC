@@ -134,9 +134,28 @@ const FEATURES = [
 ];
 
 const STEPS = [
-  { n: '01', label: 'Create a key' },
-  { n: '02', label: 'Set your numbers' },
-  { n: '03', label: 'Follow the playbook' },
+  { n: '01', title: 'Create a key', desc: 'Generated on your device. No email, no account.' },
+  { n: '02', title: 'Set your numbers', desc: 'Collateral, credit line, income — the engine plans the year.' },
+  { n: '03', title: 'Follow the playbook', desc: 'Log each month. Defend your LTV before your lender does.' },
+];
+
+const FAQ = [
+  {
+    q: 'Is this financial advice?',
+    a: 'No. Personal ₿LOC is planning software — it models the numbers you give it against thresholds you set. The decisions, and the loans, are yours.',
+  },
+  {
+    q: 'Where does my data live?',
+    a: 'On your device, and — if you enable sync — as end-to-end encrypted events on Nostr relays you choose. There is no server database to breach.',
+  },
+  {
+    q: 'Which lenders does it model?',
+    a: 'Strike BLOC and Coinbase (Morpho) bitcoin-backed loans today, with manual entry for anything else. The app never touches your funds.',
+  },
+  {
+    q: 'Do I need an account?',
+    a: 'No. A key generated on your device is your identity. Save the 12-word recovery phrase and you can restore your plan anywhere.',
+  },
 ];
 
 export function LandingPage() {
@@ -170,46 +189,96 @@ export function LandingPage() {
         <CrashTest />
       </header>
 
-      {/* Features — hairline triptych */}
+      {/* Features */}
       <section className={styles.section}>
-        <div className={styles.triptych}>
+        <span className={styles.eyebrow}>What's inside</span>
+        <h2 className={styles.sectionTitle}>Plan, log, and defend bitcoin-backed loans — private by design.</h2>
+        <div className={styles.featureGrid}>
           {FEATURES.map((f) => (
-            <div key={f.title} className={styles.triCell}>
-              <span className={styles.triIcon}>{f.icon}</span>
-              <h3 className={styles.triTitle}>{f.title}</h3>
-              <p className={styles.triBody}>{f.body}</p>
+            <div key={f.title} className={styles.featureCard}>
+              <span className={styles.featureIcon}>{f.icon}</span>
+              <h3 className={styles.featureTitle}>{f.title}</h3>
+              <p className={styles.featureBody}>{f.body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* How it works — one row */}
+      {/* How it works */}
       <section className={styles.section}>
-        <div className={styles.stepsLine}>
-          {STEPS.map((s) => (
-            <div key={s.n} className={styles.stepItem}>
-              <span className={styles.stepN}>{s.n}</span>
-              <span className={styles.stepLabel}>{s.label}</span>
+        <span className={styles.eyebrow}>How it works</span>
+        <div className={styles.stepCols}>
+          {STEPS.map((s, i) => (
+            <div key={s.n} className={styles.stepCol}>
+              {i > 0 && <span className={styles.stepDivider} aria-hidden="true" />}
+              <span className={styles.stepNum}>{s.n}</span>
+              <h3 className={styles.stepTitle}>{s.title}</h3>
+              <p className={styles.stepDesc}>{s.desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* FAQ */}
+      <section className={styles.section}>
+        <span className={styles.eyebrow}>Questions</span>
+        <div className={styles.faqList}>
+          {FAQ.map((item) => (
+            <details key={item.q} className={styles.faqItem}>
+              <summary className={styles.faqQ}>{item.q}</summary>
+              <p className={styles.faqA}>{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section id="pricing" className={styles.section}>
+        <span className={styles.eyebrow}>Pricing</span>
+        <h2 className={styles.sectionTitle}>Simple, sovereign, prepaid</h2>
+        <div className={styles.priceGrid}>
+          <div className={styles.priceCard}>
+            <span className={styles.eyebrow}>Early access</span>
+            <div className={styles.priceBig}>Free</div>
+            <div className={styles.priceSub}>for now</div>
+            <p className={styles.priceBody}>Use the full app while we build. Your plan is yours — export or leave anytime.</p>
+            <a className={styles.ctaGhost} href="/app">Get started</a>
+          </div>
+          <div className={`${styles.priceCard} ${styles.priceCardFeatured}`}>
+            <span className={styles.priceChip}>Coming soon</span>
+            <span className={styles.eyebrow}>Hosted</span>
+            <div className={styles.priceBig}>Coming soon</div>
+            <div className={styles.priceSub}>prepaid over Lightning</div>
+            <p className={styles.priceBody}>A managed personal instance — auto-updates, managed relay with backups, priority support.</p>
+            <span className={styles.priceBtnDisabled} aria-disabled="true">Coming soon</span>
+          </div>
         </div>
       </section>
 
       {/* Footer */}
       <footer className={styles.footer}>
-        <div className={styles.footerStrip}>
-          <span className={styles.footerCol}>FSL-1.1-MIT · self-host free</span>
-          <span className={styles.footerCol}>Hosted — Lightning, coming soon</span>
-          <span className={styles.footerLinks}>
-            <a href={REPO_URL} target="_blank" rel="noreferrer">Source</a>
-            {SANDBOX_URL && <a href={SANDBOX_URL} target="_blank" rel="noreferrer">Sandbox</a>}
-            <a href="/app">Get started</a>
-          </span>
+        <div className={styles.footerCols}>
+          <div className={styles.footerBrand}>
+            <span className={styles.footerBrandName}>₿ Personal ₿LOC</span>
+            <p className={styles.footerBrandNote}>
+              Planning software, not financial advice. Bitcoin-collateralized borrowing carries liquidation risk —
+              model it before you live it.
+            </p>
+          </div>
+          <div className={styles.footerCol}>
+            <span className={styles.footerColTitle}>Product</span>
+            <a className={styles.footerLink} href="/app">Get started</a>
+            {SANDBOX_URL && <a className={styles.footerLink} href={SANDBOX_URL} target="_blank" rel="noreferrer">Sandbox</a>}
+            <a className={styles.footerLink} href="#pricing">Pricing</a>
+          </div>
+          <div className={styles.footerCol}>
+            <span className={styles.footerColTitle}>Resources</span>
+            <a className={styles.footerLink} href={REPO_URL} target="_blank" rel="noreferrer">Source code</a>
+            <a className={styles.footerLink} href={`${REPO_URL}/blob/main/LICENSE`} target="_blank" rel="noreferrer">License (FSL-1.1-MIT)</a>
+            <a className={styles.footerLink} href="https://nostr.com" target="_blank" rel="noreferrer">Nostr</a>
+          </div>
         </div>
-        <p className={styles.disclaimer}>
-          Personal ₿LOC is planning software, not financial advice. Bitcoin-collateralized borrowing carries
-          liquidation risk — model it before you live it.
-        </p>
+        <div className={styles.footerBottom}>© 2026 Personal ₿LOC · Your keys, your plan</div>
       </footer>
     </div>
   );
