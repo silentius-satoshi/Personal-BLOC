@@ -1,4 +1,4 @@
-/* C0 — commercial landing page. Uses the app's design tokens (theme-aware); self-contained, no app-component reuse. */
+/* C0/C1/C2 — commercial landing page. Uses the app's design tokens (theme-aware); self-contained, no app-component reuse. */
 
 .page {
   max-width: 960px;
@@ -36,24 +36,14 @@
   gap: 16px;
 }
 
-.brandRing {
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  border: 1px solid rgba(247, 147, 26, 0.35);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 30px;
-  color: var(--btc);
-}
-
-.title {
-  font-size: 40px;
+.headline {
+  font-size: 42px;
   font-weight: 800;
   margin: 0;
   letter-spacing: -0.02em;
+  line-height: 1.08;
 }
+.headlineAccent { color: var(--btc); }
 
 .tagline {
   font-size: 17px;
@@ -102,7 +92,7 @@
   margin: 0;
 }
 
-/* ── LtvDemo widget ───────────────────────────────────────────────────── */
+/* ── Crash-test widget ────────────────────────────────────────────────── */
 .widget {
   width: 100%;
   max-width: 520px;
@@ -114,27 +104,84 @@
   text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 14px;
 }
 
-.widgetHead {
+.widgetHeadline { display: flex; flex-direction: column; gap: 2px; }
+.widgetTitle { font-size: 16px; font-weight: 700; color: var(--text-primary); }
+.widgetSub { font-size: 12.5px; color: var(--text-muted); }
+
+/* Editable fields */
+.fieldRow { display: flex; gap: 12px; }
+.field { flex: 1; display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.fieldLabel {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+}
+.fieldInputWrap {
   display: flex;
   align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
+  gap: 4px;
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 8px 10px;
 }
-.widgetLabel { font-size: 13px; color: var(--text-muted); }
-.widgetPrice { font-family: var(--mono); font-size: 14px; color: var(--text-primary); font-weight: 700; }
-.widgetBadge {
-  margin-left: auto;
-  font-size: 12px;
+.fieldPrefix { font-family: var(--mono); font-size: 14px; color: var(--text-faint); }
+.fieldInput {
+  flex: 1;
+  min-width: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--mono);
+  font-size: 15px;
   font-weight: 700;
-  border: 1px solid;
-  border-radius: 999px;
-  padding: 2px 10px;
+  color: var(--text-primary);
+  -moz-appearance: textfield;
+}
+.fieldInput::-webkit-outer-spin-button,
+.fieldInput::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* Price slider */
+.priceRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.priceLabel { font-size: 13px; color: var(--text-muted); }
+.priceValue { font-family: var(--mono); font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.slider {
+  width: 100%;
+  accent-color: var(--btc);
+  cursor: pointer;
 }
 
+/* Readout */
+.readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.readoutLtv { display: flex; align-items: baseline; gap: 8px; }
+.ltvBig { font-family: var(--mono); font-size: 30px; font-weight: 800; line-height: 1; }
+.ltvUnit { font-size: 12px; color: var(--text-ghost); }
+.verdictPill {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  border-radius: 999px;
+  padding: 4px 12px;
+}
+
+/* Gauge */
 .gaugeTrack {
+  position: relative;
   height: 10px;
   border-radius: 999px;
   background: var(--surface-3);
@@ -145,137 +192,97 @@
   border-radius: 999px;
   transition: width 0.08s linear, background 0.08s linear;
 }
-
-.gaugeMeta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
+.gaugeTick {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: var(--text-faint);
+  transform: translateX(-1px);
 }
-.ltvValue { font-family: var(--mono); font-size: 15px; font-weight: 700; }
-.liqNote { font-size: 12px; color: var(--text-faint); font-family: var(--mono); }
-
-.slider {
-  width: 100%;
-  accent-color: var(--btc);
-  cursor: pointer;
+.gaugeLiq {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  width: 2px;
+  background: var(--red);
 }
 
-.widgetHint {
-  font-size: 12px;
-  color: var(--text-muted);
+.story {
+  font-size: 13px;
   line-height: 1.5;
   margin: 0;
 }
+.story strong { font-weight: 700; }
 
 /* ── Sections ─────────────────────────────────────────────────────────── */
 .section {
   padding: 32px 0;
   border-top: 1px solid var(--line-2);
 }
-.sectionTitle {
-  font-size: 13px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  color: var(--text-muted);
-  margin: 0 0 20px;
-}
 
-/* Features */
-.featureGrid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
-  gap: 14px;
-}
-.featureCard {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 18px;
-}
-.featureTitle { font-size: 15px; font-weight: 700; margin: 0 0 6px; color: var(--text-primary); }
-.featureBody { font-size: 13.5px; color: var(--text-secondary); line-height: 1.55; margin: 0; }
-
-/* Steps */
-.stepRow {
+/* Features — hairline triptych */
+.triptych {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 14px;
-}
-.stepCard {
-  background: var(--surface);
-  border: 1px solid var(--line);
+  gap: 1px;
+  background: var(--line-2);
+  border: 1px solid var(--line-2);
   border-radius: 12px;
-  padding: 18px;
+  overflow: hidden;
 }
-.stepNum {
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(247, 147, 26, 0.14);
-  color: var(--btc);
-  font-weight: 800;
-  font-size: 15px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  margin-bottom: 10px;
-}
-.stepTitle { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
-.stepBody { font-size: 13.5px; color: var(--text-secondary); line-height: 1.55; margin: 0; }
-
-/* Pricing */
-.priceRow {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 16px;
-}
-.priceCard {
+.triCell {
   background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 16px;
-  padding: 24px;
+  padding: 22px 20px;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  align-items: flex-start;
+  gap: 8px;
 }
-.priceCardFeatured { border-color: rgba(247, 147, 26, 0.4); background: var(--surface-2); }
-.priceName { font-size: 15px; font-weight: 700; margin: 0; color: var(--text-primary); }
-.priceAmount { font-size: 26px; font-weight: 800; color: var(--btc); }
-.priceBody { font-size: 13.5px; color: var(--text-secondary); line-height: 1.55; margin: 0 0 6px; flex: 1; }
+.triIcon { font-size: 22px; line-height: 1; }
+.triTitle { font-size: 15px; font-weight: 700; margin: 0; color: var(--text-primary); }
+.triBody { font-size: 13px; color: var(--text-secondary); line-height: 1.5; margin: 0; }
 
-/* FAQ */
-.faqList { display: flex; flex-direction: column; gap: 14px; }
-.faqItem {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  padding: 16px 18px;
+/* Steps — one row */
+.stepsLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px 28px;
 }
-.faqQ { font-size: 15px; font-weight: 700; margin: 0 0 6px; }
-.faqA { font-size: 13.5px; color: var(--text-secondary); line-height: 1.55; margin: 0; }
+.stepItem { display: flex; align-items: baseline; gap: 8px; }
+.stepN { font-family: var(--mono); font-size: 13px; font-weight: 800; color: var(--btc); }
+.stepLabel { font-size: 14px; color: var(--text-secondary); }
 
 /* Footer */
 .footer {
   padding: 32px 0 0;
   border-top: 1px solid var(--line-2);
   display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.footerStrip {
+  display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 12px 20px;
   font-size: 13px;
   color: var(--text-muted);
 }
-.footerBrand { font-weight: 700; color: var(--text-secondary); }
-.footerLinks { display: flex; gap: 16px; }
+.footerCol { color: var(--text-muted); }
+.footerLinks { display: flex; gap: 16px; margin-left: auto; }
 .footerLinks a { color: var(--btc); text-decoration: none; }
 .footerLinks a:hover { text-decoration: underline; }
-.footerNote { margin-left: auto; color: var(--text-faint); }
+.disclaimer {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  line-height: 1.5;
+  margin: 0;
+}
 
 @media (max-width: 560px) {
-  .title { font-size: 32px; }
+  .headline { font-size: 34px; }
   .tagline { font-size: 15px; }
-  .footerNote { margin-left: 0; width: 100%; }
+  .footerLinks { margin-left: 0; }
 }

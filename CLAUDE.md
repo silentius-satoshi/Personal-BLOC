@@ -32,10 +32,21 @@ straight in their app at `/`.
 **The funnel — no new auth plumbing.** Every landing CTA links `/app` → `AppShell` → `!onboardingComplete` →
 `OnboardingModal` opens on the `ChoosePathView` fork (Get started / I have a plan or a key / Connect to a shared plan).
 **That fork IS the sign-up/log-in surface** — no params, no deep links. Completing onboarding flips the GATE key to
-`'1'` → `/` renders the app (landing skipped). Landing UI: a nav bar (brand + "View source" + "Sign up / Log in" →
-`/app`); hero primary "Get started — it's free" → `/app` + a "Try the sandbox" ghost rendered ONLY when
-`VITE_SANDBOX_URL` is set (`SANDBOX_URL = env || null` — no fallback, a dead sandbox link is worse than none); the
-pricing/footer CTAs point `/app`, footer "Sandbox" link gated on `SANDBOX_URL`.
+`'1'` → `/` renders the app (landing skipped).
+
+**Landing UI (C2 v2 — `LandingPage.tsx`/`.module.css`).** Nav bar (brand + "View source" + "Sign up / Log in" →
+`/app`). Hero: two-line headline "Borrow against your bitcoin. / Never sell." (2nd line `--btc`) + the verbatim
+sovereign-planner subtitle + primary "Get started — it's free" → `/app` + a "Try the sandbox" ghost rendered ONLY when
+`VITE_SANDBOX_URL` is set (`SANDBOX_URL = env || null` — no fallback, a dead sandbox link is worse than none) + a
+"Free · No email · Your keys stay yours" hint. **Crash-test widget** (`CrashTest`): two EDITABLE store-free fields —
+collateral (₿) + borrowed ($), held as raw strings and coerced/clamped only at compute so mid-type clears don't snap —
+plus a price slider; drag the price down to watch LTV, a Safe/Watch/Act (or LIQUIDATED) verdict pill, the gauge fill,
+and a plain-English story line ("Liquidation at $X — bitcoin would have to fall N%…") all react. ⚠ The band math flows
+through the REAL app thresholds (`barLevel`/`CB_WARN_LTV`/`CB_LLTV`/`LEVEL_COLOR` — imports unchanged) so the demo
+can't drift from the app. Then a hairline **feature triptych** (Safety dashboard · Monthly playbook ·
+Censorship-resistant by design — "encrypted sync over Nostr — open relays no company can shut off"), a one-row
+`01/02/03` steps line, and a two-line footer (strip: FSL-1.1-MIT · self-host free | Hosted — Lightning coming soon |
+Source/Sandbox[gated]/Get started; + a not-financial-advice **disclaimer**). The C0 pricing + FAQ sections are gone.
 
 **Sandbox is origin-destructive.** `src/lib/demo/demoSeed.ts` (imported FIRST in main.tsx, before the store's
 module-init IIFEs read localStorage) writes a curated showcase plan on EVERY load — the re-write IS the reload-reset —
@@ -46,7 +57,9 @@ the viewer gates → **Branch J renders the hydrated plan**. **Publish is imposs
 path guards `!isAuthenticated || !nostrSigner || !nostrPubkey`, and no signer can exist without an identity. NO
 AppShell gate change (only the one `DemoBanner` line). Showcase = Month 8 of a 12-month strategy, manual price for
 determinism (Strike LTV green, CB LTV ~72% watch band), 7 confirmed history months. `DemoBanner`'s "Get the real
-thing" links `VITE_PUBLIC_SITE_URL || '/'` (on the sandbox origin, a bare `/` would loop back to the sandbox).
+thing" links `VITE_PUBLIC_SITE_URL || '/'` (on the sandbox origin, a bare `/` would loop back to the sandbox). C2: the
+banner is `position: sticky; top: 0` (**not fixed**) — as the first in-flow child of AppShell's fragment it PUSHES the
+app content down (header stays visible) instead of overlaying it, and stays pinned on scroll.
 
 **Free-riding closure — now on the SANDBOX project.** The sandbox deploy sets `VITE_OWNER_PUBKEY` (the owner's hex), so
 a visitor who signs in with their own real key on the sandbox domain hits `PrivateAppNotice` (`isAuthenticated &&
@@ -277,10 +290,12 @@ src/
                                 # 'journal') and injected into ViewerHomeView via ownerNav (active 'dashboard').
                                 # GROWTH INVARIANT: fixed at 5 — new tools become Almanac faces, never header icons.
       HeaderNavCluster.module.css # boxed 34×34 .iconBtn + .iconBtnActive (--btc accent) highlight
-      DemoBanner.tsx            # C0 — slim fixed-top sandbox strip (+ .module.css). Mounted by ONE AppShell line
-                                # `{import.meta.env.VITE_DEMO === '1' && <DemoBanner/>}` (first child of the top-level
-                                # fragment → over every branch). "Sandbox — example plan, edits reset on reload · Get
-                                # the real thing →" linking '/'. Flag unset on the owner build → dead branch, tree-shaken
+      DemoBanner.tsx            # C0/C2 — slim STICKY (position:sticky;top:0, C2 — not fixed) sandbox strip (+ .module.css).
+                                # Mounted by ONE AppShell line `{import.meta.env.VITE_DEMO === '1' && <DemoBanner/>}` (first
+                                # child of the top-level fragment → sticky keeps it in flow, PUSHING content down instead of
+                                # overlaying the app header, pinned on scroll). "Sandbox — example plan, edits reset on reload
+                                # · Get the real thing →" linking VITE_PUBLIC_SITE_URL || '/'. Flag unset on the owner/public
+                                # builds → dead branch, tree-shaken
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),

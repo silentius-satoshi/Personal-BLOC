@@ -4,9 +4,10 @@ import { CB_WARN_LTV, CB_LLTV } from '../simulation/runCoinbaseLoan';
 import { LEVEL_COLOR } from '../simulation/safetyView';
 import styles from './LandingPage.module.css';
 
-// C0 — the commercial landing page, served at '/' on the PUBLIC deploy (VITE_LANDING=1). Self-contained: no store,
-// no simulation state, no NostrProvider dependency (App renders it as a sibling of the gate ladder). The only app
-// imports are PURE band constants/functions so the LtvDemo widget's Safe/Watch/Act thresholds can't drift from the app.
+// C0/C1/C2 — the commercial landing page, served at '/' on the PUBLIC deploy (VITE_LANDING=1) for a not-yet-onboarded
+// visitor. Self-contained: no store, no simulation state, no NostrProvider dependency (App renders it as a sibling of
+// the gate ladder). The only app imports are PURE band constants/functions so the crash-test widget's Safe/Watch/Act
+// thresholds can't drift from the app.
 
 const REPO_URL = import.meta.env.VITE_REPO_URL || 'https://github.com/silentius-satoshi/personal-bloc';
 // C1 — the landing→sandbox link. NO fallback URL: a dead sandbox link is worse than none, so the CTA is
@@ -14,89 +15,128 @@ const REPO_URL = import.meta.env.VITE_REPO_URL || 'https://github.com/silentius-
 const SANDBOX_URL = import.meta.env.VITE_SANDBOX_URL || null;
 const LEVEL_LABEL: Record<SafetyLevel, string> = { safe: 'Safe', watch: 'Watch', act: 'Act' };
 
-// A fixed example loan position — the widget drags the BTC PRICE and everything else reacts, so the "price drops →
-// LTV rises → you approach liquidation" story (the product's whole premise) is visible in one gesture. The position
-// (1 ₿ collateral, $45k borrowed) + range are chosen so all THREE bands are reachable at plausible prices: Safe
-// above ~$69k, Watch $60k–69k (65–75%), Act below ~$60k (≥75%), liquidation at ~$52k.
-const COLLATERAL_BTC = 1.0;
-const DRAWN_USD = 45_000;
-const PRICE_MIN = 40_000;
-const PRICE_MAX = 200_000;
-const LIQ_PRICE = DRAWN_USD / (COLLATERAL_BTC * CB_LLTV); // the price at which LTV hits the 86% liquidation line
+// C2 — the crash-test widget. The visitor sets up THEIR OWN loan (collateral + borrowed), then drags the price down to
+// feel liquidation approach — the product's whole premise in one gesture. Store-free (plain <input>, local state).
+// ⚠ collateral/borrowed are held as RAW STRINGS and coerced/clamped only at compute, so clearing a field mid-type
+// doesn't snap the value back under the user. All band math flows through the REAL app thresholds (imports above).
+function CrashTest() {
+  const [colRaw, setColRaw] = useState('1');
+  const [borRaw, setBorRaw] = useState('20000');
+  const [price, setPrice] = useState(100_000);
 
-function LtvDemo() {
-  const [price, setPrice] = useState(95_000);
-  const ltv = DRAWN_USD / (COLLATERAL_BTC * price); // 0..1
+  const collateral = Math.max(0.01, Number(colRaw) || 1.0);
+  const borrowed = Math.max(100, Number(borRaw) || 20_000);
+  const ltv = borrowed / (collateral * price); // 0..1
   const level = barLevel(ltv, CB_WARN_LTV, 0.75); // green <65% · amber 65–75% · red ≥75% (the real app's bands)
   const color = LEVEL_COLOR[level];
-  const fillPct = Math.min(100, (ltv / CB_LLTV) * 100); // fill toward the 86% liquidation line
+  const liq = borrowed / (collateral * CB_LLTV); // the price at which LTV hits the 86% liquidation line
+  const liquidated = ltv >= CB_LLTV;
+  const fillPct = Math.min(100, (ltv / CB_LLTV) * 100);
+  const triggerPct = (0.75 / CB_LLTV) * 100;
+  const dropPct = Math.max(0, Math.round((1 - liq / price) * 100));
+  const ltvText = ltv >= 1 ? (ltv * 100).toFixed(0) : (ltv * 100).toFixed(1);
 
   return (
     <div className={styles.widget}>
-      <div className={styles.widgetHead}>
-        <span className={styles.widgetLabel}>Loan-to-value at</span>
-        <span className={styles.widgetPrice}>${Math.round(price).toLocaleString()}/₿</span>
-        <span className={styles.widgetBadge} style={{ color, borderColor: color }}>{LEVEL_LABEL[level]}</span>
+      <div className={styles.widgetHeadline}>
+        <span className={styles.widgetTitle}>Would you survive a crash?</span>
+        <span className={styles.widgetSub}>Set up a loan, then drag the price down.</span>
       </div>
 
-      <div className={styles.gaugeTrack}>
-        <div className={styles.gaugeFill} style={{ width: `${fillPct}%`, background: color }} />
-      </div>
-      <div className={styles.gaugeMeta}>
-        <span className={styles.ltvValue} style={{ color }}>{(ltv * 100).toFixed(1)}% LTV</span>
-        <span className={styles.liqNote}>liquidation at ${Math.round(LIQ_PRICE).toLocaleString()}</span>
+      <div className={styles.fieldRow}>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Collateral</span>
+          <span className={styles.fieldInputWrap}>
+            <span className={styles.fieldPrefix}>₿</span>
+            <input
+              className={styles.fieldInput}
+              type="number"
+              step={0.1}
+              min={0.01}
+              value={colRaw}
+              onChange={(e) => setColRaw(e.target.value)}
+              aria-label="Collateral in bitcoin"
+            />
+          </span>
+        </label>
+        <label className={styles.field}>
+          <span className={styles.fieldLabel}>Borrowed</span>
+          <span className={styles.fieldInputWrap}>
+            <span className={styles.fieldPrefix}>$</span>
+            <input
+              className={styles.fieldInput}
+              type="number"
+              step={1000}
+              min={100}
+              value={borRaw}
+              onChange={(e) => setBorRaw(e.target.value)}
+              aria-label="Borrowed in dollars"
+            />
+          </span>
+        </label>
       </div>
 
+      <div className={styles.priceRow}>
+        <span className={styles.priceLabel}>If bitcoin goes to…</span>
+        <span className={styles.priceValue}>${Math.round(price).toLocaleString()}</span>
+      </div>
       <input
         className={styles.slider}
         type="range"
-        min={PRICE_MIN}
-        max={PRICE_MAX}
-        step={500}
+        min={15_000}
+        max={250_000}
+        step={1_000}
         value={price}
         onChange={(e) => setPrice(Number(e.target.value))}
         aria-label="Bitcoin price"
       />
-      <p className={styles.widgetHint}>
-        {COLLATERAL_BTC.toFixed(1)} ₿ collateral · ${DRAWN_USD.toLocaleString()} borrowed — drag the price to see how a
-        drawdown moves your risk. Personal ₿LOC watches this for you and tells you exactly when to act.
+
+      <div className={styles.readout}>
+        <div className={styles.readoutLtv}>
+          <span className={styles.ltvBig} style={{ color }}>{ltvText}%</span>
+          <span className={styles.ltvUnit}>loan-to-value</span>
+        </div>
+        <span
+          className={styles.verdictPill}
+          style={{ color, background: `color-mix(in srgb, ${color} 12%, transparent)` }}
+        >
+          {liquidated ? 'LIQUIDATED' : LEVEL_LABEL[level].toUpperCase()}
+        </span>
+      </div>
+
+      <div className={styles.gaugeTrack}>
+        <div className={styles.gaugeFill} style={{ width: `${fillPct}%`, background: color }} />
+        <div className={styles.gaugeTick} style={{ left: `${triggerPct}%` }} />
+        <div className={styles.gaugeLiq} />
+      </div>
+
+      <p className={styles.story} style={{ color }}>
+        {liquidated ? (
+          <>Below <strong>${Math.round(liq).toLocaleString()}</strong> this position is <strong>liquidated</strong>. The
+          app would have flagged this months earlier.</>
+        ) : (
+          <>Liquidation at <strong>${Math.round(liq).toLocaleString()}</strong> — bitcoin would have to fall{' '}
+          <strong>{dropPct}%</strong> from here.</>
+        )}
       </p>
     </div>
   );
 }
 
 const FEATURES = [
-  { title: 'Your key, your plan', body: 'No accounts, no sign-ups. A key generated on your device secures everything — nothing lives on our servers.' },
-  { title: 'Model the real thing', body: 'Strike Bitcoin Line of Credit and Coinbase-loan strategies, side by side, with liquidation-aware math.' },
-  { title: 'A monthly playbook', body: 'Daily and monthly views turn the model into a plain-English "do this" — draw, buy, pay down, repeat.' },
-  { title: 'Safety at a glance', body: 'Live Safe / Watch / Act gauges for Strike and Coinbase, so you always know how much room you have.' },
-  { title: 'Share, read-only', body: 'Give a partner or advisor a private, read-only view of your plan — abstracted or with real figures, your call.' },
-  { title: 'Offline & cross-device', body: 'A full PWA that works offline, with optional end-to-end-encrypted sync across your own devices over Nostr.' },
+  { icon: '📊', title: 'Safety dashboard', body: 'Live LTV bars and liquidation distance for every loan.' },
+  { icon: '🗓️', title: 'Monthly playbook', body: 'Twelve months of draws, buys, and paydowns — planned vs. real.' },
+  {
+    icon: '🛡️',
+    title: 'Censorship-resistant by design',
+    body: 'Your key, your device. Encrypted sync over Nostr — open relays no company can shut off. No accounts to breach.',
+  },
 ];
 
 const STEPS = [
-  { n: '1', title: 'Generate your key', body: 'One tap mints your plan key on-device and walks you through backing it up.' },
-  { n: '2', title: 'Set your numbers', body: 'Income, expenses, credit line, collateral — the model calibrates to your situation.' },
-  { n: '3', title: 'Follow the playbook', body: 'Each month it tells you what to do and flags danger before it arrives.' },
-];
-
-const FAQ = [
-  {
-    q: 'Do you hold my keys or my data?',
-    a: 'No. Your plan is secured by a key generated on your device and never leaves it unencrypted. There is no account and no server-side copy of your plan.',
-  },
-  {
-    q: 'Can I self-host it?',
-    a: 'Yes. The source is available under FSL-1.1-MIT — run your own locked instance for free. A hosted option, prepaid over Lightning, is coming.',
-  },
-  {
-    q: 'Is this financial advice?',
-    a: 'No. Personal ₿LOC is a modeling and planning tool. It shows you the mechanics and the math; the decisions are yours.',
-  },
-  {
-    q: 'What happens to the demo when I reload?',
-    a: 'The sandbox is a fixed example plan. Edit anything you like — a reload resets it. Nothing you do there is saved or sent anywhere.',
-  },
+  { n: '01', label: 'Create a key' },
+  { n: '02', label: 'Set your numbers' },
+  { n: '03', label: 'Follow the playbook' },
 ];
 
 export function LandingPage() {
@@ -113,8 +153,10 @@ export function LandingPage() {
 
       {/* Hero */}
       <header className={styles.hero}>
-        <div className={styles.brandRing}>₿</div>
-        <h1 className={styles.title}>Personal ₿LOC</h1>
+        <h1 className={styles.headline}>
+          Borrow against your bitcoin.<br />
+          <span className={styles.headlineAccent}>Never sell.</span>
+        </h1>
         <p className={styles.tagline}>
           A sovereign planner for accumulating Bitcoin with a Line of Credit — your key, your plan, no accounts.
         </p>
@@ -124,67 +166,30 @@ export function LandingPage() {
             <a className={styles.ctaGhost} href={SANDBOX_URL} target="_blank" rel="noreferrer">Try the sandbox</a>
           )}
         </div>
-        <p className={styles.heroHint}>Free to use · installable PWA · no email · no tracking</p>
-        <LtvDemo />
+        <p className={styles.heroHint}>Free · No email · Your keys stay yours</p>
+        <CrashTest />
       </header>
 
-      {/* Features */}
+      {/* Features — hairline triptych */}
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>What it does</h2>
-        <div className={styles.featureGrid}>
+        <div className={styles.triptych}>
           {FEATURES.map((f) => (
-            <div key={f.title} className={styles.featureCard}>
-              <h3 className={styles.featureTitle}>{f.title}</h3>
-              <p className={styles.featureBody}>{f.body}</p>
+            <div key={f.title} className={styles.triCell}>
+              <span className={styles.triIcon}>{f.icon}</span>
+              <h3 className={styles.triTitle}>{f.title}</h3>
+              <p className={styles.triBody}>{f.body}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* How it works */}
+      {/* How it works — one row */}
       <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>How it works</h2>
-        <div className={styles.stepRow}>
+        <div className={styles.stepsLine}>
           {STEPS.map((s) => (
-            <div key={s.n} className={styles.stepCard}>
-              <div className={styles.stepNum}>{s.n}</div>
-              <h3 className={styles.stepTitle}>{s.title}</h3>
-              <p className={styles.stepBody}>{s.body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* Pricing */}
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Pricing</h2>
-        <div className={styles.priceRow}>
-          <div className={styles.priceCard}>
-            <h3 className={styles.priceName}>Self-host</h3>
-            <div className={styles.priceAmount}>Free</div>
-            <p className={styles.priceBody}>Run your own locked instance. Source-available under FSL-1.1-MIT.</p>
-            <a className={styles.ctaGhost} href={REPO_URL} target="_blank" rel="noreferrer">View source</a>
-          </div>
-          <div className={`${styles.priceCard} ${styles.priceCardFeatured}`}>
-            <h3 className={styles.priceName}>Hosted</h3>
-            <div className={styles.priceAmount}>Coming soon</div>
-            <p className={styles.priceBody}>
-              A managed personal instance — same sovereignty model, none of the DevOps. Prepaid with bitcoin over
-              Lightning when it lands.
-            </p>
-            <a className={styles.ctaPrimary} href="/app">Get started free →</a>
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      <section className={styles.section}>
-        <h2 className={styles.sectionTitle}>Questions</h2>
-        <div className={styles.faqList}>
-          {FAQ.map((item) => (
-            <div key={item.q} className={styles.faqItem}>
-              <h3 className={styles.faqQ}>{item.q}</h3>
-              <p className={styles.faqA}>{item.a}</p>
+            <div key={s.n} className={styles.stepItem}>
+              <span className={styles.stepN}>{s.n}</span>
+              <span className={styles.stepLabel}>{s.label}</span>
             </div>
           ))}
         </div>
@@ -192,13 +197,19 @@ export function LandingPage() {
 
       {/* Footer */}
       <footer className={styles.footer}>
-        <span className={styles.footerBrand}>Personal ₿LOC</span>
-        <span className={styles.footerLinks}>
-          <a href="/app">Get started</a>
-          {SANDBOX_URL && <a href={SANDBOX_URL} target="_blank" rel="noreferrer">Sandbox</a>}
-          <a href={REPO_URL} target="_blank" rel="noreferrer">View source</a>
-        </span>
-        <span className={styles.footerNote}>© 2026 · Source-available under FSL-1.1-MIT</span>
+        <div className={styles.footerStrip}>
+          <span className={styles.footerCol}>FSL-1.1-MIT · self-host free</span>
+          <span className={styles.footerCol}>Hosted — Lightning, coming soon</span>
+          <span className={styles.footerLinks}>
+            <a href={REPO_URL} target="_blank" rel="noreferrer">Source</a>
+            {SANDBOX_URL && <a href={SANDBOX_URL} target="_blank" rel="noreferrer">Sandbox</a>}
+            <a href="/app">Get started</a>
+          </span>
+        </div>
+        <p className={styles.disclaimer}>
+          Personal ₿LOC is planning software, not financial advice. Bitcoin-collateralized borrowing carries
+          liquidation risk — model it before you live it.
+        </p>
       </footer>
     </div>
   );

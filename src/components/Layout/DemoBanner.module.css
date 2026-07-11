@@ -1,6 +1,8 @@
-/* C0 — slim fixed-top sandbox strip. */
+/* C0/C2 — slim sandbox strip. STICKY, not fixed: DemoBanner is the first in-flow child of AppShell's top-level
+   fragment, so sticky keeps it in flow → it PUSHES the app content down (header stays visible) instead of overlaying
+   it, and stays pinned to the top on scroll. */
 .banner {
-  position: fixed;
+  position: sticky;
   top: 0;
   left: 0;
   right: 0;
