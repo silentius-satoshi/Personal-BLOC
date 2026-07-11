@@ -8,40 +8,57 @@ Deployed to Vercel.
 
 ---
 
-## Commercialization (C0)
+## Commercialization (C1 — landing-first funnel)
 
-**Topology — ONE repo, TWO Vercel projects, split by build-time env flags:**
+**Topology — ONE repo, THREE Vercel projects, split by build-time env flags.** C0 shipped landing + seeded sandbox on
+one public deploy where a REAL sign-up was impossible (the demo seed re-writes `personal-bloc-store` on every load) and
+sign-ins dead-ended (`VITE_OWNER_PUBKEY` → `PrivateAppNotice`). C1 makes the **public deploy the free real app** with
+the landing as its front door, and moves the origin-destructive sandbox to its OWN project.
 
-| Env var | Owner project | Public project | Effect |
-|---|---|---|---|
-| `VITE_OWNER_PUBKEY` | ✅ (owner hex) | ✅ (SAME owner hex) | the private/owner gate — a non-owner authed key → `PrivateAppNotice` |
-| `VITE_LANDING` | — | `1` | serve `LandingPage` at `/` (App.tsx branch) |
-| `VITE_DEMO` | — | `1` | seed the sandbox showcase plan + mount `DemoBanner` |
-| `VITE_REPO_URL` | — | repo URL | "View source" link on the landing page |
+| Project | Env | Serves |
+|---|---|---|
+| owner (`personal-bloc`) | `VITE_OWNER_PUBKEY` only | the private app — byte-identical, untouched |
+| public (`personal-bloc-public`) | `VITE_LANDING=1`, `VITE_REPO_URL`, `VITE_SANDBOX_URL` — ⚠ **NO** `VITE_DEMO`, **NO** `VITE_OWNER_PUBKEY` | landing at `/` (not-onboarded) · the real free app for everyone |
+| sandbox (`personal-bloc-demo`) | `VITE_DEMO=1`, `VITE_OWNER_PUBKEY` (free-riding closure lives HERE now), `VITE_PUBLIC_SITE_URL` | seeded reset-on-reload sandbox |
 
-The **owner project sets no C0 flag → byte-identical to today** (landing/demo branches are dead code, tree-shaken).
-The **public project** serves marketing at `/` and the interactive sandbox app at `/app` (vercel.json rewrites every
-path to index.html; App.tsx's pathname switch routes `/` → landing when `VITE_LANDING=1`, everything else → AppShell).
+Unset flags → dead branches, tree-shaken. `vercel.json` rewrites every path to index.html.
 
-**Demo mechanics.** `src/lib/demo/demoSeed.ts` (imported FIRST in main.tsx, before the store's module-init IIFEs read
-localStorage) writes a curated showcase plan on EVERY load — the re-write IS the reload-reset. It seeds
-`onboarded=1` + a plan blob with **NO Nostr identity**, so AppShell's ladder skips onboarding (onboarded), the auth
-gates (`nostrAuthEnabled` derives from pubkey → false), and the viewer gates (viewerMode false) → **Branch J renders
-the hydrated plan** — the exact identity-less-shell state R2c-6b documented. **Publish is impossible by construction:**
-every publish path guards `!isAuthenticated || !nostrSigner || !nostrPubkey`, and no signer can exist without an
-identity. NO AppShell gate change is needed (only the one `DemoBanner` line). The showcase is Month 8 of a 12-month
-strategy, manual price for determinism (Strike LTV green, CB LTV ~72% watch band), 7 confirmed history months.
+**Landing gating (`App.tsx`).** `VITE_LANDING === '1' && pathname === '/' && !onboarded` → `LandingPage`, else
+`AppShell`. `onboarded` is read DIRECTLY from the standalone GATE key `localStorage['personal-bloc-onboarded'] === '1'`
+(synchronous, try/catch; App must not couple to the store — the store's seed-reader IIFE reads the same key). So the
+landing shows ONLY to a not-yet-onboarded visitor; a returning owner/viewer (or anyone who finished onboarding) lands
+straight in their app at `/`.
 
-**Free-riding closure.** The public deploy ALSO sets `VITE_OWNER_PUBKEY` (the owner's hex), so a visitor who signs in
-with their own real key on the demo domain hits `PrivateAppNotice` (`isAuthenticated && !isOwner`) — the demo domain
-cannot be adopted as free hosting. Deployment requirement, no code.
+**The funnel — no new auth plumbing.** Every landing CTA links `/app` → `AppShell` → `!onboardingComplete` →
+`OnboardingModal` opens on the `ChoosePathView` fork (Get started / I have a plan or a key / Connect to a shared plan).
+**That fork IS the sign-up/log-in surface** — no params, no deep links. Completing onboarding flips the GATE key to
+`'1'` → `/` renders the app (landing skipped). Landing UI: a nav bar (brand + "View source" + "Sign up / Log in" →
+`/app`); hero primary "Get started — it's free" → `/app` + a "Try the sandbox" ghost rendered ONLY when
+`VITE_SANDBOX_URL` is set (`SANDBOX_URL = env || null` — no fallback, a dead sandbox link is worse than none); the
+pricing/footer CTAs point `/app`, footer "Sandbox" link gated on `SANDBOX_URL`.
+
+**Sandbox is origin-destructive.** `src/lib/demo/demoSeed.ts` (imported FIRST in main.tsx, before the store's
+module-init IIFEs read localStorage) writes a curated showcase plan on EVERY load — the re-write IS the reload-reset —
+so it clobbers any real plan sharing the same localStorage. ⚠ **`VITE_DEMO` must NEVER be set on an origin with real
+users** (that's the whole reason it gets its own project). The seed sets `onboarded=1` + a plan blob with **NO Nostr
+identity**, so AppShell's ladder skips onboarding + the auth gates (`nostrAuthEnabled` derives from pubkey → false) +
+the viewer gates → **Branch J renders the hydrated plan**. **Publish is impossible by construction:** every publish
+path guards `!isAuthenticated || !nostrSigner || !nostrPubkey`, and no signer can exist without an identity. NO
+AppShell gate change (only the one `DemoBanner` line). Showcase = Month 8 of a 12-month strategy, manual price for
+determinism (Strike LTV green, CB LTV ~72% watch band), 7 confirmed history months. `DemoBanner`'s "Get the real
+thing" links `VITE_PUBLIC_SITE_URL || '/'` (on the sandbox origin, a bare `/` would loop back to the sandbox).
+
+**Free-riding closure — now on the SANDBOX project.** The sandbox deploy sets `VITE_OWNER_PUBKEY` (the owner's hex), so
+a visitor who signs in with their own real key on the sandbox domain hits `PrivateAppNotice` (`isAuthenticated &&
+!isOwner`) — the sandbox domain cannot be adopted as free hosting. The **public** project must NOT set it (real users
+sign in there). Deployment requirement, no code.
 
 **License.** `LICENSE` at root = **FSL-1.1-MIT** (Functional Source License v1.1, MIT future grant; Licensor
 `silentius-satoshi`), making the landing's "source-available under FSL-1.1-MIT" claim true. package.json has no
 `license` field (unchanged).
 
-Files: `src/pages/LandingPage.tsx`/`.module.css`, `src/lib/demo/demoSeed.ts`,
-`src/components/Layout/DemoBanner.tsx`/`.module.css`, `LICENSE`.
+Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`, `src/lib/demo/demoSeed.ts`,
+`src/components/Layout/DemoBanner.tsx`/`.module.css`, `src/vite-env.d.ts`, `LICENSE`.
 
 ---
 

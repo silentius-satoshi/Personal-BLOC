@@ -10,6 +10,22 @@
   overflow-x: hidden;
 }
 
+/* ── Nav ──────────────────────────────────────────────────────────────── */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 16px 0;
+  border-bottom: 1px solid var(--line-2);
+}
+.navBrand { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.navActions { display: flex; align-items: center; gap: 10px; }
+/* Nav CTAs are compact — override the hero pill padding/size */
+.navActions .ctaGhost,
+.navActions .ctaPrimary { padding: 8px 14px; font-size: 13.5px; }
+
 /* ── Hero ─────────────────────────────────────────────────────────────── */
 .hero {
   display: flex;
@@ -79,6 +95,12 @@
   transition: border-color 0.15s, color 0.15s;
 }
 .ctaGhost:hover { border-color: var(--text-ghost); color: var(--text-primary); }
+
+.heroHint {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  margin: 0;
+}
 
 /* ── LtvDemo widget ───────────────────────────────────────────────────── */
 .widget {

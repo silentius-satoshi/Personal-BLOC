@@ -9,6 +9,9 @@ import styles from './LandingPage.module.css';
 // imports are PURE band constants/functions so the LtvDemo widget's Safe/Watch/Act thresholds can't drift from the app.
 
 const REPO_URL = import.meta.env.VITE_REPO_URL || 'https://github.com/silentius-satoshi/personal-bloc';
+// C1 — the landing→sandbox link. NO fallback URL: a dead sandbox link is worse than none, so the CTA is
+// rendered only when the env is set (the sandbox is a separate Vercel project; the public deploy may not have one).
+const SANDBOX_URL = import.meta.env.VITE_SANDBOX_URL || null;
 const LEVEL_LABEL: Record<SafetyLevel, string> = { safe: 'Safe', watch: 'Watch', act: 'Act' };
 
 // A fixed example loan position — the widget drags the BTC PRICE and everything else reacts, so the "price drops →
@@ -99,6 +102,15 @@ const FAQ = [
 export function LandingPage() {
   return (
     <div className={styles.page}>
+      {/* Nav — the single "View source" instance + the front-door sign-up/log-in CTA (→ /app → onboarding fork) */}
+      <nav className={styles.nav}>
+        <span className={styles.navBrand}>₿ Personal ₿LOC</span>
+        <span className={styles.navActions}>
+          <a className={styles.ctaGhost} href={REPO_URL} target="_blank" rel="noreferrer">View source</a>
+          <a className={styles.ctaPrimary} href="/app">Sign up / Log in</a>
+        </span>
+      </nav>
+
       {/* Hero */}
       <header className={styles.hero}>
         <div className={styles.brandRing}>₿</div>
@@ -107,9 +119,12 @@ export function LandingPage() {
           A sovereign planner for accumulating Bitcoin with a Line of Credit — your key, your plan, no accounts.
         </p>
         <div className={styles.ctaRow}>
-          <a className={styles.ctaPrimary} href="/app">Try the live demo →</a>
-          <a className={styles.ctaGhost} href={REPO_URL} target="_blank" rel="noreferrer">View source</a>
+          <a className={styles.ctaPrimary} href="/app">Get started — it's free</a>
+          {SANDBOX_URL && (
+            <a className={styles.ctaGhost} href={SANDBOX_URL} target="_blank" rel="noreferrer">Try the sandbox</a>
+          )}
         </div>
+        <p className={styles.heroHint}>Free to use · installable PWA · no email · no tracking</p>
         <LtvDemo />
       </header>
 
@@ -157,7 +172,7 @@ export function LandingPage() {
               A managed personal instance — same sovereignty model, none of the DevOps. Prepaid with bitcoin over
               Lightning when it lands.
             </p>
-            <a className={styles.ctaPrimary} href="/app">Try the demo →</a>
+            <a className={styles.ctaPrimary} href="/app">Get started free →</a>
           </div>
         </div>
       </section>
@@ -179,7 +194,8 @@ export function LandingPage() {
       <footer className={styles.footer}>
         <span className={styles.footerBrand}>Personal ₿LOC</span>
         <span className={styles.footerLinks}>
-          <a href="/app">Try the demo</a>
+          <a href="/app">Get started</a>
+          {SANDBOX_URL && <a href={SANDBOX_URL} target="_blank" rel="noreferrer">Sandbox</a>}
           <a href={REPO_URL} target="_blank" rel="noreferrer">View source</a>
         </span>
         <span className={styles.footerNote}>© 2026 · Source-available under FSL-1.1-MIT</span>
