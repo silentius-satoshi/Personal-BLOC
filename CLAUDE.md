@@ -5092,9 +5092,11 @@ legacy npub-paste "Add" form is DELETED; a viewer-supplied npub can't occur sinc
   (label + Safe|Trusted picker + optional passphrase + "🔑 Add viewer").
 - **ONE shared derive engine (`doDerive`)** for add + rotate. `rotatingIndex: number | null` (null ⇒ ADD)
   carries the intent through the PIN step. ADD: `index = nextViewerIndex` (the same value `addViewerSlot` will
-  assign — M2 coupling), `keyVersion = 1` → `addViewerSlot({…,tier:addTier,keyVersion:1})`. ROTATE(slot):
-  confirm → `updateViewerSlot(slot.index,{keyVersion:slot.keyVersion+1})` → `index = slot.index`, the bumped kv →
-  `updateViewerSlot(slot.index,{pubkeyHex,npub})` (preserves tier). Both: unwrap → `deriveViewerKeyFromNsec(pk,
+  assign — M2 coupling), `keyVersion = 1` → `addViewerSlot({…,tier:addTier,keyVersion:1})`. ROTATE(slot) is ATOMIC
+  (derive-at-target, commit-on-success — NO pre-bump): confirm → `doDerive` derives at the TARGET version
+  (stored kv + 1) → ONE atomic `updateViewerSlot(slot.index,{pubkeyHex,npub,keyVersion})` on success (preserves
+  tier); cancel/failure = true no-op (slot untouched, old key keeps working). `keyVersion` always means "version
+  of the key currently issued," never "next." Both: unwrap → `deriveViewerKeyFromNsec(pk,
   keyVersion, index)` → `publishViewerSnapshotNow()` (fan-out) → `SecretKeyCard` token reveal (~30s, passphrase
   path unchanged, keys zeroed).
 - **REPLACE-GUARD + `skipGuard` DELETED** — ADD always uses a fresh index (nothing to overwrite); ROTATE is the

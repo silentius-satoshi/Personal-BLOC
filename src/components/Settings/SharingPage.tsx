@@ -143,14 +143,15 @@ function ViewerRoster() {
       const rotateSlot = rotatingIndex !== null ? (roster.find((v) => v.index === rotatingIndex) ?? null) : null;
       if (rotatingIndex !== null && !rotateSlot) { setError('That viewer no longer exists.'); return; }
       // M2 coupling — derivation is PER-SLOT-INDEXED. ADD: index = nextViewerIndex, the SAME value addViewerSlot
-      // will assign below (the key is bound to that index). ROTATE: reuse the slot's index + its already-bumped kv.
-      const index      = rotateSlot ? rotateSlot.index      : nextViewerIndex;
-      const keyVersion = rotateSlot ? rotateSlot.keyVersion : 1;
+      // will assign below (the key is bound to that index). ROTATE: reuse the slot's index; derive at the TARGET
+      // version (stored kv + 1).
+      const index      = rotateSlot ? rotateSlot.index          : nextViewerIndex;
+      const keyVersion = rotateSlot ? rotateSlot.keyVersion + 1 : 1;   // target version, not stored version
       ownerSk = await unwrapSecretKey(writerKeyWrapped, writerKeyWrapMeta, writerKeyWrapMeta.scheme === 'pin' ? pin : undefined);
       derived = await deriveViewerKeyFromNsec(ownerSk, pk, keyVersion, index);   // 4-arg indexed (M2)
       const hex  = getPublicKey(derived);
       const npub = nip19.npubEncode(hex);
-      if (rotateSlot) updateViewerSlot(rotateSlot.index, { pubkeyHex: hex, npub });   // rotation preserves tier + bumped kv
+      if (rotateSlot) updateViewerSlot(rotateSlot.index, { pubkeyHex: hex, npub, keyVersion });   // atomic: pubkey + target kv together (tier preserved)
       else addViewerSlot({ pubkeyHex: hex, npub, label: addLabel.trim() || 'Viewer', tier: addTier, keyVersion: 1 });
       void publishViewerSnapshotNow();   // seal + publish NOW so the viewer hydrates once they sign in
       // Build the handoff token. Encode/encrypt the derived key BEFORE the finally zeros it.
@@ -179,9 +180,11 @@ function ViewerRoster() {
     else doDerive();               // PRF → Face ID directly
   };
 
-  // Rotate — bump the slot's derivation version (invalidating its current key) then regenerate. No rollback if
-  // derive fails after the bump: the version stays bumped/synced but no key was handed out — re-running uses the
-  // new version, determinism preserved.
+  // Rotate — ATOMIC: derive-at-target, commit-on-success. This does NOT pre-bump keyVersion; doDerive derives at
+  // the TARGET version (stored kv + 1) and commits { pubkeyHex, npub, keyVersion } in ONE updateViewerSlot only on
+  // success. So a Face-ID cancel / wrong PIN is a true no-op — the slot is untouched and the old key keeps working
+  // (nothing is invalidated until the new key is actually issued). Determinism holds because the target is always
+  // stored-kv + 1 at derive time; keyVersion always means "version of the key currently issued," never "next."
   const startRotate = (slot: ViewerSlot) => {
     setError(null);
     // eslint-disable-next-line no-alert
@@ -189,7 +192,6 @@ function ViewerRoster() {
       'Rotating invalidates this viewer\'s current key — their device stops receiving updates until they sign in ' +
       'again with a new token. Rotate?'
     )) return;
-    updateViewerSlot(slot.index, { keyVersion: slot.keyVersion + 1 });   // sync set → doDerive reads the bumped keyVersion
     setRotatingIndex(slot.index);
     if (isPin) setShowPin(true);
     else doDerive();
