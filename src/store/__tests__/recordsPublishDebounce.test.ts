@@ -11,7 +11,8 @@ const { publishRecords, publishViewerSnapshot } = vi.hoisted(() => ({
 
 vi.mock('../../lib/nostr/publish', () => ({ publishRecords, publishViewerSnapshot }));
 
-import { useStore, publishRecordsNow } from '../useStore';
+import { useStore } from '../useStore';
+import { publishRecordsNow } from '../../lib/nostr/syncEngine';
 import type { DayEvent } from '../../simulation/types';
 
 const draw = (id: string, ts: number): DayEvent =>

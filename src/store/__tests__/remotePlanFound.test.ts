@@ -11,7 +11,8 @@ vi.hoisted(() => {
   };
 });
 
-import { useStore, buildSettingsPayload, partializeState } from '../useStore';
+import { useStore, partializeState } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 
 // R2b-2 — remotePlanFound: session-transient tri-state, written exactly once per session by syncNow's first
 // owner pull, dismissible to null without ever re-opening.

@@ -11,7 +11,8 @@ vi.hoisted(() => {
   };
 });
 
-import { useStore, buildSettingsPayload, partializeState, gateHydratedIdentity } from '../useStore';
+import { useStore, partializeState, gateHydratedIdentity } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 import { isBackupGateSatisfied } from '../../lib/backupGate';
 
 // R2a-1 — backup-gate store plumbing. keyProvenance is device-local-persisted-never-synced (write-once,
@@ -227,7 +228,7 @@ describe('publish guards consult the gate', () => {
 
   it('publishSettingsNow refuses a generated-but-unverified key (never reaches the seed-guard warn)', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { publishSettingsNow } = await import('../useStore');
+    const { publishSettingsNow } = await import('../../lib/nostr/syncEngine');
     useStore.setState({
       isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk',
       initialSettingsPullDone: true, keyProvenance: 'generated', backupVerifiedAt: null,

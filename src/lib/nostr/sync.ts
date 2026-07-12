@@ -1,6 +1,7 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
-import { useStore, publishRecordsNowImmediate } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
+import { publishRecordsNowImmediate } from './syncEngine';
 import { FALLBACK_RELAYS, SETTINGS_DTAG, RECORDS_DTAG } from './publish';
 import { withTimeout, signerOpTimeout } from './timeout';
 import { nostrLog } from './log';

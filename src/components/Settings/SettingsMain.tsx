@@ -14,7 +14,8 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useRef, useState, useEffect } from 'react';
-import { useStore, importRelaysFromNip65, publishRelayListToNip65 } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
+import { importRelaysFromNip65, publishRelayListToNip65 } from '../../lib/nostr/syncEngine';
 import { DevPanel } from './DevPanel';
 import { SharingPage } from './SharingPage';
 import { ViewerSettings } from './ViewerSettings';

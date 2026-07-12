@@ -1,7 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import { nip19, getPublicKey } from 'nostr-tools';
 import * as nip49 from 'nostr-tools/nip49';
-import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, type ViewerSlot } from '../../store/useStore';
+import { useStore, type ViewerSlot } from '../../store/useStore';
+import { publishViewerSnapshotNow, publishViewerRevocationNow } from '../../lib/nostr/syncEngine';
 import { unwrapSecretKey } from '../../lib/nostr/keyVault';
 import { deriveViewerKeyFromNsec } from '../../lib/nostr/viewerKey';
 import { buildHandoffToken } from '../../lib/nostr/handoffToken';

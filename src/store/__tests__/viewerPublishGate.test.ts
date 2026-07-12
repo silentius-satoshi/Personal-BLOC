@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { useStore, publishRecordsNowImmediate } from '../useStore';
+import { useStore } from '../useStore';
+import { publishRecordsNowImmediate } from '../../lib/nostr/syncEngine';
 
 // Read-only-viewer backstop: the records publish must NEVER publish in viewerMode (a viewer is authenticated with its
 // own nsec, so the auth gate alone wouldn't stop it). setNostrSyncing(true) fires only AFTER the gate, so it's the

@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useStore, buildSettingsPayload, buildViewerSnapshotPayload, type ViewerSlot } from '../useStore';
+import { useStore, type ViewerSlot } from '../useStore';
+import { buildSettingsPayload, buildViewerSnapshotPayload } from '../payloads';
 import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
 import { previewSafeSnapFromPayload } from '../../simulation/safetyView';
 

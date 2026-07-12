@@ -9,7 +9,8 @@ const { publishViewerSnapshot } = vi.hoisted(() => ({
 
 vi.mock('../../lib/nostr/publish', () => ({ publishViewerSnapshot }));
 
-import { useStore, publishViewerSnapshotNow, publishViewerRevocationNow, type ViewerSlot } from '../useStore';
+import { useStore, type ViewerSlot } from '../useStore';
+import { publishViewerSnapshotNow, publishViewerRevocationNow } from '../../lib/nostr/syncEngine';
 
 const pkSafe    = 's'.repeat(64);
 const pkSafe2   = 'u'.repeat(64);

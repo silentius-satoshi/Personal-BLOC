@@ -217,7 +217,16 @@ src/
                                 # strips CSS transitions/animations). NO consumer yet (P1+)
 
   store/
-    useStore.ts                 # Zustand store — all state, persisted to localStorage
+    useStore.ts                 # Zustand store — all state, persisted to localStorage. Phase 1b: the publish/
+                                # orchestration layer was EXTRACTED to syncEngine.ts (below) + payloads.ts; the store
+                                # reaches the engine via DYNAMIC import only (kickRecordsPublish / syncSettingsToNostr's
+                                # scheduleSettingsPublish tail — no static back-edge, the syncNow precedent)
+    payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
+                                # buildSettingsPayload(s) (the 37-key settings payload — single source for
+                                # publishSettingsNow + the viewer snapshot) + buildViewerSnapshotPayload(s, tier)
+                                # (C-safe ratios / C-trusted full). `import type { StoreState } from './useStore'`
+                                # (type-only — no runtime edge); nothing in useStore imports payloads. Consumed by
+                                # syncEngine, exportPlan, ViewerPreview, tests
 
   lib/
     demo/
@@ -4419,6 +4428,17 @@ src/
                                     # inject can outlast restoreSigner's own 3s wait). Only a genuinely-null signer
                                     # flips auth off; a failed sync with a live signer does not
   lib/nostr/
+    syncEngine.ts                   # Phase 1b — the publish/orchestration ENGINE, extracted VERBATIM (move-only, zero
+                                    # behavior change) from useStore.ts. Owns: publishRecordsNow (400ms trailing debounce) ·
+                                    # publishRecordsNowImmediate · publishSettingsNow · scheduleSettingsPublish (the 2s
+                                    # settings debounce, ex-syncSettingsToNostr tail) · importRelaysFromNip65 ·
+                                    # publishRelayListToNip65 · publishViewerSnapshotNow (fan-out) · publishViewerRevocationNow,
+                                    # plus the module timers syncDebounceTimer/recordsDebounceTimer. STATICALLY imports
+                                    # useStore + ./publish (the store's 5 former DYNAMIC publish imports are now ordinary static
+                                    # imports here) + ../../store/payloads + ./relays + ./log + ./timeout + ../backupGate.
+                                    # ⚠ useStore MUST NOT statically import this (store→engine is dynamic-only; the :syncNow
+                                    # precedent) — a static back-edge is an instant cycle. remotePlanFoundResolved latch does
+                                    # NOT live here (stays in useStore with recordRemotePlanFound)
     publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload
                                     # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar) + strikeCollateralBtc (C-P4 scalar, trusted-only).
                                     # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN

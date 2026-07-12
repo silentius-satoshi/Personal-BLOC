@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { useStore, buildSettingsPayload } from '../useStore';
+import { useStore } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 
 // Simple Mode Corrections A — the two new SYNCED settings (blocMinPaymentSource / blocStatementMinimum)
 // travel in the settings payload and hydrate cleanly. Both default to the migration-free 'roll' / null.

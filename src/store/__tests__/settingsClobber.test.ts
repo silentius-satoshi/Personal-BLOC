@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { useStore, publishSettingsNow } from '../useStore';
+import { useStore } from '../useStore';
+import { publishSettingsNow } from '../../lib/nostr/syncEngine';
 
 // Fresh-Install Settings Clobber Fix — the initialSettingsPullDone gate. A benign post-auth setter
 // (setSimpleMode) fired syncSettingsToNostr the instant auth flipped true, dirtying the SEED store →

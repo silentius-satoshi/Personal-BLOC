@@ -11,7 +11,8 @@ vi.hoisted(() => {
   };
 });
 
-import { useStore, buildSettingsPayload, migrateState, partializeState } from '../useStore';
+import { useStore, migrateState, partializeState } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 
 // Owner IA — dashboard-first. simpleView is a persisted DEVICE-LOCAL pref (rides partializeState's ...rest,
 // NEVER synced). Default changes to 'dashboard'; migrate-default only (a persisted choice is preserved).

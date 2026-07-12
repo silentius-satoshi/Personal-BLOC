@@ -1,4 +1,5 @@
-import { buildSettingsPayload, type StoreState } from '../../store/useStore';
+import type { StoreState } from '../../store/useStore';
+import { buildSettingsPayload } from '../../store/payloads';
 import { todayLocalISO } from '../../utils/format';
 import { CURRENT_STORE_VERSION } from '../storeVersion';
 import { downloadBlob } from './downloadFile';

@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { useStore, buildSettingsPayload, buildViewerSnapshotPayload } from '../useStore';
+import { useStore } from '../useStore';
+import { buildSettingsPayload, buildViewerSnapshotPayload } from '../payloads';
 import { DEFAULT_RELAYS } from '../../lib/nostr/relays';
 
 // Option C — relay list cross-device sync. The guard tests drive the REAL store's hydrateSettings (the single apply

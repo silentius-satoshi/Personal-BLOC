@@ -4,11 +4,10 @@ import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, Monthl
 import { upsertEntry, recomputeBtcHeld, bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveStrikeCollateral, deriveReadingAnchors, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth, type ReadingMutationCtx } from '../simulation/logUtils';
 import { computeStrikeLtv } from '../simulation/strikeCredit';
 import { accruedCbBalance, cbMetrics } from '../simulation/cbMetrics';
-import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety, type SafeSnapshot } from '../simulation/safetyView';   // Viewer V2 — pure (safetyView has no runtime dep on this store; type-only StoreState import) → cycle-free
-import { signerOpTimeout } from '../lib/nostr/timeout';
+import type { SafeSnapshot } from '../simulation/safetyView';   // type-only (interface field); deriveSafetyView/selectSafetyViewInputs/buildSafeSafety moved to payloads.ts
 import { nostrLog } from '../lib/nostr/log';
 import { todayLocalISO } from '../utils/format';
-import { DEFAULT_RELAYS, importNip65RelayList } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle)
+import { DEFAULT_RELAYS } from '../lib/nostr/relays';   // single source for the default relay list (pure leaf — no cycle); importNip65RelayList moved to syncEngine.ts
 import { encryptedStorage } from '../lib/store/storeCrypto';   // 3a.2: at-rest encryption adapter (flag-gated)
 import { isBackupGateSatisfied, type KeyProvenance } from '../lib/backupGate';   // pure leaf, zero imports → no cycle
 import { CURRENT_STORE_VERSION } from '../lib/storeVersion';   // single source for the persist version (zero-import leaf)
@@ -545,275 +544,16 @@ export interface StoreState {
   applyPlanBackup:      (backup: PlanBackup) => void;   // Plan Import/Restore — atomic replace of this device's plan
 }
 
-let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-let recordsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
-// R2b-2 — the remotePlanFound SESSION LATCH. Module-scoped (like the timers above), so it resets on every boot.
+// R2b-2 — the remotePlanFound SESSION LATCH. Module-scoped (resets on every boot). syncDebounceTimer/recordsDebounceTimer moved with the publish fns to syncEngine.ts (Phase 1b).
 // ⚠ Why a latch and not just `remotePlanFound === null`: Dismiss writes null, so a bare null-check would let the
 // NEXT foreground syncNow re-write `false` and resurrect the notice. The latch makes "syncNow sets it exactly
 // once per session" and "the notice is one-time" true simultaneously — on the first pull the field IS null, so
 // both conditions agree; afterwards only the latch holds.
 let remotePlanFoundResolved = false;
 
-// Trailing debounce (~400ms) over the records publish. EventSheet saves a flow+reading as two back-to-back
-// addDayEvent calls, each firing this; coalescing them into ONE publish prevents two publishes of the same
-// replaceable records d-tag with an identical second-granularity created_at → NIP-01 tie-break randomly
-// keeping the first (incomplete) payload. recordsDirty stays true until the debounced publish succeeds, so
-// an app kill mid-debounce self-heals on the next pull (syncNow publishes-if-dirty). State is snapshotted at
-// FIRE time (getState() lives inside publishRecordsNowImmediate). Callers ignore the return; syncNow, the
-// sync-repair path, and the gate test call publishRecordsNowImmediate directly for the awaited boolean.
-export function publishRecordsNow(): void {
-  if (recordsDebounceTimer) clearTimeout(recordsDebounceTimer);
-  recordsDebounceTimer = setTimeout(() => { void publishRecordsNowImmediate(); }, 400);
-}
-
-export async function publishRecordsNowImmediate(): Promise<boolean> {
-  if (recordsDebounceTimer) { clearTimeout(recordsDebounceTimer); recordsDebounceTimer = null; }   // an immediate publish supersedes any pending debounce — avoids a redundant signer op (NIP-46 round-trip)
-  const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;   // publish didn't happen (incl. read-only viewer — relay-side backstop; and an unbacked-up generated key)
-  useStore.getState().setNostrSyncing(true);
-  try {
-    const { publishRecords } = await import('../lib/nostr/publish');
-    const createdAt = await publishRecords(
-      state.nostrSigner,
-      state.nostrPubkey,
-      { entries: state.monthlyLog, deletions: state.deletedMonths, dayLog: state.dayLog, dayLogDeletions: state.deletedDayEvents },
-      state.nostrRelays.length ? state.nostrRelays : undefined,
-      signerOpTimeout(state.nostrSigningMethod),
-    );
-    useStore.getState().setLastRecordsSyncAt(createdAt);
-    useStore.getState().setRecordsDirty(false);
-    useStore.getState().setNostrReconnectNeeded(false);
-    nostrLog('info', 'records published');
-    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
-    return true;
-  } catch (e) {
-    nostrLog('error', 'records publish failed', e);
-    useStore.getState().setNostrReconnectNeeded(true);   // dirty stays true
-    return false;
-  } finally {
-    useStore.getState().setNostrSyncing(false);
-  }
-}
-
-export async function publishSettingsNow(): Promise<boolean> {
-  const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;   // publish didn't happen (incl. an unbacked-up generated key)
-  // Backstop (closes parked backlog #6): never publish the UNTOUCHED SEED over real relay data before this
-  // session has pulled a baseline. Cheap sentinel check — enough to catch the fresh-install seed store.
-  if (!state.initialSettingsPullDone
-      && state.income === 4000 && state.expenses === 3500 && state.creditLine === 10000 && !state.advisorActualBtcHeld) {
-    nostrLog('warn', 'refused to publish seed-default settings before initial pull');
-    return false;
-  }
-  useStore.getState().setNostrSyncing(true);
-  try {
-    const settings = buildSettingsPayload(useStore.getState());
-    const { publishSettings } = await import('../lib/nostr/publish');
-    const createdAt = await publishSettings(
-      state.nostrSigner,
-      state.nostrPubkey,
-      state.nostrRelays,
-      settings,
-      signerOpTimeout(state.nostrSigningMethod),
-    );
-    useStore.getState().setLastSettingsSyncAt(createdAt);
-    useStore.getState().setSettingsDirty(false);
-    useStore.getState().setNostrReconnectNeeded(false);
-    nostrLog('info', 'settings published');
-    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
-    return true;
-  } catch (e) {
-    nostrLog('error', 'settings publish failed', e);   // dirty stays true → retried by syncNow
-    useStore.getState().setNostrReconnectNeeded(true);
-    return false;
-  } finally {
-    useStore.getState().setNostrSyncing(false);
-  }
-}
-
-// Network subpage P2 — NIP-65 relay-list sync. Import READS the user's kind-10002 and replaces the local relay list
-// ONLY when a real list is found (the discriminated {found} result keeps an absent/empty list from clobbering the
-// current one). Publish WRITES the local list as a PLAIN kind-10002 (never encrypted). Both are out-of-band one-offs:
-// they don't touch settingsDirty/recordsDirty/nostrReconnectNeeded — only nostrSyncing for the loading dot.
-export async function importRelaysFromNip65(): Promise<{ found: boolean; count: number; empty: boolean }> {
-  const state = useStore.getState();
-  if (!state.nostrPubkey) return { found: false, count: 0, empty: false };
-  try {
-    const res = await importNip65RelayList(state.nostrPubkey);
-    if (res.found && res.relays.length) {
-      useStore.getState().setNostrRelaysAndSync(res.relays);   // deliberate user import → publish (receiver guard protects a defaults-y list)
-      return { found: true, count: res.relays.length, empty: false };
-    }
-    if (res.found) return { found: true, count: 0, empty: true };   // empty → do NOT touch relays
-    return { found: false, count: 0, empty: false };                // not-found → do NOT touch relays
-  } catch (e) {
-    nostrLog('error', 'relay import failed', e);
-    return { found: false, count: 0, empty: false };
-  }
-}
-
-export async function publishRelayListToNip65(): Promise<boolean> {
-  const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;
-  useStore.getState().setNostrSyncing(true);
-  try {
-    const { publishRelayListNip65 } = await import('../lib/nostr/publish');
-    await publishRelayListNip65(
-      state.nostrSigner,
-      state.nostrPubkey,
-      state.nostrRelays,
-      [...new Set([...state.nostrRelays, ...DEFAULT_RELAYS])],   // reach well-known relays too
-      signerOpTimeout(state.nostrSigningMethod),
-    );
-    nostrLog('info', 'relay list published (nip-65)');
-    return true;
-  } catch (e) {
-    nostrLog('error', 'relay list publish failed', e);
-    return false;
-  } finally {
-    useStore.getState().setNostrSyncing(false);
-  }
-}
-
-// THE settings payload — single source built from current state, consumed by BOTH publishSettingsNow AND the
-// viewer snapshot so the two can never drift. The owner's viewer roster (viewers/nextViewerIndex) IS carried
-// here (syncs across the owner's devices) but is STRIPPED from the viewer snapshot below.
-export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
-  return {
-    income:                   s.income,
-    expenses:                 s.expenses,
-    blocApr:                  s.blocApr,
-    creditLine:               s.creditLine,
-    advisorStartDate:         s.advisorStartDate,
-    advisorActualBlocBalance: s.advisorActualBlocBalance,
-    advisorActualBlocBalanceAsOf: s.advisorActualBlocBalanceAsOf,   // §5b — freshness travels with the balance (like cbLoanBalanceAsOf)
-    advisorMonthStartBalance: s.advisorMonthStartBalance,
-    advisorActualBtcHeld:     s.advisorActualBtcHeld,
-    cbLoanBalance:            s.cbLoanBalance,
-    // cbCollateralBtc REMOVED from settings sync (Daily Mode P2a, Seam 2) — it's now a LOCAL derived cache
-    // (deriveCbCollateral over dayLog). Cross-device sync is intentionally SUSPENDED P2a→P3 (re-established when
-    // dayLog rides the records event in P3).
-    cbAprPct:                 s.cbAprPct,
-    hasCbLoan:                s.hasCbLoan,
-    ndpLastPaidDate:          s.ndpLastPaidDate,
-    tabOrder:                 s.tabOrder,
-    hiddenTabs:               s.hiddenTabs,
-    simpleMode:               s.simpleMode,
-    btcBuyingUnit:            s.btcBuyingUnit,
-    cbLiquidationPrice:       s.cbLiquidationPrice,
-    cbMonthlyPayment:         s.cbMonthlyPayment,
-    cbPaymentStrategy:        s.cbPaymentStrategy,
-    cbLtvTriggerPct:          s.cbLtvTriggerPct,
-    cbLtvTargetPct:           s.cbLtvTargetPct,
-    cbRotateBackPct:          s.cbRotateBackPct,
-    cbEmergencyCeilingPct:    s.cbEmergencyCeilingPct,
-    cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
-    cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
-    strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
-    blocMinPaymentSource:     s.blocMinPaymentSource,
-    blocStatementMinimum:     s.blocStatementMinimum,
-    blocMinPaymentDueDay:     s.blocMinPaymentDueDay,
-    advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
-    advisorSkipCbPayment:     s.advisorSkipCbPayment,
-    advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
-    nostrRelays:              s.nostrRelays,   // C: relay list syncs across the owner's devices (guarded on hydrate; stripped from the viewer snapshot)
-    // Backup gate (R2a-1) — verifying on ONE owner device un-gates the owner's others. One-way latch (guarded on
-    // hydrate); STRIPPED from the trusted viewer snapshot below. keyProvenance is device-local → NOT here.
-    backupVerifiedAt:         s.backupVerifiedAt,
-    // Multi-viewer roster (M1) — synced in the OWNER's settings:v1 only; STRIPPED from every viewer snapshot below.
-    viewers:                  s.viewers,
-    nextViewerIndex:          s.nextViewerIndex,
-  };
-}
-
-// Viewer snapshot — MODE-SHAPED (Viewer V2). Default C-SAFE: a tiny payload of health ratios + config
-// ratios + public price. NO absolute exists in it BY CONSTRUCTION (the privacy audit is Object.keys — no
-// settings/records/strike/cbCollateralBtc keys). C-TRUSTED (opt-in): today's full payload. See safetyView.ts.
-export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'trusted'): import('../lib/nostr/publish').ViewerSnapshot {
-  const asOf = Date.now();
-  if (tier !== 'trusted') {   // M2: tier is an explicit param (the slot-0 read moved into the fan-out loop) — built once per tier.
-    // C-SAFE — the owner runs the dashboard's EXACT inputs (deriveSafetyView ∘ selectSafetyViewInputs), then
-    // ships only the ratio/level block (buildSafeSafety drops the two $ absolutes) + config ratios + price.
-    const view = deriveSafetyView(selectSafetyViewInputs(s));
-    return {
-      snapshotVersion: 2,
-      privacyMode: 'safe',
-      asOf,
-      hasCbLoan: s.hasCbLoan,
-      btcPriceAtSnapshot: s.btcPrice,   // public market data
-      thresholds: {
-        strikeLiqLtv:    s.strikeLiquidationLtvPct / 100,
-        cbLtvTriggerPct: s.cbLtvTriggerPct,
-        cbLiqFrac:       view.cbLiqFrac,
-      },
-      safety: buildSafeSafety(view, s.hasCbLoan),
-    };
-  }
-  // C-TRUSTED (Option B): today's full payload. STRIP the owner's sharing/transport config (the viewers roster
-  // + nextViewerIndex + nostrRelays) — the viewer must never see who else the owner shares with, their tiers/key
-  // versions, nor the owner's relay set — AND backupVerifiedAt (R2a-1: the owner's key-custody state is none of
-  // the viewer's business; it also gates nothing viewer-side).
-  return {
-    snapshotVersion: 2,
-    privacyMode: 'trusted',
-    asOf,
-    settings: (() => { const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, ...rest } = buildSettingsPayload(s); return rest; })(),
-    records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
-    strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
-    cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
-    strikeCollateralBtc: deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc),   // C-P4 — the reading-anchored Strike scalar; viewer raw-sets it (dayLog stays []). SAFE branch must NOT carry it
-  };
-}
-
-// Fire-and-forget viewer snapshot — M2 FAN-OUT: one NIP-44 publish per roster slot, each sealed to that
-// viewer's pubkey on its own d-tag (viewerDTag). Gated on the roster being non-empty; log-only on failure.
-// MUST NOT touch recordsDirty/settingsDirty/nostrReconnectNeeded/nostrSyncing — the owner's own sync result
-// is independent. The payload is built ONCE PER DISTINCT TIER (at most 2 builds), encrypted N times.
-export async function publishViewerSnapshotNow(): Promise<void> {
-  const s = useStore.getState();
-  if (!s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
-  const signer = s.nostrSigner;
-  const relays = s.nostrRelays.length ? s.nostrRelays : undefined;
-  const timeout = signerOpTimeout(s.nostrSigningMethod);
-  try {
-    const { publishViewerSnapshot } = await import('../lib/nostr/publish');
-    const byTier = new Map<'safe' | 'trusted', import('../lib/nostr/publish').ViewerSnapshot>();
-    const payloadFor = (tier: 'safe' | 'trusted') => {
-      if (!byTier.has(tier)) byTier.set(tier, buildViewerSnapshotPayload(s, tier));   // build once per tier
-      return byTier.get(tier)!;
-    };
-    // FAILURE ISOLATION — allSettled so one slot's relay failure never aborts the rest. Each publish records
-    // its OWN PublishReport (labeled by viewerDTag(pubkeyHex)) via the shared publish tail.
-    const results = await Promise.allSettled(
-      s.viewers.map((slot) => publishViewerSnapshot(signer, slot.pubkeyHex, payloadFor(slot.tier), relays, timeout)),
-    );
-    const ok = results.filter((r) => r.status === 'fulfilled').length;
-    nostrLog('info', `viewer fan-out: ${ok} ok / ${results.length - ok} failed (${results.length} viewers)`);
-  } catch (e) {
-    nostrLog('warn', 'viewer fan-out failed', e);
-  }
-}
-
-// Real-time revocation (M2 — PER-SLOT): seal a TOMBSTONE (empty payload + revoked:true) to ONE viewer's d-tag
-// so their next live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. The caller
-// passes the target pubkey (captured BEFORE removeViewerSlot). Fire-and-forget, log-only.
-export async function publishViewerRevocationNow(viewerPubkeyHex: string): Promise<void> {
-  const s = useStore.getState();
-  if (!viewerPubkeyHex || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
-  try {
-    const { publishViewerSnapshot } = await import('../lib/nostr/publish');
-    await publishViewerSnapshot(
-      s.nostrSigner,
-      viewerPubkeyHex,
-      { settings: {}, records: { entries: [], deletions: {} }, strike: { usd: null, btcAvail: null, rate: null }, revoked: true },
-      s.nostrRelays.length ? s.nostrRelays : undefined,
-      signerOpTimeout(s.nostrSigningMethod),
-    );
-    nostrLog('info', 'viewer revocation published');
-  } catch (e) {
-    nostrLog('warn', 'viewer revocation failed', e);
-  }
-}
+// kickRecordsPublish — the store reaches the engine's debounced records publish via DYNAMIC import (no static
+// back-edge; the syncNow precedent). Used at the 7 dayLog-mutator sites in place of the former local publishRecordsNow().
+const kickRecordsPublish = () => { void import('../lib/nostr/syncEngine').then((m) => m.publishRecordsNow()); };
 
 // --- Daily Mode P2a routing helpers (module-level; use useStore.getState()/setState like the publish* fns) ---
 
@@ -1217,7 +957,7 @@ export const useStore = create<StoreState>()(
         recordsDirty: true,
       };
     });
-    publishRecordsNow();
+    kickRecordsPublish();
   },
   deleteLogEntry: (month) => {
     set((state) => {
@@ -1229,7 +969,7 @@ export const useStore = create<StoreState>()(
         recordsDirty: true,
       };
     });
-    publishRecordsNow();
+    kickRecordsPublish();
   },
   setShowMiningInLog: (v) => set({ showMiningInLog: v }),
 
@@ -1284,7 +1024,7 @@ export const useStore = create<StoreState>()(
     refreshBalanceAnchors();   // §5b — a new reading re-anchors the live safety gauges (no removed source on add)
     const m = monthOf(event);
     if (m !== null) rerollMonth(m);
-    publishRecordsNow();
+    kickRecordsPublish();
   },
   updateDayEvent: (event) => {
     // ts is the MERGE VERSION CLOCK — every edit must bump it or the edit ties with (and loses to) the
@@ -1299,7 +1039,7 @@ export const useStore = create<StoreState>()(
     const mb = monthOf(before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
     const ma = monthOf(bumped); if (ma !== null) months.add(ma);   // and the NEW month
     for (const m of months) rerollMonth(m);
-    publishRecordsNow();
+    kickRecordsPublish();
   },
   deleteDayEvent: (id) => {
     const before = useStore.getState().dayLog.find((e) => e.id === id);
@@ -1310,7 +1050,7 @@ export const useStore = create<StoreState>()(
     refreshBalanceAnchors(readingCtx(before));   // §5b — deleting the anchor-source reading falls back to the date-latest survivor
     const m = monthOf(before);
     if (m !== null) rerollMonth(m);
-    publishRecordsNow();
+    kickRecordsPublish();
   },
   // P2 undo (Snackbar) — restore a just-deleted event. The store discarded the object on delete, so the CALLER
   // passes the retained DayEvent. Re-add with a FRESH ts (Date.now()) + strip the tombstone — the canonical
@@ -1333,7 +1073,7 @@ export const useStore = create<StoreState>()(
     refreshBalanceAnchors(readingCtx(restored));
     const m = monthOf(restored);
     if (m !== null) rerollMonth(m);
-    publishRecordsNow();
+    kickRecordsPublish();
   },
   // P3 — raw write-back from the records merge (sync.ts). FOLDS the Seam-2 derive: set dayLog AND recompute
   // cbCollateralBtc ONCE from the merged array. NO rollup / per-event derive — keeps the sync apply path actions-only.
@@ -1606,8 +1346,7 @@ export const useStore = create<StoreState>()(
     if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;   // pre-login edits must NOT mark dirty (would block first hydrate); an unbacked-up generated key must not dirty either — setBackupVerifiedAt marks dirty itself when the gate opens
     if (!s.initialSettingsPullDone) return;   // don't dirty/publish before the first pull establishes a baseline (prevents a benign post-auth setter dirtying the seed store → seed-clobber)
     set({ settingsDirty: true });
-    if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
-    syncDebounceTimer = setTimeout(() => { publishSettingsNow(); }, 2000);
+    void import('../lib/nostr/syncEngine').then((m) => m.scheduleSettingsPublish());
   },
 
   nostrSyncing:    false,
@@ -1726,7 +1465,7 @@ export const useStore = create<StoreState>()(
     set(update);   // ONE atomic commit — no intermediate render between the old and new plan
     // Normal sync resumes: publish the imported plan promptly (both guarded → no-op for a gated/unauth/viewer key).
     useStore.getState().syncSettingsToNostr();
-    publishRecordsNow();
+    kickRecordsPublish();
   },
     }),
     {

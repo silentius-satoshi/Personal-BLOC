@@ -14,7 +14,8 @@ import { validatePlanBackup } from '../validatePlanBackup';
 import { buildPlanBackup } from '../exportPlan';
 import { CURRENT_STORE_VERSION } from '../../storeVersion';
 import { VALIDATE_WHITELIST, APPLY_FIELDS, TRANSPORT_FIELDS } from '../../../store/settingsFields';
-import { useStore, buildSettingsPayload } from '../../../store/useStore';
+import { useStore } from '../../../store/useStore';
+import { buildSettingsPayload } from '../../../store/payloads';
 
 // A real export of the seed store → the canonical valid file. JSON round-trip mirrors what a real file goes through
 // (numeric deletedMonths keys → strings, etc.).

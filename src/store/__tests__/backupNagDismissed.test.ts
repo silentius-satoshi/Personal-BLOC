@@ -11,7 +11,8 @@ vi.hoisted(() => {
   };
 });
 
-import { useStore, buildSettingsPayload, partializeState } from '../useStore';
+import { useStore, partializeState } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 
 // R2c-2 — backupNagDismissed: session-transient, single-writer (the Dismiss button). Simpler than
 // remotePlanFound (no module latch) — nothing re-writes it mid-session, so it stays dismissed until the next

@@ -7,7 +7,7 @@ const { mockStoreState, mockPool, mockPublishRecordsImmediate } = vi.hoisted(() 
     publish:   vi.fn(),
     close:     vi.fn(),
   },
-  mockPublishRecordsImmediate: vi.fn(),   // sync.ts's repair-on-detect fires this (a named import from useStore)
+  mockPublishRecordsImmediate: vi.fn(),   // sync.ts's repair-on-detect fires this (1b: now a named import from syncEngine)
 }));
 
 vi.mock('nostr-tools/pool', () => ({
@@ -17,6 +17,10 @@ vi.mock('nostr-tools/pool', () => ({
 
 vi.mock('../../../store/useStore', () => ({
   useStore: { getState: () => mockStoreState },
+}));
+
+// 1b: publishRecordsNowImmediate moved to syncEngine; sync.ts imports it from './syncEngine' (same module this resolves to).
+vi.mock('../syncEngine', () => ({
   publishRecordsNowImmediate: mockPublishRecordsImmediate,
 }));
 

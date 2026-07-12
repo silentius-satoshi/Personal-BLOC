@@ -42,13 +42,9 @@ const { publishRecords, publishViewerSnapshot } = vi.hoisted(() => ({
 vi.mock('../../lib/nostr/publish', () => ({ publishRecords, publishViewerSnapshot }));
 
 // 1b/1c repoint these imports when symbols move; the assertions below are FROZEN.
-import {
-  useStore,
-  partializeState,
-  buildSettingsPayload,
-  buildViewerSnapshotPayload,
-  publishRecordsNowImmediate,
-} from '../useStore';
+import { useStore, partializeState } from '../useStore';
+import { buildSettingsPayload, buildViewerSnapshotPayload } from '../payloads';        // 1b: builders moved here
+import { publishRecordsNowImmediate } from '../../lib/nostr/syncEngine';               // 1b: publish fns moved here
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() — the ONLY non-deterministic seed field
 

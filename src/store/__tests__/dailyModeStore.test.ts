@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { useStore, buildSettingsPayload, migrateState, partializeState } from '../useStore';
+import { useStore, migrateState, partializeState } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 import { todayLocalISO, toLocalISO } from '../../utils/format';
 import { rollupMonth, priorStocksForMonth } from '../../simulation/logUtils';
 import type { DayEvent, MonthlyLogEntry } from '../../simulation/types';

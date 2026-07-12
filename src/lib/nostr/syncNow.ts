@@ -1,7 +1,8 @@
 import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
 import { nostrLog } from './log';
-import { useStore, publishRecordsNowImmediate, publishSettingsNow } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
+import { publishRecordsNowImmediate, publishSettingsNow } from './syncEngine';
 import { isBackupGateSatisfied } from '../backupGate';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)

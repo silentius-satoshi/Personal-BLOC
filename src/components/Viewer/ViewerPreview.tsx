@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
-import { useStore, buildViewerSnapshotPayload } from '../../store/useStore';
+import { useStore } from '../../store/useStore';
+import { buildViewerSnapshotPayload } from '../../store/payloads';
 import { selectSafetyViewInputs, previewSafeSnapFromPayload } from '../../simulation/safetyView';
 import { ViewerHomeView } from './ViewerHomeView';
 import styles from './ViewerPreview.module.css';
