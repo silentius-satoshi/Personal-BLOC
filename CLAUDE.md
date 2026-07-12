@@ -217,10 +217,39 @@ src/
                                 # strips CSS transitions/animations). NO consumer yet (P1+)
 
   store/
-    useStore.ts                 # Zustand store — all state, persisted to localStorage. Phase 1b: the publish/
-                                # orchestration layer was EXTRACTED to syncEngine.ts (below) + payloads.ts; the store
-                                # reaches the engine via DYNAMIC import only (kickRecordsPublish / syncSettingsToNostr's
-                                # scheduleSettingsPublish tail — no static back-edge, the syncNow precedent)
+    useStore.ts                 # Zustand store — Phase 1c: now COMPOSITION ONLY (~44 lines). Spreads the 9 slice
+                                # creators into ONE create<StoreState>()(persist((set,get)=>({…}), persistOptions)) +
+                                # the import-compat re-exports (storeEncEnabled/gateHydratedIdentity from bootstrap,
+                                # partializeState/migrateState from persistConfig, StoreState/ViewerSlot + sim types +
+                                # KeyProvenance). Phase 1b: the publish/orchestration layer was EXTRACTED to
+                                # syncEngine.ts + payloads.ts; the store reaches the engine via DYNAMIC import only
+                                # (kickRecordsPublish / syncSettingsToNostr's scheduleSettingsPublish tail — no static
+                                # back-edge, the syncNow precedent)
+    types.ts                    # Phase 1c — the StoreState interface + ViewerSlot + local aliases (Tier/Scenario/
+                                # ActiveTab/LtvType), moved verbatim, type-only imports (no runtime edge). Adds
+                                # StoreSet/StoreGet — the zustand handles every slice creator receives (so slices type
+                                # against the store WITHOUT importing it — the cycle rule)
+    bootstrap.ts                # Phase 1c — module-init plumbing (order-sensitive, runs before create()): storeEncEnabled
+                                # flag · the standalone WK_*/GATE_* credential+gate keys + their seed IIFEs (localStorage
+                                # side-effects + one-time back-fills) · gateHydratedIdentity · defaultMiningInputs ·
+                                # kickRecordsPublish (dynamic engine import). Consts/seeds EXPORTED for the slices +
+                                # persistConfig. References no store singleton
+    dailyRouting.ts             # Phase 1c — the daily-routing helpers (strategyMonthDate/refresh*Cache/refreshBalance-
+                                # Anchors/readingCtx/isMonthlyMeaningful/rerollMonth/monthOf). Store-touching ones take
+                                # leading set/get params (getState()→get(), setState()→set()); pure ones verbatim. ⚠ NO
+                                # "useStore" substring anywhere (the grep gate); called from dayLog+monthlyLog slice actions
+    persistConfig.ts            # Phase 1c — partializeState + migrateState (verbatim) + the persist OPTIONS as an exported
+                                # `persistOptions` (annotated PersistOptions<StoreState, ReturnType<typeof partializeState>>
+                                # so its standalone merge/onRehydrate callbacks keep param types). Imports bootstrap +
+                                # leaves; does NOT import useStore
+    slices/                     # Phase 1c — 9 domain slice files, each `type XSlice = Pick<StoreState,…>` + a
+                                # `createXSlice(set, get): XSlice` creator (mining takes _get, unused). ui · planInputs ·
+                                # mining · cbLoan (incl. Strike-API display fields) · advisorJournal (advisor+monthlyLog) ·
+                                # dayLog · identity (nostr credentials+backup-gate) · viewer (roster+viewer-side) · sync
+                                # (auth/flags/syncSettingsToNostr/hydrateSettings/applyPlanBackup + the remotePlanFoundResolved
+                                # latch). EVERY StoreState key in EXACTLY ONE slice (slices.test.ts pins disjoint+union). ⚠ NO
+                                # "useStore" substring (grep gate); the only body change is getState()→get(); the two dynamic
+                                # import paths deepened one level (../../lib/nostr/...)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
                                 # buildSettingsPayload(s) (the 37-key settings payload — single source for
                                 # publishSettingsNow + the viewer snapshot) + buildViewerSnapshotPayload(s, tier)
