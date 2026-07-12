@@ -15,7 +15,7 @@ vi.mock('nostr-tools/pool', () => ({
   SimplePool: vi.fn(function() { return mockPool; }),
 }));
 
-import { publishRelayListNip65 } from '../publish';
+import { publishRelayListNip65, getPublishReports } from '../publish';
 
 function makeSigner() {
   const signed: any[] = [];
@@ -56,5 +56,16 @@ describe('publishRelayListNip65', () => {
 
     // tags reflect the user's list; the publish target is the wider reach set
     expect(mockPool.publish).toHaveBeenCalledWith(publishTo, expect.objectContaining({ kind: 10002 }));
+  });
+
+  it('records eventBytes (real bytes, not UTF-16 length) on the PublishReport ring; no plainBytes on the plain path', async () => {
+    const { signer, signed } = makeSigner();
+    const relays = ['wss://relay.damus.io', 'wss://nos.lol'];
+
+    await publishRelayListNip65(signer, 'owner-hex', relays);
+
+    const report = getPublishReports().at(-1)!;
+    expect(report.eventBytes).toBe(new TextEncoder().encode(JSON.stringify(signed[0])).length);
+    expect(report.plainBytes).toBeUndefined();
   });
 });

@@ -9,6 +9,11 @@ import { DEFAULT_RELAYS } from './relays';
 export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
 export const RECORDS_DTAG  = 'personal-bloc:records:v1';
 
+// Phase 4a-inst — real byte length, NOT UTF-16 code units (String.length). eventBytes/plainBytes below
+// exist to confirm the relay payload budget against NIP-44's 65,535-plaintext-BYTE ceiling, so undercounting
+// non-ASCII text (viewer labels, month notes) via .length would defeat the point.
+const byteLen = (s: string): number => new TextEncoder().encode(s).length;
+
 export const FALLBACK_RELAYS = DEFAULT_RELAYS;   // unified single source (see relays.ts)
 
 // Per-d-tag monotonic created_at clock. publishEncrypted stamps created_at at SECOND granularity, so two
@@ -38,17 +43,19 @@ export async function publishEncrypted(
     content:    ciphertext,
   }), opTimeoutMs, 'signEvent');
 
-  return publishSignedToRelays(signed, relays, createdAt, dTag);
+  return publishSignedToRelays(signed, relays, createdAt, dTag, byteLen(plaintext));
 }
 
 // Per-relay publish instrumentation (last 10 attempts) — DevPanel "PUBLISH ACKS". Metadata only
 // (relay URLs, latencies, statuses, d-tag/kind label) — never amounts, safe for Copy Diagnostics.
 export interface PublishReport {
-  label:     string;            // dTag or 'kind:10002'
-  createdAt: number;            // unix seconds
-  startedAt: number;            // Date.now() ms
-  perRelay:  { url: string; status: 'ack' | 'reject' | 'pending'; ms?: number; err?: string }[];
-  outcome:   'ok' | 'fail';
+  label:       string;            // dTag or 'kind:10002'
+  createdAt:   number;            // unix seconds
+  startedAt:   number;            // Date.now() ms
+  perRelay:    { url: string; status: 'ack' | 'reject' | 'pending'; ms?: number; err?: string }[];
+  outcome:     'ok' | 'fail';
+  eventBytes?: number;            // real byte length of the signed event's JSON — wire size (Phase 4a-inst)
+  plainBytes?: number;            // real byte length of the pre-encryption JSON, when applicable (Phase 4a-inst)
 }
 const publishReports: PublishReport[] = [];
 function pushReport(r: PublishReport): void { publishReports.push(r); if (publishReports.length > 10) publishReports.shift(); }
@@ -103,10 +110,11 @@ export async function awaitAckQuorum(
 // nostr-tools "connection failure: …" STRING RESOLUTION (offline; see isConnectionFailure) becomes a
 // rejection before the quorum — an ack counts only a genuine relay OK frame.
 function publishSignedToRelays(
-  signed:    Parameters<SimplePool['publish']>[1],
-  relays:    string[],
-  createdAt: number,
-  label:     string,
+  signed:      Parameters<SimplePool['publish']>[1],
+  relays:      string[],
+  createdAt:   number,
+  label:       string,
+  plainBytes?: number,
 ): Promise<number> {
   const pool = new SimplePool();
   const startedAt = Date.now();
@@ -118,7 +126,8 @@ function publishSignedToRelays(
   Promise.allSettled(pubs).finally(() => pool.close(relays)); // close after all settle; do NOT block the return
   const quorum = Math.min(2, pubs.length);                    // pubs.length === relays.length normally; using pubs guards the URL-dedup case (quorum can never exceed the actual publish attempts)
   const perRelay: PublishReport['perRelay'] = relays.map((url) => ({ url, status: 'pending' }));
-  const report: PublishReport = { label, createdAt, startedAt, perRelay, outcome: 'fail' };
+  const eventBytes = byteLen(JSON.stringify(signed));
+  const report: PublishReport = { label, createdAt, startedAt, perRelay, outcome: 'fail', eventBytes, ...(plainBytes !== undefined ? { plainBytes } : {}) };
   pushReport(report);   // add to ring now; mutate in place as outcomes arrive
   const onOutcome = (i: number, ok: boolean, err?: unknown) => {
     perRelay[i] = {

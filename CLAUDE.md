@@ -695,7 +695,12 @@ src/
                                 # so they don't toggle; session-only open state). defaultOpen: SYNC STATE only. PUBLISH ACKS
                                 # (after SYNC STATE) renders getPublishReports() newest-first — per-attempt label/age/outcome
                                 # + per-relay url·status·Nms lines; a ghost Refresh re-snapshots the in-place-mutated buffer;
-                                # copyDiagnostics adds lastPublish (newest report, metadata only).
+                                # copyDiagnostics adds lastPublish (newest report, metadata only). Phase 4a-inst adds a
+                                # size suffix to each PUBLISH ACKS row (eventBytes/plainBytes, real bytes via publish.ts's
+                                # byteLen) and a PAYLOAD SIZES block inside SYNC STATE (newest report per settings/
+                                # records/viewer channel, via SETTINGS_DTAG/RECORDS_DTAG + a viewer:v2: label-prefix
+                                # match); rows exceeding WARN_EVENT_BYTES (60,000) render amber via inline sizeStyle —
+                                # display-only, no behavior change.
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
                                 # ASYMMETRIC flag toggle that reloads — Enable RAW, Disable decrypts-first; dev tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
@@ -4545,7 +4550,10 @@ src/
                                     # exported awaitAckQuorum, was first-ack; gains a `label` param + records a PublishReport;
                                     # 12s-timeout, pool close after allSettled) — extracted from publishEncrypted, whose
                                     # signature is unchanged. Exports awaitAckQuorum + PublishReport + getPublishReports (ring
-                                    # buffer, last 10) for DevPanel PUBLISH ACKS + Copy Diagnostics (metadata only)
+                                    # buffer, last 10) for DevPanel PUBLISH ACKS + Copy Diagnostics (metadata only).
+                                    # Phase 4a-inst: PublishReport += eventBytes/plainBytes (real byte lengths via a
+                                    # TextEncoder byteLen helper, NOT String.length — additive-only, no publish/quorum
+                                    # logic change)
     keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
                                     # PBKDF2→HKDF→AES-GCM via WebCrypto; wrap/unwrap/probe; key in MEMORY only,
                                     # never persisted). Shared infra: writer local-key now, viewer key later.
@@ -4885,7 +4893,14 @@ vercel.json                         # Catch-all rewrite → index.html (required
   buffer (last 10, `getPublishReports()` — `{label (dTag/kind), createdAt, startedAt, perRelay:[{url,
   status:ack|reject|pending, ms?, err?}], outcome:ok|fail}`; metadata only — no amounts, safe for Copy
   Diagnostics), filled via `onOutcome`, and `nostrLog('warn', …)` when the quorum is met but a relay
-  rejected (names the relay). `publishRelayListNip65` (kind-10002) shares the tail → inherits the quorum.
+  rejected (names the relay). **Phase 4a-inst** adds two optional fields — `eventBytes` (real byte length
+  of `JSON.stringify(signed)`, the wire size of the final signed event) and `plainBytes` (real byte length
+  of the pre-encryption JSON, set only by `publishEncrypted`; stays absent on the plain `kind:10002` path).
+  Both are computed via a `byteLen` helper (`new TextEncoder().encode(s).length`) — deliberately NOT
+  `String.length` (UTF-16 code units), since NIP-44's plaintext ceiling is 65,535 real BYTES and this
+  instrumentation exists to confirm that budget. Surfaced in DevPanel's PUBLISH ACKS rows (a size suffix)
+  and a new PAYLOAD SIZES block in SYNC STATE (newest report per settings/records/viewer channel).
+  `publishRelayListNip65` (kind-10002) shares the tail → inherits the quorum.
   **`created_at` is PER-D-TAG MONOTONIC** (module-level `lastCreatedAtByDtag`): `createdAt =
   max(floor(Date.now()/1000), last[dTag]+1)`. Second-granularity stamps would let two publishes of the
   same **replaceable** d-tag within one second TIE on `created_at` → NIP-01 tie-break (lowest id) can
@@ -5427,6 +5442,15 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `isAuthenticated` | boolean | ❌ | In-memory; reset on reload |
 | `nostrSyncing` | boolean | ❌ | In-memory; UI loading state |
 | `nostrReconnectNeeded` | boolean | ❌ | In-memory; set on decrypt/publish failure → shows ⚠ Reconnect affordance (AppShell) |
+
+---
+
+## Event-Sourcing Migration — Phase 4 (4a-inst — publish byte-size instrumentation; store unchanged, NO bump)
+
+Phase 4 campaign OPEN. **4a-inst** (this entry) ships FIRST, purely additive: `PublishReport` gains
+`eventBytes`/`plainBytes` (see `publish.ts` Key Files + the `PublishReport` doc above), surfaced in
+DevPanel PUBLISH ACKS + a new PAYLOAD SIZES block, to confirm the relay payload-size budget with real data
+before any plan-events migration work begins. No publish/quorum/ack/store logic touched.
 
 ---
 

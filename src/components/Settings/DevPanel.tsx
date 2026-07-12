@@ -1,9 +1,9 @@
-import { useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore, storeEncEnabled } from '../../store/useStore';
 import { haptics, hapticsSupport } from '../../lib/haptics';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
-import { getPublishReports } from '../../lib/nostr/publish';
+import { getPublishReports, SETTINGS_DTAG, RECORDS_DTAG } from '../../lib/nostr/publish';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
@@ -67,6 +67,10 @@ const fmtPriceAge = (ts: number | null, now: number) => {
   const age  = secs < 60 ? `${secs}s ago` : `${Math.floor(secs / 60)}m ago`;
   return secs > 5 * 60 ? `⚠ stale ${age}` : age;
 };
+
+// Phase 4a-inst — soft relay payload-size budget. Display-only tint, no behavior change.
+const WARN_EVENT_BYTES = 60_000; // conservative relay event budget
+const sizeStyle = (bytes: number) => (bytes > WARN_EVENT_BYTES ? { color: 'var(--orange)' } : undefined);
 
 export function DevPanel() {
   const nostrSigningMethod   = useStore((s) => s.nostrSigningMethod);
@@ -329,7 +333,7 @@ export function DevPanel() {
       builtAt: __BUILD_TIME__,
       now:     new Date().toISOString(),
       state:   { ...syncState },   // amounts stay out (paste-safe)
-      lastPublish: getPublishReports().at(-1) ?? null,               // per-relay ack metadata (no amounts)
+      lastPublish: getPublishReports().at(-1) ?? null,               // per-relay ack metadata (no amounts); eventBytes/plainBytes ride along automatically (byte counts, not amounts)
       log:     getNostrLog(),
     };
     try {
@@ -380,6 +384,17 @@ export function DevPanel() {
     window.location.reload();   // flag is a module-load constant — reload to swap the persist adapter
   };
 
+  // Phase 4a-inst — newest PublishReport per channel, for the PAYLOAD SIZES rows below.
+  const newestByLabel = (label: string) =>
+    [...getPublishReports()].reverse().find((r) => r.label === label);
+  const newestViewerSnapshot = () =>
+    [...getPublishReports()].reverse().find((r) => r.label.startsWith('personal-bloc:viewer:v2:'));
+  const payloadRows: [string, ReturnType<typeof newestByLabel>][] = [
+    ['settings',        newestByLabel(SETTINGS_DTAG)],
+    ['records',         newestByLabel(RECORDS_DTAG)],
+    ['viewer snapshot', newestViewerSnapshot()],
+  ];
+
   return (
     <div className={styles.panel}>
       <Section title="SYNC STATE" defaultOpen>
@@ -403,6 +418,16 @@ export function DevPanel() {
           <span className={styles.val}>
             {btcPrice ? `$${Math.round(btcPrice).toLocaleString()}` : '—'} · {fmtPriceAge(btcPriceUpdatedAt, now)}
           </span>
+          {payloadRows.map(([channel, r]) => (
+            <Fragment key={channel}>
+              <span className={styles.key}>{channel} size</span>
+              <span className={styles.val} style={r?.eventBytes != null ? sizeStyle(r.eventBytes) : undefined}>
+                {r?.eventBytes != null
+                  ? `${r.eventBytes} B wire${r.plainBytes != null ? ` · ${r.plainBytes} B plain` : ''}`
+                  : 'no publish yet'}
+              </span>
+            </Fragment>
+          ))}
         </div>
       </Section>
 
@@ -421,6 +446,11 @@ export function DevPanel() {
               >
                 {r.outcome} · {Math.max(0, Math.round(now / 1000 - r.createdAt))}s ago
               </span>
+              {r.eventBytes != null && (
+                <span className={styles.val} style={{ gridColumn: '1 / -1', ...sizeStyle(r.eventBytes) }}>
+                  {r.eventBytes} B wire{r.plainBytes ? ` / ${r.plainBytes} B plain` : ''}
+                </span>
+              )}
               {r.perRelay.map((p) => (
                 <span key={p.url} className={styles.val} style={{ gridColumn: '1 / -1' }}>
                   {p.url} · {p.status}{p.ms != null ? ` · ${p.ms}ms` : ''}{p.err ? ` · ${p.err}` : ''}
