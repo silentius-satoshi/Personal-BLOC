@@ -34,3 +34,20 @@ export const VALIDATE_WHITELIST: ReadonlySet<string> = new Set(
 export const APPLY_FIELDS: ReadonlySet<string> = new Set(
   [...VALIDATE_WHITELIST].filter((f) => f !== 'backupVerifiedAt'),
 );
+
+// ── Phase 4b — plan-events partition ─────────────────────────────────────────────────────────────────
+// Splits SETTINGS_FIELDS into the event-sourced PLAN partition and the whole-object-LWW PREFS partition.
+// PREFS = device-taste cosmetics (D1): a stale clobber is harmless + self-corrects, so they stay LWW on
+// prefs:v1 rather than becoming a plan event log. PLAN = everything else (33 fields). backupVerifiedAt is a
+// PLAN field (R2a-1; it joined SETTINGS_FIELDS after the 4a design lock was written — Exclude keeps it in).
+export const PREFS_FIELDS = ['tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit'] as const;
+
+type SettingsField = (typeof SETTINGS_FIELDS)[number];
+export type PrefsField = (typeof PREFS_FIELDS)[number];
+export type PlanField = Exclude<SettingsField, PrefsField>;
+
+// A type-guard predicate so .filter() narrows to readonly PlanField[] (NOT string[] / the wide 37-union) —
+// the correct realization of the lock's `(typeof PLAN_EVENT_FIELDS)[number]`; a naive filter widens the type.
+export const PLAN_EVENT_FIELDS = SETTINGS_FIELDS.filter(
+  (f): f is PlanField => !(PREFS_FIELDS as readonly string[]).includes(f),
+) as readonly PlanField[];

@@ -153,6 +153,10 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
 });
 
 // ── Suite 3 — viewer snapshot, BOTH tiers (Phase 4b shape-lock base) ──────────
+// 4b SHAPE-LOCK — the viewer-blast-radius contract. FROZEN through the 4c–4e campaign: the plan-events
+// migration touches the OWNER settings channel only; viewers receive an object over snapshot d-tags and
+// must never learn the log exists. ANY diff to these literals means the campaign reached viewers (it must
+// not) — treat a change here as a red flag to investigate, not a fixture to update.
 describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () => {
   it('C-safe: full shape (asOf normalized)', () => {
     const safe = buildViewerSnapshotPayload(useStore.getState(), 'safe') as Record<string, unknown>;

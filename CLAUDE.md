@@ -283,6 +283,32 @@ src/
                                 # one-shot reconcile deletes the seeded history), NO identity/viewer fields.
                                 # ⚠ Imports ONLY utils/format + type-only shapes — must never pull useStore (main.tsx
                                 # imports it FIRST, before the store's module-init IIFEs read localStorage)
+    planEvents/                 # Phase 4b — event-sourced plan core (PURE leaves; ZERO wiring — no store/sync/
+                                # publish/d-tag/emitter yet, all 4c). Runtime import ONLY from store/settingsFields
+                                # (a zero-import leaf); everything else type-only. Design authority: the 4a plan-events
+                                # design lock (§4 shape / §5 fold / §7 compaction / §9 union / §10 genesis).
+      types.ts                  # PlanEvent { id, ts, device, kind:'set', field: PlanField, value: unknown } — mirrors
+                                # DayEvent's {id,ts} base + the (ts,id) total order, NO date field. PlanState =
+                                # Pick<StoreState, PlanField>. ⚠ kind:'set' ONLY — NO delete/tombstone: absent-from-log
+                                # = seed default, set-to-empty (viewers=[], null) = an EVENT (§6, the whole point).
+                                # viewers/nostrRelays are whole-array set values (op-events = the D2 multi-writer
+                                # upgrade path); AsOf pairs stay 1:1 same-ts field events (paired-emit is 4c)
+      fold.ts                   # foldPlanEvents(events) → Partial<PlanState>: sort (ts,id), latest-per-field, absent
+                                # fields ABSENT (never seeded here). unionPlanEvents(a,b): union-by-id KEEP-FIRST
+                                # (append-only ids are unique → a dup is an identical echo; DELIBERATELY unlike
+                                # mergeRecords' higher-ts-wins, which exists because dayLog edits in place — plan
+                                # events are never edited). Pure, deterministic (ts,id) output
+      compact.ts                # compactPlanEvents(events, now): keep latest-per-field FOREVER + superseded <90d
+                                # (90*24*60*60*1000, the mergeRecords TTL mirror), drop older. Merge-safe (§7):
+                                # fold(compact(e,now)) ≡ fold(e); a stale device re-unioning a compacted-away event
+                                # is harmless (fold picks the true latest, re-compaction sweeps it)
+      genesis.ts                # nextPlanEventTs(lastTs, now=Date.now()) = max(now, lastTs+1) (monotonic guard) ·
+                                # makePlanEventId(field, ts, rand=Math.random) = `${field}-${ts}-${rand4}`
+                                # (recoveryQuiz rand-injection) · synthesizeGenesisEvents(fields, baseTs, device):
+                                # one set-event per PRESENT key (absent stay absent — never invent seeds), ids
+                                # genesis-${field}-${ts}, ts STAGGERED monotonically over PLAN_EVENT_FIELDS order
+                                # (field-qualified ids + staggering = the §13 collision answer).
+                                # fold(synthesize(partition)) ≡ partition. Tested in __tests__/planEvents.test.ts
     backupGate.ts               # R2a-1 — the backup-gate predicate. PURE, ZERO imports (no cycle):
                                 # isBackupGateSatisfied({keyProvenance, backupVerifiedAt}) = keyProvenance !== 'generated'
                                 # || backupVerifiedAt != null. A key this device GENERATED is the only copy until the
@@ -2701,6 +2727,14 @@ union+tombstones (`mergeRecords`), so the next relay pull unions back any day/mo
   **`VALIDATE_WHITELIST`** = `SETTINGS_FIELDS − {viewers, nextViewerIndex, nostrRelays}` (a file key
   outside it → reject as tampered/foreign — the transport fields must never be restored), and
   **`APPLY_FIELDS`** = that `− backupVerifiedAt`.
+  **Phase 4b partition** (for the event-sourced plan core): **`PREFS_FIELDS`** = `[tabOrder, hiddenTabs,
+  simpleMode, btcBuyingUnit]` (device-taste, stays whole-object LWW on `prefs:v1` — a stale clobber is
+  cosmetic + self-corrects) and **`PLAN_EVENT_FIELDS`** = the other **33** (event-sourced). `33 plan + 4
+  prefs = 37 SETTINGS_FIELDS`. ⚠ AMENDMENT to the 4a design lock's §3: `backupVerifiedAt` (R2a-1, joined
+  the synced set after the lock was written) is a PLAN field. `PlanField = Exclude<SettingsField,
+  PrefsField>` and `PLAN_EVENT_FIELDS` uses a **type-guard filter predicate** (`(f): f is PlanField`) so
+  the array narrows to `readonly PlanField[]` — a naive `.filter()` widens the element type and would make
+  `PlanField` the wrong (too-wide) union.
 - **⚠ THE CRITICAL VALIDATE↔APPLY SPLIT.** `backupVerifiedAt` **is** in the validate whitelist (every
   export carries it — must not reject) but is **NOT** in `APPLY_FIELDS` — `applyPlanBackup` **never
   writes it** (and `keyProvenance` is never in the payload). *The stamp attests KEY custody, not plan
@@ -5445,12 +5479,22 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 ---
 
-## Event-Sourcing Migration — Phase 4 (4a-inst — publish byte-size instrumentation; store unchanged, NO bump)
+## Event-Sourcing Migration — Phase 4 (plan-events campaign; store unchanged, NO bump through 4b)
 
-Phase 4 campaign OPEN. **4a-inst** (this entry) ships FIRST, purely additive: `PublishReport` gains
-`eventBytes`/`plainBytes` (see `publish.ts` Key Files + the `PublishReport` doc above), surfaced in
-DevPanel PUBLISH ACKS + a new PAYLOAD SIZES block, to confirm the relay payload-size budget with real data
-before any plan-events migration work begins. No publish/quorum/ack/store logic touched.
+Phase 4 replaces whole-object LWW settings sync with an append-only **plan event log** folded into state
+(design authority: the 4a plan-events design lock — event shape / fold / compaction / union / genesis).
+
+- **4a-inst** (SHIPPED): `PublishReport` gains `eventBytes`/`plainBytes` (see `publish.ts` Key Files + the
+  `PublishReport` doc above), surfaced in DevPanel PUBLISH ACKS + a new PAYLOAD SIZES block, to confirm the
+  relay payload-size budget with real data before any migration. This IS the lock's §8 `contentBytes`
+  instrumentation, shipped as the two `*Bytes` fields. No publish/quorum/ack/store logic touched.
+- **4b** (SHIPPED): the PURE core — `src/lib/planEvents/{types,fold,compact,genesis}.ts` (leaf modules;
+  runtime import only from `store/settingsFields`) + the `PREFS_FIELDS`/`PLAN_EVENT_FIELDS` partition (see
+  the settingsFields entry) + a Suite-3 viewer shape-lock comment. ZERO wiring: no store/sync/publish/d-tag/
+  emitter — all 4c. No store version bump. Invariant established: kind:'set' only, absent-from-log = seed
+  default, set-to-empty = an event (§6).
+- **4c+** (NOT built): store emitters + `planDirty` + the `plan-events:v1`/`prefs:v1` channels + the
+  genesis cutover/bridge + guard-class deletion at 4e.
 
 ---
 
