@@ -4,7 +4,8 @@ import type { StoreState, StoreSet, StoreGet } from '../types';
 type PlanInputsSlice = Pick<StoreState,
   | 'income' | 'expenses' | 'btcPrice' | 'btcPriceMode' | 'btcPriceUpdatedAt' | 'blocApr' | 'activeTier' | 'scenario'
   | 'scrubMonth' | 'creditLine' | 'btcHoldings' | 'annualBtcGrowth' | 'bearMarket' | 'bearPeriodYears' | 'annualDecline'
-  | 'inflationRate' | 'ltvType' | 'timeHorizonYears' | 'sandboxCollateralBtc' | 'setSandboxCollateralBtc' | 'setIncome'
+  | 'inflationRate' | 'ltvType' | 'timeHorizonYears' | 'sandboxCollateralBtc' | 'setSandboxCollateralBtc'
+  | 'pinnedScenario' | 'setPinnedScenario' | 'setIncome'
   | 'setExpenses' | 'setBtcPrice' | 'setBtcPriceMode' | 'setBlocApr' | 'setActiveTier' | 'setScenario' | 'setScrubMonth'
   | 'setCreditLine' | 'setBtcHoldings' | 'setAnnualBtcGrowth' | 'setBearMarket' | 'setBearPeriodYears'
   | 'setAnnualDecline' | 'setInflationRate' | 'setLtvType' | 'setTimeHorizonYears'
@@ -32,6 +33,8 @@ export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsS
   timeHorizonYears: 1,
   sandboxCollateralBtc:     null,
   setSandboxCollateralBtc:  (v) => set({ sandboxCollateralBtc: v }),
+  pinnedScenario:           null,   // Phase 3a — device-local persisted pin; plain set, NO sync
+  setPinnedScenario:        (v) => set({ pinnedScenario: v }),
   setIncome:   (v) => { set({ income: v });   get().syncSettingsToNostr(); },
   setExpenses: (v) => { set({ expenses: v }); get().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
   setBtcPrice: (v) => set({ btcPrice: v, btcPriceUpdatedAt: Date.now() }),

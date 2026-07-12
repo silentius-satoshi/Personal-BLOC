@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 // changed behavior — that is the bug, not the test.
 //
 // Two source-truth notes (deliberate, verified against HEAD):
-//   • Suite 1 asserts the JSON-SERIALIZED blob keys (90). partializeState()
+//   • Suite 1 asserts the JSON-SERIALIZED blob keys (91). partializeState()
 //     returns `...rest`, which also carries every action FUNCTION; only JSON
 //     serialization (what actually persists) drops them. Keying on the data-only
 //     blob is faithful to "persisted blob shape" AND is the right instrument —
@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 90 persisted data keys', () => {
+  it('blob key-set is exactly the 91 persisted data keys', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -66,6 +66,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'keyProvenance', 'lastRecordsSyncAt', 'lastSettingsSyncAt', 'ltvType', 'miningInputs',
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
+      'pinnedScenario',   // Phase 3a: device-local pin
       'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'settingsDirty', 'showMiningInLog',
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
@@ -110,6 +111,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       viewerWriterPubkey: null, viewerSecretKey: null, viewerDisplayName: null, viewerKeyWrapped: null,
       viewerKeyWrapMeta: null, lastSettingsSyncAt: null, lastRecordsSyncAt: null, recordsDirty: false,
       settingsDirty: false, deletedMonths: {}, deletedDayEvents: {},
+      pinnedScenario: null,   // Phase 3a: device-local pin
     });
   });
 });

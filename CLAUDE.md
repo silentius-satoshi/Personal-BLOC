@@ -137,6 +137,18 @@ src/
                                 # side; the viewer colors it. Owner `state` is credit-EXCLUDED, unlike
                                 # deriveViewerOverall). SafetyDashboard/ViewerHomeView subscribe the selector
                                 # via useShallow (re-render only when a mapped value changes)
+    scenarioDiff.ts             # Phase 3a — Scenario Diff/Pin PURE model (UI is 3b). PinnedScenario {label,
+                                # pinnedAt, btcPrice, inputs: SafetyViewInputs} + ScenarioOverlay (optional
+                                # levers mapping 1:1 onto SafetyViewInputs members: btcPrice/advisorActualBloc
+                                # Balance/currentBtcHeld/creditLine/cbLoanBalance/cbCollateralBtc; absent = keep
+                                # base). applyOverlay (pure spread-substitution, present-but-undefined never
+                                # clobbers) + diffScenarios(a,b) → runs deriveSafetyView on BOTH → three
+                                # DimensionDiffs {from,to,delta,fromLevel,toLevel,worsened} for capacityUsed/
+                                # strikeLtv/cbLtv (levels come OFF the views, never re-banded; worsened via
+                                # worseLevel) + crashLtv/cbLiqFrac from/to pairs + overallFrom/To (deriveViewer
+                                # Overall) + worsenedCount 0–3 (CB counted only when base hasCbLoan). Imports
+                                # safetyView ONLY (§2/§7 walls — nothing from cycleModel/powerLaw/emergency
+                                # Model/store). Tested in __tests__/scenarioDiff.test.ts
     logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment — HISTORICAL only, v20),
                                 # deriveAdvisorStart/deriveCurrentPosition (v20: take currentStrikeCollateral, NOT
                                 # pending/baseBtcHeld) + deriveStrikeCollateral (v20 Collateral-Truth — reading-anchored
@@ -3506,7 +3518,9 @@ publishSettingsNow payload / the partialize exclusion destructure — so they su
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
 plan-card status-bar visibility, default true), `simpleView` (`'dashboard'|'monthly'|'daily'` consumer-shell view,
-default `'dashboard'` — Owner IA dashboard-first; migrate-default only), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
+default `'dashboard'` — Owner IA dashboard-first; migrate-default only), `pinnedScenario` (Phase 3a Scenario
+Diff/Pin — the pinned safety posture `PinnedScenario | null`, default null; plain-`set` setter, no sync;
+merge-default so a pin survives reload), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
 null; cleared on `resetViewerSession`), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
 default null; **WRITE-ONCE** with `null` as the explicit identity-teardown clear; cleared by `disconnectNostr` +
 "Remove local key" + `gateHydratedIdentity`'s signed-out branch. R2c-6-final: **also STANDALONE-backed** in
@@ -4482,7 +4496,10 @@ src/
                                     # / encode{Encrypt,Decrypt}Request / the message types) — the worker itself is device-gated,
                                     # not unit-tested (tests force the fallback since node has no Worker). ⚠ ONLY nip49 crosses
                                     # the boundary — NIP-07/NIP-46 signers can't; sync.ts/viewerSync.ts nip44 (single-op, no
-                                    # freeze) + keyVault WebAuthn-PRF (gesture-bound) stay on the main thread by design
+                                    # freeze) + keyVault WebAuthn-PRF (gesture-bound) stay on the main thread by design.
+                                    # ⚠ Phase 2 CLOSED at 2a — 2b (worker NIP-44 fan-out batching) DESCOPED on grounded
+                                    # evidence: nip44 is µs-scale symmetric crypto and batching would require resident raw-sk
+                                    # (a key-hygiene regression); NSecSigner remains the sole key holder
   lib/nostr/
     syncEngine.ts                   # Phase 1b — the publish/orchestration ENGINE, extracted VERBATIM (move-only, zero
                                     # behavior change) from useStore.ts. Owns: publishRecordsNow (400ms trailing debounce) ·

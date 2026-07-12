@@ -5,6 +5,7 @@ import type { MiningDevice, MiningInputs, MiningCurrency, MiningStrategy, Monthl
 import type { WrapMeta } from '../lib/nostr/keyVault';
 import type { KeyProvenance } from '../lib/backupGate';
 import type { SafeSnapshot } from '../simulation/safetyView';
+import type { PinnedScenario } from '../simulation/scenarioDiff';
 import type { NostrParam } from '../lib/nostr/session';
 import type { PlanBackup } from '../lib/backup/exportPlan';
 import type { NostrSigner } from '@nostrify/nostrify';
@@ -101,6 +102,11 @@ export interface StoreState {
   advisorActualBtcHeld:     number;   // TRUE month-0 baseline — never back-solved; feeds recomputeBtcHeld's historical chain + migrate fallback (NOT current position)
   sandboxCollateralBtc:     number | null;   // Smart BLOC what-if collateral — in-memory ONLY (not persisted/synced); null = tracks current
   setSandboxCollateralBtc:  (v: number | null) => void;
+  // Phase 3a — Scenario Diff/Pin: the pinned safety posture (null = nothing pinned). DEVICE-LOCAL PERSISTED
+  // (rides partializeState's ...rest — a pin must survive reload), NEVER synced (absent from
+  // buildSettingsPayload/SETTINGS_FIELDS). Only ever written by setPinnedScenario (READ-ONLY feature).
+  pinnedScenario:           PinnedScenario | null;
+  setPinnedScenario:        (v: PinnedScenario | null) => void;
   getCurrentBtcHeld:        () => number;   // deriveStrikeCollateral(dayLog, strikeCollateralBtc) — reading-anchored current Strike collateral
   ndpLastPaidDate:          string | null;
   setNdpLastPaidDate:       (date: string | null) => void;
