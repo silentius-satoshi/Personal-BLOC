@@ -2098,6 +2098,30 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   band boundaries, regression pin against the extracted 0.93). No component-render harness in the repo, so
   the JSX (meters/zone colors/sticky column/motion) is covered by `tsc -b` + build + manual.
 
+### Phase 3b — Scenario face (EIGHTH Almanac face; store unchanged, NO bump)
+
+An EIGHTH Almanac face **Scenario** (`⚖ Scenario`) — the UI over the Phase 3a pure engine
+(`src/simulation/scenarioDiff.ts`). Pin the current plan's safety posture, edit a session-ephemeral
+hypothetical overlay, and read the what-if diff. **READ-ONLY by construction** — the ONLY store write is
+`setPinnedScenario` (device-local pin, `pinnedScenario` field); the overlay is `useState<ScenarioOverlay>`
+and is NEVER persisted (the `sandboxCollateralBtc` sandbox precedent). Ungated — the `Face` union widens in
+place (`+ 'scenario'`, still local `useState`, default `'halving'`), the sub-nav/pager `visibleFaces` array
+APPENDS it LAST (after the ledger spread — preserves the e2e face-order assumptions), and `renderFace` wraps
+it in the hub `.container` (the halving/cycle simple-content path). No guard `useEffect`, no
+SwipeStrip/`shouldStart`/store-shape change.
+- **`src/components/Almanac/ScenarioFace.tsx`** (+ `.module.css`) — LedgerFace chrome (mono-uppercase
+  `.title` + framing line). Store reads are VALUE selectors only (`useStore(useShallow(selectSafetyViewInputs))`
+  for the current inputs + `s.pinnedScenario`; `s.setPinnedScenario` is the SOLE `s.set*` reference). PIN row
+  (Pin today's plan / Pinned {todayLocalISO label} · {relativeAge} + ghost Re-pin/Clear); a DRIFT line when
+  pinned (`diffScenarios(pinned.inputs, current)` → "N of 3 worse" + signed pp mini-deltas); an OVERLAY editor
+  (one `NumberInput` per `ScenarioOverlay` lever — btcPrice/Strike debt/Strike collateral/credit line, + the CB
+  pair iff `hasCbLoan`; `value = overlay[k] ?? current[k]`; ghost Reset → `{}`); a WHAT-IF grid
+  (`diffScenarios(current, applyOverlay(current, overlay))` → Credit used / Strike LTV / CB LTV rows, each side
+  `LEVEL_COLOR`-tinted per its level + a signed pp delta chip; secondary crash-LTV + CB-liq-frac pairs; verdict
+  from `worsenedCount`). Empty overlay → identity grid (zero deltas), correct. Viewer devices: NumberInputs
+  self-disable in `viewerMode`; a local pin is harmless — no special gating. No tests (no render harness; the
+  engine is pinned by 3a's `scenarioDiff.test.ts`).
+
 ### P3 — live block height (opt-in fetch; store stays v19)
 
 The Almanac height is now REAL and updating — but **sovereign-first: DEFAULT OFF**. With the toggle off the

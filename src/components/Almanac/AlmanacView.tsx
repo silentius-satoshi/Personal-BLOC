@@ -14,6 +14,7 @@ import { ConverterMain } from '../Converter/ConverterMain';
 import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { CbDefenseTool } from '../Tools/CbDefenseTool';
 import LedgerFace from './LedgerFace';
+import ScenarioFace from './ScenarioFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
@@ -39,7 +40,7 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
  * six faces under one hub is navigation only — it crosses neither wall.
  */
-type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger';
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario';
 
 export default function AlmanacView() {
   const [face, setFace] = useState<Face>('halving');
@@ -86,6 +87,7 @@ export default function AlmanacView() {
     { key: 'sats',     label: '丰 Sats' },
     ...(hasCbLoan ? [{ key: 'defense' as Face, label: cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim' }] : []),
     ...(ledgerAvailable ? [{ key: 'ledger' as Face, label: '▤ Ledger' }] : []),
+    { key: 'scenario' as Face, label: '⚖ Scenario' },   // Phase 3b — ungated, appended last
   ];
   const idx = visibleFaces.findIndex((f) => f.key === face);
 
@@ -96,6 +98,7 @@ export default function AlmanacView() {
     if (f === 'cycle')    return <div className={styles.container}><CycleClock height={tip.height} mode={tip.mode} onSwitchToHalving={() => setFace('halving')} /></div>;
     if (f === 'defense')  return <CbDefenseTool />;
     if (f === 'ledger')   return <LedgerFace />;
+    if (f === 'scenario') return <div className={styles.container}><ScenarioFace /></div>;
     if (f === 'mining')   return <div className={styles.faceStack}><div className={styles.facePanel}><MiningInputsPanel /></div><MiningMain /></div>;
     if (f === 'powerlaw') return <div className={styles.faceStack}><div className={styles.facePanel}><PowerLawSidebar /></div><PowerLawMain /></div>;
     return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
