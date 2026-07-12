@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { getPublicKey, nip19 } from 'nostr-tools';
-import * as nip49 from 'nostr-tools/nip49';
+import { cryptoClient } from '../../lib/crypto/cryptoClient';
 import { probeKeyVaultCapability, wrapSecretKey, type WrapMethod } from '../../lib/nostr/keyVault';
 import { setUnwrappedViewerKey } from '../../lib/nostr/viewerSync';
 import { parseHandoffToken } from '../../lib/nostr/handoffToken';
@@ -64,15 +64,20 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
       return;
     }
     setDecryptState({ key: null, checking: true });   // never carry a stale key while re-checking a new passphrase
-    const t = setTimeout(() => {
+    // ⚠ The decrypt now runs off-thread (cryptoClient). An in-flight await can outlive clearTimeout, so a
+    // `cancelled` flag (not just clearTimeout) guards every setState after the await — a stale decrypt must not land.
+    let cancelled = false;
+    const t = setTimeout(async () => {
       try {
-        const sk = nip49.decrypt(parsed.keyPart, trimmed);   // sync scrypt — runs AFTER the checking state paints
+        const sk = await cryptoClient.nip49Decrypt(parsed.keyPart, trimmed);   // scrypt off the main thread
+        if (cancelled) return;
         setDecryptState({ key: { sk, npub: nip19.npubEncode(getPublicKey(sk)) }, checking: false });
       } catch {
+        if (cancelled) return;
         setDecryptState({ key: null, checking: false });
       }
     }, 30);
-    return () => clearTimeout(t);   // a stale in-flight decrypt must not land after a newer keystroke
+    return () => { cancelled = true; clearTimeout(t); };   // a stale in-flight decrypt must not land after a newer keystroke
   }, [parsed, debouncedPassphrase]);
   // Decode the key part → { sk, npub } (null while empty/invalid/wrong-passphrase → gates Done + shows confirmation).
   const pastedKey = useMemo(() => {

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { nip19, getPublicKey } from 'nostr-tools';
-import * as nip49 from 'nostr-tools/nip49';
+import { cryptoClient } from '../../lib/crypto/cryptoClient';
 import { useStore, type ViewerSlot } from '../../store/useStore';
 import { publishViewerSnapshotNow, publishViewerRevocationNow } from '../../lib/nostr/syncEngine';
 import { unwrapSecretKey } from '../../lib/nostr/keyVault';
@@ -163,8 +163,9 @@ function ViewerRoster() {
       // Rotation = revoke-old + issue-new, atomically from the roster's perspective: tombstone the OLD d-tag so the
       // old viewer device wipes + exits to the waiting gate on its next live event / reconnect (the Remove mechanism).
       if (rotateSlot && oldPubkeyHex && oldPubkeyHex !== hex) void publishViewerRevocationNow(oldPubkeyHex);
-      // Build the handoff token — ALWAYS ncryptsec. Encrypt the derived key BEFORE the finally zeros it.
-      const keyPart = nip49.encrypt(derived, pass);
+      // Build the handoff token — ALWAYS ncryptsec. Encrypt the derived key BEFORE the finally zeros it (the client
+      // copies `derived` internally, so the finally's `derived.fill(0)` still zeroes the caller's buffer).
+      const keyPart = await cryptoClient.nip49Encrypt(derived, pass);
       setRevealedToken(buildHandoffToken(keyPart, nip19.npubEncode(pk)));
       setShowPin(false);
       setPin('');

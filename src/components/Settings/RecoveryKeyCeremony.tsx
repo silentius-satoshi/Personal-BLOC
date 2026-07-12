@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import { nip19 } from 'nostr-tools';
-import * as nip49 from 'nostr-tools/nip49';
+import { cryptoClient } from '../../lib/crypto/cryptoClient';
 import { QRCodeSVG, QRCodeCanvas } from 'qrcode.react';
 import { useNostr } from '@nostrify/react';
 import { unwrapRecoveryPayload } from '../../lib/nostr/keyVault';
@@ -114,9 +114,9 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
    * ⚠ `.trim()` is SYMMETRIC with every decrypt site (SharingPage encrypt, ViewerLoginFlow + NostrAuthGate
    * decrypt). An untrimmed passphrase here would silently never restore.
    */
-  const encryptArtifact = (): string => {
+  const encryptArtifact = async (): Promise<string> => {
     const sk = words ? skFromWords(words.join(' ')) : (nip19.decode(nsec!).data as Uint8Array);
-    try { return nip49.encrypt(sk, filePass.trim()); } finally { sk.fill(0); }
+    try { return await cryptoClient.nip49Encrypt(sk, filePass.trim()); } finally { sk.fill(0); }
   };
 
   /**
@@ -132,7 +132,7 @@ export function RecoveryKeyCeremony({ onClose }: { onClose: () => void }) {
     setEncrypting(true);
     await new Promise((r) => setTimeout(r, 30));
     try {
-      const value = encryptArtifact();
+      const value = await encryptArtifact();
       if (prepRef.current !== token) return null;   // the inputs changed mid-encrypt → this result is stale
       setArtifact(value);
       return value;

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import { nip19 } from 'nostr-tools';
-import * as nip49 from 'nostr-tools/nip49';
+import { cryptoClient, CryptoError } from '../../lib/crypto/cryptoClient';
 import { connectNip07 } from '../../lib/nostr/signers';
 import { establishLocalOwner } from '../../lib/nostr/establishOwner';
 import { restoreSigner } from '../../lib/nostr/session';
@@ -10,7 +10,7 @@ import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { probeKeyVaultCapability, type WrapMethod, type PayloadKind } from '../../lib/nostr/keyVault';
 import { entropyFromWords, InvalidSeedWordsError } from '../../lib/nostr/nip06Key';
 import { classifyRecoveryInput } from '../../lib/nostr/recoveryInput';
-import { isWellFormedNcryptsec, classifyNcryptsecError } from '../../lib/nostr/ncryptsec';
+import { isWellFormedNcryptsec } from '../../lib/nostr/ncryptsec';
 import { phraseStatus } from '../../lib/recoveryGrid';
 import { downloadBlob } from '../../lib/backup/downloadFile';
 import { buildRecoveryFileText, recoveryFileName } from '../../lib/backup/recoveryFile';
@@ -145,11 +145,21 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
       return;
     }
     setDecryptState({ sk: null, checking: true, error: null });   // never carry a stale key while re-checking
-    const t = setTimeout(() => {
-      try { setDecryptState({ sk: nip49.decrypt(keyInput.value, trimmed), checking: false, error: null }); }
-      catch (e) { setDecryptState({ sk: null, checking: false, error: classifyNcryptsecError(e) }); }
+    // ⚠ The decrypt now runs off-thread (cryptoClient). An in-flight await can outlive clearTimeout, so a
+    // `cancelled` flag (not just clearTimeout) guards every setState after the await. LAYER 2 classification now
+    // lives in the client — CryptoError.kind carries 'passphrase' | 'malformed' (a decrypt never yields 'generic').
+    let cancelled = false;
+    const t = setTimeout(async () => {
+      try {
+        const sk = await cryptoClient.nip49Decrypt(keyInput.value, trimmed);
+        if (cancelled) return;
+        setDecryptState({ sk, checking: false, error: null });
+      } catch (e) {
+        if (cancelled) return;
+        setDecryptState({ sk: null, checking: false, error: e instanceof CryptoError && e.kind === 'passphrase' ? 'passphrase' : 'malformed' });
+      }
     }, 30);
-    return () => clearTimeout(t);   // a stale in-flight decrypt must not land after a newer keystroke
+    return () => { cancelled = true; clearTimeout(t); };   // a stale in-flight decrypt must not land after a newer keystroke
   }, [keyInput, debouncedPassphrase, showPassphraseField]);
 
   useEffect(() => {
@@ -296,7 +306,7 @@ export function NostrAuthGate({ onSuccess, onBack, backLabel }: { onSuccess: () 
     setEncrypting(true);
     await new Promise((r) => setTimeout(r, 30));
     try {
-      return nip49.encrypt(sk, bareNsecPass.trim());
+      return await cryptoClient.nip49Encrypt(sk, bareNsecPass.trim());
     } catch {
       setAidError("Couldn't encrypt — try again.");   // ⚠ never e.message (nip49/bech32 errors echo key material)
       return null;

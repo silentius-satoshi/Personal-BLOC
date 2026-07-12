@@ -20,7 +20,13 @@ export default defineConfig({
       registerType: 'autoUpdate',
       injectRegister: null,   // registered manually via registerSW in main.tsx — avoids a double injection
       manifest: false,        // keep the existing public/manifest.json + its <link> untouched
-      injectManifest: { globPatterns: ['**/*.{js,css,html,svg,png,woff2}'] },
+      injectManifest: {
+        globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // The crypto.worker chunk (nip49 + scrypt) is comfortably small, but raise the cap defensively:
+        // workbox's silent 2 MiB default would drop an oversized chunk from the precache manifest and break
+        // OFFLINE unlock with only a build warning.
+        maximumFileSizeToCacheInBytes: 4 * 1024 * 1024,
+      },
     }),
   ],
   define: {
