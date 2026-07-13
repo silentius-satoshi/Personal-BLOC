@@ -21,11 +21,11 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   almanacLiveEnabled:   false,
   almanacLiveConsented: false,
   expenseReanchorDismissedAt: 0,
-  setSimpleMode:         (v) => { set({ simpleMode: v }); get().syncSettingsToNostr(); },
+  setSimpleMode:         (v) => get().emitPrefs({ simpleMode: v }),   // 4c: prefs channel (was syncSettingsToNostr)
   // 3a.4: write through to the standalone GATE_* key (outside the encrypted blob) so the unlock gate can bootstrap
   // on an encrypted cold start. Mirrors setWriterKeyWrapped.
   setOnboardingComplete: (v) => { try { v ? localStorage.setItem(GATE_ONBOARDED_KEY, '1') : localStorage.removeItem(GATE_ONBOARDED_KEY); } catch { /* noop */ } set({ onboardingComplete: v }); },
-  setBtcBuyingUnit:      (v) => { set({ btcBuyingUnit: v }); get().syncSettingsToNostr(); },
+  setBtcBuyingUnit:      (v) => get().emitPrefs({ btcBuyingUnit: v }),
   setDevMode:            (v) => set({ devMode: v }),
   setAlmanacLiveEnabled:   (v) => set({ almanacLiveEnabled: v }),    // device-local, unsynced — no syncSettingsToNostr
   setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no syncSettingsToNostr
@@ -51,13 +51,14 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   tabOrder:    ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase', 'advisor'],
   toolTabs:    ['powerlaw', 'converter', 'mining', 'liqsim', 'almanac'],
   previousTab: 'living',
-  toggleTabVisibility: (tab) => set((s) => ({
-    hiddenTabs: s.hiddenTabs.includes(tab)
-      ? s.hiddenTabs.filter((t) => t !== tab)
-      : [...s.hiddenTabs, tab],
-  })),
-  setHiddenTabs: (v) => { set({ hiddenTabs: v }); get().syncSettingsToNostr(); },
-  setTabOrder:   (v) => { set({ tabOrder: v });   get().syncSettingsToNostr(); },
+  // 4c: emitPrefs (spec §B) — this incidentally FIXES a latent asymmetry (a tab toggled here never synced,
+  // unlike setHiddenTabs). Compute next from get() (the functional-set atomicity is unneeded under D2 single-writer).
+  toggleTabVisibility: (tab) => {
+    const cur = get().hiddenTabs;
+    get().emitPrefs({ hiddenTabs: cur.includes(tab) ? cur.filter((t) => t !== tab) : [...cur, tab] });
+  },
+  setHiddenTabs: (v) => get().emitPrefs({ hiddenTabs: v }),
+  setTabOrder:   (v) => get().emitPrefs({ tabOrder: v }),
   setToolTabs: (tabs) => set({ toolTabs: tabs }),
   setPreviousTab: (tab) => set({ previousTab: tab }),
 });

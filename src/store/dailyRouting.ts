@@ -2,6 +2,7 @@
 // set/get (so this file never imports the composed store — the cycle rule); pure ones are unchanged. The only body
 // change is getState()→get() / setState()→set(). Called from the dayLog + monthlyLog slice actions (which pass set/get).
 import type { StoreSet, StoreGet } from './types';
+import type { PlanField } from './settingsFields';
 import type { DayEvent, MonthlyLogEntry } from '../simulation/types';
 import { bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveStrikeCollateral, deriveReadingAnchors, priorStocksForMonth, type ReadingMutationCtx } from '../simulation/logUtils';
 
@@ -32,11 +33,13 @@ export function refreshStrikeCollateralCache(set: StoreSet, get: StoreGet): void
 // §5b Readings-Unification seam — couple the live safety anchors (advisorActualBlocBalance / cbLoanBalance /
 // cbLiquidationPrice) to the DATE-latest balanceReading. Runs on LOCAL dayLog actions ONLY (add/update/delete),
 // NEVER in setDayLog — a sync/merge must not jolt this device's SafetyDashboard; the anchor travels cross-device
-// via the SETTINGS channel (syncSettingsToNostr) instead, like a manual re-anchor. Distinct from cbCollateralBtc's
-// continuous derive (that IS refreshed in setDayLog — a sum over ordered events, not a synced scalar). `removed` =
-// the pre-mutation reading (deleted / date-moved) for the delete-fallback source proxy (nuance 5). Idempotent
-// (deriveReadingAnchors returns an empty patch when nothing changed) → no redundant settings publish.
-export function refreshBalanceAnchors(set: StoreSet, get: StoreGet, removed?: ReadingMutationCtx): void {
+// via the PLAN-EVENTS channel (4c: emitPlanSets — was syncSettingsToNostr) instead, like a manual re-anchor.
+// Distinct from cbCollateralBtc's continuous derive (that IS refreshed in setDayLog — a sum over ordered events,
+// not a synced scalar). `removed` = the pre-mutation reading (deleted / date-moved) for the delete-fallback source
+// proxy (nuance 5). Idempotent (deriveReadingAnchors returns an empty patch when nothing changed) → no redundant
+// publish. The whole patch (≤3 anchor+AsOf pairs) rides ONE emitPlanSets → one shared ts (atomic; the AsOf halves
+// can never tear from their values).
+export function refreshBalanceAnchors(_set: StoreSet, get: StoreGet, removed?: ReadingMutationCtx): void {
   const s = get();
   const patch = deriveReadingAnchors(s.dayLog, {
     advisorActualBlocBalance: s.advisorActualBlocBalance, advisorActualBlocBalanceAsOf: s.advisorActualBlocBalanceAsOf,
@@ -44,8 +47,7 @@ export function refreshBalanceAnchors(set: StoreSet, get: StoreGet, removed?: Re
     cbLiquidationPrice:       s.cbLiquidationPrice,       cbLiquidationPriceAsOf:       s.cbLiquidationPriceAsOf,
   }, removed);
   if (Object.keys(patch).length === 0) return;
-  set(patch);
-  get().syncSettingsToNostr();
+  get().emitPlanSets(Object.entries(patch) as [PlanField, unknown][]);
 }
 
 // The pre-mutation reading context for the delete-fallback proxy — only a balanceReading can be an anchor source.

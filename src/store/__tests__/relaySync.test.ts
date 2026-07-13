@@ -87,24 +87,26 @@ describe('Option C follow-on — relay edits publish on their own', () => {
     useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', settingsDirty: false, initialSettingsPullDone: false } as never);
   });
 
-  it('setNostrRelaysAndSync sets the list AND marks settingsDirty (user-edit publish path)', () => {
-    // syncSettingsToNostr early-returns unless authed AND past the initial pull; fake timers swallow the 2s debounce.
-    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', settingsDirty: false, initialSettingsPullDone: true } as never);
+  it('setNostrRelaysAndSync sets the list AND marks planDirty (4c: emits a plan event; user-edit publish path)', () => {
+    // emitPlanSets appends + marks planDirty synchronously; fake timers swallow the 2s debounce kick.
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', planDirty: false, planEvents: [], initialSettingsPullDone: true } as never);
     vi.useFakeTimers();
 
     useStore.getState().setNostrRelaysAndSync([A, B]);
 
     expect(relays()).toEqual([A, B]);
-    expect(useStore.getState().settingsDirty).toBe(true);
+    expect(useStore.getState().planDirty).toBe(true);
+    expect(useStore.getState().planEvents.some((e) => e.field === 'nostrRelays')).toBe(true);
   });
 
-  it('plain setNostrRelays sets the list but leaves settingsDirty untouched (bootstrap path)', () => {
-    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', settingsDirty: false } as never);
+  it('plain setNostrRelays sets the list but leaves planDirty untouched (bootstrap path — discovery must stay silent)', () => {
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', planDirty: false, planEvents: [] } as never);
     vi.useFakeTimers();
 
     useStore.getState().setNostrRelays([A]);
 
     expect(relays()).toEqual([A]);
-    expect(useStore.getState().settingsDirty).toBe(false);   // no publish trigger — discovery must stay silent
+    expect(useStore.getState().planDirty).toBe(false);   // no emit — discovery must stay silent (no plan event)
+    expect(useStore.getState().planEvents.length).toBe(0);
   });
 });

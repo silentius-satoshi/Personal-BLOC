@@ -3,7 +3,9 @@ import { useStore, storeEncEnabled } from '../../store/useStore';
 import { haptics, hapticsSupport } from '../../lib/haptics';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
-import { getPublishReports, SETTINGS_DTAG, RECORDS_DTAG } from '../../lib/nostr/publish';
+import { getPublishReports, SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from '../../lib/nostr/publish';
+import { foldPlanEvents } from '../../lib/planEvents/fold';
+import { compactPlanEvents } from '../../lib/planEvents/compact';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
@@ -86,6 +88,12 @@ export function DevPanel() {
   const btcPriceUpdatedAt    = useStore((s) => s.btcPriceUpdatedAt);
   const monthlyLogCount      = useStore((s) => s.monthlyLog.length);
   const tombstoneCount       = useStore((s) => Object.keys(s.deletedMonths).length);
+  // Phase 4c — plan-events channel diagnostics (metadata only — counts/flags/ages, never field values)
+  const planEvents           = useStore((s) => s.planEvents);
+  const planDirty            = useStore((s) => s.planDirty);
+  const prefsDirty           = useStore((s) => s.prefsDirty);
+  const lastPlanEventsSyncAt = useStore((s) => s.lastPlanEventsSyncAt);
+  const lastPrefsSyncAt      = useStore((s) => s.lastPrefsSyncAt);
   // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
   // they must NOT enter syncState / Copy Diagnostics (paste-safe rule).
   const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
@@ -392,8 +400,18 @@ export function DevPanel() {
   const payloadRows: [string, ReturnType<typeof newestByLabel>][] = [
     ['settings',        newestByLabel(SETTINGS_DTAG)],
     ['records',         newestByLabel(RECORDS_DTAG)],
+    ['plan events',     newestByLabel(PLAN_EVENTS_DTAG)],
+    ['prefs',           newestByLabel(PREFS_DTAG)],
     ['viewer snapshot', newestViewerSnapshot()],
   ];
+  // Phase 4c — live parity: fold-present keys vs live scalars (pure — no log/mutate; the engine's checkPlanParity
+  // is the publish-time telemetry). Absent-from-log keys are seed defaults, never compared (§6).
+  const compactedPlanCount = compactPlanEvents(planEvents, now).length;
+  const planParityDiverged = (() => {
+    const folded = foldPlanEvents(planEvents) as Record<string, unknown>;
+    const full = useStore.getState() as unknown as Record<string, unknown>;
+    return Object.keys(folded).filter((k) => JSON.stringify(folded[k]) !== JSON.stringify(full[k]));
+  })();
 
   return (
     <div className={styles.panel}>
@@ -428,6 +446,21 @@ export function DevPanel() {
               </span>
             </Fragment>
           ))}
+        </div>
+      </Section>
+
+      <Section title="PLAN EVENTS">
+        <div className={styles.grid}>
+          <span className={styles.key}>events raw/compacted</span>
+          <span className={styles.val}>{planEvents.length} / {compactedPlanCount}</span>
+          <span className={styles.key}>planDirty</span><span className={styles.val}>{String(planDirty)}</span>
+          <span className={styles.key}>prefsDirty</span><span className={styles.val}>{String(prefsDirty)}</span>
+          <span className={styles.key}>plan sync</span><span className={styles.val}>{fmtTs(lastPlanEventsSyncAt)}</span>
+          <span className={styles.key}>prefs sync</span><span className={styles.val}>{fmtTs(lastPrefsSyncAt)}</span>
+          <span className={styles.key}>parity</span>
+          <span className={styles.val} style={{ color: planParityDiverged.length ? 'var(--red)' : 'var(--green)' }}>
+            {planParityDiverged.length ? `DIVERGED: ${planParityDiverged.join(', ')}` : 'OK'}
+          </span>
         </div>
       </Section>
 

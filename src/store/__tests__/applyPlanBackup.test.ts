@@ -89,11 +89,21 @@ describe('applyPlanBackup', () => {
     expect(useStore.getState().strikeCollateralBtc).toBe(1.23);
   });
 
-  it('replaces the records wholesale + marks dirty', () => {
+  it('replaces the records wholesale + marks dirty (4c: planDirty + recordsDirty, NOT settingsDirty)', () => {
     useStore.getState().applyPlanBackup(backup({ income: 1 }));
     expect(useStore.getState().monthlyLog).toEqual([]);
     expect(useStore.getState().dayLog).toHaveLength(1);
-    expect(useStore.getState().settingsDirty).toBe(true);
+    expect(useStore.getState().planDirty).toBe(true);
     expect(useStore.getState().recordsDirty).toBe(true);
+  });
+
+  it('4c: APPLY_FIELDS become plan-field scalars AND appended plan events, atomically', () => {
+    useStore.getState().applyPlanBackup(backup({ income: 7777, expenses: 3333 }));
+    expect(useStore.getState().income).toBe(7777);                                   // scalar (parity)
+    const evs = useStore.getState().planEvents;
+    expect(evs.some((e) => e.field === 'income' && e.value === 7777)).toBe(true);    // + a plan event
+    expect(evs.some((e) => e.field === 'expenses' && e.value === 3333)).toBe(true);
+    // backupVerifiedAt is APPLY_FIELDS-excluded → never an event (the gate stays shut)
+    expect(evs.some((e) => e.field === 'backupVerifiedAt')).toBe(false);
   });
 });

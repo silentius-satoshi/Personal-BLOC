@@ -8,6 +8,10 @@ import { DEFAULT_RELAYS } from './relays';
 
 export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
 export const RECORDS_DTAG  = 'personal-bloc:records:v1';
+// Phase 4c — the event-sourced plan channel + the tiny whole-object prefs channel. The lastCreatedAtByDtag
+// monotonic clock (below) keys dynamically, so each new d-tag gets its own per-session counter for free.
+export const PLAN_EVENTS_DTAG = 'personal-bloc:plan-events:v1';
+export const PREFS_DTAG       = 'personal-bloc:prefs:v1';
 
 // Phase 4a-inst — real byte length, NOT UTF-16 code units (String.length). eventBytes/plainBytes below
 // exist to confirm the relay payload budget against NIP-44's 65,535-plaintext-BYTE ceiling, so undercounting

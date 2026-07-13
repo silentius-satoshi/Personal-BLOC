@@ -3584,7 +3584,10 @@ plan-card status-bar visibility, default true), `simpleView` (`'dashboard'|'mont
 default `'dashboard'` — Owner IA dashboard-first; migrate-default only), `pinnedScenario` (Phase 3a Scenario
 Diff/Pin — the pinned safety posture `PinnedScenario | null`, default null; plain-`set` setter, no sync;
 merge-default so a pin survives reload), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
-null; cleared on `resetViewerSession`), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
+null; cleared on `resetViewerSession`), `planEvents`/`planDirty`/`lastPlanEventsSyncAt`/`prefsDirty`/
+`lastPrefsSyncAt` (Phase 4c plan-events channel — the append-only `PlanEvent[]` log + its publish-needed/watermark
+flags; default `[]`/`false`/`null`/`false`/`null`; raw setters, merge-default, NO bump; the log is the plan
+partition's source of truth, published on `plan-events:v1`, NEVER a synced setting), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
 default null; **WRITE-ONCE** with `null` as the explicit identity-teardown clear; cleared by `disconnectNostr` +
 "Remove local key" + `gateHydratedIdentity`'s signed-out branch. R2c-6-final: **also STANDALONE-backed** in
 localStorage `personal-bloc-provenance` — seeded at module init, write-through in the setter, read authoritatively by
@@ -5089,7 +5092,9 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 33 settings fields | Any synced setter (marks `settingsDirty`, 2s debounce → `publishSettingsNow`); retried by `syncNow` while dirty |
+| `personal-bloc:settings:v1` | All 37 settings fields | **4c: now a one-way write-through BRIDGE** — published from current state inside `publishPlanEventsNow`'s success path (fold output ≡ current state under D2), NOT triggered by setters (nothing marks `settingsDirty` post-4c). Read-as-authority only on an empty-log device; a migrated device strips `PLAN_EVENT_FIELDS` from it. Retired at 4e |
+| `personal-bloc:plan-events:v1` | **4c** `{ events: PlanEvent[] }` — the append-only plan log, NIP-44 self-encrypted | Any plan-field setter via `emitPlanSets` (marks `planDirty`, 2s debounce → `publishPlanEventsNow` → compact → publish → bridge → parity); retried by `syncNow` while dirty. Pull = union-by-id + fold-to-state, order-independent (NO watermark) |
+| `personal-bloc:prefs:v1` | **4c** `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | The 4 prefs setters via `emitPrefs` (marks `prefsDirty`, 2s debounce → `publishPrefsNow`); tiny whole-object LWW; pull hydrates via `hydrateSettings` (whitelist → only prefs land) |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
 | `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common. Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
@@ -5479,7 +5484,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 ---
 
-## Event-Sourcing Migration — Phase 4 (plan-events campaign; store unchanged, NO bump through 4b)
+## Event-Sourcing Migration — Phase 4 (plan-events campaign; store unchanged, NO bump through 4c)
 
 Phase 4 replaces whole-object LWW settings sync with an append-only **plan event log** folded into state
 (design authority: the 4a plan-events design lock — event shape / fold / compaction / union / genesis).
@@ -5490,11 +5495,60 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   instrumentation, shipped as the two `*Bytes` fields. No publish/quorum/ack/store logic touched.
 - **4b** (SHIPPED): the PURE core — `src/lib/planEvents/{types,fold,compact,genesis}.ts` (leaf modules;
   runtime import only from `store/settingsFields`) + the `PREFS_FIELDS`/`PLAN_EVENT_FIELDS` partition (see
-  the settingsFields entry) + a Suite-3 viewer shape-lock comment. ZERO wiring: no store/sync/publish/d-tag/
-  emitter — all 4c. No store version bump. Invariant established: kind:'set' only, absent-from-log = seed
-  default, set-to-empty = an event (§6).
-- **4c+** (NOT built): store emitters + `planDirty` + the `plan-events:v1`/`prefs:v1` channels + the
-  genesis cutover/bridge + guard-class deletion at 4e.
+  the settingsFields entry) + a Suite-3 viewer shape-lock comment. ZERO wiring. Invariant: kind:'set' only,
+  absent-from-log = seed default, set-to-empty = an event (§6).
+- **4c** (SHIPPED — THE HARD CUTOVER): every plan-field setter now EMITS a `PlanEvent` instead of marking
+  `settingsDirty`; a `plan-events:v1` channel publishes the log; a **one-way BRIDGE** keeps writing
+  `settings:v1` (from current state ≡ fold output under D2 single-writer) so a rollback stays lossless;
+  genesis synthesizes the initial log from `settings:v1` strictly AFTER the first pull. **Store unchanged
+  (5 additive device-local fields with merge defaults, NO bump).**
+
+  | d-tag | Content | Semantics |
+  |---|---|---|
+  | `personal-bloc:plan-events:v1` | `{ events: PlanEvent[] }` NIP-44 self-encrypted | append-only · union-by-id · fold-to-state · compaction; NO watermark gate (order-independent) |
+  | `personal-bloc:prefs:v1` | `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | tiny whole-object LWW (device-taste; stale clobber cosmetic) |
+  | `personal-bloc:settings:v1` | write-through BRIDGE (fold output) | published-not-read-as-authority on a migrated device; retired at 4e |
+  | `personal-bloc:records:v1` | unchanged | unchanged |
+
+  - **Emit layer (`syncSlice.ts`):** `emitPlanSets(pairs)` — ONE atomic set of the scalar writes + appended
+    events (all sharing ONE ts via `nextPlanEventTs(maxPlanTs(log))` → AsOf pairs can never tear) + `planDirty`,
+    then a dynamic-import `schedulePlanPublish` kick. Auth-UNGATED (pre-auth edits accumulate; publish is fully
+    gated in the engine). `applyPlanFold(folded)` = the pull-side RAW derived-scalar apply (no event/dirty).
+    `emitPrefs(patch)` = set + `prefsDirty` + `schedulePrefsPublish`. **All 39 `syncSettingsToNostr()` callers
+    converted** (grep-empty outside `syncSlice`'s retained definition; the 2 test hits exercise that retained
+    definition). Clarifications: `setCbLoanBalance`/`setCbLiquidationPrice` are plan-SINGLE (their AsOf fields
+    have their own setters); only `setAdvisorActualBlocBalance` is a true paired-AsOf; plain `setNostrRelays`
+    stays RAW (boot discovery); `setBackupVerifiedAt` null-branch stays RAW, its pre-auth stamp is field-only
+    (NO event — rides genesis; **residual: a fresh key verified pre-auth never syncs the attestation as an
+    event — healed by any authed re-verify; gate semantics unaffected**), its authed stamp emits.
+  - **Engine (`syncEngine.ts`):** `publishPlanEventsNow` (gate + Fix A → compact → `setPlanEvents` → publish →
+    success: THE BRIDGE `void publishSettingsNow()` [chains the viewer fan-out] + `checkPlanParity`);
+    `publishPrefsNow`; `schedule{Plan,Prefs}Publish` (2s debounce). **Bridge is acyclic** (`plan → settings →
+    viewer`, no back-edge). **`checkPlanParity` compares FOLD-PRESENT KEYS ONLY** — absent-from-log keys are
+    seed defaults, never compared (§6; the `pickPlanFields` guard fields stay absent by DESIGN), else every
+    sparse-log device reads DIVERGED forever + poisons the 4e "parity green" precondition.
+  - **Pull (`sync.ts` + `liveSync.ts` filters += both d-tags):** a plan-events branch BEFORE settings
+    (union+fold+`setPlanEvents`+`applyPlanFold`; local ⊃ remote → repair republish); a prefs branch; **THE
+    DUAL-READ STRIP** — once `planEvents.length > 0`, strip `PLAN_EVENT_FIELDS` from incoming `settings:v1`
+    before `hydrateSettings` (the fold owns the partition; settings:v1 is bridge-echo). `fetchAndSync` returns
+    += `sawPlanEvents`/`sawSettingsV1`.
+  - **Genesis (`syncNow.ts`):** after the pull + `initialSettingsPullDone`, if `planEvents.length===0 &&
+    !sawPlanEvents && sawSettingsV1` → `synthesizeGenesisEvents(pickPlanFields(state), …)` + `planDirty`.
+    **`pickPlanFields` replicates the three `hydrateSettings` skip-guards at the genesis boundary** (drops
+    null `backupVerifiedAt`, empty `viewers`+`nextViewerIndex`, default-looking `nostrRelays`) because the
+    fold has NO equivalent latch/roster/relay guard — a raw genesis would emit a fold-winning null/empty that
+    clobbers a peer (RISK-2). A fresh key (no settings:v1) → NO genesis (its log accrues from the first edit);
+    idempotent. **Residual (RISK-4, documented):** a plan setter firing pre-first-pull → genesis skipped; no
+    real boot path does this, local state + the bridge stay correct.
+  - **`applyPlanBackup`:** the APPLY_FIELDS loop fuses plan scalars + appended events into its ONE atomic set
+    (planDirty + recordsDirty, NO settingsDirty; `backupVerifiedAt` stays APPLY_FIELDS-excluded).
+  - **DevPanel:** a PLAN EVENTS section (event count raw/compacted, planDirty/prefsDirty, sync ages, parity)
+    + `plan events`/`prefs` PAYLOAD SIZES rows. Metadata-only.
+  - ⚠ **NOTHING deleted:** `syncSettingsToNostr` (caller-less), `settingsDirty`, Fix C/D, the three
+    hydrateSettings skip-guards, `lastSettingsSyncAt` + its apply-gate all STAY as rollback insurance — retired
+    at 4e with quotes.
+- **4d/4e** (NOT built): read path v2-first w/ v1 fallback for one release → stop the bridge → delete the
+  guard class.
 
 ---
 

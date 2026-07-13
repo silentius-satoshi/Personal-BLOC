@@ -33,17 +33,18 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
   advisorSkipBtcBuying: false,
   monthlyLog:      [],
   showMiningInLog: false,
-  setAdvisorStartDate:         (v) => { set({ advisorStartDate: v }); get().syncSettingsToNostr(); },
-  // §5b — a manual/knob write stamps asOf=today (freshness), so a stale reading can't clobber it (deriveReadingAnchors guard).
-  setAdvisorActualBlocBalance: (v) => { set({ advisorActualBlocBalance: v, advisorActualBlocBalanceAsOf: todayLocalISO() }); get().syncSettingsToNostr(); },
-  setAdvisorActualBlocBalanceAsOf: (v) => { set({ advisorActualBlocBalanceAsOf: v }); get().syncSettingsToNostr(); },
-  setAdvisorMonthStartBalance: (v) => { set({ advisorMonthStartBalance: v }); get().syncSettingsToNostr(); },
-  setAdvisorActualBtcHeld:     (v) => { set({ advisorActualBtcHeld: v });    get().syncSettingsToNostr(); },
-  setNdpLastPaidDate:          (v) => { set({ ndpLastPaidDate: v }); get().syncSettingsToNostr(); },
+  setAdvisorStartDate:         (v) => get().emitPlanSets([['advisorStartDate', v]]),   // 4c: emit a plan event (was syncSettingsToNostr)
+  // §5b — a manual/knob write stamps asOf=today (freshness), so a stale reading can't clobber it. THE ONLY true
+  // paired-AsOf setter: both fields ride one emitPlanSets → one shared ts (they can never tear).
+  setAdvisorActualBlocBalance: (v) => get().emitPlanSets([['advisorActualBlocBalance', v], ['advisorActualBlocBalanceAsOf', todayLocalISO()]]),
+  setAdvisorActualBlocBalanceAsOf: (v) => get().emitPlanSets([['advisorActualBlocBalanceAsOf', v]]),
+  setAdvisorMonthStartBalance: (v) => get().emitPlanSets([['advisorMonthStartBalance', v]]),
+  setAdvisorActualBtcHeld:     (v) => get().emitPlanSets([['advisorActualBtcHeld', v]]),
+  setNdpLastPaidDate:          (v) => get().emitPlanSets([['ndpLastPaidDate', v]]),
 
-  setAdvisorSkipBlocDraw:  (v) => { set({ advisorSkipBlocDraw: v });  get().syncSettingsToNostr(); },
-  setAdvisorSkipCbPayment: (v) => { set({ advisorSkipCbPayment: v }); get().syncSettingsToNostr(); },
-  setAdvisorSkipBtcBuying: (v) => { set({ advisorSkipBtcBuying: v }); get().syncSettingsToNostr(); },
+  setAdvisorSkipBlocDraw:  (v) => get().emitPlanSets([['advisorSkipBlocDraw', v]]),
+  setAdvisorSkipCbPayment: (v) => get().emitPlanSets([['advisorSkipCbPayment', v]]),
+  setAdvisorSkipBtcBuying: (v) => get().emitPlanSets([['advisorSkipBtcBuying', v]]),
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
     // M2 guard (centralized — all Monthly UI write paths funnel here): a daily-owned month must not be clobbered by a

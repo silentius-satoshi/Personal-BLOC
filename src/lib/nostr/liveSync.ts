@@ -7,7 +7,7 @@ import { SimplePool } from 'nostr-tools/pool';
 import { useStore } from '../../store/useStore';
 import { applyRemoteEvent, type RemoteEvent } from './sync';
 import { signerOpTimeout } from './timeout';
-import { SETTINGS_DTAG, RECORDS_DTAG } from './publish';
+import { SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from './publish';
 import { nostrLog } from './log';
 import { isBackupGateSatisfied } from '../backupGate';
 
@@ -39,7 +39,7 @@ export function openLiveSync(): void {
     {
       kinds:   [30078],
       authors: [nostrPubkey],
-      '#d':    [SETTINGS_DTAG, RECORDS_DTAG],
+      '#d':    [SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],
       since:   Math.floor(Date.now() / 1000) - 60,
     },
     { onevent: (event) => { void handleLiveEvent(event); } },

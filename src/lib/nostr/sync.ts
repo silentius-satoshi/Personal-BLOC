@@ -1,13 +1,16 @@
 import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
-import { publishRecordsNowImmediate } from './syncEngine';
-import { FALLBACK_RELAYS, SETTINGS_DTAG, RECORDS_DTAG } from './publish';
+import { publishRecordsNowImmediate, publishPlanEventsNow } from './syncEngine';
+import { FALLBACK_RELAYS, SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from './publish';
 import { withTimeout, signerOpTimeout } from './timeout';
 import { nostrLog } from './log';
 import { mergeRecords, type RecordsState } from '../../simulation/mergeRecords';
 import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
+import { unionPlanEvents, foldPlanEvents } from '../planEvents/fold';
+import type { PlanEvent } from '../planEvents/types';
+import { PLAN_EVENT_FIELDS } from '../../store/settingsFields';
 
 // Structural subset of a nostr event — satisfied by querySync results, live-sub events, and test fixtures.
 export interface RemoteEvent {
@@ -37,6 +40,23 @@ export async function applyRemoteEvent(
     const data = JSON.parse(plaintext);
     const dTag = event.tags.find(([t]) => t === 'd')?.[1];
     const remoteTs = event.created_at;
+    // ── PLAN EVENTS (v1) — BEFORE the settings branch; the source of truth for the plan partition. Union+fold
+    // is order-independent, so there is NO watermark gate (lastPlanEventsSyncAt is observability only). ──
+    if (dTag === PLAN_EVENTS_DTAG && Array.isArray(data?.events)) {
+      const s = useStore.getState();
+      const remote = data.events as PlanEvent[];
+      const merged = unionPlanEvents(s.planEvents, remote);
+      const idKey = (evs: PlanEvent[]) => JSON.stringify(evs.map((e) => e.id).sort());   // unionPlanEvents already (ts,id)-sorts; sort ids for a stable set-compare
+      if (idKey(merged) !== idKey(s.planEvents)) {
+        useStore.getState().setPlanEvents(merged);                     // log first
+        useStore.getState().applyPlanFold(foldPlanEvents(merged));     // then derived scalars (raw — no event, no dirty)
+      }
+      if (idKey(merged) !== idKey(remote)) {                          // relay behind → repair (mirrors the records pattern below)
+        useStore.getState().setPlanDirty(true);
+        void publishPlanEventsNow();
+      }
+      useStore.getState().setLastPlanEventsSyncAt(remoteTs);          // observability ONLY
+    }
     // While local settings changes are unpublished (settingsDirty), an older/foreign remote
     // whole-object must not clobber them; syncNow pushes local first, then the watermark governs.
     // EXCEPTION — the FIRST pull of a session (!initialSettingsPullDone, still false until fetchAndSync
@@ -46,7 +66,17 @@ export async function applyRemoteEvent(
     if (dTag === SETTINGS_DTAG
         && (!useStore.getState().settingsDirty || !useStore.getState().initialSettingsPullDone)
         && remoteTs > (useStore.getState().lastSettingsSyncAt ?? 0)) {
-      useStore.getState().hydrateSettings(data);
+      // 4c DUAL-READ STRIP: once the plan log is non-empty (a migrated device), the fold OWNS PLAN_EVENT_FIELDS
+      // and settings:v1 is bridge-echo only — strip them so a stale bridge write-through can't regress a plan
+      // field the fold already advanced. The plan-events branch above runs FIRST, so within one pull the strip
+      // sees the just-folded log. Only prefs + non-plan-event fields survive settings:v1 on a migrated device.
+      // (This is the 4d "settings:v1 authoritative only for an empty-log device" rule, arriving structurally.)
+      let incoming = data;
+      if (useStore.getState().planEvents.length > 0) {
+        incoming = { ...data };
+        for (const f of PLAN_EVENT_FIELDS) delete (incoming as Record<string, unknown>)[f];
+      }
+      useStore.getState().hydrateSettings(incoming);
       useStore.getState().setLastSettingsSyncAt(remoteTs);
       nostrLog('info', 'settings hydrated');
     }
@@ -88,6 +118,13 @@ export async function applyRemoteEvent(
       }
       useStore.getState().setLastRecordsSyncAt(remoteTs);  // observability ONLY — no longer a gate
     }
+    // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). hydrateSettings
+    // whitelists to SETTINGS_FIELDS (⊇ PREFS_FIELDS), so only the 4 prefs keys of a prefs:v1 object land. ──
+    if (dTag === PREFS_DTAG && remoteTs > (useStore.getState().lastPrefsSyncAt ?? 0)) {
+      useStore.getState().hydrateSettings(data);
+      useStore.getState().setLastPrefsSyncAt(remoteTs);
+      nostrLog('info', 'prefs hydrated');
+    }
   } catch { nostrLog('warn', 'payload parse failed (skipped)'); }   // corrupt/foreign payload
   return true;
 }
@@ -98,6 +135,8 @@ export async function applyRemoteEvent(
 export interface FetchAndSyncResult {
   ok: boolean;
   planFound: boolean;
+  sawPlanEvents: boolean;   // 4c — did the relay hold a plan-events:v1 event? (genesis runs only when this is false)
+  sawSettingsV1: boolean;   // 4c — did the relay hold a legacy settings:v1? (genesis seeds from it)
 }
 
 export async function fetchAndSync(
@@ -110,7 +149,7 @@ export async function fetchAndSync(
   const events = await pool.querySync(relays, {
     kinds:   [30078],
     authors: [pubkey],
-    '#d':    [SETTINGS_DTAG, RECORDS_DTAG],
+    '#d':    [SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],
   });
 
   pool.close(relays);
@@ -133,10 +172,15 @@ export async function fetchAndSync(
     if (!ok) { decryptFailed = true; break; }   // rest would fail identically
   }
   // reconnect-flag management lives in syncNow (sole caller).
-  // planFound reads latestByDTag, which is built BEFORE the decrypt loop and whose keys can only be the two
-  // owner d-tags (the query filters authors:[pubkey] + #d:[SETTINGS_DTAG, RECORDS_DTAG], and the loop above
-  // `continue`s on a missing d-tag). So it means "an owner plan exists on the relays" and stays TRUE even when
-  // a decrypt failure sets ok=false — an unreachable signer must never be reported as "no plan found".
-  // Decrypt/apply semantics are untouched.
-  return { ok: !decryptFailed, planFound: latestByDTag.size > 0 };
+  // planFound reads latestByDTag, built BEFORE the decrypt loop, whose keys can only be the four owner d-tags
+  // (the query filters authors:[pubkey] + #d, and the loop above `continue`s on a missing d-tag). So it means
+  // "an owner plan exists on the relays" and stays TRUE even when a decrypt failure sets ok=false — an
+  // unreachable signer must never be reported as "no plan found". 4c: it now also counts a migrated key's
+  // plan-events:v1 for free (the 4d planFound item, structural). sawPlanEvents/sawSettingsV1 drive genesis.
+  return {
+    ok: !decryptFailed,
+    planFound:     latestByDTag.size > 0,
+    sawPlanEvents: latestByDTag.has(PLAN_EVENTS_DTAG),
+    sawSettingsV1: latestByDTag.has(SETTINGS_DTAG),
+  };
 }

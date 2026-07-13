@@ -100,11 +100,12 @@ describe('setBackupVerifiedAt', () => {
   const unauth = () => useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '' } as never);
   afterEach(unauth);
 
-  it('an AUTHENTICATED stamp sets the field AND marks settingsDirty (syncSettingsToNostr is gated pre-pull, so it cannot)', () => {
+  it('an AUTHENTICATED stamp sets the field AND marks planDirty (4c: emits a plan event; was settingsDirty)', () => {
     authed();
     useStore.getState().setBackupVerifiedAt(T);
     expect(useStore.getState().backupVerifiedAt).toBe(T);
-    expect(useStore.getState().settingsDirty).toBe(true);
+    expect(useStore.getState().planDirty).toBe(true);
+    expect(useStore.getState().planEvents.some((e) => e.field === 'backupVerifiedAt' && e.value === T)).toBe(true);
   });
 
   // ⚠ SEED-CLOBBER (Fix C). settingsDirty is PERSISTED, and doSyncNow flips initialSettingsPullDone(true)

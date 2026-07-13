@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
-const { mockStoreState, mockPool, mockPublishRecordsImmediate } = vi.hoisted(() => ({
+const { mockStoreState, mockPool, mockPublishRecordsImmediate, mockPublishPlanEvents } = vi.hoisted(() => ({
   mockStoreState: {} as Record<string, any>,
   mockPool: {
     querySync: vi.fn(),
@@ -8,6 +8,7 @@ const { mockStoreState, mockPool, mockPublishRecordsImmediate } = vi.hoisted(() 
     close:     vi.fn(),
   },
   mockPublishRecordsImmediate: vi.fn(),   // sync.ts's repair-on-detect fires this (1b: now a named import from syncEngine)
+  mockPublishPlanEvents:       vi.fn().mockResolvedValue(true),   // 4c: plan-events repair-on-detect
 }));
 
 vi.mock('nostr-tools/pool', () => ({
@@ -22,6 +23,7 @@ vi.mock('../../../store/useStore', () => ({
 // 1b: publishRecordsNowImmediate moved to syncEngine; sync.ts imports it from './syncEngine' (same module this resolves to).
 vi.mock('../syncEngine', () => ({
   publishRecordsNowImmediate: mockPublishRecordsImmediate,
+  publishPlanEventsNow:       mockPublishPlanEvents,
 }));
 
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
@@ -38,6 +40,15 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     dayLog:                  [],
     deletedDayEvents:        {},
     advisorActualBtcHeld:    0,
+    // Phase 4c — the dual-read strip reads planEvents.length; the plan-events branch uses these setters.
+    planEvents:              [],
+    lastPlanEventsSyncAt:    null,
+    lastPrefsSyncAt:         null,
+    setPlanEvents:           vi.fn(),
+    setPlanDirty:            vi.fn(),
+    applyPlanFold:           vi.fn(),
+    setLastPlanEventsSyncAt: vi.fn(),
+    setLastPrefsSyncAt:      vi.fn(),
     hydrateSettings:         vi.fn(),
     setMonthlyLog:           vi.fn(),
     setDeletedMonths:        vi.fn(),
@@ -97,7 +108,8 @@ describe('fetchAndSync', () => {
     ]);
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: true });
+    // 4c: fetchAndSync now also returns sawPlanEvents/sawSettingsV1 — assert the fields this test cares about.
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toMatchObject({ ok: true, planFound: true });
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
@@ -226,7 +238,7 @@ describe('fetchAndSync', () => {
     signer.nip44.decrypt = vi.fn().mockRejectedValue(new Error('signer offline'));
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(signer, 'pk', ['wss://r'])).resolves.toEqual({ ok: false, planFound: true });
+    await expect(fetchAndSync(signer, 'pk', ['wss://r'])).resolves.toMatchObject({ ok: false, planFound: true });
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
@@ -239,7 +251,7 @@ describe('fetchAndSync', () => {
     mockPool.querySync.mockResolvedValue([]);
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: false });
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toMatchObject({ ok: true, planFound: false });
 
     expect(mockStoreState.hydrateSettings).not.toHaveBeenCalled();
     expect(mockStoreState.setMonthlyLog).not.toHaveBeenCalled();
@@ -252,7 +264,7 @@ describe('fetchAndSync', () => {
     mockPool.querySync.mockResolvedValue([noDTag]);
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: false });
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toMatchObject({ ok: true, planFound: false });
   });
 
   it('remote payload identical to local state → no apply, no dirty', async () => {
@@ -294,10 +306,72 @@ describe('fetchAndSync', () => {
     ]);
 
     const { fetchAndSync } = await import('../sync');
-    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toEqual({ ok: true, planFound: true });
+    await expect(fetchAndSync(makeSigner(), 'pk', ['wss://r'])).resolves.toMatchObject({ ok: true, planFound: true });
 
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();   // entries applied
     expect(mockStoreState.setDayLog).toHaveBeenCalledWith([]);     // dayLog defaulted to [] (no throw)
+  });
+
+  // ── 4c plan-events / prefs pull paths ──
+  const planEvt = (id: string, ts: number, field: string, value: unknown) => ({ id, ts, device: 'd', kind: 'set', field, value });
+
+  it('4c: a plan-events log unions + folds into state (setPlanEvents + applyPlanFold + stamp)', async () => {
+    resetStore();   // local planEvents []
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:plan-events:v1', 700, { events: [planEvt('income-5-a', 5, 'income', 8888)] }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.setPlanEvents).toHaveBeenCalledOnce();
+    expect(mockStoreState.setPlanEvents.mock.calls[0][0].map((e: any) => e.id)).toEqual(['income-5-a']);
+    expect(mockStoreState.applyPlanFold).toHaveBeenCalledWith({ income: 8888 });
+    expect(mockStoreState.setLastPlanEventsSyncAt).toHaveBeenCalledWith(700);
+  });
+
+  it('4c: local log ⊃ remote → setPlanDirty(true) + repair publish (mirrors records)', async () => {
+    resetStore({ planEvents: [planEvt('income-5-a', 5, 'income', 1), planEvt('expenses-6-b', 6, 'expenses', 2)] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:plan-events:v1', 700, { events: [planEvt('income-5-a', 5, 'income', 1)] }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.setPlanDirty).toHaveBeenCalledWith(true);
+    expect(mockPublishPlanEvents).toHaveBeenCalled();
+    expect(mockStoreState.setPlanEvents).not.toHaveBeenCalled();   // merged === local → no re-set
+  });
+
+  it('4c DUAL-READ STRIP: a migrated device (non-empty log) strips PLAN_EVENT_FIELDS from settings:v1', async () => {
+    resetStore({ planEvents: [planEvt('income-5-a', 5, 'income', 42)] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800, { income: 9999, simpleMode: true }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledOnce();
+    const applied = mockStoreState.hydrateSettings.mock.calls[0][0];
+    expect('income' in applied).toBe(false);   // plan field stripped — the fold owns it
+    expect(applied.simpleMode).toBe(true);      // prefs / non-plan fields survive
+  });
+
+  it('4c: an empty-log device does NOT strip settings:v1 (the migration window)', async () => {
+    resetStore({ planEvents: [] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800, { income: 9999 }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledWith({ income: 9999 });
+  });
+
+  it('4c: prefs:v1 hydrates via hydrateSettings + stamps lastPrefsSyncAt', async () => {
+    resetStore();
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:prefs:v1', 800, { simpleMode: true, tabOrder: ['x'] }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledWith({ simpleMode: true, tabOrder: ['x'] });
+    expect(mockStoreState.setLastPrefsSyncAt).toHaveBeenCalledWith(800);
   });
 });
 

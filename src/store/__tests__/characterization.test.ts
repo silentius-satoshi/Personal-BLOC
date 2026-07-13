@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 91 persisted data keys', () => {
+  it('blob key-set is exactly the 96 persisted data keys', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -63,10 +63,12 @@ describe('characterization · persisted blob (partializeState)', () => {
       'cbLtvTargetPct', 'cbLtvTriggerPct', 'cbMonthlyPayment', 'cbPaymentStrategy', 'cbRotateBackPct',
       'converterActiveField', 'converterRawValue', 'creditLine', 'dayLog', 'deletedDayEvents', 'deletedMonths',
       'devMode', 'expenseReanchorDismissedAt', 'expenses', 'hasCbLoan', 'hiddenTabs', 'income', 'inflationRate',
-      'keyProvenance', 'lastRecordsSyncAt', 'lastSettingsSyncAt', 'ltvType', 'miningInputs',
+      'keyProvenance', 'lastPlanEventsSyncAt', 'lastPrefsSyncAt', 'lastRecordsSyncAt', 'lastSettingsSyncAt',
+      'ltvType', 'miningInputs',
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pinnedScenario',   // Phase 3a: device-local pin
+      'planDirty', 'planEvents', 'prefsDirty',   // Phase 4c: plan-events channel (device-local persisted)
       'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'settingsDirty', 'showMiningInLog',
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
@@ -111,6 +113,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       viewerWriterPubkey: null, viewerSecretKey: null, viewerDisplayName: null, viewerKeyWrapped: null,
       viewerKeyWrapMeta: null, lastSettingsSyncAt: null, lastRecordsSyncAt: null, recordsDirty: false,
       settingsDirty: false, deletedMonths: {}, deletedDayEvents: {},
+      planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
       pinnedScenario: null,   // Phase 3a: device-local pin
     });
   });

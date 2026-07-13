@@ -9,6 +9,8 @@ import type { PinnedScenario } from '../simulation/scenarioDiff';
 import type { NostrParam } from '../lib/nostr/session';
 import type { PlanBackup } from '../lib/backup/exportPlan';
 import type { NostrSigner } from '@nostrify/nostrify';
+import type { PlanEvent, PlanState } from '../lib/planEvents/types';
+import type { PlanField, PrefsField } from './settingsFields';
 
 // Multi-viewer roster (M1) — one provisioned viewer. `index` is stable + monotonic (never reused after
 // removal); `pubkeyHex` is the derived viewer pubkey the snapshot encrypts to; `tier`/`keyVersion` are
@@ -384,6 +386,24 @@ export interface StoreState {
   setDeletedDayEvents:   (v: Record<string, number>) => void;
   hydrateSettings:      (data: Record<string, unknown>) => void;
   applyPlanBackup:      (backup: PlanBackup) => void;   // Plan Import/Restore — atomic replace of this device's plan
+
+  // Phase 4c — plan-events channel (device-local persisted, NOT in SETTINGS_FIELDS/payload; ride ...rest).
+  // The append-only PlanEvent log is the source of truth for the plan partition; emitPlanSets is the sole
+  // writer, applyPlanFold the pull-side derived-scalar apply. prefsDirty/lastPrefsSyncAt drive the tiny
+  // whole-object prefs:v1 channel (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit).
+  planEvents:              PlanEvent[];
+  setPlanEvents:           (v: PlanEvent[]) => void;
+  planDirty:               boolean;
+  setPlanDirty:            (v: boolean) => void;
+  lastPlanEventsSyncAt:    number | null;
+  setLastPlanEventsSyncAt: (ts: number) => void;
+  prefsDirty:              boolean;
+  setPrefsDirty:           (v: boolean) => void;
+  lastPrefsSyncAt:         number | null;
+  setLastPrefsSyncAt:      (ts: number) => void;
+  emitPlanSets:            (pairs: [PlanField, unknown][]) => void;
+  applyPlanFold:           (folded: Partial<PlanState>) => void;
+  emitPrefs:               (patch: Partial<Pick<StoreState, PrefsField>>) => void;
 }
 
 // zustand's own set/get handles, passed to every slice creator (so slices never import the store).

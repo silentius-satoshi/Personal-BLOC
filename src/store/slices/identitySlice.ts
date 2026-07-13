@@ -41,7 +41,7 @@ export const createIdentitySlice = (set: StoreSet, get: StoreGet): IdentitySlice
   setNostrSigningMethod: (v) => { try { v == null ? localStorage.removeItem(GATE_METHOD_KEY) : localStorage.setItem(GATE_METHOD_KEY, v); } catch { /* noop */ } set({ nostrSigningMethod: v }); },
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),                                                  // bootstrap/internal: NO publish (syncNow's fetchUserRelays discovery uses this)
-  setNostrRelaysAndSync: (v) => { set({ nostrRelays: v }); get().syncSettingsToNostr(); },  // user edit → mark dirty → publish on its own
+  setNostrRelaysAndSync: (v) => get().emitPlanSets([['nostrRelays', v]]),  // 4c: user edit → plan event → publish on its own (plain setNostrRelays above stays RAW — boot/NIP-65 discovery must NEVER emit)
   setNostrLogin:         (v) => set({ nostrLogin: v }),
   // Write through to the standalone localStorage keys (persisted OUTSIDE the encrypted blob — see WK_*_KEY).
   setWriterKeyWrapped:   (v) => { try { v == null ? localStorage.removeItem(WK_WRAPPED_KEY) : localStorage.setItem(WK_WRAPPED_KEY, v); } catch { /* noop */ } set({ writerKeyWrapped: v }); },
@@ -83,11 +83,14 @@ export const createIdentitySlice = (set: StoreSet, get: StoreGet): IdentitySlice
   // real relay settings under whole-object LWW. So: pre-auth, only the field is set. It rides the wizard's
   // first genuine settings publish (it's in buildSettingsPayload), exactly as Phase 1.5 documents.
   setBackupVerifiedAt: (v, nostr) => {
-    if (v == null) { set({ backupVerifiedAt: null }); return; }
-    set({ backupVerifiedAt: v });
+    if (v == null) { set({ backupVerifiedAt: null }); return; }   // teardown clear — RAW, NO event
     const s = get();
-    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) return;   // pre-auth stamp (K2 bridge) — never dirty a seed store
-    set({ settingsDirty: true });
+    // Pre-auth K2 bridge — FIELD ONLY (rides genesis at the first authed pull). NO emit: an event here couldn't be
+    // retracted by the K3-failure rollback, and would make planEvents non-empty → genesis skipped. Residual: a fresh
+    // key verified pre-auth never syncs the attestation AS an event — healed by any authed re-verify (ceremony re-run
+    // emits). Gate semantics unaffected (only the generating device is ever gated; peers satisfy via provenance).
+    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) { set({ backupVerifiedAt: v }); return; }
+    get().emitPlanSets([['backupVerifiedAt', v]]);   // authed: field + plan event + planDirty + kick (4c — was set + settingsDirty)
     if (nostr) void import('../../lib/nostr/syncNow').then((m) => m.syncNow(nostr)).catch((e) => nostrLog('warn', 'backup-verify wake failed', e));
   },
 });

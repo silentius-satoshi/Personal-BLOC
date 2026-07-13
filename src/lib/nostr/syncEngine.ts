@@ -4,20 +4,36 @@
 // imports useStore statically, so the edge is one-directional at load (the syncNow precedent) → no static cycle.
 import { useStore } from '../../store/useStore';
 import { buildSettingsPayload, buildViewerSnapshotPayload } from '../../store/payloads';
-import { publishRecords, publishSettings, publishRelayListNip65, publishViewerSnapshot, type ViewerSnapshot } from './publish';
+import { publishRecords, publishSettings, publishRelayListNip65, publishViewerSnapshot, publishEncrypted, PLAN_EVENTS_DTAG, PREFS_DTAG, type ViewerSnapshot } from './publish';
 import { importNip65RelayList, DEFAULT_RELAYS } from './relays';
+import { foldPlanEvents } from '../planEvents/fold';
+import { compactPlanEvents } from '../planEvents/compact';
+import { PREFS_FIELDS } from '../../store/settingsFields';
 import { nostrLog } from './log';
 import { signerOpTimeout } from './timeout';
 import { isBackupGateSatisfied } from '../backupGate';
 
 let syncDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let recordsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+let planDebounceTimer: ReturnType<typeof setTimeout> | null = null;    // Phase 4c — plan-events channel debounce
+let prefsDebounceTimer: ReturnType<typeof setTimeout> | null = null;   // Phase 4c — prefs channel debounce
 
 // The debounced settings publish arm — extracted from syncSettingsToNostr's tail (which keeps its
 // synchronous gates + dirty-mark and delegates here via dynamic import).
 export function scheduleSettingsPublish(): void {
   if (syncDebounceTimer) clearTimeout(syncDebounceTimer);
   syncDebounceTimer = setTimeout(() => { publishSettingsNow(); }, 2000);
+}
+
+// Phase 4c — plan-events / prefs debounce arms (mirror scheduleSettingsPublish). emitPlanSets/emitPrefs mark
+// dirty synchronously then kick these via dynamic import; the gates live in the publish fns below.
+export function schedulePlanPublish(): void {
+  if (planDebounceTimer) clearTimeout(planDebounceTimer);
+  planDebounceTimer = setTimeout(() => { void publishPlanEventsNow(); }, 2000);
+}
+export function schedulePrefsPublish(): void {
+  if (prefsDebounceTimer) clearTimeout(prefsDebounceTimer);
+  prefsDebounceTimer = setTimeout(() => { void publishPrefsNow(); }, 2000);
 }
 
 // Trailing debounce (~400ms) over the records publish. EventSheet saves a flow+reading as two back-to-back
@@ -93,6 +109,94 @@ export async function publishSettingsNow(): Promise<boolean> {
   } finally {
     useStore.getState().setNostrSyncing(false);
   }
+}
+
+// Phase 4c — publish the append-only plan-events log (compacted) to plan-events:v1, then THE BRIDGE: a
+// write-through of settings:v1 from current state (≡ fold output under D2 single-writer) so a deploy rollback
+// stays lossless + legacy/viewer reads keep working. Gate mirrors publishRecordsNowImmediate (+ viewerMode
+// backstop) + Fix A (initialSettingsPullDone). planDirty stays true on failure → retried by syncNow.
+export async function publishPlanEventsNow(): Promise<boolean> {
+  const state = useStore.getState();
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;
+  if (!state.initialSettingsPullDone) return false;   // never publish before the baseline pull (mirrors Fix A)
+  if (planDebounceTimer) { clearTimeout(planDebounceTimer); planDebounceTimer = null; }
+  useStore.getState().setNostrSyncing(true);
+  try {
+    const compacted = compactPlanEvents(state.planEvents, Date.now());
+    useStore.getState().setPlanEvents(compacted);   // persist the GC'd log
+    const createdAt = await publishEncrypted(
+      state.nostrSigner,
+      state.nostrPubkey,
+      PLAN_EVENTS_DTAG,
+      { events: compacted },
+      state.nostrRelays.length ? state.nostrRelays : undefined,   // ⚠ .length ? … : undefined — a bare [] would publish to zero relays
+      signerOpTimeout(state.nostrSigningMethod),
+    );
+    useStore.getState().setLastPlanEventsSyncAt(createdAt);
+    useStore.getState().setPlanDirty(false);
+    useStore.getState().setNostrReconnectNeeded(false);
+    nostrLog('info', 'plan events published');
+    void publishSettingsNow();   // THE BRIDGE — write-through settings:v1 (chains publishViewerSnapshotNow); fire-and-forget, never affects the plan result
+    checkPlanParity();
+    return true;
+  } catch (e) {
+    nostrLog('error', 'plan events publish failed', e);
+    useStore.getState().setNostrReconnectNeeded(true);   // planDirty stays true → retried by syncNow
+    return false;
+  } finally {
+    useStore.getState().setNostrSyncing(false);
+  }
+}
+
+// Phase 4c — the tiny whole-object prefs channel (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). Whole-object
+// LWW = same seed-clobber class as settings → gate on initialSettingsPullDone too. NIP-44 self-encrypted.
+export async function publishPrefsNow(): Promise<boolean> {
+  const state = useStore.getState();
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;
+  if (!state.initialSettingsPullDone) return false;
+  if (prefsDebounceTimer) { clearTimeout(prefsDebounceTimer); prefsDebounceTimer = null; }
+  useStore.getState().setNostrSyncing(true);
+  try {
+    const s = useStore.getState();
+    const prefs = Object.fromEntries(PREFS_FIELDS.map((f) => [f, (s as unknown as Record<string, unknown>)[f]]));
+    const createdAt = await publishEncrypted(
+      state.nostrSigner,
+      state.nostrPubkey,
+      PREFS_DTAG,
+      prefs,
+      s.nostrRelays.length ? s.nostrRelays : undefined,
+      signerOpTimeout(s.nostrSigningMethod),
+    );
+    useStore.getState().setLastPrefsSyncAt(createdAt);
+    useStore.getState().setPrefsDirty(false);
+    useStore.getState().setNostrReconnectNeeded(false);
+    nostrLog('info', 'prefs published');
+    return true;
+  } catch (e) {
+    nostrLog('error', 'prefs publish failed', e);
+    useStore.getState().setNostrReconnectNeeded(true);
+    return false;
+  } finally {
+    useStore.getState().setNostrSyncing(false);
+  }
+}
+
+// Phase 4c — parity telemetry (the 4e "parity green continuously" precondition). Compares FOLD-PRESENT KEYS
+// ONLY: keys absent from the fold are asserted-by-omission (seed/local default — §6; the guard fields dropped
+// by pickPlanFields stay absent by DESIGN) and are NOT divergence. Names only, never values (Copy-Diagnostics safe).
+export interface PlanParity { ok: boolean; diverged: string[]; }
+let lastPlanParity: PlanParity | null = null;
+export function getPlanParity(): PlanParity | null { return lastPlanParity; }
+export function checkPlanParity(): PlanParity {
+  const s = useStore.getState() as unknown as Record<string, unknown>;
+  const folded = foldPlanEvents(useStore.getState().planEvents);
+  const diverged: string[] = [];
+  for (const [k, v] of Object.entries(folded)) {
+    if (JSON.stringify(v) !== JSON.stringify(s[k])) diverged.push(k);
+  }
+  lastPlanParity = { ok: diverged.length === 0, diverged };
+  if (diverged.length) nostrLog('warn', `plan parity DIVERGED: ${diverged.join(', ')}`);
+  return lastPlanParity;
 }
 
 // Network subpage P2 — NIP-65 relay-list sync. Import READS the user's kind-10002 and replaces the local relay list

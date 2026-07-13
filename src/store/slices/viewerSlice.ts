@@ -26,22 +26,21 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   viewerSafeSnapshot:  null,
   viewerPreview:       false,
   storeUnlocked:       false,
-  // Multi-viewer roster (M1) — SYNCS in the owner's settings:v1 (cross-device) but stripped from the viewer snapshot.
-  // addViewerSlot assigns index = nextViewerIndex then increments it (monotonic — an index is NEVER reused).
+  // Multi-viewer roster (M1) — a whole-array plan field (4c: op-events are the documented D2 multi-writer upgrade
+  // path, NOT built). SYNCS via the plan-events log; stripped from the viewer snapshot. addViewerSlot assigns
+  // index = nextViewerIndex then increments it (monotonic — an index is NEVER reused); both fields ride ONE emit
+  // (one shared ts) so viewers + nextViewerIndex can never fold apart.
   addViewerSlot: (slot) => {
     const { viewers, nextViewerIndex } = get();
-    set({ viewers: [...viewers, { ...slot, index: nextViewerIndex }], nextViewerIndex: nextViewerIndex + 1 });
-    get().syncSettingsToNostr();
+    get().emitPlanSets([['viewers', [...viewers, { ...slot, index: nextViewerIndex }]], ['nextViewerIndex', nextViewerIndex + 1]]);
   },
   updateViewerSlot: (index, patch) => {
     const { viewers } = get();
-    set({ viewers: viewers.map((v) => (v.index === index ? { ...v, ...patch } : v)) });
-    get().syncSettingsToNostr();
+    get().emitPlanSets([['viewers', viewers.map((v) => (v.index === index ? { ...v, ...patch } : v))]]);
   },
   removeViewerSlot: (index) => {
     const { viewers } = get();
-    set({ viewers: viewers.filter((v) => v.index !== index) });   // index NOT reused (nextViewerIndex never regresses)
-    get().syncSettingsToNostr();
+    get().emitPlanSets([['viewers', viewers.filter((v) => v.index !== index)]]);   // index NOT reused (nextViewerIndex never regresses)
   },
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),

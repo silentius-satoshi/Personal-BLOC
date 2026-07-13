@@ -17,7 +17,7 @@ type CbLoanSlice = Pick<StoreState,
 
 export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => ({
   hasCbLoan:    false,
-  setHasCbLoan: (v) => { set({ hasCbLoan: v }); get().syncSettingsToNostr(); },
+  setHasCbLoan: (v) => get().emitPlanSets([['hasCbLoan', v]]),   // 4c: emit a plan event (was syncSettingsToNostr)
   cbLoanBalance:       60000,
   cbCollateralBtc:     1.48,
   strikeCollateralBtc: 0,   // Collateral-Truth v20 — reading-anchored derived cache; fresh install = deriveStrikeCollateral([], 0) = 0
@@ -35,7 +35,7 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   blocMinPaymentSource:  'roll' as const,
   blocStatementMinimum:  null,
   blocMinPaymentDueDay:  15,
-  setCbLoanBalance:    (v) => { set({ cbLoanBalance: v });    get().syncSettingsToNostr(); },
+  setCbLoanBalance:    (v) => get().emitPlanSets([['cbLoanBalance', v]]),   // 4c: plan-single (NOT paired — cbLoanBalanceAsOf has its own setter)
   setCbCollateralBtc:  (v) => {
     // Daily Mode P2a Seam 2: emit a cbCollateralReading (clock-only — feeds the derived cache via deriveCbCollateral)
     // instead of syncing the field. NO syncSettingsToNostr — cross-device sync rides the RECORDS event now (P3): the
@@ -45,20 +45,20 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
     get().addDayEvent({ id, date: todayLocalISO(), ts: Date.now(), kind: 'cbCollateralReading', cbCollateral: v });
     set({ cbCollateralBtc: v });
   },
-  setCbAprPct:         (v) => { set({ cbAprPct: v });         get().syncSettingsToNostr(); },
-  setCbMonthlyPayment:   (v) => { set({ cbMonthlyPayment: v });   get().syncSettingsToNostr(); },
-  setCbLiquidationPrice: (v) => { set({ cbLiquidationPrice: v }); get().syncSettingsToNostr(); },
-  setCbPaymentStrategy:  (v) => { set({ cbPaymentStrategy: v });  get().syncSettingsToNostr(); },
-  setCbLtvTriggerPct:    (v) => { set({ cbLtvTriggerPct: v });    get().syncSettingsToNostr(); },
-  setCbLtvTargetPct:     (v) => { set({ cbLtvTargetPct: v });     get().syncSettingsToNostr(); },
-  setCbRotateBackPct:    (v) => { set({ cbRotateBackPct: v });    get().syncSettingsToNostr(); },
-  setCbEmergencyCeilingPct: (v) => { set({ cbEmergencyCeilingPct: Math.max(20, Math.min(50, v)) }); get().syncSettingsToNostr(); },
-  setCbLoanBalanceAsOf:      (v) => { set({ cbLoanBalanceAsOf: v });      get().syncSettingsToNostr(); },
-  setCbLiquidationPriceAsOf: (v) => { set({ cbLiquidationPriceAsOf: v }); get().syncSettingsToNostr(); },
-  setStrikeLiquidationLtvPct: (v) => { set({ strikeLiquidationLtvPct: v }); get().syncSettingsToNostr(); },
-  setBlocMinPaymentSource: (v) => { set({ blocMinPaymentSource: v }); get().syncSettingsToNostr(); },
-  setBlocStatementMinimum: (v) => { set({ blocStatementMinimum: v }); get().syncSettingsToNostr(); },
-  setBlocMinPaymentDueDay: (v) => { set({ blocMinPaymentDueDay: Math.max(1, Math.min(28, Math.round(v))) }); get().syncSettingsToNostr(); },
+  setCbAprPct:         (v) => get().emitPlanSets([['cbAprPct', v]]),
+  setCbMonthlyPayment:   (v) => get().emitPlanSets([['cbMonthlyPayment', v]]),
+  setCbLiquidationPrice: (v) => get().emitPlanSets([['cbLiquidationPrice', v]]),   // plan-single (NOT paired — cbLiquidationPriceAsOf has its own setter)
+  setCbPaymentStrategy:  (v) => get().emitPlanSets([['cbPaymentStrategy', v]]),
+  setCbLtvTriggerPct:    (v) => get().emitPlanSets([['cbLtvTriggerPct', v]]),
+  setCbLtvTargetPct:     (v) => get().emitPlanSets([['cbLtvTargetPct', v]]),
+  setCbRotateBackPct:    (v) => get().emitPlanSets([['cbRotateBackPct', v]]),
+  setCbEmergencyCeilingPct: (v) => get().emitPlanSets([['cbEmergencyCeilingPct', Math.max(20, Math.min(50, v))]]),   // clamp preserved inside the value
+  setCbLoanBalanceAsOf:      (v) => get().emitPlanSets([['cbLoanBalanceAsOf', v]]),
+  setCbLiquidationPriceAsOf: (v) => get().emitPlanSets([['cbLiquidationPriceAsOf', v]]),
+  setStrikeLiquidationLtvPct: (v) => get().emitPlanSets([['strikeLiquidationLtvPct', v]]),
+  setBlocMinPaymentSource: (v) => get().emitPlanSets([['blocMinPaymentSource', v]]),
+  setBlocStatementMinimum: (v) => get().emitPlanSets([['blocStatementMinimum', v]]),
+  setBlocMinPaymentDueDay: (v) => get().emitPlanSets([['blocMinPaymentDueDay', Math.max(1, Math.min(28, Math.round(v)))]]),   // clamp preserved inside the value
   strikeUsdBalance:   null,
   strikeBtcAvailable: null,
   strikeRate:         null,

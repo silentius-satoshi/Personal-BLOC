@@ -35,16 +35,16 @@ export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsS
   setSandboxCollateralBtc:  (v) => set({ sandboxCollateralBtc: v }),
   pinnedScenario:           null,   // Phase 3a — device-local persisted pin; plain set, NO sync
   setPinnedScenario:        (v) => set({ pinnedScenario: v }),
-  setIncome:   (v) => { set({ income: v });   get().syncSettingsToNostr(); },
-  setExpenses: (v) => { set({ expenses: v }); get().syncSettingsToNostr(); set({ expenseReanchorDismissedAt: 0 }); },   // re-anchoring (or any expenses edit) clears the dismissal so a future drift can nudge again — single chokepoint for Update + manual edits
+  setIncome:   (v) => get().emitPlanSets([['income', v]]),                                                              // 4c: emit a plan event (was syncSettingsToNostr)
+  setExpenses: (v) => { get().emitPlanSets([['expenses', v]]); set({ expenseReanchorDismissedAt: 0 }); },              // emit + keep the extra device-local clear in its own set — re-anchoring (or any edit) clears the dismissal so a future drift can nudge again
   setBtcPrice: (v) => set({ btcPrice: v, btcPriceUpdatedAt: Date.now() }),
   setBtcPriceMode: (v) => set({ btcPriceMode: v }),
-  setBlocApr:  (v) => { set({ blocApr: v });  get().syncSettingsToNostr(); },
+  setBlocApr:  (v) => get().emitPlanSets([['blocApr', v]]),
 
   setActiveTier: (v) => set({ activeTier: v }),
   setScenario: (v) => set({ scenario: v }),
   setScrubMonth: (v) => set({ scrubMonth: v }),
-  setCreditLine: (v) => { set({ creditLine: v }); get().syncSettingsToNostr(); },
+  setCreditLine: (v) => get().emitPlanSets([['creditLine', v]]),
   setBtcHoldings: (v) => set({ btcHoldings: v }),
   setAnnualBtcGrowth: (v) => set({ annualBtcGrowth: v }),
   setBearMarket: (v) => set({ bearMarket: v }),
