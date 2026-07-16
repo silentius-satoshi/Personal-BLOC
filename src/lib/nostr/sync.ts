@@ -70,11 +70,20 @@ export async function applyRemoteEvent(
       // and settings:v1 is bridge-echo only — strip them so a stale bridge write-through can't regress a plan
       // field the fold already advanced. The plan-events branch above runs FIRST, so within one pull the strip
       // sees the just-folded log. Only prefs + non-plan-event fields survive settings:v1 on a migrated device.
-      // (This is the 4d "settings:v1 authoritative only for an empty-log device" rule, arriving structurally.)
+      // (This is the "settings:v1 authoritative only for an empty-log device" rule, arriving structurally.)
+      //
+      // 4d: the v1 fallback (the `else` below) is retained EXACTLY ONE release — deleted at 4e with the guard
+      // class. The 4e fence precondition reads lastV1FallbackApplyAt: a device legitimately stamps ONCE while
+      // its local log is empty (its first migration/join pull; genesis then fills the log in the SAME syncNow,
+      // so it never stamps again). A stamp on an ESTABLISHED (non-empty-log) device is impossible (the strip
+      // fires) — so ANY post-soak stamp means an unmigrated/reset key is still reading v1 as authority. Fence
+      // only after a quiet week. Over-count is conservative: it DELAYS the fence, never triggers it early.
       let incoming = data;
       if (useStore.getState().planEvents.length > 0) {
         incoming = { ...data };
         for (const f of PLAN_EVENT_FIELDS) delete (incoming as Record<string, unknown>)[f];
+      } else {
+        useStore.getState().setLastV1FallbackApplyAt(Math.floor(Date.now() / 1000));   // 4d: empty-log device applied plan fields FROM settings:v1 (unix seconds — fmtTs convention)
       }
       useStore.getState().hydrateSettings(incoming);
       useStore.getState().setLastSettingsSyncAt(remoteTs);

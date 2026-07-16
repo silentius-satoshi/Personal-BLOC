@@ -3587,7 +3587,10 @@ merge-default so a pin survives reload), `viewerDisplayName` (Viewer V3 — the 
 null; cleared on `resetViewerSession`), `planEvents`/`planDirty`/`lastPlanEventsSyncAt`/`prefsDirty`/
 `lastPrefsSyncAt` (Phase 4c plan-events channel — the append-only `PlanEvent[]` log + its publish-needed/watermark
 flags; default `[]`/`false`/`null`/`false`/`null`; raw setters, merge-default, NO bump; the log is the plan
-partition's source of truth, published on `plan-events:v1`, NEVER a synced setting), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
+partition's source of truth, published on `plan-events:v1`, NEVER a synced setting), `lastV1FallbackApplyAt`
+(Phase 4d — v1-fallback soak telemetry, unix seconds; stamped when an EMPTY-log device applies plan fields
+from `settings:v1` [the migration window]; default null, raw setter, merge-default, NO bump; drives the 4e
+fence — see § the Phase 4 campaign), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
 default null; **WRITE-ONCE** with `null` as the explicit identity-teardown clear; cleared by `disconnectNostr` +
 "Remove local key" + `gateHydratedIdentity`'s signed-out branch. R2c-6-final: **also STANDALONE-backed** in
 localStorage `personal-bloc-provenance` — seeded at module init, write-through in the setter, read authoritatively by
@@ -5547,8 +5550,15 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   - ⚠ **NOTHING deleted:** `syncSettingsToNostr` (caller-less), `settingsDirty`, Fix C/D, the three
     hydrateSettings skip-guards, `lastSettingsSyncAt` + its apply-gate all STAY as rollback insurance — retired
     at 4e with quotes.
-- **4d/4e** (NOT built): read path v2-first w/ v1 fallback for one release → stop the bridge → delete the
-  guard class.
+- **4d** (SHIPPED): the read path was already v2-first structurally at 4c (plan-events branch first + the
+  settings:v1 strip). 4d INSTRUMENTS the v1 fallback: `lastV1FallbackApplyAt` (device-local, unix seconds) is
+  stamped ONLY in the settings:v1 branch's empty-log `else` (the un-stripped apply — the genuine fallback); the
+  strip path / prefs branch / plan-events branch stamp nothing. A device stamps ONCE while its log is empty (its
+  migration/join pull; genesis then fills the log in the same syncNow), then never again (the strip fires). The
+  4e soak clock STARTS at this release: fence only after `lastV1FallbackApplyAt` shows no post-migration stamps
+  for ≥1 week AND parity stays OK. DevPanel PLAN EVENTS gains a `v1 fallback` row (never=green / stamped=amber);
+  the fallback + guard class are deleted together at 4e. No behavior change, no store bump.
+- **4e** (NOT built): stop the bridge → delete the guard class + the v1 fallback.
 
 ---
 

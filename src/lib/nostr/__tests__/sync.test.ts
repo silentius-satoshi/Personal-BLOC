@@ -49,6 +49,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     applyPlanFold:           vi.fn(),
     setLastPlanEventsSyncAt: vi.fn(),
     setLastPrefsSyncAt:      vi.fn(),
+    setLastV1FallbackApplyAt: vi.fn(),   // 4d — the empty-log settings apply now hits this (else stamps it)
     hydrateSettings:         vi.fn(),
     setMonthlyLog:           vi.fn(),
     setDeletedMonths:        vi.fn(),
@@ -372,6 +373,29 @@ describe('fetchAndSync', () => {
     await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
     expect(mockStoreState.hydrateSettings).toHaveBeenCalledWith({ simpleMode: true, tabOrder: ['x'] });
     expect(mockStoreState.setLastPrefsSyncAt).toHaveBeenCalledWith(800);
+    expect(mockStoreState.setLastV1FallbackApplyAt).not.toHaveBeenCalled();   // 4d: prefs branch never stamps
+  });
+
+  it('4d: an EMPTY-log device applying settings:v1 stamps the v1-fallback telemetry', async () => {
+    resetStore({ planEvents: [] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800, { income: 9999 }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.hydrateSettings).toHaveBeenCalledWith({ income: 9999 });
+    expect(mockStoreState.setLastV1FallbackApplyAt).toHaveBeenCalledOnce();
+    expect(mockStoreState.setLastV1FallbackApplyAt.mock.calls[0][0]).toBeTypeOf('number');
+  });
+
+  it('4d: a MIGRATED device (non-empty log, stripped) does NOT stamp the v1 fallback', async () => {
+    resetStore({ planEvents: [{ id: 'income-5-a', ts: 5, device: 'd', kind: 'set', field: 'income', value: 42 }] });
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:settings:v1', 800, { income: 9999 }),
+    ]);
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+    expect(mockStoreState.setLastV1FallbackApplyAt).not.toHaveBeenCalled();   // the strip fired → no fallback
   });
 });
 

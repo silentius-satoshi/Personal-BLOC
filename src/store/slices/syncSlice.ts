@@ -29,6 +29,7 @@ type SyncSlice = Pick<StoreState,
   | 'setDeletedDayEvents' | 'hydrateSettings' | 'applyPlanBackup'
   | 'planEvents' | 'setPlanEvents' | 'planDirty' | 'setPlanDirty' | 'lastPlanEventsSyncAt' | 'setLastPlanEventsSyncAt'
   | 'prefsDirty' | 'setPrefsDirty' | 'lastPrefsSyncAt' | 'setLastPrefsSyncAt' | 'emitPlanSets' | 'applyPlanFold' | 'emitPrefs'
+  | 'lastV1FallbackApplyAt' | 'setLastV1FallbackApplyAt'
 >;
 
 export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
@@ -95,6 +96,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   setPrefsDirty: (v) => set({ prefsDirty: v }),
   lastPrefsSyncAt: null,
   setLastPrefsSyncAt: (ts) => set({ lastPrefsSyncAt: ts }),
+  lastV1FallbackApplyAt: null,   // Phase 4d — v1-fallback telemetry (see types.ts)
+  setLastV1FallbackApplyAt: (ts) => set({ lastV1FallbackApplyAt: ts }),
 
   // THE emit action — the sole writer of plan fields. ONE atomic set: the scalar field writes (parity with
   // the fold) + the appended events (all sharing ONE ts, so an AsOf pair can never tear) + planDirty. Then a

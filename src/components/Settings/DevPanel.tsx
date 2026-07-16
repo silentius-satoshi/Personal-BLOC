@@ -94,6 +94,7 @@ export function DevPanel() {
   const prefsDirty           = useStore((s) => s.prefsDirty);
   const lastPlanEventsSyncAt = useStore((s) => s.lastPlanEventsSyncAt);
   const lastPrefsSyncAt      = useStore((s) => s.lastPrefsSyncAt);
+  const lastV1FallbackApplyAt = useStore((s) => s.lastV1FallbackApplyAt);   // Phase 4d — v1-fallback soak telemetry
   // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
   // they must NOT enter syncState / Copy Diagnostics (paste-safe rule).
   const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
@@ -233,6 +234,7 @@ export function DevPanel() {
     relays:        nostrRelays,
     settingsSync:  fmtTs(lastSettingsSyncAt),
     recordsSync:   fmtTs(lastRecordsSyncAt),
+    v1FallbackAt:  fmtTs(lastV1FallbackApplyAt),   // 4d — soak telemetry (timestamp string, metadata-safe)
     recordsDirty,
     reconnectNeeded: nostrReconnectNeeded,
     syncing:       nostrSyncing,
@@ -457,6 +459,10 @@ export function DevPanel() {
           <span className={styles.key}>prefsDirty</span><span className={styles.val}>{String(prefsDirty)}</span>
           <span className={styles.key}>plan sync</span><span className={styles.val}>{fmtTs(lastPlanEventsSyncAt)}</span>
           <span className={styles.key}>prefs sync</span><span className={styles.val}>{fmtTs(lastPrefsSyncAt)}</span>
+          <span className={styles.key}>v1 fallback</span>
+          <span className={styles.val} style={{ color: lastV1FallbackApplyAt ? 'var(--orange)' : 'var(--green)' }}>
+            {lastV1FallbackApplyAt ? fmtTs(lastV1FallbackApplyAt) : 'never'}
+          </span>
           <span className={styles.key}>parity</span>
           <span className={styles.val} style={{ color: planParityDiverged.length ? 'var(--red)' : 'var(--green)' }}>
             {planParityDiverged.length ? `DIVERGED: ${planParityDiverged.join(', ')}` : 'OK'}

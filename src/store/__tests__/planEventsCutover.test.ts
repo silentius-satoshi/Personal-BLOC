@@ -10,7 +10,8 @@ vi.hoisted(() => {
   };
 });
 
-import { useStore } from '../useStore';
+import { useStore, partializeState } from '../useStore';
+import { buildSettingsPayload } from '../payloads';
 import { foldPlanEvents } from '../../lib/planEvents/fold';
 import { synthesizeGenesisEvents, nextPlanEventTs } from '../../lib/planEvents/genesis';
 import { pickPlanFields } from '../../lib/nostr/syncNow';
@@ -177,5 +178,14 @@ describe('4c genesis seed — pickPlanFields guards (RISK-2) + round-trip', () =
     const partition = pickPlanFields(useStore.getState());
     const genesis = synthesizeGenesisEvents(partition, nextPlanEventTs(0), 'dev');
     expect(foldPlanEvents(genesis)).toEqual(partition);
+  });
+});
+
+describe('4d v1-fallback telemetry — store posture', () => {
+  it('defaults null, rides partialize (persisted), is NEVER in buildSettingsPayload', () => {
+    useStore.setState({ lastV1FallbackApplyAt: null } as never);
+    expect(useStore.getState().lastV1FallbackApplyAt).toBeNull();
+    expect('lastV1FallbackApplyAt' in partializeState(useStore.getState())).toBe(true);   // device-local persisted
+    expect('lastV1FallbackApplyAt' in buildSettingsPayload(useStore.getState())).toBe(false);   // never synced
   });
 });

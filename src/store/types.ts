@@ -404,6 +404,10 @@ export interface StoreState {
   emitPlanSets:            (pairs: [PlanField, unknown][]) => void;
   applyPlanFold:           (folded: Partial<PlanState>) => void;
   emitPrefs:               (patch: Partial<Pick<StoreState, PrefsField>>) => void;
+  // Phase 4d — v1-fallback telemetry (unix seconds): when an empty-log device last applied plan fields FROM
+  // settings:v1 (the migration window). Drives the 4e soak fence. Device-local persisted; NEVER synced.
+  lastV1FallbackApplyAt:    number | null;
+  setLastV1FallbackApplyAt: (ts: number) => void;
 }
 
 // zustand's own set/get handles, passed to every slice creator (so slices never import the store).

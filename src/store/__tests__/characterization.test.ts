@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 96 persisted data keys', () => {
+  it('blob key-set is exactly the 97 persisted data keys', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -64,6 +64,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'converterActiveField', 'converterRawValue', 'creditLine', 'dayLog', 'deletedDayEvents', 'deletedMonths',
       'devMode', 'expenseReanchorDismissedAt', 'expenses', 'hasCbLoan', 'hiddenTabs', 'income', 'inflationRate',
       'keyProvenance', 'lastPlanEventsSyncAt', 'lastPrefsSyncAt', 'lastRecordsSyncAt', 'lastSettingsSyncAt',
+      'lastV1FallbackApplyAt',   // 4d fallback telemetry
       'ltvType', 'miningInputs',
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
@@ -114,6 +115,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       viewerKeyWrapMeta: null, lastSettingsSyncAt: null, lastRecordsSyncAt: null, recordsDirty: false,
       settingsDirty: false, deletedMonths: {}, deletedDayEvents: {},
       planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
+      lastV1FallbackApplyAt: null,   // Phase 4d
       pinnedScenario: null,   // Phase 3a: device-local pin
     });
   });
