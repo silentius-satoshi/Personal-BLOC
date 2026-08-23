@@ -540,8 +540,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             source={blocMinPaymentSource}
             strikeMinPrefill={monthRollup.streams.minPayment > 0 ? monthRollup.streams.minPayment : strikeMinOwed}
             statementIsSet={monthRollup.streams.minPayment > 0 || blocStatementMinimum != null}
-            ndpActive={blocMinPaymentSource === 'roll' && getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15, blocApr).status !== 'ok'}
-            ndpPrefill={getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15, blocApr).estimatedAmount}
+            ndpActive={blocMinPaymentSource === 'roll' && getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * BLOC_OPERATING_CEILING, blocApr).status !== 'ok'}
+            ndpPrefill={getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * BLOC_OPERATING_CEILING, blocApr).estimatedAmount}
             onClose={() => setReviewOpen(false)}
             onConfirm={(extras) => {
               confirmMonth(safeViewedMonth, extras);

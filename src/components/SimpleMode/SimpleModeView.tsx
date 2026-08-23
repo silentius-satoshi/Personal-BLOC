@@ -167,7 +167,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const currentTier = getTier(currentCbLtv);
   const ndp         = getNdpStatus(
     ndpLastPaidDate,
-    advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15,
+    advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * BLOC_OPERATING_CEILING,
     blocApr,
   );
 
