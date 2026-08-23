@@ -300,3 +300,12 @@
     grid-template-columns: repeat(3, minmax(150px, 1fr));
   }
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.breakdownValue,
+.breakdownValueBold,
+.breakdownValueMuted,
+.lotteryValue,
+.scenarioValue {
+  font-family: var(--mono);
+}

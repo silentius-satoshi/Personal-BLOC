@@ -5,10 +5,12 @@
 }
 
 .label {
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
-  color: var(--text-ghost);
+  /* T3: was --text-ghost (~3.2:1). This is the label on EVERY financial field in the app —
+     text a user must read to operate the control, so it takes the AA-passing --text-faint. */
+  color: var(--text-faint);
 }
 
 .inputWrap {
@@ -59,7 +61,14 @@
 }
 
 .subtext {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--green);
   letter-spacing: 0.5px;
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.input,
+.prefix,
+.suffix {
+  font-family: var(--mono);
 }

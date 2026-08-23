@@ -80,3 +80,10 @@
   color: var(--text-ghost);
   flex-shrink: 0;
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.fieldInput,
+.fieldPrefix,
+.fieldUnit {
+  font-family: var(--mono);
+}

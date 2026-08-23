@@ -18,7 +18,7 @@
 }
 
 .label {
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--text-ghost);
@@ -34,4 +34,9 @@
   background: var(--border);
   margin: 0 12px;
   align-self: stretch;
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.value {
+  font-family: var(--mono);
 }

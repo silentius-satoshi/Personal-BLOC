@@ -12,7 +12,7 @@
 }
 
 .title {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
@@ -103,7 +103,7 @@
 }
 
 .miniLabel {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-ghost);
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -140,7 +140,7 @@
 }
 
 .detailBadge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   padding: 2px 6px;
   border-radius: 3px;
@@ -201,7 +201,7 @@
 }
 
 .fieldLabel {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -299,4 +299,11 @@
   .fieldGrid {
     grid-template-columns: repeat(2, 1fr);
   }
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.fieldValue,
+.inlineInput,
+.miniBtc {
+  font-family: var(--mono);
 }

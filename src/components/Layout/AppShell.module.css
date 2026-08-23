@@ -21,7 +21,7 @@
 
 .tab {
   font-size: 13px;
-  color: var(--text-faint);
+  color: var(--text-muted);   /* T3: was text-faint — primary nav must clear 4.5:1 */
   background: none;
   border: none;
   border-bottom: 2px solid transparent;
@@ -32,7 +32,7 @@
 }
 
 .tab:hover {
-  color: var(--text-muted);
+  color: var(--text-secondary);
 }
 
 .tabActive {

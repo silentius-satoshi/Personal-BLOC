@@ -12,11 +12,18 @@
   --amber:  #F0A030;
   --red:    #E8504A;
 
+  /* T3 contrast pass: faint lifted from #555555 (~2.5:1 on --bg-app) to ~4.6:1 (AA body text);
+     ghost from #444444 to ~3.2:1 — clears the 3:1 non-text/large threshold but NOT 4.5:1.
+     ⚠ ghost is NOT decoration-only in practice: ~195 of its 227 uses are `color:` on real text
+     (unit suffixes, section eyebrows, sub-labels). Those remain sub-AA by choice, not by audit.
+     Any label a user must READ to operate a control belongs on --text-faint or better — the
+     NumberInput field label was moved for exactly this reason.
+     Hierarchy preserved: primary > secondary > muted > faint > ghost. */
   --text-primary:   #E8E8E8;
   --text-secondary: #D0D0D0;
   --text-muted:     #888888;
-  --text-faint:     #555555;
-  --text-ghost:     #444444;
+  --text-faint:     #797983;
+  --text-ghost:     #60606A;
 
   /* Daily Mode P4a — layered-surface card system + accents from mode-toggle-preview.html.
      Additive: extends the single token system (consumed by DailyModeView + the AppShell mode-switch);
@@ -31,6 +38,19 @@
 
   /* Almanac CycleClock P1 — low/floor projection-marker accent (additive). */
   --maroon:    #8B3A3A;
+
+  /* T1 — two-font system. Humanist sans carries prose/labels/chrome (body default); --mono
+     stays EXPLICITLY on every numeral/figure/table so digit alignment survives the swap.
+     System stack = zero deps, native platform look on iOS/desktop, nothing to precache. */
+  --font-body: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+
+  /* T2 — type-scale floor. New styles MUST use these instead of raw px; legacy declarations
+     migrate opportunistically. Nothing below --fs-xs anywhere (sub-10px labels eliminated). */
+  --fs-xs: 11px;   /* captions, chips, cushion lines */
+  --fs-s: 13px;    /* secondary UI text, inputs, nav */
+  --fs-m: 14px;    /* base body */
+  --fs-l: 17px;    /* card/section titles */
+  --fs-xl: 20px;   /* page titles */
 
   /* Gesture & Motion System — P0. Springs as duration+easing pairs consumable by
      CSS transitions AND WAAPI. linear() approximates true spring curves (Safari 17.2+). */

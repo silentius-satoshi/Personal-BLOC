@@ -43,13 +43,13 @@
 }
 
 .note {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-ghost);
   line-height: 1.4;
 }
 
 .liveBadge {
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.8px;
   text-transform: uppercase;
@@ -98,7 +98,7 @@
 }
 
 .recHeader {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.10em;
   color: var(--text-faint);
@@ -170,7 +170,7 @@
   border-radius: 4px;
   color: var(--text-ghost);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
   transition: border-color 0.12s, color 0.12s;
@@ -279,4 +279,13 @@
 
 .strikeRateDelta span {
   color: var(--amber);
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.recValue,
+.strikeBalanceValue,
+.strikeBtcDryPowderUsd,
+.strikeRateDelta,
+.strikeNetDraw {
+  font-family: var(--mono);
 }

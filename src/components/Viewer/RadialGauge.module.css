@@ -16,3 +16,8 @@
   font-weight: 600;
   letter-spacing: -0.02em;
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.value {
+  font-family: var(--mono);
+}

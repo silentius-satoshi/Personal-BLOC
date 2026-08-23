@@ -137,7 +137,7 @@
 .setupGroup      { display: flex; flex-direction: column; gap: 10px; width: 100%; }
 
 .setupGroupLabel {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.10em;
   text-transform: uppercase;
@@ -229,7 +229,7 @@
   border: 1px solid var(--border);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.04em;
   padding: 2px 6px;
@@ -285,7 +285,7 @@
 }
 
 .nostrBadge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.06em;
   padding: 2px 7px;

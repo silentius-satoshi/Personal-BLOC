@@ -150,7 +150,7 @@
 
 .progressDiamond {
   position: absolute;
-  font-size: 8px;
+  font-size: 10px;
   top: -3px;
   transform: translateX(-50%);
   color: var(--text-faint);

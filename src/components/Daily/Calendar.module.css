@@ -86,7 +86,7 @@
 .wd {
   text-align: center;
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-faint);
 }
 
@@ -111,7 +111,7 @@
 }
 .wdl {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-faint);
 }
 .num {
@@ -183,4 +183,9 @@
 .lgRing {
   border: 1.5px solid var(--text-muted);
   background: transparent;
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.num {
+  font-family: var(--mono);
 }

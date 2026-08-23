@@ -61,7 +61,7 @@
 }
 
 .badge {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   padding: 2px 7px;
   border-radius: 10px;
@@ -122,7 +122,7 @@
 
 .markerLabel {
   position: absolute;
-  font-size: 8px;
+  font-size: 10px;
   color: var(--text-ghost);
   transform: translateX(-50%);
 }
@@ -138,7 +138,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 

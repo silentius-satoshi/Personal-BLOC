@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (858 tests — all must pass before every commit)
+- Vitest (968 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -3295,10 +3295,28 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 ```css
 --orange: #E8836A  --green: #4ECB82  --red: #E85A4F  --amber: #E8A84A
 --bg-app / --bg-base (both #09090E, darkest)  --bg-card #111318 (slightly lighter)  --bg-input  --bg-hover
---text-primary / secondary / ghost / muted / faint  --border
+--text-primary / secondary / muted / faint / ghost
+/* UX Tier-1 contrast pass: faint #555555→#797983 (~4.6:1, AA body text); ghost #444444→#60606A
+   (~3.2:1 — clears 3:1, NOT 4.5:1). ⚠ ghost is NOT decoration-only: ~195 of its 227 uses are
+   `color:` on real text, and those stay sub-AA. Any label a user must READ to operate a control
+   belongs on --text-faint or better (NumberInput's field label was moved for that reason).
+   Nav inactive tabs use --text-muted, not faint. */
 /* Daily Mode P4a (mode-toggle-preview.html) — layered surfaces + accents, additive: */
 --surface #0e1219 / --surface-2 #151b25 / --surface-3 #1c2431  --line / --line-2 (translucent white borders)
 --btc #f7931a (bitcoin accent, distinct from --orange)  --mono (mono font stack)
+/* UX Tier-1 typography (T1/T2) — TWO-FONT SYSTEM: */
+--font-body (-apple-system/Segoe UI/Roboto sans stack) is the BODY DEFAULT (prose, labels, chrome);
+--mono stays on NUMERALS/DATA only. Numeric classes opt in via `font-family: var(--mono)` grouped
+blocks appended per-module (grep marker "T1 mono sweep" — 24 modules; new data surfaces must follow).
+⚠ The pre-T1 body font was NOT IBM Plex Mono — there is no @font-face and no font link anywhere, so
+that stack always resolved to 'Courier New'. T1's real delta is therefore TWO changes: prose Courier
+→ system sans, AND every swept numeral Courier → --mono (ui-monospace/SF Mono). Unswept modules
+(Almanac faces, DevPanel, Mining, most Settings) inherit sans until touched — cosmetic, and key
+material is safe because SecretKeyCard/WordGrid/SharingPage/RecoveryKeyCeremony/LedgerFace all
+declare --mono EXPLICITLY and never relied on the body inherit.
+Type scale: --fs-xs 11 / --fs-s 13 / --fs-m 14 / --fs-l 17 / --fs-xl 20 — new styles MUST use these;
+FLOOR RULE: no font-size below 10px anywhere. ⚠ Grep BOTH forms when auditing — the first sweep
+matched only integer px and left seven `9.5px` declarations behind.
 /* Gesture & Motion System P0 — springs as duration+easing pairs (CSS transitions AND WAAPI): */
 --motion-fast 120ms / --motion-standard 200ms / --motion-settle 320ms
 --ease-standard / --ease-decelerate (cubic-beziers)  --ease-spring / --ease-spring-soft (linear() spring curves)
@@ -3418,7 +3436,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-858 tests — `npx vitest run` before every commit.
+968 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device

@@ -72,3 +72,9 @@
   font-size: 12px;
   color: var(--text-faint);
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.price,
+.change {
+  font-family: var(--mono);
+}

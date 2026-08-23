@@ -12,7 +12,7 @@
 /* center readout */
 .eyebrow {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.22em;
   text-transform: uppercase;
   margin-bottom: 9px;
@@ -43,7 +43,7 @@
 .tag {
   margin-top: 9px;
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -70,7 +70,7 @@
 }
 .k {
   font-family: var(--mono);
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -88,7 +88,7 @@
 .vAmber { color: var(--amber); }
 .rsub {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-muted);
 }
 
@@ -102,7 +102,7 @@
 }
 .idealizedTitle {
   font-family: var(--mono);
-  font-size: 8.5px;
+  font-size: 10px;
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -124,7 +124,7 @@
 }
 .dividerLabel {
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   letter-spacing: 0.2em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -148,7 +148,7 @@
 }
 .demoteLab {
   font-family: var(--mono);
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
@@ -165,7 +165,7 @@
 .demoteHint {
   margin-top: 8px;
   font-family: var(--mono);
-  font-size: 9.5px;
+  font-size: 10px;
   color: var(--text-faint);
 }
 .demoteLink {

@@ -343,7 +343,7 @@
   display: inline-block;
   padding: 2px 6px;
   border-radius: 3px;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -444,4 +444,14 @@
     flex-direction: column;
     gap: 8px;
   }
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.tableWrapper table td,
+.statValue,
+.alertLtv,
+.alertPrice,
+.projSumValue,
+.ltvMarkerLabel {
+  font-family: var(--mono);
 }

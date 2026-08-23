@@ -65,3 +65,11 @@
   transition: color 0.12s;
 }
 .cancelBtn:hover { color: var(--text-primary); }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.sumVal,
+.sumValBtc,
+.detailInput,
+.detailPrefix {
+  font-family: var(--mono);
+}

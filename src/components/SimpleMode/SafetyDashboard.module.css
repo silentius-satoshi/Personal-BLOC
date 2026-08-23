@@ -386,3 +386,16 @@
   border-radius: 50%;
   flex-shrink: 0;
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.barValue,
+.cushion,
+.cbDropRest,
+.ltvNow,
+.cbDetailVal,
+.markerLabel,
+.markerLabelRight,
+.cbDistanceMain,
+.priceNote {
+  font-family: var(--mono);
+}

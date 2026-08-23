@@ -91,3 +91,11 @@
   font-size: 10px;
   color: var(--text-ghost);
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.valueDisplay,
+.valueInput,
+.minLabel,
+.maxLabel {
+  font-family: var(--mono);
+}

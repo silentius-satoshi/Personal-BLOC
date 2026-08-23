@@ -42,7 +42,7 @@
 }
 
 .yearLabel {
-  font-size: 8px;
+  font-size: 10px;
   color: var(--text-ghost);
   letter-spacing: 0.5px;
 }

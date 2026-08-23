@@ -51,7 +51,7 @@
 }
 
 .tierLabel {
-  font-size: 7px;
+  font-size: 10px;
   letter-spacing: 2px;
   font-weight: 600;
 }
@@ -63,7 +63,7 @@
 }
 
 .ltvRow {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-faint);
 }
 
@@ -72,7 +72,7 @@
 }
 
 .crashRow {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-faint);
 }
 
@@ -112,4 +112,9 @@
     overflow-x: auto;
     grid-template-columns: repeat(4, minmax(140px, 1fr));
   }
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.btcAmount {
+  font-family: var(--mono);
 }

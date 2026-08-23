@@ -123,3 +123,9 @@
 .deleteBtn:hover { background: rgba(232, 90, 79, 0.12); }
 .confirmBox { display: flex; flex-direction: column; gap: 10px; margin-top: 4px; }
 .confirmText { font-size: 12px; color: var(--text-muted); line-height: 1.45; }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default.
+   ⚠ .saveHint is deliberately EXCLUDED: it renders prose ("Enter an amount"), not figures. */
+.readout {
+  font-family: var(--mono);
+}

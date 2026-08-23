@@ -87,3 +87,11 @@
   transition: background 0.12s;
 }
 .doneBtn:hover { background: var(--surface); }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.rowAmt,
+.amtPos,
+.amtNeu,
+.amtAnchor {
+  font-family: var(--mono);
+}

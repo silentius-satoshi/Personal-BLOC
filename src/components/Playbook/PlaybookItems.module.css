@@ -40,7 +40,7 @@
 }
 
 .subtext {
-  font-size: 9px;
+  font-size: 10px;
   color: var(--text-faint);
 }
 
@@ -74,7 +74,7 @@
 }
 
 .separatorLabel {
-  font-size: 8px;
+  font-size: 10px;
   letter-spacing: 1.5px;
   text-transform: uppercase;
   color: var(--text-ghost);

@@ -188,7 +188,7 @@
 }
 
 .formLabel {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -361,4 +361,11 @@
 
 @media (max-width: 640px) {
   .navBtn { padding: 20px 8px; font-size: 24px; }
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.viewValue,
+.btcBoughtInput,
+.btcBoughtHighlight {
+  font-family: var(--mono);
 }

@@ -7,7 +7,7 @@
 }
 
 .sectionLabel {
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: 0.10em;
   color: var(--orange);
@@ -263,7 +263,7 @@
   border-radius: 4px;
   color: var(--text-faint);
   cursor: pointer;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 600;
   padding: 2px 6px;
   transition: border-color 0.12s, color 0.12s;
@@ -273,4 +273,13 @@
 .ndpClearBtn:hover {
   border-color: var(--red);
   color: var(--red);
+}
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.summaryValue,
+.monthValue,
+.priceDisplay,
+.ndpAmount,
+.ndpLastPaid {
+  font-family: var(--mono);
 }

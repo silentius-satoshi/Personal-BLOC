@@ -176,3 +176,15 @@
   .stageStats, .calcGrid { grid-template-columns: 1fr 1fr; }
   .fpGrid { grid-template-columns: 1fr; }
 }
+
+/* T1 mono sweep — numerals stay tabular under the sans body default */
+.statValue,
+.statValueAmber,
+.statValueGreen,
+.fpUsd,
+.fpBtc,
+.stageLtv,
+.simScrubValue,
+.tableWrap table td {
+  font-family: var(--mono);
+}
