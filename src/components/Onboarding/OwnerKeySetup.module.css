@@ -29,6 +29,25 @@
   gap: 16px;
 }
 
+/* T7 — ceremony progress dots (K1→K2→K3). Mirrors OnboardingModal's wizard dots so the
+   two onboarding phases read as one continuous flow. */
+.keyDots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+
+.keyDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border);
+  transition: background 0.2s;
+}
+
+.keyDotActive { background: var(--btc); }
+
+
 .brandRing {
   width: 52px;
   height: 52px;

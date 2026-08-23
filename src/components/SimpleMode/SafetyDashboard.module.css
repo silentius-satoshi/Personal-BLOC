@@ -239,6 +239,34 @@
   color: var(--text-muted);
 }
 
+/* T5 — rest-state glanceability: the drop-to-liquidation figure is THE number for a
+   leveraged borrower; lead the cushion with it, level-colored, instead of burying the
+   big version inside the tap-to-edit expansion. */
+.cbDropRest {
+  font-weight: 700;
+  letter-spacing: 0.2px;
+  white-space: nowrap;
+}
+
+/* T5 — staleness surfaces AT REST (was edit-box-only): an old liquidation price makes the
+   shown cushion optimistic — that's exactly when the at-rest view must warn. */
+.staleHint {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 10px;
+  color: var(--amber);
+  white-space: nowrap;
+}
+
+.staleDot {
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;   /* fixed dot must not compress in the wrapped .cushionRow */
+  border-radius: 50%;
+  background: var(--amber);
+}
+
 /* Threshold prices + source, moved off the bar markers (Fix 2) */
 .priceNote {
   margin: 0;

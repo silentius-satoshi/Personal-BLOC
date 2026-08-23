@@ -39,6 +39,9 @@ export interface OwnerKeySetupProps {
   onLogIn: () => void;
 }
 
+// T7 — ceremony progress indicator position (K1 intro=0, K2 save=1, K3 protect=2).
+const STEP_INDEX: Record<'intro' | 'save' | 'protect', number> = { intro: 0, save: 1, protect: 2 };
+
 export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProps) {
   const { nostr } = useNostr();
   // ⚠ HOOK-ORDER: these MUST be two separate, unconditional useStore calls. Written as
@@ -216,6 +219,17 @@ export function OwnerKeySetup({ onComplete, onBack, onLogIn }: OwnerKeySetupProp
     <div className={styles.overlay}>
       <div className={styles.modal}>
         <div className={styles.step}>
+
+          {/* T7 — ceremony progress: the mint flow is a 3-screen commitment (key → save → protect);
+              only the numbers wizard below had dots before. Hidden on the already-has-a-key branch
+              (that screen isn't step 1 of anything). */}
+          {!hasExistingKey && (
+            <div className={styles.keyDots} role="img" aria-label={`Step ${STEP_INDEX[step] + 1} of 3`}>
+              {[0, 1, 2].map((n) => (
+                <div key={n} className={`${styles.keyDot} ${n <= STEP_INDEX[step] ? styles.keyDotActive : ''}`} />
+              ))}
+            </div>
+          )}
 
           {/* ── K1 · Create your key ─────────────────────────────────────────── */}
           {step === 'intro' && (hasExistingKey ? (

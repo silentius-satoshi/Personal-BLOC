@@ -230,21 +230,33 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const cbLiqOk = cbLiqPrice !== null && cbLiqPrice > 0;
   const cbCollateralNeedsLiq = type === 'collateral' && effectiveTarget === 'cb';
 
-  let canSave: boolean;
-  if (isEdit && editEvent) {
-    if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading);
-    else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
-                                                  canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
-    else                                          canSave = amountValid;   // draw / paydown / buy
-  } else if (type === 'minPayment') {
-    // §2b — reading-free one-field sheet; just needs a positive amount.
-    canSave = amountValid;
-  } else {
+  // T6 — ONE source of truth for the save gate, phrased as a user-facing blocker reason.
+  // canSave ≡ (saveBlocker === null) — same conjunction as before, evaluated in message-priority
+  // order so a disabled Save always says WHY. (Silent-disabled buttons read as broken.)
+  const saveBlocker: string | null = (() => {
+    if (isEdit && editEvent) {
+      if (editEvent.kind === 'balanceReading') {
+        return readingComplete(state, showCbReading) ? null : 'Fill the required reading fields';
+      }
+      if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw') {
+        if (!amountValid) return 'Enter an amount';
+        if (editEvent.target !== 'strike' && !cbLiqOk) return 'Enter the new liquidation price';
+        return null;
+      }
+      return amountValid ? null : 'Enter an amount';   // draw / paydown / buy edits
+    }
+    if (type === 'minPayment') {                        // §2b — reading-free one-field sheet
+      return amountValid ? null : 'Enter an amount';
+    }
     // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
-    canSave = ((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))
-      && (!showAmount || amountValid)
-      && (!cbCollateralNeedsLiq || cbLiqOk);
-  }
+    if (!showAmount || amountValid) {
+      if (!((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))) return 'Fill the required reading fields';
+      if (cbCollateralNeedsLiq && !cbLiqOk) return 'Enter the new liquidation price';
+      return null;
+    }
+    return 'Enter an amount';
+  })();
+  const canSave = saveBlocker === null;
 
   const strikeLtvWarn = strikeLtv !== null && strikeLtv > 100;
   const cbLtvWarn     = cbLtv !== null && cbLtv > 100;
@@ -629,6 +641,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           <div className={styles.actions}>
             <button className={styles.cancelBtn} onClick={handleClose}>Cancel</button>
             {isEdit && <button className={styles.deleteBtn} onClick={() => setConfirmDelete(true)}>Delete</button>}
+            {!canSave && saveBlocker && <span className={styles.saveHint}>{saveBlocker}</span>}
             <button className={styles.saveBtn} onClick={handleSave} disabled={!canSave}>Save</button>
           </div>
         )}

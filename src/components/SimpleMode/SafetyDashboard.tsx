@@ -247,7 +247,13 @@ export function SafetyDashboard() {
         </div>
 
         <div className={styles.cushionRow}>
-          <span className={styles.cushion}>{fmtUSD(liqDropUsd)} above liq ~{fmtUSD(cbLiqPrice)} · {(liqDropPct * 100).toFixed(0)}% drop away · {fmtUSD(accruedBalance)} balance</span>
+          <span className={styles.cushion}>
+            <span className={styles.cbDropRest} style={{ color: cbFillColor }}>{(liqDropPct * 100).toFixed(0)}% drop → liq</span>
+            {' '}· {fmtUSD(liqDropUsd)} above ~{fmtUSD(cbLiqPrice)} · bal {fmtUSD(accruedBalance)}
+          </span>
+          {!neverAnchored && (balFresh.stale || liqFresh.stale) && (
+            <span className={styles.staleHint}><span className={styles.staleDot} />stale — tap to update</span>
+          )}
         </div>
         {neverAnchored && (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>

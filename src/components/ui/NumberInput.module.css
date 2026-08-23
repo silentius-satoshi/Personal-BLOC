@@ -26,6 +26,27 @@
   border-color: var(--border-focus);
 }
 
+/* T4 — inline feedback states */
+.inputWrapError,
+.inputWrapError:focus-within {
+  border-color: var(--red);
+}
+
+.errText,
+.clampText {
+  font-size: 10px;
+  letter-spacing: 0.3px;
+  line-height: 1.4;
+}
+
+.errText {
+  color: var(--red);
+}
+
+.clampText {
+  color: var(--amber);
+}
+
 .prefix {
   padding: 0 8px;
   font-size: 12px;
