@@ -17,10 +17,17 @@ interface Props {
   valueColor?: string;
 }
 
-// T4 UX: transient inline feedback instead of silent blur-revert. 'error' = unparseable
-// non-empty entry (reverted); 'clamped' = valid entry outside [min,max] (snapped).
-// Either clears on the next keystroke / refocus / successful commit. Empty raw stays a
-// silent revert (clearing the field to undo typing is a normal gesture, not a mistake).
+// T4 UX: transient inline feedback instead of silent blur-revert. Clears on the next
+// keystroke / refocus / successful commit. Empty raw stays a silent revert (clearing the
+// field to undo typing is a normal gesture, not a mistake).
+//
+// 'clamped' = valid entry outside [min,max], snapped. This is the live path.
+// ⚠ 'error' is DEFENSIVE, not reachable by typing: the input is type="number", and per the
+// HTML spec such an input's .value is either a valid float string or "" — the browser drops
+// the keystrokes for "abc" outright (device-verified: value stays unchanged, no error shown).
+// So the only way commit() sees an unparseable non-empty raw is fmt() of a NaN `value` prop.
+// Keep the branch as a guard; do NOT treat it as garbage-input coverage. Making it live would
+// mean type="text" + inputMode="decimal", which forfeits min/max/step and the native spinner.
 interface Feedback { kind: 'error' | 'clamped'; text: string }
 
 export function NumberInput({ value, onChange, min, max, step = 1, prefix, suffix, decimals, label, subtext, readOnly, valueColor }: Props) {
