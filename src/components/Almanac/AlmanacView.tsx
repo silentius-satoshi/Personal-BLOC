@@ -15,11 +15,12 @@ import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { CbDefenseTool } from '../Tools/CbDefenseTool';
 import LedgerFace from './LedgerFace';
 import ScenarioFace from './ScenarioFace';
+import CyclingFace from './CyclingFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for SIX faces: Halving Clock / Cycle Clock (both
+ * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for NINE faces: Halving Clock / Cycle Clock (both
  * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
  * Mining / Power Law / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in
  * a `.faceStack` in that tool's own mobile DOM order — mining/powerlaw panel-first, sats main-first,
@@ -27,7 +28,8 @@ import styles from './AlmanacView.module.css';
  * goes two-column mirroring AppShell's own 280px/1fr shell grid, with `.facePanel` pinning the panel to
  * the left column regardless of each face's own mobile DOM order), and the gated `defense`
  * face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate used by the `liqsim` tab
- * in AppShell — hidden entirely when `!hasCbLoan`). Every embedded tool brings its OWN already-shipped
+ * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling
+ * faces (the last also `hasCbLoan`-gated). Every embedded tool brings its OWN already-shipped
  * `toolContainer`-composed width — the hub adds none of its own (§8 toolContainer adoption is now CLOSED:
  * EmergencyConsole/LiqSimulator, Mining/PowerLaw/Converter, and AlmanacView's own `.container` all compose
  * from the same `toolShell.module.css`). Holds the local face state (DEFAULT halving, §14.3 — nothing
@@ -40,7 +42,7 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
  * six faces under one hub is navigation only — it crosses neither wall.
  */
-type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario';
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling';
 
 export default function AlmanacView() {
   const [face, setFace] = useState<Face>('halving');
@@ -67,6 +69,12 @@ export default function AlmanacView() {
     if (face === 'ledger' && !ledgerAvailable) setFace('halving');
   }, [face, ledgerAvailable]);
 
+  // Same fallback for the cycling face — the whole strategy is a Strike→Coinbase refinance loop, so
+  // without a CB leg there is nothing to model.
+  useEffect(() => {
+    if (face === 'cycling' && !hasCbLoan) setFace('halving');
+  }, [face, hasCbLoan]);
+
   const handleBadgeTap = () => {
     if (almanacLiveEnabled) {
       setAlmanacLiveEnabled(false);            // off — silent
@@ -87,7 +95,9 @@ export default function AlmanacView() {
     { key: 'sats',     label: '丰 Sats' },
     ...(hasCbLoan ? [{ key: 'defense' as Face, label: cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim' }] : []),
     ...(ledgerAvailable ? [{ key: 'ledger' as Face, label: '▤ Ledger' }] : []),
-    { key: 'scenario' as Face, label: '⚖ Scenario' },   // Phase 3b — ungated, appended last
+    { key: 'scenario' as Face, label: '⚖ Scenario' },   // Phase 3b — ungated
+    // ⚠ Appended LAST, and gated: e2e/navigation.spec.ts pins halving at index 0 and cycle at index 1.
+    ...(hasCbLoan ? [{ key: 'cycling' as Face, label: '♻ Cycling' }] : []),
   ];
   const idx = visibleFaces.findIndex((f) => f.key === face);
 
@@ -98,6 +108,7 @@ export default function AlmanacView() {
     if (f === 'cycle')    return <div className={styles.container}><CycleClock height={tip.height} mode={tip.mode} onSwitchToHalving={() => setFace('halving')} /></div>;
     if (f === 'defense')  return <CbDefenseTool />;
     if (f === 'ledger')   return <LedgerFace />;
+    if (f === 'cycling')  return <CyclingFace />;
     if (f === 'scenario') return <div className={styles.container}><ScenarioFace /></div>;
     if (f === 'mining')   return <div className={styles.faceStack}><div className={styles.facePanel}><MiningInputsPanel /></div><MiningMain /></div>;
     if (f === 'powerlaw') return <div className={styles.faceStack}><div className={styles.facePanel}><PowerLawSidebar /></div><PowerLawMain /></div>;
