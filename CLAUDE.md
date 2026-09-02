@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1004 tests — all must pass before every commit)
+- Vitest (1023 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -2229,6 +2229,66 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
 - Tests: `src/simulation/__tests__/cyclingSim.test.ts` (26) + `powerLaw.test.ts` (10, all RELATIONAL against
   a fixed UTC date — absolute band dollars grow daily and would rot). Suite 968 → **1004**.
 
+#### Inspection layer — month scrubber · price lens · BTC gained · holdings (UI-only, NO engine change)
+
+Display math over rows the engine already emits. `src/simulation/` is UNTOUCHED; all state is ephemeral
+component state; no store bump. The pure helpers live in **`src/components/Almanac/cyclingFaceView.ts`**
+(React-free, store-free, TYPE-only import of `CyclingRow`) so they are testable without a render harness.
+
+- **`applyPriceLens(row, multiplier)`** → re-prices ONE row, holding every dollar DEBT figure and every BTC
+  COUNT fixed. Guard (`multiplier <= 0 || row.price <= 0`) returns the row's own price/LTVs/collateral/equity
+  and `netBtc = row.btcHeld` — `CyclingRow` has no `netBtc` field, so there is no "own value" to fall back
+  to; the debt term contributes 0, matching `btcGained`'s zero-price guard.
+- **`btcGained(row, base, rowPriceOverride?)`** → `{gross, net}`. Gross is price-independent (BTC counts);
+  net is `btcHeld − debt/price` on both sides. ⚠ **The override lenses the ROW side ONLY** — `base` keeps its
+  own real price, because base is *today* and the lens is a what-if about the *selected* month.
+- **`holdingsSplit(row)`** → Strike / Coinbase / Combined. **TWO VENUES.**
+- **`clampMonth(selected, rowCount)`** — see the crash note below.
+- ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
+  user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
+  store state. Same reasoning as `cyclingSim`'s local `ltvOf()`. **This module must never be imported by the
+  risk core.**
+
+**⚠ THE CLAMP IS A CRASH FIX, AND IT MUST HAPPEN AT RENDER TIME.** The Horizon slider is `step=1`, so one
+leftward tick shrinks `rows` while `selectedMonth` still points past the end → `rows[stale]` is `undefined`
+→ `applyPriceLens` throws on `row.price` and the face blanks into the ErrorBoundary. An effect runs *after*
+that render. So `monthIdx = clampMonth(selectedMonth, rows.length)` is derived during render and used
+EVERYWHERE — including as the scrubber's own `value`, or the range input renders pinned past its max.
+`rows[selectedMonth]` must never appear in the file. The effect exists only to write the clamped value back
+so re-growing the horizon doesn't snap to a stale index. Pinned by `clampMonth` unit tests.
+
+**The lens is display-only** — range 0.35–2.2, default 1, label "as modeled" at exactly 1. It never re-runs
+the engine and never moves the charts (they keep reading unlensed `chartRows`). ⚠ Its reset effect
+**MIRRORS the sim memo's dep array** (`pricePath`, `cbDebt`, the four store-derived position values, and the
+six overlay inputs) plus `monthIdx` — *if an input is added to `runCyclingSim`, add it there too*, or a
+stress test silently survives an engine change. `pricePath` subsumes `btcPrice`/`band`/`months`/
+`convergeMonths`/`startDate`.
+
+**BTC gained appears twice, deliberately split:** the **tile** is LENSED (`btcGained(selRow, rows[0],
+lensed.price)`) and the **Milestones column** is NOT (`btcGained(r, rows[0])`) — the table is not a lensed
+surface. So tile and column agree only at lens 1; at any other value the tile's net moves and the column's
+does not. Both show **gross over net** — gross is accumulation, net is what survives the debt — and on a
+`postLiquidation` row the net drops hard, **shown, never clamped**.
+
+**Six tiles are month-scoped; `Strike interest` is not** — it renders the result-level
+`sim.totalStrikeInterest`, and `CyclingRow` carries no per-row cumulative interest (adding one is an engine
+change). Its sub-label reads **`full horizon · N yrs`** so it is visibly the odd one out.
+
+⚠ **The scrubber + lens live in ONE `data-gesture-exempt` card.** Without it a horizontal slider drag pages
+the Almanac to the next face. ⚠ The two range inputs are **face-local, 44px-tall** — the shared
+`ui/SliderInput` is NOT restyled, since `MiningInputsPanel`/`MiningProjectionTable`/`LivingInputsPanel`
+consume it and a track change would relayout all three.
+
+**NOT MODELED (and out of scope by construction):** a **cold-storage / unpledged reserve** (there are two
+collateral pools, not three) and a **support-line "switch" mode**. Both would require `CyclingInputs`/
+`CyclingRow` changes — i.e. an engine change, not a view change.
+
+- Tests: `src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19). ⚠ **The seizure test asserts at
+  `liqMonth + 1`, NOT at the first `postLiquidation` row** — `cyclingSim` pushes the BREACHING row and
+  applies the seizure afterwards while setting `postLiquidation: true` on that same row, so `rows[liqMonth]`
+  still holds the intact pre-seizure position and a naive assertion there passes vacuously. A sibling case
+  pins that trap. Suite 1004 → **1023**.
+
 ### P3 — live block height (opt-in fetch; store stays v19)
 
 The Almanac height is now REAL and updating — but **sovereign-first: DEFAULT OFF**. With the toggle off the
@@ -3494,7 +3554,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1004 tests — `npx vitest run` before every commit.
+1023 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device

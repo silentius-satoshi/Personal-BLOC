@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
@@ -11,6 +11,7 @@ import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
+import { applyPriceLens, btcGained, holdingsSplit, clampMonth } from './cyclingFaceView';
 import { SliderInput } from '../ui/SliderInput';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './CyclingFace.module.css';
@@ -151,6 +152,34 @@ export default function CyclingFace() {
   ]);
 
   const { rows, last, stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth } = sim;
+
+  // ── Month scrubber + price lens (display-only) ────────────────────────────────────────────────
+  const [selectedMonth, setSelectedMonth] = useState(rows.length - 1);
+  const [lens, setLens] = useState(1);
+
+  // ⚠ CLAMP AT RENDER TIME, NOT IN AN EFFECT. The Horizon slider is step=1, so ONE leftward tick shrinks
+  // `rows` while `selectedMonth` still points past the end — rows[stale] would be undefined and
+  // applyPriceLens would throw on row.price. An effect runs AFTER that render, far too late. Everything
+  // below reads `monthIdx`/`selRow`; `rows[selectedMonth]` must never appear.
+  const monthIdx = clampMonth(selectedMonth, rows.length);
+  const selRow = rows[monthIdx] ?? last;
+  const atEnd = monthIdx === rows.length - 1;
+  const lensed = applyPriceLens(selRow, lens);
+  const gained = btcGained(selRow, rows[0], lensed.price);
+
+  // Write the clamped value back so re-growing the horizon doesn't snap to a stale index.
+  useEffect(() => { setSelectedMonth((m) => Math.min(m, rows.length - 1)); }, [rows.length]);
+
+  // Mirrors the sim memo's dep array — if an input is added to runCyclingSim, add it here too, or the lens
+  // survives an engine change and silently reports a stress test against the wrong position. (`pricePath` is
+  // memoized on btcPrice/band/months/convergeMonths/startDate, so those are subsumed.)
+  useEffect(() => { setLens(1); }, [
+    monthIdx,
+    pricePath, cbDebt,
+    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct,
+  ]);
+
   const bands = plBandsAt(startDate);
   const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
   const openingDebt = cbDebt + s.strikeBalance;
@@ -261,23 +290,111 @@ export default function CyclingFace() {
         )}
       </div>
 
-      {/* 3 · STATS */}
+      {/* 3 · STATS — six tiles follow the scrubber + lens; "Strike interest" cannot (see below). */}
       <div className={styles.statGrid}>
         {([
-          ['BTC held', fmtBtc(last.btcHeld), `from ${openingBtc.toFixed(4)} ₿`, 'var(--green)'],
-          ['Total debt', fmtK(last.debt), `from ${fmtK(openingDebt)}`, 'var(--orange)'],
-          ['CB LTV', `${(last.cbLtv * 100).toFixed(1)}%`, `cap ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`, cbZone(last.cbLtv)],
-          ['Net equity', fmtK(last.equity), `never-draw: ${fmtK(sim.baselineEquity)}`, wins ? 'var(--green)' : 'var(--amber)'],
-          ['BTC price', fmtK(last.price), `from ${fmtK(s.btcPrice)}`, BAND_META.find((b) => b.key === band)!.color],
-          ['Strike interest', fmtK(sim.totalStrikeInterest), `over ${(months / 12).toFixed(1)} years`, 'var(--text-secondary)'],
+          ['BTC held', fmtBtc(selRow.btcHeld), `from ${openingBtc.toFixed(4)} ₿`, 'var(--green)'],
+          ['Total debt', fmtK(selRow.debt), `from ${fmtK(openingDebt)}`, 'var(--orange)'],
+          ['CB LTV', `${(lensed.cbLtv * 100).toFixed(1)}%`, `cap ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`, cbZone(lensed.cbLtv)],
+          ['Net equity', fmtK(lensed.equity),
+            atEnd ? `never-draw: ${fmtK(sim.baselineEquity)}` : `at month ${monthIdx}`,
+            atEnd ? (wins ? 'var(--green)' : 'var(--amber)') : (lensed.equity >= 0 ? 'var(--green)' : 'var(--red)')],
+          ['BTC price', fmtK(lensed.price), `from ${fmtK(s.btcPrice)}`, BAND_META.find((b) => b.key === band)!.color],
+          // Gross is price-independent (BTC counts); net is lensed, so it moves with the price lens.
+          ['BTC gained', `${gained.gross >= 0 ? '+' : '−'}${Math.abs(gained.gross).toFixed(3)} ₿`,
+            `net ${gained.net >= 0 ? '+' : '−'}${Math.abs(gained.net).toFixed(3)} ₿`,
+            gained.gross >= 0 ? 'var(--green)' : 'var(--red)'],
+          // ⚠ NOT month-scoped: CyclingRow carries no per-row cumulative interest, and adding one would be
+          // an engine change. The sub-label says "full horizon" so it reads as the odd one out on purpose.
+          ['Strike interest', fmtK(sim.totalStrikeInterest), `full horizon · ${(months / 12).toFixed(1)} yrs`, 'var(--text-secondary)'],
         ] as const).map(([label, value, sub, color]) => (
           <div key={label} className={styles.stat}>
             <span className={styles.cardLabel}>{label}</span>
             <div className={styles.statValue} style={{ color }}>{value}</div>
-            <div className={styles.statSub}>{sub}</div>
+            <div className={styles.statSub}
+              style={label === 'BTC gained' ? { color: gained.net >= 0 ? 'var(--green)' : 'var(--red)' } : undefined}>
+              {sub}
+            </div>
           </div>
         ))}
       </div>
+
+      {/* 3b · SCRUBBER + LENS — ⚠ ONE gesture-exempt card: without it a horizontal slider drag pages the
+          Almanac to the next face (AlmanacView's shouldStart refuses the pager only for exempt targets). */}
+      <section className={styles.card} data-gesture-exempt>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Inspect month</span>
+          <span className={styles.scrubValue}>
+            {monthIdx === 0 ? 'today' : `month ${monthIdx} · ${(monthIdx / 12).toFixed(1)} yr`}
+            {selRow.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.scrub}
+          min={0} max={Math.max(0, rows.length - 1)} step={1} value={monthIdx}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          aria-label="Inspect month"
+        />
+
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Price stress</span>
+          <span className={styles.scrubValue}>
+            {lens === 1 ? 'as modeled' : (
+              <>
+                {fmtUSD(lensed.price)}{' '}
+                <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>
+                  {lens > 1 ? '+' : '−'}{Math.abs((lens - 1) * 100).toFixed(0)}%
+                </span>
+              </>
+            )}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.scrub}
+          min={0.35} max={2.2} step={0.01} value={lens}
+          onChange={(e) => setLens(Number(e.target.value))}
+          aria-label="Price stress multiplier"
+        />
+        <p className={styles.noteQuiet}>
+          Re-prices this month only — the projection and the charts never move. Resets when you change the
+          month or any input.
+        </p>
+      </section>
+
+      {/* 3c · HOLDINGS BY VENUE — two venues; a cold-storage reserve is not modeled. */}
+      <section className={styles.card}>
+        <span className={styles.cardLabel}>Holdings by venue</span>
+        {(() => {
+          const h = holdingsSplit(selRow);
+          const pct = (n: number) => (h.combined > 0 ? (n / h.combined) * 100 : 0);
+          return (
+            <>
+              <div className={styles.venueBar}>
+                <span className={styles.venueSegStrike} style={{ width: `${pct(h.strike)}%` }} />
+                <span className={styles.venueSegCb} style={{ width: `${pct(h.coinbase)}%` }} />
+              </div>
+              <div className={styles.venueRow}>
+                <span className={styles.venueDotStrike} />
+                <span className={styles.venueName}>Strike</span>
+                <span className={styles.venueBtc}>{h.strike.toFixed(4)} ₿</span>
+                <span className={styles.venueUsd}>{fmtK(h.strike * lensed.price)}</span>
+              </div>
+              <div className={styles.venueRow}>
+                <span className={styles.venueDotCb} />
+                <span className={styles.venueName}>Coinbase</span>
+                <span className={styles.venueBtc}>{h.coinbase.toFixed(4)} ₿</span>
+                <span className={styles.venueUsd}>{fmtK(h.coinbase * lensed.price)}</span>
+              </div>
+              <div className={`${styles.venueRow} ${styles.venueCombined}`}>
+                <span className={styles.venueDotNone} />
+                <span className={styles.venueName}>Combined</span>
+                <span className={styles.venueBtc}>{h.combined.toFixed(4)} ₿</span>
+                <span className={styles.venueUsd}>{fmtK(h.combined * lensed.price)}</span>
+              </div>
+            </>
+          );
+        })()}
+      </section>
 
       {/* 4 · CB LTV */}
       <section className={styles.card}>
@@ -292,6 +409,10 @@ export default function CyclingFace() {
               label={{ value: `LIQ ${(CB_LLTV * 100).toFixed(0)}%`, fill: 'var(--red)', fontSize: 9, position: 'insideTopRight' }} />
             <ReferenceLine y={capPct} stroke="var(--amber)" strokeDasharray="4 3"
               label={{ value: `CAP ${capPct}%`, fill: 'var(--amber)', fontSize: 9, position: 'insideBottomRight' }} />
+            {/* ⚠ The `cond && <Element/>` form is required, NOT a fragment. Recharts walks its DIRECT
+                children to discover series/reference lines; a fragment wrapper makes it render axes and
+                grid with no lines and no error. `&&` yields a single element or `false`, both of which
+                recharts handles. Never wrap conditional chart children in <>…</>. */}
             {stopMonth !== null && <ReferenceLine x={rows[stopMonth]?.yearLabel} stroke="var(--text-faint)" strokeDasharray="2 2" />}
             {liqMonth !== null && <ReferenceLine x={rows[liqMonth]?.yearLabel} stroke="var(--red)" />}
             <Line type="monotone" dataKey="cbLtvPct" name="CB LTV" stroke="var(--btc)" strokeWidth={2}
@@ -405,12 +526,15 @@ export default function CyclingFace() {
                 <th className={styles.msTh}>Debt</th>
                 <th className={styles.msTh}>CB LTV</th>
                 <th className={styles.msTh}>Equity</th>
+                <th className={styles.msTh}>BTC gained</th>
               </tr>
             </thead>
             <tbody>
               {milestones.map((m) => {
                 const r = rows[m];
                 if (!r) return null;
+                // UNLENSED — the table is not a lensed surface; only the tile above follows the lens.
+                const g = btcGained(r, rows[0]);
                 return (
                   <tr key={m} className={r.postLiquidation ? styles.msPost : undefined}>
                     <td className={`${styles.msTd} ${styles.msYear}`}>
@@ -426,6 +550,17 @@ export default function CyclingFace() {
                       {(r.cbLtv * 100).toFixed(1)}%
                     </td>
                     <td className={`${styles.msTd} ${styles.msEquity}`}>{fmtK(r.equity)}</td>
+                    {/* Gross = BTC accumulated. Net = what survives the debt. On a post-liquidation row
+                        net drops hard — shown, never clamped. */}
+                    <td className={styles.msTd}>
+                      <div className={styles.gainGross}>
+                        {g.gross >= 0 ? '+' : '−'}{Math.abs(g.gross).toFixed(3)}
+                      </div>
+                      <div className={styles.gainNet}
+                        style={{ color: g.net >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        {g.net >= 0 ? '+' : '−'}{Math.abs(g.net).toFixed(3)} net
+                      </div>
+                    </td>
                   </tr>
                 );
               })}

@@ -189,6 +189,144 @@
   color: var(--text-faint);
 }
 
+/* ── Month scrubber + price lens ─────────────────────────────────────────────────────────────────
+   ⚠ Face-local range inputs, NOT the shared ui/SliderInput. That component's track is 3px with a 14px
+   thumb and it is consumed by MiningInputsPanel / MiningProjectionTable / LivingInputsPanel — restyling
+   it to reach a 44px touch target would silently relayout three other surfaces. Here the input itself is
+   44px tall and transparent, with the visible track painted by the ::-webkit-slider-runnable-track. */
+.scrubHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.scrubHead + .scrubHead {
+  margin-top: 6px;
+}
+.scrubHead .cardLabel {
+  margin-bottom: 0;
+}
+.scrubValue {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 44px;              /* the touch target — the visible track is painted inside it */
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.scrub:last-of-type {
+  margin-bottom: 2px;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-input);
+}
+.scrub::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-input);
+}
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -6px;          /* centres the thumb on the 3px track */
+  border-radius: 50%;
+  background: var(--btc);
+  border: none;
+}
+.scrub::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--btc);
+  border: none;
+}
+.scrub:focus-visible {
+  outline: 2px solid var(--btc);
+  outline-offset: 2px;
+}
+
+/* ── Holdings by venue — TWO venues; no cold-storage slot, not even an empty one ─────────────── */
+.venueBar {
+  display: flex;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--line-2);
+  margin-bottom: 12px;
+}
+.venueSegStrike { background: var(--btc); }
+.venueSegCb { background: var(--green); }
+
+.venueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 12.5px;
+}
+.venueRow + .venueRow {
+  border-top: 1px solid var(--line-2);
+}
+.venueCombined {
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+}
+.venueCombined .venueName,
+.venueCombined .venueBtc { color: var(--text-primary); font-weight: 600; }
+
+.venueDotStrike,
+.venueDotCb,
+.venueDotNone {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+}
+.venueDotStrike { background: var(--btc); }
+.venueDotCb { background: var(--green); }
+.venueDotNone { background: transparent; }
+
+.venueName {
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+.venueBtc,
+.venueUsd {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.venueBtc { color: var(--text-secondary); }
+.venueUsd {
+  color: var(--text-faint);
+  min-width: 62px;
+  text-align: right;
+}
+
+/* ── BTC gained cell — gross over net ────────────────────────────────────────────────────────── */
+.gainGross {
+  color: var(--btc);
+}
+.gainNet {
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+
 /* ── Paired sections ─────────────────────────────────────────────────────────────────────────── */
 .pair {
   display: grid;
