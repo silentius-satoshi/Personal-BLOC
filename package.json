@@ -18,7 +18,7 @@
     "@nostrify/react": "^0.6.2",
     "@scure/bip39": "2.0.1",
     "@simplewebauthn/browser": "^13.3.0",
-    "@simplewebauthn/server": "^13.3.1",
+    "@simplewebauthn/server": "^13.3.2",
     "@vercel/kv": "^3.0.0",
     "lucide-react": "^1.17.0",
     "nostr-tools": "2.23.5",
