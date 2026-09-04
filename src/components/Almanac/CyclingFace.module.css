@@ -1,0 +1,444 @@
+/* Almanac Cycling face. Tokens only — zero new hex. Renders bare in AlmanacView (owns its own width,
+   matching LedgerFace's 960px). The ported prototype's inline palette maps 1:1 onto app tokens. */
+
+.face {
+  width: 100%;
+  max-width: 960px;      /* matches the hub's widest tools (Mining/PowerLaw/Ledger) */
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  box-sizing: border-box;
+}
+
+/* ── Face chrome — the Ledger/Scenario voice ─────────────────────────────────────────────────── */
+.head {
+  margin: 4px 2px 0;
+}
+.title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.framing {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.seedRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 2px 0;
+}
+.seedLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+.ghostBtn {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  transition: background 0.12s;
+}
+.ghostBtn:hover { background: var(--bg-hover); }
+
+/* ── Cards ───────────────────────────────────────────────────────────────────────────────────── */
+.card {
+  margin-top: 13px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.cardLabel {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.note {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.noteQuiet {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+.noteQuiet strong,
+.note strong { color: var(--text-secondary); }
+
+/* Sliders sit two-up on desktop, stacked on mobile. */
+.sliderPair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 16px;
+  margin-top: 4px;
+}
+.sliderStack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+@media (min-width: 768px) {
+  .sliderPair { grid-template-columns: 1fr 1fr; gap: 20px; }
+}
+
+/* ── Band selector ───────────────────────────────────────────────────────────────────────────── */
+.bandRow {
+  display: flex;
+  gap: 6px;
+}
+.bandBtn {
+  flex: 1;
+  padding: 8px 4px;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--text-muted);
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.bandBtn:hover { background: var(--bg-hover); }
+/* The active band's accent colour is applied inline (it varies per band); this carries the surface. */
+.bandBtnOn { background: var(--surface-2); }
+
+.presetRow {
+  margin-top: 12px;
+}
+
+/* ── Verdict ─────────────────────────────────────────────────────────────────────────────────── */
+.verdict {
+  margin-top: 13px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.verdictGood {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  background: color-mix(in srgb, var(--green) 7%, transparent);
+}
+.verdictWarn {
+  border-color: color-mix(in srgb, var(--amber) 40%, transparent);
+  background: color-mix(in srgb, var(--amber) 7%, transparent);
+}
+.verdictBad {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  background: color-mix(in srgb, var(--red) 9%, transparent);
+}
+.verdictHead {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+.verdictGood .verdictHead { color: var(--green); }
+.verdictWarn .verdictHead { color: var(--amber); }
+.verdictBad .verdictHead { color: var(--red); }
+.verdictSub {
+  margin-top: 6px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+.verdictSub strong { color: var(--text-secondary); }
+.deficiency { color: var(--red); }
+
+/* ── Stat grid ───────────────────────────────────────────────────────────────────────────────── */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+  margin-top: 13px;
+}
+.stat {
+  padding: 12px 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.statValue {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 19px;
+  font-weight: 600;
+  line-height: 1.15;
+}
+.statSub {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+}
+
+/* ── Month scrubber + price lens ─────────────────────────────────────────────────────────────────
+   ⚠ Face-local range inputs, NOT the shared ui/SliderInput. That component's track is 3px with a 14px
+   thumb and it is consumed by MiningInputsPanel / MiningProjectionTable / LivingInputsPanel — restyling
+   it to reach a 44px touch target would silently relayout three other surfaces. Here the input itself is
+   44px tall and transparent, with the visible track painted by the ::-webkit-slider-runnable-track. */
+.scrubHead {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.scrubHead + .scrubHead {
+  margin-top: 6px;
+}
+.scrubHead .cardLabel {
+  margin-bottom: 0;
+}
+.scrubValue {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+
+.scrub {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 44px;              /* the touch target — the visible track is painted inside it */
+  margin: 0;
+  background: transparent;
+  cursor: pointer;
+}
+.scrub:last-of-type {
+  margin-bottom: 2px;
+}
+.scrub::-webkit-slider-runnable-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-input);
+}
+.scrub::-moz-range-track {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--bg-input);
+}
+.scrub::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 15px;
+  height: 15px;
+  margin-top: -6px;          /* centres the thumb on the 3px track */
+  border-radius: 50%;
+  background: var(--btc);
+  border: none;
+}
+.scrub::-moz-range-thumb {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  background: var(--btc);
+  border: none;
+}
+.scrub:focus-visible {
+  outline: 2px solid var(--btc);
+  outline-offset: 2px;
+}
+
+/* ── Holdings by venue — TWO venues; no cold-storage slot, not even an empty one ─────────────── */
+.venueBar {
+  display: flex;
+  width: 100%;
+  height: 6px;
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--line-2);
+  margin-bottom: 12px;
+}
+.venueSegStrike { background: var(--btc); }
+.venueSegCb { background: var(--green); }
+
+.venueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 7px 0;
+  font-size: 12.5px;
+}
+.venueRow + .venueRow {
+  border-top: 1px solid var(--line-2);
+}
+.venueCombined {
+  border-top: 1px solid var(--line);
+  margin-top: 2px;
+}
+.venueCombined .venueName,
+.venueCombined .venueBtc { color: var(--text-primary); font-weight: 600; }
+
+.venueDotStrike,
+.venueDotCb,
+.venueDotNone {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  align-self: center;
+}
+.venueDotStrike { background: var(--btc); }
+.venueDotCb { background: var(--green); }
+.venueDotNone { background: transparent; }
+
+.venueName {
+  color: var(--text-secondary);
+  margin-right: auto;
+}
+.venueBtc,
+.venueUsd {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.venueBtc { color: var(--text-secondary); }
+.venueUsd {
+  color: var(--text-faint);
+  min-width: 62px;
+  text-align: right;
+}
+
+/* ── BTC gained cell — gross over net ────────────────────────────────────────────────────────── */
+.gainGross {
+  color: var(--btc);
+}
+.gainNet {
+  font-size: 10.5px;
+  margin-top: 2px;
+}
+
+/* ── Paired sections ─────────────────────────────────────────────────────────────────────────── */
+.pair {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 13px;
+}
+@media (min-width: 768px) {
+  .pair { grid-template-columns: 1fr 1fr; }
+  /* The cards keep their own top margin, so the row needs none of its own. */
+  .pair > .card { margin-top: 13px; }
+}
+
+/* ── Chart tooltip — the app surface, not recharts' default white ────────────────────────────── */
+.tooltip {
+  background: var(--surface-3);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.tooltipHead {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+.tooltipRow {
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.tooltipRow strong {
+  font-family: var(--mono);
+  color: var(--text-primary);
+}
+
+/* ── Constraint notices — quiet lines, not banners: these are limits, not failures ───────────── */
+.constraints {
+  margin-top: 13px;
+  padding: 11px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 30%, transparent);
+  background: color-mix(in srgb, var(--amber) 6%, transparent);
+  border-radius: 12px;
+  font-size: 11.5px;
+  line-height: 1.7;
+  color: var(--text-muted);
+}
+
+/* ── Milestones ──────────────────────────────────────────────────────────────────────────────── */
+.msWrap {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.msTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 12.5px;
+}
+.msTh {
+  text-align: right;
+  padding: 0 10px 8px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+}
+.msTd {
+  text-align: right;
+  padding: 11px 10px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  color: var(--text-secondary);
+  border-top: 1px solid var(--line-2);
+}
+.msYear {
+  text-align: left;
+}
+.msEquity { color: var(--text-primary); }
+.btcPre {
+  color: var(--text-faint);
+  margin-right: 2px;
+}
+/* Rows past the liquidation are the aftermath, never an ongoing position — dimmed, and labelled. */
+.msPost { opacity: 0.55; }
+.msFlag {
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+
+/* ── Disclaimer ──────────────────────────────────────────────────────────────────────────────── */
+.disclaimer {
+  margin-top: 13px;
+  padding: 13px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 25%, transparent);
+  background: color-mix(in srgb, var(--amber) 5%, transparent);
+  border-radius: 12px;
+  font-size: 10.5px;
+  line-height: 1.75;
+  color: var(--text-muted);
+}
+.disclaimer strong {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--amber);
+}

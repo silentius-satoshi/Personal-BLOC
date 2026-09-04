@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (858 tests — all must pass before every commit)
+- Vitest (1032 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -106,7 +106,38 @@ src/
     types.ts                    # SimInputs (optional creditLine), LivingInputs, StrategyResult, MonthlyLogEntry,
                                 # DayEvent (Daily Mode P1 union) + source?/confirmed?/provisional? on MonthlyLogEntry
     livingUtils.ts              # getBtcPrice (8-param, bear market aware)
-    powerLaw.ts                 # PL_B, PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, GENESIS + utils
+    powerLaw.ts                 # PL_B, PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, GENESIS + utils. ZERO imports
+                                # (§2 wall side A). + plBandsAt(date) → {floor,fair,ceiling} (each from its OWN
+                                # A constant — never PL_A_FAIR × scalar) and plConvergencePath(anchor, band,
+                                # startDate, months, convergeMonths) — the Cycling face's price path: starts at
+                                # the LIVE price (a fact) and reverts geometrically toward the band (a belief,
+                                # a DESTINATION not an anchor) in log space, w = max(0, 1 − m/convergeMonths).
+                                # ⚠ A naive `anchor × (days_m/days_0) ** PL_B` carries NO band coefficient, so
+                                # all three bands share one growth ratio → IDENTICAL sims and inert band buttons
+                                # (pinned by the not-constant-ratio test). ⚠ m===0 is special-cased to return
+                                # the anchor EXACTLY (arithmetic drifts ~0.3% via day-clamping, and month 0 must
+                                # equal what the SafetyDashboard shows). Local pure `addMonths` (UTC, day-of-month
+                                # clamped) keeps the zero-import rule; callers pass a UTC-midnight startDate
+    cyclingSim.ts               # Cycling strategy PURE engine (Almanac `cycling` face) — draw bills on Strike,
+                                # refinance into Coinbase every cycleMonths, route every purchase to the CB
+                                # collateral pool, stop drawing at a CB LTV cap; verdict vs a never-draw baseline.
+                                # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF (runCoinbaseLoan) — NOTHING from
+                                # powerLaw/cycleModel/store. The price path arrives as a plain number[] and the
+                                # lender ratios (strikeMaxDrawLtv/strikeMarginLtv) as plain numbers, so it stays a
+                                # clock-free, fixture-testable leaf; the VIEW does the labelled crossing (the
+                                # OutlookProjection precedent). ⚠ TWO COLLATERAL POOLS, NEVER ONE — strikeColl is
+                                # FIXED (nothing is pledged to Strike after the opening position), cbColl GROWS
+                                # with every purchase, and btcHeld is their sum and DISPLAY ONLY, never a
+                                # denominator (collapsing them understates CB LTV ~16pts and fires the cap late).
+                                # The cap tests cbLtv (a Coinbase metric), never a blended figure. The Strike
+                                # credit line is a hard constraint — a draw is capped at min(creditLine,
+                                # strikeColl×price×maxDrawLtv) − strikeBal and the shortfall comes out of income
+                                # (self-limiting: fewer sats bought), surfacing as creditExhaustedMonth. Liquidation
+                                # is TERMINAL: at cbLtv ≥ CB_LLTV it seizes min(cbColl, cbDebt×CB_LIF/price) and
+                                # ⚠ subtracts the repayment rather than zeroing debt, so an under-collateralised
+                                # seizure PRESERVES the deficiency (both facilities are full-recourse); the row is
+                                # pushed PRE-seizure so it shows the position that breached and m+1 opens on the
+                                # survivor. CB_LIQUIDATION_PENALTY is derived (CB_LIF − 1), not a literal
     runNoBitcoin.ts
     runSellToLive.ts
     runSmartBLOC_Living.ts      # Living on Bitcoin tab simulation
@@ -2153,6 +2184,111 @@ SwipeStrip/`shouldStart`/store-shape change.
   self-disable in `viewerMode`; a local pin is harmless — no special gating. No tests (no render harness; the
   engine is pinned by 3a's `scenarioDiff.test.ts`).
 
+### Cycling face (NINTH Almanac face; store unchanged, NO bump)
+
+A NINTH face **Cycling** (`♻ Cycling`) — the UI over `src/simulation/cyclingSim.ts`. Ported from a
+standalone JSX prototype (`cycling-sim copy/`, since DELETED) whose model carried **eight defects**, all
+fixed in the port: identical sims across all three bands (no band coefficient in the price path), an
+over-specified anchor, a collapsed CB-LTV denominator, an uncomputable Strike LTV, non-terminal
+liquidation, an unconstrained Strike draw, a default cap seeded from `cbLtvTriggerPct`, and a seizure that
+erased a full-recourse deficiency. ⚠ **The prototype is NOT the reference** — correctness is defined by
+agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
+
+- **READ-ONLY by construction: ZERO store writes** — not even a pin (stricter than `ScenarioFace`, which
+  writes `setPinnedScenario`). Every control is seeded from live state and overridden only in a
+  session-ephemeral local `useState` overlay (`value = overlay[k] ?? live`), with a ghost "Reset to live".
+- **GATED on `hasCbLoan`** (the strategy IS a Strike→Coinbase refinance loop) with the `defense`-face
+  fallback `useEffect`, and **appended LAST** in `visibleFaces` — `e2e/navigation.spec.ts:45-62` pins
+  halving at index 0 and cycle at index 1.
+- **`src/components/Almanac/CyclingFace.tsx`** (+ `.module.css`) — LedgerFace chrome + its 960px `.face`.
+  Sections: price path (band buttons + Reversion window + Horizon) → verdict → 6 stat cards → CB-LTV chart →
+  paired price/collateral charts → paired cash-flow/strategy cards → rates → constraint notices → milestones
+  → disclaimer. Paired rows go 2-col at ≥768px. Recharts restyled to tokens (zero new hex) with a local
+  token-surfaced tooltip; `isAnimationActive={false}` throughout.
+- **⚠ THE §2 CROSSING LIVES IN THE VIEW, deliberately** — it imports the power law (a BELIEF) AND the risk
+  constants (FACTS), builds a plain `number[]`, and hands it to an engine that has heard of neither. Exactly
+  the `OutlookProjection`/`MonthBreakdown` shape. Neither wall moves.
+- **⚠ THE CAP DEFAULTS TO A FACE-LOCAL 50%, NOT `cbLtvTriggerPct`.** The owner's trigger (75%) is the
+  PAYDOWN threshold — a different action from stopping the draw — and seeding from it opens the face on a
+  run that LIQUIDATES at month 83, i.e. the default view would argue against the strategy it exists to
+  demonstrate (cap 50 → no liquidation in 20 years; pinned by a test). The trigger is one tap away as a
+  labelled preset chip.
+- **Gesture coexistence:** every control card carries `data-gesture-exempt` so a slider drag never pages the
+  face (`shouldStart` refuses it; the scoped `touch-action: pan-x` rule hands it the horizontal axis).
+  Charts are already covered by the `.recharts-wrapper` rule. *(The Mining face has the same latent
+  slider-vs-pager conflict and was left alone.)*
+- **Zone colours** reuse the shared gauge (`cbBarLevel` + `LEVEL_COLOR`) but band against **`CB_LLTV`**, the
+  LTV this projection actually liquidates at — NOT the dashboard's `cbLiqFrac`, which comes from the owner's
+  entered liq price, a TODAY anchor that says nothing about a position five years out. The trigger boundary
+  is still the owner's own setting.
+- Connectors: `getCurrentBtcHeld()` (verified Strike-only) · `advisorActualBlocBalance` · `creditLine` ·
+  `cbCollateralBtc` · `accruedCbBalance(...)` (the accrual boundary, as `EmergencyConsole` crosses it) ·
+  `income`/`expenses`/`blocApr`/`cbAprPct`/`btcPrice` · `STRIKE_MAX_DRAW_LTV` · `STRIKE_MARGIN_CALL_LTV`.
+  The prototype's direct CoinGecko `fetch` is GONE — no new external host; the Almanac's only network call
+  remains the consented `useChainTip`.
+- Tests: `src/simulation/__tests__/cyclingSim.test.ts` (26) + `powerLaw.test.ts` (10, all RELATIONAL against
+  a fixed UTC date — absolute band dollars grow daily and would rot). Suite 968 → **1004**.
+
+#### Inspection layer — month scrubber · price lens · BTC gained · holdings (UI-only, NO engine change)
+
+Display math over rows the engine already emits. `src/simulation/` is UNTOUCHED; all state is ephemeral
+component state; no store bump. The pure helpers live in **`src/components/Almanac/cyclingFaceView.ts`**
+(React-free, store-free, TYPE-only import of `CyclingRow`) so they are testable without a render harness.
+
+- **`applyPriceLens(row, multiplier)`** → re-prices ONE row, holding every dollar DEBT figure and every BTC
+  COUNT fixed. Guard (`multiplier <= 0 || row.price <= 0`) returns the row's own price/LTVs/collateral/equity
+  and `netBtc = row.btcHeld` — `CyclingRow` has no `netBtc` field, so there is no "own value" to fall back
+  to; the debt term contributes 0, matching `btcGained`'s zero-price guard.
+- **`btcGained(row, base, rowPriceOverride?)`** → `{gross, net}`. Gross is price-independent (BTC counts);
+  net is `btcHeld − debt/price` on both sides. ⚠ **The override lenses the ROW side ONLY** — `base` keeps its
+  own real price, because base is *today* and the lens is a what-if about the *selected* month.
+- **`holdingsSplit(row)`** → Strike / Coinbase / Combined. **TWO VENUES.**
+- **`clampMonth(selected, rowCount)`** — see the crash note below.
+- ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
+  user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
+  store state. Same reasoning as `cyclingSim`'s local `ltvOf()`. **This module must never be imported by the
+  risk core.**
+
+**⚠ THE CLAMP IS A CRASH FIX, AND IT MUST HAPPEN AT RENDER TIME.** The Horizon slider is `step=1`, so one
+leftward tick shrinks `rows` while `selectedMonth` still points past the end → `rows[stale]` is `undefined`
+→ `applyPriceLens` throws on `row.price` and the face blanks into the ErrorBoundary. An effect runs *after*
+that render. So `monthIdx = clampMonth(selectedMonth, rows.length)` is derived during render and used
+EVERYWHERE — including as the scrubber's own `value`, or the range input renders pinned past its max.
+`rows[selectedMonth]` must never appear in the file. The effect exists only to write the clamped value back
+so re-growing the horizon doesn't snap to a stale index. Pinned by `clampMonth` unit tests.
+
+**The lens is display-only** — range 0.35–2.2, default 1, label "as modeled" at exactly 1. It never re-runs
+the engine and never moves the charts (they keep reading unlensed `chartRows`). ⚠ Its reset effect
+**MIRRORS the sim memo's dep array** (`pricePath`, `cbDebt`, the four store-derived position values, and the
+six overlay inputs) plus `monthIdx` — *if an input is added to `runCyclingSim`, add it there too*, or a
+stress test silently survives an engine change. `pricePath` subsumes `btcPrice`/`band`/`months`/
+`convergeMonths`/`startDate`.
+
+**BTC gained appears twice, deliberately split:** the **tile** is LENSED (`btcGained(selRow, rows[0],
+lensed.price)`) and the **Milestones column** is NOT (`btcGained(r, rows[0])`) — the table is not a lensed
+surface. So tile and column agree only at lens 1; at any other value the tile's net moves and the column's
+does not. Both show **gross over net** — gross is accumulation, net is what survives the debt — and on a
+`postLiquidation` row the net drops hard, **shown, never clamped**.
+
+**Six tiles are month-scoped; `Strike interest` is not** — it renders the result-level
+`sim.totalStrikeInterest`, and `CyclingRow` carries no per-row cumulative interest (adding one is an engine
+change). Its sub-label reads **`full horizon · N yrs`** so it is visibly the odd one out.
+
+⚠ **The scrubber + lens live in ONE `data-gesture-exempt` card.** Without it a horizontal slider drag pages
+the Almanac to the next face. ⚠ The two range inputs are **face-local, 44px-tall** — the shared
+`ui/SliderInput` is NOT restyled, since `MiningInputsPanel`/`MiningProjectionTable`/`LivingInputsPanel`
+consume it and a track change would relayout all three.
+
+**NOT MODELED (and out of scope by construction):** a **cold-storage / unpledged reserve** (there are two
+collateral pools, not three) and a **support-line "switch" mode**. Both would require `CyclingInputs`/
+`CyclingRow` changes — i.e. an engine change, not a view change.
+
+- Tests: `src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19). ⚠ **The seizure test asserts at
+  `liqMonth + 1`, NOT at the first `postLiquidation` row** — `cyclingSim` pushes the BREACHING row and
+  applies the seizure afterwards while setting `postLiquidation: true` on that same row, so `rows[liqMonth]`
+  still holds the intact pre-seizure position and a naive assertion there passes vacuously. A sibling case
+  pins that trap. Suite 1004 → **1023**.
+
 ### P3 — live block height (opt-in fetch; store stays v19)
 
 The Almanac height is now REAL and updating — but **sovereign-first: DEFAULT OFF**. With the toggle off the
@@ -2251,6 +2387,47 @@ V4, roles scaffolding = V5 — all out of scope). **READ-ONLY by construction** 
   `cbSub`) is TWO-LINE (`\n`-joined + `.cardSub`'s `white-space: pre-line`) — e.g. "$X of $Y" / "$Z
   available" — reading cleanly beside the fixed 120px ring; safe-mode subs (short single phrases) are
   unaffected (no `\n`, render as before).
+- **`src/components/Viewer/VenueBar.tsx`** (+ `.module.css`) + **`src/simulation/viewerVenue.ts`** — the
+  collateral-COMPOSITION bar under the gauge cards (last child of `.cards`, so it inherits the 14px gap):
+  a two-segment proportion bar + Strike / Coinbase / Combined figures with dollar values. Answers what none
+  of the three gauges answer — what SHARE of the stack sits on the facility that liquidates instantly with
+  no cure window (each gauge reports a ratio WITHIN one facility; none reports concentration ACROSS both).
+  Pure `deriveVenueSplit(strikeBtc, cbBtc)` → `{strikeBtc,cbBtc,combinedBtc,strikeShare,cbShare,hasData}`;
+  negatives/non-finites clamp to 0, `combined <= 0` → `hasData:false` → the component returns `null`
+  (render NOTHING — not an empty bar, not a zero state). ⚠ Shares are EXACT quotients, never rounded in the
+  module, or the two segment widths stop summing to 100%.
+  - **⚠ NOT a fourth gauge, and deliberately BADGE-LESS.** The card grammar is gauge → Safe/Fair/Poor →
+    sub-line; a badge needs a level, a level needs a threshold, and thresholds come from lender rules
+    (`CREDIT_WARN_USED`/`CB_LLTV`/`strikeLiqLtv`). **No lender rule defines a venue-concentration
+    threshold**, so a badge here would mean inventing a risk threshold and dressing it as a peer of three
+    that are real. Never give it `barLevel()` colouring.
+  - **⚠ NO level colour and NO new token.** `green`/`amber`/`red` are load-bearing as Safe/Fair/Poor on the
+    cards directly above, so any of them on a *composition* read would be misread as a risk verdict — which
+    rules out a green "Combined" figure just as much as a green Coinbase segment. Strike takes **`--btc`**
+    (non-semantic here, and the same token the Almanac Cycling face's venue bar uses, so the two agree),
+    Coinbase **`--text-muted`**, the total **`--text-primary`**. `tokens.css` is untouched.
+  - **TRUSTED-ONLY**, gated `s.mode === 'trusted'` (`mode`/`figures` are set together in
+    `computeViewerSafety`, so they can't disagree). NOT gated on `hasCbLoan` — collateral can sit on
+    Coinbase with no loan against it — and never inferred from the values being non-zero, since a trusted
+    owner with genuinely zero CB collateral must stay distinguishable from a safe-mode viewer.
+    **The gate is structural, not cosmetic:** the C-safe snapshot carries no absolutes by construction, so
+    the bar's two inputs *cannot exist* there (pinned in `viewerVenue.test.ts` against the REAL
+    `buildViewerSnapshotPayload`). Extending it to safe mode would be a privacy decision — re-deriving the
+    "2 unknowns, 1 equation" claim with a third ratio in play — not a UI task.
+  - **NO PAYLOAD CHANGE was needed** — C-P4 already ships `strikeCollateralBtc` and VIEWER BUG2 ships
+    `cbCollateralBtc` to the trusted viewer (`applyViewerEvent` raw-sets both in one `setState`).
+    `ViewerHomeView` reads them through the DERIVES (`getCurrentBtcHeld()` /
+    `deriveCbCollateral(dayLog, cache)`), never the raw caches — the viewer's `dayLog` is `[]` so each
+    returns the hydrated scalar, but the helper is the single definition. ⚠ Read-only: no
+    `setCbCollateralBtc`/`emitBalanceReading` anywhere (they'd inject a reading into the viewer's OWN
+    `dayLog`, which BUG3 exists to prevent). The dollar figures use a new `btcPrice` binding — the gauge
+    sub-lines render pre-computed absolutes, so there was no resolved-price binding to reuse.
+  - ⚠ **No CSS transition on the segment widths** — same iOS WebKit ghost-raster hazard that removed
+    `RadialGauge`'s `stroke-dashoffset` transition (below). a11y mirrors the gauge: the bar is one
+    `role="img"` with a worded `aria-label`, segments `aria-hidden`, the three cells carry the numbers.
+  - **The OWNER DASHBOARD inherits it** — `AppShell` mounts `<ViewerHomeView previewSafeSnap={null}
+    ownerNav=…/>` for `simpleView === 'dashboard'`, which forces the trusted live-derive, so any
+    trusted-gated content renders there too. Trusted `ViewerPreview` likewise. Intended, not a leak.
 - **`src/components/Viewer/RadialGauge.tsx`** (+ `.module.css`) — lightweight presentational SVG
   donut (stroke-dasharray fill, props `{pct,color,label}`, center "{pct}%", `role="img"`). NOT the
   Almanac `CycleDial` (coordinate-system-specialized). The `stroke-dashoffset` CSS transition on the
@@ -3418,7 +3595,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-858 tests — `npx vitest run` before every commit.
+1032 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
