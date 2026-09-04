@@ -1,0 +1,93 @@
+/* Viewer venue bar. Tokens only — zero new literals, and no new token added to the design system.
+
+   No level colours here. green/amber/red are Safe/Fair/Poor on the gauge cards above; a level colour on a
+   composition read would be misread as a risk verdict, and no lender rule defines a venue-concentration
+   threshold. Strike takes --btc (non-semantic on this surface, and the same token the Almanac Cycling
+   face's venue bar uses, so the two agree); Coinbase takes muted; the total takes primary. */
+
+/* Card shell — the SAME tokens as the gauge cards in ViewerHomeView.module.css (.card), so this sits in the
+   stack as a peer surface. Radius is the app's 20px, not the mockup's 14px. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  padding: 20px;
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.title {
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--text-primary);
+}
+.total {
+  font-size: 11.5px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ⚠ NO transition on the segment widths. RadialGauge had its stroke-dashoffset transition removed because
+   iOS Safari painted a ghost arc from the initial state; an animated flex width on the same surface risks
+   the same artifact. */
+.bar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.segStrike,
+.segCb {
+  height: 100%;
+  min-width: 0;
+}
+.segStrike { background: var(--btc); }
+.segCb { background: var(--text-muted); }
+
+.cells {
+  display: flex;
+  gap: 12px;
+  margin-top: 14px;
+}
+.cell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* The total is separated from the two venues. --line (.07), NOT --line-2 (.04) — the fainter of the two
+   would not read as a separator inside a card that already carries a --line border. */
+.cellRule {
+  border-left: 1px solid var(--line);
+  padding-left: 12px;
+}
+
+.cellKey {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  margin-bottom: 4px;
+}
+.cellVal {
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.valStrike { color: var(--btc); }
+.valCb { color: var(--text-muted); }
+.valTotal { color: var(--text-primary); font-weight: 600; }
+
+.cellSub {
+  margin-top: 3px;
+  font-size: 10px;
+  color: var(--text-faint);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}

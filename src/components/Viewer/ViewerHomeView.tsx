@@ -2,9 +2,11 @@ import type { ReactNode } from 'react';
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { selectSafetyViewInputs, computeViewerSafety, type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult } from '../../simulation/safetyView';
+import { deriveCbCollateral } from '../../simulation/logUtils';
 import { fmtUSD, relativeAge } from '../../utils/format';
 import { PriceChart } from '../SimpleMode/PriceChart';
 import { RadialGauge } from './RadialGauge';
+import { VenueBar } from './VenueBar';
 import { RolePill, useGrantedRoles } from './RolePill';
 import styles from './ViewerHomeView.module.css';
 
@@ -104,6 +106,17 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
   const grantedRoles = useGrantedRoles();                       // V5 — dormant (renders nothing today)
   const f = s.figures;
 
+  // Venue bar inputs. ⚠ Read through the DERIVES, never the raw caches — they are the single definition,
+  // and the raw read would diverge the moment anything in the chain changes. (The viewer's dayLog is [], so
+  // each derive returns the hydrated scalar C-P4 / BUG2 raw-set.) Both are primitives → plain useStore.
+  // ⚠ Read-only: no setCbCollateralBtc / emitBalanceReading anywhere — those would inject a reading into the
+  // viewer's OWN dayLog, which BUG3 exists to prevent.
+  const venueStrikeBtc = useStore((st) => st.getCurrentBtcHeld());
+  const venueCbBtc = useStore((st) => deriveCbCollateral(st.dayLog, st.cbCollateralBtc));
+  // The gauge sub-lines render pre-computed absolutes from computeViewerSafety, so there is no existing
+  // resolved-price binding to reuse — this is the same source useViewerSafety reads internally.
+  const venuePrice = useStore((st) => st.btcPrice);
+
   const creditSub = f ? `${fmtUSD(f.credit.used)} of ${fmtUSD(f.credit.total)}\n${fmtUSD(f.credit.avail)} available`
                       : CREDIT_SUB[s.creditLevel];
   const strikeSubLine = f ? `Liq at ~${fmtUSD(f.strike.liqPrice)}\n${fmtUSD(f.strike.balance)} balance`
@@ -174,6 +187,15 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
               level={s.cbLevel}
               sub={cbSub}
             />
+          )}
+
+          {/* Composition, not a gauge — see VenueBar. TRUSTED-ONLY: `mode` and `figures` are set together in
+              computeViewerSafety so they cannot disagree, and the C-safe snapshot carries no absolutes to
+              feed it. NOT gated on hasCbLoan — collateral can sit on Coinbase with no loan against it. The
+              gate is the mode, never whether the values are non-zero: a trusted owner with genuinely zero CB
+              collateral must stay distinguishable from a safe-mode viewer. */}
+          {s.mode === 'trusted' && (
+            <VenueBar strikeBtc={venueStrikeBtc} cbBtc={venueCbBtc} btcPrice={venuePrice} />
           )}
         </div>
       </div>
