@@ -227,6 +227,68 @@ describe('runCyclingSim — the no-draw baseline', () => {
   });
 });
 
+describe('runCyclingSim — mode (S1): hold / clearStrike / clearBoth', () => {
+  it('defaults to cycle — a pre-S1 call site is byte-identical', () => {
+    const a = run({ mode: 'cycle', pricePath: flat(24), cbLtvCapPct: 50 });
+    const b = run({ pricePath: flat(24), cbLtvCapPct: 50 });   // no mode key at all
+    expect(a.rows).toEqual(b.rows);
+    expect(a.stopMonth).toBe(b.stopMonth);
+    expect(a.baselineEquity).toBe(b.baselineEquity);
+  });
+
+  it('⭐ hold IS the never-draw baseline — the strategy is the comparator (C3 self-reference)', () => {
+    // btcHeld in hold = strikeColl + cbColl0 + Σ surplus/price, which is exactly the baseline's baseBtc.
+    // A view must therefore NOT present "hold vs baseline" as a win/lose — it is the same curve twice.
+    const r = run({ mode: 'hold', pricePath: flat(60) });
+    expect(r.last.btcHeld).toBeCloseTo(r.baselineBtc, 9);
+    const surplus = LIVE.income - LIVE.expenses;
+    expect(r.last.btcHeld).toBeCloseTo(
+      LIVE.strikeCollateralBtc + LIVE.cbCollateralBtc + (60 * surplus) / PRICE, 9);
+  });
+
+  it('⭐ C1: hold with expenses > income leaves btcHeld flat and draws no debt — the deficit is funded by nothing', () => {
+    // The deliberate approximation: no coins sold, no draw — the bills are simply not funded. The debt
+    // grows ONLY at the existing rates. Surface it in the view; never model it away silently.
+    const r = run({ mode: 'hold', income: 3_000, expenses: 4_000, pricePath: flat(24) });
+    const open = r.rows[0];
+    for (const row of r.rows) {
+      expect(row.btcHeld).toBeCloseTo(open.btcHeld, 9);               // flat — nothing sold, nothing bought
+      expect(row.strikeDrawn).toBe(0);
+      expect(row.strikeShortfall).toBe(0);
+      expect(row.cbCollateralBtc).toBeCloseTo(open.cbCollateralBtc, 9);
+    }
+    const smr = LIVE.strikeAprPct / 100 / 12, cmr = LIVE.cbAprPct / 100 / 12;
+    expect(r.last.debt).toBeCloseTo(
+      LIVE.strikeBalance * (1 + smr) ** 24 + LIVE.cbDebt * (1 + cmr) ** 24, 6);
+  });
+
+  it('clearStrike retires Strike before any purchase lands', () => {
+    const r = run({ mode: 'clearStrike', strikeBalance: 500, pricePath: flat(12) });
+    expect(r.rows[1].strikeBalance).toBeLessThan(500);              // retiring
+    expect(r.rows[1].cbCollateralBtc).toBeCloseTo(LIVE.cbCollateralBtc, 9);  // nothing bought yet
+    const bought = r.rows.find((row) => row.cbCollateralBtc > LIVE.cbCollateralBtc);
+    expect(bought).toBeDefined();
+    expect(r.last.strikeBalance).toBe(0);                            // the sweep lands on exact zero
+  });
+
+  it('clearBoth retires Strike, then Coinbase, then buys — one at a time', () => {
+    const r = run({ mode: 'clearBoth', strikeBalance: 300, cbDebt: 500, pricePath: flat(12) });
+    expect(r.rows[1].strikeBalance).toBeLessThan(300);
+    expect(r.rows[1].cbDebt).toBeLessThan(500);                      // both legs got paid
+    expect(r.rows[1].cbCollateralBtc).toBeCloseTo(LIVE.cbCollateralBtc, 9);  // cash exhausted
+    expect(r.last.strikeBalance).toBe(0);
+    expect(r.last.cbDebt).toBe(0);                                   // cbDebt swept too (sub-cent residual)
+    const bought = r.rows.find((row) => row.cbCollateralBtc > LIVE.cbCollateralBtc);
+    expect(bought).toBeDefined();                                    // buying resumes after both are clear
+  });
+
+  it('non-cycle modes never set stopMonth / creditExhaustedMonth — there is no draw to stop', () => {
+    const r = run({ mode: 'clearBoth', cbLtvCapPct: 50, pricePath: flat(12) });
+    expect(r.stopMonth).toBeNull();
+    expect(r.creditExhaustedMonth).toBeNull();
+  });
+});
+
 describe('runCyclingSim — guards', () => {
   it('income <= expenses buys nothing once drawing stops, and never goes negative', () => {
     const r = run({ income: 3_000, expenses: 4_000, cbLtvCapPct: 50, pricePath: flat(36) });

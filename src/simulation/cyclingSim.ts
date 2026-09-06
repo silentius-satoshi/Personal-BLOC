@@ -8,6 +8,12 @@ import { CB_LLTV, CB_LIF } from './runCoinbaseLoan';
  * stop drawing once CB LTV reaches `cbLtvCapPct`. The verdict compares it to a "pay bills from income,
  * never draw" baseline.
  *
+ * ⚠ `mode` (S1) adds three no-draw strategies — `hold` (surplus buys, nothing repaid), `clearStrike`
+ * (surplus retires Strike, then buys), `clearBoth` (surplus retires Strike, then Coinbase, then buys).
+ * `mode` defaults to `'cycle'`, so every pre-S1 call site is byte-identical. For `hold` the "never draw"
+ * baseline is SELF-REFERENTIAL — the strategy IS the baseline, so a view must not compare the two.
+ * Still NOT MODELED: a cold-storage / unpledged reserve and a support-line "switch" mode.
+ *
  * 🔴 §2 ISOLATION WALL — this module imports NOTHING from powerLaw/cycleModel. The price path arrives as a
  * plain `number[]` and the three lender ratios (`strikeMaxDrawLtv`, `strikeMarginLtv`) arrive as plain
  * numbers, so the engine is a leaf: clock-free, power-law-free, store-free, fixture-testable. The VIEW does
@@ -41,9 +47,14 @@ export interface CyclingInputs {
   expenses: number;
   strikeAprPct: number;
   cbAprPct: number;
-  cycleMonths: number;           // refinance cadence
-  cbLtvCapPct: number;           // stop-drawing cap, as a percentage
+  cycleMonths: number;           // refinance cadence (cycle mode only)
+  cbLtvCapPct: number;           // stop-drawing cap, as a percentage (cycle mode only)
+  /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
+   *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
+  mode?: CyclingMode;
 }
+
+export type CyclingMode = 'cycle' | 'hold' | 'clearStrike' | 'clearBoth';
 
 export interface CyclingRow {
   m: number;
@@ -104,6 +115,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const cmr = cbAprPct / 100 / 12;
   const cap = cbLtvCapPct / 100;
   const cycle = Math.max(1, Math.floor(inputs.cycleMonths));
+  const mode: CyclingMode = inputs.mode ?? 'cycle';
 
   const strikeColl = inputs.strikeCollateralBtc;   // fixed — purchases go to Coinbase
   let cbColl = inputs.cbCollateralBtc;             // grows with every purchase
@@ -132,36 +144,62 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       cbDebt += ci;
       totalCbInterest += ci;
 
-      // The cap is a COINBASE threshold — test it against CB LTV, never a blended figure.
-      const drawing = ltvOf(cbDebt, cbColl, price) < cap && liqMonth === null;
+      if (mode === 'cycle') {
+        // The cap is a COINBASE threshold — test it against CB LTV, never a blended figure.
+        const drawing = ltvOf(cbDebt, cbColl, price) < cap && liqMonth === null;
 
-      if (drawing) {
-        // The Strike line is a hard constraint: min(credit line, collateral × price × max-draw LTV).
-        // What it can't fund comes out of income, which is what would actually happen — so the
-        // constraint is self-limiting (fewer sats bought) rather than a hard stop.
-        const available = Math.max(0, Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal);
-        strikeDrawn = Math.min(expenses, available);
-        strikeShortfall = expenses - strikeDrawn;
-        if (strikeShortfall > 0 && creditExhaustedMonth === null) creditExhaustedMonth = m;
+        if (drawing) {
+          // The Strike line is a hard constraint: min(credit line, collateral × price × max-draw LTV).
+          // What it can't fund comes out of income, which is what would actually happen — so the
+          // constraint is self-limiting (fewer sats bought) rather than a hard stop.
+          const available = Math.max(0, Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal);
+          strikeDrawn = Math.min(expenses, available);
+          strikeShortfall = expenses - strikeDrawn;
+          if (strikeShortfall > 0 && creditExhaustedMonth === null) creditExhaustedMonth = m;
 
-        strikeBal += strikeDrawn;
-        const si = strikeBal * smr;
-        strikeBal += si;
-        totalStrikeInterest += si;
+          strikeBal += strikeDrawn;
+          const si = strikeBal * smr;
+          strikeBal += si;
+          totalStrikeInterest += si;
 
-        if (price > 0) cbColl += Math.max(0, income - strikeShortfall) / price;
+          if (price > 0) cbColl += Math.max(0, income - strikeShortfall) / price;
+        } else {
+          if (stopMonth === null && liqMonth === null) stopMonth = m;
+          const si = strikeBal * smr;
+          strikeBal += si;
+          totalStrikeInterest += si;
+          if (price > 0) cbColl += Math.max(0, income - expenses) / price;
+        }
+
+        // Refinance: the whole Strike balance moves to the cheaper Coinbase loan.
+        if (m % cycle === 0 && strikeBal > 0) {
+          cbDebt += strikeBal;
+          strikeBal = 0;
+        }
       } else {
-        if (stopMonth === null && liqMonth === null) stopMonth = m;
+        // Non-cycle modes: no draw, no refinance. Both legs accrue at their own rates; the surplus
+        // (never the deficit — see C1) retires the named leg(s) first, then buys into the Coinbase pool.
         const si = strikeBal * smr;
         strikeBal += si;
         totalStrikeInterest += si;
-        if (price > 0) cbColl += Math.max(0, income - expenses) / price;
-      }
 
-      // Refinance: the whole Strike balance moves to the cheaper Coinbase loan.
-      if (m % cycle === 0 && strikeBal > 0) {
-        cbDebt += strikeBal;
-        strikeBal = 0;
+        let cash = Math.max(0, income - expenses);
+        if (mode === 'clearStrike' || mode === 'clearBoth') {
+          const pay = Math.min(cash, strikeBal);
+          strikeBal -= pay;
+          cash -= pay;
+          // ⚠ SUB-CENT RESIDUAL SWEEP, not float dust: 0.005 is half a US cent — three orders of
+          // magnitude above float noise. A non-zero residual here would render a phantom non-zero
+          // strikeLtv. Never "correct" this to 1e-9.
+          if (strikeBal < 0.005) strikeBal = 0;
+        }
+        if (mode === 'clearBoth') {
+          const pay = Math.min(cash, cbDebt);
+          cbDebt -= pay;
+          cash -= pay;
+          if (cbDebt < 0.005) cbDebt = 0;
+        }
+        if (cash > 0 && price > 0) cbColl += cash / price;
       }
     }
 
