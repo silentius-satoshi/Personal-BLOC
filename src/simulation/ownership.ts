@@ -3,8 +3,9 @@
  *
  * Two surfaces, one formula, one name (B1): the Almanac Cycling face's lens/gain math and the viewer
  * ownership bar (S4) both read `yoursBtc` from HERE. Before this, the same subtraction lived in
- * `cyclingFaceView.ts` (as `netBtc`/`net`) and again in the proposed Ownership face — four copies of one
- * user-facing number under two names, while the Daily ledger's `netBtc` already meant something else.
+ * `cyclingFaceView.ts` (under two other names) and again in the proposed Ownership face — four copies of
+ * one user-facing number under two names, while the Daily ledger already used one of those names for
+ * something else.
  *
  * 🔴 Caller-enforced: the result is DISPLAY-ONLY and is never a denominator for lender LTV math — that
  * routes through cbMetrics / computeStrikeLtv (architecture invariant 2). This module imports NOTHING;
