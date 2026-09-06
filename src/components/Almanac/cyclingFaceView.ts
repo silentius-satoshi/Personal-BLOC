@@ -1,8 +1,10 @@
 import type { CyclingRow } from '../../simulation/cyclingSim';
+import { deriveOwnership } from '../../simulation/ownership';
 
 /**
  * Pure display math for the Almanac Cycling face. No React, no store, no imports from powerLaw/cycleModel —
- * only a TYPE import of CyclingRow. Extracted so it is testable without a render harness (the repo has none).
+ * only a TYPE import of CyclingRow plus the ownership leaf (the single definition of yoursBtc, S2′).
+ * Extracted so it is testable without a render harness (the repo has none).
  *
  * Architecture invariant 2 (one definition of every risk number via cbMetrics / computeStrikeLtv) governs
  * the user's LIVE position. These are projected hypotheticals on a speculative price path — routing them
@@ -16,8 +18,8 @@ export interface LensedRow {
   strikeLtv: number;
   collateralValue: number;
   equity: number;
-  /** BTC that survives the debt at this price: btcHeld − debt/price. */
-  netBtc: number;
+  /** BTC that survives the debt at this price: deriveOwnership(btcHeld, debt, price).yoursBtc (S2′). */
+  yoursBtc: number;
 }
 
 /**
@@ -25,7 +27,7 @@ export interface LensedRow {
  * Display-only: it never re-runs the engine and never touches the charts.
  *
  * ⚠ Guard (multiplier <= 0 or row.price <= 0) returns the row's OWN price/ltvs/collateralValue/equity
- * unchanged, and netBtc = row.btcHeld. CyclingRow carries no netBtc field, so there is no "own value" to
+ * unchanged, and yoursBtc = row.btcHeld. CyclingRow carries no yoursBtc field, so there is no "own value" to
  * fall back to — the debt term contributes 0, the same convention as btcGained's zero-price guard.
  */
 export function applyPriceLens(row: CyclingRow, multiplier: number): LensedRow {
@@ -36,7 +38,7 @@ export function applyPriceLens(row: CyclingRow, multiplier: number): LensedRow {
       strikeLtv: row.strikeLtv,
       collateralValue: row.collateralValue,
       equity: row.equity,
-      netBtc: row.btcHeld,
+      yoursBtc: row.btcHeld,
     };
   }
   const price = row.price * multiplier;
@@ -47,15 +49,15 @@ export function applyPriceLens(row: CyclingRow, multiplier: number): LensedRow {
     strikeLtv: row.strikeCollateralBtc * price > 0 ? row.strikeBalance / (row.strikeCollateralBtc * price) : 0,
     collateralValue,
     equity: collateralValue - row.debt,
-    netBtc: row.btcHeld - row.debt / price,
+    yoursBtc: deriveOwnership(row.btcHeld, row.debt, price).yoursBtc,
   };
 }
 
 export interface BtcGain {
   /** BTC accumulated — price-independent (pure counts). */
   gross: number;
-  /** BTC that survives the debt on both sides. */
-  net: number;
+  /** BTC that survives the debt on both sides (deriveOwnership, S2′). */
+  yours: number;
 }
 
 /**
@@ -67,9 +69,9 @@ export interface BtcGain {
  */
 export function btcGained(row: CyclingRow, base: CyclingRow, rowPriceOverride?: number): BtcGain {
   const rowPrice = rowPriceOverride ?? row.price;
-  const rowNet = row.btcHeld - (rowPrice > 0 ? row.debt / rowPrice : 0);
-  const baseNet = base.btcHeld - (base.price > 0 ? base.debt / base.price : 0);
-  return { gross: row.btcHeld - base.btcHeld, net: rowNet - baseNet };
+  const rowYours = deriveOwnership(row.btcHeld, row.debt, rowPrice).yoursBtc;
+  const baseYours = deriveOwnership(base.btcHeld, base.debt, base.price).yoursBtc;
+  return { gross: row.btcHeld - base.btcHeld, yours: rowYours - baseYours };
 }
 
 export interface HoldingsSplit {

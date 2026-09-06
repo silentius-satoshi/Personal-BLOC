@@ -51,17 +51,17 @@ describe('applyPriceLens', () => {
     expect(r.cbDebt).toBe(before.cbDebt);
   });
 
-  it('netBtc is btcHeld minus the debt repriced at the lensed price', () => {
+  it('yoursBtc is btcHeld minus the debt repriced at the lensed price', () => {
     const r = mkRow();
-    expect(applyPriceLens(r, 2).netBtc).toBeCloseTo(3 - 100_000 / 160_000, 12);
+    expect(applyPriceLens(r, 2).yoursBtc).toBeCloseTo(3 - 100_000 / 160_000, 12);
   });
 
-  it('guards a non-positive multiplier or price — no NaN, netBtc falls back to btcHeld', () => {
+  it('guards a non-positive multiplier or price — no NaN, yoursBtc falls back to btcHeld', () => {
     const r = mkRow();
     for (const l of [applyPriceLens(r, 0), applyPriceLens(r, -1), applyPriceLens(mkRow({ price: 0 }), 1.5)]) {
       expect(Number.isFinite(l.price)).toBe(true);
       expect(Number.isFinite(l.cbLtv)).toBe(true);
-      expect(l.netBtc).toBe(r.btcHeld);
+      expect(l.yoursBtc).toBe(r.btcHeld);
     }
     expect(applyPriceLens(r, 0).price).toBe(r.price);   // the row's OWN price, unchanged
   });
@@ -74,12 +74,12 @@ describe('btcGained', () => {
     expect(btcGained(mkRow(), base).gross).toBeCloseTo(1, 12);
   });
 
-  it('net goes negative when debt grows faster than holdings', () => {
-    // +0.05 ₿ but debt triples at a flat price → net must be under water.
+  it('yours goes negative when debt grows faster than holdings', () => {
+    // +0.05 ₿ but debt triples at a flat price → yours must be under water.
     const row = mkRow({ price: 60_000, btcHeld: 2.05, debt: 150_000 });
     const g = btcGained(row, base);
     expect(g.gross).toBeGreaterThan(0);
-    expect(g.net).toBeLessThan(0);
+    expect(g.yours).toBeLessThan(0);
   });
 
   it('an override equal to row.price is identical to the two-arg call', () => {
@@ -87,13 +87,13 @@ describe('btcGained', () => {
     const a = btcGained(row, base);
     const b = btcGained(row, base, row.price);
     expect(b.gross).toBeCloseTo(a.gross, 12);
-    expect(b.net).toBeCloseTo(a.net, 12);
+    expect(b.yours).toBeCloseTo(a.yours, 12);
   });
 
-  it('halving the override makes net STRICTLY smaller whenever the row carries debt', () => {
+  it('halving the override makes yours STRICTLY smaller whenever the row carries debt', () => {
     const row = mkRow();
     expect(row.debt).toBeGreaterThan(0);
-    expect(btcGained(row, base, row.price / 2).net).toBeLessThan(btcGained(row, base).net);
+    expect(btcGained(row, base, row.price / 2).yours).toBeLessThan(btcGained(row, base).yours);
   });
 
   it('the override never moves gross — BTC counts are price-independent', () => {
@@ -103,17 +103,17 @@ describe('btcGained', () => {
 
   it('lenses the ROW side only — the base keeps its own real price', () => {
     const row = mkRow();
-    // Overriding the row to exactly the base's price must NOT collapse net to a pure count difference,
+    // Overriding the row to exactly the base's price must NOT collapse yours to a pure count difference,
     // because the base still discounts its own debt at its own price.
     const g = btcGained(row, base, base.price);
     const expected = (row.btcHeld - row.debt / base.price) - (base.btcHeld - base.debt / base.price);
-    expect(g.net).toBeCloseTo(expected, 12);
+    expect(g.yours).toBeCloseTo(expected, 12);
   });
 
   it('guards zero prices on either side', () => {
-    expect(Number.isFinite(btcGained(mkRow({ price: 0 }), base).net)).toBe(true);
-    expect(Number.isFinite(btcGained(mkRow(), mkRow({ price: 0 })).net)).toBe(true);
-    expect(Number.isFinite(btcGained(mkRow(), base, 0).net)).toBe(true);
+    expect(Number.isFinite(btcGained(mkRow({ price: 0 }), base).yours)).toBe(true);
+    expect(Number.isFinite(btcGained(mkRow(), mkRow({ price: 0 })).yours)).toBe(true);
+    expect(Number.isFinite(btcGained(mkRow(), base, 0).yours)).toBe(true);
   });
 });
 
@@ -148,7 +148,7 @@ describe('btcGained across a liquidation', () => {
     const before = btcGained(res.rows[res.liqMonth!], res.rows[0]);
     const after = btcGained(res.rows[res.liqMonth! + 1], res.rows[0]);
     expect(after.gross).toBeLessThan(before.gross);            // collateral seized
-    expect(after.net).toBeLessThan(before.net);
+    expect(after.yours).toBeLessThan(before.yours);
   });
 
   it('pins the off-by-one trap: the breaching row is flagged but still intact', () => {

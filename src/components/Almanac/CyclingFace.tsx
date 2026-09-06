@@ -303,9 +303,9 @@ export default function CyclingFace() {
             atEnd ? `never-draw: ${fmtK(sim.baselineEquity)}` : `at month ${monthIdx}`,
             atEnd ? (wins ? 'var(--green)' : 'var(--amber)') : (lensed.equity >= 0 ? 'var(--green)' : 'var(--red)')],
           ['BTC price', fmtK(lensed.price), `from ${fmtK(s.btcPrice)}`, BAND_META.find((b) => b.key === band)!.color],
-          // Gross is price-independent (BTC counts); net is lensed, so it moves with the price lens.
+          // Gross is price-independent (BTC counts); yours is lensed, so it moves with the price lens.
           ['BTC gained', `${gained.gross >= 0 ? '+' : '−'}${Math.abs(gained.gross).toFixed(3)} ₿`,
-            `net ${gained.net >= 0 ? '+' : '−'}${Math.abs(gained.net).toFixed(3)} ₿`,
+            `yours ${gained.yours >= 0 ? '+' : '−'}${Math.abs(gained.yours).toFixed(3)} ₿`,
             gained.gross >= 0 ? 'var(--green)' : 'var(--red)'],
           // ⚠ NOT month-scoped: CyclingRow carries no per-row cumulative interest, and adding one would be
           // an engine change. The sub-label says "full horizon" so it reads as the odd one out on purpose.
@@ -315,7 +315,7 @@ export default function CyclingFace() {
             <span className={styles.cardLabel}>{label}</span>
             <div className={styles.statValue} style={{ color }}>{value}</div>
             <div className={styles.statSub}
-              style={label === 'BTC gained' ? { color: gained.net >= 0 ? 'var(--green)' : 'var(--red)' } : undefined}>
+              style={label === 'BTC gained' ? { color: gained.yours >= 0 ? 'var(--green)' : 'var(--red)' } : undefined}>
               {sub}
             </div>
           </div>
@@ -553,15 +553,15 @@ export default function CyclingFace() {
                       {(r.cbLtv * 100).toFixed(1)}%
                     </td>
                     <td className={`${styles.msTd} ${styles.msEquity}`}>{fmtK(r.equity)}</td>
-                    {/* Gross = BTC accumulated. Net = what survives the debt. On a post-liquidation row
-                        net drops hard — shown, never clamped. */}
+                    {/* Gross = BTC accumulated. Yours = what survives the debt. On a post-liquidation row
+                        yours drops hard — shown, never clamped. */}
                     <td className={styles.msTd}>
                       <div className={styles.gainGross}>
                         {g.gross >= 0 ? '+' : '−'}{Math.abs(g.gross).toFixed(3)}
                       </div>
                       <div className={styles.gainNet}
-                        style={{ color: g.net >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {g.net >= 0 ? '+' : '−'}{Math.abs(g.net).toFixed(3)} net
+                        style={{ color: g.yours >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                        {g.yours >= 0 ? '+' : '−'}{Math.abs(g.yours).toFixed(3)} yours
                       </div>
                     </td>
                   </tr>
