@@ -1,0 +1,439 @@
+/* Almanac Ownership face (S3). Tokens only — zero new hex. Owns its own width like CyclingFace
+   (960px). The ported v5 prototype's inline palette maps onto app tokens; the only deliberate
+   deviations are the venue colours (--btc/--green, PROVISIONAL — see the component comment) and a
+   CSS two-column layout instead of a JS resize listener. */
+
+.face {
+  width: 100%;
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 0 16px 32px;
+  box-sizing: border-box;
+}
+
+/* ── Face chrome — the Ledger/Scenario voice ─────────────────────────────────────────────────── */
+.head {
+  margin: 4px 2px 0;
+}
+.title {
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.framing {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--text-faint);
+}
+
+.seedRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 12px 2px 0;
+}
+.seedLabel {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-right: auto;
+}
+.ghostBtn {
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 10px;
+  transition: background 0.12s;
+}
+.ghostBtn:hover { background: var(--bg-hover); }
+
+/* ── Two-column shell (≥920px), stacked below — CSS, no resize listener ───────────────────────── */
+.shell {
+  display: block;
+}
+.side {
+  min-width: 0;
+}
+@media (min-width: 920px) {
+  .shell {
+    display: grid;
+    grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    margin-top: 8px;
+  }
+  .side { margin-top: 0; }
+}
+
+/* ── HERO — the ownership wrapper ────────────────────────────────────────────────────────────── */
+.heroEyebrow {
+  margin-top: 16px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.14em;
+  color: var(--text-faint);
+}
+.heroValue {
+  margin-top: 6px;
+  font-family: var(--mono);
+  font-size: 42px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--btc);
+  font-variant-numeric: tabular-nums;
+}
+.heroLensed { color: var(--orange); }
+.heroLine {
+  margin-top: 5px;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+.segBar {
+  display: flex;
+  gap: 2px;
+  height: 10px;
+  border-radius: 5px;
+  overflow: hidden;
+  background: var(--surface-2);
+  margin-top: 12px;
+}
+.segYours { background: var(--btc); }
+.segLenders { background: var(--text-faint); }
+
+.verdict {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+
+/* ── Cards ───────────────────────────────────────────────────────────────────────────────────── */
+.card {
+  margin-top: 13px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.cardLabel {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.noteQuiet {
+  margin: 10px 0 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-faint);
+}
+
+/* ── Scrubbers (ONE gesture-exempt card — A1) ────────────────────────────────────────────────── */
+.scrubCard { margin-top: 16px; }
+.scrubHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.scrubHead .cardLabel { margin-bottom: 0; }
+.scrubValue {
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+}
+.scrub {
+  width: 100%;
+  height: 28px;
+  accent-color: var(--btc);
+  display: block;
+  cursor: pointer;
+  margin: 0;
+}
+.msFlag {
+  font-family: var(--mono);
+  font-size: 10px;
+  color: var(--red);
+}
+
+/* ── Stat grid ───────────────────────────────────────────────────────────────────────────────── */
+.statGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 9px;
+  margin-top: 14px;
+}
+.stat {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 11px 12px;
+}
+.statLabel {
+  display: block;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  margin-bottom: 5px;
+}
+.statValue {
+  font-family: var(--mono);
+  font-size: 16.5px;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.statSub {
+  font-size: 10px;
+  color: var(--text-faint);
+  margin-top: 3px;
+  line-height: 1.45;
+}
+
+/* ── Safety section ──────────────────────────────────────────────────────────────────────────── */
+.safety {
+  margin-top: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 14px 8px;
+}
+.safetyTitle {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 11px;
+}
+.safetyLine { margin-bottom: 11px; }
+.slHead {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 4px;
+  gap: 8px;
+}
+.slLabel { font-size: 12px; color: var(--text-muted); }
+.slValue {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.slRight { color: var(--text-faint); margin-left: 8px; }
+.slTrack {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.slFill { height: 100%; border-radius: 3px; }
+.slFlag { color: var(--red); font-size: 10px; margin-top: 4px; line-height: 1.45; }
+.nearest {
+  font-size: 10.5px;
+  color: var(--text-faint);
+  line-height: 1.55;
+  padding: 4px 0 8px;
+}
+
+/* ── Venue (PROVISIONAL palette — see the component comment, A2) ─────────────────────────────── */
+.venueBar {
+  display: flex;
+  gap: 2px;
+  height: 8px;
+  border-radius: 4px;
+  overflow: hidden;
+  background: var(--surface-2);
+}
+.venueSegStrike { background: var(--btc); }
+.venueSegCb { background: var(--green); }
+.venueRow {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.venueDotStrike,
+.venueDotCb,
+.venueDotNone {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: 0 0 auto;
+  align-self: center;
+}
+.venueDotStrike { background: var(--btc); }
+.venueDotCb { background: var(--green); }
+.venueDotNone { background: transparent; }
+.venueName { color: var(--text-secondary); }
+.venueBtc { margin-left: auto; color: var(--text-primary); }
+.venueUsd { color: var(--text-faint); }
+.venueCombined .venueName,
+.venueCombined .venueBtc { color: var(--text-primary); }
+
+/* ── Chart ───────────────────────────────────────────────────────────────────────────────────── */
+.chartCard { margin-top: 14px; }
+.chartSeg {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.chartSegBtn {
+  flex: 1 1 0;
+  min-width: 74px;
+  min-height: 36px;
+  border-radius: 11px;
+  font-family: var(--mono);
+  font-size: 11px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  transition: background 0.12s;
+}
+.chartSegBtn:hover { background: var(--bg-hover); }
+.chartSegOn {
+  background: rgba(247, 147, 26, 0.08);
+  border-color: rgba(247, 147, 26, 0.5);
+  color: var(--text-primary);
+}
+.chartBox {
+  height: 240px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 12px 8px 4px 0;
+}
+
+.tooltip {
+  background: var(--surface-2);
+  border: 1px solid var(--line-2);
+  border-radius: 10px;
+  padding: 6px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.tooltipHead { color: var(--text-muted); margin-bottom: 4px; }
+.tooltipRow { display: flex; justify-content: space-between; gap: 10px; }
+.tooltipRow strong { font-variant-numeric: tabular-nums; }
+
+/* ── Controls (right column) ────────────────────────────────────────────────────────────────── */
+.controlCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  padding: 16px 15px 8px;
+  margin-top: 16px;
+}
+.segRow {
+  display: flex;
+  gap: 5px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+.segBtn {
+  flex: 1 1 0;
+  min-width: 74px;
+  min-height: 40px;
+  border-radius: 11px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--text-muted);
+  transition: background 0.12s;
+}
+.segBtn:hover { background: var(--bg-hover); }
+.segBtnOn {
+  background: rgba(247, 147, 26, 0.08);
+  border-color: rgba(247, 147, 26, 0.5);
+  color: var(--text-primary);
+}
+.presetRow { margin: 8px 0 2px; }
+.surplusNote {
+  margin: 6px 0 12px;
+  padding: 9px 11px;
+  border-radius: 11px;
+  background: var(--surface-2);
+  font-size: 11.5px;
+  line-height: 1.55;
+}
+
+/* ── Constraint notices (C1/C2 — read like the credit-exhausted case) ───────────────────────── */
+.constraints {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--amber);
+  color: var(--amber);
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.constraints > div + div { margin-top: 8px; }
+
+/* ── Milestones table ───────────────────────────────────────────────────────────────────────── */
+.msWrap {
+  margin-top: 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 18px;
+  overflow: hidden;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.msTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.msTh {
+  padding: 10px 7px;
+  font-weight: 400;
+  font-size: 10px;
+  color: var(--text-faint);
+  text-align: right;
+  border-bottom: 1px solid var(--line);
+}
+.msYear { text-align: left; }
+.msTd {
+  padding: 7px;
+  text-align: right;
+  color: var(--text-muted);
+}
+.msRow { cursor: pointer; }
+.msRow:hover { background: var(--bg-hover); }
+.msRowOn { background: var(--surface-2); }
+.msRowOn .msYear { color: var(--btc); }
+.msPost { opacity: 0.55; }
+.msYours { color: var(--btc); }
+.gainNet { color: var(--green); }
+.gainGross { font-size: 9.5px; color: var(--text-faint); }
+
+/* ── Footer ─────────────────────────────────────────────────────────────────────────────────── */
+.disclaimer {
+  color: var(--text-faint);
+  font-size: 10.5px;
+  line-height: 1.7;
+  margin-top: 14px;
+}

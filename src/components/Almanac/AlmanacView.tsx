@@ -16,6 +16,7 @@ import { CbDefenseTool } from '../Tools/CbDefenseTool';
 import LedgerFace from './LedgerFace';
 import ScenarioFace from './ScenarioFace';
 import CyclingFace from './CyclingFace';
+import OwnershipFace from './OwnershipFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
@@ -42,7 +43,7 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
  * six faces under one hub is navigation only — it crosses neither wall.
  */
-type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling';
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership';
 
 export default function AlmanacView() {
   const [face, setFace] = useState<Face>('halving');
@@ -98,6 +99,7 @@ export default function AlmanacView() {
     { key: 'scenario' as Face, label: '⚖ Scenario' },   // Phase 3b — ungated
     // ⚠ Appended LAST, and gated: e2e/navigation.spec.ts pins halving at index 0 and cycle at index 1.
     ...(hasCbLoan ? [{ key: 'cycling' as Face, label: '♻ Cycling' }] : []),
+    { key: 'ownership' as Face, label: '⚖ Ownership' },   // S3 — UNGATED, after cycling
   ];
   const idx = visibleFaces.findIndex((f) => f.key === face);
 
@@ -112,6 +114,9 @@ export default function AlmanacView() {
     if (f === 'scenario') return <div className={styles.container}><ScenarioFace /></div>;
     if (f === 'mining')   return <div className={styles.faceStack}><div className={styles.facePanel}><MiningInputsPanel /></div><MiningMain /></div>;
     if (f === 'powerlaw') return <div className={styles.faceStack}><div className={styles.facePanel}><PowerLawSidebar /></div><PowerLawMain /></div>;
+    // ⚠ MUST be an explicit branch ABOVE the final return — the fallback renders the Converter, so a
+    // face added to the union without a branch here compiles clean and silently shows the wrong tool (C8).
+    if (f === 'ownership') return <OwnershipFace />;
     return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
   };
 

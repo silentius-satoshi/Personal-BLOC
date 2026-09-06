@@ -3,6 +3,8 @@ import { deriveOwnership } from '../ownership';
 import { runCyclingSim, type CyclingInputs } from '../cyclingSim';
 import { buildViewerSnapshotPayload } from '../../store/payloads';
 import { useStore } from '../../store/useStore';
+import { btcGained } from '../../components/Almanac/cyclingFaceView';
+import { ownershipGained } from '../../components/Almanac/ownershipFaceView';
 
 /**
  * Ownership domain — the single definition of "what's yours" (S2′), the cap-dependent crossover (C2),
@@ -77,6 +79,17 @@ describe('deriveOwnership — one definition of "what\'s yours"', () => {
     expect(o.hasData).toBe(false);
     expect(o.yoursShare).toBe(0);
     expect(o.lendersShare).toBe(0);
+  });
+
+  it('B2: ownershipGained is the SAME definition as btcGained — one name, one implementation', () => {
+    const r = runSeed({ mode: 'cycle', cbLtvCapPct: 75 });
+    const row = r.rows[24], base = r.rows[0];
+    const a = ownershipGained(row, base, row.price * 0.5);
+    const b = btcGained(row, base, row.price * 0.5);
+    expect(a).toEqual(b);
+    expect(a.yours).toBeCloseTo(
+      deriveOwnership(row.btcHeld, row.debt, row.price * 0.5).yoursBtc
+      - deriveOwnership(base.btcHeld, base.debt, base.price).yoursBtc, 12);
   });
 });
 
