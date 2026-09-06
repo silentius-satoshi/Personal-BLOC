@@ -12,6 +12,7 @@ import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
 import { applyPriceLens, btcGained, holdingsSplit, clampMonth } from './cyclingFaceView';
+import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './CyclingFace.module.css';
@@ -100,7 +101,9 @@ export default function CyclingFace() {
     cbLtvTriggerPct: st.cbLtvTriggerPct,
     strikeCollateralBtc: st.getCurrentBtcHeld(),   // reading-anchored, Strike-only (v20)
     strikeBalance: st.advisorActualBlocBalance,
-    cbCollateralBtc: st.cbCollateralBtc,
+    // Derive INSIDE the selector so the value stays a primitive — `useShallow` keeps comparing numbers
+    // and neither dep array below changes. Mirrors :101's Strike leg: both legs read through their derive.
+    cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
     cbLoanBalance: st.cbLoanBalance,
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
