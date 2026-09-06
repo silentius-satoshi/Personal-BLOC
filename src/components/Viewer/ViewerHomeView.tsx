@@ -7,6 +7,7 @@ import { fmtUSD, relativeAge } from '../../utils/format';
 import { PriceChart } from '../SimpleMode/PriceChart';
 import { RadialGauge } from './RadialGauge';
 import { VenueBar } from './VenueBar';
+import { OwnershipBar } from './OwnershipBar';
 import { RolePill, useGrantedRoles } from './RolePill';
 import styles from './ViewerHomeView.module.css';
 
@@ -196,6 +197,19 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
               collateral must stay distinguishable from a safe-mode viewer. */}
           {s.mode === 'trusted' && (
             <VenueBar strikeBtc={venueStrikeBtc} cbBtc={venueCbBtc} btcPrice={venuePrice} />
+          )}
+
+          {/* Ownership bar (S4) — what's yours vs owed. TRUSTED-only like VenueBar (the C-safe snapshot
+              carries no absolutes to feed it — pinned by ownership.test.ts). ⚠ C4 wiring: btcHeld + price
+              reuse the venue bar's existing derives (zero new store reads); debt is the ACCRUED CB balance
+              (f.cb.balance, 0 when !hasCbLoan), NEVER raw cbLoanBalance — a raw read would render stale
+              debt and disagree with the CB gauge directly above it. */}
+          {s.mode === 'trusted' && f && (
+            <OwnershipBar
+              btcHeld={venueStrikeBtc + venueCbBtc}
+              debt={f.credit.used + f.cb.balance}
+              btcPrice={venuePrice}
+            />
           )}
         </div>
       </div>
