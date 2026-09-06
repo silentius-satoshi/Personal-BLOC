@@ -421,9 +421,8 @@ export default function OwnershipFace() {
             </div>
           </section>
 
-          {/* ── HOLDINGS BY VENUE — ⚠ PROVISIONAL palette: --btc/--green matches the Cycling sibling, but
-              measures 1.11 contrast (WCAG relative luminance) — the wrong pair, awaiting the venue-palette
-              amendment. Matching a sibling's known-bad pairing beats inventing a third convention. (A2) */}
+          {/* ── HOLDINGS BY VENUE — Strike = --text-primary (white), Coinbase = --coinbase (blue): the
+              v5 prototype palette, restored by owner decision (was provisionally --btc/--green under A2). */}
           <section className={styles.card}>
             <span className={styles.cardLabel}>Holdings by venue</span>
             {(() => {
@@ -505,9 +504,9 @@ export default function OwnershipFace() {
                     <ReferenceLine y={50} stroke="var(--text-primary)" strokeDasharray="4 4"
                       label={{ value: 'Strike draw cap', fill: 'var(--text-primary)', fontSize: 9.5, position: 'insideBottomLeft' }} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
-                    {/* ⚠ PROVISIONAL venue palette (A2): --btc/--green, matching the Cycling sibling — 1.11 contrast. */}
-                    <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--btc)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--green)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    {/* Venue palette: Strike white, Coinbase blue (--coinbase) — matches the venue section. */}
+                    <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--coinbase)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--text-primary)" strokeWidth={2} dot={false} isAnimationActive={false} />
                   </LineChart>
                 </ResponsiveContainer>
               )}

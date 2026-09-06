@@ -1,9 +1,10 @@
-/* Viewer venue bar. Tokens only — zero new literals, and no new token added to the design system.
+/* Viewer venue bar. Tokens only — zero new literals (the Coinbase blue is the new --coinbase token).
 
    No level colours here. green/amber/red are Safe/Fair/Poor on the gauge cards above; a level colour on a
    composition read would be misread as a risk verdict, and no lender rule defines a venue-concentration
-   threshold. Strike takes --btc (non-semantic on this surface, and the same token the Almanac Cycling
-   face's venue bar uses, so the two agree); Coinbase takes muted; the total takes primary. */
+   threshold. Strike takes --text-primary (white), Coinbase takes --coinbase (blue — the v5 prototype
+   venue palette, restored by owner decision; the Almanac Cycling face's venue bar keeps its own
+   --btc/--green pair); the total takes primary. */
 
 /* Card shell — the SAME tokens as the gauge cards in ViewerHomeView.module.css (.card), so this sits in the
    stack as a peer surface. Radius is the app's 20px, not the mockup's 14px. */
@@ -49,8 +50,8 @@
   height: 100%;
   min-width: 0;
 }
-.segStrike { background: var(--btc); }
-.segCb { background: var(--text-muted); }
+.segStrike { background: var(--text-primary); }
+.segCb { background: var(--coinbase); }
 
 .cells {
   display: flex;
@@ -80,8 +81,8 @@
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
-.valStrike { color: var(--btc); }
-.valCb { color: var(--text-muted); }
+.valStrike { color: var(--text-primary); }
+.valCb { color: var(--coinbase); }
 .valTotal { color: var(--text-primary); font-weight: 600; }
 
 .cellSub {

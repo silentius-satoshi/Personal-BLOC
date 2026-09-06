@@ -1,7 +1,7 @@
-/* Almanac Ownership face (S3). Tokens only — zero new hex. Owns its own width like CyclingFace
-   (960px). The ported v5 prototype's inline palette maps onto app tokens; the only deliberate
-   deviations are the venue colours (--btc/--green, PROVISIONAL — see the component comment) and a
-   CSS two-column layout instead of a JS resize listener. */
+/* Almanac Ownership face (S3). Tokens only — zero new hex (the Coinbase blue is the new
+   --coinbase token). Owns its own width like CyclingFace (960px). The ported v5 prototype's inline
+   palette maps onto app tokens; the only deviation from the prototype is a CSS two-column layout
+   instead of a JS resize listener. */
 
 .face {
   width: 100%;
@@ -250,7 +250,8 @@
   padding: 4px 0 8px;
 }
 
-/* ── Venue (PROVISIONAL palette — see the component comment, A2) ─────────────────────────────── */
+/* ── Venue — Strike = white (--text-primary), Coinbase = blue (--coinbase). The v5 prototype palette,
+   restored by owner decision (was provisionally --btc/--green under A2). */
 .venueBar {
   display: flex;
   gap: 2px;
@@ -259,8 +260,8 @@
   overflow: hidden;
   background: var(--surface-2);
 }
-.venueSegStrike { background: var(--btc); }
-.venueSegCb { background: var(--green); }
+.venueSegStrike { background: var(--text-primary); }
+.venueSegCb { background: var(--coinbase); }
 .venueRow {
   display: flex;
   align-items: baseline;
@@ -279,8 +280,8 @@
   flex: 0 0 auto;
   align-self: center;
 }
-.venueDotStrike { background: var(--btc); }
-.venueDotCb { background: var(--green); }
+.venueDotStrike { background: var(--text-primary); }
+.venueDotCb { background: var(--coinbase); }
 .venueDotNone { background: transparent; }
 .venueName { color: var(--text-secondary); }
 .venueBtc { margin-left: auto; color: var(--text-primary); }

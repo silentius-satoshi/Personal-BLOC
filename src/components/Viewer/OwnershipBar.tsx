@@ -38,7 +38,7 @@ export function OwnershipBar({ btcHeld, debt, btcPrice }: OwnershipBarProps) {
   return (
     <div className={styles.card}>
       <div className={styles.head}>
-        <span className={styles.title}>What&apos;s yours</span>
+        <span className={styles.title}>Who holds the coins</span>
         <span className={styles.total}>{fmtBtc(btcHeld)} held</span>
       </div>
 
