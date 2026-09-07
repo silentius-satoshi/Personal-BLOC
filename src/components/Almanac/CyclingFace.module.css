@@ -268,8 +268,11 @@
   background: var(--line-2);
   margin-bottom: 12px;
 }
-.venueSegStrike { background: var(--btc); }
-.venueSegCb { background: var(--green); }
+/* Venue palette shared with Viewer/VenueBar.module.css and OwnershipFace.module.css — same two
+   tokens, same reason. Change one, change all three. Was --btc/--green, which measured 1.11 and put
+   a level colour (--green is .verdictGood in this file) on a composition read. */
+.venueSegStrike { background: var(--text-primary); }
+.venueSegCb { background: var(--coinbase); }
 
 .venueRow {
   display: flex;
@@ -297,8 +300,8 @@
   flex: none;
   align-self: center;
 }
-.venueDotStrike { background: var(--btc); }
-.venueDotCb { background: var(--green); }
+.venueDotStrike { background: var(--text-primary); }
+.venueDotCb { background: var(--coinbase); }
 .venueDotNone { background: transparent; }
 
 .venueName {

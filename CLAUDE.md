@@ -3477,6 +3477,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 /* Daily Mode P4a (mode-toggle-preview.html) — layered surfaces + accents, additive: */
 --surface #0e1219 / --surface-2 #151b25 / --surface-3 #1c2431  --line / --line-2 (translucent white borders)
 --btc #f7931a (bitcoin accent, distinct from --orange)  --mono (mono font stack)
+--coinbase #0052FF (Coinbase venue accent — the design system's only brand-colour token)  --maroon #8B3A3A (CycleClock low/floor marker)
 /* Gesture & Motion System P0 — springs as duration+easing pairs (CSS transitions AND WAAPI): */
 --motion-fast 120ms / --motion-standard 200ms / --motion-settle 320ms
 --ease-standard / --ease-decelerate (cubic-beziers)  --ease-spring / --ease-spring-soft (linear() spring curves)
@@ -3484,6 +3485,14 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 `--bg-base: #09090E` (= `--bg-app`) is defined in `tokens.css` — it had been referenced in 25 places across
 15 files but never defined (resolved transparent: 23 `background:` uses masked by the dark app bg, 2
 `color:` uses = invisible dark-on-bright button text in SafetyDashboard, both fixed by the one definition).
+
+**Venue palette — ONE convention across ALL THREE surfaces.** The venue bars use the same two tokens in
+`src/components/Viewer/VenueBar.module.css`, `src/components/Almanac/OwnershipFace.module.css`, and
+`src/components/Almanac/CyclingFace.module.css`: Strike = `--text-primary` (white), Coinbase = `--coinbase`
+(blue). **A change to one is a change to all three** — never migrate one bar onto a new pair without the
+other two. `--coinbase` is the design system's only brand-colour token; the bar for adding a second is the
+same argument made for it (a venue read, not a level colour — no lender rule defines a venue threshold, so
+a green/amber/red on a composition bar reads as a risk verdict it doesn't have).
 
 **Motion vocabulary (Gesture & Motion System P0):** springs (`--ease-spring`/`--ease-spring-soft`, `linear()`
 approximations, Safari 17.2+) belong on anything that *moved under a finger* (sheets, swiped rows); beziers
