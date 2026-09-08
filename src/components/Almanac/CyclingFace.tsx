@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY } from '../../simulation/cyclingSim';
-import { plBandsAt, plConvergencePath, PL_BAND_LABEL, type PlBand } from '../../simulation/powerLaw';
+import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
@@ -14,6 +14,7 @@ import { LEVEL_COLOR } from '../../simulation/safetyView';
 import { applyPriceLens, btcGained, holdingsSplit, clampMonth } from './cyclingFaceView';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
+import { useMorphoRateOnDemand, MORPHO_REALIZED_APY } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './CyclingFace.module.css';
 
@@ -34,10 +35,29 @@ import styles from './CyclingFace.module.css';
 // action. Seeding from the trigger would also open the face on a run that LIQUIDATES at month 83, i.e. the
 // default view would argue against the very strategy it exists to demonstrate. The owner's trigger is one
 // tap away as a labelled preset instead.
-const DEFAULT_CAP_PCT = 50;
-const DEFAULT_CONVERGE_MONTHS = 48;   // one cycle
+// ⚠ 70, not 50. It is still FACE-LOCAL and still NOT `cbLtvTriggerPct` (the owner's trigger is the
+// PAYDOWN threshold — a different action from stopping the draw). 50 was chosen when the opening CB LTV
+// was 50.58%, so the cap bound immediately and the default view stopped drawing at month 1 — with the
+// faces now opening ON THE LINE at support, that made the whole default frame inert. At 70 the draw runs
+// and the honest cost is visible instead: peak CB LTV ~69% (Cycling) / ~70% (Ownership), about 16 points
+// under the 86% liquidation line, for roughly +0.73 ₿ over the horizon. Verified NOT to liquidate on any
+// band, out to 240 months. ⚠ The cap bounds the DRAW, not the refinance sweep, so peak LTV can end a
+// month just past it (70.1% observed) — see the unbounded-refinance note in the review.
+const DEFAULT_CAP_PCT = 70;
+// ⚠ The face OPENS on the line (month 1 sits on the band) — the conservative read. `REVERT_PRESET_MONTHS`
+// is what the "Back to reverting" chip restores, and MUST stay distinct from the default or the chip
+// becomes a no-op that silently toggles nothing.
+const DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE;
+const REVERT_PRESET_MONTHS = 48;      // one cycle
 const DEFAULT_HORIZON_MONTHS = 60;
-const DEFAULT_CYCLE_MONTHS = 3;
+// 1, matching the Ownership face. Sweeping monthly keeps the expensive 13% Strike balance parked for one
+// month instead of three: on the default frame Strike interest HALVES ($5,470 → $2,677) and peak Strike
+// LTV drops 24.0% → 9.2%. The cost is ~$892 more CB interest (debt lands there sooner) and ~1.2pt of peak
+// CB LTV (68.9% → 70.1%), since nothing is parked away from Coinbase. Net ≈ −$1,900 total interest, same
+// bitcoin held — purchases follow income, not the sweep.
+const DEFAULT_CYCLE_MONTHS = 1;
+const DEFAULT_BAND: PlBand = 'floor';         // Support — the only band that has ever acted like one
+const DEFAULT_INSPECT_MONTH = 24;             // open the scrubber at 2.0 yr, not at the far end
 
 const BAND_META: { key: PlBand; label: string; color: string }[] = [
   { key: 'floor',   label: PL_BAND_LABEL.floor,   color: 'var(--green)' },
@@ -113,7 +133,7 @@ export default function CyclingFace() {
   const dirty = Object.keys(overlay).length > 0;
 
   // Live seeds — every control reads `overlay[k] ?? live`, so nothing is ever written back.
-  const band = overlay.band ?? 'fair';
+  const band = overlay.band ?? DEFAULT_BAND;
   const convergeMonths = overlay.convergeMonths ?? DEFAULT_CONVERGE_MONTHS;
   const months = overlay.months ?? DEFAULT_HORIZON_MONTHS;
   const income = overlay.income ?? s.income;
@@ -137,6 +157,16 @@ export default function CyclingFace() {
     [s.btcPrice, band, startDate, months, convergeMonths],
   );
 
+  // 🔴 ON-DEMAND ONLY — never polls. The Almanac's background network surface stays the consented
+  // useChainTip alone; this fires when the owner taps. Writes to the session overlay, never the store.
+  const morpho = useMorphoRateOnDemand();
+  const liveApy = morpho.rate.borrowApy;
+
+  // Opt-in "on the line": month 1 lands ON the band, so the path opens with a visible step.
+  const onTheLine = convergeMonths === PL_ON_THE_LINE;
+  const lineStep = pricePath.length > 1 && pricePath[0] > 0 ? pricePath[1] / pricePath[0] - 1 : 0;
+  const stepPct = `${lineStep >= 0 ? '+' : '−'}${Math.abs(lineStep * 100).toFixed(1)}%`;
+
   const sim = useMemo(() => runCyclingSim({
     pricePath,
     startYear: startDate.getUTCFullYear(),
@@ -157,7 +187,7 @@ export default function CyclingFace() {
   const { rows, last, stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth } = sim;
 
   // ── Month scrubber + price lens (display-only) ────────────────────────────────────────────────
-  const [selectedMonth, setSelectedMonth] = useState(rows.length - 1);
+  const [selectedMonth, setSelectedMonth] = useState(Math.min(DEFAULT_INSPECT_MONTH, rows.length - 1));
   const [lens, setLens] = useState(1);
 
   // ⚠ CLAMP AT RENDER TIME, NOT IN AN EFFECT. The Horizon slider is step=1, so ONE leftward tick shrinks
@@ -240,21 +270,31 @@ export default function CyclingFace() {
           ))}
         </div>
         <p className={styles.note}>
-          Starts at today's live {fmtUSD(s.btcPrice)} and reverts toward the power-law{' '}
+          Starts at today's live {fmtUSD(s.btcPrice)} and {onTheLine ? 'sits on' : 'reverts toward'}{' '}
+          the power-law{' '}
           <span style={{ color: BAND_META.find((b) => b.key === band)!.color }}>
             {PL_BAND_LABEL[band].toLowerCase()}
           </span> line — today at {PL_BAND_LABEL.floor} {fmtK(bands.floor)} ·{' '}
           {PL_BAND_LABEL.fair} {fmtK(bands.fair)} · {PL_BAND_LABEL.ceiling} {fmtK(bands.ceiling)}.
+          {onTheLine && ` Month 1 steps ${stepPct} to ${fmtUSD(pricePath[1] ?? 0)} and tracks the line from there.`}
         </p>
         <div className={styles.sliderPair}>
           <SliderInput
             label="Reversion window" value={convergeMonths} onChange={(v) => set('convergeMonths', v)}
-            min={12} max={120} step={1} display={fmtHorizon(convergeMonths)} minLabel="1 yr" maxLabel="10 yr"
+            min={PL_ON_THE_LINE} max={120} step={1}
+            display={onTheLine ? 'on the line' : fmtHorizon(convergeMonths)}
+            minLabel="on the line" maxLabel="10 yr"
           />
           <SliderInput
             label="Horizon" value={months} onChange={(v) => set('months', v)}
             min={12} max={240} step={1} display={fmtHorizon(months)} minLabel="1 yr" maxLabel="20 yr"
           />
+        </div>
+        <div className={styles.presetRow}>
+          <button type="button" className={styles.ghostBtn}
+            onClick={() => set('convergeMonths', onTheLine ? REVERT_PRESET_MONTHS : PL_ON_THE_LINE)}>
+            {onTheLine ? `Back to reverting (${fmtHorizon(REVERT_PRESET_MONTHS)})` : 'On the line'}
+          </button>
         </div>
         <p className={styles.noteQuiet}>
           Implied <strong>{cagr.toFixed(1)}%</strong>/yr over {(months / 12).toFixed(1)} years.
@@ -485,7 +525,7 @@ export default function CyclingFace() {
           </div>
           <p className={styles.noteQuiet}>
             Your trigger is when the advisor routes income at Coinbase — a different action from stopping
-            the draw, so this cap starts at {DEFAULT_CAP_PCT}%.
+            the draw, so this cap is its own setting and starts at {DEFAULT_CAP_PCT}%.
           </p>
         </section>
       </div>
@@ -498,6 +538,32 @@ export default function CyclingFace() {
           <SliderInput label="Coinbase APR" value={cbAprPct} onChange={(v) => set('cbAprPct', v)}
             min={0} max={20} step={0.25} display={`${cbAprPct}%`} minLabel="0%" maxLabel="20%" />
         </div>
+        <div className={styles.presetRow}>
+          {liveApy !== null ? (
+            <button type="button" className={styles.ghostBtn}
+              onClick={() => set('cbAprPct', Number(liveApy.toFixed(2)))}>
+              Use live {liveApy.toFixed(2)}%
+            </button>
+          ) : (
+            <button type="button" className={styles.ghostBtn} onClick={morpho.fetchNow} disabled={morpho.loading}>
+              {morpho.loading ? 'checking Morpho…' : morpho.fetched ? 'Retry live rate' : 'Check live rate'}
+            </button>
+          )}
+          {liveApy !== null && (
+            <button type="button" className={styles.ghostBtn} onClick={morpho.fetchNow} disabled={morpho.loading}>
+              {morpho.loading ? 'refreshing…' : 'Refetch'}
+            </button>
+          )}
+        </div>
+        <p className={styles.noteQuiet}>
+          {liveApy !== null
+            ? `Morpho cbBTC/USDC (Base) is ${liveApy.toFixed(2)}% right now. `
+            : morpho.error ? 'Morpho market rate unavailable. ' : ''}
+          This market has run {MORPHO_REALIZED_APY.p10}–{MORPHO_REALIZED_APY.p90}% over{' '}
+          {MORPHO_REALIZED_APY.months} months since {MORPHO_REALIZED_APY.since} (max {MORPHO_REALIZED_APY.max}%) —
+          one cycle, so it says what has happened, not what can. The rate is a cost here rather than a
+          danger: the draw cap absorbs it, and peak CB LTV moves under a point across a 3–16% range.
+        </p>
       </section>
 
       {/* 7 · CONSTRAINTS + MILESTONES */}
