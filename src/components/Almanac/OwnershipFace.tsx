@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
-import { plBandsAt, plConvergencePath, PL_BAND_LABEL, type PlBand } from '../../simulation/powerLaw';
+import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
@@ -16,6 +16,7 @@ import { deriveCbCollateral } from '../../simulation/logUtils';
 import { applyPriceLens, clampMonth, holdingsSplit } from './cyclingFaceView';
 import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
 import { SliderInput } from '../ui/SliderInput';
+import { useMorphoRateOnDemand, MORPHO_REALIZED_APY } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './OwnershipFace.module.css';
 
@@ -40,13 +41,22 @@ import styles from './OwnershipFace.module.css';
  * C3: `hold` IS the never-draw baseline, so no baseline comparison renders in that mode.
  */
 
-// ⚠ REVIEW-AUTHORITATIVE DEFAULT: 50 — below the opening CB LTV of the live seed (50.58%), so the C2
-// degenerate notice shows at default and clears once the cap is raised above it.
-const DEFAULT_CAP_PCT = 50;
-const DEFAULT_CONVERGE_MONTHS = 60;
+// ⚠ 70, not 50. It is still FACE-LOCAL and still NOT `cbLtvTriggerPct` (the owner's trigger is the
+// PAYDOWN threshold — a different action from stopping the draw). 50 was chosen when the opening CB LTV
+// was 50.58%, so the cap bound immediately and the default view stopped drawing at month 1 — with the
+// faces now opening ON THE LINE at support, that made the whole default frame inert. At 70 the draw runs
+// and the honest cost is visible instead: peak CB LTV ~69% (Cycling) / ~70% (Ownership), about 16 points
+// under the 86% liquidation line, for roughly +0.73 ₿ over the horizon. Verified NOT to liquidate on any
+// band, out to 240 months. ⚠ The cap bounds the DRAW, not the refinance sweep, so peak LTV can end a
+// month just past it (70.1% observed) — see the unbounded-refinance note in the review.
+const DEFAULT_CAP_PCT = 70;
+// ⚠ Opens ON THE LINE. `REVERT_PRESET_MONTHS` is what the chip restores and MUST differ from the
+// default, or the toggle silently does nothing.
+const DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE;
+const REVERT_PRESET_MONTHS = 60;
 const DEFAULT_HORIZON_MONTHS = 24;
 const DEFAULT_CYCLE_MONTHS = 1;      // monthly refinance — the review's "monthly cadence"
-const DEFAULT_PATH: 'fair' = 'fair';
+const DEFAULT_PATH: PlBand = 'floor';   // Support
 
 const BAND_META: { key: PlBand; label: string; color: string }[] = [
   { key: 'floor',   label: `To ${PL_BAND_LABEL.floor.toLowerCase()}`,   color: 'var(--green)' },
@@ -186,6 +196,15 @@ export default function OwnershipFace() {
     [s.btcPrice, pathKind, startDate, months, convergeMonths],
   );
 
+  // 🔴 ON-DEMAND ONLY — never polls (see CyclingFace). Session overlay, never the store.
+  const morpho = useMorphoRateOnDemand();
+  const liveApy = morpho.rate.borrowApy;
+
+  // Opt-in "on the line": month 1 lands ON the band, so the path opens with a visible step.
+  const onTheLine = convergeMonths === PL_ON_THE_LINE;
+  const lineStep = pricePath.length > 1 && pricePath[0] > 0 ? pricePath[1] / pricePath[0] - 1 : 0;
+  const stepPct = `${lineStep >= 0 ? '+' : '−'}${Math.abs(lineStep * 100).toFixed(1)}%`;
+
   const sim = useMemo(() => runCyclingSim({
     pricePath,
     startYear: startDate.getUTCFullYear(),
@@ -258,7 +277,12 @@ export default function OwnershipFace() {
   const overLine = selRow.strikeBalance > s.creditLine;
 
   // C2 — the degenerate case: the cap never lets the draw run. rows[0] is the opening position.
-  const degenerateCap = mode === 'cycle' && rows[0].cbLtv * 100 <= capPct;
+  // ⚠ BUGFIX: this compared `<= capPct`, the INVERSE of what its own message says ("at or above the
+  // cap, so this run never draws"). `drawing` is `cbLtv < cap`, so "never draws" is opening LTV >= cap.
+  // The old comparison hid the notice whenever the cap genuinely bound (e.g. opening 50.58% against a
+  // 50% cap) and showed it whenever the draw was running fine — precisely backwards. At the current
+  // 70% default it correctly stays silent, since 50.58% < 70% means the draw does run.
+  const degenerateCap = mode === 'cycle' && rows[0].cbLtv * 100 >= capPct;
   // C1 — a no-draw mode with a deficit: the bills are funded by nothing.
   const deficitMode = mode !== 'cycle' && expenses > income;
 
@@ -301,7 +325,10 @@ export default function OwnershipFace() {
   })();
 
   const pathNote =
-    `Converges from today's ${fmtUSD(s.btcPrice)} toward the ${PL_BAND_LABEL[pathKind].toLowerCase()} line over ${convergeMonths} months. `
+    (onTheLine
+      ? `Sits on the ${PL_BAND_LABEL[pathKind].toLowerCase()} line from next month — month 1 steps ${stepPct} `
+        + `to ${fmtUSD(pricePath[1] ?? 0)} and tracks the line from there. `
+      : `Converges from today's ${fmtUSD(s.btcPrice)} toward the ${PL_BAND_LABEL[pathKind].toLowerCase()} line over ${convergeMonths} months. `)
     + `Today: ${PL_BAND_LABEL.floor.toLowerCase()} ${fmtK(bands.floor)} · ${PL_BAND_LABEL.fair.toLowerCase()} ${fmtK(bands.fair)} · ${PL_BAND_LABEL.ceiling.toLowerCase()} ${fmtK(bands.ceiling)}.`;
 
   return (
@@ -571,7 +598,15 @@ export default function OwnershipFace() {
             <p className={styles.noteQuiet}>{pathNote}</p>
 
             <SliderInput label="Convergence" value={convergeMonths} onChange={(v) => set('convergeMonths', v)}
-              min={6} max={120} step={1} display={fmtHorizon(convergeMonths)} minLabel="6 mo" maxLabel="10 yr" />
+              min={PL_ON_THE_LINE} max={120} step={1}
+              display={onTheLine ? 'on the line' : fmtHorizon(convergeMonths)}
+              minLabel="on the line" maxLabel="10 yr" />
+            <div className={styles.presetRow}>
+              <button type="button" className={styles.ghostBtn}
+                onClick={() => set('convergeMonths', onTheLine ? REVERT_PRESET_MONTHS : PL_ON_THE_LINE)}>
+                {onTheLine ? `Back to converging (${fmtHorizon(REVERT_PRESET_MONTHS)})` : 'On the line'}
+              </button>
+            </div>
 
             <SliderInput label="Coinbase draw cap" value={capPct} onChange={(v) => set('cbLtvCapPct', v)}
               min={20} max={85} step={1} display={`${capPct}%`} minLabel="20%" maxLabel="85%" />
@@ -588,6 +623,32 @@ export default function OwnershipFace() {
               min={0} max={25} step={0.25} display={`${strikeAprPct}%`} minLabel="0%" maxLabel="25%" />
             <SliderInput label="Coinbase APR" value={cbAprPct} onChange={(v) => set('cbAprPct', v)}
               min={0} max={20} step={0.25} display={`${cbAprPct}%`} minLabel="0%" maxLabel="20%" />
+            <div className={styles.presetRow}>
+              {liveApy !== null ? (
+                <button type="button" className={styles.ghostBtn}
+                  onClick={() => set('cbAprPct', Number(liveApy.toFixed(2)))}>
+                  Use live {liveApy.toFixed(2)}%
+                </button>
+              ) : (
+                <button type="button" className={styles.ghostBtn} onClick={morpho.fetchNow} disabled={morpho.loading}>
+                  {morpho.loading ? 'checking Morpho…' : morpho.fetched ? 'Retry live rate' : 'Check live rate'}
+                </button>
+              )}
+              {liveApy !== null && (
+                <button type="button" className={styles.ghostBtn} onClick={morpho.fetchNow} disabled={morpho.loading}>
+                  {morpho.loading ? 'refreshing…' : 'Refetch'}
+                </button>
+              )}
+            </div>
+                <p className={styles.noteQuiet}>
+              {liveApy !== null
+                ? `Morpho cbBTC/USDC (Base) is ${liveApy.toFixed(2)}% right now. `
+                : morpho.error ? 'Morpho market rate unavailable. ' : ''}
+              This market has run {MORPHO_REALIZED_APY.p10}–{MORPHO_REALIZED_APY.p90}% over{' '}
+              {MORPHO_REALIZED_APY.months} months since {MORPHO_REALIZED_APY.since} (max {MORPHO_REALIZED_APY.max}%) —
+              one cycle, so it says what has happened, not what can. The rate is a cost here rather than a
+              danger: the draw cap absorbs it, and peak CB LTV moves under a point across a 3–16% range.
+            </p>
           </div>
 
           {/* ⚠ C1 + C2 — the constraint notices (read like the credit-exhausted case). */}
