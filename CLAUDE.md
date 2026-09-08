@@ -526,7 +526,8 @@ src/
                                 # surface. AlmanacConsentSheet (static → never dirty). NOT adopted: SimpleMode Quick Setup (a
                                 # bottom-ALIGNED card, not a flush sheet — parked) + MonthEventsModal (future).
       SwipeStrip.tsx            # Gesture & Motion System P2 — shared horizontal 3-pane PAGER (Calendar month/week +
-                                # MonthlyLogOverlay months; P3 Almanac faces). Props {onPage(dir),canPage(dir),
+                                # MonthlyLogOverlay months. ⚠ The P3 Almanac face pager was REMOVED — Almanac face
+                                # switching is TAP-ONLY via the sub-nav pills). Props {onPage(dir),canPage(dir),
                                 # renderPane(offset:-1|0|1),onSwipeStart?,shouldStart?,disabled?}. 300%-wide strip at rest
                                 # translateX(-33.3%); usePointerDrag axis 'x' (touch-action:pan-y → vertical scroll
                                 # never stolen), commitThreshold=0.35×measured-width, commitVelocity 800. onMove tracks
@@ -537,10 +538,10 @@ src/
                                 # consequential). onSwipeStart (first onMove) cancels a pending child long-press. Real
                                 # state changes ONLY at rest (design.md §3.1). reduced-motion: no continuous track.
                                 # P3: OPTIONAL shouldStart(e: React.PointerEvent) → boolean gate on the strip's
-                                # onPointerDown (default → always start; P2 call sites Calendar/MonthlyLogOverlay omit it,
-                                # unaffected) — return false to REFUSE paging so the pointer falls through (AlmanacView
-                                # passes one refusing charts [.recharts-wrapper/canvas/[data-gesture-exempt]] + the left
-                                # 20px which belongs to EdgeBackGesture). P3.1: renderPane gains a 2nd arg
+                                # onPointerDown (default → always start) — return false to REFUSE paging so the pointer
+                                # falls through. ⚠ CURRENTLY NO CONSUMER: AlmanacView was its only caller and its face
+                                # pager is REMOVED (face switching is tap-only); Calendar/MonthlyLogOverlay omit it. Kept
+                                # as part of the shared pager API. P3.1: renderPane gains a 2nd arg
                                 # renderPane(offset, live) — `live` is a `dragging` state true from gesture start (set in
                                 # the onPointerDown wrapper after shouldStart passes) until the snap/spring settles;
                                 # offset 0 is always live. Consumers can mount REAL neighbour content only while live
@@ -2124,9 +2125,9 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   `<table>`. **Totals row** in `<tfoot>` (comment the distinction): FLOWS SUMMED (income/paydown/btcBought/
   miningSats), STOCKS SHOW LATEST (last month's strikeBal/btcHeld/strikeLtv/cbBal/cbLtv). `ndpPaid`/
   `strikeMinPaid` → a `†` superscript on the Paydown cell + one footnote line. **P3.1:** the `.tableWrap`
-  (`overflow-x:auto` scroll container) carries `data-gesture-exempt` → the Almanac face-pager (`shouldStart`)
-  refuses it + the scoped `.shell [data-gesture-exempt]{touch-action:pan-x}` rule gives it horizontal-only
-  ownership (scrolls without paging faces / moving the page vertically); the `.footnote` was MOVED OUT of
+  (`overflow-x:auto` scroll container) scrolls horizontally on its own — the `data-gesture-exempt` marker and
+  the scoped `touch-action` rule that paired with it are GONE with the Almanac face-pager (face switching is
+  tap-only, so there is nothing to arbitrate against); the `.footnote` was MOVED OUT of
   `.tableWrap` (now a sibling below) so the horizontal scrollbar no longer overlays the caption.
 - **Visual-spec decisions (LOCKED — future faces should stay coherent):**
   - **Type:** every numeric cell `var(--mono)` + `font-variant-numeric: tabular-nums`, right-aligned; Month
@@ -2171,7 +2172,7 @@ and is NEVER persisted (the `sandboxCollateralBtc` sandbox precedent). Ungated �
 place (`+ 'scenario'`, still local `useState`, default `'halving'`), the sub-nav/pager `visibleFaces` array
 APPENDS it LAST (after the ledger spread — preserves the e2e face-order assumptions), and `renderFace` wraps
 it in the hub `.container` (the halving/cycle simple-content path). No guard `useEffect`, no
-SwipeStrip/`shouldStart`/store-shape change.
+store-shape change.
 - **`src/components/Almanac/ScenarioFace.tsx`** (+ `.module.css`) — LedgerFace chrome (mono-uppercase
   `.title` + framing line). Store reads are VALUE selectors only (`useStore(useShallow(selectSafetyViewInputs))`
   for the current inputs + `s.pinnedScenario`; `s.setPinnedScenario` is the SOLE `s.set*` reference). PIN row
@@ -2199,8 +2200,8 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   writes `setPinnedScenario`). Every control is seeded from live state and overridden only in a
   session-ephemeral local `useState` overlay (`value = overlay[k] ?? live`), with a ghost "Reset to live".
 - **GATED on `hasCbLoan`** (the strategy IS a Strike→Coinbase refinance loop) with the `defense`-face
-  fallback `useEffect`, and **appended LAST** in `visibleFaces` — `e2e/navigation.spec.ts:45-62` pins
-  halving at index 0 and cycle at index 1.
+  fallback `useEffect`, and **appended LAST** in `visibleFaces` so `halving` stays the first (default) face.
+  (The old index-0/index-1 e2e pin is gone — the face-nav specs now tap pills by NAME, not position.)
 - **`src/components/Almanac/CyclingFace.tsx`** (+ `.module.css`) — LedgerFace chrome + its 960px `.face`.
   Sections: price path (band buttons + Reversion window + Horizon) → verdict → 6 stat cards → CB-LTV chart →
   paired price/collateral charts → paired cash-flow/strategy cards → rates → constraint notices → milestones
@@ -2214,10 +2215,9 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   run that LIQUIDATES at month 83, i.e. the default view would argue against the strategy it exists to
   demonstrate (cap 50 → no liquidation in 20 years; pinned by a test). The trigger is one tap away as a
   labelled preset chip.
-- **Gesture coexistence:** every control card carries `data-gesture-exempt` so a slider drag never pages the
-  face (`shouldStart` refuses it; the scoped `touch-action: pan-x` rule hands it the horizontal axis).
-  Charts are already covered by the `.recharts-wrapper` rule. *(The Mining face has the same latent
-  slider-vs-pager conflict and was left alone.)*
+- **Gesture coexistence:** nothing to arbitrate — the Almanac face pager is removed, so a slider drag can no
+  longer page the face. The former `data-gesture-exempt` markers on the control cards are deleted. *(This also
+  retired the Mining face's latent slider-vs-pager conflict.)*
 - **Zone colours** reuse the shared gauge (`cbBarLevel` + `LEVEL_COLOR`) but band against **`CB_LLTV`**, the
   LTV this projection actually liquidates at — NOT the dashboard's `cbLiqFrac`, which comes from the owner's
   entered liq price, a TODAY anchor that says nothing about a position five years out. The trigger boundary
@@ -2275,8 +2275,9 @@ does not. Both show **gross over net** — gross is accumulation, net is what su
 `sim.totalStrikeInterest`, and `CyclingRow` carries no per-row cumulative interest (adding one is an engine
 change). Its sub-label reads **`full horizon · N yrs`** so it is visibly the odd one out.
 
-⚠ **The scrubber + lens live in ONE `data-gesture-exempt` card.** Without it a horizontal slider drag pages
-the Almanac to the next face. ⚠ The two range inputs are **face-local, 44px-tall** — the shared
+⚠ The scrubber + lens live in ONE card. (It formerly carried `data-gesture-exempt` to stop a horizontal
+slider drag from paging the Almanac; the pager is gone, so the marker is too.) ⚠ The two range inputs are
+**face-local, 44px-tall** — the shared
 `ui/SliderInput` is NOT restyled, since `MiningInputsPanel`/`MiningProjectionTable`/`LivingInputsPanel`
 consume it and a track change would relayout all three.
 
@@ -2332,35 +2333,36 @@ badge + an off-mode `~`/`est.` precision marker differ.
   unmigrated). Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).
   Suite 419 → 425.
 
-### Gesture P3 — Almanac face swipe (presentation only; store unchanged)
+### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
 
-The face host is wrapped in `<SwipeStrip>` so faces PAGE by horizontal swipe (the sub-nav pills remain the tap
-equivalent — non-negotiable 3). No data/store change.
-- **`visibleFaces: { key: Face; label: string }[]`** is the SINGLE source computed once — it drives BOTH the
-  sub-nav pill map (replaced the 7 inline buttons) AND the strip's paging, so they can never disagree on which
-  faces exist or their order. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`) are simply
-  absent from the array. `idx = findIndex(face)`; `onPage(dir)=setFace(visibleFaces[idx+dir].key)`;
-  `canPage(dir)` bounds-checks (rubber-band at the first/last face, no wraparound).
-- **REAL NEIGHBOUR FACES** (P3.1 — the P3 `FacePreviewCard` placeholder is REVERSED, owner decision):
-  `renderPane(offset, live)` — `offset===0` → `renderFace(face)`; `offset!==0` → `live && t ? renderFace(t.key) :
-  null`, so the actual adjacent face mounts DURING a gesture/snap (SwipeStrip's `live`=`dragging`) and unmounts at
-  rest — no heavy Power Law/Mining hooks on a peek. **SS §14.5's invariant still holds** — the HUB `useChainTip`
-  (data LAYER) is never remounted; a neighbour face mounting its OWN hooks transiently during a gesture is the
-  accepted cost. `renderFace(key)` is shared by center + neighbours. `FacePreviewCard` + its CSS deleted.
-- **`shouldStart(e)`** refuses paging when the pointerdown target is inside a chart
-  (`.recharts-wrapper`/`canvas`/`[data-gesture-exempt]` — PowerLaw's recharts always wins) OR at `e.clientX < 20`
-  (the left 20px belongs to EdgeBackGesture in the simple-mode Almanac subpage — positional priority, no races).
-- **P3.1 CHART/EXEMPT AXIS OWNERSHIP** (`AlmanacView.module.css`, SCOPED to `.shell` — never global): charts
-  (`.recharts-wrapper`/`canvas`) get `touch-action: none` (own BOTH axes for scrubbing); `[data-gesture-exempt]`
-  scroll containers get `touch-action: pan-x` (own horizontal, block vertical — the Ledger table needs its
-  horizontal scroll, so a blanket `none` would trap its columns). Stops native VERTICAL scroll from stealing a
-  chart scrub. Trade-off (owner-accepted): a vertical page-scroll stroke can't START on a chart/exempt element.
-- **Sub-nav highlight updates at snap-COMMIT** (the `setFace` re-render), not continuously — sanctioned deviation
-  (the pill sub-nav has no underline to interpolate; redesign is out of scope).
-- `useChainTip` stays at the hub (called once) — face paging is pure presentation, never remounts the DATA layer.
-- Tests: `e2e/navigation.spec.ts` (face swipe halving→cycle; REAL-neighbour-mid-drag; gated-face skip while
-  `!hasCbLoan`; chart-axis — horizontal scrub with vertical wobble neither pages nor scrolls; edge-coordination —
-  a left-bezel drag backs out instead of paging).
+Face switching happens **only** by tapping a sub-nav pill, on desktop and mobile alike. The `<SwipeStrip>`
+face pager (Gesture P3/P3.1) is GONE, along with everything that existed to arbitrate against it. No
+data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still page).
+- **`visibleFaces: { key: Face; label: string }[]`** remains the SINGLE source for the sub-nav pill map — now
+  the only face-switching surface. Gated faces (defense iff `hasCbLoan`, ledger iff `ledgerFaceAvailable`,
+  cycling iff `hasCbLoan`) are simply absent from the array. `idx`/`onPage`/`canPage`/`renderPane`/
+  `shouldStart` are deleted; the host renders `{renderFace(face)}` directly.
+- **ONE face mounts at a time.** The P3.1 real-neighbour panes are gone, so a heavy face (Power Law/Mining
+  hooks) mounts exactly when its pill is tapped — never on a peek. `useChainTip` still lives at the hub and is
+  never remounted by a face change (§14.5 holds by construction, as before).
+- **The scoped `touch-action` block in `AlmanacView.module.css` is DELETED** (`.shell .recharts-wrapper/canvas
+  { touch-action: none }` + `.shell [data-gesture-exempt] { touch-action: pan-x }`). It existed only to stop
+  native scroll from stealing a chart scrub *from the pager*; with no pager the faces own their own axes and
+  the owner-accepted trade-off it carried — "a vertical page-scroll stroke can't START on a chart/exempt
+  element" — is retired. Charts scrub, the Ledger table scrolls horizontally in its own `overflow-x` container,
+  sliders drag, and a vertical stroke anywhere scrolls the page.
+- **Every `data-gesture-exempt` attribute is REMOVED** (LedgerFace `.tableWrap`; CyclingFace's control/scrubber
+  cards + milestones wrap; OwnershipFace's scrub card + milestones wrap) — they were inert once `shouldStart`
+  and the CSS above went away. A `grep -rn "gesture-exempt" src/` must come back empty.
+- **EdgeBackGesture is unaffected** — the left 20px bezel still backs out of the simple-mode Almanac subpage;
+  it no longer has to win a priority contest against a pager.
+- ⚠ Do NOT re-introduce a face pager without re-deriving the chart/edge exclusions and the axis-ownership CSS
+  above; the reason each existed is recorded here.
+- Tests: `e2e/navigation.spec.ts` (tap the sub-nav title halving→cycle, asserting `Open Halving Clock` has
+  count **1** — ⚠ `Next halving` is NOT Halving-only, CycleClock's demoted halving card carries it too, so the
+  Cycle-only string at count 1 is what proves a single mounted face; a committed mid-screen horizontal drag
+  does NOT change face; gated-face skip by tapping every pill while `!hasCbLoan`; a chart scrub stays on the
+  Power Law face; edge-swipe back still works on Almanac). `faceHostBox` was deleted from `e2e/helpers.ts`.
 
 ---
 
@@ -3735,19 +3737,19 @@ fold); the double-buffered snap needs retrying label assertions. **P3 `navigatio
 Settings returns to the journal (drag from x=8 past 50% width); a mid-page drag (x=60) does NOT back-nav; TAP
 FORWARDING (a tap over the zone at the ← Back button's 16–20px overlap forwards + navigates — the left 20px isn't
 dead); gate exclusion (the journal never mounts `data-testid="edge-back-zone"`; gates are dev-bypass-unreachable so
-the component-level grep covers them); Almanac face swipe halving→cycle (distinctive face text); gated-face skip
-(`!hasCbLoan` → no defense pill through the whole strip); chart exclusion (a drag starting inside `.recharts-wrapper`
-does NOT page — the PowerLaw face's `/api/blockchain.info` route is `page.route`-fulfilled with valid data so the
-chart renders, since PowerLawMain gates it on `!loading && !error`); edge-coordination on Almanac (a left-bezel drag
-backs out instead of paging). **P3.1 additions:** REAL-neighbour-mid-drag (`mouseDragX release:false` → the incoming
-Cycle face's DOM text `Open Halving Clock` — CycleClock's cross-link, owned ONLY by the incoming face — is present
-mid-drag, vs 0 at rest — proving real neighbours, not a preview); NESTED edge-back (open a Settings subpage → one
-edge-back lands on the LIST [subpage `← Settings` gone, the row back], a second → journal — **run against HEAD first,
-it FAILS**, proving the repro); chart-axis (a horizontal scrub with ±30 vertical wobble on the chart neither pages nor
-changes `document.scrollingElement.scrollTop` — ⚠ the scrollTop half passes TRIVIALLY in Chromium since synthetic
-`page.mouse` can't drive native touch-scroll; the real vertical-ownership proof is the device gate). Helper
-`mouseDragX(...,{release?})` drives raw `page.mouse` from a coordinate; `faceHostBox` finds the Almanac SwipeStrip
-viewport. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+the component-level grep covers them). **Almanac (face nav is TAP-ONLY — the pager was removed):** tapping the
+`Cycle Clock` pill switches face, asserted via `Open Halving Clock` at count **1** (⚠ NOT `Next halving`, which
+CycleClock's demoted halving card also carries — the Cycle-only string at count 1 is what proves exactly ONE
+mounted face, no neighbour panes); a committed mid-screen horizontal drag does NOT change face (the pager-removal
+regression pin); gated-face skip (`!hasCbLoan` → no defense pill after tapping every visible pill); a chart scrub
+stays on the Power Law face — the PowerLaw face's `/api/blockchain.info` route is `page.route`-fulfilled with valid
+data so the chart renders, since PowerLawMain gates it on `!loading && !error`; edge-swipe back still works on
+Almanac. **P3.1 additions:** NESTED edge-back (open a Settings subpage → one edge-back lands on the LIST [subpage
+`← Settings` gone, the row back], a second → journal — **run against HEAD first, it FAILS**, proving the repro); the
+chart scrub also asserts `document.scrollingElement.scrollTop` is unchanged — ⚠ that half passes TRIVIALLY in
+Chromium since synthetic `page.mouse` can't drive native touch-scroll; kept as an intent marker, the real proof is
+the device gate. Helper `mouseDragX(...,{release?})` drives raw `page.mouse` from a coordinate. (`faceHostBox` was
+deleted with the pager.) **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the

@@ -223,8 +223,8 @@ export default function CyclingFace() {
         )}
       </div>
 
-      {/* 1 · PRICE PATH — the belief. data-gesture-exempt so a slider drag never pages the face. */}
-      <section className={styles.card} data-gesture-exempt>
+      {/* 1 · PRICE PATH — the belief. */}
+      <section className={styles.card}>
         <span className={styles.cardLabel}>Price path</span>
         <div className={styles.bandRow}>
           {BAND_META.map((b) => (
@@ -324,9 +324,8 @@ export default function CyclingFace() {
         ))}
       </div>
 
-      {/* 3b · SCRUBBER + LENS — ⚠ ONE gesture-exempt card: without it a horizontal slider drag pages the
-          Almanac to the next face (AlmanacView's shouldStart refuses the pager only for exempt targets). */}
-      <section className={styles.card} data-gesture-exempt>
+      {/* 3b · SCRUBBER + LENS — one card holding both range inputs. */}
+      <section className={styles.card}>
         <div className={styles.scrubHead}>
           <span className={styles.cardLabel}>Inspect month</span>
           <span className={styles.scrubValue}>
@@ -461,7 +460,7 @@ export default function CyclingFace() {
 
       {/* 6 · CONTROLS */}
       <div className={styles.pair}>
-        <section className={styles.card} data-gesture-exempt>
+        <section className={styles.card}>
           <span className={styles.cardLabel}>Cash flow</span>
           <div className={styles.sliderStack}>
             <SliderInput label="Monthly income" value={income} onChange={(v) => set('income', v)}
@@ -471,7 +470,7 @@ export default function CyclingFace() {
           </div>
           <p className={styles.noteQuiet}>Surplus {fmtUSD(Math.max(0, income - expenses))}/mo buys bitcoin.</p>
         </section>
-        <section className={styles.card} data-gesture-exempt>
+        <section className={styles.card}>
           <span className={styles.cardLabel}>Strategy</span>
           <div className={styles.sliderStack}>
             <SliderInput label="Refinance cycle" value={cycleMonths} onChange={(v) => set('cycleMonths', v)}
@@ -491,7 +490,7 @@ export default function CyclingFace() {
         </section>
       </div>
 
-      <section className={styles.card} data-gesture-exempt>
+      <section className={styles.card}>
         <span className={styles.cardLabel}>Rates (both variable in reality)</span>
         <div className={styles.sliderPair}>
           <SliderInput label="Strike APR" value={strikeAprPct} onChange={(v) => set('strikeAprPct', v)}
@@ -521,7 +520,7 @@ export default function CyclingFace() {
 
       <section className={styles.card}>
         <span className={styles.cardLabel}>Milestones</span>
-        <div className={styles.msWrap} data-gesture-exempt>
+        <div className={styles.msWrap}>
           <table className={styles.msTable}>
             <thead>
               <tr>

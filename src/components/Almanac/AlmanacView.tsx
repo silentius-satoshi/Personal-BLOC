@@ -1,5 +1,4 @@
-import { useEffect, useState, type ReactNode, type PointerEvent as ReactPointerEvent } from 'react';
-import { SwipeStrip } from '../ui/SwipeStrip';
+import { useEffect, useState, type ReactNode } from 'react';
 import HalvingClock from './HalvingClock';
 import CycleClock from './CycleClock';
 import FreshnessBadge from './FreshnessBadge';
@@ -38,6 +37,12 @@ import styles from './AlmanacView.module.css';
  * two clock faces, so switching faces is pure presentation and never remounts the data layer (§14.5 by
  * construction) — Mining/PowerLaw/Sats/defense don't consume it at all. The eyebrow badge is the
  * live-block-height toggle (device-local; one-time consent on first enable).
+ *
+ * ⚠ FACE SWITCHING IS TAP-ONLY. The sub-nav pills are the SINGLE way to change face on every platform —
+ * the horizontal swipe pager (SwipeStrip) was REMOVED, along with its `shouldStart` chart/edge exclusions,
+ * the neighbour-pane preload, and the scoped `touch-action` rules that existed only to arbitrate against
+ * it. Faces now own their own axes: charts scrub, tables scroll, sliders drag, and a vertical stroke that
+ * starts anywhere scrolls the page. Do NOT re-introduce a pager here without re-deriving those exclusions.
  *
  * ISOLATION WALL (restated, unchanged): cycleModel/HalvingClock/CycleClock import nothing from the
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
@@ -86,8 +91,8 @@ export default function AlmanacView() {
     }
   };
 
-  // SINGLE source for BOTH the sub-nav pills AND the swipe pager — they can never disagree on which faces
-  // exist or their order. Gated faces (defense/ledger) are simply absent from the array.
+  // SINGLE source for the sub-nav pills — the only face-switching surface. Gated faces (defense/ledger)
+  // are simply absent from the array.
   const visibleFaces: { key: Face; label: string }[] = [
     { key: 'halving',  label: '◔ Halving Clock' },
     { key: 'cycle',    label: '₿ Cycle Clock' },
@@ -97,14 +102,13 @@ export default function AlmanacView() {
     ...(hasCbLoan ? [{ key: 'defense' as Face, label: cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim' }] : []),
     ...(ledgerAvailable ? [{ key: 'ledger' as Face, label: '▤ Ledger' }] : []),
     { key: 'scenario' as Face, label: '⚖ Scenario' },   // Phase 3b — ungated
-    // ⚠ Appended LAST, and gated: e2e/navigation.spec.ts pins halving at index 0 and cycle at index 1.
+    // ⚠ Appended LAST, and gated — `halving` must stay first: it is the default face.
     ...(hasCbLoan ? [{ key: 'cycling' as Face, label: '♻ Cycling' }] : []),
     { key: 'ownership' as Face, label: '⚖ Ownership' },   // S3 — UNGATED, after cycling
   ];
-  const idx = visibleFaces.findIndex((f) => f.key === face);
 
-  // The REAL face content for a face key (offset-0 pane). Pure presentation — face paging never remounts the
-  // hub's useChainTip (§14.5).
+  // The face content for a face key. Pure presentation — switching faces never remounts the hub's
+  // useChainTip (§14.5).
   const renderFace = (f: Face): ReactNode => {
     if (f === 'halving')  return <div className={styles.container}><HalvingClock height={tip.height} mode={tip.mode} /></div>;
     if (f === 'cycle')    return <div className={styles.container}><CycleClock height={tip.height} mode={tip.mode} onSwitchToHalving={() => setFace('halving')} /></div>;
@@ -119,20 +123,6 @@ export default function AlmanacView() {
     if (f === 'ownership') return <OwnershipFace />;
     return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
   };
-
-  // Neighbours render the REAL adjacent face, but ONLY while a gesture/snap is live (SwipeStrip's `live`) —
-  // at rest they're null, so heavy faces (Power Law/Mining hooks) never mount on a peek. The center is always
-  // real. (Owner decision — replaced the P3 FacePreviewCard placeholder.)
-  const renderPane = (offset: -1 | 0 | 1, live: boolean): ReactNode => {
-    if (offset === 0) return renderFace(face);
-    const t = visibleFaces[idx + offset];
-    return live && t ? renderFace(t.key) : null;
-  };
-  const onPage = (dir: -1 | 1) => { const t = visibleFaces[idx + dir]; if (t) setFace(t.key); };
-  const canPage = (dir: -1 | 1): boolean => idx + dir >= 0 && idx + dir < visibleFaces.length;
-  // Charts always win over face paging (PowerLaw's recharts); the left 20px belongs to EdgeBackGesture.
-  const shouldStart = (e: ReactPointerEvent) =>
-    !(e.target as Element)?.closest?.('.recharts-wrapper, canvas, [data-gesture-exempt]') && e.clientX >= 20;
 
   return (
     <div className={styles.shell}>
@@ -164,14 +154,9 @@ export default function AlmanacView() {
         </div>
       </div>
 
-      {/* P3 — faces page via SwipeStrip (neighbours are lightweight preview cards; the real face lands at
-          rest). Charts + the left edge-back zone are excluded via shouldStart. Highlight updates at commit. */}
-      <SwipeStrip
-        onPage={onPage}
-        canPage={canPage}
-        renderPane={renderPane}
-        shouldStart={shouldStart}
-      />
+      {/* Only the selected face mounts — no neighbour panes, so a heavy face (Power Law/Mining hooks)
+          mounts exactly when its pill is tapped. */}
+      {renderFace(face)}
 
       <AlmanacConsentSheet
         open={consentOpen}

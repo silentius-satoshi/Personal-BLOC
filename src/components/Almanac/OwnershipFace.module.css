@@ -145,7 +145,7 @@
   color: var(--text-faint);
 }
 
-/* ── Scrubbers (ONE gesture-exempt card — A1) ────────────────────────────────────────────────── */
+/* ── Scrubbers (one card, A1) ────────────────────────────────────────────────── */
 .scrubCard { margin-top: 16px; }
 .scrubHead {
   display: flex;

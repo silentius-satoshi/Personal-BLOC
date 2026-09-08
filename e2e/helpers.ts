@@ -140,15 +140,6 @@ export async function openAlmanacSimple(page: Page): Promise<void> {
   await expect(page.getByTestId('edge-back-zone')).toBeVisible();
 }
 
-/** The Almanac face-host SwipeStrip viewport box (the only SwipeStrip on that surface). */
-export async function faceHostBox(page: Page): Promise<{ x: number; y: number; width: number; height: number }> {
-  const vp = page.locator('[class*="viewport"]').first();
-  await expect(vp).toBeVisible();
-  const box = await vp.boundingBox();
-  if (!box) throw new Error('face host viewport has no bounding box');
-  return box;
-}
-
 /** Seed a mid-strategy plan (current month ≥ 2) + land on DailyModeView. */
 export async function seedJournalMonths(page: Page): Promise<void> {
   await page.addInitScript(MULTI_MONTH_SEED);

@@ -99,18 +99,6 @@
   cursor: default;
 }
 
-/* P3.1 chart/exempt axis ownership — SCOPED to the Almanac face host (never global; calendar/journal
-   surfaces unaffected). `shouldStart` already refuses the face-pager for these targets; this stops native
-   VERTICAL scroll from stealing a chart scrub. Charts own BOTH axes (none); exempt scroll containers (the
-   Ledger table) own HORIZONTAL only (pan-x) so their own scroll survives while vertical/paging is blocked.
-   Trade-off (owner-accepted): a vertical page-scroll stroke cannot START on a chart/exempt element. */
-.shell :global(.recharts-wrapper),
-.shell canvas {
-  touch-action: none;
-}
-.shell [data-gesture-exempt] {
-  touch-action: pan-x;
-}
 .soonTag {
   font-family: var(--mono);
   font-size: 8px;

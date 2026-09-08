@@ -1,8 +1,10 @@
 import { test, expect } from '@playwright/test';
-import { seedAndGoto, openSettingsSimple, openAlmanacSimple, faceHostBox, mouseDragX } from './helpers';
+import { seedAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX } from './helpers';
 
 /**
- * Gesture & Motion System — P3 navigation specs: edge-swipe-back (AppShell Branch H/I) + Almanac face swipe.
+ * Gesture & Motion System — P3 navigation specs: edge-swipe-back (AppShell Branch H/I) + Almanac face nav.
+ * ⚠ The Almanac face-swipe pager was REMOVED — face switching is TAP-ONLY (the sub-nav pills). The specs
+ * below pin that: a horizontal drag anywhere in the face host must NOT change face.
  * The dev server bypasses every gate (import.meta.env.DEV), so the simple-mode seed reaches the two edge-back
  * surfaces. Gates never mount EdgeBackGesture — verified by the component-level grep in the summary (the
  * `edge-back-zone` testid is absent everywhere but Branch H/I; the journal spec below pins that).
@@ -42,27 +44,26 @@ test.describe('Navigation gestures (P3)', () => {
     // (Auth/viewer gates are unreachable under the dev bypass; the component-level grep covers them.)
   });
 
-  test('Almanac faces page by swipe (halving → cycle)', async ({ page }) => {
+  test('Almanac faces switch by TAPPING the sub-nav title (halving → cycle)', async ({ page }) => {
     await openAlmanacSimple(page);
     await expect(page.getByText('Next halving')).toBeVisible();        // default face = Halving Clock
     await expect(page.getByText('Open Halving Clock')).toHaveCount(0);
-    const box = await faceHostBox(page);
-    await mouseDragX(page, box.x + box.width / 2, box.y + 120, -220);  // drag left → next face
-    await expect(page.getByText('Open Halving Clock')).toBeVisible();  // Cycle Clock content (after the snap)
+    await page.getByRole('button', { name: /Cycle Clock/ }).click();
+    // 'Open Halving Clock' is CycleClock's onSwitchToHalving cross-link (CycleClock.tsx) — owned ONLY by the
+    // Cycle face, so it proves the face actually swapped rather than merely rendering alongside.
+    await expect(page.getByText('Open Halving Clock')).toHaveCount(1);  // exactly ONE face mounts — no neighbours
   });
 
-  test('face paging mounts the REAL neighbour face mid-drag (not a preview)', async ({ page }) => {
+  test('a horizontal drag across the Almanac does NOT change face (pager removed)', async ({ page }) => {
     await openAlmanacSimple(page);
-    await expect(page.getByText('Next halving')).toBeVisible();          // halving center
-    await expect(page.getByText('Open Halving Clock')).toHaveCount(0);   // neighbour NOT mounted at rest
-    const box = await faceHostBox(page);
-    // Hold the drag (release:false) toward cycle → the incoming Cycle face mounts in the neighbour pane.
-    await mouseDragX(page, box.x + box.width / 2, box.y + 120, -160, { release: false });
-    // ⚠ 'Open Halving Clock' is CycleClock's onSwitchToHalving cross-link (CycleClock.tsx:119-120), owned ONLY
-    // by the INCOMING Cycle face — NOT the outgoing Halving face (whose string is 'Next halving'). Do NOT swap
-    // this for a Halving-owned string; that would also match the OUTGOING pane and defeat the test.
-    await expect(page.getByText('Open Halving Clock')).toHaveCount(1);   // REAL neighbour, not a preview label
-    await page.mouse.up();                                               // release → snap
+    await expect(page.getByText('Next halving')).toBeVisible();
+    const h = page.viewportSize()!.height / 2;
+    const w = page.viewportSize()!.width;
+    // A committed leftward drag well clear of the 20px edge-back bezel — used to page halving → cycle.
+    await mouseDragX(page, w / 2, h, -220);
+    await page.waitForTimeout(300);
+    await expect(page.getByText('Next halving')).toBeVisible();        // still Halving Clock
+    await expect(page.getByText('Open Halving Clock')).toHaveCount(0); // never reached Cycle Clock
   });
 
   test('nested edge-back goes ONE level (subpage → list → journal)', async ({ page }) => {
@@ -84,13 +85,15 @@ test.describe('Navigation gestures (P3)', () => {
     await openAlmanacSimple(page);
     // The sub-nav renders ONLY visibleFaces; with the default seed (!hasCbLoan) defense is absent from it.
     await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
-    // Page through the whole strip — the defense pill still never materialises.
-    const box = await faceHostBox(page);
-    for (let i = 0; i < 5; i++) await mouseDragX(page, box.x + box.width / 2, box.y + 120, -220);
-    await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
+    // Tap through every pill the sub-nav offers — the defense pill still never materialises.
+    const pills = page.locator('button', { hasText: /Halving Clock|Cycle Clock|Mining|Power Law|Sats|Scenario|Ownership/ });
+    for (let i = 0, n = await pills.count(); i < n; i++) {
+      await pills.nth(i).click();
+      await expect(page.getByRole('button', { name: /Emergency|Liq Sim/ })).toHaveCount(0);
+    }
   });
 
-  test('chart axis ownership — a horizontal scrub (with vertical wobble) on the chart neither pages nor scrolls', async ({ page }) => {
+  test('a horizontal scrub on the Power Law chart stays on the Power Law face', async ({ page }) => {
     // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both).
     await page.route(/blockchain\.info/, (r) =>
       r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) }));
@@ -111,20 +114,19 @@ test.describe('Navigation gestures (P3)', () => {
     }
     await page.mouse.up();
     await page.waitForTimeout(60);
-    // shouldStart refused the pager → still on the Power Law face (chart present). This half IS meaningful.
+    // No face-pager exists to steal the scrub → still on the Power Law face (chart present).
     await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
-    // Page did not scroll vertically. ⚠ touch-action governs native TOUCH scroll, which synthetic page.mouse
-    // cannot drive — so this assertion passes trivially in Chromium; the REAL vertical-ownership proof is the
-    // iOS device gate (like the P1.3 handoff fixmes). Kept as a guard + intent marker.
+    // ⚠ Synthetic page.mouse cannot drive native TOUCH scroll, so this passes trivially in Chromium; kept as
+    // a guard + intent marker (the real proof is the iOS device gate, like the P1.3 handoff fixmes).
     const scrollAfter = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     expect(scrollAfter).toBe(scrollBefore);
   });
 
-  test('edge coordination on Almanac — a left-bezel drag backs out, does not page', async ({ page }) => {
+  test('edge-swipe back works on Almanac (left bezel → journal)', async ({ page }) => {
     await openAlmanacSimple(page);
     await expect(page.getByText('Next halving')).toBeVisible();
     const h = page.viewportSize()!.height / 2;
-    await mouseDragX(page, 8, h, 234);                                 // x=8 → the edge-back zone wins over face paging
-    await expect(page.getByLabel('Log an event')).toBeVisible();       // left Almanac → journal (did NOT page to cycle)
+    await mouseDragX(page, 8, h, 234);                                 // x=8 → the edge-back zone
+    await expect(page.getByLabel('Log an event')).toBeVisible();       // left Almanac → journal
   });
 });

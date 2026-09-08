@@ -349,8 +349,8 @@ export default function OwnershipFace() {
             {verdict.text}
           </div>
 
-          {/* ── SCRUBBERS — ONE gesture-exempt card (A1) ── */}
-          <section className={`${styles.card} ${styles.scrubCard}`} data-gesture-exempt>
+          {/* ── SCRUBBERS — one card holding both range inputs (A1) ── */}
+          <section className={`${styles.card} ${styles.scrubCard}`}>
             <div className={styles.scrubHead}>
               <span className={styles.cardLabel}>Month</span>
               <span className={styles.scrubValue}>
@@ -609,7 +609,7 @@ export default function OwnershipFace() {
           )}
 
           {/* MILESTONES — clickable rows jump the scrubber. UNLENSED: only the tiles follow the lens. */}
-          <div className={styles.msWrap} data-gesture-exempt>
+          <div className={styles.msWrap}>
             <table className={styles.msTable}>
               <thead>
                 <tr>

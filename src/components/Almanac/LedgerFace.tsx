@@ -106,10 +106,9 @@ export default function LedgerFace() {
         <div className={styles.empty}>No months logged yet.</div>
       ) : (
         <>
-        {/* data-gesture-exempt: the Almanac face-pager (shouldStart) refuses this element, and the scoped
-            AlmanacView rule gives it touch-action:pan-x — the wide table scrolls horizontally without paging
-            faces or moving the page vertically. */}
-        <div className={styles.tableWrap} data-gesture-exempt>
+        {/* The wide table scrolls horizontally in its own overflow container (no face-pager to
+            arbitrate against since face switching is tap-only). */}
+        <div className={styles.tableWrap}>
           <table className={styles.table}>
             <thead>
               <tr>
