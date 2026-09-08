@@ -17,6 +17,7 @@ import { MonthlyLogSection } from './MonthlyLogSection';
 import { MonthlyLogOverlay } from './MonthlyLogOverlay';
 import { OutlookProjection } from './OutlookProjection';
 import styles from './AdvisorMain.module.css';
+import { CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
 
 interface ActionRowProps {
   icon: string;
@@ -74,6 +75,12 @@ export function AdvisorMain() {
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
+
+  // One-time Coinbase origination fee vs the ongoing APR spread: months for a Strike→CB rotation to
+  // pay for itself. Amount-independent (fee and saving both scale with the draw) — it is fee%/spread%.
+  const repayBreakEven = blocApr > cbAprPct
+    ? (CB_FEE_TIER1_PCT * 100) / (blocApr - cbAprPct) * 12
+    : null;
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
@@ -180,6 +187,7 @@ export function AdvisorMain() {
       cbPaydownCapped:    thisMonth.cbPaydownCapped,
       cbPaydownShortfall: thisMonth.cbPaydownShortfall,
       strikeRepayDraw:    thisMonth.strikeRepayDraw,
+      strikeRepayFee:     thisMonth.strikeRepayFee,
       strikeRepayFired:   thisMonth.strikeRepayFired,
       btcIncome:      effectiveBtcIncome,
       btcBought:      effectiveBtcBought,
@@ -330,6 +338,10 @@ export function AdvisorMain() {
                           ↩ Rotate to cheap debt — Strike repaid
                           <span className={styles.muted} style={{ display: 'block', fontSize: '0.8rem' }}>
                             saves ~{fmtUSD(overriddenPlan.strikeRepayDraw * (blocApr - cbAprPct) / 100)}/yr
+                            {overriddenPlan.strikeRepayFee > 0 && (
+                              <> after {fmtUSD(Math.round(overriddenPlan.strikeRepayFee))} Coinbase
+                                origination fee{repayBreakEven !== null && ` · pays for itself in ~${repayBreakEven.toFixed(1)} mo`}</>
+                            )}
                           </span>
                         </span>
                         <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.strikeRepayDraw)}</span>

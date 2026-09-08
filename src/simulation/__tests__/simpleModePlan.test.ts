@@ -23,7 +23,7 @@ function makeRow(month: number, o: Partial<AdvisorMonthRow> = {}): AdvisorMonthR
     month, tier: 4, tierLabel: 'Safe', isCurrentMonth: false,
     blocDraw: 3500, fiatGap: 0, cbPayment: 0, cbExtraPayment: 0,
     cbPaydownDraw: 0, cbLtvTriggered: false, cbPaydownCapped: false, cbPaydownShortfall: 0,
-    strikeRepayDraw: 0, strikeRepayFired: false,
+    strikeRepayDraw: 0, strikeRepayFee: 0, strikeRepayFired: false,
     blocMinPayment: 0, blocMinShortfall: 0,
     btcBought: 0.05, incomeToBtc: 4000, blocBalance: 10000, blocLtv: 0.12,
     cbBalance: 0, cbLtv: 0, btcHeld: 1.0, blocInterest: 108, cbInterest: 0, totalInterest: 108,

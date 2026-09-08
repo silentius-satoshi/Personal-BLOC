@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runAdvisor, type AdvisorInputs } from '../runAdvisor';
+import { cbBorrowFee } from '../runCoinbaseLoan';
 
 const BASE: AdvisorInputs = {
   btcPrice:       100_000,
@@ -204,14 +205,41 @@ describe('reverse rotation (rotate-back band: trigger 75 / target 65 / rotate-ba
     expect(rows[0].strikeRepayDraw).toBe(0);
   });
 
-  it('6) debt-neutral at fire — CB gains exactly what Strike loses (no debt created)', () => {
-    // CB interest accrues on the opening balance (independent of rotation), so the CB end balance
-    // in the firing run exceeds the no-rotation control by EXACTLY the drawn amount.
+  it('6) NOT debt-neutral at fire — CB gains the draw PLUS the capitalised origination fee', () => {
+    // ⚠ RENAMED from "debt-neutral ... (no debt created)" when the Coinbase origination fee landed.
+    // The rotation used to move debt one-for-one; it no longer does. Coinbase charges 2%/1% on every
+    // borrow and capitalises it, so the CASH that reaches Strike is strikeRepayDraw while the debt
+    // that lands on Coinbase is strikeRepayDraw + fee. That wedge is the real price of the rotation
+    // and the test now pins it rather than asserting it away.
+    // CB interest accrues on the opening balance (independent of rotation), so the CB end balance in
+    // the firing run exceeds the no-rotation control by EXACTLY draw + fee.
     const fire    = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 8_000 }).rows[0];
     const control = runAdvisor({ ...REV_BASE, cbBalance: 50_000, startingBlocBalance: 0 }).rows[0];
     expect(fire.strikeRepayFired).toBe(true);
     expect(control.strikeRepayFired).toBe(false);
-    expect(fire.cbBalance - control.cbBalance).toBeCloseTo(fire.strikeRepayDraw, 0);
+    expect(fire.strikeRepayFee).toBeGreaterThan(0);
+    expect(fire.strikeRepayFee).toBeCloseTo(cbBorrowFee(fire.strikeRepayDraw, 50_000), 6);
+    expect(fire.cbBalance - control.cbBalance)
+      .toBeCloseTo(fire.strikeRepayDraw + fire.strikeRepayFee, 0);
+    // The Strike side sees only the CASH: this run is Strike-bound, so the draw is the whole 8k
+    // balance — the fee is charged ON TOP and buys nothing at Strike.
+    expect(fire.strikeRepayDraw).toBeCloseTo(8_000, 0);
+  });
+
+  it('6b) the capitalised fee never pushes CB past the LTV target', () => {
+    // The headroom is grossed DOWN through cbMaxDrawForHeadroom, so a rotation that is
+    // headroom-bound (not Strike-bound) lands ON the target, not the-target-plus-2%.
+    const { rows } = runAdvisor({
+      ...REV_BASE,
+      cbBalance: 50_000,
+      startingBlocBalance: 500_000,     // Strike can't be the binding constraint
+    });
+    const m1 = rows[0];
+    expect(m1.strikeRepayFired).toBe(true);
+    expect(m1.strikeRepayFee).toBeGreaterThan(0);
+    expect(m1.cbLtv * 100).toBeLessThanOrEqual(REV_BASE.cbLtvTargetPct + 1e-6);
+    // ...and it fills essentially TO the target, not conservatively short of it.
+    expect(m1.cbLtv * 100).toBeGreaterThan(REV_BASE.cbLtvTargetPct - 0.5);
   });
 
   it('7) no oscillation under growth — does NOT fire every month (regression for the reported bug)', () => {

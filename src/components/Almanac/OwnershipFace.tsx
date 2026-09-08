@@ -7,7 +7,7 @@ import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
 import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
-import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR, CREDIT_WARN_USED, CREDIT_ACT_USED } from '../../simulation/safetyView';
@@ -196,6 +196,12 @@ export default function OwnershipFace() {
     [s.btcPrice, pathKind, startDate, months, convergeMonths],
   );
 
+  // Break-even on the refinance: the fee is paid once per dollar moved, the rate saving accrues forever.
+  // months = fee% / (strikeAPR - cbAPR) * 12. Null when Coinbase is not actually cheaper — then the sweep
+  // is a cost with no offsetting saving and no break-even exists.
+  const feeBreakEvenMonths = strikeAprPct > cbAprPct
+    ? (CB_FEE_TIER1_PCT / ((strikeAprPct - cbAprPct) / 100)) * 12
+    : null;
   // 🔴 ON-DEMAND ONLY — never polls (see CyclingFace). Session overlay, never the store.
   const morpho = useMorphoRateOnDemand();
   const liveApy = morpho.rate.borrowApy;
@@ -648,6 +654,11 @@ export default function OwnershipFace() {
               {MORPHO_REALIZED_APY.months} months since {MORPHO_REALIZED_APY.since} (max {MORPHO_REALIZED_APY.max}%) —
               one cycle, so it says what has happened, not what can. The rate is a cost here rather than a
               danger: the draw cap absorbs it, and peak CB LTV moves under a point across a 3–16% range.
+              {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
+              {fmtK(CB_FEE_TIER_BREAK)}, {CB_FEE_TIER2_PCT * 100}% above, added to principal so it compounds.
+              This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows.
+              {feeBreakEvenMonths !== null
+                && ` The Strike→Coinbase move still pays for itself after ~${feeBreakEvenMonths.toFixed(1)} months at these rates.`}
             </p>
           </div>
 

@@ -1,4 +1,4 @@
-import { CB_LLTV, CB_LIF } from './runCoinbaseLoan';
+import { CB_LLTV, CB_LIF, cbBorrowFee } from './runCoinbaseLoan';
 
 /**
  * Cycling strategy — pure projection engine (Almanac `cycling` face).
@@ -93,6 +93,9 @@ export interface CyclingResult {
   deficiencyUsd: number | null;         // debt surviving an under-collateralised liquidation
   totalStrikeInterest: number;
   totalCbInterest: number;
+  /** Coinbase origination fees paid across the horizon, and how many borrows paid them. */
+  totalCbFees: number;
+  cbFeeCount: number;
   baselineEquity: number;               // "never draw" comparison, on the SAME price path
   baselineBtc: number;
 }
@@ -131,6 +134,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let deficiencyUsd: number | null = null;
   let totalStrikeInterest = 0;
   let totalCbInterest = 0;
+  let totalCbFees = 0;
+  let cbFeeCount = 0;
 
   const rows: CyclingRow[] = [];
 
@@ -172,8 +177,14 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         }
 
         // Refinance: the whole Strike balance moves to the cheaper Coinbase loan.
+        // ⚠ NOT FREE. Coinbase charges its origination fee on EVERY borrow, including adding to an
+        // existing loan, and CAPITALISES it — so the fee joins the principal and compounds at the CB APR
+        // for the rest of the horizon. Modelling the sweep as a clean transfer overstates the arbitrage.
         if (m % cycle === 0 && strikeBal > 0) {
-          cbDebt += strikeBal;
+          const fee = cbBorrowFee(strikeBal, cbDebt);
+          cbDebt += strikeBal + fee;
+          totalCbFees += fee;
+          cbFeeCount += 1;
           strikeBal = 0;
         }
       } else {
@@ -257,7 +268,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     rows, last,
     stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth,
     seizedBtc, survivorBtc, deficiencyUsd,
-    totalStrikeInterest, totalCbInterest,
+    totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount,
     baselineEquity, baselineBtc: baseBtc,
   };
 }

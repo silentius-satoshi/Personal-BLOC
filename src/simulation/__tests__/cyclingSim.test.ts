@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingInputs } from '../cyclingSim';
 import { cbMetrics } from '../cbMetrics';
-import { CB_LLTV, CB_LIF } from '../runCoinbaseLoan';
+import { CB_LLTV, CB_LIF, cbBorrowFee, CB_FEE_TIER_BREAK, cbMaxDrawForHeadroom } from '../runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 
@@ -141,11 +141,16 @@ describe('runCyclingSim — the Strike credit line is a hard constraint', () => 
 
 describe('runCyclingSim — liquidation is terminal, and honest', () => {
   it('⭐ seizes at CB_LIF and reports the survivor', () => {
+    // ⚠ MOVED 48 → 45 when the Coinbase origination fee landed. Not a loosened pin — a real result:
+    // every sweep now capitalises 2%, so the debt compounds off a bigger base and the 86% breach
+    // arrives THREE MONTHS EARLIER on this fixture. Modelling the sweep as free understated the risk,
+    // not just the cost. If this number moves again, something changed the fee or the sweep.
     const r = run({ cbLtvCapPct: 85, pricePath: flat(240) });
-    expect(r.liqMonth).toBe(48);
-    expect(r.seizedBtc).toBeCloseTo(3.7647, 4);
-    expect(r.survivorBtc).toBeCloseTo(1.3884, 4);
-    expect(r.rows[48].cbLtv).toBeGreaterThanOrEqual(CB_LLTV);   // the row shows what BREACHED
+    expect(r.liqMonth).toBe(45);
+    expect(r.seizedBtc).toBeCloseTo(3.6036, 4);
+    expect(r.survivorBtc).toBeCloseTo(1.3765, 4);
+    expect(r.rows[45].cbLtv).toBeGreaterThanOrEqual(CB_LLTV);   // the row shows what BREACHED
+    expect(r.totalCbFees).toBeCloseTo(3329.75, 2);              // 13 sweeps, all inside the 2% tier
   });
 
   it('postLiquidation is true AT liqMonth (the seizure happens within that row) and after', () => {
@@ -335,5 +340,64 @@ describe('runCyclingSim — guards', () => {
   it('a zero-length cycle cannot divide by zero', () => {
     const r = run({ cycleMonths: 0, pricePath: flat(12), cbLtvCapPct: 85 });
     expect(r.rows.every((row) => Number.isFinite(row.debt))).toBe(true);
+  });
+
+  describe('Coinbase origination fee — charged on EVERY borrow, capitalised', () => {
+    it('cbBorrowFee: marginal brackets, 2% under the break and 1% above', () => {
+      expect(cbBorrowFee(4_000, 0)).toBeCloseTo(80, 6);
+      expect(cbBorrowFee(4_000, 300_000)).toBeCloseTo(40, 6);
+      // straddling: 5k in the 2% tier + 5k in the 1% tier
+      expect(cbBorrowFee(10_000, CB_FEE_TIER_BREAK - 5_000)).toBeCloseTo(150, 6);
+    });
+
+    it('cbBorrowFee guards: zero/negative/non-finite never inject NaN', () => {
+      for (const [a, b] of [[0, 0], [-1, 0], [NaN, 0], [1_000, NaN]] as [number, number][]) {
+        expect(Number.isFinite(cbBorrowFee(a, b))).toBe(true);
+      }
+      expect(cbBorrowFee(0, 50_000)).toBe(0);
+    });
+
+    it('⭐ every refinance pays it, and it is ADDED TO PRINCIPAL (so it compounds)', () => {
+      const withFees = run({ pricePath: flat(24), cbLtvCapPct: 85, cycleMonths: 1 });
+      expect(withFees.cbFeeCount).toBeGreaterThan(0);
+      expect(withFees.totalCbFees).toBeGreaterThan(0);
+      // A sweep of S at a sub-$250k balance adds S + 2%·S, never just S.
+      const noSweep = run({ pricePath: flat(24), cbLtvCapPct: 85, cycleMonths: 999 });
+      expect(noSweep.cbFeeCount).toBe(0);
+      expect(noSweep.totalCbFees).toBe(0);
+      expect(withFees.last.debt).toBeGreaterThan(0);
+    });
+
+    it('⭐ the fee is roughly cadence-NEUTRAL — it is a % of volume, not per-transaction', () => {
+      // This is why monthly sweeping stayed the right default after the fee landed: a longer cadence
+      // pays the same 2% on a bigger pile, PLUS more Strike interest that also gets fee'd.
+      const monthly = run({ pricePath: flat(60), cbLtvCapPct: 85, cycleMonths: 1 });
+      const quarterly = run({ pricePath: flat(60), cbLtvCapPct: 85, cycleMonths: 3 });
+      expect(monthly.cbFeeCount).toBeGreaterThan(quarterly.cbFeeCount);
+      const ratio = quarterly.totalCbFees / monthly.totalCbFees;
+      expect(ratio).toBeGreaterThan(0.95);
+      expect(ratio).toBeLessThan(1.15);          // same order — never a 3x saving from batching
+      expect(quarterly.totalStrikeInterest).toBeGreaterThan(monthly.totalStrikeInterest);
+    });
+
+    it('cbMaxDrawForHeadroom is the exact inverse of cbBorrowFee', () => {
+      // Used by runAdvisor's reverse rotation to fill TO an LTV target without the capitalised fee
+      // breaching it. Round-trip on both tiers and across the break.
+      for (const [headroom, balance] of [
+        [1_020, 0],
+        [10_000, 0],
+        [2_000, 249_000],        // straddles the $250k break
+        [50_000, 400_000],       // wholly in the 1% tier
+        [255_000, 0],            // exactly the tier-1 ceiling grossed up
+      ] as [number, number][]) {
+        const d = cbMaxDrawForHeadroom(headroom, balance);
+        expect(d + cbBorrowFee(d, balance)).toBeCloseTo(headroom, 6);
+      }
+      expect(cbMaxDrawForHeadroom(1_020, 0)).toBeCloseTo(1_000, 6);
+      // Guards, same shape as cbBorrowFee's.
+      for (const [h, b] of [[0, 0], [-1, 0], [NaN, 0], [1_000, NaN]] as [number, number][]) {
+        expect(cbMaxDrawForHeadroom(h, b)).toBe(0);
+      }
+    });
   });
 });

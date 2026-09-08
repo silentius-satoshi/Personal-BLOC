@@ -2,6 +2,49 @@ export const CB_LLTV = 0.86;
 export const CB_WARN_LTV = 0.65;  // Coinbase/Morpho warning band start (watch→warning boundary; see classifyLtv)
 export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
 
+/**
+ * Coinbase loan ORIGINATION FEE — a published FACT, not a belief.
+ * "A one-time processing fee is added to your crypto-backed loan EACH TIME YOU BORROW, even when adding
+ * to an existing loan… 2% on the first $250,000, 1% on the amount above $250,000… It is added to your
+ * loan balance, accrues interest, and is paid when you repay your loan."
+ *   → https://help.coinbase.com/en/coinbase/trading-and-funding/loan/fee
+ *
+ * Two consequences the model must not miss:
+ *  1. EVERY refinance sweep pays it. A monthly cycle pays it 12x a year, not once.
+ *  2. It is CAPITALISED — added to principal, so it compounds at the CB APR for the rest of the horizon.
+ */
+export const CB_FEE_TIER1_PCT = 0.02;
+export const CB_FEE_TIER2_PCT = 0.01;
+export const CB_FEE_TIER_BREAK = 250_000;
+
+/**
+ * Fee on borrowing `amount` when the loan already stands at `balance`. MARGINAL brackets, like tax:
+ * the slice of the new borrow that lands under $250k pays 2%, the slice above pays 1%. Guards negatives
+ * and non-finite inputs to 0 so a degenerate call can never inject NaN into the debt.
+ */
+export function cbBorrowFee(amount: number, balance: number): number {
+  if (!(amount > 0) || !Number.isFinite(balance)) return 0;
+  const base = Math.max(0, balance);
+  const inTier1 = Math.max(0, Math.min(base + amount, CB_FEE_TIER_BREAK) - base);
+  const inTier2 = amount - inTier1;
+  return inTier1 * CB_FEE_TIER1_PCT + inTier2 * CB_FEE_TIER2_PCT;
+}
+
+/**
+ * Inverse of `cbBorrowFee`: the largest CASH draw whose principal-plus-capitalised-fee still fits in
+ * `headroom`, given the loan already stands at `balance`. Solves `d + cbBorrowFee(d, balance) = headroom`
+ * on the SAME marginal brackets, so a caller filling to an LTV target doesn't breach it by the fee.
+ * Lives here, beside the brackets, so the two can never drift apart.
+ */
+export function cbMaxDrawForHeadroom(headroom: number, balance: number): number {
+  if (!(headroom > 0) || !Number.isFinite(balance)) return 0;
+  const base      = Math.max(0, balance);
+  const tier1Room = Math.max(0, CB_FEE_TIER_BREAK - base);   // cash that still fits under the break
+  const tier1Cost = tier1Room * (1 + CB_FEE_TIER1_PCT);      // what that cash costs, fee included
+  if (headroom <= tier1Cost) return headroom / (1 + CB_FEE_TIER1_PCT);
+  return tier1Room + (headroom - tier1Cost) / (1 + CB_FEE_TIER2_PCT);
+}
+
 export interface CbLoanInputs {
   loanBalance:   number;
   collateralBtc: number;

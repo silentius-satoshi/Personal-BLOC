@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1054 tests — all must pass before every commit)
+- Vitest (1060 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -122,7 +122,10 @@ src/
     cyclingSim.ts               # Cycling strategy PURE engine (Almanac `cycling` face) — draw bills on Strike,
                                 # refinance into Coinbase every cycleMonths, route every purchase to the CB
                                 # collateral pool, stop drawing at a CB LTV cap; verdict vs a never-draw baseline.
-                                # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF (runCoinbaseLoan) — NOTHING from
+                                # Pays Coinbase's origination fee (cbBorrowFee) on EVERY sweep and CAPITALISES
+                                # it; totals surface as totalCbFees/cbFeeCount.
+                                # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF/cbBorrowFee + the fee-bracket
+                                # constants (runCoinbaseLoan, a leaf) — NOTHING from
                                 # powerLaw/cycleModel/store. The price path arrives as a plain number[] and the
                                 # lender ratios (strikeMaxDrawLtv/strikeMarginLtv) as plain numbers, so it stays a
                                 # clock-free, fixture-testable leaf; the VIEW does the labelled crossing (the
@@ -146,10 +149,17 @@ src/
     runBLOC.ts                  # Smart BLOC 5-year simulation (respects creditLine ?? Infinity)
     runBlocYearOne.ts           # Month-by-Month 12-month simulation + getCollateralForTier
     runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus + CB_LLTV/CB_LIF + computeLiquidationAnalysis
+                                # + the ORIGINATION-FEE brackets: CB_FEE_TIER1_PCT 2% / CB_FEE_TIER2_PCT 1% /
+                                # CB_FEE_TIER_BREAK $250k, `cbBorrowFee(amount, balance)` (marginal, like tax)
+                                # and `cbMaxDrawForHeadroom(headroom, balance)` (its exact inverse). Still a
+                                # LEAF — imports nothing — which is why cyclingSim/runAdvisor/cbMetrics/
+                                # emergencyModel can all import the CB facts from it with no cycle
     cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
-    runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc
+    runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc. ⚠ NO LONGER
+                                # standalone: imports cbBorrowFee/cbMaxDrawForHeadroom (runCoinbaseLoan, a
+                                # leaf) so the REVERSE ROTATION pays the same origination fee the real move does
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15, and emergencyModel consumes it
     emergencyModel.ts           # Emergency Console pure model (Phase 1) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Doctrine: collateral top-up is the PRIMARY lever (grow the CB denominator → push liq DOWN); paydown = Wall-2 fallback. CB_LADDER (69/72/75/81, liq=CB_LLTV 0.86) + STRIKE_MARGIN_CALL_LTV 0.70. classifyStage / firepower (slow=cured, fast=stuck) / drawToLtv (clamps to the 50% Strike line) / floorTable / direSwitch|wall3Sale|wall4External (paydown walls) / surplus. Imports CB_LLTV (runCoinbaseLoan) + STRIKE_MAX_DRAW_LTV/BLOC_OPERATING_CEILING (strikeCredit); NO cycle/power-law imports (§7 hard wall)
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
@@ -3084,6 +3094,60 @@ type CbLtvStatus = 'safe'|'watch'|'warning'|'emergency'|'critical'|'liquidated';
 
 Morpho/Coinbase: 86% LLTV instant liquidation, no grace period, 4.38% penalty.
 
+### Origination fee — `cbBorrowFee` / `cbMaxDrawForHeadroom`
+
+```typescript
+CB_FEE_TIER1_PCT = 0.02;   CB_FEE_TIER2_PCT = 0.01;   CB_FEE_TIER_BREAK = 250_000;
+cbBorrowFee(amount, balance)          // fee on borrowing `amount` at a standing `balance`
+cbMaxDrawForHeadroom(headroom, balance)   // exact inverse: largest cash draw whose principal+fee fits
+```
+
+Coinbase charges this on **every borrow**, not once at loan opening
+(<https://help.coinbase.com/en/coinbase/trading-and-funding/loan/fee>). Two properties the model has to
+get right, because both cost real bitcoin:
+
+1. **MARGINAL brackets, like tax** — the slice of a new borrow landing under $250k pays 2%, the slice
+   above pays 1%. Keyed off the STANDING balance, not the draw size: a $4,000 draw costs **$80** at a
+   zero balance and **$40** at a $260k balance. (The $80 is the owner's own observed figure — the
+   brackets were calibrated to it, not to a reading of the help page alone.)
+2. **CAPITALISED** — the fee is added to principal, so it accrues interest for the rest of the run. It
+   is not a cash cost you can pay and forget; it compounds. This is the part that moves outcomes.
+
+⚠ **The fee moved a pinned liquidation: `liqMonth` 48 → 45 in `cyclingSim.test.ts`.** Not a loosened
+pin — a real result. Every sweep capitalises 2%, the debt compounds off a bigger base, and the 86%
+breach arrives THREE MONTHS EARLIER on that fixture. If a future change moves it back to 48 without
+removing the fee, something is wrong.
+
+**Break-even is amount-independent** — fee and interest saving both scale with the draw, so it reduces
+to `feePct / (blocApr − cbApr) × 12` months. At 13% vs the stored 5.28%: **3.11 months**. At the realized
+bull-regime 6.91%: 3.94. At the realized max 9.9%: 7.74. The Strike→Coinbase move still pays for itself
+fast — the fee is a speed bump on the rotation, not an argument against it. Both faces and both Advisor
+surfaces print this number rather than a bare "saves $X/yr", which was overstating year one.
+
+⚠ **Cadence-NEUTRAL, which is why monthly sweeping survived the fee.** It is a percentage of VOLUME, not
+a per-transaction charge, so batching saves nothing: `cycle=1` pays $4,021 over 60 borrows vs `cycle=3`
+paying $4,056 over 20 (5-yr support/on-the-line/cap-70 fixture). Monthly is in fact *slightly cheaper* —
+less Strike interest accrues into the principal that gets fee'd. Pinned by a test, because "batch the
+sweeps to save on fees" is the obvious wrong intuition and someone will have it.
+
+**Two borrow sites, both wired:**
+- `cyclingSim.ts` — the refinance sweep. `cbDebt += strikeBal + fee`; `CyclingResult` gained
+  `totalCbFees` / `cbFeeCount`, which both faces print ("$4,021 over 60 borrows").
+- `runAdvisor.ts` — the **reverse rotation** (`strikeRepayDraw`, drawing cheap CB debt to repay
+  expensive Strike). Same real-world action, same real fee. New row field `strikeRepayFee`.
+  ⚠ **The rotation is NO LONGER DEBT-NEUTRAL** and the test that asserted it was renamed rather than
+  relaxed: Strike falls by the CASH (`strikeRepayDraw`), Coinbase rises by cash **+ fee**. The fee buys
+  nothing at Strike.
+  ⚠ The fill uses `cbMaxDrawForHeadroom`, not the raw headroom — otherwise the capitalised fee would
+  push the loan ~2% PAST the LTV target the rotation was aiming at. Grossing the headroom down through
+  the same brackets keeps "fill to target" honest. A round-trip test pins the two functions as exact
+  inverses so the brackets can't drift apart.
+
+`runBLOC` / `runBlocYearOne` / `emergencyModel` are untouched — none of them models a Coinbase *borrow*
+(`emergencyModel.drawToLtv` sizes a STRIKE draw; `cbPaydownDraw` in the Advisor is a Strike draw paying
+CB down, the opposite direction, and correctly pays no CB fee).
+
+
 ### `cbMetrics.ts` — shared CB LTV / liq-price source of truth (v13)
 
 `cbMetrics(loanBalance, collateralBtc, price, triggerPct)` → `{ ltv, liqPrice, triggerPrice,
@@ -3208,6 +3272,14 @@ sweep because the draw cap absorbs it into less accumulation. And the sign inver
 rising band the debt shrinks in BTC terms, so 5.28% vs the realized bull-regime 6.91% is worth **0.03 ₿
 over 20 years**, while on a flat/support path the same spread bites hardest. A regime-coupled rate was
 measured and REJECTED on those grounds — a control and a concept for a rounding error.
+
+⚠ **The APR is not the whole cost — the ORIGINATION FEE sits beside it in both faces.** Copy in the
+block under the Coinbase APR slider names the 2%/1% brackets, says the fee is added to principal so it
+compounds, prints this run's actual total (`sim.totalCbFees` over `sim.cbFeeCount` borrows) and closes
+with the break-even. Unlike the APR, the fee is NOT a rounding error: on the 5-yr support/on-the-line/
+cap-70 fixture it is **$4,021** and costs 0.017 ₿ (`yours` 3.365 → 3.348); over 20 yr, $11,299 over 240
+borrows (the marginal rate falls to 1% once the balance crosses $250k). See **CB Loan → Origination
+fee** for the brackets, the cadence-neutrality result, and the `liqMonth` 48 → 45 shift.
 
 ⚠ **BOTH faces now DEFAULT to Support + on the line** — the conservative read, not the flattering one.
 `DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE` on both; **`REVERT_PRESET_MONTHS`** (Cycling 48, Ownership 60)
@@ -3685,7 +3757,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1054 tests — `npx vitest run` before every commit.
+1060 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
@@ -5913,7 +5985,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |
 | Phase 4 priority | `creditExceeded` checked FIRST in phase classification |
 | BLOC draw order | Draw → interest → LTV paydown (not interest → draw) |
-| `runAdvisor` | Standalone — no imports from `runBLOC` or `runCoinbaseLoan` |
+| `runAdvisor` | No imports from `runBLOC`. ⚠ **AMENDED** — it now imports `cbBorrowFee`/`cbMaxDrawForHeadroom` from `runCoinbaseLoan` (a leaf, so no cycle). The old "standalone" rule was keeping a REAL Coinbase cost out of the Advisor's reverse rotation; a duplicated fee table would have been the worse trade. CB *facts* live in `runCoinbaseLoan` and are imported by `cbMetrics`/`emergencyModel` already — this follows that precedent, not a new one. |
 | `getCollateralForTier` | Uses starting `btcPrice` — not per-month price |
 | Chart Y-axis | Always abbreviated — exact format causes label overlap |
 | `NumberInput` suffix | Avoid inside input — cursor issues; use external label |

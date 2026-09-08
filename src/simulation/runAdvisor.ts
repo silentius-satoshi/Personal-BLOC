@@ -1,3 +1,4 @@
+import { cbBorrowFee, cbMaxDrawForHeadroom } from './runCoinbaseLoan';   // Coinbase origination-fee brackets (facts, not cycle)
 import { bucketEventToMonth, strategyMonthIndex } from './logUtils';   // calendar-anniversary bucketing (cycle-free: logUtils → types only)
 import { todayLocalISO } from '../utils/format';
 
@@ -66,6 +67,7 @@ export interface AdvisorMonthRow {
   cbPaydownCapped:   boolean;  // true when paydown hit the credit ceiling
   cbPaydownShortfall: number;  // desired - actual (0 when not capped)
   strikeRepayDraw:  number;    // amount rotated from Strike to CB (0 if not fired)
+  strikeRepayFee:   number;    // Coinbase origination fee on that rotation, capitalised into cbBalance (0 if not fired)
   strikeRepayFired: boolean;   // true when the reverse trigger fired this month
   blocMinPayment:   number;    // BLOC minimum (interest) paid from income this month (0 in roll mode)
   blocMinShortfall: number;    // interest that capitalized because income couldn't cover the minimum (0 in roll / when covered)
@@ -131,6 +133,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     let incomeToBtc:     number;
     let btcBought:       number;
     let cbPaydownDraw:      number  = 0;
+    let strikeRepayFee:     number  = 0;
     let cbLtvTriggered:    boolean = false;
     let cbPaydownCapped:   boolean = false;
     let cbPaydownShortfall: number = 0;
@@ -169,10 +172,14 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
         // month-to-month oscillation.
         const cbCeiling  = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
         const cbHeadroom = Math.max(0, cbCeiling - cbBal);   // fill to TARGET, not to rotate-back
-        strikeRepayDraw  = Math.min(blocBalance, cbHeadroom); // capped: no over-repay, no target breach
+        // Coinbase charges an origination fee on EVERY borrow and CAPITALISES it, so the target has to
+        // hold principal + fee. Gross the headroom down through the same brackets instead of drawing it
+        // all as cash and breaching the target by the fee.
+        strikeRepayDraw  = Math.min(blocBalance, cbMaxDrawForHeadroom(cbHeadroom, cbBal));
         if (strikeRepayDraw > 0) {
-          cbBal        += strikeRepayDraw;   // draw from CB to repay Strike
-          blocBalance  -= strikeRepayDraw;   // Strike balance reduced
+          strikeRepayFee   = cbBorrowFee(strikeRepayDraw, cbBal);
+          cbBal        += strikeRepayDraw + strikeRepayFee;   // draw from CB to repay Strike; fee capitalises
+          blocBalance  -= strikeRepayDraw;   // Strike balance reduced by the CASH only — the fee buys nothing
           strikeRepayFired = true;
         }
       }
@@ -289,7 +296,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       blocDraw, fiatGap,
       cbPayment: cbTotalPayment, cbExtraPayment,
       cbPaydownDraw, cbLtvTriggered, cbPaydownCapped, cbPaydownShortfall,
-      strikeRepayDraw, strikeRepayFired,
+      strikeRepayDraw, strikeRepayFee, strikeRepayFired,
       blocMinPayment, blocMinShortfall,
       btcBought, incomeToBtc,
       blocBalance, blocLtv, cbBalance: cbBal, cbLtv, btcHeld,

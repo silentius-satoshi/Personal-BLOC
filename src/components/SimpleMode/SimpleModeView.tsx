@@ -4,7 +4,7 @@ import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getTier, getNd
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit, computeStrikeLtv, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
 import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
 import { buildMonthRollup } from '../Daily/calendarModel';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
@@ -262,6 +262,11 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const sCbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.cbLtvTriggered;
   const sCapped      = sCbTriggered && !!selectedRow?.cbPaydownCapped;
   const sRepayFired  = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && !!selectedRow?.strikeRepayFired;
+  // One-time origination fee vs the ongoing APR spread: months for the rotation to pay for itself.
+  // Independent of the amount (both scale with the draw) — it is fee% / spread%, in months.
+  const sRepayBreakEven = blocApr > cbAprPct
+    ? (CB_FEE_TIER1_PCT * 100) / (blocApr - cbAprPct) * 12
+    : null;
   const sFiatGap     = selectedRow?.fiatGap ?? 0;
 
   const summaryText = composeMonthSummary({
@@ -737,6 +742,12 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                       <span className={styles.alsoIcon}>↩</span>
                       <span className={styles.alsoText}>
                         Rotate to cheap debt — saves ~{fmtUSD((selectedRow?.strikeRepayDraw ?? 0) * (blocApr - cbAprPct) / 100)}/yr
+                        {(selectedRow?.strikeRepayFee ?? 0) > 0 && (
+                          <span className={styles.statMuted}>
+                            {' '}after {fmtUSD(Math.round(selectedRow?.strikeRepayFee ?? 0))} Coinbase
+                            origination fee{sRepayBreakEven !== null && ` · pays for itself in ~${sRepayBreakEven.toFixed(1)} mo`}
+                          </span>
+                        )}
                       </span>
                       <span className={styles.alsoAmt}>{fmtUSD(selectedRow?.strikeRepayDraw ?? 0)}</span>
                     </div>
