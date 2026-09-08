@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1049 tests — all must pass before every commit)
+- Vitest (1054 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -2210,11 +2210,17 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
 - **⚠ THE §2 CROSSING LIVES IN THE VIEW, deliberately** — it imports the power law (a BELIEF) AND the risk
   constants (FACTS), builds a plain `number[]`, and hands it to an engine that has heard of neither. Exactly
   the `OutlookProjection`/`MonthBreakdown` shape. Neither wall moves.
-- **⚠ THE CAP DEFAULTS TO A FACE-LOCAL 50%, NOT `cbLtvTriggerPct`.** The owner's trigger (75%) is the
-  PAYDOWN threshold — a different action from stopping the draw — and seeding from it opens the face on a
-  run that LIQUIDATES at month 83, i.e. the default view would argue against the strategy it exists to
-  demonstrate (cap 50 → no liquidation in 20 years; pinned by a test). The trigger is one tap away as a
-  labelled preset chip.
+- **⚠ THE CAP DEFAULTS TO A FACE-LOCAL 70%, NOT `cbLtvTriggerPct`.** Still face-local, and still not the
+  owner's trigger — that is the PAYDOWN threshold, a different action from stopping the draw, and it stays
+  one tap away as a labelled preset chip. **It was 50** (chosen when the seed's opening CB LTV was 50.58%,
+  so the cap bound instantly). With both faces now opening ON THE LINE at support, a 50 cap stopped the
+  draw at month 1 and the default frame was inert. At 70 the draw runs and the cost is visible: peak CB LTV
+  ~69% (Cycling) / ~70% (Ownership), ~16 points under the 86% liquidation line, worth roughly **+0.73 ₿**
+  over the horizon. Re-measured on the CURRENT seed: no liquidation on any band out to 240 months at 50,
+  70 **or** 75 — the old "75 liquidates at month 83" warning was written against an earlier position and no
+  longer holds. The engine tests pass `cbLtvCapPct` explicitly, so they pin the ENGINE, not this default.
+  ⚠ The cap bounds the DRAW, not the refinance sweep, so peak LTV can end a month just past it (70.1%
+  observed on Ownership) — the unbounded-refinance gap from the review is now visible at the default.
 - **Gesture coexistence:** nothing to arbitrate — the Almanac face pager is removed, so a slider drag can no
   longer page the face. The former `data-gesture-exempt` markers on the control cards are deleted. *(This also
   retired the Mining face's latent slider-vs-pager conflict.)*
@@ -2225,8 +2231,12 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
 - Connectors: `getCurrentBtcHeld()` (verified Strike-only) · `advisorActualBlocBalance` · `creditLine` ·
   `cbCollateralBtc` · `accruedCbBalance(...)` (the accrual boundary, as `EmergencyConsole` crosses it) ·
   `income`/`expenses`/`blocApr`/`cbAprPct`/`btcPrice` · `STRIKE_MAX_DRAW_LTV` · `STRIKE_MARGIN_CALL_LTV`.
-  The prototype's direct CoinGecko `fetch` is GONE — no new external host; the Almanac's only network call
-  remains the consented `useChainTip`.
+  The prototype's direct CoinGecko `fetch` is GONE — no new external host. ⚠ **AMENDED:** the Almanac's
+  only *background* network call remains the consented `useChainTip`. Both cycling faces now also carry
+  **`useMorphoRateOnDemand`** — same-origin `/api/morpho-rate`, **never on mount and never on a timer**,
+  fires only when the owner taps "Check live rate" / "Refetch". It writes to the SESSION OVERLAY, never the
+  store, so the faces stay zero-store-write. The polling `useMorphoRate` is still confined to Settings and
+  the SafetyDashboard.
 - Tests: `src/simulation/__tests__/cyclingSim.test.ts` (26) + `powerLaw.test.ts` (10, all RELATIONAL against
   a fixed UTC date — absolute band dollars grow daily and would rot). Suite 968 → **1004**.
 
@@ -3174,6 +3184,51 @@ renders a raw key.** Both Almanac faces used to interpolate `{band}` / `${pathKi
 prose, so a panel headed "Resistance" read "…reverts toward the power-law ceiling line" two lines
 below. Pinned by a test that also asserts `floor`/`ceiling` never equal their own keys.
 
+**`PL_ON_THE_LINE = 1`** — the opt-in "on the line" preset on BOTH Almanac faces. **Not an engine
+branch:** it is `convergeMonths = 1`, where the existing weight `max(0, 1 − m/convergeMonths)` is
+already 0 for every m ≥ 1, so month 1 onward IS the band value for that month. The faces only had to
+drop their Convergence/Reversion slider floor (12 and 6 → `PL_ON_THE_LINE`) and add a ghost preset chip.
+⚠ **Month 0 stays pinned to the live price**, so choosing it puts a real one-month STEP in the path —
+today: support **−19.1%** → $64,468, fair **+123.5%**, resistance **+362.4%**. Both faces print the size
+of that step in the path note; the chart shows it as a visible cliff, which is correct, not a bug.
+Available on all three bands, though only support is a genuine stress — the other two are step-ups whose
+peak CB LTV never exceeds today's.
+
+**Coinbase APR context (both faces).** The APR slider is the owner's MANUAL `cbAprPct`, not a live feed —
+the faces show what it has cost and let the owner pull the live number in by hand. `MORPHO_REALIZED_APY`
+(in `useMorphoRate.ts`) is this market's realized band from Morpho's `historicalState`: **4.1–7.5% over 23
+months since Oct 2024, max 9.9%**, median 5.3 — which is where the stored 5.28% already sits (50th
+percentile, well calibrated). Static by design: those move ~0.2pt/yr, so re-fetching 24 points behind a
+consent gate to recompute them would be a request for a rounding error; the refresh `curl` lives in the
+constant's docblock. ⚠ The band excludes the first two months (1.6–3.1% on a brand-new market's thin
+utilization — a property of a new market, not of this rate) and it is ONE CYCLE under one dollar-rate
+regime: it says what has happened, never what can. The IRM permits 200% at target.
+⚠ **The rate is a COST, not a danger, in this model** — peak CB LTV moves under a point across a 3→16%
+sweep because the draw cap absorbs it into less accumulation. And the sign inverts with the path: on a
+rising band the debt shrinks in BTC terms, so 5.28% vs the realized bull-regime 6.91% is worth **0.03 ₿
+over 20 years**, while on a flat/support path the same spread bites hardest. A regime-coupled rate was
+measured and REJECTED on those grounds — a control and a concept for a rounding error.
+
+⚠ **BOTH faces now DEFAULT to Support + on the line** — the conservative read, not the flattering one.
+`DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE` on both; **`REVERT_PRESET_MONTHS`** (Cycling 48, Ownership 60)
+is what the chip restores and **must stay distinct from the default**, or the toggle is a silent no-op.
+Cycling also gained `DEFAULT_BAND = 'floor'` and `DEFAULT_INSPECT_MONTH = 24` (the scrubber opens at
+2.0 yr, `Math.min`-clamped against the horizon, instead of at the far end). Ownership's `DEFAULT_PATH`
+is now `'floor'`. **Cycling's `DEFAULT_CYCLE_MONTHS` is 1** (was 3), matching Ownership — sweeping monthly
+parks the expensive 13% Strike balance for one month instead of three: Strike interest HALVES
+($5,470 → $2,677) and peak Strike LTV drops 24.0% → 9.2%, against ~$892 more CB interest and ~1.2pt of
+peak CB LTV. Same bitcoin held either way — purchases follow income, not the sweep.
+Pinned by two tests, one asserting month 1..24 equals `plBandsAt` per band, one asserting the step is a
+real discontinuity (>5%) and signed correctly per band — so nobody can "simplify" the weight and
+silently kill the preset.
+
+⚠ **C2 NOTICE BUGFIX (OwnershipFace):** `degenerateCap` compared `rows[0].cbLtv * 100 <= capPct`, the
+INVERSE of its own message ("at or above the cap, so this run never draws"). Since `drawing` is
+`cbLtv < cap`, "never draws" means opening LTV **≥** cap. The old test hid the notice in exactly the case
+`DEFAULT_CAP_PCT = 50` was chosen to surface (opening 50.58% vs a 50% cap) and showed it whenever the draw
+was running fine. Now `>=`. This matters more since the faces default to Support + on the line, where the
+draw stops at month 1 — the notice is the only thing that explains why.
+
 ⚠ **The Ownership face's `drift` ("Fixed rate") path is REMOVED** — `pathKind` is now exactly `PlBand`,
 the `growth` overlay key and the conditional Annual-growth slider are gone, and `driftPath` was deleted
 from `ownershipFaceView.ts` as dead code. A flat/fixed-rate price is not a thing bitcoin has ever done,
@@ -3630,7 +3685,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1049 tests — `npx vitest run` before every commit.
+1054 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
