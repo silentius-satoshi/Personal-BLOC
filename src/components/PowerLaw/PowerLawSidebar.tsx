@@ -48,7 +48,7 @@ export function PowerLawSidebar() {
       <div className={styles.sectionHeader}>Today's Model</div>
 
       <div className={styles.stat}>
-        <div className={styles.statLabel}>Ceiling</div>
+        <div className={styles.statLabel}>Resistance</div>
         <div className={styles.statValue} style={{ color: 'var(--red)' }}>
           {fmtUSD(ceiling)}
         </div>
@@ -60,7 +60,7 @@ export function PowerLawSidebar() {
       </div>
 
       <div className={styles.stat}>
-        <div className={styles.statLabel}>Floor</div>
+        <div className={styles.statLabel}>Support</div>
         <div className={styles.statValue} style={{ color: 'var(--green)' }}>
           {fmtUSD(floor)}
         </div>

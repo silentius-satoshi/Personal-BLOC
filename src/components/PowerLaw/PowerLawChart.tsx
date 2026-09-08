@@ -52,9 +52,9 @@ function PowerLawTooltip({ active, payload, label }: TooltipProps) {
       lineHeight: 1.8,
     }}>
       <div style={{ fontWeight: 700, marginBottom: 4 }}>{mo} {yr}</div>
-      {get('ceiling') != null && <div>Ceiling:    <strong style={{ color: '#E85A4F' }}>{fmtUSD(get('ceiling')!)}</strong></div>}
+      {get('ceiling') != null && <div>Resistance: <strong style={{ color: '#E85A4F' }}>{fmtUSD(get('ceiling')!)}</strong></div>}
       {get('fair')    != null && <div>Fair Value: <strong>{fmtUSD(get('fair')!)}</strong></div>}
-      {get('floor')   != null && <div>Floor:      <strong style={{ color: '#4ECB82' }}>{fmtUSD(get('floor')!)}</strong></div>}
+      {get('floor')   != null && <div>Support:    <strong style={{ color: '#4ECB82' }}>{fmtUSD(get('floor')!)}</strong></div>}
       {get('price')   != null && <div style={{ height: '6px' }} />}
       {get('price')   != null && <div>BTC Price:  <strong style={{ color: '#E8836A' }}>{fmtUSD(get('price')!)}</strong></div>}
     </div>

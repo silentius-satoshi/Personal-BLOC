@@ -27,9 +27,9 @@ export function PowerLawMain() {
       )}
 
       <div className={styles.legend}>
-        <span style={{ color: '#E85A4F' }}>– – Ceiling (resistance)</span>
+        <span style={{ color: '#E85A4F' }}>– – Resistance</span>
         <span style={{ color: '#CCC' }}>—— Fair Value</span>
-        <span style={{ color: '#4ECB82' }}>– – Floor (support)</span>
+        <span style={{ color: '#4ECB82' }}>– – Support</span>
         <span style={{ color: '#E8836A' }}>—— BTC Price (historical)</span>
       </div>
 

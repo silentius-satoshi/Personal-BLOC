@@ -47,11 +47,3 @@ export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): Owners
   });
 }
 
-/** ⚠ The flat-rate "drift" price path (from the v5 prototype): compounds `anchor` at `annualGrowth` monthly.
- *  Pure display path — same power-law firewall as plConvergencePath (never imported by the risk core). */
-export function driftPath(anchor: number, annualGrowth: number, months: number): number[] {
-  const r = Math.pow(1 + annualGrowth, 1 / 12);
-  const out = [anchor];
-  for (let m = 1; m <= months; m++) out.push(out[m - 1] * r);
-  return out;
-}

@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY } from '../../simulation/cyclingSim';
-import { plBandsAt, plConvergencePath, type PlBand } from '../../simulation/powerLaw';
+import { plBandsAt, plConvergencePath, PL_BAND_LABEL, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
@@ -40,9 +40,9 @@ const DEFAULT_HORIZON_MONTHS = 60;
 const DEFAULT_CYCLE_MONTHS = 3;
 
 const BAND_META: { key: PlBand; label: string; color: string }[] = [
-  { key: 'floor',   label: 'Floor',   color: 'var(--green)' },
-  { key: 'fair',    label: 'Fair',    color: 'var(--btc)' },
-  { key: 'ceiling', label: 'Ceiling', color: 'var(--amber)' },
+  { key: 'floor',   label: PL_BAND_LABEL.floor,   color: 'var(--green)' },
+  { key: 'fair',    label: PL_BAND_LABEL.fair,    color: 'var(--btc)' },
+  { key: 'ceiling', label: PL_BAND_LABEL.ceiling, color: 'var(--amber)' },
 ];
 
 interface Overlay {
@@ -241,8 +241,10 @@ export default function CyclingFace() {
         </div>
         <p className={styles.note}>
           Starts at today's live {fmtUSD(s.btcPrice)} and reverts toward the power-law{' '}
-          <span style={{ color: BAND_META.find((b) => b.key === band)!.color }}>{band}</span> line —
-          today at Floor {fmtK(bands.floor)} · Fair {fmtK(bands.fair)} · Ceiling {fmtK(bands.ceiling)}.
+          <span style={{ color: BAND_META.find((b) => b.key === band)!.color }}>
+            {PL_BAND_LABEL[band].toLowerCase()}
+          </span> line — today at {PL_BAND_LABEL.floor} {fmtK(bands.floor)} ·{' '}
+          {PL_BAND_LABEL.fair} {fmtK(bands.fair)} · {PL_BAND_LABEL.ceiling} {fmtK(bands.ceiling)}.
         </p>
         <div className={styles.sliderPair}>
           <SliderInput

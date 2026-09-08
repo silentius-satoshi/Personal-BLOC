@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1048 tests — all must pass before every commit)
+- Vitest (1049 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -106,7 +106,8 @@ src/
     types.ts                    # SimInputs (optional creditLine), LivingInputs, StrategyResult, MonthlyLogEntry,
                                 # DayEvent (Daily Mode P1 union) + source?/confirmed?/provisional? on MonthlyLogEntry
     livingUtils.ts              # getBtcPrice (8-param, bear market aware)
-    powerLaw.ts                 # PL_B, PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, GENESIS + utils. ZERO imports
+    powerLaw.ts                 # PL_B, PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING (2.4e-17 — "Resistance" in the UI,
+                                # key stays 'ceiling'), GENESIS + utils. ZERO imports
                                 # (§2 wall side A). + plBandsAt(date) → {floor,fair,ceiling} (each from its OWN
                                 # A constant — never PL_A_FAIR × scalar) and plConvergencePath(anchor, band,
                                 # startDate, months, convergeMonths) — the Cycling face's price path: starts at
@@ -3152,10 +3153,32 @@ Per-device: `soloMining`, `poolName` (cosmetic), `poolFee` (EV math). No hardcod
 
 ```typescript
 export const PL_B = 5.82; PL_A_FAIR = 1.16e-17; PL_A_FLOOR = 0.42e-17;
-export const PL_A_CEILING = 10 ** -16.12; GENESIS = new Date('2009-01-03T00:00:00Z');
+export const PL_A_CEILING = 2.4e-17; GENESIS = new Date('2009-01-03T00:00:00Z');
 ```
 
-Three independent A constants — never `PL_A_FAIR × scalar`. Data: Blockchain.com (dev direct, prod via `/api/btc-history` proxy). Block height: mempool.space. Halving computed from block height only.
+Three independent A constants — never `PL_A_FAIR × scalar`. **`PL_A_CEILING` was `10 ** -16.12` (6.54×
+fair) and is now `2.4e-17` (2.07× fair)** — the old value was calibrated to the 2017-era tops and by 2026
+overstated the upside ~3.2×, which is the dangerous direction in a leverage tool. The bands share `PL_B`,
+so a parallel resistance can never be an envelope: tops decay toward trend every cycle (19.3× fair in 2011
+→ 0.99× at the Oct-2025 top), so this constant is a calibration choice with an expiry, not a fit. The
+floor, by contrast, IS a fit — it sits ~2% off Santostasi's published power-law floor and was touched at
+the Nov-2022 low. ⚠ **User-facing label is "Resistance"; the `PlBand` key stays `'ceiling'`** — renaming
+the key would ripple through four files for no functional gain. Pinned by `powerLaw.test.ts`
+(`PL_A_CEILING / PL_A_FAIR ≈ 2.069`, a pin not a bound, so the old value can't drift back in).
+
+**`PL_BAND_LABEL: Record<PlBand, string>`** (same module) is the ONE user-facing word per band —
+`floor → "Support"`, `fair → "Fair"`, `ceiling → "Resistance"`. Every surface imports it; **nothing
+renders a raw key.** Both Almanac faces used to interpolate `{band}` / `${pathKind}` straight into
+prose, so a panel headed "Resistance" read "…reverts toward the power-law ceiling line" two lines
+below. Pinned by a test that also asserts `floor`/`ceiling` never equal their own keys.
+
+⚠ **The Ownership face's `drift` ("Fixed rate") path is REMOVED** — `pathKind` is now exactly `PlBand`,
+the `growth` overlay key and the conditional Annual-growth slider are gone, and `driftPath` was deleted
+from `ownershipFaceView.ts` as dead code. A flat/fixed-rate price is not a thing bitcoin has ever done,
+so it was a scenario nobody would legitimately plan on. The Cycling face never had it.
+
+Data: Blockchain.com (dev direct, prod via `/api/btc-history` proxy). Block height: mempool.space.
+Halving computed from block height only.
 
 ---
 
@@ -3605,7 +3628,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1048 tests — `npx vitest run` before every commit.
+1049 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
@@ -5800,7 +5823,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Onboarding verifies by default (R2c-6a, SUPERSEDES the retired R2c-4a bridge) | `OwnerKeySetup` K2 now stamps `backupVerifiedAt` — but gated on a **real verification** (a save + a two-word quiz = the ceremony's own semantics), NOT an ack. The stamp is pre-auth field-only (K2), before K3's `establishLocalOwner` `syncNow` wakes it ungated. The **skip** path ("I'll do this later") stamps nothing → generated-UNVERIFIED → the R2c-2/5b ladder. ⚠ The distinction the retired R2c-4a bridge got wrong: **an ack is a promise; a verification is proof.** Never gate the stamp on anything less than the save+quiz. ⚠ `handleGenerate`/`handleStartOver` must `setBackupVerifiedAt(null)` on (re)mint — the field rides partialize `...rest`, so a stale stamp from an abandoned run would falsely verify freshly-minted words. (⚠ `backupGate.test.ts` drives the setters directly, never the component — the K2 wiring is manual/tsc-covered.) |
 | Seed-phrase hygiene copy — two variants, don't cross them | **DISPLAY** (we minted the words; `OwnerKeySetup` K2 + `RecoveryKeyCeremony` explain, one identical string): *"These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job."* **CAPTURE** (the user is typing words IN; `NostrAuthGate`'s word-grid tab only, never the nsec tab): *"Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."* The capture line sits BELOW the live checksum line so it never interrupts the grid→status feedback path |
 | `SummaryBar fmtUSD` | Local sign-preserving — NEVER replace with shared version |
-| Power Law A constants | Three independent values — never `PL_A_FAIR × scalar` |
+| Power Law A constants | Three independent values — never `PL_A_FAIR × scalar`. Ceiling = `2.4e-17` (resistance, 2.07× fair); user-facing label is "Resistance", the `PlBand` key stays `'ceiling'` |
 | Mining electricity | Fiat overhead — 100% sats kept, never deducted |
 | Mining strategy cards | Fixed presets — independent of per-device `soloMining` |
 | `MiningOddsBar` | Reads store directly — not props |

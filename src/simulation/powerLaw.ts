@@ -1,7 +1,16 @@
 export const PL_B         = 5.82;
 export const PL_A_FAIR    = 1.16e-17;
 export const PL_A_FLOOR   = 0.42e-17;
-export const PL_A_CEILING = 10 ** -16.12;
+// ⚠ RESISTANCE, not an envelope. A band parallel to fair (they share PL_B) can never track cycle
+// tops, because tops decay toward the trend every cycle — measured against the fair line they ran
+// 19.3x (2011), 11.6x (2013), 6.0x (2017), 2.5x (2021), 0.99x (Oct 2025). So this constant is a
+// CALIBRATION CHOICE, and it is calibrated to the recent era: 2.4e-17 = 2.07x fair, which sits
+// between the 2021 and 2025 tops. The prior 10 ** -16.12 (6.54x fair) was calibrated to the 2017
+// tops and by now overstates the upside ~3.2x — the dangerous direction for a leverage tool, since
+// an inflated upside makes a levered plan look safer than it is. Burger's own resistance line uses
+// a SHALLOWER exponent (5.029 vs 5.845) so it converges on its own; matching that would mean each
+// band carrying its own B as well as its own A. Until then, expect to revisit this each cycle.
+export const PL_A_CEILING = 2.4e-17;
 export const GENESIS      = new Date('2009-01-03T00:00:00Z');
 
 export function daysSinceGenesis(date: Date): number {
@@ -26,6 +35,19 @@ export function plCeiling(date: Date): number {
 // the same sanctioned crossing OutlookProjection/MonthBreakdown already use for their growth rate.
 
 export type PlBand = 'floor' | 'fair' | 'ceiling';
+
+/**
+ * The ONE user-facing word for each band. The KEYS stay `floor`/`fair`/`ceiling` — renaming them
+ * would ripple through every consumer for no functional gain — but nothing should ever render a key.
+ * Views that printed `{band}` directly were leaking 'ceiling' into a sentence that says "Resistance"
+ * two lines above it. Import this instead, so the vocabulary can't drift per component again.
+ * (Still zero imports — this is data, not UI.)
+ */
+export const PL_BAND_LABEL: Record<PlBand, string> = {
+  floor: 'Support',
+  fair: 'Fair',
+  ceiling: 'Resistance',
+};
 
 /** The three band prices at a date. Each uses its OWN independent A constant — never PL_A_FAIR × scalar. */
 export function plBandsAt(date: Date): Record<PlBand, number> {

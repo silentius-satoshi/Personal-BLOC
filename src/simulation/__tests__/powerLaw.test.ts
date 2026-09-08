@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING,
+  PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, PL_BAND_LABEL,
   plFairValue, plFloor, plCeiling, plBandsAt, plConvergencePath,
   type PlBand,
 } from '../powerLaw';
@@ -32,8 +32,20 @@ describe('plBandsAt', () => {
     const b = plBandsAt(START);
     expect(b.floor / b.fair).toBeCloseTo(PL_A_FLOOR / PL_A_FAIR, 12);
     expect(b.ceiling / b.fair).toBeCloseTo(PL_A_CEILING / PL_A_FAIR, 12);
-    // ...and the ceiling ratio is not a round scalar anyone would have hand-typed — it comes from 10^-16.12.
-    expect(PL_A_CEILING / PL_A_FAIR).toBeGreaterThan(6);
+    // ...and the resistance ratio is PINNED, not merely bounded: 2.4e-17 / 1.16e-17 = 2.069. A loose
+    // `> 2` would silently accept the old 10^-16.12 (6.54x), which is exactly the drift this guards.
+    expect(PL_A_CEILING / PL_A_FAIR).toBeCloseTo(2.069, 3);
+  });
+
+  it('band vocabulary: ONE word per band, and a key is never the word', () => {
+    // The faces used to interpolate the raw key into prose, so a panel headed "Resistance" would
+    // read "...reverts toward the power-law ceiling line" two lines down. One map, one word each.
+    expect(PL_BAND_LABEL.floor).toBe('Support');
+    expect(PL_BAND_LABEL.fair).toBe('Fair');
+    expect(PL_BAND_LABEL.ceiling).toBe('Resistance');
+    // 'fair' is legitimately its own word; the other two must never surface their keys.
+    expect(PL_BAND_LABEL.floor.toLowerCase()).not.toBe('floor');
+    expect(PL_BAND_LABEL.ceiling.toLowerCase()).not.toBe('ceiling');
   });
 });
 

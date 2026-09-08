@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
-import { plBandsAt, plConvergencePath, type PlBand } from '../../simulation/powerLaw';
+import { plBandsAt, plConvergencePath, PL_BAND_LABEL, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
@@ -14,7 +14,7 @@ import { LEVEL_COLOR, CREDIT_WARN_USED, CREDIT_ACT_USED } from '../../simulation
 import { deriveOwnership } from '../../simulation/ownership';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { applyPriceLens, clampMonth, holdingsSplit } from './cyclingFaceView';
-import { ownershipGained, chartOwnershipRows, driftPath } from './ownershipFaceView';
+import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
 import { SliderInput } from '../ui/SliderInput';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './OwnershipFace.module.css';
@@ -49,9 +49,9 @@ const DEFAULT_CYCLE_MONTHS = 1;      // monthly refinance — the review's "mont
 const DEFAULT_PATH: 'fair' = 'fair';
 
 const BAND_META: { key: PlBand; label: string; color: string }[] = [
-  { key: 'floor',   label: 'To floor',   color: 'var(--green)' },
-  { key: 'fair',    label: 'To fair',    color: 'var(--btc)' },
-  { key: 'ceiling', label: 'To ceiling', color: 'var(--amber)' },
+  { key: 'floor',   label: `To ${PL_BAND_LABEL.floor.toLowerCase()}`,   color: 'var(--green)' },
+  { key: 'fair',    label: `To ${PL_BAND_LABEL.fair.toLowerCase()}`,    color: 'var(--btc)' },
+  { key: 'ceiling', label: `To ${PL_BAND_LABEL.ceiling.toLowerCase()}`, color: 'var(--amber)' },
 ];
 
 const MODE_NOTE: Record<CyclingMode, string> = {
@@ -62,8 +62,7 @@ const MODE_NOTE: Record<CyclingMode, string> = {
 };
 
 interface Overlay {
-  pathKind?: 'floor' | 'fair' | 'ceiling' | 'drift';
-  growth?: number;
+  pathKind?: PlBand;
   convergeMonths?: number;
   months?: number;
   income?: number;
@@ -165,7 +164,6 @@ export default function OwnershipFace() {
   const dirty = Object.keys(overlay).length > 0;
 
   const pathKind = overlay.pathKind ?? DEFAULT_PATH;
-  const growth = overlay.growth ?? 0;
   const convergeMonths = overlay.convergeMonths ?? DEFAULT_CONVERGE_MONTHS;
   const months = overlay.months ?? DEFAULT_HORIZON_MONTHS;
   const income = overlay.income ?? s.income;
@@ -183,10 +181,10 @@ export default function OwnershipFace() {
     [s.cbLoanBalance, s.cbAprPct, s.cbLoanBalanceAsOf],
   );
 
-  const pricePath = useMemo(() => {
-    if (pathKind === 'drift') return driftPath(s.btcPrice, growth, months);
-    return plConvergencePath(s.btcPrice, pathKind, startDate, months, convergeMonths);
-  }, [s.btcPrice, growth, pathKind, startDate, months, convergeMonths]);
+  const pricePath = useMemo(
+    () => plConvergencePath(s.btcPrice, pathKind, startDate, months, convergeMonths),
+    [s.btcPrice, pathKind, startDate, months, convergeMonths],
+  );
 
   const sim = useMemo(() => runCyclingSim({
     pricePath,
@@ -302,9 +300,9 @@ export default function OwnershipFace() {
     };
   })();
 
-  const pathNote = pathKind === 'drift'
-    ? (growth === 0 ? 'Flat — the month scrubber moves time, not price.' : `Compounds ${growth >= 0 ? 'up' : 'down'} monthly.`)
-    : `Converges from today's ${fmtUSD(s.btcPrice)} toward the ${pathKind} line over ${convergeMonths} months. Today: floor ${fmtK(bands.floor)} · fair ${fmtK(bands.fair)} · ceiling ${fmtK(bands.ceiling)}.`;
+  const pathNote =
+    `Converges from today's ${fmtUSD(s.btcPrice)} toward the ${PL_BAND_LABEL[pathKind].toLowerCase()} line over ${convergeMonths} months. `
+    + `Today: ${PL_BAND_LABEL.floor.toLowerCase()} ${fmtK(bands.floor)} · ${PL_BAND_LABEL.fair.toLowerCase()} ${fmtK(bands.fair)} · ${PL_BAND_LABEL.ceiling.toLowerCase()} ${fmtK(bands.ceiling)}.`;
 
   return (
     <div className={styles.face}>
@@ -561,29 +559,19 @@ export default function OwnershipFace() {
 
             <span className={styles.cardLabel}>Price path</span>
             <div className={styles.segRow}>
-              {([
-                ...BAND_META.map((b) => [b.key, b.label] as const),
-                ['drift', 'Fixed rate'],
-              ]).map(([k, label]) => (
-                <button key={k} type="button"
-                  className={`${styles.segBtn} ${pathKind === k ? styles.segBtnOn : ''}`}
-                  aria-pressed={pathKind === k}
-                  onClick={() => set('pathKind', k as Overlay['pathKind'])}>
-                  {label}
+              {BAND_META.map((b) => (
+                <button key={b.key} type="button"
+                  className={`${styles.segBtn} ${pathKind === b.key ? styles.segBtnOn : ''}`}
+                  aria-pressed={pathKind === b.key}
+                  onClick={() => set('pathKind', b.key)}>
+                  {b.label}
                 </button>
               ))}
             </div>
             <p className={styles.noteQuiet}>{pathNote}</p>
 
-            {pathKind === 'drift' ? (
-              <SliderInput label="Annual growth" value={growth} onChange={(v) => set('growth', v)}
-                min={-0.4} max={0.8} step={0.01}
-                display={`${growth >= 0 ? '+' : '−'}${Math.abs(growth * 100).toFixed(0)}%/yr`}
-                minLabel="−40%" maxLabel="+80%" />
-            ) : (
-              <SliderInput label="Convergence" value={convergeMonths} onChange={(v) => set('convergeMonths', v)}
-                min={6} max={120} step={1} display={fmtHorizon(convergeMonths)} minLabel="6 mo" maxLabel="10 yr" />
-            )}
+            <SliderInput label="Convergence" value={convergeMonths} onChange={(v) => set('convergeMonths', v)}
+              min={6} max={120} step={1} display={fmtHorizon(convergeMonths)} minLabel="6 mo" maxLabel="10 yr" />
 
             <SliderInput label="Coinbase draw cap" value={capPct} onChange={(v) => set('cbLtvCapPct', v)}
               min={20} max={85} step={1} display={`${capPct}%`} minLabel="20%" maxLabel="85%" />
