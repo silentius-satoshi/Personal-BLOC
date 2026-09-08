@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, PL_BAND_LABEL,
+  PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, PL_BAND_LABEL, PL_ON_THE_LINE,
   plFairValue, plFloor, plCeiling, plBandsAt, plConvergencePath,
   type PlBand,
 } from '../powerLaw';
@@ -14,6 +14,15 @@ import {
  */
 
 const START = new Date(Date.UTC(2026, 7, 31));   // 2026-08-31, fixed
+
+/** Mirrors powerLaw.ts's PRIVATE addMonths (UTC, day-of-month clamped) so the pin below can name the
+ *  exact date each month lands on. START is Aug 31, so the clamp is load-bearing here: +1mo → Sep 30. */
+function addUtcMonths(date: Date, months: number): Date {
+  const t = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, 1));
+  const dim = new Date(Date.UTC(t.getUTCFullYear(), t.getUTCMonth() + 1, 0)).getUTCDate();
+  t.setUTCDate(Math.min(date.getUTCDate(), dim));
+  return t;
+}
 const BANDS: PlBand[] = ['floor', 'fair', 'ceiling'];
 const ANCHOR = 78_000;
 
@@ -104,6 +113,30 @@ describe('plConvergencePath', () => {
       const p = plConvergencePath(ANCHOR, band, START, 60, 48);
       for (let m = 1; m <= 60; m++) expect(p[m]).toBeGreaterThan(p[m - 1]);
     }
+  });
+
+  it('⭐ PL_ON_THE_LINE: month 1 onward IS the band, for every band', () => {
+    // The "on the line" preset is not an engine branch — it is convergeMonths = 1, where the weight
+    // max(0, 1 - m/1) is already 0 for every m >= 1. This pins that, so nobody "optimises" the weight
+    // and silently breaks the preset.
+    for (const band of BANDS) {
+      const p = plConvergencePath(ANCHOR, band, START, 24, PL_ON_THE_LINE);
+      expect(p[0]).toBe(ANCHOR);                                  // month 0 is still the live price
+      for (const m of [1, 2, 6, 12, 24]) {
+        const bandAt = plBandsAt(addUtcMonths(START, m))[band];
+        expect(p[m]).toBeCloseTo(bandAt, 6);
+      }
+    }
+  });
+
+  it('on the line puts a real STEP at month 1 — down on support, up on the others', () => {
+    // The step is the honest consequence of month 0 being pinned to the live price. Faces surface it.
+    const onFloor = plConvergencePath(ANCHOR, 'floor', START, 12, PL_ON_THE_LINE);
+    const onCeil = plConvergencePath(ANCHOR, 'ceiling', START, 12, PL_ON_THE_LINE);
+    expect(onFloor[1]).toBeLessThan(onFloor[0]);                  // support today sits below spot
+    expect(onCeil[1]).toBeGreaterThan(onCeil[0]);
+    // and it is a genuine discontinuity, not a rounding wobble
+    expect(Math.abs(onFloor[1] / onFloor[0] - 1)).toBeGreaterThan(0.05);
   });
 
   it('guards: non-positive anchor or converge window → a flat path, never NaN', () => {

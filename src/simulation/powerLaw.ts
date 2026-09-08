@@ -43,6 +43,15 @@ export type PlBand = 'floor' | 'fair' | 'ceiling';
  * two lines above it. Import this instead, so the vocabulary can't drift per component again.
  * (Still zero imports — this is data, not UI.)
  */
+/**
+ * The `convergeMonths` value at which the path SNAPS to the band: `w = max(0, 1 - m/1)` is 0 for every
+ * m >= 1, so month 1 onward IS the band value for that month. Not a special case in the math — it is
+ * the natural endpoint of the existing weight, which is why this needs no engine branch. Month 0 still
+ * equals the live price exactly (the load-bearing invariant), so choosing it puts a visible one-month
+ * STEP in the path: on support today that step is about -19%. Both faces surface the size of it.
+ */
+export const PL_ON_THE_LINE = 1;
+
 export const PL_BAND_LABEL: Record<PlBand, string> = {
   floor: 'Support',
   fair: 'Fair',
