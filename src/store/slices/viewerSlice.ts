@@ -1,6 +1,7 @@
 // viewerSlice (Phase 1c) — the owner's viewer roster + viewer-side (read-client) fields + clearViewerData/resetPlanToSeeds.
 import type { StoreState, StoreSet, StoreGet } from '../types';
 import { todayLocalISO } from '../../utils/format';
+import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
 
 type ViewerSlice = Pick<StoreState,
   | 'viewers' | 'nextViewerIndex' | 'viewerMode' | 'viewerWriterPubkey' | 'viewerSecretKey' | 'viewerDisplayName'
@@ -61,7 +62,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
     advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
-    cbLoanBalance: 60000, cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: 4.77, hasCbLoan: false,
+    cbLoanBalance: 60000, cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: CB_APR_SEED_PCT, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55, cbEmergencyCeilingPct: 30,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
@@ -83,7 +84,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
     advisorActualBlocBalance: 0, advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
-    cbLoanBalance: 60000, cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: 4.77, hasCbLoan: false,
+    cbLoanBalance: 60000, cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: CB_APR_SEED_PCT, hasCbLoan: false,
     ndpLastPaidDate: null, cbLiquidationPrice: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
     cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55, cbEmergencyCeilingPct: 30,
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,

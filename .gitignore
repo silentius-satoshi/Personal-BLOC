@@ -17,3 +17,6 @@ npm-debug.log*
 /playwright-report/
 /blob-report/
 /playwright/.cache/
+
+# Scratch space for patches/artifacts handed over by Claude — never part of the repo
+/Claude outputs/

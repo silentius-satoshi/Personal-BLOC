@@ -15,6 +15,7 @@
 import { toLocalISO } from '../../utils/format';
 import { CURRENT_STORE_VERSION } from '../storeVersion';   // zero-import module → does NOT violate the never-import-useStore constraint
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
+import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
 
 // ⚠ MUST equal the store's persist `version` (src/store/useStore.ts). Sourced from the single CURRENT_STORE_VERSION
 // constant; e2e/helpers.ts keeps its own pinned copy (Playwright can't resolve src imports) — both in the CLAUDE.md
@@ -122,7 +123,7 @@ export function buildDemoSeedState(today: Date): Record<string, unknown> {
     hasCbLoan: true,
     cbLoanBalance,
     cbCollateralBtc,
-    cbAprPct: 4.77,
+    cbAprPct: CB_APR_SEED_PCT,
     cbLiquidationPrice,
     cbPaymentStrategy: 'ltvTriggered',
     cbLtvTriggerPct: 75,

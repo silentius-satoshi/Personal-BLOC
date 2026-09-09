@@ -6,6 +6,7 @@ import { ViewerLoginFlow } from '../Auth/ViewerLoginFlow';
 import { OwnerKeySetup } from './OwnerKeySetup';
 import { ChoosePathView } from '../Entry/ChoosePathView';
 import styles from './OnboardingModal.module.css';
+import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
 
 interface OnboardingModalProps {
   onComplete: (enableSimple: boolean) => void;
@@ -46,7 +47,7 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     income: 5000, expenses: 4000,
     collateralBtc: 0.50, creditLine: 15000, blocApr: 13,
     startDate: todayLocalISO(),
-    cbLoanBalance: 50000, cbCollateralBtc: 1.00, cbAprPct: 4.77,
+    cbLoanBalance: 50000, cbCollateralBtc: 1.00, cbAprPct: CB_APR_SEED_PCT,
   });
 
   const setIncome           = useStore((s) => s.setIncome);

@@ -13,6 +13,8 @@ export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
  *  1. EVERY refinance sweep pays it. A monthly cycle pays it 12x a year, not once.
  *  2. It is CAPITALISED — added to principal, so it compounds at the CB APR for the rest of the horizon.
  */
+// (origination-fee constants are below, after the platform fee)
+
 /**
  * Coinbase's PLATFORM FEE — a spread it charges ON TOP of the third-party (Morpho) variable borrow rate.
  * In-app disclosure, Sept 2026: "Net APR 6.21% · Includes platform fee of 1.5%" over a Morpho variable
@@ -42,6 +44,19 @@ export function cbNetApr(morphoApyPct: number | null): number | null {
   if (morphoApyPct === null || !Number.isFinite(morphoApyPct)) return null;
   return morphoApyPct + CB_PLATFORM_FEE_PCT;
 }
+
+/**
+ * The APR a FRESH install / reset / onboarding draft starts at. Derived, not typed: it is the market rate
+ * that was observed when this seed was chosen, plus the platform fee — so if `CB_PLATFORM_FEE_PCT` ever
+ * changes, every seed site moves with it and none can silently keep an understated figure.
+ *
+ * ⚠ WHY THIS EXISTS: the platform-fee change moved the store's initial `cbAprPct` 4.77 → 6.27 but left
+ * FOUR other seed sites hard-coded at 4.77 — and one of them, the OnboardingModal draft, writes over the
+ * store default on first launch, so every new owner still got the understated rate. The fix was not to
+ * edit four literals; it was to stop having four literals. A test pins every site to this constant.
+ */
+export const CB_MARKET_APR_SEED_PCT = 4.77;
+export const CB_APR_SEED_PCT        = CB_MARKET_APR_SEED_PCT + CB_PLATFORM_FEE_PCT;   // 6.27
 
 export const CB_FEE_TIER1_PCT = 0.02;
 export const CB_FEE_TIER2_PCT = 0.01;

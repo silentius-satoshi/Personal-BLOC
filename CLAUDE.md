@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1064 tests — all must pass before every commit)
+- Vitest (1067 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -3121,6 +3121,19 @@ accrual. **The store default moved 4.77 → 6.27** (4.77 was a raw Morpho readin
 a net figure by hand, so persisted values stay put and the faces now state the live number all-in so the
 owner can correct their own slider.
 
+🔴 **`CB_APR_SEED_PCT` — ONE seed, four sites.** The first cut of that default change was a NO-OP for new
+owners and this is the fix. Moving the store's initial `cbAprPct` left FOUR other seed sites hard-coded at
+4.77, and one of them — the **`OnboardingModal` draft** — writes over the store default on first launch
+(`setCbAprPct(draft.cbAprPct)`), so every new owner still got the understated rate. `viewerSlice`'s
+`clearViewerData` AND `resetPlanToSeeds` also reseeded 4.77, meaning the owner escape hatch silently
+DOWNGRADED anyone who used it, and `demoSeed` showed the raw rate as if it were all-in.
+The fix was not to edit four literals — it was to stop having four literals:
+`CB_APR_SEED_PCT = CB_MARKET_APR_SEED_PCT + CB_PLATFORM_FEE_PCT`, derived so a change to the platform fee
+moves every seed with it. `src/store/__tests__/cbAprSeed.test.ts` reads the four files and FAILS on any
+`cbAprPct: <number>` literal in them (mutation-verified against the original defect).
+⚠ Test FIXTURES keep their own 4.77 — a fixture's job is to be a fixed arbitrary number, and rewriting
+them would move pinned values for no gain. The guard only covers the four SEED sites.
+
 ⚠ **Two opposite "net"s — do not confuse them.** Coinbase's **"Net APR"** = market rate **PLUS** Coinbase's
 fee (bigger). Morpho's **`netBorrowApy`** field = market rate **MINUS** reward incentives (smaller). Same
 word, opposite directions. `parseMorphoRate` returns both raw fields; the faces read `borrowApy` and put
@@ -3812,7 +3825,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1064 tests — `npx vitest run` before every commit.
+1067 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
