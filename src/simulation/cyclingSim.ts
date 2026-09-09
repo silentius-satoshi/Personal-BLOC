@@ -27,6 +27,39 @@ import { CB_LLTV, CB_LIF, cbBorrowFee } from './runCoinbaseLoan';
  */
 
 export interface CyclingInputs {
+  /**
+   * COLD-STORAGE SWEEP (opt-in; 0 or undefined = off). The percentage break below the CURRENT PATH PRICE
+   * the position must still survive. Each month, any Coinbase collateral in excess of that requirement is
+   * moved to a THIRD pool — unpledged, self-custodied, and permanently outside every LTV denominator.
+   *
+   * ⚠ Expressed as a SURVIVABLE DRAWDOWN, not an LTV. The equivalent LTV is `CB_LLTV × (1 − buffer)`, so
+   * 60% LTV is a 30% buffer — which sounds conservative beside the 70% draw cap but actually means
+   * "liquidated if price breaks 30% below the path."
+   *
+   * 🔴 CALIBRATE THIS AGAINST THE REGRESSION LINE, NOT AGAINST SUPPORT. On the support path the buffer
+   * reads as "% below support", and that unit has NO historical content on its own: support is a line
+   * PARALLEL to fair (same PL_B) at a fixed 36.2% of it (0.42e-17 / 1.16e-17), and its constant was FITTED
+   * to the cycle bottoms — the 2022 bottom implies 4.2317e-18 against the 4.2e-18 used. Support already IS
+   * the historical maximum-drawdown envelope, so a further "% below support" is priced by nothing.
+   * Translated into fair-value terms: a 30% buffer survives down to 25.3% of fair (0.70x the fitted
+   * floor — a real margin for model error), a 50% buffer to 18.1% (0.50x), a 70% buffer to 10.9% (0.30x,
+   * i.e. 3.3x deeper than any bottom on record). An earlier draft of this feature recommended 50–70% on
+   * the reasoning that it cost no bitcoin; it also cost eight years of waiting to buy a scenario nothing
+   * calibrates. The DEFAULT is the 30% end for that reason. The VIEW must show the fair-value translation
+   * so the knob cannot be read as more precise than it is.
+   *
+   * ⚠⚠ NOT FREE SAFETY, and the sign depends on the PATH. Swept collateral is gone, so every later month
+   * starts from a smaller base. On a RISING path the position de-levers anyway and the sweep is free —
+   * same total stack, coins simply relocated. On a FLAT path it trades stack for time (less drawing, so
+   * less accumulation, but the cap binds sooner). On a FALLING path a loose buffer is actively dangerous.
+   * The engine clamps the floor to the draw cap (below) to remove the incoherent settings, but a real
+   * trade-off remains at every setting. The face must show the liquidation month, not just the ₿ banked.
+   *
+   * 🔴 §2 WALL: "below the path price" — the engine still knows nothing about the power law. On the
+   * support path that reads as "below support"; the VIEW does the labelling, as always.
+   */
+  coldStoreBufferPct?: number;
+
   /** price[m] for m = 0..N. The view builds it (plConvergencePath); the engine never derives a price. */
   pricePath: number[];
   /** Calendar year of month 0 — LABEL SEED ONLY, never used in math (keeps the engine clock-free). */
@@ -70,6 +103,8 @@ export interface CyclingRow {
 
   strikeCollateralBtc: number;
   cbCollateralBtc: number;
+  /** Cumulative BTC swept to cold storage. UNPLEDGED — never in any LTV denominator, never seizable. */
+  coldBtc: number;
   btcHeld: number;               // display only — never a denominator
 
   cbLtv: number;                 // cbDebt / (cbColl × price)
@@ -98,6 +133,10 @@ export interface CyclingResult {
   cbFeeCount: number;
   baselineEquity: number;               // "never draw" comparison, on the SAME price path
   baselineBtc: number;
+  /** Total BTC moved to cold storage over the run (0 when the sweep is off). */
+  totalColdBtc: number;
+  /** First month the sweep moved anything, else null — "not yet" is the honest answer for a long while. */
+  firstColdMonth: number | null;
 }
 
 /** Liquidation penalty as a fraction (≈ 0.04384) — derived from the shared incentive factor, not a literal. */
@@ -120,6 +159,19 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const cycle = Math.max(1, Math.floor(inputs.cycleMonths));
   const mode: CyclingMode = inputs.mode ?? 'cycle';
 
+  // Cold-storage sweep. 0 disables it; 1 (survive a 100% drawdown) would demand an LTV of 0 — infinite
+  // collateral for any debt — so the buffer is held below 1.
+  const coldBufferRaw = inputs.coldStoreBufferPct ?? 0;
+  const coldBuffer = Number.isFinite(coldBufferRaw) ? Math.min(0.99, Math.max(0, coldBufferRaw / 100)) : 0;
+  const coldOn = coldBuffer > 0;
+  // 🔴 THE SWEEP CAN NEVER BE LOOSER THAN THE DRAW CAP. Without this clamp the sweep silently undoes the
+  // CB LTV STOP: a 1% buffer implies an 85.1% floor, so it would strip collateral down to a level the cap
+  // has already declared too risky to BORROW at. Measured, unclamped, on a −30%/yr path: liquidation moved
+  // from month 13 to month 2. Withdrawing collateral to a worse LTV than you are willing to borrow at is
+  // incoherent, so the cap wins and the two knobs compose instead of fighting.
+  // ⚠ This does NOT make the sweep risk-free — see the header. It removes only the incoherent settings.
+  const coldFloorLtv = Math.min(CB_LLTV * (1 - coldBuffer), cap);
+
   const strikeColl = inputs.strikeCollateralBtc;   // fixed — purchases go to Coinbase
   let cbColl = inputs.cbCollateralBtc;             // grows with every purchase
   let cbDebt = inputs.cbDebt;
@@ -136,6 +188,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalCbInterest = 0;
   let totalCbFees = 0;
   let cbFeeCount = 0;
+  let coldBtc = 0;
+  let firstColdMonth: number | null = null;
 
   const rows: CyclingRow[] = [];
 
@@ -214,6 +268,24 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       }
     }
 
+    // ── COLD-STORAGE SWEEP ── after the month's accumulation, before the LTV is read, so the row shows
+    // the position as it actually stands once the coins are gone. Never at m=0 (that is the opening
+    // position, not a month of the plan) and never once liquidated (there is nothing left to protect).
+    // ⚠ Removing only the EXCESS raises cbLtv at most TO coldFloorLtv IN THAT MONTH — but the collateral
+    // is gone for good, so every LATER month starts from a smaller base. On a rising path that never
+    // matters (LTV keeps falling anyway); on a flat or falling one it does. The sweep is a RISK TRANSFER,
+    // not free safety, and `coldStoreBufferPct` is the size of the transfer.
+    if (coldOn && m > 0 && liqMonth === null && price > 0 && cbColl > 0) {
+      const required = cbDebt / (coldFloorLtv * price);   // collateral the buffer demands we keep
+      const excess = cbColl - required;
+      if (excess > 0) {
+        const moved = Math.min(excess, cbColl);
+        cbColl -= moved;
+        coldBtc += moved;
+        if (firstColdMonth === null) firstColdMonth = m;
+      }
+    }
+
     const cbLtv = ltvOf(cbDebt, cbColl, price);
     const strikeLtv = ltvOf(strikeBal, strikeColl, price);
     if (strikeMarginMonth === null && strikeMarginLtv > 0 && strikeLtv >= strikeMarginLtv) strikeMarginMonth = m;
@@ -221,7 +293,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     const breached = liqMonth === null && cbColl > 0 && cbLtv >= CB_LLTV;
     if (breached) liqMonth = m;
 
-    const btcHeld = strikeColl + cbColl;
+    // ⚠ btcHeld is the THREE pools — Strike-pledged, Coinbase-pledged, and cold. It stays DISPLAY ONLY
+    // and is still never a denominator; adding cold here is what keeps "yours" honest once coins leave.
+    const btcHeld = strikeColl + cbColl + coldBtc;
     const collateralValue = btcHeld * price;
     rows.push({
       m,
@@ -229,7 +303,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       price,
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
       strikeDrawn, strikeShortfall,
-      strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, btcHeld,
+      strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, btcHeld,
       cbLtv, strikeLtv,
       collateralValue, equity: collateralValue - (cbDebt + strikeBal),
       postLiquidation: liqMonth !== null,
@@ -246,7 +320,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       // both facilities are full-recourse, so showing a clean zero errs optimistic.
       cbDebt = Math.max(0, cbDebt - repaidUsd);
       deficiencyUsd = cbDebt > 0 ? cbDebt : null;
-      survivorBtc = strikeColl + cbColl;
+      // ⭐ Cold storage CANNOT be seized — that is the entire point of the feature, and the survivor
+      // figure is where it shows up. Morpho reaches the Coinbase pool only.
+      survivorBtc = strikeColl + cbColl + coldBtc;
     }
   }
 
@@ -270,5 +346,6 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     seizedBtc, survivorBtc, deficiencyUsd,
     totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount,
     baselineEquity, baselineBtc: baseBtc,
+    totalColdBtc: coldBtc, firstColdMonth,
   };
 }

@@ -23,6 +23,8 @@ export interface OwnershipChartRow {
   held: number;
   yours: number;
   owed: number;
+  /** Cold-storage BTC — a SUBSET of `held`, not a fourth quantity to add to it. 0 when the sweep is off. */
+  cold: number;
   cbLtv: number;
   strikeLtv: number;
   price: number;
@@ -39,6 +41,9 @@ export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): Owners
       held: +r.btcHeld.toFixed(4),
       yours: +o.yoursBtc.toFixed(4),
       owed: +o.lendersBtc.toFixed(4),
+      // ⚠ `held` ALREADY includes cold (btcHeld is all three pools), so plotting cold makes visible a
+      // share the Held line was otherwise hiding. It is a floor under `yours`: coins no lender can reach.
+      cold: +r.coldBtc.toFixed(4),
       cbLtv: +(r.cbLtv * 100).toFixed(1),
       strikeLtv: +(r.strikeLtv * 100).toFixed(1),
       price: Math.round(r.price),

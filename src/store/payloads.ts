@@ -38,6 +38,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     cbLoanBalanceAsOf:        s.cbLoanBalanceAsOf,
     cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
     strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
+    coldStorageBtc:           s.coldStorageBtc,
     blocMinPaymentSource:     s.blocMinPaymentSource,
     blocStatementMinimum:     s.blocStatementMinimum,
     blocMinPaymentDueDay:     s.blocMinPaymentDueDay,

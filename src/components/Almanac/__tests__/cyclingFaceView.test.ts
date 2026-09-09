@@ -14,6 +14,7 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeShortfall: 0,
   strikeCollateralBtc: 1,
   cbCollateralBtc: 2,
+  coldBtc: 0,
   btcHeld: 3,
   cbLtv: 80_000 / (2 * 80_000),
   strikeLtv: 20_000 / (1 * 80_000),
@@ -164,9 +165,20 @@ describe('holdingsSplit', () => {
     expect(s.strike + s.coinbase).toBeCloseTo(s.combined, 9);
   });
 
-  it('reads the two venues straight off the row', () => {
-    const s = holdingsSplit(mkRow({ strikeCollateralBtc: 0.75, cbCollateralBtc: 2.25, btcHeld: 3 }));
-    expect(s).toEqual({ strike: 0.75, coinbase: 2.25, combined: 3 });
+  it('reads the three venues straight off the row', () => {
+    const s = holdingsSplit(mkRow({ strikeCollateralBtc: 0.75, cbCollateralBtc: 2.25, coldBtc: 0, btcHeld: 3 }));
+    expect(s).toEqual({ strike: 0.75, coinbase: 2.25, cold: 0, combined: 3 });
+  });
+
+  it('⭐ cold storage is a THIRD venue, and it is the only unpledged one', () => {
+    // Added with the cold-storage sweep. `cold` backs no loan, sits in no LTV denominator and cannot be
+    // seized — the split is what makes that visible next to two pools that are both pledged.
+    const s = holdingsSplit(mkRow({
+      strikeCollateralBtc: 0.75, cbCollateralBtc: 1.25, coldBtc: 1.00, btcHeld: 3,
+    }));
+    expect(s).toEqual({ strike: 0.75, coinbase: 1.25, cold: 1.00, combined: 3 });
+    // The three venues account for the whole stack — a split that does not add up is a display lie.
+    expect(s.strike + s.coinbase + s.cold).toBeCloseTo(s.combined, 9);
   });
 });
 

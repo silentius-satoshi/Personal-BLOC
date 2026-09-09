@@ -313,6 +313,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
+  const coldStorageBtc              = useStore((s) => s.coldStorageBtc);
+  const setColdStorageBtc           = useStore((s) => s.setColdStorageBtc);
   const emitBalanceReading          = useStore((s) => s.emitBalanceReading);
   const strikeBtcAvailable          = useStore((s) => s.strikeBtcAvailable);
   const strikeApiConnected          = useStore((s) => s.strikeApiConnected);
@@ -766,6 +768,24 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               </span>
             </div>
           )}
+          {/* Cold storage sits here, beside the Strike collateral field, because it is a HOLDINGS fact —
+              not a Coinbase-loan setting. It is deliberately NOT gated on hasCbLoan: self-custodied coins
+              exist whether or not you have a loan. */}
+          <div className={styles.setupFieldGroup}>
+            <NumberInput
+              label="Cold storage"
+              value={coldStorageBtc}
+              onChange={setColdStorageBtc}
+              prefix="₿"
+              min={0}
+              step={0.001}
+            />
+            <span className={styles.fieldHint}>
+              BTC you hold in self-custody, pledged to nobody. Counts toward your holdings and shows in
+              “Where the coins sit”, but never in any LTV — no lender can reach it. Separate from the
+              Almanac’s cold-storage sweep, which projects what you could move, not what you have.
+            </span>
+          </div>
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />
 
           {/* §2b — MINIMUM PAYMENT group (source policy + this month's statement figure + due day) */}

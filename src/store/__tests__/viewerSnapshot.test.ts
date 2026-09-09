@@ -103,7 +103,8 @@ describe('viewer snapshot builders', () => {
       'advisorStartDate', 'blocApr', 'blocMinPaymentDueDay', 'blocMinPaymentSource', 'blocStatementMinimum',
       'btcBuyingUnit', 'cbAprPct', 'cbEmergencyCeilingPct', 'cbLiquidationPrice', 'cbLiquidationPriceAsOf',
       'cbLoanBalance', 'cbLoanBalanceAsOf', 'cbLtvTargetPct', 'cbLtvTriggerPct', 'cbMonthlyPayment',
-      'cbPaymentStrategy', 'cbRotateBackPct', 'creditLine', 'expenses', 'hasCbLoan', 'hiddenTabs',
+      'cbPaymentStrategy', 'cbRotateBackPct', 'coldStorageBtc', 'creditLine', 'expenses', 'hasCbLoan',
+      'hiddenTabs',
       'income', 'ndpLastPaidDate', 'simpleMode', 'strikeLiquidationLtvPct', 'tabOrder',
     ]);
     useStore.setState({ backupVerifiedAt: null } as never);

@@ -262,6 +262,8 @@
 }
 .venueSegStrike { background: var(--text-primary); }
 .venueSegCb { background: var(--coinbase); }
+/* Cold storage is the only UNPLEDGED venue, so it carries the bitcoin accent, not a lender's colour. */
+.venueSegCold { background: var(--btc); }
 .venueRow {
   display: flex;
   align-items: baseline;
@@ -273,6 +275,7 @@
 }
 .venueDotStrike,
 .venueDotCb,
+.venueDotCold,
 .venueDotNone {
   width: 8px;
   height: 8px;
@@ -282,6 +285,7 @@
 }
 .venueDotStrike { background: var(--text-primary); }
 .venueDotCb { background: var(--coinbase); }
+.venueDotCold { background: var(--btc); }
 .venueDotNone { background: transparent; }
 .venueName { color: var(--text-secondary); }
 .venueBtc { margin-left: auto; color: var(--text-primary); }

@@ -273,6 +273,8 @@
    a level colour (--green is .verdictGood in this file) on a composition read. */
 .venueSegStrike { background: var(--text-primary); }
 .venueSegCb { background: var(--coinbase); }
+/* Cold storage is the ONLY unpledged venue, so it reads as the "safe" colour rather than a lender's. */
+.venueSegCold { background: var(--btc); }
 
 .venueRow {
   display: flex;
@@ -293,6 +295,7 @@
 
 .venueDotStrike,
 .venueDotCb,
+.venueDotCold,
 .venueDotNone {
   width: 8px;
   height: 8px;
@@ -302,6 +305,7 @@
 }
 .venueDotStrike { background: var(--text-primary); }
 .venueDotCb { background: var(--coinbase); }
+.venueDotCold { background: var(--btc); }
 .venueDotNone { background: transparent; }
 
 .venueName {
@@ -445,3 +449,7 @@
   text-transform: uppercase;
   color: var(--amber);
 }
+
+/* Milestones — the cold column is a SUBSET of the BTC column beside it, so it carries the cold accent
+   rather than the default text colour, which would read as a second independent total. */
+.msCold { color: var(--btc); }

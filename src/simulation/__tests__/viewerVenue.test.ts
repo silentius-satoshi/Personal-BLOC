@@ -38,8 +38,44 @@ describe('deriveVenueSplit', () => {
       if (typeof n === 'number') expect(Number.isFinite(n), `${k} must be finite`).toBe(true);
     }
     expect(v).toEqual({
-      strikeBtc: 0, cbBtc: 0, combinedBtc: 0, strikeShare: 0, cbShare: 0, hasData: false,
+      strikeBtc: 0, cbBtc: 0, coldBtc: 0, combinedBtc: 0,
+      strikeShare: 0, cbShare: 0, coldShare: 0, hasData: false,
     });
+  });
+
+  it('⭐ cold storage is a THIRD venue and counts toward the denominator', () => {
+    // The card answers "where are my coins". Leaving the unpledged share out of the total would overstate
+    // how much of the stack is pledged — the exact thing an owner reads this bar to find out.
+    const v = deriveVenueSplit(1, 2, 1);
+    expect(v.coldBtc).toBe(1);
+    expect(v.combinedBtc).toBe(4);
+    expect(v.coldShare).toBeCloseTo(0.25, 10);
+    expect(v.strikeShare + v.cbShare + v.coldShare).toBeCloseTo(1, 10);
+    expect(v.hasData).toBe(true);
+  });
+
+  it('cold defaults to 0, so every existing two-arg caller is unchanged', () => {
+    expect(deriveVenueSplit(1, 3)).toEqual(deriveVenueSplit(1, 3, 0));
+    const v = deriveVenueSplit(1, 3);
+    expect(v.coldBtc).toBe(0);
+    expect(v.coldShare).toBe(0);
+    expect(v.strikeShare + v.cbShare).toBeCloseTo(1, 10);
+  });
+
+  it('a cold-only stack still has data — coins with no loan against them are still coins', () => {
+    const v = deriveVenueSplit(0, 0, 2);
+    expect(v.hasData).toBe(true);
+    expect(v.coldShare).toBe(1);
+    expect(v.combinedBtc).toBe(2);
+  });
+
+  it('negative / non-finite cold is clamped like the other two', () => {
+    for (const bad of [-5, NaN, Infinity]) {
+      const v = deriveVenueSplit(1, 1, bad);
+      expect(v.coldBtc).toBe(0);
+      expect(Number.isFinite(v.coldShare)).toBe(true);
+      expect(v.combinedBtc).toBe(2);
+    }
   });
 
   it('clamps negative inputs to 0 rather than producing negative or out-of-range shares', () => {

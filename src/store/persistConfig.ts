@@ -79,6 +79,7 @@ export function migrateState(persistedState: any): any {
     cbLoanBalanceAsOf:      persistedState.cbLoanBalanceAsOf      ?? null,
     cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
     strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
+    coldStorageBtc:        persistedState.coldStorageBtc ?? 0,
     blocMinPaymentSource:  persistedState.blocMinPaymentSource ?? 'roll',
     blocStatementMinimum:  persistedState.blocStatementMinimum ?? null,
     blocMinPaymentDueDay:  persistedState.blocMinPaymentDueDay ?? 15,

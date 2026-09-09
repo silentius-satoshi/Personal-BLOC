@@ -342,6 +342,144 @@ describe('runCyclingSim — guards', () => {
     expect(r.rows.every((row) => Number.isFinite(row.debt))).toBe(true);
   });
 
+  describe('cold-storage sweep (coldStoreBufferPct)', () => {
+    // Price regimes matter more than any other input here, so the block builds its own paths rather
+    // than leaning on `flat` alone. No powerLaw import — the engine's §2 wall applies to its tests too.
+    const geo = (months: number, annualPct: number): number[] =>
+      Array.from({ length: months + 1 }, (_, i) => PRICE * Math.pow(1 + annualPct / 100 / 12, i));
+    const RISING = { pricePath: geo(240, 25), cbLtvCapPct: 70, cycleMonths: 1 };
+    const FLAT   = { pricePath: flat(240),    cbLtvCapPct: 70, cycleMonths: 1 };
+    const FALLING= { pricePath: geo(240, -30), cbLtvCapPct: 70, cycleMonths: 1 };
+    /** Months where the sweep ACTUALLY moved coins (coldBtc is cumulative — a positive value is not enough). */
+    const moved = (r: ReturnType<typeof run>) =>
+      r.rows.filter((x, i) => i > 0 && x.coldBtc > r.rows[i - 1].coldBtc + 1e-12);
+
+    it('OFF by default — absent, undefined, 0 and junk are byte-identical to the old engine', () => {
+      const off = run(RISING);
+      for (const v of [undefined, 0, -5, NaN] as (number | undefined)[]) {
+        const r = run({ ...RISING, coldStoreBufferPct: v });
+        expect(r.totalColdBtc).toBe(0);
+        expect(r.firstColdMonth).toBeNull();
+        expect(r.last.btcHeld).toBeCloseTo(off.last.btcHeld, 10);
+        expect(r.last.cbCollateralBtc).toBeCloseTo(off.last.cbCollateralBtc, 10);
+        expect(r.rows.every((x) => x.coldBtc === 0)).toBe(true);
+      }
+    });
+
+    it('⭐ the buffer is a SURVIVABLE DRAWDOWN — a sweeping month lands cbLtv on CB_LLTV × (1 − buffer)', () => {
+      // The knob's whole justification: 60% LTV IS a 30% buffer, and saying it the second way is what
+      // makes the risk legible. Buffers here are all TIGHTER than the cap, so the clamp is not in play.
+      for (const buffer of [30, 50, 70]) {
+        const r = run({ ...RISING, coldStoreBufferPct: buffer });
+        const floor = CB_LLTV * (1 - buffer / 100);
+        const ms = moved(r);
+        expect(ms.length).toBeGreaterThan(0);
+        for (const x of ms) expect(x.cbLtv).toBeCloseTo(floor, 6);
+      }
+    });
+
+    it('⭐⭐ THE CLAMP: the sweep can never be looser than the draw cap', () => {
+      // Without it a 1% buffer implies an 85.1% floor and the sweep silently undoes the CB LTV STOP,
+      // stripping collateral to a level the cap already calls too risky to BORROW at. Measured on a
+      // −30%/yr path, unclamped, that moved liquidation from month 13 to month 2.
+      // Every buffer looser than (1 − cap/CB_LLTV) must behave EXACTLY like that boundary buffer.
+      const capPct = 70;
+      const boundary = (1 - capPct / 100 / CB_LLTV) * 100;   // ≈ 18.6% for a 70 cap
+      const atBoundary = run({ ...RISING, cbLtvCapPct: capPct, coldStoreBufferPct: boundary });
+      for (const looser of [0.5, 1, 5, 10, 15]) {
+        const r = run({ ...RISING, cbLtvCapPct: capPct, coldStoreBufferPct: looser });
+        expect(r.totalColdBtc).toBeCloseTo(atBoundary.totalColdBtc, 6);
+        expect(r.firstColdMonth).toBe(atBoundary.firstColdMonth);
+      }
+      // ...and a sweeping month then sits on the CAP, not on the (looser) raw floor.
+      const r1 = run({ ...RISING, cbLtvCapPct: capPct, coldStoreBufferPct: 1 });
+      for (const x of moved(r1)) expect(x.cbLtv).toBeCloseTo(capPct / 100, 6);
+    });
+
+    it('⭐ tighter buffer → starts LATER, banks LESS', () => {
+      const b30 = run({ ...RISING, coldStoreBufferPct: 30 });
+      const b50 = run({ ...RISING, coldStoreBufferPct: 50 });
+      const b70 = run({ ...RISING, coldStoreBufferPct: 70 });
+      expect(b30.firstColdMonth!).toBeLessThan(b50.firstColdMonth!);
+      expect(b50.firstColdMonth!).toBeLessThan(b70.firstColdMonth!);
+      expect(b30.totalColdBtc).toBeGreaterThan(b50.totalColdBtc);
+      expect(b50.totalColdBtc).toBeGreaterThan(b70.totalColdBtc);
+    });
+
+    it('⭐⭐ FREE on a RISING path — it relocates bitcoin, it does not destroy it', () => {
+      // Purchases follow INCOME, not collateral, and a de-levering position never needs the swept coins
+      // back, so drawing is untouched. This is what makes the feature worth having at all.
+      const off = run(RISING);
+      for (const buffer of [30, 50, 70]) {
+        const on = run({ ...RISING, coldStoreBufferPct: buffer });
+        expect(on.last.btcHeld).toBeCloseTo(off.last.btcHeld, 6);
+        expect(on.totalColdBtc).toBeGreaterThan(0);
+        expect(on.last.cbCollateralBtc).toBeLessThan(off.last.cbCollateralBtc);   // it MOVED
+      }
+    });
+
+    it('⚠⚠ NOT free on a FALLING path — it pulls liquidation FORWARD, and the test says so', () => {
+      // The honest counterweight to the test above. Swept collateral is gone, so a falling price finds a
+      // smaller base. An earlier version of this engine claimed the sweep "can never cause a liquidation";
+      // it was wrong, and this pins the correction so nobody restores the claim.
+      const off = run(FALLING);
+      const on  = run({ ...FALLING, coldStoreBufferPct: 20 });
+      expect(off.liqMonth).not.toBeNull();
+      expect(on.liqMonth).not.toBeNull();
+      expect(on.liqMonth!).toBeLessThan(off.liqMonth!);
+    });
+
+    it('the FLAT path is the in-between case — the clamp keeps it from getting worse', () => {
+      // With the floor clamped to the cap, no buffer makes a flat run liquidate earlier than not sweeping.
+      const off = run(FLAT);
+      for (let b = 1; b <= 95; b += 7) {
+        const on = run({ ...FLAT, coldStoreBufferPct: b });
+        const a = on.liqMonth ?? Number.MAX_SAFE_INTEGER;
+        const o = off.liqMonth ?? Number.MAX_SAFE_INTEGER;
+        expect(a, `buffer ${b} made a flat run liquidate earlier`).toBeGreaterThanOrEqual(o);
+      }
+    });
+
+    it('⭐ cold storage is NOT SEIZED — the seizure reaches the Coinbase pool only', () => {
+      const on = run({ ...FALLING, coldStoreBufferPct: 20 });
+      expect(on.liqMonth).not.toBeNull();
+      const liqRow = on.rows[on.liqMonth!];
+      expect(liqRow.coldBtc).toBeGreaterThan(0);
+      expect(on.seizedBtc!).toBeLessThanOrEqual(liqRow.cbCollateralBtc + 1e-9);
+      expect(on.survivorBtc!).toBeGreaterThanOrEqual(liqRow.coldBtc - 1e-9);
+    });
+
+    it('the three pools always sum to btcHeld — no bitcoin invented or lost', () => {
+      for (const cfg of [RISING, FLAT, FALLING]) {
+        const r = run({ ...cfg, coldStoreBufferPct: 40 });
+        for (const x of r.rows) {
+          expect(x.strikeCollateralBtc + x.cbCollateralBtc + x.coldBtc).toBeCloseTo(x.btcHeld, 9);
+        }
+      }
+    });
+
+    it('cold BTC never enters an LTV denominator', () => {
+      const r = run({ ...RISING, coldStoreBufferPct: 40 });
+      for (const x of r.rows) {
+        if (x.cbCollateralBtc > 0 && x.price > 0) {
+          expect(x.cbLtv).toBeCloseTo(x.cbDebt / (x.cbCollateralBtc * x.price), 9);
+        }
+        if (x.strikeCollateralBtc > 0 && x.price > 0) {
+          expect(x.strikeLtv).toBeCloseTo(x.strikeBalance / (x.strikeCollateralBtc * x.price), 9);
+        }
+      }
+    });
+
+    it('monotonic: cold storage only ever grows, and the total matches the last row', () => {
+      const r = run({ ...RISING, coldStoreBufferPct: 45 });
+      for (let i = 1; i < r.rows.length; i++) {
+        expect(r.rows[i].coldBtc).toBeGreaterThanOrEqual(r.rows[i - 1].coldBtc - 1e-12);
+      }
+      expect(r.rows[r.rows.length - 1].coldBtc).toBeCloseTo(r.totalColdBtc, 9);
+      expect(r.rows[0].coldBtc).toBe(0);   // month 0 is the opening position, never a sweep
+    });
+  });
+
   describe('Coinbase origination fee — charged on EVERY borrow, capitalised', () => {
     it('cbBorrowFee: marginal brackets, 2% under the break and 1% above', () => {
       expect(cbBorrowFee(4_000, 0)).toBeCloseTo(80, 6);

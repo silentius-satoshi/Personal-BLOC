@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY } from '../../simulation/cyclingSim';
-import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
+import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, PL_A_FLOOR, PL_A_FAIR, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
@@ -14,6 +14,7 @@ import { LEVEL_COLOR } from '../../simulation/safetyView';
 import { applyPriceLens, btcGained, holdingsSplit, clampMonth } from './cyclingFaceView';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
+import { InfoTip } from '../ui/InfoTip';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './CyclingFace.module.css';
@@ -56,6 +57,17 @@ const DEFAULT_HORIZON_MONTHS = 60;
 // CB LTV (68.9% → 70.1%), since nothing is parked away from Coinbase. Net ≈ −$1,900 total interest, same
 // bitcoin held — purchases follow income, not the sweep.
 const DEFAULT_CYCLE_MONTHS = 1;
+// Cold-storage sweep, OFF until the owner turns it on. When enabled it opens at 30 — the buffer that
+// matches a 60% CB LTV, i.e. surviving a 30% overshoot of the FITTED cycle-bottom floor (25.3% of fair).
+// Deliberately NOT the 50–70% an earlier draft proposed: those survive down to 18%/11% of fair, which is
+// 2x–3.3x deeper than any bottom on record, and they push the first withdrawal out by five to eight years
+// to buy a scenario nothing calibrates. See cyclingSim's coldStoreBufferPct docblock.
+const DEFAULT_COLD_BUFFER_PCT = 30;
+// ⚠ The sweep is ON by default. The default view is the Support band, where the sweep is FREE — identical
+// total stack, coins simply relocated out of reach — so defaulting it off was hiding the safest version of
+// the strategy behind a toggle. It is NOT free on a flat or falling path; the tip on the card says so and
+// the liquidation month is on the chart either way.
+const DEFAULT_COLD_ON = true;
 const DEFAULT_BAND: PlBand = 'floor';         // Support — the only band that has ever acted like one
 const DEFAULT_INSPECT_MONTH = 24;             // open the scrubber at 2.0 yr, not at the far end
 
@@ -73,6 +85,7 @@ interface Overlay {
   expenses?: number;
   cycleMonths?: number;
   cbLtvCapPct?: number;
+  coldStoreBufferPct?: number;
   strikeAprPct?: number;
   cbAprPct?: number;
 }
@@ -140,6 +153,19 @@ export default function CyclingFace() {
   const expenses = overlay.expenses ?? s.expenses;
   const cycleMonths = overlay.cycleMonths ?? DEFAULT_CYCLE_MONTHS;
   const capPct = overlay.cbLtvCapPct ?? DEFAULT_CAP_PCT;
+  const coldBufferPct = overlay.coldStoreBufferPct ?? (DEFAULT_COLD_ON ? DEFAULT_COLD_BUFFER_PCT : 0);   // 0 = sweep off
+  // The engine clamps the sweep floor to the draw cap; mirror that here so the copy states the REAL
+  // threshold rather than the raw one the slider implies.
+  const coldRawLtvPct = CB_LLTV * 100 * (1 - coldBufferPct / 100);
+  const coldClamped   = coldRawLtvPct > capPct;
+  const coldLtvPct    = Math.min(coldRawLtvPct, capPct);
+  // 🔴 §2 crossing, done HERE in the view (never in the engine): the buffer is path-relative to the
+  // engine; only the view knows it is being read against the Support line, and only the view can say
+  // what that means against the regression line the bands are actually defined from.
+  const bandDateLabel = (m: number) => {
+    const d = new Date(Date.UTC(startDate.getUTCFullYear(), startDate.getUTCMonth() + m, 1));
+    return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', timeZone: 'UTC' });
+  };
   const strikeAprPct = overlay.strikeAprPct ?? s.blocApr;
   const cbAprPct = overlay.cbAprPct ?? s.cbAprPct;
 
@@ -185,9 +211,10 @@ export default function CyclingFace() {
     cbDebt,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
+    coldStoreBufferPct: coldBufferPct,
   }), [
     pricePath, startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct,
+    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct,
   ]);
 
   const { rows, last, stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth } = sim;
@@ -422,6 +449,7 @@ export default function CyclingFace() {
               <div className={styles.venueBar}>
                 <span className={styles.venueSegStrike} style={{ width: `${pct(h.strike)}%` }} />
                 <span className={styles.venueSegCb} style={{ width: `${pct(h.coinbase)}%` }} />
+                {h.cold > 0 && <span className={styles.venueSegCold} style={{ width: `${pct(h.cold)}%` }} />}
               </div>
               <div className={styles.venueRow}>
                 <span className={styles.venueDotStrike} />
@@ -435,6 +463,14 @@ export default function CyclingFace() {
                 <span className={styles.venueBtc}>{h.coinbase.toFixed(4)} ₿</span>
                 <span className={styles.venueUsd}>{fmtK(h.coinbase * lensed.price)}</span>
               </div>
+              {h.cold > 0 && (
+                <div className={styles.venueRow}>
+                  <span className={styles.venueDotCold} />
+                  <span className={styles.venueName}>Cold storage</span>
+                  <span className={styles.venueBtc}>{h.cold.toFixed(4)} ₿</span>
+                  <span className={styles.venueUsd}>{fmtK(h.cold * lensed.price)}</span>
+                </div>
+              )}
               <div className={`${styles.venueRow} ${styles.venueCombined}`}>
                 <span className={styles.venueDotNone} />
                 <span className={styles.venueName}>Combined</span>
@@ -444,6 +480,59 @@ export default function CyclingFace() {
             </>
           );
         })()}
+      </section>
+
+      {/* 4a · COLD STORAGE — sits between the venue split (which now shows a cold segment) and the CB LTV
+          chart, because it is the control that MOVES the segment and MOVES the curve. The long-form
+          reasoning lives in the InfoTip, not in three paragraphs of body copy nobody re-reads. */}
+      <section className={styles.card}>
+        <span className={styles.cardLabel}>
+          Cold storage
+          <InfoTip label="About the cold-storage sweep">
+            <p>
+              Each month, any Coinbase collateral above what your chosen break requires moves to cold
+              storage — <strong>unpledged, in no LTV, and not seizable</strong>. Equivalent to a{' '}
+              <strong>{coldLtvPct.toFixed(1)}% CB LTV</strong>
+              {coldClamped && ` — clamped by your ${capPct}% CB LTV stop, since the sweep is never looser than the cap`}.
+            </p>
+            <p>
+              <strong>Calibrate against the regression line, not Support.</strong> Support is a parallel
+              line at {(PL_A_FLOOR / PL_A_FAIR * 100).toFixed(1)}% of fair and its constant was fitted to
+              the cycle bottoms — it already is the deepest drawdown on record, so “% below Support” prices
+              nothing on its own. At {coldBufferPct}% you are asking to survive down to{' '}
+              <strong>{(PL_A_FLOOR / PL_A_FAIR * (1 - coldBufferPct / 100) * 100).toFixed(1)}% of fair</strong>
+              {' '}({(1 - coldBufferPct / 100).toFixed(2)}× the fitted floor).
+              {coldBufferPct > 45 && ' That is deeper than any bottom ever recorded — you are paying years of waiting for a scenario nothing calibrates.'}
+            </p>
+            <p>
+              <strong>Not free safety.</strong> Swept coins are gone, so every later month starts from a
+              smaller base: on a rising path that costs nothing, on a flat one it trades stack for time, and
+              on a falling one it pulls liquidation forward. Watch the liquidation month, not just the ₿.
+            </p>
+          </InfoTip>
+        </span>
+        <div className={styles.presetRow}>
+          <button type="button" className={styles.ghostBtn}
+            onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
+            {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
+          </button>
+        </div>
+        {coldBufferPct > 0 && (
+          <>
+            <div className={styles.sliderStack}>
+              <SliderInput label="Survive a break of" value={coldBufferPct}
+                onChange={(v) => set('coldStoreBufferPct', v)}
+                min={5} max={80} step={1} display={`${coldBufferPct}%`} minLabel="5%" maxLabel="80%" />
+            </div>
+            <p className={styles.noteQuiet}>
+              Banks <strong>{sim.totalColdBtc.toFixed(4)} ₿</strong> over this run
+              {sim.firstColdMonth !== null
+                ? `, starting ${bandDateLabel(sim.firstColdMonth)}.`
+                : ' — nothing yet on this path, which is the honest answer for a while.'}
+              {' '}Equivalent to a {coldLtvPct.toFixed(1)}% CB LTV.
+            </p>
+          </>
+        )}
       </section>
 
       {/* 4 · CB LTV */}
@@ -534,6 +623,7 @@ export default function CyclingFace() {
             the draw, so this cap is its own setting and starts at {DEFAULT_CAP_PCT}%.
           </p>
         </section>
+
       </div>
 
       <section className={styles.card}>
@@ -608,6 +698,8 @@ export default function CyclingFace() {
                 <th className={`${styles.msTh} ${styles.msYear}`}>Year</th>
                 <th className={styles.msTh}>Price</th>
                 <th className={styles.msTh}>BTC</th>
+                {/* Only when the sweep is on — an always-zero column is noise on a table this dense. */}
+                {coldBufferPct > 0 && <th className={styles.msTh}>Cold</th>}
                 <th className={styles.msTh}>Debt</th>
                 <th className={styles.msTh}>CB LTV</th>
                 <th className={styles.msTh}>Equity</th>
@@ -630,6 +722,13 @@ export default function CyclingFace() {
                     <td className={styles.msTd}>
                       <span className={styles.btcPre}>₿</span>{r.btcHeld.toFixed(3)}
                     </td>
+                    {/* ⚠ Cold is a SUBSET of the BTC column, not an addition to it — btcHeld is all three
+                        pools. Shown in the cold accent so it reads as "…of which this is out of reach". */}
+                    {coldBufferPct > 0 && (
+                      <td className={`${styles.msTd} ${styles.msCold}`}>
+                        <span className={styles.btcPre}>₿</span>{r.coldBtc.toFixed(3)}
+                      </td>
+                    )}
                     <td className={styles.msTd}>{fmtK(r.debt)}</td>
                     <td className={styles.msTd} style={{ color: cbZone(r.cbLtv) }}>
                       {(r.cbLtv * 100).toFixed(1)}%

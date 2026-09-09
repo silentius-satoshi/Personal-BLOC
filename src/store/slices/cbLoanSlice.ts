@@ -5,6 +5,7 @@ import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
 
 type CbLoanSlice = Pick<StoreState,
   | 'hasCbLoan' | 'setHasCbLoan' | 'cbLoanBalance' | 'cbCollateralBtc' | 'strikeCollateralBtc' | 'cbAprPct'
+  | 'coldStorageBtc' | 'setColdStorageBtc'
   | 'cbMonthlyPayment' | 'cbLiquidationPrice' | 'cbPaymentStrategy' | 'cbLtvTriggerPct' | 'cbLtvTargetPct'
   | 'cbRotateBackPct' | 'cbEmergencyCeilingPct' | 'cbLoanBalanceAsOf' | 'cbLiquidationPriceAsOf' | 'strikeLiquidationLtvPct'
   | 'blocMinPaymentSource' | 'blocStatementMinimum' | 'blocMinPaymentDueDay' | 'setCbLoanBalance' | 'setCbCollateralBtc'
@@ -21,6 +22,10 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   setHasCbLoan: (v) => get().emitPlanSets([['hasCbLoan', v]]),   // 4c: emit a plan event (was syncSettingsToNostr)
   cbLoanBalance:       60000,
   cbCollateralBtc:     1.48,
+  // Self-custodied BTC the owner actually holds. 0 on a fresh install — most people start with none
+  // unpledged, and inventing a number here would put a figure in the viewer nobody entered.
+  // ⚠ Distinct from the Almanac's cold-storage SWEEP, which is projected and never written to the store.
+  coldStorageBtc: 0,
   strikeCollateralBtc: 0,   // Collateral-Truth v20 — reading-anchored derived cache; fresh install = deriveStrikeCollateral([], 0) = 0
   // ⚠ ALL-IN, not the Morpho market rate. Coinbase adds its platform fee on top of the market rate before
   // billing, and every engine compounds this field monthly — which is exactly how that fee is charged —
@@ -54,6 +59,7 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
     set({ cbCollateralBtc: v });
   },
   setCbAprPct:         (v) => get().emitPlanSets([['cbAprPct', v]]),
+  setColdStorageBtc:   (v) => get().emitPlanSets([['coldStorageBtc', v]]),
   setCbMonthlyPayment:   (v) => get().emitPlanSets([['cbMonthlyPayment', v]]),
   setCbLiquidationPrice: (v) => get().emitPlanSets([['cbLiquidationPrice', v]]),   // plan-single (NOT paired — cbLiquidationPriceAsOf has its own setter)
   setCbPaymentStrategy:  (v) => get().emitPlanSets([['cbPaymentStrategy', v]]),

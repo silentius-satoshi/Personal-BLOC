@@ -171,7 +171,7 @@ describe('field partition', () => {
   it('PLAN_EVENT_FIELDS ∪ PREFS_FIELDS set-equals SETTINGS_FIELDS', () => {
     expect(new Set([...PLAN_EVENT_FIELDS, ...PREFS_FIELDS])).toEqual(new Set(SETTINGS_FIELDS));
     expect(PLAN_EVENT_FIELDS.length + PREFS_FIELDS.length).toBe(SETTINGS_FIELDS.length);
-    expect(PLAN_EVENT_FIELDS.length).toBe(33);
+    expect(PLAN_EVENT_FIELDS.length).toBe(34);   // +coldStorageBtc — a real owner-entered holdings balance
     expect(PREFS_FIELDS.length).toBe(4);
   });
 

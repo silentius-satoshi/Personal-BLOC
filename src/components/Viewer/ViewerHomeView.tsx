@@ -114,6 +114,9 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
   // viewer's OWN dayLog, which BUG3 exists to prevent.
   const venueStrikeBtc = useStore((st) => st.getCurrentBtcHeld());
   const venueCbBtc = useStore((st) => deriveCbCollateral(st.dayLog, st.cbCollateralBtc));
+  // A plain scalar — no dayLog derivation, because cold storage has no event type yet. Entered by the
+  // owner in Settings; 0 hides the segment rather than showing a cell nobody filled in.
+  const venueColdBtc = useStore((st) => st.coldStorageBtc);
   // The gauge sub-lines render pre-computed absolutes from computeViewerSafety, so there is no existing
   // resolved-price binding to reuse — this is the same source useViewerSafety reads internally.
   const venuePrice = useStore((st) => st.btcPrice);
@@ -196,7 +199,7 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
               gate is the mode, never whether the values are non-zero: a trusted owner with genuinely zero CB
               collateral must stay distinguishable from a safe-mode viewer. */}
           {s.mode === 'trusted' && (
-            <VenueBar strikeBtc={venueStrikeBtc} cbBtc={venueCbBtc} btcPrice={venuePrice} />
+            <VenueBar strikeBtc={venueStrikeBtc} cbBtc={venueCbBtc} coldBtc={venueColdBtc} btcPrice={venuePrice} />
           )}
 
           {/* Ownership bar (S4) — what's yours vs owed. TRUSTED-only like VenueBar (the C-safe snapshot

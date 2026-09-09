@@ -46,12 +46,15 @@
   background: var(--surface-2);
 }
 .segStrike,
-.segCb {
+.segCb,
+.segCold {
   height: 100%;
   min-width: 0;
 }
 .segStrike { background: var(--text-primary); }
 .segCb { background: var(--coinbase); }
+/* Cold storage is the only UNPLEDGED venue here — bitcoin accent, never a lender's colour. */
+.segCold { background: var(--btc); }
 
 .cells {
   display: flex;
@@ -83,6 +86,7 @@
 }
 .valStrike { color: var(--text-primary); }
 .valCb { color: var(--coinbase); }
+.valCold { color: var(--btc); }
 .valTotal { color: var(--text-primary); font-weight: 600; }
 
 .cellSub {

@@ -1,0 +1,62 @@
+.wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.trigger {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--line-2);
+  background: transparent;
+  color: var(--text-faint);
+  font: 600 9px/1 ui-serif, Georgia, serif;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  padding: 0;
+  flex: none;
+}
+.trigger:hover,
+.trigger[aria-expanded='true'] {
+  color: var(--text-primary);
+  border-color: var(--text-faint);
+}
+/* The tap target is 14px of ink but ~32px of reachable area — under the 24px minimum otherwise. */
+.trigger::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+}
+
+.panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: -8px;
+  z-index: 40;
+  width: max(240px, 22rem);
+  max-width: min(90vw, 26rem);
+  padding: 10px 12px;
+  border: 1px solid var(--line-2);
+  border-radius: 8px;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-size: 11.5px;
+  line-height: 1.5;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
+  white-space: normal;
+}
+/* Near the right edge the panel would otherwise run off-screen on a phone. */
+@media (max-width: 480px) {
+  .panel { left: auto; right: -8px; }
+}
+.panel p { margin: 0 0 7px; }
+.panel p:last-child { margin-bottom: 0; }
+.panel strong { color: var(--text-primary); font-weight: 600; }

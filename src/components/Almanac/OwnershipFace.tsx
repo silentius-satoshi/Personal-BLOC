@@ -50,6 +50,11 @@ import styles from './OwnershipFace.module.css';
 // band, out to 240 months. ⚠ The cap bounds the DRAW, not the refinance sweep, so peak LTV can end a
 // month just past it (70.1% observed) — see the unbounded-refinance note in the review.
 const DEFAULT_CAP_PCT = 70;
+// Mirrors the Cycling face: the sweep is ON by default at the 30% buffer (= 60% CB LTV), the setting that
+// matches a 30% overshoot of the FITTED cycle-bottom floor. Both faces run the same engine, so a different
+// default here would make the two disagree about the same position.
+const DEFAULT_COLD_BUFFER_PCT = 30;
+const DEFAULT_COLD_ON = true;
 // ⚠ Opens ON THE LINE. `REVERT_PRESET_MONTHS` is what the chip restores and MUST differ from the
 // default, or the toggle silently does nothing.
 const DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE;
@@ -79,6 +84,7 @@ interface Overlay {
   expenses?: number;
   cycleMonths?: number;
   cbLtvCapPct?: number;
+  coldStoreBufferPct?: number;
   strikeAprPct?: number;
   cbAprPct?: number;
   mode?: CyclingMode;
@@ -180,6 +186,7 @@ export default function OwnershipFace() {
   const expenses = overlay.expenses ?? s.expenses;
   const cycleMonths = overlay.cycleMonths ?? DEFAULT_CYCLE_MONTHS;
   const capPct = overlay.cbLtvCapPct ?? DEFAULT_CAP_PCT;
+  const coldBufferPct = overlay.coldStoreBufferPct ?? (DEFAULT_COLD_ON ? DEFAULT_COLD_BUFFER_PCT : 0);
   const strikeAprPct = overlay.strikeAprPct ?? s.blocApr;
   const cbAprPct = overlay.cbAprPct ?? s.cbAprPct;
   const mode: CyclingMode = overlay.mode ?? 'cycle';
@@ -223,10 +230,11 @@ export default function OwnershipFace() {
     cbDebt,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
+    coldStoreBufferPct: coldBufferPct,
     mode,
   }), [
     pricePath, startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, mode,
+    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct, mode,
   ]);
 
   const { rows, last } = sim;
@@ -464,6 +472,7 @@ export default function OwnershipFace() {
                   <div className={styles.venueBar}>
                     <span className={styles.venueSegStrike} style={{ width: `${pct(h.strike)}%` }} />
                     <span className={styles.venueSegCb} style={{ width: `${pct(h.coinbase)}%` }} />
+                    {h.cold > 0 && <span className={styles.venueSegCold} style={{ width: `${pct(h.cold)}%` }} />}
                   </div>
                   <div className={styles.venueRow}>
                     <span className={styles.venueDotStrike} />
@@ -477,6 +486,14 @@ export default function OwnershipFace() {
                     <span className={styles.venueBtc}>{h.coinbase.toFixed(4)} ₿</span>
                     <span className={styles.venueUsd}>{fmtK(h.coinbase * lensed.price)}</span>
                   </div>
+                  {h.cold > 0 && (
+                    <div className={styles.venueRow}>
+                      <span className={styles.venueDotCold} />
+                      <span className={styles.venueName}>Cold storage</span>
+                      <span className={styles.venueBtc}>{h.cold.toFixed(4)} ₿</span>
+                      <span className={styles.venueUsd}>{fmtK(h.cold * lensed.price)}</span>
+                    </div>
+                  )}
                   <div className={`${styles.venueRow} ${styles.venueCombined}`}>
                     <span className={styles.venueDotNone} />
                     <span className={styles.venueName}>Combined</span>
@@ -519,6 +536,12 @@ export default function OwnershipFace() {
                     <Line type="monotone" dataKey="held" name="Held" stroke="var(--text-muted)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                     <Line type="monotone" dataKey="yours" name="Yours" stroke="var(--btc)" strokeWidth={2} dot={false} isAnimationActive={false} />
                     <Line type="monotone" dataKey="owed" name="Owed" stroke="var(--text-faint)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
+                    {/* Cold is a SUBSET of Held, so it plots UNDER Yours as a floor: the part no lender can
+                        reach at any price. Rendered only when the sweep is on, and as a direct child —
+                        wrapping a conditional series in a fragment makes recharts render an empty grid. */}
+                    {coldBufferPct > 0 && (
+                      <Line type="monotone" dataKey="cold" name="Cold" stroke="var(--btc)" strokeWidth={1.5} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               )}

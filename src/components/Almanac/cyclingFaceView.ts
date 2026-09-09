@@ -77,14 +77,21 @@ export function btcGained(row: CyclingRow, base: CyclingRow, rowPriceOverride?: 
 export interface HoldingsSplit {
   strike: number;
   coinbase: number;
+  /** Unpledged, self-custodied. 0 unless the cold-storage sweep is on. */
+  cold: number;
   combined: number;
 }
 
-/** Where the stack sits. TWO VENUES — a cold-storage reserve is not modeled (it would need engine changes). */
+/**
+ * Where the stack sits. THREE VENUES now — the cold-storage reserve IS modeled (engine: coldStoreBufferPct).
+ * ⚠ `cold` is the only one of the three that is not collateral for anything: it backs no loan, sits in no
+ * LTV denominator, and cannot be seized. `strike` and `coinbase` are both pledged, to different lenders.
+ */
 export function holdingsSplit(row: CyclingRow): HoldingsSplit {
   return {
     strike: row.strikeCollateralBtc,
     coinbase: row.cbCollateralBtc,
+    cold: row.coldBtc,
     combined: row.btcHeld,
   };
 }

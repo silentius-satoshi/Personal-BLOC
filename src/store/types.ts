@@ -60,6 +60,9 @@ export interface StoreState {
   // CB Loan tab inputs
   cbLoanBalance:        number;
   cbCollateralBtc:      number;   // derived cache (deriveCbCollateral over dayLog); NOT synced
+  /** REAL self-custodied BTC, pledged to nobody. A plain owner-entered scalar — NOT the Almanac's
+   *  projected cold-storage sweep, which is a simulation and never touches the store. */
+  coldStorageBtc:       number;
   strikeCollateralBtc:  number;   // Collateral-Truth v20 — derived cache (deriveStrikeCollateral over dayLog); reading-anchored; NOT synced (rides ...rest)
   cbAprPct:             number;
   cbMonthlyPayment:     number;
@@ -177,6 +180,7 @@ export interface StoreState {
   setCbLoanBalance:       (v: number) => void;
   setCbCollateralBtc:     (v: number) => void;
   setCbAprPct:            (v: number) => void;
+  setColdStorageBtc:      (v: number) => void;
   setCbMonthlyPayment:    (v: number) => void;
   setCbLiquidationPrice:  (v: number) => void;
   setCbPaymentStrategy:   (v: 'monthly' | 'ltvTriggered') => void;

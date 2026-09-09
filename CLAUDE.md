@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1067 tests — all must pass before every commit)
+- Vitest (1087 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -3369,6 +3369,94 @@ INVERSE of its own message ("at or above the cap, so this run never draws"). Sin
 was running fine. Now `>=`. This matters more since the faces default to Support + on the line, where the
 draw stops at month 1 — the notice is the only thing that explains why.
 
+## Cold-storage sweep (`coldStoreBufferPct`) — the THIRD pool
+
+The Cycling engine gained an opt-in sweep: each month, Coinbase collateral in excess of a stated
+survivable drawdown moves to a **cold pool** — unpledged, in no LTV denominator, and **not seizable**
+(it lands in `survivorBtc`). `CyclingRow.coldBtc` is cumulative; `totalColdBtc` / `firstColdMonth` on the
+result. `btcHeld` is now the THREE pools and stays display-only. `holdingsSplit` gained `cold`.
+**OFF by default** (0/undefined/NaN → byte-identical to the old engine, pinned by a test).
+
+🔴 **The knob is a SURVIVABLE DRAWDOWN, not an LTV** — `floor = CB_LLTV × (1 − buffer)`, so a 60% CB LTV
+IS a 30% buffer. Stating it the second way is the point: 60% sounds conservative beside the 70% draw cap,
+but it means "liquidated if price breaks 30% below the path."
+
+⚠⚠ **CALIBRATE AGAINST THE REGRESSION LINE, NOT AGAINST SUPPORT.** On the support path the buffer reads as
+"% below Support", and that unit has **no historical content on its own**: Support is PARALLEL to fair
+(same `PL_B`) at a fixed **36.2%** of it (`0.42e-17 / 1.16e-17`), and its constant was **fitted to the
+cycle bottoms** (the 2022 bottom implies 4.2317e-18 vs the 4.2e-18 used). Support already IS the deepest
+drawdown on record, so a further "% below Support" prices a scenario nothing calibrates. Translated:
+30% buffer → 25.3% of fair (0.70× the fitted floor); 50% → 18.1% (0.50×); 70% → 10.9% (**0.30×, i.e. 3.3×
+deeper than any bottom ever recorded**). ⚠ An earlier draft of this feature recommended 50–70% because it
+"cost no bitcoin" — it also cost five to eight years of waiting. `DEFAULT_COLD_BUFFER_PCT = 30`. The VIEW
+prints the fair-value translation next to the slider and warns above 45%, so the knob can never be read as
+more precise than it is. The §2 crossing lives in the view: the ENGINE's buffer is path-relative and it
+still knows nothing about the power law.
+
+🔴 **THE CLAMP — the sweep can never be looser than the draw cap** (`floor = min(CB_LLTV × (1 − buffer), cap)`).
+Without it a 1% buffer implies an 85.1% floor and the sweep silently UNDOES the CB LTV STOP, stripping
+collateral to a level the cap already calls too risky to borrow at. Measured unclamped on a −30%/yr path,
+liquidation moved from month 13 to **month 2**. Withdrawing to a worse LTV than you will borrow at is
+incoherent; the cap wins and the two knobs compose. Pinned by a test that every looser buffer behaves
+exactly like the boundary one.
+
+🔴 **ON BY DEFAULT in BOTH faces** (`DEFAULT_COLD_ON = true`, `DEFAULT_COLD_BUFFER_PCT = 30`). Both faces
+run the SAME engine, so a different default in one would make them disagree about one position. The
+default band is Support, where the sweep is free, so defaulting it off was hiding the safest reading of
+the strategy behind a toggle.
+
+**Cycling face placement.** The card sits between **Holdings by venue** and **Coinbase LTV over time** —
+it is the control that moves the venue segment and moves the LTV curve, so it belongs between the two
+things it changes, not down in the Strategy row. The long-form reasoning (buffer↔LTV equivalence, the
+fair-value calibration, the path-dependence warning) lives in an **`InfoTip`** on the card title rather
+than three paragraphs of body copy nobody re-reads. **Milestones** gained a **Cold** column, rendered only
+when the sweep is on and styled `--btc`: ⚠ it is a SUBSET of the BTC column beside it (`btcHeld` is all
+three pools), never a second total to add.
+
+**`InfoTip` (`components/ui/InfoTip.tsx`)** — the repo had no tooltip primitive. ⚠ NOT a CSS `:hover` tip:
+this is a touch-first PWA, hover does not exist on a phone, and a hover-only tip is invisible to most
+users. Tap/click toggles, hover *also* opens on pointer devices, Escape and outside-`pointerdown` close.
+⚠ `pointerdown`, not `click`, or the trigger's own onClick reopens then instantly closes it in one
+gesture. The panel is UNMOUNTED when closed — a hidden-but-mounted panel leaves its text in the
+accessibility tree and in Cmd-F.
+
+**Ownership face.** Same default and the same cold venue row, plus a **Cold series on the Held · owed
+chart**. ⚠ It plots UNDER `yours` as a floor — the coins no lender can reach — and it is a SUBSET of
+`held`, which already contains it. `OwnershipChartRow.cold` is 4dp-rounded like every other series, and
+the `<Line>` is a DIRECT child of `LineChart` (wrapping a conditional series in a fragment makes recharts
+render an empty grid — the existing comment in that file).
+
+---
+
+## `coldStorageBtc` — a REAL balance, not the projection
+
+🔴 **Do not confuse these two.** The Almanac sweep above is a SIMULATION and never touches the store. The
+viewer's "Where the coins sit" reports what the owner ACTUALLY holds, so it needed a real field:
+`store.coldStorageBtc`, a plain owner-entered scalar (Settings → beside Current BTC collateral, NOT gated
+on `hasCbLoan` — self-custodied coins exist with or without a loan). Additive: initial-state default +
+`migrateState` default, **no store version bump** (the `blocMinPaymentSource` precedent). Syncs as a plan
+field, so `SETTINGS_FIELDS` grew by one (payload 37 → 38 keys, `PLAN_EVENT_FIELDS` 33 → 34, persisted
+blob 96 → 97 — all three pinned and all three updated).
+
+`deriveVenueSplit(strikeBtc, cbBtc, coldBtc = 0)` gained a third venue; the default keeps every existing
+two-arg caller byte-identical. ⚠ Cold IS in the denominator — the card answers "where are my coins", and
+omitting the unpledged share would overstate how much of the stack is pledged. It is the one venue there
+that is not collateral, which is why it takes `--btc` rather than a lender's colour, and the segment and
+cell are hidden entirely at 0 rather than showing a permanent `0.000` for something the app is not
+tracking. ⚠ No dayLog event type yet, so unlike `cbCollateralBtc`/`strikeCollateralBtc` this scalar has no
+derived-delta layer — moving coins is a manual edit.
+
+---
+
+⚠ **NOT free safety — the sign depends on the PATH.** Swept coins are gone, so every later month starts
+from a smaller base. **Rising:** free (identical total stack; a test pins it). **Flat:** trades stack for
+time — the cap binds sooner, so less drawing and less accumulation, but never an earlier liquidation once
+clamped (pinned). **Falling:** pulls liquidation FORWARD (pinned — an earlier version of this engine
+claimed the sweep "can never cause a liquidation" and that claim was simply WRONG). The face shows the
+liquidation month alongside the ₿ banked for exactly this reason.
+
+---
+
 ⚠ **The Ownership face's `drift` ("Fixed rate") path is REMOVED** — `pathKind` is now exactly `PlBand`,
 the `growth` overlay key and the conditional Annual-growth slider are gone, and `driftPath` was deleted
 from `ownershipFaceView.ts` as dead code. A flat/fixed-rate price is not a thing bitcoin has ever done,
@@ -3825,7 +3913,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1067 tests — `npx vitest run` before every commit.
+1087 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
