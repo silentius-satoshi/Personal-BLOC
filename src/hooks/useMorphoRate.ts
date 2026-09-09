@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { usePageVisibility } from './usePageVisibility';
+import { CB_PLATFORM_FEE_PCT } from '../simulation/runCoinbaseLoan';
 
 export interface MorphoRate {
   borrowApy:    number | null;   // percent, e.g. 6.12 (null when unavailable)
@@ -37,6 +38,21 @@ export function parseMorphoRate(json: unknown): MorphoRate {
 export const MORPHO_REALIZED_APY = {
   p10: 4.1, median: 5.3, p90: 7.5, max: 9.9,
   months: 23, since: 'Oct 2024',
+} as const;
+
+/**
+ * ⚠ THE SAME BAND AS THE OWNER ACTUALLY PAID IT. `MORPHO_REALIZED_APY` above is the MARKET rate off
+ * Morpho's API; Coinbase adds `CB_PLATFORM_FEE_PCT` on top before billing, so the market band is NOT what
+ * the loan cost. Faces must quote THIS one — quoting the raw band tells the owner their debt is 1.5
+ * points cheaper than it has ever been. Derived, never hand-typed, so the two can't drift.
+ */
+export const CB_REALIZED_NET_APR = {
+  p10:    MORPHO_REALIZED_APY.p10    + CB_PLATFORM_FEE_PCT,
+  median: MORPHO_REALIZED_APY.median + CB_PLATFORM_FEE_PCT,
+  p90:    MORPHO_REALIZED_APY.p90    + CB_PLATFORM_FEE_PCT,
+  max:    MORPHO_REALIZED_APY.max    + CB_PLATFORM_FEE_PCT,
+  months: MORPHO_REALIZED_APY.months,
+  since:  MORPHO_REALIZED_APY.since,
 } as const;
 
 /**

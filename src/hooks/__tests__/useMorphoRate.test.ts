@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { parseMorphoRate, MORPHO_REALIZED_APY } from '../useMorphoRate';
+import { parseMorphoRate, MORPHO_REALIZED_APY, CB_REALIZED_NET_APR } from '../useMorphoRate';
+import { CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 
 describe('parseMorphoRate', () => {
   it('coerces the fraction borrowApy/netBorrowApy to percent (×100)', () => {
@@ -46,5 +47,20 @@ describe('MORPHO_REALIZED_APY — the observed band the faces cite', () => {
     expect(MORPHO_REALIZED_APY.months).toBeGreaterThan(0);
     expect(MORPHO_REALIZED_APY.months).toBeLessThan(48);   // one cycle — if this grows, re-run the query
     expect(MORPHO_REALIZED_APY.since).toMatch(/\w{3} \d{4}/);
+  });
+
+  it('⭐ CB_REALIZED_NET_APR is the market band PLUS Coinbase\'s platform fee, on every percentile', () => {
+    // The faces quote the net band. Quoting the raw one told the owner the loan was 1.5 points cheaper
+    // than it has ever been. Derived, so this can only fail if someone hand-types one of them.
+    for (const k of ['p10', 'median', 'p90', 'max'] as const) {
+      expect(CB_REALIZED_NET_APR[k]).toBeCloseTo(MORPHO_REALIZED_APY[k] + CB_PLATFORM_FEE_PCT, 10);
+      expect(CB_REALIZED_NET_APR[k]).toBeGreaterThan(MORPHO_REALIZED_APY[k]);   // direction, not just delta
+    }
+    expect(CB_REALIZED_NET_APR.p10).toBeCloseTo(5.6, 10);
+    expect(CB_REALIZED_NET_APR.p90).toBeCloseTo(9.0, 10);
+    expect(CB_REALIZED_NET_APR.max).toBeCloseTo(11.4, 10);
+    // The window is carried through unchanged — a net band over a different period would be a lie.
+    expect(CB_REALIZED_NET_APR.months).toBe(MORPHO_REALIZED_APY.months);
+    expect(CB_REALIZED_NET_APR.since).toBe(MORPHO_REALIZED_APY.since);
   });
 });

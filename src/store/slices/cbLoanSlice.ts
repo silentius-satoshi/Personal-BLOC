@@ -21,7 +21,14 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   cbLoanBalance:       60000,
   cbCollateralBtc:     1.48,
   strikeCollateralBtc: 0,   // Collateral-Truth v20 — reading-anchored derived cache; fresh install = deriveStrikeCollateral([], 0) = 0
-  cbAprPct:            4.77,
+  // ⚠ ALL-IN, not the Morpho market rate. Coinbase adds CB_PLATFORM_FEE_PCT (1.5) on top of the market
+  // rate before billing, and every engine compounds this field monthly — which is exactly how the
+  // platform fee is charged — so this field means the NET APR the owner pays. Was 4.77 (a raw Morpho
+  // reading, understating the loan by 1.5pt); 4.77 + 1.5 = 6.27.
+  // NO MIGRATION for existing installs on purpose: a blind +1.5 would double-count for anyone who had
+  // already entered a net figure by hand. Persisted values stay put; the faces now say what the live
+  // number is all-in so the owner can correct their own slider.
+  cbAprPct:            6.27,
   cbMonthlyPayment:    0,
   cbLiquidationPrice:  0,
   cbPaymentStrategy:   'monthly' as const,

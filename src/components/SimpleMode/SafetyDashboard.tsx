@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
-import { CB_LLTV, CB_WARN_LTV } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_WARN_LTV, CB_PLATFORM_FEE_PCT, cbNetApr } from '../../simulation/runCoinbaseLoan';
 import { worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
@@ -294,16 +294,23 @@ export function SafetyDashboard() {
             {morphoRate.borrowApy !== null ? (
               <>
                 <span className={styles.editHint}>
-                  Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live)
+                  Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live) ·
+                  {' '}all-in {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}% with Coinbase's
+                  {' '}{CB_PLATFORM_FEE_PCT}% platform fee
                 </span>
-                {Math.abs(morphoRate.borrowApy - cbAprPct) > 1 && (
+                {/* ⚠ Compare against the ALL-IN rate, not the market rate. Comparing the raw Morpho
+                    number to a correctly-set cbAprPct differs by the 1.5pt fee ALWAYS, so this warning
+                    fired permanently and the "use this" button then seeded the understated figure —
+                    the same defect the Almanac faces had. The old copy ("Coinbase may add a margin")
+                    was guessing at exactly this fee; it is now named and applied. */}
+                {Math.abs(cbNetApr(morphoRate.borrowApy)! - cbAprPct) > 1 && (
                   <span className={styles.editHint}>
-                    Your APR differs — Coinbase may add a margin.{' '}
+                    Your APR differs from the live all-in rate.{' '}
                     <button
                       className={styles.editLink}
-                      onClick={() => setCbAprPct(Number(morphoRate.borrowApy!.toFixed(2)))}
+                      onClick={() => setCbAprPct(Number(cbNetApr(morphoRate.borrowApy)!.toFixed(2)))}
                     >
-                      Use {morphoRate.borrowApy.toFixed(2)}%
+                      Use {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}%
                     </button>
                   </span>
                 )}

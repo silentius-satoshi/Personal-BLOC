@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingInputs } from '../cyclingSim';
 import { cbMetrics } from '../cbMetrics';
-import { CB_LLTV, CB_LIF, cbBorrowFee, CB_FEE_TIER_BREAK, cbMaxDrawForHeadroom } from '../runCoinbaseLoan';
+import { CB_LLTV, CB_LIF, cbBorrowFee, CB_FEE_TIER_BREAK, cbMaxDrawForHeadroom, CB_PLATFORM_FEE_PCT, cbNetApr } from '../runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 
@@ -378,6 +378,47 @@ describe('runCyclingSim — guards', () => {
       expect(ratio).toBeGreaterThan(0.95);
       expect(ratio).toBeLessThan(1.15);          // same order — never a 3x saving from batching
       expect(quarterly.totalStrikeInterest).toBeGreaterThan(monthly.totalStrikeInterest);
+    });
+
+    it('⭐ cbNetApr: Coinbase\'s platform fee sits ON TOP of the Morpho market rate', () => {
+      // Reproduces the owner's own borrow screen (Sept 2026): Morpho variable 4.71% + 1.5% platform fee
+      // = the 6.21% "Net APR" Coinbase displayed. Plain addition, not a compounding of the two.
+      expect(CB_PLATFORM_FEE_PCT).toBe(1.5);
+      expect(cbNetApr(4.71)).toBeCloseTo(6.21, 10);
+      // The direction matters: net is always MORE expensive than the market rate. A regression that
+      // SUBTRACTED (confusing this with Morpho's own `netBorrowApy`, which is net of rewards) fails here.
+      expect(cbNetApr(5)!).toBeGreaterThan(5);
+      expect(cbNetApr(null)).toBeNull();
+      expect(cbNetApr(NaN)).toBeNull();
+    });
+
+    it('⭐ the platform fee is a real cost, not a rounding error', () => {
+      // 1.5pt on the APR, everything else held, on a run that does NOT liquidate. Unlike the APR sweep
+      // (which the draw cap absorbs into less accumulation), this one is unavoidable: it applies to
+      // every dollar of debt for every month the debt exists.
+      const market = run({ pricePath: flat(36), cbLtvCapPct: 50, cycleMonths: 1, cbAprPct: 4.71 });
+      const actual = run({ pricePath: flat(36), cbLtvCapPct: 50, cycleMonths: 1, cbAprPct: 6.21 });
+      expect(actual.totalCbInterest).toBeGreaterThan(market.totalCbInterest);
+      expect(actual.last.debt).toBeGreaterThan(market.last.debt);
+      // ~$4.2k more interest over 3 years on this position, and it lands on the debt.
+      expect(actual.totalCbInterest - market.totalCbInterest).toBeGreaterThan(4_000);
+      // ⚠ The ORIGINATION fee is untouched by the APR — different fee, different trigger.
+      expect(actual.totalCbFees).toBeCloseTo(market.totalCbFees, 6);
+    });
+
+    it('⭐⭐ the platform fee pulls LIQUIDATION forward — the part that is not just a cost', () => {
+      // The headline result. On the stress fixture (cap 85, flat price, monthly sweeps) the 1.5pt spread
+      // moves the 86% breach from month 46 to month 39 — SEVEN MONTHS earlier, more than twice the
+      // three months the origination fee cost. Modelling the loan at Morpho's market rate does not just
+      // understate the bill; it tells the owner the liquidation is further away than it is.
+      const market = run({ pricePath: flat(60), cbLtvCapPct: 85, cycleMonths: 1, cbAprPct: 4.71 });
+      const actual = run({ pricePath: flat(60), cbLtvCapPct: 85, cycleMonths: 1, cbAprPct: 6.21 });
+      expect(market.liqMonth).toBe(46);
+      expect(actual.liqMonth).toBe(39);
+      expect(actual.liqMonth!).toBeLessThan(market.liqMonth!);
+      // Less collateral is seized only because the breach happens before as much BTC was accumulated —
+      // that is a WORSE outcome, not a better one. The survivor stack is smaller too.
+      expect(actual.survivorBtc!).toBeLessThan(market.survivorBtc!);
     });
 
     it('cbMaxDrawForHeadroom is the exact inverse of cbBorrowFee', () => {

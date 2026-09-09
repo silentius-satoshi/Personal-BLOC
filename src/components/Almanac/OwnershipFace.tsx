@@ -7,7 +7,7 @@ import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
 import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
-import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR, CREDIT_WARN_USED, CREDIT_ACT_USED } from '../../simulation/safetyView';
@@ -16,7 +16,7 @@ import { deriveCbCollateral } from '../../simulation/logUtils';
 import { applyPriceLens, clampMonth, holdingsSplit } from './cyclingFaceView';
 import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
 import { SliderInput } from '../ui/SliderInput';
-import { useMorphoRateOnDemand, MORPHO_REALIZED_APY } from '../../hooks/useMorphoRate';
+import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './OwnershipFace.module.css';
 
@@ -632,8 +632,8 @@ export default function OwnershipFace() {
             <div className={styles.presetRow}>
               {liveApy !== null ? (
                 <button type="button" className={styles.ghostBtn}
-                  onClick={() => set('cbAprPct', Number(liveApy.toFixed(2)))}>
-                  Use live {liveApy.toFixed(2)}%
+                  onClick={() => set('cbAprPct', Number((liveApy + CB_PLATFORM_FEE_PCT).toFixed(2)))}>
+                  Use live {(liveApy + CB_PLATFORM_FEE_PCT).toFixed(2)}%
                 </button>
               ) : (
                 <button type="button" className={styles.ghostBtn} onClick={morpho.fetchNow} disabled={morpho.loading}>
@@ -648,12 +648,16 @@ export default function OwnershipFace() {
             </div>
                 <p className={styles.noteQuiet}>
               {liveApy !== null
-                ? `Morpho cbBTC/USDC (Base) is ${liveApy.toFixed(2)}% right now. `
+                ? `Morpho cbBTC/USDC (Base) is ${liveApy.toFixed(2)}% right now — ${(liveApy + CB_PLATFORM_FEE_PCT).toFixed(2)}% once Coinbase's ${CB_PLATFORM_FEE_PCT}% platform fee is on top, which is what you actually pay. `
                 : morpho.error ? 'Morpho market rate unavailable. ' : ''}
-              This market has run {MORPHO_REALIZED_APY.p10}–{MORPHO_REALIZED_APY.p90}% over{' '}
-              {MORPHO_REALIZED_APY.months} months since {MORPHO_REALIZED_APY.since} (max {MORPHO_REALIZED_APY.max}%) —
-              one cycle, so it says what has happened, not what can. The rate is a cost here rather than a
-              danger: the draw cap absorbs it, and peak CB LTV moves under a point across a 3–16% range.
+              The Coinbase APR here is ALL-IN: Morpho's market rate plus Coinbase's {CB_PLATFORM_FEE_PCT}%
+              platform fee, which is billed onto the balance monthly.
+              This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% all-in over{' '}
+              {CB_REALIZED_NET_APR.months} months since {CB_REALIZED_NET_APR.since} (max {CB_REALIZED_NET_APR.max}%) —
+              one cycle, so it says what has happened, not what can. While the draw cap binds, the rate is a
+              cost rather than a danger — peak CB LTV moves under a point across a 3–16% range, because the
+              cap absorbs it into less accumulation. Set the cap high enough that it stops binding and the
+              rate moves the liquidation DATE instead: at an 85% cap, 1.5 extra points pulls it in 7 months.
               {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
               {fmtK(CB_FEE_TIER_BREAK)}, {CB_FEE_TIER2_PCT * 100}% above, added to principal so it compounds.
               This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows.

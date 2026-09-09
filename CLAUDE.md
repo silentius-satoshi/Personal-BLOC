@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1060 tests — all must pass before every commit)
+- Vitest (1064 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -149,6 +149,8 @@ src/
     runBLOC.ts                  # Smart BLOC 5-year simulation (respects creditLine ?? Infinity)
     runBlocYearOne.ts           # Month-by-Month 12-month simulation + getCollateralForTier
     runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus + CB_LLTV/CB_LIF + computeLiquidationAnalysis
+                                # + CB_PLATFORM_FEE_PCT 1.5 + cbNetApr() — Coinbase's spread ON TOP of Morpho's
+                                # market rate; `cbAprPct` everywhere means the NET all-in rate
                                 # + the ORIGINATION-FEE brackets: CB_FEE_TIER1_PCT 2% / CB_FEE_TIER2_PCT 1% /
                                 # CB_FEE_TIER_BREAK $250k, `cbBorrowFee(amount, balance)` (marginal, like tax)
                                 # and `cbMaxDrawForHeadroom(headroom, balance)` (its exact inverse). Still a
@@ -3094,6 +3096,56 @@ type CbLtvStatus = 'safe'|'watch'|'warning'|'emergency'|'critical'|'liquidated';
 
 Morpho/Coinbase: 86% LLTV instant liquidation, no grace period, 4.38% penalty.
 
+### Platform fee — `CB_PLATFORM_FEE_PCT` / `cbNetApr` 🔴 THE APR IS NOT MORPHO'S APR
+
+```typescript
+CB_PLATFORM_FEE_PCT = 1.5;              // percentage points, ON TOP of the market rate
+cbNetApr(morphoApyPct)                  // market rate → what the owner actually pays
+CB_REALIZED_NET_APR                     // useMorphoRate.ts — the realized band, restated all-in
+```
+
+Coinbase charges a **platform fee on top of the third-party (Morpho) variable rate**. From the owner's own
+borrow screen, Sept 2026: variable rate **6.21%**, disclosed as *"Net APR 6.21% · Includes platform fee of
+1.5%"* over a Morpho market rate of 4.71%. Plain addition: 4.71 + 1.5 = 6.21.
+
+⚠ **PROVENANCE — the in-app disclosure, not the help centre.** The public pages still describe the loan as
+having "no Coinbase fees" with rates "set by open lending markets"; they have not caught up with the
+product. The screenshot is the newer and authoritative source. It is a Coinbase pricing decision that can
+move, which is why it is ONE named constant.
+
+⚠ **`cbAprPct` MEANS THE NET, ALL-IN RATE.** Every engine compounds it monthly (`cbAprPct/100/12`), which
+is precisely how the platform fee is billed (*"Platform fees are added to your loan amount on a monthly
+basis"*), so folding it into the APR is the CORRECT model rather than an approximation — no separate
+accrual. **The store default moved 4.77 → 6.27** (4.77 was a raw Morpho reading, understating the loan by
+1.5 points). **NO MIGRATION on purpose:** a blind +1.5 would double-count for anyone who had already typed
+a net figure by hand, so persisted values stay put and the faces now state the live number all-in so the
+owner can correct their own slider.
+
+⚠ **Two opposite "net"s — do not confuse them.** Coinbase's **"Net APR"** = market rate **PLUS** Coinbase's
+fee (bigger). Morpho's **`netBorrowApy`** field = market rate **MINUS** reward incentives (smaller). Same
+word, opposite directions. `parseMorphoRate` returns both raw fields; the faces read `borrowApy` and put
+it through `cbNetApr`. A regression that subtracted instead of added is pinned by a test.
+
+**Everywhere a Morpho reading becomes a `cbAprPct` must go through `cbNetApr`:**
+- the "Use live X%" seed button in both faces (was seeding the RAW rate — the original defect)
+- the live-rate hint line, which now prints market → all-in
+- **`SafetyDashboard` + `SettingsMain`** — the same seed defect, plus a WORSE one: both gated their
+  "Your APR differs" warning on `|morphoRate.borrowApy − cbAprPct| > 1`. Against a correctly-set
+  `cbAprPct` that gap is the 1.5pt fee *permanently*, so the warning would have fired forever and its
+  button then seeded the understated figure. Both now compare against `cbNetApr(...)`. ⚠ Their old copy
+  — *"Coinbase may add a margin"* — was guessing at precisely this fee; it is now named and applied
+- **`CB_REALIZED_NET_APR`** — the realized band restated all-in (5.6–9.0%, max 11.4), DERIVED from
+  `MORPHO_REALIZED_APY` so the two cannot drift. The faces quote this one; quoting the raw band told the
+  owner their debt was 1.5 points cheaper than it has ever been.
+
+⚠⚠ **This is not only a cost — it moves the LIQUIDATION DATE.** On the stress fixture (cap 85, flat price,
+monthly sweeps) the 1.5pt spread pulls the 86% breach from month **46 to month 39 — seven months earlier**,
+more than twice what the origination fee cost. Modelling the loan at Morpho's market rate does not merely
+understate the bill; it tells the owner the liquidation is further away than it is. Pinned by a test.
+⚠ The faces' old "the rate is a cost, not a danger" copy was AMENDED rather than deleted: it holds *while
+the draw cap binds* (the cap absorbs the rate into less accumulation, peak CB LTV moving under a point
+across 3–16%), and stops holding once the cap is set high enough not to bind. Both halves are now stated.
+
 ### Origination fee — `cbBorrowFee` / `cbMaxDrawForHeadroom`
 
 ```typescript
@@ -3259,10 +3311,13 @@ Available on all three bands, though only support is a genuine stress — the ot
 peak CB LTV never exceeds today's.
 
 **Coinbase APR context (both faces).** The APR slider is the owner's MANUAL `cbAprPct`, not a live feed —
-the faces show what it has cost and let the owner pull the live number in by hand. `MORPHO_REALIZED_APY`
-(in `useMorphoRate.ts`) is this market's realized band from Morpho's `historicalState`: **4.1–7.5% over 23
-months since Oct 2024, max 9.9%**, median 5.3 — which is where the stored 5.28% already sits (50th
-percentile, well calibrated). Static by design: those move ~0.2pt/yr, so re-fetching 24 points behind a
+the faces show what it has cost and let the owner pull the live number in by hand. 🔴 **`cbAprPct` is the
+NET, all-in rate — Morpho's market rate PLUS Coinbase's 1.5% platform fee** (see **CB Loan → Platform
+fee**); the live-rate seed and the quoted band both go through `cbNetApr`, and seeding the raw Morpho
+number was the original defect. `MORPHO_REALIZED_APY` (in `useMorphoRate.ts`) is this market's realized
+band from Morpho's `historicalState`: **4.1–7.5% over 23 months since Oct 2024, max 9.9%**, median 5.3 —
+the MARKET rate, which is NOT what the loan cost. The faces quote the derived **`CB_REALIZED_NET_APR`**
+(5.6–9.0%, max 11.4) instead. Static by design: those move ~0.2pt/yr, so re-fetching 24 points behind a
 consent gate to recompute them would be a request for a rounding error; the refresh `curl` lives in the
 constant's docblock. ⚠ The band excludes the first two months (1.6–3.1% on a brand-new market's thin
 utilization — a property of a new market, not of this rate) and it is ONE CYCLE under one dollar-rate
@@ -3757,7 +3812,7 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1060 tests — `npx vitest run` before every commit.
+1064 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device

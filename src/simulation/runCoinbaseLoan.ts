@@ -13,6 +13,36 @@ export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
  *  1. EVERY refinance sweep pays it. A monthly cycle pays it 12x a year, not once.
  *  2. It is CAPITALISED — added to principal, so it compounds at the CB APR for the rest of the horizon.
  */
+/**
+ * Coinbase's PLATFORM FEE — a spread it charges ON TOP of the third-party (Morpho) variable borrow rate.
+ * In-app disclosure, Sept 2026: "Net APR 6.21% · Includes platform fee of 1.5%" over a Morpho variable
+ * rate of 4.71% — plain ADDITION, 4.71 + 1.5 = 6.21, verified against the owner's own borrow screen.
+ *
+ * ⚠ PROVENANCE: this comes from the in-app disclosure, NOT the help centre. As of this writing the public
+ * pages still describe the loan as having "no Coinbase fees" with rates "set by open lending markets" —
+ * they have not caught up with the product. The screenshot is the newer, authoritative source. Named as a
+ * constant precisely because it is a Coinbase pricing decision that can move; change it in ONE place.
+ *
+ * ⚠ It is charged MONTHLY onto the loan balance ("Platform fees are added to your loan amount on a monthly
+ * basis"), which is exactly how every engine here already compounds `cbAprPct` (`cbAprPct/100/12`). So
+ * folding it into the APR is the CORRECT model, not an approximation — no separate accrual is needed.
+ * It is NOT the origination fee below: that one is per-borrow, this one is per-month-on-balance.
+ */
+export const CB_PLATFORM_FEE_PCT = 1.5;
+
+/**
+ * Morpho's published variable borrow APY → the rate the owner ACTUALLY pays. Morpho's API reports the
+ * market rate; Coinbase adds its platform fee before billing. Every place that turns a Morpho reading
+ * into a `cbAprPct` must go through here, or the model understates the cost of the loan by 1.5 points.
+ *
+ * ⚠ Do NOT confuse Coinbase's "Net APR" (market rate PLUS Coinbase's fee — bigger) with Morpho's
+ * `netBorrowApy` field (market rate MINUS reward incentives — smaller). Opposite directions, same word.
+ */
+export function cbNetApr(morphoApyPct: number | null): number | null {
+  if (morphoApyPct === null || !Number.isFinite(morphoApyPct)) return null;
+  return morphoApyPct + CB_PLATFORM_FEE_PCT;
+}
+
 export const CB_FEE_TIER1_PCT = 0.02;
 export const CB_FEE_TIER2_PCT = 0.01;
 export const CB_FEE_TIER_BREAK = 250_000;

@@ -37,7 +37,7 @@ import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { useRelayStatus } from '../../hooks/useRelayStatus';
 import { Toggle } from '../ui/Toggle';
 import { NumberInput } from '../ui/NumberInput';
-import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_PLATFORM_FEE_PCT, cbNetApr } from '../../simulation/runCoinbaseLoan';
 import { disconnectNostr, reconnectNostr, signOutLocal, signOut, signOutConfirmMessage, identityForgetConfirmMessage } from '../../lib/nostr/disconnect';
 import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
@@ -910,10 +910,13 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 {morphoRate.borrowApy !== null ? (
                   <>
                     <span className={styles.fieldHint}>
-                      Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live)
+                      Morpho cbBTC/USDC (Base) market rate: {morphoRate.borrowApy.toFixed(2)}% (live) ·
+                      {' '}all-in {cbNetApr(morphoRate.borrowApy)!.toFixed(2)}% with Coinbase's
+                      {' '}{CB_PLATFORM_FEE_PCT}% platform fee. Enter the ALL-IN figure here.
                     </span>
-                    {Math.abs(morphoRate.borrowApy - cbAprPct) > 1 && (
-                      <span className={styles.fieldHint}>Your APR differs — Coinbase may add a margin.</span>
+                    {/* Same fix as SafetyDashboard: compare to the all-in rate, or this fires forever. */}
+                    {Math.abs(cbNetApr(morphoRate.borrowApy)! - cbAprPct) > 1 && (
+                      <span className={styles.fieldHint}>Your APR differs from the live all-in rate.</span>
                     )}
                   </>
                 ) : (
