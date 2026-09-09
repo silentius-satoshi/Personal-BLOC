@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1087 tests — all must pass before every commit)
+- Vitest (1091 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -2227,8 +2227,8 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   one tap away as a labelled preset chip. **It was 50** (chosen when the seed's opening CB LTV was 50.58%,
   so the cap bound instantly). With both faces now opening ON THE LINE at support, a 50 cap stopped the
   draw at month 1 and the default frame was inert. At 70 the draw runs and the cost is visible: peak CB LTV
-  ~69% (Cycling) / ~70% (Ownership), ~16 points under the 86% liquidation line, worth roughly **+0.73 ₿**
-  over the horizon. Re-measured on the CURRENT seed: no liquidation on any band out to 240 months at 50,
+  ~69% (Cycling) / ~70% (Ownership), ~16 points under the 86% liquidation line, and worth a meaningful
+  fraction of a bitcoin over the horizon. Re-measured on the CURRENT seed: no liquidation on any band out to 240 months at 50,
   70 **or** 75 — the old "75 liquidates at month 83" warning was written against an earlier position and no
   longer holds. The engine tests pass `cbLtvCapPct` explicitly, so they pin the ENGINE, not this default.
   ⚠ The cap bounds the DRAW, not the refinance sweep, so peak LTV can end a month just past it (70.1%
@@ -3172,9 +3172,10 @@ Coinbase charges this on **every borrow**, not once at loan opening
 get right, because both cost real bitcoin:
 
 1. **MARGINAL brackets, like tax** — the slice of a new borrow landing under $250k pays 2%, the slice
-   above pays 1%. Keyed off the STANDING balance, not the draw size: a $4,000 draw costs **$80** at a
-   zero balance and **$40** at a $260k balance. (The $80 is the owner's own observed figure — the
-   brackets were calibrated to it, not to a reading of the help page alone.)
+   above pays 1%. Keyed off the STANDING balance, not the draw size: the same draw costs **twice as much**
+   at a zero balance as it does once the loan is past $250k. (⚠ The brackets were calibrated against the
+   owner's OWN observed fee on a real draw, not against a reading of the help page alone — the figure
+   itself is deliberately not recorded here; this repo is public.)
 2. **CAPITALISED** — the fee is added to principal, so it accrues interest for the rest of the run. It
    is not a cash cost you can pay and forget; it compounds. This is the part that moves outcomes.
 
@@ -3190,14 +3191,14 @@ fast — the fee is a speed bump on the rotation, not an argument against it. Bo
 surfaces print this number rather than a bare "saves $X/yr", which was overstating year one.
 
 ⚠ **Cadence-NEUTRAL, which is why monthly sweeping survived the fee.** It is a percentage of VOLUME, not
-a per-transaction charge, so batching saves nothing: `cycle=1` pays $4,021 over 60 borrows vs `cycle=3`
-paying $4,056 over 20 (5-yr support/on-the-line/cap-70 fixture). Monthly is in fact *slightly cheaper* —
+a per-transaction charge, so batching saves nothing: over a 5-yr support/on-the-line/cap-70 run, monthly
+sweeping and quarterly sweeping pay within ~1% of each other in total fees. Monthly is *slightly cheaper* —
 less Strike interest accrues into the principal that gets fee'd. Pinned by a test, because "batch the
 sweeps to save on fees" is the obvious wrong intuition and someone will have it.
 
 **Two borrow sites, both wired:**
 - `cyclingSim.ts` — the refinance sweep. `cbDebt += strikeBal + fee`; `CyclingResult` gained
-  `totalCbFees` / `cbFeeCount`, which both faces print ("$4,021 over 60 borrows").
+  `totalCbFees` / `cbFeeCount`, which both faces print for the run in front of the owner.
 - `runAdvisor.ts` — the **reverse rotation** (`strikeRepayDraw`, drawing cheap CB debt to repay
   expensive Strike). Same real-world action, same real fee. New row field `strikeRepayFee`.
   ⚠ **The rotation is NO LONGER DEBT-NEUTRAL** and the test that asserted it was renamed rather than
@@ -3337,17 +3338,17 @@ utilization — a property of a new market, not of this rate) and it is ONE CYCL
 regime: it says what has happened, never what can. The IRM permits 200% at target.
 ⚠ **The rate is a COST, not a danger, in this model** — peak CB LTV moves under a point across a 3→16%
 sweep because the draw cap absorbs it into less accumulation. And the sign inverts with the path: on a
-rising band the debt shrinks in BTC terms, so 5.28% vs the realized bull-regime 6.91% is worth **0.03 ₿
-over 20 years**, while on a flat/support path the same spread bites hardest. A regime-coupled rate was
+rising band the debt shrinks in BTC terms, so the spread between the stored rate and the realized
+bull-regime rate is worth a rounding error over 20 years, while on a flat/support path it bites hardest. A regime-coupled rate was
 measured and REJECTED on those grounds — a control and a concept for a rounding error.
 
 ⚠ **The APR is not the whole cost — the ORIGINATION FEE sits beside it in both faces.** Copy in the
 block under the Coinbase APR slider names the 2%/1% brackets, says the fee is added to principal so it
 compounds, prints this run's actual total (`sim.totalCbFees` over `sim.cbFeeCount` borrows) and closes
-with the break-even. Unlike the APR, the fee is NOT a rounding error: on the 5-yr support/on-the-line/
-cap-70 fixture it is **$4,021** and costs 0.017 ₿ (`yours` 3.365 → 3.348); over 20 yr, $11,299 over 240
-borrows (the marginal rate falls to 1% once the balance crosses $250k). See **CB Loan → Origination
-fee** for the brackets, the cadence-neutrality result, and the `liqMonth` 48 → 45 shift.
+with the break-even. Unlike the APR, the fee is NOT a rounding error: on a 5-yr support/on-the-line/cap-70
+run it costs a measurable fraction of a bitcoin, and the marginal rate only falls to 1% once the balance
+crosses $250k. See **CB Loan → Origination fee** for the brackets, the cadence-neutrality result, and the
+`liqMonth` 48 → 45 shift.
 
 ⚠ **BOTH faces now DEFAULT to Support + on the line** — the conservative read, not the flattering one.
 `DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE` on both; **`REVERT_PRESET_MONTHS`** (Cycling 48, Ownership 60)
@@ -3355,9 +3356,8 @@ is what the chip restores and **must stay distinct from the default**, or the to
 Cycling also gained `DEFAULT_BAND = 'floor'` and `DEFAULT_INSPECT_MONTH = 24` (the scrubber opens at
 2.0 yr, `Math.min`-clamped against the horizon, instead of at the far end). Ownership's `DEFAULT_PATH`
 is now `'floor'`. **Cycling's `DEFAULT_CYCLE_MONTHS` is 1** (was 3), matching Ownership — sweeping monthly
-parks the expensive 13% Strike balance for one month instead of three: Strike interest HALVES
-($5,470 → $2,677) and peak Strike LTV drops 24.0% → 9.2%, against ~$892 more CB interest and ~1.2pt of
-peak CB LTV. Same bitcoin held either way — purchases follow income, not the sweep.
+parks the expensive 13% Strike balance for one month instead of three: Strike interest roughly HALVES and
+peak Strike LTV drops 24.0% → 9.2%, against a much smaller rise in CB interest and ~1.2pt of peak CB LTV. Same bitcoin held either way — purchases follow income, not the sweep.
 Pinned by two tests, one asserting month 1..24 equals `plBandsAt` per band, one asserting the step is a
 real discontinuity (>5%) and signed correctly per band — so nobody can "simplify" the weight and
 silently kill the preset.
@@ -3400,10 +3400,35 @@ liquidation moved from month 13 to **month 2**. Withdrawing to a worse LTV than 
 incoherent; the cap wins and the two knobs compose. Pinned by a test that every looser buffer behaves
 exactly like the boundary one.
 
+🔴 **TWO LEGS, ONE KNOB.** The sweep frees collateral at BOTH venues, for completely different reasons,
+and `coldFromCb` / `coldFromStrike` (cumulative, always summing to `coldBtc`) keep them separable.
+- **Coinbase leg** — the LOAN de-levers as price rises, so collateral above the buffer's floor is surplus.
+- **Strike leg** — ⚠ `strikeCreditLine` is a FIXED DOLLAR amount that never grows with price, so the
+  collateral needed to support the whole line SHRINKS as price rises. Over a twenty-year support path that
+  requirement falls by more than an order of magnitude: **~98% of the Strike pledge ends up idle** —
+  pledged, earning nothing, still sitting with a custodian. At a 30% buffer the Strike leg banks very
+  nearly that whole idle remainder, and `btcHeld` is unchanged with the sweep on or off, so on a rising
+  path it is free — it relocates bitcoin rather than costing any.
+  ⚠ `strikeColl` is therefore **NO LONGER `const`** in the engine. Purchases still never go there.
+  The leg keeps the LARGER of two requirements, both evaluated AT THE STRESSED PRICE: enough to still draw
+  the FULL credit line after the break, and enough to stay under the margin-call LTV after it. Both pinned.
+  ⚠ **If Strike ever RAISES the line, the swept collateral is what you would need back.** The model has no
+  way to know that will happen, so it sweeps on today's line and the face says so.
+
 🔴 **ON BY DEFAULT in BOTH faces** (`DEFAULT_COLD_ON = true`, `DEFAULT_COLD_BUFFER_PCT = 30`). Both faces
 run the SAME engine, so a different default in one would make them disagree about one position. The
 default band is Support, where the sweep is free, so defaulting it off was hiding the safest reading of
 the strategy behind a toggle.
+
+**Cycling card — outcome first, constraint second.** ⚠ The headline is the ₿ that reaches the owner's own
+custody, with the split by origin under it; the knob comes after. Leading with the rule ("survive a break
+of 30%") made the card read as a risk setting rather than a plan. And **the slider displays a PRICE**, not
+a percentage — "Keep me safe down to $61,236" is a decision; "survive a break of 30%" is arithmetic you
+have to do first. The % and the reference month ride along in the note beneath.
+
+**Price stress readout** now leads with the price in BOTH states (`$78,651 · as modeled`), matching the
+Ownership face's Price lens. Showing only "as modeled" at lens 1 made the reader hunt for the number the
+card is about.
 
 **Cycling face placement.** The card sits between **Holdings by venue** and **Coinbase LTV over time** —
 it is the control that moves the venue segment and moves the LTV curve, so it belongs between the two
@@ -3913,7 +3938,20 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
-1087 tests — `npx vitest run` before every commit.
+🔴 **FIXTURES ARE SYNTHETIC. THIS REPO IS PUBLIC.** Every engine fixture uses round, invented numbers —
+`cyclingSim.test.ts`'s `LIVE`, `ownership.test.ts`'s `SEED`, `emergencyModel.test.ts`'s `BASE`. They once
+carried the owner's ACTUAL position (collateral, debts, credit line, monthly income and expenses), one of
+them labelled "a real one", which published his finances to anyone who read the tests. The swap preserves
+the SHAPE that makes each fixture useful — ~46% CB LTV and ~17% Strike LTV at month 0, a credit line that
+binds before the collateral cap, skDrawn held to its documented `0.15 × skColl × price` relation — so the
+pins still guard what they were written to guard. ⚠ If a future test needs a more realistic scenario,
+change the RATIO, never the provenance. Absolute pins derived from a fixture carry a comment saying they
+are fixture-bound, and where a value can be re-derived from a formula the test does that too (the seizure
+pin re-derives `debt × CB_LIF / price` from the breaching row rather than trusting its own constant).
+⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
+
+
+1091 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device

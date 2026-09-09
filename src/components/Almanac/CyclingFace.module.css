@@ -453,3 +453,31 @@
 /* Milestones — the cold column is a SUBSET of the BTC column beside it, so it carries the cold accent
    rather than the default text colour, which would read as a second independent total. */
 .msCold { color: var(--btc); }
+
+/* Cold storage — the OUTCOME leads, the constraint follows. A big number the owner reads first, then the
+   split by origin, then the knob. Inverting that order made the card read as a risk setting. */
+.coldHead {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 2px 0 8px;
+}
+.coldBig {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--btc);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+.coldBigSub { font-size: 11.5px; color: var(--text-muted); }
+.coldSplit {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
+}
+.coldSplit span { display: inline-flex; align-items: center; gap: 5px; }

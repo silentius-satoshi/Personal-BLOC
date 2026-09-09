@@ -17,19 +17,19 @@ import { ownershipGained } from '../../components/Almanac/ownershipFaceView';
 
 const SEED: Omit<CyclingInputs, 'pricePath' | 'cbLtvCapPct' | 'mode' | 'cycleMonths'> = {
   startYear: 2026,
-  strikeCollateralBtc: 0.96589757,
-  strikeBalance: 7068.80,
-  strikeCreditLine: 37328.91,
+  strikeCollateralBtc: 1.0,
+  strikeBalance: 7_000,
+  strikeCreditLine: 38_000,
   strikeMaxDrawLtv: 0.5,
   strikeMarginLtv: 0.7,
-  cbCollateralBtc: 1.72572674,
-  cbDebt: 69544.90,
-  income: 4300,
-  expenses: 4000,
+  cbCollateralBtc: 2.0,
+  cbDebt: 70_000,
+  income: 6_000,
+  expenses: 5_500,
   strikeAprPct: 13,
   cbAprPct: 5.28,
 };
-const SPOT = 79674;
+const SPOT = 80_000;
 const flat = (months: number, price = SPOT): number[] => new Array(months + 1).fill(price);
 const runSeed = (o: Partial<CyclingInputs> = {}) =>
   runCyclingSim({ ...SEED, pricePath: flat(60), cbLtvCapPct: 75, cycleMonths: 1, ...o });
@@ -38,11 +38,12 @@ const yoursAt = (r: { last: { btcHeld: number; debt: number; price: number } }) 
 
 describe('deriveOwnership — one definition of "what\'s yours"', () => {
   it('⭐ the worked example: the share is of the COIN COUNT, never the value', () => {
-    // 1.730 / 2.69162431 = 0.643 — btcHeld is the denominator, not collateralValue.
-    const o = deriveOwnership(2.69162431, 76613.29, 79674);
-    expect(o.yoursBtc).toBeCloseTo(1.7300, 3);
-    expect(o.lendersBtc).toBeCloseTo(0.9616, 3);
-    expect(o.yoursShare).toBeCloseTo(0.643, 3);
+    // 1.92 / 3 = 0.64 — btcHeld is the denominator, not collateralValue.
+    // Debt buys 86_400/80_000 = 1.08 ₿ at this price, so 1.92 ₿ of the 3 held are yours.
+    const o = deriveOwnership(3.0, 86_400, 80_000);
+    expect(o.yoursBtc).toBeCloseTo(1.92, 3);
+    expect(o.lendersBtc).toBeCloseTo(1.08, 3);
+    expect(o.yoursShare).toBeCloseTo(0.64, 3);
     expect(o.hasData).toBe(true);
   });
 

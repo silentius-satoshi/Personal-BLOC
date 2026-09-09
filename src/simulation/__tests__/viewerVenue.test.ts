@@ -12,11 +12,11 @@ describe('deriveVenueSplit', () => {
     expect(v.hasData).toBe(true);
   });
 
-  it('reports the real position (0.966 / 1.728) as ~36% Strike / ~64% Coinbase', () => {
-    const v = deriveVenueSplit(0.96589757, 1.72572674);
-    expect(v.strikeShare).toBeCloseTo(0.359, 3);
-    expect(v.cbShare).toBeCloseTo(0.641, 3);
-    expect(v.combinedBtc).toBeCloseTo(2.69162431, 8);
+  it('reports a 1 : 2 split as ~33% Strike / ~67% Coinbase', () => {
+    const v = deriveVenueSplit(1.0, 2.0);
+    expect(v.strikeShare).toBeCloseTo(1 / 3, 3);
+    expect(v.cbShare).toBeCloseTo(2 / 3, 3);
+    expect(v.combinedBtc).toBeCloseTo(3, 8);
   });
 
   it('a single-venue stack is 100% / 0%', () => {
@@ -100,7 +100,7 @@ describe('deriveVenueSplit', () => {
   });
 
   it('shares always sum to 1 whenever hasData is true', () => {
-    const cases: [number, number][] = [[1, 1], [0.96589757, 1.72572674], [3, 0], [0, 3], [0.00001, 99]];
+    const cases: [number, number][] = [[1, 1], [1.0, 2.0], [3, 0], [0, 3], [0.00001, 99]];
     for (const [a, b] of cases) {
       const v = deriveVenueSplit(a, b);
       expect(v.hasData).toBe(true);

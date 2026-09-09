@@ -105,6 +105,11 @@ export interface CyclingRow {
   cbCollateralBtc: number;
   /** Cumulative BTC swept to cold storage. UNPLEDGED — never in any LTV denominator, never seizable. */
   coldBtc: number;
+  /** Split of `coldBtc` by origin. The two venues free collateral for DIFFERENT reasons, so the UI can
+   *  say which — Coinbase because the loan de-levers, Strike because a FIXED credit line needs ever less
+   *  collateral as price rises. They always sum to `coldBtc`. */
+  coldFromCb: number;
+  coldFromStrike: number;
   btcHeld: number;               // display only — never a denominator
 
   cbLtv: number;                 // cbDebt / (cbColl × price)
@@ -135,6 +140,8 @@ export interface CyclingResult {
   baselineBtc: number;
   /** Total BTC moved to cold storage over the run (0 when the sweep is off). */
   totalColdBtc: number;
+  totalColdFromCb: number;
+  totalColdFromStrike: number;
   /** First month the sweep moved anything, else null — "not yet" is the honest answer for a long while. */
   firstColdMonth: number | null;
 }
@@ -172,7 +179,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   // ⚠ This does NOT make the sweep risk-free — see the header. It removes only the incoherent settings.
   const coldFloorLtv = Math.min(CB_LLTV * (1 - coldBuffer), cap);
 
-  const strikeColl = inputs.strikeCollateralBtc;   // fixed — purchases go to Coinbase
+  // ⚠ NO LONGER const. Purchases still never go here — but the cold-storage sweep can REMOVE collateral
+  // that the fixed credit line has stopped needing. See the Strike sweep below.
+  let strikeColl = inputs.strikeCollateralBtc;
   let cbColl = inputs.cbCollateralBtc;             // grows with every purchase
   let cbDebt = inputs.cbDebt;
   let strikeBal = inputs.strikeBalance;
@@ -189,6 +198,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalCbFees = 0;
   let cbFeeCount = 0;
   let coldBtc = 0;
+  let coldFromCb = 0;
+  let coldFromStrike = 0;
   let firstColdMonth: number | null = null;
 
   const rows: CyclingRow[] = [];
@@ -275,14 +286,41 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     // is gone for good, so every LATER month starts from a smaller base. On a rising path that never
     // matters (LTV keeps falling anyway); on a flat or falling one it does. The sweep is a RISK TRANSFER,
     // not free safety, and `coldStoreBufferPct` is the size of the transfer.
-    if (coldOn && m > 0 && liqMonth === null && price > 0 && cbColl > 0) {
-      const required = cbDebt / (coldFloorLtv * price);   // collateral the buffer demands we keep
-      const excess = cbColl - required;
-      if (excess > 0) {
-        const moved = Math.min(excess, cbColl);
-        cbColl -= moved;
-        coldBtc += moved;
-        if (firstColdMonth === null) firstColdMonth = m;
+    if (coldOn && m > 0 && liqMonth === null && price > 0) {
+      // ── COINBASE leg: the loan de-levers as price rises, freeing collateral above the buffer's floor.
+      if (cbColl > 0) {
+        const required = cbDebt / (coldFloorLtv * price);   // collateral the buffer demands we keep
+        const excess = cbColl - required;
+        if (excess > 0) {
+          const moved = Math.min(excess, cbColl);
+          cbColl -= moved;
+          coldBtc += moved;
+          coldFromCb += moved;
+          if (firstColdMonth === null) firstColdMonth = m;
+        }
+      }
+
+      // ── STRIKE leg: a DIFFERENT mechanism with the same result. `strikeCreditLine` is a FIXED dollar
+      // amount that does not grow with price, so the collateral needed to support the whole line SHRINKS
+      // as price rises. Over a long rising path that requirement falls by more than an order of magnitude,
+      // leaving the large majority of the pledge idle — earning nothing, still sitting with a custodian.
+      // Keep the larger of what the two Strike constraints demand AT THE STRESSED PRICE:
+      //   (a) enough to still draw the FULL credit line after the break, and
+      //   (b) enough to stay under the margin-call LTV after the break.
+      // ⚠ If Strike ever RAISES the line, this collateral is what you'd need back — the UI says so.
+      if (strikeColl > 0) {
+        const stressed = price * (1 - coldBuffer);
+        const keepForLine = strikeCreditLine / (stressed * strikeMaxDrawLtv);
+        const keepForMargin = strikeMarginLtv > 0 ? strikeBal / (strikeMarginLtv * stressed) : 0;
+        const keep = Math.max(keepForLine, keepForMargin);
+        const excess = strikeColl - keep;
+        if (excess > 0) {
+          const moved = Math.min(excess, strikeColl);
+          strikeColl -= moved;
+          coldBtc += moved;
+          coldFromStrike += moved;
+          if (firstColdMonth === null) firstColdMonth = m;
+        }
       }
     }
 
@@ -303,7 +341,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       price,
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
       strikeDrawn, strikeShortfall,
-      strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, btcHeld,
+      strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, coldFromCb, coldFromStrike, btcHeld,
       cbLtv, strikeLtv,
       collateralValue, equity: collateralValue - (cbDebt + strikeBal),
       postLiquidation: liqMonth !== null,
@@ -346,6 +384,6 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     seizedBtc, survivorBtc, deficiencyUsd,
     totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount,
     baselineEquity, baselineBtc: baseBtc,
-    totalColdBtc: coldBtc, firstColdMonth,
+    totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
   };
 }

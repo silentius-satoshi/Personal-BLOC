@@ -17,18 +17,27 @@ import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 
 const PRICE = 78_000;
 
-/** The reference position (a real one), so the cbMetrics pin has something honest to agree with. */
+/**
+ * SYNTHETIC reference position — round numbers, chosen to preserve the SHAPE of a real one: ~46% CB LTV
+ * and ~17% Strike LTV at month 0, a $500 monthly surplus, and a Strike credit line that binds before the
+ * collateral cap does. Every pinned value below is derived from THESE numbers.
+ *
+ * ⚠ Deliberately NOT anyone's actual position. This repo is public, and a fixture labelled "a real one"
+ * publishes the owner's holdings, debts, credit line and monthly income and expenses to anyone who reads
+ * the tests. Keep it synthetic. If a future pin needs a more realistic ratio, change the RATIO, not the
+ * provenance.
+ */
 const LIVE: Omit<CyclingInputs, 'pricePath' | 'cbLtvCapPct'> = {
   startYear: 2026,
-  strikeCollateralBtc: 0.96589757,
-  strikeBalance: 12_793.51,
-  strikeCreditLine: 37_499.90,
+  strikeCollateralBtc: 1.0,
+  strikeBalance: 13_000,
+  strikeCreditLine: 38_000,
   strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,
   strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
-  cbCollateralBtc: 1.72572674,
-  cbDebt: 62_292.59,
-  income: 4_500,
-  expenses: 4_000,
+  cbCollateralBtc: 2.0,
+  cbDebt: 72_000,
+  income: 6_000,
+  expenses: 5_000,
   strikeAprPct: 13,
   cbAprPct: 4.77,
   cycleMonths: 3,
@@ -44,14 +53,14 @@ describe('runCyclingSim — the two collateral pools', () => {
     // where cbMetrics reads 46.28% — 16.6 points low, which let the cap fire late.
     const r = run();
     expect(r.rows[0].cbLtv).toBeCloseTo(cbMetrics(LIVE.cbDebt, LIVE.cbCollateralBtc, PRICE, 75).ltv, 9);
-    expect(r.rows[0].cbLtv).toBeCloseTo(0.4628, 4);
+    expect(r.rows[0].cbLtv).toBeCloseTo(0.4615, 4);   // 72_000 / (2 × 78_000)
   });
 
   it('month-0 Strike LTV divides by the Strike pool alone', () => {
     const r = run();
     expect(r.rows[0].strikeLtv).toBeCloseTo(
       LIVE.strikeBalance / (LIVE.strikeCollateralBtc * PRICE), 12);
-    expect(r.rows[0].strikeLtv).toBeCloseTo(0.1698, 4);
+    expect(r.rows[0].strikeLtv).toBeCloseTo(0.1667, 4);   // 13_000 / (1 × 78_000)
   });
 
   it('⭐ btcHeld is the SUM of the two pools, and is never one of them', () => {
@@ -96,13 +105,14 @@ describe('runCyclingSim — the refinance loop and the stop', () => {
 });
 
 describe('runCyclingSim — the Strike credit line is a hard constraint', () => {
-  it('⭐ exhausts the line at month 6 on bills $4,000 / cycle 12, and income covers the rest', () => {
+  it('⭐ exhausts the line at month 5 on bills $5,000 / cycle 12, and income covers the rest', () => {
     const r = run({ cycleMonths: 12, cbLtvCapPct: 85 });
-    expect(r.creditExhaustedMonth).toBe(6);
-    expect(r.rows[6].strikeShortfall).toBeCloseTo(661.24, 2);
-    expect(r.rows[5].strikeShortfall).toBe(0);
-    expect(r.rows[7].strikeDrawn).toBe(0);          // fully exhausted thereafter
-    expect(r.rows[7].strikeShortfall).toBe(LIVE.expenses);
+    expect(r.creditExhaustedMonth).toBe(5);
+    // line 38_000 − balance 34_120.12 = 3_879.88 drawable, so the bill is short by the remainder
+    expect(r.rows[5].strikeShortfall).toBeCloseTo(1_120.12, 2);
+    expect(r.rows[4].strikeShortfall).toBe(0);
+    expect(r.rows[6].strikeDrawn).toBe(0);          // fully exhausted thereafter
+    expect(r.rows[6].strikeShortfall).toBe(LIVE.expenses);
   });
 
   it('a draw never exceeds the headroom under min(credit line, collateral × price × max-draw LTV)', () => {
@@ -133,24 +143,32 @@ describe('runCyclingSim — the Strike credit line is a hard constraint', () => 
   it('a shortfall buys fewer sats — income covered the bill instead', () => {
     const r = run({ cycleMonths: 12, cbLtvCapPct: 85, pricePath: flat(24) });
     const bought = (m: number) => r.rows[m].cbCollateralBtc - r.rows[m - 1].cbCollateralBtc;
-    expect(bought(5)).toBeCloseTo(LIVE.income / PRICE, 9);                    // unconstrained
+    expect(bought(4)).toBeCloseTo(LIVE.income / PRICE, 9);                    // unconstrained
     expect(bought(7)).toBeCloseTo(Math.max(0, LIVE.income - LIVE.expenses) / PRICE, 9); // exhausted
-    expect(bought(7)).toBeLessThan(bought(5));
+    expect(bought(7)).toBeLessThan(bought(4));
   });
 });
 
 describe('runCyclingSim — liquidation is terminal, and honest', () => {
   it('⭐ seizes at CB_LIF and reports the survivor', () => {
-    // ⚠ MOVED 48 → 45 when the Coinbase origination fee landed. Not a loosened pin — a real result:
-    // every sweep now capitalises 2%, so the debt compounds off a bigger base and the 86% breach
-    // arrives THREE MONTHS EARLIER on this fixture. Modelling the sweep as free understated the risk,
-    // not just the cost. If this number moves again, something changed the fee or the sweep.
+    // ⚠ These absolutes are tied to the SYNTHETIC fixture and were re-derived when it replaced the
+    // real position — a fixture change, not a behaviour change. The standing FINDING behind this pin is
+    // unchanged: the Coinbase origination fee capitalises on every sweep, so the debt compounds off a
+    // bigger base and the 86% breach arrives EARLIER than a fee-free model claims. Modelling the sweep
+    // as free understates the risk, not just the cost. If these move again without the fixture moving,
+    // something changed the fee or the sweep.
     const r = run({ cbLtvCapPct: 85, pricePath: flat(240) });
-    expect(r.liqMonth).toBe(45);
-    expect(r.seizedBtc).toBeCloseTo(3.6036, 4);
-    expect(r.survivorBtc).toBeCloseTo(1.3765, 4);
-    expect(r.rows[45].cbLtv).toBeGreaterThanOrEqual(CB_LLTV);   // the row shows what BREACHED
-    expect(r.totalCbFees).toBeCloseTo(3329.75, 2);              // 13 sweeps, all inside the 2% tier
+    expect(r.liqMonth).toBe(57);
+    expect(r.seizedBtc).toBeCloseTo(5.2192, 4);
+    expect(r.survivorBtc).toBeCloseTo(1.5885, 4);
+    expect(r.rows[57].cbLtv).toBeGreaterThanOrEqual(CB_LLTV);   // the row shows what BREACHED
+    expect(r.totalCbFees).toBeCloseTo(4142.92, 2);              // 16 sweeps, all inside the 2% tier
+    // ⭐ Re-derive the seizure from the breaching row rather than trusting the absolutes above: Morpho
+    // takes debt × CB_LIF worth of COINBASE collateral, and nothing else.
+    const brk = r.rows[57];
+    expect(r.seizedBtc).toBeCloseTo(Math.min(brk.cbCollateralBtc, (brk.cbDebt * CB_LIF) / brk.price), 9);
+    expect(r.survivorBtc).toBeCloseTo(
+      brk.strikeCollateralBtc + (brk.cbCollateralBtc - r.seizedBtc!) + brk.coldBtc, 9);
   });
 
   it('postLiquidation is true AT liqMonth (the seizure happens within that row) and after', () => {
@@ -202,7 +220,7 @@ describe('runCyclingSim — the Strike margin-call signal', () => {
   });
 
   it('fires when the price falls far enough under a drawn balance', () => {
-    // Draw at $78,000, then crash to $25,000: 0.96589757 ₿ backs only ~$24,147.
+    // Draw at $78,000, then crash to $25,000: 1 ₿ of Strike collateral backs only $25,000.
     const path = [...flat(2), ...new Array(4).fill(25_000)];
     const r = runCyclingSim({ ...LIVE, pricePath: path, cbLtvCapPct: 85, cycleMonths: 12 });
     expect(r.strikeMarginMonth).not.toBeNull();
@@ -254,7 +272,7 @@ describe('runCyclingSim — mode (S1): hold / clearStrike / clearBoth', () => {
   it('⭐ C1: hold with expenses > income leaves btcHeld flat and draws no debt — the deficit is funded by nothing', () => {
     // The deliberate approximation: no coins sold, no draw — the bills are simply not funded. The debt
     // grows ONLY at the existing rates. Surface it in the view; never model it away silently.
-    const r = run({ mode: 'hold', income: 3_000, expenses: 4_000, pricePath: flat(24) });
+    const r = run({ mode: 'hold', income: 3_000, expenses: 5_000, pricePath: flat(24) });
     const open = r.rows[0];
     for (const row of r.rows) {
       expect(row.btcHeld).toBeCloseTo(open.btcHeld, 9);               // flat — nothing sold, nothing bought
@@ -268,8 +286,8 @@ describe('runCyclingSim — mode (S1): hold / clearStrike / clearBoth', () => {
   });
 
   it('clearStrike retires Strike before any purchase lands', () => {
-    const r = run({ mode: 'clearStrike', strikeBalance: 500, pricePath: flat(12) });
-    expect(r.rows[1].strikeBalance).toBeLessThan(500);              // retiring
+    const r = run({ mode: 'clearStrike', strikeBalance: 2_000, pricePath: flat(12) });
+    expect(r.rows[1].strikeBalance).toBeLessThan(2_000);            // retiring
     expect(r.rows[1].cbCollateralBtc).toBeCloseTo(LIVE.cbCollateralBtc, 9);  // nothing bought yet
     const bought = r.rows.find((row) => row.cbCollateralBtc > LIVE.cbCollateralBtc);
     expect(bought).toBeDefined();
@@ -277,9 +295,9 @@ describe('runCyclingSim — mode (S1): hold / clearStrike / clearBoth', () => {
   });
 
   it('clearBoth retires Strike, then Coinbase, then buys — one at a time', () => {
-    const r = run({ mode: 'clearBoth', strikeBalance: 300, cbDebt: 500, pricePath: flat(12) });
-    expect(r.rows[1].strikeBalance).toBeLessThan(300);
-    expect(r.rows[1].cbDebt).toBeLessThan(500);                      // both legs got paid
+    const r = run({ mode: 'clearBoth', strikeBalance: 600, cbDebt: 2_000, pricePath: flat(12) });
+    expect(r.rows[1].strikeBalance).toBeLessThan(600);
+    expect(r.rows[1].cbDebt).toBeLessThan(2_000);                    // both legs got paid
     expect(r.rows[1].cbCollateralBtc).toBeCloseTo(LIVE.cbCollateralBtc, 9);  // cash exhausted
     expect(r.last.strikeBalance).toBe(0);
     expect(r.last.cbDebt).toBe(0);                                   // cbDebt swept too (sub-cent residual)
@@ -296,7 +314,7 @@ describe('runCyclingSim — mode (S1): hold / clearStrike / clearBoth', () => {
 
 describe('runCyclingSim — guards', () => {
   it('income <= expenses buys nothing once drawing stops, and never goes negative', () => {
-    const r = run({ income: 3_000, expenses: 4_000, cbLtvCapPct: 50, pricePath: flat(36) });
+    const r = run({ income: 3_000, expenses: 5_000, cbLtvCapPct: 50, pricePath: flat(36) });
     for (let m = r.stopMonth!; m < r.rows.length; m++) {
       expect(r.rows[m].cbCollateralBtc).toBeCloseTo(r.rows[r.stopMonth!].cbCollateralBtc, 9);
     }
@@ -350,9 +368,11 @@ describe('runCyclingSim — guards', () => {
     const RISING = { pricePath: geo(240, 25), cbLtvCapPct: 70, cycleMonths: 1 };
     const FLAT   = { pricePath: flat(240),    cbLtvCapPct: 70, cycleMonths: 1 };
     const FALLING= { pricePath: geo(240, -30), cbLtvCapPct: 70, cycleMonths: 1 };
-    /** Months where the sweep ACTUALLY moved coins (coldBtc is cumulative — a positive value is not enough). */
-    const moved = (r: ReturnType<typeof run>) =>
-      r.rows.filter((x, i) => i > 0 && x.coldBtc > r.rows[i - 1].coldBtc + 1e-12);
+    /** Months where a given LEG actually moved coins. The cumulative fields are not enough (a positive
+     *  value persists forever), and the two legs fire on different months — a Strike-only month says
+     *  nothing about where cbLtv sits, which is exactly the confusion this helper exists to prevent. */
+    const movedBy = (r: ReturnType<typeof run>, key: 'coldBtc' | 'coldFromCb' | 'coldFromStrike') =>
+      r.rows.filter((x, i) => i > 0 && x[key] > r.rows[i - 1][key] + 1e-12);
 
     it('OFF by default — absent, undefined, 0 and junk are byte-identical to the old engine', () => {
       const off = run(RISING);
@@ -372,7 +392,8 @@ describe('runCyclingSim — guards', () => {
       for (const buffer of [30, 50, 70]) {
         const r = run({ ...RISING, coldStoreBufferPct: buffer });
         const floor = CB_LLTV * (1 - buffer / 100);
-        const ms = moved(r);
+        // ⚠ COINBASE-leg months only. The Strike leg fires on its own schedule and does not touch cbLtv.
+        const ms = movedBy(r, 'coldFromCb');
         expect(ms.length).toBeGreaterThan(0);
         for (const x of ms) expect(x.cbLtv).toBeCloseTo(floor, 6);
       }
@@ -388,12 +409,13 @@ describe('runCyclingSim — guards', () => {
       const atBoundary = run({ ...RISING, cbLtvCapPct: capPct, coldStoreBufferPct: boundary });
       for (const looser of [0.5, 1, 5, 10, 15]) {
         const r = run({ ...RISING, cbLtvCapPct: capPct, coldStoreBufferPct: looser });
-        expect(r.totalColdBtc).toBeCloseTo(atBoundary.totalColdBtc, 6);
-        expect(r.firstColdMonth).toBe(atBoundary.firstColdMonth);
+        // ⚠ The CB leg only. The Strike leg reads the RAW buffer (its constraint is the credit line, not
+        // the CB draw cap), so its totals legitimately differ across these buffers.
+        expect(r.totalColdFromCb).toBeCloseTo(atBoundary.totalColdFromCb, 6);
       }
-      // ...and a sweeping month then sits on the CAP, not on the (looser) raw floor.
+      // ...and a COINBASE-leg month then sits on the CAP, not on the (looser) raw floor.
       const r1 = run({ ...RISING, cbLtvCapPct: capPct, coldStoreBufferPct: 1 });
-      for (const x of moved(r1)) expect(x.cbLtv).toBeCloseTo(capPct / 100, 6);
+      for (const x of movedBy(r1, 'coldFromCb')) expect(x.cbLtv).toBeCloseTo(capPct / 100, 6);
     });
 
     it('⭐ tighter buffer → starts LATER, banks LESS', () => {
@@ -468,6 +490,50 @@ describe('runCyclingSim — guards', () => {
           expect(x.strikeLtv).toBeCloseTo(x.strikeBalance / (x.strikeCollateralBtc * x.price), 9);
         }
       }
+    });
+
+    it('⭐⭐ the STRIKE leg — a FIXED credit line needs ever less collateral as price rises', () => {
+      // The Coinbase leg frees collateral because the LOAN de-levers. The Strike leg frees it for a
+      // different reason entirely: `strikeCreditLine` is a fixed DOLLAR amount that never grows with
+      // price, so the collateral required to support the whole line shrinks as price rises. On a rising
+      // path most of the Strike pledge ends up idle — pledged, earning nothing, still with a custodian.
+      const r = run({ ...RISING, coldStoreBufferPct: 30 });
+      expect(r.totalColdFromStrike).toBeGreaterThan(0);
+      expect(r.last.strikeCollateralBtc).toBeLessThan(LIVE.strikeCollateralBtc);
+      // The two legs are independent and always account for the whole pool.
+      expect(r.totalColdFromCb + r.totalColdFromStrike).toBeCloseTo(r.totalColdBtc, 9);
+      for (const x of r.rows) expect(x.coldFromCb + x.coldFromStrike).toBeCloseTo(x.coldBtc, 9);
+    });
+
+    it('⭐ the Strike leg NEVER sweeps below what the full credit line needs at the stressed price', () => {
+      // The invariant that keeps the strategy fundable: after any sweep, a drop of `buffer` must still
+      // leave enough collateral to draw the ENTIRE line. Otherwise the sweep quietly starves the bills.
+      for (const buffer of [20, 30, 50]) {
+        const r = run({ ...RISING, coldStoreBufferPct: buffer });
+        for (const x of r.rows) {
+          if (x.m === 0 || x.postLiquidation) continue;
+          const stressed = x.price * (1 - buffer / 100);
+          const keepForLine = LIVE.strikeCreditLine / (stressed * LIVE.strikeMaxDrawLtv);
+          expect(x.strikeCollateralBtc + 1e-9).toBeGreaterThanOrEqual(Math.min(keepForLine, LIVE.strikeCollateralBtc));
+        }
+      }
+    });
+
+    it('⭐ the Strike leg never breaches the margin-call LTV at the stressed price', () => {
+      const buffer = 30;
+      const r = run({ ...RISING, coldStoreBufferPct: buffer });
+      for (const x of r.rows) {
+        if (x.m === 0 || x.postLiquidation || x.strikeBalance <= 0) continue;
+        const stressed = x.price * (1 - buffer / 100);
+        const stressedLtv = x.strikeBalance / (x.strikeCollateralBtc * stressed);
+        expect(stressedLtv).toBeLessThanOrEqual(LIVE.strikeMarginLtv + 1e-9);
+      }
+    });
+
+    it('Strike collateral is never swept when the sweep is off', () => {
+      const off = run(RISING);
+      expect(off.totalColdFromStrike).toBe(0);
+      for (const x of off.rows) expect(x.strikeCollateralBtc).toBeCloseTo(LIVE.strikeCollateralBtc, 12);
     });
 
     it('monotonic: cold storage only ever grows, and the total matches the last row', () => {
@@ -546,13 +612,13 @@ describe('runCyclingSim — guards', () => {
 
     it('⭐⭐ the platform fee pulls LIQUIDATION forward — the part that is not just a cost', () => {
       // The headline result. On the stress fixture (cap 85, flat price, monthly sweeps) the 1.5pt spread
-      // moves the 86% breach from month 46 to month 39 — SEVEN MONTHS earlier, more than twice the
-      // three months the origination fee cost. Modelling the loan at Morpho's market rate does not just
-      // understate the bill; it tells the owner the liquidation is further away than it is.
+      // moves the 86% breach ELEVEN months earlier. Modelling the loan at Morpho's market rate does not
+      // just understate the bill; it tells the owner the liquidation is further away than it is.
+      // ⚠ The month numbers are fixture-bound; the ORDERING below is the finding.
       const market = run({ pricePath: flat(60), cbLtvCapPct: 85, cycleMonths: 1, cbAprPct: 4.71 });
       const actual = run({ pricePath: flat(60), cbLtvCapPct: 85, cycleMonths: 1, cbAprPct: 6.21 });
-      expect(market.liqMonth).toBe(46);
-      expect(actual.liqMonth).toBe(39);
+      expect(market.liqMonth).toBe(58);
+      expect(actual.liqMonth).toBe(47);
       expect(actual.liqMonth!).toBeLessThan(market.liqMonth!);
       // Less collateral is seized only because the breach happens before as much BTC was accumulated —
       // that is a WORSE outcome, not a better one. The survivor stack is smaller too.

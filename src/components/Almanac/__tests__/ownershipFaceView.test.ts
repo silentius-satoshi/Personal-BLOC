@@ -16,6 +16,8 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeCollateralBtc: 1,
   cbCollateralBtc: 2,
   coldBtc: 0,
+  coldFromCb: 0,
+  coldFromStrike: 0,
   btcHeld: 3,
   cbLtv: 0.5,
   strikeLtv: 0.25,

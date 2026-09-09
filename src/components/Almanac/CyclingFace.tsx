@@ -415,10 +415,13 @@ export default function CyclingFace() {
 
         <div className={styles.scrubHead}>
           <span className={styles.cardLabel}>Price stress</span>
+          {/* Always lead with the PRICE — "as modeled" alone made the reader hunt for the number the
+              whole card is about. Matches the Ownership face's Price lens readout. */}
           <span className={styles.scrubValue}>
-            {lens === 1 ? 'as modeled' : (
+            {fmtUSD(lensed.price)}
+            {lens === 1 ? ' · as modeled' : (
               <>
-                {fmtUSD(lensed.price)}{' '}
+                {' · '}
                 <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>
                   {lens > 1 ? '+' : '−'}{Math.abs((lens - 1) * 100).toFixed(0)}%
                 </span>
@@ -438,7 +441,7 @@ export default function CyclingFace() {
         </p>
       </section>
 
-      {/* 3c · HOLDINGS BY VENUE — two venues; a cold-storage reserve is not modeled. */}
+      {/* 3c · HOLDINGS BY VENUE — THREE venues: Strike-pledged, Coinbase-pledged, and cold (unpledged). */}
       <section className={styles.card}>
         <span className={styles.cardLabel}>Holdings by venue</span>
         {(() => {
@@ -519,17 +522,34 @@ export default function CyclingFace() {
         </div>
         {coldBufferPct > 0 && (
           <>
+            {/* ⚠ The headline is the OUTCOME, not the constraint. "Survive a break of 30%" is the rule the
+                engine follows; "₿4.99 into your own custody" is the thing the owner actually wants, and
+                leading with the rule made the card read like a risk setting rather than a plan. */}
+            <div className={styles.coldHead}>
+              <span className={styles.coldBig}>{sim.totalColdBtc.toFixed(3)} ₿</span>
+              <span className={styles.coldBigSub}>
+                into your own custody by {bandDateLabel(rows.length - 1)}
+              </span>
+            </div>
+            <div className={styles.coldSplit}>
+              <span><span className={styles.venueDotCb} /> {sim.totalColdFromCb.toFixed(3)} ₿ from Coinbase</span>
+              <span><span className={styles.venueDotStrike} /> {sim.totalColdFromStrike.toFixed(3)} ₿ from Strike</span>
+            </div>
             <div className={styles.sliderStack}>
-              <SliderInput label="Survive a break of" value={coldBufferPct}
+              {/* The knob is a PRICE, not a percentage. "Survive a drop to $61,236" is a decision you can
+                  make; "survive a break of 30%" is arithmetic you have to do first. The % rides along. */}
+              <SliderInput label="Keep me safe down to" value={coldBufferPct}
                 onChange={(v) => set('coldStoreBufferPct', v)}
-                min={5} max={80} step={1} display={`${coldBufferPct}%`} minLabel="5%" maxLabel="80%" />
+                min={5} max={80} step={1}
+                display={fmtUSD(selRow.price * (1 - coldBufferPct / 100))}
+                minLabel="closer" maxLabel="deeper" />
             </div>
             <p className={styles.noteQuiet}>
-              Banks <strong>{sim.totalColdBtc.toFixed(4)} ₿</strong> over this run
+              That is <strong>{coldBufferPct}% below</strong> the modeled price at {bandDateLabel(monthIdx)}
+              {' '}({fmtUSD(selRow.price)}), and it holds Coinbase at {coldLtvPct.toFixed(1)}% LTV.
               {sim.firstColdMonth !== null
-                ? `, starting ${bandDateLabel(sim.firstColdMonth)}.`
-                : ' — nothing yet on this path, which is the honest answer for a while.'}
-              {' '}Equivalent to a {coldLtvPct.toFixed(1)}% CB LTV.
+                ? ` First coins move ${bandDateLabel(sim.firstColdMonth)}.`
+                : ' Nothing moves yet on this path — the honest answer for a while.'}
             </p>
           </>
         )}
