@@ -7,8 +7,8 @@ describe('computeStrikeLtv', () => {
     expect(computeStrikeLtv(30_000, 0.5, 100_000)).toBeCloseTo(0.60);
   });
 
-  it('guards zero collateral → 0', () => {
-    expect(computeStrikeLtv(10_000, 0, 100_000)).toBe(0);
+  it('marks positive debt with zero collateral as unsafe', () => {
+    expect(computeStrikeLtv(10_000, 0, 100_000)).toBe(Infinity);
   });
 
   it('guards zero price → 0', () => {

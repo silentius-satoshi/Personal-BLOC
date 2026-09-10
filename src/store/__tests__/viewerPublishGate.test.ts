@@ -2,6 +2,8 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useStore } from '../useStore';
 import { publishRecordsNowImmediate, publishSettingsNow } from '../../lib/nostr/syncEngine';
 
+const realSetNostrSyncing = useStore.getState().setNostrSyncing;
+
 // Read-only-viewer backstop: the records publish must NEVER publish in viewerMode (a viewer is authenticated with its
 // own nsec, so the auth gate alone wouldn't stop it). setNostrSyncing(true) fires only AFTER the gate, so it's the
 // clean discriminator between "blocked at the gate" and "passed the gate". The dynamic publishRecords import is NOT
@@ -10,7 +12,11 @@ import { publishRecordsNowImmediate, publishSettingsNow } from '../../lib/nostr/
 describe('publishRecordsNowImmediate — viewerMode gate', () => {
   afterEach(() => {
     vi.restoreAllMocks();
-    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', viewerMode: false } as never);
+    useStore.setState({
+      isAuthenticated: false, nostrSigner: null, nostrPubkey: '', viewerMode: false,
+      settingsDirty: false, initialSettingsPullDone: false,
+      setNostrSyncing: realSetNostrSyncing,
+    } as never);
   });
 
   it('Case A — a read-only viewer is BLOCKED (returns false at the gate, never reaches the publish attempt)', async () => {
@@ -18,6 +24,7 @@ describe('publishRecordsNowImmediate — viewerMode gate', () => {
     vi.spyOn(console, 'error').mockImplementation(() => {});
     // Full publish credentials AND viewerMode true — only the new gate should stop it.
     useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', viewerMode: true } as never);
+    expect(useStore.getState().viewerMode).toBe(true);
     const syncSpy = vi.spyOn(useStore.getState(), 'setNostrSyncing');
 
     const result = await publishRecordsNowImmediate();
@@ -44,7 +51,9 @@ describe('publishRecordsNowImmediate — viewerMode gate', () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', viewerMode: true } as never);
-    const syncSpy = vi.spyOn(useStore.getState(), 'setNostrSyncing');
+    expect(useStore.getState().viewerMode).toBe(true);
+    const syncSpy = vi.fn();
+    useStore.setState({ setNostrSyncing: syncSpy } as never);
 
     expect(await publishSettingsNow()).toBe(false);
     expect(syncSpy).not.toHaveBeenCalled();

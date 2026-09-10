@@ -129,11 +129,15 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     // Invalid MAC / wrong key (revoked or wrong owner) — WIPE any stale hydrated data so a key that can't decrypt
     // the snapshot never leaves the previous viewer's numbers on screen. (Past the viewerMode guard → viewer-only.)
     nostrLog('warn', 'viewer decrypt failed', e);
+    if (event.created_at <= lastAppliedViewerEventAt) return;
     s.clearViewerData();
     return;
   }
   try {
     const snap = JSON.parse(plaintext) as ViewerSnapshot;
+    // Decryption is asynchronous. A newer event may have hydrated while this one was in flight;
+    // never let the older result regress the viewer or clear the newer snapshot on an error.
+    if (event.created_at <= lastAppliedViewerEventAt) return;
     if (snap.revoked) {
       // Owner revoked this viewer — wipe hydrated data (viewerDataLoaded → false → ViewerWaitingGate). No hydrate.
       nostrLog('info', 'viewer access revoked by owner');
