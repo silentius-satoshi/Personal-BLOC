@@ -223,4 +223,17 @@ describe('projection-vs-reality split (the headline guarantee)', () => {
     });
     expect(rows[0].cbLtv).toBeLessThan(startLtv);
   });
+
+  it('reserves a fixed Coinbase payment from income exactly once', () => {
+    const row = runAdvisor({
+      btcPrice: 82_000, income: 4_000, expenses: 3_500, blocApr: 13, creditLine: 10_000,
+      blocLtvCeiling: 0.15, cbBalance: 60_000, cbCollateralBtc: 1.48, cbAprPct: 5,
+      cbMonthlyPayment: 1_000, cbPaymentStrategy: 'monthly', cbLtvTriggerPct: 75,
+      cbLtvTargetPct: 65, cbRotateBackPct: 55, startingBlocBalance: 0, startingBtcHeld: 1,
+      startingMonth: 1, btcGrowthRate: 0,
+    }).rows[0];
+    expect(row.cbPayment).toBe(1_000);
+    expect(row.incomeToBtc).toBeCloseTo(3_000, 8);
+    expect(row.cbPayment + row.incomeToBtc + row.blocMinPayment).toBeCloseTo(4_000, 8);
+  });
 });

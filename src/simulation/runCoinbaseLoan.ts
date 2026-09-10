@@ -157,13 +157,17 @@ export function runCoinbaseLoan(inputs: CbLoanInputs): CbLoanProjection {
     totalInterest += interest;
     totalPayments += payment;
 
-    rows.push({ month, balance, interest, payment, netChange, ltv, status: classifyLtv(ltv) });
+    const status = classifyLtv(ltv);
+    rows.push({ month, balance, interest, payment, netChange, ltv, status });
+    // Liquidation is terminal. Continuing to accrue/pay a seized position creates a fictitious recovery
+    // path in the 12-month table and understates the fact that the facility has already been closed out.
+    if (status === 'liquidated') break;
   }
 
   return {
     rows,
     finalBalance:  balance,
-    finalLtv:      rows[11].ltv,
+    finalLtv:      rows.at(-1)?.ltv ?? 0,
     totalInterest,
     totalPayments,
   };
@@ -206,13 +210,16 @@ export function computeLiquidationAnalysis(
 
   const scenarios: LiquidationScenario[] = ([0.25, 0.50, 0.75, 1.0] as const).map((repayPct) => {
     const debtRepaid             = loanBalance * repayPct;
-    const collateralSeizedUsd    = debtRepaid * CB_LIF;
-    const collateralSeizedBtc    = collateralSeizedUsd / effectivePrice;
-    const lifBonus               = debtRepaid * (CB_LIF - 1);
+    const nominalSeizedUsd       = debtRepaid * CB_LIF;
+    const collateralSeizedBtc    = Math.min(collateralBtc, effectivePrice > 0 ? nominalSeizedUsd / effectivePrice : collateralBtc);
+    const collateralSeizedUsd    = collateralSeizedBtc * effectivePrice;
+    const lifBonus               = Math.max(0, collateralSeizedUsd - debtRepaid);
     const remainingDebt          = loanBalance - debtRepaid;
-    const remainingCollateralBtc = collateralBtc - collateralSeizedBtc;
+    const remainingCollateralBtc = Math.max(0, collateralBtc - collateralSeizedBtc);
     const remainingCollateralUsd = remainingCollateralBtc * effectivePrice;
-    const newLtv                 = remainingCollateralUsd > 0 ? remainingDebt / remainingCollateralUsd : 0;
+    const newLtv                 = remainingCollateralUsd > 0
+      ? remainingDebt / remainingCollateralUsd
+      : remainingDebt > 0 ? Number.POSITIVE_INFINITY : 0;
     return {
       repayPct, debtRepaid, collateralSeizedUsd, collateralSeizedBtc,
       lifBonus, remainingDebt, remainingCollateralBtc, remainingCollateralUsd,

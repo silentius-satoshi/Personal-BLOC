@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { runCoinbaseLoan, classifyLtv, type CbLtvStatus } from '../../simulation/runCoinbaseLoan';
-import { cbMetrics, accruedCbBalance } from '../../simulation/cbMetrics';
+import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice } from '../../simulation/cbMetrics';
 import { LiquidationModeler } from './LiquidationModeler';
 import { fmtUSD } from '../../utils/format';
 import styles from './CoinbaseLoanMain.module.css';
@@ -66,6 +66,7 @@ export function CoinbaseLoanMain() {
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
+  const cbLiquidationPriceAsOf = useStore((s) => s.cbLiquidationPriceAsOf);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
 
@@ -73,23 +74,25 @@ export function CoinbaseLoanMain() {
   // (single source of truth — same numbers as the Simple Mode SafetyDashboard)
   const accruedBalance  = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
   const m               = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
-  const monthlyInterest = cbLoanBalance * (cbAprPct / 100 / 12);
+  const monthlyInterest = accruedBalance * (cbAprPct / 100 / 12);
   const currentLtv      = m.ltv;
   const autoLiqPrice    = m.liqPrice;
-  const activeLiqPrice  = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
+  const activeLiqPrice  = cbLiquidationPrice > 0
+    ? accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf)
+    : m.liqPrice;
   const dropToLiqPct    = Math.max(0, (1 - autoLiqPrice / btcPrice) * 100);
   const currentStatus   = classifyLtv(currentLtv);
 
   const thresholds = useMemo(() => [
-    { label: 'Emergency Protocol', ltvPct: 70, price: cbLoanBalance / (cbCollateralBtc * 0.70), action: 'Stop BLOC buying · Redirect all income to CB paydown' },
-    { label: 'Critical',           ltvPct: 76, price: cbLoanBalance / (cbCollateralBtc * 0.76), action: 'Aggressive paydown — 10 pts from auto-liquidation' },
-    { label: 'Danger',             ltvPct: 84, price: cbLoanBalance / (cbCollateralBtc * 0.84), action: 'Pay down or add collateral immediately' },
-    { label: 'Auto-Liquidation',   ltvPct: 86, price: cbLoanBalance / (cbCollateralBtc * 0.86), action: 'Position liquidated + 4.38% penalty · possible full wipeout' },
-  ], [cbLoanBalance, cbCollateralBtc]);
+    { label: 'Emergency Protocol', ltvPct: 70, price: accruedBalance / (cbCollateralBtc * 0.70), action: 'Stop BLOC buying · Redirect all income to CB paydown' },
+    { label: 'Critical',           ltvPct: 76, price: accruedBalance / (cbCollateralBtc * 0.76), action: 'Aggressive paydown — 10 pts from auto-liquidation' },
+    { label: 'Danger',             ltvPct: 84, price: accruedBalance / (cbCollateralBtc * 0.84), action: 'Pay down or add collateral immediately' },
+    { label: 'Auto-Liquidation',   ltvPct: 86, price: accruedBalance / (cbCollateralBtc * 0.86), action: 'Position liquidated + 4.38% penalty · possible full wipeout' },
+  ], [accruedBalance, cbCollateralBtc]);
 
   const projection = useMemo(
-    () => runCoinbaseLoan({ loanBalance: cbLoanBalance, collateralBtc: cbCollateralBtc, aprPct: cbAprPct, monthlyPayment: cbMonthlyPayment, btcPrice }),
-    [cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment, btcPrice],
+    () => runCoinbaseLoan({ loanBalance: accruedBalance, collateralBtc: cbCollateralBtc, aprPct: cbAprPct, monthlyPayment: cbMonthlyPayment, btcPrice }),
+    [accruedBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment, btcPrice],
   );
 
   return (

@@ -150,7 +150,7 @@ export interface CyclingResult {
 export const CB_LIQUIDATION_PENALTY = CB_LIF - 1;
 
 const ltvOf = (debt: number, coll: number, price: number): number =>
-  coll * price > 0 ? debt / (coll * price) : 0;
+  coll * price > 0 ? debt / (coll * price) : debt > 0 && coll <= 0 ? Number.POSITIVE_INFINITY : 0;
 
 export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const {
@@ -328,7 +328,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     const strikeLtv = ltvOf(strikeBal, strikeColl, price);
     if (strikeMarginMonth === null && strikeMarginLtv > 0 && strikeLtv >= strikeMarginLtv) strikeMarginMonth = m;
 
-    const breached = liqMonth === null && cbColl > 0 && cbLtv >= CB_LLTV;
+    const breached = liqMonth === null && cbDebt > 0 && (cbColl <= 0 || cbLtv >= CB_LLTV);
     if (breached) liqMonth = m;
 
     // ⚠ btcHeld is the THREE pools — Strike-pledged, Coinbase-pledged, and cold. It stays DISPLAY ONLY
@@ -368,7 +368,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   // Each leg accrues at its OWN rate; only the surplus buys BTC.
   let baseCbDebt = inputs.cbDebt;
   let baseStrikeBal = inputs.strikeBalance;
-  let baseBtc = strikeColl + inputs.cbCollateralBtc;
+  // Compare against the untouched opening position. `strikeColl` may have been reduced by the optional
+  // cold-storage sweep above; using it here would make the baseline pay for the strategy's own transfer.
+  let baseBtc = inputs.strikeCollateralBtc + inputs.cbCollateralBtc;
   const surplus = Math.max(0, income - expenses);
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;

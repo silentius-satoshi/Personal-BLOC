@@ -229,21 +229,28 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
   const cbLiqOk = cbLiqPrice !== null && cbLiqPrice > 0;
   const cbCollateralNeedsLiq = type === 'collateral' && effectiveTarget === 'cb';
+  const originalWithdrawAmount = isEdit && editEvent?.kind === 'withdraw' ? editEvent.amount : 0;
+  const collateralAvailable = effectiveTarget === 'cb'
+    ? cbCollateralBtc + originalWithdrawAmount
+    : currentBtcHeld + originalWithdrawAmount;
+  const withdrawTooLarge = type === 'collateral' && collateralDir === 'withdraw' && amountValid
+    && (amount ?? 0) > collateralAvailable + 1e-9;
 
   let canSave: boolean;
   if (isEdit && editEvent) {
     if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading);
     else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
-                                                  canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk);
+                                                   canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk) && !withdrawTooLarge;
     else                                          canSave = amountValid;   // draw / paydown / buy
   } else if (type === 'minPayment') {
     // §2b — reading-free one-field sheet; just needs a positive amount.
     canSave = amountValid;
   } else {
     // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
-    canSave = ((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))
-      && (!showAmount || amountValid)
-      && (!cbCollateralNeedsLiq || cbLiqOk);
+     canSave = ((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))
+       && (!showAmount || amountValid)
+       && (!cbCollateralNeedsLiq || cbLiqOk)
+       && !withdrawTooLarge;
   }
 
   const strikeLtvWarn = strikeLtv !== null && strikeLtv > 100;
@@ -534,6 +541,11 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                 This withdrawal raises {effectiveTarget === 'cb' ? 'Coinbase' : 'Strike'} LTV to ~
                 {Number.isFinite(withdrawWarnLtv) ? Math.round(withdrawWarnLtv * 100) : '∞'}% — approaching your
                 limit. Proceed only if intended.
+              </div>
+            )}
+            {withdrawTooLarge && (
+              <div className={styles.warnNote}>
+                You can remove at most {collateralAvailable.toFixed(5)} ₿ from this collateral pool.
               </div>
             )}
           </div>

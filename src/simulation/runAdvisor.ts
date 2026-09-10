@@ -152,7 +152,11 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
         ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
       // Skip the forward-paydown / reverse-rotation block entirely when thresholds are
       // mis-ordered (nonsense config) — no paydown churn. Draw / interest / paydown / BTC still run.
-      const thresholdsOrdered = cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct;
+      const thresholdsOrdered = Number.isFinite(cbRotateBackPct) && Number.isFinite(cbLtvTargetPct)
+        && Number.isFinite(cbLtvTriggerPct)
+        && cbRotateBackPct < cbLtvTargetPct
+        && cbLtvTargetPct < cbLtvTriggerPct
+        && cbLtvTriggerPct < 86;
       if (thresholdsOrdered && cbLtvNow >= cbLtvTriggerPct / 100) {
         const targetBal       = cbCollateralBtc * btcPriceThisMonth * (cbLtvTargetPct / 100);
         const desiredPaydown  = Math.max(0, cbBal - targetBal);
@@ -256,22 +260,23 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
         ? Math.min(incomeBudget, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
 
-      // Income allocation by tier — seeded from the reduced budget
-      let remainingIncome = incomeBudget - blocPaydown;
+      // Income allocation by tier. The fixed monthly payment is a real income outflow, so reserve it
+      // before tiered extra repayment. Both payments are capped by the remaining CB principal and the
+      // remaining income; otherwise the row could report more allocated than the owner earns.
+      let remainingIncome = Math.max(0, incomeBudget - blocPaydown);
       cbExtraPayment = 0;
-      if (tier === 1) {
-        cbExtraPayment  = remainingIncome;
-        remainingIncome = 0;
-      } else if (tier === 2) {
-        cbExtraPayment  = remainingIncome * 0.5;
-        remainingIncome = remainingIncome * 0.5;
-      } else if (tier === 3) {
-        cbExtraPayment  = remainingIncome * 0.25;
-        remainingIncome = remainingIncome * 0.75;
-      }
+      const fixedPayment = Math.min(cbMonthlyPayment, cbBal, remainingIncome);
+      remainingIncome -= fixedPayment;
+      const cbHeadroomAfterFixed = Math.max(0, cbBal - fixedPayment);
+      const extraBudget = tier === 1 ? remainingIncome
+        : tier === 2 ? remainingIncome * 0.5
+        : tier === 3 ? remainingIncome * 0.25
+        : 0;
+      cbExtraPayment = Math.min(extraBudget, cbHeadroomAfterFixed);
+      remainingIncome -= cbExtraPayment;
 
       // Apply payments
-      cbTotalPayment = Math.min(cbMonthlyPayment + cbExtraPayment, cbBal);
+      cbTotalPayment = fixedPayment + cbExtraPayment;
       cbBal       -= cbTotalPayment;
       blocBalance -= blocPaydown;
 

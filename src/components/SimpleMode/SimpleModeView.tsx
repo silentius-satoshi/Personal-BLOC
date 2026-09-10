@@ -14,7 +14,7 @@ import { SafetyDashboard } from './SafetyDashboard';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
-import { barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { accruedCbBalance, accruedCbLiquidationPrice, barLevel, cbBarLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import styles from './SimpleModeView.module.css';
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -63,8 +63,11 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const creditLine = useStore((s) => s.creditLine);
 
   const cbLoanBalance      = useStore((s) => s.cbLoanBalance);
+  const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
+  const cbAprPct            = useStore((s) => s.cbAprPct);
   const cbCollateralBtc    = useStore((s) => s.cbCollateralBtc);
   const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
+  const cbLiquidationPriceAsOf = useStore((s) => s.cbLiquidationPriceAsOf);
   const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
@@ -83,6 +86,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   // §3 — advisorSkip* are DORMANT (retained in the store/payload for sync compat; no consumers).
   const viewerMode           = useStore((s) => s.viewerMode);   // read-only viewer → hide/disable mutation controls
   const hasCbLoan            = useStore((s) => s.hasCbLoan);
+  const effectiveCbBalance   = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
 
   const strikeLiquidationLtvPct = useStore((s) => s.strikeLiquidationLtvPct);
   const blocMinPaymentSource    = useStore((s) => s.blocMinPaymentSource);
@@ -101,7 +105,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const setCreditLine = useStore((s) => s.setCreditLine);
 
   const activeTier       = useStore((s) => s.activeTier);
-  const cbAprPct         = useStore((s) => s.cbAprPct);
   const monthlyLog       = useStore((s) => s.monthlyLog);
 
   // Change 1 (iter 2) — setup modal
@@ -140,7 +143,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
       const rows = runAdvisor({
         btcPrice, income, expenses,
         blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
-        cbBalance:        hasCbLoan ? cbLoanBalance    : 0,
+         cbBalance:        effectiveCbBalance,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc  : 1,
         cbAprPct:         hasCbLoan ? cbAprPct         : 0,
         cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment  : 0,
@@ -157,12 +160,12 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
       return rows;
     },
     [btcPrice, income, expenses, blocApr, creditLine,
-     cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+     cbLoanBalance, cbLoanBalanceAsOf, effectiveCbBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
      slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan, blocMinPaymentSource],
   );
   const currentCbLtv = cbCollateralBtc * btcPrice > 0
-    ? cbLoanBalance / (cbCollateralBtc * btcPrice)
+     ? effectiveCbBalance / (cbCollateralBtc * btcPrice)
     : 0;
   const currentTier = getTier(currentCbLtv);
   const ndp         = getNdpStatus(
@@ -225,9 +228,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   // PAYDOWN to the 65% target. Reuses currentCbLtv.
   const cbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentCbLtv >= cbLtvTriggerPct / 100;
   const cbRunwayToTrigger = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
-    ? Math.max(0, cbCollateralBtc * btcPrice * (cbLtvTriggerPct / 100) - cbLoanBalance) : 0;
+     ? Math.max(0, cbCollateralBtc * btcPrice * (cbLtvTriggerPct / 100) - effectiveCbBalance) : 0;
   const cbPaydownToTarget = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
-    ? Math.max(0, cbLoanBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100)) : 0;
+     ? Math.max(0, effectiveCbBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100)) : 0;
   const cbPaydownAffordable = cbPaydownToTarget <= Math.max(0, creditLine - advisorActualBlocBalance);
 
   // ── Month scrubber — projection-vs-reality split (spec v2) ─────────────────────────────────
@@ -285,14 +288,17 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   // CB bar denominator = effective liquidation fraction from the authoritative cbLiquidationPrice
   // (balance/(collateral×price)); falls back to the protocol CB_LLTV when no price set. Raw-balance basis
   // matches barCbLtv (currentCbLtv), so the no-price case is an exact CB_LLTV no-op.
-  const cbLiqFrac     = cbLiquidationPrice > 0 && cbCollateralBtc > 0
-    ? cbLoanBalance / (cbCollateralBtc * cbLiquidationPrice)
+  const activeCbLiquidationPrice = cbLiquidationPrice > 0
+     ? accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf)
+     : 0;
+  const cbLiqFrac     = activeCbLiquidationPrice > 0 && cbCollateralBtc > 0
+     ? effectiveCbBalance / (cbCollateralBtc * activeCbLiquidationPrice)
     : CB_LLTV;
   const barPaydownPct = income > 0 ? clampPct(rowPaydownUsd / income) : 0;   // scrubber paydown segment (red share)
   const strikeFillPct = strikeLiqFrac > 0 ? clampPct(barStrikeLtv / strikeLiqFrac) : 0;
   const cbFillPct     = clampPct(barCbLtv / cbLiqFrac);
   const strikeLevel   = barLevel(barStrikeLtv, strikeLiqFrac * 0.6, strikeLiqFrac * 0.8);
-  const cbLevel       = barLevel(barCbLtv, cbTriggerFrac * 0.85, cbTriggerFrac);
+  const cbLevel       = cbBarLevel(barCbLtv, cbLtvTriggerPct, cbLiqFrac);
 
   // NDP re-scope (Simple Mode Corrections A): the annual non-draw payment only applies while minimums
   // are ROLLED into the line. In income mode every month's external minimum IS a non-draw payment, so
@@ -396,7 +402,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             blocApr={blocApr}
             creditLine={creditLine}
             hasCbLoan={hasCbLoan}
-            cbLoanBalance={cbLoanBalance}
+             cbLoanBalance={effectiveCbBalance}
             cbCollateralBtc={cbCollateralBtc}
             cbAprPct={cbAprPct}
             cbMonthlyPayment={cbMonthlyPayment}

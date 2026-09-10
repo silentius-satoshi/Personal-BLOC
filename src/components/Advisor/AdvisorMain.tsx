@@ -18,6 +18,7 @@ import { MonthlyLogOverlay } from './MonthlyLogOverlay';
 import { OutlookProjection } from './OutlookProjection';
 import styles from './AdvisorMain.module.css';
 import { CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
+import { accruedCbBalance } from '../../simulation/cbMetrics';
 
 interface ActionRowProps {
   icon: string;
@@ -75,6 +76,7 @@ export function AdvisorMain() {
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
+  const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
 
   // One-time Coinbase origination fee vs the ongoing APR spread: months for a Strike→CB rotation to
   // pay for itself. Amount-independent (fee and saving both scale with the draw) — it is fee%/spread%.
@@ -108,7 +110,7 @@ export function AdvisorMain() {
   const availCredit   = strikeAvailableCredit(creditLine, position.btcHeld, btcPrice, position.blocBalance);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
-  const effectiveCbBalance = hasCbLoan ? cbLoanBalance : 0;
+  const effectiveCbBalance = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
   const currentCbLtv  = cbCollateralBtc * btcPrice > 0 ? effectiveCbBalance / (cbCollateralBtc * btcPrice) : 0;
   const currentTier   = getTier(currentCbLtv);
 
@@ -128,7 +130,7 @@ export function AdvisorMain() {
       const r = runAdvisor({
         btcPrice, income, expenses,
         blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
-        cbBalance:        hasCbLoan ? cbLoanBalance   : 0,
+         cbBalance:        effectiveCbBalance,
         cbCollateralBtc:  hasCbLoan ? cbCollateralBtc : 1,
         cbAprPct:         hasCbLoan ? cbAprPct        : 0,
         cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment  : 0,
@@ -146,7 +148,7 @@ export function AdvisorMain() {
     },
     [
       btcPrice, income, expenses, blocApr, creditLine,
-      cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+       cbLoanBalance, cbLoanBalanceAsOf, effectiveCbBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
       cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
       startingBlocBalance, startingBtcHeld, startingMonth, blocMinPaymentSource,
     ],
@@ -470,7 +472,7 @@ export function AdvisorMain() {
             blocApr={blocApr}
             creditLine={creditLine}
             hasCbLoan={hasCbLoan}
-            cbLoanBalance={cbLoanBalance}
+             cbLoanBalance={effectiveCbBalance}
             cbCollateralBtc={cbCollateralBtc}
             cbAprPct={cbAprPct}
             cbMonthlyPayment={cbMonthlyPayment}

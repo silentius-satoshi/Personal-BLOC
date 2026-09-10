@@ -21,7 +21,9 @@ export function cbMetrics(
   triggerPct: number,
 ): CbMetrics {
   const collateralUsd = collateralBtc * price;
-  const ltv           = collateralUsd > 0 ? loanBalance / collateralUsd : 0;
+  // Positive debt with no collateral is not a healthy zero-LTV position. Keep the sentinel finite
+  // for normal zero-price guards, but classify an actually unbacked loan as immediately unsafe.
+  const ltv           = collateralUsd > 0 ? loanBalance / collateralUsd : loanBalance > 0 && collateralBtc <= 0 ? Number.POSITIVE_INFINITY : 0;
   const liqPrice      = collateralBtc > 0 ? loanBalance / (collateralBtc * CB_LLTV) : 0;
   const triggerPrice  = collateralBtc > 0 ? loanBalance / (collateralBtc * (triggerPct / 100)) : 0;
   const pctToTrigger  = price > 0 ? (triggerPrice - price) / price : 0;
@@ -38,6 +40,17 @@ export function accruedCbBalance(balance: number, aprPct: number, asOf: string |
   if (!asOf) return balance;
   const days = Math.max(0, (Date.now() - Date.parse(asOf)) / 86_400_000);
   return balance * Math.pow(1 + aprPct / 100 / 365, days);
+}
+
+/**
+ * Manual liquidation-price anchors age with the same daily debt factor as the balance. Coinbase's
+ * liquidation price is debt divided by collateral and LLTV, so a stale entered price rises as the
+ * underlying principal accrues. A null AsOf means the value has never been anchored and is left alone.
+ */
+export function accruedCbLiquidationPrice(price: number, aprPct: number, asOf: string | null): number {
+  if (!(price > 0) || !asOf) return price;
+  const days = Math.max(0, (Date.now() - Date.parse(asOf)) / 86_400_000);
+  return price * Math.pow(1 + aprPct / 100 / 365, days);
 }
 
 export type SafetyLevel = 'safe' | 'watch' | 'act';

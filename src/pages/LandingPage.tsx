@@ -1,6 +1,6 @@
 import { useState, useEffect, type MouseEvent as ReactMouseEvent } from 'react';
-import { barLevel, type SafetyLevel } from '../simulation/cbMetrics';
-import { CB_WARN_LTV, CB_LLTV } from '../simulation/runCoinbaseLoan';
+import { cbBarLevel, type SafetyLevel } from '../simulation/cbMetrics';
+import { CB_LLTV } from '../simulation/runCoinbaseLoan';
 import { LEVEL_COLOR } from '../simulation/safetyView';
 import styles from './LandingPage.module.css';
 
@@ -27,7 +27,7 @@ function CrashTest() {
   const collateral = Math.max(0.01, Number(colRaw) || 1.0);
   const borrowed = Math.max(100, Number(borRaw) || 20_000);
   const ltv = borrowed / (collateral * price); // 0..1
-  const level = barLevel(ltv, CB_WARN_LTV, 0.75); // green <65% · amber 65–75% · red ≥75% (the real app's bands)
+  const level = cbBarLevel(ltv, 75, CB_LLTV); // same default trigger/liquidation gauge bands as the app
   const color = LEVEL_COLOR[level];
   const liq = borrowed / (collateral * CB_LLTV); // the price at which LTV hits the 86% liquidation line
   const liquidated = ltv >= CB_LLTV;

@@ -19,6 +19,7 @@ import styles from './OwnershipBar.module.css';
  */
 export interface OwnershipBarProps {
   btcHeld: number;
+  coldBtc?: number;
   debt: number;
   btcPrice: number;
 }
@@ -26,20 +27,21 @@ export interface OwnershipBarProps {
 const fmtBtc = (n: number): string => `${n.toFixed(3)} ₿`;
 const fmtShare = (share: number): string => `${Math.round(share * 100)}%`;
 
-export function OwnershipBar({ btcHeld, debt, btcPrice }: OwnershipBarProps) {
-  const o = deriveOwnership(btcHeld, debt, btcPrice);
+export function OwnershipBar({ btcHeld, coldBtc = 0, debt, btcPrice }: OwnershipBarProps) {
+  const o = deriveOwnership(btcHeld, debt, btcPrice, coldBtc);
+  const totalHeld = btcHeld + Math.max(0, coldBtc);
   if (!o.hasData) return null;   // nothing to split — render NOTHING, not an empty bar
 
   const usd = (btc: number) => fmtUSD(btc * btcPrice);
   const label =
     `Ownership split: ${fmtShare(o.yoursShare)} yours, ${fmtShare(o.lendersShare)} owed, ` +
-    `${fmtBtc(btcHeld)} held`;
+    `${fmtBtc(totalHeld)} held`;
 
   return (
     <div className={styles.card}>
       <div className={styles.head}>
         <span className={styles.title}>Who holds the coins</span>
-        <span className={styles.total}>{fmtBtc(btcHeld)} held</span>
+          <span className={styles.total}>{fmtBtc(totalHeld)} held</span>
       </div>
 
       {/* Decorative — the cells below carry the numbers. Mirrors VenueBar's role="img" pattern. */}
@@ -59,10 +61,10 @@ export function OwnershipBar({ btcHeld, debt, btcPrice }: OwnershipBarProps) {
           <div className={`${styles.cellVal} ${styles.valOwed}`}>{fmtBtc(o.lendersBtc)}</div>
           <div className={styles.cellSub}>{usd(o.lendersBtc)} · {fmtShare(o.lendersShare)}</div>
         </div>
-        <div className={`${styles.cell} ${styles.cellRule}`}>
-          <div className={styles.cellKey}>Held</div>
-          <div className={`${styles.cellVal} ${styles.valHeld}`}>{fmtBtc(btcHeld)}</div>
-          <div className={styles.cellSub}>{usd(btcHeld)}</div>
+          <div className={`${styles.cell} ${styles.cellRule}`}>
+            <div className={styles.cellKey}>Held</div>
+            <div className={`${styles.cellVal} ${styles.valHeld}`}>{fmtBtc(totalHeld)}</div>
+            <div className={styles.cellSub}>{usd(totalHeld)}</div>
         </div>
       </div>
     </div>

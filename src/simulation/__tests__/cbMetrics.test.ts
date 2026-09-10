@@ -28,9 +28,9 @@ describe('cbMetrics', () => {
     expect(danger.pctToTrigger).toBeGreaterThan(0);
   });
 
-  it('guards divide-by-zero (no NaN)', () => {
-    const zc = cbMetrics(BAL, 0, PRICE, TRIG);     // zero collateral → zeroed prices, finite deltas
-    expect(zc.ltv).toBe(0);
+  it('marks positive debt with zero collateral as unsafe without producing NaN prices', () => {
+    const zc = cbMetrics(BAL, 0, PRICE, TRIG);
+    expect(zc.ltv).toBe(Infinity);
     expect(zc.liqPrice).toBe(0);
     expect(zc.triggerPrice).toBe(0);
     expect(Number.isNaN(zc.pctToTrigger)).toBe(false);

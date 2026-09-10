@@ -329,16 +329,13 @@ describe('runCyclingSim — guards', () => {
     expect(Number.isNaN(r.baselineEquity)).toBe(false);
   });
 
-  it('zero collateral on either leg divides by nothing', () => {
-    // Note this position DOES liquidate — with no Strike collateral there is no line to draw on, so the
-    // surplus buys a sliver of CB collateral that is instantly underwater against the existing debt.
-    // That is correct; what matters here is that nothing goes NaN or Infinite on the way.
+  it('zero collateral is unsafe without producing NaN', () => {
     const r = runCyclingSim({
       ...LIVE, pricePath: flat(12), cbLtvCapPct: 50, cbCollateralBtc: 0, strikeCollateralBtc: 0,
     });
     for (const row of r.rows) {
-      expect(Number.isFinite(row.cbLtv)).toBe(true);
-      expect(Number.isFinite(row.strikeLtv)).toBe(true);
+      expect(Number.isNaN(row.cbLtv)).toBe(false);
+      expect(Number.isNaN(row.strikeLtv)).toBe(false);
       expect(Number.isFinite(row.equity)).toBe(true);
       expect(Number.isFinite(row.btcHeld)).toBe(true);
     }

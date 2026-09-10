@@ -4,6 +4,7 @@ import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getNdpStatus }
 import { deriveAdvisorStart, bucketEventToMonth } from '../../simulation/logUtils';
 import { strikeAvailableCredit, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { deriveForMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
+import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
 import { Calendar } from './Calendar';
@@ -78,6 +79,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
 
   const hasCbLoan         = useStore((s) => s.hasCbLoan);
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
+  const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
   const cbMonthlyPayment  = useStore((s) => s.cbMonthlyPayment);
@@ -86,6 +88,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const cbLtvTargetPct    = useStore((s) => s.cbLtvTargetPct);
   const cbRotateBackPct   = useStore((s) => s.cbRotateBackPct);
   const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
+  const effectiveCbBalance = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
@@ -131,7 +134,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
     () => runAdvisor({
       btcPrice, income, expenses,
       blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
-      cbBalance:         hasCbLoan ? cbLoanBalance    : 0,
+       cbBalance:         effectiveCbBalance,
       cbCollateralBtc:   hasCbLoan ? cbCollateralBtc  : 1,
       cbAprPct:          hasCbLoan ? cbAprPct         : 0,
       cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment : 0,
@@ -144,7 +147,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
       blocMinPaymentSource,
     }).rows,
     [btcPrice, income, expenses, blocApr, creditLine,
-     cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
+      cbLoanBalance, cbLoanBalanceAsOf, effectiveCbBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
      cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
      slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan, blocMinPaymentSource],
   );

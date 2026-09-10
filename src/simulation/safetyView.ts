@@ -1,4 +1,4 @@
-import { cbMetrics, accruedCbBalance, barLevel, cbBarLevel, worseLevel, type SafetyLevel } from './cbMetrics';
+import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice, barLevel, cbBarLevel, worseLevel, type SafetyLevel } from './cbMetrics';
 import { computeStrikeLtv, strikeAvailableCredit } from './strikeCredit';
 import { CB_LLTV } from './runCoinbaseLoan';
 import type { StoreState } from '../store/useStore'; // TYPE-only → erased at compile → no runtime cycle
@@ -50,6 +50,7 @@ export interface SafetyViewInputs {
   cbCollateralBtc: number;
   cbLtvTriggerPct: number;
   cbLiquidationPrice: number;
+  cbLiquidationPriceAsOf?: string | null;
 }
 
 export interface SafetyView {
@@ -80,6 +81,7 @@ export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
     cbCollateralBtc,
     cbLtvTriggerPct,
     cbLiquidationPrice,
+    cbLiquidationPriceAsOf = null,
   } = inputs;
 
   // ── Strike credit (capacity utilization) ──
@@ -103,7 +105,9 @@ export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
   if (hasCbLoan) {
     accruedBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
     const m = cbMetrics(accruedBalance, cbCollateralBtc, btcPrice, cbLtvTriggerPct);
-    cbLiqPrice = cbLiquidationPrice > 0 ? cbLiquidationPrice : m.liqPrice;
+    cbLiqPrice = cbLiquidationPrice > 0
+      ? accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf)
+      : m.liqPrice;
     cbLtv = m.ltv;
     cbLiqFrac =
       cbLiqPrice > 0 && cbCollateralBtc > 0
@@ -137,6 +141,7 @@ export function selectSafetyViewInputs(s: StoreState): SafetyViewInputs {
     cbCollateralBtc: s.cbCollateralBtc,
     cbLtvTriggerPct: s.cbLtvTriggerPct,
     cbLiquidationPrice: s.cbLiquidationPrice,
+    cbLiquidationPriceAsOf: s.cbLiquidationPriceAsOf,
   };
 }
 

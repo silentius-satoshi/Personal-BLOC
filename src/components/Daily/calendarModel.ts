@@ -107,12 +107,26 @@ export interface MonthRollup {
 // Shared aggregation — the single source for both day + month totals.
 function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: number } {
   let draw = 0, paydown = 0, buyBtc = 0, minPayment = 0, netBtc = 0;
+  // A pledged buy emits both the acquisition and a same-ts Strike deposit. The deposit changes venue,
+  // not the owner's total BTC, so consume one matching buy before counting standalone collateral moves.
+  const pairedBuys = new Map<string, number>();
+  for (const ev of events) {
+    if (ev.kind === 'buy') {
+      const key = `${ev.date}|${ev.ts}|${ev.amount}`;
+      pairedBuys.set(key, (pairedBuys.get(key) ?? 0) + 1);
+    }
+  }
   for (const ev of events) {
     if      (ev.kind === 'draw')       draw += ev.amount;
     else if (ev.kind === 'paydown')    paydown += ev.amount;
     else if (ev.kind === 'minPayment') minPayment += ev.amount;   // USD; balance-neutral — display/prefill only
     else if (ev.kind === 'buy')   { buyBtc += ev.amount; netBtc += ev.amount; }
-    else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
+    else if (ev.kind === 'deposit'  && ev.target === 'strike') {
+      const key = `${ev.date}|${ev.ts}|${ev.amount}`;
+      const paired = pairedBuys.get(key) ?? 0;
+      if (paired > 0) pairedBuys.set(key, paired - 1);
+      else netBtc += ev.amount;
+    }
     else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
   }
   return { streams: { draw, paydown, buyBtc, minPayment }, netBtc };

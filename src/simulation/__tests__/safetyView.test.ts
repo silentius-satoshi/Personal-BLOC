@@ -76,9 +76,10 @@ describe('deriveSafetyView — Strike LTV bands (warn 0.646 / act 0.697 at 85% l
     const v = deriveSafetyView({ ...base, advisorActualBlocBalance: 10_000 }); // 10000/(1*20000) = 0.5
     expect(v.crashLtv).toBeCloseTo(0.5);
   });
-  it('zero collateral value → LTV 0 (guard)', () => {
+  it('zero collateral value with debt → unsafe infinite LTV', () => {
     const v = deriveSafetyView({ ...base, currentBtcHeld: 0, advisorActualBlocBalance: 10_000 });
-    expect(v.strikeLtv).toBe(0);
+    expect(v.strikeLtv).toBe(Infinity);
+    expect(v.strikeLevel).toBe('act');
   });
 });
 
@@ -102,10 +103,10 @@ describe('deriveSafetyView — Coinbase LTV gating', () => {
     const v = deriveSafetyView({ ...base, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 170_000 });
     expect(v.cbLevel).toBe('act');
   });
-  it('cbCollateralBtc 0 → cbLtv 0 (guard, no divide-by-zero)', () => {
+  it('cbCollateralBtc 0 with debt → unsafe infinite LTV', () => {
     const v = deriveSafetyView({ ...base, hasCbLoan: true, cbCollateralBtc: 0, cbLoanBalance: 100_000 });
-    expect(v.cbLtv).toBe(0);
-    expect(v.cbLevel).toBe('safe');
+    expect(v.cbLtv).toBe(Infinity);
+    expect(v.cbLevel).toBe('act');
   });
 });
 
@@ -117,7 +118,7 @@ describe('deriveSafetyView — CB display intermediates (accruedBalance / cbLiqP
     expect(v.cbLiqFrac).toBe(CB_LLTV);
   });
   it('hasCbLoan, no entered liq price → accruedBalance = accruedCbBalance, cbLiqPrice = m.liqPrice, cbLiqFrac = CB_LLTV', () => {
-    const cbInputs = { ...base, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 100_000, cbAprPct: 5, cbLoanBalanceAsOf: null, cbLiquidationPrice: 0 };
+    const cbInputs = { ...base, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 100_000, cbAprPct: 5, cbLoanBalanceAsOf: null, cbLiquidationPrice: 0, cbLiquidationPriceAsOf: null };
     const v = deriveSafetyView(cbInputs);
     const accrued = accruedCbBalance(cbInputs.cbLoanBalance, cbInputs.cbAprPct, cbInputs.cbLoanBalanceAsOf);
     const m = cbMetrics(accrued, cbInputs.cbCollateralBtc, cbInputs.btcPrice, cbInputs.cbLtvTriggerPct);
@@ -126,7 +127,7 @@ describe('deriveSafetyView — CB display intermediates (accruedBalance / cbLiqP
     expect(v.cbLiqFrac).toBeCloseTo(CB_LLTV);             // no-entered-price case resolves to exactly CB_LLTV
   });
   it('hasCbLoan, entered liq price wins and moves cbLiqFrac', () => {
-    const v = deriveSafetyView({ ...base, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 100_000, cbLoanBalanceAsOf: null, cbLiquidationPrice: 50_000 });
+    const v = deriveSafetyView({ ...base, hasCbLoan: true, cbCollateralBtc: 2, cbLoanBalance: 100_000, cbLoanBalanceAsOf: null, cbLiquidationPrice: 50_000, cbLiquidationPriceAsOf: null });
     expect(v.cbLiqPrice).toBe(50_000);
     expect(v.cbLiqFrac).toBeCloseTo(100_000 / (2 * 50_000)); // 1.0 — authoritative price drives the denominator
   });
@@ -147,6 +148,7 @@ describe('selectSafetyViewInputs — the single store→inputs mapping', () => {
       cbCollateralBtc: 1.48,
       cbLtvTriggerPct: 75,
       cbLiquidationPrice: 42_000,
+      cbLiquidationPriceAsOf: null,
     } as unknown as StoreState;
     expect(selectSafetyViewInputs(fake)).toEqual({
       advisorActualBlocBalance: 5_000,
@@ -161,6 +163,7 @@ describe('selectSafetyViewInputs — the single store→inputs mapping', () => {
       cbCollateralBtc: 1.48,
       cbLtvTriggerPct: 75,
       cbLiquidationPrice: 42_000,
+      cbLiquidationPriceAsOf: null,
     });
   });
 });

@@ -42,7 +42,7 @@ const BADGE: Record<SafetyLevel, string> = { safe: 'Safe', watch: 'Fair', act: '
 // Mirrors RadialGauge's own clamp + one-decimal (trailing-zero-stripped) formatting, so the a11y
 // label always matches the visible gauge text.
 function gaugePctLabel(pct: number): string {
-  const clamped = Math.max(0, Math.min(100, pct));
+  const clamped = Number.isFinite(pct) ? Math.max(0, Math.min(100, pct)) : 100;
   return clamped % 1 === 0 ? clamped.toFixed(0) : clamped.toFixed(1);
 }
 
@@ -210,6 +210,7 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
           {s.mode === 'trusted' && f && (
             <OwnershipBar
               btcHeld={venueStrikeBtc + venueCbBtc}
+              coldBtc={venueColdBtc}
               debt={f.credit.used + f.cb.balance}
               btcPrice={venuePrice}
             />

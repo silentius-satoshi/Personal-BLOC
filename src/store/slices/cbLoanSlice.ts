@@ -48,7 +48,7 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   blocMinPaymentSource:  'roll' as const,
   blocStatementMinimum:  null,
   blocMinPaymentDueDay:  15,
-  setCbLoanBalance:    (v) => get().emitPlanSets([['cbLoanBalance', v]]),   // 4c: plan-single (NOT paired — cbLoanBalanceAsOf has its own setter)
+  setCbLoanBalance:    (v) => get().emitPlanSets([['cbLoanBalance', v], ['cbLoanBalanceAsOf', todayLocalISO()]]),
   setCbCollateralBtc:  (v) => {
     // Daily Mode P2a Seam 2: emit a cbCollateralReading (clock-only — feeds the derived cache via deriveCbCollateral)
     // instead of syncing the field. NO syncSettingsToNostr — cross-device sync rides the RECORDS event now (P3): the
@@ -61,11 +61,11 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   setCbAprPct:         (v) => get().emitPlanSets([['cbAprPct', v]]),
   setColdStorageBtc:   (v) => get().emitPlanSets([['coldStorageBtc', v]]),
   setCbMonthlyPayment:   (v) => get().emitPlanSets([['cbMonthlyPayment', v]]),
-  setCbLiquidationPrice: (v) => get().emitPlanSets([['cbLiquidationPrice', v]]),   // plan-single (NOT paired — cbLiquidationPriceAsOf has its own setter)
+  setCbLiquidationPrice: (v) => get().emitPlanSets([['cbLiquidationPrice', v], ['cbLiquidationPriceAsOf', todayLocalISO()]]),
   setCbPaymentStrategy:  (v) => get().emitPlanSets([['cbPaymentStrategy', v]]),
-  setCbLtvTriggerPct:    (v) => get().emitPlanSets([['cbLtvTriggerPct', v]]),
-  setCbLtvTargetPct:     (v) => get().emitPlanSets([['cbLtvTargetPct', v]]),
-  setCbRotateBackPct:    (v) => get().emitPlanSets([['cbRotateBackPct', v]]),
+  setCbLtvTriggerPct:    (v) => get().emitPlanSets([['cbLtvTriggerPct', Math.max(0, Math.min(85, v))]]),
+  setCbLtvTargetPct:     (v) => get().emitPlanSets([['cbLtvTargetPct', Math.max(0, Math.min(85, v))]]),
+  setCbRotateBackPct:    (v) => get().emitPlanSets([['cbRotateBackPct', Math.max(0, Math.min(85, v))]]),
   setCbEmergencyCeilingPct: (v) => get().emitPlanSets([['cbEmergencyCeilingPct', Math.max(20, Math.min(50, v))]]),   // clamp preserved inside the value
   setCbLoanBalanceAsOf:      (v) => get().emitPlanSets([['cbLoanBalanceAsOf', v]]),
   setCbLiquidationPriceAsOf: (v) => get().emitPlanSets([['cbLiquidationPriceAsOf', v]]),

@@ -9,7 +9,7 @@ export const BLOC_OPERATING_CEILING = 0.15;
 
 /** Strike BLOC LTV = drawn balance ÷ collateral value. Guards a zero/empty collateral → 0. */
 export function computeStrikeLtv(blocBalance: number, btcHeld: number, price: number): number {
-  return btcHeld * price > 0 ? blocBalance / (btcHeld * price) : 0;
+  return btcHeld * price > 0 ? blocBalance / (btcHeld * price) : blocBalance > 0 && btcHeld <= 0 ? Number.POSITIVE_INFINITY : 0;
 }
 
 export function strikeAvailableCredit(

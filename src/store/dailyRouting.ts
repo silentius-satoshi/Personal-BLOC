@@ -12,9 +12,12 @@ import { bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveStrikeCollat
 // throughout (UTC accessors, not local) — mixing local getMonth/setMonth with a UTC-parsed input was the
 // bug (an off-by-one near month boundaries in behind-UTC zones).
 function strategyMonthDate(advisorStartDate: string, month: number): string {
-  const d = new Date(advisorStartDate);
-  d.setUTCMonth(d.getUTCMonth() + (month - 1));
-  return d.toISOString().split('T')[0];
+  const start = new Date(advisorStartDate);
+  const targetMonth = start.getUTCMonth() + (month - 1);
+  const year = start.getUTCFullYear() + Math.floor(targetMonth / 12);
+  const monthIndex = ((targetMonth % 12) + 12) % 12;
+  const day = Math.min(start.getUTCDate(), new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate());
+  return new Date(Date.UTC(year, monthIndex, day)).toISOString().split('T')[0];
 }
 
 // Seam 2 clock: refresh the derived cbCollateralBtc cache from the current dayLog (cheap, idempotent).
