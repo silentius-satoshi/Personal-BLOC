@@ -43,6 +43,7 @@ export function useNostrSync(opts?: { live?: boolean }) {
   const nostrPubkey = useStore((s) => s.nostrPubkey);   // login/disconnect cycles the live sub
   const recordsDirty = useStore((s) => s.recordsDirty);
   const settingsDirty = useStore((s) => s.settingsDirty);
+  const pendingViewerRevocations = useStore((s) => s.pendingViewerRevocations);
   // Backup gate — subscribed (not read via getState) so a verification flip RE-RUNS both effects below,
   // attaching the listeners + opening the live sub. Without the subscription the engine would stay asleep.
   const keyProvenance = useStore((s) => s.keyProvenance);
@@ -98,10 +99,10 @@ export function useNostrSync(opts?: { live?: boolean }) {
   useEffect(
     () =>
       scheduleDirtyRetry(
-        { dirty: recordsDirty || settingsDirty, live, viewerMode, backupGateOk },
+        { dirty: recordsDirty || settingsDirty || pendingViewerRevocations.length > 0, live, viewerMode, backupGateOk },
         { isVisible: () => document.visibilityState === 'visible', onTick: triggerSync },
       ),
-    [recordsDirty, settingsDirty, live, viewerMode, backupGateOk, triggerSync],
+    [recordsDirty, settingsDirty, pendingViewerRevocations.length, live, viewerMode, backupGateOk, triggerSync],
   );
 
   return { triggerSync };

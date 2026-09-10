@@ -276,6 +276,8 @@ export interface StoreState {
   // nextViewerIndex is a monotonic counter — an index is NEVER reused after removal.
   viewers:            ViewerSlot[];
   nextViewerIndex:    number;
+  // Device-local durable queue for viewer revocation tombstones.
+  pendingViewerRevocations: string[];
   // Viewer access (Phase 2, viewer-side / READ-ONLY) — device-local, NEVER synced. This install is a read-only
   // viewer of the writer at viewerWriterPubkey, decrypting the viewer:v1 snapshot with viewerSecretKey.
   // ⚠ Phase 2 stores viewerSecretKey as PLAINTEXT hex — Phase 3 will passkey/keyVault-wrap it.
@@ -305,6 +307,8 @@ export interface StoreState {
   addViewerSlot:         (slot: Omit<ViewerSlot, 'index'>) => void;
   updateViewerSlot:      (index: number, patch: Partial<ViewerSlot>) => void;
   removeViewerSlot:      (index: number) => void;
+  queueViewerRevocation: (pubkeyHex: string) => void;
+  clearViewerRevocation: (pubkeyHex: string) => void;
   setViewerMode:         (v: boolean) => void;
   setViewerWriterPubkey: (v: string | null) => void;
   setViewerSecretKey:    (v: string | null) => void;

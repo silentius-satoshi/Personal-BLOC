@@ -18,6 +18,12 @@ describe('clearViewerData', () => {
     s.setStrikeUsdBalance(4321);
     s.setStrikeBtcAvailable(0.5);
     s.setStrikeRate(95000);
+    useStore.setState({
+      dayLog: [{ id: 'day-1', date: '2026-01-01', ts: 1, kind: 'draw', amount: 1 }],
+      deletedDayEvents: { 'day-1': 2 }, coldStorageBtc: 0.4, pinnedScenario: { label: 'old', pinnedAt: 1, btcPrice: 1, inputs: {} } as never,
+      planEvents: [{ id: 'plan-1', ts: 1, device: 'd', kind: 'set', field: 'income', value: 9 }],
+      planDirty: true, prefsDirty: true, recordsDirty: true, settingsDirty: true,
+    } as never);
     s.setViewerDataLoaded(true);
 
     useStore.getState().clearViewerData();
@@ -29,6 +35,14 @@ describe('clearViewerData', () => {
     expect(after.strikeUsdBalance).toBeNull();
     expect(after.strikeBtcAvailable).toBeNull();
     expect(after.strikeRate).toBeNull();
+    expect(after.dayLog).toEqual([]);
+    expect(after.deletedDayEvents).toEqual({});
+    expect(after.coldStorageBtc).toBe(0);
+    expect(after.planEvents).toEqual([]);
+    expect(after.planDirty).toBe(false);
+    expect(after.prefsDirty).toBe(false);
+    expect(after.recordsDirty).toBe(false);
+    expect(after.settingsDirty).toBe(false);
     // representative financial settings → seeds
     expect(after.income).toBe(4000);
     expect(after.expenses).toBe(3500);

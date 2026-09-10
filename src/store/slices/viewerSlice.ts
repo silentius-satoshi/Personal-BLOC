@@ -4,17 +4,19 @@ import { todayLocalISO } from '../../utils/format';
 import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
 
 type ViewerSlice = Pick<StoreState,
-  | 'viewers' | 'nextViewerIndex' | 'viewerMode' | 'viewerWriterPubkey' | 'viewerSecretKey' | 'viewerDisplayName'
+  | 'viewers' | 'nextViewerIndex' | 'pendingViewerRevocations' | 'viewerMode' | 'viewerWriterPubkey' | 'viewerSecretKey' | 'viewerDisplayName'
   | 'viewerKeyWrapped' | 'viewerKeyWrapMeta' | 'viewerUnlocked' | 'viewerDataLoaded' | 'viewerLastSyncAt'
   | 'viewerSafeSnapshot' | 'viewerPreview' | 'storeUnlocked' | 'addViewerSlot' | 'updateViewerSlot' | 'removeViewerSlot'
   | 'setViewerMode' | 'setViewerWriterPubkey' | 'setViewerSecretKey' | 'setViewerDisplayName' | 'setViewerKeyWrapped'
   | 'setViewerKeyWrapMeta' | 'setViewerUnlocked' | 'setViewerDataLoaded' | 'setViewerLastSyncAt' | 'setViewerSafeSnapshot'
+  | 'queueViewerRevocation' | 'clearViewerRevocation'
   | 'setViewerPreview' | 'setStoreUnlocked' | 'clearViewerData' | 'resetPlanToSeeds'
 >;
 
 export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => ({
   viewers:            [],   // Multi-viewer roster (M1) — empty on fresh install; the owner adds viewers via Sharing
   nextViewerIndex:    0,
+  pendingViewerRevocations: [],
   viewerMode:          false,
   viewerWriterPubkey:  null,
   viewerSecretKey:     null,
@@ -43,6 +45,14 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     const { viewers } = get();
     get().emitPlanSets([['viewers', viewers.filter((v) => v.index !== index)]]);   // index NOT reused (nextViewerIndex never regresses)
   },
+  queueViewerRevocation: (pubkeyHex) => set((s) => ({
+    pendingViewerRevocations: s.pendingViewerRevocations.includes(pubkeyHex)
+      ? s.pendingViewerRevocations
+      : [...s.pendingViewerRevocations, pubkeyHex],
+  })),
+  clearViewerRevocation: (pubkeyHex) => set((s) => ({
+    pendingViewerRevocations: s.pendingViewerRevocations.filter((pk) => pk !== pubkeyHex),
+  })),
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
@@ -68,10 +78,15 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null, strikeLiquidationLtvPct: 85,
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
-    monthlyLog: [], deletedMonths: {},
+    monthlyLog: [], deletedMonths: {}, dayLog: [], deletedDayEvents: {},
+    coldStorageBtc: 0, pinnedScenario: null, planEvents: [], planDirty: false, prefsDirty: false,
+    recordsDirty: false, settingsDirty: false, lastSettingsSyncAt: null, lastRecordsSyncAt: null,
+    lastPlanEventsSyncAt: null, lastPrefsSyncAt: null, lastV1FallbackApplyAt: null,
+    nostrReconnectNeeded: false,
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     viewers: [], nextViewerIndex: 0,   // Multi-viewer roster (M1) — reset the owner-config roster to seed
     viewerDataLoaded: false,
+    viewerLastSyncAt: null,
     viewerSafeSnapshot: null,   // Viewer V2 — drop the C-safe snapshot too (data-remanence)
     initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
   }),

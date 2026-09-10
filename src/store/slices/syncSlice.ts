@@ -48,7 +48,7 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   // the rest of the guard class (settingsDirty, Fix C/D, the hydrateSettings skip-guards, lastSettingsSyncAt).
   syncSettingsToNostr: () => {
     const s = get();
-    if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;   // pre-login edits must NOT mark dirty (would block first hydrate); an unbacked-up generated key must not dirty either — setBackupVerifiedAt marks dirty itself when the gate opens
+    if (s.viewerMode || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;   // viewer installs are read-only; pre-login edits must NOT mark dirty
     if (!s.initialSettingsPullDone) return;   // don't dirty/publish before the first pull establishes a baseline (prevents a benign post-auth setter dirtying the seed store → seed-clobber)
     set({ settingsDirty: true });
     void import('../../lib/nostr/syncEngine').then((m) => m.scheduleSettingsPublish());

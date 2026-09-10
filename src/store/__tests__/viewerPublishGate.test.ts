@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useStore } from '../useStore';
-import { publishRecordsNowImmediate } from '../../lib/nostr/syncEngine';
+import { publishRecordsNowImmediate, publishSettingsNow } from '../../lib/nostr/syncEngine';
 
 // Read-only-viewer backstop: the records publish must NEVER publish in viewerMode (a viewer is authenticated with its
 // own nsec, so the auth gate alone wouldn't stop it). setNostrSyncing(true) fires only AFTER the gate, so it's the
@@ -38,5 +38,15 @@ describe('publishRecordsNowImmediate — viewerMode gate', () => {
     // publish step because the stub signer has no nip44. The point: viewerMode false does NOT block (pre-change baseline).
     expect(syncSpy).toHaveBeenCalledWith(true);
     expect(result).toBe(false);
+  });
+
+  it('settings publishing is also blocked for a read-only viewer', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', viewerMode: true } as never);
+    const syncSpy = vi.spyOn(useStore.getState(), 'setNostrSyncing');
+
+    expect(await publishSettingsNow()).toBe(false);
+    expect(syncSpy).not.toHaveBeenCalled();
   });
 });

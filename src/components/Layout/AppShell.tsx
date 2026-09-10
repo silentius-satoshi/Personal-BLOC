@@ -218,7 +218,7 @@ export function AppShell() {
   const resetViewer = () => resetViewerSession();
 
   useBtcPrice(); // keep store btcPrice live for the whole session — Simple Mode mounts no sidebar that calls this
-  useStrikeData(isAuthenticated && isOwner);   // Strike fetch is owner-only — never runs for visitors/non-owners (viewer gets Strike from the snapshot)
+  useStrikeData(isAuthenticated && isOwner && !viewerMode);   // Strike fetch is owner-only — viewer gets Strike from the snapshot
   useNostrAutoRestore();
   useViewerSync();   // read-only viewer pull/sub — no-op unless viewerMode
   useMonthBucketReconcile();   // one-shot: re-roll entries stored under the pre-fix bucketing (owner-only, once)

@@ -64,8 +64,9 @@ export async function publishRecordsNowImmediate(): Promise<boolean> {
     useStore.getState().setLastRecordsSyncAt(createdAt);
     useStore.getState().setRecordsDirty(false);
     useStore.getState().setNostrReconnectNeeded(false);
-    nostrLog('info', 'records published');
-    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
+      nostrLog('info', 'records published');
+      void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
+      void flushViewerRevocations();     // durable owner-side revocations share the normal retry path
     return true;
   } catch (e) {
     nostrLog('error', 'records publish failed', e);
@@ -78,7 +79,7 @@ export async function publishRecordsNowImmediate(): Promise<boolean> {
 
 export async function publishSettingsNow(): Promise<boolean> {
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;   // publish didn't happen (incl. an unbacked-up generated key)
+  if (state.viewerMode || !state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;   // viewer installs are read-only
   // Backstop (closes parked backlog #6): never publish the UNTOUCHED SEED over real relay data before this
   // session has pulled a baseline. Cheap sentinel check — enough to catch the fresh-install seed store.
   if (!state.initialSettingsPullDone
@@ -99,8 +100,9 @@ export async function publishSettingsNow(): Promise<boolean> {
     useStore.getState().setLastSettingsSyncAt(createdAt);
     useStore.getState().setSettingsDirty(false);
     useStore.getState().setNostrReconnectNeeded(false);
-    nostrLog('info', 'settings published');
-    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
+      nostrLog('info', 'settings published');
+      void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
+      void flushViewerRevocations();
     return true;
   } catch (e) {
     nostrLog('error', 'settings publish failed', e);   // dirty stays true → retried by syncNow
@@ -222,7 +224,7 @@ export async function importRelaysFromNip65(): Promise<{ found: boolean; count: 
 
 export async function publishRelayListToNip65(): Promise<boolean> {
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;
+  if (state.viewerMode || !state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;
   useStore.getState().setNostrSyncing(true);
   try {
     await publishRelayListNip65(
@@ -248,7 +250,7 @@ export async function publishRelayListToNip65(): Promise<boolean> {
 // is independent. The payload is built ONCE PER DISTINCT TIER (at most 2 builds), encrypted N times.
 export async function publishViewerSnapshotNow(): Promise<void> {
   const s = useStore.getState();
-  if (!s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
+  if (s.viewerMode || !s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
   const signer = s.nostrSigner;
   const relays = s.nostrRelays.length ? s.nostrRelays : undefined;
   const timeout = signerOpTimeout(s.nostrSigningMethod);
@@ -270,12 +272,28 @@ export async function publishViewerSnapshotNow(): Promise<void> {
   }
 }
 
+/** Retry durable revocation tombstones after any successful owner sync. */
+export async function flushViewerRevocations(): Promise<boolean> {
+  const state = useStore.getState();
+  if (!state.pendingViewerRevocations.length) return true;
+  if (state.viewerMode) return false;
+  let ok = true;
+  for (const pubkeyHex of [...state.pendingViewerRevocations]) {
+    if (!(await publishViewerRevocationNow(pubkeyHex))) ok = false;
+  }
+  return ok;
+}
+
 // Real-time revocation (M2 — PER-SLOT): seal a TOMBSTONE (empty payload + revoked:true) to ONE viewer's d-tag
 // so their next live event / reconnect wipes the hydrated data and drops them to ViewerWaitingGate. The caller
 // passes the target pubkey (captured BEFORE removeViewerSlot). Fire-and-forget, log-only.
-export async function publishViewerRevocationNow(viewerPubkeyHex: string): Promise<void> {
+export async function publishViewerRevocationNow(viewerPubkeyHex: string): Promise<boolean> {
   const s = useStore.getState();
-  if (!viewerPubkeyHex || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
+  if (!viewerPubkeyHex) return false;
+  if (s.viewerMode || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) {
+    if (!s.viewerMode) s.queueViewerRevocation(viewerPubkeyHex);
+    return false;
+  }
   try {
     await publishViewerSnapshot(
       s.nostrSigner,
@@ -284,8 +302,12 @@ export async function publishViewerRevocationNow(viewerPubkeyHex: string): Promi
       s.nostrRelays.length ? s.nostrRelays : undefined,
       signerOpTimeout(s.nostrSigningMethod),
     );
+    useStore.getState().clearViewerRevocation(viewerPubkeyHex);
     nostrLog('info', 'viewer revocation published');
+    return true;
   } catch (e) {
+    useStore.getState().queueViewerRevocation(viewerPubkeyHex);
     nostrLog('warn', 'viewer revocation failed', e);
+    return false;
   }
 }

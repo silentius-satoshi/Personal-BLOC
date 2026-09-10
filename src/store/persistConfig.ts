@@ -115,6 +115,7 @@ export function migrateState(persistedState: any): any {
     // Viewer access (Phase 3) — v18, wrapped-at-rest key. Device-local, never synced.
     viewerKeyWrapped:     persistedState.viewerKeyWrapped    ?? null,
     viewerKeyWrapMeta:    persistedState.viewerKeyWrapMeta   ?? null,
+    pendingViewerRevocations: persistedState.pendingViewerRevocations ?? [],
     // v16 — mid-month installs seed start-of-month from the current live balance; fresh = 0
     advisorMonthStartBalance: persistedState.advisorMonthStartBalance ?? persistedState.advisorActualBlocBalance ?? 0,
     // §5b — Strike balance freshness stamp; additive default, no bump (merge-default pattern)

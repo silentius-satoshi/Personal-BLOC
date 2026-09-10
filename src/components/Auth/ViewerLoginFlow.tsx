@@ -128,6 +128,11 @@ export function ViewerLoginFlow({ onDone, onBack }: ViewerLoginFlowProps) {
       clearViewerData();   // start clean — wipe any residual owner/prior-viewer data BEFORE viewerMode triggers the first fetch
       setViewerWriterPubkey(decoded.data as string);
       setViewerMode(true);
+      // A viewer connection is a role switch, not an additional owner session. Keep the owner's
+      // persisted identity for an explicit later re-login, but drop its live signer immediately.
+      useStore.getState().setNostrSigner(null);
+      useStore.getState().setIsAuthenticated(false);
+      activeKey.sk.fill(0); // the holder owns its copy; do not retain the transient React-state buffer
       setStep('name');   // V3 — the handshake succeeded; collect the greeting name, THEN onDone()
     } catch (e: any) {
       setViewerError(e?.message ?? 'Could not protect the viewing key');

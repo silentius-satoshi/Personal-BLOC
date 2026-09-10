@@ -51,10 +51,12 @@ export function ViewerUnlockGate({ onReset }: { onReset: () => void }) {
   const run = async () => {
     setLoading(true);
     setError(null);
+    let transientKey: Uint8Array | null = null;
     try {
       if (isSetup) {
         const m = method ?? await probeKeyVaultCapability();
         const skBytes = hexToBytes(viewerSecretKey!);
+        transientKey = skBytes;
         const { ciphertext, meta } = await wrapSecretKey(skBytes, m, m === 'pin' ? pin : undefined);
         useStore.getState().setViewerKeyWrapped(ciphertext);
         useStore.getState().setViewerKeyWrapMeta(meta);
@@ -62,12 +64,14 @@ export function ViewerUnlockGate({ onReset }: { onReset: () => void }) {
         useStore.getState().setViewerSecretKey(null);   // drop the plaintext copy
       } else {
         const sk = await unwrapSecretKey(viewerKeyWrapped!, viewerKeyWrapMeta!, unlockScheme === 'pin' ? pin : undefined);
+        transientKey = sk;
         setUnwrappedViewerKey(sk);
         void fetchViewerSnapshot();                // pull the latest owner snapshot immediately
       }
     } catch (e: any) {
       setError(e?.message ?? (isSetup ? 'Could not protect the key' : 'Unlock failed — try again'));
     } finally {
+      transientKey?.fill(0);
       setLoading(false);
     }
   };

@@ -28,12 +28,18 @@ import type { RemoteEvent } from './sync';
 // The unwrapped viewer key (in-memory only) + a signer built lazily from it.
 let unwrappedViewerKey: Uint8Array | null = null;
 let cachedSigner: NSecSigner | null = null;
+let cachedSignerKey: Uint8Array | null = null;
+let lastAppliedViewerEventAt = 0;
 
 /** Set (or clear) the in-memory viewer key. Rebuilds/clears the cached signer and mirrors viewerUnlocked
  *  so React (AppShell) can reactively gate on "holder populated". */
 export function setUnwrappedViewerKey(sk: Uint8Array | null): void {
+  unwrappedViewerKey?.fill(0);
+  cachedSignerKey?.fill(0);
   unwrappedViewerKey = sk ? sk.slice() : null;   // own copy — caller may zero/reuse its buffer
   cachedSigner = null;
+  cachedSignerKey = null;
+  lastAppliedViewerEventAt = 0;
   useStore.getState().setViewerUnlocked(!!sk);
 }
 
@@ -77,7 +83,8 @@ function getViewerSigner(): NSecSigner | null {
   if (!unwrappedViewerKey) return null;
   if (cachedSigner) return cachedSigner;
   // .slice() — NSecSigner holds a REFERENCE to the bytes; hand it its own copy (the writer-signer bug).
-  cachedSigner = new NSecSigner(unwrappedViewerKey.slice());
+  cachedSignerKey = unwrappedViewerKey.slice();
+  cachedSigner = new NSecSigner(cachedSignerKey);
   return cachedSigner;
 }
 
@@ -108,6 +115,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
   const { viewerMode, viewerWriterPubkey, viewerSecretKey, nostrSigningMethod } = s;
   backfillFromPlaintext(viewerSecretKey);
   if (!viewerMode || !viewerWriterPubkey || !unwrappedViewerKey) return;
+  if (event.created_at <= lastAppliedViewerEventAt) return;
   const signer = getViewerSigner();
   if (!signer || !signer.nip44) return;
   let plaintext: string;
@@ -129,6 +137,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     if (snap.revoked) {
       // Owner revoked this viewer — wipe hydrated data (viewerDataLoaded → false → ViewerWaitingGate). No hydrate.
       nostrLog('info', 'viewer access revoked by owner');
+      lastAppliedViewerEventAt = event.created_at;
       s.clearViewerData();
       return;
     }
@@ -143,6 +152,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       });
       s.setViewerDataLoaded(true);
       s.setViewerLastSyncAt(Date.now());
+      lastAppliedViewerEventAt = event.created_at;
       nostrLog('info', 'viewer safe snapshot hydrated');
       return;
     }
@@ -169,6 +179,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     });
     s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
     s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)
+    lastAppliedViewerEventAt = event.created_at;
     nostrLog('info', 'viewer snapshot hydrated');
   } catch { nostrLog('warn', 'viewer payload parse failed (skipped)'); }
 }

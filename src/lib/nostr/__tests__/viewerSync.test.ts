@@ -32,7 +32,7 @@ vi.mock('../../../store/useStore', () => ({
   },
 }));
 
-import { fetchViewerSnapshot, setUnwrappedViewerKey, getViewerPubkeyHex } from '../viewerSync';
+import { fetchViewerSnapshot, setUnwrappedViewerKey, getViewerPubkeyHex, openViewerSync, closeViewerSync } from '../viewerSync';
 import { viewerDTag } from '../publish';
 
 function resetStore(overrides: Partial<Record<string, any>> = {}) {
@@ -142,6 +142,36 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.setViewerSafeSnapshot).toHaveBeenCalledWith(null);
     expect(mockState.hydrateSettings).toHaveBeenCalled();
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
+  });
+
+  it('ignores an older live snapshot that finishes decrypting after a newer one', async () => {
+    let onEvent: ((event: any) => void) | null = null;
+    let resolveOld!: (value: string) => void;
+    const oldDecrypt = new Promise<string>((resolve) => { resolveOld = resolve; });
+    mockPool.subscribeMany.mockImplementation((_relays: unknown, _filter: unknown, opts: { onevent: (event: any) => void }) => {
+      onEvent = opts.onevent;
+      return { close: vi.fn() };
+    });
+    decryptImpl.fn.mockImplementation((_pk: string, content: string) => content === 'old'
+      ? oldDecrypt
+      : Promise.resolve(JSON.stringify({
+        snapshotVersion: 2, privacyMode: 'trusted', settings: { income: 5000 },
+        records: { entries: [], deletions: {} }, strike: null,
+      })));
+
+    openViewerSync();
+    onEvent!({ content: 'old', created_at: 1 });
+    onEvent!({ content: 'new', created_at: 2 });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    resolveOld(JSON.stringify({
+      snapshotVersion: 2, privacyMode: 'trusted', settings: { income: 4000 },
+      records: { entries: [], deletions: {} }, strike: null,
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(mockState.hydrateSettings).toHaveBeenCalledTimes(1);
+    expect(mockState.hydrateSettings).toHaveBeenCalledWith(expect.objectContaining({ income: 5000 }));
+    closeViewerSync();
   });
 });
 

@@ -20,7 +20,7 @@ export function useStrikeData(enabled: boolean): void {
   const setStrikeLastFetched  = useStore((s) => s.setStrikeLastFetched);
   const isVisible = usePageVisibility();
 
-  const fetchAll = async () => {
+  const fetchAll = async (active = true) => {
       if (strikeProxyUnconfigured) return;
       // NIP-98: each request is signed with the owner's Nostr key (Authorization: Nostr <base64>) — no bundle
       // secret. The owner-gate (enabled) means the signer is normally present; bail safely if it isn't.
@@ -40,10 +40,12 @@ export function useStrikeData(enabled: boolean): void {
 
         // 503 = key not configured — silent, no error state
         if (balanceRes.status === 503 || rateRes.status === 503) {
+          if (!active) return;
           strikeProxyUnconfigured = true;
           return;
         }
 
+        if (!active) return;
         if (!balanceRes.ok || !rateRes.ok) {
           setStrikeApiConnected(false);
           return;
@@ -69,20 +71,26 @@ export function useStrikeData(enabled: boolean): void {
           : rateData;
         const strikeRate = rateEntry?.amount ? parseFloat(rateEntry.amount) : null;
 
+        if (!active) return;
         setStrikeUsdBalance(usdBalance);
         setStrikeBtcAvailable(btcAvailable);
         setStrikeRate(strikeRate);
         setStrikeApiConnected(true);
         setStrikeLastFetched(Date.now());
       } catch {
+        if (!active) return;
         setStrikeApiConnected(false);
       }
   };
 
   useEffect(() => {
     if (!isVisible || !enabled) return;   // owner-only — no fetch/poll for non-owner or un-authenticated
-    fetchAll();
-    const interval = setInterval(fetchAll, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    let active = true;
+    const guardedFetch = async () => {
+      await fetchAll(active);
+    };
+    guardedFetch();
+    const interval = setInterval(guardedFetch, POLL_INTERVAL_MS);
+    return () => { active = false; clearInterval(interval); };
   }, [isVisible, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
 }

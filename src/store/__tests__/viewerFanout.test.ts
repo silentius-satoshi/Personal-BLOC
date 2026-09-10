@@ -10,7 +10,7 @@ const { publishViewerSnapshot } = vi.hoisted(() => ({
 vi.mock('../../lib/nostr/publish', () => ({ publishViewerSnapshot }));
 
 import { useStore, type ViewerSlot } from '../useStore';
-import { publishViewerSnapshotNow, publishViewerRevocationNow } from '../../lib/nostr/syncEngine';
+import { publishViewerSnapshotNow, publishViewerRevocationNow, flushViewerRevocations } from '../../lib/nostr/syncEngine';
 
 const pkSafe    = 's'.repeat(64);
 const pkSafe2   = 'u'.repeat(64);
@@ -29,6 +29,7 @@ describe('viewer fan-out (M2)', () => {
       isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'ownerpk', nostrSigningMethod: 'local',
       nostrRelays: [], viewerMode: false,
       viewers: [], nextViewerIndex: 0,
+      pendingViewerRevocations: [],
     } as never);
   });
 
@@ -71,6 +72,15 @@ describe('viewer fan-out (M2)', () => {
     expect(publishViewerSnapshot).toHaveBeenCalledTimes(1);
     expect(callFor(pkSafe)?.[2]).toMatchObject({ revoked: true });
     expect(callFor(pkTrusted)).toBeUndefined();   // the other slot is untouched
+  });
+
+  it('queues a failed revocation and retries it later', async () => {
+    publishViewerSnapshot.mockRejectedValueOnce(new Error('offline')).mockResolvedValue(1);
+    expect(await publishViewerRevocationNow(pkSafe)).toBe(false);
+    expect(useStore.getState().pendingViewerRevocations).toEqual([pkSafe]);
+    expect(await flushViewerRevocations()).toBe(true);
+    expect(useStore.getState().pendingViewerRevocations).toEqual([]);
+    expect(publishViewerSnapshot).toHaveBeenCalledTimes(2);
   });
 
   it('rotate sequence: snapshot to the NEW pubkey + revocation tombstone to the OLD', async () => {

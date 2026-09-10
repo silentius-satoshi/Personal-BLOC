@@ -5,10 +5,11 @@ import { syncNow } from '../lib/nostr/syncNow';
 
 export function useNostrAutoRestore(): void {
   const { nostr } = useNostr();
+  const viewerMode = useStore((s) => s.viewerMode);
 
   useEffect(() => {
     const { nostrAuthEnabled, nostrPubkey, nostrSigningMethod, nostrLogin } = useStore.getState();
-    if (!nostrAuthEnabled || !nostrPubkey) return;
+    if (viewerMode || !nostrAuthEnabled || !nostrPubkey) return;
 
     // 'local' is an "authenticated-but-locked" launch: the unwrap triggers Face ID, which needs a user
     // gesture, so the LocalUnlockGate drives unlock on tap. Do NOT optimistically auth (would render the
@@ -37,5 +38,5 @@ export function useNostrAutoRestore(): void {
     };
 
     restore();
-  }, [nostr]);   // nostr is stable (singleton pool from NostrProvider)
+  }, [nostr, viewerMode]);   // nostr is stable (singleton pool from NostrProvider)
 }

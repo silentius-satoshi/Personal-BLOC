@@ -2,7 +2,7 @@ import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
 import { nostrLog } from './log';
 import { useStore } from '../../store/useStore';
-import { publishRecordsNowImmediate, publishSettingsNow, publishPlanEventsNow, publishPrefsNow } from './syncEngine';
+import { publishRecordsNowImmediate, publishSettingsNow, publishPlanEventsNow, publishPrefsNow, flushViewerRevocations } from './syncEngine';
 import { isBackupGateSatisfied } from '../backupGate';
 import { synthesizeGenesisEvents, nextPlanEventTs } from '../planEvents/genesis';
 import { getDeviceTag } from './deviceTag';
@@ -37,10 +37,10 @@ export function pickPlanFields(s: StoreState): Partial<PlanState> {
 }
 
 async function doSyncNow(nostr: NostrParam): Promise<boolean> {
-  const { nostrPubkey, nostrSigningMethod, keyProvenance, backupVerifiedAt } = useStore.getState();
+  const { nostrPubkey, nostrSigningMethod, keyProvenance, backupVerifiedAt, viewerMode } = useStore.getState();
   // Backup gate: a generated-but-unverified key runs NO sync at all — not even a pull (a pull sets
   // initialSettingsPullDone, which would re-arm publishing). Consulted at the same layer as the pubkey check.
-  if (!nostrPubkey || !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })) return false;
+  if (viewerMode || !nostrPubkey || !isBackupGateSatisfied({ keyProvenance, backupVerifiedAt })) return false;
   let signer = useStore.getState().nostrSigner;
   if (!signer || (nostrSigningMethod === 'nip46' && Date.now() - lastReconnectAt > 20000)) {
     const fresh = await restoreSigner(nostr);
@@ -85,13 +85,14 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
     if (useStore.getState().settingsDirty && useStore.getState().initialSettingsPullDone) { setOk = await publishSettingsNow(); setLabel = setOk ? 'ok' : 'FAILED'; }
     if (useStore.getState().planDirty && useStore.getState().initialSettingsPullDone) { planOk = await publishPlanEventsNow(); planLabel = planOk ? 'ok' : 'FAILED'; }
     if (useStore.getState().prefsDirty && useStore.getState().initialSettingsPullDone) { prefsOk = await publishPrefsNow(); prefsLabel = prefsOk ? 'ok' : 'FAILED'; }
-    const ok = pullOk && recOk && setOk && planOk && prefsOk;
+    const revOk = await flushViewerRevocations();
+    const ok = pullOk && recOk && setOk && planOk && prefsOk && revOk;
     if (ok) {
       useStore.getState().setNostrReconnectNeeded(false);
       nostrLog('info', 'sync ok');
     } else {
       useStore.getState().setNostrReconnectNeeded(true);
-      nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, records ${recLabel}, settings ${setLabel}, plan ${planLabel}, prefs ${prefsLabel}) — signer unreachable?`);
+      nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, records ${recLabel}, settings ${setLabel}, plan ${planLabel}, prefs ${prefsLabel}, revocations ${revOk ? 'ok' : 'FAILED'}) — signer unreachable?`);
     }
     return ok;
   } catch (e) {
