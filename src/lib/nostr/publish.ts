@@ -3,7 +3,7 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
 import type { ViewerSafeSafety } from '../../simulation/safetyView'; // type-only — no runtime cycle
 import { withTimeout } from './timeout';
-import { nostrLog } from './log';
+import { nostrLog, redactSensitive } from './log';
 import { DEFAULT_RELAYS } from './relays';
 
 export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
@@ -136,7 +136,7 @@ function publishSignedToRelays(
   const onOutcome = (i: number, ok: boolean, err?: unknown) => {
     perRelay[i] = {
       url: relays[i], status: ok ? 'ack' : 'reject', ms: Date.now() - startedAt,
-      ...(err !== undefined ? { err: err instanceof Error ? err.message : String(err) } : {}),
+       ...(err !== undefined ? { err: redactSensitive(err instanceof Error ? err.message : String(err)) } : {}),
     };
   };
   return awaitAckQuorum(pubs, quorum, 12000, onOutcome).then(() => {

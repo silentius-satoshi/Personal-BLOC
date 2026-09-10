@@ -29,18 +29,24 @@ function notify(): void {
   for (const fn of subscribers) fn();
 }
 
+export function redactSensitive(value: string): string {
+  return value
+    .replace(/\b(?:nsec|ncryptsec|npub)1[0-9a-z]+\b/gi, '[redacted-bech32]')
+    .replace(/\b[0-9a-f]{64,}\b/gi, '[redacted-hex]');
+}
+
 function serializeData(data: unknown): string | undefined {
   if (data === undefined) return undefined;
   try {
     const s = data instanceof Error ? data.message : JSON.stringify(data);
-    return s === undefined ? undefined : s.slice(0, 300);
+    return s === undefined ? undefined : redactSensitive(s).slice(0, 300);
   } catch { return undefined; }
 }
 
 export function nostrLog(level: NostrLogEntry['level'], msg: string, data?: unknown): void {
   const dataStr = serializeData(data);
-  if (level === 'info') console.info(`[Nostr] ${msg}`, data ?? '');
-  else console.warn(`[Nostr] ${msg}`, data ?? '');
+  if (level === 'info') console.info(`[Nostr] ${msg}`, dataStr ?? '');
+  else console.warn(`[Nostr] ${msg}`, dataStr ?? '');
   const entry: NostrLogEntry = { ts: Date.now(), level, msg, ...(dataStr !== undefined ? { data: dataStr } : {}) };
   entries = [...entries, entry].slice(-MAX);   // new array each time — stable snapshot for useSyncExternalStore
   persist();
