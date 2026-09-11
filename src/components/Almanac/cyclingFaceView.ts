@@ -1,10 +1,12 @@
 import type { CyclingRow } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
+import { CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
 
 /**
  * Pure display math for the Almanac Cycling face. No React, no store, no imports from powerLaw/cycleModel —
- * only a TYPE import of CyclingRow plus the ownership leaf (the single definition of yoursBtc, S2′).
- * Extracted so it is testable without a render harness (the repo has none).
+ * a TYPE import of CyclingRow, the ownership leaf (the single definition of yoursBtc, S2′), and the
+ * zero-import Coinbase fee constant (the refinance break-even fallback). Extracted so it is testable
+ * without a render harness (the repo has none).
  *
  * Architecture invariant 2 (one definition of every risk number via cbMetrics / computeStrikeLtv) governs
  * the user's LIVE position. These are projected hypotheticals on a speculative price path — routing them
@@ -43,14 +45,51 @@ export function applyPriceLens(row: CyclingRow, multiplier: number): LensedRow {
   }
   const price = row.price * multiplier;
   const collateralValue = row.btcHeld * price;
+  // ⚠ Same contract as the engine's ltvOf(): positive debt with no collateral is UNBOUNDED LTV, never 0.
+  // A zero here would render a stripped position as "safe" under a price stress — the exact opposite of
+  // the truth. Finite 0 remains only for the genuinely debt-free case.
+  const lensLtv = (debt: number, coll: number): number =>
+    coll * price > 0 ? debt / (coll * price) : debt > 0 && coll <= 0 ? Number.POSITIVE_INFINITY : 0;
   return {
     price,
-    cbLtv: row.cbCollateralBtc * price > 0 ? row.cbDebt / (row.cbCollateralBtc * price) : 0,
-    strikeLtv: row.strikeCollateralBtc * price > 0 ? row.strikeBalance / (row.strikeCollateralBtc * price) : 0,
+    cbLtv: lensLtv(row.cbDebt, row.cbCollateralBtc),
+    strikeLtv: lensLtv(row.strikeBalance, row.strikeCollateralBtc),
     collateralValue,
     equity: collateralValue - row.debt,
     yoursBtc: deriveOwnership(row.btcHeld, row.debt, price).yoursBtc,
   };
+}
+
+/** LTV fraction → display string. Positive infinity (debt with no collateral) reads as ∞, never
+ *  "Infinity%" — `.toFixed(1)` on a non-finite number silently produces just that. */
+export function fmtLtvPct(fraction: number): string {
+  if (!Number.isFinite(fraction)) return fraction > 0 ? '∞' : '—';
+  return `${(fraction * 100).toFixed(1)}%`;
+}
+
+/**
+ * The run's realized blended origination-fee fraction: fees paid ÷ cash refinanced. The fee is MARGINAL
+ * (2% under $250k, 1% above), so assuming tier 1 overstates the fee — and understates the break-even —
+ * for any run whose standing balance crosses the bracket. Falls back to tier 1 when nothing was moved.
+ */
+export function refinanceFeeFraction(totalCbFees: number, totalRefinancedUsd: number): number {
+  return totalRefinancedUsd > 0 && Number.isFinite(totalRefinancedUsd)
+    ? totalCbFees / totalRefinancedUsd
+    : CB_FEE_TIER1_PCT;
+}
+
+/**
+ * Months for the refinance to pay for itself: fee% ÷ rate-spread%, ×12. Both scale with the amount, so
+ * it is amount-independent. Null when Coinbase is not actually cheaper (no saving to break even against).
+ */
+export function refinanceBreakEvenMonths(
+  feeFraction: number,
+  strikeAprPct: number,
+  cbAprPct: number,
+): number | null {
+  const spreadPct = strikeAprPct - cbAprPct;
+  if (!(spreadPct > 0) || !(feeFraction > 0) || !Number.isFinite(feeFraction)) return null;
+  return (feeFraction * 100 / spreadPct) * 12;
 }
 
 export interface BtcGain {

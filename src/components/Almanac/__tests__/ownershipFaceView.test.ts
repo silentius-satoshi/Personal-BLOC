@@ -63,3 +63,18 @@ describe('chartOwnershipRows — the cold series', () => {
     expect(r.cold).toBe(0.3333);
   });
 });
+
+describe('chartOwnershipRows — no fake liquidation line', () => {
+  it('⭐ a debt-free leg or a zero-collateral leg produces a null liq, never a $0 line', () => {
+    // $0 would read as "never liquidates". Debt-free, the price is undefined; unbacked, it is unbounded.
+    expect(chartOwnershipRows([mkRow({ cbDebt: 0, debt: 20_000 })], CB_LLTV)[0].liq).toBeNull();
+    expect(chartOwnershipRows([mkRow({ cbCollateralBtc: 0 })], CB_LLTV)[0].liq).toBeNull();
+    expect(chartOwnershipRows([mkRow()], CB_LLTV)[0].liq).toBe(Math.round(80_000 / (CB_LLTV * 2)));
+  });
+
+  it('non-finite LTVs become null chart gaps, not NaN', () => {
+    const r = chartOwnershipRows([mkRow({ cbLtv: Infinity, strikeLtv: Infinity })], CB_LLTV)[0];
+    expect(r.cbLtv).toBeNull();
+    expect(r.strikeLtv).toBeNull();
+  });
+});

@@ -11,7 +11,10 @@ import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLAT
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
-import { applyPriceLens, btcGained, holdingsSplit, clampMonth } from './cyclingFaceView';
+import {
+  applyPriceLens, btcGained, holdingsSplit, clampMonth,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
+} from './cyclingFaceView';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -116,7 +119,7 @@ function ChartTip({ active, payload, label, money }: {
       {payload.map((p) => (
         <div key={String(p.dataKey)} className={styles.tooltipRow}>
           <span style={{ color: p.color }}>{p.name}</span>
-          <strong>{money ? fmtUSD(p.value ?? 0) : `${(p.value ?? 0).toFixed(1)}%`}</strong>
+          <strong>{p.value == null ? '—' : money ? fmtUSD(p.value) : `${p.value.toFixed(1)}%`}</strong>
         </div>
       ))}
     </div>
@@ -183,12 +186,6 @@ export default function CyclingFace() {
     [s.btcPrice, band, startDate, months, convergeMonths],
   );
 
-  // Break-even on the refinance: the fee is paid once per dollar moved, the rate saving accrues forever.
-  // months = fee% / (strikeAPR - cbAPR) * 12. Null when Coinbase is not actually cheaper — then the sweep
-  // is a cost with no offsetting saving and no break-even exists.
-  const feeBreakEvenMonths = strikeAprPct > cbAprPct
-    ? (CB_FEE_TIER1_PCT / ((strikeAprPct - cbAprPct) / 100)) * 12
-    : null;
   // 🔴 ON-DEMAND ONLY — never polls. The Almanac's background network surface stays the consented
   // useChainTip alone; this fires when the owner taps. Writes to the session overlay, never the store.
   const morpho = useMorphoRateOnDemand();
@@ -217,7 +214,13 @@ export default function CyclingFace() {
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct,
   ]);
 
-  const { rows, last, stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth } = sim;
+  const { rows, last, stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth, drawingResumedMonth } = sim;
+
+  // Break-even on the refinance: the fee is paid once per dollar moved, the rate saving accrues forever.
+  // ⚠ Use the run's REALIZED blended fee, not tier 1: the fee is marginal (2% below the $250k break, 1%
+  // above), so assuming 2% overstates the fee and understates the break-even once the balance crosses it.
+  const feeFraction = refinanceFeeFraction(sim.totalCbFees, sim.totalRefinancedUsd);
+  const feeBreakEvenMonths = refinanceBreakEvenMonths(feeFraction, strikeAprPct, cbAprPct);
 
   // ── Month scrubber + price lens (display-only) ────────────────────────────────────────────────
   const [selectedMonth, setSelectedMonth] = useState(Math.min(DEFAULT_INSPECT_MONTH, rows.length - 1));
@@ -261,7 +264,9 @@ export default function CyclingFace() {
 
   const chartRows = useMemo(() => rows.map((r) => ({
     year: r.yearLabel,
-    cbLtvPct: +(r.cbLtv * 100).toFixed(2),
+    // ⚠ null not NaN: +(Infinity).toFixed(2) silently coerces to NaN, which recharts drops for free but
+    // reads as an accident. A gap is the honest shape for "collateral gone, debt surviving".
+    cbLtvPct: Number.isFinite(r.cbLtv) ? +(r.cbLtv * 100).toFixed(2) : null,
     price: Math.round(r.price),
     collateral: Math.round(r.collateralValue),
     debt: Math.round(r.debt),
@@ -362,7 +367,9 @@ export default function CyclingFace() {
               {fmtBtc(last.btcHeld)} vs {fmtBtc(sim.baselineBtc)} (
               {last.btcHeld - sim.baselineBtc >= 0 ? '+' : '−'}
               {Math.abs(last.btcHeld - sim.baselineBtc).toFixed(4)} ₿)
-              {stopMonth !== null && ` · drawing stopped at month ${stopMonth}`}
+              {stopMonth !== null && (drawingResumedMonth === null
+                ? ` · drawing stopped at month ${stopMonth}`
+                : ` · drawing paused at month ${stopMonth}, resumed at ${drawingResumedMonth}`)}
             </div>
           </>
         )}
@@ -373,7 +380,7 @@ export default function CyclingFace() {
         {([
           ['BTC held', fmtBtc(selRow.btcHeld), `from ${openingBtc.toFixed(4)} ₿`, 'var(--green)'],
           ['Total debt', fmtK(selRow.debt), `from ${fmtK(openingDebt)}`, 'var(--orange)'],
-          ['CB LTV', `${(lensed.cbLtv * 100).toFixed(1)}%`, `cap ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`, cbZone(lensed.cbLtv)],
+          ['CB LTV', fmtLtvPct(lensed.cbLtv), `cap ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`, cbZone(lensed.cbLtv)],
           ['Net equity', fmtK(lensed.equity),
             atEnd ? `never-draw: ${fmtK(sim.baselineEquity)}` : `at month ${monthIdx}`,
             atEnd ? (wins ? 'var(--green)' : 'var(--amber)') : (lensed.equity >= 0 ? 'var(--green)' : 'var(--red)')],
@@ -685,9 +692,10 @@ export default function CyclingFace() {
           rate moves the liquidation DATE instead: at an 85% cap, 1.5 extra points pulls it in 7 months.
           {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
           {fmtK(CB_FEE_TIER_BREAK)}, {CB_FEE_TIER2_PCT * 100}% above, added to principal so it compounds.
-          This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows.
+          This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows — a blended{' '}
+          {(feeFraction * 100).toFixed(2)}% of the amount moved.
           {feeBreakEvenMonths !== null
-            && ` The Strike→Coinbase move still pays for itself after ~${feeBreakEvenMonths.toFixed(1)} months at these rates.`}
+            && ` The Strike→Coinbase move still pays for itself after ~${feeBreakEvenMonths.toFixed(1)} months at that blended fee.`}
         </p>
       </section>
 
@@ -751,7 +759,7 @@ export default function CyclingFace() {
                     )}
                     <td className={styles.msTd}>{fmtK(r.debt)}</td>
                     <td className={styles.msTd} style={{ color: cbZone(r.cbLtv) }}>
-                      {(r.cbLtv * 100).toFixed(1)}%
+                      {fmtLtvPct(r.cbLtv)}
                     </td>
                     <td className={`${styles.msTd} ${styles.msEquity}`}>{fmtK(r.equity)}</td>
                     {/* Gross = BTC accumulated. Yours = what survives the debt. On a post-liquidation row

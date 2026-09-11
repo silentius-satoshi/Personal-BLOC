@@ -25,10 +25,13 @@ export interface OwnershipChartRow {
   owed: number;
   /** Cold-storage BTC — a SUBSET of `held`, not a fourth quantity to add to it. 0 when the sweep is off. */
   cold: number;
-  cbLtv: number;
-  strikeLtv: number;
+  /** null when non-finite (debt with no collateral) — a chart GAP, never a coerced NaN or a fake 0. */
+  cbLtv: number | null;
+  strikeLtv: number | null;
   price: number;
-  liq: number;
+  /** null when no finite liquidation price exists (debt-free leg, or debt with no collateral). Plotting a
+   *  $0 line would read as "never liquidates", which is the inverse of an unbacked position's truth. */
+  liq: number | null;
 }
 
 /** Chart series for the three ownership views (held/owed/yours · LTV · price & liq). `yours`/`owed` read
@@ -36,6 +39,8 @@ export interface OwnershipChartRow {
 export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): OwnershipChartRow[] {
   return rows.map((r) => {
     const o = deriveOwnership(r.btcHeld, r.debt, r.price);
+    const ltvPct = (fraction: number): number | null =>
+      Number.isFinite(fraction) ? +(fraction * 100).toFixed(1) : null;
     return {
       m: r.m,
       held: +r.btcHeld.toFixed(4),
@@ -44,10 +49,12 @@ export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): Owners
       // ⚠ `held` ALREADY includes cold (btcHeld is all three pools), so plotting cold makes visible a
       // share the Held line was otherwise hiding. It is a floor under `yours`: coins no lender can reach.
       cold: +r.coldBtc.toFixed(4),
-      cbLtv: +(r.cbLtv * 100).toFixed(1),
-      strikeLtv: +(r.strikeLtv * 100).toFixed(1),
+      cbLtv: ltvPct(r.cbLtv),
+      strikeLtv: ltvPct(r.strikeLtv),
       price: Math.round(r.price),
-      liq: Math.round(r.cbCollateralBtc > 0 ? r.cbDebt / (cbLiqLtv * r.cbCollateralBtc) : 0),
+      liq: cbLiqLtv > 0 && r.cbCollateralBtc > 0 && r.cbDebt > 0
+        ? Math.round(r.cbDebt / (cbLiqLtv * r.cbCollateralBtc))
+        : null,
     };
   });
 }

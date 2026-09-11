@@ -12,7 +12,8 @@ import { CB_LLTV, CB_LIF, cbBorrowFee } from './runCoinbaseLoan';
  * (surplus retires Strike, then buys), `clearBoth` (surplus retires Strike, then Coinbase, then buys).
  * `mode` defaults to `'cycle'`, so every pre-S1 call site is byte-identical. For `hold` the "never draw"
  * baseline is SELF-REFERENTIAL — the strategy IS the baseline, so a view must not compare the two.
- * Still NOT MODELED: a cold-storage / unpledged reserve and a support-line "switch" mode.
+ * The cold-storage / unpledged reserve IS modeled (opt-in `coldStoreBufferPct`); a support-line "switch"
+ * mode is still NOT MODELED.
  *
  * 🔴 §2 ISOLATION WALL — this module imports NOTHING from powerLaw/cycleModel. The price path arrives as a
  * plain `number[]` and the three lender ratios (`strikeMaxDrawLtv`, `strikeMarginLtv`) arrive as plain
@@ -124,7 +125,16 @@ export interface CyclingRow {
 export interface CyclingResult {
   rows: CyclingRow[];
   last: CyclingRow;
-  stopMonth: number | null;             // cap reached — drawing stopped
+  /**
+   * First month the draw stopped (CB LTV reached the cap). NOT necessarily terminal: on a RISING path the
+   * de-levering can pull LTV back under the cap and the draw resumes — see `drawingResumedMonth`.
+   */
+  stopMonth: number | null;
+  /** First month the engine actually entered the drawing branch, else null (the draw never ran). Ground
+   *  truth for the C2 "this run never draws" notice — the opening LTV alone cannot decide it. */
+  firstDrawMonth: number | null;
+  /** First month the draw resumed AFTER a stop, else null. With stopMonth, distinguishes a pause from a stop. */
+  drawingResumedMonth: number | null;
   liqMonth: number | null;              // CB LTV reached CB_LLTV
   strikeMarginMonth: number | null;     // Strike LTV reached its margin-call line
   creditExhaustedMonth: number | null;  // first month the Strike line couldn't fund the full bill
@@ -136,6 +146,9 @@ export interface CyclingResult {
   /** Coinbase origination fees paid across the horizon, and how many borrows paid them. */
   totalCbFees: number;
   cbFeeCount: number;
+  /** CASH moved from Strike to Coinbase across every refinance (the fee brackets key off this basis).
+   *  `totalCbFees / totalRefinancedUsd` is the run's realized blended origination-fee fraction. */
+  totalRefinancedUsd: number;
   baselineEquity: number;               // "never draw" comparison, on the SAME price path
   baselineBtc: number;
   /** Total BTC moved to cold storage over the run (0 when the sweep is off). */
@@ -187,6 +200,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let strikeBal = inputs.strikeBalance;
 
   let stopMonth: number | null = null;
+  let firstDrawMonth: number | null = null;
+  let drawingResumedMonth: number | null = null;
   let liqMonth: number | null = null;
   let strikeMarginMonth: number | null = null;
   let creditExhaustedMonth: number | null = null;
@@ -197,6 +212,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalCbInterest = 0;
   let totalCbFees = 0;
   let cbFeeCount = 0;
+  let totalRefinancedUsd = 0;
   let coldBtc = 0;
   let coldFromCb = 0;
   let coldFromStrike = 0;
@@ -219,6 +235,11 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         const drawing = ltvOf(cbDebt, cbColl, price) < cap && liqMonth === null;
 
         if (drawing) {
+          // Ground truth for the view's "this run never draws" notice — the opening LTV alone cannot
+          // decide it (interest and the path can push LTV across the cap before month 1 draws). A month
+          // that draws AFTER any non-drawing month is a resume, even if it is also the first-ever draw.
+          if (stopMonth !== null && drawingResumedMonth === null) drawingResumedMonth = m;
+          if (firstDrawMonth === null) firstDrawMonth = m;
           // The Strike line is a hard constraint: min(credit line, collateral × price × max-draw LTV).
           // What it can't fund comes out of income, which is what would actually happen — so the
           // constraint is self-limiting (fewer sats bought) rather than a hard stop.
@@ -248,6 +269,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         if (m % cycle === 0 && strikeBal > 0) {
           const fee = cbBorrowFee(strikeBal, cbDebt);
           cbDebt += strikeBal + fee;
+          totalRefinancedUsd += strikeBal;
           totalCbFees += fee;
           cbFeeCount += 1;
           strikeBal = 0;
@@ -382,9 +404,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
 
   return {
     rows, last,
-    stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth,
+    stopMonth, firstDrawMonth, drawingResumedMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth,
     seizedBtc, survivorBtc, deficiencyUsd,
-    totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount,
+    totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount, totalRefinancedUsd,
     baselineEquity, baselineBtc: baseBtc,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
   };

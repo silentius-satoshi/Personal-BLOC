@@ -108,6 +108,14 @@ describe('C2 — the cycle/hold crossover is cap-dependent, not a property of th
     const hold = yoursAt(runSeed({ mode: 'hold', cbLtvCapPct: 75 }));
     expect(cycle).toBeLessThan(hold);
   });
+
+  it('⭐ firstDrawMonth is the engine ground truth the face uses — not the opening LTV', () => {
+    // Opens at 43.75% (below the 50% cap); a drop to 60k pushes month-1 LTV over the cap before any
+    // draw. An opening-LTV proxy would silently omit the C2 notice for exactly this run.
+    const r = runSeed({ mode: 'cycle', cbLtvCapPct: 50, pricePath: [80_000, 60_000, 60_000, 60_000] });
+    expect(r.rows[0].cbLtv).toBeLessThan(0.50);
+    expect(r.firstDrawMonth).toBeNull();
+  });
 });
 
 describe("the ownership bar's safe-mode gate is structural, not cosmetic", () => {

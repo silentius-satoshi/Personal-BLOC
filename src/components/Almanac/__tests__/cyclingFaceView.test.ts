@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { applyPriceLens, btcGained, holdingsSplit, clampMonth } from '../cyclingFaceView';
+import {
+  applyPriceLens, btcGained, holdingsSplit, clampMonth,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
+} from '../cyclingFaceView';
 import { runCyclingSim, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
+import { CB_FEE_TIER1_PCT } from '../../../simulation/runCoinbaseLoan';
 
 /** A plain fixture row — no engine run needed for the display math. */
 const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
@@ -67,6 +71,57 @@ describe('applyPriceLens', () => {
       expect(l.yoursBtc).toBe(r.btcHeld);
     }
     expect(applyPriceLens(r, 0).price).toBe(r.price);   // the row's OWN price, unchanged
+  });
+
+  it('⭐ mirrors the engine: positive debt with no collateral lenses to Infinity, never 0', () => {
+    // The engine's ltvOf() returns Infinity here (a stripped position is liquidatable at any price). The
+    // lens previously returned 0 — rendering the same position as SAFE under a price stress.
+    const stripped = mkRow({ cbCollateralBtc: 0, strikeCollateralBtc: 0, cbLtv: Infinity, strikeLtv: Infinity });
+    const l = applyPriceLens(stripped, 1.5);
+    expect(l.cbLtv).toBe(Infinity);
+    expect(l.strikeLtv).toBe(Infinity);
+
+    // ...while a genuinely debt-free leg stays a finite 0.
+    const debtFree = mkRow({ cbCollateralBtc: 0, strikeCollateralBtc: 0, cbDebt: 0, strikeBalance: 0, debt: 0 });
+    const d = applyPriceLens(debtFree, 1.5);
+    expect(d.cbLtv).toBe(0);
+    expect(d.strikeLtv).toBe(0);
+  });
+});
+
+describe('fmtLtvPct — the Infinity-safe LTV renderer', () => {
+  it('formats finite fractions to one decimal', () => {
+    expect(fmtLtvPct(0.8612)).toBe('86.1%');
+    expect(fmtLtvPct(0)).toBe('0.0%');
+  });
+  it('positive infinity reads ∞, never "Infinity%"', () => {
+    expect(fmtLtvPct(Infinity)).toBe('∞');
+  });
+  it('NaN / negative infinity degrade to — rather than lying', () => {
+    expect(fmtLtvPct(NaN)).toBe('—');
+    expect(fmtLtvPct(-Infinity)).toBe('—');
+  });
+});
+
+describe('refinance fee math — the marginal brackets, not a flat 2%', () => {
+  it('fee fraction is fees ÷ cash moved', () => {
+    expect(refinanceFeeFraction(1_000, 80_000)).toBeCloseTo(0.0125, 12);
+  });
+  it('falls back to tier 1 when nothing was refinanced (or the basis is junk)', () => {
+    expect(refinanceFeeFraction(0, 0)).toBe(CB_FEE_TIER1_PCT);
+    expect(refinanceFeeFraction(10, Infinity)).toBe(CB_FEE_TIER1_PCT);
+  });
+  it('break-even is fee% ÷ spread% × 12 — and amount-independent', () => {
+    // 2% fee against an 8-point spread: 0.02 / 0.08 × 12 = 3 months.
+    expect(refinanceBreakEvenMonths(0.02, 13, 5)).toBeCloseTo(3, 12);
+    // A realized 1.25% blended fee shortens it: 0.0125 / 0.08 × 12 = 1.875.
+    expect(refinanceBreakEvenMonths(0.0125, 13, 5)).toBeCloseTo(1.875, 12);
+  });
+  it('is null when Coinbase is not cheaper (no saving to break even against)', () => {
+    expect(refinanceBreakEvenMonths(0.02, 5, 13)).toBeNull();
+    expect(refinanceBreakEvenMonths(0.02, 5, 5)).toBeNull();
+    expect(refinanceBreakEvenMonths(0, 13, 5)).toBeNull();
+    expect(refinanceBreakEvenMonths(NaN, 13, 5)).toBeNull();
   });
 });
 

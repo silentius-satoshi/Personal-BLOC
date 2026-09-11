@@ -104,6 +104,44 @@ describe('runCyclingSim — the refinance loop and the stop', () => {
   });
 });
 
+describe('runCyclingSim — draw ground truth (firstDrawMonth / resume)', () => {
+  it('⭐ an opening LTV below the cap is NOT proof the draw runs — firstDrawMonth is', () => {
+    // Opens at 46.15% against a 50% cap, so an opening-LTV proxy would say "the draw runs". Month 1
+    // drops to 60k, pushing LTV over the cap before any draw: this run never draws.
+    const r = run({ cbLtvCapPct: 50, pricePath: [PRICE, 60_000, 60_000, 60_000] });
+    expect(r.rows[0].cbLtv).toBeLessThan(0.50);
+    expect(r.firstDrawMonth).toBeNull();
+    expect(r.stopMonth).toBe(1);
+    expect(r.drawingResumedMonth).toBeNull();
+  });
+
+  it('records the first draw, and a resume after the draw stopped', () => {
+    // Month 1 at 60k crosses the cap (no draw) → stopMonth 1; month 2 leaps to 130k and LTV falls back
+    // under it → the draw runs, and this is a resume (it follows a stopped month).
+    const r = run({ cbLtvCapPct: 50, pricePath: [PRICE, 60_000, 130_000, 130_000] });
+    expect(r.stopMonth).toBe(1);
+    expect(r.firstDrawMonth).toBe(2);
+    expect(r.drawingResumedMonth).toBe(2);
+  });
+
+  it('on a run that draws from the start, firstDrawMonth is 1 and there is no resume', () => {
+    const r = run({ cbLtvCapPct: 85, pricePath: flat(12) });
+    expect(r.firstDrawMonth).toBe(1);
+    expect(r.drawingResumedMonth).toBeNull();
+    expect(r.stopMonth).toBeNull();
+  });
+});
+
+describe('runCyclingSim — totalRefinancedUsd is the fee basis', () => {
+  it('accumulates the cash moved and brackets the fee against it', () => {
+    const r = run({ pricePath: flat(12), cbLtvCapPct: 85, cycleMonths: 3 });
+    expect(r.cbFeeCount).toBeGreaterThan(0);
+    expect(r.totalRefinancedUsd).toBeGreaterThan(0);
+    // Every fee is at most 2% of the cash moved — the marginal rate can only be lower above the bracket.
+    expect(r.totalCbFees).toBeLessThanOrEqual(r.totalRefinancedUsd * 0.02 + 1e-6);
+  });
+});
+
 describe('runCyclingSim — the Strike credit line is a hard constraint', () => {
   it('⭐ exhausts the line at month 5 on bills $5,000 / cycle 12, and income covers the rest', () => {
     const r = run({ cycleMonths: 12, cbLtvCapPct: 85 });
