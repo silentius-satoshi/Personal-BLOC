@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1091 tests — all must pass before every commit)
+- Vitest (1138 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -118,7 +118,9 @@ src/
                                 # (pinned by the not-constant-ratio test). ⚠ m===0 is special-cased to return
                                 # the anchor EXACTLY (arithmetic drifts ~0.3% via day-clamping, and month 0 must
                                 # equal what the SafetyDashboard shows). Local pure `addMonths` (UTC, day-of-month
-                                # clamped) keeps the zero-import rule; callers pass a UTC-midnight startDate
+                                # clamped) keeps the zero-import rule; callers pass a UTC-midnight startDate.
+                                # + plBandAt(band, startDate, months) — one band at a selected month (the faces'
+                                # Support marker), zero-import preserved
     cyclingSim.ts               # Cycling strategy PURE engine (Almanac `cycling` face) — draw bills on Strike,
                                 # refinance into Coinbase every cycleMonths, route every purchase to the CB
                                 # collateral pool, stop drawing at a CB LTV cap; verdict vs a never-draw baseline.
@@ -129,10 +131,12 @@ src/
                                 # powerLaw/cycleModel/store. The price path arrives as a plain number[] and the
                                 # lender ratios (strikeMaxDrawLtv/strikeMarginLtv) as plain numbers, so it stays a
                                 # clock-free, fixture-testable leaf; the VIEW does the labelled crossing (the
-                                # OutlookProjection precedent). ⚠ TWO COLLATERAL POOLS, NEVER ONE — strikeColl is
-                                # FIXED (nothing is pledged to Strike after the opening position), cbColl GROWS
-                                # with every purchase, and btcHeld is their sum and DISPLAY ONLY, never a
-                                # denominator (collapsing them understates CB LTV ~16pts and fires the cap late).
+                                # OutlookProjection precedent). ⚠ TWO COLLATERAL POOLS, NEVER ONE — strikeColl and
+                                # cbColl are separate denominators (purchases only ever grow cbColl); btcHeld is
+                                # their sum (+ the cold pool) and DISPLAY ONLY, never a denominator (collapsing
+                                # them understates CB LTV ~16pts and fires the cap late). ⚠ strikeColl is no
+                                # longer fixed: the sweep CASCADE moves its surplus to cbColl and the emergency
+                                # TOP-UP can draw both pools into cbColl (see the cold-sweep section).
                                 # The cap tests cbLtv (a Coinbase metric), never a blended figure. The Strike
                                 # credit line is a hard constraint — a draw is capped at min(creditLine,
                                 # strikeColl×price×maxDrawLtv) − strikeBal and the shortfall comes out of income
@@ -141,7 +145,27 @@ src/
                                 # ⚠ subtracts the repayment rather than zeroing debt, so an under-collateralised
                                 # seizure PRESERVES the deficiency (both facilities are full-recourse); the row is
                                 # pushed PRE-seizure so it shows the position that breached and m+1 opens on the
-                                # survivor. CB_LIQUIDATION_PENALTY is derived (CB_LIF − 1), not a literal
+                                # survivor. CB_LIQUIDATION_PENALTY is derived (CB_LIF − 1), not a literal.
+                                # `defendCbLtv?: boolean` (default FALSE) adds the debt-shift cap defense —
+                                # above the cap, draw Strike to PAY COINBASE DOWN to the cap; a due refinance
+                                # sweeps only up to the remaining CB headroom (cbMaxDrawForHeadroom), so it
+                                # shifts the debt back on recovery without re-breaching. If the line still
+                                # leaves LTV above the stop, the FALLBACK top-up moves collateral into the CB
+                                # pool — cold reserve first, then the Strike collateral above its margin
+                                # requirement. Row fields defenseDrawnUsd/cbLtvPreDefense/defenseShortfallUsd/
+                                # defended + strikeToCbBtc/topUpBtc/topUpFromColdBtc/topUpFromStrikeBtc/
+                                # coldRetrievedBtc (cumulative); result firstDefenseMonth/defenseExhaustedMonth/
+                                # totalDefenseDrawnUsd/defenseCount + firstTopUpMonth/topUpExhaustedMonth/
+                                # totalTopUpBtc/totalTopUpFromColdBtc/totalTopUpFromStrikeBtc/
+                                # totalStrikeToCbBtc/totalColdRetrievedBtc
+    cbDefense.ts                # Debt-shift defense — ZERO-IMPORT leaf: strikeDrawCapacity(collBtc, drawn,
+                                # price, maxDrawLtv, creditLine=∞) = min(creditLine, collateral×price×maxDrawLtv)
+                                # − drawn; defendCbLtv(input) → paydown needed/capacity/draw/shortfall,
+                                # post-defense CB+Strike LTVs, Strike margin-call price, recovery price;
+                                # topUpToCbLtv(input) → requiredBtc/fromColdBtc/fromStrikeBtc/topUpBtc/
+                                # shortfallBtc/fullyDefended/cbLtvAfter (cold first, then Strike down to the
+                                # margin line at the current price). Consumed by cyclingSim (the automatic
+                                # defense + top-up) and emergencyModel.drawToLtv (capacity only)
     runNoBitcoin.ts
     runSellToLive.ts
     runSmartBLOC_Living.ts      # Living on Bitcoin tab simulation
@@ -2231,8 +2255,9 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   fraction of a bitcoin over the horizon. Re-measured on the CURRENT seed: no liquidation on any band out to 240 months at 50,
   70 **or** 75 — the old "75 liquidates at month 83" warning was written against an earlier position and no
   longer holds. The engine tests pass `cbLtvCapPct` explicitly, so they pin the ENGINE, not this default.
-  ⚠ The cap bounds the DRAW, not the refinance sweep, so peak LTV can end a month just past it (70.1%
-  observed on Ownership) — the unbounded-refinance gap from the review is now visible at the default.
+  ⚠ The engine's refinance is headroom-capped only when `defendCbLtv` is on: the raw engine default (FALSE)
+  still lets a sweep push LTV past the stop, but BOTH faces pass TRUE, so in the projection the stop is a
+  real bound (fallback top-up included).
 - **Gesture coexistence:** nothing to arbitrate — the Almanac face pager is removed, so a slider drag can no
   longer page the face. The former `data-gesture-exempt` markers on the control cards are deleted. *(This also
   retired the Mining face's latent slider-vs-pager conflict.)*
@@ -2258,14 +2283,16 @@ Display math over rows the engine already emits. `src/simulation/` is UNTOUCHED;
 component state; no store bump. The pure helpers live in **`src/components/Almanac/cyclingFaceView.ts`**
 (React-free, store-free, TYPE-only import of `CyclingRow`) so they are testable without a render harness.
 
-- **`applyPriceLens(row, multiplier)`** → re-prices ONE row, holding every dollar DEBT figure and every BTC
-  COUNT fixed. Guard (`multiplier <= 0 || row.price <= 0`) returns the row's own price/LTVs/collateral/equity
-  and `netBtc = row.btcHeld` — `CyclingRow` has no `netBtc` field, so there is no "own value" to fall back
-  to; the debt term contributes 0, matching `btcGained`'s zero-price guard.
+- **`applyPathStress(pricePath, fromMonth, factor)`** → the stress rollout: months from `fromMonth` onward
+  are multiplied by `factor`, so the selected band path keeps its SHAPE (support/fair/resistance). Identity
+  — SAME reference — at `factor === 1`, and for non-positive/non-finite factors.
+- **`debtSplit(row)`** → `{ strikeUsd, coinbaseUsd, combinedUsd, shiftedUsd }`: where the DOLLAR debt sits.
+  The refinance/debt-shift moves no coins, so this is the venue card's debt line (`shiftedUsd` = the month's
+  `defenseDrawnUsd`).
 - **`btcGained(row, base, rowPriceOverride?)`** → `{gross, net}`. Gross is price-independent (BTC counts);
-  net is `btcHeld − debt/price` on both sides. ⚠ **The override lenses the ROW side ONLY** — `base` keeps its
-  own real price, because base is *today* and the lens is a what-if about the *selected* month.
-- **`holdingsSplit(row)`** → Strike / Coinbase / Combined. **TWO VENUES.**
+  net is `btcHeld − debt/price` on both sides. ⚠ **The override re-prices the ROW side ONLY** — `base` keeps
+  its own real price (base is *today*).
+- **`holdingsSplit(row)`** → Strike / Coinbase / Cold / Combined BTC counts.
 - **`clampMonth(selected, rowCount)`** — see the crash note below.
 - ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
   user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
@@ -2274,28 +2301,31 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
 
 **⚠ THE CLAMP IS A CRASH FIX, AND IT MUST HAPPEN AT RENDER TIME.** The Horizon slider is `step=1`, so one
 leftward tick shrinks `rows` while `selectedMonth` still points past the end → `rows[stale]` is `undefined`
-→ `applyPriceLens` throws on `row.price` and the face blanks into the ErrorBoundary. An effect runs *after*
-that render. So `monthIdx = clampMonth(selectedMonth, rows.length)` is derived during render and used
-EVERYWHERE — including as the scrubber's own `value`, or the range input renders pinned past its max.
-`rows[selectedMonth]` must never appear in the file. The effect exists only to write the clamped value back
-so re-growing the horizon doesn't snap to a stale index. Pinned by `clampMonth` unit tests.
+and every `row.*` read blows up. An effect runs *after* that render. So `monthIdx = clampMonth(selectedMonth,
+baseRowCount)` is derived during render and used EVERYWHERE — including as the scrubber's own `value`, or the
+range input renders pinned past its max. `rows[selectedMonth]` must never appear in the file. The effect
+exists only to write the clamped value back so re-growing the horizon doesn't snap to a stale index. Pinned
+by `clampMonth` unit tests.
 
-**The lens is display-only** — range 0.35–2.2, default 1, label "as modeled" at exactly 1. It never re-runs
-the engine and never moves the charts (they keep reading unlensed `chartRows`). ⚠ Its reset effect
-**MIRRORS the sim memo's dep array** (`pricePath`, `cbDebt`, the four store-derived position values, and the
-six overlay inputs) plus `monthIdx` — *if an input is added to `runCyclingSim`, add it there too*, or a
-stress test silently survives an engine change. `pricePath` subsumes `btcPrice`/`band`/`months`/
-`convergeMonths`/`startDate`.
+**The price stress is a PATH ROLLOUT, not a display-only re-price** — range 0.35–2.2 (Cycling) / 0.2–2.2
+(Ownership), default 1, label "as modeled" at exactly 1. `stressPath = applyPathStress(pricePath, monthIdx,
+lens)` and the WHOLE face switches to `runCyclingSim({ ...engineInputs, pricePath: stressPath })` — the
+projection, charts, milestones, venue split, and verdict all move together. `engineInputs` is ONE memoized
+object (with `defendCbLtv: true` — the defense is AUTOMATIC) shared by the base and stress runs. ⚠ The lens
+reset effect **MIRRORS the engine-inputs memo's dep array** (`pricePath`, `cbDebt`, the four store-derived
+position values, the overlay inputs, `mode`) plus `monthIdx` — *if an input is added to `runCyclingSim`, add
+it there too*, or a stress scenario silently survives an engine change. `pricePath` subsumes
+`btcPrice`/`band`/`months`/`convergeMonths`/`startDate`.
 
-**BTC gained appears twice, deliberately split:** the **tile** is LENSED (`btcGained(selRow, rows[0],
-lensed.price)`) and the **Milestones column** is NOT (`btcGained(r, rows[0])`) — the table is not a lensed
-surface. So tile and column agree only at lens 1; at any other value the tile's net moves and the column's
-does not. Both show **gross over net** — gross is accumulation, net is what survives the debt — and on a
-`postLiquidation` row the net drops hard, **shown, never clamped**.
+**BTC gained:** both the tile and the Milestones column read the displayed (base or stressed) run
+(`btcGained(selRow, rows[0])` / `btcGained(r, rows[0])`), so they agree by construction. Both show **gross
+over net** — gross is accumulation, net is what survives the debt — and on a `postLiquidation` row the net
+drops hard, **shown, never clamped**.
 
-**Six tiles are month-scoped; `Strike interest` is not** — it renders the result-level
-`sim.totalStrikeInterest`, and `CyclingRow` carries no per-row cumulative interest (adding one is an engine
-change). Its sub-label reads **`full horizon · N yrs`** so it is visibly the odd one out.
+**The month-scoped tiles follow the scrubber; `Strike interest` and `Debt shifted` are result-level** —
+the former renders `sim.totalStrikeInterest` (CyclingRow carries no per-row cumulative interest; adding one
+is an engine change) with a **`full horizon · N yrs`** sub-label, and the latter appears only when the run
+actually defended.
 
 ⚠ The scrubber + lens live in ONE card. (It formerly carried `data-gesture-exempt` to stop a horizontal
 slider drag from paging the Almanac; the pager is gone, so the marker is too.) ⚠ The two range inputs are
@@ -2304,15 +2334,67 @@ slider drag from paging the Almanac; the pager is gone, so the marker is too.) �
 consume it and a track change would relayout all three.
 
 **NOT MODELED (and out of scope by construction):** **`mode` (S1) adds four strategies — cycle / hold /
-clearStrike / clearBoth. Still NOT MODELED:** a cold-storage / unpledged reserve (there are two
-collateral pools, not three) and a support-line "switch" mode. Both remain `CyclingInputs`/
-`CyclingRow` changes on top of `mode`, not modes within it.
+clearStrike / clearBoth. Still NOT MODELED:** a support-line "switch" mode (deploy/retire against a chosen
+power-law band as a strategy in itself). It remains a `CyclingInputs`/`CyclingRow` change on top of `mode`,
+not a mode within it. ⚠ The cold-storage / unpledged reserve IS modeled now — see
+**§ Cold-storage sweep** (the third pool + the Strike→Coinbase→cold cascade).
 
 - Tests: `src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19). ⚠ **The seizure test asserts at
   `liqMonth + 1`, NOT at the first `postLiquidation` row** — `cyclingSim` pushes the BREACHING row and
   applies the seizure afterwards while setting `postLiquidation: true` on that same row, so `rows[liqMonth]`
   still holds the intact pre-seizure position and a naive assertion there passes vacuously. A sibling case
   pins that trap. Suite 1004 → **1023**.
+
+#### LTV-stop defense: debt shift + collateral top-up (`defendCbLtv` — engine + both faces; NO store change)
+
+The two faces run the strategy WITH its emergency policy: when a fall pushes CB LTV over the stop, the engine
+draws from Strike and PAYS THE COINBASE LOAN DOWN to the stop (shifting the dollar debt to Strike — no BTC
+bought or pledged), and a due refinance then sweeps ONLY up to the remaining CB headroom so it can never push
+LTV back over the stop. When the price recovers, the normal cadence shifts the debt back to Coinbase. If the
+line still leaves LTV above the stop, the FALLBACK top-up moves collateral into the CB pool instead.
+
+- **`src/simulation/cbDefense.ts`** (zero-import leaf) — the single capacity + paydown + top-up definition:
+  `strikeDrawCapacity(collBtc, drawn, price, maxDrawLtv, creditLine = ∞)` =
+  `min(creditLine, collateral × price × maxDrawLtv) − drawn`; `defendCbLtv(input)` → required paydown,
+  capacity, draw, shortfall, post-defense CB/Strike LTVs, Strike margin-call price, and the recovery price
+  at which the post-defense LTV returns to the cap; `topUpToCbLtv(input)` → `requiredBtc` /
+  `fromColdBtc` / `fromStrikeBtc` / `topUpBtc` / `shortfallBtc` / `fullyDefended` / `cbLtvAfter` — cold FIRST
+  (no lender constraint), then the Strike collateral above its margin requirement AT THE CURRENT PRICE (the
+  true last resort, which sacrifices the 50% line backing). `emergencyModel.drawToLtv` delegates its capacity
+  to the same helper; its optional `creditLine` defaults to ∞, so the spec §10 50%-line-only fixtures stay
+  byte-identical (the console passes its real line).
+- **`runCyclingSim` gains `defendCbLtv?: boolean` — default FALSE (byte-identical engine). BOTH faces pass
+  TRUE, AUTOMATICALLY — no UI toggle.** Cycle mode only; never post-liquidation. Sequence per month:
+  interest → draw decision → cascade migration → refinance → debt shift → **top-up** (`shortfallUsd > 0`
+  only) → cold sweep → LTV/breach. ⚠ The shift runs AFTER the refinance (headroom-capped) and the top-up
+  runs AFTER the shift — both BEFORE the cold sweep, so the sweep can never need the collateral either
+  needed. New row fields `defenseDrawnUsd` / `cbLtvPreDefense` / `defenseShortfallUsd` / `defended` +
+  `topUpBtc` / `topUpFromColdBtc` / `topUpFromStrikeBtc` (+ the cascade's `strikeToCbBtc` and cumulative
+  `coldRetrievedBtc`); result telemetry `firstDefenseMonth` / `defenseExhaustedMonth` /
+  `totalDefenseDrawnUsd` / `defenseCount` + `firstTopUpMonth` / `topUpExhaustedMonth` / `totalTopUpBtc` /
+  `totalTopUpFromColdBtc` / `totalTopUpFromStrikeBtc`. The defense draw is a STRIKE draw (no CB origination
+  fee — the fee lands only when the refinance later re-borrows on Coinbase); its interest starts the
+  following month. A top-up retrieves from cold, so `totalColdBtc` is NET (gross = fromCb + fromStrike;
+  gross − totalColdRetrievedBtc === totalColdBtc).
+- **⚠ "LTV stop" is the standard USER-FACING word for the threshold** — Cycling's slider is already
+  `CB LTV stop`, the chart reference reads `STOP X%`, Ownership's slider is `Coinbase LTV stop`, and prose
+  says "stop"/"LTV-stop defense". Internal identifiers (`cbLtvCapPct`, `cap`, `capPct`) are unchanged; only
+  user-facing copy standardizes.
+- **Both faces**, minimal chrome: a "Debt shifted" stat + ⇄ milestone flags + a verdict defense note (which
+  now appends the top-up split when it fired: `₿X from cold storage, ₿Y from the Strike pledge`); the CB
+  LTV tile sub-label reads **`defended from X%`** in a defended month (else `stop X% · liq 86%`); **the
+  unhedged month is `topUpExhaustedMonth` once a top-up fired, else `defenseExhaustedMonth`** — the shift
+  alone running short is no longer "unhedged" if the collateral covered it; the venue card gains ONE quiet
+  debt line (`Debt · $X Strike · $Y Coinbase [· $Z shifted this month]`, `debtSplit`); the Cycling cold
+  split adds a `− ₿X retrieved for the top-up` row so the origins still reconcile to the net headline; and
+  the selected month's Support marker (`plBandAt`, NEW in `powerLaw.ts`) with an amber "below the support
+  line" note when the stress crosses it (range kept, never clamped). No banners, no new cards, no toggle.
+- Tests: `cbDefense.test.ts` (incl. the top-up: worked example / cold-first / margin-bounded Strike / both
+  dry shortfall / at-stop no-op / zero-price+zero-margin guards) + the `defendCbLtv` + `sweep cascade +
+  emergency top-up` blocks in `cyclingSim.test.ts` (OFF ≡ today; restore-to-cap; capacity exhaustion fills
+  the line once then stops; headroom-capped round trip on a V-shaped path; cycle-only; no post-liquidation
+  defense; migration tied to the sweep; migrated coins never leave the stressed line+margin keep; cold
+  drained before Strike; pools/net-cold invariants) + `plBandAt` cases in `powerLaw.test.ts`.
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 
@@ -2993,12 +3075,20 @@ writes / execution — real draws are still logged through Daily flows.
   never touches a clock and is fixture-testable. Strike position from `deriveCurrentPosition`. Functions:
   `classifyStage` (stage from cbLtv vs `CB_LADDER` 69/72/75/81; liq = CB_LLTV 0.86; band price = `cbDebt/(cbColl×band)`),
   `firepower` (slow=cured `(ceiling−0.15)×skColl`, fast=stuck `(ceiling×skColl×P − skDrawn)/P`), `drawToLtv`
-  (clamped to the 50% Strike line — NOT creditLine; newSkMarginCallPrice = `newDrawn/(skColl×0.70)`), `floorTable`
-  ([20,25,30,50]% + standing), `direSwitch`/`wall3Sale`/`wall4External` (paydown-numerator walls), `surplus`.
+  (capacity via the shared `strikeDrawCapacity` from `cbDefense.ts` — `min(creditLine, 50% line) − drawn`;
+  `creditLine` defaults to ∞ so the §10 fixtures are unchanged; the console passes its real line),
+  `floorTable` ([20,25,30,50]% + standing), `direSwitch`/`wall3Sale`/`wall4External` (paydown-numerator walls),
+  `surplus`.
 - **INVARIANTS:** emergency debt math **always** flows through `accruedCbBalance` (never raw `cbLoanBalance`);
   **collateral top-up is the primary lever** (grow the CB denominator → floor DOWN; paydown is the Dire
   Switch/Wall-2 fallback only); **`BLOC_OPERATING_CEILING` (strikeCredit.ts) is the single 0.15 definition** for
   the advisor path; emergencyModel imports **nothing** from cycle/power-law (§7 hard wall — grep-clean).
+- **Support line (view-level crossing):** `EmergencyConsole.tsx` imports `plBandsAt` (today's floor) — the model
+  stays §7-clean. Surfaces: a "Support line" stat + a liq-vs-support sentence; a green rail tick (the rail range
+  always includes support); an "At support" third firepower cell; a floor-table caption ("a floor below support
+  holds through the fitted floor; a floor above it liquidates first"); the New-floor readout compares to support;
+  and the simulate slider keeps its full range but flags "below the support line — outside the fitted drawdown
+  envelope" in amber when dragged below it (never clamped). Capacity now includes the owner's credit line.
 - **New synced setting `cbEmergencyCeilingPct`** (default 30, **clamped 20–50 in the setter**; SETTINGS_FIELDS +
   buildSettingsPayload + migrate `?? 30` + both reset presets; rides `partializeState`'s `...rest`). Settings →
   Coinbase Loan renders its NumberInput **only** in the `cbPaymentStrategy === 'ltvTriggered'` fragment. NO store
@@ -3400,20 +3490,28 @@ liquidation moved from month 13 to **month 2**. Withdrawing to a worse LTV than 
 incoherent; the cap wins and the two knobs compose. Pinned by a test that every looser buffer behaves
 exactly like the boundary one.
 
-🔴 **TWO LEGS, ONE KNOB.** The sweep frees collateral at BOTH venues, for completely different reasons,
-and `coldFromCb` / `coldFromStrike` (cumulative, always summing to `coldBtc`) keep them separable.
-- **Coinbase leg** — the LOAN de-levers as price rises, so collateral above the buffer's floor is surplus.
-- **Strike leg** — ⚠ `strikeCreditLine` is a FIXED DOLLAR amount that never grows with price, so the
-  collateral needed to support the whole line SHRINKS as price rises. Over a twenty-year support path that
-  requirement falls by more than an order of magnitude: **~98% of the Strike pledge ends up idle** —
-  pledged, earning nothing, still sitting with a custodian. At a 30% buffer the Strike leg banks very
-  nearly that whole idle remainder, and `btcHeld` is unchanged with the sweep on or off, so on a rising
-  path it is free — it relocates bitcoin rather than costing any.
-  ⚠ `strikeColl` is therefore **NO LONGER `const`** in the engine. Purchases still never go there.
-  The leg keeps the LARGER of two requirements, both evaluated AT THE STRESSED PRICE: enough to still draw
-  the FULL credit line after the break, and enough to stay under the margin-call LTV after it. Both pinned.
-  ⚠ **If Strike ever RAISES the line, the swept collateral is what you would need back.** The model has no
-  way to know that will happen, so it sweeps on today's line and the face says so.
+🔴 **THE CASCADE — TWO LEGS, ONE KNOB, TIED TO THE SWEEP.** The knob frees collateral at BOTH venues and
+the engine chains them: **Strike → Coinbase → cold**. Only the Coinbase→cold hop is the "sweep"; the
+Strike→Coinbase hop is a CADENCE MIGRATION that runs at each refinance turn when the sweep is on
+(sweep off = Strike collateral stays fixed, byte-identical).
+- **Strike → Coinbase (the migration — WHY the freed coins become CB headroom).** ⚠ `strikeCreditLine` is a
+  FIXED DOLLAR amount that never grows with price, so the collateral needed to support the whole line
+  SHRINKS as price rises. Over a twenty-year support path **~98% of the Strike pledge ends up idle** —
+  pledged, earning nothing, still sitting with a custodian. The migration keeps the LARGER of two
+  requirements, both evaluated AT THE STRESSED PRICE (`price × (1 − buffer)`): enough to still draw the
+  FULL credit line after the break, and enough to stay under the margin-call LTV after it; the surplus
+  moves to the CB pool BEFORE the refinance, so it creates headroom that lets more cheap debt move under
+  the stop the same month. Both requirements pinned by tests. `strikeColl` is therefore **NO LONGER
+  `const`** in the engine; purchases still never go there. ⚠ **If Strike ever RAISES the line, the migrated
+  collateral is what you would need back.** The model has no way to know that will happen, so it migrates
+  on today's line and the face says so.
+- **Coinbase → cold (the sweep).** The loan de-levers as price rises, so collateral above the buffer's
+  floor is surplus. Only this leg touches `coldBtc`. Origin attribution is **FIFO** (`strikeToCbPending`):
+  migrated coins are attributed to Strike when they leave for cold, so `coldFromCb` / `coldFromStrike`
+  stay separable even though the CB pool commingles them.
+- **Retrieval (the emergency top-up reverses the Coinbase→cold hop).** `coldRetrievedBtc` is cumulative;
+  the pool invariant is now **`coldFromCb + coldFromStrike − coldRetrievedBtc === coldBtc`** and the
+  Cycling card prints the `− ₿X retrieved for the top-up` line so the origins still reconcile.
 
 🔴 **ON BY DEFAULT in BOTH faces** (`DEFAULT_COLD_ON = true`, `DEFAULT_COLD_BUFFER_PCT = 30`). Both faces
 run the SAME engine, so a different default in one would make them disagree about one position. The
@@ -3951,7 +4049,7 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1091 tests — `npx vitest run` before every commit.
+1138 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
