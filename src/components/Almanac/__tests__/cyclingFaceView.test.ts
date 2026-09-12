@@ -1,10 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
-  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
 } from '../cyclingFaceView';
 import { runCyclingSim, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
 import { CB_FEE_TIER1_PCT } from '../../../simulation/runCoinbaseLoan';
+import { STRIKE_MAX_DRAW_LTV } from '../../../simulation/strikeCredit';
+import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
 
 /** A plain fixture row — no engine run needed for the display math. */
 const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
@@ -16,6 +18,7 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   debt: 100_000,
   strikeDrawn: 0,
   strikeShortfall: 0,
+  btcBoughtUsd: 0,
   defenseDrawnUsd: 0,
   cbLtvPreDefense: null,
   defenseShortfallUsd: 0,
@@ -262,5 +265,76 @@ describe('clampMonth — the shrinking-horizon crash trap', () => {
     expect(clampMonth(5, 0)).toBe(0);
     expect(clampMonth(5, -3)).toBe(0);
     expect(clampMonth(-2, 61)).toBe(0);
+  });
+});
+
+describe('cashFlowAtMonth — what actually buys bitcoin', () => {
+  const row = (o: Partial<CyclingRow> = {}) => mkRow({ ...o });
+
+  it('⭐ THE BUG: while drawing, the WHOLE income buys — not the surplus', () => {
+    // ⚠ SYNTHETIC figures (this repo is public — never the owner's real budget). Chosen so the surplus
+    // is a quarter of income: the old copy said "Surplus $2,500/mo buys bitcoin" where the engine buys
+    // $10,000, because the credit line paid the bill. A 4x understatement of the flywheel.
+    const cf = cashFlowAtMonth(
+      row({ btcBoughtUsd: 10_000, strikeDrawn: 7_500, strikeShortfall: 0 }), 10_000, 7_500, true);
+    expect(cf.mode).toBe('drawing');
+    expect(cf.buysUsd).toBe(10_000);
+    expect(cf.lineFundedUsd).toBe(7_500);
+    expect(cf.incomeCoveredUsd).toBe(0);
+    expect(cf.leveraged).toBe(true);
+    expect(cf.buysUsd).toBe(4 * (10_000 - 7_500));   // the exact factor the old copy was off by
+  });
+
+  it('a partly-funded bill: income covers the remainder, and buys that much less', () => {
+    // The line could only fund $4,000 of the $7,500 bill, so income covers $3,500 and buys $6,500.
+    const cf = cashFlowAtMonth(
+      row({ btcBoughtUsd: 6_500, strikeDrawn: 4_000, strikeShortfall: 3_500 }), 10_000, 7_500, true);
+    expect(cf.mode).toBe('drawing');
+    expect(cf.buysUsd).toBe(6_500);
+    expect(cf.incomeCoveredUsd).toBe(3_500);
+    expect(cf.buysUsd + cf.incomeCoveredUsd).toBe(10_000);   // income is fully accounted for
+    expect(cf.leveraged).toBe(true);
+  });
+
+  it('⭐ once the cap stops the draw, the surplus IS the right number', () => {
+    // The old copy was not wrong everywhere — it described this state. That is why the fix is
+    // state-dependent rather than a swap.
+    const cf = cashFlowAtMonth(
+      row({ btcBoughtUsd: 2_500, strikeDrawn: 0, strikeShortfall: 0 }), 10_000, 7_500, true);
+    expect(cf.mode).toBe('stopped');
+    expect(cf.buysUsd).toBe(2_500);
+    expect(cf.buysUsd).toBe(10_000 - 7_500);
+    expect(cf.lineFundedUsd).toBe(0);
+    expect(cf.leveraged).toBe(false);
+  });
+
+  it('no-draw modes never report as drawing, whatever the row holds', () => {
+    const cf = cashFlowAtMonth(
+      row({ btcBoughtUsd: 2_500, strikeDrawn: 7_500, strikeShortfall: 0 }), 10_000, 7_500, false);
+    expect(cf.mode).toBe('noDraw');
+    expect(cf.lineFundedUsd).toBe(0);
+    expect(cf.incomeCoveredUsd).toBe(0);
+  });
+
+  it('a deficit budget is never reported as leveraged just because buys are positive', () => {
+    const cf = cashFlowAtMonth(
+      row({ btcBoughtUsd: 0, strikeDrawn: 0, strikeShortfall: 0 }), 5_000, 7_500, true);
+    expect(cf.buysUsd).toBe(0);
+    expect(cf.leveraged).toBe(false);
+  });
+
+  it('⭐ the helper reads the ENGINE, so it cannot drift from what was bought', () => {
+    // btcBoughtUsd is no longer derivable from a cbColl delta (the cascade and top-up move collateral
+    // into that pool too), which is exactly why the engine emits it.
+    const r = runCyclingSim({
+      startYear: 2026, strikeCollateralBtc: 1.0, strikeBalance: 0, strikeCreditLine: 200_000,
+      strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
+      cbCollateralBtc: 2.0, cbDebt: 72_000, income: 10_000, expenses: 7_500,
+      strikeAprPct: 13, cbAprPct: 6.27, cycleMonths: 1,
+      pricePath: new Array(13).fill(78_000), cbLtvCapPct: 85, coldStoreBufferPct: 0,
+    });
+    const m1 = r.rows[1];
+    expect(m1.btcBoughtUsd).toBe(10_000);
+    expect(cashFlowAtMonth(m1, 10_000, 7_500, true).buysUsd).toBe(10_000);
   });
 });

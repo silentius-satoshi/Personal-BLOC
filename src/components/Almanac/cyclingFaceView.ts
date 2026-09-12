@@ -76,6 +76,52 @@ export function refinanceBreakEvenMonths(
   return (feeFraction * 100 / spreadPct) * 12;
 }
 
+/**
+ * What is actually buying bitcoin at a given month, in plain terms.
+ *
+ * ⚠ THE BUG THIS REPLACES: the Cash flow card said "Surplus $X/mo buys bitcoin", where X was
+ * `income − expenses`. While the flywheel is DRAWING that understates it by the whole expense figure —
+ * where the surplus is a quarter of income it understates the flywheel 4x. `income − expenses`
+ * is the never-draw BASELINE, the thing the strategy is measured against, not the strategy itself.
+ *
+ * The distinction is real, so the copy has to follow the month:
+ *  • drawing  — the credit line paid the bill, so ALL of income buys (less any part the line could not
+ *               fund). The bill becomes Strike debt: accumulation is LEVERED, not free.
+ *  • stopped  — the cap has halted the draw, so income pays the bill itself and only the surplus buys.
+ *  • no-draw modes — surplus retires the named leg(s) first, and whatever survives buys.
+ */
+export type BuyMode = 'drawing' | 'stopped' | 'noDraw';
+
+export interface CashFlowAtMonth {
+  mode: BuyMode;
+  /** Dollars buying bitcoin this month — straight from the engine, never re-derived. */
+  buysUsd: number;
+  /** Bill dollars the credit line funded this month (0 unless drawing). */
+  lineFundedUsd: number;
+  /** Bill dollars income had to cover because the line could not (0 when fully funded). */
+  incomeCoveredUsd: number;
+  /** True when `buysUsd` exceeds the surplus — i.e. the line is doing the work. */
+  leveraged: boolean;
+}
+
+export function cashFlowAtMonth(
+  row: Pick<CyclingRow, 'btcBoughtUsd' | 'strikeDrawn' | 'strikeShortfall'>,
+  income: number,
+  expenses: number,
+  isCycleMode: boolean,
+): CashFlowAtMonth {
+  const surplus = Math.max(0, income - expenses);
+  const drawing = isCycleMode && (row.strikeDrawn > 0 || row.strikeShortfall > 0);
+  const mode: BuyMode = !isCycleMode ? 'noDraw' : drawing ? 'drawing' : 'stopped';
+  return {
+    mode,
+    buysUsd: row.btcBoughtUsd,
+    lineFundedUsd: drawing ? row.strikeDrawn : 0,
+    incomeCoveredUsd: drawing ? row.strikeShortfall : 0,
+    leveraged: row.btcBoughtUsd > surplus + 1e-9,
+  };
+}
+
 export interface BtcGain {
   /** BTC accumulated — price-independent (pure counts). */
   gross: number;

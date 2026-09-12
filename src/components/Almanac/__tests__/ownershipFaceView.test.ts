@@ -13,6 +13,7 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   debt: 100_000,
   strikeDrawn: 0,
   strikeShortfall: 0,
+  btcBoughtUsd: 0,
   defenseDrawnUsd: 0,
   cbLtvPreDefense: null,
   defenseShortfallUsd: 0,

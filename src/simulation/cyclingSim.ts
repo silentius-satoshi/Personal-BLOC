@@ -125,6 +125,14 @@ export interface CyclingRow {
 
   strikeDrawn: number;           // actually drawn this month (credit-line constrained)
   strikeShortfall: number;       // the part of `expenses` income had to cover instead
+  /**
+   * DOLLARS that bought bitcoin this month. ⚠ The view CANNOT derive this from a cbColl delta any more —
+   * the sweep cascade and the emergency top-up also move collateral into that pool — and it is NOT the
+   * surplus while the flywheel is running: a drawing month puts the WHOLE income into bitcoin because
+   * the credit line, not income, paid the bill. `income − expenses` is the never-draw BASELINE, the
+   * thing this strategy is measured against. Exposed so one number answers "what buys bitcoin".
+   */
+  btcBoughtUsd: number;
 
   /** Debt-shift defense: CB debt moved to Strike this month to hold the cap (0 when not defended). */
   defenseDrawnUsd: number;
@@ -297,6 +305,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     const price = pricePath[m];
     let strikeDrawn = 0;
     let strikeShortfall = 0;
+    let btcBoughtUsd = 0;
     let defenseDrawnUsd = 0;
     let cbLtvPreDefense: number | null = null;
     let defenseShortfallUsd = 0;
@@ -333,13 +342,18 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           strikeBal += si;
           totalStrikeInterest += si;
 
-          if (price > 0) cbColl += Math.max(0, income - strikeShortfall) / price;
+          // ⭐ THE FLYWHEEL: the line paid the bill, so ALL of income buys bitcoin — less only the part
+          // of the bill the line could not fund. Not the surplus.
+          btcBoughtUsd = Math.max(0, income - strikeShortfall);
+          if (price > 0) cbColl += btcBoughtUsd / price;
         } else {
           if (stopMonth === null && liqMonth === null) stopMonth = m;
           const si = strikeBal * smr;
           strikeBal += si;
           totalStrikeInterest += si;
-          if (price > 0) cbColl += Math.max(0, income - expenses) / price;
+          // Not drawing: income pays the bill itself, so only the surplus is left to buy.
+          btcBoughtUsd = Math.max(0, income - expenses);
+          if (price > 0) cbColl += btcBoughtUsd / price;
         }
 
         // ── SWEEP CASCADE: Strike surplus collateral → Coinbase ─────────────────────────────────────
@@ -471,6 +485,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           cash -= pay;
           if (cbDebt < 0.005) cbDebt = 0;
         }
+        btcBoughtUsd = Math.max(0, cash);
         if (cash > 0 && price > 0) cbColl += cash / price;
       }
     }
@@ -518,7 +533,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       yearLabel: (startYear + m / 12).toFixed(1),
       price,
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
-      strikeDrawn, strikeShortfall,
+      strikeDrawn, strikeShortfall, btcBoughtUsd,
       defenseDrawnUsd, cbLtvPreDefense, defenseShortfallUsd, defended: defenseDrawnUsd > 0,
       strikeToCbBtc, topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
       strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, coldFromCb, coldFromStrike, btcHeld,

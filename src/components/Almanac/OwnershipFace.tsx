@@ -15,7 +15,7 @@ import { deriveOwnership } from '../../simulation/ownership';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import {
   applyPathStress, debtSplit, clampMonth, holdingsSplit,
-  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
 } from './cyclingFaceView';
 import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
 import { SliderInput } from '../ui/SliderInput';
@@ -702,6 +702,18 @@ export default function OwnershipFace() {
                 (selRow.cbDebt * cbAprPct / 100 + selRow.strikeBalance * strikeAprPct / 100) / 12,
               )}/mo of interest at month {monthIdx}.
               {selRow.strikeShortfall > 0 && ` Income is covering ${fmtUSD(selRow.strikeShortfall)} of the bill this month.`}
+              {/* ⚠ Surplus-vs-interest is a SOLVENCY read and stays. But it is not what buys bitcoin:
+                  while the flywheel draws, the line pays the bill and the whole income buys. Stating
+                  only the surplus here is what made the Cycling card understate the flywheel 4x. */}
+              {(() => {
+                const cf = cashFlowAtMonth(selRow, income, expenses, mode === 'cycle');
+                return cf.leveraged ? (
+                  <> <strong>{fmtUSD(cf.buysUsd)}/mo is buying bitcoin</strong> — the line pays the bills,
+                    so your paycheck doesn't have to. Those bills are borrowed, not spare cash.</>
+                ) : (
+                  <> {fmtUSD(cf.buysUsd)}/mo is buying bitcoin this month.</>
+                );
+              })()}
             </div>
 
             <span className={styles.cardLabel}>Price path</span>

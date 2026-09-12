@@ -13,7 +13,7 @@ import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
 import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
-  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
 } from './cyclingFaceView';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
@@ -704,7 +704,32 @@ export default function CyclingFace() {
             <SliderInput label="Monthly bills (drawn)" value={expenses} onChange={(v) => set('expenses', v)}
               min={0} max={20000} step={100} display={fmtUSD(expenses)} minLabel="$0" maxLabel="$20k" />
           </div>
-          <p className={styles.noteQuiet}>Surplus {fmtUSD(Math.max(0, income - expenses))}/mo buys bitcoin.</p>
+          {(() => {
+            // ⚠ Follows the SCRUBBED month, not a static formula. "Surplus buys bitcoin" is only true
+            // once the cap has stopped the draw; while drawing, the line pays the bill and the whole
+            // income buys. Scrub past the cap and this sentence changes — that IS the flywheel.
+            const cf = cashFlowAtMonth(selRow, income, expenses, true);
+            return (
+              <p className={styles.noteQuiet}>
+                {cf.mode === 'drawing' ? (
+                  <>
+                    Month {monthIdx}: the line pays your {fmtUSD(cf.lineFundedUsd)} of bills, so all{' '}
+                    <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong> — not just the{' '}
+                    {fmtUSD(Math.max(0, income - expenses))} left over.
+                    {cf.incomeCoveredUsd > 0
+                      && ` Your paycheck covers ${fmtUSD(cf.incomeCoveredUsd)} the line couldn't reach.`}
+                    {' '}Those bills become {strikeAprPct}% debt until they move to Coinbase.
+                  </>
+                ) : (
+                  <>
+                    Month {monthIdx}: borrowing paused — the loan hit your {capPct}% ceiling. Your paycheck
+                    pays the bills again, so only <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong>{' '}
+                    until the price recovers.
+                  </>
+                )}
+              </p>
+            );
+          })()}
         </section>
         <section className={styles.card}>
           <span className={styles.cardLabel}>Strategy</span>
