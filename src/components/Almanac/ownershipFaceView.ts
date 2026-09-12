@@ -3,11 +3,10 @@ import { deriveOwnership } from '../../simulation/ownership';
 import { btcGained } from './cyclingFaceView';
 
 /**
- * Ownership face display math (S3). REUSES the Cycling lens rather than defining a second one (B1):
- * `applyPriceLens` / `btcGained` / `clampMonth` / `holdingsSplit` come straight from cyclingFaceView —
- * S3's own draft `applyPriceLens` was a near-verbatim copy of the shipped one, and its "each LTV is
- * recomputed against ITS OWN pool" note describes behaviour that already ships there. This module adds
- * only the ownership-specific bits. Pure, store-free, type-only imports (the testable-leaf rule).
+ * Ownership face display math (S3). REUSES the shared Cycling helpers rather than defining a second set
+ * (B1): `btcGained` / `clampMonth` / `holdingsSplit` / `applyPathStress` / `debtSplit` come straight from
+ * cyclingFaceView. This module adds only the ownership-specific bits. Pure, store-free, type-only imports
+ * (the testable-leaf rule).
  *
  * 🔴 Must never be imported by anything in the risk core (same discipline as cyclingFaceView).
  */

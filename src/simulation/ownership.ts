@@ -33,8 +33,8 @@ export interface Ownership {
 const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 
 export function deriveOwnership(btcHeld: number, debt: number, price: number, coldBtc = 0): Ownership {
-  // Zero-price guard mirrors btcGained/applyPriceLens: the debt term contributes 0 when a dollar figure
-  // can't be priced, so `yoursBtc` degenerates to `btcHeld` rather than blowing up.
+  // Zero-price guard mirrors btcGained: the debt term contributes 0 when a dollar figure can't be priced,
+  // so `yoursBtc` degenerates to `btcHeld` rather than blowing up.
   const totalHeld = btcHeld + Math.max(0, coldBtc);
   const lendersBtc = price > 0 ? debt / price : 0;
   const yoursBtc = totalHeld - lendersBtc;

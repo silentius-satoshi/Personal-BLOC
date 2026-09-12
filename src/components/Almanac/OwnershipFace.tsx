@@ -5,7 +5,7 @@ import {
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
-import { plBandsAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
+import { plBandsAt, plBandAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
 import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
@@ -14,7 +14,7 @@ import { LEVEL_COLOR, CREDIT_WARN_USED, CREDIT_ACT_USED } from '../../simulation
 import { deriveOwnership } from '../../simulation/ownership';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import {
-  applyPriceLens, clampMonth, holdingsSplit,
+  applyPathStress, debtSplit, clampMonth, holdingsSplit,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
 } from './cyclingFaceView';
 import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
@@ -73,7 +73,7 @@ const BAND_META: { key: PlBand; label: string; color: string }[] = [
 ];
 
 const MODE_NOTE: Record<CyclingMode, string> = {
-  cycle: 'Bills drawn on Strike, refinanced into Coinbase every N months, purchases routed to the Coinbase pool.',
+  cycle: 'Bills drawn on Strike, refinanced into Coinbase every N months, purchases routed to the Coinbase pool. With cap defense on, a breach pays Coinbase down from Strike and the refinance shifts it back.',
   hold: 'No draw, no refinance. Surplus buys into the Coinbase pool. ⚠ This IS the never-draw baseline — there is no second curve to compare against.',
   clearStrike: 'No draw. Surplus retires Strike, then buys.',
   clearBoth: 'No draw. Surplus retires Strike, then Coinbase, then buys.',
@@ -216,8 +216,10 @@ export default function OwnershipFace() {
   const lineStep = pricePath.length > 1 && pricePath[0] > 0 ? pricePath[1] / pricePath[0] - 1 : 0;
   const stepPct = `${lineStep >= 0 ? '+' : '−'}${Math.abs(lineStep * 100).toFixed(1)}%`;
 
-  const sim = useMemo(() => runCyclingSim({
-    pricePath,
+  // Engine inputs shared by the base run and the stress run. `defendCbLtv` is AUTOMATIC and ON: the face
+  // models the strategy WITH its cap-defense policy (the same Strike→CB paydown the Advisor's ltvTriggered
+  // mode runs), not an undefended hypothetical.
+  const engineInputs = useMemo(() => ({
     startYear: startDate.getUTCFullYear(),
     strikeCollateralBtc: s.strikeCollateralBtc,
     strikeBalance: s.strikeBalance,
@@ -229,14 +231,42 @@ export default function OwnershipFace() {
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
     coldStoreBufferPct: coldBufferPct,
+    defendCbLtv: true,
     mode,
   }), [
-    pricePath, startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct, mode,
   ]);
 
+  const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
+  const baseRowCount = baseSim.rows.length;
+
+  const [selectedMonth, setSelectedMonth] = useState(baseRowCount - 1);
+  const [lens, setLens] = useState(1);
+  const [view, setView] = useState<'ownership' | 'ltv' | 'price'>('ownership');
+
+  // ⚠ CLAMP AT RENDER TIME (the crash fix) — `rows[selectedMonth]` must never appear.
+  const monthIdx = clampMonth(selectedMonth, baseRowCount);
+
+  // The stress rollout: months from the selected month onward carry the lens factor (the band path keeps
+  // its SHAPE), and the WHOLE face switches to that run — projection, charts, milestones, venue split.
+  const stressPath = useMemo(() => applyPathStress(pricePath, monthIdx, lens), [pricePath, monthIdx, lens]);
+  const sim = useMemo(
+    () => (lens === 1 ? baseSim : runCyclingSim({ ...engineInputs, pricePath: stressPath })),
+    [lens, baseSim, engineInputs, stressPath],
+  );
+
   const { rows, last } = sim;
   const liqMonth = sim.liqMonth;
+  const defenseActive = sim.defenseCount > 0;
+  // The first month NEITHER lever could hold the stop. While the shift alone ran short the top-up covers
+  // it, so its exhaustion is the real residual; if no top-up ever fired, the shift's is.
+  const unhedgedMonth = sim.totalTopUpBtc > 0 ? sim.topUpExhaustedMonth : sim.defenseExhaustedMonth;
+
+  const selRow = rows[monthIdx] ?? last;
+  const atEnd = monthIdx === rows.length - 1;
+  const gained = ownershipGained(selRow, rows[0]);
+  const off = Math.abs(lens - 1) > 0.005;
 
   // Break-even on the refinance: the fee is paid once per dollar moved, the rate saving accrues forever.
   // ⚠ Use the run's REALIZED blended fee, not tier 1: the fee is marginal (2% below the $250k break, 1%
@@ -244,22 +274,15 @@ export default function OwnershipFace() {
   const feeFraction = refinanceFeeFraction(sim.totalCbFees, sim.totalRefinancedUsd);
   const feeBreakEvenMonths = refinanceBreakEvenMonths(feeFraction, strikeAprPct, cbAprPct);
 
-  const [selectedMonth, setSelectedMonth] = useState(rows.length - 1);
-  const [lens, setLens] = useState(1);
-  const [view, setView] = useState<'ownership' | 'ltv' | 'price'>('ownership');
+  // The SUPPORT line at the selected month — the deepest fitted drawdown. The stress may go below it;
+  // that is flagged, never blocked.
+  const supportAtMonth = plBandAt('floor', startDate, monthIdx);
 
-  // ⚠ CLAMP AT RENDER TIME (the crash fix) — `rows[selectedMonth]` must never appear.
-  const monthIdx = clampMonth(selectedMonth, rows.length);
-  const selRow = rows[monthIdx] ?? last;
-  const atEnd = monthIdx === rows.length - 1;
-  const lensed = applyPriceLens(selRow, lens);
-  const gained = ownershipGained(selRow, rows[0], lensed.price);
-  const off = Math.abs(lens - 1) > 0.005;
+  useEffect(() => { setSelectedMonth((m) => Math.min(m, baseRowCount - 1)); }, [baseRowCount]);
 
-  useEffect(() => { setSelectedMonth((m) => Math.min(m, rows.length - 1)); }, [rows.length]);
-
-  // ⚠ C7 — mirrors the sim memo's dep array, INCLUDING `mode`: a stale lens would stress-test the wrong
-  // strategy. If an input is added to runCyclingSim, add it here too.
+  // ⚠ C7 — mirrors the engine-inputs memo, INCLUDING `mode`: a stale stress scenario would test the wrong
+  // strategy. If an input is added to runCyclingSim, add it here too. (Changing the month/input clears the
+  // stress so the face returns to "as modeled".)
   useEffect(() => { setLens(1); }, [
     monthIdx,
     pricePath, cbDebt,
@@ -268,7 +291,7 @@ export default function OwnershipFace() {
   ]);
 
   // ── the ownership wrapper ──
-  const ownership = deriveOwnership(selRow.btcHeld, selRow.debt, lensed.price);
+  const ownership = deriveOwnership(selRow.btcHeld, selRow.debt, selRow.price);
   const owedBtc = ownership.lendersBtc;
   const yoursBtc = Math.max(0, ownership.yoursBtc);   // hero clamp — display only
   const netToday = deriveOwnership(rows[0].btcHeld, rows[0].debt, rows[0].price).yoursBtc;
@@ -293,8 +316,8 @@ export default function OwnershipFace() {
     ? selRow.cbDebt / (selRow.cbCollateralBtc * CB_LLTV)
     : selRow.cbDebt > 0 ? Number.POSITIVE_INFINITY : 0;
   const nearestLiq = Math.max(strikeLiq, cbLiq);
-  const liqDist = nearestLiq > 0 && Number.isFinite(nearestLiq) && lensed.price > 0
-    ? 1 - nearestLiq / lensed.price : Number.NaN;
+  const liqDist = nearestLiq > 0 && Number.isFinite(nearestLiq) && selRow.price > 0
+    ? 1 - nearestLiq / selRow.price : Number.NaN;
   const unbackedLeg =
     !Number.isFinite(strikeLiq) && selRow.strikeBalance > 0 ? 'the Strike pledge is zero but its balance is not'
     : !Number.isFinite(cbLiq) && selRow.cbDebt > 0 ? 'the Coinbase collateral is zero but its debt is not'
@@ -302,7 +325,7 @@ export default function OwnershipFace() {
 
   // ⚠ capacityUsed matches deriveSafetyView: balance ÷ creditLine, price-free (A10).
   const creditUsed = s.creditLine > 0 ? selRow.strikeBalance / s.creditLine : 0;
-  const cap = strikeAvailableCredit(s.creditLine, selRow.strikeCollateralBtc, lensed.price, selRow.strikeBalance);
+  const cap = strikeAvailableCredit(s.creditLine, selRow.strikeCollateralBtc, selRow.price, selRow.strikeBalance);
   const overLine = selRow.strikeBalance > s.creditLine;
 
   // C2 — the degenerate case: the cap never lets the draw run. ⚠ Judged on the ENGINE's ground truth
@@ -317,6 +340,31 @@ export default function OwnershipFace() {
 
   const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV), [rows]);
   const milestones = [12, 24, 36, 60, 120].filter((m) => m <= months);
+
+  const statTiles: Array<readonly [string, string, string, string]> = [
+    ['Held', fmtBtc(selRow.btcHeld), `from ${fmtBtc(rows[0].btcHeld)}`, 'var(--green)'],
+    ['Owed', fmtBtc(owedBtc), `${fmtK(selRow.debt)} of debt`, 'var(--text-muted)'],
+    ['Coinbase LTV', fmtLtvPct(selRow.cbLtv),
+      // In a defended month the headline sits at the cap — show the shock that was absorbed right there.
+      selRow.defended && selRow.cbLtvPreDefense !== null
+        ? `defended from ${fmtLtvPct(selRow.cbLtvPreDefense)}`
+        : `liq ${fmtLiqK(cbLiq)} · 86% instant`,
+      cbZone(selRow.cbLtv)],
+    ['Strike LTV', fmtLtvPct(selRow.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · 85%, 72h cure`,
+      LEVEL_COLOR[barLevel(selRow.strikeLtv, STRIKE_MAX_DRAW_LTV, strikeLiqLtv)]],
+    ['Net ownership', sBtc(gained.yours), `gross ${sBtc(gained.gross)}`,
+      gained.yours >= 0 ? 'var(--green)' : 'var(--red)'],
+    ['Net equity', fmtK(selRow.equity),
+      atEnd ? `strike interest ${fmtK(sim.totalStrikeInterest)}` : `at month ${monthIdx}`,
+      atEnd ? (selRow.equity >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text-primary)'],
+  ];
+  if (defenseActive) {
+    statTiles.push([
+      'Debt shifted', fmtK(sim.totalDefenseDrawnUsd),
+      `${sim.defenseCount} mo · CB → Strike${unhedgedMonth !== null ? ` · unheld from mo ${unhedgedMonth}` : ''}`,
+      'var(--btc)',
+    ]);
+  }
 
   const verdict = (() => {
     if (liqMonth !== null) {
@@ -342,8 +390,8 @@ export default function OwnershipFace() {
       return {
         color: 'var(--amber)' as const,
         text: sim.drawingResumedMonth === null
-          ? `Drawing stops in month ${sim.stopMonth} at the ${capPct}% Coinbase cap. Bills come from income after that.`
-          : `The draw pauses at month ${sim.stopMonth} (above the ${capPct}% cap) and runs again from month ${sim.drawingResumedMonth}, as the rising path pulls LTV back under it.`,
+          ? `Drawing stops in month ${sim.stopMonth} at the ${capPct}% Coinbase stop. Bills come from income after that.`
+          : `The draw pauses at month ${sim.stopMonth} (above the ${capPct}% stop) and runs again from month ${sim.drawingResumedMonth}, as the rising path pulls LTV back under it.`,
       };
     }
     const d = last.btcHeld - last.debt / last.price - netToday;
@@ -386,7 +434,7 @@ export default function OwnershipFace() {
             {yoursBtc.toFixed(4)} ₿
           </div>
           <div className={styles.heroLine}>
-            {selRow.btcHeld.toFixed(3)} held − {owedBtc.toFixed(3)} owed at {fmtUSD(lensed.price)} ·{' '}
+            {selRow.btcHeld.toFixed(3)} held − {owedBtc.toFixed(3)} owed at {fmtUSD(selRow.price)} ·{' '}
             <span style={{ color: delta >= 0 ? 'var(--green)' : 'var(--red)' }}>{sBtc(delta)} vs today</span>
           </div>
 
@@ -405,6 +453,22 @@ export default function OwnershipFace() {
             {verdict.text}
           </div>
 
+          {defenseActive && (
+            <p className={styles.noteQuiet}>
+              LTV stop defense: {fmtK(sim.totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across{' '}
+              {sim.defenseCount} month{sim.defenseCount === 1 ? '' : 's'}
+              {sim.firstDefenseMonth !== null ? `, starting month ${sim.firstDefenseMonth}` : ''}.
+              {sim.totalTopUpBtc > 0 && (
+                <> When the line ran short, {fmtBtc(sim.totalTopUpBtc)} of collateral was moved into Coinbase —
+                {' '}{fmtBtc(sim.totalTopUpFromColdBtc)} from cold storage, {fmtBtc(sim.totalTopUpFromStrikeBtc)} from the
+                Strike pledge{sim.firstTopUpMonth !== null ? `, starting month ${sim.firstTopUpMonth}` : ''}.</>
+              )}
+              {unhedgedMonth !== null
+                ? ` From month ${unhedgedMonth} even the available collateral could not hold the ${capPct}% stop — the residual is unhedged.`
+                : ` The ${capPct}% stop held; the refinance shifts the debt back to Coinbase as the price recovers.`}
+            </p>
+          )}
+
           {/* ── SCRUBBERS — one card holding both range inputs (A1) ── */}
           <section className={`${styles.card} ${styles.scrubCard}`}>
             <div className={styles.scrubHead}>
@@ -421,9 +485,9 @@ export default function OwnershipFace() {
               aria-label="Month"
             />
             <div className={styles.scrubHead}>
-              <span className={styles.cardLabel}>Price lens</span>
+              <span className={styles.cardLabel}>Price stress</span>
               <span className={styles.scrubValue}>
-                {fmtUSD(lensed.price)}
+                {fmtUSD(selRow.price)}
                 {off ? ` · ${lens < 1 ? '−' : '+'}${Math.abs((lens - 1) * 100).toFixed(0)}%` : ' · as modeled'}
               </span>
             </div>
@@ -431,27 +495,26 @@ export default function OwnershipFace() {
               type="range" className={styles.scrub}
               min={0.2} max={2.2} step={0.01} value={lens}
               onChange={(e) => setLens(Number(e.target.value))}
-              aria-label="Price lens"
+              aria-label="Price stress multiplier"
             />
             <p className={styles.noteQuiet}>
-              Display only — never re-runs the engine, never moves the charts. Resets on any input change.
+              Stress from this month forward — the projection, charts, and holdings all follow. Resets on any
+              input change.
             </p>
+            <p className={styles.noteQuiet}>
+              Support line at this month: {fmtUSD(supportAtMonth)}.
+            </p>
+            {selRow.price < supportAtMonth && (
+              <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>
+                Below the power-law support line — outside the fitted drawdown envelope. The simulation keeps
+                running, but nothing calibrates this depth.
+              </p>
+            )}
           </section>
 
           {/* ── STAT GRID ── */}
           <div className={styles.statGrid}>
-            {([
-              ['Held', fmtBtc(selRow.btcHeld), `from ${fmtBtc(rows[0].btcHeld)}`, 'var(--green)'],
-              ['Owed', fmtBtc(owedBtc), `${fmtK(selRow.debt)} of debt`, 'var(--text-muted)'],
-              ['Coinbase LTV', fmtLtvPct(lensed.cbLtv), `liq ${fmtLiqK(cbLiq)} · 86% instant`, cbZone(lensed.cbLtv)],
-              ['Strike LTV', fmtLtvPct(lensed.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · 85%, 72h cure`,
-                LEVEL_COLOR[barLevel(lensed.strikeLtv, STRIKE_MAX_DRAW_LTV, strikeLiqLtv)]],
-              ['Net ownership', sBtc(gained.yours), `gross ${sBtc(gained.gross)}`,
-                gained.yours >= 0 ? 'var(--green)' : 'var(--red)'],
-              ['Net equity', fmtK(lensed.equity),
-                atEnd ? `strike interest ${fmtK(sim.totalStrikeInterest)}` : `at month ${monthIdx}`,
-                atEnd ? (lensed.equity >= 0 ? 'var(--green)' : 'var(--red)') : 'var(--text-primary)'],
-            ] as const).map(([label, value, sub, color]) => (
+            {statTiles.map(([label, value, sub, color]) => (
               <div key={label} className={styles.stat}>
                 <span className={styles.statLabel}>{label}</span>
                 <div className={styles.statValue} style={{ color }}>{value}</div>
@@ -463,8 +526,8 @@ export default function OwnershipFace() {
           {/* ── SAFETY SECTION ── */}
           <section className={styles.safety}>
             <div className={styles.safetyTitle}>Where the position stands at month {monthIdx}</div>
-            <SafetyLine label="Coinbase LTV" value={lensed.cbLtv} warn={0.65} act={CB_LLTV} right={`liq ${fmtLiqK(cbLiq)}`} />
-            <SafetyLine label="Strike LTV" value={lensed.strikeLtv} warn={STRIKE_MAX_DRAW_LTV} act={strikeLiqLtv} right={`liq ${fmtLiqK(strikeLiq)}`} />
+            <SafetyLine label="Coinbase LTV" value={selRow.cbLtv} warn={0.65} act={CB_LLTV} right={`liq ${fmtLiqK(cbLiq)}`} />
+            <SafetyLine label="Strike LTV" value={selRow.strikeLtv} warn={STRIKE_MAX_DRAW_LTV} act={strikeLiqLtv} right={`liq ${fmtLiqK(strikeLiq)}`} />
             <SafetyLine label="Strike credit used" value={creditUsed} warn={CREDIT_WARN_USED} act={CREDIT_ACT_USED}
               right={`${fmtK(cap.available)} open`}
               flag={overLine ? `Balance is ${fmtK(selRow.strikeBalance - s.creditLine)} past the line — the draw is capped but the interest on it is not.` : null} />
@@ -474,7 +537,7 @@ export default function OwnershipFace() {
                 : unbackedLeg
                   ? `No finite liquidation price — ${unbackedLeg}.`
                   : liqDist > 0
-                    ? `Nearest liquidation ${fmtUSD(nearestLiq)}, ${fmtLtvPct(liqDist)} below ${fmtUSD(lensed.price)}.`
+                    ? `Nearest liquidation ${fmtUSD(nearestLiq)}, ${fmtLtvPct(liqDist)} below ${fmtUSD(selRow.price)}.`
                     : `Price is at or below the nearest liquidation (${fmtUSD(nearestLiq)}).`}
               {' '}Limit is bound by {cap.binding === 'collateral' ? 'collateral' : 'the credit line'}
               {cap.binding === 'collateral' ? ` — the full line is backed again above ${fmtK(cap.fullyBackedPrice)}.` : '.'}
@@ -487,6 +550,7 @@ export default function OwnershipFace() {
             <span className={styles.cardLabel}>Holdings by venue</span>
             {(() => {
               const h = holdingsSplit(selRow);
+              const d = debtSplit(selRow);
               const pct = (n: number) => (h.combined > 0 ? (n / h.combined) * 100 : 0);
               return (
                 <>
@@ -499,28 +563,34 @@ export default function OwnershipFace() {
                     <span className={styles.venueDotStrike} />
                     <span className={styles.venueName}>Strike</span>
                     <span className={styles.venueBtc}>{h.strike.toFixed(4)} ₿</span>
-                    <span className={styles.venueUsd}>{fmtK(h.strike * lensed.price)}</span>
+                    <span className={styles.venueUsd}>{fmtK(h.strike * selRow.price)}</span>
                   </div>
                   <div className={styles.venueRow}>
                     <span className={styles.venueDotCb} />
                     <span className={styles.venueName}>Coinbase</span>
                     <span className={styles.venueBtc}>{h.coinbase.toFixed(4)} ₿</span>
-                    <span className={styles.venueUsd}>{fmtK(h.coinbase * lensed.price)}</span>
+                    <span className={styles.venueUsd}>{fmtK(h.coinbase * selRow.price)}</span>
                   </div>
                   {h.cold > 0 && (
                     <div className={styles.venueRow}>
                       <span className={styles.venueDotCold} />
                       <span className={styles.venueName}>Cold storage</span>
                       <span className={styles.venueBtc}>{h.cold.toFixed(4)} ₿</span>
-                      <span className={styles.venueUsd}>{fmtK(h.cold * lensed.price)}</span>
+                      <span className={styles.venueUsd}>{fmtK(h.cold * selRow.price)}</span>
                     </div>
                   )}
                   <div className={`${styles.venueRow} ${styles.venueCombined}`}>
                     <span className={styles.venueDotNone} />
                     <span className={styles.venueName}>Combined</span>
                     <span className={styles.venueBtc}>{h.combined.toFixed(4)} ₿</span>
-                    <span className={styles.venueUsd}>{fmtK(h.combined * lensed.price)}</span>
+                    <span className={styles.venueUsd}>{fmtK(h.combined * selRow.price)}</span>
                   </div>
+                  {/* Debt sits with its venue: a refinance/debt shift moves DOLLARS, never coins, so this
+                      is where the cap defense is visible. */}
+                  <p className={styles.noteQuiet}>
+                    Debt · {fmtK(d.strikeUsd)} Strike · {fmtK(d.coinbaseUsd)} Coinbase
+                    {d.shiftedUsd > 0 && ` · ${fmtK(d.shiftedUsd)} shifted this month`}
+                  </p>
                 </>
               );
             })()}
@@ -658,7 +728,7 @@ export default function OwnershipFace() {
               </button>
             </div>
 
-            <SliderInput label="Coinbase draw cap" value={capPct} onChange={(v) => set('cbLtvCapPct', v)}
+            <SliderInput label="Coinbase LTV stop" value={capPct} onChange={(v) => set('cbLtvCapPct', v)}
               min={20} max={85} step={1} display={`${capPct}%`} minLabel="20%" maxLabel="85%" />
             <div className={styles.presetRow}>
               <button type="button" className={styles.ghostBtn} onClick={() => set('cbLtvCapPct', s.cbLtvTriggerPct)}>
@@ -698,10 +768,10 @@ export default function OwnershipFace() {
               platform fee, which is billed onto the balance monthly.
               This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% all-in over{' '}
               {CB_REALIZED_NET_APR.months} months since {CB_REALIZED_NET_APR.since} (max {CB_REALIZED_NET_APR.max}%) —
-              one cycle, so it says what has happened, not what can. While the draw cap binds, the rate is a
+              one cycle, so it says what has happened, not what can. While the draw stop binds, the rate is a
               cost rather than a danger — peak CB LTV moves under a point across a 3–16% range, because the
-              cap absorbs it into less accumulation. Set the cap high enough that it stops binding and the
-              rate moves the liquidation DATE instead: at an 85% cap, 1.5 extra points pulls it in 7 months.
+              stop absorbs it into less accumulation. Set the stop high enough that it no longer binds and
+              the rate moves the liquidation DATE instead: at an 85% stop, 1.5 extra points pulls it in 7 months.
               {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
               {fmtK(CB_FEE_TIER_BREAK)}, {CB_FEE_TIER2_PCT * 100}% above, added to principal so it compounds.
               This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows — a blended{' '}
@@ -716,9 +786,9 @@ export default function OwnershipFace() {
             <div className={styles.constraints}>
               {degenerateCap && (
                 <div>
-                  The draw never runs on this path at a {capPct}% stop cap (it opens at{' '}
+                  The draw never runs on this path at a {capPct}% stop (it opens at{' '}
                   {fmtLtvPct(rows[0].cbLtv)} CB LTV). This run measures the refinance, not the strategy.
-                  Raise the cap to model the draw.
+                  Raise the stop to model the draw.
                 </div>
               )}
               {deficitMode && (
@@ -757,6 +827,7 @@ export default function OwnershipFace() {
                       className={`${styles.msRow} ${m === monthIdx ? styles.msRowOn : ''} ${r.postLiquidation ? styles.msPost : ''}`}>
                       <td className={`${styles.msTd} ${styles.msYear}`}>
                         {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
+                        {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
                         {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
                       </td>
                       <td className={styles.msTd}>{fmtK(r.price)}</td>

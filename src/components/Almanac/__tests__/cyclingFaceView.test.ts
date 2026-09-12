@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  applyPriceLens, btcGained, holdingsSplit, clampMonth,
+  applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths,
 } from '../cyclingFaceView';
 import { runCyclingSim, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
@@ -39,62 +39,50 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   ...o,
 });
 
-describe('applyPriceLens', () => {
-  it('is the identity at multiplier 1', () => {
-    const r = mkRow();
-    const l = applyPriceLens(r, 1);
-    expect(l.price).toBeCloseTo(r.price, 9);
-    expect(l.cbLtv).toBeCloseTo(r.cbLtv, 12);
-    expect(l.strikeLtv).toBeCloseTo(r.strikeLtv, 12);
-    expect(l.collateralValue).toBeCloseTo(r.collateralValue, 6);
-    expect(l.equity).toBeCloseTo(r.equity, 6);
+describe('applyPathStress — the lens rolls the remaining band path forward', () => {
+  const path = [78_000, 80_000, 82_000, 84_000, 86_000];
+
+  it('is the identity — SAME reference — at factor 1', () => {
+    expect(applyPathStress(path, 2, 1)).toBe(path);
   });
 
-  it('halving the price doubles BOTH LTVs', () => {
-    const r = mkRow();
-    const l = applyPriceLens(r, 0.5);
-    expect(l.cbLtv).toBeCloseTo(r.cbLtv * 2, 12);
-    expect(l.strikeLtv).toBeCloseTo(r.strikeLtv * 2, 12);
-    expect(l.price).toBeCloseTo(40_000, 9);
+  it('multiplies months from the anchor onward and leaves earlier months untouched', () => {
+    expect(applyPathStress(path, 2, 0.5)).toEqual([78_000, 80_000, 41_000, 42_000, 43_000]);
   });
 
-  it('leaves the row itself untouched — debt and BTC counts are held fixed', () => {
-    const r = mkRow();
-    const before = { debt: r.debt, btcHeld: r.btcHeld, cbDebt: r.cbDebt };
-    applyPriceLens(r, 0.4);
-    expect(r.debt).toBe(before.debt);
-    expect(r.btcHeld).toBe(before.btcHeld);
-    expect(r.cbDebt).toBe(before.cbDebt);
+  it('includes the selected month itself — the stress starts where you are looking', () => {
+    expect(applyPathStress(path, 0, 2)).toEqual([156_000, 160_000, 164_000, 168_000, 172_000]);
   });
 
-  it('yoursBtc is btcHeld minus the debt repriced at the lensed price', () => {
-    const r = mkRow();
-    expect(applyPriceLens(r, 2).yoursBtc).toBeCloseTo(3 - 100_000 / 160_000, 12);
-  });
-
-  it('guards a non-positive multiplier or price — no NaN, yoursBtc falls back to btcHeld', () => {
-    const r = mkRow();
-    for (const l of [applyPriceLens(r, 0), applyPriceLens(r, -1), applyPriceLens(mkRow({ price: 0 }), 1.5)]) {
-      expect(Number.isFinite(l.price)).toBe(true);
-      expect(Number.isFinite(l.cbLtv)).toBe(true);
-      expect(l.yoursBtc).toBe(r.btcHeld);
+  it('⭐ preserves the band SHAPE — the ratio between two stressed paths is constant from the anchor', () => {
+    const fair    = [78_000, 80_000, 90_000, 100_000, 110_000];
+    const support = [60_000, 62_000, 68_000, 75_000, 82_000];
+    const sFair    = applyPathStress(fair, 2, 0.7);
+    const sSupport = applyPathStress(support, 2, 0.7);
+    for (let i = 2; i < fair.length; i++) {
+      expect(sFair[i] / sSupport[i]).toBeCloseTo(fair[i] / support[i], 12);
     }
-    expect(applyPriceLens(r, 0).price).toBe(r.price);   // the row's OWN price, unchanged
+    expect(sFair.slice(0, 2)).toEqual(fair.slice(0, 2));   // the unstressed head is the base path
   });
 
-  it('⭐ mirrors the engine: positive debt with no collateral lenses to Infinity, never 0', () => {
-    // The engine's ltvOf() returns Infinity here (a stripped position is liquidatable at any price). The
-    // lens previously returned 0 — rendering the same position as SAFE under a price stress.
-    const stripped = mkRow({ cbCollateralBtc: 0, strikeCollateralBtc: 0, cbLtv: Infinity, strikeLtv: Infinity });
-    const l = applyPriceLens(stripped, 1.5);
-    expect(l.cbLtv).toBe(Infinity);
-    expect(l.strikeLtv).toBe(Infinity);
+  it('guards non-positive / junk factors and clamps the anchor', () => {
+    for (const f of [0, -1, NaN]) expect(applyPathStress(path, 2, f)).toBe(path);
+    expect(applyPathStress(path, -5, 0.5)).toEqual(path.map((p) => p * 0.5));   // clamp → month 0
+    expect(applyPathStress(path, 99, 0.5)).toEqual(path);                     // beyond the horizon → no change
+  });
+});
 
-    // ...while a genuinely debt-free leg stays a finite 0.
-    const debtFree = mkRow({ cbCollateralBtc: 0, strikeCollateralBtc: 0, cbDebt: 0, strikeBalance: 0, debt: 0 });
-    const d = applyPriceLens(debtFree, 1.5);
-    expect(d.cbLtv).toBe(0);
-    expect(d.strikeLtv).toBe(0);
+describe('debtSplit — the dollar-debt counterpart of holdingsSplit', () => {
+  it('splits Strike vs Coinbase debt and reports the month\'s shift', () => {
+    const d = debtSplit(mkRow({ strikeBalance: 13_000, cbDebt: 60_000, defenseDrawnUsd: 4_800 }));
+    expect(d.strikeUsd).toBe(13_000);
+    expect(d.coinbaseUsd).toBe(60_000);
+    expect(d.combinedUsd).toBe(73_000);
+    expect(d.shiftedUsd).toBe(4_800);
+  });
+
+  it('defaults the shift to 0 on an undefended row', () => {
+    expect(debtSplit(mkRow()).shiftedUsd).toBe(0);
   });
 });
 
@@ -251,7 +239,7 @@ describe('holdingsSplit', () => {
 describe('clampMonth — the shrinking-horizon crash trap', () => {
   it('keeps a stale index inside a shrunken row set', () => {
     // Horizon 240 → 239 with the scrubber parked at the old end. Pre-fix this read rows[240] === undefined
-    // and applyPriceLens threw on row.price.
+    // and every `row.*` read blew up.
     const wide = new Array(241).fill(0).map((_, m) => mkRow({ m }));
     const narrow = new Array(240).fill(0).map((_, m) => mkRow({ m }));
     const selected = wide.length - 1;                 // 240
@@ -260,7 +248,7 @@ describe('clampMonth — the shrinking-horizon crash trap', () => {
     const idx = clampMonth(selected, narrow.length);
     expect(idx).toBe(239);
     expect(narrow[idx]).toBeDefined();
-    expect(() => applyPriceLens(narrow[idx], 1)).not.toThrow();
+    expect(narrow[idx].btcHeld).toBeGreaterThan(0);
   });
 
   it('is the identity while the index is in range', () => {
