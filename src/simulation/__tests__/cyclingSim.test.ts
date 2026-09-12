@@ -142,6 +142,150 @@ describe('runCyclingSim — totalRefinancedUsd is the fee basis', () => {
   });
 });
 
+describe('runCyclingSim — debt-shift defense (defendCbLtv)', () => {
+  const CAP = 50;
+  /** A fall to 65k, held — enough to breach a 50% cap without exhausting the Strike line. */
+  const moderateCrash = [78_000, 65_000, ...new Array(12).fill(65_000)];
+  /** A deeper fall — the Strike line runs out and the cap cannot be fully held (breaches at 30k). */
+  const hardCrash = [78_000, 60_000, 55_000, 50_000, 45_000, 30_000, ...new Array(6).fill(30_000)];
+  const siM1 = LIVE.strikeBalance * LIVE.strikeAprPct / 100 / 12;
+
+  it('⭐ OFF by default — defendCbLtv false is byte-identical to the pre-defense engine', () => {
+    const a = run({ pricePath: flat(24), cbLtvCapPct: CAP });
+    const b = run({ pricePath: flat(24), cbLtvCapPct: CAP, defendCbLtv: false });
+    expect(a.rows).toEqual(b.rows);
+    expect(a.totalRefinancedUsd).toBe(b.totalRefinancedUsd);
+    expect(a.firstDefenseMonth).toBeNull();
+    expect(a.defenseCount).toBe(0);
+    expect(a.defenseExhaustedMonth).toBeNull();
+  });
+
+  it('⭐ pays CB down to the cap when a fall breaches it, and holds it there', () => {
+    const r = run({ pricePath: moderateCrash, cbLtvCapPct: CAP, defendCbLtv: true, cycleMonths: 999 });
+    expect(r.firstDefenseMonth).toBe(1);
+    expect(r.defenseExhaustedMonth).toBeNull();
+    expect(r.rows[1].cbLtvPreDefense!).toBeGreaterThan(CAP / 100);
+    expect(r.defenseCount).toBeGreaterThan(0);
+    expect(r.totalDefenseDrawnUsd).toBeGreaterThan(0);
+    for (const x of r.rows) expect(x.cbLtv).toBeLessThanOrEqual(CAP / 100 + 1e-6);
+  });
+
+  it('⭐ capacity-limited: fills the remaining Strike headroom once, then stops (no over-draw)', () => {
+    const line = 15_000;
+    const r = run({ pricePath: hardCrash, cbLtvCapPct: CAP, defendCbLtv: true, cycleMonths: 999, strikeCreditLine: line });
+    // m=1: the only draw, sized to leave the Strike balance exactly on the line...
+    expect(r.rows[1].strikeBalance).toBeCloseTo(line, 6);
+    expect(r.rows[1].defenseDrawnUsd).toBeCloseTo(line - (LIVE.strikeBalance + siM1), 4);
+    expect(r.defenseExhaustedMonth).not.toBeNull();
+    expect(r.rows[r.defenseExhaustedMonth!].defenseShortfallUsd).toBeGreaterThan(0);
+    // ...and once capitalized interest pushes the balance past the line, no further defense is drawn.
+    expect(r.rows.slice(2).reduce((s, x) => s + x.defenseDrawnUsd, 0)).toBe(0);
+  });
+
+  it('⭐ round trip: the refinance shifts the debt BACK to Coinbase (headroom-capped) as price recovers', () => {
+    // V-shape: fall to 60k (defense fires), then recover through 100k/120k (the sweep shifts back).
+    const v = [78_000, 60_000, 60_000, 100_000, 120_000, 140_000, ...new Array(6).fill(150_000)];
+    const r = run({ pricePath: v, cbLtvCapPct: CAP, defendCbLtv: true, cycleMonths: 1 });
+    expect(r.firstDefenseMonth).toBe(1);
+    // The cap is never exceeded at any point — the defense and the capped sweep are two halves of one rule.
+    for (const x of r.rows) expect(x.cbLtv).toBeLessThanOrEqual(CAP / 100 + 1e-6);
+    // Debt went to Strike on the fall, and came back to Coinbase on the recovery.
+    expect(r.rows[3].cbDebt).toBeGreaterThan(r.rows[2].cbDebt);
+    expect(r.rows[3].strikeBalance).toBeLessThan(r.rows[2].strikeBalance);
+    expect(r.totalRefinancedUsd).toBeGreaterThan(0);
+  });
+
+  it('defense is cycle-only — hold / clearStrike / clearBoth are untouched by the flag', () => {
+    for (const mode of ['hold', 'clearStrike', 'clearBoth'] as const) {
+      const a = run({ mode, pricePath: flat(24), cbLtvCapPct: CAP });
+      const b = run({ mode, pricePath: flat(24), cbLtvCapPct: CAP, defendCbLtv: true });
+      expect(a.rows).toEqual(b.rows);
+      expect(b.defenseCount).toBe(0);
+    }
+  });
+
+  it('never defends once liquidated', () => {
+    const r = run({ pricePath: hardCrash, cbLtvCapPct: CAP, defendCbLtv: true, cycleMonths: 999, strikeCreditLine: 20_000 });
+    expect(r.defenseCount).toBeGreaterThan(0);      // it did defend before the line filled
+    expect(r.liqMonth).not.toBeNull();
+    for (let m = r.liqMonth!; m < r.rows.length; m++) expect(r.rows[m].defenseDrawnUsd).toBe(0);
+  });
+});
+
+describe('runCyclingSim — sweep cascade + emergency top-up', () => {
+  const geo = (months: number, annualPct: number) =>
+    Array.from({ length: months + 1 }, (_, i) => PRICE * Math.pow(1 + annualPct / 100 / 12, i));
+
+  it('⭐ the migration is tied to the sweep — with the sweep off the Strike collateral stays fixed', () => {
+    const rising = geo(120, 25);
+    const off = run({ pricePath: rising, cbLtvCapPct: 50, cycleMonths: 1 });
+    expect(off.totalStrikeToCbBtc).toBe(0);
+    for (const x of off.rows) expect(x.strikeCollateralBtc).toBe(LIVE.strikeCollateralBtc);
+  });
+
+  it('⭐ cascade: the Strike surplus migrates to Coinbase at the cadence, then the CB sweep moves it to cold', () => {
+    const rising = geo(120, 25);
+    const r = run({ pricePath: rising, cbLtvCapPct: 50, cycleMonths: 1, coldStoreBufferPct: 30 });
+    expect(r.totalStrikeToCbBtc).toBeGreaterThan(0);
+    expect(r.last.strikeCollateralBtc).toBeLessThan(LIVE.strikeCollateralBtc);
+    // The migrated coins are attributed to Strike when the CB leg sweeps them on.
+    expect(r.totalColdFromStrike).toBeGreaterThan(0);
+    for (const x of r.rows) {
+      expect(x.strikeCollateralBtc + x.cbCollateralBtc + x.coldBtc).toBeCloseTo(x.btcHeld, 9);
+    }
+  });
+
+  it('the migration never takes Strike below the stressed line + margin requirement', () => {
+    const rising = geo(120, 25);
+    const r = run({ pricePath: rising, cbLtvCapPct: 50, cycleMonths: 1, coldStoreBufferPct: 30 });
+    const migrating = r.rows.filter((x) => x.strikeToCbBtc > 0);
+    expect(migrating.length).toBeGreaterThan(0);
+    for (const x of migrating) {
+      const stressed = x.price * 0.7;   // 1 − the 30% buffer
+      const keep = Math.max(
+        LIVE.strikeCreditLine / (stressed * LIVE.strikeMaxDrawLtv),
+        x.strikeBalance / (LIVE.strikeMarginLtv * stressed),
+      );
+      expect(x.strikeCollateralBtc).toBeCloseTo(keep, 6);
+    }
+  });
+
+  it('⭐ the emergency top-up drains cold first, then the last-resort line backing', () => {
+    // A long rise builds a reserve; a deep crash then exhausts the Strike line and forces the top-up.
+    const peak = geo(72, 30)[72];
+    const path = [...geo(72, 30), ...new Array(36).fill(peak * 0.15)];
+    const r = run({ pricePath: path, cbLtvCapPct: 50, cycleMonths: 1, coldStoreBufferPct: 30, defendCbLtv: true });
+    expect(r.firstTopUpMonth).not.toBeNull();
+    expect(r.totalTopUpBtc).toBeGreaterThan(0);
+    expect(r.totalColdRetrievedBtc).toBeGreaterThan(0);
+    expect(r.totalTopUpFromStrikeBtc).toBeGreaterThan(0);
+    // Cold is drained before Strike: the first Strike-funded top-up cannot precede the first cold retrieval.
+    const firstRetrieved = r.rows.find((x) => x.coldRetrievedBtc > 0)!;
+    const firstFromStrike = r.rows.find((x) => x.topUpFromStrikeBtc > 0)!;
+    expect(firstFromStrike.m).toBeGreaterThanOrEqual(firstRetrieved.m);
+    // Pools always sum to btcHeld, and the NET-cold invariant holds across retrievals.
+    for (const x of r.rows) {
+      expect(x.strikeCollateralBtc + x.cbCollateralBtc + x.coldBtc).toBeCloseTo(x.btcHeld, 9);
+      expect(x.coldFromCb + x.coldFromStrike - x.coldRetrievedBtc).toBeCloseTo(x.coldBtc, 9);
+    }
+  });
+
+  it('the top-up is cycle-mode-only and never runs post-liquidation', () => {
+    const hold = run({ mode: 'hold', pricePath: flat(24), coldStoreBufferPct: 30, defendCbLtv: true });
+    expect(hold.totalTopUpBtc).toBe(0);
+    const peak = geo(72, 30)[72];
+    const path = [...geo(72, 30), ...new Array(36).fill(peak * 0.1)];
+    const r = run({ pricePath: path, cbLtvCapPct: 50, cycleMonths: 1, coldStoreBufferPct: 30, defendCbLtv: true });
+    if (r.liqMonth !== null) {
+      // The breaching row may still show the top-up attempted BEFORE the breach check (same as the shift);
+      // any month AFTER the seizure must not top up.
+      for (let m = r.liqMonth + 1; m < r.rows.length; m++) {
+        expect(r.rows[m].topUpBtc).toBe(0);
+      }
+    }
+  });
+});
+
 describe('runCyclingSim — the Strike credit line is a hard constraint', () => {
   it('⭐ exhausts the line at month 5 on bills $5,000 / cycle 12, and income covers the rest', () => {
     const r = run({ cycleMonths: 12, cbLtvCapPct: 85 });
@@ -527,17 +671,18 @@ describe('runCyclingSim — guards', () => {
       }
     });
 
-    it('⭐⭐ the STRIKE leg — a FIXED credit line needs ever less collateral as price rises', () => {
-      // The Coinbase leg frees collateral because the LOAN de-levers. The Strike leg frees it for a
+    it('⭐⭐ the CASCADE — a FIXED credit line needs ever less collateral as price rises', () => {
+      // The Coinbase leg frees collateral because the LOAN de-levers. The Strike surplus is freed for a
       // different reason entirely: `strikeCreditLine` is a fixed DOLLAR amount that never grows with
       // price, so the collateral required to support the whole line shrinks as price rises. On a rising
       // path most of the Strike pledge ends up idle — pledged, earning nothing, still with a custodian.
+      // The migration moves it to the CB pool first, and the CB leg then sweeps the excess on to cold.
       const r = run({ ...RISING, coldStoreBufferPct: 30 });
       expect(r.totalColdFromStrike).toBeGreaterThan(0);
       expect(r.last.strikeCollateralBtc).toBeLessThan(LIVE.strikeCollateralBtc);
-      // The two legs are independent and always account for the whole pool.
-      expect(r.totalColdFromCb + r.totalColdFromStrike).toBeCloseTo(r.totalColdBtc, 9);
-      for (const x of r.rows) expect(x.coldFromCb + x.coldFromStrike).toBeCloseTo(x.coldBtc, 9);
+      // The origins are independent and always account for the whole pool, net of top-up retrievals.
+      expect(r.totalColdFromCb + r.totalColdFromStrike - r.totalColdRetrievedBtc).toBeCloseTo(r.totalColdBtc, 9);
+      for (const x of r.rows) expect(x.coldFromCb + x.coldFromStrike - x.coldRetrievedBtc).toBeCloseTo(x.coldBtc, 9);
     });
 
     it('⭐ the Strike leg NEVER sweeps below what the full credit line needs at the stressed price', () => {
@@ -571,7 +716,7 @@ describe('runCyclingSim — guards', () => {
       for (const x of off.rows) expect(x.strikeCollateralBtc).toBeCloseTo(LIVE.strikeCollateralBtc, 12);
     });
 
-    it('monotonic: cold storage only ever grows, and the total matches the last row', () => {
+    it('monotonic (no top-up in this run): cold storage only ever grows, and the total matches the last row', () => {
       const r = run({ ...RISING, coldStoreBufferPct: 45 });
       for (let i = 1; i < r.rows.length; i++) {
         expect(r.rows[i].coldBtc).toBeGreaterThanOrEqual(r.rows[i - 1].coldBtc - 1e-12);

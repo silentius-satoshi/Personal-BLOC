@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
+import { plBandsAt } from '../../simulation/powerLaw';
 import { deriveCurrentPosition } from '../../simulation/logUtils';
 import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import {
@@ -15,7 +16,7 @@ import {
   type EmergencyState,
   type LadderStage,
 } from '../../simulation/emergencyModel';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './EmergencyConsole.module.css';
 
 const STAGE_LABEL: Record<LadderStage, string> = {
@@ -63,6 +64,7 @@ export function EmergencyConsole() {
   const blocApr         = useStore((s) => s.blocApr);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
+  const creditLine      = useStore((s) => s.creditLine);
   const monthlyLog      = useStore((s) => s.monthlyLog);
 
   const [assumption, setAssumption] = useState<'cured' | 'stuck'>('stuck');
@@ -88,9 +90,12 @@ export function EmergencyConsole() {
   const cbDebt = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
   const s: EmergencyState = { cbDebt, cbCollateralBtc, skCollateralBtc, skDrawn, price, ceilingPct };
 
+  // The power-law SUPPORT line — the fitted deep-drawdown floor. The view crosses into the power law here
+  // (the model stays §7-clean); a simulation below it is flagged, never blocked.
+  const support = plBandsAt(new Date(todayLocalISO())).floor;
   const stage = classifyStage(s);
   const fp    = firepower(s);
-  const draw  = drawToLtv(s, targetLtv);
+  const draw  = drawToLtv(s, targetLtv, creditLine);
   const rows  = floorTable(s);
   const executePrice = stage.bandPrices.execute;
 
@@ -106,9 +111,10 @@ export function EmergencyConsole() {
   const loanStale   = loanAgeDays !== null && loanAgeDays > 35;
   const showBanner  = priceStale || loanStale;
 
-  // Rail range for the stage price bar — adapts to the live figures.
-  const railLo = Math.min(stage.liqPrice, price) * 0.92;
-  const railHi = Math.max(price, stage.bandPrices.watch) * 1.05;
+  // Rail range for the stage price bar — adapts to the live figures, and always includes the support line
+  // so its tick is visible wherever it sits relative to the ladder.
+  const railLo = Math.min(stage.liqPrice, price, support) * 0.92;
+  const railHi = Math.max(price, stage.bandPrices.watch, support) * 1.05;
   const railPos = (p: number) => Math.min(Math.max((p - railLo) / (railHi - railLo) * 100, 0), 100);
 
   return (
@@ -149,16 +155,24 @@ export function EmergencyConsole() {
           <div className={styles.stat}><span className={styles.statLabel}>Liq price</span><span className={styles.statValue}>{fmtUSD(stage.liqPrice)}</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>Distance</span><span className={styles.statValue}>{(stage.distancePct * 100).toFixed(1)}%</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>{simPrice !== null ? 'BTC SIM' : 'BTC now'}</span><span className={styles.statValue}>{fmtUSD(price)}</span></div>
+          <div className={styles.stat}><span className={styles.statLabel}>Support line</span><span className={styles.statValue}>{fmtUSD(support)}</span></div>
         </div>
+        <p className={styles.hint}>
+          {stage.liqPrice > 0 && stage.liqPrice < support
+            ? `Liquidation sits below the power-law support line — the fitted floor would hold first.`
+            : `Liquidation sits above the power-law support line — the position would liquidate before the fitted floor.`}
+          {' '}The band is a historical regression, not a guarantee.
+        </p>
         <div className={styles.rail}>
           <div className={styles.railFill} style={{ width: `${railPos(price)}%`, background: FILL_COLOR[stage.stage] }} />
           {(['lastResort', 'execute', 'prepare', 'watch'] as const).map((k) => (
             <div key={k} className={styles.railTick} style={{ left: `${railPos(stage.bandPrices[k])}%`, background: 'var(--amber)' }} title={`${k}`} />
           ))}
           <div className={styles.railTick} style={{ left: `${railPos(stage.liqPrice)}%`, background: 'var(--red)' }} title="liquidation" />
+          <div className={styles.railTick} style={{ left: `${railPos(support)}%`, background: 'var(--green)' }} title={`support ${fmtUSD(support)}`} />
           <span className={styles.railDiamond} style={{ left: `${railPos(price)}%` }}>◆</span>
         </div>
-        <div className={styles.railLegend}><span>{fmtUSD(railLo)}</span><span>liq → bands → now</span><span>{fmtUSD(railHi)}</span></div>
+        <div className={styles.railLegend}><span>{fmtUSD(railLo)}</span><span>liq · bands · now · support</span><span>{fmtUSD(railHi)}</span></div>
         {simPrice !== null && (
           <div className={styles.simScrub}>
             <input
@@ -172,6 +186,12 @@ export function EmergencyConsole() {
             />
             <span className={styles.simScrubValue}>{fmtUSD(simPrice)}</span>
           </div>
+        )}
+        {simPrice !== null && simPrice < support && (
+          <p className={styles.hint} style={{ color: 'var(--amber)' }}>
+            Below the power-law support line ({fmtUSD(support)}) — outside the fitted drawdown envelope.
+            The model keeps running; nothing calibrates this depth.
+          </p>
         )}
       </div>
 
@@ -195,6 +215,11 @@ export function EmergencyConsole() {
             <span className={styles.fpBtc}>{(assumption === 'cured' ? fp.slowBtc : fp.fastBtc(executePrice)).toFixed(5)} ₿</span>
             <span className={styles.fpUsd}>{fmtUSD(assumption === 'cured' ? fp.slowUsd(executePrice) : fp.fastUsd(executePrice))}</span>
           </div>
+          <div className={styles.fpCell}>
+            <span className={styles.fpWhen}>At support ({fmtUSD(support)})</span>
+            <span className={styles.fpBtc}>{(assumption === 'cured' ? fp.slowBtc : fp.fastBtc(support)).toFixed(5)} ₿</span>
+            <span className={styles.fpUsd}>{fmtUSD(assumption === 'cured' ? fp.slowUsd(support) : fp.fastUsd(support))}</span>
+          </div>
         </div>
         <p className={styles.hint}>
           {assumption === 'cured'
@@ -208,7 +233,7 @@ export function EmergencyConsole() {
       <div className={styles.card}>
         <div className={styles.cardHead}>
           <span className={styles.cardTitle}>Draw to {targetLtv}% Strike LTV</span>
-          {draw.capped && <span className={styles.capFlag}>capped at 50% line</span>}
+          {draw.capped && <span className={styles.capFlag}>capped by the Strike line</span>}
         </div>
         <input
           type="range"
@@ -227,7 +252,13 @@ export function EmergencyConsole() {
           <div className={styles.stat}><span className={styles.statLabel}>New Strike LTV</span><span className={styles.statValue}>{(draw.newSkLtv * 100).toFixed(1)}%</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>Strike MC price</span><span className={styles.statValueAmber}>{fmtUSD(draw.newSkMarginCallPrice)}</span></div>
         </div>
-        <p className={styles.hint}>Available on the 50% Strike line: {fmtUSD(draw.availableCredit)}. Top-up is the primary lever — it lowers the CB floor without paying down debt.</p>
+        <p className={styles.hint}>
+          Available on the Strike line: {fmtUSD(draw.availableCredit)} (50% LTV cap and your credit line).
+          Top-up is the primary lever — it lowers the CB floor without paying down debt.{' '}
+          New floor {draw.newLiqPrice < support
+            ? `sits ${fmtUSD(support - draw.newLiqPrice)} below`
+            : `still sits ${fmtUSD(draw.newLiqPrice - support)} above`} the support line ({fmtUSD(support)}).
+        </p>
       </div>
 
       {/* 5 — Floor table */}
@@ -251,6 +282,10 @@ export function EmergencyConsole() {
             </tbody>
           </table>
         </div>
+        <p className={styles.hint}>
+          Support today {fmtUSD(support)} — a floor below it holds through the fitted floor; a floor above it
+          liquidates first.
+        </p>
       </div>
 
       {/* 6 — Ladder accordion (Walls 1–4) */}

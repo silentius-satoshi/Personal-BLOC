@@ -8,6 +8,7 @@
 
 import { CB_LLTV } from './runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, BLOC_OPERATING_CEILING } from './strikeCredit';
+import { strikeDrawCapacity } from './cbDefense';
 
 // Strike partial-liquidation / margin-call LTV used by the coupling warnings (distinct from the 0.50 draw
 // cap and the 0.15 operating ceiling). Emergency-local per the directive's §10 formulas.
@@ -105,13 +106,23 @@ export interface DrawResult {
 
 /**
  * Draw MORE from Strike up to `targetLtvPct` Strike LTV, buy BTC, pledge to CB. The draw is clamped to the
- * 50%-LTV Strike line (STRIKE_MAX_DRAW_LTV) — NOT the credit line, per spec §10. Every dollar drawn tightens
- * Strike (raising its own margin-call price) while loosening CB (dropping the CB floor).
+ * Strike capacity `min(creditLine, collateral × price × STRIKE_MAX_DRAW_LTV) − drawn` — the shared
+ * `strikeDrawCapacity` definition. `creditLine` defaults to Infinity, which reduces exactly to the spec §10
+ * 50%-line-only rule (the directive fixtures call it with two args); the console passes its real line.
+ * Every dollar drawn tightens Strike (raising its own margin-call price) while loosening CB (dropping the
+ * CB floor).
  */
-export function drawToLtv(s: EmergencyState, targetLtvPct: number): DrawResult {
+export function drawToLtv(
+  s: EmergencyState,
+  targetLtvPct: number,
+  creditLine: number = Number.POSITIVE_INFINITY,
+): DrawResult {
   const target = targetLtvPct / 100;
   const skValue = s.skCollateralBtc * s.price;
-  const availableCredit = Math.max(0, skValue * STRIKE_MAX_DRAW_LTV - s.skDrawn);
+  // Shared capacity definition: min(creditLine, collateral × price × maxDrawLtv) − drawn. The default
+  // creditLine = Infinity reduces this to the spec §10 50%-line rule exactly (the console passes its real
+  // line; the directive fixtures call it with two args and stay byte-identical).
+  const availableCredit = strikeDrawCapacity(s.skCollateralBtc, s.skDrawn, s.price, STRIKE_MAX_DRAW_LTV, creditLine);
   const rawDraw = Math.max(0, target * skValue - s.skDrawn);
   const capped = rawDraw > availableCredit;
   const drawUsd = Math.min(rawDraw, availableCredit);

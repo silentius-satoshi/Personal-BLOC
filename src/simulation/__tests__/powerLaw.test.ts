@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, PL_BAND_LABEL, PL_ON_THE_LINE,
-  plFairValue, plFloor, plCeiling, plBandsAt, plConvergencePath,
+  plFairValue, plFloor, plCeiling, plBandsAt, plBandAt, plConvergencePath,
   type PlBand,
 } from '../powerLaw';
 
@@ -55,6 +55,24 @@ describe('plBandsAt', () => {
     // 'fair' is legitimately its own word; the other two must never surface their keys.
     expect(PL_BAND_LABEL.floor.toLowerCase()).not.toBe('floor');
     expect(PL_BAND_LABEL.ceiling.toLowerCase()).not.toBe('ceiling');
+  });
+});
+
+describe('plBandAt', () => {
+  it('month 0 equals the band at the start date, for every band', () => {
+    for (const band of BANDS) expect(plBandAt(band, START, 0)).toBe(plBandsAt(START)[band]);
+  });
+
+  it('steps by calendar months with the day-of-month clamped (Aug 31 → Sep 30)', () => {
+    const sep30 = new Date(Date.UTC(2026, 8, 30));
+    expect(plBandAt('floor', START, 1)).toBeCloseTo(plFloor(sep30), 9);
+    expect(plBandAt('fair', START, 1)).toBeCloseTo(plFairValue(sep30), 9);
+    expect(plBandAt('ceiling', START, 1)).toBeCloseTo(plCeiling(sep30), 9);
+  });
+
+  it('clamps negative months to 0 and never returns NaN', () => {
+    expect(plBandAt('fair', START, -3)).toBe(plBandsAt(START).fair);
+    expect(Number.isNaN(plBandAt('fair', START, 3.7))).toBe(false);
   });
 });
 

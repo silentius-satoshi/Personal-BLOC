@@ -64,6 +64,15 @@ export function plBandsAt(date: Date): Record<PlBand, number> {
 }
 
 /**
+ * ONE band's value at `startDate + months` (UTC, day-of-month clamped — the same calendar stepping the
+ * convergence path uses). Lets a view mark the SUPPORT line at a selected month without duplicating
+ * addMonths. Zero-import preserved: it is just plBandsAt ∘ the private addMonths.
+ */
+export function plBandAt(band: PlBand, startDate: Date, months: number): number {
+  return plBandsAt(addMonths(startDate, Math.max(0, Math.floor(months))))[band];
+}
+
+/**
  * Calendar month arithmetic, UTC, day-of-month clamped (31 Jan + 1mo → 28/29 Feb). Local helper so the
  * module keeps zero imports; UTC accessors match GENESIS (…T00:00:00Z) and daysSinceGenesis.
  * Callers normalise their start date to UTC midnight — a local-midnight start west of UTC would land on
