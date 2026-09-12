@@ -16,7 +16,7 @@ import {
   type EmergencyState,
   type LadderStage,
 } from '../../simulation/emergencyModel';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
 import styles from './EmergencyConsole.module.css';
 
 const STAGE_LABEL: Record<LadderStage, string> = {
@@ -145,7 +145,7 @@ export function EmergencyConsole() {
         <div className={styles.stageTop}>
           <span className={`${styles.stageChip} ${STAGE_CLASS[stage.stage]}`}>{STAGE_LABEL[stage.stage]}</span>
           <div className={styles.stageTopRight}>
-            <span className={styles.stageLtv}>{(stage.cbLtv * 100).toFixed(1)}% CB LTV</span>
+            <span className={styles.stageLtv}>{fmtLtvPct(stage.cbLtv, 1)} CB LTV</span>
             <button className={`${styles.simBtn} ${simPrice !== null ? styles.simBtnActive : ''}`} onClick={toggleSim}>
               {simPrice !== null ? 'Exit sim' : 'Simulate'}
             </button>
@@ -153,7 +153,7 @@ export function EmergencyConsole() {
         </div>
         <div className={styles.stageStats}>
           <div className={styles.stat}><span className={styles.statLabel}>Liq price</span><span className={styles.statValue}>{fmtUSD(stage.liqPrice)}</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>Distance</span><span className={styles.statValue}>{(stage.distancePct * 100).toFixed(1)}%</span></div>
+          <div className={styles.stat}><span className={styles.statLabel}>Distance</span><span className={styles.statValue}>{fmtLtvPct(stage.distancePct, 1)}</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>{simPrice !== null ? 'BTC SIM' : 'BTC now'}</span><span className={styles.statValue}>{fmtUSD(price)}</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>Support line</span><span className={styles.statValue}>{fmtUSD(support)}</span></div>
         </div>
@@ -249,7 +249,7 @@ export function EmergencyConsole() {
           <div className={styles.stat}><span className={styles.statLabel}>BTC added</span><span className={styles.statValue}>{draw.btcAdded.toFixed(5)} ₿</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>New floor</span><span className={styles.statValueGreen}>{fmtUSD(draw.newLiqPrice)}</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>Floor ↓</span><span className={styles.statValueGreen}>{fmtUSD(draw.liqDrop)}</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>New Strike LTV</span><span className={styles.statValue}>{(draw.newSkLtv * 100).toFixed(1)}%</span></div>
+          <div className={styles.stat}><span className={styles.statLabel}>New Strike LTV</span><span className={styles.statValue}>{fmtLtvPct(draw.newSkLtv, 1)}</span></div>
           <div className={styles.stat}><span className={styles.statLabel}>Strike MC price</span><span className={styles.statValueAmber}>{fmtUSD(draw.newSkMarginCallPrice)}</span></div>
         </div>
         <p className={styles.hint}>
@@ -276,7 +276,7 @@ export function EmergencyConsole() {
                   <td className={styles.td}>{r.standing ? '—' : `${r.btcAdded.toFixed(5)} ₿`}</td>
                   <td className={styles.td}>{fmtUSD(r.floor)}</td>
                   <td className={styles.td}>{r.standing ? '—' : `↓ ${fmtUSD(r.deltaVsStanding)}`}</td>
-                  <td className={styles.td}>{(r.strikeSurvivesFurtherPct * 100).toFixed(0)}%</td>
+                  <td className={styles.td}>{fmtLtvPct(r.strikeSurvivesFurtherPct, 0)}</td>
                 </tr>
               ))}
             </tbody>

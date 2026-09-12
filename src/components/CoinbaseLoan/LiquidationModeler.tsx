@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { computeLiquidationAnalysis, CB_LIF } from '../../simulation/runCoinbaseLoan';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import styles from './LiquidationModeler.module.css';
 
 interface LiquidationModelerProps {
@@ -78,7 +78,7 @@ export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liqui
             </div>
             <div className={`${styles.cardRow} ${s.stillLiquidatable ? styles.cardRowRed : styles.cardRowGreen}`}>
               <span>New LTV</span>
-              <span>{(s.newLtv * 100).toFixed(1)}%{s.stillLiquidatable ? ' ⚠' : ' ✓'}</span>
+              <span>{fmtLtvPct(s.newLtv)}{s.stillLiquidatable ? ' ⚠' : ' ✓'}</span>
             </div>
           </div>
         ))}
@@ -111,7 +111,7 @@ export function LiquidationModeler({ loanBalance, collateralBtc, btcPrice, liqui
                 { label: 'Remaining debt',          fmt: (s: typeof analysis.scenarios[0]) => fmtUSD(s.remainingDebt) },
                 { label: 'Remaining BTC',           fmt: (s: typeof analysis.scenarios[0]) => s.remainingCollateralBtc.toFixed(5) + ' ₿', green: true },
                 { label: 'Remaining USD',           fmt: (s: typeof analysis.scenarios[0]) => fmtUSD(s.remainingCollateralUsd) },
-                { label: 'New LTV',                 fmt: (s: typeof analysis.scenarios[0]) => (s.newLtv * 100).toFixed(1) + '%' },
+                { label: 'New LTV',                 fmt: (s: typeof analysis.scenarios[0]) => fmtLtvPct(s.newLtv) },
               ].map(({ label, fmt, green }) => (
                 <tr key={label}>
                   <td className={styles.rowLabel}>{label}</td>

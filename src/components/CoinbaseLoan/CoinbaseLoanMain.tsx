@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { runCoinbaseLoan, classifyLtv, type CbLtvStatus } from '../../simulation/runCoinbaseLoan';
 import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice } from '../../simulation/cbMetrics';
 import { LiquidationModeler } from './LiquidationModeler';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import styles from './CoinbaseLoanMain.module.css';
 
 function ltvColor(status: CbLtvStatus): string {
@@ -49,7 +49,7 @@ function LtvSafetyBar({ currentLtv }: { currentLtv: number }) {
         </div>
       </div>
       <div className={styles.ltvBarLabels}>
-        <span className={styles.ltvBarCurrent}>{(currentLtv * 100).toFixed(2)}% LTV</span>
+        <span className={styles.ltvBarCurrent}>{fmtLtvPct(currentLtv, 2)} LTV</span>
         <div className={styles.ltvBarLegend}>
           <span style={{ color: 'var(--amber)' }}>↑70% Emergency</span>
           <span style={{ color: 'var(--red)' }}>↑86% Liquidation</span>
@@ -110,7 +110,7 @@ export function CoinbaseLoanMain() {
       {currentLtv >= 0.70 && (
         <div className={styles.emergencyBanner}>
           <span className={styles.emergencyIcon}>⚠</span>
-          <span>Emergency Protocol Active — LTV {(currentLtv * 100).toFixed(1)}% · Redirect all income to Coinbase paydown immediately</span>
+          <span>Emergency Protocol Active — LTV {fmtLtvPct(currentLtv)} · Redirect all income to Coinbase paydown immediately</span>
         </div>
       )}
 
@@ -118,7 +118,7 @@ export function CoinbaseLoanMain() {
       <div className={styles.statGrid}>
         <StatCard
           label="CURRENT LTV"
-          value={`${(currentLtv * 100).toFixed(2)}%`}
+          value={fmtLtvPct(currentLtv, 2)}
           valueColor={ltvColor(currentStatus)}
           sub={currentStatus.toUpperCase()}
         />
@@ -211,7 +211,7 @@ export function CoinbaseLoanMain() {
             <span className={styles.projSumValue}>{fmtUSD(projection.finalBalance)}</span>
             <span className={styles.projSumLabel}>Year-end LTV</span>
             <span className={`${styles.projSumValue} ${styles[`ltvColor_${classifyLtv(projection.finalLtv)}`]}`}>
-              {(projection.finalLtv * 100).toFixed(2)}%
+              {fmtLtvPct(projection.finalLtv, 2)}
             </span>
           </div>
         </div>
@@ -240,7 +240,7 @@ export function CoinbaseLoanMain() {
                   <td className={row.netChange >= 0 ? styles.negCell : styles.posCell}>
                     {row.netChange >= 0 ? '+' : '−'}{fmtUSD(Math.abs(row.netChange))}
                   </td>
-                  <td className={styles[`ltvColor_${row.status}`]}>{(row.ltv * 100).toFixed(2)}%</td>
+                  <td className={styles[`ltvColor_${row.status}`]}>{fmtLtvPct(row.ltv, 2)}</td>
                   <td>
                     <span className={`${styles.statusBadge} ${styles[`badge_${row.status}`]}`}>{row.status}</span>
                   </td>
@@ -257,7 +257,7 @@ export function CoinbaseLoanMain() {
                 </td>
                 <td />
                 <td className={styles[`ltvColor_${classifyLtv(projection.finalLtv)}`]}>
-                  {(projection.finalLtv * 100).toFixed(2)}%
+                  {fmtLtvPct(projection.finalLtv, 2)}
                 </td>
                 <td />
               </tr>

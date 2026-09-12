@@ -3,10 +3,19 @@ import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
-import { fmtUSD, toLocalISO } from '../../utils/format';
+import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { SwipeStrip } from '../ui/SwipeStrip';
 import styles from './MonthlyLogOverlay.module.css';
+
+/**
+ * LTV → the NUMBER an editable field holds. Deliberately NOT `fmtLtvPct`: this value round-trips through
+ * the form and back into a logged entry, and "∞" would parse to NaN. A non-finite LTV (debt with no
+ * collateral) has no editable percentage, so it degrades to 0 like the blank form.
+ */
+const ltvFieldNumber = (ltv: number): number =>
+  Number.isFinite(ltv) ? parseFloat((ltv * 100).toFixed(4)) : 0;
+
 
 type AdvisorMonthRow = ReturnType<typeof runAdvisor>['rows'][number];
 
@@ -107,9 +116,9 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
         income:       fmt(entry.income),
         paydown:      fmt(entry.paydown),
         strikeBal:    fmt(entry.strikeBal),
-        strikeLtvPct: fmt(parseFloat((entry.strikeLtv * 100).toFixed(4))),
+        strikeLtvPct: fmt(ltvFieldNumber(entry.strikeLtv)),
         cbBal:        fmt(entry.cbBal ?? 0),
-        cbLtvPct:     fmt(parseFloat(((entry.cbLtv ?? 0) * 100).toFixed(4))),
+        cbLtvPct:     fmt(ltvFieldNumber(entry.cbLtv ?? 0)),
         miningSats:   fmt(entry.miningSats ?? 0),
       });
     } else if (row && monthNum === currentMonth) {
@@ -239,9 +248,9 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
               <ViewRow label="Income → BTC"   value={fmtUSD(logged.income)} />
               <ViewRow label="BLOC Paydown"   value={fmtUSD(logged.paydown)} />
               <ViewRow label="Strike Balance" value={fmtUSD(logged.strikeBal)} />
-              <ViewRow label="Strike LTV"     value={`${(logged.strikeLtv * 100).toFixed(2)}%`} />
+              <ViewRow label="Strike LTV"     value={`${fmtLtvPct(logged.strikeLtv, 2)}`} />
               {hasCbLoan && logged.cbBal != null && <ViewRow label="CB Balance" value={fmtUSD(logged.cbBal)} />}
-              {hasCbLoan && logged.cbLtv != null && <ViewRow label="CB LTV"     value={`${(logged.cbLtv * 100).toFixed(1)}%`} />}
+              {hasCbLoan && logged.cbLtv != null && <ViewRow label="CB LTV"     value={`${fmtLtvPct(logged.cbLtv, 1)}`} />}
               {showMiningInLog && logged.miningSats != null && <ViewRow label="Mining Sats" value={logged.miningSats.toLocaleString()} />}
             </div>
           )}
@@ -299,7 +308,7 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
             <ViewRow label="BTC Bought"     value={`+${row.btcBought.toFixed(5)} ₿`} proj />
             <ViewRow label="Income → BTC"   value={fmtUSD(row.incomeToBtc)} proj />
             <ViewRow label="Strike Balance" value={fmtUSD(row.blocBalance)} proj />
-            {hasCbLoan && <ViewRow label="CB LTV" value={`${(row.cbLtv * 100).toFixed(1)}%`} proj />}
+            {hasCbLoan && <ViewRow label="CB LTV" value={`${fmtLtvPct(row.cbLtv, 1)}`} proj />}
           </div>
         ) : (
           <p className={styles.noData}>No projection data for this month</p>

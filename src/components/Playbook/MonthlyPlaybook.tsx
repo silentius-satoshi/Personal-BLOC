@@ -1,6 +1,6 @@
 import { useSimulation } from '../../hooks/useSimulation';
 import { useStore } from '../../store/useStore';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import { ProgressBar } from './ProgressBar';
 import { PlaybookItems } from './PlaybookItems';
 import { PlaybookScrubber } from './PlaybookScrubber';
@@ -14,7 +14,7 @@ function buildNarrative(
   paydown: number,
   interest: number
 ): string {
-  const ltvPct = (ltv * 100).toFixed(1);
+  const ltvPct = fmtLtvPct(ltv).replace('%', '');
   const hasPD  = paydown > 0;
   const buyAmt = income - paydown;
 
@@ -31,7 +31,7 @@ export function MonthlyPlaybook() {
   const expenses   = useStore((s) => s.expenses);
 
   const { ltv, btcPrice, paydown, interest } = currentMonth;
-  const ltvPct = (ltv * 100).toFixed(1);
+  const ltvPct = fmtLtvPct(ltv).replace('%', '');
   const hasPD  = paydown > 0;
 
   return (

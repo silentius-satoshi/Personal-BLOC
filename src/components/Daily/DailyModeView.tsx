@@ -17,7 +17,7 @@ import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
@@ -439,7 +439,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             {plan ? (
               <>
                 <div className={styles.pbSub}>
-                  <span>Month {currentMonth} of 12 · <span className={styles.pbLtv}>LTV {(plan.blocLtv * 100).toFixed(1)}%</span></span>
+                  <span>Month {currentMonth} of 12 · <span className={styles.pbLtv}>LTV {fmtLtvPct(plan.blocLtv, 1)}</span></span>
                   <span>BTC {fmtUSD(btcPrice)}</span>
                 </div>
                 <div className={styles.pbRow}>

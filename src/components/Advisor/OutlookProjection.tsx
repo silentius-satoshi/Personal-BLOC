@@ -7,7 +7,7 @@ import {
 } from '../../simulation/runAdvisor';
 import { PL_B, GENESIS } from '../../simulation/powerLaw';
 import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import styles from './AdvisorMain.module.css';
 
 // THE shared scenario projection — rendered by BOTH AdvisorMain (Section 4) and Simple Mode's
@@ -209,9 +209,9 @@ export function OutlookProjection({
                 {hasCbLoan && (
                   cbPaymentStrategy === 'ltvTriggered'
                     ? <td className={row.cbLtvTriggered ? styles.triggerCell : styles.muted}>
-                        {(row.cbLtv * 100).toFixed(1)}%
+                        {fmtLtvPct(row.cbLtv, 1)}
                       </td>
-                    : <td style={{ color: getTierColor(row.tier) }}>{(row.cbLtv * 100).toFixed(1)}%</td>
+                    : <td style={{ color: getTierColor(row.tier) }}>{fmtLtvPct(row.cbLtv, 1)}</td>
                 )}
                 <td className={styles.interestCell}>{fmtUSD(row.totalInterest)}</td>
               </tr>

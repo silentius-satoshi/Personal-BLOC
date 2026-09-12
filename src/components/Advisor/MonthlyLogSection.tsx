@@ -3,8 +3,17 @@ import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
 import type { MonthlyLogEntry } from '../../simulation/types';
-import { fmtUSD, toLocalISO } from '../../utils/format';
+import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
 import styles from './MonthlyLogSection.module.css';
+
+/**
+ * LTV → the NUMERIC string an editable field holds. Deliberately NOT `fmtLtvPct`: this value is parsed
+ * back with `parseFloat` on save, and "∞" would round-trip to NaN → 0 silently. A non-finite LTV (debt
+ * with no collateral) has no editable percentage, so it falls back to the same '0' the blank form uses.
+ */
+const ltvFieldValue = (ltv: number, decimals = 2): string =>
+  Number.isFinite(ltv) ? (ltv * 100).toFixed(decimals) : '0';
+
 
 type AdvisorMonthRow = ReturnType<typeof runAdvisor>['rows'][number];
 
@@ -29,9 +38,9 @@ function formFromEntry(e: MonthlyLogEntry): InlineForm {
     income:       String(Math.round(e.income)),
     paydown:      String(Math.round(e.paydown)),
     strikeBal:    String(Math.round(e.strikeBal)),
-    strikeLtvPct: (e.strikeLtv * 100).toFixed(2),
+    strikeLtvPct: ltvFieldValue(e.strikeLtv),
     cbBal:        e.cbBal    != null ? String(Math.round(e.cbBal))           : '0',
-    cbLtvPct:     e.cbLtv    != null ? (e.cbLtv * 100).toFixed(1)            : '0',
+    cbLtvPct:     e.cbLtv    != null ? ltvFieldValue(e.cbLtv, 1)             : '0',
     miningSats:   e.miningSats != null ? String(e.miningSats)                : '0',
   };
 }
@@ -100,9 +109,9 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
       income:       String(Math.round(row.incomeToBtc)),
       paydown:      String(Math.round(paydown)),
       strikeBal:    String(Math.round(row.blocBalance)),
-      strikeLtvPct: (row.blocLtv * 100).toFixed(2),
+      strikeLtvPct: ltvFieldValue(row.blocLtv),
       cbBal:        hasCbLoan ? String(Math.round(row.cbBalance)) : '0',
-      cbLtvPct:     hasCbLoan ? (row.cbLtv * 100).toFixed(1)     : '0',
+      cbLtvPct:     hasCbLoan ? ltvFieldValue(row.cbLtv, 1)       : '0',
       miningSats:   '0',
     };
   };
@@ -333,7 +342,7 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
             <div className={styles.fieldCell}>
               <span className={styles.fieldLabel}>Strike LTV</span>
               <span className={styles.fieldValue}>
-                {loggedEntry ? `${(loggedEntry.strikeLtv * 100).toFixed(2)}%` : '—'}
+                {loggedEntry ? fmtLtvPct(loggedEntry.strikeLtv, 2) : '—'}
               </span>
             </div>
             {hasCbLoan && (
@@ -349,9 +358,9 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
                 <span className={styles.fieldLabel}>CB LTV</span>
                 <span className={styles.fieldValue}>
                   {loggedEntry?.cbLtv != null
-                    ? `${(loggedEntry.cbLtv * 100).toFixed(1)}%`
+                    ? fmtLtvPct(loggedEntry.cbLtv)
                     : projRow
-                      ? <><span className={styles.proj}>{(projRow.cbLtv * 100).toFixed(1)}%</span><span className={styles.projTag}> (proj)</span></>
+                      ? <><span className={styles.proj}>{fmtLtvPct(projRow.cbLtv)}</span><span className={styles.projTag}> (proj)</span></>
                       : '—'}
                 </span>
               </div>

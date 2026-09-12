@@ -5,7 +5,7 @@ import { buildLedgerCsv } from '../../lib/ledgerCsv';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
-import { todayLocalISO } from '../../utils/format';
+import { todayLocalISO, fmtLtvPct } from '../../utils/format';
 import styles from './LedgerFace.module.css';
 
 /**
@@ -27,7 +27,8 @@ const STRIKE_METER_CEIL = 0.15;
 const clamp01 = (x: number): number => Math.min(1, Math.max(0, x));
 const fmtUsd0 = (n: number): string => Math.round(n).toLocaleString();
 const fmtBtc = (n: number): string => n.toFixed(5);
-const fmtPct = (ltv: number): string => `${(ltv * 100).toFixed(1)}%`;
+/** Single app-wide LTV formatter — a local copy is how a surface keeps printing "Infinity%". */
+const fmtPct = fmtLtvPct;
 
 function strikeZoneColor(ltv: number): string {
   if (ltv > LTV_RED_AT) return 'var(--red)';

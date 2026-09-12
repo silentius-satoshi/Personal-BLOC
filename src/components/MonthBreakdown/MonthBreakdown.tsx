@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { runBlocYearOne, getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { PL_B, GENESIS } from '../../simulation/powerLaw';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import styles from './MonthBreakdown.module.css';
 
 export default function MonthBreakdown() {
@@ -169,7 +169,7 @@ export default function MonthBreakdown() {
                   <td className={styles.cellGreen}>{row.btcBought.toFixed(5)}</td>
                   <td>{fmtUSD(row.strikeBalance)}</td>
                   <td>{row.strikeCollateral.toFixed(5)} BTC</td>
-                  <td className={styles.cellGreen}>{(row.strikeLtv * 100).toFixed(2)}%</td>
+                  <td className={styles.cellGreen}>{fmtLtvPct(row.strikeLtv, 2)}</td>
                   <td className={creditCellClass}>{fmtUSD(row.availableCredit)}</td>
                 </tr>
               );
@@ -182,7 +182,7 @@ export default function MonthBreakdown() {
               <td className={styles.cellGreen}>+{result.totalBtcBought.toFixed(5)} BTC</td>
               <td>{fmtUSD(result.finalBalance)}</td>
               <td>{result.finalCollateral.toFixed(5)} BTC</td>
-              <td className={styles.cellGreen}>{(result.finalLtv * 100).toFixed(2)}%</td>
+              <td className={styles.cellGreen}>{fmtLtvPct(result.finalLtv, 2)}</td>
               <td className={styles.cellMuted}>{fmtUSD(Math.max(0, creditLine - result.finalBalance))}</td>
             </tr>
           </tbody>

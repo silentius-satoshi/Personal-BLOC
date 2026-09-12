@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1138 tests — all must pass before every commit)
+- Vitest (1148 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -4036,6 +4036,27 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ## Test Suite
 
+🔴 **`fmtLtvPct` IS THE ONLY LTV FORMATTER.** `computeStrikeLtv`, `cbMetrics.ltv` and
+`computeLiquidationAnalysis.newLtv` deliberately return `POSITIVE_INFINITY` for debt with no collateral —
+returning 0 there rendered the worst possible state as perfectly safe. But `(x * 100).toFixed(n)` on a
+non-finite number silently produces the string **"Infinity%"**, and that shipped across the Safety
+Dashboard, Simple Mode, the Coinbase Loan tab, the Liquidation Modeler, the Advisor, the Emergency
+Console, Daily Mode, the Ledger face and the Monthly Playbook — only the two Almanac faces were guarded,
+because the formatter was defined locally in `cyclingFaceView` instead of app-wide. It now lives in
+`utils/format` and `cyclingFaceView` re-exports it. ⚠ **EDITABLE FIELDS ARE DIFFERENT:** a form value
+round-trips through `parseFloat`, so `MonthlyLogSection.ltvFieldValue` / `MonthlyLogOverlay.ltvFieldNumber`
+degrade a non-finite LTV to `0` rather than rendering `∞`. `utils/__tests__/fmtLtvPct.test.ts` greps
+`src/components/` and FAILS on any re-open-coded `(…ltv * 100).toFixed(…)`.
+
+⚠ **`deriveOwnership`'s `coldBtc` has TWO caller conventions.** It is ADDED to `btcHeld`, which is right
+only when the caller's `btcHeld` EXCLUDES cold: the **viewer** passes strike+cb plus cold separately
+(4-arg), while **both Almanac faces** pass `CyclingRow.btcHeld`, which already contains cold (3-arg).
+Passing a row's `btcHeld` AND its `coldBtc` double-counts the pool, and `yoursShare` is clamped to [0,1]
+so the result still looks plausible. `ownership.test.ts` pins both conventions and asserts the Almanac
+call sites stay 3-arg. ⚠ Its cold guard is `Number.isFinite(c) && c > 0`, NOT `Math.max(0, c)` — the
+latter returns NaN for NaN, which poisoned every field instead of clamping (matches `viewerVenue.clean`).
+
+
 🔴 **FIXTURES ARE SYNTHETIC. THIS REPO IS PUBLIC.** Every engine fixture uses round, invented numbers —
 `cyclingSim.test.ts`'s `LIVE`, `ownership.test.ts`'s `SEED`, `emergencyModel.test.ts`'s `BASE`. They once
 carried the owner's ACTUAL position (collateral, debts, credit line, monthly income and expenses), one of
@@ -4049,7 +4070,7 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1138 tests — `npx vitest run` before every commit.
+1148 tests — `npx vitest run` before every commit.
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device

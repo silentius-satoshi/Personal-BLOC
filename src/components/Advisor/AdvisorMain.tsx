@@ -12,7 +12,7 @@ import {
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, deriveCurrentPosition } from '../../simulation/logUtils';
 import { strikeAvailableCredit, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import { MonthlyLogSection } from './MonthlyLogSection';
 import { MonthlyLogOverlay } from './MonthlyLogOverlay';
 import { OutlookProjection } from './OutlookProjection';
@@ -277,7 +277,7 @@ export function AdvisorMain() {
                 <div className={styles.positionStat}>
                   <span className={styles.positionLabel}>Current LTV</span>
                   <span className={styles.positionValue} style={{ color: getTierColor(currentTier) }}>
-                    {(currentCbLtv * 100).toFixed(1)}%
+                    {fmtLtvPct(currentCbLtv, 1)}
                   </span>
                 </div>
                 <div className={styles.positionStat}>
@@ -300,7 +300,7 @@ export function AdvisorMain() {
                 </span>
               </div>
               <p className={styles.cardSubtitle}>
-                {hasCbLoan && `CB LTV: ${(currentCbLtv * 100).toFixed(1)}% · `}
+                {hasCbLoan && `CB LTV: ${fmtLtvPct(currentCbLtv, 1)} · `}
                 BLOC: {fmtUSD(advisorActualBlocBalance)} ·
                 BTC: {startingBtcHeld.toFixed(5)}
               </p>

@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { deriveOwnership } from '../ownership';
 import { runCyclingSim, type CyclingInputs } from '../cyclingSim';
@@ -37,6 +39,57 @@ const yoursAt = (r: { last: { btcHeld: number; debt: number; price: number } }) 
   deriveOwnership(r.last.btcHeld, r.last.debt, r.last.price).yoursBtc;
 
 describe('deriveOwnership — one definition of "what\'s yours"', () => {
+  describe('⚠ the coldBtc parameter has TWO conventions — do not double-count', () => {
+    // `coldBtc` is ADDED to `btcHeld`. That is correct ONLY when the caller's btcHeld EXCLUDES cold:
+    //   • Viewer  (OwnershipBar) passes strike+cb and cold separately  → 4-arg form, cold added here.
+    //   • Almanac (both faces)   passes CyclingRow.btcHeld, which ALREADY contains cold → 3-arg form.
+    // A caller that passes `row.btcHeld` AND `row.coldBtc` counts the cold pool twice, and because
+    // yoursShare is clamped to [0,1] the result still LOOKS plausible. These pin both conventions.
+
+    it('the 3-arg form equals the 4-arg form with cold already inside btcHeld', () => {
+      const viewerStyle = deriveOwnership(2.0, 80_000, 80_000, 1.0);   // 2 pledged + 1 cold
+      const almanacStyle = deriveOwnership(3.0, 80_000, 80_000);       // btcHeld already 3
+      expect(viewerStyle.yoursBtc).toBeCloseTo(almanacStyle.yoursBtc, 12);
+      expect(viewerStyle.lendersBtc).toBeCloseTo(almanacStyle.lendersBtc, 12);
+      expect(viewerStyle.yoursShare).toBeCloseTo(almanacStyle.yoursShare, 12);
+    });
+
+    it('⭐ double-counting cold inflates yoursBtc by exactly the cold amount', () => {
+      // The bug this guards: passing an Almanac row's btcHeld (cold included) AND its coldBtc.
+      const correct = deriveOwnership(3.0, 80_000, 80_000);            // btcHeld includes 1 BTC cold
+      const doubled = deriveOwnership(3.0, 80_000, 80_000, 1.0);       // ...and cold passed again
+      expect(doubled.yoursBtc - correct.yoursBtc).toBeCloseTo(1.0, 12);
+      expect(doubled.lendersBtc).toBeCloseTo(correct.lendersBtc, 12);  // the debt leg is unaffected
+      // Still inside [0,1], which is why a sanity check on the share alone cannot catch this.
+      expect(doubled.yoursShare).toBeGreaterThan(0);
+      expect(doubled.yoursShare).toBeLessThanOrEqual(1);
+    });
+
+    it('omitting coldBtc defaults to 0, so every 3-arg caller is unchanged', () => {
+      expect(deriveOwnership(2.5, 100_000, 80_000)).toEqual(deriveOwnership(2.5, 100_000, 80_000, 0));
+    });
+
+    it('negative / non-finite cold cannot shrink the stack', () => {
+      const bare = deriveOwnership(2.0, 80_000, 80_000);
+      for (const bad of [-5, Number.NaN]) {
+        const o = deriveOwnership(2.0, 80_000, 80_000, bad as number);
+        expect(o.yoursBtc).toBeCloseTo(bare.yoursBtc, 12);
+      }
+    });
+
+    it('⭐ the Almanac callers use the 3-arg form — the convention is enforced, not just documented', () => {
+      const read = (rel: string) => readFileSync(join(process.cwd(), rel), 'utf8');
+      for (const f of ['src/components/Almanac/cyclingFaceView.ts',
+                       'src/components/Almanac/ownershipFaceView.ts',
+                       'src/components/Almanac/OwnershipFace.tsx']) {
+        const calls = [...read(f).matchAll(/deriveOwnership\(([^)]*)\)/g)].map((m) => m[1]);
+        expect(calls.length, `${f}: expected at least one deriveOwnership call`).toBeGreaterThan(0);
+        for (const args of calls) {
+          expect(args.split(',').length, `${f}: deriveOwnership(${args}) must not pass coldBtc`).toBe(3);
+        }
+      }
+    });
+  });
   it('⭐ the worked example: the share is of the COIN COUNT, never the value', () => {
     // 1.92 / 3 = 0.64 — btcHeld is the denominator, not collateralValue.
     // Debt buys 86_400/80_000 = 1.08 ₿ at this price, so 1.92 ₿ of the 3 held are yours.

@@ -7,7 +7,7 @@ import { strikeAvailableCredit, computeStrikeLtv, BLOC_OPERATING_CEILING } from 
 import { CB_LLTV, CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
 import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
 import { buildMonthRollup } from '../Daily/calendarModel';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
@@ -425,7 +425,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>CURRENT STRIKE BLOC</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {currentBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(currentBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({(currentBlocLtv * 100).toFixed(1)}% LTV)</span></span>
+              <span className={styles.positionStat}>{fmtUSD(advisorActualBlocBalance)} <span className={styles.parenSub}>({fmtLtvPct(currentBlocLtv)} LTV)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(currentAvail.available)}</span>
               {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentRow?.strikeRepayFired && (
                 <span className={styles.positionStatHint} style={{ color: 'var(--green)' }}>
@@ -478,7 +478,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                   ) : (
                     <>
                       <span className={styles.positionStat} style={{ color: 'var(--text-secondary)' }}>
-                        CB runway: {(cbLtvTriggerPct - currentCbLtv * 100).toFixed(1)}%
+                        CB runway: {Number.isFinite(currentCbLtv) ? `${(cbLtvTriggerPct - currentCbLtv * 100).toFixed(1)}%` : '—'}
                       </span>
                       <span className={styles.positionStatHint}>before {cbLtvTriggerPct}% trigger</span>
                     </>
@@ -491,7 +491,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>AFTER THIS MONTH</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(eomLtv * 100).toFixed(1)}% LTV</span>)</span></span>
+              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(eomLtv)} LTV</span>)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
             </div>
 
@@ -539,7 +539,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             </div>
             <div className={styles.scrubMeta}>
               <span className={styles.scrubLtv}>
-                LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}%</span>
+                LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(barStrikeLtv)}</span>
                 {hasPaydown && <span className={styles.scrubPaydownFlag}> — paydown triggered</span>}
               </span>
               <span className={styles.scrubPrice}>BTC {fmtUSD(btcPrice)}</span>
@@ -570,12 +570,12 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                     <span className={styles.planBarVal}>
                       {isCurrent ? (
                         <>
-                          <span className={styles.planBarFrom}>{(currentBlocLtv * 100).toFixed(1)}%</span>
+                          <span className={styles.planBarFrom}>{fmtLtvPct(currentBlocLtv)}</span>
                           <span className={styles.planBarArrow}> → </span>
-                          <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}% LTV</span>
+                          <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
                         </>
                       ) : (
-                        <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{(barStrikeLtv * 100).toFixed(1)}% LTV</span>
+                        <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
                       )}
                     </span>
                   </div>
@@ -592,12 +592,12 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                     <span className={styles.planBarVal}>
                       {isCurrent ? (
                         <>
-                          <span className={styles.planBarFrom}>{(currentCbLtv * 100).toFixed(1)}%</span>
+                          <span className={styles.planBarFrom}>{fmtLtvPct(currentCbLtv)}</span>
                           <span className={styles.planBarArrow}> → </span>
-                          <span>{(barCbLtv * 100).toFixed(1)}% LTV</span>
+                          <span>{fmtLtvPct(barCbLtv)} LTV</span>
                         </>
                       ) : (
-                        <span>{(barCbLtv * 100).toFixed(1)}% LTV</span>
+                        <span>{fmtLtvPct(barCbLtv)} LTV</span>
                       )}
                     </span>
                   </div>

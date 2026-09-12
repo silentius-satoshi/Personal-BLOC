@@ -8,7 +8,7 @@ import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
 
 function daysSince(asOf: string | null): number | null {
@@ -165,7 +165,7 @@ export function SafetyDashboard() {
           <span className={styles.barHeaderLeft}>
             <span className={styles.barLabel}>STRIKE BLOC</span>
             <span className={styles.barValue}>
-              {strikeView === 'capacity' ? `${(capacityUsed * 100).toFixed(0)}% used` : `${(strikeLtv * 100).toFixed(1)}% LTV`}
+              {strikeView === 'capacity' ? `${(capacityUsed * 100).toFixed(0)}% used` : `${fmtLtvPct(strikeLtv)} LTV`}
             </span>
             <span className={styles.badge} style={{ color: LEVEL_COLOR[strikeLevel], borderColor: LEVEL_COLOR[strikeLevel] }}>
               {strikeLevel === 'safe' ? 'Safe' : strikeLevel === 'watch' ? 'Fair' : 'Poor'}
@@ -230,7 +230,7 @@ export function SafetyDashboard() {
         <div className={styles.barHeader}>
           <span className={styles.barHeaderLeft}>
             <span className={styles.barLabel}>COINBASE LOAN</span>
-            <span className={styles.barValue}>{(cbLtv * 100).toFixed(1)}% LTV</span>
+            <span className={styles.barValue}>{fmtLtvPct(cbLtv)} LTV</span>
             <span className={styles.badge} style={{ color: cbFillColor, borderColor: cbFillColor }}>{cbBadge}</span>
           </span>
           <span className={styles.chevron}>›</span>

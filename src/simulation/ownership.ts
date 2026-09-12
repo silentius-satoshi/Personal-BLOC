@@ -35,7 +35,11 @@ const clamp01 = (x: number): number => Math.max(0, Math.min(1, x));
 export function deriveOwnership(btcHeld: number, debt: number, price: number, coldBtc = 0): Ownership {
   // Zero-price guard mirrors btcGained: the debt term contributes 0 when a dollar figure can't be priced,
   // so `yoursBtc` degenerates to `btcHeld` rather than blowing up.
-  const totalHeld = btcHeld + Math.max(0, coldBtc);
+  // ⚠ NOT `Math.max(0, coldBtc)` — that returns NaN for NaN, so a malformed cold balance poisoned every
+  // field here (yoursBtc, both shares) instead of being clamped away. Mirrors viewerVenue's `clean()`,
+  // which is the codebase's existing standard for exactly this input.
+  const cold = Number.isFinite(coldBtc) && coldBtc > 0 ? coldBtc : 0;
+  const totalHeld = btcHeld + cold;
   const lendersBtc = price > 0 ? debt / price : 0;
   const yoursBtc = totalHeld - lendersBtc;
   const hasData = totalHeld > 0;

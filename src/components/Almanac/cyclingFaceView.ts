@@ -47,12 +47,9 @@ export function debtSplit(row: CyclingRow): DebtSplit {
   };
 }
 
-/** LTV fraction → display string. Positive infinity (debt with no collateral) reads as ∞, never
- *  "Infinity%" — `.toFixed(1)` on a non-finite number silently produces just that. */
-export function fmtLtvPct(fraction: number): string {
-  if (!Number.isFinite(fraction)) return fraction > 0 ? '∞' : '—';
-  return `${(fraction * 100).toFixed(1)}%`;
-}
+/** Re-exported so the Almanac keeps its existing import site, but there is ONE definition app-wide —
+ *  see utils/format. A second copy is how half the surfaces ended up still printing "Infinity%". */
+export { fmtLtvPct } from '../../utils/format';
 
 /**
  * The run's realized blended origination-fee fraction: fees paid ÷ cash refinanced. The fee is MARGINAL

@@ -35,3 +35,19 @@ export function relativeAge(ts: number | null): string {
   if (hrs < 24) return `updated ${hrs}h ago`;
   return `updated ${Math.floor(hrs / 24)}d ago`;
 }
+
+/**
+ * LTV fraction → display string. THE single LTV formatter for the whole app.
+ *
+ * ⚠ `(x * 100).toFixed(1)` on a non-finite number silently renders the string "Infinity%". That is
+ * reachable: `computeStrikeLtv` and `computeLiquidationAnalysis` deliberately return POSITIVE_INFINITY
+ * for debt with no collateral (returning 0 there would render the worst possible state as perfectly
+ * safe). Every surface that prints an LTV must route through here, or the honest engine value becomes a
+ * broken string in the exact panel someone reads during a margin crisis.
+ *
+ * Infinity → "∞"; NaN / −Infinity → "—" (unknown, not zero).
+ */
+export function fmtLtvPct(fraction: number, decimals = 1): string {
+  if (!Number.isFinite(fraction)) return fraction > 0 ? '∞' : '—';
+  return `${(fraction * 100).toFixed(decimals)}%`;
+}
