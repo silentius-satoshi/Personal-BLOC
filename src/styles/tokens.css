@@ -34,6 +34,10 @@
 
   /* Almanac CycleClock P1 — low/floor projection-marker accent (additive). */
   --maroon:    #8B3A3A;
+  /* --maroon lifted 30% toward white — the 4-yr cycle price path (Almanac Cycling/Ownership faces). The raw
+     --maroon is the right family but measures 2.47:1 on --surface, under WCAG's 3:1 minimum for text AND for
+     graphical objects like a chart line; this measures 5.00:1, clearing even the 4.5:1 text threshold. */
+  --maroon-lift: #AE7575;
 
   /* Gesture & Motion System — P0. Springs as duration+easing pairs consumable by
      CSS transitions AND WAAPI. linear() approximates true spring curves (Safari 17.2+). */

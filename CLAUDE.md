@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1154 tests — all must pass before every commit)
+- Vitest (1207 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -121,6 +121,17 @@ src/
                                 # clamped) keeps the zero-import rule; callers pass a UTC-midnight startDate.
                                 # + plBandAt(band, startDate, months) — one band at a selected month (the faces'
                                 # Support marker), zero-import preserved
+                                # + addMonths — now EXPORTED, shared with cyclePath.ts (⚠ day-of-month clamped,
+                                # so NOT invertible — the 4-yr cycle's phase shift deliberately does not use it)
+    cyclePath.ts                # 4-yr cycle price path — the Almanac faces' 4th path kind 'fourYear' (PathKind =
+                                # PlBand | 'fourYear'). Imports BOTH belief leaves so neither gains an import:
+                                # price = plFairValue(d) × cycleMultAt(d), CYCLE_TOP_MULT 1.00 (tops on fair) ↔
+                                # CYCLE_LOW_MULT = PL_A_FLOOR/PL_A_FAIR (DERIVED — troughs ON support), log-linear
+                                # in days between CYCLE_TURNS. cycleConvergencePath = structural mirror of
+                                # plConvergencePath. Phase shift = fixed ms (CYCLE_SHIFT_MONTH_MS, 30.4375 d, a whole
+                                # number of ms → exactly invertible). shiftedCycleTurns (unclipped) feeds
+                                # upcomingCycleTurns (path note) + cycleTurnsInHorizon (Milestones: nearest row,
+                                # ties → later, row 0 SNAPS to 1). 🔴 A belief — never importable by the risk core
     cyclingSim.ts               # Cycling strategy PURE engine (Almanac `cycling` face) — draw bills on Strike,
                                 # refinance into Coinbase every cycleMonths, route every purchase to the CB
                                 # collateral pool, stop drawing at a CB LTV cap; verdict vs a never-draw baseline.
@@ -2296,6 +2307,12 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
 - **`clampMonth(selected, rowCount)`** — see the crash note below.
 - **`isAnchorHeld(lens, priceMode)`** / **`stressAnchorPrice(livePrice, anchor, held)`** /
   **`anchorDrift(livePrice, anchorPrice, held)`** → the price-stress anchor. See **the anchor split** below.
+- **`coldBeyondRecord(price, supportAtMonth, bufferPct)`** → the cold InfoTip's "deeper than any bottom ever
+  recorded" warning as a PRICE comparison (`price·(1−buffer) < support·0.55·(1−1e-9)`). See **4-yr cycle price
+  path** for the float hazard and why the `1e-9` is a precaution.
+- **`mergeMilestoneRows(fixed, turns)`** / **`fmtTurnDate`** / **`nextTurnsText`** / **`fmtPhaseShift`** → the
+  4-yr cycle's Milestones rows and copy. ⚠ These take PLAIN arrays/values: this module must never import
+  `powerLaw` / `cycleModel` / `cyclePath` (its docblock promises it — the easiest wall in the repo to break).
 - ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
   user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
   store state. Same reasoning as `cyclingSim`'s local `ltvOf()`. **This module must never be imported by the
@@ -2317,7 +2334,11 @@ object (with `defendCbLtv: true` — the defense is AUTOMATIC) shared by the bas
 reset effect **MIRRORS the engine-inputs memo's dep array** (`pricePath`, `cbDebt`, the four store-derived
 position values, the overlay inputs, `mode`) plus `monthIdx` — *if an input is added to `runCyclingSim`, add
 it there too*, or a stress scenario silently survives an engine change. `pricePath` subsumes
-`btcPrice`/`band`/`months`/`convergeMonths`/`startDate`.
+`btcPrice`/`pathKind`/`phaseShiftMonths`/`months`/`convergeMonths`/`startDate`. ⚠ **The mirror is now a
+TEST, not a comment:** `src/components/Almanac/__tests__/resetMirror.test.ts` extracts both dep arrays from
+each face and fails if any engine input except `startDate` is missing from the reset list. The comment alone
+had let `coldBufferPct` drift out on BOTH faces — a pre-existing bug: moving the cold slider under an engaged
+lens kept a stale scenario. The guard was proven red against the unfixed faces before the fix went in.
 
 **⚠ THE ANCHOR SPLIT — the lens freezes the SCENARIO, never the FACE.** `pricePath` is built from
 `anchorPrice`, **not** `s.btcPrice`. `useBtcPrice` polls spot every 10s and pushes to the store on a 0.1%
@@ -3622,10 +3643,68 @@ liquidation month alongside the ₿ banked for exactly this reason.
 
 ---
 
-⚠ **The Ownership face's `drift` ("Fixed rate") path is REMOVED** — `pathKind` is now exactly `PlBand`,
-the `growth` overlay key and the conditional Annual-growth slider are gone, and `driftPath` was deleted
-from `ownershipFaceView.ts` as dead code. A flat/fixed-rate price is not a thing bitcoin has ever done,
-so it was a scenario nobody would legitimately plan on. The Cycling face never had it.
+⚠ **The Ownership face's `drift` ("Fixed rate") path is REMOVED** — `pathKind` was then exactly `PlBand`
+(since widened to `PathKind = PlBand | 'fourYear'` — see below), the `growth` overlay key and the conditional
+Annual-growth slider are gone, and `driftPath` was deleted from `ownershipFaceView.ts` as dead code. A
+flat/fixed-rate price is not a thing bitcoin has ever done, so it was a scenario nobody would legitimately
+plan on. The Cycling face never had it.
+
+### 4-yr cycle price path — `fourYear` (`src/simulation/cyclePath.ts`; no engine or store change)
+
+A FOURTH path kind on both the Cycling and Ownership faces, opt-in (`DEFAULT_BAND` / `DEFAULT_PATH` stay
+`'floor'`). **Why:** `plConvergencePath` rides one band monotonically, so over the default horizon the Support
+path's deepest drawdown after month 1 is **exactly 0** — it cannot fall. Liquidation is a PATH property, so a
+monotone path never exercises the CB LTV stop or the defense cascade, and never shows what the cold-storage
+sweep COSTS (the sweep fires on strength; coins moved to cold near a peak are collateral the next bear no
+longer has). The cycle path oscillates support ↔ fair on `CYCLE_TURNS`: **−52%** from the 2029 top into the
+2030 trough.
+
+- **Model:** price = `plFairValue(d) × cycleMultAt(d)`. `CYCLE_TOP_MULT = 1.00` — tops on the fair line, a
+  CALIBRATION CHOICE fitted to the Oct-2025 top (tops ran 19.3× → 11.6× → 6.0× → 2.5× → 0.99× fair; revisit
+  each cycle; `PL_A_CEILING` plays NO role). `CYCLE_LOW_MULT = PL_A_FLOOR / PL_A_FAIR` — DERIVED, so the trough
+  IS the support line by construction. Log-linear in days between turns. It predicts shallower bears than
+  history (−52%, not −77%) — coherent and falsifiable, not a bug.
+- **§2 wall:** `cyclePath.ts` imports from BOTH belief leaves so neither gains an import (`powerLaw.addMonths`
+  is now exported for it). `cyclingSim.ts` and `cycleModel.ts` are untouched — the engine still gets a plain
+  `number[]`. A belief: never importable by the risk core.
+- **Naming — a deliberate asymmetry, do not harmonize:** the module/constants are `cyclePath` / `CYCLE_*`; the
+  user-facing key is `'fourYear'` ("4-yr cycle" on Cycling, "Ride the 4-yr cycle" on Ownership) because
+  `'cycle'` is already a `CyclingMode` and Ownership has a Strategy "Cycle" button on the same card — which is
+  also why the slider is "4-yr cycle timing". `PlBand` stays exactly `'floor'|'fair'|'ceiling'`: `'fourYear'`
+  must never reach `plBandsAt` / `plBandAt` / `PL_BAND_LABEL` (all `Record<PlBand, …>`). Both faces branch on
+  `pathKind === 'fourYear'` before indexing, and the "sits on / tracks the line" copy has a cycle variant (an
+  oscillating path tracks no line). CyclingFace's `band` / `Overlay.band` were renamed `pathKind`.
+- **Phase shift** (`Overlay.phaseShiftMonths`, −12…+12, face-local 44px `.scrub`, positive = LATE): a fixed
+  MILLISECOND offset, `CYCLE_SHIFT_MONTH_MS = 30.4375 d = 2,629,800,000 ms` — a whole number, so exactly
+  invertible. ⚠ NOT `addMonths`: its day-of-month clamp is not invertible, and the shifted schedule and the
+  shifted probe disagreed on the 2034-07-31 turn for 5 of 12 shifts. Framed as a robustness check, never a fit.
+- **Milestones + path note — one schedule, two consumers.** `shiftedCycleTurns(shift)` is the single source.
+  The path note reads it UNCLIPPED (`upcomingCycleTurns` → "Next low 5 Oct 2026, next high 3 Sep 2029"; a
+  12-month horizon would otherwise lose the next high). Milestones read it clipped (`cycleTurnsInHorizon`):
+  nearest row, **ties → later row**, and a turn nearest **row 0 SNAPS to row 1** — row 0 is live spot, and
+  dropping it would hide the most imminent trough. Every turn row shows the turn's real date (`fmtTurnDate`,
+  a fixed month table — `toLocaleDateString('en-GB')` renders "Sept" under Node's ICU). `mergeMilestoneRows`
+  merges them with the fixed 12/24/36/60/120 rows; a turn landing on a fixed row keeps its label (row 36 on
+  the default view). Ownership's turn rows jump the scrubber like its other rows; Cycling's are not clickable.
+- **⚠ THE FLOAT HAZARD — compare PRICES, not multiples.** `plFloor(d)/plFairValue(d)` is not bit-equal to
+  `PL_A_FLOOR/PL_A_FAIR` (47 of 168 monthly dates differ). The below-support warning is now
+  `selRow.price < supportAtMonth * (1 − 1e-9)`, a float-equality guard for the cycle path's `fair × mult`
+  construction. ⚠ It is NOT gated on the lens: the cycle path never dips under support on its own (the
+  multiple is bounded below by `CYCLE_LOW_MULT`), and a gate would hide a real warning from a slow convergence
+  out of a below-support spot.
+- **Two PRE-EXISTING defects fixed alongside:** (1) the Cycling cold-storage InfoTip computed "survive down to
+  X% of fair" from the constant `PL_A_FLOOR/PL_A_FAIR`, so it reported the Support answer on Fair and
+  Resistance too. It now reads the displayed path at the inspected month (`plBandAt('fair', …)`, so it moves
+  with the stress lens), and the old `coldBufferPct > 45` rule became the path-aware `coldBeyondRecord`.
+  (2) The lens-reset mirror drift (`coldBufferPct`) — see the inspection-layer section above.
+- **Colour:** `--maroon-lift` (#AE7575, 5.00:1 on `--surface`); the raw `--maroon` is 2.47:1, under WCAG's
+  3:1 for text AND graphical objects such as a chart line. One `PATH_META` entry feeds the buttons, the path
+  note, the BTC-price tile and the chart line. Ownership's `PATH_META` has no `color` (it was never read).
+- Tests: `src/simulation/__tests__/cyclePath.test.ts` (23 — incl. the drawdown gap, Support maxDD `=== 0` vs
+  cycle ≈ −52%, and an engine run where a synthetic leveraged position liquidates at month 42, inside the
+  2029→30 descent, while the SAME position on Support never liquidates) + `cyclingFaceView.test.ts`
+  (`coldBeyondRecord` 0/240 at 45% vs 240/240 at 46% on Support, the guard pinned on synthetic values;
+  `mergeMilestoneRows`; the formatters) + `resetMirror.test.ts`.
 
 Data: Blockchain.com (dev direct, prod via `/api/btc-history` proxy). Block height: mempool.space.
 Halving computed from block height only.
@@ -3951,6 +4030,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 --surface #0e1219 / --surface-2 #151b25 / --surface-3 #1c2431  --line / --line-2 (translucent white borders)
 --btc #f7931a (bitcoin accent, distinct from --orange)  --mono (mono font stack)
 --coinbase #0052FF (Coinbase venue accent — the design system's only brand-colour token)  --maroon #8B3A3A (CycleClock low/floor marker)
+--maroon-lift #AE7575 (the Almanac 4-yr cycle path — --maroon lifted 30% toward white: 5.00:1 on --surface; raw --maroon is 2.47:1)
 /* Gesture & Motion System P0 — springs as duration+easing pairs (CSS transitions AND WAAPI): */
 --motion-fast 120ms / --motion-standard 200ms / --motion-settle 320ms
 --ease-standard / --ease-decelerate (cubic-beziers)  --ease-spring / --ease-spring-soft (linear() spring curves)
@@ -4128,7 +4208,17 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1154 tests — `npx vitest run` before every commit.
+1207 tests — `npx vitest run` before every commit.
+- `src/simulation/__tests__/cyclePath.test.ts` — the 4-yr cycle path (23): `CYCLE_LOW_MULT` derived; trough ≡
+  support compared as PRICES (relative, 1e-12); exact multiples at every turn (pins exactness, not the exact-hit
+  shortcut — the interpolation is exact there without it); monotone between turns; the ms phase shift
+  translates all 14 turns × 25 shifts exactly (incl. 2034-07-31); clamps + never NaN; the plConvergencePath
+  mirror; `cycleTurnsInHorizon` (rows 1/36/48 on the 2026-09-12 default; ties → later pinned by a 2026-08-20
+  start, since the 09-20 tie lands on row 1 via the snap either way; row-0 snap; no row 0 over two years of
+  starts); the drawdown gap (Support `=== 0`, cycle ≈ −52%); and an engine run on a synthetic position that
+  liquidates inside the 2029→30 descent while the same position on Support never does
+- `src/components/Almanac/__tests__/resetMirror.test.ts` — grep-style guard: each face's lens-reset dep array ⊇
+  its `engineInputs` deps minus `startDate` (4). Proven red on `coldBufferPct` before the fix
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device

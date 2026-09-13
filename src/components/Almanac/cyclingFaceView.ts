@@ -177,6 +177,96 @@ export function clampMonth(selected: number, rowCount: number): number {
   return Math.max(0, Math.min(Math.floor(selected), rowCount - 1));
 }
 
+// ── the cold-storage record threshold ─────────────────────────────────────────────────────────────
+
+/**
+ * Survive-to floor that triggers the "deeper than any bottom ever recorded" warning, as a fraction of the
+ * support line. On the Support path this is exactly the old `coldBufferPct > 45` rule (1 − 45/100 = 0.55).
+ */
+export const COLD_RECORD_SUPPORT_FRACTION = 0.55;
+
+/**
+ * Does a cold-storage buffer of `bufferPct` below `price` ask to survive deeper than any recorded bottom —
+ * below 0.55× the support line at that month?
+ *
+ * PATH-AWARE by construction: it compares PRICES (the modeled price vs the support line at the same month),
+ * so on Fair or Resistance a 45% buffer no longer reads as "deeper than any bottom" just because it would be
+ * on Support. It replaces an inline `coldBufferPct > 45` that ignored the path entirely.
+ *
+ * ⚠ Compare PRICES, never multiples. `surviveMult < (PL_A_FLOOR / PL_A_FAIR) * 0.55` looks equivalent but is
+ * not: plFloor(d)/plFairValue(d) is not bit-equal to PL_A_FLOOR/PL_A_FAIR, and at a 45% buffer that form
+ * fires in 32 of 240 months on Support, so the warning flickers as you scrub.
+ *
+ * ⚠ The `1e-9` is a PRECAUTION, not a fix for a live defect. At exactly 45, `1 − 45/100 === 0.55`, so the
+ * test reduces to `price < supportAtMonth`. On Support both sides are the same value (exact). On the 4-yr
+ * path they are built differently (fair × CYCLE_LOW_MULT vs A_FLOOR × d^B), but that product is only
+ * evaluated exactly on a row landing on a low turn, and all 7 such rows sit at or above support. The guard
+ * stops a future constant or schedule change from flipping one of them into a flicker — and because no
+ * real path reaches it today, the tests pin it on synthetic values.
+ *
+ * Plain numbers only: this module stays free of powerLaw/cycleModel imports.
+ */
+export function coldBeyondRecord(price: number, supportAtMonth: number, bufferPct: number): boolean {
+  return price * (1 - bufferPct / 100) < supportAtMonth * COLD_RECORD_SUPPORT_FRACTION * (1 - 1e-9);
+}
+
+// ── Milestones with cycle turns ───────────────────────────────────────────────────────────────────
+
+/** A cycle turn mapped to a Milestones row. Structurally the shape cyclePath.cycleTurnsInHorizon returns —
+ *  declared here, not imported, so this module keeps its no-belief-imports property. */
+export interface MilestoneTurn {
+  month: number;
+  kind: 'high' | 'low';
+  date: Date;
+}
+
+export interface MilestoneRow {
+  month: number;
+  /** Set when a cycle turn is marked on this row — it keeps the turn label even on a fixed row. */
+  turn: MilestoneTurn | null;
+}
+
+/**
+ * Merge the fixed milestone rows (12/24/36/60/120, already clipped to the horizon) with the cycle turns,
+ * sorted by month, one row per month. A turn that lands on a fixed row KEEPS its turn label — on the
+ * default view (start 2026-09-12, 60 months) the 2029 top lands on row 36, which is a fixed row.
+ *
+ * Takes plain arrays on purpose: the caller fetches the turns from cyclePath, so this module never imports
+ * a belief.
+ */
+export function mergeMilestoneRows(fixed: readonly number[], turns: readonly MilestoneTurn[]): MilestoneRow[] {
+  const byMonth = new Map<number, MilestoneRow>();
+  for (const month of fixed) byMonth.set(month, { month, turn: null });
+  for (const turn of turns) byMonth.set(turn.month, { month: turn.month, turn });
+  return [...byMonth.values()].sort((a, b) => a.month - b.month);
+}
+
+const MONTH_ABBR = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * A turn's real calendar date ("5 Oct 2026"). UTC — turn dates are UTC-midnight instants, and a shifted
+ * turn can carry a time of day, which must not roll the displayed date in a behind-UTC zone.
+ * ⚠ Built from a fixed month table, NOT toLocaleDateString: locale month abbreviations vary by runtime
+ * (Node's ICU renders en-GB September as "Sept"), so the same turn would read differently per device.
+ */
+export function fmtTurnDate(d: Date): string {
+  return `${d.getUTCDate()} ${MONTH_ABBR[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+}
+
+/** The path note's turn clause: "Next low 5 Oct 2026, next high 3 Sep 2029". '' when nothing is upcoming.
+ *  Fed from cyclePath.upcomingCycleTurns (the UNCLIPPED schedule), never from the horizon-clipped turns. */
+export function nextTurnsText(turns: readonly { kind: 'high' | 'low'; date: Date }[]): string {
+  return turns
+    .map((t, i) => `${i === 0 ? 'Next' : 'next'} ${t.kind === 'high' ? 'high' : 'low'} ${fmtTurnDate(t.date)}`)
+    .join(', ');
+}
+
+/** The 4-yr cycle timing readout: "on schedule" / "+3 mo late" / "−2 mo early" (positive = late). */
+export function fmtPhaseShift(months: number): string {
+  if (!Number.isFinite(months) || months === 0) return 'on schedule';
+  return months > 0 ? `+${months} mo late` : `−${Math.abs(months)} mo early`;
+}
+
 // ── the price-stress ANCHOR ───────────────────────────────────────────────────────────────────────
 
 /**

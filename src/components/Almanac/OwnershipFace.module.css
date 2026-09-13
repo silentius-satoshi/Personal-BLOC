@@ -434,6 +434,16 @@
 .msYours { color: var(--btc); }
 .gainNet { color: var(--green); }
 .gainGross { font-size: 9.5px; color: var(--text-faint); }
+/* A 4-yr cycle turn marked on this row, with its real date (the row can sit up to a month off it). */
+.msTurn {
+  display: block;
+  margin-top: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--maroon-lift);
+}
+/* The 4-yr cycle timing control, under the price-path note. */
+.shiftBlock { margin-top: 10px; }
 
 /* ── Footer ─────────────────────────────────────────────────────────────────────────────────── */
 .disclaimer {

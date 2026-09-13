@@ -2,8 +2,13 @@ import { describe, it, expect } from 'vitest';
 import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
+  coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, nextTurnsText, fmtPhaseShift,
 } from '../cyclingFaceView';
 import { runCyclingSim, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
+// Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
+import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
+import { cycleConvergencePath } from '../../../simulation/cyclePath';
+import { CYCLE_TURNS } from '../../../simulation/cycleModel';
 import { CB_FEE_TIER1_PCT } from '../../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
@@ -336,5 +341,109 @@ describe('cashFlowAtMonth — what actually buys bitcoin', () => {
     const m1 = r.rows[1];
     expect(m1.btcBoughtUsd).toBe(10_000);
     expect(cashFlowAtMonth(m1, 10_000, 7_500, true).buysUsd).toBe(10_000);
+  });
+});
+
+describe('coldBeyondRecord — the "deeper than any recorded bottom" threshold (spec test 9)', () => {
+  const utc = (iso: string) => new Date(`${iso}T00:00:00Z`);
+  const start = utc('2026-09-12');
+
+  it('⭐ Support, on the line, months 1…240: never fires at 45%, always fires at 46%', () => {
+    // At exactly 45, 1 − 45/100 === 0.55, so the test degenerates to price < support — the one value where
+    // a float mismatch would flicker. On Support both sides are the SAME value, so it is exact.
+    const path = plConvergencePath(100_000, 'floor', start, 240, 1);
+    let at45 = 0;
+    let at46 = 0;
+    for (let m = 1; m <= 240; m++) {
+      const support = plBandAt('floor', start, m);
+      expect(path[m]).toBe(support);                 // bit-identical — why no tolerance is needed here
+      if (coldBeyondRecord(path[m], support, 45)) at45++;
+      if (coldBeyondRecord(path[m], support, 46)) at46++;
+    }
+    expect(at45).toBe(0);
+    expect(at46).toBe(240);
+  });
+
+  it('⭐ the guard itself, pinned on synthetic values (no real path reaches it today)', () => {
+    const s = 70_000;
+    // One part in 10^12 under support at 45%: the 1e-9 guard absorbs it. Measured TRUE without the guard,
+    // so deleting the guard fails this assertion.
+    expect(coldBeyondRecord(s * (1 - 1e-12), s, 45)).toBe(false);
+    // …and the guard can never swallow a real crossing.
+    expect(coldBeyondRecord(s, s, 46)).toBe(true);
+  });
+
+  it('regression check: the 4-yr path at every exact low-turn row does not fire at 45%', () => {
+    // ⚠ NOT the guard's test: the helper WITHOUT the guard also fires 0 of 7 here, so this cannot detect
+    // the guard's removal. It pins that the real trough rows stay clean.
+    const lows = CYCLE_TURNS.filter((t) => t.kind === 'low');
+    expect(lows).toHaveLength(7);
+    for (const t of lows) {
+      const turnStart = addMonths(new Date(t.date), -12);
+      expect(addMonths(turnStart, 12).getTime()).toBe(t.date);   // row 12 really lands ON the turn
+      const path = cycleConvergencePath(100_000, turnStart, 12, 1);
+      expect(coldBeyondRecord(path[12], plBandAt('floor', turnStart, 12), 45)).toBe(false);
+    }
+  });
+
+  it('⭐ path-aware: on the fair line a 50% buffer is NOT "deeper than any bottom"', () => {
+    // The inline rule this replaced was `coldBufferPct > 45` on every path. Half of fair is still
+    // ~1.4× the support line, nowhere near a record bottom.
+    const fair = plBandAt('fair', start, 24);
+    const support = plBandAt('floor', start, 24);
+    expect(coldBeyondRecord(fair, support, 50)).toBe(false);
+    expect(coldBeyondRecord(support, support, 50)).toBe(true);   // the same buffer on Support does fire
+  });
+});
+
+describe('mergeMilestoneRows (spec test 10)', () => {
+  const d = (iso: string) => new Date(`${iso}T00:00:00Z`);
+  const turns = [
+    { month: 1, kind: 'low' as const, date: d('2026-10-05') },
+    { month: 36, kind: 'high' as const, date: d('2029-09-03') },
+    { month: 48, kind: 'low' as const, date: d('2030-09-02') },
+  ];
+
+  it('⭐ the default view: {1 low, 12, 24, 36 high, 48 low, 60} — row 36 keeps its turn label', () => {
+    const rows = mergeMilestoneRows([12, 24, 36, 60], turns);
+    expect(rows.map((r) => `${r.month}${r.turn ? ` ${r.turn.kind}` : ''}`)).toEqual([
+      '1 low', '12', '24', '36 high', '48 low', '60',
+    ]);
+  });
+
+  it('no row appears twice, and rows come out sorted whatever the input order', () => {
+    const rows = mergeMilestoneRows([60, 36, 12], [...turns].reverse());
+    const months = rows.map((r) => r.month);
+    expect(months).toEqual([...new Set(months)].sort((a, b) => a - b));
+  });
+
+  it('with no turns (a band path) it is just the fixed rows', () => {
+    expect(mergeMilestoneRows([12, 24], [])).toEqual([
+      { month: 12, turn: null }, { month: 24, turn: null },
+    ]);
+  });
+});
+
+describe('turn and timing formatters', () => {
+  const d = (iso: string) => new Date(`${iso}Z`);
+
+  it('fmtTurnDate reads the UTC calendar day, even for a shifted turn carrying a time', () => {
+    expect(fmtTurnDate(d('2026-10-05T00:00:00'))).toBe('5 Oct 2026');
+    expect(fmtTurnDate(d('2029-12-03T07:30:00'))).toBe('3 Dec 2029');
+  });
+
+  it('nextTurnsText names the next turns, and is empty with none', () => {
+    expect(nextTurnsText([
+      { kind: 'low', date: d('2026-10-05T00:00:00') },
+      { kind: 'high', date: d('2029-09-03T00:00:00') },
+    ])).toBe('Next low 5 Oct 2026, next high 3 Sep 2029');
+    expect(nextTurnsText([])).toBe('');
+  });
+
+  it('fmtPhaseShift: on schedule / late / early', () => {
+    expect(fmtPhaseShift(0)).toBe('on schedule');
+    expect(fmtPhaseShift(3)).toBe('+3 mo late');
+    expect(fmtPhaseShift(-2)).toBe('−2 mo early');
+    expect(fmtPhaseShift(NaN)).toBe('on schedule');
   });
 });

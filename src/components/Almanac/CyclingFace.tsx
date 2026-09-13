@@ -6,6 +6,9 @@ import {
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, CB_LIQUIDATION_PENALTY } from '../../simulation/cyclingSim';
 import { plBandsAt, plBandAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, PL_A_FLOOR, PL_A_FAIR, type PlBand } from '../../simulation/powerLaw';
+import {
+  cycleConvergencePath, cycleTurnsInHorizon, upcomingCycleTurns, CYCLE_PHASE_SHIFT_MAX_MONTHS, type PathKind,
+} from '../../simulation/cyclePath';
 import { accruedCbBalance, cbBarLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
@@ -14,6 +17,7 @@ import { LEVEL_COLOR } from '../../simulation/safetyView';
 import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
+  coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
 } from './cyclingFaceView';
 import { useStressLens } from './useStressLens';
 import { deriveCbCollateral } from '../../simulation/logUtils';
@@ -27,9 +31,9 @@ import styles from './CyclingFace.module.css';
  * Almanac Cycling face — draw bills on Strike, refinance into Coinbase every N months, route every
  * purchase to the Coinbase collateral pool, stop drawing at a CB LTV cap. Verdict vs "never draw".
  *
- * 🔴 THE §2 CROSSING LIVES HERE, deliberately and visibly: this view imports the power law (a BELIEF)
- * AND the risk constants (FACTS), builds a plain `number[]` price path, and hands it to an engine that
- * has never heard of either. The same shape OutlookProjection/MonthBreakdown already use.
+ * 🔴 THE §2 CROSSING LIVES HERE, deliberately and visibly: this view imports the power law and the 4-yr
+ * cycle path (BELIEFS) AND the risk constants (FACTS), builds a plain `number[]` price path, and hands it
+ * to an engine that has never heard of either. The same shape OutlookProjection/MonthBreakdown already use.
  *
  * READ-ONLY: zero store writes — not even a pin. Every control is seeded from the live plan and
  * overridden only in session-local state, so nothing here can touch the owner's numbers.
@@ -74,15 +78,22 @@ const DEFAULT_COLD_BUFFER_PCT = 30;
 const DEFAULT_COLD_ON = true;
 const DEFAULT_BAND: PlBand = 'floor';         // Support — the only band that has ever acted like one
 const DEFAULT_INSPECT_MONTH = 24;             // open the scrubber at 2.0 yr, not at the far end
+const DEFAULT_PHASE_SHIFT = 0;                // the 4-yr cycle on schedule
 
-const BAND_META: { key: PlBand; label: string; color: string }[] = [
-  { key: 'floor',   label: PL_BAND_LABEL.floor,   color: 'var(--green)' },
-  { key: 'fair',    label: PL_BAND_LABEL.fair,    color: 'var(--btc)' },
-  { key: 'ceiling', label: PL_BAND_LABEL.ceiling, color: 'var(--amber)' },
+// The three power-law bands plus the opt-in 4-yr cycle. ⚠ The cycle's colour is --maroon-lift, not --maroon:
+// the raw token measures 2.47:1 on --surface, under the 3:1 minimum for text AND for a chart line. One entry,
+// four consumers — the path buttons, the path note, the BTC-price tile and the price chart line.
+const PATH_META: { key: PathKind; label: string; color: string }[] = [
+  { key: 'floor',    label: PL_BAND_LABEL.floor,   color: 'var(--green)' },
+  { key: 'fair',     label: PL_BAND_LABEL.fair,    color: 'var(--btc)' },
+  { key: 'ceiling',  label: PL_BAND_LABEL.ceiling, color: 'var(--amber)' },
+  { key: 'fourYear', label: '4-yr cycle',          color: 'var(--maroon-lift)' },
 ];
 
 interface Overlay {
-  band?: PlBand;
+  pathKind?: PathKind;
+  /** 4-yr cycle only: months the schedule runs late (+) or early (−). A robustness check, not a fit. */
+  phaseShiftMonths?: number;
   convergeMonths?: number;
   months?: number;
   income?: number;
@@ -151,7 +162,9 @@ export default function CyclingFace() {
   const dirty = Object.keys(overlay).length > 0;
 
   // Live seeds — every control reads `overlay[k] ?? live`, so nothing is ever written back.
-  const band = overlay.band ?? DEFAULT_BAND;
+  const pathKind: PathKind = overlay.pathKind ?? DEFAULT_BAND;
+  const phaseShiftMonths = overlay.phaseShiftMonths ?? DEFAULT_PHASE_SHIFT;
+  const pathColor = PATH_META.find((p) => p.key === pathKind)!.color;
   const convergeMonths = overlay.convergeMonths ?? DEFAULT_CONVERGE_MONTHS;
   const months = overlay.months ?? DEFAULT_HORIZON_MONTHS;
   const income = overlay.income ?? s.income;
@@ -188,9 +201,14 @@ export default function CyclingFace() {
   // below, so a stress scenario could not outlive one quote. `anchorPrice` holds still while stressed.
   const { lens, setLens, anchorPrice, priceHeld, livePrice, drift } = useStressLens(s.btcPrice, s.btcPriceMode);
 
+  // The 4-yr cycle oscillates support ↔ fair on cycleModel's schedule; the bands ride one line. Both take the
+  // same held anchor, so the stress-lens anchor split carries over unchanged. In the else branch `pathKind`
+  // narrows to PlBand — no cast.
   const pricePath = useMemo(
-    () => plConvergencePath(anchorPrice, band, startDate, months, convergeMonths),
-    [anchorPrice, band, startDate, months, convergeMonths],
+    () => (pathKind === 'fourYear'
+      ? cycleConvergencePath(anchorPrice, startDate, months, convergeMonths, phaseShiftMonths)
+      : plConvergencePath(anchorPrice, pathKind, startDate, months, convergeMonths)),
+    [anchorPrice, pathKind, startDate, months, convergeMonths, phaseShiftMonths],
   );
 
   // 🔴 ON-DEMAND ONLY — never polls. The Almanac's background network surface stays the consented
@@ -267,18 +285,30 @@ export default function CyclingFace() {
   // The SUPPORT line at the selected month — the deepest fitted drawdown. The stress may go below it;
   // doing so is flagged, never blocked (the range stays honest, the label says what it means).
   const supportAtMonth = plBandAt('floor', startDate, monthIdx);
+  // ⚠ A float-equality guard, not a gate. On the 4-yr path the price is fair × multiple — a different
+  // construction from the support line's A_FLOOR × d^B — so a row landing exactly on a low turn could
+  // compute one float step under support. A genuinely below-support path (the stress lens, or a slow
+  // convergence from a spot under support) still trips it.
+  const belowSupport = selRow.price < supportAtMonth * (1 - 1e-9);
+  // The cold-storage InfoTip's fair-value translation, read off the DISPLAYED path at the inspected month —
+  // so it is right on every path (it used to report the Support answer everywhere) and moves with the lens.
+  const fairAtMonth = plBandAt('fair', startDate, monthIdx);
+  const surviveMult = fairAtMonth > 0 ? (selRow.price / fairAtMonth) * (1 - coldBufferPct / 100) : 0;
+  const coldDeeperThanRecord = coldBeyondRecord(selRow.price, supportAtMonth, coldBufferPct);
 
   // Write the clamped value back so re-growing the horizon doesn't snap to a stale index.
   useEffect(() => { setSelectedMonth((m) => Math.min(m, baseRowCount - 1)); }, [baseRowCount]);
 
   // Mirrors the engine-inputs memo — if an input is added to runCyclingSim, add it here too, or a stress
   // scenario survives an input change and silently reports against the wrong position. (Changing the
-  // month/input clears the stress so the face returns to "as modeled".)
+  // month/input clears the stress so the face returns to "as modeled".) `pathKind` and `phaseShiftMonths`
+  // need no entry: they flow through `pricePath`. ⚠ This comment alone let `coldBufferPct` drift out of the
+  // list; __tests__/resetMirror.test.ts now fails if any engine input (bar startDate) is missing.
   useEffect(() => { setLens(1); }, [
     monthIdx,
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct,
+    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct,
   ]);
 
   const bands = plBandsAt(startDate);
@@ -306,6 +336,14 @@ export default function CyclingFace() {
   const tickEvery = Math.max(1, Math.floor(rows.length / 8));
 
   const milestones = [12, 24, 36, 60, 120].filter((m) => m <= months);
+  // 4-yr cycle only: turns inside the horizon become peak/trough rows. View-only, derived from the shifted
+  // schedule — the SAME source the path note reads (unclipped), so the two can never disagree.
+  const horizonTurns = useMemo(
+    () => (pathKind === 'fourYear' ? cycleTurnsInHorizon(startDate, months, phaseShiftMonths) : []),
+    [pathKind, startDate, months, phaseShiftMonths],
+  );
+  const milestoneRows = mergeMilestoneRows(milestones, horizonTurns);
+  const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
 
   const statTiles: Array<readonly [string, string, string, string]> = [
     ['BTC held', fmtBtc(selRow.btcHeld), `from ${openingBtc.toFixed(4)} ₿`, 'var(--green)'],
@@ -319,7 +357,7 @@ export default function CyclingFace() {
     ['Net equity', fmtK(selRow.equity),
       atEnd ? `never-draw: ${fmtK(sim.baselineEquity)}` : `at month ${monthIdx}`,
       atEnd ? (wins ? 'var(--green)' : 'var(--amber)') : (selRow.equity >= 0 ? 'var(--green)' : 'var(--red)')],
-    ['BTC price', fmtK(selRow.price), `from ${fmtK(anchorPrice)}`, BAND_META.find((b) => b.key === band)!.color],
+    ['BTC price', fmtK(selRow.price), `from ${fmtK(anchorPrice)}`, pathColor],
     // Gross is price-independent (BTC counts); yours discounts the debt at the scenario price.
     ['BTC gained', `${gained.gross >= 0 ? '+' : '−'}${Math.abs(gained.gross).toFixed(3)} ₿`,
       `yours ${gained.yours >= 0 ? '+' : '−'}${Math.abs(gained.yours).toFixed(3)} ₿`,
@@ -356,26 +394,40 @@ export default function CyclingFace() {
       <section className={styles.card}>
         <span className={styles.cardLabel}>Price path</span>
         <div className={styles.bandRow}>
-          {BAND_META.map((b) => (
+          {PATH_META.map((p) => (
             <button
-              key={b.key}
+              key={p.key}
               type="button"
-              className={`${styles.bandBtn} ${band === b.key ? styles.bandBtnOn : ''}`}
-              style={band === b.key ? { borderColor: b.color, color: b.color } : undefined}
-              onClick={() => set('band', b.key)}
+              className={`${styles.bandBtn} ${pathKind === p.key ? styles.bandBtnOn : ''}`}
+              style={pathKind === p.key ? { borderColor: p.color, color: p.color } : undefined}
+              onClick={() => set('pathKind', p.key)}
             >
-              {b.label}
+              {p.label}
             </button>
           ))}
         </div>
         <p className={styles.note}>
-          Starts at {priceHeld ? 'the held' : "today's live"} {fmtUSD(anchorPrice)} and {onTheLine ? 'sits on' : 'reverts toward'}{' '}
-          the power-law{' '}
-          <span style={{ color: BAND_META.find((b) => b.key === band)!.color }}>
-            {PL_BAND_LABEL[band].toLowerCase()}
-          </span> line — today at {PL_BAND_LABEL.floor} {fmtK(bands.floor)} ·{' '}
-          {PL_BAND_LABEL.fair} {fmtK(bands.fair)} · {PL_BAND_LABEL.ceiling} {fmtK(bands.ceiling)}.
-          {onTheLine && ` Month 1 steps ${stepPct} to ${fmtUSD(pricePath[1] ?? 0)} and tracks the line from there.`}
+          {pathKind === 'fourYear' ? (
+            // ⚠ An oscillating path tracks no line: no "sits on" / "tracks the line" phrasing here, and no
+            // PL_BAND_LABEL[pathKind] — that is a Record<PlBand>, which 'fourYear' is not.
+            <>
+              Starts at {priceHeld ? 'the held' : "today's live"} {fmtUSD(anchorPrice)} and {onTheLine ? 'rides' : 'reverts toward'}{' '}
+              the <span style={{ color: pathColor }}>4-yr cycle</span> — tops on the fair line, troughs on the
+              support line. {nextTurns.length > 0 && `${nextTurnsText(nextTurns)}. `}Today at {PL_BAND_LABEL.floor}{' '}
+              {fmtK(bands.floor)} · {PL_BAND_LABEL.fair} {fmtK(bands.fair)}.
+              {onTheLine && ` Month 1 steps ${stepPct} to ${fmtUSD(pricePath[1] ?? 0)} and follows the cycle from there.`}
+            </>
+          ) : (
+            <>
+              Starts at {priceHeld ? 'the held' : "today's live"} {fmtUSD(anchorPrice)} and {onTheLine ? 'sits on' : 'reverts toward'}{' '}
+              the power-law{' '}
+              <span style={{ color: pathColor }}>
+                {PL_BAND_LABEL[pathKind].toLowerCase()}
+              </span> line — today at {PL_BAND_LABEL.floor} {fmtK(bands.floor)} ·{' '}
+              {PL_BAND_LABEL.fair} {fmtK(bands.fair)} · {PL_BAND_LABEL.ceiling} {fmtK(bands.ceiling)}.
+              {onTheLine && ` Month 1 steps ${stepPct} to ${fmtUSD(pricePath[1] ?? 0)} and tracks the line from there.`}
+            </>
+          )}
         </p>
         <div className={styles.sliderPair}>
           <SliderInput
@@ -395,6 +447,26 @@ export default function CyclingFace() {
             {onTheLine ? `Back to reverting (${fmtHorizon(REVERT_PRESET_MONTHS)})` : 'On the line'}
           </button>
         </div>
+        {pathKind === 'fourYear' && (
+          <div className={styles.shiftBlock}>
+            <div className={styles.scrubHead}>
+              <span className={styles.cardLabel}>4-yr cycle timing</span>
+              <span className={styles.scrubValue}>{fmtPhaseShift(phaseShiftMonths)}</span>
+            </div>
+            <input
+              type="range" className={styles.scrub}
+              min={-CYCLE_PHASE_SHIFT_MAX_MONTHS} max={CYCLE_PHASE_SHIFT_MAX_MONTHS} step={1}
+              value={phaseShiftMonths}
+              onChange={(e) => set('phaseShiftMonths', Number(e.target.value))}
+              aria-label="4-yr cycle timing"
+            />
+            <p className={styles.noteQuiet}>
+              A robustness check, not a calibration: does the answer survive the cycle running late or
+              early? The schedule is an idealized cadence — if the liquidation month or the coins banked swing
+              hard with a few months of timing, the plan depends on the calendar more than it should.
+            </p>
+          </div>
+        )}
         <p className={styles.noteQuiet}>
           Implied <strong>{cagr.toFixed(1)}%</strong>/yr over {(months / 12).toFixed(1)} years.
         </p>
@@ -521,7 +593,7 @@ export default function CyclingFace() {
         <p className={styles.noteQuiet}>
           Support line at this month: {fmtUSD(supportAtMonth)}.
         </p>
-        {selRow.price < supportAtMonth && (
+        {belowSupport && (
           <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>
             Below the power-law support line — outside the fitted drawdown envelope. The simulation keeps
             running, but nothing calibrates this depth.
@@ -597,10 +669,12 @@ export default function CyclingFace() {
               <strong>Calibrate against the regression line, not Support.</strong> Support is a parallel
               line at {(PL_A_FLOOR / PL_A_FAIR * 100).toFixed(1)}% of fair and its constant was fitted to
               the cycle bottoms — it already is the deepest drawdown on record, so “% below Support” prices
-              nothing on its own. At {coldBufferPct}% you are asking to survive down to{' '}
-              <strong>{(PL_A_FLOOR / PL_A_FAIR * (1 - coldBufferPct / 100) * 100).toFixed(1)}% of fair</strong>
-              {' '}({(1 - coldBufferPct / 100).toFixed(2)}× the fitted floor).
-              {coldBufferPct > 45 && ' That is deeper than any bottom ever recorded — you are paying years of waiting for a scenario nothing calibrates.'}
+              nothing on its own. At {coldBufferPct}% below the modeled price at {bandDateLabel(monthIdx)}{' '}
+              ({fmtUSD(selRow.price)}) you are asking to survive down to{' '}
+              <strong>{(surviveMult * 100).toFixed(1)}% of fair</strong>
+              {' '}({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the fitted floor). This reads the path
+              at the inspected month, so it changes with the path you pick and moves with the price stress.
+              {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded — you are paying years of waiting for a scenario nothing calibrates.'}
             </p>
             <p>
               <strong>Not free safety.</strong> Swept coins are gone, so every later month starts from a
@@ -689,7 +763,7 @@ export default function CyclingFace() {
               <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9 }} tickFormatter={fmtK} width={52} />
               <Tooltip content={<ChartTip money />} />
               <Line type="monotone" dataKey="price" name="BTC" isAnimationActive={false} dot={false}
-                strokeWidth={2} stroke={BAND_META.find((b) => b.key === band)!.color} />
+                strokeWidth={2} stroke={pathColor} />
             </LineChart>
           </ResponsiveContainer>
         </section>
@@ -854,7 +928,7 @@ export default function CyclingFace() {
               </tr>
             </thead>
             <tbody>
-              {milestones.map((m) => {
+              {milestoneRows.map(({ month: m, turn }) => {
                 const r = rows[m];
                 if (!r) return null;
                 // The table follows the scenario — under stress these rows come from the stressed run.
@@ -865,6 +939,12 @@ export default function CyclingFace() {
                       {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
                       {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
                       {r.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
+                      {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}
+                      {turn && (
+                        <span className={styles.msTurn}>
+                          {turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}
+                        </span>
+                      )}
                     </td>
                     <td className={styles.msTd}>{fmtK(r.price)}</td>
                     <td className={styles.msTd}>
