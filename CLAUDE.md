@@ -2294,6 +2294,8 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
   its own real price (base is *today*).
 - **`holdingsSplit(row)`** → Strike / Coinbase / Cold / Combined BTC counts.
 - **`clampMonth(selected, rowCount)`** — see the crash note below.
+- **`isAnchorHeld(lens, priceMode)`** / **`stressAnchorPrice(livePrice, anchor, held)`** /
+  **`anchorDrift(livePrice, anchorPrice, held)`** → the price-stress anchor. See **the anchor split** below.
 - ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
   user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
   store state. Same reasoning as `cyclingSim`'s local `ltvOf()`. **This module must never be imported by the
@@ -2316,6 +2318,46 @@ reset effect **MIRRORS the engine-inputs memo's dep array** (`pricePath`, `cbDeb
 position values, the overlay inputs, `mode`) plus `monthIdx` — *if an input is added to `runCyclingSim`, add
 it there too*, or a stress scenario silently survives an engine change. `pricePath` subsumes
 `btcPrice`/`band`/`months`/`convergeMonths`/`startDate`.
+
+**⚠ THE ANCHOR SPLIT — the lens freezes the SCENARIO, never the FACE.** `pricePath` is built from
+`anchorPrice`, **not** `s.btcPrice`. `useBtcPrice` polls spot every 10s and pushes to the store on a 0.1%
+move **or** after 60s, whichever comes first (≈$80 on an $80k coin — seconds, not minutes). Every push
+rewrote `btcPrice` → rebuilt `pricePath` → tripped the reset effect above, so **an engaged lens could not
+outlive one quote**: it snapped back to "as modeled" within seconds and the owner lost the whole scenario.
+The reset effect is CORRECT and is UNCHANGED — a run measured against inputs that have since moved reports
+the wrong position. The defect was that a background quote is not an owner input, and a what-if measured
+against a drifting anchor is not reproducible anyway.
+
+`useStressLens(livePrice, priceMode)` (**`src/components/Almanac/useStressLens.ts`**, both faces) owns
+`lens` and the anchor. Which side each number sits on IS the invariant:
+
+| reads the ANCHOR (`anchorPrice`) | reads SPOT (`livePrice`) |
+| --- | --- |
+| `plConvergencePath` → `pricePath` → `engineInputs` → both sim runs | the `Anchored $X · spot $Y ±Z%` readout on the stress card |
+| the CAGR denominator | `anchorDrift(livePrice, anchorPrice, held)` |
+| the "starts at" / "converges from" copy, the `from $X` stat tile | — |
+
+Anything DESCRIBING THE SCENARIO reads the anchor, or it describes a run that never happened; anything
+reporting THE MARKET reads spot. **Only the path memo is insulated** — the store quote still re-renders the
+face, so the spot readout and its drift keep ticking at the poll's own cadence while the projection holds
+still.
+
+- ⚠ **Held only in `'live'` mode.** Nothing polls in `'manual'` (the store push is gated on
+  `btcPriceMode === 'live'`), so a price change there IS the owner typing one and must still clear the
+  scenario, exactly as before.
+- ⚠ **The anchor latches in an EFFECT, not in the drag handler**, and `stressAnchorPrice` falls back to
+  `livePrice` while `anchor` is still `null`. That fallback is LOAD-BEARING, not defensive: on the render
+  that engages the lens `held` is already true while the effect has not yet run, and falling back reproduces
+  the price the PREVIOUS render used — so engaging the lens never itself changes `pricePath` and cannot trip
+  the reset effect it is trying to survive. A handler closes over the price of the render that built it, so
+  a quote landing between render and drag would latch a STALE anchor, change `pricePath`, and kill the
+  scenario at the instant of its birth.
+- ⚠ `anchorDrift` guards `Number.isFinite` on BOTH sides, not just `> 0` — `Infinity` passes `> 0` and
+  would report a flat −100% drift (`live / Infinity − 1`), painting the readout red on a coin that never
+  moved.
+- Tests: **`src/components/Almanac/__tests__/stressAnchor.test.ts`** (16) — the truth tables, the
+  engage-race case, an end-to-end reproduction of the old defect, and a **mutation-tested grep guard** that
+  fails if either face is reverted to `plConvergencePath(s.btcPrice, …)`. Suite → **1170**.
 
 **BTC gained:** both the tile and the Milestones column read the displayed (base or stressed) run
 (`btcGained(selRow, rows[0])` / `btcGained(r, rows[0])`), so they agree by construction. Both show **gross
