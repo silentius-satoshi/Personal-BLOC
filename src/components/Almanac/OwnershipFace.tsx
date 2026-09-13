@@ -18,6 +18,7 @@ import {
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
 } from './cyclingFaceView';
 import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
+import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
@@ -164,6 +165,7 @@ function SafetyLine({ label, value, warn, act, right, flag }: {
 export default function OwnershipFace() {
   const s = useStore(useShallow((st) => ({
     btcPrice: st.btcPrice,
+    btcPriceMode: st.btcPriceMode,   // 'live' polls; 'manual' is the owner typing — see useStressLens
     income: st.income,
     expenses: st.expenses,
     blocApr: st.blocApr,
@@ -202,9 +204,14 @@ export default function OwnershipFace() {
     [s.cbLoanBalance, s.cbAprPct, s.cbLoanBalanceAsOf],
   );
 
+  // ⚠ DECLARED ABOVE `pricePath` ON PURPOSE. The spot poll rewrites `s.btcPrice` every few seconds;
+  // feeding that straight into the path rebuilt it under an engaged lens and tripped the reset effect
+  // below, so a stress scenario could not outlive one quote. `anchorPrice` holds still while stressed.
+  const { lens, setLens, anchorPrice, priceHeld, livePrice, drift } = useStressLens(s.btcPrice, s.btcPriceMode);
+
   const pricePath = useMemo(
-    () => plConvergencePath(s.btcPrice, pathKind, startDate, months, convergeMonths),
-    [s.btcPrice, pathKind, startDate, months, convergeMonths],
+    () => plConvergencePath(anchorPrice, pathKind, startDate, months, convergeMonths),
+    [anchorPrice, pathKind, startDate, months, convergeMonths],
   );
 
   // 🔴 ON-DEMAND ONLY — never polls (see CyclingFace). Session overlay, never the store.
@@ -242,7 +249,6 @@ export default function OwnershipFace() {
   const baseRowCount = baseSim.rows.length;
 
   const [selectedMonth, setSelectedMonth] = useState(baseRowCount - 1);
-  const [lens, setLens] = useState(1);
   const [view, setView] = useState<'ownership' | 'ltv' | 'price'>('ownership');
 
   // ⚠ CLAMP AT RENDER TIME (the crash fix) — `rows[selectedMonth]` must never appear.
@@ -405,7 +411,7 @@ export default function OwnershipFace() {
     (onTheLine
       ? `Sits on the ${PL_BAND_LABEL[pathKind].toLowerCase()} line from next month — month 1 steps ${stepPct} `
         + `to ${fmtUSD(pricePath[1] ?? 0)} and tracks the line from there. `
-      : `Converges from today's ${fmtUSD(s.btcPrice)} toward the ${PL_BAND_LABEL[pathKind].toLowerCase()} line over ${convergeMonths} months. `)
+      : `Converges from ${priceHeld ? 'the held' : "today's"} ${fmtUSD(anchorPrice)} toward the ${PL_BAND_LABEL[pathKind].toLowerCase()} line over ${convergeMonths} months. `)
     + `Today: ${PL_BAND_LABEL.floor.toLowerCase()} ${fmtK(bands.floor)} · ${PL_BAND_LABEL.fair.toLowerCase()} ${fmtK(bands.fair)} · ${PL_BAND_LABEL.ceiling.toLowerCase()} ${fmtK(bands.ceiling)}.`;
 
   return (
@@ -497,9 +503,20 @@ export default function OwnershipFace() {
               onChange={(e) => setLens(Number(e.target.value))}
               aria-label="Price stress multiplier"
             />
+            {/* The market keeps ticking while the scenario holds still — the anchor freezes the
+                projection, never the face. Only shown while held. */}
+            {priceHeld && (
+              <p className={styles.noteQuiet}>
+                Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
+                <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                  {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
+                </span>
+              </p>
+            )}
             <p className={styles.noteQuiet}>
-              Stress from this month forward — the projection, charts, and holdings all follow. Resets on any
-              input change.
+              Stress from this month forward — the projection, charts, and holdings all follow. The starting
+              price is held while stressed, so a live tick can't wipe your scenario — spot above keeps
+              updating. Any input change resets.
             </p>
             <p className={styles.noteQuiet}>
               Support line at this month: {fmtUSD(supportAtMonth)}.

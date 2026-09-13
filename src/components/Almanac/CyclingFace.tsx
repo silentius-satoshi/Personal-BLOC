@@ -15,6 +15,7 @@ import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
 } from './cyclingFaceView';
+import { useStressLens } from './useStressLens';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -129,6 +130,7 @@ function ChartTip({ active, payload, label, money }: {
 export default function CyclingFace() {
   const s = useStore(useShallow((st) => ({
     btcPrice: st.btcPrice,
+    btcPriceMode: st.btcPriceMode,   // 'live' polls; 'manual' is the owner typing — see useStressLens
     income: st.income,
     expenses: st.expenses,
     blocApr: st.blocApr,
@@ -181,9 +183,14 @@ export default function CyclingFace() {
     [s.cbLoanBalance, s.cbAprPct, s.cbLoanBalanceAsOf],
   );
 
+  // ⚠ DECLARED ABOVE `pricePath` ON PURPOSE. The spot poll rewrites `s.btcPrice` every few seconds;
+  // feeding that straight into the path rebuilt it under an engaged lens and tripped the reset effect
+  // below, so a stress scenario could not outlive one quote. `anchorPrice` holds still while stressed.
+  const { lens, setLens, anchorPrice, priceHeld, livePrice, drift } = useStressLens(s.btcPrice, s.btcPriceMode);
+
   const pricePath = useMemo(
-    () => plConvergencePath(s.btcPrice, band, startDate, months, convergeMonths),
-    [s.btcPrice, band, startDate, months, convergeMonths],
+    () => plConvergencePath(anchorPrice, band, startDate, months, convergeMonths),
+    [anchorPrice, band, startDate, months, convergeMonths],
   );
 
   // 🔴 ON-DEMAND ONLY — never polls. The Almanac's background network surface stays the consented
@@ -222,7 +229,6 @@ export default function CyclingFace() {
 
   // ── Month scrubber + price stress ─────────────────────────────────────────────────────────────
   const [selectedMonth, setSelectedMonth] = useState(Math.min(DEFAULT_INSPECT_MONTH, baseRowCount - 1));
-  const [lens, setLens] = useState(1);
 
   // ⚠ CLAMP AT RENDER TIME, NOT IN AN EFFECT. The Horizon slider is step=1, so ONE leftward tick shrinks
   // `rows` while `selectedMonth` still points past the end — every `row.*` read would blow up. An effect
@@ -279,8 +285,8 @@ export default function CyclingFace() {
   const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
   const openingDebt = cbDebt + s.strikeBalance;
   const wins = last.equity > sim.baselineEquity;
-  const cagr = s.btcPrice > 0 && months > 0
-    ? ((last.price / s.btcPrice) ** (12 / months) - 1) * 100
+  const cagr = anchorPrice > 0 && months > 0
+    ? ((last.price / anchorPrice) ** (12 / months) - 1) * 100
     : 0;
 
   // The shared CB gauge — but banded against CB_LLTV, the LTV this projection actually liquidates at.
@@ -313,7 +319,7 @@ export default function CyclingFace() {
     ['Net equity', fmtK(selRow.equity),
       atEnd ? `never-draw: ${fmtK(sim.baselineEquity)}` : `at month ${monthIdx}`,
       atEnd ? (wins ? 'var(--green)' : 'var(--amber)') : (selRow.equity >= 0 ? 'var(--green)' : 'var(--red)')],
-    ['BTC price', fmtK(selRow.price), `from ${fmtK(s.btcPrice)}`, BAND_META.find((b) => b.key === band)!.color],
+    ['BTC price', fmtK(selRow.price), `from ${fmtK(anchorPrice)}`, BAND_META.find((b) => b.key === band)!.color],
     // Gross is price-independent (BTC counts); yours discounts the debt at the scenario price.
     ['BTC gained', `${gained.gross >= 0 ? '+' : '−'}${Math.abs(gained.gross).toFixed(3)} ₿`,
       `yours ${gained.yours >= 0 ? '+' : '−'}${Math.abs(gained.yours).toFixed(3)} ₿`,
@@ -363,7 +369,7 @@ export default function CyclingFace() {
           ))}
         </div>
         <p className={styles.note}>
-          Starts at today's live {fmtUSD(s.btcPrice)} and {onTheLine ? 'sits on' : 'reverts toward'}{' '}
+          Starts at {priceHeld ? 'the held' : "today's live"} {fmtUSD(anchorPrice)} and {onTheLine ? 'sits on' : 'reverts toward'}{' '}
           the power-law{' '}
           <span style={{ color: BAND_META.find((b) => b.key === band)!.color }}>
             {PL_BAND_LABEL[band].toLowerCase()}
@@ -497,9 +503,20 @@ export default function CyclingFace() {
           onChange={(e) => setLens(Number(e.target.value))}
           aria-label="Price stress multiplier"
         />
+        {/* The market keeps ticking while the scenario holds still — the anchor freezes the projection,
+            never the face. Only shown while held, so "as modeled" stays uncluttered. */}
+        {priceHeld && (
+          <p className={styles.noteQuiet}>
+            Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
+            <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
+            </span>
+          </p>
+        )}
         <p className={styles.noteQuiet}>
-          Stress from this month forward — the projection, charts, and holdings all follow. Resets when you
-          change the month or any input.
+          Stress from this month forward — the projection, charts, and holdings all follow. The starting
+          price is held while stressed, so a live tick can't wipe your scenario — spot above keeps updating.
+          Changing the month or any input resets.
         </p>
         <p className={styles.noteQuiet}>
           Support line at this month: {fmtUSD(supportAtMonth)}.

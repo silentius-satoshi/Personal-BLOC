@@ -176,3 +176,64 @@ export function clampMonth(selected: number, rowCount: number): number {
   if (!(rowCount > 0)) return 0;
   return Math.max(0, Math.min(Math.floor(selected), rowCount - 1));
 }
+
+// ── the price-stress ANCHOR ───────────────────────────────────────────────────────────────────────
+
+/**
+ * Does the price-stress lens hold its anchor price?
+ *
+ * ⚠ WHY THIS EXISTS. `useBtcPrice` polls spot every 10s and pushes to the store whenever the price
+ * moves 0.1% (≈$80 on an $80k coin — seconds, not minutes) OR 60s elapse, whichever comes first. Each
+ * push changed `s.btcPrice`, which rebuilt `pricePath`, which tripped the "an input changed, drop the
+ * now-stale scenario" effect on both Almanac faces — so an engaged lens died on its own within a
+ * minute (usually seconds) and the face snapped back to "as modeled", losing the whole scenario.
+ *
+ * The reset effect is CORRECT and stays exactly as it is: a stress run measured against inputs that
+ * have since moved reports the wrong position. The defect is that a background quote is not an owner
+ * input, and a what-if measured against a drifting anchor is not reproducible in the first place. So
+ * while the lens is engaged the anchor is held, and the reset effect simply never sees a change.
+ *
+ * Held ONLY for the live feed. In `manual` mode nothing polls (the push is gated on
+ * `btcPriceMode === 'live'`), so every price change there IS the owner typing one — it must still
+ * clear the scenario, exactly as before.
+ */
+export function isAnchorHeld(lens: number, priceMode: 'live' | 'manual'): boolean {
+  return priceMode === 'live' && lens !== 1;
+}
+
+/**
+ * The price the projection is built from: the held anchor, else the live quote.
+ *
+ * ⚠ THE `?? livePrice` FALLBACK IS LOAD-BEARING, not defensive. The anchor is latched in an effect,
+ * which runs AFTER the render that engages the lens. On that one render `held` is already true while
+ * `anchor` is still null, and falling back to the live quote makes the engaging render reproduce the
+ * price the previous render used — so engaging the lens never itself changes `pricePath` and cannot
+ * trip the reset effect it is trying to survive. Latching the price inside the drag handler instead
+ * would reintroduce that race: the handler closes over the price of the render that built it, so a
+ * poll landing between render and drag would latch a STALE anchor, change `pricePath`, and kill the
+ * scenario at the instant of its birth.
+ */
+export function stressAnchorPrice(livePrice: number, anchor: number | null, held: boolean): number {
+  if (!held) return livePrice;
+  return Number.isFinite(anchor) && (anchor as number) > 0 ? (anchor as number) : livePrice;
+}
+
+/**
+ * How far spot has run from the held anchor, as a fraction. 0 when nothing is held.
+ *
+ * ⚠ THE ANCHOR FREEZES THE SCENARIO, NOT THE FACE. Holding the anchor keeps `pricePath` — and so the
+ * whole projection — still while the owner reads it; it must NOT also blind them to the market. The
+ * store quote keeps arriving and the face keeps re-rendering on it (only the *path* memo is insulated),
+ * so spot and this drift stay live at the poll's own cadence while the scenario underneath holds.
+ *
+ * Which side each number belongs on: anything DESCRIBING THE SCENARIO reads the anchor (the path, the
+ * engine run, the CAGR denominator, "starts at") or it would describe a run that never happened;
+ * anything reporting THE MARKET reads spot. Mixing the two is how a face ends up claiming a projection
+ * started from a price it never used.
+ */
+export function anchorDrift(livePrice: number, anchorPrice: number, held: boolean): number {
+  // ⚠ `Number.isFinite` on BOTH, not just `> 0`: Infinity passes `> 0` and would report a flat −100%
+  // drift (live/Infinity − 1), painting the readout red on a coin that never moved.
+  if (!held || !Number.isFinite(anchorPrice) || !(anchorPrice > 0) || !Number.isFinite(livePrice)) return 0;
+  return livePrice / anchorPrice - 1;
+}
