@@ -1,7 +1,7 @@
 import type { StoreState } from './useStore';                 // type-only — no runtime edge
 import type { ViewerSnapshot } from '../lib/nostr/publish';   // type-only
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety } from '../simulation/safetyView';
-import { deriveCbCollateral, deriveStrikeCollateral } from '../simulation/logUtils';
+import { deriveCbCollateral, deriveStrikeCollateral, deriveColdStorage } from '../simulation/logUtils';
 
 // THE settings payload — single source built from current state, consumed by BOTH publishSettingsNow AND the
 // viewer snapshot so the two can never drift. The owner's viewer roster (viewers/nextViewerIndex) IS carried
@@ -39,6 +39,7 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     cbLiquidationPriceAsOf:   s.cbLiquidationPriceAsOf,
     strikeLiquidationLtvPct:  s.strikeLiquidationLtvPct,
     coldStorageBtc:           s.coldStorageBtc,
+    coldStorageBtcAsOf:       s.coldStorageBtcAsOf,   // the anchor's epoch-ms stamp — travels with the anchor
     blocMinPaymentSource:     s.blocMinPaymentSource,
     blocStatementMinimum:     s.blocStatementMinimum,
     blocMinPaymentDueDay:     s.blocMinPaymentDueDay,
@@ -86,10 +87,15 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
     snapshotVersion: 2,
     privacyMode: 'trusted',
     asOf,
-    settings: (() => { const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, ...rest } = buildSettingsPayload(s); return rest; })(),
+    // + coldStorageBtcAsOf: a conscious STRIP — the viewer receives cold PRE-DERIVED (below), so the anchor's stamp
+    // means nothing on a device with no journal.
+    settings: (() => { const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, coldStorageBtcAsOf: _ca, ...rest } = buildSettingsPayload(s); return rest; })(),
     records:  { entries: s.monthlyLog, deletions: s.deletedMonths },   // the viewer gets the rolled-up months, NOT the raw dayLog journal
     strike:   { usd: s.strikeUsdBalance, btcAvail: s.strikeBtcAvailable, rate: s.strikeRate },
     cbCollateralBtc: deriveCbCollateral(s.dayLog, s.cbCollateralBtc),   // P3 (BUG2) — the derived scalar; the viewer raw-sets it (applyViewerEvent), never via setCbCollateralBtc
     strikeCollateralBtc: deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc),   // C-P4 — the reading-anchored Strike scalar; viewer raw-sets it (dayLog stays []). SAFE branch must NOT carry it
+    // The LIVE cold total (anchor + cold journal moves). The viewer's dayLog is [], so a viewer-side derive would return
+    // the bare anchor and disagree with the journal — it must arrive pre-derived. Viewer raw-sets it. SAFE must NOT carry it.
+    coldStorageBtc: deriveColdStorage(s.dayLog, s.coldStorageBtc, s.coldStorageBtcAsOf),
   };
 }

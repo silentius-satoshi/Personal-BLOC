@@ -5,7 +5,7 @@ import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
 
 type CbLoanSlice = Pick<StoreState,
   | 'hasCbLoan' | 'setHasCbLoan' | 'cbLoanBalance' | 'cbCollateralBtc' | 'strikeCollateralBtc' | 'cbAprPct'
-  | 'coldStorageBtc' | 'setColdStorageBtc'
+  | 'coldStorageBtc' | 'setColdStorageBtc' | 'coldStorageBtcAsOf' | 'setColdStorageBtcAsOf'
   | 'cbMonthlyPayment' | 'cbLiquidationPrice' | 'cbPaymentStrategy' | 'cbLtvTriggerPct' | 'cbLtvTargetPct'
   | 'cbRotateBackPct' | 'cbEmergencyCeilingPct' | 'cbLoanBalanceAsOf' | 'cbLiquidationPriceAsOf' | 'strikeLiquidationLtvPct'
   | 'blocMinPaymentSource' | 'blocStatementMinimum' | 'blocMinPaymentDueDay' | 'setCbLoanBalance' | 'setCbCollateralBtc'
@@ -26,6 +26,7 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   // unpledged, and inventing a number here would put a figure in the viewer nobody entered.
   // ⚠ Distinct from the Almanac's cold-storage SWEEP, which is projected and never written to the store.
   coldStorageBtc: 0,
+  coldStorageBtcAsOf: null,   // never dated — every cold journal move counts on top of the scalar until it is re-entered
   strikeCollateralBtc: 0,   // Collateral-Truth v20 — reading-anchored derived cache; fresh install = deriveStrikeCollateral([], 0) = 0
   // ⚠ ALL-IN, not the Morpho market rate. Coinbase adds its platform fee on top of the market rate before
   // billing, and every engine compounds this field monthly — which is exactly how that fee is charged —
@@ -59,7 +60,10 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
     set({ cbCollateralBtc: v });
   },
   setCbAprPct:         (v) => get().emitPlanSets([['cbAprPct', v]]),
-  setColdStorageBtc:   (v) => get().emitPlanSets([['coldStorageBtc', v]]),
+  // Paired-AsOf (the setAdvisorActualBlocBalance precedent): ONE emitPlanSets → one shared ts, so the anchor and its
+  // stamp can never tear. v is the owner's cold TOTAL right now — re-entering it re-anchors (the reconciliation).
+  setColdStorageBtc:   (v) => get().emitPlanSets([['coldStorageBtc', v], ['coldStorageBtcAsOf', Date.now()]]),
+  setColdStorageBtcAsOf: (v) => get().emitPlanSets([['coldStorageBtcAsOf', v]]),
   setCbMonthlyPayment:   (v) => get().emitPlanSets([['cbMonthlyPayment', v]]),
   setCbLiquidationPrice: (v) => get().emitPlanSets([['cbLiquidationPrice', v], ['cbLiquidationPriceAsOf', todayLocalISO()]]),
   setCbPaymentStrategy:  (v) => get().emitPlanSets([['cbPaymentStrategy', v]]),

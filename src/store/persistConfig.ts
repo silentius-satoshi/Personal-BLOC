@@ -80,6 +80,7 @@ export function migrateState(persistedState: any): any {
     cbLiquidationPriceAsOf: persistedState.cbLiquidationPriceAsOf ?? null,
     strikeLiquidationLtvPct: persistedState.strikeLiquidationLtvPct ?? 85,
     coldStorageBtc:        persistedState.coldStorageBtc ?? 0,
+    coldStorageBtcAsOf:    persistedState.coldStorageBtcAsOf ?? null,   // additive default — no version bump
     blocMinPaymentSource:  persistedState.blocMinPaymentSource ?? 'roll',
     blocStatementMinimum:  persistedState.blocStatementMinimum ?? null,
     blocMinPaymentDueDay:  persistedState.blocMinPaymentDueDay ?? 15,

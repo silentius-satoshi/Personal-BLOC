@@ -238,6 +238,10 @@
 .trioNum { font-family: var(--mono); font-size: 15px; font-weight: 600; color: var(--text-primary); }
 .trioNumBtc { color: var(--btc); }
 .trioLab { font-size: 10px; color: var(--text-muted); }
+/* Cold storage footer row inside the trio card — quiet by design; --btc for the ₿ figure, matching .trioNumBtc. */
+.coldLine { margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--line-2); text-align: center; font-size: 11px; color: var(--text-muted); }
+.coldNum { font-family: var(--mono); color: var(--btc); }
+.coldMeta { color: var(--text-faint); }
 
 /* P4c-1b — Month-scope "from N day entries" → opens the month-events modal */
 .entriesBtn {

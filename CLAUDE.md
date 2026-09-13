@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1207 tests — all must pass before every commit)
+- Vitest (1250 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -3428,6 +3428,36 @@ Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth
 
 **Growth scenarios:** same 4 presets as MonthBreakdown — affects both BLOC LTV and CB LTV each month, can auto-resolve emergency tiers in Bull scenario. The scenario picker + its runAdvisor live ENTIRELY in `OutlookProjection` (shared with Simple Mode's Outlook segment). AdvisorMain keeps a SEPARATE runAdvisor pinned to `btcGrowthRate: 0` for the operating plan.
 
+**4-yr cycle scenario — `pricePath` (OutlookProjection only).** `AdvisorInputs.pricePath?: number[]` holds absolute
+prices indexed by MONTHS ELAPSED from `startingMonth`. A finite, positive entry REPLACES the CAGR for that month;
+anything else (short, hole, NaN, 0, negative) falls through to it. Rows now carry `btcPrice` — additive, since rows
+are computed per render and never persisted.
+- ⚠ **Only `OutlookProjection` passes a path.** The operating plan (`AdvisorMain` / Simple / Daily) stays flat, and
+  a grep guard in `advisorPricePath.test.ts` enforces it.
+- Its fifth scenario, **4-yr cycle**, builds `cycleConvergencePath(btcPrice, startDate, 12, PL_ON_THE_LINE)` in the
+  VIEW. That is the §2 crossing: `runAdvisor` never imports `cyclePath`.
+- The 12-month horizon makes it a SEGMENT whose leg depends on the date. From Sep 2026 it is the rise out of the
+  modelled Oct-2026 trough; from mid-2029 it holds the top AND a −42.6% fall.
+
+🔴 **NAMED TRAP — the month-1 step.** On the line, `path[0]` is the live price EXACTLY and `path[1..]` sits ON the
+curve, so month 0→1 is a discontinuity whose SIGN depends on the anchor: −18.4% from $80k, +8.8% from $60k
+(2026-09-13). It is invisible when you reason about "the path" instead of `path[0]` vs `path[1]`, and it has been
+walked into three times: `cyclePath.test.ts` "Trap 1", the Advisor spec's rev 1, and a near-miss "won't show a crash"
+copy. The rules:
+- the note prints the step signed and computed (`lineStep`, the Almanac formula) — never a direction word;
+- never assert whole-path monotonicity;
+- tests pin fixed UTC dates and synthetic anchors.
+
+The step is the model's claim — it can fire the ltvTriggered paydown in month 1 on its own. Do not smooth it.
+
+The pure seams live in `src/components/Advisor/outlookView.ts`:
+- `scenarioSubtitle` — a Record; the old ternary fell through to "+80%/yr bull";
+- `lineStep`;
+- `footerCbLtv`.
+
+The table gained a **Price** column. The footer CB LTV now reads the LAST ROW's own `cbLtv`. It used to re-price the
+final balance at the live price, which was wrong for every non-flat scenario.
+
 **Projection extraction (Phase 3) — conscious behavior shift:** the Advisor tab's carousel + log overlay months 2–12 previously followed the scenario toggle (they read the same scenario-driven `result`); they now render FLAT because AdvisorMain's retained call is fixed-flat and only `OutlookProjection` responds to the scenario picker. Operating console = assumption-light; scenario picker = Outlook only. Simple Mode was already flat (`advisorRows` btcGrowthRate:0) — no change there. This Month's Plan is unchanged either way (row[0] price is rate-independent: exponent 0).
 
 ---
@@ -3629,8 +3659,52 @@ two-arg caller byte-identical. ⚠ Cold IS in the denominator — the card answe
 omitting the unpledged share would overstate how much of the stack is pledged. It is the one venue there
 that is not collateral, which is why it takes `--btc` rather than a lender's colour, and the segment and
 cell are hidden entirely at 0 rather than showing a permanent `0.000` for something the app is not
-tracking. ⚠ No dayLog event type yet, so unlike `cbCollateralBtc`/`strikeCollateralBtc` this scalar has no
-derived-delta layer — moving coins is a manual edit.
+tracking.
+
+**Cold ledger — anchor + events (store unchanged, NO bump).** Cold is now event-sourced on top of the scalar:
+`live = deriveColdStorage(dayLog, coldStorageBtc, coldStorageBtcAsOf)` (`logUtils`). Every live reader goes through
+the store getter **`getCurrentColdBtc()`** (`advisorJournalSlice`); a grep guard fails if any component reads the raw
+anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | 'cold'` (no new kind).
+- **The scalar STAYS in `SETTINGS_FIELDS` — it is the ANCHOR.** Removing it would fail every existing backup
+  (`VALIDATE_WHITELIST` rejects unknown keys); the new `coldStorageBtcAsOf` is additive and safe. Payload 38 → 39,
+  `PLAN_EVENT_FIELDS` 34 → 35, blob 98 → 99 — all pinned, all updated.
+- 🔴 **`coldStorageBtcAsOf` is EPOCH MS, not an ISO date** (unlike every other `…AsOf`).
+  - The ordering is `deriveStrikeCollateral`'s (date, ts) rule, COPIED not shared: a move counts iff
+    `ev.date > anchorDate || (ev.date === anchorDate && ev.ts > anchorMs)`.
+  - A date-only rule silently loses the commonest flow: re-type the total, then log today's move.
+  - `null` (legacy) → every cold move counts.
+  - Residual (same as strike): `updateDayEvent` bumps ts, so editing a same-day pre-anchor move makes it count.
+- **Paired setter:** `setColdStorageBtc(v)` is ONE `emitPlanSets([[coldStorageBtc, v], [coldStorageBtcAsOf, Date.now()]])`
+  — one ts, so the pair cannot tear. `v` is the owner's cold TOTAL now; re-entering it IS the reconciliation.
+- 🔴 **The Settings field binds the LIVE total, never the anchor.** `NumberInput.commit()` calls `onChange` on every
+  blur with no equality check. An anchor-bound field would therefore re-stamp on a mere focus-and-leave and silently
+  erase every cold move since. Bound to the live total, an unchanged blur is idempotent. It uses `decimals={8}`,
+  because the total is a sum.
+- 🔴 **Journal-only for the rollup.** `isMonthlyMeaningful` counts a deposit/withdraw ONLY with `target:'strike'`. A
+  cold (or cb) move never creates a month, flips a manual month to daily, or reopens a confirmed one (the BUG1 class).
+- **EventSheet:**
+  - The target toggle always renders Strike | Coinbase (iff a loan) | Cold.
+  - ⚠ Only `'cb'` collapses to Strike without a loan — in `EventSheet` AND in `buildEventsFromSheet`. A second copy
+    of the collapse in the latter used to turn a no-loan cold deposit into a STRIKE deposit.
+  - The per-target `COLLATERAL_TARGET_RULES` (`needsReading` / `needsLiqPrice` / `ltvWarnVenue`) drive every
+    branch, so none can silently fall into the Strike arm again. The withdraw cap is `collateralAvailableFor(target, …)`.
+  - A cold move is written ALONE — no `balanceReading`, no required balances.
+- 🔴 **A transfer is TWO entries.** A lone cold deposit double-counts total holdings (OwnershipBar and
+  `deriveVenueSplit` sum all three pools) until the source withdrawal is logged. DECIDED: the sheet shows **Total
+  holdings after** (`totalHoldingsAfter`) plus a transfer note before save, and a test pins the window. A source
+  selector that emits the paired withdrawal is out of scope.
+- **Viewer — the C-P4 mirror.** The viewer's `dayLog` is `[]`, so a viewer-side derive would return the bare anchor.
+  - The trusted snapshot ships a top-level derived `coldStorageBtc` (a conscious EXPOSE).
+  - It STRIPS `coldStorageBtcAsOf` from its settings.
+  - `applyViewerEvent` raw-sets the scalar in the same `setState` as the Strike/CB scalars.
+  - The SAFE snapshot is unchanged.
+- **Surfaces:**
+  - `ViewerHomeView` (owner Dashboard, trusted viewer, preview) reads the getter.
+  - The Daily trio card gains a quiet cold footer row — shown when the total is > 0 or any cold move exists, and
+    NOT a 4th cell.
+  - Settings shows "Anchored <date> · N journal moves since", or "Not dated yet".
+  - The Monthly Playbook is unchanged (it is a Strike plan).
+- `resetPlanToSeeds` now resets `coldStorageBtc` and its stamp; it used to leave the cold balance behind.
 
 ---
 
@@ -4208,7 +4282,42 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1207 tests — `npx vitest run` before every commit.
+1250 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path and the cold ledger
+was mutation-checked: revert the fix → the test goes red.)
+- `src/simulation/__tests__/advisorPricePath.test.ts` — Advisor price path (12). It opens with the operating-plan
+  GOLDEN, captured at HEAD 07ab7a2 BEFORE the engine edit (monthly + ltvTriggered mid-year inline snapshots), and the
+  equivalence no-path ≡ explicit-CAGR path (full rows). Then:
+  - a path overrides the CAGR and reaches the LTV math;
+  - indexing is months-elapsed (startingMonth 5);
+  - degenerate entries ([], short, NaN, 0, negative, Infinity) fall through to the CAGR;
+  - rising vs falling diverge (monthly strategy — ltvTriggered can tie at target);
+  - ⭐ the NAMED month-1-step trap at fixed UTC dates: the sign flips with the anchor, m≥1 sits ON the curve,
+    mid-2029 is not monotone, and the step lifts month-1 CB LTV;
+  - a grep guard that only OutlookProjection hands runAdvisor a pricePath.
+- `src/components/Advisor/__tests__/outlookView.test.ts` — (7) the subtitle Record (fourYear ≠ the old bull
+  fall-through), the signed/computed `lineStep`, and `footerCbLtv` = the last row's own cbLtv
+- `src/simulation/__tests__/coldStorage.test.ts` — `deriveColdStorage` (8):
+  - no cold events → the anchor exactly;
+  - the (date, ts) boundary — the rev-1 date-only rule would lose a move logged after re-typing the total;
+  - with no anchor, every move sums;
+  - sign comes from the kind, and other targets are ignored;
+  - the result is never NaN or negative;
+  - `coldMovesSinceAnchor` agrees with the derive;
+  - the strike and cb derives are unaffected by cold moves.
+- `src/store/__tests__/coldStorage.test.ts` — (7):
+  - the paired setter shares ONE ts;
+  - re-entering the live total is lossless;
+  - a cold move creates no month and keeps manual + confirmed months as they were (the BUG1 class);
+  - the trusted snapshot ships the DERIVED cold total — the anchor stays in settings, `coldStorageBtcAsOf` is
+    stripped, and the safe snapshot ships none;
+  - a `SETTINGS_FIELDS` tripwire;
+  - a grep guard that no component reads the raw `coldStorageBtc` anchor.
+- `src/components/Daily/__tests__/eventSheetCold.test.ts` — (9):
+  - a no-loan cold deposit stays cold and is written ALONE;
+  - 'cb' still collapses to strike without a loan;
+  - the three-way `COLLATERAL_TARGET_RULES` and the target-venue withdraw cap;
+  - `totalHoldingsAfter` — the transfer double-count is a decision, shown before save;
+  - the cold log labels.
 - `src/simulation/__tests__/cyclePath.test.ts` — the 4-yr cycle path (23): `CYCLE_LOW_MULT` derived; trough ≡
   support compared as PRICES (relative, 1e-12); exact multiples at every turn (pins exactness, not the exact-hit
   shortcut — the interpolation is exact there without it); monotone between turns; the ms phase shift

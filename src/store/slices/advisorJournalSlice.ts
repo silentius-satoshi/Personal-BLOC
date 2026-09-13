@@ -1,6 +1,6 @@
 // advisorJournalSlice (Phase 1c) — advisor scalars + skip flags + monthlyLog actions. getState()→get() only.
 import type { StoreState, StoreSet, StoreGet } from '../types';
-import { recomputeBtcHeld, upsertEntry, deriveStrikeCollateral, bucketEventToMonth, rollupMonth, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth } from '../../simulation/logUtils';
+import { recomputeBtcHeld, upsertEntry, deriveStrikeCollateral, deriveColdStorage, bucketEventToMonth, rollupMonth, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth } from '../../simulation/logUtils';
 import { todayLocalISO } from '../../utils/format';
 import { nostrLog } from '../../lib/nostr/log';
 import { kickRecordsPublish } from '../bootstrap';
@@ -8,7 +8,7 @@ import { isMonthlyMeaningful, rerollMonth } from '../dailyRouting';
 
 type AdvisorJournalSlice = Pick<StoreState,
   | 'monthBucketReconcileDone' | 'advisorStartDate' | 'advisorActualBlocBalance' | 'advisorActualBlocBalanceAsOf'
-  | 'advisorMonthStartBalance' | 'advisorActualBtcHeld' | 'getCurrentBtcHeld' | 'ndpLastPaidDate' | 'advisorSkipBlocDraw'
+  | 'advisorMonthStartBalance' | 'advisorActualBtcHeld' | 'getCurrentBtcHeld' | 'getCurrentColdBtc' | 'ndpLastPaidDate' | 'advisorSkipBlocDraw'
   | 'advisorSkipCbPayment' | 'advisorSkipBtcBuying' | 'monthlyLog' | 'showMiningInLog' | 'setAdvisorStartDate'
   | 'setAdvisorActualBlocBalance' | 'setAdvisorActualBlocBalanceAsOf' | 'setAdvisorMonthStartBalance'
   | 'setAdvisorActualBtcHeld' | 'setNdpLastPaidDate' | 'setAdvisorSkipBlocDraw' | 'setAdvisorSkipCbPayment'
@@ -26,6 +26,13 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
   getCurrentBtcHeld: (): number => {
     const s: StoreState = get();
     return deriveStrikeCollateral(s.dayLog, s.strikeCollateralBtc);   // Collateral-Truth v20 — reading-anchored
+  },
+  // The LIVE cold total — the owner's anchor + cold journal moves after it. Every live reader uses this, never the raw
+  // anchor. On a viewer the dayLog is [] and coldStorageBtcAsOf stays null, so it returns the pre-derived scalar the
+  // owner's snapshot raw-set (viewerSync).
+  getCurrentColdBtc: (): number => {
+    const s: StoreState = get();
+    return deriveColdStorage(s.dayLog, s.coldStorageBtc, s.coldStorageBtcAsOf);
   },
   ndpLastPaidDate:          null,
   advisorSkipBlocDraw:  false,

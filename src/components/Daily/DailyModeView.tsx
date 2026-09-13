@@ -17,7 +17,7 @@ import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
-import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
+import { fmtUSD, todayLocalISO, toLocalISO, fmtLtvPct } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
@@ -97,6 +97,9 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const monthlyLog                  = useStore((s) => s.monthlyLog);
   const dayLog                      = useStore((s) => s.dayLog);
+  const coldBtc                     = useStore((s) => s.getCurrentColdBtc());   // the LIVE cold total (anchor + journal)
+  const coldAsOf                    = useStore((s) => s.coldStorageBtcAsOf);
+  const hasColdMoves = dayLog.some((e) => (e.kind === 'deposit' || e.kind === 'withdraw') && e.target === 'cold');
   const setSimpleMode               = useStore((s) => s.setSimpleMode);
   const viewerMode                  = useStore((s) => s.viewerMode);
   const confirmMonth                = useStore((s) => s.confirmMonth);
@@ -271,6 +274,16 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                 <span className={styles.trioLab}>Avail credit</span>
               </div>
             </div>
+            {/* Cold storage — a quiet footer row, NOT a 4th trio cell (the trio stays 3-across on mobile). Shown once
+                there is something to show: a balance, or any cold move in the journal. */}
+            {(coldBtc > 0 || hasColdMoves) && (
+              <div className={styles.coldLine}>
+                Cold storage <span className={styles.coldNum}>₿ {coldBtc.toFixed(5)}</span>
+                <span className={styles.coldMeta}>
+                  {' · '}{coldAsOf !== null ? `anchored ${toLocalISO(new Date(coldAsOf))}` : 'undated'}
+                </span>
+              </div>
+            )}
           </div>
 
           {/* P4c-1a — Week|Month calendar (render + select only; does NOT yet drive the activity card) */}

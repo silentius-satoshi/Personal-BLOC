@@ -114,9 +114,10 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
   // viewer's OWN dayLog, which BUG3 exists to prevent.
   const venueStrikeBtc = useStore((st) => st.getCurrentBtcHeld());
   const venueCbBtc = useStore((st) => deriveCbCollateral(st.dayLog, st.cbCollateralBtc));
-  // A plain scalar — no dayLog derivation, because cold storage has no event type yet. Entered by the
-  // owner in Settings; 0 hides the segment rather than showing a cell nobody filled in.
-  const venueColdBtc = useStore((st) => st.coldStorageBtc);
+  // The LIVE cold total — the owner's anchor + cold journal moves after it. Never the raw anchor, which would
+  // disagree with the journal. On a viewer the dayLog is [], so this returns the pre-derived scalar the owner's
+  // snapshot raw-set. 0 hides the segment rather than showing a cell nobody filled in.
+  const venueColdBtc = useStore((st) => st.getCurrentColdBtc());
   // The gauge sub-lines render pre-computed absolutes from computeViewerSafety, so there is no existing
   // resolved-price binding to reuse — this is the same source useViewerSafety reads internally.
   const venuePrice = useStore((st) => st.btcPrice);

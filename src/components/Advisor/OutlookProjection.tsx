@@ -5,9 +5,12 @@ import {
   getTierColor,
   type AdvisorTier,
 } from '../../simulation/runAdvisor';
-import { PL_B, GENESIS } from '../../simulation/powerLaw';
+import { PL_B, GENESIS, PL_ON_THE_LINE } from '../../simulation/powerLaw';
+// §2 crossing lives in the VIEW: cyclePath is a belief. runAdvisor never imports it — it receives a plain number[].
+import { cycleConvergencePath } from '../../simulation/cyclePath';
 import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { fmtUSD, fmtLtvPct, todayLocalISO } from '../../utils/format';
+import { scenarioSubtitle, lineStep, footerCbLtv, type GrowthScenario } from './outlookView';
 import styles from './AdvisorMain.module.css';
 
 // THE shared scenario projection — rendered by BOTH AdvisorMain (Section 4) and Simple Mode's
@@ -42,8 +45,6 @@ function tierBadgeClass(tier: AdvisorTier): string {
   return styles[`tier${tier}`] ?? '';
 }
 
-type GrowthScenario = 'bear' | 'flat' | 'powerlaw' | 'bull';
-
 export function OutlookProjection({
   startingBlocBalance, startingBtcHeld, startingMonth, currentMonth,
   btcPrice, income, expenses, blocApr, creditLine,
@@ -61,12 +62,31 @@ export function OutlookProjection({
 
   const plGrowthPct = Math.round(plGrowthRate * 100);
 
+  // 4-yr cycle — the segment of the modelled cycle we are standing in, as a precomputed path. Anchored at
+  // today's LOCAL date parsed at UTC midnight, memoized once per mount (the Almanac's convention, CyclingFace).
+  // ⚠ NAMED TRAP — the month-1 step: on the line, path[0] is the live price EXACTLY and path[1..] sits ON the
+  // curve, so month 0→1 is a discontinuity whose SIGN depends on the anchor. The note below prints it signed
+  // and computed; never word its direction.
+  const startDate = useMemo(() => new Date(todayLocalISO()), []);
+  const cyclePricePath = useMemo(
+    () => (growthScenario === 'fourYear'
+      ? cycleConvergencePath(btcPrice, startDate, 12, PL_ON_THE_LINE)
+      : undefined),
+    [growthScenario, btcPrice, startDate],
+  );
+
+  // 'fourYear' falls through to 0 on purpose: the rate is unused while a path is present, and 0 keeps the CAGR
+  // fallback harmless if a path entry is ever missing.
   const btcGrowthRate = growthScenario === 'bear'     ? -0.30
                       : growthScenario === 'powerlaw'  ? plGrowthRate
                       : growthScenario === 'bull'      ? 0.80
                       : 0;
 
-  const projectedPrice = Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
+  // The 12-month headline must read the path on the cycle scenario, or it advertises a flat price while the
+  // table uses the cycle.
+  const projectedPrice = cyclePricePath
+    ? Math.round(cyclePricePath[cyclePricePath.length - 1])
+    : Math.round(btcPrice * Math.pow(1 + btcGrowthRate, 1.0));
 
   const result = useMemo(
     () => runAdvisor({
@@ -84,6 +104,7 @@ export function OutlookProjection({
       startingBtcHeld,
       startingMonth,
       btcGrowthRate,
+      pricePath: cyclePricePath,   // ONLY this host passes a path — the operating plan stays flat (grep-guarded)
       blocMinPaymentSource,
     }),
     [
@@ -91,7 +112,7 @@ export function OutlookProjection({
       cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
       cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
       startingBlocBalance, startingBtcHeld, startingMonth,
-      btcGrowthRate, hasCbLoan, blocMinPaymentSource,
+      btcGrowthRate, cyclePricePath, hasCbLoan, blocMinPaymentSource,
     ],
   );
 
@@ -103,7 +124,7 @@ export function OutlookProjection({
             {currentMonth > 1 ? `Months ${currentMonth}–12 Projection` : '12-Month Projection'}
           </h3>
           <p className={styles.cardSubtitle}>
-            {growthScenario === 'flat' ? 'Flat BTC' : growthScenario === 'bear' ? '−30%/yr bear' : growthScenario === 'powerlaw' ? `Power Law ~${plGrowthPct}%/yr` : '+80%/yr bull'} ·
+            {scenarioSubtitle(growthScenario, plGrowthPct)} ·
             Combined interest: {fmtUSD(result.totalInterestPaid)} ·
             BTC accumulated: +{result.totalBtcBought.toFixed(5)}
           </p>
@@ -136,6 +157,7 @@ export function OutlookProjection({
           { key: 'flat',     label: 'Flat'                     },
           { key: 'powerlaw', label: `Power Law ~${plGrowthPct}%` },
           { key: 'bull',     label: 'Bull +80%'                },
+          { key: 'fourYear', label: '4-yr cycle'               },
         ] as const).map(({ key, label }) => (
           <button
             key={key}
@@ -149,6 +171,15 @@ export function OutlookProjection({
       <p className={styles.scenarioDisclaimer}>
         Directional model only
       </p>
+      {cyclePricePath && (
+        // Date-agnostic on purpose: which leg of the cycle 12 months covers depends on today's date, and the
+        // step's sign depends on the live price. Say neither in words — print the computed, signed step.
+        <p className={styles.scenarioDisclaimer}>
+          The next 12 months of the modelled 4-yr cycle — a segment, not a full cycle. Month 1 steps{' '}
+          {lineStep(cyclePricePath).stepPct} to {fmtUSD(cyclePricePath[1] ?? btcPrice)}, where the model places
+          price now.
+        </p>
+      )}
 
       {currentMonth > 1 && (
         <div className={styles.pastMonthsNote}>
@@ -161,6 +192,7 @@ export function OutlookProjection({
           <thead>
             <tr>
               <th>Mo</th>
+              <th>Price</th>
               <th>Tier</th>
               <th>BLOC Draw</th>
               {hasCbLoan && <th>{cbPaymentStrategy === 'ltvTriggered' ? 'CB Paydown' : 'CB Payment'}</th>}
@@ -184,6 +216,7 @@ export function OutlookProjection({
                   Mo {row.month}
                   {row.isCurrentMonth && <span className={styles.nowPill}>NOW</span>}
                 </td>
+                <td>{fmtUSD(row.btcPrice)}</td>
                 <td>
                   <span className={`${styles.tierPill} ${tierBadgeClass(row.tier)}`}>
                     T{row.tier}
@@ -220,6 +253,7 @@ export function OutlookProjection({
           <tfoot>
             <tr>
               <td>Total</td>
+              <td>{fmtUSD(result.rows.length > 0 ? result.rows[result.rows.length - 1].btcPrice : btcPrice)}</td>
               <td />
               <td>{fmtUSD(result.rows.reduce((s, r) => s + r.blocDraw, 0))}</td>
               {hasCbLoan && (
@@ -242,8 +276,10 @@ export function OutlookProjection({
               <td className={styles.btcCell}>+{result.totalBtcBought.toFixed(5)}</td>
               <td>→ {fmtUSD(result.finalBlocBalance)} <span className={styles.muted}>end</span></td>
               {hasCbLoan && (
-                <td style={{ color: getTierColor(getTier(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) : 0)) }}>
-                  {(cbCollateralBtc * btcPrice > 0 ? result.finalCbBalance / (cbCollateralBtc * btcPrice) * 100 : 0).toFixed(1)}%
+                // The last row's own CB LTV, priced at that row's price — NOT the final balance re-priced at the
+                // live price (the old formula), which was wrong for every non-flat scenario.
+                <td style={{ color: getTierColor(getTier(footerCbLtv(result.rows))) }}>
+                  {fmtLtvPct(footerCbLtv(result.rows), 1)}
                 </td>
               )}
               <td className={styles.interestCell}>{fmtUSD(result.totalInterestPaid)}</td>

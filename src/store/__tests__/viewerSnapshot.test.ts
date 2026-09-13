@@ -122,10 +122,12 @@ describe('viewer snapshot builders', () => {
     useStore.setState({ keyProvenance: null } as never);
   });
 
-  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4)', () => {
+  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4) + coldStorageBtc', () => {
     const snap = buildViewerSnapshotPayload(useStore.getState(), 'trusted');
+    // coldStorageBtc is a conscious EXPOSE — the pre-derived LIVE cold total (anchor + journal). The viewer's dayLog
+    // is [], so without it a viewer-side derive returns the bare anchor. Same pattern as strikeCollateralBtc (C-P4).
     expect(Object.keys(snap).sort()).toEqual(
-      ['asOf', 'cbCollateralBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc'],
+      ['asOf', 'cbCollateralBtc', 'coldStorageBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc'],
     );
     expect(snap.records).toHaveProperty('entries');
     expect(snap.records).toHaveProperty('deletions');
@@ -166,10 +168,12 @@ describe('viewer snapshot builders', () => {
     expect('dayLog' in (snap.records as object)).toBe(false);
   });
 
-  it("C-trusted settings deep-equal buildSettingsPayload minus the viewer roster + nostrRelays + backupVerifiedAt", () => {
+  it("C-trusted settings deep-equal buildSettingsPayload minus the viewer roster + nostrRelays + backupVerifiedAt + coldStorageBtcAsOf", () => {
     useStore.setState({ viewers: [trustedSlot], nextViewerIndex: 1 } as never);
     const s = useStore.getState();
-    const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, ...ownerMinusStripped } = buildSettingsPayload(s);
+    // coldStorageBtcAsOf is a conscious STRIP: the viewer receives cold pre-derived (top-level coldStorageBtc), so the
+    // anchor's epoch-ms stamp means nothing on a device with no journal.
+    const { viewers: _vs, nextViewerIndex: _ni, nostrRelays: _r, backupVerifiedAt: _bv, coldStorageBtcAsOf: _ca, ...ownerMinusStripped } = buildSettingsPayload(s);
     expect(buildViewerSnapshotPayload(s, 'trusted').settings).toEqual(ownerMinusStripped);
   });
 

@@ -43,7 +43,8 @@ import { biometricLabel } from '../../lib/biometricLabel';
 import { DEFAULT_RELAYS, addRelay } from '../../lib/nostr/relays';
 import { nip19 } from 'nostr-tools';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, todayLocalISO, toLocalISO } from '../../utils/format';
+import { coldMovesSinceAnchor } from '../../simulation/logUtils';
 import styles from './SettingsMain.module.css';
 
 // Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
@@ -313,7 +314,12 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
-  const coldStorageBtc              = useStore((s) => s.coldStorageBtc);
+  // ⚠ The cold field shows the LIVE total (anchor + journal moves), never the raw anchor. NumberInput commits on every
+  // blur with no equality check, so a field bound to the anchor would re-stamp it on a mere focus-and-leave and silently
+  // drop every cold move since. Bound to the live total, an unchanged blur re-anchors to the same total: idempotent.
+  const coldStorageLive             = useStore((s) => s.getCurrentColdBtc());
+  const coldStorageBtcAsOf          = useStore((s) => s.coldStorageBtcAsOf);
+  const coldMovesSince              = useStore((s) => coldMovesSinceAnchor(s.dayLog, s.coldStorageBtcAsOf));
   const setColdStorageBtc           = useStore((s) => s.setColdStorageBtc);
   const emitBalanceReading          = useStore((s) => s.emitBalanceReading);
   const strikeBtcAvailable          = useStore((s) => s.strikeBtcAvailable);
@@ -774,16 +780,22 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           <div className={styles.setupFieldGroup}>
             <NumberInput
               label="Cold storage"
-              value={coldStorageBtc}
+              value={coldStorageLive}
               onChange={setColdStorageBtc}
               prefix="₿"
               min={0}
               step={0.001}
+              decimals={8}                   // sat precision — the live total is a sum, so never show float noise
             />
             <span className={styles.fieldHint}>
-              BTC you hold in self-custody, pledged to nobody. Counts toward your holdings and shows in
-              “Where the coins sit”, but never in any LTV — no lender can reach it. Separate from the
-              Almanac’s cold-storage sweep, which projects what you could move, not what you have.
+              {coldStorageBtcAsOf !== null
+                ? `Anchored ${toLocalISO(new Date(coldStorageBtcAsOf))}${coldMovesSince > 0 ? ` · ${coldMovesSince} journal move${coldMovesSince === 1 ? '' : 's'} since` : ''}`
+                : 'Not dated yet — re-enter your total once to anchor it.'}
+            </span>
+            <span className={styles.fieldHint}>
+              Your cold total right now — BTC in self-custody, pledged to nobody. Journal moves (Daily → Collateral
+              → Cold) update it; re-entering it re-anchors. Counts toward your holdings and “Where the coins sit”,
+              never any LTV. Separate from the Almanac’s cold-storage sweep, which projects what you could move.
             </span>
           </div>
           <NumberInput label="BLOC APR"        value={blocApr}          onChange={setBlocApr}          min={0} step={0.1} />

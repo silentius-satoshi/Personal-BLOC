@@ -28,7 +28,7 @@ export interface DayEventDescriptor {
 // BTC amount → trimmed string (strip trailing zeros, sats-level precision). parseFloat drops the zeros.
 const btc = (n: number) => `₿ ${parseFloat(n.toFixed(8))}`;
 const pct = (frac: number) => `${(frac * 100).toFixed(1)}%`;
-const TARGET_LABEL: Record<'strike' | 'cb', string> = { strike: 'Strike', cb: 'Coinbase' };
+const TARGET_LABEL: Record<'strike' | 'cb' | 'cold', string> = { strike: 'Strike', cb: 'Coinbase', cold: 'cold storage' };
 
 /**
  * Map a DayEvent to a read-only display descriptor (icon · label · detail). PURE — covers all 7 kinds:

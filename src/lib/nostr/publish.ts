@@ -231,6 +231,7 @@ export interface ViewerSnapshot {
   strike?:   { usd: number | null; btcAvail: number | null; rate: number | null };
   cbCollateralBtc?: number;   // P3 (BUG2) — the derived CB-collateral scalar; the viewer raw-sets it (never gets the dayLog journal)
   strikeCollateralBtc?: number;   // C-P4 (BUG2 mirror) — the derived reading-anchored Strike-collateral scalar; the viewer raw-sets it (never gets the dayLog journal)
+  coldStorageBtc?: number;        // the derived LIVE cold total (anchor + cold journal moves); the viewer raw-sets it — its dayLog is []
 }
 
 export async function publishViewerSnapshot(

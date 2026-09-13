@@ -20,7 +20,7 @@ describe('clearViewerData', () => {
     s.setStrikeRate(95000);
     useStore.setState({
       dayLog: [{ id: 'day-1', date: '2026-01-01', ts: 1, kind: 'draw', amount: 1 }],
-      deletedDayEvents: { 'day-1': 2 }, coldStorageBtc: 0.4, pinnedScenario: { label: 'old', pinnedAt: 1, btcPrice: 1, inputs: {} } as never,
+      deletedDayEvents: { 'day-1': 2 }, coldStorageBtc: 0.4, coldStorageBtcAsOf: 1_700_000_000_000, pinnedScenario: { label: 'old', pinnedAt: 1, btcPrice: 1, inputs: {} } as never,
       planEvents: [{ id: 'plan-1', ts: 1, device: 'd', kind: 'set', field: 'income', value: 9 }],
       planDirty: true, prefsDirty: true, recordsDirty: true, settingsDirty: true,
     } as never);
@@ -38,6 +38,7 @@ describe('clearViewerData', () => {
     expect(after.dayLog).toEqual([]);
     expect(after.deletedDayEvents).toEqual({});
     expect(after.coldStorageBtc).toBe(0);
+    expect(after.coldStorageBtcAsOf).toBeNull();
     expect(after.planEvents).toEqual([]);
     expect(after.planDirty).toBe(false);
     expect(after.prefsDirty).toBe(false);

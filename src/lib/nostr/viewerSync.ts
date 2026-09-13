@@ -177,9 +177,12 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     // set, NEVER the emitting setters (setCbCollateralBtc emits a cbCollateralReading; emitBalanceReading emits a
     // balanceReading) → either would inject a spurious event into the VIEWER's own dayLog. The viewer's dayLog stays
     // []. Fallbacks keep the current values for a legacy/pre-P3 (cb) or pre-C-P4 (strike) owner snapshot.
+    // + cold: the owner's LIVE cold total arrives pre-derived (the viewer has no journal). It overrides the anchor that
+    // hydrateSettings just wrote; coldStorageBtcAsOf stays null (stripped), so getCurrentColdBtc returns exactly this.
     useStore.setState({
       cbCollateralBtc:     snap.cbCollateralBtc     ?? useStore.getState().cbCollateralBtc,
       strikeCollateralBtc: snap.strikeCollateralBtc ?? useStore.getState().strikeCollateralBtc,
+      coldStorageBtc:      snap.coldStorageBtc      ?? useStore.getState().coldStorageBtc,
     });
     s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
     s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)

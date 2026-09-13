@@ -4,7 +4,10 @@ import { useStore } from '../../store/useStore';
 import { bucketEventToMonth } from '../../simulation/logUtils';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
-import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, type SheetType, type SheetState } from './eventSheetModel';
+import {
+  readingComplete, buildEventsFromSheet, autoStrikeCollateral, COLLATERAL_TARGET_RULES, collateralAvailableFor,
+  totalHoldingsAfter, type SheetType, type SheetState, type CollateralTarget,
+} from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { DayEvent, DayEventKind } from '../../simulation/types';
@@ -57,6 +60,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const btcPrice           = useStore((s) => s.btcPrice);
   const advisorStartDate   = useStore((s) => s.advisorStartDate);
   const currentBtcHeld     = useStore((s) => s.getCurrentBtcHeld());
+  const currentColdBtc     = useStore((s) => s.getCurrentColdBtc());   // the LIVE cold total — cap + readout for a cold move
   const cbCollateralBtc        = useStore((s) => s.cbCollateralBtc);          // D5 withdraw warning
   const cbLoanBalance          = useStore((s) => s.cbLoanBalance);            // D5 withdraw warning
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance); // D5 withdraw warning
@@ -81,7 +85,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const [type, setType]                     = useState<SheetType>('draw');
   const [amount, setAmount]                 = useState<number | null>(null);
   const [collateralDir, setCollateralDir]   = useState<'deposit' | 'withdraw'>('deposit');
-  const [collateralTarget, setCollTarget]   = useState<'strike' | 'cb'>('strike');
+  const [collateralTarget, setCollTarget]   = useState<CollateralTarget>('strike');
   const [strikeBal, setStrikeBal]           = useState<number | null>(null);
   const [strikeLtv, setStrikeLtv]           = useState<number | null>(null);
   const [strikeCollateral, setStrikeCollateral]       = useState<number | null>(null);   // v20 — reading-anchored Strike collateral
@@ -191,9 +195,11 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setCbLiqPriceReading(null);   // §5b — always empty on open (Q2: never auto-submit the old liq → no fake freshness)
   }, [open, editEvent?.id, targetDate, initialType]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Effective collateral target — no toggle without a CB loan (implicitly Strike). Hoisted above the early
-  // return below so the track effect (which depends on it) stays an unconditionally-called hook.
-  const effectiveTarget = hasCbLoan ? collateralTarget : 'strike';
+  // Effective collateral target. ⚠ Collapse ONLY 'cb' without a loan — cold (self-custody) is selectable whether or
+  // not there is a CB loan. Hoisted above the early return below so the track effect (which depends on it) stays an
+  // unconditionally-called hook. targetRules drives every per-target branch, so each is three-way by construction.
+  const effectiveTarget: CollateralTarget = collateralTarget === 'cb' && !hasCbLoan ? 'strike' : collateralTarget;
+  const targetRules = COLLATERAL_TARGET_RULES[effectiveTarget];
 
   // v20 — auto-track the Strike-collateral field to the POST-move total (current ± amount) while the user hasn't
   // manually edited it. A strike collateral move / pledged buy states the new total; everything else = current
@@ -228,11 +234,12 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     : hasCbLoan;
 
   const cbLiqOk = cbLiqPrice !== null && cbLiqPrice > 0;
-  const cbCollateralNeedsLiq = type === 'collateral' && effectiveTarget === 'cb';
+  const cbCollateralNeedsLiq = type === 'collateral' && targetRules.needsLiqPrice;
   const originalWithdrawAmount = isEdit && editEvent?.kind === 'withdraw' ? editEvent.amount : 0;
-  const collateralAvailable = effectiveTarget === 'cb'
-    ? cbCollateralBtc + originalWithdrawAmount
-    : currentBtcHeld + originalWithdrawAmount;
+  // The withdraw cap is the TARGET venue's balance (cold used to fall into the Strike arm → capped at Strike collateral).
+  const collateralAvailable = collateralAvailableFor(
+    effectiveTarget, { strike: currentBtcHeld, cb: cbCollateralBtc, cold: currentColdBtc }, originalWithdrawAmount,
+  );
   const withdrawTooLarge = type === 'collateral' && collateralDir === 'withdraw' && amountValid
     && (amount ?? 0) > collateralAvailable + 1e-9;
 
@@ -240,14 +247,18 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   if (isEdit && editEvent) {
     if      (editEvent.kind === 'balanceReading') canSave = readingComplete(state, showCbReading);
     else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
-                                                   canSave = amountValid && (editEvent.target === 'strike' || cbLiqOk) && !withdrawTooLarge;
+                                                   // only a CB move needs a liq price (was `target === 'strike' || …` → a cold edit could never save)
+                                                   canSave = amountValid && (!COLLATERAL_TARGET_RULES[editEvent.target].needsLiqPrice || cbLiqOk) && !withdrawTooLarge;
     else                                          canSave = amountValid;   // draw / paydown / buy
   } else if (type === 'minPayment') {
     // §2b — reading-free one-field sheet; just needs a positive amount.
     canSave = amountValid;
   } else {
     // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
-     canSave = ((isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan))
+     // A cold move is written with NO reading (targetRules.needsReading false), so it never waits on one.
+     const readingOk = (type === 'collateral' && !targetRules.needsReading)
+       || (isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan);
+     canSave = readingOk
        && (!showAmount || amountValid)
        && (!cbCollateralNeedsLiq || cbLiqOk)
        && !withdrawTooLarge;
@@ -263,12 +274,16 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     ? (editEvent.kind === 'withdraw' ? -editEvent.amount : editEvent.amount)
     : 0;
   const strikeAfter = currentBtcHeld - origEffect + dirSign * (amount ?? 0);
+  // Cold readout — the same kind-aware edit back-out. holdingsAfter is the Dashboard's Strike + Coinbase + cold sum,
+  // shown BEFORE save because a transfer between venues is two entries (see totalHoldingsAfter).
+  const coldAfter = Math.max(0, currentColdBtc - origEffect + dirSign * (amount ?? 0));
+  const holdingsAfter = totalHoldingsAfter(currentBtcHeld, cbCollateralBtc, currentColdBtc - origEffect, collateralDir, amount);
 
   // D5 — soft, non-blocking heads-up. Conservative post-withdraw LTV estimate from live figures; NEVER gates Save.
   let withdrawWarnLtv: number | null = null;
-  if (type === 'collateral' && collateralDir === 'withdraw' && amountValid) {
+  if (type === 'collateral' && collateralDir === 'withdraw' && amountValid && targetRules.ltvWarnVenue !== null) {   // cold: pledged to nobody, no LTV
     const amt = amount ?? 0;
-    if (effectiveTarget === 'cb') {
+    if (targetRules.ltvWarnVenue === 'cb') {
       const postColl = cbCollateralBtc - amt;                                  // CB: 65% trigger / 86% LLTV
       const est = postColl > 0 ? cbLoanBalance / (postColl * btcPrice) : Infinity;
       if (est > 0.6) withdrawWarnLtv = est;
@@ -483,7 +498,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
               </div>
             )}
 
-            {!isEdit && hasCbLoan && (
+            {/* Target toggle — always rendered: Strike | Coinbase (iff a CB loan) | Cold. Self-custody has nothing to
+                do with having a loan, so Cold never depends on hasCbLoan. */}
+            {!isEdit && (
               <div className={styles.targetToggle} role="tablist" aria-label="Collateral target">
                 <button
                   role="tab"
@@ -493,13 +510,23 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                 >
                   Strike
                 </button>
+                {hasCbLoan && (
+                  <button
+                    role="tab"
+                    aria-selected={effectiveTarget === 'cb'}
+                    className={`${styles.targetBtn} ${effectiveTarget === 'cb' ? styles.targetBtnActive : ''}`}
+                    onClick={() => setCollTarget('cb')}
+                  >
+                    Coinbase
+                  </button>
+                )}
                 <button
                   role="tab"
-                  aria-selected={effectiveTarget === 'cb'}
-                  className={`${styles.targetBtn} ${effectiveTarget === 'cb' ? styles.targetBtnActive : ''}`}
-                  onClick={() => setCollTarget('cb')}
+                  aria-selected={effectiveTarget === 'cold'}
+                  className={`${styles.targetBtn} ${effectiveTarget === 'cold' ? styles.targetBtnActive : ''}`}
+                  onClick={() => setCollTarget('cold')}
                 >
-                  Coinbase
+                  Cold
                 </button>
               </div>
             )}
@@ -523,6 +550,23 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                   min={0}
                   prefix="$"
                 />
+              </>
+            ) : effectiveTarget === 'cold' ? (
+              <>
+                <div className={styles.readout}>
+                  Cold storage after: {coldAfter.toFixed(5)} ₿
+                  {amountValid && (
+                    <span className={styles.note}> ({dirSign > 0 ? '+' : '−'}{(amount ?? 0).toFixed(5)})</span>
+                  )}
+                </div>
+                {/* ⚠ A transfer is TWO entries. Show the Dashboard's total BEFORE save so a double-count can't hide. */}
+                <div className={styles.readout}>Total holdings after: {holdingsAfter.toFixed(5)} ₿</div>
+                <div className={styles.note}>
+                  {collateralDir === 'withdraw'
+                    ? 'Moving it to Strike or Coinbase? Log that deposit too — otherwise this total drops coins you still hold.'
+                    : 'Came from Strike or Coinbase? Log that withdrawal too — otherwise this total counts the coins twice.'}
+                  {' '}Cold is pledged to nobody, so no balances are needed.
+                </div>
               </>
             ) : (
               <>
@@ -582,8 +626,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
         {/* Reading section — in ADD mode it's the bundled hard-require; in EDIT mode it shows ONLY for a
             balanceReading edit (a flow edit touches just the flow, never its separate reading row).
-            §2b — minPayment is reading-free (a one-field sheet). */}
-        {type !== 'minPayment' && (!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
+            §2b — minPayment is reading-free (a one-field sheet), and so is a COLD collateral move (no statement). */}
+        {type !== 'minPayment' && !(type === 'collateral' && !targetRules.needsReading)
+          && (!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
           <div className={styles.section}>
             <span className={styles.sectionLabel}>
               {isEdit ? 'Balances' : isPast ? 'Current balances · optional for past dates' : 'Current balances · required to log'}

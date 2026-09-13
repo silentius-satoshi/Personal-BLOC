@@ -51,6 +51,14 @@ export interface AdvisorInputs {
   startingMonth:       number;
   btcGrowthRate:       number;  // annualized decimal (e.g. 0.33), 0 = flat
   blocMinPaymentSource?: 'income' | 'roll';  // how the monthly BLOC minimum (interest) is paid; default 'roll' (capitalize)
+  /**
+   * Absolute USD prices indexed by MONTHS ELAPSED from `startingMonth` (pricePath[0] is the starting month).
+   * When a month's entry is present, finite and > 0 it REPLACES the btcGrowthRate compounding; otherwise the
+   * CAGR is used for that month. Only OutlookProjection passes this — the operating plan is deliberately flat.
+   * ⚠ A cycle path's month 0→1 is a DISCONTINUITY (the "month-1 step" trap): path[0] is the live price and
+   * path[1..] sits on the modelled curve. It is the model's claim, not a bug — see OutlookProjection.
+   */
+  pricePath?: number[];
 }
 
 export interface AdvisorMonthRow {
@@ -58,6 +66,7 @@ export interface AdvisorMonthRow {
   tier:           AdvisorTier;
   tierLabel:      string;
   isCurrentMonth: boolean;
+  btcPrice:       number;   // the price this row was computed at (pricePath value or the CAGR fallback)
   blocDraw:       number;
   fiatGap:        number;
   cbPayment:      number;
@@ -100,7 +109,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     cbBalance: initialCbBalance, cbCollateralBtc,
     cbAprPct, cbMonthlyPayment,
     cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-    startingBlocBalance, startingBtcHeld, startingMonth, btcGrowthRate,
+    startingBlocBalance, startingBtcHeld, startingMonth, btcGrowthRate, pricePath,
   } = inputs;
   const blocMinPaymentSource = inputs.blocMinPaymentSource ?? 'roll';
 
@@ -118,7 +127,12 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
 
   for (let month = startingMonth; month <= 12; month++) {
     const monthsElapsed = month - startingMonth;
-    const btcPriceThisMonth = btcPrice * Math.pow(1 + btcGrowthRate, monthsElapsed / 12);
+    // ⚠ Guard on finite-and-positive, not `!= null`: a short path, a hole, NaN, 0 or a negative must fall
+    // through to the CAGR rather than poison cbLtvStart (which divides by collateral × price) and every row after.
+    const fromPath = pricePath?.[monthsElapsed];
+    const btcPriceThisMonth = typeof fromPath === 'number' && Number.isFinite(fromPath) && fromPath > 0
+      ? fromPath
+      : btcPrice * Math.pow(1 + btcGrowthRate, monthsElapsed / 12);
 
     const cbLtvStart = cbCollateralBtc * btcPriceThisMonth > 0 ? cbBal / (cbCollateralBtc * btcPriceThisMonth) : 0;
     const tier = getTier(cbLtvStart);
@@ -298,6 +312,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     rows.push({
       month, tier, tierLabel: getTierLabel(tier),
       isCurrentMonth: month === startingMonth,
+      btcPrice: btcPriceThisMonth,
       blocDraw, fiatGap,
       cbPayment: cbTotalPayment, cbExtraPayment,
       cbPaydownDraw, cbLtvTriggered, cbPaydownCapped, cbPaydownShortfall,

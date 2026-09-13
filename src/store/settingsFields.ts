@@ -18,6 +18,7 @@ export const SETTINGS_FIELDS = [
   'cbLoanBalanceAsOf', 'cbLiquidationPriceAsOf', 'strikeLiquidationLtvPct',
   'blocMinPaymentSource', 'blocStatementMinimum', 'blocMinPaymentDueDay',
   'coldStorageBtc',   // a real owner-entered balance, so it syncs like any other plan setting
+  'coldStorageBtcAsOf',   // epoch ms the cold anchor was entered — travels atomically with it (paired emit)
   'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
   'nostrRelays',                       // C: synced relay list (transport — guarded in hydrateSettings)
   'backupVerifiedAt',                  // Backup gate (R2a-1) — synced; one-way latch in hydrateSettings

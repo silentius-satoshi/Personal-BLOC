@@ -63,6 +63,10 @@ export interface StoreState {
   /** REAL self-custodied BTC, pledged to nobody. A plain owner-entered scalar — NOT the Almanac's
    *  projected cold-storage sweep, which is a simulation and never touches the store. */
   coldStorageBtc:       number;
+  /** Epoch MS the cold anchor (coldStorageBtc) was entered. null = never dated (legacy) → every cold journal move
+   *  counts on top of it. Epoch ms — NOT an ISO date like the other …AsOf fields — because cold's only "reading" is the
+   *  owner's own entry, so a same-day move needs a clock to order against it (see deriveColdStorage). */
+  coldStorageBtcAsOf:   number | null;
   strikeCollateralBtc:  number;   // Collateral-Truth v20 — derived cache (deriveStrikeCollateral over dayLog); reading-anchored; NOT synced (rides ...rest)
   cbAprPct:             number;
   cbMonthlyPayment:     number;
@@ -113,6 +117,7 @@ export interface StoreState {
   pinnedScenario:           PinnedScenario | null;
   setPinnedScenario:        (v: PinnedScenario | null) => void;
   getCurrentBtcHeld:        () => number;   // deriveStrikeCollateral(dayLog, strikeCollateralBtc) — reading-anchored current Strike collateral
+  getCurrentColdBtc:        () => number;   // deriveColdStorage(dayLog, coldStorageBtc, coldStorageBtcAsOf) — the LIVE cold total
   ndpLastPaidDate:          string | null;
   setNdpLastPaidDate:       (date: string | null) => void;
   // Monthly log
@@ -181,6 +186,7 @@ export interface StoreState {
   setCbCollateralBtc:     (v: number) => void;
   setCbAprPct:            (v: number) => void;
   setColdStorageBtc:      (v: number) => void;
+  setColdStorageBtcAsOf:  (v: number | null) => void;
   setCbMonthlyPayment:    (v: number) => void;
   setCbLiquidationPrice:  (v: number) => void;
   setCbPaymentStrategy:   (v: 'monthly' | 'ltvTriggered') => void;

@@ -79,7 +79,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     monthlyLog: [], deletedMonths: {}, dayLog: [], deletedDayEvents: {},
-    coldStorageBtc: 0, pinnedScenario: null, planEvents: [], planDirty: false, prefsDirty: false,
+    coldStorageBtc: 0, coldStorageBtcAsOf: null, pinnedScenario: null, planEvents: [], planDirty: false, prefsDirty: false,
     recordsDirty: false, settingsDirty: false, lastSettingsSyncAt: null, lastRecordsSyncAt: null,
     lastPlanEventsSyncAt: null, lastPrefsSyncAt: null, lastV1FallbackApplyAt: null,
     nostrReconnectNeeded: false,
@@ -106,6 +106,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     blocMinPaymentSource: 'roll', blocStatementMinimum: null, blocMinPaymentDueDay: 15,
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     monthlyLog: [], deletedMonths: {},
+    coldStorageBtc: 0, coldStorageBtcAsOf: null,   // was omitted — the recovery reset used to leave the cold balance behind
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
   }),
 });

@@ -79,7 +79,7 @@ export type DayEvent =
   | (DayEventBase & { kind: 'draw' | 'paydown'; amount: number /* USD */ })
   | (DayEventBase & { kind: 'minPayment'; amount: number /* USD — Strike monthly minimum paid from income; balance-neutral (rolls up to strikeMinPaid, NOT paydown) */ })
   | (DayEventBase & { kind: 'buy'; amount: number /* BTC acquired */; usd?: number })
-  | (DayEventBase & { kind: 'deposit' | 'withdraw'; amount: number /* BTC, signed by kind */; target: 'strike' | 'cb' })
+  | (DayEventBase & { kind: 'deposit' | 'withdraw'; amount: number /* BTC, signed by kind */; target: 'strike' | 'cb' | 'cold' })
   | (DayEventBase & { kind: 'cbCollateralReading'; cbCollateral: number /* BTC — CB-only; feeds the derived cbCollateralBtc clock */ })
   | (DayEventBase & { kind: 'balanceReading'; reading: {
         strikeBal: number; strikeLtv: number;       // always required (read off Strike)
@@ -95,6 +95,8 @@ export type DayEvent =
 //       converges cross-device via the dayLog on the records channel). Buys NEVER count toward Strike collateral.
 //       cbCollateralBtc is DERIVED = latest cbCollateral-bearing event by ts (balanceReading or cbCollateralReading); NOT synced as a setting.
 //       deposit/withdraw target:'strike' feeds collateralDelta (rollup report-only) + the strike derive; target:'cb' is journal-only (CB collateral comes from the reading).
+//       target:'cold' feeds deriveColdStorage (the owner's anchor + cold moves after it) and is journal-only for the monthly
+//       rollup — it is the ONLY source of cold movement, because cold has no statement and therefore no reading.
 
 // --- Monthly Log ---
 

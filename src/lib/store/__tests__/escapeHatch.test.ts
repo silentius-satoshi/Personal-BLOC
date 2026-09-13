@@ -43,6 +43,7 @@ describe('resetPlanToSeeds', () => {
     s.setIncome(9999); s.setExpenses(8888); s.setCreditLine(50000);
     s.setMonthlyLog([{ month: 1, btcBought: 0.5, blocDraw: 1000, loggedAt: 1 } as any]);
     useStore.setState({ strikeUsdBalance: 1234, strikeBtcAvailable: 0.9, strikeRate: 50000, deletedMonths: { 3: 1 } });
+    s.setColdStorageBtc(0.4);   // the reset used to OMIT cold — it left the balance (and now its anchor) behind
 
     useStore.getState().resetPlanToSeeds();
 
@@ -57,6 +58,8 @@ describe('resetPlanToSeeds', () => {
     expect(after.strikeUsdBalance).toBeNull();
     expect(after.strikeBtcAvailable).toBeNull();
     expect(after.strikeRate).toBeNull();
+    expect(after.coldStorageBtc).toBe(0);
+    expect(after.coldStorageBtcAsOf).toBeNull();
     // PRESERVED — needed to re-auth + pull.
     expect(after.writerKeyWrapped).toBe('WRAPPED');
     expect(after.writerKeyWrapMeta).toEqual({ iv: 'aXY=', scheme: 'pin', salt: 'c2FsdA==' });

@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 98 persisted data keys', () => {
+  it('blob key-set is exactly the 99 persisted data keys', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -61,7 +61,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'btcPriceMode', 'btcPriceUpdatedAt', 'cbAprPct', 'cbCollateralBtc', 'cbEmergencyCeilingPct',
       'cbLiquidationPrice', 'cbLiquidationPriceAsOf', 'cbLoanBalance', 'cbLoanBalanceAsOf', 'cbLtvAction',
       'cbLtvTargetPct', 'cbLtvTriggerPct', 'cbMonthlyPayment', 'cbPaymentStrategy', 'cbRotateBackPct',
-      'coldStorageBtc',
+      'coldStorageBtc', 'coldStorageBtcAsOf',
       'converterActiveField', 'converterRawValue', 'creditLine', 'dayLog', 'deletedDayEvents', 'deletedMonths',
       'devMode', 'expenseReanchorDismissedAt', 'expenses', 'hasCbLoan', 'hiddenTabs', 'income', 'inflationRate',
       'keyProvenance', 'lastPlanEventsSyncAt', 'lastPrefsSyncAt', 'lastRecordsSyncAt', 'lastSettingsSyncAt',
@@ -88,7 +88,8 @@ describe('characterization · persisted blob (partializeState)', () => {
       blocApr: 13, activeTier: 'rec', scenario: 'moderate', scrubMonth: 30, creditLine: 10000,
       btcHoldings: 0.7, annualBtcGrowth: 50, bearMarket: false, bearPeriodYears: 2, annualDecline: -50,
       inflationRate: 2, ltvType: 'target', timeHorizonYears: 1, hasCbLoan: false, cbLoanBalance: 60000,
-      cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: 6.27, coldStorageBtc: 0, cbMonthlyPayment: 0,
+      cbCollateralBtc: 1.48, strikeCollateralBtc: 0, cbAprPct: 6.27, coldStorageBtc: 0, coldStorageBtcAsOf: null,
+      cbMonthlyPayment: 0,
       cbLiquidationPrice: 0, cbPaymentStrategy: 'monthly', cbLtvTriggerPct: 75, cbLtvTargetPct: 65,
       cbRotateBackPct: 55, cbEmergencyCeilingPct: 30, cbLoanBalanceAsOf: null, cbLiquidationPriceAsOf: null,
       strikeLiquidationLtvPct: 85, blocMinPaymentSource: 'roll', blocStatementMinimum: null,
@@ -124,7 +125,7 @@ describe('characterization · persisted blob (partializeState)', () => {
 
 // ── Suite 2 — settings payload (buildSettingsPayload) ────────────────────────
 describe('characterization · settings payload (buildSettingsPayload)', () => {
-  it('is exactly 38 keys', () => {
+  it('is exactly 39 keys', () => {
     const p = buildSettingsPayload(useStore.getState());
     expect(Object.keys(p).sort()).toEqual([
       'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -132,7 +133,8 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
       'advisorStartDate', 'backupVerifiedAt', 'blocApr', 'blocMinPaymentDueDay', 'blocMinPaymentSource',
       'blocStatementMinimum', 'btcBuyingUnit', 'cbAprPct', 'cbEmergencyCeilingPct', 'cbLiquidationPrice',
       'cbLiquidationPriceAsOf', 'cbLoanBalance', 'cbLoanBalanceAsOf', 'cbLtvTargetPct', 'cbLtvTriggerPct',
-      'cbMonthlyPayment', 'cbPaymentStrategy', 'cbRotateBackPct', 'coldStorageBtc', 'creditLine', 'expenses',
+      'cbMonthlyPayment', 'cbPaymentStrategy', 'cbRotateBackPct', 'coldStorageBtc', 'coldStorageBtcAsOf',
+      'creditLine', 'expenses',
       'hasCbLoan',
       'hiddenTabs', 'income', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrRelays', 'simpleMode',
       'strikeLiquidationLtvPct', 'tabOrder', 'viewers',
@@ -146,7 +148,8 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
     expect(p).toEqual({
       income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000, advisorActualBlocBalance: 0,
       advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
-      cbLoanBalance: 60000, cbAprPct: 6.27, coldStorageBtc: 0, hasCbLoan: false, ndpLastPaidDate: null,
+      cbLoanBalance: 60000, cbAprPct: 6.27, coldStorageBtc: 0, coldStorageBtcAsOf: null, hasCbLoan: false,
+      ndpLastPaidDate: null,
       tabOrder: ['living', 'bloc', 'powerlaw', 'converter', 'mining', 'coinbase', 'advisor'], hiddenTabs: [],
       simpleMode: false, btcBuyingUnit: 'btc', cbLiquidationPrice: 0, cbMonthlyPayment: 0,
       cbPaymentStrategy: 'monthly', cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
@@ -207,6 +210,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
       records: { entries: [], deletions: {} },
       strike: { usd: null, btcAvail: null, rate: null },
       cbCollateralBtc: 1.48, strikeCollateralBtc: 0,
+      coldStorageBtc: 0,   // the pre-derived LIVE cold total (settings.coldStorageBtcAsOf is stripped — see payloads)
     });
   });
 });

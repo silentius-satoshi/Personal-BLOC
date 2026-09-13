@@ -45,6 +45,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     nostrRelays:         ['wss://r'],
     cbCollateralBtc:     0.5,             // sentinel — proves raw-set overwrites / revoked leaves it
     strikeCollateralBtc: 0.7,             // C-P4 sentinel — same raw-set/fallback/revoked semantics
+    coldStorageBtc: 0.9,                  // cold sentinel — the owner's derived live total arrives the same way
     dayLog:              [],
     hydrateSettings:     vi.fn(),
     setMonthlyLog:       vi.fn(),
@@ -73,13 +74,14 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
   it('BUG3: raw-sets cb+strike collateral scalars from the snapshot AND leaves dayLog empty (no spurious readings)', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
-      settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 3.33, strikeCollateralBtc: 4.44,
+      settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 3.33, strikeCollateralBtc: 4.44, coldStorageBtc: 5.55,
     }));
 
     await fetchViewerSnapshot();
 
     expect(mockState.cbCollateralBtc).toBeCloseTo(3.33);     // raw set via useStore.setState
     expect(mockState.strikeCollateralBtc).toBeCloseTo(4.44); // C-P4 — raw set in the SAME setState
+    expect(mockState.coldStorageBtc).toBeCloseTo(5.55);      // cold — the pre-derived live total, same raw set
     expect(mockState.dayLog).toEqual([]);                    // viewer journal untouched
     expect(mockState.setCbCollateralBtc).not.toHaveBeenCalled();   // NEVER the emitting setter
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
@@ -95,6 +97,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
 
     expect(mockState.cbCollateralBtc).toBeCloseTo(0.5);      // unchanged — ?? fallback to the current value
     expect(mockState.strikeCollateralBtc).toBeCloseTo(0.7);  // C-P4 — unchanged fallback
+    expect(mockState.coldStorageBtc).toBeCloseTo(0.9);       // cold — a pre-cold-ledger snapshot keeps the existing value
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
   });
 

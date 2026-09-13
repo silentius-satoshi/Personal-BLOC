@@ -1,4 +1,5 @@
 import type { DayEvent, MonthlyLogEntry } from './types';
+import { toLocalISO } from '../utils/format';   // a leaf (no sim imports) — the cold anchor's local calendar day
 
 export function recomputeBtcHeld(
   log: MonthlyLogEntry[],
@@ -315,6 +316,47 @@ export function deriveStrikeCollateral(dayLog: DayEvent[], fallback?: number): n
     }
   }
   return total;
+}
+
+/**
+ * True when a cold move falls strictly AFTER the cold anchor, ordered by (DATE, then ts) — deriveStrikeCollateral's
+ * rule, COPIED on purpose (its ordering is load-bearing; never refactor the two into a shared generic):
+ *  - date-primary, so a backfilled move dated BEFORE the anchor's day is already inside the entered total;
+ *  - a strict ts tiebreak on the anchor's own day, so a move logged after re-typing the total still counts.
+ * anchorMs null (legacy, never dated) → every move counts. The anchor's day is its LOCAL calendar day, matching
+ * event dates (todayLocalISO).
+ * ⚠ Residual (same as strike): updateDayEvent bumps ts, so editing a same-day move that predates the anchor makes it count.
+ */
+function isAfterColdAnchor(e: { date: string; ts: number }, anchorMs: number | null): boolean {
+  if (anchorMs === null || !Number.isFinite(anchorMs)) return true;
+  const anchorDate = toLocalISO(new Date(anchorMs));
+  return e.date > anchorDate || (e.date === anchorDate && e.ts > anchorMs);
+}
+
+const isColdMove = (e: DayEvent): e is Extract<DayEvent, { kind: 'deposit' | 'withdraw' }> =>
+  (e.kind === 'deposit' || e.kind === 'withdraw') && e.target === 'cold';
+
+/**
+ * Cold storage — the owner's ANCHOR plus every cold move strictly after it.
+ *
+ * ⚠ NOT reading-anchored like strike: coins in self-custody have no statement. The anchor is the owner's own
+ * entered total and the epoch-ms moment it was entered (coldStorageBtcAsOf), so re-typing the total IS the
+ * reconciliation. Sign by kind (deposit +, withdraw −; amount = magnitude); non-cold targets ignored. A non-finite
+ * or negative anchor counts as 0, a non-finite amount is skipped, and the result is clamped at 0 — never NaN.
+ */
+export function deriveColdStorage(dayLog: DayEvent[], anchorBtc: number, anchorMs: number | null): number {
+  let total = Number.isFinite(anchorBtc) && anchorBtc > 0 ? anchorBtc : 0;
+  for (const e of dayLog) {
+    if (isColdMove(e) && Number.isFinite(e.amount) && isAfterColdAnchor(e, anchorMs)) {
+      total += e.kind === 'withdraw' ? -e.amount : e.amount;
+    }
+  }
+  return Math.max(0, total);
+}
+
+/** How many cold moves the anchor has not absorbed yet (Settings' "N journal moves since"). Same rule as the derive. */
+export function coldMovesSinceAnchor(dayLog: DayEvent[], anchorMs: number | null): number {
+  return dayLog.filter((e) => isColdMove(e) && isAfterColdAnchor(e, anchorMs)).length;
 }
 
 // §5b Readings-Unification — the live safety anchors + their freshness stamps.

@@ -60,17 +60,18 @@ export function readingCtx(ev: DayEvent | undefined): ReadingMutationCtx | undef
 }
 
 // A day event is "monthly-meaningful" if it can affect a monthlyLog entry. cbCollateralReading is clock-only, and a
-// deposit/withdraw with target:'cb' is journal-only (CB collateral comes from the reading) — neither triggers a re-roll
-// or keeps a month alive. Shared by monthOf + rerollMonth so the two can't drift (BUG1 class — a cb-only event must
-// never flip a month to source:'daily').
+// deposit/withdraw is meaningful ONLY with target:'strike' — target:'cb' is journal-only (CB collateral comes from the
+// reading) and target:'cold' is journal-only (cold feeds deriveColdStorage, never the rollup). Neither triggers a
+// re-roll or keeps a month alive. Shared by monthOf + rerollMonth so the two can't drift (BUG1 class — a cb- or
+// cold-only event must never create a month, flip a manual month to source:'daily', or reopen a confirmed one).
 export function isMonthlyMeaningful(ev: DayEvent): boolean {
   if (ev.kind === 'cbCollateralReading') return false;
-  if ((ev.kind === 'deposit' || ev.kind === 'withdraw') && ev.target === 'cb') return false;
+  if ((ev.kind === 'deposit' || ev.kind === 'withdraw') && ev.target !== 'strike') return false;
   return true;
 }
 
 // Re-roll ONE strategy month from the current dayLog → Partial→Full bridge → upsertLogEntry → Seam 1 collateral.
-// Only monthly-meaningful events count (cbCollateralReading + target:'cb' moves are journal-only — never create/flip).
+// Only monthly-meaningful events count (cbCollateralReading + target:'cb'/'cold' moves are journal-only — never create/flip).
 export function rerollMonth(get: StoreGet, month: number): void {
   const s = get();
   const start = s.advisorStartDate;

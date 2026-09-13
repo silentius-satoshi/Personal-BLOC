@@ -5,11 +5,50 @@ import type { DayEvent } from '../../simulation/types';
 
 export type SheetType = 'draw' | 'buy' | 'paydown' | 'minPayment' | 'collateral' | 'setBalance';
 
+/** Where a collateral move goes. 'cb' needs a CB loan; 'cold' (self-custody) never does. */
+export type CollateralTarget = 'strike' | 'cb' | 'cold';
+
+/**
+ * Per-target rules. Every branch that used to be a two-way `cb ? … : <Strike>` — which cold silently fell into —
+ * reads this table instead, so the branches are three-way by construction and a forgotten target is a compile error.
+ *  - needsReading:  the move is written WITH a balanceReading (LD6). Lenders have a statement; cold does not, and a
+ *                   cold move changes neither lender's balance, so demanding their balances would be pure friction.
+ *  - needsLiqPrice: a Coinbase move re-anchors the CB liquidation price.
+ *  - ltvWarnVenue:  whose LTV a withdraw can push toward its limit (D5). Cold is pledged to nobody.
+ */
+export const COLLATERAL_TARGET_RULES: Record<CollateralTarget, {
+  needsReading: boolean; needsLiqPrice: boolean; ltvWarnVenue: 'strike' | 'cb' | null;
+}> = {
+  strike: { needsReading: true,  needsLiqPrice: false, ltvWarnVenue: 'strike' },
+  cb:     { needsReading: true,  needsLiqPrice: true,  ltvWarnVenue: 'cb' },
+  cold:   { needsReading: false, needsLiqPrice: false, ltvWarnVenue: null },
+};
+
+/** The withdraw cap: the target venue's live balance + (edit mode) the original withdraw being replaced. */
+export function collateralAvailableFor(
+  target: CollateralTarget, bal: { strike: number; cb: number; cold: number }, originalWithdraw: number,
+): number {
+  return bal[target] + originalWithdraw;
+}
+
+/**
+ * Total holdings (Strike + Coinbase + cold) after a COLD move — the same sum the owner Dashboard shows (OwnershipBar,
+ * deriveVenueSplit). ⚠ A transfer between venues is TWO entries: log only the cold deposit and this total rises by the
+ * amount until the source withdrawal is logged. The sheet shows it before save so the double-count can't be missed.
+ * Non-finite inputs count as 0; cold is clamped at 0.
+ */
+export function totalHoldingsAfter(
+  strike: number, cb: number, cold: number, dir: 'deposit' | 'withdraw', amount: number | null,
+): number {
+  const f = (n: number | null) => (typeof n === 'number' && Number.isFinite(n) ? n : 0);
+  return f(strike) + f(cb) + Math.max(0, f(cold) + (dir === 'withdraw' ? -1 : 1) * f(amount));
+}
+
 export interface SheetState {
   type: SheetType;
   amount: number | null;              // USD (draw/paydown) | BTC (buy/collateral) | null (setBalance)
   collateralDir: 'deposit' | 'withdraw';  // only meaningful when type === 'collateral'
-  collateralTarget: 'strike' | 'cb';  // only meaningful when type === 'collateral' (and hasCbLoan)
+  collateralTarget: CollateralTarget; // only meaningful when type === 'collateral'; 'cb' needs a loan, 'cold' never does
   strikeBal: number | null;
   strikeLtv: number | null;           // PERCENT as typed by the user (e.g. 11.2 = 11.2%)
   strikeCollateral: number | null;    // BTC — v20 reading-anchored Strike collateral (POST-move total on a strike move; auto-tracked)
@@ -41,7 +80,7 @@ export function readingComplete(s: SheetState, hasCbLoan: boolean): boolean {
  */
 export function autoStrikeCollateral(
   base: number,
-  s: { type: SheetType; collateralDir: 'deposit' | 'withdraw'; effectiveTarget: 'strike' | 'cb'; amount: number | null; pledgeToStrike: boolean },
+  s: { type: SheetType; collateralDir: 'deposit' | 'withdraw'; effectiveTarget: CollateralTarget; amount: number | null; pledgeToStrike: boolean },
 ): number {
   const amt = s.amount ?? 0;
   if (s.type === 'collateral' && s.effectiveTarget === 'strike') return base + (s.collateralDir === 'withdraw' ? -amt : amt);
@@ -110,14 +149,17 @@ export function buildEventsFromSheet(
       }
       return [buyEvent, readingEvent];
     }
-    case 'collateral':
-      return [
-        {
-          id: idFn(), date: today, ts,
-          kind: s.collateralDir === 'withdraw' ? 'withdraw' : 'deposit',
-          amount, target: hasCbLoan ? s.collateralTarget : 'strike',
-        },
-        readingEvent,
-      ];
+    case 'collateral': {
+      // ⚠ Collapse ONLY 'cb' without a loan. Cold is self-custody and never needs a loan — the old
+      // `hasCbLoan ? target : 'strike'` turned a no-loan owner's cold deposit into a STRIKE deposit.
+      const target: CollateralTarget = s.collateralTarget === 'cb' && !hasCbLoan ? 'strike' : s.collateralTarget;
+      const move: DayEvent = {
+        id: idFn(), date: today, ts,
+        kind: s.collateralDir === 'withdraw' ? 'withdraw' : 'deposit',
+        amount, target,
+      };
+      // Cold has no statement and moves neither lender, so it is written ALONE — no balanceReading.
+      return COLLATERAL_TARGET_RULES[target].needsReading ? [move, readingEvent] : [move];
+    }
   }
 }

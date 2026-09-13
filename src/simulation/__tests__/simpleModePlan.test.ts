@@ -20,7 +20,7 @@ describe('Logging Consolidation §2b — minPaymentStatus', () => {
 
 function makeRow(month: number, o: Partial<AdvisorMonthRow> = {}): AdvisorMonthRow {
   return {
-    month, tier: 4, tierLabel: 'Safe', isCurrentMonth: false,
+    month, tier: 4, tierLabel: 'Safe', isCurrentMonth: false, btcPrice: 80000,
     blocDraw: 3500, fiatGap: 0, cbPayment: 0, cbExtraPayment: 0,
     cbPaydownDraw: 0, cbLtvTriggered: false, cbPaydownCapped: false, cbPaydownShortfall: 0,
     strikeRepayDraw: 0, strikeRepayFee: 0, strikeRepayFired: false,
