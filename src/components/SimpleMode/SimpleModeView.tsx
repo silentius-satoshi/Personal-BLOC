@@ -5,7 +5,8 @@ import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit, computeStrikeLtv, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { CB_LLTV, CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
-import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
+import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus, paydownReadout, classifyPaydownState } from '../../simulation/simpleModePlan';
+import { paydownBadge } from '../Playbook/playbookView';
 import { buildMonthRollup } from '../Daily/calendarModel';
 import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
@@ -204,6 +205,12 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const eomBtcHeld: number     = currentRow?.btcHeld ?? currentBtcHeld;
   const eomBlocBalance: number = currentRow?.blocBalance ?? advisorActualBlocBalance;
   const eomLtv: number         = currentRow?.blocLtv ?? computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
+  // The AFTER box's colour is about THIS month's row, never the scrubbed month (it used to key on hasPaydown of whatever
+  // month was selected). Amber only when the plan leaves the LTV above the ceiling.
+  const eomState = currentRow
+    ? classifyPaydownState(currentRow.blocLtvPeak, currentRow.blocPaydown, currentRow.blocLtv, BLOC_OPERATING_CEILING)
+    : 'quiet';
+  const eomStressed = eomState === 'partial' || eomState === 'undefended';
   const currentBlocLtv: number = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);   // matches the Strike dashboard bar
   const availCredit  = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);          // AFTER-this-month basis
   const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);   // CURRENT basis
@@ -256,8 +263,19 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const rowInterest = selectedRow?.blocInterest ?? 0;
   const rowCbPayUsd = selectedPlan?.cbPayment ?? 0;
   const rowMinPayment = selectedPlan?.minPayment ?? 0;
-  const rowPaydownUsd = selectedPlan?.paydown ?? 0;
-  const hasPaydown    = rowPaydownUsd > 0;
+  // The header LTV + paydown come from ONE source. A closed logged month reports the ledger; the current month in
+  // progress keeps the PLANNED paydown as the instruction (with the ledger's progress); an unlogged month reports the
+  // plan. It used to pair the ledger LTV (barStrikeLtv) with the plan's paydown — "12.8% — paydown triggered".
+  const readout = paydownReadout(
+    selectedPlan,
+    selectedEntry ? { paydown: selectedEntry.paydown, strikeLtv: selectedEntry.strikeLtv } : null,
+    isCurrent,
+    BLOC_OPERATING_CEILING,
+  );
+  const badge           = paydownBadge(readout, BLOC_OPERATING_CEILING);
+  const paydownStressed = badge.tone === 'amber';   // the only case that earns a warning colour
+  const rowPaydownUsd   = readout.paydown;
+  const hasPaydown      = rowPaydownUsd > 0;
   const rowBuyPct     = income > 0 ? rowBtcUsd / income : 1;
   const rowPaydownPct = income > 0 ? rowPaydownUsd / income : 0;
 
@@ -491,7 +509,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             <div className={styles.positionCol}>
               <span className={styles.positionTitle}>AFTER THIS MONTH</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
-              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(eomLtv)} LTV</span>)</span></span>
+              <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={eomStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(eomLtv)} LTV</span>)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
             </div>
 
@@ -539,8 +557,8 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             </div>
             <div className={styles.scrubMeta}>
               <span className={styles.scrubLtv}>
-                LTV <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(barStrikeLtv)}</span>
-                {hasPaydown && <span className={styles.scrubPaydownFlag}> — paydown triggered</span>}
+                LTV <span style={paydownStressed ? { color: 'var(--amber)' } : undefined}>{badge.ltv}</span>
+                {badge.flag && <span className={paydownStressed ? styles.scrubPaydownFlagWarn : styles.scrubPaydownFlag}>{badge.flag}</span>}
               </span>
               <span className={styles.scrubPrice}>BTC {fmtUSD(btcPrice)}</span>
             </div>
@@ -572,10 +590,10 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                         <>
                           <span className={styles.planBarFrom}>{fmtLtvPct(currentBlocLtv)}</span>
                           <span className={styles.planBarArrow}> → </span>
-                          <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
+                          <span style={paydownStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
                         </>
                       ) : (
-                        <span style={hasPaydown ? { color: 'var(--orange)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
+                        <span style={paydownStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
                       )}
                     </span>
                   </div>
@@ -632,10 +650,17 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                 {/* LoC Paydown — income-driven, no pill (months where paydown fires) */}
                 {hasPaydown && (
                   <div className={styles.dotRow}>
-                    <span className={`${styles.dot} ${styles.dotOrange}`} />
+                    <span className={`${styles.dot} ${styles.dotMuted}`} />
                     <div className={styles.dotLabelGroup}>
                       <span className={styles.dotLabel}>LoC Paydown</span>
-                      <span className={styles.dotSub}>reducing your BLOC LTV</span>
+                      <span className={styles.dotSub}>
+                        reducing your BLOC LTV
+                        {/* In progress: the plan's paydown stays the headline; the ledger's progress in the paren
+                            (the Box 2 "Draw: $X ($Y left)" precedent). */}
+                        {readout.mode === 'inProgress' && readout.paydownDone > 0 && readout.paydownDone < rowPaydownUsd && (
+                          <span className={styles.parenSub}> ({fmtUSD(rowPaydownUsd - readout.paydownDone)} left)</span>
+                        )}
+                      </span>
                     </div>
                     <div className={styles.dotRightInner}>
                       <span className={styles.dotPct}>{fmtPct(rowPaydownPct)}</span>

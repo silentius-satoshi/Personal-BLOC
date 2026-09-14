@@ -6,8 +6,10 @@
   background: var(--border);
 }
 
+/* The paydown share — muted, not red: paying the line back to the ceiling is the plan working, not an alarm.
+   (Class name kept; only the colour changed, matching the Simple-mode scrubber.) */
 .segmentRed {
-  background: var(--red);
+  background: var(--text-muted);
   transition: width 0.3s ease;
 }
 

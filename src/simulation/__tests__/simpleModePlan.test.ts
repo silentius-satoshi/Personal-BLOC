@@ -25,7 +25,7 @@ function makeRow(month: number, o: Partial<AdvisorMonthRow> = {}): AdvisorMonthR
     cbPaydownDraw: 0, cbLtvTriggered: false, cbPaydownCapped: false, cbPaydownShortfall: 0,
     strikeRepayDraw: 0, strikeRepayFee: 0, strikeRepayFired: false,
     blocMinPayment: 0, blocMinShortfall: 0,
-    btcBought: 0.05, incomeToBtc: 4000, blocBalance: 10000, blocLtv: 0.12,
+    btcBought: 0.05, incomeToBtc: 4000, blocBalance: 10000, blocLtv: 0.12, blocLtvPeak: 0.12, blocPaydown: 0,
     cbBalance: 0, cbLtv: 0, btcHeld: 1.0, blocInterest: 108, cbInterest: 0, totalInterest: 108,
     ...o,
   };
@@ -48,7 +48,7 @@ describe('deriveForMonth — unskipped projection', () => {
     expect(p.cbPayment).toBe(0);
     expect(p.cbLtv).toBe(0);            // !hasCbLoan zeros CB
     expect(p.blocInterest).toBe(108);
-    expect(p.paydown).toBe(0);          // income - 0 - 4000
+    expect(p.paydown).toBe(0);          // = row.blocPaydown (0) — read from the engine, no longer a residual
     expect(p.allocatedFromIncome).toBe(4000);
     expect(p.isFullyAllocated).toBe(true);
   });
@@ -57,7 +57,7 @@ describe('deriveForMonth — unskipped projection', () => {
     const p = deriveForMonth(makeRow(1, { cbPayment: 500, incomeToBtc: 3500, cbLtv: 0.6 }), 4000, true, 'monthly');
     expect(p.cbPayment).toBe(500);
     expect(p.btcBoughtUsd).toBe(3500);
-    expect(p.paydown).toBe(0);          // 4000 - 500 - 3500
+    expect(p.paydown).toBe(0);          // = row.blocPaydown (0); 500 CB + 3500 BTC = the 4000 income
     expect(p.allocatedFromIncome).toBe(4000);
     expect(p.cbLtv).toBe(0.6);
   });

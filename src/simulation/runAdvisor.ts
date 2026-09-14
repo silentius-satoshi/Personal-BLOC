@@ -83,7 +83,11 @@ export interface AdvisorMonthRow {
   btcBought:      number;
   incomeToBtc:    number;
   blocBalance:    number;
-  blocLtv:        number;
+  blocLtv:        number;   // SETTLED end-of-month Strike LTV — AFTER the paydown and AFTER the BTC buy
+  blocLtvPeak:    number;   // in-month HIGH: after interest + the expenses draw, BEFORE the paydown and the buy — the
+                            // LTV the paydown answers. ∞ = debt with no collateral (never 0 — 0 would read as safe)
+  blocPaydown:    number;   // income → BLOC paydown this month (the ceiling defense; 0 = none). Capped at the income
+                            // budget, so it can fire and still leave the LTV above the ceiling (the "partial" state)
   cbBalance:      number;
   cbLtv:          number;
   btcHeld:        number;
@@ -142,6 +146,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
     let fiatGap:         number;
     let blocInterest:    number;
     let blocPaydown:     number;
+    let blocLtvPeak:     number  = 0;   // reporting only — captured beside blocTarget, never read by the math
     let cbTotalPayment:  number;
     let cbExtraPayment:  number;
     let incomeToBtc:     number;
@@ -225,6 +230,11 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
 
       // BLOC LTV paydown check — funded from the (min-payment-reduced) income budget
       const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
+      // ⚠ The peak MUST read the same blocBalance/btcHeld blocTarget reads. Captured after `blocBalance -= blocPaydown`
+      // or `btcHeld += btcBought` it reproduces the understated-LTV defect it exists to fix.
+      blocLtvPeak = btcHeld * btcPriceThisMonth > 0
+        ? blocBalance / (btcHeld * btcPriceThisMonth)
+        : (blocBalance > 0 ? Infinity : 0);
       blocPaydown = blocBalance > blocTarget
         ? Math.min(incomeBudget, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
@@ -270,6 +280,11 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
 
       // BLOC LTV paydown check — funded from the (min-payment-reduced) income budget
       const blocTarget = btcHeld * btcPriceThisMonth * blocLtvCeiling;
+      // ⚠ The peak MUST read the same blocBalance/btcHeld blocTarget reads. Captured after `blocBalance -= blocPaydown`
+      // or `btcHeld += btcBought` it reproduces the understated-LTV defect it exists to fix.
+      blocLtvPeak = btcHeld * btcPriceThisMonth > 0
+        ? blocBalance / (btcHeld * btcPriceThisMonth)
+        : (blocBalance > 0 ? Infinity : 0);
       blocPaydown = blocBalance > blocTarget
         ? Math.min(incomeBudget, blocBalance - blocTarget)   // up to 100% of income — matches runBLOC's 15% ceiling defense
         : 0;
@@ -319,7 +334,7 @@ export function runAdvisor(inputs: AdvisorInputs): AdvisorResult {
       strikeRepayDraw, strikeRepayFee, strikeRepayFired,
       blocMinPayment, blocMinShortfall,
       btcBought, incomeToBtc,
-      blocBalance, blocLtv, cbBalance: cbBal, cbLtv, btcHeld,
+      blocBalance, blocLtv, blocLtvPeak, blocPaydown, cbBalance: cbBal, cbLtv, btcHeld,
       blocInterest, cbInterest, totalInterest,
     });
   }

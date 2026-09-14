@@ -1,6 +1,8 @@
 import type { MonthData } from '../../simulation/types';
 import { useStore } from '../../store/useStore';
 import { fmtUSD } from '../../utils/format';
+import { classifyPaydownState } from '../../simulation/simpleModePlan';
+import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import styles from './PlaybookItems.module.css';
 
 function fmtPct(n: number) {
@@ -42,6 +44,8 @@ export function PlaybookItems({ data }: Props) {
   const expenses       = useStore((s) => s.expenses);
 
   const hasPD   = data.paydown > 0;
+  // A paydown capped by income can leave the LTV above the ceiling — "back to 15%" would be false there.
+  const pdState = classifyPaydownState(data.ltvPeak, data.paydown, data.ltv, BLOC_OPERATING_CEILING);
   const buyAmt  = income - data.paydown;
   const buyPct  = income > 0 ? buyAmt / income : 1;
   const pdPct   = income > 0 ? data.paydown / income : 0;
@@ -63,9 +67,9 @@ export function PlaybookItems({ data }: Props) {
 
       {hasPD && (
         <Row
-          dot="var(--orange)"
+          dot="var(--text-muted)"
           label="LoC Paydown"
-          subtext="(reducing LTV back to 15%)"
+          subtext={pdState === 'partial' ? '(reducing LTV — still above 15%)' : '(reducing LTV back to 15%)'}
           right={
             <div className={styles.rightInner}>
               <span className={styles.pct}>{fmtPct(pdPct)}</span>

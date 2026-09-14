@@ -915,7 +915,9 @@
 .scrubBadgeLogged    { color: var(--text-ghost); }
 .scrubBadgeProjected { color: var(--amber); }
 .scrubLtv { font-size: 12px; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-.scrubPaydownFlag { color: var(--orange); }
+/* A routine paydown is plan mechanics, not an alarm — muted. Amber only when the LTV is still above the ceiling. */
+.scrubPaydownFlag { color: var(--text-muted); }
+.scrubPaydownFlagWarn { color: var(--amber); }
 .scrubPrice { margin-left: auto; font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
 .scrubSlider {
   width: 100%;
@@ -925,7 +927,8 @@
   border-radius: 3px;
   outline: none;
   cursor: pointer;
-  background: linear-gradient(90deg, var(--red) 0 calc(var(--paydownPct, 0) * 1%), var(--green) calc(var(--paydownPct, 0) * 1%) 100%);
+  /* The paydown share is muted, not red — paying the line back to the ceiling is the plan working. */
+  background: linear-gradient(90deg, var(--text-muted) 0 calc(var(--paydownPct, 0) * 1%), var(--green) calc(var(--paydownPct, 0) * 1%) 100%);
 }
 .scrubSlider::-webkit-slider-thumb {
   -webkit-appearance: none;
@@ -987,6 +990,7 @@
 .dotRed   { background: var(--red); }
 .dotBlue  { background: var(--orange); }
 .dotOrange { background: var(--orange); }
+.dotMuted  { background: var(--text-muted); }   /* LoC Paydown — plan mechanics, not an alarm */
 .dotLabelGroup { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
 .dotLabel { font-size: 13px; color: var(--text-secondary); }
 .dotSub { font-size: 11px; color: var(--text-ghost); }

@@ -29,6 +29,7 @@ export function runBLOC(annualRate: number, inputs: SimInputs): MonthData[] {
     portfolioValue: startBTC * startPrice,
     netEquity: startBTC * startPrice,
     crashLTV: 0,
+    ltvPeak: 0,
   }];
 
   for (let m = 1; m <= 60; m++) {
@@ -47,8 +48,11 @@ export function runBLOC(annualRate: number, inputs: SimInputs): MonthData[] {
 
     // Step 4: LTV check against post-draw loc
     const collateralValue = btc * btcPrice;
+    // The ratio the paydown answers — hoisted, not recomputed (it was computed inline in the `if` and thrown away).
+    // ∞ = debt with no collateral; the guard below still requires collateral before any paydown.
+    const ltvPeak = collateralValue > 0 ? loc / collateralValue : (loc > 0 ? Infinity : 0);
     let paydown = 0;
-    if (collateralValue > 0 && loc / collateralValue > LTV_CEILING) {
+    if (collateralValue > 0 && ltvPeak > LTV_CEILING) {
       paydown = Math.min(income, loc - collateralValue * LTV_CEILING);
     }
 
@@ -66,6 +70,7 @@ export function runBLOC(annualRate: number, inputs: SimInputs): MonthData[] {
       btc,
       loc,
       ltv,
+      ltvPeak,
       paydown,
       btcPurchased,
       interest,

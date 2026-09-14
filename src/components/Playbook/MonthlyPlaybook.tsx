@@ -1,28 +1,17 @@
 import { useSimulation } from '../../hooks/useSimulation';
 import { useStore } from '../../store/useStore';
-import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { fmtUSD } from '../../utils/format';
+import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
+import { paydownReadout } from '../../simulation/simpleModePlan';
 import { ProgressBar } from './ProgressBar';
 import { PlaybookItems } from './PlaybookItems';
 import { PlaybookScrubber } from './PlaybookScrubber';
+import { buildNarrative, paydownBadge, type BadgeTone } from './playbookView';
 import styles from './MonthlyPlaybook.module.css';
 
-function buildNarrative(
-  month: number,
-  ltv: number,
-  income: number,
-  expenses: number,
-  paydown: number,
-  interest: number
-): string {
-  const ltvPct = fmtLtvPct(ltv).replace('%', '');
-  const hasPD  = paydown > 0;
-  const buyAmt = income - paydown;
-
-  if (hasPD) {
-    return `Month ${month}: LTV hit ${ltvPct}% after drawing expenses — ${fmtUSD(paydown)} of income reduces the LoC back to 15%, then ${fmtUSD(buyAmt)} buys Bitcoin. Full ${fmtUSD(expenses)} expenses always paid.`;
-  }
-  return `Month ${month}: LTV is ${ltvPct}% — well below the 15% ceiling. All ${fmtUSD(income)} income goes straight into Bitcoin. ${fmtUSD(expenses)} in expenses drawn from LoC. Interest of ${fmtUSD(interest)} capitalizes onto the balance.`;
-}
+// quiet keeps the badge's original green; a routine paydown is muted (the plan working, not an alarm); amber is reserved
+// for the two states where the LTV is still above the ceiling.
+const TONE_COLOR: Record<BadgeTone, string> = { plain: 'var(--green)', muted: 'var(--text-muted)', amber: 'var(--amber)' };
 
 export function MonthlyPlaybook() {
   const { currentMonth } = useSimulation();
@@ -30,9 +19,13 @@ export function MonthlyPlaybook() {
   const income     = useStore((s) => s.income);
   const expenses   = useStore((s) => s.expenses);
 
-  const { ltv, btcPrice, paydown, interest } = currentMonth;
-  const ltvPct = fmtLtvPct(ltv).replace('%', '');
-  const hasPD  = paydown > 0;
+  const { ltv, ltvPeak, btcPrice, paydown, interest } = currentMonth;
+  // runBLOC is a pure 60-month projection — no logged months — so the readout is always 'projected'. Its local
+  // LTV_CEILING equals BLOC_OPERATING_CEILING (0.15).
+  const badge = paydownBadge(
+    paydownReadout({ paydown, blocLtv: ltv, blocLtvPeak: ltvPeak }, null, false, BLOC_OPERATING_CEILING),
+    BLOC_OPERATING_CEILING,
+  );
 
   return (
     <div className={styles.playbook}>
@@ -43,11 +36,8 @@ export function MonthlyPlaybook() {
       {/* Header row */}
       <div className={styles.header}>
         <span className={styles.monthLabel}>Month {scrubMonth} of 60</span>
-        <span
-          className={styles.ltvBadge}
-          style={{ color: hasPD ? 'var(--orange)' : 'var(--green)' }}
-        >
-          LTV {ltvPct}%{hasPD ? ' — paydown triggered' : ''}
+        <span className={styles.ltvBadge} style={{ color: TONE_COLOR[badge.tone] }}>
+          {badge.text}
         </span>
         <span className={styles.priceLabel}>BTC {fmtUSD(btcPrice)}</span>
       </div>
@@ -57,7 +47,7 @@ export function MonthlyPlaybook() {
       <PlaybookItems data={currentMonth} />
 
       <div className={styles.narrative}>
-        {buildNarrative(scrubMonth, ltv, income, expenses, paydown, interest)}
+        {buildNarrative(scrubMonth, ltv, ltvPeak, income, expenses, paydown, interest, BLOC_OPERATING_CEILING)}
       </div>
     </div>
   );

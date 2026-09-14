@@ -19,6 +19,8 @@ export interface MonthData {
   portfolioValue: number;
   netEquity: number;
   crashLTV: number;
+  ltvPeak: number;   // in-month HIGH LTV (post-draw, PRE-paydown, PRE-buy) — the ratio the paydown answers. `ltv` is the
+                     // settled figure. runBLOC is the ONLY builder of MonthData, so this is required. ∞ = debt, no collateral
 }
 
 export interface STSMonthData {

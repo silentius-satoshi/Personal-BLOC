@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1292 tests — all must pass before every commit)
+- Vitest (1325 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -1113,11 +1113,11 @@ src/
                                 # Plan card = "Monthly Playbook" (polished toward Smart BLOC's restraint):
                                 # a TWO-LINE header — top "Monthly Playbook · Month X of 12 · [de-boxed state badge]"
                                 # (.planTitleSep ghost dot before "Month"), second
-                                # line (.scrubMeta, above the scrubber) "LTV Z% — paydown triggered" (LTV +
-                                # flag coral when hasPaydown) left + "BTC $price" right;
+                                # line (.scrubMeta, above the scrubber) the paydownBadge readout — see "Paydown badge" (LTV +
+                                # four-state flag, amber only when the LTV is still above the ceiling) left + "BTC $price" right;
                                 # a month SCRUBBER (1–12, selectedMonth,
                                 # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
-                                # carousel) with a TWO-TONE fill (red paydown share / green rest, keyed to
+                                # carousel) with a TWO-TONE fill (muted paydown share / green rest, keyed to
                                 # the --paydownPct = barPaydownPct CSS var) + month-tick markers
                                 # (M1·M3·M6·M9·M12, replaced the "drag to scrub" caption); TWO stacked status
                                 # bars (Strike / CB — toggle-gated by showPlanStrikeBar/showPlanCbBar). On the CURRENT
@@ -3864,6 +3864,70 @@ A pre-change backup still validates.
      The same applies to `paydown`/`btcBought`/`income`/`strikeMinPaid`.
    - It predates CB flows. It is also why the venue-flip test uses a draw-only month.
 
+## Paydown badge — says what actually happened (reporting only; store unchanged, NO bump)
+
+The Playbook badge used to read "LTV 12.8% — paydown triggered". Three defects stacked:
+1. **The flag was routine plan mechanics.** Drawing expenses and paying income back to the 15% ceiling fires every
+   month by design (12/12 on a steady fixture), and orange plus "triggered" made that read as a breach.
+2. **The LTV beside it was the post-paydown, post-buy figure.** It always understated what the paydown answered, and
+   often sat below 15%, contradicting the flag.
+3. **On a logged month, the halves came from different sources:** the ledger's LTV paired with the plan's projected
+   paydown.
+
+**No paydown, draw, buy, interest or balance math changed** — the advisor golden snapshots still pass byte-identical.
+
+**Engines report two new fields:**
+- `AdvisorMonthRow.blocPaydown` — the real ceiling defense, which used to be a function-local.
+- `blocLtvPeak` / `MonthData.ltvPeak` — the in-month HIGH: after interest and the expenses draw, before the paydown
+  and the buy.
+- ⚠ The peak is captured on the line right after `blocTarget`, from the same `blocBalance`/`btcHeld`. Capturing it
+  later reproduces the defect.
+- ⚠ At zero collateral the peak is **∞, never 0**, matching `computeStrikeLtv`.
+- `MonthData.ltvPeak` is **required**, because `runBLOC` is its only builder. `runSTS` etc. use their own types.
+
+**`deriveForMonth` reads `row.blocPaydown`.** It used to reconstruct an income residual, which agreed in every reachable
+configuration but would invent a paydown if a CB-paying row met `hasCbLoan:false`.
+
+🔴 **FOUR states, not two** (`classifyPaydownState(peak, paydown, settled, ceiling)`, simpleModePlan):
+
+| State | Meaning | Badge |
+|---|---|---|
+| **quiet** | no paydown, never crossed | `LTV 12.8%` |
+| **defended** | paid down to at or below the ceiling | `LTV 14.7% · peaked 18.9% → paid down $3,900` — **muted**, the plan working |
+| **partial** | paid, but income ran out and it SETTLED ABOVE the ceiling | `LTV 18.0% · paid down $500, still above the 15% ceiling` — **amber** |
+| **undefended** | above the ceiling with NO paydown (no income budget) | `LTV 19.2% · above the 15% ceiling — no income to pay it down` — **amber** |
+
+- ⚠ **Partial must stay distinct from defended.** Both have a paydown, and in a stressed sweep partial months
+  outnumber defended ones about 3:1. Collapsed, a losing month looks identical to a healthy one.
+- ⚠ **"peak > ceiling ⟺ paydown" is FALSE:** with no income budget, the LTV sits above the ceiling unpaid — that is
+  the undefended state.
+- `stillAbove` has a 1e-9 tolerance, because a paydown sized exactly to the gap lands on the ceiling as a float.
+- **Amber is reserved for partial and undefended.** Orange is gone from the badge, the plan bar, the paydown dot, the
+  Simple scrubber's paydown share and the full-mode ProgressBar segment.
+
+🔴 **`paydownReadout(plan, logged, isCurrent, ceiling)` — the header's LTV and paydown from ONE source:**
+
+| Month | Reports |
+|---|---|
+| closed logged | the **ledger** — even a logged $0 beats a projected paydown; this was the reported bug |
+| **current with an entry** | **in progress:** the ledger LTV so far, but the **planned** paydown stays the instruction, with a `($X left)` paren from the ledger's progress |
+| unlogged | the plan |
+
+⚠ The in-progress case is load-bearing. The owner journals in Simple mode daily, so the current month has an entry
+from its first event; letting the ledger win there would hide the plan all month.
+
+The ledger paydown is Strike-only, and it inherits the pre-existing stale-field defect (see the Coinbase section).
+
+**Copy lives in `src/components/Playbook/playbookView.ts`** (pure and testable):
+- `paydownBadge` is shared by both badges;
+- `buildNarrative` moved out of `MonthlyPlaybook.tsx` and now narrates the **peak** in "LTV hit X% after drawing
+  expenses" (it printed the settled figure, a number the LTV never "hit");
+- a partial month no longer claims "back to 15%", an undefended one no longer claims "well below", and the quiet
+  sentence is byte-identical.
+
+**The AFTER THIS MONTH box's colour** comes from `classifyPaydownState` on `currentRow`. It used to key on the
+*scrubbed* month's paydown. **PlaybookItems** rewords its "(reducing LTV back to 15%)" subtext in the partial state.
+
 ## Strike Minimum Payment + NDP re-scope (Simple Mode Corrections A; store v19, NO bump)
 
 Corrects how the BLOC monthly minimum (accrued interest, billed monthly / due the 15th per Strike's terms)
@@ -4361,8 +4425,27 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1292 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger and the
-Coinbase debt events was mutation-checked: revert the fix → the test goes red.)
+1325 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
+Coinbase debt events and the paydown badge was mutation-checked: revert the fix → the test goes red.)
+- **Paydown badge** (33 tests):
+  - `src/simulation/__tests__/paydownPeak.test.ts` — sweeps both engines:
+    - the sweep is non-vacuous (it reaches paid, partial and undefended months);
+    - ⭐ peak ≥ settled, strictly greater when a paydown fires;
+    - ⭐ a paydown ⇒ peak > ceiling;
+    - peak > ceiling with an income budget ⇒ a paydown (deliberately NOT a biconditional);
+    - ⭐ ∞ peak at zero collateral, with the `blocLtv` dependency written into the test (A3).
+  - `src/simulation/__tests__/paydownState.test.ts`:
+    - the four states, each via the real engine; ⭐ partial and ⭐ undefended;
+    - the float boundary;
+    - `paydownReadout`: ⭐ the ledger wins on a closed month, ⭐ the in-progress month keeps the plan;
+    - ⭐ `deriveForMonth` paydown = `blocPaydown` with the allocation summing to income (sweep);
+    - ⭐ the decoupled case.
+  - `src/components/Playbook/__tests__/playbookView.test.ts`:
+    - badge text and tone for every state;
+    - no state says "triggered";
+    - ⭐ the narrative's hit clause reports the peak;
+    - partial and undefended sentences;
+    - the quiet sentence byte-identical.
 - **Coinbase debt events** (42 tests):
   - `src/simulation/__tests__/cbDebtRollup.test.ts`:
     - `flowVenue` — ⭐ a legacy target-less draw still rolls up (flipping the default to `'cb'` goes red);
@@ -6575,6 +6658,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Constraint | Rule |
 |---|---|
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
+| The paydown badge has FOUR states, and only two earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended. A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling) and undefended (above it, no income to pay). Never collapse partial into defended. The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
 | A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |

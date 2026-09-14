@@ -18,7 +18,8 @@ export interface MonthPlan {
   paydown:             number;   // income → BLOC paydown
   minPayment:          number;   // income → BLOC minimum (interest) payment (= row.blocMinPayment; 0 in roll mode)
   blocInterest:        number;   // monthly BLOC interest (capitalizes in roll mode; paid in income mode)
-  blocLtv:             number;   // projected EoM Strike LTV (decimal)
+  blocLtv:             number;   // projected EoM Strike LTV (decimal) — SETTLED: after the paydown and the buy
+  blocLtvPeak:         number;   // projected in-month HIGH (post-draw, pre-paydown, pre-buy) — what the paydown answers
   cbLtv:               number;   // projected EoM CB LTV (decimal; 0 if !hasCbLoan)
   allocatedFromIncome: number;   // paydown + btcBoughtUsd + cbPayment + minPayment (= income for a clean projection)
   isFullyAllocated:    boolean;
@@ -38,7 +39,9 @@ export function deriveForMonth(
   const cbPayment    = hasCbLoan && cbPaymentStrategy === 'monthly' ? row.cbPayment : 0;
   const btcBoughtUsd = row.incomeToBtc;
   const minPayment   = row.blocMinPayment;
-  const paydown      = Math.max(0, income - (hasCbLoan ? row.cbPayment : 0) - row.incomeToBtc - minPayment);
+  // The engine's own ceiling-defense figure. It used to be RECONSTRUCTED as an income residual, which agrees in every
+  // reachable configuration but would invent a paydown if a row carrying cbPayment > 0 ever met hasCbLoan:false.
+  const paydown      = row.blocPaydown;
   const allocatedFromIncome = paydown + btcBoughtUsd + cbPayment + minPayment;
   return {
     blocDraw:     row.blocDraw,
@@ -50,10 +53,72 @@ export function deriveForMonth(
     minPayment,
     blocInterest: row.blocInterest,
     blocLtv:      row.blocLtv,
+    blocLtvPeak:  row.blocLtvPeak,
     cbLtv:        hasCbLoan ? row.cbLtv : 0,
     allocatedFromIncome,
     isFullyAllocated: income > 0 && Math.abs(income - allocatedFromIncome) < 1,
   };
+}
+
+// ── The paydown badge (numbers only — the copy lives in components/Playbook/playbookView.ts) ──────────────────
+
+/**
+ * What a month's ceiling defense did. Four states, from three numbers already on the row:
+ *  - quiet       — no paydown, and the peak never crossed the ceiling
+ *  - defended    — a paydown fired and the LTV settled at or below the ceiling (routine plan mechanics, not an alarm)
+ *  - partial     — a paydown fired but the income ran out: the LTV SETTLED ABOVE the ceiling (defending and losing)
+ *  - undefended  — the peak crossed the ceiling and NO paydown fired (no income left to pay it down)
+ * partial and undefended are the only genuine alarms. ⚠ Keep partial distinct from defended: both have a paydown,
+ * and collapsing them makes a losing month look identical to a healthy one.
+ * `stillAbove` carries a 1e-9 tolerance: a paydown sized exactly to the gap lands ON the ceiling as a float.
+ * At zero collateral, runAdvisor's settled blocLtv is a pre-existing 0 (it should be ∞), and that shows through here.
+ */
+export type PaydownState = 'quiet' | 'defended' | 'partial' | 'undefended';
+const CEILING_EPS = 1e-9;
+
+export function classifyPaydownState(peak: number, paydown: number, settled: number, ceiling: number): PaydownState {
+  if (paydown > 0) return settled > ceiling + CEILING_EPS ? 'partial' : 'defended';
+  return peak > ceiling + CEILING_EPS ? 'undefended' : 'quiet';
+}
+
+export interface PaydownReadout {
+  mode:        'actual' | 'inProgress' | 'projected' | 'none';
+  ltv:         number;               // actual/inProgress: the ledger LTV; projected: the plan's settled EoM LTV
+  peakLtv:     number;               // the plan's in-month peak (0 for actual/none)
+  paydown:     number;               // actual: the ledger's; inProgress/projected: the PLANNED paydown
+  paydownDone: number;               // inProgress: the ledger paydown so far; actual: = paydown; else 0
+  state:       PaydownState | null;  // the PLAN's state (null for actual/none — a ledger month has no peak)
+}
+
+/**
+ * The Playbook header's LTV + paydown pair, from ONE source. Mixing sources is the defect this replaces: barStrikeLtv
+ * already preferred the ledger while the paydown flag always read the plan ("12.8% — paydown triggered").
+ *  - a logged month that is NOT current → the ledger (actual LTV, actual paydown). The ledger wins even when it logged
+ *    no paydown and the plan projected one.
+ *  - the CURRENT month with an entry → in progress: the ledger LTV so far, but the PLANNED paydown stays the
+ *    instruction (with the ledger's progress). The owner journals in Simple mode daily, so the current month has an
+ *    entry from its first event — letting the ledger win here would hide the plan all month.
+ *  - otherwise → the plan.
+ * The ledger paydown is Strike-only (CB paydowns are journal-only), and it inherits the pre-existing stale-field
+ * defect: deleting a month's last Strike paydown leaves entry.paydown at its old value.
+ */
+export function paydownReadout(
+  plan:      Pick<MonthPlan, 'paydown' | 'blocLtv' | 'blocLtvPeak'> | null,
+  logged:    { paydown: number; strikeLtv: number } | null,
+  isCurrent: boolean,
+  ceiling:   number,
+): PaydownReadout {
+  const planState = plan ? classifyPaydownState(plan.blocLtvPeak, plan.paydown, plan.blocLtv, ceiling) : null;
+  if (logged && isCurrent && plan) {
+    return { mode: 'inProgress', ltv: logged.strikeLtv, peakLtv: plan.blocLtvPeak, paydown: plan.paydown, paydownDone: logged.paydown, state: planState };
+  }
+  if (logged) {
+    return { mode: 'actual', ltv: logged.strikeLtv, peakLtv: 0, paydown: logged.paydown, paydownDone: logged.paydown, state: null };
+  }
+  if (plan) {
+    return { mode: 'projected', ltv: plan.blocLtv, peakLtv: plan.blocLtvPeak, paydown: plan.paydown, paydownDone: 0, state: planState };
+  }
+  return { mode: 'none', ltv: 0, peakLtv: 0, paydown: 0, paydownDone: 0, state: null };
 }
 
 /** The operate/preview mode-switch predicate: live controls only on the current month. */
