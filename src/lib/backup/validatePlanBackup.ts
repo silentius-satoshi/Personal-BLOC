@@ -50,6 +50,11 @@ function validateDayEvent(e: unknown): boolean {
   if (!isObject(e)) return false;
   if (typeof e.id !== 'string' || typeof e.date !== 'string' || typeof e.ts !== 'number') return false;
   if (typeof e.kind !== 'string' || !DAY_EVENT_KINDS.has(e.kind)) return false;
+  if (e.kind === 'draw' || e.kind === 'paydown') {
+    // target is OPTIONAL (absent = Strike — every pre-CB backup); when present it must be a known venue.
+    if (e.target !== undefined && e.target !== 'strike' && e.target !== 'cb') return false;
+    if (e.fee !== undefined && !(typeof e.fee === 'number' && Number.isFinite(e.fee) && e.fee >= 0)) return false;
+  }
   return true;
 }
 

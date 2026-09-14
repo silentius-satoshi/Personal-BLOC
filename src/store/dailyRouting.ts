@@ -4,7 +4,7 @@
 import type { StoreSet, StoreGet } from './types';
 import type { PlanField } from './settingsFields';
 import type { DayEvent, MonthlyLogEntry } from '../simulation/types';
-import { bucketEventToMonth, rollupMonth, deriveCbCollateral, deriveStrikeCollateral, deriveReadingAnchors, priorStocksForMonth, type ReadingMutationCtx } from '../simulation/logUtils';
+import { bucketEventToMonth, rollupMonth, flowVenue, deriveCbCollateral, deriveStrikeCollateral, deriveReadingAnchors, priorStocksForMonth, type ReadingMutationCtx } from '../simulation/logUtils';
 
 // ISO first-day of a strategy month (month 1 = advisorStartDate's month). advisorStartDate is a
 // date-only 'yyyy-mm-dd' string → new Date(...) parses it at UTC MIDNIGHT (JS spec). The output feeds
@@ -61,17 +61,24 @@ export function readingCtx(ev: DayEvent | undefined): ReadingMutationCtx | undef
 
 // A day event is "monthly-meaningful" if it can affect a monthlyLog entry. cbCollateralReading is clock-only, and a
 // deposit/withdraw is meaningful ONLY with target:'strike' — target:'cb' is journal-only (CB collateral comes from the
-// reading) and target:'cold' is journal-only (cold feeds deriveColdStorage, never the rollup). Neither triggers a
+// reading) and target:'cold' is journal-only (cold feeds deriveColdStorage, never the rollup). A draw/paydown with
+// target:'cb' is journal-only too (a Coinbase borrow/paydown; CB debt comes from the reading). None of them triggers a
 // re-roll or keeps a month alive. Shared by monthOf + rerollMonth so the two can't drift (BUG1 class — a cb- or
 // cold-only event must never create a month, flip a manual month to source:'daily', or reopen a confirmed one).
+// ⚠ This is ONE of TWO guards for CB draw/paydown, and it does NOT prevent corruption: rerollMonth only uses it for
+// the empty check, then hands rollupMonth the FULL dayLog. The target skip inside rollupMonth keeps a CB flow's amount
+// out of expensesActual/paydown; this line keeps a CB flow from creating, flipping or reopening a month. Keep both.
 export function isMonthlyMeaningful(ev: DayEvent): boolean {
   if (ev.kind === 'cbCollateralReading') return false;
   if ((ev.kind === 'deposit' || ev.kind === 'withdraw') && ev.target !== 'strike') return false;
+  if ((ev.kind === 'draw' || ev.kind === 'paydown') && flowVenue(ev) !== 'strike') return false;
   return true;
 }
 
 // Re-roll ONE strategy month from the current dayLog → Partial→Full bridge → upsertLogEntry → Seam 1 collateral.
-// Only monthly-meaningful events count (cbCollateralReading + target:'cb'/'cold' moves are journal-only — never create/flip).
+// Only monthly-meaningful events decide whether the month exists (cbCollateralReading, target:'cb'/'cold' moves and
+// target:'cb' draw/paydown are journal-only — never create/flip). The rollup itself reads the full dayLog and skips
+// the journal-only kinds on its own.
 export function rerollMonth(get: StoreGet, month: number): void {
   const s = get();
   const start = s.advisorStartDate;

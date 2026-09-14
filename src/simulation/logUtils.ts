@@ -1,6 +1,21 @@
 import type { DayEvent, MonthlyLogEntry } from './types';
 import { toLocalISO } from '../utils/format';   // a leaf (no sim imports) — the cold anchor's local calendar day
 
+/**
+ * The debt venue of a draw/paydown — THE single venue definition, read by every dayLog consumer (rollupMonth,
+ * isMonthlyMeaningful, aggregateEvents, unreconciledCbFlows, the log labels).
+ *
+ * ⚠ A MISSING target MUST read as 'strike'. That default IS the migration: every draw/paydown already stored in a
+ * dayLog, a backup or a synced record predates the field. Default it to anything else and every historical draw
+ * leaves the rollup — expensesActual collapses across all 12 months and reconcileMonthBuckets deletes the emptied
+ * daily-owned entries. Pinned by a test that must go red if the default flips.
+ * Any non-'strike' value reads as 'cb' (journal-only) — the conservative direction: an unknown value can never
+ * inflate a monthly figure.
+ */
+export function flowVenue(ev: Extract<DayEvent, { kind: 'draw' | 'paydown' }>): 'strike' | 'cb' {
+  return (ev.target ?? 'strike') === 'strike' ? 'strike' : 'cb';
+}
+
 export function recomputeBtcHeld(
   log: MonthlyLogEntry[],
   baseBtcHeld: number,
@@ -147,6 +162,11 @@ export function rollupMonth(
   for (const ev of inMonth) {
     switch (ev.kind) {
       case 'draw':
+        // target:'cb' → journal-only, ignored (a Coinbase borrow is a refinance, not an expense; CB debt comes from
+        // the reading). ⚠ THIS is the corruption guard: rerollMonth + reconcileMonthBuckets pass the FULL dayLog here,
+        // so isMonthlyMeaningful cannot keep a CB draw out of a month that also holds a Strike event. hasFlow is NOT
+        // set, so a CB-only month never trips the carry-forward below.
+        if (flowVenue(ev) !== 'strike') break;
         entry.expensesActual = (entry.expensesActual ?? 0) + ev.amount;
         hasFlow = true;
         break;
@@ -156,6 +176,7 @@ export function rollupMonth(
         hasFlow = true;
         break;
       case 'paydown':
+        if (flowVenue(ev) !== 'strike') break;   // target:'cb' → journal-only, ignored (same guard as draw)
         entry.paydown = (entry.paydown ?? 0) + ev.amount;
         hasFlow = true;
         break;
@@ -316,6 +337,55 @@ export function deriveStrikeCollateral(dayLog: DayEvent[], fallback?: number): n
     }
   }
   return total;
+}
+
+export interface UnreconciledCbFlows {
+  events: Extract<DayEvent, { kind: 'draw' | 'paydown' }>[];   // CB flows strictly after the anchor, in dayLog order
+  drawn: number;                  // Σ CB borrow amounts (USD, cash)
+  fees: number;                   // Σ their origination fees (USD, capitalised)
+  paid: number;                   // Σ CB paydown amounts (USD)
+  anchorCbBal: number | null;     // the latest CB-bearing reading's cbBal; null = no CB reading ever
+  suggestedCbBal: number | null;  // anchorCbBal + drawn + fees − paid — a HINT, excludes interest; null without an anchor
+}
+
+/**
+ * Coinbase borrow/paydown events logged strictly AFTER the latest CB-bearing balanceReading — the app's FIRST signal
+ * that a reading's Coinbase balance no longer matches Coinbase. PURE.
+ *
+ * Why it exists (a PRE-EXISTING defect, made detectable — NOT fixed here): the today-dated EventSheet pre-fills the
+ * reading's cbBal from the latest reading and requires it. Saved unedited, that re-states an OLD cbBal on today's
+ * date; deriveReadingAnchors' early return needs value AND date to match, so it falls through and re-stamps
+ * cbLoanBalanceAsOf → accruedCbBalance restarts its clock and the interest since the prior reading vanishes. That
+ * needs no borrow. A logged CB flow after the anchor makes the staleness large AND knowable; interest-only staleness
+ * stays undetected.
+ *
+ * Anchor = the balanceReading with cbBal !== undefined, latest by (DATE, then ts) — deriveStrikeCollateral's rule,
+ * COPIED on purpose (its ordering is load-bearing; never refactor the three into a shared generic). A Strike-only
+ * reading (no cbBal) is not an anchor and reconciles nothing. No anchor → every CB flow counts.
+ * ⚠ Pre-save by nature: saving ANY CB-bearing reading — even one repeating the stale balance — makes it the anchor
+ * and clears the signal.
+ */
+export function unreconciledCbFlows(dayLog: DayEvent[]): UnreconciledCbFlows {
+  let anchor: Extract<DayEvent, { kind: 'balanceReading' }> | null = null;
+  for (const e of dayLog) {
+    if (e.kind !== 'balanceReading' || e.reading.cbBal === undefined) continue;
+    if (anchor === null || e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts)) anchor = e;
+  }
+  const events: Extract<DayEvent, { kind: 'draw' | 'paydown' }>[] = [];
+  let drawn = 0, fees = 0, paid = 0;
+  for (const e of dayLog) {
+    if (e.kind !== 'draw' && e.kind !== 'paydown') continue;
+    if (flowVenue(e) !== 'cb') continue;
+    if (anchor !== null && !(e.date > anchor.date || (e.date === anchor.date && e.ts > anchor.ts))) continue;
+    events.push(e);
+    if (e.kind === 'draw') { drawn += e.amount; fees += e.fee ?? 0; }
+    else paid += e.amount;
+  }
+  const anchorCbBal = anchor !== null ? (anchor.reading.cbBal as number) : null;
+  return {
+    events, drawn, fees, paid, anchorCbBal,
+    suggestedCbBal: anchorCbBal === null ? null : anchorCbBal + drawn + fees - paid,
+  };
 }
 
 /**

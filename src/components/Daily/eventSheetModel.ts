@@ -2,8 +2,39 @@
 // The sheet's local field-state (SheetState) → DayEvent[] (buildEventsFromSheet) and the Save gate
 // (readingComplete). Kept pure so the LD6 atomic flow+reading write + the LTV fraction conversion are unit-tested.
 import type { DayEvent } from '../../simulation/types';
+import { flowVenue, type UnreconciledCbFlows } from '../../simulation/logUtils';
+import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
+import { fmtUSD } from '../../utils/format';
+
+/**
+ * The stale-Coinbase-balance warning shown under the reading's "Coinbase loan balance" field (pure copy over
+ * unreconciledCbFlows). Null when no CB flow has been logged since the last CB-bearing reading. The suggested figure is
+ * a HINT in copy — never a prefill, never an anchor — and it excludes interest, which is why it says "before interest".
+ */
+export function staleCbBalanceNote(u: UnreconciledCbFlows): string | null {
+  if (u.events.length === 0) return null;
+  const parts: string[] = [];
+  if (u.drawn > 0) parts.push(`a ${fmtUSD(u.drawn)} Coinbase borrow${u.fees > 0 ? ` (+${fmtUSD(u.fees)} fee)` : ''}`);
+  if (u.paid > 0) parts.push(`a ${fmtUSD(u.paid)} Coinbase paydown`);
+  const suggest = u.suggestedCbBal !== null ? ` — about ${fmtUSD(u.suggestedCbBal)} before interest` : '';
+  return `You logged ${parts.join(' and ')} since your last Coinbase reading. Update this to what Coinbase shows now${suggest}.`;
+}
 
 export type SheetType = 'draw' | 'buy' | 'paydown' | 'minPayment' | 'collateral' | 'setBalance';
+
+/** Where a draw/paydown lands. Distinct from CollateralTarget (BTC) so the two can never be confused at a call site. */
+export type DebtTarget = 'strike' | 'cb';
+
+/**
+ * Per-venue rules for a draw/paydown (mirrors COLLATERAL_TARGET_RULES).
+ *  - needsReading: the flow is written WITH a balanceReading (LD6). A Coinbase borrow/paydown is JOURNAL-ONLY — CB debt
+ *                  comes from a reading, and the sheet isn't asking you to reconcile that venue — so it is written
+ *                  ALONE. Writing one would also re-state the stale pre-filled Coinbase balance as today's.
+ */
+export const DEBT_TARGET_RULES: Record<DebtTarget, { needsReading: boolean }> = {
+  strike: { needsReading: true },
+  cb:     { needsReading: false },
+};
 
 /** Where a collateral move goes. 'cb' needs a CB loan; 'cold' (self-custody) never does. */
 export type CollateralTarget = 'strike' | 'cb' | 'cold';
@@ -23,6 +54,26 @@ export const COLLATERAL_TARGET_RULES: Record<CollateralTarget, {
   cb:     { needsReading: true,  needsLiqPrice: true,  ltvWarnVenue: 'cb' },
   cold:   { needsReading: false, needsLiqPrice: false, ltvWarnVenue: null },
 };
+
+/**
+ * EDIT-mode rebuild of a draw/paydown (was inlined in EventSheet.handleSave as `{id,date,ts,kind,amount}` — which
+ * DROPPED target: editing a Coinbase borrow's amount silently turned it into a Strike draw, monthly-meaningful again,
+ * straight into expensesActual). Preserves id/date/ts/kind (updateDayEvent bumps ts) and the venue.
+ *  - Strike → { id, date, ts, kind, amount } — byte-identical to the pre-CB shape.
+ *  - CB paydown → + target:'cb' (never a fee).
+ *  - CB borrow → + target:'cb' + fee: the STORED fee when the amount is unchanged; otherwise recomputed from
+ *    currentCbBalance. ⚠ Approximation: at edit time the balance may already include this borrow (if a reading has
+ *    landed since), which can shift the bracket near $250k. Re-typing the same amount never moves the fee.
+ */
+export function rebuildEditedFlow(
+  ev: Extract<DayEvent, { kind: 'draw' | 'paydown' }>, amount: number, currentCbBalance: number,
+): DayEvent {
+  const { id, date, ts, kind } = ev;
+  if (flowVenue(ev) !== 'cb') return { id, date, ts, kind, amount };
+  if (kind === 'paydown') return { id, date, ts, kind, amount, target: 'cb' };
+  const fee = amount === ev.amount && ev.fee !== undefined ? ev.fee : cbBorrowFee(amount, currentCbBalance);
+  return { id, date, ts, kind, amount, target: 'cb', fee };
+}
 
 /** The withdraw cap: the target venue's live balance + (edit mode) the original withdraw being replaced. */
 export function collateralAvailableFor(
@@ -49,6 +100,7 @@ export interface SheetState {
   amount: number | null;              // USD (draw/paydown) | BTC (buy/collateral) | null (setBalance)
   collateralDir: 'deposit' | 'withdraw';  // only meaningful when type === 'collateral'
   collateralTarget: CollateralTarget; // only meaningful when type === 'collateral'; 'cb' needs a loan, 'cold' never does
+  debtTarget: DebtTarget;             // only meaningful for draw/paydown; 'cb' needs a loan (collapses to Strike without one)
   strikeBal: number | null;
   strikeLtv: number | null;           // PERCENT as typed by the user (e.g. 11.2 = 11.2%)
   strikeCollateral: number | null;    // BTC — v20 reading-anchored Strike collateral (POST-move total on a strike move; auto-tracked)
@@ -91,7 +143,9 @@ export function autoStrikeCollateral(
 /**
  * SheetState → the DayEvent[] to write (LD6: a flow writes the flow AND a balanceReading atomically).
  *  - setBalance  → [balanceReading]
- *  - draw/paydown → [{kind}, balanceReading]            (amount = USD)
+ *  - draw/paydown → [{kind}, balanceReading]            (amount = USD) — Strike
+ *                   [{kind, target:'cb'[, fee]}]          — Coinbase: written ALONE; a borrow carries its computed
+ *                                                          origination fee. target:'cb' collapses to Strike without a loan.
  *  - buy          → [{buy, usd: amount*price}, reading]  (amount = BTC)
  *  - collateral   → [{deposit|withdraw, target}, balanceReading]  (amount = BTC magnitude, positive; kind by
  *                   collateralDir — the store signs withdraw negative in collateralDelta; target='strike' when !hasCbLoan)
@@ -106,6 +160,7 @@ export function buildEventsFromSheet(
   ts: number,
   idFn: () => string,
   currentStrikeCollateral: number,   // v20 — fallback if s.strikeCollateral is null (readingComplete gates non-null; defensive)
+  currentCbBalance: number,          // the ACCRUED Coinbase balance — the fee bracket basis for a CB borrow
 ): DayEvent[] {
   const reading: {
     strikeBal: number; strikeLtv: number; strikeCollateral?: number;
@@ -133,9 +188,19 @@ export function buildEventsFromSheet(
     case 'setBalance':
       return [readingEvent];
     case 'draw':
-      return [{ id: idFn(), date: today, ts, kind: 'draw', amount }, readingEvent];
-    case 'paydown':
-      return [{ id: idFn(), date: today, ts, kind: 'paydown', amount }, readingEvent];
+    case 'paydown': {
+      // ⚠ Collapse 'cb' to Strike WITHOUT a loan — you cannot borrow from a loan you don't have. The OPPOSITE of the
+      // cold rule (cold never needs a loan); don't "fix" one to match the other.
+      const venue: DebtTarget = s.debtTarget === 'cb' && hasCbLoan ? 'cb' : 'strike';
+      const flow: DayEvent = {
+        id: idFn(), date: today, ts, kind: s.type, amount,
+        // ⚠ target is written ONLY for Coinbase — a Strike flow serialises byte-identically to every existing row.
+        ...(venue === 'cb' ? { target: 'cb' as const } : {}),
+        // The fee is a FACT (the brackets), computed not typed — cbBorrowFee is the single definition.
+        ...(venue === 'cb' && s.type === 'draw' ? { fee: cbBorrowFee(amount, currentCbBalance) } : {}),
+      };
+      return DEBT_TARGET_RULES[venue].needsReading ? [flow, readingEvent] : [flow];
+    }
     case 'minPayment':
       // Balance-neutral; reading-free (a one-field sheet). No atomic balanceReading — paying the billed
       // minimum doesn't move the position, so LD6 doesn't apply.

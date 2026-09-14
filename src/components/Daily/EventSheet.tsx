@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react';
 import { DraggableSheet } from '../ui/DraggableSheet';
 import { useStore } from '../../store/useStore';
-import { bucketEventToMonth } from '../../simulation/logUtils';
+import { bucketEventToMonth, flowVenue, unreconciledCbFlows } from '../../simulation/logUtils';
+import { accruedCbBalance } from '../../simulation/cbMetrics';
+import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, COLLATERAL_TARGET_RULES, collateralAvailableFor,
-  totalHoldingsAfter, type SheetType, type SheetState, type CollateralTarget,
+  totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote,
+  type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
@@ -62,7 +65,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const currentBtcHeld     = useStore((s) => s.getCurrentBtcHeld());
   const currentColdBtc     = useStore((s) => s.getCurrentColdBtc());   // the LIVE cold total — cap + readout for a cold move
   const cbCollateralBtc        = useStore((s) => s.cbCollateralBtc);          // D5 withdraw warning
-  const cbLoanBalance          = useStore((s) => s.cbLoanBalance);            // D5 withdraw warning
+  const cbLoanBalance          = useStore((s) => s.cbLoanBalance);            // D5 withdraw warning + CB borrow fee basis
+  const cbAprPct               = useStore((s) => s.cbAprPct);                 // CB borrow fee basis (accrual)
+  const cbLoanBalanceAsOf      = useStore((s) => s.cbLoanBalanceAsOf);        // CB borrow fee basis (accrual)
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance); // D5 withdraw warning
   const addDayEvent           = useStore((s) => s.addDayEvent);
   const updateDayEvent        = useStore((s) => s.updateDayEvent);
@@ -86,6 +91,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const [amount, setAmount]                 = useState<number | null>(null);
   const [collateralDir, setCollateralDir]   = useState<'deposit' | 'withdraw'>('deposit');
   const [collateralTarget, setCollTarget]   = useState<CollateralTarget>('strike');
+  const [debtTarget, setDebtTarget]         = useState<DebtTarget>('strike');   // draw/paydown venue (ADD mode)
   const [strikeBal, setStrikeBal]           = useState<number | null>(null);
   const [strikeLtv, setStrikeLtv]           = useState<number | null>(null);
   const [strikeCollateral, setStrikeCollateral]       = useState<number | null>(null);   // v20 — reading-anchored Strike collateral
@@ -154,6 +160,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setAmount(null);
     setCollateralDir('deposit');
     setCollTarget('strike');
+    setDebtTarget('strike');
     setPledgeToStrike(false);
     setStrikeCollTouched(false);   // v20 — the track effect sets strikeCollateral from getCurrentBtcHeld ± move
 
@@ -222,10 +229,25 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
 
-  const state: SheetState = { type, amount, collateralDir, collateralTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading };
+  const state: SheetState = { type, amount, collateralDir, collateralTarget, debtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading };
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
+
+  // Draw/paydown venue. EDIT mode reads it off the event (the toggle is locked, and a Coinbase borrow must stay one even
+  // if the loan has since been switched off); ADD mode collapses 'cb' to Strike without a loan — the opposite of cold.
+  const isDebtFlow = type === 'draw' || type === 'paydown';
+  const editFlow = editEvent && (editEvent.kind === 'draw' || editEvent.kind === 'paydown') ? editEvent : null;
+  const effectiveDebtTarget: DebtTarget = editFlow ? flowVenue(editFlow) : (debtTarget === 'cb' && hasCbLoan ? 'cb' : 'strike');
+  const isCbFlow = isDebtFlow && effectiveDebtTarget === 'cb';
+  const debtRules = DEBT_TARGET_RULES[effectiveDebtTarget];
+  // Fee basis = the ACCRUED balance (the raw anchor lags interest, and the brackets break at $250k). A past-dated borrow
+  // is priced at the balance at LOG time, not at the event date — an accepted approximation.
+  const currentCbBalance = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
+  const cbFeePreview = isCbFlow && type === 'draw' && amountValid ? cbBorrowFee(amount ?? 0, currentCbBalance) : 0;
+  const cbFeePctLabel = amountValid ? `${parseFloat(((cbFeePreview / (amount ?? 1)) * 100).toFixed(2))}%` : '';
+  // PRE-EXISTING defect made detectable: CB flows logged since the last CB-bearing reading prove its balance is stale.
+  const staleCbNote = staleCbBalanceNote(unreconciledCbFlows(dayLog));
 
   // For a balanceReading edit, show/require CB reading fields based on the ORIGINAL reading (faithful to
   // when it was logged), not the current hasCbLoan. Add mode keys on hasCbLoan as before.
@@ -256,7 +278,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   } else {
     // P4c-2 — past dates relax the reading requirement for FLOW types (reading-only setBalance still needs it).
      // A cold move is written with NO reading (targetRules.needsReading false), so it never waits on one.
+     // A Coinbase borrow/paydown is journal-only and written ALONE (DEBT_TARGET_RULES) — it never waits on one either.
      const readingOk = (type === 'collateral' && !targetRules.needsReading)
+       || (isDebtFlow && !debtRules.needsReading)
        || (isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan);
      canSave = readingOk
        && (!showAmount || amountValid)
@@ -304,6 +328,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setAmount(null);
     setCollateralDir('deposit');
     setCollTarget('strike');
+    setDebtTarget('strike');
     setStrikeBal(null);
     setStrikeLtv(null);
     setStrikeCollateral(null);
@@ -328,8 +353,12 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       switch (editEvent.kind) {
         case 'draw':
         case 'paydown':
+          // ⚠ rebuildEditedFlow preserves target (+ fee). The old inline `{id,date,ts,kind,amount}` dropped it, so an
+          // edited Coinbase borrow became a Strike draw — monthly-meaningful again, straight into expensesActual.
+          updated = rebuildEditedFlow(editEvent, amount ?? 0, currentCbBalance);
+          break;
         case 'minPayment':
-          updated = { id, date, ts, kind: editEvent.kind, amount: amount ?? 0 };
+          updated = { id, date, ts, kind: 'minPayment', amount: amount ?? 0 };
           break;
         case 'buy':
           updated = { id, date, ts, kind: 'buy', amount: amount ?? 0, usd: (amount ?? 0) * btcPrice };
@@ -366,8 +395,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     }
 
     const events = buildEventsFromSheet(
-      { type, amount, collateralDir, collateralTarget: effectiveTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
-      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId, currentBtcHeld,
+      { type, amount, collateralDir, collateralTarget: effectiveTarget, debtTarget: effectiveDebtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
+      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId, currentBtcHeld, currentCbBalance,
     );
     // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
     // the store carry-forwards prior stocks + marks the month provisional (logUtils rollupMonth).
@@ -398,8 +427,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const amountPrefix = type === 'draw' || type === 'paydown' || type === 'minPayment' ? '$' : '₿';
   const amountDecimals = type === 'buy' || type === 'collateral' ? 8 : undefined;
   const amountLabel =
-    type === 'draw'        ? 'Draw amount'
-    : type === 'paydown'   ? 'Paydown amount'
+    type === 'draw'        ? (isCbFlow ? 'Coinbase borrow amount' : 'Draw amount')
+    : type === 'paydown'   ? (isCbFlow ? 'Coinbase paydown amount' : 'Paydown amount')
     : type === 'minPayment' ? 'Minimum paid'
     : type === 'buy'       ? 'Bitcoin bought'
     : collateralDir === 'withdraw' ? 'Collateral removed (BTC)'
@@ -454,6 +483,29 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           </div>
         )}
 
+        {/* Draw/Paydown venue — Strike | Coinbase. Rendered ONLY with a CB loan (you can't borrow from a loan you don't
+            have — the OPPOSITE of cold, which never depends on hasCbLoan). ADD only: an edit keeps the event's venue. */}
+        {isDebtFlow && !isEdit && hasCbLoan && (
+          <div className={styles.targetToggle} role="tablist" aria-label="Debt venue">
+            <button
+              role="tab"
+              aria-selected={effectiveDebtTarget === 'strike'}
+              className={`${styles.targetBtn} ${effectiveDebtTarget === 'strike' ? styles.targetBtnActive : ''}`}
+              onClick={() => setDebtTarget('strike')}
+            >
+              Strike
+            </button>
+            <button
+              role="tab"
+              aria-selected={effectiveDebtTarget === 'cb'}
+              className={`${styles.targetBtn} ${effectiveDebtTarget === 'cb' ? styles.targetBtnActive : ''}`}
+              onClick={() => setDebtTarget('cb')}
+            >
+              Coinbase
+            </button>
+          </div>
+        )}
+
         {/* Amount field (hidden for Set balance) */}
         {showAmount && (
           <NumberInput
@@ -466,8 +518,25 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           />
         )}
 
-        {/* §2b — paydown-sheet context line: the Strike minimum status (income mode) */}
-        {type === 'paydown' && isIncomeSource && (
+        {/* Coinbase borrow/paydown — journal-only. The fee has no other home, so it is shown BEFORE save. */}
+        {isCbFlow && (
+          <div className={styles.section}>
+            {type === 'draw' && amountValid && (
+              <div className={styles.readout}>
+                Origination fee {fmtUSD(cbFeePreview)} ({cbFeePctLabel}) — capitalised into your Coinbase balance.
+              </div>
+            )}
+            <div className={styles.note}>
+              {type === 'draw'
+                ? 'A refinance, not an expense. Paying down Strike with it? Log that paydown too.'
+                : 'Paid from a Strike draw? That draw counts as an expense — back it out at sign-off.'}
+              {' '}Your Coinbase balance still comes from a reading, so no balances are needed here.
+            </div>
+          </div>
+        )}
+
+        {/* §2b — paydown-sheet context line: the Strike minimum status (income mode) — never on a Coinbase paydown */}
+        {type === 'paydown' && isIncomeSource && effectiveDebtTarget === 'strike' && (
           <div className={styles.readout}>
             Minimum · due the {blocMinPaymentDueDay}th · {fmtUSD(strikeMinOwed)}
             <span className={styles.note}> · {minStatus}</span>
@@ -626,8 +695,10 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
         {/* Reading section — in ADD mode it's the bundled hard-require; in EDIT mode it shows ONLY for a
             balanceReading edit (a flow edit touches just the flow, never its separate reading row).
-            §2b — minPayment is reading-free (a one-field sheet), and so is a COLD collateral move (no statement). */}
+            §2b — minPayment is reading-free (a one-field sheet), and so is a COLD collateral move (no statement) and a
+            Coinbase borrow/paydown (journal-only — writing a reading would re-state the stale pre-filled CB balance). */}
         {type !== 'minPayment' && !(type === 'collateral' && !targetRules.needsReading)
+          && !(isDebtFlow && !debtRules.needsReading)
           && (!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
           <div className={styles.section}>
             <span className={styles.sectionLabel}>
@@ -652,6 +723,11 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             {showCbReading && (
               <>
                 <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />
+                {/* PRE-EXISTING defect, made detectable (not fixed): this field is pre-filled from the LAST reading, and
+                    saving it unedited re-anchors that old balance under today's date. A Coinbase borrow/paydown logged
+                    since the last CB reading proves it's stale. Pre-save by nature — saving ANY CB-bearing reading
+                    becomes the new anchor. Never gates Save; never writes the field (no deriveCbDebt). */}
+                {!isEdit && staleCbNote && <div className={styles.warnNote}>{staleCbNote}</div>}
                 <NumberInput label="Coinbase LTV" value={cbLtv ?? 0} onChange={setCbLtv} min={0} suffix="%" />
                 {cbLtvWarn && <span className={styles.warn}>Coinbase LTV over 100% — double-check the value.</span>}
                 <NumberInput label="Coinbase collateral (BTC)" value={cbCollateral ?? 0} onChange={setCbCollateral} min={0} prefix="₿" decimals={8} />

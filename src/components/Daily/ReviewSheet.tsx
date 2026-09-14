@@ -36,6 +36,18 @@ interface ReviewSheetProps {
   onAddReading:  () => void;                         // → open EventSheet in setBalance mode
 }
 
+// The month's Coinbase borrow/paydown — journal-only, so NOT in the totals above. Null when there are none.
+function cbFlowsNote(rollup: MonthRollup): string | null {
+  const { cbDraw, cbFee, cbPaydown } = rollup.streams;
+  if (!(cbDraw > 0) && !(cbPaydown > 0)) return null;
+  const parts: string[] = [];
+  if (cbDraw > 0) parts.push(`a Coinbase borrow of ${fmtUSD(cbDraw)}${cbFee > 0 ? ` (+${fmtUSD(cbFee)} fee)` : ''}`);
+  if (cbPaydown > 0) parts.push(`a Coinbase paydown of ${fmtUSD(cbPaydown)}`);
+  return `This month also has ${parts.join(' and ')} — not counted above.`
+    + (cbPaydown > 0 ? ' If a Strike draw paid it down, that draw is inside "Drawn" — take it out of Expenses actually paid.' : '')
+    + (cbDraw > 0 ? ' A Strike paydown funded by the borrow counts as BLOC paydown.' : '');
+}
+
 export function ReviewSheet({
   open, month, rollup, isProvisional,
   source, strikeMinPrefill, statementIsSet, ndpActive, ndpPrefill,
@@ -108,6 +120,9 @@ export function ReviewSheet({
             </div>
           </div>
           <div className={styles.detailHint}>From the ledger's draws — adjust if you covered expenses from savings.</div>
+          {/* S3 — refinance legs are documented, not modeled: the Strike half of a refinance stays a Strike event. Prompt
+              the back-out rather than rely on the owner remembering it (refinancing is batched — a few times a year). */}
+          {cbFlowsNote(rollup) && <div className={styles.detailHint}>{cbFlowsNote(rollup)}</div>}
 
           {isIncome && (
             <>

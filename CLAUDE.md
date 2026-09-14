@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1250 tests — all must pass before every commit)
+- Vitest (1292 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -3785,6 +3785,85 @@ Halving computed from block height only.
 
 ---
 
+## Coinbase borrow & paydown events (journal-only; store unchanged, NO bump)
+
+The daily journal can now record a **Coinbase borrow** (the hinge of the flywheel: Strike draw → Coinbase borrow → Strike
+paydown) and a **Coinbase paydown** (the `ltvTriggered` policy action).
+- **Shape:** `draw`/`paydown` gain `target?: 'strike' | 'cb'` and `fee?: number`. `fee` is the origination fee from
+  `cbBorrowFee`; it is USD, capitalised, and only present on a CB draw.
+- **Journal-only:** a CB flow is recorded, dated, fee-bearing and visible in the journal, but it **never enters a monthly
+  figure**. CB debt stays reading-anchored, so there is no `deriveCbDebt`.
+- **No migration.** `ROLLUP_NUM_KEYS` and the entry shape are unchanged, and there is no new `DayEventKind`.
+
+🔴 **`flowVenue(ev)` (logUtils) is the ONE venue definition, and a MISSING target reads as `'strike'`.** That default IS
+the migration: every stored draw/paydown predates the field. Any other default would:
+- pull every historical draw out of the rollup;
+- collapse `expensesActual` across all 12 months;
+- make `reconcileMonthBuckets` delete the emptied daily-owned entries.
+
+Any non-`'strike'` value reads as `'cb'`, so an unknown value can never inflate a monthly figure.
+
+🔴 **Journal-only must hold at EVERY reader of the dayLog, not one filter.** Each reader goes through `flowVenue`:
+
+| Reader | What it does with a CB flow |
+|---|---|
+| `rollupMonth` | skip at the top of the `draw`/`paydown` cases, **before** `hasFlow` is set |
+| `isMonthlyMeaningful` | returns false |
+| `aggregateEvents` | `draw`/`paydown` are Strike-only; CB goes to `cbDraw`/`cbFee`/`cbPaydown` |
+| EventSheet edit rebuild | `rebuildEditedFlow` keeps the venue |
+| `describeDayEvent` | labels the row "Coinbase borrow" / "Coinbase paydown" |
+
+- ⚠ **Two guards, two jobs — keep both.** `rerollMonth` and `reconcileMonthBuckets` hand `rollupMonth` the **full**
+  dayLog. `isMonthlyMeaningful` only decides whether a month re-rolls.
+  - The **rollup skip** prevents corruption: without it, a CB borrow lands in `expensesActual` in any month that also
+    holds a Strike event.
+  - The **`isMonthlyMeaningful` line** prevents create/flip/reopen (BUG1): without it, a CB-only month is created
+    with zeros and flipped to daily.
+- ⚠ **`aggregateEvents` is a write path in disguise.** `streams.draw` prefills the ReviewSheet's "Expenses actually
+  paid", which `confirmMonth` writes to `expensesActual`. Counting a CB draw there bypasses both guards at sign-off.
+- ⚠ **The edit rebuild once dropped `target`.** EventSheet's inline `{id,date,ts,kind,amount}` turned an edited CB
+  borrow into a Strike draw. It is now the pure `rebuildEditedFlow`: the stored fee is kept when the amount is
+  unchanged and recomputed when it changes. The `monthOf(before) ∪ monthOf(after)` union in `updateDayEvent` is what
+  re-rolls the old month when a flow leaves Strike; it is pinned by a test.
+
+**EventSheet:**
+- The Strike | Coinbase toggle for draw/paydown is ADD-only and renders only with `hasCbLoan`. Without a loan the
+  venue collapses to Strike — the **opposite** of cold, which never depends on the loan.
+- A CB flow is written **alone** (`DEBT_TARGET_RULES.cb.needsReading` is false), because writing a reading would
+  re-state the stale pre-filled CB balance.
+- A CB borrow shows its fee before save. The fee basis is `accruedCbBalance`; a past-dated borrow is priced at
+  log-time balance.
+- The Strike-minimum readout is hidden for a CB paydown.
+- `buildEventsFromSheet` takes an 8th parameter, `currentCbBalance`.
+
+**ReviewSheet (S3 — refinance legs documented, not modeled).** The Strike half of a refinance stays a Strike event:
+- a Strike paydown funded by a CB borrow counts as `paydown`;
+- a Strike draw that funds a CB paydown counts as `expensesActual`.
+
+When the month has any CB flow, a note under "Expenses actually paid" prompts the back-out. That is tolerable because
+the 2% fee makes refinancing a batched, few-times-a-year action. The follow-on, a `transfer` flag on the Strike legs,
+needs its own spec.
+
+**Backup validator:** a draw/paydown `target` must be absent, `'strike'` or `'cb'`; `fee` must be absent or finite ≥ 0.
+A pre-change backup still validates.
+
+⚠ **TWO PRE-EXISTING DEFECTS — characterised, NOT fixed (each has a test pinning current behaviour):**
+1. **The stale Coinbase prefill erases accrued interest.**
+   - A today-dated EventSheet pre-fills the reading's CB balance from the last reading and requires it.
+   - `deriveReadingAnchors`' early return needs value AND date to match, so an unedited save re-anchors the old
+     balance under today's date.
+   - `accruedCbBalance` then restarts its clock and the interest since the prior reading vanishes. It needs no borrow.
+   - `unreconciledCbFlows(dayLog)` is the first signal the app has ever had that a reading's CB balance is stale: CB
+     flows after the latest CB-bearing reading, ordered by (date, ts) — `deriveStrikeCollateral`'s rule, copied.
+   - The EventSheet shows it pre-save (`staleCbBalanceNote`) as a hint with a suggested balance that excludes
+     interest. It never prefills and never anchors.
+   - Interest-only staleness stays undetected; prefilling from `accruedCbBalance` is the candidate fix.
+2. **A re-roll never clears a flow field the month no longer has.**
+   - `rerollMonth` writes `{ ...existing, ...rollupEntry }`, and `rollupMonth` only emits keys for the flows present.
+   - So deleting a month's last Strike draw while other events keep the month alive leaves `expensesActual` stale.
+     The same applies to `paydown`/`btcBought`/`income`/`strikeMinPaid`.
+   - It predates CB flows. It is also why the venue-flip test uses a draw-only month.
+
 ## Strike Minimum Payment + NDP re-scope (Simple Mode Corrections A; store v19, NO bump)
 
 Corrects how the BLOC monthly minimum (accrued interest, billed monthly / due the 15th per Strike's terms)
@@ -4282,8 +4361,28 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1250 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path and the cold ledger
-was mutation-checked: revert the fix → the test goes red.)
+1292 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger and the
+Coinbase debt events was mutation-checked: revert the fix → the test goes red.)
+- **Coinbase debt events** (42 tests):
+  - `src/simulation/__tests__/cbDebtRollup.test.ts`:
+    - `flowVenue` — ⭐ a legacy target-less draw still rolls up (flipping the default to `'cb'` goes red);
+    - ⭐ a mixed month keeps a CB borrow out of `expensesActual`; ⭐ a CB-only month rolls up to `{}`;
+    - `unreconciledCbFlows` (a)–(f) — ⭐ backfill-before-anchor excluded, ⭐ a Strike-only reading doesn't reconcile;
+    - characterisation of pre-existing defect 1, plus its no-op control.
+  - `src/store/__tests__/cbDebtEvents.test.ts`:
+    - ⭐ a CB borrow THEN a Strike draw → `expensesActual` = the Strike draw; ⭐ the same for paydown;
+    - ⭐ a CB-only month creates nothing, and manual/confirmed months stay so;
+    - ⭐ the venue-flip edit re-rolls the OLD month (the `monthOf(before)` union);
+    - characterisation of pre-existing defect 2.
+  - `src/components/Daily/__tests__/cbDebtSheet.test.ts`:
+    - ⭐ a Strike flow keeps its exact key set; ⭐ no loan collapses to Strike; ⭐ a CB flow is written alone;
+    - the fee comes from `cbBorrowFee` across the bracket break;
+    - ⭐ `rebuildEditedFlow` keeps the venue;
+    - the stale-balance note and the labels.
+  - `calendarModel.test.ts`:
+    - the old field-by-field `streams` assertions are now one whole-object `toEqual`;
+    - ⭐ mixed-venue `buildMonthRollup`.
+  - `src/lib/backup/__tests__/validateCbFlows.test.ts`.
 - `src/simulation/__tests__/advisorPricePath.test.ts` — Advisor price path (12). It opens with the operating-plan
   GOLDEN, captured at HEAD 07ab7a2 BEFORE the engine edit (monthly + ltvTriggered mid-year inline snapshots), and the
   equivalence no-path ≡ explicit-CAGR path (full rows). Then:
@@ -6475,6 +6574,8 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 
 | Constraint | Rule |
 |---|---|
+| A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
+| A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
 | NEVER collapse the sign-out dispatch to `external → reconnectNostr` | `reconnectNostr` retains `nostrPubkey`, and `useNostrAutoRestore` early-returns only for `'local'` and for `(nip46 && !nostrLogin)` — so a **nip07** session falls through to `setIsAuthenticated(true)` → `restoreSigner` → `NLogin.fromExtension()`, which an authorized extension answers **silently**. Sign out would reload and leave the user signed in: a control that visibly does nothing. `signOut()` therefore routes `nip07 → disconnectNostr` (the only teardown auto-restore can't undo), `nip46 → reconnectNostr`, `local → signOutLocal`. This is not "the harder action" for nip07 — **destructiveness is a property of what's at stake**, and a nip07 user has no on-device key; the cleared fields re-stamp on the next one-approval login. Pinned by `disconnect.test.ts` ("'nip07' → disconnectNostr, NOT reconnectNostr") |

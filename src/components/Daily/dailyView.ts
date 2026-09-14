@@ -1,7 +1,7 @@
 // Pure display helpers for the Daily Mode view (P4a, read-only). Standalone — NO store/UI/price
 // dependency (the only imports are the pure bucketEventToMonth helper, the DayEvent type, and the
 // pure fmtUSD formatter). Any USD-from-spot-price estimate stays in the component.
-import { bucketEventToMonth } from '../../simulation/logUtils';
+import { bucketEventToMonth, flowVenue } from '../../simulation/logUtils';
 import { fmtUSD } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 
@@ -39,6 +39,10 @@ const TARGET_LABEL: Record<'strike' | 'cb' | 'cold', string> = { strike: 'Strike
 export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
   switch (ev.kind) {
     case 'draw':
+      // Venue-first, like "Deposit to Coinbase". A Strike row stays byte-identical (pinned).
+      if (flowVenue(ev) === 'cb') {
+        return { icon: '↓', label: 'Coinbase borrow', detail: ev.fee && ev.fee > 0 ? `${fmtUSD(ev.amount)} · fee ${fmtUSD(ev.fee)}` : fmtUSD(ev.amount) };
+      }
       return { icon: '↓', label: 'Credit-line draw', detail: fmtUSD(ev.amount) };
     case 'buy':
       return {
@@ -47,6 +51,7 @@ export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
         detail: ev.usd !== undefined ? `${btc(ev.amount)} (~${fmtUSD(ev.usd)})` : btc(ev.amount),
       };
     case 'paydown':
+      if (flowVenue(ev) === 'cb') return { icon: '↘', label: 'Coinbase paydown', detail: fmtUSD(ev.amount) };
       return { icon: '↘', label: 'BLOC paydown', detail: fmtUSD(ev.amount) };
     case 'minPayment':
       return { icon: '◇', label: 'Strike minimum', detail: fmtUSD(ev.amount) };

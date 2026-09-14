@@ -8,7 +8,7 @@
 // All date math is UTC-based: bucketEventToMonth parses 'yyyy-mm-dd' via new Date(iso) = UTC midnight, so
 // we enumerate via getTime() + N*86400000, format back with toISOString().split('T')[0], and derive the
 // weekday via getUTCDay() (getDay() would drift a day in tz-behind-UTC locales).
-import { bucketEventToMonth } from '../../simulation/logUtils';
+import { bucketEventToMonth, flowVenue } from '../../simulation/logUtils';
 import type { DayEvent } from '../../simulation/types';
 
 export type PipKind = 'logged' | 'reading' | 'cbCollateral';
@@ -85,8 +85,14 @@ export function buildDayCells(dayLog: DayEvent[], dates: string[]): DayCell[] {
 // These reproduce DailyModeView's prior inline agg EXACTLY (draw/paydown sums, buyBtc sum,
 // netBtc = buys + strike deposits − strike withdrawals; CB-target moves are journal-only → excluded
 // from netBtc). Pure — no store/UI/price dependency.
+// ⚠ draw/paydown are STRIKE-ONLY (flowVenue). A Coinbase borrow is a refinance, not an expense — and these streams
+// feed the ReviewSheet's "Expenses actually paid" PREFILL, which confirmMonth writes to expensesActual. Counting a CB
+// draw here would put it straight past the rollup guard at sign-off. CB flows get their own display-only streams.
 
-export interface StreamAgg { draw: number; paydown: number; buyBtc: number; minPayment: number; }
+export interface StreamAgg {
+  draw: number; paydown: number; buyBtc: number; minPayment: number;   // draw/paydown = STRIKE only
+  cbDraw: number; cbFee: number; cbPaydown: number;                    // Coinbase borrow (cash) / its fee / paydown — journal-only, display
+}
 
 export interface DayActivity {
   date:    string;
@@ -106,7 +112,7 @@ export interface MonthRollup {
 
 // Shared aggregation — the single source for both day + month totals.
 function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: number } {
-  let draw = 0, paydown = 0, buyBtc = 0, minPayment = 0, netBtc = 0;
+  let draw = 0, paydown = 0, buyBtc = 0, minPayment = 0, netBtc = 0, cbDraw = 0, cbFee = 0, cbPaydown = 0;
   // A pledged buy emits both the acquisition and a same-ts Strike deposit. The deposit changes venue,
   // not the owner's total BTC, so consume one matching buy before counting standalone collateral moves.
   const pairedBuys = new Map<string, number>();
@@ -117,8 +123,14 @@ function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: numb
     }
   }
   for (const ev of events) {
-    if      (ev.kind === 'draw')       draw += ev.amount;
-    else if (ev.kind === 'paydown')    paydown += ev.amount;
+    if (ev.kind === 'draw') {
+      if (flowVenue(ev) === 'strike') draw += ev.amount;
+      else { cbDraw += ev.amount; cbFee += ev.fee ?? 0; }
+    }
+    else if (ev.kind === 'paydown') {
+      if (flowVenue(ev) === 'strike') paydown += ev.amount;
+      else cbPaydown += ev.amount;
+    }
     else if (ev.kind === 'minPayment') minPayment += ev.amount;   // USD; balance-neutral — display/prefill only
     else if (ev.kind === 'buy')   { buyBtc += ev.amount; netBtc += ev.amount; }
     else if (ev.kind === 'deposit'  && ev.target === 'strike') {
@@ -129,7 +141,7 @@ function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: numb
     }
     else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
   }
-  return { streams: { draw, paydown, buyBtc, minPayment }, netBtc };
+  return { streams: { draw, paydown, buyBtc, minPayment, cbDraw, cbFee, cbPaydown }, netBtc };
 }
 
 /** All events on a single ISO date (asc by ts) + that day's stream totals / netBtc. */

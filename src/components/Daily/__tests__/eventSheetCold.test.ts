@@ -13,26 +13,26 @@ const CUR = 0.5;
 const ids = () => { let n = 0; return () => `id-${n++}`; };
 
 const FULL: SheetState = {
-  type: 'collateral', amount: 0.1, collateralDir: 'deposit', collateralTarget: 'cold',
+  type: 'collateral', amount: 0.1, collateralDir: 'deposit', collateralTarget: 'cold', debtTarget: 'strike',
   strikeBal: 5000, strikeLtv: 11.2, strikeCollateral: 0.5, pledgeToStrike: false,
   cbBal: 60000, cbLtv: 50, cbCollateral: 1.5, cbLiqPriceReading: null,
 };
 
 describe('cold collateral moves — buildEventsFromSheet', () => {
   it('⭐ a NO-LOAN cold deposit stays cold, and is written ALONE (no Strike collapse, no reading)', () => {
-    const out = buildEventsFromSheet(FULL, /* hasCbLoan */ false, PRICE, TODAY, TS, ids(), CUR);
+    const out = buildEventsFromSheet(FULL, /* hasCbLoan */ false, PRICE, TODAY, TS, ids(), CUR, 0);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ kind: 'deposit', amount: 0.1, target: 'cold' });
   });
 
   it('a cold withdraw with a CB loan is also written alone', () => {
-    const out = buildEventsFromSheet({ ...FULL, collateralDir: 'withdraw' }, true, PRICE, TODAY, TS, ids(), CUR);
+    const out = buildEventsFromSheet({ ...FULL, collateralDir: 'withdraw' }, true, PRICE, TODAY, TS, ids(), CUR, 0);
     expect(out).toHaveLength(1);
     expect(out[0]).toMatchObject({ kind: 'withdraw', amount: 0.1, target: 'cold' });
   });
 
   it("'cb' still collapses to 'strike' without a loan — and keeps its reading", () => {
-    const out = buildEventsFromSheet({ ...FULL, collateralTarget: 'cb' }, false, PRICE, TODAY, TS, ids(), CUR);
+    const out = buildEventsFromSheet({ ...FULL, collateralTarget: 'cb' }, false, PRICE, TODAY, TS, ids(), CUR, 0);
     expect(out).toHaveLength(2);
     expect(out[0]).toMatchObject({ kind: 'deposit', target: 'strike' });
     expect(out[1].kind).toBe('balanceReading');

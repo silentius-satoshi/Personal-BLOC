@@ -117,7 +117,7 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
   it('buildDayActivity filters by date, sums streams, netBtc, isEmpty', () => {
     const day = buildDayActivity(LOG, '2025-01-05');
     expect(day.events.map((e) => e.id)).toEqual(['a', 'b']);   // asc by ts, only that date
-    expect(day.streams).toEqual({ draw: 1000, paydown: 0, buyBtc: 0.01, minPayment: 0 });
+    expect(day.streams).toEqual({ draw: 1000, paydown: 0, buyBtc: 0.01, minPayment: 0, cbDraw: 0, cbFee: 0, cbPaydown: 0 });
     expect(day.netBtc).toBeCloseTo(0.01, 8);
     expect(day.isEmpty).toBe(false);
     expect(buildDayActivity(LOG, '2025-01-30').isEmpty).toBe(true);
@@ -131,7 +131,7 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
 
   it('buildMonthRollup totals + entryCount (distinct dates)', () => {
     const m = buildMonthRollup(LOG, '2025-01-01', 1);
-    expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01, minPayment: 0 });
+    expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01, minPayment: 0, cbDraw: 0, cbFee: 0, cbPaydown: 0 });
     expect(m.netBtc).toBeCloseTo(0.01 + 0.2 - 0.05, 8);   // CB deposit excluded
     expect(m.entryCount).toBe(5);   // 05,06,07,08,09
     expect(m.month).toBe(1);
@@ -149,10 +149,20 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
       else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
     }
     const m = buildMonthRollup(LOG, start, month);
-    expect(m.streams.draw).toBe(totalDraw);
-    expect(m.streams.paydown).toBe(totalPaydown);
-    expect(m.streams.buyBtc).toBe(totalBuyBtc);
+    // Whole-object, not field-by-field: a per-field .toBe would keep passing on a wrong total once draw is split by venue.
+    expect(m.streams).toEqual({
+      draw: totalDraw, paydown: totalPaydown, buyBtc: totalBuyBtc, minPayment: 0, cbDraw: 0, cbFee: 0, cbPaydown: 0,
+    });
     expect(m.netBtc).toBeCloseTo(netBtc, 8);
+  });
+
+  it('⭐ buildMonthRollup counts STRIKE flows only — a Coinbase borrow/paydown gets its own streams (the sign-off leak)', () => {
+    // streams.draw prefills the ReviewSheet's "Expenses actually paid", which confirmMonth writes to expensesActual —
+    // so a CB borrow counted here would bypass the rollup guard at sign-off. CB events first, on purpose.
+    const cbDraw: DayEvent = { id: 'h', date: '2025-01-10', ts: 8, kind: 'draw', amount: 5000, target: 'cb', fee: 100 };
+    const cbPay:  DayEvent = { id: 'i', date: '2025-01-11', ts: 9, kind: 'paydown', amount: 2000, target: 'cb' };
+    const m = buildMonthRollup([cbDraw, cbPay, ...LOG], '2025-01-01', 1);
+    expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01, minPayment: 0, cbDraw: 5000, cbFee: 100, cbPaydown: 2000 });
   });
 
   it('groupEventsByDay groups, sorts groups DESC, events ASC by ts', () => {
