@@ -76,7 +76,8 @@ function makeEvent(dTag: string, createdAt: number, payload: unknown = {}) {
   };
 }
 
-// Minimal log entry for merge flows (fields beyond these have safe fallbacks in recomputeBtcHeld/merge).
+// Minimal log entry for merge flows (fields beyond these have safe fallbacks in merge; btcHeld is RECORDED per entry
+// and applied verbatim — nothing recomputes it).
 function makeLogEntry(month: number, overrides: Partial<Record<string, any>> = {}) {
   return { month, btcBought: 0.01, loggedAt: 1000 + month, btcHeld: 0, expensesActual: 3500, ...overrides };
 }
@@ -209,6 +210,23 @@ describe('fetchAndSync', () => {
     expect(mockStoreState.setMonthlyLog).toHaveBeenCalledOnce();
     const applied = mockStoreState.setMonthlyLog.mock.calls[0][0];
     expect(applied.map((e: any) => e.month)).toEqual([1, 2]);
+  });
+
+  it('a merge applies entries VERBATIM — btcHeld is the recorded value, never recomputed off the baseline', async () => {
+    // ⚠ SYNTHETIC figures. The old apply rebuilt btcHeld as advisorActualBtcHeld + Σ btcBought (≈ 5.01 / 5.02).
+    // Mutation: reinstate that recompute at the records apply → month 1 reads ≈5.01 → red.
+    resetStore({ monthlyLog: [makeLogEntry(1, { btcHeld: 0.3 })], advisorActualBtcHeld: 5 });
+    const { btcHeld: _omit, ...unrecorded } = makeLogEntry(2);
+    mockPool.querySync.mockResolvedValue([
+      makeEvent('personal-bloc:records:v1', 700, { entries: [unrecorded], deletions: {} }),
+    ]);
+
+    const { fetchAndSync } = await import('../sync');
+    await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
+
+    const applied = mockStoreState.setMonthlyLog.mock.calls[0][0];
+    expect(applied.find((e: any) => e.month === 1).btcHeld).toBe(0.3);
+    expect('btcHeld' in applied.find((e: any) => e.month === 2)).toBe(false);
   });
 
   it('local month the relay lacks → setRecordsDirty(true), no local apply', async () => {

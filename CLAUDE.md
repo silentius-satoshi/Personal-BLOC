@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1325 tests — all must pass before every commit)
+- Vitest (1357 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -228,7 +228,7 @@ src/
                                 # Overall) + worsenedCount 0–3 (CB counted only when base hasCbLoan). Imports
                                 # safetyView ONLY (§2/§7 walls — nothing from cycleModel/powerLaw/emergency
                                 # Model/store). Tested in __tests__/scenarioDiff.test.ts
-    logUtils.ts                 # recomputeBtcHeld (chains btcBought + collateralAdjustment — HISTORICAL only, v20),
+    logUtils.ts                 # (recomputeBtcHeld DELETED, spec v3 — monthly btcHeld is RECORDED by rollupMonth),
                                 # deriveAdvisorStart/deriveCurrentPosition (v20: take currentStrikeCollateral, NOT
                                 # pending/baseBtcHeld) + deriveStrikeCollateral (v20 Collateral-Truth — reading-anchored
                                 # current Strike collateral: strikeCollateral-bearing balanceReading latest by (date,ts) +
@@ -1319,7 +1319,7 @@ strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liq
 advisorStartDate:         string;   // ISO date, default today
 advisorActualBlocBalance: number;   // default 0 — LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
 advisorMonthStartBalance: number;   // default 0 — BLOC balance at the START of the current month; projection base ONLY (deriveAdvisorStart month-1). SYNCED. Distinct from advisorActualBlocBalance (live drawn) so mid-month the AFTER box stacks the full draw on the start base, not on the live balance
-advisorActualBtcHeld:     number;   // default 0 — TRUE month-0 baseline BTC, NEVER back-solved; feeds recomputeBtcHeld's historical chain + migrate fallback (NOT current position). (v20: pendingCollateralAdjustment RETIRED — Strike collateral is reading-anchored)
+advisorActualBtcHeld:     number;   // default 0 — DEPRECATED (spec v3): feeds no computation (monthly btcHeld is recorded, not chained); kept for sync compat + Fix D's seed sentinel — LEAVE IT ALONE, never zero it. (v20: pendingCollateralAdjustment RETIRED — Strike collateral is reading-anchored)
 sandboxCollateralBtc:     number | null;  // default null — Smart BLOC what-if collateral; IN-MEMORY only (partialize-excluded, never synced); null = tracks current
 advisorSkipBlocDraw:      boolean;  // default false (persisted + synced)
 advisorSkipCbPayment:     boolean;  // default false (persisted + synced)
@@ -1341,14 +1341,54 @@ showMiningInLog:          boolean;            // default false
 > values stay as historical ledger — never "fix" the data). **Semantic shift (intended, LD5):** a bare
 > `deposit target:'strike'` with no accompanying `strikeCollateral` reading no longer moves current — the
 > reading anchors. **Buys never count** toward Strike collateral. `deriveCurrentPosition`/`deriveAdvisorStart`
-> now take `currentStrikeCollateral` (from `getCurrentBtcHeld()`), not baseBtcHeld/pending. `recomputeBtcHeld`
-> / per-entry `btcHeld` / `advisorActualBtcHeld` are KEPT for the historical chain + sync-norm + migrate
-> fallback (no live position consumer reads them). **C-P3** = the write UI (EventSheet required `strikeCollateral`
+> now take `currentStrikeCollateral` (from `getCurrentBtcHeld()`), not baseBtcHeld/pending. ⚠ **SUPERSEDED
+> again by strike-collateral-recorded spec v3:** `recomputeBtcHeld` is DELETED; per-entry `btcHeld` is RECORDED
+> (see § Recorded Strike collateral below); `advisorActualBtcHeld` is deprecated-but-read (Fix D). **C-P3** = the write UI (EventSheet required `strikeCollateral`
 > field + auto-track to the post-move total, buy "pledge to Strike" toggle, `emitBalanceReading` collateral
 > override, the three collateral inputs re-editable as reading-emitters). **C-P4** = the trusted viewer receives
 > `strikeCollateralBtc` as a derived-from-dayLog scalar (raw-set in `viewerSync`, viewer dayLog stays `[]`; SAFE
 > payload excludes it), so the viewer's `getCurrentBtcHeld()`/Strike figures are correct. The rest of this section
 > is HISTORICAL (pre-v20).
+
+### Recorded Strike collateral (strike-collateral-recorded spec v3 — store unchanged, NO bump)
+
+`MonthlyLogEntry.btcHeld` (the Ledger's **"Strike col"**) is **RECORDED**, exactly like `strikeBal`. `rollupMonth`
+stamps it from the month's latest reading's `strikeCollateral` (carry-forward included), and nothing recomputes it.
+**`recomputeBtcHeld` is DELETED**, with its four call sites (upsert, delete, the Nostr records merge, the viewer
+hydrate). The old chain, `advisorActualBtcHeld + Σ(btcBought + collateralAdjustment)`, counted every buy as pledged,
+and the v20 back-solve drove the baseline negative on a real install.
+
+- **Which `btcHeld`:** five data fields share the name, and ONLY `MonthlyLogEntry.btcHeld` changed. These are
+  untouched:
+  - `AdvisorMonthRow.btcHeld` (simulated; the paydown badge's `displaySettledLtv` reads it);
+  - `CyclingRow.btcHeld` (all three pools);
+  - `deriveCurrentPosition().btcHeld`;
+  - `StrategyMonthData.btcHeld`.
+- ⚠ **OPTIONAL — absent means never recorded. NEVER write 0.**
+  - The `rerollMonth` new-month seed carries no `btcHeld`.
+  - The two monthly editors write it only when their "Strike collateral" field has a value (`strikeColFragment`). That
+    field applies to manual months only; daily months are read-only in those editors.
+  - A Strike-only re-anchor records nothing.
+- ⚠ **Readers were LISTED, not assumed.** Making the field optional forces only the sites that use it as a number.
+  - LedgerFace renders "—".
+  - `buildLedgerCsv` emits an empty cell.
+  - ⚠ `validatePlanBackup` now accepts absent or finite. `btcHeld` used to be in its required list, so the new build
+    would have rejected its own backups.
+- ⚠ **`ROLLUP_NUM_KEYS` is untouched.** Adding `btcHeld` would make a joining device's one-shot reconcile see "absent vs
+  stored", re-roll, and reopen every signed month.
+- **The "→ Cold" Ledger column is COMPUTED, never stored.** It comes from the dayLog via `coldMovedByMonth`. Cold moves
+  are journal-only, so a stored figure would go stale.
+- **Onboarding records collateral as a reading.** `handleDone` calls `emitBalanceReading({ strikeCollateral })` AFTER
+  `setAdvisorStartDate`. A fresh install's `strikeCollateralBtc` is 0, so `getCurrentBtcHeld()` used to be 0 for every
+  new owner. Side effect: the current month gets an unconfirmed daily entry on day one.
+- ⚠ **`advisorActualBtcHeld` is DEPRECATED — LEAVE IT ALONE, never zero it.**
+  - It feeds no computation, but Fix D's seed sentinel (`syncEngine`) reads it and onboarding still writes it.
+  - The Settings "Initial BTC collateral" field is gone.
+  - `persistConfig`'s v20 block is untouched; the stored bad baseline is inert.
+- **History is NOT auto-repaired.** Pre-cold-ledger venues were never recorded.
+  - To repair a DAILY month, log a backdated FULL reading: `strikeBal` + `strikeLtv` + `strikeCollateral`.
+    `rollupMonth` picks the reading by `ts`, so the backdated reading supersedes every stock.
+  - ⚠ **Mixed-version hazard:** a device still on an old build recomputes and republishes, so update every device.
 
 The (pre-v20) computed-chain model, kept for history:
 
@@ -1380,7 +1420,7 @@ current    = (last.btcHeld ?? baseline) + pendingCollateralAdjustment   // ⚠ R
 
 | Surface | Role |
 |---|---|
-| Settings "Current BTC collateral" | REALITY — editable (C-P3): draft/onBlur → `emitBalanceReading({ strikeCollateral })` (a journaled reading re-anchors `getCurrentBtcHeld`; `strikeBal` defaults to the live drawn balance). A read-only "Initial BTC collateral" line (`advisorActualBtcHeld`, month-0 baseline) sits ABOVE it |
+| Settings "Current BTC collateral" | REALITY — editable (C-P3): draft/onBlur → `emitBalanceReading({ strikeCollateral })` (a journaled reading re-anchors `getCurrentBtcHeld`; `strikeBal` defaults to the live drawn balance). (The read-only "Initial BTC collateral" line was REMOVED in spec v3 — it fed nothing and could not be corrected.) |
 | Advisor "CURRENT BTC HELD" | REALITY — same draft/onBlur → `emitBalanceReading({ strikeCollateral })` (C-P3) |
 | Simple Mode Quick Setup "BTC held" | REALITY — editable `ModalField` (C-P3); `handleSaveSetup` keeps `emitBalanceReading({ strikeBal })` for the debt field and MERGES `strikeCollateral` into that SAME emission only when the collateral changed (never two emissions) |
 | Simple Mode displays / Liq Sim | REALITY — `getCurrentBtcHeld` = reading-anchored `deriveStrikeCollateral` |
@@ -1429,8 +1469,8 @@ store, no UI, no sync.
   `cbLiquidationPrice`; NOT a monthly stock — never in the rollup entry). (`minPayment` = the Strike monthly minimum paid from
   income — Logging Consolidation §2b; **balance-neutral**, rolls up to `strikeMinPaid` only.)
 - **LD5 — stocks are READINGS:** balances/LTVs are read off Strike/Coinbase (the `balanceReading` event), never
-  chained. **btcHeld is NOT in `balanceReading`** — Strike BTC stays store-owned via `recomputeBtcHeld` /
-  `adjustCurrentCollateral`.
+  chained. (P1-era: btcHeld was store-owned via a chain — SUPERSEDED: a reading's `strikeCollateral` anchors current
+  collateral (v20), and `rollupMonth` records it as the month's `btcHeld` (spec v3).)
 - **LD7 — CB collateral = a reading, not a chain:** `cbCollateralBtc` is DERIVED (latest `cbCollateral`-bearing event
   by `ts` — `balanceReading` or `cbCollateralReading`), wired in P2; it is NOT a synced setting and is NEVER placed in
   the rollup entry.
@@ -1440,7 +1480,8 @@ store, no UI, no sync.
   flows accumulate (`draw`→`expensesActual`, `buy`→`btcBought` [+`income` iff `usd`], `paydown`→`paydown`);
   `collateralDelta` = net `target:'strike'` BTC, **signed by kind** (deposit +, withdraw −); stocks from the LATEST
   `balanceReading` by `ts` (`strikeBal`/`strikeLtv` always, `cbBal`/`cbLtv` iff present). `entry` NEVER carries
-  `btcHeld`/`collateralAdjustment`/`source`/`confirmed`/`cbCollateral`. **Carry-forward** (LD6 backfill exception):
+  `collateralAdjustment`/`source`/`confirmed`/`cbCollateral` (spec v3: it carries `btcHeld` iff the reading states
+  `strikeCollateral`). **Carry-forward** (LD6 backfill exception):
   flows present but no `balanceReading` + `priorStocks` given → stocks borrowed from `priorStocks` + `provisional:true`.
   Empty month → `{ entry: {}, collateralDelta: 0 }`. `bucketEventToMonth(date, advisorStartDate)` = the
   calendar-anniversary month clock (`getCurrentStrategyMonth` now delegates to it — see the Strategy-Month
@@ -1474,8 +1515,8 @@ via dayLog records sync in P3).
     strategy-month's last `balanceReading` by ts.
 - **Partial→Full bridge** (`rerollMonth`): spread the `rollupMonth` Partial onto the EXISTING month entry (preserve
   miningSats/ndpPaid/loggedAt) or a full numeric seed for a new month (never `{}`); stamp `source:'daily'`,
-  `confirmed: existing.confirmed===true ? false : (existing.confirmed ?? false)` (reopen-on-edit, LD4). `recomputeBtcHeld`
-  (inside `upsertLogEntry`) fixes the `btcHeld:0` placeholder. **Emptied-daily-month cleanup:** if no Route-2 events
+  `confirmed: existing.confirmed===true ? false : (existing.confirmed ?? false)` (reopen-on-edit, LD4). The new-month seed carries
+  NO `btcHeld` (spec v3 — recorded only from a reading; there is no recompute to overwrite a placeholder). **Emptied-daily-month cleanup:** if no Route-2 events
   remain in the month and the entry is `source:'daily'`, `deleteLogEntry(month)` instead of a stale placeholder.
 - **Seam 1 (collateral)** — after the upsert (which graduated any prior pending into this month's `collateralAdjustment`),
   and ONLY when `collateralDelta !== 0`: `adjustCurrentCollateral(getCurrentBtcHeld() − thisMonth's existingAdj +
@@ -2158,12 +2199,16 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   while Ledger is showing. `AlmanacView` gains a `monthlyLog` selector for the gate; `LedgerFace` reads the
   store itself. Rendered BARE in the ternary (own container, like `<CbDefenseTool/>`).
 - **`src/lib/ledgerCsv.ts`** (PURE, no React) — `ledgerFaceAvailable(monthlyLog)` + `buildLedgerCsv(entries,
-  {hasCbLoan, showMining})`. CSV columns = the visible columns PLUS an ISO `Date` col:
-  `Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, Strike LTV [+ CB bal, CB LTV iff
+  {hasCbLoan, showMining, coldByMonth?})`. CSV columns = the visible columns PLUS an ISO `Date` col:
+  `Mo, Date, Income→BTC, Paydown, BTC bought, Strike bal, Strike col, [→ Cold iff hasColdColumn], Strike LTV [+ CB bal, CB LTV iff
   hasCbLoan] [+ Mining sats iff showMining]`. `Mo`=`entry.month` (int), `Date`=`entry.date` (ISO). Raw
   decimals (no $/₿/% ornament; `strikeLtv`/`cbLtv` stay the stored 0.1483 decimal). Missing optional cells →
   empty. RFC-4180 `csvCell` escaping. **CRLF**, no trailing newline, **NO totals row**. Sort = single-key
   `a.month - b.month` (the real monthlyLog convention; dayLog's `(ts,id)` two-key sort is unrelated).
+- **Spec v3 — "Strike col" is RECORDED + optional; "→ Cold" is COMPUTED.** An unrecorded `btcHeld` renders "—" (never
+  0) and exports an empty CSV cell. `coldMovedByMonth(dayLog, advisorStartDate)` (ledgerCsv.ts) = net `target:'cold'`
+  deposits − withdrawals per month; `hasColdColumn` shows the column only when a month that HAS a row moved a non-zero
+  amount (a viewer's `[]` dayLog → hidden). The column is a FLOW (summed in the totals row). Never stored on the entry.
 - **`src/components/Almanac/LedgerFace.tsx`** (+ `.module.css`) — face chrome (mono-uppercase "Ledger"
   title + framing line) → CSV actions (`.actionBtn` vocabulary mirrored from SharingPage: **Copy CSV** via
   `navigator.clipboard.writeText` in try/catch with a "Copied ✓"/"Copy failed" flash + **Download .csv** via
@@ -3888,7 +3933,8 @@ The Playbook badge used to read "LTV 12.8% — paydown triggered". Three defects
 **`deriveForMonth` reads `row.blocPaydown`.** It used to reconstruct an income residual, which agreed in every reachable
 configuration but would invent a paydown if a CB-paying row met `hasCbLoan:false`.
 
-🔴 **FOUR states, not two** (`classifyPaydownState(peak, paydown, settled, ceiling)`, simpleModePlan):
+🔴 **FIVE states** (`classifyPaydownState(peak, paydown, settled, ceiling)`, simpleModePlan — `noCollateral` added by
+paydown-badge-followup spec v2):
 
 | State | Meaning | Badge |
 |---|---|---|
@@ -3896,6 +3942,7 @@ configuration but would invent a paydown if a CB-paying row met `hasCbLoan:false
 | **defended** | paid down to at or below the ceiling | `LTV 14.7% · peaked 18.9% → paid down $3,900` — **muted**, the plan working |
 | **partial** | paid, but income ran out and it SETTLED ABOVE the ceiling | `LTV 18.0% · paid down $500, still above the 15% ceiling` — **amber** |
 | **undefended** | above the ceiling with NO paydown (no income budget) | `LTV 19.2% · above the 15% ceiling — no income to pay it down` — **amber** |
+| **noCollateral** | the draw landed with NO collateral behind it (peak ∞). ⚠ Checked FIRST — a paydown can fire there, and the settled LTV is a pre-existing 0 | projected: `LTV ∞ · drawn with no collateral behind it`; in progress: the LEDGER figure + ` now · plan: drawn with no collateral behind it` — **amber** |
 
 - ⚠ **Partial must stay distinct from defended.** Both have a paydown, and in a stressed sweep partial months
   outnumber defended ones about 3:1. Collapsed, a losing month looks identical to a healthy one.
@@ -3925,8 +3972,26 @@ The ledger paydown is Strike-only, and it inherits the pre-existing stale-field 
 - a partial month no longer claims "back to 15%", an undefended one no longer claims "well below", and the quiet
   sentence is byte-identical.
 
-**The AFTER THIS MONTH box's colour** comes from `classifyPaydownState` on `currentRow`. It used to key on the
-*scrubbed* month's paydown. **PlaybookItems** rewords its "(reducing LTV back to 15%)" subtext in the partial state.
+**The figure rule (paydown-badge-followup spec v2): a bare LTV figure is coloured by THAT figure, and the figure must
+be true.** Two pure helpers in `simpleModePlan`:
+- `displaySettledLtv(row)` reads `AdvisorMonthRow.blocBalance`/`btcHeld` (⚠ NOT `MonthlyLogEntry.btcHeld`). It returns
+  ∞ for debt with no collateral, 0 when the balance is paid off, and `blocLtv` otherwise.
+- `isLtvFigureStressed(ltv, c)` is `ltv > c + CEILING_EPS`.
+
+Both surfaces that show a bare figure now use them:
+- the AFTER THIS MONTH box (`eomLtv` via `displaySettledLtv`, `eomStressed = isLtvFigureStressed(eomLtv)`);
+- the plan bar (the projected `barStrikeLtv` via `displaySettledLtv`, coloured by `barStressed`).
+
+Only the header keeps `badge.tone`, because its two halves are labelled.
+
+The old `eomStressed = eomState === 'partial' || eomState === 'undefended'` was an `===` consumer that the new member
+slipped past. It was deleted only after an equivalence sweep in `paydownPeak.test.ts` proved the figure rule is
+identical to it on every collateralised row.
+
+⚠ `currentRow` is null when the current month already carries a confirmed entry (`startingMonth = last.month + 1`).
+It never is because `currentMonth > 12`: that value clamps. **PlaybookItems** rewords its "(reducing LTV back to 15%)"
+subtext in the partial state. Its `=== 'partial'` check misses `noCollateral` too; that is safe only because runBLOC
+never pays down without collateral.
 
 ## Strike Minimum Payment + NDP re-scope (Simple Mode Corrections A; store v19, NO bump)
 
@@ -4425,9 +4490,9 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1325 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
+1357 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
 Coinbase debt events and the paydown badge was mutation-checked: revert the fix → the test goes red.)
-- **Paydown badge** (33 tests):
+- **Paydown badge** (45 tests — 33, plus 12 from paydown-badge-followup spec v2, listed in the last sub-bullet):
   - `src/simulation/__tests__/paydownPeak.test.ts` — sweeps both engines:
     - the sweep is non-vacuous (it reaches paid, partial and undefended months);
     - ⭐ peak ≥ settled, strictly greater when a paydown fires;
@@ -4446,6 +4511,24 @@ Coinbase debt events and the paydown badge was mutation-checked: revert the fix 
     - ⭐ the narrative's hit clause reports the peak;
     - partial and undefended sentences;
     - the quiet sentence byte-identical.
+  - **Spec v2 — `noCollateral` + the figure rule** (every ⭐ mutation-checked):
+    - `paydownState.test.ts`:
+      - ⭐ the guard runs FIRST (moving it below `paydown > 0` → `'defended'` → red);
+      - ⭐ A2 through the engine (month 1 of a fresh install draws unbacked and pays OFF, so `displaySettledLtv` is 0;
+        month 2 is `defended`);
+      - ⭐ the stuck case reads ∞ (`displaySettledLtv` returning `blocLtv` → red);
+      - `peak === 0` is quiet;
+      - the `isLtvFigureStressed` table;
+      - `displaySettledLtv` is the identity when there is collateral.
+    - `paydownPeak.test.ts`: ⭐ the figure rule is equivalent to `state ∈ {partial, undefended}` on every sweep row — this
+      BLOCKED the `:213` deletion until it passed.
+    - `playbookView.test.ts`:
+      - ⭐ a projected `LTV ∞ · drawn with no collateral behind it` (dropping the substitution → red);
+      - ⭐ in progress keeps the LEDGER figure + `now · plan:` (substituting in progress → red);
+      - ⭐ a real runBLOC zero-collateral month is `noCollateral`, and its narrative says none of "no income left",
+        "back to 15%", "well below", "0.0%" or "Infinity";
+      - the runAdvisor-shaped narrative names the paydown with no %;
+      - "triggered" is covered for all five states.
 - **Coinbase debt events** (42 tests):
   - `src/simulation/__tests__/cbDebtRollup.test.ts`:
     - `flowVenue` — ⭐ a legacy target-less draw still rolls up (flipping the default to `'cb'` goes red);
@@ -4540,10 +4623,11 @@ Coinbase debt events and the paydown badge was mutation-checked: revert the fix 
 - `src/simulation/__tests__/cycleModel.test.ts` — Almanac CycleClock P1 (12 cases): `epochFromHeight` epoch-5 classification + 2028 rollover (Epoch 6/1.5625, no code change); `epochProgress.fraction` 0..1 single-source (half-open — ~1 just below endBlock, 0 at rollover) + `blocksRemaining === 1_050_000 − h` exactness; `dateAtBlock` 144-blocks≈1-day; `blockAtDate(H4.date)===H4.block`; `CYCLE_TURNS` IMG_7080 premise (14 turns, anchor high @ 6 Oct 2025, first low Mon 5 Oct 2026 @ +364d, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `nextTurnAfter` selection + null past end
 - `living.test.ts`
 - `mining.test.ts`
-- `monthlyLog.test.ts` — includes recomputeBtcHeld suite (+ collateralAdjustment chain math, pending in both derives) + 4 badge status tests
+- `monthlyLog.test.ts` — deriveAdvisorStart/deriveCurrentPosition/upsertEntry + the persistConfig v20 backfill replica + 4 badge status tests (the recomputeBtcHeld chain tests were DELETED with the function — spec v3)
+- **Recorded Strike collateral (spec v3)** — `src/simulation/__tests__/recordedCollateral.test.ts` (pure): ⭐ each month records its OWN reading's `strikeCollateral`; ⭐ a reading without it leaves `btcHeld` ABSENT and the reroll bridge keeps the stored value (mutation `?? 0` → red); zero records 0 (truthiness mutation → red); carry-forward + provisional; ⭐ a cold-destined buy doesn't move `btcHeld`; grep guard `recomputeBtcHeld` absent from `src/` (non-vacuous walker); onboarding source-order guard (`emitBalanceReading` after `setAdvisorStartDate`, baseline write kept). `src/store/__tests__/recordedCollateralStore.test.ts` (real store): cold-destined buy; ⭐ B1 a Strike-only re-anchor records NOTHING, not 0; §9 onboarding anchor; ⭐ B2 a joining device's reconcile reopens no confirmed month (mutation: `btcHeld` in `ROLLUP_NUM_KEYS` → red); ⭐ A4 a `btcHeld`-less entry end to end (CSV → buildPlanBackup → validatePlanBackup → applyPlanBackup; mutation: `btcHeld` back in the validator's required list → red) + the validator both ways. `src/lib/__tests__/ledgerCold.test.ts` (`coldMovedByMonth`, `hasColdColumn`, the CSV column + empty Strike col). `src/components/Advisor/__tests__/monthlyLogForm.test.ts` (`strikeColFragment`: blank → omitted, "0" → 0). `viewerSync.test.ts` S4 + `sync.test.ts`: entries apply VERBATIM (recompute mutation → red). `dailyModeStore.test.ts`: a reading without `strikeCollateral` / a buy records no `btcHeld`
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`
-- `src/store/__tests__/collateral.test.ts` — **v20 reading-anchored Strike collateral** on the REAL store: a `balanceReading.strikeCollateral` anchors `getCurrentBtcHeld`; a post-anchor `deposit target:'strike'` adds once; **SEMANTIC SHIFT** — a bare deposit with no reading does NOT move current; `target:'cb'` never touches Strike; latest reading re-anchors; Strike LTV tracks `getCurrentBtcHeld` (not the frozen baseline); baseline stability (`advisorActualBtcHeld` never moves); `setDayLog` folds the strike derive; sandbox isolation; delete re-chains the historical `btcHeld` chain + tombstone. `src/simulation/__tests__/strikeCollateral.test.ts` — pure `deriveStrikeCollateral` (anchor by date/ts, post-anchor sum, atomic same-ts flow+reading NOT double-counted, backfill excluded, buys/cb ignored, withdraw sign, no-anchor→fallback)
+- `src/store/__tests__/collateral.test.ts` — **v20 reading-anchored Strike collateral** on the REAL store: a `balanceReading.strikeCollateral` anchors `getCurrentBtcHeld`; a post-anchor `deposit target:'strike'` adds once; **SEMANTIC SHIFT** — a bare deposit with no reading does NOT move current; `target:'cb'` never touches Strike; latest reading re-anchors; Strike LTV tracks `getCurrentBtcHeld` (not the frozen baseline); baseline stability (`advisorActualBtcHeld` never moves); `setDayLog` folds the strike derive; sandbox isolation; delete keeps the surviving months' RECORDED `btcHeld` verbatim + tombstone; ⭐ upsert never rewrites another month's `btcHeld` (spec v3). `src/simulation/__tests__/strikeCollateral.test.ts` — pure `deriveStrikeCollateral` (anchor by date/ts, post-anchor sum, atomic same-ts flow+reading NOT double-counted, backfill excluded, buys/cb ignored, withdraw sign, no-anchor→fallback)
 - `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
@@ -6122,7 +6206,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - **Records receive is MERGE-based and unconditionally safe** (`mergeRecords`, per month): newest
   `updatedAt` (fallback `loggedAt`) wins; exact tie → local iff `recordsDirty`; tombstoned deletes
   (`deletedMonths`) beat older entries; entry newer than tombstone survives (re-log) and drops it;
-  90-day tombstone GC. After merge: apply only if merged ≠ local (re-chained via `recomputeBtcHeld`);
+  90-day tombstone GC. After merge: apply only if merged ≠ local (applied verbatim — `btcHeld` is recorded per entry, never re-chained);
   set `recordsDirty` if relay is missing something we have. NO receive gates.
 - Settings hydrate on watermark AND `!settingsDirty` (mirrors records): `remoteTs > lastSettingsSyncAt`
   (whole-object LWW) — while local changes are unpublished, an older/foreign remote must not clobber
@@ -6428,7 +6512,7 @@ a v17-migrant holder until the one-time wrap.
   the viewer's OWN d-tag; SINGLE filter at 2.23.5).
   Builds one `NSecSigner(hexToBytes(viewerSecretKey).slice())` (**`.slice()` — the writer-signer ref bug**),
   `nip44.decrypt(viewerWriterPubkey, …)` → `{ settings, records, strike }` → **read-only hydrate**
-  (`hydrateSettings`/`setMonthlyLog`(via `recomputeBtcHeld`)/`setDeletedMonths`/`setStrike*`). NEVER sets dirty
+  (`hydrateSettings`/`setMonthlyLog` (verbatim — never recomputed)/`setDeletedMonths`/`setStrike*`). NEVER sets dirty
   flags, NEVER publishes. `useViewerSync` (hook) wires it on foreground; AppShell mounts it (no-op unless
   viewerMode).
 - **READ-ONLY is two layers; structural is load-bearing.** (1) **No writer publish/sync path is reachable in
@@ -6658,7 +6742,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Constraint | Rule |
 |---|---|
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
-| The paydown badge has FOUR states, and only two earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended. A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling) and undefended (above it, no income to pay). Never collapse partial into defended. The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
+| The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
 | A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
@@ -6713,7 +6797,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `MiningOddsBar` | Reads store directly — not props |
 | `fmtMining` | Inlined in `format.ts` — no circular import |
 | `fiatGap` field | Named `fiatGap` in `AdvisorMonthRow` — never `fatGap` |
-| Strike collateral (v20 Collateral-Truth) | **Reading-anchored** — `getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc)` (the `strikeCollateral`-bearing `balanceReading` latest by (date,ts) + `target:'strike'` moves strictly after). `pendingCollateralAdjustment` / `adjustCurrentCollateral` / graduation / restore-on-delete / rerollMonth Seam-1 all RETIRED at v20. `collateralAdjustment` never written again (historical ledger — never "fix" the data). **Buys never pledge** unless the buy sheet emits an explicit `deposit target:'strike'` (C-P3). A bare strike deposit with no `strikeCollateral` reading does NOT move current (LD5). `strikeCollateralBtc` is a LOCAL derived cache (rides partialize `...rest`, NEVER in `buildSettingsPayload`/`SETTINGS_FIELDS`; converges via the dayLog on records:v1). |
+| Strike collateral (v20 Collateral-Truth) | **Reading-anchored** — `getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc)` (the `strikeCollateral`-bearing `balanceReading` latest by (date,ts) + `target:'strike'` moves strictly after). `pendingCollateralAdjustment` / `adjustCurrentCollateral` / graduation / restore-on-delete / rerollMonth Seam-1 all RETIRED at v20. `collateralAdjustment` never written again (historical ledger — never "fix" the data). **Buys never pledge** unless the buy sheet emits an explicit `deposit target:'strike'` (C-P3). A bare strike deposit with no `strikeCollateral` reading does NOT move current (LD5). `strikeCollateralBtc` is a LOCAL derived cache (rides partialize `...rest`, NEVER in `buildSettingsPayload`/`SETTINGS_FIELDS`; converges via the dayLog on records:v1). **Monthly `btcHeld` (spec v3) is RECORDED** from the month's reading by `rollupMonth`, OPTIONAL (absent = never recorded — never write 0), never recomputed (`recomputeBtcHeld` deleted). Never add it to `ROLLUP_NUM_KEYS` — a joining device's reconcile would reopen every signed month. |
 | `deriveAdvisorStart` / `deriveCurrentPosition` | **v20 signatures:** `deriveCurrentPosition(monthlyLog, currentStrikeCollateral, baseBlocBalance)` — `btcHeld` output = the passed `currentStrikeCollateral` (= `getCurrentBtcHeld()` = reading-anchored `deriveStrikeCollateral`); `deriveAdvisorStart(monthlyLog, currentStrikeCollateral, baseBlocBalance, currentStrategyMonth, monthStartBalance)` forwards it. (Pending + baseBtcHeld params RETIRED.) Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne. **`deriveAdvisorStart.startingBtcHeld ≡ deriveCurrentPosition().btcHeld ≡ getCurrentBtcHeld()`** (single definition of current position — callers pass `getCurrentBtcHeld()`). `startingBlocBalance`/`startingMonth` anchor on the last CONFIRMED entry: `e.confirmed !== false` (undefined = confirmed; only a LIVING unconfirmed daily rollup, `confirmed===false`, is excluded) so the current-month unconfirmed entry does NOT advance the projection start. No confirmed entry → empty branch returns `startingBlocBalance: monthStartBalance` + `startingMonth: currentStrategyMonth`; confirmed branch returns `last.strikeBal` / `min(last.month+1, 12)`. `blocBalance`/`lastLoggedMonth` still read from the last logged entry. |
 | `publishRecords` cadence | Immediate via `publishRecordsNow` (no debounce); NOT triggered by `setMonthlyLog` |
 | Records merge | Records receive is MERGE-based and unconditionally safe (`mergeRecords`); `recordsDirty` = publish-needed marker + merge tie-breaker ONLY (not a receive gate); `lastRecordsSyncAt` = observability only |

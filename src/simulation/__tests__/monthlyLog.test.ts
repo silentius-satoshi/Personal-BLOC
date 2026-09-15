@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { deriveAdvisorStart, deriveCurrentPosition, upsertEntry, recomputeBtcHeld, computeExpenseReanchor } from '../logUtils';
+import { deriveAdvisorStart, deriveCurrentPosition, upsertEntry, computeExpenseReanchor } from '../logUtils';
 import type { MonthlyLogEntry } from '../types';
 
 function makeEntry(month: number, overrides: Partial<MonthlyLogEntry> = {}): MonthlyLogEntry {
@@ -99,53 +99,10 @@ describe('upsertEntry', () => {
   });
 });
 
-describe('recomputeBtcHeld', () => {
-  it('gap-tolerant: months 5 & 7 (skip 6) → startingBtcHeld === month 7 btcHeld', () => {
-    const base = 1.0;
-    const log = recomputeBtcHeld([
-      makeEntry(5, { btcBought: 0.01 }),
-      makeEntry(7, { btcBought: 0.02 }),
-    ], base);
-    // startingBtcHeld is the passed reading-anchored collateral; feed the recomputed month-7 chain value.
-    const m7Held = log.find((e) => e.month === 7)!.btcHeld;
-    const result = deriveAdvisorStart(log, m7Held, 0, 8, 0);
-    expect(result.startingBtcHeld).toBeCloseTo(m7Held);
-    expect(result.startingBtcHeld).toBeCloseTo(1.03);
-  });
-
-  it('no double-count: base=1, buys=[0.001, 0.002] → latest.btcHeld === 1.003', () => {
-    const log = recomputeBtcHeld([
-      makeEntry(1, { btcBought: 0.001 }),
-      makeEntry(2, { btcBought: 0.002 }),
-    ], 1.0);
-    expect(log[1].btcHeld).toBeCloseTo(1.003);
-  });
-
-  it('commit trio: strikeBal, btcHeld anchored to prev+buy, expensesActual preserved', () => {
-    const base = 1.0;
-    const entry = makeEntry(1, { btcBought: 0.005, strikeBal: 12000, btcHeld: 0, expensesActual: 3500 });
-    const [committed] = recomputeBtcHeld([entry], base);
-    expect(committed.strikeBal).toBe(12000);
-    expect(committed.btcHeld).toBeCloseTo(base + 0.005);
-    expect(committed.expensesActual).toBe(3500);
-  });
-
-  it('edit re-derives: editing an earlier btcBought updates the latest entry btcHeld', () => {
-    const base = 1.0;
-    const original = recomputeBtcHeld([
-      makeEntry(1, { btcBought: 0.001 }),
-      makeEntry(2, { btcBought: 0.002 }),
-    ], base);
-    expect(original[1].btcHeld).toBeCloseTo(1.003);
-
-    const edited = recomputeBtcHeld(
-      upsertEntry(original, makeEntry(1, { btcBought: 0.010, btcHeld: 0, expensesActual: 3500 })),
-      base,
-    );
-    expect(edited[0].btcHeld).toBeCloseTo(1.010);
-    expect(edited[1].btcHeld).toBeCloseTo(1.012);
-  });
-
+// The recomputeBtcHeld chain tests were DELETED with the function (strike-collateral-recorded spec v3): monthly btcHeld
+// is now RECORDED from each month's reading, never chained off a baseline. This one survives — it replicates the
+// persistConfig v20 backfill loop, which is deliberately untouched (it only runs on a version bump).
+describe('migration backfill (persistConfig v20 loop — untouched)', () => {
   it('migration backfill: latest.btcHeld === pre-migration advisorActualBtcHeld, baseline reset', () => {
     const preMigrationBtcHeld = 1.10;
     const sorted = [
@@ -197,23 +154,6 @@ describe('badge status logic', () => {
 });
 
 describe('dated collateral adjustments (spec v4)', () => {
-  it('recomputeBtcHeld includes collateralAdjustment in the running chain', () => {
-    const log = [
-      makeEntry(1, { btcBought: 0.05, collateralAdjustment: 0.10 }),
-      makeEntry(2, { btcBought: 0.05 }),
-    ];
-    const result = recomputeBtcHeld(log, 0.50);
-    expect(result[0].btcHeld).toBeCloseTo(0.65);   // 0.50 + 0.05 + 0.10
-    expect(result[1].btcHeld).toBeCloseTo(0.70);
-  });
-
-  it('entries WITHOUT the field chain identically to pre-v4 (?? 0)', () => {
-    const log = [makeEntry(1, { btcBought: 0.05 }), makeEntry(2, { btcBought: 0.03 })];
-    const result = recomputeBtcHeld(log, 0.70);
-    expect(result[0].btcHeld).toBeCloseTo(0.75);
-    expect(result[1].btcHeld).toBeCloseTo(0.78);
-  });
-
   it('deriveCurrentPosition btcHeld = the passed currentStrikeCollateral (logged)', () => {
     const log = [makeEntry(1, { btcHeld: 0.80, strikeBal: 3000 })];
     const pos = deriveCurrentPosition(log, 0.85, 0);

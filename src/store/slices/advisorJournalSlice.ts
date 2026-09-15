@@ -1,6 +1,6 @@
 // advisorJournalSlice (Phase 1c) — advisor scalars + skip flags + monthlyLog actions. getState()→get() only.
 import type { StoreState, StoreSet, StoreGet } from '../types';
-import { recomputeBtcHeld, upsertEntry, deriveStrikeCollateral, deriveColdStorage, bucketEventToMonth, rollupMonth, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth } from '../../simulation/logUtils';
+import { upsertEntry, deriveStrikeCollateral, deriveColdStorage, bucketEventToMonth, rollupMonth, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth } from '../../simulation/logUtils';
 import { todayLocalISO } from '../../utils/format';
 import { nostrLog } from '../../lib/nostr/log';
 import { kickRecordsPublish } from '../bootstrap';
@@ -64,14 +64,14 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
     }
     set((state) => {
       // Collateral-Truth v20 — graduation retired. collateralAdjustment is NEVER written again; existing
-      // stored values stay (historical ledger — never "fix" the data). recomputeBtcHeld still runs for the
-      // historical btcHeld chain (display + sync-norm stability). Strike collateral is now reading-anchored
-      // (deriveStrikeCollateral over dayLog), independent of this entry.
+      // stored values stay (historical ledger — never "fix" the data). btcHeld obeys the same rule: it is RECORDED
+      // per entry (rollupMonth stamps it from the month's reading) and never recomputed — there is no chain. Current
+      // Strike collateral is reading-anchored (deriveStrikeCollateral over dayLog), independent of this entry.
       const existingAdj = state.monthlyLog.find((e) => e.month === entry.month)?.collateralAdjustment ?? 0;
       const stamped = { ...entry, updatedAt: Date.now(), collateralAdjustment: existingAdj };
       const { [entry.month]: _gone, ...restDel } = state.deletedMonths;   // re-log clears the tombstone
       return {
-        monthlyLog: recomputeBtcHeld(upsertEntry(state.monthlyLog, stamped), state.advisorActualBtcHeld),
+        monthlyLog: upsertEntry(state.monthlyLog, stamped),
         deletedMonths: restDel,
         recordsDirty: true,
       };
@@ -80,10 +80,10 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
   },
   deleteLogEntry: (month) => {
     set((state) => {
-      // Collateral-Truth v20 — restore-on-delete retired (no pending). recomputeBtcHeld fixes the surviving
-      // historical chain (stale-btcHeld gap); current Strike collateral is reading-anchored, unaffected.
+      // Collateral-Truth v20 — restore-on-delete retired (no pending). Surviving entries keep their RECORDED btcHeld
+      // (there is no chain to re-derive); current Strike collateral is reading-anchored, unaffected.
       return {
-        monthlyLog: recomputeBtcHeld(state.monthlyLog.filter((e) => e.month !== month), state.advisorActualBtcHeld),
+        monthlyLog: state.monthlyLog.filter((e) => e.month !== month),
         deletedMonths: { ...state.deletedMonths, [month]: Date.now() },
         recordsDirty: true,
       };

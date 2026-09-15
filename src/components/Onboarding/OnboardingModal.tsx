@@ -70,6 +70,11 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     setCreditLine(draft.creditLine);
     setBlocApr(draft.blocApr);
     setAdvisorStartDate(draft.startDate);
+    // Record the Strike collateral as a READING — the only thing getCurrentBtcHeld reads. A fresh install never runs
+    // migrate, so without this strikeCollateralBtc keeps its slice default of 0 and the new owner starts with zero
+    // collateral (wrong available credit, wrong Custom-tier basis). ⚠ ORDER: after setAdvisorStartDate — addDayEvent
+    // buckets the reading by advisorStartDate. setAdvisorActualBtcHeld above STAYS (Fix D's seed sentinel reads it).
+    useStore.getState().emitBalanceReading({ strikeCollateral: draft.collateralBtc });
     if (hasCbLoan) {
       setCbLoanBalance(draft.cbLoanBalance);
       setCbCollateralBtc(draft.cbCollateralBtc);

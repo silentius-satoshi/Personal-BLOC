@@ -14,24 +14,29 @@ export interface PaydownBadge {
   text: string;      // `LTV ${ltv}${flag}`
 }
 
-// A routine paydown is the plan WORKING — muted, never orange. Amber only where the LTV is still above the ceiling.
-const TONE: Record<PaydownState, BadgeTone> = { quiet: 'plain', defended: 'muted', partial: 'amber', undefended: 'amber' };
+// A routine paydown is the plan WORKING — muted, never orange. Amber only where the LTV is still above the ceiling, or
+// where the draw landed with no collateral behind it at all.
+const TONE: Record<PaydownState, BadgeTone> = { quiet: 'plain', defended: 'muted', partial: 'amber', undefended: 'amber', noCollateral: 'amber' };
 
 function flagFor(state: PaydownState, r: PaydownReadout, ceil: string, inProgress: boolean): string {
   const pd = fmtUSD(r.paydown);
   if (inProgress) {
     switch (state) {
-      case 'quiet':      return '';
-      case 'defended':   return ` · plan: pay down ${pd}`;
-      case 'partial':    return ` · plan: pay down ${pd}, still above the ${ceil} ceiling`;
-      case 'undefended': return ` · plan: above the ${ceil} ceiling — no income to pay it down`;
+      case 'quiet':        return '';
+      case 'defended':     return ` · plan: pay down ${pd}`;
+      case 'partial':      return ` · plan: pay down ${pd}, still above the ${ceil} ceiling`;
+      case 'undefended':   return ` · plan: above the ${ceil} ceiling — no income to pay it down`;
+      case 'noCollateral': return ' · plan: drawn with no collateral behind it';
     }
   }
+  // noCollateral describes the DRAW, not the month's end: in the commonest case (month 1 of a fresh install) the paydown
+  // clears the whole balance and the month ENDS debt-free holding BTC, so "carries a balance" would be false.
   switch (state) {
-    case 'quiet':      return '';
-    case 'defended':   return ` · peaked ${fmtLtvPct(r.peakLtv)} → paid down ${pd}`;
-    case 'partial':    return ` · paid down ${pd}, still above the ${ceil} ceiling`;
-    case 'undefended': return ` · above the ${ceil} ceiling — no income to pay it down`;
+    case 'quiet':        return '';
+    case 'defended':     return ` · peaked ${fmtLtvPct(r.peakLtv)} → paid down ${pd}`;
+    case 'partial':      return ` · paid down ${pd}, still above the ${ceil} ceiling`;
+    case 'undefended':   return ` · above the ${ceil} ceiling — no income to pay it down`;
+    case 'noCollateral': return ' · drawn with no collateral behind it';
   }
 }
 
@@ -45,7 +50,11 @@ export function paydownBadge(r: PaydownReadout, ceiling: number): PaydownBadge {
   }
   if (r.mode === 'none' || r.state === null) return make(ltv, '', 'plain');
   const inProgress = r.mode === 'inProgress';
-  return make(inProgress ? `${ltv} now` : ltv, flagFor(r.state, r, ceil, inProgress), TONE[r.state]);
+  // ⚠ noCollateral shows the PEAK (∞) — the settled figure there is a pre-existing 0, the exact "0 reads as safe" failure
+  // the ∞ convention exists to prevent. PROJECTED ONLY: in progress, r.ltv is the LEDGER's figure, and printing the
+  // plan's peak with " now" would reintroduce the source mixing da37468 removed (the halves are labelled instead).
+  const shown = r.state === 'noCollateral' && r.mode === 'projected' ? fmtLtvPct(r.peakLtv) : ltv;
+  return make(inProgress ? `${shown} now` : shown, flagFor(r.state, r, ceil, inProgress), TONE[r.state]);
 }
 
 /**
@@ -71,5 +80,11 @@ export function buildNarrative(
       return `Month ${month}: LTV is ${pct(ltv)}% — above the ${ceil} ceiling, with no income left to pay it down. ${fmtUSD(expenses)} in expenses drawn from LoC. Interest of ${fmtUSD(interest)} capitalizes onto the balance.`;
     case 'quiet':
       return `Month ${month}: LTV is ${pct(ltv)}% — well below the ${ceil} ceiling. All ${fmtUSD(income)} income goes straight into Bitcoin. ${fmtUSD(expenses)} in expenses drawn from LoC. Interest of ${fmtUSD(interest)} capitalizes onto the balance.`;
+    case 'noCollateral':
+      // Describes the DRAW; never prints a percentage and never claims "back to 15%". True in both engines: runBLOC never
+      // pays down without collateral (income buys BTC), runAdvisor can pay the whole balance off.
+      return `Month ${month}: the expense draw landed with NO collateral behind it — LTV was undefined. ${
+        paydown > 0 ? `${fmtUSD(paydown)} of income pays it down and ${fmtUSD(buyAmt)} buys Bitcoin.` : `${fmtUSD(buyAmt)} of income buys Bitcoin.`
+      } ${fmtUSD(expenses)} in expenses drawn from LoC. Interest of ${fmtUSD(interest)} capitalizes onto the balance.`;
   }
 }

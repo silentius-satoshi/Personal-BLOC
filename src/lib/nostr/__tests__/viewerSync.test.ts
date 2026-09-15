@@ -134,6 +134,23 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.clearViewerData).not.toHaveBeenCalled();
   });
 
+  it('S4 — trusted entries land VERBATIM: btcHeld is the owner\'s recorded value, never recomputed off the baseline', async () => {
+    // ⚠ SYNTHETIC figures. The old viewer path rebuilt btcHeld as advisorActualBtcHeld + Σ btcBought (5 + 0.2 = 5.2).
+    // Mutation: restore that recompute in applyViewerEvent → month 1 reads 5.2 → red.
+    const base = { date: '2026-01-01', income: 0, paydown: 0, strikeBal: 0, strikeLtv: 0, loggedAt: 1, expensesActual: 0 };
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({
+      settings: { advisorActualBtcHeld: 5 },
+      records: { entries: [{ ...base, month: 1, btcBought: 0.2, btcHeld: 0.3 }, { ...base, month: 2, btcBought: 0.1 }], deletions: {} },
+      strike: null,
+    }));
+
+    await fetchViewerSnapshot();
+
+    const applied = mockState.setMonthlyLog.mock.calls[0][0];
+    expect(applied[0].btcHeld).toBe(0.3);
+    expect('btcHeld' in applied[1]).toBe(false);   // an unrecorded month stays unrecorded on the viewer too
+  });
+
   it('C-trusted snapshot hydrates the full store and clears the safe snapshot', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
       snapshotVersion: 2, privacyMode: 'trusted',

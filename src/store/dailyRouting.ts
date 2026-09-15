@@ -96,9 +96,10 @@ export function rerollMonth(get: StoreGet, month: number): void {
 
   const { entry: rollupEntry } = rollupMonth(s.dayLog, month, start, priorStocks);   // collateralDelta retired (v20) — Strike collateral is reading-anchored, not chained from rollup
 
-  // Partial→Full bridge: spread the rollup onto the EXISTING month (preserve miningSats/ndpPaid/loggedAt), or onto a
-  // full numeric seed for a NEW month (NEVER onto {} — would leave required fields undefined). recomputeBtcHeld (inside
-  // upsertLogEntry) fixes the btcHeld:0 placeholder.
+  // Partial→Full bridge: spread the rollup onto the EXISTING month (preserve miningSats/ndpPaid/loggedAt/btcHeld), or
+  // onto a full numeric seed for a NEW month (NEVER onto {} — would leave required fields undefined). ⚠ The seed carries
+  // NO btcHeld: Strike collateral is RECORDED only when the month's reading states it (rollupMonth stamps it). A 0 here
+  // would record a false position — nothing recomputes the column any more to overwrite a placeholder.
   const base: MonthlyLogEntry = existing ?? {
     month,
     date:           strategyMonthDate(start, month),
@@ -108,7 +109,6 @@ export function rerollMonth(get: StoreGet, month: number): void {
     strikeBal:      0,
     strikeLtv:      0,
     loggedAt:       monthlyEvents.reduce((mx, e) => Math.max(mx, e.ts), 0) || Date.now(),
-    btcHeld:        0,
     expensesActual: 0,
   };
   const confirmed = base.confirmed === true ? false : (base.confirmed ?? false);   // reopen-on-edit (LD4); new = false

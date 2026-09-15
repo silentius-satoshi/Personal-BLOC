@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
-import { buildLedgerCsv } from '../../lib/ledgerCsv';
+import { buildLedgerCsv, coldMovedByMonth, hasColdColumn } from '../../lib/ledgerCsv';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
@@ -16,6 +16,8 @@ import styles from './LedgerFace.module.css';
  * Ink hierarchy (spec): flow columns --text-primary, stock columns --text-secondary, the ₿ prefix is
  * the only ornament. Strike LTV is zone-colored by fixed thresholds (Strike-only); CB LTV is colored by
  * the app's SHARED CB gauge logic (cbBarLevel + LEVEL_COLOR) so it matches the SafetyDashboard exactly.
+ * "Strike col" is RECORDED (optional) — an unrecorded month shows "—", never 0. "→ Cold" is COMPUTED from the dayLog
+ * (coldMovedByMonth), shown only when a logged month moved something into or out of cold.
  */
 
 // Strike LTV zone thresholds (Strike-only — NOT applied to CB). green < 10%, amber 10–13%, red > 13%.
@@ -30,6 +32,11 @@ const fmtBtc = (n: number): string => n.toFixed(5);
 /** Single app-wide LTV formatter — a local copy is how a surface keeps printing "Infinity%". */
 const fmtPct = fmtLtvPct;
 
+/** A ₿ figure, or "—" when the month never recorded it (MonthlyLogEntry.btcHeld is optional — never shown as 0). */
+function btcOrDash(n: number | undefined) {
+  return n != null ? <><span className={styles.btcPre}>₿</span>{fmtBtc(n)}</> : '—';
+}
+
 function strikeZoneColor(ltv: number): string {
   if (ltv > LTV_RED_AT) return 'var(--red)';
   if (ltv >= LTV_AMBER_AT) return 'var(--amber)';
@@ -38,6 +45,8 @@ function strikeZoneColor(ltv: number): string {
 
 export default function LedgerFace() {
   const monthlyLog = useStore((s) => s.monthlyLog);
+  const dayLog = useStore((s) => s.dayLog);
+  const advisorStartDate = useStore((s) => s.advisorStartDate);
   const hasCbLoan = useStore((s) => s.hasCbLoan);
   const showMining = useStore((s) => s.showMiningInLog);
   const cbLtvTriggerPct = useStore((s) => s.cbLtvTriggerPct);
@@ -47,9 +56,12 @@ export default function LedgerFace() {
   const [copyState, setCopyState] = useState<'idle' | 'ok' | 'err'>('idle');
 
   const rows = useMemo(() => [...monthlyLog].sort((a, b) => a.month - b.month), [monthlyLog]);
+  // → Cold — net BTC into cold per month, computed from the dayLog (never stored; see coldMovedByMonth).
+  const coldByMonth = useMemo(() => coldMovedByMonth(dayLog, advisorStartDate), [dayLog, advisorStartDate]);
+  const showCold = hasColdColumn(rows, coldByMonth);
   const csv = useMemo(
-    () => buildLedgerCsv(monthlyLog, { hasCbLoan, showMining }),
-    [monthlyLog, hasCbLoan, showMining],
+    () => buildLedgerCsv(monthlyLog, { hasCbLoan, showMining, coldByMonth }),
+    [monthlyLog, hasCbLoan, showMining, coldByMonth],
   );
 
   const cbZoneColor = (cbLtv: number): string => LEVEL_COLOR[cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac)];
@@ -78,15 +90,16 @@ export default function LedgerFace() {
     URL.revokeObjectURL(url);
   }
 
-  const colCount = 7 + (hasCbLoan ? 2 : 0) + (showMining ? 1 : 0);
+  const colCount = 7 + (showCold ? 1 : 0) + (hasCbLoan ? 2 : 0) + (showMining ? 1 : 0);
   const anyNote = rows.some((e) => e.ndpPaid != null || e.strikeMinPaid != null);
 
-  // Totals — FLOWS are SUMMED (income/paydown/btcBought/miningSats accumulate over the period);
+  // Totals — FLOWS are SUMMED (income/paydown/btcBought/→ Cold/miningSats accumulate over the period);
   // STOCKS SHOW LATEST (balances/collateral/LTVs are point-in-time, so the last month's value stands).
   const latest = rows[rows.length - 1];
   const totIncome = rows.reduce((s, e) => s + e.income, 0);
   const totPaydown = rows.reduce((s, e) => s + e.paydown, 0);
   const totBought = rows.reduce((s, e) => s + e.btcBought, 0);
+  const totCold = rows.reduce((s, e) => s + (coldByMonth[e.month] ?? 0), 0);
   const totMining = rows.reduce((s, e) => s + (e.miningSats ?? 0), 0);
 
   const copyLabel = copyState === 'ok' ? 'Copied ✓' : copyState === 'err' ? 'Copy failed' : 'Copy CSV';
@@ -119,6 +132,7 @@ export default function LedgerFace() {
                 <th className={styles.th}>BTC bought</th>
                 <th className={styles.th}>Strike bal</th>
                 <th className={styles.th}>Strike col</th>
+                {showCold && <th className={styles.th}>→ Cold</th>}
                 <th className={styles.th}>Strike LTV</th>
                 {hasCbLoan && <th className={styles.th}>CB bal</th>}
                 {hasCbLoan && <th className={styles.th}>CB LTV</th>}
@@ -147,9 +161,10 @@ export default function LedgerFace() {
                       <span className={styles.btcPre}>₿</span>{fmtBtc(e.btcBought)}
                     </td>
                     <td className={`${styles.td} ${styles.stock}`}>{fmtUsd0(e.strikeBal)}</td>
-                    <td className={`${styles.td} ${styles.stock}`}>
-                      <span className={styles.btcPre}>₿</span>{fmtBtc(e.btcHeld)}
-                    </td>
+                    <td className={`${styles.td} ${styles.stock}`}>{btcOrDash(e.btcHeld)}</td>
+                    {showCold && (
+                      <td className={`${styles.td} ${styles.flow}`}>{btcOrDash(coldByMonth[e.month])}</td>
+                    )}
                     <td className={styles.td}>
                       <div className={styles.ltvCell}>
                         <span style={{ color: sc }}>{fmtPct(e.strikeLtv)}</span>
@@ -201,7 +216,8 @@ export default function LedgerFace() {
                 <td className={styles.totalTd}>{fmtUsd0(totPaydown)}</td>
                 <td className={styles.totalTd}><span className={styles.btcPre}>₿</span>{fmtBtc(totBought)}</td>
                 <td className={styles.totalTd}>{fmtUsd0(latest.strikeBal)}</td>
-                <td className={styles.totalTd}><span className={styles.btcPre}>₿</span>{fmtBtc(latest.btcHeld)}</td>
+                <td className={styles.totalTd}>{btcOrDash(latest.btcHeld)}</td>
+                {showCold && <td className={styles.totalTd}>{btcOrDash(totCold)}</td>}
                 <td className={styles.totalTd}>{fmtPct(latest.strikeLtv)}</td>
                 {hasCbLoan && <td className={styles.totalTd}>{latest.cbBal != null ? fmtUsd0(latest.cbBal) : '—'}</td>}
                 {hasCbLoan && <td className={styles.totalTd}>{latest.cbLtv != null ? fmtPct(latest.cbLtv) : '—'}</td>}

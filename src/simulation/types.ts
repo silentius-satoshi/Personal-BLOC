@@ -123,7 +123,8 @@ export interface MonthlyLogEntry {
   strikeMinPaid?:  number;             // OPTIONAL — Strike monthly minimum actually paid this month (income source); omit when rolled
   strikeMinSource?: 'income' | 'roll'; // OPTIONAL — the min-payment source in effect when this month was logged
   loggedAt:       number;    // Unix ms timestamp
-  btcHeld:        number;    // absolute BTC at end of this logged month
+  btcHeld?:       number;    // Strike collateral RECORDED from this month's balance reading (rollupMonth stamps it from
+                             // reading.strikeCollateral). undefined = never recorded. NEVER computed. 0 is a real position.
   expensesActual: number;    // actual expenses recorded for this month
   updatedAt?:     number;    // Unix ms; stamped by upsertLogEntry on every save. Legacy entries lack it — merge falls back to loggedAt.
   collateralAdjustment?: number;  // OPTIONAL — net BTC deposited(+)/withdrawn(−) that month, separate from btcBought.

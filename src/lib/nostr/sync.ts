@@ -6,7 +6,6 @@ import { FALLBACK_RELAYS, SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_D
 import { withTimeout, signerOpTimeout } from './timeout';
 import { nostrLog } from './log';
 import { mergeRecords, type RecordsState } from '../../simulation/mergeRecords';
-import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
 import { unionPlanEvents, foldPlanEvents } from '../planEvents/fold';
 import type { PlanEvent } from '../planEvents/types';
@@ -115,7 +114,7 @@ export async function applyRemoteEvent(
         dld: sortMap(r.dayLogDeletions),
       });
       if (norm(merged) !== norm(local)) {
-        useStore.getState().setMonthlyLog(recomputeBtcHeld(merged.entries, s.advisorActualBtcHeld));
+        useStore.getState().setMonthlyLog(merged.entries);   // verbatim — btcHeld is RECORDED per entry, never recomputed
         useStore.getState().setDeletedMonths(merged.deletions);
         useStore.getState().setDayLog(merged.dayLog);                       // folds the Seam-2 cbCollateralBtc derive (no setState / no deriveCbCollateral import here)
         useStore.getState().setDeletedDayEvents(merged.dayLogDeletions);

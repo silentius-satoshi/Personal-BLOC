@@ -138,18 +138,30 @@ describe('reading-anchored Strike collateral — store (Collateral-Truth v20)', 
     expect(s.getCurrentBtcHeld()).toBeCloseTo(0.50);   // still the fallback (no reading)
   });
 
-  it('delete mid-log month re-chains later entries (historical chain) + writes the tombstone', () => {
-    useStore.getState().upsertLogEntry(makeEntry(1));
-    useStore.getState().upsertLogEntry(makeEntry(2));
-    useStore.getState().upsertLogEntry(makeEntry(3));
-    expect(useStore.getState().monthlyLog[2].btcHeld).toBeCloseTo(0.65);   // recomputeBtcHeld: 0.50 baseline + 3×0.05
+  it('delete keeps the surviving months\' RECORDED btcHeld verbatim (no chain) + writes the tombstone', () => {
+    useStore.getState().upsertLogEntry(makeEntry(1, { btcHeld: 0.61 }));
+    useStore.getState().upsertLogEntry(makeEntry(2, { btcHeld: 0.62 }));
+    useStore.getState().upsertLogEntry(makeEntry(3, { btcHeld: 0.63 }));
+    // Recorded values — NOT a chain off the 0.50 baseline (that would read 0.55 / 0.60 / 0.65).
+    expect(useStore.getState().monthlyLog.map((e) => e.btcHeld)).toEqual([0.61, 0.62, 0.63]);
 
     useStore.getState().deleteLogEntry(2);
 
     const s = useStore.getState();
     expect(s.monthlyLog.map((e) => e.month)).toEqual([1, 3]);
-    expect(s.monthlyLog[1].btcHeld).toBeCloseTo(0.60);   // re-chained: 0.50 + 0.05 + 0.05
+    expect(s.monthlyLog.map((e) => e.btcHeld)).toEqual([0.61, 0.63]);   // untouched — a delete never re-derives
     expect(s.deletedMonths[2]).toBeTruthy();
+  });
+
+  it('⭐ upsertLogEntry never rewrites another month\'s btcHeld, and a blank one stays blank', () => {
+    // Mutation: reinstate a baseline + Σ btcBought chain inside upsertLogEntry → months 1–2 read 0.55 / 0.60 → red.
+    useStore.getState().upsertLogEntry(makeEntry(1, { btcHeld: 0.61 }));
+    useStore.getState().upsertLogEntry(makeEntry(2, { btcHeld: 0.62 }));
+    const { btcHeld: _omit, ...noCol } = makeEntry(3);
+    useStore.getState().upsertLogEntry(noCol);   // a month that never stated its collateral (a blank editor field)
+    const log = useStore.getState().monthlyLog;
+    expect(log.map((e) => e.btcHeld)).toEqual([0.61, 0.62, undefined]);
+    expect('btcHeld' in log[2]).toBe(false);   // absent, never a written 0
   });
 });
 

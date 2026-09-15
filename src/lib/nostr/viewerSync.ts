@@ -18,7 +18,6 @@ import { nip19 } from 'nostr-tools';
 import { NSecSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { viewerDTag, type ViewerSnapshot } from './publish';
-import { recomputeBtcHeld } from '../../simulation/logUtils';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { signerOpTimeout } from './timeout';
 import { withTimeout } from './timeout';
@@ -165,8 +164,9 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     s.setViewerSafeSnapshot(null);
     const settings = snap.settings ?? {};
     s.hydrateSettings(settings);
-    const baseBtc = typeof settings.advisorActualBtcHeld === 'number' ? settings.advisorActualBtcHeld : 0;
-    s.setMonthlyLog(recomputeBtcHeld((snap.records?.entries ?? []) as MonthlyLogEntry[], baseBtc));
+    // Verbatim: the owner's rolled-up entries already carry the RECORDED btcHeld, and the viewer has no dayLog to derive
+    // from. Recomputing here would overwrite recorded values with a chain off a deprecated baseline.
+    s.setMonthlyLog((snap.records?.entries ?? []) as MonthlyLogEntry[]);
     s.setDeletedMonths(snap.records?.deletions ?? {});
     if (snap.strike) {
       s.setStrikeUsdBalance(snap.strike.usd);

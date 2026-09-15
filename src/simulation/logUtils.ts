@@ -16,18 +16,6 @@ export function flowVenue(ev: Extract<DayEvent, { kind: 'draw' | 'paydown' }>): 
   return (ev.target ?? 'strike') === 'strike' ? 'strike' : 'cb';
 }
 
-export function recomputeBtcHeld(
-  log: MonthlyLogEntry[],
-  baseBtcHeld: number,
-): MonthlyLogEntry[] {
-  const sorted = [...log].sort((a, b) => a.month - b.month);
-  let running = baseBtcHeld;
-  return sorted.map(e => {
-    running += (e.btcBought ?? 0) + (e.collateralAdjustment ?? 0);
-    return { ...e, btcHeld: running };
-  });
-}
-
 // Collateral-Truth v20 — btcHeld (current Strike collateral) is READING-ANCHORED: callers pass the value
 // from getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc). The derives no longer chain
 // it (pending/graduation retired). startingBtcHeld = the passed currentStrikeCollateral so the advisor seed and
@@ -144,15 +132,17 @@ export function bucketEventToMonth(date: string, advisorStartDate: string): numb
  * Flows accumulate (draw→expensesActual, buy→btcBought [+income iff usd], paydown→paydown); target:'strike'
  * deposit/withdraw feed collateralDelta (signed by kind — deposit +, withdraw −); target:'cb' and cbCollateralReading
  * are journal-only (ignored). Stocks come from the LATEST balanceReading by ts (strikeBal/strikeLtv always; cbBal/cbLtv
- * iff present). cbCollateral is NEVER placed in entry (it feeds a derived store value in P2). btcHeld/collateralAdjustment/
- * source/confirmed are NEVER set here (store-owned / P2-stamped). Carry-forward: flows but no reading + priorStocks →
- * stocks from priorStocks + provisional:true. Empty month → { entry: {}, collateralDelta: 0 }.
+ * iff present; btcHeld iff the reading carries strikeCollateral — RECORDED exactly like strikeBal, and ABSENT when the
+ * reading doesn't state it: 0 is a real position, never a placeholder). cbCollateral is NEVER placed in entry (it feeds a
+ * derived store value). collateralAdjustment/source/confirmed are NEVER set here (store-owned / P2-stamped).
+ * Carry-forward: flows but no reading + priorStocks → stocks from priorStocks (strikeCollateral → btcHeld included) +
+ * provisional:true. Empty month → { entry: {}, collateralDelta: 0 }.
  */
 export function rollupMonth(
   dayLog: DayEvent[],
   month: number,
   advisorStartDate: string,
-  priorStocks?: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number },
+  priorStocks?: { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; strikeCollateral?: number },
 ): { entry: Partial<MonthlyLogEntry>; collateralDelta: number } {
   const inMonth = dayLog.filter((e) => bucketEventToMonth(e.date, advisorStartDate) === month);
   const entry: Partial<MonthlyLogEntry> = {};
@@ -205,6 +195,9 @@ export function rollupMonth(
     entry.strikeLtv = latest.reading.strikeLtv;
     if (latest.reading.cbBal !== undefined) entry.cbBal = latest.reading.cbBal;
     if (latest.reading.cbLtv !== undefined) entry.cbLtv = latest.reading.cbLtv;
+    // Strike collateral is RECORDED from the reading, like strikeBal. ⚠ `!== undefined`, not truthiness — 0 is a real
+    // position. A reading that doesn't state it leaves btcHeld ABSENT, so the rerollMonth bridge keeps the stored value.
+    if (latest.reading.strikeCollateral !== undefined) entry.btcHeld = latest.reading.strikeCollateral;
     // cbCollateral intentionally NOT placed in entry (derived store value in P2)
   } else if (hasFlow && priorStocks) {
     // Carry-forward fallback: a month with flows but no reading borrows the prior month's stocks, flagged provisional.
@@ -212,6 +205,7 @@ export function rollupMonth(
     entry.strikeLtv = priorStocks.strikeLtv;
     if (priorStocks.cbBal !== undefined) entry.cbBal = priorStocks.cbBal;
     if (priorStocks.cbLtv !== undefined) entry.cbLtv = priorStocks.cbLtv;
+    if (priorStocks.strikeCollateral !== undefined) entry.btcHeld = priorStocks.strikeCollateral;
     entry.provisional = true;
   }
 
@@ -248,14 +242,14 @@ export function priorStocksForMonth(
   dayLog: DayEvent[],
   advisorStartDate: string,
   month: number,
-): { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number } | undefined {
+): { strikeBal: number; strikeLtv: number; cbBal?: number; cbLtv?: number; cbCollateral?: number; strikeCollateral?: number } | undefined {
   const priorReadings = dayLog
     .filter((e): e is Extract<DayEvent, { kind: 'balanceReading' }> =>
       e.kind === 'balanceReading' && bucketEventToMonth(e.date, advisorStartDate) === month - 1)
     .sort((a, b) => a.ts - b.ts);
   const pr = priorReadings.length ? priorReadings[priorReadings.length - 1].reading : undefined;
   return pr
-    ? { strikeBal: pr.strikeBal, strikeLtv: pr.strikeLtv, cbBal: pr.cbBal, cbLtv: pr.cbLtv, cbCollateral: pr.cbCollateral }
+    ? { strikeBal: pr.strikeBal, strikeLtv: pr.strikeLtv, cbBal: pr.cbBal, cbLtv: pr.cbLtv, cbCollateral: pr.cbCollateral, strikeCollateral: pr.strikeCollateral }
     : undefined;
 }
 

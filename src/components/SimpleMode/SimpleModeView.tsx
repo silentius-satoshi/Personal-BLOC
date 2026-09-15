@@ -5,7 +5,7 @@ import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { strikeAvailableCredit, computeStrikeLtv, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { CB_LLTV, CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
-import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus, paydownReadout, classifyPaydownState } from '../../simulation/simpleModePlan';
+import { deriveForMonth, isOperatingMonth, composeMonthSummary, minPaymentStatus, paydownReadout, displaySettledLtv, isLtvFigureStressed } from '../../simulation/simpleModePlan';
 import { paydownBadge } from '../Playbook/playbookView';
 import { buildMonthRollup } from '../Daily/calendarModel';
 import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
@@ -204,13 +204,16 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   // AFTER-this-month = the engine row's end-of-month figures (plan, unskipped — the row already holds them).
   const eomBtcHeld: number     = currentRow?.btcHeld ?? currentBtcHeld;
   const eomBlocBalance: number = currentRow?.blocBalance ?? advisorActualBlocBalance;
-  const eomLtv: number         = currentRow?.blocLtv ?? computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
-  // The AFTER box's colour is about THIS month's row, never the scrubbed month (it used to key on hasPaydown of whatever
-  // month was selected). Amber only when the plan leaves the LTV above the ceiling.
-  const eomState = currentRow
-    ? classifyPaydownState(currentRow.blocLtvPeak, currentRow.blocPaydown, currentRow.blocLtv, BLOC_OPERATING_CEILING)
-    : 'quiet';
-  const eomStressed = eomState === 'partial' || eomState === 'undefended';
+  // displaySettledLtv makes the figure TRUE: runAdvisor's settled blocLtv is 0 at zero collateral; debt with nothing
+  // behind it shows ∞ (paid off still shows 0, which is true).
+  const eomLtv: number         = currentRow ? displaySettledLtv(currentRow) : computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);
+  // The AFTER box is a bare figure, so it is coloured by THAT figure (the figure rule — same as the plan bar): amber when
+  // the true settled LTV sits above the ceiling, ∞ included. It is about THIS month's row, never the scrubbed month. This
+  // also covers a null currentRow (the current month already carries a confirmed entry → startingMonth = last.month + 1),
+  // where eomLtv is the live computeStrikeLtv. Replaces `eomState ∈ {partial, undefended}` — an === consumer the
+  // noCollateral member would have slipped past — and is equivalent to it on every collateralised row (pinned by the
+  // paydownPeak sweep, which blocked this deletion until it ran green).
+  const eomStressed = isLtvFigureStressed(eomLtv, BLOC_OPERATING_CEILING);
   const currentBlocLtv: number = computeStrikeLtv(advisorActualBlocBalance, currentBtcHeld, btcPrice);   // matches the Strike dashboard bar
   const availCredit  = strikeAvailableCredit(creditLine, eomBtcHeld, btcPrice, eomBlocBalance);          // AFTER-this-month basis
   const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);   // CURRENT basis
@@ -253,7 +256,10 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
 
   // §3 — the current month is no longer special: bars/rows read the LOGGED actuals when the month has an
   // entry, else the engine plan projection — identical treatment to any projected month.
-  const barStrikeLtv = selectedEntry ? selectedEntry.strikeLtv : (selectedRow?.blocLtv ?? 0);
+  const barStrikeLtv = selectedEntry ? selectedEntry.strikeLtv : (selectedRow ? displaySettledLtv(selectedRow) : 0);
+  // The figure rule: the bar prints a bare LTV (the LEDGER's on a logged month), so it is coloured by that figure — not by
+  // the header's plan-derived tone (paydownStressed), whose halves are labelled and this figure's are not.
+  const barStressed  = isLtvFigureStressed(barStrikeLtv, BLOC_OPERATING_CEILING);
   const barCbLtv     = selectedEntry ? (selectedEntry.cbLtv ?? 0) : (selectedRow?.cbLtv ?? 0);
 
   // Action-row display values for the SELECTED month.
@@ -590,10 +596,10 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                         <>
                           <span className={styles.planBarFrom}>{fmtLtvPct(currentBlocLtv)}</span>
                           <span className={styles.planBarArrow}> → </span>
-                          <span style={paydownStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
+                          <span style={barStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
                         </>
                       ) : (
-                        <span style={paydownStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
+                        <span style={barStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(barStrikeLtv)} LTV</span>
                       )}
                     </span>
                   </div>

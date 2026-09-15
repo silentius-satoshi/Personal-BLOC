@@ -64,9 +64,13 @@ function validateMonthEntry(m: unknown): boolean {
   if (typeof m.date !== 'string') return false;
   if (typeof m.loggedAt !== 'number') return false;
   // required numerics on a real entry
-  for (const k of ['btcBought', 'income', 'paydown', 'strikeBal', 'strikeLtv', 'btcHeld', 'expensesActual']) {
+  for (const k of ['btcBought', 'income', 'paydown', 'strikeBal', 'strikeLtv', 'expensesActual']) {
     if (typeof (m as Record<string, unknown>)[k] !== 'number') return false;
   }
+  // btcHeld is OPTIONAL (recorded Strike collateral — absent when the month never stated it). ⚠ It must NOT be in the
+  // required list above, or a backup exported by this build is rejected by its own restore. Present → a finite number.
+  const btcHeld = (m as Record<string, unknown>).btcHeld;
+  if (btcHeld !== undefined && !(typeof btcHeld === 'number' && Number.isFinite(btcHeld))) return false;
   return true;
 }
 

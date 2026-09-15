@@ -4,6 +4,7 @@ import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
+import { strikeColFragment } from './monthlyLogForm';
 import styles from './MonthlyLogSection.module.css';
 
 /**
@@ -26,14 +27,16 @@ interface MonthlyLogSectionProps {
 interface InlineForm {
   btcBought: string; income: string; paydown: string; strikeBal: string;
   strikeLtvPct: string; cbBal: string; cbLtvPct: string; miningSats: string;
+  strikeCol: string;   // recorded Strike collateral (₿) — '' = not stated → btcHeld omitted, never written as 0
 }
 
 function emptyForm(): InlineForm {
-  return { btcBought: '0', income: '0', paydown: '0', strikeBal: '0', strikeLtvPct: '0', cbBal: '0', cbLtvPct: '0', miningSats: '0' };
+  return { btcBought: '0', income: '0', paydown: '0', strikeBal: '0', strikeLtvPct: '0', cbBal: '0', cbLtvPct: '0', miningSats: '0', strikeCol: '' };
 }
 
 function formFromEntry(e: MonthlyLogEntry): InlineForm {
   return {
+    strikeCol:    e.btcHeld != null ? e.btcHeld.toFixed(8) : '',
     btcBought:    e.btcBought.toFixed(8),
     income:       String(Math.round(e.income)),
     paydown:      String(Math.round(e.paydown)),
@@ -113,6 +116,7 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
       cbBal:        hasCbLoan ? String(Math.round(row.cbBalance)) : '0',
       cbLtvPct:     hasCbLoan ? ltvFieldValue(row.cbLtv, 1)       : '0',
       miningSats:   '0',
+      strikeCol:    '',   // a projection is not a record — the owner states collateral, or it stays unrecorded
     };
   };
 
@@ -146,7 +150,7 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
       cbLtv:      hasCbLoan ? (parseFloat(form.cbLtvPct) || 0) / 100  : undefined,
       miningSats: showMiningInLog ? (parseFloat(form.miningSats) || undefined) : undefined,
       loggedAt:       Date.now(),
-      btcHeld:        0,
+      ...strikeColFragment(form.strikeCol),   // recorded Strike collateral — omitted when blank, never 0
       expensesActual: loggedEntry?.expensesActual ?? expenses,
     });
     setDetailEditing(false);
@@ -274,6 +278,7 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
               <InlineFormField label="BLOC Paydown"   value={form.paydown}       onChange={setF('paydown')}      step="1" prefix="$" />
               <InlineFormField label="Strike Balance" value={form.strikeBal}     onChange={setF('strikeBal')}    step="1" prefix="$" />
               <InlineFormField label="Strike LTV"     value={form.strikeLtvPct}  onChange={setF('strikeLtvPct')} step="0.01" suffix="%" />
+              <InlineFormField label="Strike collateral" value={form.strikeCol} onChange={setF('strikeCol')} step="0.00000001" prefix="₿" />
               {hasCbLoan && <InlineFormField label="CB Balance" value={form.cbBal}    onChange={setF('cbBal')}    step="1" prefix="$" />}
               {hasCbLoan && <InlineFormField label="CB LTV"     value={form.cbLtvPct} onChange={setF('cbLtvPct')} step="0.01" suffix="%" />}
               {showMiningInLog && <InlineFormField label="Mining Sats" value={form.miningSats} onChange={setF('miningSats')} step="1" />}

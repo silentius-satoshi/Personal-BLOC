@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { paydownBadge, buildNarrative } from '../playbookView';
-import type { PaydownReadout } from '../../../simulation/simpleModePlan';
+import { classifyPaydownState, type PaydownReadout } from '../../../simulation/simpleModePlan';
+import { runBLOC } from '../../../simulation/runBLOC';
 import { fmtUSD, fmtLtvPct } from '../../../utils/format';
 
 // ⚠ SYNTHETIC round figures — this repo is public; never a real position.
@@ -46,7 +47,7 @@ describe('paydownBadge — ledger and in-progress months', () => {
   });
 
   it('no state ever says "triggered"', () => {
-    const all = (['quiet', 'defended', 'partial', 'undefended'] as const).flatMap((state) => [
+    const all = (['quiet', 'defended', 'partial', 'undefended', 'noCollateral'] as const).flatMap((state) => [
       paydownBadge(proj({ state, paydown: 100 }), C).text,
       paydownBadge({ ...proj({ state, paydown: 100 }), mode: 'inProgress' }, C).text,
     ]);
@@ -82,5 +83,38 @@ describe('buildNarrative — narrates the PEAK the paydown answered', () => {
 
   it('quiet is byte-identical to the original sentence', () => {
     expect(buildNarrative(3, 0.08, 0.09, 6000, 4000, 0, 120, C)).toBe(OLD_QUIET(3, 0.08, 6000, 4000, 120));
+  });
+});
+
+describe('noCollateral — describes the DRAW, never a 0.0% headline', () => {
+  it('⭐ projected: amber, the ∞ peak, "drawn with no collateral behind it" — and no "0.0%"', () => {
+    // Mutation: drop the `shown` peak substitution → "LTV 0.0% · …" → red.
+    const b = paydownBadge(proj({ ltv: 0, peakLtv: Infinity, paydown: 4043, state: 'noCollateral' }), C);
+    expect(b).toMatchObject({ text: 'LTV ∞ · drawn with no collateral behind it', tone: 'amber' });
+    expect(b.text).not.toContain('0.0%');
+  });
+
+  it('⭐ in progress: keeps the LEDGER figure with "now", and the flag carries "plan:"', () => {
+    // Mutation: apply the peak substitution in progress too → "LTV ∞ now" (the plan's peak labelled as now) → red.
+    const b = paydownBadge(
+      { mode: 'inProgress', ltv: 0.128, peakLtv: Infinity, paydown: 4043, paydownDone: 0, state: 'noCollateral' }, C);
+    expect(b).toMatchObject({ text: 'LTV 12.8% now · plan: drawn with no collateral behind it', tone: 'amber' });
+  });
+
+  it('⭐ a real runBLOC zero-collateral month is noCollateral, and its narrative claims nothing false', () => {
+    // runBLOC never pays down without collateral: the ∞-peak month's income buys BTC, and it used to classify
+    // 'undefended' → "with no income left to pay it down" (false — the income bought bitcoin).
+    const m1 = runBLOC(0, { income: 1000, expenses: 3500, startPrice: 80000, apr: 0.13, startBTC: 0 })[1];
+    expect(classifyPaydownState(m1.ltvPeak, m1.paydown, m1.ltv, C)).toBe('noCollateral');
+    const s = buildNarrative(1, m1.ltv, m1.ltvPeak, 1000, 3500, m1.paydown, m1.interest, C);
+    for (const bad of ['no income left', 'back to 15%', 'well below', '0.0%', 'Infinity']) expect(s).not.toContain(bad);
+    expect(s).toContain('the expense draw landed with NO collateral behind it');
+    expect(s).toContain('$1,000 of income buys Bitcoin');
+  });
+
+  it('the runAdvisor shape (a paydown fired) names the paydown and prints no percentage', () => {
+    const s = buildNarrative(1, 0, Infinity, 6000, 4000, 4043, 43, C);
+    expect(s).toContain('$4,043 of income pays it down');
+    expect(s).not.toMatch(/\d%/);
   });
 });

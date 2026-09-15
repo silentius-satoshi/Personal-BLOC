@@ -43,7 +43,7 @@ beforeEach(() => {
 });
 
 describe('addDayEvent — Route 2 rollup', () => {
-  it('draw + balanceReading → entry flows + read stocks, source:daily, btcHeld intact', () => {
+  it('⭐ draw + balanceReading → entry flows + read stocks, source:daily; a reading without strikeCollateral records NO btcHeld', () => {
     useStore.getState().addDayEvent(draw(1000));
     useStore.getState().addDayEvent(reading({ strikeBal: 5000, strikeLtv: 0.12 }));
     const e = month1()!;
@@ -52,15 +52,23 @@ describe('addDayEvent — Route 2 rollup', () => {
     expect(e.strikeLtv).toBeCloseTo(0.12);
     expect(e.source).toBe('daily');
     expect(e.confirmed).toBe(false);
-    expect(e.btcHeld).toBeCloseTo(BASELINE);   // no collateral move → baseline, not corrupted
+    // B1 — the reading didn't state collateral, so the month records none: ABSENT. Not the baseline (the old chain),
+    // and not 0 (the new-month seed used to carry btcHeld: 0, which a recompute silently overwrote). Mutation: restore
+    // `btcHeld: 0` in rerollMonth's seed → 0 → red.
+    expect(e.btcHeld).toBeUndefined();
   });
 
-  it('buy with usd → btcBought + income; btcHeld reflects the buy', () => {
+  it('a reading that states strikeCollateral RECORDS it as the month\'s btcHeld', () => {
+    useStore.getState().addDayEvent(reading({ strikeBal: 5000, strikeLtv: 0.12, strikeCollateral: 0.64 }));
+    expect(month1()!.btcHeld).toBeCloseTo(0.64);
+  });
+
+  it('buy with usd → btcBought + income; a buy never records Strike collateral', () => {
     useStore.getState().addDayEvent(buy(0.02, 1500));
     const e = month1()!;
     expect(e.btcBought).toBeCloseTo(0.02);
     expect(e.income).toBe(1500);
-    expect(e.btcHeld).toBeCloseTo(BASELINE + 0.02);
+    expect(e.btcHeld).toBeUndefined();   // acquired ≠ pledged — only a reading's strikeCollateral records it
   });
 });
 

@@ -45,6 +45,8 @@ export function PlaybookItems({ data }: Props) {
 
   const hasPD   = data.paydown > 0;
   // A paydown capped by income can leave the LTV above the ceiling — "back to 15%" would be false there.
+  // ⚠ An `===` consumer: the 'noCollateral' state slips past it. Safe only because runBLOC never pays down without
+  // collateral (runBLOC.ts:55), so a noCollateral month never renders the paydown row. Revisit if that ever changes.
   const pdState = classifyPaydownState(data.ltvPeak, data.paydown, data.ltv, BLOC_OPERATING_CEILING);
   const buyAmt  = income - data.paydown;
   const buyPct  = income > 0 ? buyAmt / income : 1;

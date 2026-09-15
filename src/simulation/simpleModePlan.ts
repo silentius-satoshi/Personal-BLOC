@@ -68,17 +68,38 @@ export function deriveForMonth(
  *  - defended    — a paydown fired and the LTV settled at or below the ceiling (routine plan mechanics, not an alarm)
  *  - partial     — a paydown fired but the income ran out: the LTV SETTLED ABOVE the ceiling (defending and losing)
  *  - undefended  — the peak crossed the ceiling and NO paydown fired (no income left to pay it down)
- * partial and undefended are the only genuine alarms. ⚠ Keep partial distinct from defended: both have a paydown,
- * and collapsing them makes a losing month look identical to a healthy one.
+ *  - noCollateral — the draw landed with NO collateral behind it (peak ∞ — debt against zero collateral)
+ * partial, undefended and noCollateral are the genuine alarms. ⚠ Keep partial distinct from defended: both have a
+ * paydown, and collapsing them makes a losing month look identical to a healthy one.
  * `stillAbove` carries a 1e-9 tolerance: a paydown sized exactly to the gap lands ON the ceiling as a float.
- * At zero collateral, runAdvisor's settled blocLtv is a pre-existing 0 (it should be ∞), and that shows through here.
+ * ⚠ The noCollateral guard runs FIRST: a paydown CAN fire at zero collateral (runAdvisor pays the whole balance down
+ * against a 0 target), and the settled blocLtv there is a pre-existing 0 (pinned in paydownPeak.test — LTVSafetyChart
+ * needs it), so below the `paydown > 0` line it would classify the worst state as routine 'defended'.
+ * ⚠ `peak === 0` stays 'quiet' — ∞ is debt with nothing behind it; 0 is nothing at all. Don't "simplify" to `peak > 0`.
  */
-export type PaydownState = 'quiet' | 'defended' | 'partial' | 'undefended';
+export type PaydownState = 'quiet' | 'defended' | 'partial' | 'undefended' | 'noCollateral';
 const CEILING_EPS = 1e-9;
 
 export function classifyPaydownState(peak: number, paydown: number, settled: number, ceiling: number): PaydownState {
+  if (!Number.isFinite(peak)) return 'noCollateral';   // ⚠ FIRST — see the doc comment
   if (paydown > 0) return settled > ceiling + CEILING_EPS ? 'partial' : 'defended';
   return peak > ceiling + CEILING_EPS ? 'undefended' : 'quiet';
+}
+
+/**
+ * The settled end-of-month LTV, made TRUE for display. runAdvisor's settled blocLtv is 0 at zero collateral — pinned on
+ * purpose (paydownPeak.test), because LTVSafetyChart/crashLTV need a finite number. Reads AdvisorMonthRow's blocBalance
+ * and btcHeld — ⚠ NOT MonthlyLogEntry.btcHeld (the Ledger's recorded field; a different type on a different object).
+ * Stuck (debt remains, no collateral) → ∞. Paid off (balance 0) → 0, which is TRUE. Collateralised → blocLtv.
+ */
+export function displaySettledLtv(row: Pick<AdvisorMonthRow, 'blocBalance' | 'btcHeld' | 'blocLtv'>): number {
+  return row.blocBalance > 0 && !(row.btcHeld > 0) ? Infinity : row.blocLtv;
+}
+
+/** Is this one LTV figure, judged on its own, a problem? ∞ is. The figure rule: a bare LTV figure is coloured by THAT
+ *  figure — never by a plan state the figure didn't come from. */
+export function isLtvFigureStressed(ltv: number, ceiling: number): boolean {
+  return ltv > ceiling + CEILING_EPS;
 }
 
 export interface PaydownReadout {

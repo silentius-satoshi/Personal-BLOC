@@ -313,7 +313,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
-  const advisorActualBtcHeld        = useStore((s) => s.advisorActualBtcHeld);  // read-only month-0 baseline
   // ⚠ The cold field shows the LIVE total (anchor + journal moves), never the raw anchor. NumberInput commits on every
   // blur with no equality check, so a field bound to the anchor would re-stamp it on a mere focus-and-leave and silently
   // drop every cold move since. Bound to the live total, an unchanged blur re-anchors to the same total: idempotent.
@@ -717,29 +716,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               Your approved max draw — available credit adjusts with BTC price below{' '}
               {currentBtcHeld > 0 ? fmtUSD(creditLine / (currentBtcHeld * STRIKE_MAX_DRAW_LTV)) : '—'}
             </span>
-          </div>
-          <div className={styles.setupFieldGroup}>
-            <NumberInput
-              label="Initial BTC collateral"
-              value={advisorActualBtcHeld}
-              onChange={() => {}}          // no-op; read-only
-              prefix="₿"
-              decimals={8}                 // 8-dp sat precision — matches the actual pledged amount (was toFixed(5))
-              readOnly
-              valueColor="var(--orange)"   // static orange text, distinct from the editable current field
-            />
-            <span className={styles.fieldHint}>
-              What you started with at month 0 — the fixed baseline. Current collateral grows from here via logged buys and dated adjustments.
-            </span>
-            {(() => {
-              const delta = currentBtcHeld - advisorActualBtcHeld;
-              if (Math.abs(delta) < 1e-8) return null;   // hide when no movement yet
-              return (
-                <span className={styles.fieldHint} style={{ color: 'var(--green)' }}>
-                  {delta > 0 ? '+' : ''}{delta.toFixed(8)} ₿ since start
-                </span>
-              );
-            })()}
           </div>
           <div
             className={styles.setupFieldGroup}
