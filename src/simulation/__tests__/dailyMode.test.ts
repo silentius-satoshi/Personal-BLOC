@@ -85,10 +85,29 @@ describe('sameRollupFields', () => {
     expect(sameRollupFields(undefined, {})).toBe(true);
     expect(sameRollupFields(undefined, { expensesActual: 5 })).toBe(false);
   });
-  it('differs on a changed amount / stock / provisional', () => {
+  it('differs on a changed amount / stock', () => {
     expect(sameRollupFields(base(), { expensesActual: 999, strikeBal: 5000, strikeLtv: 0.1 })).toBe(false);
     expect(sameRollupFields(base(), { expensesActual: 1000, strikeBal: 4000, strikeLtv: 0.1 })).toBe(false);
-    expect(sameRollupFields(base(), { expensesActual: 1000, strikeBal: 5000, strikeLtv: 0.1, provisional: true })).toBe(false);
+  });
+  // provisional-clears-on-reading-spec-v1: INVERTED deliberately — never restore the compare to make a test green.
+  // Comparing it made a joining device's reconcile re-roll (and un-sign) every month whose flag differed.
+  it('ignores provisional — a data-quality flag, not a signed figure', () => {
+    const same = { expensesActual: 1000, strikeBal: 5000, strikeLtv: 0.1 };
+    expect(sameRollupFields(base(), { ...same, provisional: true })).toBe(true);
+    expect(sameRollupFields(base(), { ...same, provisional: false })).toBe(true);
+    expect(sameRollupFields(base({ provisional: true }), { ...same, provisional: false })).toBe(true);
+  });
+});
+
+describe('rollupMonth — provisional (provisional-clears-on-reading-spec-v1)', () => {
+  it('⭐ a reading emits provisional:false EXPLICITLY, even when priorStocks would allow a carry-forward', () => {
+    const prior = { strikeBal: 2000, strikeLtv: 0.08 };
+    const { entry } = rollupMonth([draw(600), reading({ strikeBal: 3000, strikeLtv: 0.1 })], 1, START, prior);
+    expect(entry.provisional).toBe(false);   // an omitted key would let rerollMonth's bridge keep a stale true
+  });
+  it('carry-forward → true; flows with no reading and no priorStocks → absent', () => {
+    expect(rollupMonth([draw(600)], 1, START, { strikeBal: 2000, strikeLtv: 0.08 }).entry.provisional).toBe(true);
+    expect('provisional' in rollupMonth([draw(600)], 1, START).entry).toBe(false);
   });
 });
 

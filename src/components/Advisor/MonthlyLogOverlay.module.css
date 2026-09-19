@@ -257,6 +257,24 @@
   transition: background 0.12s;
 }
 .saveBtn:hover { background: rgba(78,203,130,0.22); }
+.saveBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Daily-month collateral correction (narrow mode) */
+.collateralBlock { display: flex; flex-direction: column; gap: 6px; }
+.collateralNote { font-size: 11px; color: var(--text-faint); margin: 0; }
+.collateralError { font-size: 11px; color: var(--amber); margin: 0; }
+.clearRecordBtn {
+  align-self: flex-start;
+  background: none;
+  border: 1px solid rgba(232,90,79,0.35);
+  border-radius: 6px;
+  color: var(--red);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 4px 10px;
+}
+.clearRecordBtn:hover { background: rgba(232,90,79,0.07); }
 
 /* Log now button (full-width, current month) */
 .logNowBtn {

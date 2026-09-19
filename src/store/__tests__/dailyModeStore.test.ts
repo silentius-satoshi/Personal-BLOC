@@ -2,7 +2,8 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import { useStore, migrateState, partializeState } from '../useStore';
 import { buildSettingsPayload } from '../payloads';
 import { todayLocalISO, toLocalISO } from '../../utils/format';
-import { rollupMonth, priorStocksForMonth } from '../../simulation/logUtils';
+import { rollupMonth, priorStocksForMonth, sameRollupFields } from '../../simulation/logUtils';
+import { buildEventsFromSheet, readingCollateralPolicy, type SheetState } from '../../components/Daily/eventSheetModel';
 import type { DayEvent, MonthlyLogEntry } from '../../simulation/types';
 
 // Real store. advisorStartDate = today → events dated today bucket to strategy month 1 = the CURRENT month (so
@@ -462,12 +463,16 @@ describe('reconcileMonthBuckets', () => {
     // Seed BOTH entries to EXACTLY the fresh rollup → sameRollupFields is TRUE, so only the collateral-delta check can fire.
     const fresh1 = rollupMonth(dayLog, 1, START, priorStocksForMonth(dayLog, START, 1)).entry;
     const fresh2 = rollupMonth(dayLog, 2, START, priorStocksForMonth(dayLog, START, 2)).entry;
+    const seeded1 = seedEntry({ month: 1, date: START, ...fresh1 });
+    const seeded2 = seedEntry({ month: 2, date: '2026-07-01', ...fresh2 });
+    // F1 — pin the premise. The seeds spread `fresh`, so they also carry provisional:false; the assertion is what KEEPS
+    // this true if the seed builder or the rollup's keys ever diverge (else the test re-routes through the field-diff
+    // branch and passes for the wrong reason).
+    expect(sameRollupFields(seeded1, fresh1)).toBe(true);   // the premise: only the collateral-delta branch can re-roll
+    expect(sameRollupFields(seeded2, fresh2)).toBe(true);
     useStore.setState({
       advisorStartDate: START, dayLog,
-      monthlyLog: [
-        seedEntry({ month: 1, date: START, ...fresh1 }),
-        seedEntry({ month: 2, date: '2026-07-01', ...fresh2 }),
-      ],
+      monthlyLog: [seeded1, seeded2],
       deletedMonths: {}, isAuthenticated: false, nostrSigner: null, nostrPubkey: '', monthBucketReconcileDone: false,
     } as never);
 
@@ -478,9 +483,102 @@ describe('reconcileMonthBuckets', () => {
     expect(m2.updatedAt).not.toBe(1);
   });
 
+  // ── provisional-clears-on-reading-spec-v1 ─────────────────────────────────────────────────────────────────────
+  const month = (m: number) => useStore.getState().monthlyLog.find((e) => e.month === m);
+  const fresh = () => useStore.setState({
+    advisorStartDate: START, dayLog: [], monthlyLog: [], deletedMonths: {}, deletedDayEvents: {},
+    isAuthenticated: false, nostrSigner: null, nostrPubkey: '', recordsDirty: false,
+  } as never);
+  // A signed month-1 entry seeded from its own fresh rollup, with `provisional` controlled by the caller.
+  const seedSigned = (provisional: boolean | undefined) => {
+    const dayLog = [dOn('2026-06-15'), rOn(3000, '2026-06-15')];
+    const { provisional: _drop, ...legacy } = rollupMonth(dayLog, 1, START).entry;   // a legacy entry has no key
+    void _drop;
+    const seeded = seedEntry({ month: 1, ...legacy, confirmed: true, ...(provisional !== undefined ? { provisional } : {}) });
+    useStore.setState({
+      advisorStartDate: START, dayLog, monthlyLog: [seeded], deletedMonths: {}, deletedDayEvents: {},
+      isAuthenticated: false, nostrSigner: null, nostrPubkey: '', monthBucketReconcileDone: false, recordsDirty: false,
+    } as never);
+  };
+
+  it('⭐ the ReviewSheet promise: adding a reading clears provisional', () => {
+    fresh();
+    useStore.getState().addDayEvent(rOn(3000, '2026-06-15'));
+    useStore.getState().addDayEvent(dOn('2026-07-20'));
+    expect(month(2)!.provisional).toBe(true);   // carried from month 1
+    useStore.getState().addDayEvent(rOn(4000, '2026-07-21'));
+    expect(month(2)!.provisional).toBe(false);
+  });
+
+  it('⭐ a legacy entry (no provisional key) is inert to the reconcile — stays signed, no publish', () => {
+    seedSigned(undefined);
+    useStore.getState().reconcileMonthBuckets();
+    expect(month(1)!.confirmed).toBe(true);
+    expect(useStore.getState().recordsDirty).toBe(false);
+  });
+
+  it('⭐ a stale provisional:true is inert to the reconcile — waits for the next edit', () => {
+    seedSigned(true);
+    useStore.getState().reconcileMonthBuckets();
+    expect(month(1)!.confirmed).toBe(true);
+    expect(month(1)!.provisional).toBe(true);
+    expect(useStore.getState().recordsDirty).toBe(false);
+  });
+
+  it('self-heal, and its cost: the next edit clears the stale flag AND un-signs the month', () => {
+    seedSigned(true);
+    useStore.getState().reconcileMonthBuckets();
+    useStore.getState().addDayEvent(dOn('2026-06-20'));
+    expect(month(1)!.provisional).toBe(false);
+    // LD4 reopen-on-edit — the owner sees the month un-sign as the flag corrects; see the spec's *Costs*.
+    expect(month(1)!.confirmed).toBe(false);
+  });
+
+  it('the false→true direction: deleting a month\'s reading brings the carry-forward (and the flag) back', () => {
+    fresh();
+    useStore.getState().addDayEvent(rOn(3000, '2026-06-15'));
+    useStore.getState().addDayEvent(dOn('2026-07-20'));
+    const r2 = rOn(4000, '2026-07-21');
+    useStore.getState().addDayEvent(r2);
+    expect(month(2)!.provisional).toBe(false);
+    useStore.getState().deleteDayEvent(r2.id);
+    expect(month(2)!.provisional).toBe(true);
+    expect(month(2)!.strikeBal).toBe(3000);   // carried from month 1
+  });
+
   it('monthBucketReconcileDone: default false, rides partialize, NOT in the settings payload', () => {
     useStore.setState({ monthBucketReconcileDone: false } as never);
     expect('monthBucketReconcileDone' in partializeState(useStore.getState())).toBe(true);
     expect('monthBucketReconcileDone' in buildSettingsPayload(useStore.getState())).toBe(false);
+  });
+});
+
+// provisional-clears-on-reading-spec-v1, change 3b — the Review sheet's reading now lands on a PAST date, so the sheet
+// must not stamp TODAY's Strike collateral onto it. Through the real store + the real builder.
+describe('a past-dated reading never states Strike collateral', () => {
+  const START = '2026-06-01';
+  const sheet: SheetState = {
+    type: 'setBalance', amount: null, collateralDir: 'deposit', collateralTarget: 'strike', debtTarget: 'strike',
+    strikeBal: 3000, strikeLtv: 10, strikeCollateral: null, pledgeToStrike: false,
+    cbBal: null, cbLtv: null, cbCollateral: null, cbLiqPriceReading: null,
+  };
+
+  it('⭐ current collateral is untouched and the past month records no btcHeld', () => {
+    useStore.setState({ advisorStartDate: START, dayLog: [], monthlyLog: [], deletedMonths: {}, deletedDayEvents: {}, strikeCollateralBtc: 0 } as never);
+    useStore.getState().addDayEvent({ id: id(), date: '2026-06-15', ts: ts(), kind: 'balanceReading', reading: { strikeBal: 2000, strikeLtv: 0.1, strikeCollateral: 0.5 } });
+    useStore.getState().addDayEvent({ id: id(), date: '2026-08-10', ts: ts(), kind: 'deposit', amount: 0.1, target: 'strike' });
+    expect(cur()).toBeCloseTo(0.6);   // June anchor 0.5 + the August deposit after it
+
+    const policy = readingCollateralPolicy(true, cur());   // the Review sheet's reading, backfilled into July
+    buildEventsFromSheet(sheet, false, 100000, '2026-07-20', Date.now(), id, policy.fallback, 0)
+      .forEach((e) => useStore.getState().addDayEvent(e));
+
+    // Mutation: fall back to today's figure on a past add → the July reading states 0.6, becomes the latest-dated
+    // anchor, and the August deposit counts AGAIN → 0.7. That is the double count this policy exists to prevent.
+    expect(cur()).toBeCloseTo(0.6);
+    const july = useStore.getState().monthlyLog.find((e) => e.month === 2)!;
+    expect(july.strikeBal).toBe(3000);
+    expect(july.provisional).toBe(false);
+    expect(july.btcHeld).toBeUndefined();   // absent = never recorded — not today's figure
   });
 });

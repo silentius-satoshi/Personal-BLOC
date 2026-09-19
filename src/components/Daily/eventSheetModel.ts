@@ -113,13 +113,29 @@ export interface SheetState {
 
 /**
  * The Save gate's reading half (D1): the balance-reading fields must be non-empty.
- * strikeBal + strikeLtv + strikeCollateral (v20) always; + cbBal + cbLtv + cbCollateral iff hasCbLoan.
+ * strikeBal + strikeLtv always; strikeCollateral (v20) unless `requireStrikeCollateral` is false (a past-dated add —
+ * see readingCollateralPolicy); + cbBal + cbLtv + cbCollateral iff hasCbLoan.
  * The flow/collateral amount>0 gate is checked in the component (a separate clause of the Save gate).
  */
-export function readingComplete(s: SheetState, hasCbLoan: boolean): boolean {
-  if (s.strikeBal === null || s.strikeLtv === null || s.strikeCollateral === null) return false;
+export function readingComplete(s: SheetState, hasCbLoan: boolean, requireStrikeCollateral = true): boolean {
+  if (s.strikeBal === null || s.strikeLtv === null) return false;
+  if (requireStrikeCollateral && s.strikeCollateral === null) return false;
   if (hasCbLoan && (s.cbBal === null || s.cbLtv === null || s.cbCollateral === null)) return false;
   return true;
+}
+
+/**
+ * What a reading built on this sheet may say about Strike collateral (provisional-clears-on-reading-spec-v1, 3b).
+ *  - TODAY (and every edit): the auto-tracked total is REQUIRED and is the builder's fallback — load-bearing, see
+ *    autoStrikeCollateral.
+ *  - A PAST-dated ADD: never. The only figure the sheet knows is TODAY's (getCurrentBtcHeld). Stamping it on a past
+ *    date is the app inferring history; and if that reading becomes the latest-dated collateral anchor,
+ *    deriveStrikeCollateral counts every Strike move logged after it a SECOND time. The field is hidden, and the
+ *    reading omits strikeCollateral (absent = never recorded — the month's btcHeld is the owner's to state).
+ */
+export function readingCollateralPolicy(isPastAdd: boolean, currentStrikeCollateral: number):
+  { required: boolean; fallback: number | null } {
+  return isPastAdd ? { required: false, fallback: null } : { required: true, fallback: currentStrikeCollateral };
 }
 
 /**
@@ -159,16 +175,19 @@ export function buildEventsFromSheet(
   today: string,
   ts: number,
   idFn: () => string,
-  currentStrikeCollateral: number,   // v20 — fallback if s.strikeCollateral is null (readingComplete gates non-null; defensive)
+  currentStrikeCollateral: number | null,   // v20 — fallback if s.strikeCollateral is null; null (a past-dated add —
+                                            // readingCollateralPolicy) → the reading OMITS strikeCollateral
   currentCbBalance: number,          // the ACCRUED Coinbase balance — the fee bracket basis for a CB borrow
 ): DayEvent[] {
+  const strikeCollateral = s.strikeCollateral ?? currentStrikeCollateral;   // null → not stated (a past-dated add)
   const reading: {
     strikeBal: number; strikeLtv: number; strikeCollateral?: number;
     cbBal?: number; cbLtv?: number; cbCollateral?: number; cbLiqPrice?: number; price?: number;
   } = {
     strikeBal: s.strikeBal ?? 0,
     strikeLtv: (s.strikeLtv ?? 0) / 100,   // percent → fraction
-    strikeCollateral: s.strikeCollateral ?? currentStrikeCollateral,   // BTC — no conversion; the POST-move total
+    // BTC — no conversion; the POST-move total. OMITTED (never 0) when the sheet doesn't state it.
+    ...(strikeCollateral !== null ? { strikeCollateral } : {}),
     price: btcPrice,
   };
   if (hasCbLoan) {

@@ -7,7 +7,7 @@ import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import {
-  readingComplete, buildEventsFromSheet, autoStrikeCollateral, COLLATERAL_TARGET_RULES, collateralAvailableFor,
+  readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
   totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote,
   type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
 } from './eventSheetModel';
@@ -83,6 +83,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const blocApr              = useStore((s) => s.blocApr);
 
   const isEdit = !!editEvent;
+  // A PAST-dated ADD (P4c-2 backfill). Hoisted above the effects — the collateral track effect needs it. Same rule as
+  // `isPast` below (which is declared after the early return).
+  const pastAdd = !isEdit && (targetDate ?? todayLocalISO()) < todayLocalISO();
   const isIncomeSource = blocMinPaymentSource === 'income';
   const strikeMinEstimate = Math.round(advisorActualBlocBalance * (blocApr / 100 / 12));   // one month's interest
   const strikeMinOwed = blocStatementMinimum ?? strikeMinEstimate;
@@ -215,9 +218,12 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   // early return below — a hook after a conditional return violates the Rules of Hooks (React #310).
   useEffect(() => {
     if (!open) return;
+    // A past-dated add never states Strike collateral — the only figure this sheet knows is TODAY's
+    // (readingCollateralPolicy). Checked BEFORE `touched`: the field is hidden on a past date, so it can't be edited.
+    if (pastAdd) { setStrikeCollateral(null); return; }
     if (strikeCollateralTouched) return;
     setStrikeCollateral(autoStrikeCollateral(currentBtcHeld, { type, collateralDir, effectiveTarget, amount, pledgeToStrike }));
-  }, [open, type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
+  }, [open, pastAdd, type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
 
   if (!open) return null;
 
@@ -225,6 +231,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   // P4c-2 — add-mode logs to the calendar's selectedDay (effectiveDate); edit-mode stays on editEvent.date.
   const effectiveDate = targetDate ?? today;
   const isPast = !isEdit && effectiveDate < today;   // yyyy-mm-dd string compare; past = strictly before today
+  // Past add → the reading never states Strike collateral (not required; no today-figure fallback). Today → unchanged.
+  const collPolicy = readingCollateralPolicy(isPast, currentBtcHeld);
   const month = isEdit && editEvent
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
@@ -281,7 +289,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
      // A Coinbase borrow/paydown is journal-only and written ALONE (DEBT_TARGET_RULES) — it never waits on one either.
      const readingOk = (type === 'collateral' && !targetRules.needsReading)
        || (isDebtFlow && !debtRules.needsReading)
-       || (isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan);
+       || (isPast && type !== 'setBalance') || readingComplete(state, hasCbLoan, collPolicy.required);
      canSave = readingOk
        && (!showAmount || amountValid)
        && (!cbCollateralNeedsLiq || cbLiqOk)
@@ -396,11 +404,11 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
 
     const events = buildEventsFromSheet(
       { type, amount, collateralDir, collateralTarget: effectiveTarget, debtTarget: effectiveDebtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
-      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId, currentBtcHeld, currentCbBalance,
+      hasCbLoan, btcPrice, effectiveDate, Date.now(), newId, collPolicy.fallback, currentCbBalance,
     );
     // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
     // the store carry-forwards prior stocks + marks the month provisional (logUtils rollupMonth).
-    const toWrite = (isPast && !readingComplete(state, hasCbLoan))
+    const toWrite = (isPast && !readingComplete(state, hasCbLoan, collPolicy.required))
       ? events.filter((e) => e.kind !== 'balanceReading')
       : events;
     toWrite.forEach((e) => addDayEvent(e));
@@ -702,9 +710,12 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           && (!isEdit || (editEvent && editEvent.kind === 'balanceReading')) && (
           <div className={styles.section}>
             <span className={styles.sectionLabel}>
-              {isEdit ? 'Balances' : isPast ? 'Current balances · optional for past dates' : 'Current balances · required to log'}
+              {isEdit ? 'Balances'
+                : isPast ? (type === 'setBalance' ? 'Balances on that day · required to log' : 'Current balances · optional for past dates')
+                : 'Current balances · required to log'}
             </span>
-            {isPast && (
+            {/* A past Set balance IS the reading — it can't be skipped, so the "optional" note would be false there. */}
+            {isPast && type !== 'setBalance' && (
               <div className={styles.note}>
                 Past date — current balances optional. Skip if you don&apos;t have them; this month is marked provisional until a reading is logged.
               </div>
@@ -712,14 +723,21 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             <NumberInput label="Strike BLOC balance" value={strikeBal ?? 0} onChange={setStrikeBal} min={0} prefix="$" />
             <NumberInput label="Strike LTV" value={strikeLtv ?? 0} onChange={setStrikeLtv} min={0} suffix="%" />
             {strikeLtvWarn && <span className={styles.warn}>Strike LTV over 100% — double-check the value.</span>}
-            <NumberInput
-              label="Strike collateral (BTC)"
-              value={strikeCollateral ?? 0}
-              onChange={(v) => { setStrikeCollateral(v); setStrikeCollTouched(true); }}
-              min={0}
-              prefix="₿"
-              decimals={8}
-            />
+            {collPolicy.required ? (
+              <NumberInput
+                label="Strike collateral (BTC)"
+                value={strikeCollateral ?? 0}
+                onChange={(v) => { setStrikeCollateral(v); setStrikeCollTouched(true); }}
+                min={0}
+                prefix="₿"
+                decimals={8}
+              />
+            ) : (
+              // Hidden, not blank: NumberInput renders null as "0" and a stray focus/blur would STATE 0 collateral.
+              <div className={styles.note}>
+                Strike collateral isn&apos;t recorded for a past date — this sheet only knows today&apos;s figure.
+              </div>
+            )}
             {showCbReading && (
               <>
                 <NumberInput label="Coinbase loan balance" value={cbBal ?? 0} onChange={setCbBal} min={0} prefix="$" />

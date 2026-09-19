@@ -8,7 +8,7 @@ import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
 import { Calendar } from './Calendar';
-import { buildDayActivity, buildMonthRollup } from './calendarModel';
+import { buildDayActivity, buildMonthRollup, readingTargetDate } from './calendarModel';
 import { EventSheet, isEditableKind } from './EventSheet';
 import { MonthEventsModal } from './MonthEventsModal';
 import { Snackbar } from '../ui/Snackbar';
@@ -574,7 +574,12 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
               }
               setReviewOpen(false);
             }}
-            onAddReading={() => { setReviewOpen(false); setEditEvent(undefined); setSheetInitialType('setBalance'); setSheetOpen(true); }}
+            onAddReading={() => {
+              // The reading must land in the month UNDER REVIEW — the ‹ › nav moves viewedMonth, never selectedDay.
+              const d = readingTargetDate(selectedDay, advisorStartDate, safeViewedMonth, today);
+              if (d) setSelectedDay(d);   // the sheet reads targetDate={selectedDay}; batched with the open below
+              setReviewOpen(false); setEditEvent(undefined); setSheetInitialType('setBalance'); setSheetOpen(true);
+            }}
           />
         </>
       )}

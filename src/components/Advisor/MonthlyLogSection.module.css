@@ -281,6 +281,12 @@
   transition: opacity 0.15s;
 }
 .saveBtn:hover { opacity: 0.88; }
+.saveBtn:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* Daily-month collateral correction (narrow mode) */
+.collateralForm { display: grid; grid-template-columns: minmax(0, 260px); padding-top: 10px; }
+.collateralNote { font-size: 11px; color: var(--text-faint); padding: 6px 0 2px; }
+.collateralError { font-size: 11px; color: var(--amber); padding-bottom: 2px; }
 
 .cancelEditBtn {
   background: none;

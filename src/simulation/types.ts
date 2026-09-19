@@ -131,7 +131,8 @@ export interface MonthlyLogEntry {
                                   // STORE-OWNED: written only by graduation in upsertLogEntry. Remote pre-v4 entries lack it (?? 0 everywhere).
   source?:      'manual' | 'daily';  // undefined on legacy entries — treated as 'manual'; 'daily' = rolled up from dayLog (P2 stamps it)
   confirmed?:   boolean;             // undefined on legacy entries — treated as true; false = needs review (P2 stamps it)
-  provisional?: boolean;             // OPTIONAL — set by rollupMonth carry-forward (flows present, no balanceReading, priorStocks used)
+  provisional?: boolean;             // OPTIONAL — rollupMonth: true on carry-forward (flows, no balanceReading, priorStocks used);
+                                     // false when a reading supplies the stocks; absent on legacy / no-stock months
 }
 
 // --- Mining Tab Types ---

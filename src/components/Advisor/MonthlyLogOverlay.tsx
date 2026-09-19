@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
@@ -6,7 +6,7 @@ import type { runAdvisor } from '../../simulation/runAdvisor';
 import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { SwipeStrip } from '../ui/SwipeStrip';
-import { strikeColFragment } from './monthlyLogForm';
+import { strikeColFragment, collateralCorrection, correctionDurability, parseCollateralInput, DURABILITY_HINT } from './monthlyLogForm';
 import styles from './MonthlyLogOverlay.module.css';
 
 /**
@@ -65,20 +65,26 @@ interface FormFieldProps {
   step?:    string;
   prefix?:  string;
   suffix?:  string;
+  // 'text' for the daily-month collateral correction: a number input hands React '' for ANY unparseable entry, so a
+  // typo would be indistinguishable from a blank there. Default 'number' — every existing field is unchanged.
+  inputType?: 'number' | 'text';
+  inputMode?: 'decimal';
 }
 
-function FormField({ label, value, onChange, step = 'any', prefix, suffix }: FormFieldProps) {
+function FormField({ label, value, onChange, step = 'any', prefix, suffix, inputType = 'number', inputMode }: FormFieldProps) {
   return (
     <div className={styles.formField}>
       <span className={styles.formLabel}>{label}</span>
       <div className={styles.formInputRow}>
         {prefix && <span className={styles.formPrefix}>{prefix}</span>}
         <input
-          type="number"
+          type={inputType}
+          inputMode={inputMode}
           className={styles.formInput}
           value={value}
-          step={step}
-          min="0"
+          step={inputType === 'number' ? step : undefined}
+          min={inputType === 'number' ? '0' : undefined}
+          autoComplete={inputType === 'text' ? 'off' : undefined}
           onChange={(e) => onChange(e.target.value)}
         />
         {suffix && <span className={styles.formSuffix}>{suffix}</span>}
@@ -96,9 +102,14 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
   const btcPrice        = useStore((s) => s.btcPrice);
   const income          = useStore((s) => s.income);
   const expenses        = useStore((s) => s.expenses);
+  // Daily-month collateral correction. ⚠ Each selector on its OWN unconditional line — never combined with ||/&&
+  // (a short-circuited hook changes the hook count → React #311).
+  const dayLog          = useStore((s) => s.dayLog);
+  const viewerMode      = useStore((s) => s.viewerMode);
 
   const [currentIdx, setCurrentIdx] = useState(Math.min(Math.max(initialMonth, 0), 11));
   const [editing, setEditing] = useState(!!openInEditMode);   // honored on mount; nav resets it (see didInit)
+  const [collateralEditing, setCollateralEditing] = useState(false);   // the NARROW daily-month collateral mode
   const [form, setForm] = useState<OverlayForm>(emptyForm);
   const [saved, setSaved] = useState(false);
 
@@ -144,6 +155,7 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
       setForm(emptyForm());
     }
     if (didInit.current) setEditing(false);   // navigating to another month exits edit-mode (mount keeps the seed)
+    setCollateralEditing(false);              // UNCONDITIONALLY — never carry the narrow mode to another month
     didInit.current = true;
     setSaved(false);
   }, [currentIdx]);
@@ -151,8 +163,11 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
   // Keyboard navigation
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft')  setCurrentIdx((i) => Math.max(0, i - 1));
-      if (e.key === 'ArrowRight') setCurrentIdx((i) => Math.min(11, i + 1));
+      // ← / → move the caret while a field has focus — they must not page the month away (and discard what was typed).
+      const t = e.target as HTMLElement | null;
+      const typing = !!t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable);
+      if (!typing && e.key === 'ArrowLeft')  setCurrentIdx((i) => Math.max(0, i - 1));
+      if (!typing && e.key === 'ArrowRight') setCurrentIdx((i) => Math.min(11, i + 1));
       if (e.key === 'Escape')     onClose();
     };
     window.addEventListener('keydown', handler);
@@ -193,6 +208,28 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
 
   useEffect(() => { if (isDaily) setEditing(false); }, [isDaily, monthNum]);
 
+  // How long a hand-entered collateral figure survives on the ACTIVE daily month (stated / stable / fragile).
+  const durability = useMemo(
+    () => (isDaily ? correctionDurability(dayLog, advisorStartDate, monthNum) : null),
+    [isDaily, dayLog, advisorStartDate, monthNum],
+  );
+  // Valid only on a daily month the correction can hold — a reading landing mid-edit (sync) closes it.
+  const showCollateralForm = collateralEditing && isDaily && durability !== null && durability !== 'stated';
+  const parsedCol = parseCollateralInput(form.strikeCol);
+
+  // The daily-month collateral correction — NEVER through the wide handleSave. Reads the entry FRESH (a render-time
+  // snapshot would spread stale rolled fields over a fresher entry). `null` = the explicit Clear record.
+  const saveCollateral = (btcHeld: number | null) => {
+    const s = useStore.getState();
+    const e = s.monthlyLog.find((m) => m.month === monthNum);
+    if (e?.source === 'daily' && correctionDurability(s.dayLog, s.advisorStartDate, monthNum) !== 'stated') {
+      upsertLogEntry(collateralCorrection(e, btcHeld));
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    }
+    setCollateralEditing(false);
+  };
+
   const setF = (key: keyof OverlayForm) => (v: string) => setForm((f) => ({ ...f, [key]: v }));
 
   const sharedFields = (
@@ -221,6 +258,8 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
 
     if (isLog && logged) {
       const showForm = active && editing && !isDailyM;
+      // The narrow collateral form + its durability line exist on the ACTIVE pane only (neighbours are read-only).
+      const showColl = active && showCollateralForm;
       return (
         <div className={styles.card}>
           <div className={styles.cardHeader}>
@@ -234,7 +273,25 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
             {active && !editing && isDailyM && (
               <span className={styles.ledgerHint}>Edit in the Ledger</span>
             )}
+            {/* A daily month's ONE editable field: its RECORDED Strike collateral. Hidden when this month's balance
+                reading states it (`stated`), for viewers, and while the narrow form is open. */}
+            {active && !editing && isDailyM && !showColl && durability !== 'stated' && !viewerMode && (
+              <button
+                className={styles.editBtn}
+                onClick={() => {
+                  const e = useStore.getState().monthlyLog.find((m) => m.month === mn);
+                  setForm((f) => ({ ...f, strikeCol: e?.btcHeld != null ? e.btcHeld.toFixed(8) : '' }));
+                  setCollateralEditing(true);
+                }}
+              >
+                Set collateral
+              </button>
+            )}
           </div>
+
+          {active && isDailyM && !showColl && durability === 'stated' && (
+            <p className={styles.collateralNote}>{DURABILITY_HINT.stated}</p>
+          )}
 
           {showForm ? (
             <>
@@ -243,6 +300,25 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
                 <button className={styles.cancelBtn} onClick={() => setEditing(false)}>Cancel</button>
                 <button className={styles.saveBtn} onClick={handleSave}>Save changes</button>
               </div>
+            </>
+          ) : showColl ? (
+            <>
+              <div className={styles.collateralBlock}>
+                <FormField label="Strike collateral" value={form.strikeCol} onChange={setF('strikeCol')} prefix="₿" inputType="text" inputMode="decimal" />
+                <p className={styles.collateralNote}>{DURABILITY_HINT[durability!]}</p>
+                {form.strikeCol.trim() !== '' && parsedCol === null && (
+                  <p className={styles.collateralError}>Enter a BTC amount, e.g. 0.42</p>
+                )}
+              </div>
+              <div className={styles.cardActions}>
+                <button className={styles.cancelBtn} onClick={() => setCollateralEditing(false)}>Cancel</button>
+                <button className={styles.saveBtn} disabled={parsedCol === null} onClick={() => { if (parsedCol !== null) saveCollateral(parsedCol); }}>
+                  Save collateral
+                </button>
+              </div>
+              {logged.btcHeld != null && (
+                <button className={styles.clearRecordBtn} onClick={() => saveCollateral(null)}>Clear record</button>
+              )}
             </>
           ) : (
             <div className={styles.viewGrid}>
@@ -254,6 +330,8 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
               <ViewRow label="BLOC Paydown"   value={fmtUSD(logged.paydown)} />
               <ViewRow label="Strike Balance" value={fmtUSD(logged.strikeBal)} />
               <ViewRow label="Strike LTV"     value={`${fmtLtvPct(logged.strikeLtv, 2)}`} />
+              {/* RECORDED Strike collateral — "—" when the month never recorded it. */}
+              <ViewRow label="Strike collateral" value={logged.btcHeld != null ? `${logged.btcHeld.toFixed(5)} ₿` : '—'} />
               {hasCbLoan && logged.cbBal != null && <ViewRow label="CB Balance" value={fmtUSD(logged.cbBal)} />}
               {hasCbLoan && logged.cbLtv != null && <ViewRow label="CB LTV"     value={`${fmtLtvPct(logged.cbLtv, 1)}`} />}
               {showMiningInLog && logged.miningSats != null && <ViewRow label="Mining Sats" value={logged.miningSats.toLocaleString()} />}

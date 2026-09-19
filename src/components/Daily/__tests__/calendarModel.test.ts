@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { monthDateRange, weekDates, buildDayCells,
+import { monthDateRange, weekDates, buildDayCells, readingTargetDate,
   buildDayActivity, buildMonthRollup, groupEventsByDay } from '../calendarModel';
 import { bucketEventToMonth } from '../../../simulation/logUtils';
 import type { DayEvent } from '../../../simulation/types';
@@ -184,5 +184,26 @@ describe('timezone safety', () => {
       expect(d).toMatch(/^\d{4}-\d{2}-\d{2}$/);
       expect(bucketEventToMonth(d, start)).toBe(1);
     }
+  });
+});
+
+// provisional-clears-on-reading-spec-v1, change 3 — the Review sheet's "Add balance reading" must land in the month
+// under review, not wherever selectedDay happens to be (the Month-scope ‹ › nav never moves selectedDay).
+describe('readingTargetDate', () => {
+  const S = '2026-06-01';
+  const TODAY = '2026-08-10';   // month 3
+  it('⭐ a selectedDay outside the reviewed month → that month\'s last day, which buckets back to it', () => {
+    const d = readingTargetDate('2026-08-05', S, 1, TODAY);
+    expect(d).toBe('2026-06-30');
+    expect(bucketEventToMonth(d!, S)).toBe(1);
+  });
+  it('keeps the owner\'s selectedDay when it is already inside the month', () => {
+    expect(readingTargetDate('2026-06-12', S, 1, TODAY)).toBe('2026-06-12');
+  });
+  it('never a future day: the current month resolves to today', () => {
+    expect(readingTargetDate('2026-06-12', S, 3, TODAY)).toBe(TODAY);
+  });
+  it('a month entirely after today → null', () => {
+    expect(readingTargetDate('2026-06-12', S, 4, TODAY)).toBeNull();
   });
 });

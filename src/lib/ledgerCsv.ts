@@ -5,7 +5,8 @@ import { bucketEventToMonth } from '../simulation/logUtils';
  * Ledger data utilities (M-L1) — PURE, no React. Backs the Almanac Ledger face:
  *  - `ledgerFaceAvailable` — the data-presence gate (sub-nav self-hides + fallback-to-halving when empty).
  *  - `buildLedgerCsv` — a spreadsheet-ready CSV export of `monthlyLog` (Copy / Download buttons).
- *  - `coldMovedByMonth` / `hasColdColumn` — the computed "→ Cold" column.
+ *  - `coldMovedByMonth` / `hasColdColumn` / `coldTotals` / `coldFootnote` / `fmtColdBtc` — the computed "→ Cold"
+ *    column, its row-scoped total, and the disclosure line for cold movement in months with no row.
  * The Ledger WRITES NOTHING — this is projection + export only.
  */
 
@@ -33,11 +34,59 @@ export function coldMovedByMonth(dayLog: DayEvent[], advisorStartDate: string): 
   return out;
 }
 
-/** The → Cold column shows only when a month that HAS a ledger row moved a non-zero amount — an owner with no cold
- *  activity (and every viewer, whose dayLog is []) sees no new column. */
+/** Half a satoshi. Cold nets below this are float residue (0.1 − 0.04 − 0.06 = 6.9e-18), not movement. ONE constant for
+ *  every cold gate — the column, the totals and the footnote must treat a given value identically. */
+export const COLD_EPS = 5e-9;
+
+/** The → Cold column shows only when a month that HAS a ledger row moved a real amount (≥ COLD_EPS) — an owner with no
+ *  cold activity (and every viewer, whose dayLog is []) sees no new column. */
 export function hasColdColumn(entries: MonthlyLogEntry[], coldByMonth: Record<number, number> | undefined): boolean {
   if (!coldByMonth) return false;
-  return entries.some((e) => (coldByMonth[e.month] ?? 0) !== 0);
+  return entries.some((e) => Math.abs(coldByMonth[e.month] ?? 0) >= COLD_EPS);
+}
+
+/**
+ * The → Cold column split two ways: `logged` is cold movement in months WITH a ledger row (the sum of the visible cells,
+ * so the column foots); `unlogged` is movement in months with no row at all. Each half below COLD_EPS snaps to 0 — which
+ * also stops a residue total rendering as "-0.00000".
+ * ⚠ The total stays ROW-SCOPED on purpose: a totals cell that isn't the sum of the cells above it can't be checked. The
+ *   remainder is DISCLOSED (coldFootnote), the way a reconciling item is.
+ * ⚠ INVARIANT: logged + unlogged equals the sum of every value in coldByMonth, to within COLD_EPS per half.
+ */
+export function coldTotals(entries: MonthlyLogEntry[], coldByMonth: Record<number, number> | undefined):
+  { logged: number; unlogged: number } {
+  if (!coldByMonth) return { logged: 0, unlogged: 0 };
+  const hasRow = new Set(entries.map((e) => e.month));
+  let logged = 0;
+  let unlogged = 0;
+  // Iterate coldByMonth, NOT entries — a month can move cold without having a row, which is the whole point.
+  for (const [m, v] of Object.entries(coldByMonth)) {
+    if (hasRow.has(Number(m))) logged += v;
+    else unlogged += v;
+  }
+  const snap = (n: number) => (Math.abs(n) < COLD_EPS ? 0 : n);
+  return { logged: snap(logged), unlogged: snap(unlogged) };
+}
+
+/** A cold figure for display. 5 dp like the rest of the Ledger, but widened to 8 dp (satoshi precision) whenever 5 dp
+ *  would print a real move as zero — a 300-sat move must read 0.00000300, never "0.00000" or "-0.00000". An exact 0
+ *  (a total that nets out, or a snapped residue) reads "0.00000". Per-month cells snap |n| < COLD_EPS to "—" before
+ *  calling this; the TOTAL never does — a column that nets to zero totals ₿0.00000, not "—". */
+export function fmtColdBtc(n: number): string {
+  if (n === 0) return '0.00000';   // also -0 (=== 0), so a sign can never leak
+  return Number(n.toFixed(5)) === 0 ? n.toFixed(8) : n.toFixed(5);
+}
+
+/** The disclosure line for cold movement outside the table, or null when there is none (|unlogged| < COLD_EPS).
+ *  `columnShown` = hasColdColumn(...). With a column: "‡ …— not in the total above." Without one there is no total
+ *  and nothing to anchor, so the line has no ‡ and says the months have no row. Figure = fmtColdBtc(|unlogged|). */
+export function coldFootnote(unlogged: number, columnShown: boolean): string | null {
+  if (Math.abs(unlogged) < COLD_EPS) return null;
+  const x = fmtColdBtc(Math.abs(unlogged));
+  const dir = unlogged > 0 ? 'moved to cold' : 'moved out of cold';
+  return columnShown
+    ? `‡ ${x} ₿ ${dir} in months with no logged activity — not in the total above.`
+    : `${x} ₿ ${dir} in months with no logged activity — those months have no row here.`;
 }
 
 export interface LedgerCsvOpts {

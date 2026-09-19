@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1357 tests — all must pass before every commit)
+- Vitest (1395 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -1015,9 +1015,20 @@ src/
                                 # total. A buy-only "Pledged to Strike" Off|On toggle (add path, targetToggle styling) → ON
                                 # emits [buy, deposit target:'strike' amount=buy, reading]. buildEventsFromSheet gains a
                                 # currentStrikeCollateral arg (= getCurrentBtcHeld()). EventSheet.module.css alongside (+ .deleteBtn/.confirmBox/.confirmText)
+                                # ⚠ PAST-DATED ADD (provisional-clears-on-reading-spec-v1, 3b): readingCollateralPolicy(isPast,
+                                # current) → the field is HIDDEN (not blank — NumberInput renders null as "0" and a stray blur
+                                # would STATE 0), not required, and the builder gets fallback null → the reading OMITS
+                                # strikeCollateral. The only figure the sheet knows is TODAY's: stamping it on a past date is
+                                # the app inferring history, and a past reading that becomes the latest-dated anchor makes
+                                # deriveStrikeCollateral count every later Strike move twice. Today + every edit unchanged. A
+                                # past Set balance's label reads "Balances on that day · required to log" (the "optional"
+                                # note is hidden for it). RESIDUALS (pre-existing): editing a reading with no strikeCollateral
+                                # seeds today's figure (`?? currentBtcHeld`) and stamps it on save; CB collateral is
+                                # latest-by-TS, so a past reading's typed CB collateral becomes the current one
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState (v20 += strikeCollateral:number|null
-                                # + pledgeToStrike:boolean) + readingComplete(s,hasCbLoan) (Save gate — v20 ALSO requires
+                                # + pledgeToStrike:boolean) + readingComplete(s,hasCbLoan,requireStrikeCollateral=true) (Save
+                                # gate — a past add passes false via readingCollateralPolicy; otherwise v20 ALSO requires
                                 # strikeCollateral!==null) + autoStrikeCollateral(base,s) (v20 PURE — POST-move total: strike
                                 # collateral move → base±amount, pledged buy → base+amount, else base; shared by the sheet's
                                 # auto-track + its tests) + buildEventsFromSheet(s,hasCbLoan,btcPrice,today,ts,idFn,
@@ -1381,14 +1392,59 @@ and the v20 back-solve drove the baseline negative on a real install.
 - **Onboarding records collateral as a reading.** `handleDone` calls `emitBalanceReading({ strikeCollateral })` AFTER
   `setAdvisorStartDate`. A fresh install's `strikeCollateralBtc` is 0, so `getCurrentBtcHeld()` used to be 0 for every
   new owner. Side effect: the current month gets an unconfirmed daily entry on day one.
+  ⚠ The reading is dated **TODAY** (`emitBalanceReading` hard-codes it). A BACKDATED strategy start therefore records
+  the collateral in the month containing today, and the earlier months have NO row. **By design:** the owner typed a
+  CURRENT position, and the app does not infer a historical one. Never add a dated `emitBalanceReading` for this. The
+  owner can state history themselves — collateral through the monthly correction path, balances through a backdated
+  EventSheet reading.
+  `getCurrentBtcHeld()` is correct either way (pinned in `recordedCollateralStore.test.ts`).
 - ⚠ **`advisorActualBtcHeld` is DEPRECATED — LEAVE IT ALONE, never zero it.**
   - It feeds no computation, but Fix D's seed sentinel (`syncEngine`) reads it and onboarding still writes it.
   - The Settings "Initial BTC collateral" field is gone.
   - `persistConfig`'s v20 block is untouched; the stored bad baseline is inert.
 - **History is NOT auto-repaired.** Pre-cold-ledger venues were never recorded.
-  - To repair a DAILY month, log a backdated FULL reading: `strikeBal` + `strikeLtv` + `strikeCollateral`.
-    `rollupMonth` picks the reading by `ts`, so the backdated reading supersedes every stock.
+  - To repair a DAILY month's collateral, use **"Set collateral"** in the monthly-log editors — the correction path
+    below (`daily-month-collateral-edit-spec-v2`). ⚠ The old route, a backdated FULL reading carrying
+    `strikeCollateral`, is GONE from the EventSheet: a past-dated add never states collateral
+    (`readingCollateralPolicy`, `provisional-clears-on-reading-spec-v1` 3b). A backdated reading still restates the
+    month's `strikeBal`/`strikeLtv` (`rollupMonth` picks the reading by `ts`, so it supersedes every stock), and it
+    turns a `fragile` month `stable`, so a correction made after it holds.
   - ⚠ **Mixed-version hazard:** a device still on an old build recomputes and republishes, so update every device.
+- **Correcting a DAILY month's collateral (`daily-month-collateral-edit-spec-v2`).** `btcHeld` is RECORDED, not rolled,
+  so it is the ONE field a daily month lets the owner edit. Every rolled-up field stays read-only, and the wide Edit form
+  stays closed.
+  - **Where:** a **"Set collateral"** button, owner-only (`!viewerMode`), in both monthly-log editors:
+    - `MonthlyLogSection`'s header, on the Advisor tab;
+    - `MonthlyLogOverlay`'s active card: Simple Mode → Monthly Playbook → scrub to a past logged month →
+      "✎ View / edit this month". Its ‹ › / dots / swipe then reach any month, including the current one.
+  - **The narrow mode** holds ONE `type="text" inputMode="decimal"` field, parsed by the strict
+    `parseCollateralInput` (at most 8 decimals, at most 21M, and "0,42" reads as 0.42). ⚠ Not `type="number"`: that
+    input hands React `''` for ANY unparseable entry, so a typo would silently clear the record. Save is disabled until
+    the text parses. **Clear record** is its own button, and the only way to un-record.
+  - **The write:** `collateralCorrection(entry, btcHeld | null)` is read FRESH via `getState()` and written with
+    `upsertLogEntry`. It preserves `source` (so the M2 guard is satisfied, not bypassed), `confirmed` and `loggedAt`.
+    Save re-checks the durability class and writes nothing on a month that turned `stated` mid-edit.
+  - **Both views** show a read-only "Strike collateral" row ("—" when never recorded).
+  - **Durability — `correctionDurability(dayLog, start, month)`** mirrors `rollupMonth` exactly, and the line
+    `DURABILITY_HINT` shows the owner comes from it:
+    - `stated` — the LATEST in-month reading states it. No button; the hint says to edit that reading.
+    - `stable` — there is an in-month reading that doesn't state it, or no in-month reading and the prior month's
+      doesn't either. The bridge keeps the correction.
+    - `fragile` — no in-month reading, and the prior month's latest reading states it. The carry-forward stamps it.
+  - **Precedence:** in-month reading > carry-forward from the prior month's reading > the owner's correction. The
+    middle rung is a known inversion — the app's guess beats the owner's statement.
+  - ⚠ The class describes the NEXT re-roll. Deleting the month's only reading, or backfilling a prior-month reading that
+    states collateral, makes a `stable` month `fragile`, which is why the `stable` hint names BOTH ways out.
+  - 🔴 **DO NOT TOUCH (stale-field defect 2):** a future fix that clears every key the rollup omits must NOT clear
+    `btcHeld`, or every correction vanishes on the next re-roll. `provisional-clears-on-reading-spec-v1` is the scoped
+    precedent — it fixed `provisional` only.
+  - **Rejected: a bridge guard that keeps `base.btcHeld` over a carry-forward.** The bridge has no provenance:
+    - **SE1** — a carry-forward would freeze instead of re-tracking the prior month's later reading;
+    - **SE2** — a deleted reading's figure would outlive it.
+
+    The sound fix is an entry-level provenance field (`btcHeldStated?`) — its own spec.
+  - The overlay's ← / → paging ignores key presses while an input has focus. They move the caret, and paging would
+    discard what was typed.
 
 The (pre-v20) computed-chain model, kept for history:
 
@@ -1483,6 +1539,9 @@ store, no UI, no sync.
   `collateralAdjustment`/`source`/`confirmed`/`cbCollateral` (spec v3: it carries `btcHeld` iff the reading states
   `strikeCollateral`). **Carry-forward** (LD6 backfill exception):
   flows present but no `balanceReading` + `priorStocks` given → stocks borrowed from `priorStocks` + `provisional:true`.
+  ⚠ A reading emits **`provisional: false` EXPLICITLY** (not an omitted key) — `rerollMonth` spreads the rollup over the
+  stored entry, so an omitted key let a stale `true` survive the very reading the ReviewSheet asked for
+  (`provisional-clears-on-reading-spec-v1`). Flows with no reading and no priorStocks → the key is absent.
   Empty month → `{ entry: {}, collateralDelta: 0 }`. `bucketEventToMonth(date, advisorStartDate)` = the
   calendar-anniversary month clock (`getCurrentStrategyMonth` now delegates to it — see the Strategy-Month
   Calendar Fix section). `collateralDelta` is the extracted `strikeCollateralDelta` (reused by the reconcile).
@@ -1863,7 +1922,13 @@ the existing entry + `confirmed:true` and **preserves `provisional`**; a real `b
 - **Orthogonal-flags model:** confirming does NOT clear provisional; a reading does. So a provisional month can
   be confirmed-as-provisional (honest sign-off when the past reading is unavailable) and later upgraded by
   adding a reading. Editing a confirmed month flips `confirmed→false` (LD4 reopen-on-edit, already built) → the
-  banner reappears. Correct, left as-is.
+  banner reappears. Correct, left as-is. **The reading half is now true:** `rollupMonth`'s reading branch emits
+  `provisional: false` explicitly, so a reading clears a stored `true` on the next re-roll. ⚠ **`sameRollupFields`
+  deliberately does NOT compare `provisional`** — it is a data-quality label, not a figure a sign-off attests, and
+  comparing it made a joining device's one-shot reconcile re-roll (and un-sign) every month whose flag differed
+  (legacy `undefined` vs `false`, or a stale `true`). Never restore the compare, strict or `?? false`. Accepted cost: a
+  stale flag stays until the month's next natural re-roll, and that re-roll also un-signs it (LD4). No one-shot sweep —
+  a second device-local one-shot is exactly what carried the hazard to new devices.
 - **Banner rule (the subtle one):** show iff the current month's entry is **unconfirmed** (`confirmed ===
   false`; `needsReview = needsConfirm`). Copy branches on `provisional`. So confirm-as-provisional (sets
   `confirmed:true`) removes the banner even though provisional persists — a confirmed-but-provisional month is
@@ -1900,7 +1965,10 @@ owns the label, no duplicate) — the Calendar **date math is unchanged** (it re
 its existing `currentMonth` prop). Buttons disable at the bounds (‹ at Month 1, › at the current month).
 **Week scope unaffected** (about specific days); entering Month scope resets `viewedMonth` to `currentMonth`
 (`useEffect` on `scope`/`currentMonth`). The **FAB still logs to today/`selectedDay`** (backfill INTO a viewed
-past month is not wired this phase). Store / `buildMonthRollup` / `confirmMonth` / Monthly view unchanged.
+past month is not wired this phase). ⚠ The ReviewSheet's **"Add balance reading" is the exception**: it targets
+`readingTargetDate(selectedDay, advisorStartDate, safeViewedMonth, today)` (`calendarModel.ts`, pure) — `selectedDay`
+when it is inside the reviewed month, else that month's last day ≤ today — because ‹ › moves `viewedMonth`, never
+`selectedDay`, and a reading added while reviewing a past month used to land in the current one. Store / `buildMonthRollup` / `confirmMonth` / Monthly view unchanged.
 
 ### P4c-3c — CB-section enrichment in SafetyDashboard (factual fix)
 
@@ -2209,6 +2277,16 @@ persisted/synced — §14.3). No store fields, no `tabOrder`/`ActiveTab` change.
   0) and exports an empty CSV cell. `coldMovedByMonth(dayLog, advisorStartDate)` (ledgerCsv.ts) = net `target:'cold'`
   deposits − withdrawals per month; `hasColdColumn` shows the column only when a month that HAS a row moved a non-zero
   amount (a viewer's `[]` dayLog → hidden). The column is a FLOW (summed in the totals row). Never stored on the entry.
+  **(ledger-cold-total-onboarding-date-spec-v2)** ONE tolerance, `COLD_EPS` (half a satoshi, `5e-9`), is shared by the
+  column gate, the totals and the footnote. It exists because a deposit and withdrawals netting to zero leave ~7e-18,
+  which `!== 0` passed. `coldTotals(entries, coldByMonth)` → `{ logged, unlogged }`, and ⚠ **the total stays
+  ROW-SCOPED** so the column foots (a totals cell that isn't the sum of the cells above can't be checked). Cold
+  movement in months with NO row (cold is journal-only, so a cold-only month never gets one) is DISCLOSED by
+  `coldFootnote` as a `‡` line below the table, with a `‡` on the total. With no column the line keeps no `‡` and says
+  the months have no row. Figures go through `fmtColdBtc`: 5 dp, widening to 8 dp when 5 dp would print a real move as
+  zero (never "0.00000" / "-0.00000"), and an exact 0 prints "0.00000". Per-month cells use `coldCell` (residue → "—");
+  the TOTAL is always a number. The CSV is unchanged apart from dropping a residue-only column, and still has NO totals
+  row or footnote.
 - **`src/components/Almanac/LedgerFace.tsx`** (+ `.module.css`) — face chrome (mono-uppercase "Ledger"
   title + framing line) → CSV actions (`.actionBtn` vocabulary mirrored from SharingPage: **Copy CSV** via
   `navigator.clipboard.writeText` in try/catch with a "Copied ✓"/"Copy failed" flash + **Download .csv** via
@@ -4490,8 +4568,51 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1357 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
-Coinbase debt events and the paydown badge was mutation-checked: revert the fix → the test goes red.)
+1395 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
+Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total and the daily-month collateral correction
+was mutation-checked: revert the fix → the test goes red.)
+- **`provisional` clears on a reading** (`provisional-clears-on-reading-spec-v1`, 16 tests; every ⭐ mutation-checked):
+  - `dailyMode.test.ts`:
+    - ⭐ a reading emits `provisional: false` explicitly;
+    - carry-forward → true, no stocks → absent;
+    - `sameRollupFields` IGNORES `provisional` (the old "differs … / provisional" case is INVERTED on purpose — never
+      restore the compare).
+  - `dailyModeStore.test.ts`:
+    - ⭐ adding a reading clears the flag (the ReviewSheet promise);
+    - ⭐ a legacy key-less entry and ⭐ a stale `true` are both inert to the reconcile;
+    - self-heal un-signs the month (LD4, pinned);
+    - delete → true again;
+    - F1 pins Correction 1's `sameRollupFields` premise;
+    - ⭐ 3b: a past-dated reading leaves current collateral at 0.6 (the mutation double-counts to 0.7) and records no
+      `btcHeld`.
+  - `calendarModel.test.ts`: ⭐ `readingTargetDate` (4 cases).
+  - `eventSheet.test.ts`: ⭐ `readingCollateralPolicy`, `readingComplete`'s waiver, and the builder omitting (never 0).
+- **Ledger cold total** (`ledger-cold-total-onboarding-date-spec-v2`, 7 tests):
+  - `ledgerCold.test.ts`:
+    - ⭐ logged/unlogged split;
+    - ⭐ the footing invariant;
+    - the visible total is unchanged;
+    - the four footnote rows;
+    - ⭐ one residue at all three sites (the premise is asserted first);
+    - ⭐ `COLD_EPS` hides no satoshi, and `fmtColdBtc` never prints a real move — or a zero — as `0.00000`/`-0.00000`.
+  - `recordedCollateralStore.test.ts`: ⭐ a backdated onboarding records collateral in TODAY's month; month 1 has no
+    row.
+- **Daily-month collateral correction** (`daily-month-collateral-edit-spec-v2`, 15 tests):
+  - `monthlyLogForm.test.ts`:
+    - ⭐ `source` preserved, never forced;
+    - ⭐ only null removes;
+    - byte-identical carry-through;
+    - ⭐ the strict parser rejects `'0.42abc'` / `'-1'` / `'1e-3'` / sub-satoshi / > 21M;
+    - ⭐ the durability truth table.
+  - `recordedCollateralStore.test.ts`:
+    - ⭐ a write to a SIGNED daily month lands (M2 satisfied);
+    - ⭐ `stable` survives a re-roll, starting signed so the LD4 reopen is real;
+    - `fragile` is overwritten;
+    - ⭐ the carry-forward re-tracks (SE1);
+    - a reading wins;
+    - Clear record;
+    - ⭐ the classifier matches real re-rolls on all 5 fixtures;
+    - ⭐ the `stable` hint's second clause (delete / backfill).
 - **Paydown badge** (45 tests — 33, plus 12 from paydown-badge-followup spec v2, listed in the last sub-bullet):
   - `src/simulation/__tests__/paydownPeak.test.ts` — sweeps both engines:
     - the sweep is non-vacuous (it reaches paid, partial and undefended months);

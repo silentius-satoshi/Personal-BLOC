@@ -55,6 +55,21 @@ export function monthDateRange(advisorStartDate: string, month: number): string[
 }
 
 /**
+ * The day a Review-sheet "Add balance reading" should target for strategy `month`. Keeps `selectedDay` when it is
+ * already inside that month and not in the future (the owner chose it); otherwise the LAST day of the month that is
+ * ≤ today — a reading states the month's closing position, and a future date can't be logged.
+ * null only when no day of the month is ≤ today (a future month; the Review banner never shows for one).
+ * ⚠ Exists because the Month-scope ‹ › nav moves the VIEWED month, never selectedDay — without this, a reading added
+ * while reviewing a past month landed in the current one (provisional-clears-on-reading-spec-v1, change 3).
+ * ISO string compare is correct here: every operand is a 'yyyy-mm-dd' string.
+ */
+export function readingTargetDate(selectedDay: string, advisorStartDate: string, month: number, today: string): string | null {
+  const days = monthDateRange(advisorStartDate, month).filter((d) => d <= today);
+  if (days.length === 0) return null;
+  return days.includes(selectedDay) ? selectedDay : days[days.length - 1];
+}
+
+/**
  * The 7 ISO dates (Monday→Sunday) of the week containing selectedDay. UTC-based / tz-safe.
  */
 export function weekDates(selectedDay: string): string[] {

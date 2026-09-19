@@ -1,10 +1,10 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { runAdvisor } from '../../simulation/runAdvisor';
 import type { MonthlyLogEntry } from '../../simulation/types';
 import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
-import { strikeColFragment } from './monthlyLogForm';
+import { strikeColFragment, collateralCorrection, correctionDurability, parseCollateralInput, DURABILITY_HINT } from './monthlyLogForm';
 import styles from './MonthlyLogSection.module.css';
 
 /**
@@ -48,9 +48,12 @@ function formFromEntry(e: MonthlyLogEntry): InlineForm {
   };
 }
 
-function InlineFormField({ label, value, onChange, step = 'any', prefix, suffix }: {
+function InlineFormField({ label, value, onChange, step = 'any', prefix, suffix, inputType = 'number', inputMode }: {
   label: string; value: string; onChange: (v: string) => void;
   step?: string; prefix?: string; suffix?: string;
+  // 'text' for the daily-month collateral correction: a number input hands React '' for ANY unparseable entry, so a
+  // typo would be indistinguishable from a blank there. Default 'number' — every existing field is unchanged.
+  inputType?: 'number' | 'text'; inputMode?: 'decimal';
 }) {
   return (
     <div className={styles.inlineFieldGroup}>
@@ -58,11 +61,13 @@ function InlineFormField({ label, value, onChange, step = 'any', prefix, suffix 
       <div className={styles.inlineFieldRow}>
         {prefix && <span className={styles.inlinePrefix}>{prefix}</span>}
         <input
-          type="number"
+          type={inputType}
+          inputMode={inputMode}
           className={styles.inlineInput}
           value={value}
-          step={step}
-          min="0"
+          step={inputType === 'number' ? step : undefined}
+          min={inputType === 'number' ? '0' : undefined}
+          autoComplete={inputType === 'text' ? 'off' : undefined}
           onChange={(e) => onChange(e.target.value)}
         />
         {suffix && <span className={styles.inlineSuffix}>{suffix}</span>}
@@ -87,12 +92,17 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   const upsertLogEntry  = useStore((s) => s.upsertLogEntry);
   const deleteLogEntry  = useStore((s) => s.deleteLogEntry);
   const unconfirmMonth  = useStore((s) => s.unconfirmMonth);   // §4 — daily months un-sign-off (never delete)
+  // Daily-month collateral correction. ⚠ Each selector on its OWN unconditional line — never combined with ||/&&
+  // (a short-circuited hook changes the hook count → React #311).
+  const dayLog          = useStore((s) => s.dayLog);
+  const viewerMode      = useStore((s) => s.viewerMode);
 
   const currentMonth = getCurrentStrategyMonth(advisorStartDate);
   const loggedCount  = monthlyLog.length;
 
   const [selectedIdx,   setSelectedIdx]   = useState(Math.min(currentMonth - 1, 11));
   const [detailEditing, setDetailEditing] = useState(false);
+  const [collateralEditing, setCollateralEditing] = useState(false);   // the NARROW daily-month collateral mode
   const [unlogConfirm,  setUnlogConfirm]  = useState(false);
   const [form, setForm] = useState<InlineForm>(emptyForm());
 
@@ -104,6 +114,15 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   // manual months (source undefined/'manual') stay editable. Undo on a daily month un-signs, never deletes.
   const isDaily      = loggedEntry?.source === 'daily';
   const isCurrent    = selectedMonthNum === currentMonth;
+  // How long a hand-entered collateral figure survives on THIS daily month (stated / stable / fragile).
+  const durability = useMemo(
+    () => (isDaily ? correctionDurability(dayLog, advisorStartDate, selectedMonthNum) : null),
+    [isDaily, dayLog, advisorStartDate, selectedMonthNum],
+  );
+  // The narrow mode renders only while it is still valid: a daily month the correction can hold. A reading that lands
+  // mid-edit (sync) makes it `stated` → the mode closes instead of offering a write the next re-roll would undo.
+  const showCollateralForm = collateralEditing && isDaily && durability !== null && durability !== 'stated';
+  const parsedCol = parseCollateralInput(form.strikeCol);
 
   const buildFormFromRow = (row: AdvisorMonthRow): InlineForm => {
     const paydown = Math.max(0, income - (hasCbLoan ? row.cbPayment : 0) - row.incomeToBtc);
@@ -124,6 +143,7 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setDetailEditing(false);
+    setCollateralEditing(false);   // never carry the narrow mode to another month (Save would write THERE)
     setUnlogConfirm(false);
     if (loggedEntry)   setForm(formFromEntry(loggedEntry));
     else if (projRow)  setForm(buildFormFromRow(projRow));
@@ -158,6 +178,17 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
 
   const setF = (field: keyof InlineForm) => (v: string) =>
     setForm((f) => ({ ...f, [field]: v }));
+
+  // The daily-month collateral correction — NEVER through the wide handleSave. Reads the entry FRESH (a render-time
+  // snapshot would spread stale rolled fields over a fresher entry). `null` = the explicit Clear record.
+  const saveCollateral = (btcHeld: number | null) => {
+    const s = useStore.getState();
+    const e = s.monthlyLog.find((m) => m.month === selectedMonthNum);
+    if (e?.source === 'daily' && correctionDurability(s.dayLog, s.advisorStartDate, selectedMonthNum) !== 'stated') {
+      upsertLogEntry(collateralCorrection(e, btcHeld));
+    }
+    setCollateralEditing(false);
+  };
 
   return (
     <div className={styles.section}>
@@ -230,11 +261,26 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
           </div>
           {/* Right-side buttons (only in view mode). §4 — daily months are read-only here (edit in the
               Ledger); the Remove action un-signs (reopen) rather than deleting. Manual months: Edit + Remove. */}
-          {!detailEditing && isLogged && (
+          {!detailEditing && !showCollateralForm && isLogged && (
             <div style={{ display: 'flex', gap: 6, flexShrink: 0 }}>
               {!isDaily && (
                 <button className={styles.editBtn} onClick={() => { setForm(formFromEntry(loggedEntry!)); setDetailEditing(true); setUnlogConfirm(false); }}>
                   Edit
+                </button>
+              )}
+              {/* A daily month's ONE editable field: its RECORDED Strike collateral (a record, not a rolled figure).
+                  Hidden when this month's balance reading states it (`stated`) and for viewers. */}
+              {isDaily && durability !== 'stated' && !viewerMode && (
+                <button
+                  className={styles.editBtn}
+                  onClick={() => {
+                    const e = useStore.getState().monthlyLog.find((m) => m.month === selectedMonthNum);
+                    setForm((f) => ({ ...f, strikeCol: e?.btcHeld != null ? e.btcHeld.toFixed(8) : '' }));
+                    setCollateralEditing(true);
+                    setUnlogConfirm(false);
+                  }}
+                >
+                  Set collateral
                 </button>
               )}
               {!unlogConfirm && (
@@ -269,8 +315,32 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
           </div>
         )}
 
-        {/* Inline edit form */}
-        {detailEditing && (isLogged || isCurrent) ? (
+        {!detailEditing && !showCollateralForm && isDaily && durability === 'stated' && (
+          <div className={styles.collateralNote}>{DURABILITY_HINT.stated}</div>
+        )}
+
+        {/* Narrow collateral mode (daily months) — ONE field, so editing any rolled-up figure is structurally
+            impossible here. The wide form below stays closed on a daily month. */}
+        {showCollateralForm ? (
+          <>
+            <div className={styles.collateralForm}>
+              <InlineFormField label="Strike collateral" value={form.strikeCol} onChange={setF('strikeCol')} prefix="₿" inputType="text" inputMode="decimal" />
+            </div>
+            <div className={styles.collateralNote}>{DURABILITY_HINT[durability!]}</div>
+            {form.strikeCol.trim() !== '' && parsedCol === null && (
+              <div className={styles.collateralError}>Enter a BTC amount, e.g. 0.42</div>
+            )}
+            <div className={styles.editFormActions}>
+              <button className={styles.saveBtn} disabled={parsedCol === null} onClick={() => { if (parsedCol !== null) saveCollateral(parsedCol); }}>
+                Save
+              </button>
+              <button className={styles.cancelEditBtn} onClick={() => setCollateralEditing(false)}>Cancel</button>
+              {loggedEntry?.btcHeld != null && (
+                <button className={styles.removeBtn} onClick={() => saveCollateral(null)}>Clear record</button>
+              )}
+            </div>
+          </>
+        ) : detailEditing && (isLogged || isCurrent) ? (
           <>
             <div className={styles.editFormGrid}>
               <InlineFormField label="BTC Bought"     value={form.btcBought}    onChange={setF('btcBought')}    step="0.00000001" prefix="₿" />
@@ -348,6 +418,13 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
               <span className={styles.fieldLabel}>Strike LTV</span>
               <span className={styles.fieldValue}>
                 {loggedEntry ? fmtLtvPct(loggedEntry.strikeLtv, 2) : '—'}
+              </span>
+            </div>
+            {/* RECORDED Strike collateral — "—" when never recorded, and on a projection (a projection is not a record). */}
+            <div className={styles.fieldCell}>
+              <span className={styles.fieldLabel}>Strike collateral</span>
+              <span className={styles.fieldValue}>
+                {loggedEntry?.btcHeld != null ? `${loggedEntry.btcHeld.toFixed(5)} ₿` : '—'}
               </span>
             </div>
             {hasCbLoan && (

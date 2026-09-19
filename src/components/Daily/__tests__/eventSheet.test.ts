@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, type SheetState } from '../eventSheetModel';
+import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, type SheetState } from '../eventSheetModel';
 
 const TODAY = '2026-06-28';
 const TS = 1_700_000_000_000;
@@ -216,5 +216,28 @@ describe('v20 — reading.strikeCollateral + autoStrikeCollateral + pledge', () 
   it('pledge OFF → [buy, reading] (no deposit)', () => {
     const out = buildEventsFromSheet({ ...FULL, type: 'buy', amount: 0.05, pledgeToStrike: false }, false, PRICE, TODAY, TS, idFactory(), CUR, 0);
     expect(out.map((e) => e.kind)).toEqual(['buy', 'balanceReading']);
+  });
+});
+
+// provisional-clears-on-reading-spec-v1, change 3b — a PAST-dated add never states Strike collateral. The only figure
+// the sheet knows is TODAY's; on a past date that is the app inferring history (and a double-count risk — see the
+// store test in dailyModeStore.test.ts).
+describe('readingCollateralPolicy — past-dated adds never state Strike collateral', () => {
+  const readingOf = (evs: ReturnType<typeof buildEventsFromSheet>) =>
+    (evs.find((e) => e.kind === 'balanceReading') as Extract<typeof evs[number], { kind: 'balanceReading' }>).reading;
+  it('⭐ today: required, falls back to the current total; past add: not required, NO fallback', () => {
+    expect(readingCollateralPolicy(false, 0.6)).toEqual({ required: true, fallback: 0.6 });
+    expect(readingCollateralPolicy(true, 0.6)).toEqual({ required: false, fallback: null });
+  });
+  it('readingComplete can waive the collateral field — and only when asked', () => {
+    const noColl = { ...FULL, strikeCollateral: null };
+    expect(readingComplete(noColl, false)).toBe(false);          // default: still required (today + edits unchanged)
+    expect(readingComplete(noColl, false, false)).toBe(true);
+    expect(readingComplete({ ...noColl, strikeBal: null }, false, false)).toBe(false);   // the balances still gate it
+  });
+  it('⭐ a null field + a null fallback OMITS strikeCollateral — never 0, never today\'s figure', () => {
+    const out = buildEventsFromSheet({ ...FULL, type: 'setBalance', amount: null, strikeCollateral: null }, false, PRICE, TODAY, TS, idFactory(), null, 0);
+    expect('strikeCollateral' in readingOf(out)).toBe(false);
+    expect(readingOf(out).strikeBal).toBe(5000);
   });
 });

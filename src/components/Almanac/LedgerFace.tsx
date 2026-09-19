@@ -1,7 +1,7 @@
 import { useMemo, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
-import { buildLedgerCsv, coldMovedByMonth, hasColdColumn } from '../../lib/ledgerCsv';
+import { buildLedgerCsv, coldMovedByMonth, hasColdColumn, coldTotals, coldFootnote, fmtColdBtc, COLD_EPS } from '../../lib/ledgerCsv';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel } from '../../simulation/cbMetrics';
 import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
@@ -17,7 +17,8 @@ import styles from './LedgerFace.module.css';
  * the only ornament. Strike LTV is zone-colored by fixed thresholds (Strike-only); CB LTV is colored by
  * the app's SHARED CB gauge logic (cbBarLevel + LEVEL_COLOR) so it matches the SafetyDashboard exactly.
  * "Strike col" is RECORDED (optional) — an unrecorded month shows "—", never 0. "→ Cold" is COMPUTED from the dayLog
- * (coldMovedByMonth), shown only when a logged month moved something into or out of cold.
+ * (coldMovedByMonth), shown only when a logged month moved something into or out of cold. Its total stays row-scoped
+ * (it foots); cold movement in months with NO row is disclosed in a ‡ footnote (coldTotals / coldFootnote).
  */
 
 // Strike LTV zone thresholds (Strike-only — NOT applied to CB). green < 10%, amber 10–13%, red > 13%.
@@ -35,6 +36,11 @@ const fmtPct = fmtLtvPct;
 /** A ₿ figure, or "—" when the month never recorded it (MonthlyLogEntry.btcHeld is optional — never shown as 0). */
 function btcOrDash(n: number | undefined) {
   return n != null ? <><span className={styles.btcPre}>₿</span>{fmtBtc(n)}</> : '—';
+}
+
+/** A → Cold figure: "—" for none or float residue (< COLD_EPS), else satoshi-honest (fmtColdBtc — never "0.00000"). */
+function coldCell(n: number | undefined) {
+  return n == null || Math.abs(n) < COLD_EPS ? '—' : <><span className={styles.btcPre}>₿</span>{fmtColdBtc(n)}</>;
 }
 
 function strikeZoneColor(ltv: number): string {
@@ -99,8 +105,11 @@ export default function LedgerFace() {
   const totIncome = rows.reduce((s, e) => s + e.income, 0);
   const totPaydown = rows.reduce((s, e) => s + e.paydown, 0);
   const totBought = rows.reduce((s, e) => s + e.btcBought, 0);
-  const totCold = rows.reduce((s, e) => s + (coldByMonth[e.month] ?? 0), 0);
   const totMining = rows.reduce((s, e) => s + (e.miningSats ?? 0), 0);
+
+  // → Cold — the total is ROW-SCOPED (it foots against the cells above); movement in months with no row is disclosed.
+  const { logged: totCold, unlogged: unloggedCold } = useMemo(() => coldTotals(rows, coldByMonth), [rows, coldByMonth]);
+  const coldNote = coldFootnote(unloggedCold, showCold);
 
   const copyLabel = copyState === 'ok' ? 'Copied ✓' : copyState === 'err' ? 'Copy failed' : 'Copy CSV';
 
@@ -163,7 +172,7 @@ export default function LedgerFace() {
                     <td className={`${styles.td} ${styles.stock}`}>{fmtUsd0(e.strikeBal)}</td>
                     <td className={`${styles.td} ${styles.stock}`}>{btcOrDash(e.btcHeld)}</td>
                     {showCold && (
-                      <td className={`${styles.td} ${styles.flow}`}>{btcOrDash(coldByMonth[e.month])}</td>
+                      <td className={`${styles.td} ${styles.flow}`}>{coldCell(coldByMonth[e.month])}</td>
                     )}
                     <td className={styles.td}>
                       <div className={styles.ltvCell}>
@@ -217,7 +226,13 @@ export default function LedgerFace() {
                 <td className={styles.totalTd}><span className={styles.btcPre}>₿</span>{fmtBtc(totBought)}</td>
                 <td className={styles.totalTd}>{fmtUsd0(latest.strikeBal)}</td>
                 <td className={styles.totalTd}>{btcOrDash(latest.btcHeld)}</td>
-                {showCold && <td className={styles.totalTd}>{btcOrDash(totCold)}</td>}
+                {showCold && (
+                  <td className={styles.totalTd}>
+                    {/* Always a number — a column that nets to zero totals ₿0.00000, never "—" (totCold is snapped). */}
+                    <span className={styles.btcPre}>₿</span>{fmtColdBtc(totCold)}
+                    {coldNote && <sup className={styles.note}>‡</sup>}
+                  </td>
+                )}
                 <td className={styles.totalTd}>{fmtPct(latest.strikeLtv)}</td>
                 {hasCbLoan && <td className={styles.totalTd}>{latest.cbBal != null ? fmtUsd0(latest.cbBal) : '—'}</td>}
                 {hasCbLoan && <td className={styles.totalTd}>{latest.cbLtv != null ? fmtPct(latest.cbLtv) : '—'}</td>}
@@ -231,6 +246,7 @@ export default function LedgerFace() {
         {anyNote && (
           <div className={styles.footnote}>† includes a non-draw / minimum payment.</div>
         )}
+        {coldNote && <div className={styles.footnote}>{coldNote}</div>}
         </>
       )}
     </div>

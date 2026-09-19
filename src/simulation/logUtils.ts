@@ -135,6 +135,8 @@ export function bucketEventToMonth(date: string, advisorStartDate: string): numb
  * iff present; btcHeld iff the reading carries strikeCollateral — RECORDED exactly like strikeBal, and ABSENT when the
  * reading doesn't state it: 0 is a real position, never a placeholder). cbCollateral is NEVER placed in entry (it feeds a
  * derived store value). collateralAdjustment/source/confirmed are NEVER set here (store-owned / P2-stamped).
+ * `provisional`: reading → false (EXPLICIT — see the reading branch); carry-forward → true; flows with no reading and no
+ * priorStocks → absent.
  * Carry-forward: flows but no reading + priorStocks → stocks from priorStocks (strikeCollateral → btcHeld included) +
  * provisional:true. Empty month → { entry: {}, collateralDelta: 0 }.
  */
@@ -193,6 +195,9 @@ export function rollupMonth(
     const latest = readings.reduce((a, b) => (b.ts >= a.ts ? b : a));
     entry.strikeBal = latest.reading.strikeBal;
     entry.strikeLtv = latest.reading.strikeLtv;
+    // A reading supplies real stocks — this month is no longer an estimate. EXPLICIT false, not an omitted key:
+    // rerollMonth spreads the rollup over the stored entry, so an omitted key would leave a stale `true` in place.
+    entry.provisional = false;
     if (latest.reading.cbBal !== undefined) entry.cbBal = latest.reading.cbBal;
     if (latest.reading.cbLtv !== undefined) entry.cbLtv = latest.reading.cbLtv;
     // Strike collateral is RECORDED from the reading, like strikeBal. ⚠ `!== undefined`, not truthiness — 0 is a real
@@ -259,15 +264,16 @@ const ROLLUP_NUM_KEYS = ['expensesActual', 'btcBought', 'income', 'paydown', 'st
 
 /**
  * True when the stored entry's rollup-owned fields already equal a fresh rollup (numbers normalized 0≡absent;
- * strikeMinSource/provisional strict). The reconcile's no-op guard — skip unchanged months (preserve confirmed,
- * no publish). `entry === undefined` ⇒ equal iff the fresh rollup is empty. Does NOT see collateralDelta (that's
- * compared separately — see strikeCollateralDelta).
+ * strikeMinSource strict). The reconcile's no-op guard — skip unchanged months (preserve confirmed, no publish).
+ * `entry === undefined` ⇒ equal iff the fresh rollup is empty. Does NOT see collateralDelta (that's compared
+ * separately — see strikeCollateralDelta).
+ * ⚠ `provisional` is deliberately NOT compared: it is a data-quality label, not a figure a sign-off attests, and
+ *   comparing it (strict OR `?? false`) reopens signed months on a joining device (provisional-clears-on-reading-spec-v1).
  */
 export function sameRollupFields(entry: MonthlyLogEntry | undefined, fresh: Partial<MonthlyLogEntry>): boolean {
   if (!entry) return Object.keys(fresh).length === 0;
   for (const k of ROLLUP_NUM_KEYS) if ((entry[k] ?? 0) !== (fresh[k] ?? 0)) return false;
   if ((entry.strikeMinSource ?? undefined) !== (fresh.strikeMinSource ?? undefined)) return false;
-  if ((entry.provisional ?? undefined) !== (fresh.provisional ?? undefined)) return false;
   return true;
 }
 
