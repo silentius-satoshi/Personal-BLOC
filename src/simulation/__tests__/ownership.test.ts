@@ -69,6 +69,25 @@ describe('deriveOwnership — one definition of "what\'s yours"', () => {
       expect(deriveOwnership(2.5, 100_000, 80_000)).toEqual(deriveOwnership(2.5, 100_000, 80_000, 0));
     });
 
+    it('totalHeld is the denominator the shares were actually divided by', () => {
+      // Returned so a caller renders the same total the shares came from. OwnershipBar used to re-derive
+      // it as `btcHeld + Math.max(0, coldBtc)` — a second rule for one number, eight lines from the
+      // comment forbidding that exact expression.
+      expect(deriveOwnership(1, 10_000, 50_000).totalHeld).toBe(1);          // 3-arg: just btcHeld
+      expect(deriveOwnership(1, 10_000, 50_000, 0.5).totalHeld).toBe(1.5);   // 4-arg: + the cold pool
+      const o = deriveOwnership(1, 10_000, 50_000, 0.5);
+      expect(o.yoursShare).toBeCloseTo(o.yoursBtc / o.totalHeld, 12);
+      expect(o.lendersShare).toBeCloseTo(o.lendersBtc / o.totalHeld, 12);
+    });
+
+    it('⭐ totalHeld is clamped INSIDE the function — a caller cannot re-add cold and get NaN', () => {
+      // `Math.max(0, NaN)` is NaN, so the caller-side re-add poisoned the displayed total while the
+      // shares beside it stayed plausible. The clamp belongs where the shares are computed.
+      expect(deriveOwnership(1, 10_000, 50_000, Number.NaN).totalHeld).toBe(1);
+      expect(deriveOwnership(1, 10_000, 50_000, -5).totalHeld).toBe(1);
+      expect(deriveOwnership(1, 10_000, 50_000, Number.POSITIVE_INFINITY).totalHeld).toBe(1);
+    });
+
     it('negative / non-finite cold cannot shrink the stack', () => {
       const bare = deriveOwnership(2.0, 80_000, 80_000);
       for (const bad of [-5, Number.NaN]) {

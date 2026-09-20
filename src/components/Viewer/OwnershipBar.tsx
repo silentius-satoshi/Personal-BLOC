@@ -29,7 +29,9 @@ const fmtShare = (share: number): string => `${Math.round(share * 100)}%`;
 
 export function OwnershipBar({ btcHeld, coldBtc = 0, debt, btcPrice }: OwnershipBarProps) {
   const o = deriveOwnership(btcHeld, debt, btcPrice, coldBtc);
-  const totalHeld = btcHeld + Math.max(0, coldBtc);
+  // ⚠ NEVER re-add cold here — deriveOwnership owns the clamp (NaN/∞/negative), and re-deriving the
+  // denominator under a different rule is how the displayed total stops matching the shares beside it.
+  const totalHeld = o.totalHeld;
   if (!o.hasData) return null;   // nothing to split — render NOTHING, not an empty bar
 
   const usd = (btc: number) => fmtUSD(btc * btcPrice);
@@ -41,7 +43,7 @@ export function OwnershipBar({ btcHeld, coldBtc = 0, debt, btcPrice }: Ownership
     <div className={styles.card}>
       <div className={styles.head}>
         <span className={styles.title}>Who holds the coins</span>
-          <span className={styles.total}>{fmtBtc(totalHeld)} held</span>
+        <span className={styles.total}>{fmtBtc(totalHeld)} held</span>
       </div>
 
       {/* Decorative — the cells below carry the numbers. Mirrors VenueBar's role="img" pattern. */}
@@ -61,10 +63,10 @@ export function OwnershipBar({ btcHeld, coldBtc = 0, debt, btcPrice }: Ownership
           <div className={`${styles.cellVal} ${styles.valOwed}`}>{fmtBtc(o.lendersBtc)}</div>
           <div className={styles.cellSub}>{usd(o.lendersBtc)} · {fmtShare(o.lendersShare)}</div>
         </div>
-          <div className={`${styles.cell} ${styles.cellRule}`}>
-            <div className={styles.cellKey}>Held</div>
-            <div className={`${styles.cellVal} ${styles.valHeld}`}>{fmtBtc(totalHeld)}</div>
-            <div className={styles.cellSub}>{usd(totalHeld)}</div>
+        <div className={`${styles.cell} ${styles.cellRule}`}>
+          <div className={styles.cellKey}>Held</div>
+          <div className={`${styles.cellVal} ${styles.valHeld}`}>{fmtBtc(totalHeld)}</div>
+          <div className={styles.cellSub}>{usd(totalHeld)}</div>
         </div>
       </div>
     </div>

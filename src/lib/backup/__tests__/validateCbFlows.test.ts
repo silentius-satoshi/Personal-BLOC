@@ -40,3 +40,28 @@ describe('validatePlanBackup — draw/paydown target + fee', () => {
     expect(validatePlanBackup(withEvent({ kind: 'draw', amount: 5000, target: 'cb', fee: -1 })).ok).toBe(false);
   });
 });
+
+describe('validatePlanBackup — deposit/withdraw target (all three venues)', () => {
+  it('accepts every known venue, on both kinds', () => {
+    for (const kind of ['deposit', 'withdraw'] as const) {
+      for (const target of ['strike', 'cb', 'cold'] as const) {
+        expect(validatePlanBackup(withEvent({ kind, amount: 0.05, target })).ok,
+          `${kind} → ${target}`).toBe(true);
+      }
+    }
+  });
+
+  it('⭐ rejects a PRESENT-but-unknown venue — it would restore clean, then silently vanish', () => {
+    // isMonthlyMeaningful wants 'strike' and isColdMove wants 'cold', so an unknown venue is dropped as
+    // journal-only by every consumer: a collateral move that disappears with no error anywhere.
+    expect(validatePlanBackup(withEvent({ kind: 'deposit', amount: 0.05, target: 'vault' })).ok).toBe(false);
+    expect(validatePlanBackup(withEvent({ kind: 'withdraw', amount: 0.05, target: 'vault' })).ok).toBe(false);
+  });
+
+  it('⭐ still accepts an ABSENT target — a backup this app wrote before the field existed', () => {
+    // ⚠ The `!== undefined` arm is deliberate and must not be tightened: rejecting an absent target would
+    // make a restore refuse a file this very app could have produced. Mirrors the draw/paydown rule.
+    expect(validatePlanBackup(withEvent({ kind: 'deposit', amount: 0.05 })).ok).toBe(true);
+    expect(validatePlanBackup(withEvent({ kind: 'withdraw', amount: 0.05 })).ok).toBe(true);
+  });
+});

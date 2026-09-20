@@ -75,7 +75,6 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const dayLog                = useStore((s) => s.dayLog);
   const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);
   const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
-  const setCbLiquidationPriceAsOf = useStore((s) => s.setCbLiquidationPriceAsOf);
   // §2b — Strike minimum payment context
   const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
   const blocMinPaymentDueDay = useStore((s) => s.blocMinPaymentDueDay);
@@ -394,8 +393,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       }
       updateDayEvent(updated);
       if ((editEvent.kind === 'deposit' || editEvent.kind === 'withdraw') && editEvent.target === 'cb' && cbLiqPrice !== null) {
-        setCbLiquidationPrice(cbLiqPrice);
-        setCbLiquidationPriceAsOf(todayLocalISO());
+        setCbLiquidationPrice(cbLiqPrice);   // pairs its own AsOf stamp (cbLoanSlice) — one emit, no tear
       }
       reset();
       onClose();
@@ -413,8 +411,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
       : events;
     toWrite.forEach((e) => addDayEvent(e));
     if (type === 'collateral' && effectiveTarget === 'cb' && cbLiqPrice !== null) {
-      setCbLiquidationPrice(cbLiqPrice);
-      setCbLiquidationPriceAsOf(todayLocalISO());
+      setCbLiquidationPrice(cbLiqPrice);   // pairs its own AsOf stamp (cbLoanSlice) — one emit, no tear
     }
     reset();
     onClose();

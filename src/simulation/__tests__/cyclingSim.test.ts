@@ -216,11 +216,30 @@ describe('runCyclingSim — sweep cascade + emergency top-up', () => {
   const geo = (months: number, annualPct: number) =>
     Array.from({ length: months + 1 }, (_, i) => PRICE * Math.pow(1 + annualPct / 100 / 12, i));
 
-  it('⭐ the migration is tied to the sweep — with the sweep off the Strike collateral stays fixed', () => {
+  it('⭐ byte-identical only when BOTH are off — no sweep AND no defense means no migration', () => {
+    // The migration runs for `coldOn || defend`. This run passes neither, so the Strike pledge is frozen
+    // exactly as the pre-cascade engine left it. That is the byte-identical guarantee; the companion test
+    // below pins the other half (defense alone is enough to move it).
     const rising = geo(120, 25);
     const off = run({ pricePath: rising, cbLtvCapPct: 50, cycleMonths: 1 });
     expect(off.totalStrikeToCbBtc).toBe(0);
     for (const x of off.rows) expect(x.strikeCollateralBtc).toBe(LIVE.strikeCollateralBtc);
+  });
+
+  it('⭐ the cascade runs for the DEFENSE alone — sweep off, defend on, collateral still migrates', () => {
+    // The migration's own justification is a defense one: the freed collateral is CB headroom that lets
+    // more cheap debt refinance under the stop. Gating it on the sweep meant a user who turned the sweep
+    // off silently lost it. ⚠ Non-vacuous by construction — keepForLine (38,000 / (price × 0.5) = 0.974 ₿
+    // at the opening price) already sits below the 1.0 ₿ pledge, and falls further as price rises.
+    const rising = geo(120, 25);
+    const r = run({ pricePath: rising, cbLtvCapPct: 50, cycleMonths: 1, defendCbLtv: true });
+    expect(r.totalStrikeToCbBtc).toBeGreaterThan(0);
+    expect(r.last.strikeCollateralBtc).toBeLessThan(LIVE.strikeCollateralBtc);
+    // With the sweep off the coins stop at Coinbase — nothing goes on to cold, and the pools still balance.
+    expect(r.totalColdBtc).toBe(0);
+    for (const x of r.rows) {
+      expect(x.strikeCollateralBtc + x.cbCollateralBtc + x.coldBtc).toBeCloseTo(x.btcHeld, 9);
+    }
   });
 
   it('⭐ cascade: the Strike surplus migrates to Coinbase at the cadence, then the CB sweep moves it to cold', () => {
@@ -283,6 +302,68 @@ describe('runCyclingSim — sweep cascade + emergency top-up', () => {
         expect(r.rows[m].topUpBtc).toBe(0);
       }
     }
+  });
+});
+
+describe('runCyclingSim — openingColdBtc seeds the pool with the owner\'s REAL reserve', () => {
+  /** Deep enough that the Strike line runs out and the shift leaves a shortfall — which is the only thing
+   *  that calls the top-up, and therefore the only thing that can spend the seed. Sweep OFF throughout, so
+   *  every cold figure here comes from the seed and nothing else. */
+  const hardCrash = [78_000, 60_000, 55_000, 50_000, 45_000, 30_000, ...new Array(6).fill(30_000)];
+  const CRASH = { pricePath: hardCrash, cbLtvCapPct: 50, defendCbLtv: true, cycleMonths: 999, strikeCreditLine: 20_000 };
+
+  it('⭐ omitted is 0, and an explicit 0 is byte-identical to omitting it', () => {
+    const omitted = run({ pricePath: flat(60), cbLtvCapPct: 50 });
+    const zero = run({ pricePath: flat(60), cbLtvCapPct: 50, openingColdBtc: 0 });
+    expect(omitted.openingColdBtc).toBe(0);
+    expect(zero.rows).toEqual(omitted.rows);
+    expect(zero.baselineBtc).toBe(omitted.baselineBtc);
+    // Junk seeds degrade to 0 the same way coldStoreBufferPct does — never NaN in a pool figure.
+    for (const bad of [-5, NaN, Infinity] as number[]) {
+      const r = run({ pricePath: flat(60), cbLtvCapPct: 50, openingColdBtc: bad });
+      expect(r.openingColdBtc).toBe(0);
+      expect(r.rows).toEqual(omitted.rows);
+    }
+  });
+
+  it('⭐ the seed is SPENT by the emergency top-up — and it survives a crash that liquidates without it', () => {
+    // Before this input the engine's cold pool started at 0, so topUpToCbLtv's documented "cold reserve
+    // FIRST" could only ever spend coins the simulation itself had swept — while deriveOwnership was
+    // already counting the owner's real reserve. The two disagreed about whether that reserve exists.
+    const unseeded = run(CRASH);
+    const seeded = run({ ...CRASH, openingColdBtc: 0.75 });
+    expect(unseeded.totalColdRetrievedBtc).toBe(0);            // nothing to spend without a seed
+    expect(seeded.firstTopUpMonth).toBe(1);                    // the top-up is what reaches for it
+    expect(seeded.totalColdRetrievedBtc).toBeCloseTo(0.75, 9); // ...and it needed the WHOLE reserve
+    expect(seeded.totalColdBtc).toBeCloseTo(0, 9);             // drained, so the pool nets to zero
+    // The invariant: a reserve can only ever push liquidation later, never earlier.
+    expect(unseeded.liqMonth).not.toBeNull();
+    expect(seeded.liqMonth ?? Number.MAX_SAFE_INTEGER).toBeGreaterThan(unseeded.liqMonth!);
+    // ⚠ FIXTURE-BOUND absolutes: on this crash the unseeded run breaches at month 5 and 0.75 ₿ of real
+    // reserve removes the breach from the horizon outright. The ORDERING above is the finding.
+    expect(unseeded.liqMonth).toBe(5);
+    expect(seeded.liqMonth).toBeNull();
+  });
+
+  it('the cold ledger still foots: opening + fromCb + fromStrike − retrieved === totalColdBtc', () => {
+    const r = run({ ...CRASH, openingColdBtc: 0.75 });
+    expect(r.openingColdBtc).toBe(0.75);
+    expect(r.openingColdBtc + r.totalColdFromCb + r.totalColdFromStrike - r.totalColdRetrievedBtc)
+      .toBeCloseTo(r.totalColdBtc, 9);
+    // And per row — the running pool never invents or loses a coin either.
+    for (const x of r.rows) {
+      expect(0.75 + x.coldFromCb + x.coldFromStrike - x.coldRetrievedBtc).toBeCloseTo(x.coldBtc, 9);
+      expect(x.strikeCollateralBtc + x.cbCollateralBtc + x.coldBtc).toBeCloseTo(x.btcHeld, 9);
+    }
+  });
+
+  it('⭐ the never-draw BASELINE gets the seed too — the owner holds that reserve either way', () => {
+    // Omitting it would credit the strategy with coins it never earned, inflating the verdict by exactly
+    // the seed. The baseline's own comment says it compares against "the untouched opening position", and
+    // an unpledged reserve is part of that position.
+    const unseeded = run({ pricePath: flat(60), cbLtvCapPct: 50 });
+    const seeded = run({ pricePath: flat(60), cbLtvCapPct: 50, openingColdBtc: 0.75 });
+    expect(seeded.baselineBtc - unseeded.baselineBtc).toBeCloseTo(0.75, 12);
   });
 });
 

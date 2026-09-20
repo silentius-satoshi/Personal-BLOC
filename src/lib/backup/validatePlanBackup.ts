@@ -55,6 +55,13 @@ function validateDayEvent(e: unknown): boolean {
     if (e.target !== undefined && e.target !== 'strike' && e.target !== 'cb') return false;
     if (e.fee !== undefined && !(typeof e.fee === 'number' && Number.isFinite(e.fee) && e.fee >= 0)) return false;
   }
+  if (e.kind === 'deposit' || e.kind === 'withdraw') {
+    // target is REQUIRED by the type, but validate it the same permissive way as draw/paydown: reject a
+    // PRESENT-but-unknown venue (which every consumer silently drops as journal-only — isMonthlyMeaningful
+    // wants 'strike', isColdMove wants 'cold', so a collateral move would vanish with no error), and never
+    // reject a whole backup over an ABSENT one. 'cold' joined the union with the cold-storage ledger.
+    if (e.target !== undefined && e.target !== 'strike' && e.target !== 'cb' && e.target !== 'cold') return false;
+  }
   return true;
 }
 

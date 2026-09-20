@@ -11,22 +11,28 @@
  * routes through cbMetrics / computeStrikeLtv (architecture invariant 2). This module imports NOTHING;
  * it is a leaf like viewerVenue.ts.
  *
- * ⚠ Shares are a share of `btcHeld` — the COIN COUNT, never the value. `yoursBtc + lendersBtc ≡ btcHeld`
- * exactly (both derive from the same price), so the pre-clamp ratios sum to 1 identically; clamping each
- * to [0,1] therefore preserves the sum in every case — including underwater, where one goes negative and
- * the other exceeds 1, landing on 0 and 1.
+ * ⚠ Shares are a share of `totalHeld` — the COIN COUNT, never the value. `yoursBtc + lendersBtc ≡
+ * totalHeld` exactly (both derive from the same price), so the pre-clamp ratios sum to 1 identically;
+ * clamping each to [0,1] therefore preserves the sum in every case — including underwater, where one goes
+ * negative and the other exceeds 1, landing on 0 and 1.
  */
 
 export interface Ownership {
-  /** btcHeld − debt/price — exact, may be negative (underwater). */
+  /** totalHeld − debt/price — exact, may be negative (underwater). */
   yoursBtc: number;
-  /** debt/price — exact; together with `yoursBtc`, ≡ `btcHeld`. */
+  /** debt/price — exact; together with `yoursBtc`, ≡ `totalHeld`. */
   lendersBtc: number;
-  /** clamp01(yoursBtc / btcHeld); 0 when !hasData. */
+  /**
+   * btcHeld + the CLAMPED cold pool — THE denominator every share here was divided by. Returned so a
+   * caller renders the same total the shares were computed from instead of re-adding it under a different
+   * rule (a `Math.max(0, coldBtc)` re-add yields NaN for NaN; this cannot).
+   */
+  totalHeld: number;
+  /** clamp01(yoursBtc / totalHeld); 0 when !hasData. */
   yoursShare: number;
-  /** clamp01(lendersBtc / btcHeld); 0 when !hasData. */
+  /** clamp01(lendersBtc / totalHeld); 0 when !hasData. */
   lendersShare: number;
-  /** A denominator exists (btcHeld > 0) — the shares are meaningful and sum to 1. */
+  /** A denominator exists (totalHeld > 0) — the shares are meaningful and sum to 1. */
   hasData: boolean;
 }
 
@@ -46,6 +52,7 @@ export function deriveOwnership(btcHeld: number, debt: number, price: number, co
   return {
     yoursBtc,
     lendersBtc,
+    totalHeld,
     yoursShare: hasData ? clamp01(yoursBtc / totalHeld) : 0,
     lendersShare: hasData ? clamp01(lendersBtc / totalHeld) : 0,
     hasData,

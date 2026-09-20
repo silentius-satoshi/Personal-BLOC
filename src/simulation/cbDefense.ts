@@ -70,6 +70,15 @@ const ltvOf = (debt: number, coll: number, price: number): number =>
   coll * price > 0 ? debt / (coll * price) : debt > 0 && coll <= 0 ? Number.POSITIVE_INFINITY : 0;
 
 /**
+ * How far INSIDE its margin-call line the emergency top-up leaves Strike.
+ *
+ * Bounding `strikeAvailable` at `marginLtv` itself put an exhausting top-up EXACTLY ON the call line, so
+ * cyclingSim's `strikeLtv >= strikeMarginLtv` fired in the same month — a second liquidation, not a last
+ * resort. Exported as a named constant so a future spec can make it an input without touching call sites.
+ */
+export const TOPUP_MARGIN_BUFFER = 0.05;
+
+/**
  * Compute the debt-shift defense at `price`: how much CB debt must move to Strike to restore the cap, how
  * much Strike can actually fund, and the post-defense position. Guarded so a zero/negative price or
  * collateral never produces NaN — a capacity of 0 with a positive shortfall is the honest answer there.
@@ -91,7 +100,6 @@ export function defendCbLtv(input: CbDefenseInput): CbDefenseResult {
   const shortfallUsd = Math.max(0, paydownNeededUsd - drawUsd);
   const cbDebtAfter = Math.max(0, input.cbDebt - drawUsd);
   const newSkDrawn = Math.max(0, input.strikeBalance) + drawUsd;
-  const skValue = input.strikeCollateralBtc * input.price;
   const recoveryPrice = target > 0 && input.cbCollateralBtc > 0
     ? cbDebtAfter / (target * input.cbCollateralBtc)
     : 0;
@@ -104,7 +112,10 @@ export function defendCbLtv(input: CbDefenseInput): CbDefenseResult {
     fullyDefended: shortfallUsd <= 0,
     cbDebtAfter,
     cbLtvAfter: ltvOf(cbDebtAfter, input.cbCollateralBtc, input.price),
-    skLtvAfter: skValue > 0 ? newSkDrawn / skValue : 0,
+    // ⚠ BOTH LTVs route through `ltvOf` — the whole point of this module is one definition that cannot
+    // drift. A `skValue > 0 ? … : 0` fallback reported 0% for a Strike balance with NO collateral behind
+    // it: the worst position in the app rendered as perfectly safe. Any consumer must use `fmtLtvPct`.
+    skLtvAfter: ltvOf(newSkDrawn, input.strikeCollateralBtc, input.price),
     skMarginCallPriceAfter:
       input.marginLtv > 0 && input.strikeCollateralBtc > 0
         ? newSkDrawn / (input.strikeCollateralBtc * input.marginLtv)
@@ -123,7 +134,8 @@ export interface CbTopUpInput {
   coldBtc: number;
   strikeCollateralBtc: number;
   strikeBalance: number;
-  /** Strike's margin-call LTV: the LAST-resort bound. The line's own backing may be sacrificed. */
+  /** Strike's margin-call LTV. The LAST-resort bound is a `TOPUP_MARGIN_BUFFER` STEP INSIDE it, never it:
+   *  the line's own backing may be sacrificed, but the top-up must not walk Strike onto its own call. */
   marginLtv: number;
 }
 
@@ -142,7 +154,8 @@ export interface CbTopUpResult {
 
 /**
  * Emergency collateral top-up: grow the CB denominator from the cold reserve first, then from the Strike
- * collateral above its margin requirement (the true last resort — it sacrifices the 50% line backing).
+ * collateral above `marginLtv × (1 − TOPUP_MARGIN_BUFFER)` — the true last resort, which sacrifices the
+ * 50% line backing but STOPS A BUFFER SHORT of the margin call rather than landing on it.
  * Pure; guarded so zero price / zero collateral never yields NaN.
  */
 export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
@@ -151,8 +164,12 @@ export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
   const requiredBtc = canPrice ? Math.max(0, input.cbDebt / (target * input.price) - input.cbCollateralBtc) : 0;
   const fromColdBtc = Math.min(requiredBtc, Math.max(0, input.coldBtc));
   const remaining = requiredBtc - fromColdBtc;
-  const strikeAvailable = canPrice && input.marginLtv > 0
-    ? Math.max(0, input.strikeCollateralBtc - Math.max(0, input.strikeBalance) / (input.marginLtv * input.price))
+  // ⚠ Bounded a buffer INSIDE the call line, never on it. Consequence to expect: a leg already inside the
+  // buffer now yields ZERO available collateral where it previously yielded a sliver taken right up to the
+  // call. Zero is the correct answer there — the sliver bought nothing and triggered the margin call.
+  const bound = input.marginLtv * (1 - TOPUP_MARGIN_BUFFER);
+  const strikeAvailable = canPrice && bound > 0
+    ? Math.max(0, input.strikeCollateralBtc - Math.max(0, input.strikeBalance) / (bound * input.price))
     : 0;
   const fromStrikeBtc = Math.min(remaining, strikeAvailable);
   const topUpBtc = fromColdBtc + fromStrikeBtc;

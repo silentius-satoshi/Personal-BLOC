@@ -68,6 +68,15 @@ export interface CyclingInputs {
    */
   coldStoreBufferPct?: number;
 
+  /**
+   * The owner's REAL unpledged reserve at month 0 (`getCurrentColdBtc()`). Optional, defaults to 0, so
+   * every pre-existing call site is byte-identical. Seeds the cold pool so the emergency top-up's FIRST
+   * source is the reserve that actually exists, instead of only the coins this simulation itself swept.
+   *
+   * ⚠ NOT wired from the faces yet — that changes every projection and needs its own spec.
+   */
+  openingColdBtc?: number;
+
   /** price[m] for m = 0..N. The view builds it (plConvergencePath); the engine never derives a price. */
   pricePath: number[];
   /** Calendar year of month 0 — LABEL SEED ONLY, never used in math (keeps the engine clock-free). */
@@ -156,8 +165,9 @@ export interface CyclingRow {
   cbCollateralBtc: number;
   /** Cumulative NET BTC in cold storage. UNPLEDGED — never in any LTV denominator, never seizable. */
   coldBtc: number;
-  /** Split of the GROSS swept amount by origin (`coldFromCb + coldFromStrike − coldRetrievedBtc` =
-   *  `coldBtc`). Coinbase because the loan de-levers; Strike because a FIXED credit line needs ever less
+  /** Split of the GROSS swept amount by origin (`openingColdBtc + coldFromCb + coldFromStrike −
+   *  coldRetrievedBtc` = `coldBtc`; the opening reserve is a THIRD origin these two do not carry).
+   *  Coinbase because the loan de-levers; Strike because a FIXED credit line needs ever less
    *  collateral as price rises (the migrated coins are attributed FIFO when the CB leg sweeps them on). */
   coldFromCb: number;
   coldFromStrike: number;
@@ -218,8 +228,12 @@ export interface CyclingResult {
   totalColdRetrievedBtc: number;
   baselineEquity: number;               // "never draw" comparison, on the SAME price path
   baselineBtc: number;
-  /** NET BTC in cold storage at the end of the run (0 when the sweep is off); gross swept =
-   *  totalColdFromCb + totalColdFromStrike, and gross − totalColdRetrievedBtc === this. */
+  /** The reserve the run STARTED with (`openingColdBtc`, 0 when not supplied). Reported so the cold ledger
+   *  foots: opening + totalColdFromCb + totalColdFromStrike − totalColdRetrievedBtc === totalColdBtc. */
+  openingColdBtc: number;
+  /** NET BTC in cold storage at the end of the run (the opening reserve when the sweep is off and nothing
+   *  was retrieved); gross swept = totalColdFromCb + totalColdFromStrike, and
+   *  opening + gross − totalColdRetrievedBtc === this. */
   totalColdBtc: number;
   totalColdFromCb: number;
   totalColdFromStrike: number;
@@ -286,7 +300,12 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let defenseExhaustedMonth: number | null = null;
   let totalDefenseDrawnUsd = 0;
   let defenseCount = 0;
-  let coldBtc = 0;
+  // The opening reserve seeds the pool. ⚠ `Number.isFinite && > 0`, NOT `Math.max(0, x)` — the latter
+  // returns NaN for NaN, which would poison every pool figure instead of clamping it (ownership.ts's rule).
+  let coldBtc = Number.isFinite(inputs.openingColdBtc) && (inputs.openingColdBtc ?? 0) > 0
+    ? (inputs.openingColdBtc as number)
+    : 0;
+  const openingColdBtc = coldBtc;
   let coldFromCb = 0;
   let coldFromStrike = 0;
   let coldRetrievedBtc = 0;
@@ -362,7 +381,12 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // rest into the CB pool BEFORE the refinance — the freed collateral is headroom that lets more
         // cheap debt move under the stop in the same month. The CB leg then sweeps the true excess on to
         // cold. ⚠ If Strike ever RAISES the line, this collateral is what you'd need back.
-        if (coldOn && m % cycle === 0 && price > 0 && strikeColl > 0) {
+        // ⚠ Gated on the SWEEP **or** the DEFENSE. The migration's own justification above is a DEFENSE
+        // one — freed collateral is CB headroom that lets more cheap debt move under the stop — so it must
+        // run when the defense is on even with the sweep off. With the sweep off `coldBuffer` is 0, so
+        // `stressed` is the raw price: the honest reading of "no buffer requested". Byte-identical to the
+        // pre-A3 engine only when BOTH are off.
+        if ((coldOn || defend) && m % cycle === 0 && price > 0 && strikeColl > 0) {
           const stressed = price * (1 - coldBuffer);
           const keepForLine = strikeCreditLine / (stressed * strikeMaxDrawLtv);
           const keepForMargin = strikeMarginLtv > 0 ? strikeBal / (strikeMarginLtv * stressed) : 0;
@@ -565,7 +589,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let baseStrikeBal = inputs.strikeBalance;
   // Compare against the untouched opening position. `strikeColl` may have been reduced by the optional
   // cold-storage sweep above; using it here would make the baseline pay for the strategy's own transfer.
-  let baseBtc = inputs.strikeCollateralBtc + inputs.cbCollateralBtc;
+  // ⚠ `openingColdBtc` IS part of the untouched opening position — the owner holds that reserve in the
+  // never-draw world too. Omitting it would credit the strategy with coins it never earned, inflating the
+  // verdict by exactly the seed (0 today, since no caller passes one).
+  let baseBtc = inputs.strikeCollateralBtc + inputs.cbCollateralBtc + openingColdBtc;
   const surplus = Math.max(0, income - expenses);
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;
@@ -584,6 +611,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
     totalStrikeToCbBtc, totalColdRetrievedBtc: coldRetrievedBtc,
     baselineEquity, baselineBtc: baseBtc,
+    openingColdBtc,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
   };
 }

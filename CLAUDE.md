@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1395 tests — all must pass before every commit)
+- Vitest (1407 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -162,20 +162,35 @@ src/
                                 # sweeps only up to the remaining CB headroom (cbMaxDrawForHeadroom), so it
                                 # shifts the debt back on recovery without re-breaching. If the line still
                                 # leaves LTV above the stop, the FALLBACK top-up moves collateral into the CB
-                                # pool — cold reserve first, then the Strike collateral above its margin
-                                # requirement. Row fields defenseDrawnUsd/cbLtvPreDefense/defenseShortfallUsd/
+                                # pool — cold reserve first, then the Strike collateral above
+                                # marginLtv×(1−TOPUP_MARGIN_BUFFER). Row fields defenseDrawnUsd/cbLtvPreDefense/
+                                # defenseShortfallUsd/
                                 # defended + strikeToCbBtc/topUpBtc/topUpFromColdBtc/topUpFromStrikeBtc/
                                 # coldRetrievedBtc (cumulative); result firstDefenseMonth/defenseExhaustedMonth/
                                 # totalDefenseDrawnUsd/defenseCount + firstTopUpMonth/topUpExhaustedMonth/
                                 # totalTopUpBtc/totalTopUpFromColdBtc/totalTopUpFromStrikeBtc/
-                                # totalStrikeToCbBtc/totalColdRetrievedBtc
+                                # totalStrikeToCbBtc/totalColdRetrievedBtc/openingColdBtc.
+                                # ⚠ `openingColdBtc?: number` (default 0 → every pre-existing call site
+                                # byte-identical) SEEDS the cold pool with the owner's REAL unpledged reserve,
+                                # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
+                                # added to the never-draw baseline (the owner holds it in that world too).
+                                # NOT wired from the faces — that is its own spec
     cbDefense.ts                # Debt-shift defense — ZERO-IMPORT leaf: strikeDrawCapacity(collBtc, drawn,
                                 # price, maxDrawLtv, creditLine=∞) = min(creditLine, collateral×price×maxDrawLtv)
                                 # − drawn; defendCbLtv(input) → paydown needed/capacity/draw/shortfall,
                                 # post-defense CB+Strike LTVs, Strike margin-call price, recovery price;
                                 # topUpToCbLtv(input) → requiredBtc/fromColdBtc/fromStrikeBtc/topUpBtc/
-                                # shortfallBtc/fullyDefended/cbLtvAfter (cold first, then Strike down to the
-                                # margin line at the current price). Consumed by cyclingSim (the automatic
+                                # shortfallBtc/fullyDefended/cbLtvAfter (cold first, then Strike down to
+                                # marginLtv×(1−TOPUP_MARGIN_BUFFER) at the current price — a buffer INSIDE
+                                # the call line, NEVER on it: the old bare-marginLtv bound landed an
+                                # exhausting top-up exactly on the line, so cyclingSim's strikeMarginMonth
+                                # fired the same month. TOPUP_MARGIN_BUFFER (0.05) is exported so a future
+                                # spec can make it an input. ⚠ A leg already inside the buffer now yields
+                                # ZERO, where it used to yield a sliver taken up to the call — the correct
+                                # answer). ⚠ BOTH of defendCbLtv's LTVs now route through the module's own
+                                # ltvOf, so skLtvAfter can be ∞ (debt with no Strike collateral) where it
+                                # used to report a flat 0 — any future consumer MUST use fmtLtvPct.
+                                # Consumed by cyclingSim (the automatic
                                 # defense + top-up) and emergencyModel.drawToLtv (capacity only)
     runNoBitcoin.ts
     runSellToLive.ts
@@ -2543,10 +2558,22 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   `strikeDrawCapacity(collBtc, drawn, price, maxDrawLtv, creditLine = ∞)` =
   `min(creditLine, collateral × price × maxDrawLtv) − drawn`; `defendCbLtv(input)` → required paydown,
   capacity, draw, shortfall, post-defense CB/Strike LTVs, Strike margin-call price, and the recovery price
-  at which the post-defense LTV returns to the cap; `topUpToCbLtv(input)` → `requiredBtc` /
+  at which the post-defense LTV returns to the cap. ⚠ **BOTH LTVs route through the module's own `ltvOf`**,
+  so `skLtvAfter` is `∞` for Strike debt with no Strike collateral — it used to carry a `skValue > 0 ? … : 0`
+  fallback that reported the worst position in the app as a flat 0%, while its own neighbour `cbLtvAfter`
+  reported `∞` for the same shape. Nothing renders it yet; any future consumer MUST use `fmtLtvPct`.
+  `topUpToCbLtv(input)` → `requiredBtc` /
   `fromColdBtc` / `fromStrikeBtc` / `topUpBtc` / `shortfallBtc` / `fullyDefended` / `cbLtvAfter` — cold FIRST
-  (no lender constraint), then the Strike collateral above its margin requirement AT THE CURRENT PRICE (the
-  true last resort, which sacrifices the 50% line backing). `emergencyModel.drawToLtv` delegates its capacity
+  (no lender constraint), then the Strike collateral above **`marginLtv × (1 − TOPUP_MARGIN_BUFFER)`** AT THE
+  CURRENT PRICE (the true last resort, which sacrifices the 50% line backing but **stops a buffer SHORT of
+  the margin call, never on it**). 🔴 The old bare-`marginLtv` bound left an exhausting top-up EXACTLY on the
+  call line, so `cyclingSim`'s `strikeLtv >= strikeMarginLtv` fired in the same month — a second liquidation
+  dressed as a last resort. `TOPUP_MARGIN_BUFFER` is 0.05 and EXPORTED, so a future spec can make it an input
+  without touching call sites; bounding at `STRIKE_MAX_DRAW_LTV` instead was rejected as gutting the last
+  resort in exactly the position that needs one. ⚠ Behavioural consequence: a leg already inside the buffer
+  now yields **zero** available collateral where it previously yielded a sliver taken up to the call line —
+  that is the correct answer, and it is what the updated `cbDefense.test.ts` shortfall case pins.
+  `emergencyModel.drawToLtv` delegates its capacity
   to the same helper; its optional `creditLine` defaults to ∞, so the spec §10 50%-line-only fixtures stay
   byte-identical (the console passes its real line).
 - **`runCyclingSim` gains `defendCbLtv?: boolean` — default FALSE (byte-identical engine). BOTH faces pass
@@ -2558,10 +2585,22 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   `topUpBtc` / `topUpFromColdBtc` / `topUpFromStrikeBtc` (+ the cascade's `strikeToCbBtc` and cumulative
   `coldRetrievedBtc`); result telemetry `firstDefenseMonth` / `defenseExhaustedMonth` /
   `totalDefenseDrawnUsd` / `defenseCount` + `firstTopUpMonth` / `topUpExhaustedMonth` / `totalTopUpBtc` /
-  `totalTopUpFromColdBtc` / `totalTopUpFromStrikeBtc`. The defense draw is a STRIKE draw (no CB origination
-  fee — the fee lands only when the refinance later re-borrows on Coinbase); its interest starts the
-  following month. A top-up retrieves from cold, so `totalColdBtc` is NET (gross = fromCb + fromStrike;
-  gross − totalColdRetrievedBtc === totalColdBtc).
+  `totalTopUpFromColdBtc` / `totalTopUpFromStrikeBtc` + **`openingColdBtc`**. The defense draw is a STRIKE
+  draw (no CB origination fee — the fee lands only when the refinance later re-borrows on Coinbase); its
+  interest starts the following month. A top-up retrieves from cold, so `totalColdBtc` is NET
+  (**`opening` +** gross − totalColdRetrievedBtc === totalColdBtc, gross = fromCb + fromStrike).
+- **`runCyclingSim` also gains `openingColdBtc?: number` — default 0, so every pre-existing call site is
+  byte-identical.** It SEEDS the cold pool with the owner's REAL unpledged reserve (`getCurrentColdBtc()`),
+  because the pool otherwise started at 0 and `topUpToCbLtv`'s documented "cold reserve FIRST" could only
+  ever spend coins the simulation itself swept — while `deriveOwnership` was already counting the real
+  reserve, so the two disagreed about whether it exists. The seed is REPORTED on the result (the ledger
+  must keep footing) and is ALSO added to the never-draw `baselineBtc`: ⚠ the baseline compares against
+  "the untouched opening position" and the owner holds that reserve in the never-draw world too, so
+  omitting it would credit the strategy with coins it never earned, inflating the verdict by exactly the
+  seed. ⚠ **The faces do NOT pass it yet** — wiring `getCurrentColdBtc()` changes every projection and is
+  its own spec, which must also fix `CyclingFace`'s cold-split line (a seed is a third origin neither
+  `totalColdFromCb` nor `totalColdFromStrike` carries) and its "First coins move …" line (a seeded run
+  holds coins at month 0 while `firstColdMonth` stays null until a sweep).
 - **⚠ "LTV stop" is the standard USER-FACING word for the threshold** — Cycling's slider is already
   `CB LTV stop`, the chart reference reads `STOP X%`, Ownership's slider is `Coinbase LTV stop`, and prose
   says "stop"/"LTV-stop defense". Internal identifiers (`cbLtvCapPct`, `cap`, `capPct`) are unchanged; only
@@ -2579,8 +2618,10 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   dry shortfall / at-stop no-op / zero-price+zero-margin guards) + the `defendCbLtv` + `sweep cascade +
   emergency top-up` blocks in `cyclingSim.test.ts` (OFF ≡ today; restore-to-cap; capacity exhaustion fills
   the line once then stops; headroom-capped round trip on a V-shaped path; cycle-only; no post-liquidation
-  defense; migration tied to the sweep; migrated coins never leave the stressed line+margin keep; cold
-  drained before Strike; pools/net-cold invariants) + `plBandAt` cases in `powerLaw.test.ts`.
+  defense; migration byte-identical only when BOTH the sweep and the defense are off, and running for the
+  defense alone; migrated coins never leave the stressed line+margin keep; cold
+  drained before Strike; pools/net-cold invariants; `openingColdBtc` omitted/junk ≡ 0, spent by the top-up,
+  ledger foots, and reaching the baseline) + `plBandAt` cases in `powerLaw.test.ts`.
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 
@@ -3706,10 +3747,16 @@ liquidation moved from month 13 to **month 2**. Withdrawing to a worse LTV than 
 incoherent; the cap wins and the two knobs compose. Pinned by a test that every looser buffer behaves
 exactly like the boundary one.
 
-🔴 **THE CASCADE — TWO LEGS, ONE KNOB, TIED TO THE SWEEP.** The knob frees collateral at BOTH venues and
-the engine chains them: **Strike → Coinbase → cold**. Only the Coinbase→cold hop is the "sweep"; the
-Strike→Coinbase hop is a CADENCE MIGRATION that runs at each refinance turn when the sweep is on
-(sweep off = Strike collateral stays fixed, byte-identical).
+🔴 **THE CASCADE — TWO LEGS, ONE KNOB, RUN BY THE SWEEP *OR* THE DEFENSE.** The knob frees collateral at
+BOTH venues and the engine chains them: **Strike → Coinbase → cold**. Only the Coinbase→cold hop is the
+"sweep"; the Strike→Coinbase hop is a CADENCE MIGRATION that runs at each refinance turn when
+**`coldOn || defend`** — its own justification is a DEFENSE one (the freed collateral is CB headroom that
+lets more cheap debt refinance under the stop), so gating it on the sweep alone silently withheld it from
+anyone who turned the sweep off. **Byte-identical only when BOTH are off** (then Strike collateral stays
+fixed). ⚠ With the sweep off, `coldBuffer` is 0, so the `stressed` price the migration keeps collateral
+against is the RAW price — the honest reading of "no buffer requested". ⚠ Both faces pass
+`defendCbLtv: true` automatically, so a user who turns the sweep OFF sees different projections than
+before: that is the fix, not a regression.
 - **Strike → Coinbase (the migration — WHY the freed coins become CB headroom).** ⚠ `strikeCreditLine` is a
   FIXED DOLLAR amount that never grows with price, so the collateral needed to support the whole line
   SHRINKS as price rises. Over a twenty-year support path **~98% of the Strike pledge ends up idle** —
@@ -3726,8 +3773,10 @@ Strike→Coinbase hop is a CADENCE MIGRATION that runs at each refinance turn wh
   migrated coins are attributed to Strike when they leave for cold, so `coldFromCb` / `coldFromStrike`
   stay separable even though the CB pool commingles them.
 - **Retrieval (the emergency top-up reverses the Coinbase→cold hop).** `coldRetrievedBtc` is cumulative;
-  the pool invariant is now **`coldFromCb + coldFromStrike − coldRetrievedBtc === coldBtc`** and the
-  Cycling card prints the `− ₿X retrieved for the top-up` line so the origins still reconcile.
+  the pool invariant is now **`openingColdBtc + coldFromCb + coldFromStrike − coldRetrievedBtc ===
+  coldBtc`** (the opening reserve is a THIRD origin the two split fields do not carry — 0 for every
+  current caller) and the Cycling card prints the `− ₿X retrieved for the top-up` line so the origins
+  still reconcile.
 
 🔴 **ON BY DEFAULT in BOTH faces** (`DEFAULT_COLD_ON = true`, `DEFAULT_COLD_BUFFER_PCT = 30`). Both faces
 run the SAME engine, so a different default in one would make them disagree about one position. The
@@ -4553,6 +4602,11 @@ Passing a row's `btcHeld` AND its `coldBtc` double-counts the pool, and `yoursSh
 so the result still looks plausible. `ownership.test.ts` pins both conventions and asserts the Almanac
 call sites stay 3-arg. ⚠ Its cold guard is `Number.isFinite(c) && c > 0`, NOT `Math.max(0, c)` — the
 latter returns NaN for NaN, which poisoned every field instead of clamping (matches `viewerVenue.clean`).
+⚠ **It RETURNS `totalHeld` — the denominator every share was divided by — and a caller must render THAT,
+never re-add cold itself.** `OwnershipBar` used to recompute it as `btcHeld + Math.max(0, coldBtc)`: a
+second rule for one number, eight lines from the comment forbidding that exact expression, so the
+displayed total could disagree with the shares beside it. `totalHeld` is correct under BOTH conventions —
+with no 4th arg it is just `btcHeld`, so the Almanac's 3-arg call sites are unaffected.
 
 
 🔴 **FIXTURES ARE SYNTHETIC. THIS REPO IS PUBLIC.** Every engine fixture uses round, invented numbers —
@@ -4568,7 +4622,7 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1395 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
+1407 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
 Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total and the daily-month collateral correction
 was mutation-checked: revert the fix → the test goes red.)
 - **`provisional` clears on a reading** (`provisional-clears-on-reading-spec-v1`, 16 tests; every ⭐ mutation-checked):
