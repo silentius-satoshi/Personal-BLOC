@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { deriveCurrentPosition } from '../../simulation/logUtils';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { liqSimLtvs, strikeLtvAtTarget } from './liqSimulatorView';
 import styles from './LiqSimulator.module.css';
 
 const SK_CEILING = 50;
@@ -19,6 +20,7 @@ export function LiqSimulator() {
   const cbLoanBalance            = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc          = useStore((s) => s.cbCollateralBtc);
   const cbAprPct                 = useStore((s) => s.cbAprPct);
+  const cbLtvTriggerPct          = useStore((s) => s.cbLtvTriggerPct);   // cbMetrics arg — the user's real trigger, not a placeholder
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const blocApr                  = useStore((s) => s.blocApr);
@@ -51,15 +53,21 @@ export function LiqSimulator() {
   const effective_draw   = Math.min(drawSlider, available_credit);
 
   const cb_value_now   = cbCollateralBtc * btcSlider;
-  const cb_ltv_now     = cb_value_now > 0 ? cbLoanBalance / cb_value_now : 0;
   const cb_liq_now     = cb_div > 0 ? cbLoanBalance / cb_div : 0;
 
   const cb_balance_new = cbLoanBalance - effective_draw;
-  const cb_ltv_new     = cb_value_now > 0 ? cb_balance_new / cb_value_now : 0;
   const cb_liq_new     = cb_div > 0 ? cb_balance_new / cb_div : 0;
 
   const sk_drawn_new   = sk_drawn + effective_draw;
-  const sk_ltv_new     = sk_value > 0 ? sk_drawn_new / sk_value : 0;
+
+  // ⚠ The LTVs are computed in liqSimulatorView (PURE, pinned by tests) and route through the shared
+  // cbMetrics / computeStrikeLtv definitions — never a local `value > 0 ? … : 0`, which rendered 0.0% for an
+  // unbacked loan. See that module's header for why there is no zero-price case to restore.
+  const { cbNow: cb_ltv_now, cbAfterDraw: cb_ltv_new, strikeAfterDraw: sk_ltv_new } = liqSimLtvs({
+    cbLoanBalance, cbBalanceAfterDraw: cb_balance_new, cbCollateralBtc,
+    strikeDrawnAfterDraw: sk_drawn_new, strikeCollateralBtc: sk_collateral,
+    price: btcSlider, cbLtvTriggerPct,
+  });
 
   const liq_drop         = cb_liq_now - cb_liq_new;
   const crash_buffer_now = btcSlider > 0 ? (btcSlider - cb_liq_now) / btcSlider * 100 : 0;
@@ -178,8 +186,8 @@ export function LiqSimulator() {
           <div className={styles.posRow}>
             <span className={styles.posKey}>LTV</span>
             <span className={styles.posValue}>
-              {(cb_ltv_now * 100).toFixed(1)}%
-              {effective_draw > 0 && <span className={styles.posArrow}> → {(cb_ltv_new * 100).toFixed(1)}%</span>}
+              {fmtLtvPct(cb_ltv_now, 1)}
+              {effective_draw > 0 && <span className={styles.posArrow}> → {fmtLtvPct(cb_ltv_new, 1)}</span>}
             </span>
           </div>
           <div className={styles.ltvBar}>
@@ -217,7 +225,7 @@ export function LiqSimulator() {
           </div>
           <div className={styles.posRow}>
             <span className={styles.posKey}>LTV</span>
-            <span className={styles.posValue}>{(sk_ltv_new * 100).toFixed(1)}%</span>
+            <span className={styles.posValue}>{fmtLtvPct(sk_ltv_new, 1)}</span>
           </div>
           <div className={styles.ltvBar}>
             <div className={`${styles.ltvFill} ${ltvClass(sk_ltv_new)}`} style={{ width: `${Math.min(sk_ltv_new * 100, 100)}%` }} />
@@ -267,14 +275,14 @@ export function LiqSimulator() {
               {TARGETS.map((T) => {
                 const paydown_needed = cbLoanBalance - T * cb_div;
                 if (paydown_needed <= 0) return null;
-                const sk_ltv_at_T  = sk_value > 0 ? (sk_drawn + paydown_needed) / sk_value : 0;
+                const sk_ltv_at_T  = strikeLtvAtTarget(sk_drawn, paydown_needed, sk_collateral, btcSlider);
                 const btc_needed   = sk_factor > 0 ? (paydown_needed + sk_drawn) / sk_factor : 0;
                 const is_available = available_credit >= paydown_needed;
                 return (
                   <tr key={T}>
                     <td className={styles.td}>${T.toLocaleString()}</td>
                     <td className={styles.td}>{fmtUSD(paydown_needed)}</td>
-                    <td className={styles.td}>{(sk_ltv_at_T * 100).toFixed(1)}%</td>
+                    <td className={styles.td}>{fmtLtvPct(sk_ltv_at_T, 1)}</td>
                     <td className={styles.td}>${(btc_needed / 1000).toFixed(0)}k</td>
                     <td className={styles.td}>
                       {is_available

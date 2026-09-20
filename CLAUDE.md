@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1407 tests — all must pass before every commit)
+- Vitest (1414 tests — all must pass before every commit)
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -484,6 +484,10 @@ src/
       LiqSimulator.tsx          # Liq Price Simulator overlay content; reads store directly, no props. Rendered
                                 # via CbDefenseTool ONLY in `monthly` CB mode (ltvTriggered → EmergencyConsole)
       LiqSimulator.module.css   # .container now `composes: toolContainer from './toolShell.module.css'` (600px)
+      liqSimulatorView.ts       # LiqSimulator's four LTVs, PURE — reuses cbMetrics/computeStrikeLtv (never a
+                                # local `value > 0 ? … : 0`, which rendered 0.0% for an unbacked loan).
+                                # Rendered via fmtLtvPct. Pinned by __tests__/liqSimulatorView.test.ts (no
+                                # .test.tsx render harness exists, so this is what makes the fix pinnable)
       EmergencyConsole.tsx      # Emergency Console (Phase 1) — the actionable crash-day page for `ltvTriggered`
                                 # CB mode; READ-ONLY calculator (no dayLog writes). Reads store, builds cbDebt via
                                 # accruedCbBalance (the accrual boundary) + Strike position via deriveCurrentPosition,
@@ -4595,6 +4599,15 @@ round-trips through `parseFloat`, so `MonthlyLogSection.ltvFieldValue` / `Monthl
 degrade a non-finite LTV to `0` rather than rendering `∞`. `utils/__tests__/fmtLtvPct.test.ts` greps
 `src/components/` and FAILS on any re-open-coded `(…ltv * 100).toFixed(…)`.
 
+⚠ **The guard's identifier class is `[A-Za-z0-9_]*`** — the narrower `[a-zA-Z]*` couldn't cross an
+underscore, so it never saw `LiqSimulator.tsx`'s snake_case `cb_ltv_now`/`cb_ltv_new`/`sk_ltv_new`/
+`sk_ltv_at_T`: four sites silently printing `0.0%` for an unbacked loan while this guard reported clean.
+The guard watches FORMATTING only — it cannot catch a fallback that's computed inline and never rendered
+via `.toFixed`, which is why `LiqSimulator`'s four LTVs were extracted to the pure
+`src/components/Tools/liqSimulatorView.ts` (reusing `cbMetrics`/`computeStrikeLtv`, never a local
+`value > 0 ? … : 0`) and pinned by `liqSimulatorView.test.ts` — the repo has zero `.test.tsx`, so a figure
+computed inline in a component is a figure nothing else can pin.
+
 ⚠ **`deriveOwnership`'s `coldBtc` has TWO caller conventions.** It is ADDED to `btcHeld`, which is right
 only when the caller's `btcHeld` EXCLUDES cold: the **viewer** passes strike+cb plus cold separately
 (4-arg), while **both Almanac faces** pass `CyclingRow.btcHeld`, which already contains cold (3-arg).
@@ -4622,7 +4635,7 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1407 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
+1414 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
 Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total and the daily-month collateral correction
 was mutation-checked: revert the fix → the test goes red.)
 - **`provisional` clears on a reading** (`provisional-clears-on-reading-spec-v1`, 16 tests; every ⭐ mutation-checked):

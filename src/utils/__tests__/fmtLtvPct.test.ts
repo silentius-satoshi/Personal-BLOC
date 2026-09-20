@@ -5,6 +5,12 @@ import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { cbMetrics } from '../../simulation/cbMetrics';
 import { computeLiquidationAnalysis, CB_LLTV } from '../../simulation/runCoinbaseLoan';
 
+// ⚠ The identifier tail is [A-Za-z0-9_]*, NOT [a-zA-Z]*. The narrower class silently missed every
+// snake_case LTV — `cb_ltv_now * 100).toFixed(1)` walked straight through it, and four such lines sat in
+// LiqSimulator reporting 0.0% for an unbacked loan while this guard reported clean. The optional spaces
+// around `*` are belt: a reformat must not create a new hole either.
+const OPEN_CODED_LTV = '[Ll]tv[A-Za-z0-9_]* ?\\* ?100\\)\\.toFixed';
+
 /**
  * ⚠ REGRESSION GUARD. `computeStrikeLtv`, `cbMetrics` and `computeLiquidationAnalysis` deliberately
  * return POSITIVE_INFINITY for debt with no collateral — returning 0 there rendered the worst possible
@@ -49,7 +55,7 @@ describe('fmtLtvPct', () => {
     // The original defect was a second copy in cyclingFaceView while five other surfaces used the raw
     // pattern. Fails if anyone open-codes `(<something>ltv * 100).toFixed(...)` in a component again.
     const hits = execSync(
-      'grep -rnE "[Ll]tv[a-zA-Z]* \\* 100\\)\\.toFixed" src/components/ || true',
+      `grep -rnE "${OPEN_CODED_LTV}" src/components/ || true`,
       { cwd: process.cwd(), encoding: 'utf8' },
     )
       .trim()
@@ -63,5 +69,14 @@ describe('fmtLtvPct', () => {
       // it must stay numeric, so it guards to '0' rather than rendering '∞'.
       .filter((l) => !l.includes('ltvFieldValue') && !l.includes('ltvFieldNumber'));
     expect(hits, `open-coded LTV formatting:\n${hits.join('\n')}`).toEqual([]);
+  });
+
+  it('⭐ the widened pattern catches snake_case and squished spacing, not a non-LTV', () => {
+    const re = new RegExp(OPEN_CODED_LTV);
+    expect(re.test('(cb_ltv_now * 100).toFixed(1)')).toBe(true);
+    expect(re.test('(sk_ltv_at_T * 100).toFixed(1)')).toBe(true);
+    expect(re.test('(currentCbLtv * 100).toFixed(1)')).toBe(true);
+    expect(re.test('(cbLtv*100).toFixed(2)')).toBe(true);
+    expect(re.test('(someTotal * 100).toFixed(0)')).toBe(false);
   });
 });
