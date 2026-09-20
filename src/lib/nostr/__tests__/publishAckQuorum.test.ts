@@ -3,7 +3,6 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 // Mock the pool so importing ../publish doesn't pull a live SimplePool. awaitAckQuorum itself takes plain
 // promises (no pool), so these tests drive it directly with controllable deferreds.
 vi.mock('nostr-tools/pool', () => ({
-  // eslint-disable-next-line prefer-arrow-callback
   SimplePool: vi.fn(function() { return { publish: vi.fn(() => []), close: vi.fn() }; }),
 }));
 

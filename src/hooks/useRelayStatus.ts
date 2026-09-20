@@ -63,7 +63,6 @@ export function useRelayStatus(urls: string[]): Record<string, RelayStatus> {
       for (const { relay, off } of probes.current.values()) { off(); void relay.close(); }   // OUR sockets → close OK
       probes.current.clear();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   return status;

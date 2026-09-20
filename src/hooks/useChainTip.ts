@@ -105,7 +105,7 @@ export function useChainTip(): ChainTip {
       clearInterval(id);
       abortRef.current?.abort();
     };
-  }, [isVisible, almanacLiveEnabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isVisible, almanacLiveEnabled]);
 
   if (almanacLiveEnabled && live) {
     return {

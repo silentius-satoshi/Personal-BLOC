@@ -12,7 +12,6 @@ const { mockStoreState, mockPool, mockPublishRecordsImmediate, mockPublishPlanEv
 }));
 
 vi.mock('nostr-tools/pool', () => ({
-  // eslint-disable-next-line prefer-arrow-callback
   SimplePool: vi.fn(function() { return mockPool; }),
 }));
 

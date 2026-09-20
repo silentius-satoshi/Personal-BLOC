@@ -57,7 +57,7 @@ export function useBtcPrice(): BtcPriceState & { isStale: boolean } {
     void fetchPrice();
     const id = setInterval(() => void fetchPrice(), POLL_MS);
     return () => clearInterval(id);
-  }, [isVisible]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isVisible]);
 
   const STALE_MS = 5 * 60 * 1000;
   const isStale = state.lastUpdated

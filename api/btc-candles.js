@@ -17,7 +17,7 @@ export default async function handler(req, res) {
     const data = await r.json();
     res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
     res.json(data);   // Coinbase's [time, low, high, open, close, volume] array, verbatim
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Proxy error' });
   }
 }

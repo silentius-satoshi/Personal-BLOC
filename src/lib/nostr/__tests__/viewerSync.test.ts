@@ -16,12 +16,10 @@ const { mockState, mockPool, decryptImpl } = vi.hoisted(() => ({
 }));
 
 vi.mock('nostr-tools/pool', () => ({
-  // eslint-disable-next-line prefer-arrow-callback
   SimplePool: vi.fn(function() { return mockPool; }),
 }));
 
 vi.mock('@nostrify/nostrify', () => ({
-  // eslint-disable-next-line prefer-arrow-callback
   NSecSigner: vi.fn(function() { return { nip44: { decrypt: decryptImpl.fn } }; }),
 }));
 

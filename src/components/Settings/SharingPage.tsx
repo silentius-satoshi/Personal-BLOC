@@ -196,7 +196,6 @@ function ViewerRoster() {
   // stored-kv + 1 at derive time; keyVersion always means "version of the key currently issued," never "next."
   const startRotate = (slot: ViewerSlot) => {
     setError(null);
-    // eslint-disable-next-line no-alert
     if (!window.confirm(
       'Rotating invalidates this viewer\'s current key — their device stops receiving updates until they sign in ' +
       'again with a new token. Rotate?'

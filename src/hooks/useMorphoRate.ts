@@ -14,7 +14,6 @@ const REFRESH_MS = 300_000;   // slow refresh while visible — the proxy also c
  * Morpho returns a decimal fraction (e.g. 0.0612), so ×100 → 6.12. Malformed/empty/null → nulls (no crash).
  */
 export function parseMorphoRate(json: unknown): MorphoRate {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const s = (json as any)?.data?.marketById?.state;
   const toPct = (v: unknown) =>
     typeof v === 'number' && isFinite(v) ? v * 100 : null;

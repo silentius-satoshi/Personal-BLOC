@@ -11,7 +11,7 @@ export default async function handler(req, res) {
     const data = await response.json();
     res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
     res.json(data);
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Proxy error' });
   }
 }

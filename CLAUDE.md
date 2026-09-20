@@ -92,6 +92,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Recharts (charts)
 - CSS Modules
 - Vitest (1414 tests — all must pass before every commit)
+- ESLint 9 (flat config, `eslint.config.js`) — `npm run lint` must be clean before every commit
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
 - PWA: `public/manifest.json` + `src/sw.ts` → `dist/sw.js` (Workbox full-build precache via vite-plugin-pwa `injectManifest`; real offline support)
@@ -4854,10 +4855,23 @@ When `BlocYearOneInputs` gains new required fields, add defaults (e.g. `btcGrowt
 ## Build & Deploy
 
 ```bash
-npm run build && npx vitest run && git add . && git commit -m "..." && git push   # Vercel auto-deploys on push (local vercel CLI removed)
+npm run lint && npm run build && npx vitest run && git add . && git commit -m "..." && git push   # Vercel auto-deploys on push (local vercel CLI removed)
 ```
 
 `npm run build` = `tsc -b && vite build` — this is the REAL typecheck gate. Run it (not bare `tsc`) before every commit.
+
+**⚠️ The lint gate:** `eslint.config.js` (flat config, ESLint 9) enables exactly **four rules** —
+TS-aware `no-unused-vars` (`_`-prefix ignored — the `persistConfig`/`payloads` strip idiom),
+`react-hooks/rules-of-hooks`, `no-constant-condition`, and `eqeqeq` (`smart` — permits the `== null`/
+`!= null` idiom used throughout the gate-key slices). Everything else in `recommended` is **off**, and
+three of those exclusions carry a written reason in the config rather than being silently absent:
+`no-explicit-any` (137 sites, deliberate at the parse/validate boundary — `migrateState`,
+`validatePlanBackup`), `no-undef` (TS already resolves identifiers; the core rule only false-positives
+in a TS project), and `prefer-const` (one site in `runAdvisor.ts`'s engine — ESLint reports the shape
+but cannot autofix it; verified by enabling the rule and running `--fix`: empty diff, error persists).
+**`react-hooks/exhaustive-deps` is the named next candidate** — 6 of the repo's `eslint-disable`
+comments already suppressed it before this commit, so enabling it is the highest-value next widening
+(its own mission: re-enable, then read each surfaced dep array).
 
 **⚠️ Store-version bump discipline:** the store version is now the **single constant `CURRENT_STORE_VERSION`** in `src/lib/storeVersion.ts` (zero-import leaf) — it drives the `useStore` persist `version`, `exportPlan.ts`'s `storeVersion`, `demoSeed.ts`'s `DEMO_SEED_STORE_VERSION`, and `validatePlanBackup.ts`'s version gate. A `migrateState` bump therefore means: **bump `CURRENT_STORE_VERSION` + the standalone `STORE_VERSION` literal in `e2e/helpers.ts`** (Playwright can't resolve `src/` imports, so e2e keeps its own pinned copy). A stale `STORE_VERSION` drops the e2e seed into the migrate/onboarding path and `seedAndGoto`'s landing assertion fails loudly. `validatePlanBackup` lean-rejects any backup whose `storeVersion !== CURRENT_STORE_VERSION`, so a version bump makes older exports un-restorable until 4f schema negotiation.
 

@@ -21,7 +21,7 @@ export default async function handler(req, res) {
     const data = await r.json();
     res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate'); // 5-min cache; the rate drifts slowly
     res.json(data);   // { data: { marketById: { state: { borrowApy, netBorrowApy } } } } — verbatim
-  } catch (e) {
+  } catch {
     res.status(500).json({ error: 'Proxy error' });
   }
 }

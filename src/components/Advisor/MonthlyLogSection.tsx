@@ -140,7 +140,6 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   };
 
   // Reset edit state and repopulate form when selected card changes
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     setDetailEditing(false);
     setCollateralEditing(false);   // never carry the narrow mode to another month (Save would write THERE)

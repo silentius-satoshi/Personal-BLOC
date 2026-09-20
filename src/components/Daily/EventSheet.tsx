@@ -202,7 +202,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     }
     setCbLiqPrice(cbLiquidationPrice > 0 ? cbLiquidationPrice : null);
     setCbLiqPriceReading(null);   // §5b — always empty on open (Q2: never auto-submit the old liq → no fake freshness)
-  }, [open, editEvent?.id, targetDate, initialType]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [open, editEvent?.id, targetDate, initialType]);
 
   // Effective collateral target. ⚠ Collapse ONLY 'cb' without a loan — cold (self-custody) is selectable whether or
   // not there is a CB loan. Hoisted above the early return below so the track effect (which depends on it) stays an

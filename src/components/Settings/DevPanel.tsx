@@ -213,7 +213,6 @@ export function DevPanel() {
   // Repair for a stuck/absent registration — nukes everything SW-related then re-registers + reloads.
   const repairSw = async () => {
     if (!('serviceWorker' in navigator)) return;
-    // eslint-disable-next-line no-alert
     if (!window.confirm('This unregisters the service worker, clears all caches, and reloads. You must be ONLINE afterward for the app to re-download. Continue?')) return;
     try {
       const regs = await navigator.serviceWorker.getRegistrations();
@@ -376,13 +375,11 @@ export function DevPanel() {
       // adapter can't read → no seed-flash/half-state). Mirrors the user opt-out's safe order. Needs the key in
       // memory (post-unlock); a locked state or failed decrypt leaves the flag ON (nothing lost).
       if (!isStoreUnlocked()) {
-        // eslint-disable-next-line no-alert
         alert('Unlock first (the store key must be in memory to decrypt). Leaving encryption on.');
         return;
       }
       const ok = await migrateEncryptedToPlaintext();
       if (!ok) {
-        // eslint-disable-next-line no-alert
         alert('Could not decrypt — leaving encryption ON, your data is unchanged.');
         return;
       }

@@ -92,5 +92,5 @@ export function useStrikeData(enabled: boolean): void {
     guardedFetch();
     const interval = setInterval(guardedFetch, POLL_INTERVAL_MS);
     return () => { active = false; clearInterval(interval); };
-  }, [isVisible, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [isVisible, enabled]);
 }
