@@ -9,7 +9,7 @@ import { plBandsAt, plBandAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, 
 import {
   cycleConvergencePath, cycleTurnsInHorizon, upcomingCycleTurns, CYCLE_PHASE_SHIFT_MAX_MONTHS, type PathKind,
 } from '../../simulation/cyclePath';
-import { accruedCbBalance, cbBarLevel } from '../../simulation/cbMetrics';
+import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
@@ -18,6 +18,7 @@ import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
   coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
+  cbZoneLevel, isBelowSupport, fixedMilestoneMonths, verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
 } from './cyclingFaceView';
 import { useStressLens } from './useStressLens';
 import { deriveCbCollateral } from '../../simulation/logUtils';
@@ -285,15 +286,12 @@ export default function CyclingFace() {
   // The SUPPORT line at the selected month — the deepest fitted drawdown. The stress may go below it;
   // doing so is flagged, never blocked (the range stays honest, the label says what it means).
   const supportAtMonth = plBandAt('floor', startDate, monthIdx);
-  // ⚠ A float-equality guard, not a gate. On the 4-yr path the price is fair × multiple — a different
-  // construction from the support line's A_FLOOR × d^B — so a row landing exactly on a low turn could
-  // compute one float step under support. A genuinely below-support path (the stress lens, or a slow
-  // convergence from a spot under support) still trips it.
-  const belowSupport = selRow.price < supportAtMonth * (1 - 1e-9);
+  // ⚠ A float-equality guard, not a gate — see isBelowSupport (cyclingFaceView), the one definition.
+  const belowSupport = isBelowSupport(selRow.price, supportAtMonth);
   // The cold-storage InfoTip's fair-value translation, read off the DISPLAYED path at the inspected month —
   // so it is right on every path (it used to report the Support answer everywhere) and moves with the lens.
   const fairAtMonth = plBandAt('fair', startDate, monthIdx);
-  const surviveMult = fairAtMonth > 0 ? (selRow.price / fairAtMonth) * (1 - coldBufferPct / 100) : 0;
+  const surviveMult = surviveFairMultiple(selRow.price, fairAtMonth, coldBufferPct);
   const coldDeeperThanRecord = coldBeyondRecord(selRow.price, supportAtMonth, coldBufferPct);
 
   // Write the clamped value back so re-growing the horizon doesn't snap to a stale index.
@@ -314,7 +312,8 @@ export default function CyclingFace() {
   const bands = plBandsAt(startDate);
   const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
   const openingDebt = cbDebt + s.strikeBalance;
-  const wins = last.equity > sim.baselineEquity;
+  const verdict = verdictVsNeverDraw(sim, 'cycle');
+  const wins = verdict.wins;
   const cagr = anchorPrice > 0 && months > 0
     ? ((last.price / anchorPrice) ** (12 / months) - 1) * 100
     : 0;
@@ -322,7 +321,7 @@ export default function CyclingFace() {
   // The shared CB gauge — but banded against CB_LLTV, the LTV this projection actually liquidates at.
   // (The dashboard's cbLiqFrac comes from the owner's entered liq price, a TODAY anchor that says nothing
   // about a position five years out.) The trigger boundary is still the owner's own setting.
-  const cbZone = (ltv: number): string => LEVEL_COLOR[cbBarLevel(ltv, s.cbLtvTriggerPct, CB_LLTV)];
+  const cbZone = (ltv: number): string => LEVEL_COLOR[cbZoneLevel(ltv, s.cbLtvTriggerPct)];
 
   const chartRows = useMemo(() => rows.map((r) => ({
     year: r.yearLabel,
@@ -335,7 +334,7 @@ export default function CyclingFace() {
   })), [rows]);
   const tickEvery = Math.max(1, Math.floor(rows.length / 8));
 
-  const milestones = [12, 24, 36, 60, 120].filter((m) => m <= months);
+  const milestones = fixedMilestoneMonths(months);
   // 4-yr cycle only: turns inside the horizon become peak/trough rows. View-only, derived from the shifted
   // schedule — the SAME source the path note reads (unclipped), so the two can never disagree.
   const horizonTurns = useMemo(
@@ -493,13 +492,13 @@ export default function CyclingFace() {
         ) : (
           <>
             <div className={styles.verdictHead}>
-              {wins ? 'Cycling wins' : 'Cycling loses'} — {fmtSigned(last.equity - sim.baselineEquity)} equity
+              {wins ? 'Cycling wins' : 'Cycling loses'} — {fmtSigned(verdict.equityDelta)} equity
               vs paying bills from income
             </div>
             <div className={styles.verdictSub}>
               {fmtBtc(last.btcHeld)} vs {fmtBtc(sim.baselineBtc)} (
-              {last.btcHeld - sim.baselineBtc >= 0 ? '+' : '−'}
-              {Math.abs(last.btcHeld - sim.baselineBtc).toFixed(4)} ₿)
+              {verdict.btcDelta >= 0 ? '+' : '−'}
+              {Math.abs(verdict.btcDelta).toFixed(4)} ₿)
               {stopMonth !== null && (drawingResumedMonth === null
                 ? ` · drawing stopped at month ${stopMonth}`
                 : ` · drawing paused at month ${stopMonth}, resumed at ${drawingResumedMonth}`)}
@@ -713,7 +712,7 @@ export default function CyclingFace() {
               <SliderInput label="Keep me safe down to" value={coldBufferPct}
                 onChange={(v) => set('coldStoreBufferPct', v)}
                 min={5} max={80} step={1}
-                display={fmtUSD(selRow.price * (1 - coldBufferPct / 100))}
+                display={fmtUSD(coldSurvivePrice(selRow.price, coldBufferPct))}
                 minLabel="closer" maxLabel="deeper" />
             </div>
             <p className={styles.noteQuiet}>

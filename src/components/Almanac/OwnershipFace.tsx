@@ -9,7 +9,7 @@ import { plBandsAt, plBandAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, 
 import {
   cycleConvergencePath, cycleTurnsInHorizon, upcomingCycleTurns, CYCLE_PHASE_SHIFT_MAX_MONTHS, type PathKind,
 } from '../../simulation/cyclePath';
-import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
+import { accruedCbBalance, barLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
@@ -20,8 +20,9 @@ import {
   applyPathStress, debtSplit, clampMonth, holdingsSplit,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
   mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
+  cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
 } from './cyclingFaceView';
-import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
+import { ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE } from './ownershipFaceView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
@@ -81,13 +82,6 @@ const PATH_META: { key: PathKind; label: string }[] = [
   { key: 'ceiling',  label: `To ${PL_BAND_LABEL.ceiling.toLowerCase()}` },
   { key: 'fourYear', label: 'Ride the 4-yr cycle' },
 ];
-
-const MODE_NOTE: Record<CyclingMode, string> = {
-  cycle: 'Bills drawn on Strike, refinanced into Coinbase every N months, purchases routed to the Coinbase pool. With cap defense on, a breach pays Coinbase down from Strike and the refinance shifts it back.',
-  hold: 'No draw, no refinance. Surplus buys into the Coinbase pool. ⚠ This IS the never-draw baseline — there is no second curve to compare against.',
-  clearStrike: 'No draw. Surplus retires Strike, then buys.',
-  clearBoth: 'No draw. Surplus retires Strike, then Coinbase, then buys.',
-};
 
 interface Overlay {
   pathKind?: PathKind;
@@ -299,10 +293,8 @@ export default function OwnershipFace() {
   // The SUPPORT line at the selected month — the deepest fitted drawdown. The stress may go below it;
   // that is flagged, never blocked.
   const supportAtMonth = plBandAt('floor', startDate, monthIdx);
-  // ⚠ A float-equality guard, not a gate: on the 4-yr path the price is fair × multiple, a different
-  // construction from the support line, so a row landing exactly on a low turn could compute one float step
-  // under. A genuinely below-support path (the stress lens, a slow convergence from under) still trips it.
-  const belowSupport = selRow.price < supportAtMonth * (1 - 1e-9);
+  // ⚠ A float-equality guard, not a gate — see isBelowSupport (cyclingFaceView), the one definition.
+  const belowSupport = isBelowSupport(selRow.price, supportAtMonth);
 
   useEffect(() => { setSelectedMonth((m) => Math.min(m, baseRowCount - 1)); }, [baseRowCount]);
 
@@ -317,22 +309,22 @@ export default function OwnershipFace() {
     income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct, mode,
   ]);
 
-  // ── the ownership wrapper ──
-  const ownership = deriveOwnership(selRow.btcHeld, selRow.debt, selRow.price);
-  const owedBtc = ownership.lendersBtc;
-  const yoursBtc = Math.max(0, ownership.yoursBtc);   // hero clamp — display only
-  const netToday = deriveOwnership(rows[0].btcHeld, rows[0].debt, rows[0].price).yoursBtc;
-  const delta = ownership.yoursBtc - netToday;
-  const yoursShare = ownership.yoursShare;
+  // ── the ownership wrapper — ownershipHero (ownershipFaceView), the one definition ──
+  const hero = ownershipHero(selRow, rows[0]);
+  const owedBtc = hero.owedBtc;
+  const yoursBtc = hero.yoursDisplayBtc;   // hero clamp — display only
+  const netToday = hero.netToday;
+  const delta = hero.deltaVsToday;
+  const yoursShare = hero.yoursShare;
 
   // The share bar reads the CLAMPED shares directly (they sum to 1 when hasData — B3), never 1 − yours.
-  const lendersShare = ownership.lendersShare;
+  const lendersShare = hero.lendersShare;
 
   const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
   const openingDebt = cbDebt + s.strikeBalance;
 
   const bands = plBandsAt(startDate);
-  const strikeLiqLtv = s.strikeLiquidationLtvPct > 0 ? s.strikeLiquidationLtvPct / 100 : 0.85;
+  const strikeLiqLtv = strikeLiqLtvOf(s.strikeLiquidationLtvPct);
   // ⚠ Positive debt with no collateral has NO finite liquidation price — it is liquidatable at any price.
   // Rendering 0 here would read as "never liquidates", the inverse of the truth. 0 is reserved for the
   // genuinely debt-free leg.
@@ -355,18 +347,14 @@ export default function OwnershipFace() {
   const cap = strikeAvailableCredit(s.creditLine, selRow.strikeCollateralBtc, selRow.price, selRow.strikeBalance);
   const overLine = selRow.strikeBalance > s.creditLine;
 
-  // C2 — the degenerate case: the cap never lets the draw run. ⚠ Judged on the ENGINE's ground truth
-  // (`firstDrawMonth`), not the opening LTV: interest and the path can push LTV across the cap before
-  // month 1 ever draws, so a 68%-opening run against a 70% cap can still never draw, and an opening-LTV
-  // proxy would silently omit the notice.
-  const degenerateCap = mode === 'cycle' && sim.firstDrawMonth === null;
-  // C1 — a no-draw mode with a deficit: the bills are funded by nothing.
-  const deficitMode = mode !== 'cycle' && expenses > income;
+  // C2 (the cap never lets the draw run — judged on the engine's firstDrawMonth, never the opening LTV) and
+  // C1 (a no-draw mode with a deficit) — modeConstraints (ownershipFaceView), the one definition.
+  const { degenerateCap, deficitMode } = modeConstraints(mode, sim.firstDrawMonth, income, expenses);
 
-  const cbZone = (ltv: number): string => LEVEL_COLOR[cbBarLevel(ltv, s.cbLtvTriggerPct, CB_LLTV)];
+  const cbZone = (ltv: number): string => LEVEL_COLOR[cbZoneLevel(ltv, s.cbLtvTriggerPct)];
 
   const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV), [rows]);
-  const milestones = [12, 24, 36, 60, 120].filter((m) => m <= months);
+  const milestones = fixedMilestoneMonths(months);
   // 4-yr cycle only: turns inside the horizon become peak/trough rows. View-only, derived from the shifted
   // schedule — the SAME source the path note reads (unclipped), so the two can never disagree.
   const horizonTurns = useMemo(
@@ -386,7 +374,7 @@ export default function OwnershipFace() {
         : `liq ${fmtLiqK(cbLiq)} · 86% instant`,
       cbZone(selRow.cbLtv)],
     ['Strike LTV', fmtLtvPct(selRow.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · 85%, 72h cure`,
-      LEVEL_COLOR[barLevel(selRow.strikeLtv, STRIKE_MAX_DRAW_LTV, strikeLiqLtv)]],
+      LEVEL_COLOR[strikeZoneLevel(selRow.strikeLtv, strikeLiqLtv)]],
     ['Net ownership', sBtc(gained.yours), `gross ${sBtc(gained.gross)}`,
       gained.yours >= 0 ? 'var(--green)' : 'var(--red)'],
     ['Net equity', fmtK(selRow.equity),

@@ -3,13 +3,16 @@ import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
   coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, nextTurnsText, fmtPhaseShift,
+  cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, MILESTONE_MONTHS, fixedMilestoneMonths,
+  verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
 } from '../cyclingFaceView';
+import { cbBarLevel } from '../../../simulation/cbMetrics';
 import { runCyclingSim, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
 import { cycleConvergencePath } from '../../../simulation/cyclePath';
 import { CYCLE_TURNS } from '../../../simulation/cycleModel';
-import { CB_FEE_TIER1_PCT } from '../../../simulation/runCoinbaseLoan';
+import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
 
@@ -445,5 +448,81 @@ describe('turn and timing formatters', () => {
     expect(fmtPhaseShift(3)).toBe('+3 mo late');
     expect(fmtPhaseShift(-2)).toBe('−2 mo early');
     expect(fmtPhaseShift(NaN)).toBe('on schedule');
+  });
+});
+
+describe('shared face rules — extracted from the parent faces (one definition each)', () => {
+  it('⭐ cbZoneLevel IS cbBarLevel banded against CB_LLTV — never a dashboard cbLiqFrac', () => {
+    for (const ltv of [0, 0.3, 0.57, 0.7499, 0.75, 0.79, 0.7998, 0.8, 0.86, 1.2]) {
+      expect(cbZoneLevel(ltv, 75)).toBe(cbBarLevel(ltv, 75, CB_LLTV));
+    }
+    // Pinned against the band itself, so swapping CB_LLTV for any other liq fraction fails here:
+    // red from 0.93 × 0.86 = 0.7998.
+    expect(cbZoneLevel(0.57, 75)).toBe('safe');     // a 57% CB LTV under a 75 trigger stays green
+    expect(cbZoneLevel(0.76, 75)).toBe('watch');
+    expect(cbZoneLevel(0.79, 75)).toBe('watch');
+    expect(cbZoneLevel(0.80, 75)).toBe('act');
+    expect(cbZoneLevel(0.60, 55)).toBe('watch');    // the trigger boundary is still the owner's setting
+  });
+
+  it('strikeLiqLtvOf: the owner\'s setting as a fraction, the published 85% when it is missing', () => {
+    expect(strikeLiqLtvOf(85)).toBe(0.85);
+    expect(strikeLiqLtvOf(90)).toBe(0.9);
+    for (const bad of [0, -5, NaN]) expect(strikeLiqLtvOf(bad)).toBe(0.85);
+  });
+
+  it('strikeZoneLevel: watch from the 50% draw ceiling, act at the liquidation LTV', () => {
+    expect(STRIKE_MAX_DRAW_LTV).toBe(0.5);
+    expect(strikeZoneLevel(0.49, 0.85)).toBe('safe');
+    expect(strikeZoneLevel(0.5, 0.85)).toBe('watch');
+    expect(strikeZoneLevel(0.84, 0.85)).toBe('watch');
+    expect(strikeZoneLevel(0.85, 0.85)).toBe('act');
+    expect(strikeZoneLevel(0.85, 0.9)).toBe('watch');   // the act line follows the owner's setting
+  });
+
+  it('⭐ isBelowSupport: the 1e-9 guard absorbs a rounding step but never a real crossing', () => {
+    const s = 70_000;
+    // One part in 10^12 under support: the guard absorbs it. Measured TRUE without the guard.
+    expect(isBelowSupport(s * (1 - 1e-12), s)).toBe(false);
+    expect(isBelowSupport(s, s)).toBe(false);
+    expect(isBelowSupport(s * 0.999, s)).toBe(true);
+    expect(isBelowSupport(s * 1.5, s)).toBe(false);
+  });
+
+  it('fixedMilestoneMonths: the fixed rows, clipped to the horizon', () => {
+    expect([...MILESTONE_MONTHS]).toEqual([12, 24, 36, 60, 120]);
+    expect(fixedMilestoneMonths(60)).toEqual([12, 24, 36, 60]);
+    expect(fixedMilestoneMonths(24)).toEqual([12, 24]);
+    expect(fixedMilestoneMonths(240)).toEqual([12, 24, 36, 60, 120]);
+    expect(fixedMilestoneMonths(11)).toEqual([]);
+  });
+
+  it('⭐ verdictVsNeverDraw: liquidation outranks, hold IS the baseline, otherwise equity decides', () => {
+    const last = mkRow({ equity: 150_000, btcHeld: 3.2 });
+    const base = { last, baselineEquity: 140_000, baselineBtc: 3.0 };
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'cycle')).toEqual({
+      kind: 'wins', wins: true, equityDelta: 10_000, btcDelta: last.btcHeld - 3.0,
+    });
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null, baselineEquity: 160_000 }, 'cycle').kind).toBe('loses');
+    // Liquidation outranks the equity comparison — but `wins` stays the RAW comparison, because the Cycling
+    // face colours its Net-equity tile on it even in a liquidated run.
+    const liq = verdictVsNeverDraw({ ...base, liqMonth: 30 }, 'cycle');
+    expect(liq.kind).toBe('liquidated');
+    expect(liq.wins).toBe(true);
+    // C3: hold IS the never-draw baseline, so there is no second curve to win or lose against.
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'hold').kind).toBe('baseline');
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'clearBoth').kind).toBe('wins');
+  });
+
+  it('coldSurvivePrice: the buffer stated as the price it survives down to', () => {
+    expect(coldSurvivePrice(100_000, 30)).toBeCloseTo(70_000, 9);
+    expect(coldSurvivePrice(100_000, 0)).toBe(100_000);
+  });
+
+  it('surviveFairMultiple: the survive-to price as a multiple of fair — 0 without a fair line', () => {
+    expect(surviveFairMultiple(50_000, 100_000, 30)).toBeCloseTo(0.35, 12);
+    expect(surviveFairMultiple(100_000, 100_000, 0)).toBe(1);
+    expect(surviveFairMultiple(50_000, 0, 30)).toBe(0);
+    expect(surviveFairMultiple(50_000, -1, 30)).toBe(0);
   });
 });

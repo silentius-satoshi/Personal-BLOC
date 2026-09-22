@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { chartOwnershipRows } from '../ownershipFaceView';
+import { chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE } from '../ownershipFaceView';
+import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import type { CyclingRow } from '../../../simulation/cyclingSim';
 
@@ -86,5 +87,43 @@ describe('chartOwnershipRows — no fake liquidation line', () => {
     const r = chartOwnershipRows([mkRow({ cbLtv: Infinity, strikeLtv: Infinity })], CB_LLTV)[0];
     expect(r.cbLtv).toBeNull();
     expect(r.strikeLtv).toBeNull();
+  });
+});
+
+describe('shared ownership rules — extracted from OwnershipFace (one definition each)', () => {
+  it('⭐ ownershipHero reads deriveOwnership, the definition — never an open-coded subtraction', () => {
+    const base = mkRow({ m: 0, btcHeld: 3, debt: 100_000, price: 80_000 });
+    const row = mkRow({ btcHeld: 3.5, debt: 120_000, price: 100_000 });
+    const o = deriveOwnership(3.5, 120_000, 100_000);
+    const today = deriveOwnership(3, 100_000, 80_000).yoursBtc;
+    expect(ownershipHero(row, base)).toEqual({
+      heldBtc: 3.5, owedBtc: o.lendersBtc, yoursBtc: o.yoursBtc, yoursDisplayBtc: o.yoursBtc,
+      netToday: today, deltaVsToday: o.yoursBtc - today, yoursShare: o.yoursShare, lendersShare: o.lendersShare,
+    });
+    expect(o.yoursShare + o.lendersShare).toBeCloseTo(1, 12);
+  });
+
+  it('⭐ the hero clamp is DISPLAY ONLY — an underwater row shows 0 while the raw figure stays negative', () => {
+    const base = mkRow({ m: 0 });
+    const underwater = mkRow({ btcHeld: 1, debt: 200_000, price: 80_000 });   // the debt buys 2.5 ₿ of 1 held
+    const h = ownershipHero(underwater, base);
+    expect(h.yoursBtc).toBeLessThan(0);
+    expect(h.yoursDisplayBtc).toBe(0);
+    // The "vs today" delta reads the RAW figure — a clamped delta would hide how far under water it is.
+    expect(h.deltaVsToday).toBeCloseTo(h.yoursBtc - h.netToday, 12);
+    expect(h.deltaVsToday).toBeLessThan(-h.netToday);
+  });
+
+  it('modeConstraints: C2 only in cycle mode on the engine\'s ground truth, C1 only for a no-draw deficit', () => {
+    expect(modeConstraints('cycle', null, 8_000, 6_000)).toEqual({ degenerateCap: true, deficitMode: false });
+    expect(modeConstraints('cycle', 1, 8_000, 6_000)).toEqual({ degenerateCap: false, deficitMode: false });
+    expect(modeConstraints('cycle', null, 5_000, 6_000).deficitMode).toBe(false);   // cycle draws — never C1
+    expect(modeConstraints('hold', null, 5_000, 6_000)).toEqual({ degenerateCap: false, deficitMode: true });
+    expect(modeConstraints('clearBoth', 3, 6_000, 6_000).deficitMode).toBe(false);  // equal is not a deficit
+  });
+
+  it('MODE_NOTE: hold says it IS the baseline (C3), and every strategy has a note', () => {
+    expect(MODE_NOTE.hold).toContain('IS the never-draw baseline');
+    expect(Object.keys(MODE_NOTE).sort()).toEqual(['clearBoth', 'clearStrike', 'cycle', 'hold']);
   });
 });
