@@ -1,20 +1,39 @@
 name: CI
 on:
+  # Every branch EXCEPT dependabot's. This was `branches: [main]`, so CI fired only on the merge
+  # commit — in parallel with the Vercel deploy, i.e. after production was already live. A feature
+  # branch is now verified BEFORE it is merged.
   push:
-    branches: [main]
+    branches-ignore: ['dependabot/**']
   pull_request:
+
+# Least privilege. Unset, a workflow inherits the repository default, which may be write. Nothing
+# in this job needs to write anything.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
+
 jobs:
   verify:
+    # ⚠ Dependabot is excluded HERE, not via `pull_request.branches-ignore` — that key filters the
+    # BASE branch, and dependabot PRs target `main`, so a branch filter would never match them.
+    # Why exclude: `npm ci` executes postinstall scripts from dependency versions nobody has vetted.
+    # GitHub already gives these PRs a read-only token and no secrets, but the code still runs.
+    # Evaluate a dependency bump locally, then push it as an ordinary branch.
+    if: github.actor != 'dependabot[bot]'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false   # don't leave a usable git credential in the runner
       - uses: actions/setup-node@v4
         with:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run lint
       - run: npm run build
       - run: npx vitest run
