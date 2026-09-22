@@ -1,12 +1,17 @@
-import type { CyclingRow } from '../../simulation/cyclingSim';
+import type { CyclingRow, CyclingResult, CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
-import { CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
+import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { cbBarLevel, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
+import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 
 /**
  * Pure display math for the Almanac Cycling face. No React, no store, no imports from powerLaw/cycleModel —
- * a TYPE import of CyclingRow, the ownership leaf (the single definition of yoursBtc, S2′), and the
- * zero-import Coinbase fee constant (the refinance break-even fallback). Extracted so it is testable
- * without a render harness (the repo has none).
+ * TYPE imports of the engine's row/result/mode, the ownership leaf (the single definition of yoursBtc, S2′),
+ * the zero-import Coinbase constants (the refinance break-even fallback, CB_LLTV for the zone band), the
+ * shared gauge rules (cbMetrics' barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit) and the Strike
+ * margin-call line (emergencyModel) — every one a leaf. Extracted so it is testable without a render harness
+ * (the repo has none).
  *
  * Architecture invariant 2 (one definition of every risk number via cbMetrics / computeStrikeLtv) governs
  * the user's LIVE position. These are projected hypotheticals on a speculative price path — routing them
@@ -326,4 +331,219 @@ export function anchorDrift(livePrice: number, anchorPrice: number, held: boolea
   // drift (live/Infinity − 1), painting the readout red on a coin that never moved.
   if (!held || !Number.isFinite(anchorPrice) || !(anchorPrice > 0) || !Number.isFinite(livePrice)) return 0;
   return livePrice / anchorPrice - 1;
+}
+
+// ── Shared face rules — extracted from the Cycling/Ownership JSX so each has ONE definition ──────────
+// Each of these used to live inline in a parent face's render body, where no test could reach it (the
+// repo has no render harness). A third face (the Strategy face) needs the same rules; a third inline copy
+// is how two faces end up disagreeing about the same number. Every helper here is the parent's expression
+// moved verbatim — the parents now call it — and each is pinned in cyclingFaceView.test.ts.
+
+/**
+ * The Coinbase LTV zone for a projected row — the shared gauge, banded against CB_LLTV, the LTV the
+ * projection actually liquidates at. ⚠ NOT the dashboard's cbLiqFrac: that comes from the owner's entered
+ * liq price, a TODAY anchor that says nothing about a position five years out. The trigger boundary is
+ * still the owner's own setting.
+ */
+export function cbZoneLevel(ltv: number, cbLtvTriggerPct: number): SafetyLevel {
+  return cbBarLevel(ltv, cbLtvTriggerPct, CB_LLTV);
+}
+
+/** Strike's partial-liquidation LTV as a fraction, from the owner's setting; falls back to the published
+ *  85% when the setting is missing, zero, negative or not a number. */
+export function strikeLiqLtvOf(strikeLiquidationLtvPct: number): number {
+  return strikeLiquidationLtvPct > 0 ? strikeLiquidationLtvPct / 100 : 0.85;
+}
+
+/** The Strike LTV zone: watch from the 50% draw ceiling, act at the liquidation LTV (`strikeLiqLtvOf`). */
+export function strikeZoneLevel(strikeLtv: number, strikeLiqLtv: number): SafetyLevel {
+  return barLevel(strikeLtv, STRIKE_MAX_DRAW_LTV, strikeLiqLtv);
+}
+
+/**
+ * Is the inspected price under the power-law support line at that month?
+ *
+ * ⚠ A float-equality guard, not a gate. On the 4-yr path the price is fair × multiple — a different
+ * construction from the support line's A_FLOOR × d^B — so a row landing exactly on a low turn could compute
+ * one float step under support. A genuinely below-support path (the stress lens, or a slow convergence
+ * from a spot under support) still trips it. Plain numbers: this module never imports the power law.
+ */
+export function isBelowSupport(price: number, supportAtMonth: number): boolean {
+  return price < supportAtMonth * (1 - 1e-9);
+}
+
+/** The fixed Milestones rows, before any cycle turns are merged in (`mergeMilestoneRows`). */
+export const MILESTONE_MONTHS = [12, 24, 36, 60, 120] as const;
+
+/** The fixed Milestones rows that fall inside the horizon. */
+export function fixedMilestoneMonths(horizonMonths: number): number[] {
+  return MILESTONE_MONTHS.filter((m) => m <= horizonMonths);
+}
+
+export type NeverDrawVerdictKind = 'liquidated' | 'baseline' | 'wins' | 'loses';
+
+export interface NeverDrawVerdict {
+  /** Liquidation outranks everything; `hold` IS the never-draw baseline (C3), so there is nothing to
+   *  compare; otherwise the run wins or loses on end equity. */
+  kind: NeverDrawVerdictKind;
+  /** The raw equity comparison, independent of `kind` — the Net-equity tile colours on it even when the
+   *  run liquidated, exactly as the Cycling face always has. */
+  wins: boolean;
+  equityDelta: number;
+  btcDelta: number;
+}
+
+/** The verdict against the never-draw baseline on the SAME price path. */
+export function verdictVsNeverDraw(
+  sim: Pick<CyclingResult, 'liqMonth' | 'last' | 'baselineEquity' | 'baselineBtc'>,
+  mode: CyclingMode,
+): NeverDrawVerdict {
+  const wins = sim.last.equity > sim.baselineEquity;
+  const kind: NeverDrawVerdictKind = sim.liqMonth !== null ? 'liquidated'
+    : mode === 'hold' ? 'baseline'
+    : wins ? 'wins' : 'loses';
+  return {
+    kind,
+    wins,
+    equityDelta: sim.last.equity - sim.baselineEquity,
+    btcDelta: sim.last.btcHeld - sim.baselineBtc,
+  };
+}
+
+/** The price the cold-storage buffer survives down to. The knob is a PRICE, not a percentage — "survive a
+ *  drop to $61,236" is a decision; "survive a break of 30%" is arithmetic you have to do first. */
+export function coldSurvivePrice(price: number, coldBufferPct: number): number {
+  return price * (1 - coldBufferPct / 100);
+}
+
+/**
+ * The cold buffer's survive-to price as a multiple of the FAIR line at the same month — the fair-value
+ * translation the engine's docblock requires wherever the knob appears, so it can never be read as more
+ * precise than it is. 0 when the fair line is not positive.
+ */
+export function surviveFairMultiple(price: number, fairAtMonth: number, coldBufferPct: number): number {
+  return fairAtMonth > 0 ? (price / fairAtMonth) * (1 - coldBufferPct / 100) : 0;
+}
+
+// ── The Strike LTV cap — one definition for all three faces (Cycling, Ownership, Strategy) ───────────
+
+/**
+ * ⚠ 60, between the 50% draw ceiling and the 70% margin call. 50 would bind the instant any price fall
+ * follows a full draw — Strike is drawable TO 50%, so a cap there thrashes every month. 65 leaves five
+ * points of cushion below the call. 60 gives ten points either side, and costs 0.1060 ₿ of reserve on the
+ * 4-yr fixture against 0.0665 ₿ at 65 and 0.2088 ₿ at 50.
+ */
+export const DEFAULT_STRIKE_CAP_PCT = 60;
+/**
+ * ⚠ ON by default. Verified a NO-OP on the default Support / on-the-line view (byte-identical ₿ held, cold
+ * and equity), so the shipped default frame is untouched; it changes only the paths that actually fall.
+ */
+export const DEFAULT_STRIKE_CAP_ON = true;
+/** The face slider. The engine clamps anything above 66.5 (0.70 × 0.95 — a buffer inside the call, never
+ *  on it), so 67 and 68 run as 66.5 and the readout says "max". */
+export const STRIKE_CAP_RANGE = { min: 50, max: 68, step: 1 } as const;
+
+/**
+ * The Strike-cap slider readout: 'off', the requested cap, or — for 67/68, which the engine clamps — the
+ * cap it actually runs, marked "max". Pass the raw slider value and effectiveStrikeCapPct's result.
+ */
+export function strikeCapReadout(rawPct: number, effectivePct: number): string {
+  if (!(rawPct > 0) || !(effectivePct > 0)) return 'off';
+  return effectivePct < rawPct ? `${effectivePct.toFixed(1)}% — max` : `${rawPct}%`;
+}
+
+/**
+ * The Strike-cap InfoTip copy, shared by all three faces. The first line is the spec's; the second is the
+ * survival guard's disclosure — without it the tip would promise the cap more than it delivers.
+ */
+export const STRIKE_CAP_TIP: readonly string[] = [
+  "Strike lends to 50% and calls the loan at 70%. This moves bitcoin out of cold storage into the Strike collateral pool to hold the line — Coinbase is served first out of what's left over.",
+  'One thing outranks the cap: when Coinbase would otherwise be liquidated, Strike gives way. Morpho liquidates instantly at 86% with no cure window; Strike gives 72 hours to cure.',
+];
+
+export type StrikeCapState = 'off' | 'idle' | 'defended' | 'short' | 'yielded' | 'called';
+
+export interface StrikeCapReading {
+  /** Precedence: called > yielded > short > defended > idle. `off` only when the cap is off AND no call. */
+  state: StrikeCapState;
+  /** The cap the engine RAN, as a percentage (effectiveStrikeCapPct) — 0 when off. */
+  capPct: number;
+  /** BTC moved cold → Strike across the run. */
+  movedBtc: number;
+  firstTopUpMonth: number | null;
+  exhaustedMonth: number | null;
+  /** First month the survival guard made Strike give way so Coinbase could live. */
+  yieldMonth: number | null;
+  marginMonth: number | null;
+  /** Coinbase's liquidation month — decides whether "gave way to keep Coinbase alive" is TRUE. */
+  liqMonth: number | null;
+}
+
+/**
+ * What the Strike cap did on this run, for the faces to say in plain words. `capPct` is the EFFECTIVE cap
+ * (pass effectiveStrikeCapPct's result, never the raw slider value). A margin call outranks everything —
+ * with the cap on or off, a call is a call.
+ */
+export function strikeCapReading(
+  sim: Pick<CyclingResult,
+    'strikeMarginMonth' | 'firstSurvivalYieldMonth' | 'strikeTopUpExhaustedMonth' | 'firstStrikeTopUpMonth'
+    | 'totalStrikeTopUpBtc' | 'liqMonth'>,
+  capPct: number,
+): StrikeCapReading {
+  const on = capPct > 0;
+  const state: StrikeCapState = sim.strikeMarginMonth !== null ? 'called'
+    : !on ? 'off'
+    : sim.firstSurvivalYieldMonth !== null ? 'yielded'
+    : sim.strikeTopUpExhaustedMonth !== null ? 'short'
+    : sim.firstStrikeTopUpMonth !== null ? 'defended'
+    : 'idle';
+  return {
+    state,
+    capPct: on ? capPct : 0,
+    movedBtc: sim.totalStrikeTopUpBtc,
+    firstTopUpMonth: sim.firstStrikeTopUpMonth,
+    exhaustedMonth: sim.strikeTopUpExhaustedMonth,
+    yieldMonth: sim.firstSurvivalYieldMonth,
+    marginMonth: sim.strikeMarginMonth,
+    liqMonth: sim.liqMonth,
+  };
+}
+
+const capLabel = (capPct: number): string => `${Number.isInteger(capPct) ? capPct : capPct.toFixed(1)}%`;
+
+/**
+ * The yield sentence, or '' when the guard never bound. ⚠ COPY TRUTH: "to keep Coinbase alive" only when
+ * Coinbase actually survived — a yield can precede a later liquidation, and then the sentence says so.
+ */
+export function strikeYieldSentence(r: StrikeCapReading): string {
+  if (r.yieldMonth === null) return '';
+  return r.liqMonth === null
+    ? `Strike gave way to keep Coinbase alive in month ${r.yieldMonth}.`
+    : `Strike gave way to Coinbase in month ${r.yieldMonth}, but Coinbase was still liquidated in month ${r.liqMonth}.`;
+}
+
+/**
+ * One plain-words line per state. Shared by the faces' state lines and the Strike-cap InfoTip's live line.
+ * ⚠ `defended` must never read as a margin call — holding the line IS the success case.
+ */
+export function strikeCapNote(r: StrikeCapReading): string {
+  const call = `${(STRIKE_MARGIN_CALL_LTV * 100).toFixed(0)}%`;
+  const moved = `${r.movedBtc.toFixed(4)} ₿`;
+  switch (r.state) {
+    case 'off':
+      return 'Strike LTV cap is off — nothing moves bitcoin into the Strike pool.';
+    case 'idle':
+      return `Strike never reached the ${capLabel(r.capPct)} cap on this path — nothing moved.`;
+    case 'defended':
+      return `Strike held at ${capLabel(r.capPct)} by moving ${moved} out of cold storage, first at month ${r.firstTopUpMonth}.`;
+    case 'short':
+      return `From month ${r.exhaustedMonth} cold storage could not hold Strike at ${capLabel(r.capPct)} — it slipped past the cap `
+        + `but stayed under the ${call} call.${r.movedBtc > 0 ? ` ${moved} moved out of cold in all.` : ''}`;
+    case 'yielded':
+      return strikeYieldSentence(r);
+    case 'called': {
+      const y = strikeYieldSentence(r);
+      return `Strike LTV crosses ${call} at month ${r.marginMonth} — margin-call territory on the Strike leg.${y ? ` ${y}` : ''}`;
+    }
+  }
 }

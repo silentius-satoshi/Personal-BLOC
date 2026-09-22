@@ -445,6 +445,11 @@
 /* The 4-yr cycle timing control, under the price-path note. */
 .shiftBlock { margin-top: 10px; }
 
+/* The Strike LTV cap control, under the Coinbase stop. Its range is 44px — a real touch target — where the
+   month/lens scrubs above stay 28px; applied alongside .scrub. */
+.capBlock { margin: 14px 0 12px; }
+.capScrub { height: 44px; }
+
 /* ── Footer ─────────────────────────────────────────────────────────────────────────────────── */
 .disclaimer {
   color: var(--text-faint);

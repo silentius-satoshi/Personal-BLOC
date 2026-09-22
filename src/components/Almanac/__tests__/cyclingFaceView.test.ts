@@ -3,13 +3,19 @@ import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
   coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, nextTurnsText, fmtPhaseShift,
+  cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, MILESTONE_MONTHS, fixedMilestoneMonths,
+  verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
+  strikeCapReading, strikeCapNote, strikeYieldSentence, DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
+  strikeCapReadout, STRIKE_CAP_TIP,
+  type StrikeCapReading,
 } from '../cyclingFaceView';
-import { runCyclingSim, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
+import { cbBarLevel } from '../../../simulation/cbMetrics';
+import { runCyclingSim, effectiveStrikeCapPct, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
 import { cycleConvergencePath } from '../../../simulation/cyclePath';
 import { CYCLE_TURNS } from '../../../simulation/cycleModel';
-import { CB_FEE_TIER1_PCT } from '../../../simulation/runCoinbaseLoan';
+import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
 
@@ -33,6 +39,10 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   topUpFromColdBtc: 0,
   topUpFromStrikeBtc: 0,
   coldRetrievedBtc: 0,
+  strikeTopUpBtc: 0,
+  strikeReserveBtc: 0,
+  strikeTopUpShortfallBtc: 0,
+  strikeReserveCutBtc: 0,
   strikeCollateralBtc: 1,
   cbCollateralBtc: 2,
   coldBtc: 0,
@@ -445,5 +455,196 @@ describe('turn and timing formatters', () => {
     expect(fmtPhaseShift(3)).toBe('+3 mo late');
     expect(fmtPhaseShift(-2)).toBe('−2 mo early');
     expect(fmtPhaseShift(NaN)).toBe('on schedule');
+  });
+});
+
+describe('shared face rules — extracted from the parent faces (one definition each)', () => {
+  it('⭐ cbZoneLevel IS cbBarLevel banded against CB_LLTV — never a dashboard cbLiqFrac', () => {
+    for (const ltv of [0, 0.3, 0.57, 0.7499, 0.75, 0.79, 0.7998, 0.8, 0.86, 1.2]) {
+      expect(cbZoneLevel(ltv, 75)).toBe(cbBarLevel(ltv, 75, CB_LLTV));
+    }
+    // Pinned against the band itself, so swapping CB_LLTV for any other liq fraction fails here:
+    // red from 0.93 × 0.86 = 0.7998.
+    expect(cbZoneLevel(0.57, 75)).toBe('safe');     // a 57% CB LTV under a 75 trigger stays green
+    expect(cbZoneLevel(0.76, 75)).toBe('watch');
+    expect(cbZoneLevel(0.79, 75)).toBe('watch');
+    expect(cbZoneLevel(0.80, 75)).toBe('act');
+    expect(cbZoneLevel(0.60, 55)).toBe('watch');    // the trigger boundary is still the owner's setting
+  });
+
+  it('strikeLiqLtvOf: the owner\'s setting as a fraction, the published 85% when it is missing', () => {
+    expect(strikeLiqLtvOf(85)).toBe(0.85);
+    expect(strikeLiqLtvOf(90)).toBe(0.9);
+    for (const bad of [0, -5, NaN]) expect(strikeLiqLtvOf(bad)).toBe(0.85);
+  });
+
+  it('strikeZoneLevel: watch from the 50% draw ceiling, act at the liquidation LTV', () => {
+    expect(STRIKE_MAX_DRAW_LTV).toBe(0.5);
+    expect(strikeZoneLevel(0.49, 0.85)).toBe('safe');
+    expect(strikeZoneLevel(0.5, 0.85)).toBe('watch');
+    expect(strikeZoneLevel(0.84, 0.85)).toBe('watch');
+    expect(strikeZoneLevel(0.85, 0.85)).toBe('act');
+    expect(strikeZoneLevel(0.85, 0.9)).toBe('watch');   // the act line follows the owner's setting
+  });
+
+  it('⭐ isBelowSupport: the 1e-9 guard absorbs a rounding step but never a real crossing', () => {
+    const s = 70_000;
+    // One part in 10^12 under support: the guard absorbs it. Measured TRUE without the guard.
+    expect(isBelowSupport(s * (1 - 1e-12), s)).toBe(false);
+    expect(isBelowSupport(s, s)).toBe(false);
+    expect(isBelowSupport(s * 0.999, s)).toBe(true);
+    expect(isBelowSupport(s * 1.5, s)).toBe(false);
+  });
+
+  it('fixedMilestoneMonths: the fixed rows, clipped to the horizon', () => {
+    expect([...MILESTONE_MONTHS]).toEqual([12, 24, 36, 60, 120]);
+    expect(fixedMilestoneMonths(60)).toEqual([12, 24, 36, 60]);
+    expect(fixedMilestoneMonths(24)).toEqual([12, 24]);
+    expect(fixedMilestoneMonths(240)).toEqual([12, 24, 36, 60, 120]);
+    expect(fixedMilestoneMonths(11)).toEqual([]);
+  });
+
+  it('⭐ verdictVsNeverDraw: liquidation outranks, hold IS the baseline, otherwise equity decides', () => {
+    const last = mkRow({ equity: 150_000, btcHeld: 3.2 });
+    const base = { last, baselineEquity: 140_000, baselineBtc: 3.0 };
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'cycle')).toEqual({
+      kind: 'wins', wins: true, equityDelta: 10_000, btcDelta: last.btcHeld - 3.0,
+    });
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null, baselineEquity: 160_000 }, 'cycle').kind).toBe('loses');
+    // Liquidation outranks the equity comparison — but `wins` stays the RAW comparison, because the Cycling
+    // face colours its Net-equity tile on it even in a liquidated run.
+    const liq = verdictVsNeverDraw({ ...base, liqMonth: 30 }, 'cycle');
+    expect(liq.kind).toBe('liquidated');
+    expect(liq.wins).toBe(true);
+    // C3: hold IS the never-draw baseline, so there is no second curve to win or lose against.
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'hold').kind).toBe('baseline');
+    expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'clearBoth').kind).toBe('wins');
+  });
+
+  it('coldSurvivePrice: the buffer stated as the price it survives down to', () => {
+    expect(coldSurvivePrice(100_000, 30)).toBeCloseTo(70_000, 9);
+    expect(coldSurvivePrice(100_000, 0)).toBe(100_000);
+  });
+
+  it('surviveFairMultiple: the survive-to price as a multiple of fair — 0 without a fair line', () => {
+    expect(surviveFairMultiple(50_000, 100_000, 30)).toBeCloseTo(0.35, 12);
+    expect(surviveFairMultiple(100_000, 100_000, 0)).toBe(1);
+    expect(surviveFairMultiple(50_000, 0, 30)).toBe(0);
+    expect(surviveFairMultiple(50_000, -1, 30)).toBe(0);
+  });
+});
+
+describe('strikeCapReading / strikeCapNote — what the Strike cap did, in plain words', () => {
+  /** A synthetic result — only the six fields the reading reads. */
+  const res = (o: Partial<Parameters<typeof strikeCapReading>[0]> = {}): Parameters<typeof strikeCapReading>[0] => ({
+    strikeMarginMonth: null, firstSurvivalYieldMonth: null, strikeTopUpExhaustedMonth: null,
+    firstStrikeTopUpMonth: null, totalStrikeTopUpBtc: 0, liqMonth: null, ...o,
+  });
+
+  it('the shared defaults: 60, on, and a 50–68 slider (67/68 run as the engine\'s 66.5 ceiling)', () => {
+    expect(DEFAULT_STRIKE_CAP_PCT).toBe(60);
+    expect(DEFAULT_STRIKE_CAP_ON).toBe(true);
+    expect(STRIKE_CAP_RANGE).toEqual({ min: 50, max: 68, step: 1 });
+    expect(effectiveStrikeCapPct(STRIKE_CAP_RANGE.max, STRIKE_MARGIN_CALL_LTV)).toBeCloseTo(66.5, 9);
+    expect(effectiveStrikeCapPct(DEFAULT_STRIKE_CAP_PCT, STRIKE_MARGIN_CALL_LTV)).toBe(60);
+  });
+
+  it('the readout: off, the requested cap, or the clamped ceiling marked "max"', () => {
+    const eff = (raw: number) => effectiveStrikeCapPct(raw, STRIKE_MARGIN_CALL_LTV);
+    expect(strikeCapReadout(0, eff(0))).toBe('off');
+    expect(strikeCapReadout(60, eff(60))).toBe('60%');
+    expect(strikeCapReadout(66, eff(66))).toBe('66%');
+    expect(strikeCapReadout(67, eff(67))).toBe('66.5% — max');
+    expect(strikeCapReadout(68, eff(68))).toBe('66.5% — max');
+  });
+
+  it('the tip discloses the survival guard — the cap is not promised more than it delivers', () => {
+    expect(STRIKE_CAP_TIP[0]).toContain('calls the loan at 70%');
+    expect(STRIKE_CAP_TIP.join(' ')).toContain('when Coinbase would otherwise be liquidated, Strike gives way');
+  });
+
+  it('⭐ precedence: called > yielded > short > defended > idle', () => {
+    const all = { strikeMarginMonth: 40, firstSurvivalYieldMonth: 30, strikeTopUpExhaustedMonth: 20, firstStrikeTopUpMonth: 10 };
+    expect(strikeCapReading(res(all), 60).state).toBe('called');
+    expect(strikeCapReading(res({ ...all, strikeMarginMonth: null }), 60).state).toBe('yielded');
+    expect(strikeCapReading(res({ ...all, strikeMarginMonth: null, firstSurvivalYieldMonth: null }), 60).state).toBe('short');
+    expect(strikeCapReading(res({ firstStrikeTopUpMonth: 10, totalStrikeTopUpBtc: 0.1 }), 60).state).toBe('defended');
+    expect(strikeCapReading(res(), 60).state).toBe('idle');
+  });
+
+  it('off only when the cap is off AND nothing was called — a call is a call either way', () => {
+    expect(strikeCapReading(res(), 0).state).toBe('off');
+    expect(strikeCapReading(res({ strikeMarginMonth: 46 }), 0).state).toBe('called');
+    expect(strikeCapReading(res(), 0).capPct).toBe(0);
+  });
+
+  it('⭐ defended NEVER reads as a margin call — holding the line is the success case', () => {
+    const note = strikeCapNote(strikeCapReading(res({ firstStrikeTopUpMonth: 44, totalStrikeTopUpBtc: 0.106 }), 60));
+    expect(note).toBe('Strike held at 60% by moving 0.1060 ₿ out of cold storage, first at month 44.');
+    expect(note).not.toMatch(/margin|call|crosses/i);
+  });
+
+  it('short says the cap slipped but the call did not come', () => {
+    const note = strikeCapNote(strikeCapReading(res({ strikeTopUpExhaustedMonth: 8, firstStrikeTopUpMonth: 5, totalStrikeTopUpBtc: 0.05 }), 60));
+    expect(note).toContain('From month 8 cold storage could not hold Strike at 60%');
+    expect(note).toContain('stayed under the 70% call');
+    expect(note).toContain('0.0500 ₿ moved out of cold in all');
+    // An empty pool moved nothing — no "0.0000 ₿ moved" clause.
+    expect(strikeCapNote(strikeCapReading(res({ strikeTopUpExhaustedMonth: 8 }), 60))).not.toContain('moved out of cold');
+  });
+
+  it('the effective cap renders as the engine ran it — 66.5, not the slider\'s 68', () => {
+    const r = strikeCapReading(res({ firstStrikeTopUpMonth: 3, totalStrikeTopUpBtc: 0.2 }),
+      effectiveStrikeCapPct(68, STRIKE_MARGIN_CALL_LTV));
+    expect(strikeCapNote(r)).toContain('held at 66.5%');
+  });
+
+  describe('⭐ M10 — the yield sentence, including when it is APPENDED to a call', () => {
+    const called = { strikeMarginMonth: 1, firstSurvivalYieldMonth: 1 };
+
+    it('called + yielded + Coinbase survived → appends "gave way to keep Coinbase alive"', () => {
+      const note = strikeCapNote(strikeCapReading(res({ ...called, liqMonth: null }), 60));
+      expect(note).toBe('Strike LTV crosses 70% at month 1 — margin-call territory on the Strike leg. '
+        + 'Strike gave way to keep Coinbase alive in month 1.');
+    });
+
+    it('called + yielded + Coinbase liquidated → the LIQUIDATED branch, never "keep Coinbase alive"', () => {
+      const note = strikeCapNote(strikeCapReading(res({ ...called, liqMonth: 5 }), 60));
+      expect(note).toContain('Strike gave way to Coinbase in month 1, but Coinbase was still liquidated in month 5.');
+      expect(note).not.toContain('keep Coinbase alive');
+    });
+
+    it('yielded only + Coinbase liquidated → the liquidated branch', () => {
+      const r = strikeCapReading(res({ firstSurvivalYieldMonth: 8, liqMonth: 12 }), 60);
+      expect(r.state).toBe('yielded');
+      expect(strikeCapNote(r)).toBe('Strike gave way to Coinbase in month 8, but Coinbase was still liquidated in month 12.');
+      expect(strikeCapNote(r)).not.toContain('keep Coinbase alive');
+    });
+
+    it('yielded only + Coinbase survived → the plain disclosure', () => {
+      const r: StrikeCapReading = strikeCapReading(res({ firstSurvivalYieldMonth: 8 }), 60);
+      expect(strikeCapNote(r)).toBe('Strike gave way to keep Coinbase alive in month 8.');
+      expect(strikeYieldSentence(strikeCapReading(res(), 60))).toBe('');
+    });
+  });
+
+  it('⭐ against the REAL engine: the faces\' C6 scenario reads "yielded", and says so truthfully', () => {
+    // The faces' exact inputs (the Playwright seed on 2026-09-21): 4-yr path, CB cap 50, cadence 1, sweep 30,
+    // Strike cap 60 — scrubbed to month 8, stressed to 0.50. The guard yields and Coinbase lives.
+    const base: CyclingInputs = {
+      startYear: 2026, strikeCollateralBtc: 1, strikeBalance: 20_000, strikeCreditLine: 60_000,
+      strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
+      cbCollateralBtc: 1, cbDebt: 40_000, income: 8_000, expenses: 6_000, strikeAprPct: 13, cbAprPct: 6.2,
+      cycleMonths: 1, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30, strikeLtvCapPct: 60,
+      pricePath: applyPathStress(cycleConvergencePath(100_000, new Date('2026-09-21T00:00:00Z'), 60, 1), 8, 0.5),
+    };
+    const r = strikeCapReading(runCyclingSim(base), effectiveStrikeCapPct(60, STRIKE_MARGIN_CALL_LTV));
+    expect(r.state).toBe('yielded');
+    expect(strikeCapNote(r)).toBe('Strike gave way to keep Coinbase alive in month 8.');
+    // ...and with the cap OFF the same scenario is a margin call — the reading follows the run, and a call
+    // outranks "off".
+    const off = strikeCapReading(runCyclingSim({ ...base, strikeLtvCapPct: 0 }), 0);
+    expect(off.state).toBe('called');
+    expect(strikeCapNote(off)).toMatch(/^Strike LTV crosses 70% at month \d+ — margin-call territory on the Strike leg\.$/);
   });
 });

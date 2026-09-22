@@ -1,0 +1,132 @@
+/* Almanac Strategy face — the ELEVENTH face. Every shared class COMPOSES a parent's, so the three faces can
+   never drift apart visually: the chrome, cards, controls, tiles and scrubbers from CyclingFace; the hero,
+   share bar, chart switch, mode buttons and table from OwnershipFace. The only NEW rules are the lens
+   switch, the state line and the control-block spacing. Tokens only — zero new hex. */
+
+/* ── From CyclingFace ─────────────────────────────────────────────────────────────────────────── */
+.face { composes: face from './CyclingFace.module.css'; }
+.head { composes: head from './CyclingFace.module.css'; }
+.title { composes: title from './CyclingFace.module.css'; }
+.framing { composes: framing from './CyclingFace.module.css'; }
+.seedRow { composes: seedRow from './CyclingFace.module.css'; }
+.seedLabel { composes: seedLabel from './CyclingFace.module.css'; }
+.ghostBtn { composes: ghostBtn from './CyclingFace.module.css'; }
+.card { composes: card from './CyclingFace.module.css'; }
+.cardLabel { composes: cardLabel from './CyclingFace.module.css'; }
+.noteQuiet { composes: noteQuiet from './CyclingFace.module.css'; }
+.sliderPair { composes: sliderPair from './CyclingFace.module.css'; }
+.bandRow { composes: bandRow from './CyclingFace.module.css'; }
+.bandBtn { composes: bandBtn from './CyclingFace.module.css'; }
+.bandBtnOn { composes: bandBtnOn from './CyclingFace.module.css'; }
+.presetRow { composes: presetRow from './CyclingFace.module.css'; }
+.verdict { composes: verdict from './CyclingFace.module.css'; }
+.verdictGood { composes: verdictGood from './CyclingFace.module.css'; }
+.verdictWarn { composes: verdictWarn from './CyclingFace.module.css'; }
+.verdictBad { composes: verdictBad from './CyclingFace.module.css'; }
+.verdictHead { composes: verdictHead from './CyclingFace.module.css'; }
+.verdictSub { composes: verdictSub from './CyclingFace.module.css'; }
+.deficiency { composes: deficiency from './CyclingFace.module.css'; }
+.statGrid { composes: statGrid from './CyclingFace.module.css'; }
+.stat { composes: stat from './CyclingFace.module.css'; }
+.statValue { composes: statValue from './CyclingFace.module.css'; }
+.statSub { composes: statSub from './CyclingFace.module.css'; }
+/* The 44px face-local range input — the touch target the spec requires for every slider on this face. */
+.scrubHead { composes: scrubHead from './CyclingFace.module.css'; }
+.scrubValue { composes: scrubValue from './CyclingFace.module.css'; }
+.scrub { composes: scrub from './CyclingFace.module.css'; }
+.shiftBlock { composes: shiftBlock from './CyclingFace.module.css'; }
+.constraints { composes: constraints from './CyclingFace.module.css'; }
+.tooltip { composes: tooltip from './CyclingFace.module.css'; }
+.tooltipHead { composes: tooltipHead from './CyclingFace.module.css'; }
+.tooltipRow { composes: tooltipRow from './CyclingFace.module.css'; }
+.disclaimer { composes: disclaimer from './CyclingFace.module.css'; }
+
+/* ── From OwnershipFace ───────────────────────────────────────────────────────────────────────── */
+.heroEyebrow { composes: heroEyebrow from './OwnershipFace.module.css'; }
+.heroValue { composes: heroValue from './OwnershipFace.module.css'; }
+.heroLensed { composes: heroLensed from './OwnershipFace.module.css'; }
+.heroLine { composes: heroLine from './OwnershipFace.module.css'; }
+.segBar { composes: segBar from './OwnershipFace.module.css'; }
+.segYours { composes: segYours from './OwnershipFace.module.css'; }
+.segLenders { composes: segLenders from './OwnershipFace.module.css'; }
+.segRow { composes: segRow from './OwnershipFace.module.css'; }
+.segBtn { composes: segBtn from './OwnershipFace.module.css'; }
+.segBtnOn { composes: segBtnOn from './OwnershipFace.module.css'; }
+.chartSeg { composes: chartSeg from './OwnershipFace.module.css'; }
+.chartSegBtn { composes: chartSegBtn from './OwnershipFace.module.css'; }
+.chartSegOn { composes: chartSegOn from './OwnershipFace.module.css'; }
+.chartBox { composes: chartBox from './OwnershipFace.module.css'; }
+.msWrap { composes: msWrap from './OwnershipFace.module.css'; }
+.msTable { composes: msTable from './OwnershipFace.module.css'; }
+.msTh { composes: msTh from './OwnershipFace.module.css'; }
+.msYear { composes: msYear from './OwnershipFace.module.css'; }
+.msTd { composes: msTd from './OwnershipFace.module.css'; }
+.msRow { composes: msRow from './OwnershipFace.module.css'; }
+.msRowOn { composes: msRowOn from './OwnershipFace.module.css'; }
+.msPost { composes: msPost from './OwnershipFace.module.css'; }
+.msYours { composes: msYours from './OwnershipFace.module.css'; }
+.msFlag { composes: msFlag from './OwnershipFace.module.css'; }
+.msTurn { composes: msTurn from './OwnershipFace.module.css'; }
+.gainNet { composes: gainNet from './OwnershipFace.module.css'; }
+.gainGross { composes: gainGross from './OwnershipFace.module.css'; }
+
+/* ── New to this face ─────────────────────────────────────────────────────────────────────────── */
+
+/* The state line — the headline outcome, before any control. Quiet by default; the tone classes carry the
+   Strike cap's reading (defended green, a short or a yield amber, a call or a liquidation red). */
+.stateLine {
+  margin-top: 13px;
+  padding: 10px 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.stateGood {
+  border-color: color-mix(in srgb, var(--green) 40%, transparent);
+  color: var(--green);
+}
+.stateWarn {
+  border-color: color-mix(in srgb, var(--amber) 40%, transparent);
+  color: var(--amber);
+}
+.stateBad {
+  border-color: color-mix(in srgb, var(--red) 45%, transparent);
+  color: var(--red);
+}
+
+/* A control block under the Strategy card's slider pair (the Strike cap, the cold sweep). */
+.capBlock { margin-top: 16px; }
+
+/* The Position | Flywheel switch — THUMB-SIZED (44px targets), full width, so it reads as the face's one
+   big choice rather than another chip row. */
+.lensSwitch {
+  display: flex;
+  gap: 6px;
+  margin-top: 16px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.lensBtn {
+  flex: 1 1 0;
+  min-height: 44px;
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 12.5px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: background 0.12s, color 0.12s;
+}
+.lensBtn:hover { background: var(--bg-hover); }
+.lensBtnOn {
+  background: color-mix(in srgb, var(--btc) 10%, transparent);
+  border-color: color-mix(in srgb, var(--btc) 50%, transparent);
+  color: var(--text-primary);
+}

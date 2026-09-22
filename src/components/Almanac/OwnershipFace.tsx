@@ -4,12 +4,12 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, Legend,
 } from 'recharts';
 import { useStore } from '../../store/useStore';
-import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
+import { runCyclingSim, effectiveStrikeCapPct, CB_LIQUIDATION_PENALTY, type CyclingMode } from '../../simulation/cyclingSim';
 import { plBandsAt, plBandAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, type PlBand } from '../../simulation/powerLaw';
 import {
   cycleConvergencePath, cycleTurnsInHorizon, upcomingCycleTurns, CYCLE_PHASE_SHIFT_MAX_MONTHS, type PathKind,
 } from '../../simulation/cyclePath';
-import { accruedCbBalance, cbBarLevel, barLevel } from '../../simulation/cbMetrics';
+import { accruedCbBalance, barLevel } from '../../simulation/cbMetrics';
 import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
@@ -20,10 +20,14 @@ import {
   applyPathStress, debtSplit, clampMonth, holdingsSplit,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
   mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
+  cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
+  strikeCapReading, strikeCapNote, strikeYieldSentence, strikeCapReadout, STRIKE_CAP_TIP,
+  DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
 } from './cyclingFaceView';
-import { ownershipGained, chartOwnershipRows } from './ownershipFaceView';
+import { ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE } from './ownershipFaceView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
+import { InfoTip } from '../ui/InfoTip';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './OwnershipFace.module.css';
@@ -82,13 +86,6 @@ const PATH_META: { key: PathKind; label: string }[] = [
   { key: 'fourYear', label: 'Ride the 4-yr cycle' },
 ];
 
-const MODE_NOTE: Record<CyclingMode, string> = {
-  cycle: 'Bills drawn on Strike, refinanced into Coinbase every N months, purchases routed to the Coinbase pool. With cap defense on, a breach pays Coinbase down from Strike and the refinance shifts it back.',
-  hold: 'No draw, no refinance. Surplus buys into the Coinbase pool. ⚠ This IS the never-draw baseline — there is no second curve to compare against.',
-  clearStrike: 'No draw. Surplus retires Strike, then buys.',
-  clearBoth: 'No draw. Surplus retires Strike, then Coinbase, then buys.',
-};
-
 interface Overlay {
   pathKind?: PathKind;
   /** 4-yr cycle only: months the schedule runs late (+) or early (−). A robustness check, not a fit. */
@@ -99,6 +96,8 @@ interface Overlay {
   expenses?: number;
   cycleMonths?: number;
   cbLtvCapPct?: number;
+  /** Strike LTV cap, as a percentage — 0 = off. Session-local like every other control. */
+  strikeLtvCapPct?: number;
   coldStoreBufferPct?: number;
   strikeAprPct?: number;
   cbAprPct?: number;
@@ -204,6 +203,9 @@ export default function OwnershipFace() {
   const expenses = overlay.expenses ?? s.expenses;
   const cycleMonths = overlay.cycleMonths ?? DEFAULT_CYCLE_MONTHS;
   const capPct = overlay.cbLtvCapPct ?? DEFAULT_CAP_PCT;
+  // The Strike-side twin of the CB stop (0 = off); `strikeCapEff` is the clamped cap the engine runs.
+  const strikeCapPct = overlay.strikeLtvCapPct ?? (DEFAULT_STRIKE_CAP_ON ? DEFAULT_STRIKE_CAP_PCT : 0);
+  const strikeCapEff = effectiveStrikeCapPct(strikeCapPct, STRIKE_MARGIN_CALL_LTV);
   const coldBufferPct = overlay.coldStoreBufferPct ?? (DEFAULT_COLD_ON ? DEFAULT_COLD_BUFFER_PCT : 0);
   const strikeAprPct = overlay.strikeAprPct ?? s.blocApr;
   const cbAprPct = overlay.cbAprPct ?? s.cbAprPct;
@@ -253,12 +255,13 @@ export default function OwnershipFace() {
     cbDebt,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
+    strikeLtvCapPct: strikeCapPct,
     coldStoreBufferPct: coldBufferPct,
     defendCbLtv: true,
     mode,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct, mode,
+    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -281,6 +284,11 @@ export default function OwnershipFace() {
   const { rows, last } = sim;
   const liqMonth = sim.liqMonth;
   const defenseActive = sim.defenseCount > 0;
+  // What the Strike cap did. The verdict's call branch carries a call (plus the yield sentence); the note
+  // under the verdict carries everything else — including a call the liquidation verdict pushed aside.
+  const capReading = strikeCapReading(sim, strikeCapEff);
+  const capNoteShown = capReading.state === 'defended' || capReading.state === 'short'
+    || capReading.state === 'yielded' || (capReading.state === 'called' && liqMonth !== null);
   // The first month NEITHER lever could hold the stop. While the shift alone ran short the top-up covers
   // it, so its exhaustion is the real residual; if no top-up ever fired, the shift's is.
   const unhedgedMonth = sim.totalTopUpBtc > 0 ? sim.topUpExhaustedMonth : sim.defenseExhaustedMonth;
@@ -299,10 +307,8 @@ export default function OwnershipFace() {
   // The SUPPORT line at the selected month — the deepest fitted drawdown. The stress may go below it;
   // that is flagged, never blocked.
   const supportAtMonth = plBandAt('floor', startDate, monthIdx);
-  // ⚠ A float-equality guard, not a gate: on the 4-yr path the price is fair × multiple, a different
-  // construction from the support line, so a row landing exactly on a low turn could compute one float step
-  // under. A genuinely below-support path (the stress lens, a slow convergence from under) still trips it.
-  const belowSupport = selRow.price < supportAtMonth * (1 - 1e-9);
+  // ⚠ A float-equality guard, not a gate — see isBelowSupport (cyclingFaceView), the one definition.
+  const belowSupport = isBelowSupport(selRow.price, supportAtMonth);
 
   useEffect(() => { setSelectedMonth((m) => Math.min(m, baseRowCount - 1)); }, [baseRowCount]);
 
@@ -314,25 +320,25 @@ export default function OwnershipFace() {
     monthIdx,
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct, mode,
+    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
   ]);
 
-  // ── the ownership wrapper ──
-  const ownership = deriveOwnership(selRow.btcHeld, selRow.debt, selRow.price);
-  const owedBtc = ownership.lendersBtc;
-  const yoursBtc = Math.max(0, ownership.yoursBtc);   // hero clamp — display only
-  const netToday = deriveOwnership(rows[0].btcHeld, rows[0].debt, rows[0].price).yoursBtc;
-  const delta = ownership.yoursBtc - netToday;
-  const yoursShare = ownership.yoursShare;
+  // ── the ownership wrapper — ownershipHero (ownershipFaceView), the one definition ──
+  const hero = ownershipHero(selRow, rows[0]);
+  const owedBtc = hero.owedBtc;
+  const yoursBtc = hero.yoursDisplayBtc;   // hero clamp — display only
+  const netToday = hero.netToday;
+  const delta = hero.deltaVsToday;
+  const yoursShare = hero.yoursShare;
 
   // The share bar reads the CLAMPED shares directly (they sum to 1 when hasData — B3), never 1 − yours.
-  const lendersShare = ownership.lendersShare;
+  const lendersShare = hero.lendersShare;
 
   const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
   const openingDebt = cbDebt + s.strikeBalance;
 
   const bands = plBandsAt(startDate);
-  const strikeLiqLtv = s.strikeLiquidationLtvPct > 0 ? s.strikeLiquidationLtvPct / 100 : 0.85;
+  const strikeLiqLtv = strikeLiqLtvOf(s.strikeLiquidationLtvPct);
   // ⚠ Positive debt with no collateral has NO finite liquidation price — it is liquidatable at any price.
   // Rendering 0 here would read as "never liquidates", the inverse of the truth. 0 is reserved for the
   // genuinely debt-free leg.
@@ -355,18 +361,14 @@ export default function OwnershipFace() {
   const cap = strikeAvailableCredit(s.creditLine, selRow.strikeCollateralBtc, selRow.price, selRow.strikeBalance);
   const overLine = selRow.strikeBalance > s.creditLine;
 
-  // C2 — the degenerate case: the cap never lets the draw run. ⚠ Judged on the ENGINE's ground truth
-  // (`firstDrawMonth`), not the opening LTV: interest and the path can push LTV across the cap before
-  // month 1 ever draws, so a 68%-opening run against a 70% cap can still never draw, and an opening-LTV
-  // proxy would silently omit the notice.
-  const degenerateCap = mode === 'cycle' && sim.firstDrawMonth === null;
-  // C1 — a no-draw mode with a deficit: the bills are funded by nothing.
-  const deficitMode = mode !== 'cycle' && expenses > income;
+  // C2 (the cap never lets the draw run — judged on the engine's firstDrawMonth, never the opening LTV) and
+  // C1 (a no-draw mode with a deficit) — modeConstraints (ownershipFaceView), the one definition.
+  const { degenerateCap, deficitMode } = modeConstraints(mode, sim.firstDrawMonth, income, expenses);
 
-  const cbZone = (ltv: number): string => LEVEL_COLOR[cbBarLevel(ltv, s.cbLtvTriggerPct, CB_LLTV)];
+  const cbZone = (ltv: number): string => LEVEL_COLOR[cbZoneLevel(ltv, s.cbLtvTriggerPct)];
 
   const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV), [rows]);
-  const milestones = [12, 24, 36, 60, 120].filter((m) => m <= months);
+  const milestones = fixedMilestoneMonths(months);
   // 4-yr cycle only: turns inside the horizon become peak/trough rows. View-only, derived from the shifted
   // schedule — the SAME source the path note reads (unclipped), so the two can never disagree.
   const horizonTurns = useMemo(
@@ -386,7 +388,7 @@ export default function OwnershipFace() {
         : `liq ${fmtLiqK(cbLiq)} · 86% instant`,
       cbZone(selRow.cbLtv)],
     ['Strike LTV', fmtLtvPct(selRow.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · 85%, 72h cure`,
-      LEVEL_COLOR[barLevel(selRow.strikeLtv, STRIKE_MAX_DRAW_LTV, strikeLiqLtv)]],
+      LEVEL_COLOR[strikeZoneLevel(selRow.strikeLtv, strikeLiqLtv)]],
     ['Net ownership', sBtc(gained.yours), `gross ${sBtc(gained.gross)}`,
       gained.yours >= 0 ? 'var(--green)' : 'var(--red)'],
     ['Net equity', fmtK(selRow.equity),
@@ -410,9 +412,11 @@ export default function OwnershipFace() {
       };
     }
     if (sim.strikeMarginMonth !== null) {
+      const yielded = strikeYieldSentence(capReading);
       return {
         color: 'var(--red)' as const,
-        text: `Strike margin call in month ${sim.strikeMarginMonth}. 72-hour cure window, unlike Coinbase.`,
+        text: `Strike margin call in month ${sim.strikeMarginMonth}. 72-hour cure window, unlike Coinbase.`
+          + (yielded ? ` ${yielded}` : ''),
       };
     }
     if (sim.creditExhaustedMonth !== null) {
@@ -495,6 +499,12 @@ export default function OwnershipFace() {
             : { borderColor: verdict.color, color: verdict.color }}>
             {verdict.text}
           </div>
+          {capNoteShown && (
+            <p className={styles.noteQuiet}
+              style={capReading.state === 'defended' ? undefined : { color: 'var(--amber)' }}>
+              {strikeCapNote(capReading)}
+            </p>
+          )}
 
           {defenseActive && (
             <p className={styles.noteQuiet}>
@@ -820,6 +830,36 @@ export default function OwnershipFace() {
               <button type="button" className={styles.ghostBtn} onClick={() => set('cbLtvCapPct', s.cbLtvTriggerPct)}>
                 Use my paydown trigger ({s.cbLtvTriggerPct}%)
               </button>
+            </div>
+
+            {/* The Strike-side twin of the stop above — a face-local 44px range (.capScrub), never
+                ui/SliderInput, which Mining/Living share. */}
+            <div className={styles.capBlock}>
+              <div className={styles.scrubHead}>
+                <span className={styles.cardLabel}>
+                  Strike LTV cap
+                  <InfoTip label="About the Strike LTV cap">
+                    {STRIKE_CAP_TIP.map((line) => <p key={line}>{line}</p>)}
+                    <p><strong>This run:</strong> {strikeCapNote(capReading)}</p>
+                  </InfoTip>
+                </span>
+                <span className={styles.scrubValue}>{strikeCapReadout(strikeCapPct, strikeCapEff)}</span>
+              </div>
+              {strikeCapPct > 0 && (
+                <input
+                  type="range" className={`${styles.scrub} ${styles.capScrub}`}
+                  min={STRIKE_CAP_RANGE.min} max={STRIKE_CAP_RANGE.max} step={STRIKE_CAP_RANGE.step}
+                  value={strikeCapPct}
+                  onChange={(e) => set('strikeLtvCapPct', Number(e.target.value))}
+                  aria-label="Strike LTV cap"
+                />
+              )}
+              <div className={styles.presetRow}>
+                <button type="button" className={styles.ghostBtn}
+                  onClick={() => set('strikeLtvCapPct', strikeCapPct > 0 ? 0 : DEFAULT_STRIKE_CAP_PCT)}>
+                  {strikeCapPct > 0 ? 'Turn Strike cap off' : `Defend Strike at ${DEFAULT_STRIKE_CAP_PCT}%`}
+                </button>
+              </div>
             </div>
             <SliderInput label="Horizon" value={months} onChange={(v) => set('months', v)}
               min={12} max={240} step={1} display={fmtHorizon(months)} minLabel="1 yr" maxLabel="20 yr" />

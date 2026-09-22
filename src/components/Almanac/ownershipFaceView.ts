@@ -1,4 +1,4 @@
-import type { CyclingRow } from '../../simulation/cyclingSim';
+import type { CyclingRow, CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { btcGained } from './cyclingFaceView';
 
@@ -58,3 +58,73 @@ export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): Owners
   });
 }
 
+// ── Shared face rules — extracted from OwnershipFace's JSX so each has ONE definition ────────────────
+// Moved verbatim (the face now calls them) because the Strategy face renders the same hero, the same mode
+// notes and the same C1/C2 notices, and a second inline copy is how two faces drift apart. Pinned in
+// ownershipFaceView.test.ts.
+
+export interface OwnershipHero {
+  heldBtc: number;
+  /** BTC the debt buys at the row's price (deriveOwnership's lendersBtc). */
+  owedBtc: number;
+  /** Raw yours — can go negative when the debt outgrows the stack. */
+  yoursBtc: number;
+  /** The hero figure: yours clamped at 0 — DISPLAY ONLY, never fed back into math. */
+  yoursDisplayBtc: number;
+  /** Yours at the base row (today), for the "vs today" delta and the survival verdict. */
+  netToday: number;
+  deltaVsToday: number;
+  /** The CLAMPED shares (they sum to 1 when hasData — B3), never 1 − yours. */
+  yoursShare: number;
+  lendersShare: number;
+}
+
+/** The ownership wrapper for one row against the base row — every figure through deriveOwnership, the
+ *  definition, never an open-coded subtraction. 3-arg on purpose: `row.btcHeld` already contains cold. */
+export function ownershipHero(row: CyclingRow, base: CyclingRow): OwnershipHero {
+  const o = deriveOwnership(row.btcHeld, row.debt, row.price);
+  const netToday = deriveOwnership(base.btcHeld, base.debt, base.price).yoursBtc;
+  return {
+    heldBtc: row.btcHeld,
+    owedBtc: o.lendersBtc,
+    yoursBtc: o.yoursBtc,
+    yoursDisplayBtc: Math.max(0, o.yoursBtc),
+    netToday,
+    deltaVsToday: o.yoursBtc - netToday,
+    yoursShare: o.yoursShare,
+    lendersShare: o.lendersShare,
+  };
+}
+
+export interface ModeConstraints {
+  /**
+   * C2 — the degenerate case: the cap never lets the draw run. ⚠ Judged on the ENGINE's ground truth
+   * (`firstDrawMonth`), not the opening LTV: interest and the path can push LTV across the cap before
+   * month 1 ever draws, so a 68%-opening run against a 70% cap can still never draw, and an opening-LTV
+   * proxy would silently omit the notice.
+   */
+  degenerateCap: boolean;
+  /** C1 — a no-draw mode with a deficit: the bills are funded by nothing (no coins sold, no debt grown). */
+  deficitMode: boolean;
+}
+
+export function modeConstraints(
+  mode: CyclingMode,
+  firstDrawMonth: number | null,
+  income: number,
+  expenses: number,
+): ModeConstraints {
+  return {
+    degenerateCap: mode === 'cycle' && firstDrawMonth === null,
+    deficitMode: mode !== 'cycle' && expenses > income,
+  };
+}
+
+/** One sentence per strategy. ⚠ `hold` IS the never-draw baseline (C3) — the note says so, and no view may
+ *  present "hold vs baseline" as a win or a loss. */
+export const MODE_NOTE: Record<CyclingMode, string> = {
+  cycle: 'Bills drawn on Strike, refinanced into Coinbase every N months, purchases routed to the Coinbase pool. With cap defense on, a breach pays Coinbase down from Strike and the refinance shifts it back.',
+  hold: 'No draw, no refinance. Surplus buys into the Coinbase pool. ⚠ This IS the never-draw baseline — there is no second curve to compare against.',
+  clearStrike: 'No draw. Surplus retires Strike, then buys.',
+  clearBoth: 'No draw. Surplus retires Strike, then Coinbase, then buys.',
+};

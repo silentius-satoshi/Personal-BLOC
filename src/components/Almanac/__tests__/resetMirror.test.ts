@@ -5,7 +5,7 @@ import { join } from 'node:path';
 /**
  * ⚠ STRUCTURAL GUARD — each face's lens-reset effect must MIRROR its engine-inputs memo.
  *
- * Both Almanac faces drop a price-stress scenario the moment any engine input changes: a stress run
+ * All three engine faces drop a price-stress scenario the moment any engine input changes: a stress run
  * measured against inputs that have since moved reports the wrong position. That rule lived only in a
  * comment ("if an input is added to runCyclingSim, add it here too") and it drifted — `coldBufferPct`
  * reached `engineInputs` on both faces but never the reset list, so dragging the cold-storage slider
@@ -16,7 +16,7 @@ import { join } from 'node:path';
  * Proven red against the unfixed faces before `coldBufferPct` was added — a regex that matched nothing
  * would pass without testing anything, which is why the first case asserts the lists are real.
  */
-const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx'] as const;
+const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx'] as const;
 const ENGINE_DEPS = /const engineInputs = useMemo\(\(\) => \(\{[\s\S]*?\}\), \[([\s\S]*?)\]\);/;
 const RESET_DEPS = /useEffect\(\(\) => \{ setLens\(1\); \}, \[([\s\S]*?)\]\);/;
 const LEGITIMATE_OMISSIONS = new Set(['startDate']);

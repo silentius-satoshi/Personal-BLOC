@@ -16,11 +16,12 @@ import LedgerFace from './LedgerFace';
 import ScenarioFace from './ScenarioFace';
 import CyclingFace from './CyclingFace';
 import OwnershipFace from './OwnershipFace';
+import UnifiedFace from './UnifiedFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for NINE faces: Halving Clock / Cycle Clock (both
+ * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for ELEVEN faces: Halving Clock / Cycle Clock (both
  * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
  * Mining / Power Law / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in
  * a `.faceStack` in that tool's own mobile DOM order — mining/powerlaw panel-first, sats main-first,
@@ -28,8 +29,9 @@ import styles from './AlmanacView.module.css';
  * goes two-column mirroring AppShell's own 280px/1fr shell grid, with `.facePanel` pinning the panel to
  * the left column regardless of each face's own mobile DOM order), and the gated `defense`
  * face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate used by the `liqsim` tab
- * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling
- * faces (the last also `hasCbLoan`-gated). Every embedded tool brings its OWN already-shipped
+ * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling /
+ * Ownership / Strategy faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
+ * through both the Ownership and the Cycling lens). Every embedded tool brings its OWN already-shipped
  * `toolContainer`-composed width — the hub adds none of its own (§8 toolContainer adoption is now CLOSED:
  * EmergencyConsole/LiqSimulator, Mining/PowerLaw/Converter, and AlmanacView's own `.container` all compose
  * from the same `toolShell.module.css`). Holds the local face state (DEFAULT halving, §14.3 — nothing
@@ -48,7 +50,7 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
  * six faces under one hub is navigation only — it crosses neither wall.
  */
-type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership';
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified';
 
 export default function AlmanacView() {
   const [face, setFace] = useState<Face>('halving');
@@ -81,6 +83,11 @@ export default function AlmanacView() {
     if (face === 'cycling' && !hasCbLoan) setFace('halving');
   }, [face, hasCbLoan]);
 
+  // Same fallback for the Strategy face — it runs the same Strike→Coinbase engine as Cycling.
+  useEffect(() => {
+    if (face === 'unified' && !hasCbLoan) setFace('halving');
+  }, [face, hasCbLoan]);
+
   const handleBadgeTap = () => {
     if (almanacLiveEnabled) {
       setAlmanacLiveEnabled(false);            // off — silent
@@ -105,6 +112,8 @@ export default function AlmanacView() {
     // ⚠ Appended LAST, and gated — `halving` must stay first: it is the default face.
     ...(hasCbLoan ? [{ key: 'cycling' as Face, label: '♻ Cycling' }] : []),
     { key: 'ownership' as Face, label: '⚖ Ownership' },   // S3 — UNGATED, after cycling
+    // The ELEVENTH face — gated like cycling (the strategy is a Strike→Coinbase loop), after ownership.
+    ...(hasCbLoan ? [{ key: 'unified' as Face, label: '◈ Strategy' }] : []),
   ];
 
   // The face content for a face key. Pure presentation — switching faces never remounts the hub's
@@ -121,6 +130,7 @@ export default function AlmanacView() {
     // ⚠ MUST be an explicit branch ABOVE the final return — the fallback renders the Converter, so a
     // face added to the union without a branch here compiles clean and silently shows the wrong tool (C8).
     if (f === 'ownership') return <OwnershipFace />;
+    if (f === 'unified')   return <UnifiedFace />;
     return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
   };
 

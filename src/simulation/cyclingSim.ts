@@ -1,5 +1,7 @@
 import { CB_LLTV, CB_LIF, cbBorrowFee, cbMaxDrawForHeadroom } from './runCoinbaseLoan';
-import { defendCbLtv, topUpToCbLtv } from './cbDefense';
+import {
+  defendCbLtv, topUpToCbLtv, topUpStrikeLtv, cbSurvivalCollateralBtc, cbDoomedThisMonth, TOPUP_MARGIN_BUFFER,
+} from './cbDefense';
 import { ltvOf } from './ltv';
 
 /**
@@ -21,6 +23,10 @@ import { ltvOf } from './ltv';
  * plain `number[]` and the three lender ratios (`strikeMaxDrawLtv`, `strikeMarginLtv`) arrive as plain
  * numbers, so the engine is a leaf: clock-free, power-law-free, store-free, fixture-testable. The VIEW does
  * the labelled crossing (the OutlookProjection/MonthBreakdown precedent).
+ *
+ * ⚠ THE STRIKE LEG HAS ITS OWN LTV CAP (opt-in `strikeLtvCapPct`): cold → Strike, with a reservation that
+ * stops Coinbase spending the coins Strike needs — and a survival guard that makes the reservation give way
+ * whenever Coinbase would otherwise be liquidated. Coinbase survival > Strike cap > Coinbase cap.
  *
  * ⚠ TWO COLLATERAL POOLS, NEVER ONE. Strike-pledged BTC cannot also back Morpho. `strikeColl` and `cbColl`
  * are separate denominators (purchases only ever grow `cbColl`; the sweep cascade / top-up may MOVE Strike
@@ -117,6 +123,37 @@ export interface CyclingInputs {
    * Cycle mode only; other modes never draw and never refinance.
    */
   defendCbLtv?: boolean;
+  /**
+   * STRIKE LTV CAP (opt-in; 0 or undefined = off). The Strike-side twin of `cbLtvCapPct`: a month whose
+   * Strike LTV sits above this cap moves BTC from the COLD reserve into the Strike collateral pool.
+   *
+   * ⚠ WHY THIS EXISTS. Every defense in this engine pointed at Coinbase, and two of them made Strike
+   * WORSE: the debt shift adds to `strikeBal` (numerator up) and the CB top-up takes `strikeColl`
+   * (denominator down). Meanwhile the cadence migration is a one-way ratchet that strips Strike during
+   * the rise using a `keepForMargin` evaluated while `strikeBal` is $0. Measured on the 4-yr cycle path:
+   * Strike crossed its 70% margin call at month 46 with 1.17 ₿ sitting unspent in cold.
+   *
+   * 🔴 CLAMPED BELOW THE MARGIN LINE. A cap at or above `strikeMarginLtv` is a no-op by construction —
+   * the top-up would fire in the same month the call fires. The clamp reuses `TOPUP_MARGIN_BUFFER`,
+   * which is the codebase's existing "a buffer inside, never on" constant, so 0.70 × 0.95 = 0.665 is the
+   * effective ceiling. Mirrors the `coldFloorLtv = Math.min(…, cap)` precedent: the two knobs compose
+   * instead of fighting.
+   *
+   * ⚠ THE CAP NEVER OUTRANKS COINBASE SURVIVAL. In a month where the Coinbase top-up needs the reserved
+   * cold (or the Strike collateral the cap would protect) to stay clear of its liquidation, the survival
+   * guard cuts the reserve and drops the floor — Strike gives way, and `firstSurvivalYieldMonth` says so.
+   */
+  strikeLtvCapPct?: number;
+  /** Default ON. Unlike every other opt-in here, absent means ENABLED — safe because the guard body also
+   *  requires `skDefend`, which requires the opt-in `strikeLtvCapPct`. So an input set that predates this
+   *  spec is still byte-identical to HEAD. TEST-ONLY: no face may pass it (a grep test enforces that); it
+   *  exists so a test can measure what the guard buys. Do NOT "fix" this default to false. */
+  cbSurvivalGuard?: boolean;
+  /** Default ON, and TEST-ONLY — same treatment as `cbSurvivalGuard`: no face may pass it (the same grep
+   *  test covers both). It exists so A3/A5 can pin what the futility check itself buys, and so A6's
+   *  mutation check is a runnable test rather than a hand edit. `cbSurvivalGuard: false` still disables
+   *  guard and futility together (that is the spec-v1 design); this flag isolates F1 alone. */
+  cbFutilityCheck?: boolean;
   /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
    *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
   mode?: CyclingMode;
@@ -159,8 +196,18 @@ export interface CyclingRow {
   topUpBtc: number;
   topUpFromColdBtc: number;
   topUpFromStrikeBtc: number;
-  /** Cumulative BTC pulled OUT of cold storage by the emergency top-up (reduces the pool). */
+  /** Cumulative BTC pulled OUT of cold storage — by the emergency top-up AND the Strike top-up (reduces the
+   *  pool). One counter, so the cold ledger foots however the coins left. */
   coldRetrievedBtc: number;
+
+  /** Strike LTV cap: BTC moved cold → Strike this month (0 when the cap is off or not needed). */
+  strikeTopUpBtc: number;
+  /** Cold HELD BACK from the Coinbase top-up for Strike this month (after any survival-guard cut). */
+  strikeReserveBtc: number;
+  /** The part of Strike's need the remaining cold could not fund this month. */
+  strikeTopUpShortfallBtc: number;
+  /** Cold the survival guard took BACK from the Strike reserve this month so Coinbase could survive. */
+  strikeReserveCutBtc: number;
 
   strikeCollateralBtc: number;
   cbCollateralBtc: number;
@@ -225,8 +272,16 @@ export interface CyclingResult {
   totalTopUpFromStrikeBtc: number;
   /** Routine sweep-cascade migration total (Strike collateral → Coinbase). */
   totalStrikeToCbBtc: number;
-  /** Cumulative BTC pulled out of cold by the top-up. */
+  /** Cumulative BTC pulled out of cold — by the emergency top-up and the Strike top-up. */
   totalColdRetrievedBtc: number;
+  /** Strike LTV cap telemetry (all 0/null when `strikeLtvCapPct` is off). */
+  firstStrikeTopUpMonth: number | null;
+  /** First month the remaining cold could NOT restore the Strike cap (the reserve ran short). */
+  strikeTopUpExhaustedMonth: number | null;
+  totalStrikeTopUpBtc: number;
+  /** First month the SURVIVAL GUARD made Strike give way — its reserve cut, or its floor dropped — so the
+   *  Coinbase top-up could keep Coinbase alive. Null when the guard never bound. */
+  firstSurvivalYieldMonth: number | null;
   baselineEquity: number;               // "never draw" comparison, on the SAME price path
   baselineBtc: number;
   /** The reserve the run STARTED with (`openingColdBtc`, 0 when not supplied). Reported so the cold ledger
@@ -245,6 +300,18 @@ export interface CyclingResult {
 /** Liquidation penalty as a fraction (≈ 0.04384) — derived from the shared incentive factor, not a literal. */
 export const CB_LIQUIDATION_PENALTY = CB_LIF - 1;
 
+/**
+ * The Strike cap the engine ACTUALLY runs, as a percentage: 0 (off) for absent / 0 / negative / non-finite,
+ * else the requested cap clamped a `TOPUP_MARGIN_BUFFER` inside the margin-call line (0.70 × 0.95 → 66.5).
+ * One definition, so a face's "66.5% — max" readout can never disagree with the run it describes.
+ */
+export function effectiveStrikeCapPct(raw: number | undefined, strikeMarginLtv: number): number {
+  const skCapRaw = raw ?? 0;
+  return Number.isFinite(skCapRaw) && skCapRaw > 0
+    ? Math.min(skCapRaw, strikeMarginLtv * (1 - TOPUP_MARGIN_BUFFER) * 100)
+    : 0;
+}
+
 
 export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const {
@@ -260,6 +327,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const cycle = Math.max(1, Math.floor(inputs.cycleMonths));
   const mode: CyclingMode = inputs.mode ?? 'cycle';
   const defend = inputs.defendCbLtv === true;
+  // Strike LTV cap (opt-in) — 0 = off, byte-identical engine. The clamp lives in effectiveStrikeCapPct.
+  const skCapPct = effectiveStrikeCapPct(inputs.strikeLtvCapPct, strikeMarginLtv);
+  const skDefend = skCapPct > 0;
+  // ⚠ DEFAULT ON, both (see the input docblocks): absent means enabled, and still byte-identical to HEAD
+  // for any input set without `strikeLtvCapPct`, because everything they guard requires `skDefend`.
+  const survivalGuard = inputs.cbSurvivalGuard !== false;
+  const futility = inputs.cbFutilityCheck !== false;
 
   // Cold-storage sweep. 0 disables it; 1 (survive a 100% drawdown) would demand an LTV of 0 — infinite
   // collateral for any debt — so the buffer is held below 1.
@@ -316,6 +390,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalTopUpFromColdBtc = 0;
   let totalTopUpFromStrikeBtc = 0;
   let firstColdMonth: number | null = null;
+  let firstStrikeTopUpMonth: number | null = null;
+  let strikeTopUpExhaustedMonth: number | null = null;
+  let totalStrikeTopUpBtc = 0;
+  let firstSurvivalYieldMonth: number | null = null;
 
   const rows: CyclingRow[] = [];
 
@@ -331,6 +409,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let topUpBtc = 0;
     let topUpFromColdBtc = 0;
     let topUpFromStrikeBtc = 0;
+    let strikeTopUpBtc = 0;
+    let strikeReserveBtc = 0;
+    let strikeTopUpShortfallBtc = 0;
+    let strikeReserveCutBtc = 0;
 
     if (m > 0) {
       const ci = cbDebt * cmr;
@@ -454,21 +536,67 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           }
         }
 
+        // ⭐ THE STRIKE CAP'S ORDERING — the whole design is in it. Compute the Strike reserve BEFORE the CB
+        // top-up and APPLY it after:
+        //   · BEFORE, or Coinbase spends the pool first and the floor is decorative;
+        //   · AFTER, because the CB top-up's last-resort Strike-collateral grab reads `strikeColl` — apply
+        //     the Strike top-up first and that grab can take back the very coins just placed (the reserve
+        //     silently undone, with both row fields still reporting success).
+        // And the reserve is TWO-PART: the CB leg is handed `coldBtc − reserve` AND a Strike floor at the
+        // cap. Reserving only the cold is a fiction — Coinbase would simply take the collateral instead.
+
+        // ── STRIKE RESERVE ── computed on the POST-defense state, BEFORE Coinbase can spend the pool.
+        if (skDefend && liqMonth === null && price > 0) {
+          strikeReserveBtc = topUpStrikeLtv({
+            strikeBalance: strikeBal, strikeCollateralBtc: strikeColl, price,
+            targetStrikeLtvPct: skCapPct, coldBtc,
+          }).fromColdBtc;
+        }
+
+        // ── COINBASE SURVIVAL GUARD ── Coinbase survival > Strike cap > Coinbase cap. Morpho liquidates
+        // INSTANTLY at 86%; Strike gives a cure window. So in a month where the CB top-up runs, the reserve
+        // may only claim the cold Coinbase does not need to sit CB_SURVIVAL_BUFFER inside its liquidation,
+        // and the floor stands only while cold alone can keep Coinbase alive.
+        // ⚠ The FUTILITY CHECK stands the guard down in a month Coinbase dies whatever Strike does — a
+        // yield there feeds the reserved cold into the pool Morpho is about to seize.
+        let skFloorOn = skDefend;
+        if (
+          survivalGuard && skDefend && defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0
+          && !(futility && cbDoomedThisMonth({
+            cbDebt, cbCollateralBtc: cbColl, price, lltv: CB_LLTV, coldBtc,
+            strikeCollateralBtc: strikeColl, strikeBalance: strikeBal, marginLtv: strikeMarginLtv,
+          }))
+        ) {
+          const survivalBtc = cbSurvivalCollateralBtc(cbDebt, cbColl, price, CB_LLTV);
+          const allowed = Math.max(0, coldBtc - survivalBtc);
+          if (strikeReserveBtc > allowed) {
+            strikeReserveCutBtc = strikeReserveBtc - allowed;
+            strikeReserveBtc = allowed;
+          }
+          // After the clamp, strikeReserveBtc <= max(0, coldBtc - survivalBtc), so this reduces to coldBtc >=
+          // survivalBtc in every branch. Written in the reduced form so the code says what the comment says.
+          skFloorOn = coldBtc >= survivalBtc;   // drop the floor only when cold alone cannot keep CB alive
+          if ((strikeReserveCutBtc > 0 || !skFloorOn) && firstSurvivalYieldMonth === null) firstSurvivalYieldMonth = m;
+        }
+
         // ── EMERGENCY COLLATERAL TOP-UP (fallback, cycle + defendCbLtv) ─────────────────────────────
         // The shift can't always hold the stop (the line is finite). Then grow the CB denominator instead:
         // cold reserve FIRST (no lender constraint, no Strike side effect), then the Strike collateral
         // above its margin line — the true last resort, which sacrifices the 50% line backing. ⚠ Runs
         // AFTER the shift and BEFORE the cold sweep, so the sweep can never undo it.
+        // With the Strike cap armed it is served first out of what's LEFT OVER: the cold minus the Strike
+        // reserve, and Strike collateral only down to the cap (both 0/undefined when the cap is off).
         if (defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0) {
           const t = topUpToCbLtv({
             cbDebt,
             cbCollateralBtc: cbColl,
             price,
             targetCbLtvPct: cbLtvCapPct,
-            coldBtc,
+            coldBtc: Math.max(0, coldBtc - strikeReserveBtc),
             strikeCollateralBtc: strikeColl,
             strikeBalance: strikeBal,
             marginLtv: strikeMarginLtv,
+            strikeFloorLtv: skFloorOn ? skCapPct / 100 : undefined,
           });
           topUpBtc = t.topUpBtc;
           topUpFromColdBtc = t.fromColdBtc;
@@ -484,6 +612,31 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             if (firstTopUpMonth === null) firstTopUpMonth = m;
           }
           if (t.shortfallBtc > 0 && topUpExhaustedMonth === null) topUpExhaustedMonth = m;
+        }
+
+        // ── STRIKE COLLATERAL TOP-UP ── cold → Strike, AFTER Coinbase has taken its (capped) share.
+        // Recomputed, not replayed: the CB top-up may still have taken Strike collateral down to the cap,
+        // so the need can exceed the reserve. It spends whatever cold remains — which is ≥ the reserve
+        // by construction, since the CB leg was handed `coldBtc − reserve`.
+        // ⚠ Runs unconditionally on `skDefend`, NOT gated on `defenseShortfallUsd > 0`: the CB top-up is a
+        // fallback to a CB breach, while the Strike cap is its own policy and must fire in months where
+        // Coinbase is perfectly healthy.
+        if (skDefend && liqMonth === null && price > 0) {
+          const st = topUpStrikeLtv({
+            strikeBalance: strikeBal, strikeCollateralBtc: strikeColl, price,
+            targetStrikeLtvPct: skCapPct, coldBtc,
+          });
+          strikeTopUpBtc = st.fromColdBtc;
+          strikeTopUpShortfallBtc = st.shortfallBtc;
+          if (st.fromColdBtc > 0) {
+            coldBtc -= st.fromColdBtc;
+            strikeColl += st.fromColdBtc;
+            // 🔴 MUST join coldRetrievedBtc or the cold ledger stops footing (a test pins the identity).
+            coldRetrievedBtc += st.fromColdBtc;
+            totalStrikeTopUpBtc += st.fromColdBtc;
+            if (firstStrikeTopUpMonth === null) firstStrikeTopUpMonth = m;
+          }
+          if (st.shortfallBtc > 0 && strikeTopUpExhaustedMonth === null) strikeTopUpExhaustedMonth = m;
         }
       } else {
         // Non-cycle modes: no draw, no refinance. Both legs accrue at their own rates; the surplus
@@ -559,6 +712,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       strikeDrawn, strikeShortfall, btcBoughtUsd,
       defenseDrawnUsd, cbLtvPreDefense, defenseShortfallUsd, defended: defenseDrawnUsd > 0,
       strikeToCbBtc, topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
+      strikeTopUpBtc, strikeReserveBtc, strikeTopUpShortfallBtc, strikeReserveCutBtc,
       strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, coldFromCb, coldFromStrike, btcHeld,
       cbLtv, strikeLtv,
       collateralValue, equity: collateralValue - (cbDebt + strikeBal),
@@ -609,6 +763,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     firstDefenseMonth, defenseExhaustedMonth, totalDefenseDrawnUsd, defenseCount,
     firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
     totalStrikeToCbBtc, totalColdRetrievedBtc: coldRetrievedBtc,
+    firstStrikeTopUpMonth, strikeTopUpExhaustedMonth, totalStrikeTopUpBtc, firstSurvivalYieldMonth,
     baselineEquity, baselineBtc: baseBtc,
     openingColdBtc,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
