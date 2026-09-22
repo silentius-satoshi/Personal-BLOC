@@ -1,5 +1,14 @@
 import { describe, it, expect } from 'vitest';
-import { runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingInputs } from '../cyclingSim';
+import { execSync } from 'node:child_process';
+import {
+  runCyclingSim, CB_LIQUIDATION_PENALTY, effectiveStrikeCapPct, type CyclingInputs, type CyclingResult,
+} from '../cyclingSim';
+import { cbSurvivalCollateralBtc } from '../cbDefense';
+// The Strike-cap block reproduces the FACES' world, so it deliberately builds the faces' own paths.
+// (The §2 wall restricts the ENGINE module; the cold-sweep block below keeps its own synthetic regimes.)
+import { cycleConvergencePath } from '../cyclePath';
+import { plConvergencePath } from '../powerLaw';
+import { applyPathStress } from '../../components/Almanac/cyclingFaceView';
 import { cbMetrics } from '../cbMetrics';
 import { CB_LLTV, CB_LIF, cbBorrowFee, CB_FEE_TIER_BREAK, cbMaxDrawForHeadroom, CB_PLATFORM_FEE_PCT, cbNetApr } from '../runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../strikeCredit';
@@ -622,7 +631,8 @@ describe('runCyclingSim — guards', () => {
 
   describe('cold-storage sweep (coldStoreBufferPct)', () => {
     // Price regimes matter more than any other input here, so the block builds its own paths rather
-    // than leaning on `flat` alone. No powerLaw import — the engine's §2 wall applies to its tests too.
+    // than leaning on `flat` alone. No powerLaw paths in THIS block — its regimes are synthetic on purpose
+    // (the Strike-cap block imports the real ones, because it reproduces the faces' world).
     const geo = (months: number, annualPct: number): number[] =>
       Array.from({ length: months + 1 }, (_, i) => PRICE * Math.pow(1 + annualPct / 100 / 12, i));
     const RISING = { pricePath: geo(240, 25), cbLtvCapPct: 70, cycleMonths: 1 };
@@ -905,5 +915,380 @@ describe('runCyclingSim — guards', () => {
         expect(cbMaxDrawForHeadroom(h, b)).toBe(0);
       }
     });
+  });
+});
+
+describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase survival guard', () => {
+  /**
+   * The spec's reproduction — round synthetic figures: 1.0 ₿ on each venue, $20k Strike / $40k Coinbase, a
+   * $60k line, 13% / 6.2%, $8k income against $6k expenses, cadence 1, defense on, sweep 30, CB cap 50.
+   * ⚠ startDate PINNED at 2027-01-01Z — an implied "today" rots. The spec's §A3 table was measured from a
+   * 2026-09-21 start, which is the ONLY reason its margin call reads month 46 where this one reads 43: a
+   * different phase of the same 4-yr cycle, same behaviour.
+   */
+  const REPRO: CyclingInputs = {
+    startYear: 2027,
+    strikeCollateralBtc: 1, strikeBalance: 20_000, strikeCreditLine: 60_000,
+    strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
+    cbCollateralBtc: 1, cbDebt: 40_000,
+    income: 8_000, expenses: 6_000, strikeAprPct: 13, cbAprPct: 6.2,
+    cycleMonths: 1, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30,
+    pricePath: cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1),
+  };
+  /** A single crash at month 1: no refinance (cadence 999), no sweep, 0.3 ₿ of real reserve. */
+  const CRASH: Omit<CyclingInputs, 'pricePath'> = {
+    ...REPRO, cycleMonths: 999, coldStoreBufferPct: 0, strikeBalance: 32_000, cbDebt: 50_000,
+    openingColdBtc: 0.3, strikeLtvCapPct: 60,
+  };
+  /** Fixture C — $45k: Coinbase can live only if Strike gives way. */
+  const FIXTURE_C: CyclingInputs = { ...CRASH, pricePath: [100_000, 45_000] };
+  /** Fixture D — $30k: Coinbase is doomed THIS MONTH whatever Strike does, while the reserve alone can
+   *  still hold Strike at its cap. The futility check's reason to exist. */
+  const FIXTURE_D: CyclingInputs = { ...CRASH, strikeBalance: 18_400, pricePath: [100_000, 30_000] };
+  const peakSk = (r: CyclingResult) => Math.max(...r.rows.map((x) => x.strikeLtv));
+  const NEW_ROW_FIELDS = ['strikeTopUpBtc', 'strikeReserveBtc', 'strikeTopUpShortfallBtc', 'strikeReserveCutBtc'] as const;
+
+  it('⭐ 5 · the reproduction, both directions: called at month 43 with the cap off, never at 60', () => {
+    const off = runCyclingSim(REPRO);
+    const on = runCyclingSim({ ...REPRO, strikeLtvCapPct: 60 });
+    expect(off.strikeMarginMonth).toBe(43);
+    expect(on.strikeMarginMonth).toBeNull();
+    // Held AT the cap, not merely under the call — the descent plateaus at exactly 60%.
+    expect(peakSk(off)).toBeGreaterThan(STRIKE_MARGIN_CALL_LTV);
+    expect(peakSk(on)).toBeCloseTo(0.60, 9);
+    expect(on.firstStrikeTopUpMonth).not.toBeNull();
+    expect(on.strikeTopUpExhaustedMonth).toBeNull();
+    expect(on.liqMonth).toBeNull();
+  });
+
+  it('⭐ 6 · the cold ledger still foots with the Strike top-up inside it', () => {
+    const r = runCyclingSim({ ...REPRO, strikeLtvCapPct: 60 });
+    expect(r.totalStrikeTopUpBtc).toBeGreaterThan(0);   // guard: the Strike top-up actually fired
+    expect(r.openingColdBtc + r.totalColdFromCb + r.totalColdFromStrike - r.totalColdRetrievedBtc)
+      .toBeCloseTo(r.totalColdBtc, 9);
+    for (const x of r.rows) {
+      expect(r.openingColdBtc + x.coldFromCb + x.coldFromStrike - x.coldRetrievedBtc).toBeCloseTo(x.coldBtc, 9);
+    }
+    // Both top-ups draw on ONE retrieval counter.
+    expect(r.totalColdRetrievedBtc).toBeCloseTo(r.totalTopUpFromColdBtc + r.totalStrikeTopUpBtc, 12);
+  });
+
+  it('7 · coins are conserved — the top-up MOVES bitcoin, it never mints it', () => {
+    const r = runCyclingSim({ ...REPRO, strikeLtvCapPct: 60 });
+    expect(r.liqMonth).toBeNull();                      // no seizure in the way
+    expect(r.totalStrikeTopUpBtc).toBeGreaterThan(0);
+    const bought = r.rows.reduce((sum, x) => sum + (x.price > 0 ? x.btcBoughtUsd / x.price : 0), 0);
+    expect(r.last.btcHeld)
+      .toBeCloseTo(REPRO.strikeCollateralBtc + REPRO.cbCollateralBtc + r.openingColdBtc + bought, 9);
+  });
+
+  it('⭐ 8 · off ⇒ byte-identical — absent / 0 / −5 / NaN / ∞ — and pinned to the pre-feature engine', () => {
+    const absent = runCyclingSim(REPRO);
+    for (const v of [0, -5, NaN, Number.POSITIVE_INFINITY]) {
+      expect(runCyclingSim({ ...REPRO, strikeLtvCapPct: v }).rows).toEqual(absent.rows);
+    }
+    for (const x of absent.rows) for (const k of NEW_ROW_FIELDS) expect(x[k]).toBe(0);
+    expect(absent.firstStrikeTopUpMonth).toBeNull();
+    expect(absent.strikeTopUpExhaustedMonth).toBeNull();
+    expect(absent.totalStrikeTopUpBtc).toBe(0);
+    expect(absent.firstSurvivalYieldMonth).toBeNull();
+    // ⭐ THE HEAD GOLDEN — the UNMODIFIED engine (HEAD 0322128) on this exact fixture, captured before a
+    // line of this feature was written. `absent ≡ 0` above cannot see a leak that moves both runs
+    // alike; these can. (Verified identical on Node 22 — CI's version — and Node 26.)
+    expect(absent.strikeMarginMonth).toBe(43);
+    expect(absent.liqMonth).toBeNull();
+    expect(absent.rows).toHaveLength(61);
+    expect(absent.last.btcHeld).toBeCloseTo(3.9194251711551873, 9);
+    expect(absent.totalColdBtc).toBeCloseTo(1.7402271853714832, 9);
+    expect(absent.last.equity).toBeCloseTo(1389607.8827326794, 4);
+    expect(absent.totalTopUpBtc).toBeCloseTo(0.905376292993461, 9);
+    expect(absent.totalDefenseDrawnUsd).toBeCloseTo(58985.317884110904, 4);
+    expect(absent.totalStrikeToCbBtc).toBeCloseTo(0.6279504246050729, 9);
+    expect(absent.totalColdRetrievedBtc).toBeCloseTo(0.905376292993461, 9);
+    expect(peakSk(absent)).toBeCloseTo(0.796667046754635, 9);
+  });
+
+  it('8 · twins — the two TEST-ONLY flags default ON, and each is non-vacuous where it binds', () => {
+    // cbSurvivalGuard on fixture C (where the guard binds)...
+    const cAbsent = runCyclingSim(FIXTURE_C);
+    expect(cAbsent.rows).toEqual(runCyclingSim({ ...FIXTURE_C, cbSurvivalGuard: true }).rows);
+    expect(cAbsent.rows).not.toEqual(runCyclingSim({ ...FIXTURE_C, cbSurvivalGuard: false }).rows);
+    // ...and cbFutilityCheck on fixture D (where the futility check binds).
+    const dAbsent = runCyclingSim(FIXTURE_D);
+    expect(dAbsent.rows).toEqual(runCyclingSim({ ...FIXTURE_D, cbFutilityCheck: true }).rows);
+    expect(dAbsent.rows).not.toEqual(runCyclingSim({ ...FIXTURE_D, cbFutilityCheck: false }).rows);
+  });
+
+  it('⭐ 9 · the adversarial grid: the cap never makes Coinbase worse, and the call is gone in all 36', () => {
+    let n = 0, engaged = 0, contested = 0;
+    for (const cbDebt of [50_000, 60_000, 70_000, 80_000]) {
+      for (const openingColdBtc of [0, 0.05, 0.2]) {
+        for (const cbLtvCapPct of [50, 60, 70]) {
+          n++;
+          const off = runCyclingSim({ ...REPRO, cbDebt, openingColdBtc, cbLtvCapPct });
+          const on = runCyclingSim({ ...REPRO, cbDebt, openingColdBtc, cbLtvCapPct, strikeLtvCapPct: 60 });
+          if (off.liqMonth === null) expect(on.liqMonth).toBeNull();
+          else if (on.liqMonth !== null) expect(on.liqMonth).toBeGreaterThanOrEqual(off.liqMonth);
+          expect(off.strikeMarginMonth).not.toBeNull();
+          expect(on.strikeMarginMonth).toBeNull();
+          if (on.rows.some((x) => x.strikeReserveBtc > 0)) engaged++;
+          // ⚠ Contested = a Strike reserve held back in a month the CB top-up ALSO ran — the only months
+          // in which the reserve could have starved Coinbase. Without these the invariant is vacuous.
+          if (on.rows.some((x) => x.strikeReserveBtc > 0 && x.topUpBtc > 0)) contested++;
+        }
+      }
+    }
+    expect(n).toBe(36);
+    expect(engaged).toBe(36);
+    expect(contested).toBe(36);
+  });
+
+  it('10 · the clamp bites: a cap of 90 runs as 66.5 (0.70 × 0.95), peaking at 0.665 — not 0.797', () => {
+    expect(effectiveStrikeCapPct(90, STRIKE_MARGIN_CALL_LTV)).toBeCloseTo(66.5, 9);
+    const c90 = runCyclingSim({ ...REPRO, strikeLtvCapPct: 90 });
+    const c665 = runCyclingSim({ ...REPRO, strikeLtvCapPct: 66.5 });
+    expect(c90.rows).toEqual(c665.rows);
+    expect(peakSk(c90)).toBeCloseTo(0.665, 9);           // unclamped, 90 would never bind below the 0.797 peak
+    expect(c90.strikeMarginMonth).toBeNull();
+  });
+
+  it('effectiveStrikeCapPct: off for absent / 0 / negative / non-finite, and the requested cap under the ceiling', () => {
+    for (const v of [undefined, 0, -5, NaN, Number.POSITIVE_INFINITY]) {
+      expect(effectiveStrikeCapPct(v, STRIKE_MARGIN_CALL_LTV)).toBe(0);
+    }
+    expect(effectiveStrikeCapPct(60, STRIKE_MARGIN_CALL_LTV)).toBe(60);
+    expect(effectiveStrikeCapPct(50, STRIKE_MARGIN_CALL_LTV)).toBe(50);
+  });
+
+  it('11 · empty pool, armed cap: nothing moves, and the exhaustion month IS the first breach', () => {
+    // ⚠ Synthetic — on the real sweep-off path the cadence migration keeps more Strike collateral and the
+    // cap is never breached, so a natural fixture passes vacuously. No defense, no sweep, no reserve: the
+    // draw walks Strike to its 50% line at $100k, then a fall to $75k lifts it over the cap.
+    const r = runCyclingSim({
+      ...REPRO, defendCbLtv: false, coldStoreBufferPct: 0, openingColdBtc: 0, cycleMonths: 999, cbLtvCapPct: 85,
+      strikeLtvCapPct: 60, pricePath: [...new Array(8).fill(100_000), ...new Array(6).fill(75_000)],
+    });
+    const firstBreach = r.rows.findIndex((x) => x.strikeLtv > 0.60);
+    expect(firstBreach).toBe(8);
+    expect(r.strikeTopUpExhaustedMonth).toBe(firstBreach);
+    expect(r.rows.every((x) => x.strikeTopUpBtc === 0)).toBe(true);
+    expect(r.totalStrikeTopUpBtc).toBe(0);
+    expect(r.firstStrikeTopUpMonth).toBeNull();
+  });
+
+  it('⭐ A1 · fixture B pins BOTH halves of the reservation — the cold AND the collateral floor', () => {
+    // $50k: Coinbase needs a top-up, Strike needs 0.078 ₿ to sit at 60%, and 0.3 ₿ of cold must cover
+    // both. Drop the cold reserve and Coinbase takes the coins; drop the floor and it takes the
+    // collateral instead. Either way Strike ends above 60%. No spec test caught either deletion.
+    const r = runCyclingSim({ ...CRASH, pricePath: [100_000, 50_000] });
+    const x = r.rows[1];
+    expect(x.strikeReserveBtc).toBeGreaterThan(0);
+    expect(x.topUpBtc).toBeGreaterThan(0);                                          // contested
+    expect(x.topUpFromColdBtc).toBeCloseTo(0.3 - x.strikeReserveBtc, 12);           // handed cold − reserve
+    expect(x.topUpFromStrikeBtc).toBe(0);                                           // the floor held
+    expect(x.strikeTopUpBtc).toBeCloseTo(x.strikeReserveBtc, 12);                   // the reserve went to Strike
+    expect(x.strikeLtv).toBeCloseTo(0.60, 9);
+    expect(r.strikeTopUpExhaustedMonth).toBeNull();
+    expect(r.firstSurvivalYieldMonth).toBeNull();
+    expect(r.liqMonth).toBeNull();
+    // ⚠ FIXTURE-BOUND: the reserve and the resulting CB LTV on this crash.
+    expect(x.strikeReserveBtc).toBeCloseTo(0.078222, 6);
+    expect(x.cbLtv).toBeCloseTo(0.7966, 4);
+  });
+
+  it('⭐ A2 · fixture C — the survival guard: Strike gives way so Coinbase lives', () => {
+    const guarded = runCyclingSim(FIXTURE_C);
+    const specV1 = runCyclingSim({ ...FIXTURE_C, cbSurvivalGuard: false });
+    const capOff = runCyclingSim({ ...FIXTURE_C, strikeLtvCapPct: 0 });
+    // The spec-v1 reservation liquidates Coinbase to keep Strike at 60%...
+    expect(specV1.liqMonth).toBe(1);
+    expect(specV1.rows[1].strikeLtv).toBeCloseTo(0.60, 9);
+    expect(specV1.rows[1].cbLtv).toBeCloseTo(0.9742, 4);
+    // ...the guard cuts the reserve, drops the floor, and Coinbase survives — Strike is called instead.
+    expect(guarded.liqMonth).toBeNull();
+    expect(guarded.firstSurvivalYieldMonth).toBe(1);
+    expect(guarded.rows[1].strikeReserveCutBtc).toBeCloseTo(0.198025, 6);
+    expect(guarded.rows[1].strikeReserveBtc).toBe(0);
+    expect(guarded.strikeMarginMonth).toBe(1);
+    // Coinbase is exactly where it would be with the cap off — the guard hands back everything.
+    expect(guarded.rows[1].cbLtv).toBe(capOff.rows[1].cbLtv);
+    expect(guarded.rows[1].cbLtv).toBeCloseTo(0.8307, 4);
+    expect(capOff.liqMonth).toBeNull();
+  });
+
+  it('⭐ M1 · the floor stands exactly while cold alone can keep Coinbase alive — and drops one sat under', () => {
+    // A fixture where Strike needs NO reserve (the debt shift leaves it at 50%), so only the FLOOR is in
+    // play: kept → the CB grab stops at the 60% cap; dropped → it goes on to the 66.5% margin bound.
+    // income = expenses, so a non-drawing month buys nothing and Coinbase's collateral stays at 1 ₿.
+    const base: CyclingInputs = {
+      ...CRASH, strikeBalance: 10_000, income: 6_000, expenses: 6_000, openingColdBtc: 0, pricePath: [100_000, 45_000],
+    };
+    const probe = runCyclingSim(base);
+    expect(probe.rows[1].strikeReserveBtc).toBe(0);                 // no reserve: the floor alone decides
+    const survivalBtc = cbSurvivalCollateralBtc(probe.rows[1].cbDebt, 1, 45_000, CB_LLTV);
+    expect(survivalBtc).toBeGreaterThan(0);
+    const above = runCyclingSim({ ...base, openingColdBtc: survivalBtc + 1e-8 });
+    const below = runCyclingSim({ ...base, openingColdBtc: survivalBtc - 1e-8 });
+    expect(above.firstSurvivalYieldMonth).toBeNull();
+    expect(above.rows[1].strikeLtv).toBeCloseTo(0.60, 9);
+    expect(below.firstSurvivalYieldMonth).toBe(1);
+    expect(below.rows[1].strikeLtv).toBeCloseTo(STRIKE_MARGIN_CALL_LTV * 0.95, 9);
+    for (const r of [above, below]) expect(r.liqMonth).toBeNull();
+  });
+
+  it('⭐ the guard acts ONLY in a month the CB top-up runs — no phantom "gave way" on a healthy stop', () => {
+    // CB cap 85, above the 81.7% survival line: Coinbase sits at 83% — inside its own stop, so there is
+    // no debt shift, no shortfall and no CB top-up — while Strike (64.7%) wants the cold. Ungated, the
+    // guard would cut the reserve here and report a yield that handed nothing to anyone.
+    const r = runCyclingSim({ ...CRASH, cbLtvCapPct: 85, cbDebt: 43_000, openingColdBtc: 0.05, pricePath: [100_000, 50_000] });
+    const x = r.rows[1];
+    expect(x.defenseShortfallUsd).toBe(0);
+    expect(x.topUpBtc).toBe(0);
+    expect(x.cbLtv).toBeGreaterThan(CB_LLTV * 0.95);        // the guard WOULD bind, if it ran
+    expect(r.firstSurvivalYieldMonth).toBeNull();
+    expect(r.rows.every((row) => row.strikeReserveCutBtc === 0)).toBe(true);
+    expect(x.strikeTopUpBtc).toBeCloseTo(0.05, 12);         // the whole reserve went to Strike
+    expect(r.liqMonth).toBeNull();
+  });
+
+  /** One (base, arm) pair of runs per case; `off` and `v1` are arm-independent and computed once. */
+  const ARMS = [['guard-only', { cbFutilityCheck: false }], ['guard+F1', {}]] as const;
+  const strikeWorse = (g: CyclingResult, u: CyclingResult) =>
+    (g.strikeMarginMonth !== null && (u.strikeMarginMonth === null || g.strikeMarginMonth < u.strikeMarginMonth))
+    || g.totalStrikeTopUpBtc < u.totalStrikeTopUpBtc - 1e-12;
+  const cbEarlier = (r: CyclingResult, off: CyclingResult) =>
+    (r.liqMonth ?? Number.POSITIVE_INFINITY) < (off.liqMonth ?? Number.POSITIVE_INFINITY);
+  interface Tally { cbEarlier: number; yielded: number; survived: number; died: number; strikeWorse: number; futile: number; calls: number }
+  function tallyGrid(cases: CyclingInputs[]) {
+    const out: Record<'unguarded' | 'guard-only' | 'guard+F1', Tally> = {
+      unguarded: { cbEarlier: 0, yielded: 0, survived: 0, died: 0, strikeWorse: 0, futile: 0, calls: 0 },
+      'guard-only': { cbEarlier: 0, yielded: 0, survived: 0, died: 0, strikeWorse: 0, futile: 0, calls: 0 },
+      'guard+F1': { cbEarlier: 0, yielded: 0, survived: 0, died: 0, strikeWorse: 0, futile: 0, calls: 0 },
+    };
+    for (const cfg of cases) {
+      const off = runCyclingSim({ ...cfg, strikeLtvCapPct: 0 });
+      const v1 = runCyclingSim({ ...cfg, cbSurvivalGuard: false });
+      const note = (t: Tally, r: CyclingResult) => {
+        if (cbEarlier(r, off)) t.cbEarlier++;
+        if (r.strikeMarginMonth !== null) t.calls++;
+        if (r.firstSurvivalYieldMonth === null) return;
+        t.yielded++;
+        if (r.liqMonth === null) { t.survived++; return; }
+        t.died++;
+        if (strikeWorse(r, v1)) { t.strikeWorse++; if (r.liqMonth === v1.liqMonth) t.futile++; }
+      };
+      note(out.unguarded, v1);
+      for (const [tag, arm] of ARMS) note(out[tag], runCyclingSim({ ...cfg, ...arm }));
+    }
+    return out;
+  }
+
+  it('⭐⭐ A3 · the faces\' world (360) and the synthetic crashes (5,760): three arms, counts pinned', () => {
+    // A3 GRID — the Cycling face's world: the 4-yr path from 2027-01-01Z, CB cap 50/60/70 × a stress lens
+    // engaged at month 1, 3, …, 59 × factor 0.35/0.5/0.65/0.8, Strike cap 60. A silent drift in any count
+    // must break the build; the unguarded arm is what keeps the guarded pins from passing vacuously.
+    const path = cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1);
+    const faceWorld: CyclingInputs[] = [];
+    for (const cbLtvCapPct of [50, 60, 70]) {
+      for (let from = 1; from <= 59; from += 2) {
+        for (const lens of [0.35, 0.5, 0.65, 0.8]) {
+          faceWorld.push({ ...REPRO, cbLtvCapPct, strikeLtvCapPct: 60, pricePath: applyPathStress(path, from, lens) });
+        }
+      }
+    }
+    expect(faceWorld).toHaveLength(360);
+    const g = tallyGrid(faceWorld);
+    // Coinbase liquidated EARLIER than with the cap off: spec v1 24 → guard 14 → guard + F1 14.
+    expect([g.unguarded.cbEarlier, g['guard-only'].cbEarlier, g['guard+F1'].cbEarlier]).toEqual([24, 14, 14]);
+    expect(g['guard-only']).toMatchObject({ yielded: 108, survived: 26, died: 82, strikeWorse: 23, futile: 15 });
+    expect(g['guard+F1']).toMatchObject({ yielded: 59, survived: 26, died: 33, strikeWorse: 13, futile: 5 });
+    expect([g.unguarded.calls, g['guard-only'].calls, g['guard+F1'].calls]).toEqual([76, 91, 82]);
+
+    // SYNTHETIC SINGLE-CRASH GRID — 5 Strike balances × 4 CB debts × 6 cold seeds × 3 pre-crash spans ×
+    // 4 depths × sweep on/off × cadence 1/999, CB cap 50, Strike cap 60 vs off.
+    let n = 0;
+    const synEarlier = { unguarded: 0, 'guard-only': 0, 'guard+F1': 0 };
+    for (const strikeBalance of [0, 10_000, 20_000, 30_000, 40_000]) for (const cbDebt of [40_000, 50_000, 60_000, 70_000])
+    for (const openingColdBtc of [0, 0.1, 0.2, 0.3, 0.5, 1.0]) for (const pre of [1, 3, 6]) for (const depth of [0.4, 0.5, 0.6, 0.7])
+    for (const coldStoreBufferPct of [0, 30]) for (const cycleMonths of [1, 999]) {
+      n++;
+      const cfg: CyclingInputs = {
+        ...REPRO, cbLtvCapPct: 50, strikeBalance, cbDebt, openingColdBtc, coldStoreBufferPct, cycleMonths,
+        pricePath: [...new Array(pre + 1).fill(100_000), ...new Array(12).fill(100_000 * depth)],
+      };
+      const off = runCyclingSim(cfg);
+      if (cbEarlier(runCyclingSim({ ...cfg, strikeLtvCapPct: 60, cbSurvivalGuard: false }), off)) synEarlier.unguarded++;
+      for (const [tag, arm] of ARMS) if (cbEarlier(runCyclingSim({ ...cfg, strikeLtvCapPct: 60, ...arm }), off)) synEarlier[tag]++;
+    }
+    expect(n).toBe(5_760);
+    expect(synEarlier).toEqual({ unguarded: 526, 'guard-only': 0, 'guard+F1': 0 });
+  }, 60_000);
+
+  it('A4 · on the Support path (the shipped default frame) the cap is a no-op', () => {
+    const support: CyclingInputs = {
+      ...REPRO, cbLtvCapPct: 70, pricePath: plConvergencePath(100_000, 'floor', new Date('2027-01-01T00:00:00Z'), 60, 1),
+    };
+    const off = runCyclingSim(support);
+    const on = runCyclingSim({ ...support, strikeLtvCapPct: 60 });
+    expect(on.rows).toEqual(off.rows);
+    expect(on.firstStrikeTopUpMonth).toBeNull();
+    expect(on.firstSurvivalYieldMonth).toBeNull();
+    expect(peakSk(off)).toBeLessThan(0.60);             // why: Strike never reaches the cap on this path
+  });
+
+  it('⭐⭐ A5 · the reachability grid (2,806): three arms, and the C6 yield the faces must be able to show', () => {
+    // The faces' exact inputs (the Playwright seed, today = 2026-09-21): 4-yr path, CB cap 50, cadence 1,
+    // sweep 30, Strike cap 60 × a stress lens engaged at month 0–60 × factor 0.35–0.80 in steps of 0.01.
+    const path = cycleConvergencePath(100_000, new Date('2026-09-21T00:00:00Z'), 60, 1);
+    const reach: CyclingInputs[] = [];
+    for (let from = 0; from <= 60; from++) {
+      for (let k = 35; k <= 80; k++) {
+        reach.push({ ...REPRO, startYear: 2026, strikeLtvCapPct: 60, pricePath: applyPathStress(path, from, k / 100) });
+      }
+    }
+    expect(reach).toHaveLength(2_806);
+    const g = tallyGrid(reach);
+    expect([g.unguarded.cbEarlier, g['guard-only'].cbEarlier, g['guard+F1'].cbEarlier]).toEqual([158, 94, 94]);
+    expect(g['guard-only']).toMatchObject({ yielded: 704, survived: 249, died: 455, strikeWorse: 86, futile: 60 });
+    expect(g['guard+F1']).toMatchObject({ yielded: 395, survived: 249, died: 146, strikeWorse: 44, futile: 18 });
+    expect([g.unguarded.calls, g['guard-only'].calls, g['guard+F1'].calls]).toEqual([840, 951, 912]);
+    // ⭐ C6: scrub to month 8, then stress to 0.50 — the guard yields in month 8 and Coinbase SURVIVES.
+    const c6 = runCyclingSim({ ...REPRO, startYear: 2026, strikeLtvCapPct: 60, pricePath: applyPathStress(path, 8, 0.5) });
+    expect(c6.firstSurvivalYieldMonth).toBe(8);
+    expect(c6.liqMonth).toBeNull();
+    expect(c6.strikeMarginMonth).toBeNull();
+  }, 60_000);
+
+  it('⭐ A6 · fixture D — the futility check: no yield when Coinbase dies this month whatever Strike does', () => {
+    const withF1 = runCyclingSim(FIXTURE_D);
+    const withoutF1 = runCyclingSim({ ...FIXTURE_D, cbFutilityCheck: false });
+    const capOff = runCyclingSim({ ...FIXTURE_D, strikeLtvCapPct: 0 });
+    const specV1 = runCyclingSim({ ...FIXTURE_D, cbSurvivalGuard: false });
+    // Coinbase dies in month 1 in EVERY arm — nothing Strike could hand over would save it.
+    for (const r of [withF1, withoutF1, capOff, specV1]) expect(r.liqMonth).toBe(1);
+    // With the futility check: no yield, nothing cut, and the reserve holds Strike at its cap.
+    expect(withF1.firstSurvivalYieldMonth).toBeNull();
+    expect(withF1.rows[1].strikeReserveCutBtc).toBe(0);
+    expect(withF1.rows[1].strikeTopUpBtc).toBeGreaterThan(0);
+    expect(withF1.rows[1].strikeLtv).toBeCloseTo(0.60, 9);
+    // ⭐ The runnable mutation check: without it the guard yields — and the yield is futile, costing
+    // Strike its cap for a Coinbase that is seized in the same month.
+    expect(withoutF1.firstSurvivalYieldMonth).toBe(1);
+    expect(withoutF1.rows[1].strikeReserveCutBtc).toBeGreaterThan(0);
+    expect(withoutF1.rows[1].strikeLtv).toBeGreaterThan(0.60);
+  });
+
+  it('⭐ the two survival-guard flags are TEST-ONLY — no component passes either', () => {
+    const hits = execSync(
+      'grep -rnE "cbSurvivalGuard|cbFutilityCheck" src/components/ || true',
+      { cwd: process.cwd(), encoding: 'utf8' },
+    ).trim().split('\n').filter(Boolean);
+    expect(hits, `a face passes a test-only flag:\n${hits.join('\n')}`).toEqual([]);
+    // Non-vacuous: the same grep DOES reach the faces that run this engine.
+    const faces = execSync(
+      'grep -rlE "runCyclingSim\\(" src/components/Almanac/ --exclude-dir=__tests__ || true',
+      { cwd: process.cwd(), encoding: 'utf8' },
+    ).trim().split('\n').filter(Boolean);
+    expect(faces).toContain('src/components/Almanac/CyclingFace.tsx');
   });
 });

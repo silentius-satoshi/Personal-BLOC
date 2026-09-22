@@ -133,7 +133,13 @@ src/
                                 # number of ms → exactly invertible). shiftedCycleTurns (unclipped) feeds
                                 # upcomingCycleTurns (path note) + cycleTurnsInHorizon (Milestones: nearest row,
                                 # ties → later, row 0 SNAPS to 1). 🔴 A belief — never importable by the risk core
-    cyclingSim.ts               # Cycling strategy PURE engine (Almanac `cycling` face) — draw bills on Strike,
+    cyclingSim.ts               # Cycling strategy PURE engine (Almanac cycling/ownership/strategy faces) —
+                                # + the STRIKE LTV CAP (strikeLtvCapPct, 0/undefined = off → byte-identical,
+                                # pinned by a HEAD golden): a cold → Strike top-up with a TWO-PART reservation
+                                # (cold AND a collateral floor), the COINBASE SURVIVAL GUARD and its FUTILITY
+                                # CHECK (test-only cbSurvivalGuard/cbFutilityCheck, both default ON, no face
+                                # may pass them), effectiveStrikeCapPct (the exported clamp) and the telemetry
+                                # firstSurvivalYieldMonth/strikeReserveCutBtc. Draw bills on Strike,
                                 # refinance into Coinbase every cycleMonths, route every purchase to the CB
                                 # collateral pool, stop drawing at a CB LTV cap; verdict vs a never-draw baseline.
                                 # Pays Coinbase's origination fee (cbBorrowFee) on EVERY sweep and CAPITALISES
@@ -177,7 +183,14 @@ src/
                                 # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
                                 # added to the never-draw baseline (the owner holds it in that world too).
                                 # NOT wired from the faces — that is its own spec
-    cbDefense.ts                # Debt-shift defense — LEAF — imports only the zero-import ./ltv: strikeDrawCapacity(collBtc, drawn,
+    cbDefense.ts                # LTV defense, BOTH legs — LEAF, imports only the zero-import ./ltv. Strike side:
+                                # topUpStrikeLtv (cold → Strike, cold the ONLY source) + strikeCollateralAboveLtv
+                                # (the one definition of what Strike can spare) + topUpToCbLtv's optional
+                                # strikeFloorLtv (⚠ absent ≡ byte-identical). Survival guard: CB_SURVIVAL_BUFFER
+                                # (0.05 — its OWN constant, NOT TOPUP_MARGIN_BUFFER) + cbSurvivalCollateralBtc +
+                                # cbDoomedThisMonth (the futility check; buffer 0 and the MARGIN bound, both
+                                # deliberate — see its docblock). Coinbase survival > Strike cap > Coinbase cap.
+                                # Coinbase side: strikeDrawCapacity(collBtc, drawn,
                                 # price, maxDrawLtv, creditLine=∞) = min(creditLine, collateral×price×maxDrawLtv)
                                 # − drawn; defendCbLtv(input) → paydown needed/capacity/draw/shortfall,
                                 # post-defense CB+Strike LTVs, Strike margin-call price, recovery price;
@@ -2423,6 +2436,18 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
 - **Gesture coexistence:** nothing to arbitrate — the Almanac face pager is removed, so a slider drag can no
   longer page the face. The former `data-gesture-exempt` markers on the control cards are deleted. *(This also
   retired the Mining face's latent slider-vs-pager conflict.)*
+- **The STRIKE LTV CAP control** (both parents + the Strategy face): a ghost on/off toggle, a face-local
+  **44px** range 50–68 step 1 beside the CB stop (⚠ never the shared `ui/SliderInput` — Mining/Living consume
+  it and a track change would relayout three surfaces), the effective readout (`66.5% — max` when the engine
+  clamps 67/68), and an `InfoTip` carrying the shared copy plus this run's live reading.
+  `DEFAULT_STRIKE_CAP_PCT = 60` (between the 50% draw ceiling and the 70% call: 50 thrashes every month, 65
+  leaves five points, 60 gives ten either side) and **`DEFAULT_STRIKE_CAP_ON = true`** — safe ONLY because it
+  is a measured no-op on the default Support view. The reading is one shared helper, not three copies:
+  `strikeCapReading(sim, effectiveCapPct)` → `off | idle | defended | short | yielded | called`, precedence
+  **called > yielded > short > defended > idle**, rendered by `strikeCapNote`. ⚠ **COPY TRUTH:** the yield
+  sentence says "gave way to **keep Coinbase alive**" ONLY when Coinbase survived; otherwise it says Coinbase
+  was liquidated anyway — and since a run can be BOTH called and yielded, the liquidated branch must survive
+  being appended to the call (three unit cases pin it). `defended` must never read as a margin call.
 - **Zone colours** reuse the shared gauge (`cbBarLevel` + `LEVEL_COLOR`) but band against **`CB_LLTV`**, the
   LTV this projection actually liquidates at — NOT the dashboard's `cbLiqFrac`, which comes from the owner's
   entered liq price, a TODAY anchor that says nothing about a position five years out. The trigger boundary
@@ -2490,6 +2515,9 @@ TEST, not a comment:** `src/components/Almanac/__tests__/resetMirror.test.ts` ex
 each face and fails if any engine input except `startDate` is missing from the reset list. The comment alone
 had let `coldBufferPct` drift out on BOTH faces — a pre-existing bug: moving the cold slider under an engaged
 lens kept a stale scenario. The guard was proven red against the unfixed faces before the fix went in.
+⚠ `FACES` now covers **all three** engine faces (Cycling, Ownership, **UnifiedFace.tsx**) — a face outside
+that list escapes the mirror entirely, which is the single easiest way to reintroduce the stale-scenario bug.
+It was run RED on all three (each naming `strikeCapPct`) before the Strike cap reached the reset arrays.
 
 **⚠ THE ANCHOR SPLIT — the lens freezes the SCENARIO, never the FACE.** `pricePath` is built from
 `anchorPrice`, **not** `s.btcPrice`. `useBtcPrice` polls spot every 10s and pushes to the store on a 0.1%
@@ -2529,7 +2557,9 @@ still.
   moved.
 - Tests: **`src/components/Almanac/__tests__/stressAnchor.test.ts`** (16) — the truth tables, the
   engage-race case, an end-to-end reproduction of the old defect, and a **mutation-tested grep guard** that
-  fails if either face is reverted to `plConvergencePath(s.btcPrice, …)`. Suite → **1170**.
+  fails if either face is reverted to `plConvergencePath(s.btcPrice, …)`. Suite → **1170**. ⚠ Its
+  expected-callers list now names THREE faces (Cycling, Ownership, UnifiedFace) — it caught the new face
+  before the list was updated, which is the guard working.
 
 **BTC gained:** both the tile and the Milestones column read the displayed (base or stressed) run
 (`btcGained(selRow, rows[0])` / `btcGained(r, rows[0])`), so they agree by construction. Both show **gross
@@ -2559,9 +2589,12 @@ not a mode within it. ⚠ The cold-storage / unpledged reserve IS modeled now �
   still holds the intact pre-seizure position and a naive assertion there passes vacuously. A sibling case
   pins that trap. Suite 1004 → **1023**.
 
-#### LTV-stop defense: debt shift + collateral top-up (`defendCbLtv` — engine + both faces; NO store change)
+#### LTV defense, BOTH legs: the Coinbase debt shift/top-up AND the Strike LTV cap (engine + all three faces; NO store change)
 
-The two faces run the strategy WITH its emergency policy: when a fall pushes CB LTV over the stop, the engine
+**The priority, one line:** 🔴 **Coinbase survival > Strike cap > Coinbase cap.** Morpho liquidates INSTANTLY
+at 86%; Strike gives 72 hours to cure — so when the two defenses want the same coins, Coinbase wins.
+
+The faces run the strategy WITH its emergency policy: when a fall pushes CB LTV over the stop, the engine
 draws from Strike and PAYS THE COINBASE LOAN DOWN to the stop (shifting the dollar debt to Strike — no BTC
 bought or pledged), and a due refinance then sweeps ONLY up to the remaining CB headroom so it can never push
 LTV back over the stop. When the price recovers, the normal cadence shifts the debt back to Coinbase. If the
@@ -2635,6 +2668,135 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   defense alone; migrated coins never leave the stressed line+margin keep; cold
   drained before Strike; pools/net-cold invariants; `openingColdBtc` omitted/junk ≡ 0, spent by the top-up,
   ledger foots, and reaching the baseline) + `plBandAt` cases in `powerLaw.test.ts`.
+
+##### The STRIKE side: `strikeLtvCapPct`, its two-part reservation, and the survival guard
+
+Every defense above pointed at Coinbase, and two of them made STRIKE worse: the debt shift adds to
+`strikeBal` (numerator up) and the CB top-up takes `strikeColl` (denominator down). Meanwhile the cadence
+migration is a one-way ratchet (below). Measured on the 4-yr cycle path: **Strike crossed its 70% margin call
+at month 46 with 1.17 ₿ sitting unspent in cold** — holding the line there needed 0.1646 ₿, 14% of the pile.
+
+- **`cbDefense.ts` gains the Strike twin + the guard's risk math, all leaves:** `topUpStrikeLtv(input)`
+  (cold → Strike, cold the ONLY source — robbing the Coinbase pool to cure a 72-hour window inverts the
+  risk); `strikeCollateralAboveLtv(coll, bal, price, boundLtv)` (the ONE definition of what Strike can
+  spare — `topUpToCbLtv`'s last-resort grab and the futility check ask the same question);
+  **`CB_SURVIVAL_BUFFER = 0.05`** (⚠ its OWN constant, NOT a second use of `TOPUP_MARGIN_BUFFER`: that one is
+  Strike's margin buffer, and one constant serving two unrelated lines means tuning either silently moves the
+  other); `cbSurvivalCollateralBtc(debt, coll, price, lltv, buffer = CB_SURVIVAL_BUFFER)`; and
+  `cbDoomedThisMonth(input)` — the futility check.
+- **`topUpToCbLtv` gains `strikeFloorLtv?`** — `bound = min(marginBound, floor)`. ⚠ **Absent (and 0, and any
+  floor looser than the margin bound) is byte-identical to the pre-floor function**, pinned by a deep-equal
+  test: every pre-existing call site passes nothing, and a silently tightened bound would change the shipped
+  CB defense on every face.
+- **`runCyclingSim` gains `strikeLtvCapPct?` — 0/undefined = off → byte-identical engine** (pinned against a
+  HEAD golden captured before a line of this feature existed). **`effectiveStrikeCapPct(raw, marginLtv)`** is
+  the clamp, exported so a face's "66.5% — max" readout and the run it describes cannot disagree: a cap at or
+  above the margin line is a no-op by construction, so it is clamped a `TOPUP_MARGIN_BUFFER` inside it
+  (0.70 × 0.95 → 66.5).
+- **⭐ THE SEQUENCE IS THE DESIGN** — per month, cycle mode: interest → draw → cascade migration → refinance →
+  debt shift → **STRIKE RESERVE (compute)** → **futility check → SURVIVAL GUARD** → **CB top-up** →
+  **STRIKE TOP-UP (apply)** → cold sweep → LTV/breach. Both halves of the reserve are load-bearing:
+  compute it BEFORE the CB top-up or Coinbase spends the pool first and the floor is decorative; apply it
+  AFTER, because the CB top-up's last-resort grab reads `strikeColl` — apply first and that grab can take
+  back the very coins just placed, with both row fields still reporting success.
+- **⚠ THE RESERVE IS TWO-PART, or it is a fiction.** The CB top-up is handed `coldBtc − reserve` AND
+  `strikeFloorLtv` at the cap: reserve only the cold and Coinbase simply takes the COLLATERAL instead.
+  ⚠ Deleting either half passes every other test in the suite — fixture B (test A1) exists to catch it.
+- **⚠ The Strike top-up is UNGATED on `defenseShortfallUsd`** (unlike the CB top-up, which is a fallback to a
+  CB breach): the Strike cap is its own policy and must fire in months where Coinbase is perfectly healthy —
+  which, in the reproduction, is every month.
+- **THE SURVIVAL GUARD** (in a month the CB top-up actually runs): the reserve may claim only the cold
+  Coinbase does not need to sit `CB_SURVIVAL_BUFFER` inside its liquidation, and the floor stands only while
+  `coldBtc >= survivalBtc` — the reduced form of "cold alone can keep Coinbase alive", exact where the long
+  form could flip on an ulp. A cut reserve or a dropped floor records `firstSurvivalYieldMonth`.
+  ⚠ It is gated on `defenseShortfallUsd > 0` so it can never report a yield in a month where nothing was
+  handed over (reachable whenever the CB stop sits above the 81.7% survival line).
+- **THE FUTILITY CHECK (F1)** stands the guard down when `cbDoomedThisMonth` — Coinbase cannot clear its
+  ACTUAL 86% line this month even with ALL the cold plus every spare Strike coin. A yield there is futile: it
+  feeds the reserved cold into the pool Morpho is about to seize. Two decisions its docblock carries, because
+  both look like inconsistencies: **buffer 0** (the actual line, not the buffered one) and **the margin bound,
+  not the Strike cap** (what is POSSIBLE, not what policy allows) — either substitution declares savable
+  positions doomed.
+- **New row fields** `strikeTopUpBtc` / `strikeReserveBtc` / `strikeTopUpShortfallBtc` / `strikeReserveCutBtc`;
+  **result** `firstStrikeTopUpMonth` / `strikeTopUpExhaustedMonth` / `totalStrikeTopUpBtc` /
+  `firstSurvivalYieldMonth`. 🔴 The Strike top-up MUST join `coldRetrievedBtc` or the cold ledger stops
+  footing (`opening + fromCb + fromStrike − retrieved === coldBtc`; a test pins the identity).
+- **Two TEST-ONLY inputs, `cbSurvivalGuard` and `cbFutilityCheck`, both DEFAULT ON.** Absent means ENABLED —
+  safe because everything they guard also requires `skDefend`, i.e. the opt-in `strikeLtvCapPct`. They exist
+  so the grids can pin what each buys; **no face may pass either, and a grep test enforces it.** Do NOT "fix"
+  either default to false.
+- **📊 THE EVIDENCE — ⚠ every count names its grid** (three denominators appear here; two unlabelled ones read
+  as a contradiction). Arms: **unguarded** = the spec-v1 design (`cbSurvivalGuard: false`), **guard**
+  (`cbFutilityCheck: false`), **guard + F1** = shipped. Coinbase liquidated EARLIER than the same run with the
+  cap off: synthetic single-crash grid (5,760) **526 → 0 → 0**; face-world grid (360) **24 → 14 → 14**;
+  reachability grid (2,806) **158 → 94 → 94**. What it costs Strike, in ABSOLUTE counts: face-world grid,
+  yields 108 → 59, Strike-worse 23 → 13, **futile 15 → 5**, Strike calls 76 (unguarded) → 91 → 82;
+  reachability grid, yields 704 → 395, Strike-worse 86 → 44, **futile 60 → 18**, calls 840 → 951 → 912.
+  ⚠ **F1 moves no liquidation month at all** — the CB-earlier and CB-survived counts are identical with and
+  without it; a doomed month liquidates Coinbase whatever Strike hands over. ⚠ **If a percentage is quoted,
+  it carries the clause that the harm-per-doomed-yield RATE rises under F1 (86/455 → 44/146) only because F1
+  removes the harmless futile yields from the denominator, while absolute harm falls** — without it a later
+  reader reads F1 as a regression and reverts it.
+- **⚠ THE RESIDUAL 14 (face-world) / 94 (reachability) ARE INTERTEMPORAL, with two measured mechanisms:**
+  (a) the Strike top-up is ungated on `defenseShortfallUsd` by design, so a month where Coinbase is healthy
+  still spends cold a later month's CB top-up needs; (b) the floor withholds Strike collateral Coinbase would
+  have taken in an earlier month. A same-month rule cannot see either, and the same limit leaves F1's residual
+  futility (later-month doom). **The fix is a forward-looking Coinbase reserve — the natural v2**, beside the
+  ratchet fix; it changes the shipped projection on every falling path, so it needs its own spec.
+- **⚠ THE ROOT CAUSE THIS DOES NOT FIX: the cadence migration's one-way ratchet.** `keepForMargin =
+  strikeBal / (strikeMarginLtv × stressed)` is evaluated during the rise while `strikeBal` is **$0**, so it
+  reserves nothing for margin and ships **0.59 ₿** off Strike (1.0000 → 0.4077 on the 4-yr fixture). The debt
+  shift then dumps the full line onto the hollowed leg. The cap COVERS for it at 0.05–0.21 ₿ of reserve per
+  run; reserving against the debt Strike *could* be asked to absorb would shrink that. Out of scope, by
+  decision — the natural v2 beside the forward-looking reserve.
+- **⚠ THE ENGINE DOES NOT MODEL A STRIKE SEIZURE.** `strikeMarginMonth` is a FLAG; nothing is confiscated
+  (only Coinbase's `liqMonth` seizes). So avoiding the call is **invisible in equity** — the small ₿/equity
+  gain that does appear is entirely MORE BITCOIN BOUGHT (holding Strike's collateral shifts the CB LTV path,
+  which flips the `drawing` test in a handful of months, and a drawing month puts the WHOLE income into
+  bitcoin). Do not expect a large equity win and do not "fix" its absence.
+- **On the Support path — the shipped default view — the cap is a NO-OP**, measured byte-identical with it off
+  and at 60 (`btcHeld 5.833640`, `cold 2.027255`, `equity $1,058,936`, no margin call). That is the only
+  reason it is safe to default ON. On the 4-yr path at CB 50 it turns a month-46 margin call into a flat 60%
+  plateau for ~0.11 ₿ of reserve.
+- Tests: `cbDefense.test.ts` (the Strike twin, the floor's bind-and-absence, `strikeCollateralAboveLtv`,
+  `cbSurvivalCollateralBtc`, `cbDoomedThisMonth`'s boundary/bound/buffer cases) + the Strike-cap block in
+  `cyclingSim.test.ts` — the reproduction both ways (43 / null), the cold ledger, coin conservation, off ≡
+  HEAD golden, the 36-combo adversarial grid, the clamp, an empty pool, **A1 fixture B** (both halves of the
+  reservation), **A2 fixture C** (the guard), **A3/A5** (the three-arm grids, every count above),
+  **A4** (the Support no-op), **A6 fixture D** (the futility pin, run with the flag false vs true), the M1
+  floor pin, and the grep test for both flags. Suite 1,434 → **1,489**.
+
+### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
+
+An ELEVENTH face **Strategy** (`◈ Strategy`, `src/components/Almanac/UnifiedFace.tsx` + `.module.css`) —
+**ONE engine run, TWO lenses.** `CyclingFace` and `OwnershipFace` already share an engine (their
+`engineInputs` differ by one field, `mode`), so this is a **VIEW merge, not an engine merge**: one
+`useStressLens`, one `engineInputs` memo, one base run plus the stress run, and both lenses read the SAME
+`sim` — **Position** (the Ownership lens: hero, share bar, the Held·owed / LTV / Price&liq chart trio) and
+**Flywheel** (the Cycling lens: the verdict vs never-draw, cash flow at the month, the refinance fee and
+break-even, milestones). The ₿ held on Position and the verdict on Flywheel therefore CANNOT disagree — a
+mismatch would mean two runs crept in (a hand check pins the two against the parent Cycling face).
+
+- **GATED on `hasCbLoan`** like `cycling` (the strategy is a Strike→Coinbase loop), with the same fallback
+  `useEffect`; the pill is appended **after** `ownership` — `halving` must stay first, it is the default.
+- **⚠ `renderFace` needs an explicit `if (f === 'unified')` branch ABOVE the final return** — the fallback
+  renders the Converter, so a face added to the union without a branch compiles clean and silently shows the
+  wrong tool (the C8 trap already recorded in that file).
+- **⚠ A SUMMARY, NOT THE UNION OF EVERY CARD.** Nine engine controls (ten with the 4-yr cycle's timing) —
+  fewer than either parent. Income, bills and both APRs come from the live plan; the venue split, the safety
+  gauges, the rate sliders and the live Morpho check stay on the parents. Do not grow it into a third copy.
+- **No fourth copy of any number**: every rule is a tested helper from `cyclingFaceView` / `ownershipFaceView`
+  (the B1 rule this repo already paid for once). One convention per behaviour: **Milestone rows jump the
+  scrubber** (Ownership's convention) — a dead row on a face that has a scrubber is worse than a live one.
+- **READ-ONLY, zero store writes** (stricter than `ScenarioFace`, which writes a pin). Defaults mirror the
+  Cycling face: Support, on the line, horizon 60, inspect month 24, cadence 1, CB stop 70, sweep 30 on,
+  Strike cap 60 on, `cycle`, lens Position.
+- **CSS composes from the parents** (`UnifiedFace.module.css`): chrome/cards/controls/tiles/scrubbers from
+  CyclingFace, hero/share bar/chart switch/mode buttons/table from OwnershipFace. The only NEW rules are the
+  state line, the control block and the thumb-sized (44px) Position | Flywheel switch. Zero new hex.
+- **`resetMirror.test.ts` and `stressAnchor.test.ts` both cover it** — `'UnifiedFace.tsx'` is in `FACES` and
+  in the anchor guard's expected list. ⚠ The mirror was run RED on all three faces (each naming
+  `strikeCapPct`) before the reset arrays were wired, exactly as that file's docblock demands.
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 
@@ -4800,7 +4962,8 @@ was mutation-checked: revert the fix → the test goes red.)
   starts); the drawdown gap (Support `=== 0`, cycle ≈ −52%); and an engine run on a synthetic position that
   liquidates inside the 2029→30 descent while the same position on Support never does
 - `src/components/Almanac/__tests__/resetMirror.test.ts` — grep-style guard: each face's lens-reset dep array ⊇
-  its `engineInputs` deps minus `startDate` (4). Proven red on `coldBufferPct` before the fix
+  its `engineInputs` deps minus `startDate` (6 — Cycling, Ownership and UnifiedFace). Proven red on
+  `coldBufferPct` before that fix, and again on `strikeCapPct` across all three faces before this one
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
@@ -6962,6 +7125,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 
 | Constraint | Rule |
 |---|---|
+| The Strike cap never outranks Coinbase survival, and never yields when the yield cannot save Coinbase this month | Priority: **Coinbase survival > Strike cap > Coinbase cap** — Morpho liquidates instantly at 86%, Strike gives 72 hours to cure. So the Strike reserve may claim only the cold Coinbase does not need to sit `CB_SURVIVAL_BUFFER` inside its liquidation, and the floor stands only while cold alone can keep Coinbase alive. ⚠ The guard runs ONLY in a month the CB top-up actually runs (`defenseShortfallUsd > 0`), or a face claims "Strike gave way" in a month nothing was handed over. ⚠ And it stands DOWN when `cbDoomedThisMonth` — feeding reserved cold into the pool Morpho is about to seize costs Strike its cap for nothing. Its risk math lives in `cbDefense.ts` as leaves (`cbSurvivalCollateralBtc`, `cbDoomedThisMonth`), never open-coded in the engine; `CB_SURVIVAL_BUFFER` is its OWN constant, not a second use of `TOPUP_MARGIN_BUFFER`. Pinned by three labelled grids (5,760 / 360 / 2,806) whose counts must not drift, and by fixtures B/C/D |
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
 | The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
 | A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |

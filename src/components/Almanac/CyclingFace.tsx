@@ -4,7 +4,7 @@ import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
 } from 'recharts';
 import { useStore } from '../../store/useStore';
-import { runCyclingSim, CB_LIQUIDATION_PENALTY } from '../../simulation/cyclingSim';
+import { runCyclingSim, effectiveStrikeCapPct, CB_LIQUIDATION_PENALTY } from '../../simulation/cyclingSim';
 import { plBandsAt, plBandAt, plConvergencePath, PL_BAND_LABEL, PL_ON_THE_LINE, PL_A_FLOOR, PL_A_FAIR, type PlBand } from '../../simulation/powerLaw';
 import {
   cycleConvergencePath, cycleTurnsInHorizon, upcomingCycleTurns, CYCLE_PHASE_SHIFT_MAX_MONTHS, type PathKind,
@@ -19,6 +19,8 @@ import {
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
   coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
   cbZoneLevel, isBelowSupport, fixedMilestoneMonths, verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
+  strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
+  DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
 } from './cyclingFaceView';
 import { useStressLens } from './useStressLens';
 import { deriveCbCollateral } from '../../simulation/logUtils';
@@ -101,6 +103,8 @@ interface Overlay {
   expenses?: number;
   cycleMonths?: number;
   cbLtvCapPct?: number;
+  /** Strike LTV cap, as a percentage — 0 = off. Session-local like every other control. */
+  strikeLtvCapPct?: number;
   coldStoreBufferPct?: number;
   strikeAprPct?: number;
   cbAprPct?: number;
@@ -172,6 +176,10 @@ export default function CyclingFace() {
   const expenses = overlay.expenses ?? s.expenses;
   const cycleMonths = overlay.cycleMonths ?? DEFAULT_CYCLE_MONTHS;
   const capPct = overlay.cbLtvCapPct ?? DEFAULT_CAP_PCT;
+  // The Strike-side twin of the CB stop (0 = off). The engine clamps it a buffer inside the 70% call;
+  // `strikeCapEff` is that clamped value, so the readout names the cap the run actually used.
+  const strikeCapPct = overlay.strikeLtvCapPct ?? (DEFAULT_STRIKE_CAP_ON ? DEFAULT_STRIKE_CAP_PCT : 0);
+  const strikeCapEff = effectiveStrikeCapPct(strikeCapPct, STRIKE_MARGIN_CALL_LTV);
   const coldBufferPct = overlay.coldStoreBufferPct ?? (DEFAULT_COLD_ON ? DEFAULT_COLD_BUFFER_PCT : 0);   // 0 = sweep off
   // The engine clamps the sweep floor to the draw cap; mirror that here so the copy states the REAL
   // threshold rather than the raw one the slider implies.
@@ -236,11 +244,12 @@ export default function CyclingFace() {
     cbDebt,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
+    strikeLtvCapPct: strikeCapPct,
     coldStoreBufferPct: coldBufferPct,
     defendCbLtv: true,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct,
+    cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -264,11 +273,14 @@ export default function CyclingFace() {
   );
 
   const {
-    rows, last, stopMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth, drawingResumedMonth,
+    rows, last, stopMonth, liqMonth, creditExhaustedMonth, drawingResumedMonth,
     firstDefenseMonth, defenseExhaustedMonth, totalDefenseDrawnUsd, defenseCount,
     firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
   } = sim;
   const defenseActive = defenseCount > 0;
+  // What the Strike cap did — defended / short / yielded / called — in the words the face shows.
+  const capReading = strikeCapReading(sim, strikeCapEff);
+  const capWarn = capReading.state === 'called' || capReading.state === 'short' || capReading.state === 'yielded';
   // The first month NEITHER lever could hold the stop. While the shift alone ran short the top-up covers
   // it, so its exhaustion is the real residual; if no top-up ever fired, the shift's is.
   const unhedgedMonth = totalTopUpBtc > 0 ? topUpExhaustedMonth : defenseExhaustedMonth;
@@ -306,7 +318,7 @@ export default function CyclingFace() {
     monthIdx,
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
-    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, coldBufferPct,
+    income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct,
   ]);
 
   const bands = plBandsAt(startDate);
@@ -521,6 +533,9 @@ export default function CyclingFace() {
             : ` The ${capPct}% stop held; the refinance shifts the debt back to Coinbase as the price recovers.`}
         </p>
       )}
+      {/* The Strike cap holding the line is a success, not a warning — so it is a quiet line here, while a
+          short, a yield or a call goes in the constraints box below. */}
+      {capReading.state === 'defended' && <p className={styles.noteQuiet}>{strikeCapNote(capReading)}</p>}
 
       {/* 3 · STATS — follow the scrubber + lens; "Strike interest" cannot (see below). */}
       <div className={styles.statGrid}>
@@ -841,6 +856,35 @@ export default function CyclingFace() {
             moves collateral in — cold storage first, then the Strike pledge. The refinance shifts the debt
             back as the price recovers.
           </p>
+          {/* The Strike-side twin of the stop above. A face-local 44px range, NOT ui/SliderInput — that
+              component is shared with Mining/Living, and a track change would relayout three surfaces. */}
+          <div className={styles.shiftBlock}>
+            <div className={styles.scrubHead}>
+              <span className={styles.cardLabel}>
+                Strike LTV cap
+                <InfoTip label="About the Strike LTV cap">
+                  {STRIKE_CAP_TIP.map((line) => <p key={line}>{line}</p>)}
+                  <p><strong>This run:</strong> {strikeCapNote(capReading)}</p>
+                </InfoTip>
+              </span>
+              <span className={styles.scrubValue}>{strikeCapReadout(strikeCapPct, strikeCapEff)}</span>
+            </div>
+            {strikeCapPct > 0 && (
+              <input
+                type="range" className={styles.scrub}
+                min={STRIKE_CAP_RANGE.min} max={STRIKE_CAP_RANGE.max} step={STRIKE_CAP_RANGE.step}
+                value={strikeCapPct}
+                onChange={(e) => set('strikeLtvCapPct', Number(e.target.value))}
+                aria-label="Strike LTV cap"
+              />
+            )}
+            <div className={styles.presetRow}>
+              <button type="button" className={styles.ghostBtn}
+                onClick={() => set('strikeLtvCapPct', strikeCapPct > 0 ? 0 : DEFAULT_STRIKE_CAP_PCT)}>
+                {strikeCapPct > 0 ? 'Turn Strike cap off' : `Defend Strike at ${DEFAULT_STRIKE_CAP_PCT}%`}
+              </button>
+            </div>
+          </div>
         </section>
 
       </div>
@@ -892,7 +936,7 @@ export default function CyclingFace() {
       </section>
 
       {/* 7 · CONSTRAINTS + MILESTONES */}
-      {(creditExhaustedMonth !== null || strikeMarginMonth !== null) && (
+      {(creditExhaustedMonth !== null || capWarn) && (
         <div className={styles.constraints}>
           {creditExhaustedMonth !== null && (
             <div>
@@ -900,12 +944,8 @@ export default function CyclingFace() {
               {fmtUSD(rows[creditExhaustedMonth].strikeShortfall)}/mo of bills funded from income thereafter.
             </div>
           )}
-          {strikeMarginMonth !== null && (
-            <div>
-              Strike LTV crosses {(STRIKE_MARGIN_CALL_LTV * 100).toFixed(0)}% at month {strikeMarginMonth} —
-              margin-call territory on the Strike leg.
-            </div>
-          )}
+          {/* A call, a short, or the survival guard's yield — the Strike cap's reading, one definition. */}
+          {capWarn && <div>{strikeCapNote(capReading)}</div>}
         </div>
       )}
 

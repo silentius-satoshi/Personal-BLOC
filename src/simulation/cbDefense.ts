@@ -10,9 +10,13 @@
  * move BTC from the cold reserve first, then the Strike collateral the line no longer needs, into the
  * Coinbase pool — growing the denominator instead of shrinking the numerator.
  *
- * 🔴 Pure leaf: imports NOTHING (no store, no power law, no cyclingSim). The lender ratios arrive as plain
- * numbers, so the engine, the two faces' stress readout, and the Emergency Console can all share ONE
- * capacity definition and can never drift.
+ * The STRIKE leg has its own twin (`topUpStrikeLtv`, cold → Strike), and the two share a pool — so the
+ * survival guard's risk math lives here too (`cbSurvivalCollateralBtc`, `cbDoomedThisMonth`): Coinbase
+ * survival outranks the Strike cap, which outranks the Coinbase cap.
+ *
+ * 🔴 Pure leaf: imports only the zero-import `./ltv` (no store, no power law, no cyclingSim). The lender
+ * ratios arrive as plain numbers, so the engine, the two faces' stress readout, and the Emergency Console
+ * can all share ONE capacity definition and can never drift.
  */
 import { ltvOf } from './ltv';
 
@@ -136,6 +140,9 @@ export interface CbTopUpInput {
   /** Strike's margin-call LTV. The LAST-resort bound is a `TOPUP_MARGIN_BUFFER` STEP INSIDE it, never it:
    *  the line's own backing may be sacrificed, but the top-up must not walk Strike onto its own call. */
   marginLtv: number;
+  /** THE STRIKE FLOOR (opt-in). When the Strike defense is armed its cap binds this grab too — otherwise
+   *  the cold reservation is a fiction: Coinbase simply takes the COLLATERAL instead of the coins. */
+  strikeFloorLtv?: number;
 }
 
 export interface CbTopUpResult {
@@ -166,9 +173,14 @@ export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
   // ⚠ Bounded a buffer INSIDE the call line, never on it. Consequence to expect: a leg already inside the
   // buffer now yields ZERO available collateral where it previously yielded a sliver taken right up to the
   // call. Zero is the correct answer there — the sliver bought nothing and triggered the margin call.
-  const bound = input.marginLtv * (1 - TOPUP_MARGIN_BUFFER);
-  const strikeAvailable = canPrice && bound > 0
-    ? Math.max(0, input.strikeCollateralBtc - Math.max(0, input.strikeBalance) / (bound * input.price))
+  const marginBound = input.marginLtv * (1 - TOPUP_MARGIN_BUFFER);
+  const floor = input.strikeFloorLtv;
+  // ⚠ `strikeFloorLtv: undefined` (and 0, and any floor looser than the margin bound) must stay
+  // byte-identical to the pre-floor function — every existing call site passes nothing, and a silently
+  // tightened bound would change the shipped defense on every face. A test pins it.
+  const bound = floor !== undefined && floor > 0 ? Math.min(marginBound, floor) : marginBound;
+  const strikeAvailable = canPrice
+    ? strikeCollateralAboveLtv(input.strikeCollateralBtc, input.strikeBalance, input.price, bound)
     : 0;
   const fromStrikeBtc = Math.min(remaining, strikeAvailable);
   const topUpBtc = fromColdBtc + fromStrikeBtc;
@@ -183,4 +195,136 @@ export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
     fullyDefended: shortfallBtc <= 0,
     cbLtvAfter: ltvOf(input.cbDebt, input.cbCollateralBtc + topUpBtc, input.price),
   };
+}
+
+/**
+ * Strike collateral in EXCESS of what `strikeBalance` needs at `boundLtv` — the coins that could leave the
+ * Strike pool without pushing its LTV past that bound. Shared by the CB top-up's last-resort grab and the
+ * futility check, so "what Strike can spare" has one definition.
+ * Guarded: a non-positive price or bound spares nothing (0), never NaN.
+ */
+export function strikeCollateralAboveLtv(
+  strikeCollateralBtc: number,
+  strikeBalance: number,
+  price: number,
+  boundLtv: number,
+): number {
+  return price > 0 && boundLtv > 0
+    ? Math.max(0, strikeCollateralBtc - Math.max(0, strikeBalance) / (boundLtv * price))
+    : 0;
+}
+
+export interface StrikeTopUpInput {
+  strikeBalance: number;
+  strikeCollateralBtc: number;
+  price: number;
+  /** The Strike LTV to restore, as a percentage (e.g. 60). */
+  targetStrikeLtvPct: number;
+  /** The unpledged reserve — the ONLY source. Strike is never topped up from the Coinbase pool: that
+   *  pool is the one facing an INSTANT liquidation at 86%, and robbing it to cure a 72-hour cure window
+   *  inverts the risk. Bidirectional collateral flow is a separate spec. */
+  coldBtc: number;
+}
+
+export interface StrikeTopUpResult {
+  targetStrikeLtv: number;
+  requiredBtc: number;
+  fromColdBtc: number;
+  shortfallBtc: number;
+  fullyDefended: boolean;
+  strikeLtvAfter: number;
+}
+
+/**
+ * Strike-side twin of `topUpToCbLtv`: move BTC from the cold reserve into the Strike collateral pool until
+ * Strike's LTV is back at the target. Cold is the only source (see `coldBtc`). Pure; never NaN.
+ */
+export function topUpStrikeLtv(input: StrikeTopUpInput): StrikeTopUpResult {
+  const target = input.targetStrikeLtvPct / 100;
+  const canPrice = target > 0 && input.price > 0;
+  const requiredBtc = canPrice
+    ? Math.max(0, Math.max(0, input.strikeBalance) / (target * input.price) - input.strikeCollateralBtc)
+    : 0;
+  // ⚠ `Number.isFinite && > 0`, NOT `Math.max(0, x)` — the latter returns NaN for NaN and would poison
+  // every pool figure downstream (ownership.ts's rule, and cyclingSim's own openingColdBtc precedent).
+  const fromColdBtc = Math.min(requiredBtc, Number.isFinite(input.coldBtc) && input.coldBtc > 0 ? input.coldBtc : 0);
+  const shortfallBtc = Math.max(0, requiredBtc - fromColdBtc);
+  return {
+    targetStrikeLtv: target,
+    requiredBtc,
+    fromColdBtc,
+    shortfallBtc,
+    fullyDefended: shortfallBtc <= 0,
+    // ⚠ Routes through the SHARED `ltvOf`, like `skLtvAfter` — `∞` for a balance with no collateral, never
+    // a flattering 0%. Any consumer MUST render it with `fmtLtvPct`.
+    strikeLtvAfter: ltvOf(input.strikeBalance, input.strikeCollateralBtc + fromColdBtc, input.price),
+  };
+}
+
+/** How far INSIDE Morpho's 86% liquidation the survival guard keeps Coinbase. Its own constant, NOT
+ *  TOPUP_MARGIN_BUFFER: that one is Strike's margin-call buffer, and one constant serving two unrelated
+ *  lines means tuning either silently moves the other. Same value today, different concepts. */
+export const CB_SURVIVAL_BUFFER = 0.05;
+
+/**
+ * Collateral Coinbase must ADD to sit `buffer` inside its liquidation LTV at `price`:
+ * `max(0, cbDebt / (lltv × (1 − buffer) × price) − cbCollateralBtc)`.
+ *
+ * The survival guard's risk number — the Strike reserve may never claim cold that Coinbase needs to stay
+ * alive. Guarded like every pool figure: a non-positive price, a non-positive or non-finite denominator,
+ * or any NaN/∞ input returns 0, never NaN (the `Number.isFinite && > 0` rule, never `Math.max(0, NaN)`).
+ */
+export function cbSurvivalCollateralBtc(
+  cbDebt: number, cbCollateralBtc: number, price: number, lltv: number, buffer: number = CB_SURVIVAL_BUFFER,
+): number {
+  if (!(price > 0)) return 0;
+  const denom = lltv * (1 - buffer) * price;
+  if (!(denom > 0) || !Number.isFinite(denom)) return 0;
+  const debt = Number.isFinite(cbDebt) && cbDebt > 0 ? cbDebt : 0;
+  const coll = Number.isFinite(cbCollateralBtc) && cbCollateralBtc > 0 ? cbCollateralBtc : 0;
+  const need = debt / denom - coll;
+  return Number.isFinite(need) && need > 0 ? need : 0;
+}
+
+export interface CbDoomInput {
+  cbDebt: number;
+  cbCollateralBtc: number;
+  price: number;
+  /** Morpho's liquidation LTV (CB_LLTV) — passed in, so this stays a leaf. */
+  lltv: number;
+  coldBtc: number;
+  strikeCollateralBtc: number;
+  strikeBalance: number;
+  /** Strike's margin-call LTV. */
+  marginLtv: number;
+}
+
+/**
+ * THE FUTILITY CHECK: is Coinbase liquidated THIS MONTH whatever Strike does? True when ALL the cold plus
+ * every Strike coin the top-up could possibly take still falls short of clearing the ACTUAL 86% line.
+ *
+ * Why it exists: the survival guard makes Strike yield its reserve (and its floor) so Coinbase can
+ * survive. In a month where Coinbase dies anyway, that yield is FUTILE — it feeds the reserved cold into
+ * the very pool Morpho is about to seize, so the coins are seized instead of defending Strike. When this
+ * returns true the guard stands down and Strike keeps its reserve.
+ *
+ * ⚠ BUFFER 0 IS DELIBERATE. The question is whether Coinbase can clear its ACTUAL 86% line, not the
+ * buffered survival line; using CB_SURVIVAL_BUFFER here would declare savable positions doomed.
+ * ⚠ THE STRIKE BOUND IS `marginLtv × (1 − TOPUP_MARGIN_BUFFER)`, NOT THE STRIKE CAP. The question is what
+ * is POSSIBLE, not what policy allows; using the cap would also declare savable positions doomed.
+ *
+ * Same-month only — it cannot see a later month's doom (that needs a forward-looking Coinbase reserve).
+ * Guarded: a non-positive price or any non-finite input returns false (never throws, never NaN), so junk
+ * never switches the guard off.
+ */
+export function cbDoomedThisMonth(input: CbDoomInput): boolean {
+  const { cbDebt, cbCollateralBtc, price, lltv, coldBtc, strikeCollateralBtc, strikeBalance, marginLtv } = input;
+  if (!(price > 0)) return false;
+  for (const v of [cbDebt, cbCollateralBtc, price, lltv, coldBtc, strikeCollateralBtc, strikeBalance, marginLtv]) {
+    if (!Number.isFinite(v)) return false;
+  }
+  const need = cbSurvivalCollateralBtc(cbDebt, cbCollateralBtc, price, lltv, 0);
+  const possible = Math.max(0, coldBtc)
+    + strikeCollateralAboveLtv(strikeCollateralBtc, strikeBalance, price, marginLtv * (1 - TOPUP_MARGIN_BUFFER));
+  return possible < need;
 }

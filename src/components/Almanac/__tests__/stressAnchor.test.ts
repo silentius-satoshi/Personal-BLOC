@@ -91,7 +91,7 @@ describe('stress anchor', () => {
 });
 
 describe('⭐ no face feeds the live quote straight into the path again', () => {
-  it('both Almanac faces build plConvergencePath from the anchor, never from s.btcPrice', () => {
+  it('no Almanac face builds plConvergencePath from s.btcPrice', () => {
     // The regression is a one-token edit away: swapping `anchorPrice` back for `s.btcPrice` compiles
     // clean, passes every other test, and silently restores the self-resetting lens.
     const hits = execSync(
@@ -101,7 +101,7 @@ describe('⭐ no face feeds the live quote straight into the path again', () => 
     expect(hits, `live quote wired into the path:\n${hits.join('\n')}`).toEqual([]);
   });
 
-  it('both faces do call it with the anchor', () => {
+  it('all three engine faces (Cycling, Ownership, Strategy) do call it with the anchor', () => {
     const hits = execSync(
       'grep -rln "plConvergencePath(anchorPrice" src/components/Almanac/ --exclude-dir=__tests__ || true',
       { cwd: process.cwd(), encoding: 'utf8' },
@@ -109,6 +109,7 @@ describe('⭐ no face feeds the live quote straight into the path again', () => 
     expect(hits).toEqual([
       'src/components/Almanac/CyclingFace.tsx',
       'src/components/Almanac/OwnershipFace.tsx',
+      'src/components/Almanac/UnifiedFace.tsx',
     ]);
   });
 });

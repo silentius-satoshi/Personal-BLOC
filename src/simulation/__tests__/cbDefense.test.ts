@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   strikeDrawCapacity, defendCbLtv, topUpToCbLtv, TOPUP_MARGIN_BUFFER,
-  type CbDefenseInput, type CbTopUpInput,
+  topUpStrikeLtv, strikeCollateralAboveLtv, CB_SURVIVAL_BUFFER, cbSurvivalCollateralBtc, cbDoomedThisMonth,
+  type CbDefenseInput, type CbTopUpInput, type StrikeTopUpInput, type CbDoomInput,
 } from '../cbDefense';
 
 /**
@@ -187,5 +188,200 @@ describe('topUpToCbLtv — grow the CB denominator, cold first', () => {
     const zeroMargin = topUpToCbLtv({ ...TOPUP, coldBtc: 0, marginLtv: 0 });
     expect(zeroMargin.fromStrikeBtc).toBe(0);
     expect(zeroMargin.shortfallBtc).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * Strike-side twin. Synthetic: $64,000 drawn against 0.4 ₿ at $200k is an 80% Strike LTV, so a 60% cap
+ * needs 64,000 / (0.6 × 200,000) − 0.4 = 0.133333 ₿ from cold.
+ */
+const SK: StrikeTopUpInput = {
+  strikeBalance: 64_000,
+  strikeCollateralBtc: 0.4,
+  price: 200_000,
+  targetStrikeLtvPct: 60,
+  coldBtc: 1.0,
+};
+
+describe('topUpStrikeLtv — cold → Strike, the Strike cap\'s only source', () => {
+  it('⭐ requiredBtc is balance / (target × price) − collateral, and the cold pays it', () => {
+    const r = topUpStrikeLtv(SK);
+    expect(r.requiredBtc).toBeCloseTo(64_000 / (0.6 * 200_000) - 0.4, 12);
+    expect(r.fromColdBtc).toBeCloseTo(r.requiredBtc, 12);
+    expect(r.shortfallBtc).toBe(0);
+    expect(r.fullyDefended).toBe(true);
+    expect(r.targetStrikeLtv).toBeCloseTo(0.6, 12);
+    expect(r.strikeLtvAfter).toBeCloseTo(0.6, 9);
+  });
+
+  it('already at or under the target: nothing moves', () => {
+    const r = topUpStrikeLtv({ ...SK, strikeBalance: 40_000 });   // 50% < 60%
+    expect(r.requiredBtc).toBe(0);
+    expect(r.fromColdBtc).toBe(0);
+    expect(r.fullyDefended).toBe(true);
+  });
+
+  it('a zero or negative price returns 0 — never NaN', () => {
+    for (const price of [0, -50_000]) {
+      const r = topUpStrikeLtv({ ...SK, price });
+      expect(r.requiredBtc).toBe(0);
+      expect(r.fromColdBtc).toBe(0);
+      expect(Number.isNaN(r.strikeLtvAfter)).toBe(false);
+    }
+  });
+
+  it('⭐ coldBtc = NaN yields fromColdBtc 0, not NaN (Math.max(0, NaN) is NaN — the standing trap)', () => {
+    expect(Math.max(0, NaN)).toBeNaN();   // why the guard is Number.isFinite, not Math.max
+    for (const coldBtc of [NaN, -1, Number.NEGATIVE_INFINITY]) {
+      const r = topUpStrikeLtv({ ...SK, coldBtc });
+      expect(r.fromColdBtc).toBe(0);
+      expect(r.shortfallBtc).toBeCloseTo(r.requiredBtc, 12);
+      expect(r.fullyDefended).toBe(false);
+    }
+  });
+
+  it('cold shorter than required → a shortfall, and not fully defended', () => {
+    const r = topUpStrikeLtv({ ...SK, coldBtc: 0.05 });
+    expect(r.fromColdBtc).toBe(0.05);
+    expect(r.shortfallBtc).toBeCloseTo(r.requiredBtc - 0.05, 12);
+    expect(r.shortfallBtc).toBeGreaterThan(0);
+    expect(r.fullyDefended).toBe(false);
+    expect(r.strikeLtvAfter).toBeGreaterThan(0.6);
+  });
+
+  it('⭐ strikeLtvAfter is ∞ for a balance with NO collateral — never a flattering 0%', () => {
+    const r = topUpStrikeLtv({ ...SK, strikeBalance: 10_000, strikeCollateralBtc: 0, coldBtc: 0 });
+    expect(r.requiredBtc).toBeGreaterThan(0);
+    expect(r.strikeLtvAfter).toBe(Number.POSITIVE_INFINITY);
+  });
+});
+
+describe('topUpToCbLtv — the Strike floor (strikeFloorLtv)', () => {
+  /** Drains Strike: 200k of debt needs far more than Strike can give, and cold is empty, so
+   *  fromStrikeBtc lands exactly on the bound. 9,300 drawn against 2 ₿ at $48k. */
+  const DRAIN: CbTopUpInput = { ...TOPUP, cbDebt: 200_000, coldBtc: 0, strikeCollateralBtc: 2 };
+  const strikeLtvAfter = (fromStrikeBtc: number) => 9_300 / ((2 - fromStrikeBtc) * 48_000);
+
+  it('⭐ a floor at 0.60 bounds the grab at 60%, not at the 66.5% margin bound', () => {
+    const floored = topUpToCbLtv({ ...DRAIN, strikeFloorLtv: 0.60 });
+    const bare = topUpToCbLtv(DRAIN);
+    expect(floored.shortfallBtc).toBeGreaterThan(0);                 // genuinely drained
+    expect(strikeLtvAfter(floored.fromStrikeBtc)).toBeCloseTo(0.60, 9);
+    expect(strikeLtvAfter(bare.fromStrikeBtc)).toBeCloseTo(0.70 * (1 - TOPUP_MARGIN_BUFFER), 9);
+    expect(floored.fromStrikeBtc).toBeLessThan(bare.fromStrikeBtc);
+  });
+
+  it('⭐ absent changes nothing: undefined / 0 / a floor looser than the margin bound are all byte-identical', () => {
+    // The half that stops this parameter silently retightening the shipped CB defense on every face.
+    const bare = topUpToCbLtv(DRAIN);
+    for (const strikeFloorLtv of [undefined, 0, -0.5, NaN, 0.9]) {
+      expect(topUpToCbLtv({ ...DRAIN, strikeFloorLtv })).toStrictEqual(bare);
+    }
+  });
+});
+
+describe('strikeCollateralAboveLtv — what Strike can spare above a bound', () => {
+  it('the worked example: 1 ₿ backing $30,000 at a 60% bound spares 0.5 ₿', () => {
+    expect(strikeCollateralAboveLtv(1, 30_000, 100_000, 0.6)).toBeCloseTo(0.5, 12);
+  });
+
+  it('a balance already above the bound spares nothing', () => {
+    expect(strikeCollateralAboveLtv(1, 80_000, 100_000, 0.6)).toBe(0);
+  });
+
+  it('a non-positive price or bound spares nothing — never NaN', () => {
+    expect(strikeCollateralAboveLtv(1, 30_000, 0, 0.6)).toBe(0);
+    expect(strikeCollateralAboveLtv(1, 30_000, -1, 0.6)).toBe(0);
+    expect(strikeCollateralAboveLtv(1, 30_000, 100_000, 0)).toBe(0);
+    expect(strikeCollateralAboveLtv(1, 30_000, 100_000, NaN)).toBe(0);
+  });
+
+  it('a negative balance counts as none — the whole pledge is spare', () => {
+    expect(strikeCollateralAboveLtv(1, -5_000, 100_000, 0.6)).toBe(1);
+  });
+});
+
+describe('cbSurvivalCollateralBtc — the collateral Coinbase needs to stay alive', () => {
+  it('⭐ the worked example: max(0, debt / (lltv × (1 − buffer) × price) − collateral)', () => {
+    // $50,000 against 1 ₿ at $45k with Morpho's 86% and a 5% buffer → 50,000 / 36,765 − 1 = 0.359989 ₿.
+    expect(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86)).toBeCloseTo(50_000 / (0.86 * 0.95 * 45_000) - 1, 12);
+    expect(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86)).toBeCloseTo(0.359989, 6);
+  });
+
+  it('CB_SURVIVAL_BUFFER is its own export and is the default buffer', () => {
+    expect(CB_SURVIVAL_BUFFER).toBe(0.05);
+    expect(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86))
+      .toBe(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86, CB_SURVIVAL_BUFFER));
+    // The parameter is honoured — buffer 0 asks only for the ACTUAL liquidation line.
+    expect(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86, 0)).toBeCloseTo(50_000 / (0.86 * 45_000) - 1, 12);
+  });
+
+  it('already safe → 0', () => {
+    expect(cbSurvivalCollateralBtc(30_000, 1, 100_000, 0.86)).toBe(0);
+  });
+
+  it('a zero or negative price → 0, never NaN or ∞', () => {
+    expect(cbSurvivalCollateralBtc(50_000, 1, 0, 0.86)).toBe(0);
+    expect(cbSurvivalCollateralBtc(50_000, 1, -45_000, 0.86)).toBe(0);
+  });
+
+  it('NaN / ∞ inputs never produce NaN', () => {
+    const bad = [NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY];
+    for (const b of bad) {
+      for (const r of [
+        cbSurvivalCollateralBtc(b, 1, 45_000, 0.86),
+        cbSurvivalCollateralBtc(50_000, b, 45_000, 0.86),
+        cbSurvivalCollateralBtc(50_000, 1, b, 0.86),
+        cbSurvivalCollateralBtc(50_000, 1, 45_000, b),
+        cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86, b),
+      ]) {
+        expect(Number.isFinite(r)).toBe(true);
+        expect(r).toBeGreaterThanOrEqual(0);
+      }
+    }
+  });
+});
+
+describe('cbDoomedThisMonth — the futility check', () => {
+  /** Exact arithmetic: 0.5 × 100,000 = 50,000, so $100,000 against 1 ₿ needs exactly 1 ₿ more to clear
+   *  a 50% line. No Strike collateral, so "possible" is the cold alone. */
+  const EXACT: CbDoomInput = {
+    cbDebt: 100_000, cbCollateralBtc: 1, price: 100_000, lltv: 0.5,
+    coldBtc: 1, strikeCollateralBtc: 0, strikeBalance: 0, marginLtv: 0.7,
+  };
+
+  it('⭐ the boundary: exactly enough is not doomed, one sat short is', () => {
+    expect(cbDoomedThisMonth(EXACT)).toBe(false);
+    expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 1 - 1e-8 })).toBe(true);
+  });
+
+  it('Strike collateral above the margin bound counts toward what is possible', () => {
+    // 0.5 cold + 0.5 spare Strike (balance 0 → the whole pledge) = exactly enough.
+    expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0.5, strikeCollateralBtc: 0.5 })).toBe(false);
+    expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0.5, strikeCollateralBtc: 0.5 - 1e-8 })).toBe(true);
+  });
+
+  it('⭐ the Strike bound is marginLtv × (1 − TOPUP_MARGIN_BUFFER), NOT the Strike cap', () => {
+    // 1 ₿ backing $30,600 at $100k: at the 66.5% margin bound it spares 0.539850 ₿ (possible 1.04 ≥ 1),
+    // at a 60% cap only 0.49 (possible 0.99 < 1). Reading the cap would declare this savable month doomed.
+    const x = { ...EXACT, coldBtc: 0.5, strikeCollateralBtc: 1, strikeBalance: 30_600 };
+    expect(0.5 + strikeCollateralAboveLtv(1, 30_600, 100_000, 0.6)).toBeLessThan(1);
+    expect(cbDoomedThisMonth(x)).toBe(false);
+  });
+
+  it('⭐ buffer 0 is deliberate — it asks about the ACTUAL liquidation line, not the survival line', () => {
+    // 1.05 ₿ clears the 50% line (needs 1.0) but not the buffered one (needs 1.105).
+    expect(cbSurvivalCollateralBtc(100_000, 1, 100_000, 0.5)).toBeGreaterThan(1.05);
+    expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 1.05 })).toBe(false);
+  });
+
+  it('a zero, negative or junk price — or any junk input — is never doomed, and never throws', () => {
+    expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0, price: 0 })).toBe(false);
+    expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0, price: -1 })).toBe(false);
+    for (const k of Object.keys(EXACT) as (keyof CbDoomInput)[]) {
+      for (const bad of [NaN, Number.POSITIVE_INFINITY]) {
+        expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0, [k]: bad })).toBe(false);
+      }
+    }
   });
 });
