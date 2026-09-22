@@ -91,7 +91,7 @@ Files: `src/App.tsx` (onboarded gate), `src/pages/LandingPage.tsx`/`.module.css`
 - Zustand (global store) + `persist` middleware → localStorage key `'personal-bloc-store'`
 - Recharts (charts)
 - CSS Modules
-- Vitest (1414 tests — all must pass before every commit)
+- Vitest — all tests must pass before every commit (`npx vitest run` for the count)
 - ESLint 9 (flat config, `eslint.config.js`) — `npm run lint` must be clean before every commit
 - Vercel (deployment + serverless proxy for Power Law data)
 - @dnd-kit/core + @dnd-kit/sortable + @dnd-kit/utilities (drag-and-drop tab reordering)
@@ -139,8 +139,9 @@ src/
                                 # Pays Coinbase's origination fee (cbBorrowFee) on EVERY sweep and CAPITALISES
                                 # it; totals surface as totalCbFees/cbFeeCount.
                                 # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF/cbBorrowFee + the fee-bracket
-                                # constants (runCoinbaseLoan, a leaf) — NOTHING from
-                                # powerLaw/cycleModel/store. The price path arrives as a plain number[] and the
+                                # constants (runCoinbaseLoan, a leaf) + defendCbLtv/topUpToCbLtv (cbDefense) +
+                                # the zero-import ltvOf (./ltv) — NOTHING from powerLaw/cycleModel/store. The
+                                # price path arrives as a plain number[] and the
                                 # lender ratios (strikeMaxDrawLtv/strikeMarginLtv) as plain numbers, so it stays a
                                 # clock-free, fixture-testable leaf; the VIEW does the labelled crossing (the
                                 # OutlookProjection precedent). ⚠ TWO COLLATERAL POOLS, NEVER ONE — strikeColl and
@@ -176,7 +177,7 @@ src/
                                 # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
                                 # added to the never-draw baseline (the owner holds it in that world too).
                                 # NOT wired from the faces — that is its own spec
-    cbDefense.ts                # Debt-shift defense — ZERO-IMPORT leaf: strikeDrawCapacity(collBtc, drawn,
+    cbDefense.ts                # Debt-shift defense — LEAF — imports only the zero-import ./ltv: strikeDrawCapacity(collBtc, drawn,
                                 # price, maxDrawLtv, creditLine=∞) = min(creditLine, collateral×price×maxDrawLtv)
                                 # − drawn; defendCbLtv(input) → paydown needed/capacity/draw/shortfall,
                                 # post-defense CB+Strike LTVs, Strike margin-call price, recovery price;
@@ -188,8 +189,8 @@ src/
                                 # fired the same month. TOPUP_MARGIN_BUFFER (0.05) is exported so a future
                                 # spec can make it an input. ⚠ A leg already inside the buffer now yields
                                 # ZERO, where it used to yield a sliver taken up to the call — the correct
-                                # answer). ⚠ BOTH of defendCbLtv's LTVs now route through the module's own
-                                # ltvOf, so skLtvAfter can be ∞ (debt with no Strike collateral) where it
+                                # answer). ⚠ BOTH of defendCbLtv's LTVs now route through the SHARED
+                                # ltvOf (simulation/ltv.ts), so skLtvAfter can be ∞ (debt with no Strike collateral) where it
                                 # used to report a flat 0 — any future consumer MUST use fmtLtvPct.
                                 # Consumed by cyclingSim (the automatic
                                 # defense + top-up) and emergencyModel.drawToLtv (capacity only)
@@ -205,11 +206,18 @@ src/
                                 # + the ORIGINATION-FEE brackets: CB_FEE_TIER1_PCT 2% / CB_FEE_TIER2_PCT 1% /
                                 # CB_FEE_TIER_BREAK $250k, `cbBorrowFee(amount, balance)` (marginal, like tax)
                                 # and `cbMaxDrawForHeadroom(headroom, balance)` (its exact inverse). Still a
-                                # LEAF — imports nothing — which is why cyclingSim/runAdvisor/cbMetrics/
-                                # emergencyModel can all import the CB facts from it with no cycle
+                                # LEAF — imports only the zero-import ./ltv — which is why cyclingSim/runAdvisor/
+                                # cbMetrics/emergencyModel can all import the CB facts from it with no cycle
+    ltv.ts                      # 🔴 THE LTV definition — ltvOf(debt, collBtc, price) + ltvOfUsd(debt, collUsd,
+                                # collBtc). ZERO IMPORTS. debt with no collateral → ∞; collateral with no PRICE
+                                # → 0 (a zero-price guard is not an unbacked loan, so ltvOfUsd still needs
+                                # collBtc to tell the two apart). Was hand-written 5× (cbDefense, cyclingSim,
+                                # strikeCredit, cbMetrics, runCoinbaseLoan) + a 6th drifted copy in LiqSimulator
+                                # that printed 0.0% for an unbacked loan. __tests__/ltv.test.ts greps src/
+                                # (excluding __tests__) and FAILS if a new copy appears
     cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
-                                # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan
+                                # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan + ltvOfUsd from ./ltv
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc. ⚠ NO LONGER
                                 # standalone: imports cbBorrowFee/cbMaxDrawForHeadroom (runCoinbaseLoan, a
                                 # leaf) so the REVERSE ROTATION pays the same origination fee the real move does
@@ -2458,7 +2466,7 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
   `powerLaw` / `cycleModel` / `cyclePath` (its docblock promises it — the easiest wall in the repo to break).
 - ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
   user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
-  store state. Same reasoning as `cyclingSim`'s local `ltvOf()`. **This module must never be imported by the
+  store state. Same reasoning as the shared `ltvOf()` in `simulation/ltv.ts`. **This module must never be imported by the
   risk core.**
 
 **⚠ THE CLAMP IS A CRASH FIX, AND IT MUST HAPPEN AT RENDER TIME.** The Horizon slider is `step=1`, so one
@@ -2559,11 +2567,11 @@ bought or pledged), and a due refinance then sweeps ONLY up to the remaining CB 
 LTV back over the stop. When the price recovers, the normal cadence shifts the debt back to Coinbase. If the
 line still leaves LTV above the stop, the FALLBACK top-up moves collateral into the CB pool instead.
 
-- **`src/simulation/cbDefense.ts`** (zero-import leaf) — the single capacity + paydown + top-up definition:
+- **`src/simulation/cbDefense.ts`** (leaf — imports only the zero-import `./ltv`) — the single capacity + paydown + top-up definition:
   `strikeDrawCapacity(collBtc, drawn, price, maxDrawLtv, creditLine = ∞)` =
   `min(creditLine, collateral × price × maxDrawLtv) − drawn`; `defendCbLtv(input)` → required paydown,
   capacity, draw, shortfall, post-defense CB/Strike LTVs, Strike margin-call price, and the recovery price
-  at which the post-defense LTV returns to the cap. ⚠ **BOTH LTVs route through the module's own `ltvOf`**,
+  at which the post-defense LTV returns to the cap. ⚠ **BOTH LTVs route through the SHARED `ltvOf` (`simulation/ltv.ts`)**,
   so `skLtvAfter` is `∞` for Strike debt with no Strike collateral — it used to carry a `skValue > 0 ? … : 0`
   fallback that reported the worst position in the app as a flat 0%, while its own neighbour `cbLtvAfter`
   reported `∞` for the same shape. Nothing renders it yet; any future consumer MUST use `fmtLtvPct`.
@@ -4609,6 +4617,17 @@ via `.toFixed`, which is why `LiqSimulator`'s four LTVs were extracted to the pu
 `value > 0 ? … : 0`) and pinned by `liqSimulatorView.test.ts` — the repo has zero `.test.tsx`, so a figure
 computed inline in a component is a figure nothing else can pin.
 
+⚠ **The ratio itself now lives in ONE place: `src/simulation/ltv.ts`.** `fmtLtvPct` is the single
+*formatter*; `ltvOf` / `ltvOfUsd` are the single *computation*. The two guards are complementary and
+both are needed — the formatter guard greps `src/components/` for `(…ltv * 100).toFixed(…)`, the
+computation guard greps all of `src/` (excluding `__tests__`) for `<= 0 ? Number.POSITIVE_INFINITY`.
+Reverting a computation while leaving `fmtLtvPct` in place does NOT trip the formatter guard; that gap
+is exactly how LiqSimulator drifted. ⚠ `runCoinbaseLoan` was the one OUTLIER of the five, not a copy:
+it omitted the `collateral <= 0` term, so a zero *price* reported ∞ where every other surface reports
+0. Normalising it is inert only because `LiquidationModeler` returns early on
+`liquidationPrice === 0 || btcPrice === 0` — if that early return is ever removed, this becomes
+load-bearing.
+
 ⚠ **`deriveOwnership`'s `coldBtc` has TWO caller conventions.** It is ADDED to `btcHeld`, which is right
 only when the caller's `btcHeld` EXCLUDES cold: the **viewer** passes strike+cb plus cold separately
 (4-arg), while **both Almanac faces** pass `CyclingRow.btcHeld`, which already contains cold (3-arg).
@@ -4636,7 +4655,7 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 ⚠ Scrubbing forward does NOT clean git history — earlier commits still contain the real figures.
 
 
-1414 tests — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
+All tests must pass — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
 Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total and the daily-month collateral correction
 was mutation-checked: revert the fix → the test goes red.)
 - **`provisional` clears on a reading** (`provisional-clears-on-reading-spec-v1`, 16 tests; every ⭐ mutation-checked):

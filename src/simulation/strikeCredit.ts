@@ -1,3 +1,5 @@
+import { ltvOf } from './ltv';
+
 export const STRIKE_MAX_DRAW_LTV = 0.50;
 
 // The 15% Strike/BLOC operating ceiling — the LTV the advisor keeps the Strike BLOC at in steady state
@@ -9,7 +11,7 @@ export const BLOC_OPERATING_CEILING = 0.15;
 
 /** Strike BLOC LTV = drawn balance ÷ collateral value. Positive debt with no collateral is immediately unsafe. */
 export function computeStrikeLtv(blocBalance: number, btcHeld: number, price: number): number {
-  return btcHeld * price > 0 ? blocBalance / (btcHeld * price) : blocBalance > 0 && btcHeld <= 0 ? Number.POSITIVE_INFINITY : 0;
+  return ltvOf(blocBalance, btcHeld, price);
 }
 
 export function strikeAvailableCredit(

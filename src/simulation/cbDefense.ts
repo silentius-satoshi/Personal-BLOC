@@ -14,6 +14,7 @@
  * numbers, so the engine, the two faces' stress readout, and the Emergency Console can all share ONE
  * capacity definition and can never drift.
  */
+import { ltvOf } from './ltv';
 
 /**
  * Strike draw capacity — the engine-consistent headroom: `min(creditLine, collateral × price × maxDrawLtv)
@@ -66,8 +67,6 @@ export interface CbDefenseResult {
   recoveryPrice: number;
 }
 
-const ltvOf = (debt: number, coll: number, price: number): number =>
-  coll * price > 0 ? debt / (coll * price) : debt > 0 && coll <= 0 ? Number.POSITIVE_INFINITY : 0;
 
 /**
  * How far INSIDE its margin-call line the emergency top-up leaves Strike.

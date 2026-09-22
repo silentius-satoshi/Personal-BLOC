@@ -1,3 +1,4 @@
+import { ltvOfUsd } from './ltv';
 import { CB_LLTV } from './runCoinbaseLoan';
 
 export interface CbMetrics {
@@ -23,7 +24,7 @@ export function cbMetrics(
   const collateralUsd = collateralBtc * price;
   // Positive debt with no collateral is not a healthy zero-LTV position. Keep the sentinel finite
   // for normal zero-price guards, but classify an actually unbacked loan as immediately unsafe.
-  const ltv           = collateralUsd > 0 ? loanBalance / collateralUsd : loanBalance > 0 && collateralBtc <= 0 ? Number.POSITIVE_INFINITY : 0;
+  const ltv           = ltvOfUsd(loanBalance, collateralUsd, collateralBtc);
   const liqPrice      = collateralBtc > 0 ? loanBalance / (collateralBtc * CB_LLTV) : 0;
   const triggerPrice  = collateralBtc > 0 ? loanBalance / (collateralBtc * (triggerPct / 100)) : 0;
   const pctToTrigger  = price > 0 ? (triggerPrice - price) / price : 0;

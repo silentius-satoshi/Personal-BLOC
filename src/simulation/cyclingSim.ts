@@ -1,5 +1,6 @@
 import { CB_LLTV, CB_LIF, cbBorrowFee, cbMaxDrawForHeadroom } from './runCoinbaseLoan';
 import { defendCbLtv, topUpToCbLtv } from './cbDefense';
+import { ltvOf } from './ltv';
 
 /**
  * Cycling strategy — pure projection engine (Almanac `cycling` face).
@@ -244,8 +245,6 @@ export interface CyclingResult {
 /** Liquidation penalty as a fraction (≈ 0.04384) — derived from the shared incentive factor, not a literal. */
 export const CB_LIQUIDATION_PENALTY = CB_LIF - 1;
 
-const ltvOf = (debt: number, coll: number, price: number): number =>
-  coll * price > 0 ? debt / (coll * price) : debt > 0 && coll <= 0 ? Number.POSITIVE_INFINITY : 0;
 
 export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const {

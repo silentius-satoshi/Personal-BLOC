@@ -1,3 +1,4 @@
+import { ltvOfUsd } from './ltv';
 export const CB_LLTV = 0.86;
 export const CB_WARN_LTV = 0.65;  // Coinbase/Morpho warning band start (watch→warning boundary; see classifyLtv)
 export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
@@ -217,9 +218,11 @@ export function computeLiquidationAnalysis(
     const remainingDebt          = loanBalance - debtRepaid;
     const remainingCollateralBtc = Math.max(0, collateralBtc - collateralSeizedBtc);
     const remainingCollateralUsd = remainingCollateralBtc * effectivePrice;
-    const newLtv                 = remainingCollateralUsd > 0
-      ? remainingDebt / remainingCollateralUsd
-      : remainingDebt > 0 ? Number.POSITIVE_INFINITY : 0;
+    // ⚠ WAS the one outlier of the five: `remainingDebt > 0 ? ∞ : 0`, with NO `collateral <= 0` term,
+    // so a zero PRICE reported ∞ where every other surface reports 0. Unreachable from the UI
+    // (LiquidationModeler returns early on `liquidationPrice === 0 || btcPrice === 0`), so normalising
+    // it onto the shared rule is inert today — but it is why this file is in the dedupe at all.
+    const newLtv                 = ltvOfUsd(remainingDebt, remainingCollateralUsd, remainingCollateralBtc);
     return {
       repayPct, debtRepaid, collateralSeizedUsd, collateralSeizedBtc,
       lifBonus, remainingDebt, remainingCollateralBtc, remainingCollateralUsd,
