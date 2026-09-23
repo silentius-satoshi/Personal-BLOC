@@ -1343,9 +1343,9 @@ describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase surv
     expect(withoutF1.rows[1].strikeLtv).toBeGreaterThan(0.60);
   });
 
-  it('⭐ the two survival-guard flags are TEST-ONLY — no component passes either', () => {
+  it('⭐ the TEST-ONLY engine inputs — both survival-guard flags, incomePath, modelStrikeLiquidation — reach no component', () => {
     const hits = execSync(
-      'grep -rnE "cbSurvivalGuard|cbFutilityCheck" src/components/ || true',
+      'grep -rnE "cbSurvivalGuard|cbFutilityCheck|incomePath|modelStrikeLiquidation" src/components/ || true',
       { cwd: process.cwd(), encoding: 'utf8' },
     ).trim().split('\n').filter(Boolean);
     expect(hits, `a face passes a test-only flag:\n${hits.join('\n')}`).toEqual([]);

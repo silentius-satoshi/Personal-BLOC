@@ -146,7 +146,10 @@ src/
                                 # it; totals surface as totalCbFees/cbFeeCount.
                                 # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF/cbBorrowFee + the fee-bracket
                                 # constants (runCoinbaseLoan, a leaf) + defendCbLtv/topUpToCbLtv (cbDefense) +
-                                # the zero-import ltvOf (./ltv) — NOTHING from powerLaw/cycleModel/store. The
+                                # the zero-import ltvOf (./ltv) + the leaf ./supportPolicy (the opt-in SUPPORT-
+                                # ANCHORED POLICY, `supportPolicy?` — see § Support-anchored policy; absent ⇒
+                                # byte-identical, pinned by the G1 golden; TEST-ONLY incomePath and
+                                # modelStrikeLiquidation) — NOTHING from powerLaw/cycleModel/store. The
                                 # price path arrives as a plain number[] and the
                                 # lender ratios (strikeMaxDrawLtv/strikeMarginLtv) as plain numbers, so it stays a
                                 # clock-free, fixture-testable leaf; the VIEW does the labelled crossing (the
@@ -193,6 +196,14 @@ src/
                                 # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
                                 # added to the never-draw baseline (the owner holds it in that world too).
                                 # NOT wired from the faces — that is its own spec
+    supportPolicy.ts            # SUPPORT-ANCHORED POLICY leaf — imports only the zero-import ./ltv (support
+                                # arrives as a plain number; the §2 wall holds). policyZone (k = price ÷ support →
+                                # paused/accumulate/hold/payDown, junk → 'paused'), ceilingHeadroomUsd (room at
+                                # support, negative = over), sweepKeepBtc ((debt + buffer)/(S × stop), junk → +∞),
+                                # collateralToSellForLtv, resolveStrikeCall (cash → cold → sale to the cure LTV;
+                                # ≥ partial-liq → immediate), nextBreakerState (2 month-ends < 0.9 × S, LATCHED),
+                                # allocatePayDown (Strike first). SUPPORT_EPS 1e-9 · HARD_BREAKER_DEPTH/_MONTHS.
+                                # Never NaN (`Number.isFinite && > 0` guards). See § Support-anchored policy
     cbDefense.ts                # LTV defense, BOTH legs — LEAF, imports only the zero-import ./ltv. Strike side:
                                 # topUpStrikeLtv (cold → Strike, cold the ONLY source) + strikeCollateralAboveLtv
                                 # (the one definition of what Strike can spare) + topUpToCbLtv's optional
@@ -253,7 +264,10 @@ src/
     runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc. ⚠ NO LONGER
                                 # standalone: imports cbBorrowFee/cbMaxDrawForHeadroom (runCoinbaseLoan, a
                                 # leaf) so the REVERSE ROTATION pays the same origination fee the real move does
-    strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15, and emergencyModel consumes it
+    strikeCredit.ts             # + STRIKE_CURE_LTV (0.65 — a call must be cured back to it) and STRIKE_RETRIEVE_MAX_LTV
+                                # (0.40 — collateral leaves Strike only at or below it); the support policy's
+                                # inputs, passed in by the view — the engine imports neither.
+                                # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15, and emergencyModel consumes it
     emergencyModel.ts           # Emergency Console pure model (Phase 1) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Doctrine: collateral top-up is the PRIMARY lever (grow the CB denominator → push liq DOWN); paydown = Wall-2 fallback. CB_LADDER (69/72/75/81, liq=CB_LLTV 0.86) + STRIKE_MARGIN_CALL_LTV 0.70. classifyStage / firepower (slow=cured, fast=stuck) / drawToLtv (clamps to the 50% Strike line) / floorTable / direSwitch|wall3Sale|wall4External (paydown walls) / surplus. Imports CB_LLTV (runCoinbaseLoan) + STRIKE_MAX_DRAW_LTV/BLOC_OPERATING_CEILING (strikeCredit) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). Its three LTVs (classifyStage cbLtv, drawToLtv newSkLtv, floorTable currentSkLtv) go through ltvOf — so Coinbase debt with ZERO collateral now reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'. EmergencyConsole renders all three via fmtLtvPct. ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1) still open-code `x > 0 ? a/b : 0`; and the zero-collateral CB reading is still incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
                                 # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
@@ -2596,11 +2610,11 @@ slider drag from paging the Almanac; the pager is gone, so the marker is too.) �
 `ui/SliderInput` is NOT restyled, since `MiningInputsPanel`/`MiningProjectionTable`/`LivingInputsPanel`
 consume it and a track change would relayout all three.
 
-**NOT MODELED (and out of scope by construction):** **`mode` (S1) adds four strategies — cycle / hold /
-clearStrike / clearBoth. Still NOT MODELED:** a support-line "switch" mode (deploy/retire against a chosen
-power-law band as a strategy in itself). It remains a `CyclingInputs`/`CyclingRow` change on top of `mode`,
-not a mode within it. ⚠ The cold-storage / unpledged reserve IS modeled now — see
-**§ Cold-storage sweep** (the third pool + the Strike→Coinbase→cold cascade).
+**MODES:** **`mode` (S1) adds four strategies — cycle / hold / clearStrike / clearBoth.** The support-line
+"switch" (deploy / retire against the power-law support band) IS now modeled — as the opt-in
+**`supportPolicy`** input on top of `cycle` mode, not a mode of its own (see **§ Support-anchored policy**; the
+faces are Run 2). ⚠ The cold-storage / unpledged reserve IS modeled too — see **§ Cold-storage sweep** (the third
+pool + the Strike→Coinbase→cold cascade).
 
 - Tests: `src/components/Almanac/__tests__/cyclingFaceView.test.ts` (19). ⚠ **The seizure test asserts at
   `liqMonth + 1`, NOT at the first `postLiquidation` row** — `cyclingSim` pushes the BREACHING row and
@@ -2771,18 +2785,22 @@ at month 46 with 1.17 ₿ sitting unspent in cold** — holding the line there n
   still spends cold a later month's CB top-up needs; (b) the floor withholds Strike collateral Coinbase would
   have taken in an earlier month. A same-month rule cannot see either, and the same limit leaves F1's residual
   futility (later-month doom). **The fix is a forward-looking Coinbase reserve — the natural v2**, beside the
-  ratchet fix; it changes the shipped projection on every falling path, so it needs its own spec.
+  ratchet fix; it changes the shipped projection on every falling path, so it needs its own spec. → **Built, in
+  policy mode only:** the support policy's sweep keeps what Coinbase needs AT SUPPORT plus the bear buffer
+  (§ Support-anchored policy, step 9). The policy-absent engine is unchanged.
 - **⚠ THE ROOT CAUSE THIS DOES NOT FIX: the cadence migration's one-way ratchet.** `keepForMargin =
   strikeBal / (strikeMarginLtv × stressed)` is evaluated during the rise while `strikeBal` is **$0**, so it
   reserves nothing for margin and ships **0.59 ₿** off Strike (1.0000 → 0.4077 on the 4-yr fixture). The debt
   shift then dumps the full line onto the hollowed leg. The cap COVERS for it at 0.05–0.21 ₿ of reserve per
   run; reserving against the debt Strike *could* be asked to absorb would shrink that. Out of scope, by
-  decision — the natural v2 beside the forward-looking reserve.
+  decision — the natural v2 beside the forward-looking reserve. → **Built, in policy mode only:** the support
+  policy's migration keeps the FULL line's collateral at support (§ Support-anchored policy, step 5).
 - **⚠ THE ENGINE DOES NOT MODEL A STRIKE SEIZURE.** `strikeMarginMonth` is a FLAG; nothing is confiscated
   (only Coinbase's `liqMonth` seizes). So avoiding the call is **invisible in equity** — the small ₿/equity
   gain that does appear is entirely MORE BITCOIN BOUGHT (holding Strike's collateral shifts the CB LTV path,
   which flips the `drawing` test in a handful of months, and a drawing month puts the WHOLE income into
-  bitcoin). Do not expect a large equity win and do not "fix" its absence.
+  bitcoin). Do not expect a large equity win and do not "fix" its absence. → **Except under the support policy**,
+  which MODELS the call — a cure from cash, then cold, else a sale down to 65% (§ Support-anchored policy, step 8).
 - **On the Support path — the shipped default view — the cap is a NO-OP**, measured byte-identical with it off
   and at 60 (`btcHeld 5.833640`, `cold 2.027255`, `equity $1,058,936`, no margin call). That is the only
   reason it is safe to default ON. On the 4-yr path at CB 50 it turns a month-46 margin call into a flat 60%
@@ -2825,6 +2843,121 @@ non-cycle only). Now it is disclosed. The funding logic and the baseline math ar
     holds from month 2);
   - on REPRO's own 4-yr path it costs **$2,000**: the month-1 on-the-line step stops the draw for one month,
     then the rising price lets it resume.
+
+#### Support-anchored policy — opt-in `supportPolicy` (ENGINE, Run 1; the faces are Run 2; NO store change)
+
+**The defect it fixes:** every safety rule in the engine was measured at TODAY'S price — the draw test allowed
+debt up to `cap × collateral × price`, the sweep kept less collateral as the price rose, the migration freed
+Strike collateral as the price rose — so the engine borrowed the MOST at the top. The policy uses ONE stress
+price everywhere, **`support(t)`** (the power-law floor every recorded cycle low has sat on): each loan is sized to
+sit exactly at its stop when price is AT support, and that ceiling does not move with today's price.
+`src/simulation/supportPolicy.ts` is the pure leaf; `runCyclingSim` gains `supportPolicy?: SupportPolicyInputs`.
+**Absent or invalid ⇒ byte-identical** (the G1 golden). Cycle mode only (any other mode → ignored, reason `'mode'`).
+
+- **Ceilings (at support):** Coinbase debt ≤ `cbColl × S × cbStop` (default 60% → liquidated 30.2% below support);
+  Strike balance ≤ `strikeColl × S × strikeStop` (default 50% — Strike's own max draw, applied at support).
+  🔴 **Clamped to each leg's DEFENSE line** — `cbStop = min(stop, CB cap)`, `strikeStop = min(stop, Strike cap)` when
+  the Strike cap is on — or a stop above its defense line would pull cold AT support by construction. Under the
+  policy `cbLtvCapPct` / `strikeLtvCapPct` ARE the defense lines (where the debt shift and top-ups fire if price
+  breaks below support), and `coldStoreBufferPct` is IGNORED (the policy's sweep replaces it).
+- **Zones** by `k = price ÷ support`: **paused** `< 1` (float guard `SUPPORT_EPS` 1e-9 — a price computed ONTO the
+  line is never below it) · **accumulate** `≤ accumulateBelow` (1.5) · **hold** `≤ payDownAbove` (2.0) ·
+  **payDown** above. No latch on zones — the 1.5–2× hold band is the hysteresis.
+- **Hard breaker:** 2 consecutive month-ends below 0.9 × S → **`broken`, LATCHED for the rest of the run** (the
+  simulation cannot re-decide for the owner): no new debt, no refinance, no migration, no sweep; the surplus pays
+  down, then buys. Month 0 is the opening and never feeds it.
+- **Pay down to ZERO, keep the buffer as COLLATERAL:** in payDown/broken the surplus retires Strike (13%) then
+  Coinbase **to zero** (the 0.005 residual sweep — the clearStrike precedent). The sweep keeps
+  `max((cbDebt + bearBufferMonths × expenses) / (S × cbStop), cbDebt / (cap × price))`, so after every sweep Coinbase
+  has exactly the buffer of room at support. ⚠ **The buffer is also the flywheel's working room** — 0 starves the draw.
+- **Restore (any zone):** a leg over its ceiling at a non-drawing month's decision is repaid first, by exactly its
+  excess, **Coinbase before Strike** (Coinbase liquidates instantly; Strike has a cure window).
+- **Cash reserve** (`openingCashUsd`; the view will pass months × bills): spent on bills first (only what income
+  and the line cannot pay), then on a Strike cure; never refilled. `openingCashUsd − totalCashToBillsUsd −
+  totalCashToCureUsd === cashLeftUsd`. The faces' verdict must subtract `totalCashToCureUsd` (money from outside the
+  loop lowered the debt); `equity` itself is unchanged.
+- **The month, in order (each step's reason is the design):**
+  1. interest; 2. state — breaker (m ≥ 1), then the zone;
+  3. **draw, accumulate only:** `available = max(0, min(skRoom, skCeil, cbAbsorb))`, `cbAbsorb =
+     max(0, cbMaxDrawForHeadroom(cbRoom, cbDebt) − strikeBal)`. ⚠ **Strike is a CONDUIT, not a store:** it draws only
+     what Coinbase can take back at the next refinance, so its unused line stays the reservoir the debt-shift defense
+     draws on below support. (Measured: the month-end Strike balance in accumulate rows is $0.)
+  4. **not drawing:** Strike interest; bills income → cash → unfunded; restore; payDown/broken → pay down; the rest buys;
+  5. **migration** (the RATCHET FIX): keep `max(line, bal) / (strikeStop × S)` — the FULL line at support, not today's
+     balance at today's price (the old `keepForMargin` ran while the balance was $0). Strike's retrieval rules:
+     all-or-nothing, only at ≤ `STRIKE_RETRIEVE_MAX_LTV` (40%) before and < 50% after, never inside the 60-day hold
+     that follows ANY cold → Strike move (`strikeHoldUntil = m + 2`), never while paused/broken;
+  6. **refinance, accumulate/hold only**, ALWAYS ceiling-capped (fee-inclusive): none in payDown/broken (a 2% fee on
+     debt about to be repaid) or paused (the support ceiling can still show room below support, and moving debt
+     onto Coinbase there raises its LTV at today's price exactly when it is most exposed);
+  7. **defenses UNCHANGED** (debt shift → Strike reserve → survival guard → CB top-up → Strike top-up);
+  8. **Strike margin call — MODELLED** (`resolveStrikeCall`): a month-end at/over the call is UNCURED (a monthly engine
+     cannot see the 72 hours) → cash, then cold, then a sale down to `STRIKE_CURE_LTV` (65%); at/over the partial
+     liquidation LTV (85%) the sale is immediate and cash/cold are untouched. A cure's cold JOINS `coldRetrievedBtc`.
+     ⚠ **Why spend a partial cure:** each cold coin moved in saves `0.65/0.35 = 1.857` coins from the sale (a sold
+     coin also retires debt). ⚠ **NOT gated on `liqMonth`** (v1.1 #3) — Strike is a separate facility; a Coinbase
+     seizure does not end it, and skipping the sale would overstate the survivor coins;
+  9. **sweep** (the FORWARD-LOOKING COINBASE RESERVE): Coinbase keeps what it needs AT SUPPORT plus the buffer, so it
+     never enters a drawdown holding less than it needs at the line. Not while paused (the collateral is needed
+     where it is) or broken (the premise "safe at support" is suspect);
+  10. LTV / breach unchanged.
+- ⚠ **M1:** `strikeMarginMonth` is read AFTER step 8, and a resolved call ends at ≤ 65%, so under the policy the
+  call is reported by `strikeCall` / `firstStrikeCallMonth` and the flag stays null unless a sale leaves a
+  deficiency. `modelStrikeLiquidation: false` restores the HEAD flag-only behaviour (TEST-ONLY).
+- **Draw causes stay separate (v1.1 #1, v1.2 #9):** `creditExhaustedMonth` keeps its HEAD meaning — Strike's OWN
+  capacity `min(line, coll × price × 50%) − drawn` < the bill; a draw cut by the policy's ceilings sets
+  `firstCeilingThrottleMonth` instead. Both are gated on `liqMonth === null`. `stopMonth` under the policy means
+  "the draw stopped for a zone or ceiling reason". ⚠ **Run 2 note (v1.2 #11):** the "Strike credit exhausted" copy
+  reads `rows[m].strikeShortfall`, which is 0 in a non-drawing policy month — word it from the cause fields.
+- 🔴 **§2 wall:** `cyclingSim` imports `./supportPolicy`, a leaf that imports only `./ltv`. `supportPath` is a plain
+  `number[]` built by the VIEW (Run 2: `supportPolicyInputs.ts`; in Run 1 only the test helper builds it) —
+  **NEVER stressed, NEVER phase-shifted**: the stress lens moves the price, not the line.
+- **Fields.** Row (12, neutral when not applied): `policyZone`, `multiple`, `cbCeilingHeadroomUsd`,
+  `strikeCeilingHeadroomUsd` (negative = over), `restoreUsd`, `payDownUsd`, `cashReserveUsd`, `cashToBillsUsd`,
+  `cashToCureUsd`, `strikeCall`, `strikeCureColdBtc`, `strikeLiquidatedBtc`. Month 0 carries the OPENING zone and
+  headrooms (no action) — the free over-the-ceiling check. Result: `policyApplied`, `policyIgnoredReason`
+  (`mode | supportPath | cbStop | strikeStop | zones | buffer | cash | strikeLadder | retrieveLtv`; a CB cap ≤ 0 leaves
+  no effective stop → `cbStop`), `monthsInZone`, `firstPausedMonth`, `firstPayDownMonth`, `modelBrokenMonth`,
+  `firstCeilingThrottleMonth`, `firstStrikeCallMonth`, `strikeCallsCured`, `strikeCallsSold`,
+  `totalStrikeLiquidatedBtc`, `firstStrikeLiquidationMonth`, `totalRestoreUsd`, `totalPayDownUsd`, the cash ledger,
+  and `coldRetrievedAboveSupportBtc` (G2's measure). Ledgers foot to 1e-8: coins (`opening + Σ bought − sold −
+  seized`; ⚠ a seizure in the LAST month has not left `last.btcHeld` yet), cold, cash.
+- **TEST-ONLY inputs:** `incomePath` (income[m]; a finite ≥ 0 entry replaces income — 0 is an income shock; the
+  baseline uses the same path) and `modelStrikeLiquidation`. The survival-guard grep test covers both.
+- **What it replaced:** the migration-ratchet fix (step 5), the forward-looking Coinbase reserve (step 9) and the
+  Strike seizure (step 8) are BUILT here — in policy mode only; the policy-absent engine is unchanged. **The defense
+  order below support is still OPEN** (a follow-up measurement).
+- **Measured on SP_REPRO (A5; fixture-bound — re-run the generator):**
+  - on the $8k / $6k budget the Coinbase ceiling NEVER binds (the draw is one month of bills; buys and support
+    growth add room faster) — **P9** ($4k / $6k) is the case where it fills;
+  - in G3's scope (≥ 0.80 × S) the face-default OFF twin never liquidates either: its defense stack holds, funded by
+    cold banked on the rise and pulled back ABOVE support (0.61–0.71 ₿ on the P2 family) — exactly what G2
+    separates. G3's non-vacuity is therefore shown with the OFF twin's defense stack STRIPPED (it liquidates on the
+    spec's synthetic 2.8× → 1.0× path) while the policy never fires a defense there;
+  - **defense in depth:** the ceiling and the zones EACH keep G2/G3 on these paths, so a single-layer mutation is
+    compensated by the other; a full reversion to price-relative rules turns G2 red, and single-layer breaks are
+    caught by the mechanism tests (the conduit clause, P9's ceiling fill, the clamps);
+  - costs: on the 4-yr cycle the policy holds ~0.66 ₿ less than OFF with ~$285k less debt; on the support line it
+    holds the same ₿ (the coins only sit on Coinbase rather than in cold); after a LATCHED break (P3, P6, P9) it never
+    borrows again, so its long-run numbers after a break are conservative by construction; under P7's income shock
+    it leaves $72k of bills unfunded without cash (it will not borrow below support) where OFF leaves $7k.
+- **Risks, in plain words:** the whole policy is a bet on the power-law line, especially its slope (fits run
+  b = 5.63–5.96; P8 measures a wrong line — on a 5.63 line P1 is paused the whole run and never borrows); tops are
+  compressing, so if the next top stays under 2× pay-down never fires, and if price never returns to ≤ 1.5× buying
+  with the line never resumes (the failure mode is buying less, not losing coins); the backtest flatters (support was
+  fitted to those bottoms; the Jun-2026 low ~2% under support is the first out-of-sample test); income, not price,
+  is the hidden liquidity risk (credit disappears in a crash — P7 and the cash reserve exist for it); monthly steps
+  cannot see the 72-hour window or an overnight gap to 85% (hence "uncured at month-end"); re-borrowing after a
+  pay-down costs the 2% origination fee (pay-down is a safety and capacity lever, not a return lever).
+- **Tests** (no counts here — they rot): `supportPolicy.test.ts` (the leaf: zones + the epsilon pair, headroom,
+  sweep keep, sale sizing, ⭐ `resolveStrikeCall` cases a–e, the breaker latch, pay-down order);
+  `cyclingSimPolicy.test.ts` (⭐ G1–G4 plus every behaviour above); `supportPolicyPaths.ts` (the shared fixture +
+  P1–P9 builders — NOT a test file; P9's dip is placed at its no-crash twin's measured peak); **the G1 golden**
+  `goldens/supportPolicyG1.golden.json` (the policy-absent engine at 2125cc2 on SP_REPRO × P2 — ⚠ regenerate it ONLY
+  deliberately, from the SHA in its meta; a diff to it means policy-absent behaviour moved); `supportPolicyReport.test.ts`
+  (the committed A5 generator — `describe.runIf(SP_REPORT)`, skipped by the normal suite; run
+  `SP_REPORT=1 npx vitest run src/simulation/__tests__/supportPolicyReport.test.ts --reporter=verbose` — ⚠ keep
+  `--reporter=verbose`, or a non-TTY run drops the output; the output is never committed).
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -4881,8 +5014,36 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 
 
 All tests must pass — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
-Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total, the daily-month collateral correction
-and the engine defense fixes was mutation-checked: revert the fix → the test goes red.)
+Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total, the daily-month collateral correction,
+the engine defense fixes and the support-anchored policy was mutation-checked: revert the fix → the test goes red.)
+- **Support-anchored policy** (Run 1 — engine only; every ⭐ mutation-checked; see § Support-anchored policy):
+  - `supportPolicy.test.ts` — the leaf: every zone boundary + the epsilon pair + junk → paused; headroom sign and
+    junk → 0; sweep keep and junk → +∞; sale sizing and its clamp; ⭐ `resolveStrikeCall` cases a–e (cash first,
+    ≥ at the call, the immediate sale leaves cash AND cold untouched, a partial cure spends cold before selling);
+    the breaker's consecutive rule and LATCH; pay-down order.
+  - `cyclingSimPolicy.test.ts` — ⭐ **G1** (policy absent, and every invalid variant, deep-equal the golden;
+    non-cycle modes ignore it); the alignment pin + the opening row; ⭐ the ceiling invariant **plus the CONDUIT
+    clause** (an accumulate row's Strike balance ≤ one month's interest on a full bill — ⚠ it is this clause, not
+    the Strike ceiling, that catches price-for-support in the draw: once the migration keeps the full line at
+    support, Strike's own ceiling cannot bind); ⭐ **G2** on every A5 path (non-vacuity from test 16's fixture +
+    seeded cold) + an over-the-ceiling opening that DOES pull cold at support, so the field's accounting is pinned;
+    ⭐ **G3** on every in-scope path (P6, P9 and the spec's synthetic 2.8× → 1.0× path included; P3 out of scope)
+    + P9 as a real test (the ceiling fills, the defense engages, Coinbase survives) + the non-vacuity SUBSTITUTE
+    (the OFF twin with its defense stack stripped liquidates; the policy never fires a defense); zones (hold =
+    no new principal, payDown repays before buying, paused on P4/P5, the draw resumes ≤ 1.5); pay-down to zero with
+    the buffer kept as collateral; restore order; ⭐ the modelled call (sale / cash cure / flag-only / cold cure);
+    migration (full line at support, BOTH halves of the retrieval rule, the 60-day hold); the refinance ceiling;
+    both breakers; ⭐ **G4** ledgers on every path + the call, cold-cure and liquidation fixtures; `incomePath`;
+    the clamps; the draw causes (v1.1 #1 / v1.2 #9); Strike called AFTER a Coinbase liquidation (v1.1 #3); P9's
+    measured construction.
+  - `supportPolicyPaths.ts` (the shared SP_REPRO fixture and P1–P9 — never a test file),
+    `goldens/supportPolicyG1.golden.json` (⚠ regenerate only deliberately, from the SHA in its meta — a diff means
+    policy-absent behaviour moved), `supportPolicyReport.test.ts` (the env-gated A5 generator; its only asserts are
+    grid FIDELITY — the OFF arm reproduces this suite's pinned 82 / 920 / 0).
+  - ⚠ Equivalent mutants, recorded so nobody chases them: `<` vs `<=` and a 0.1- or 1-point looser cap in the
+    policy-ABSENT draw test change nothing on the G1 fixture (its decisions never land in that window) — the golden's
+    sensitivity is shown instead by 1e-12 perturbations of the sweep and the migration.
+  - `cyclingSim.test.ts`'s TEST-ONLY grep now also covers `incomePath` and `modelStrikeLiquidation`.
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
@@ -7227,6 +7388,10 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 
 | Constraint | Rule |
 |---|---|
+| Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. Reverting the policy to price-relative rules is what G2 catches |
+| Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
+| A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
+| `incomePath` and `modelStrikeLiquidation` are test-only | No component may pass either — the survival-guard grep test in `cyclingSim.test.ts` covers both. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. Neither may reach a face |
 | The Strike cap never outranks Coinbase survival, and never yields when the yield cannot save Coinbase this month | Priority: **Coinbase survival > Strike cap > Coinbase cap** — Morpho liquidates instantly at 86%, Strike gives 72 hours to cure. So the Strike reserve may claim only the cold Coinbase does not need to sit `CB_SURVIVAL_BUFFER` inside its liquidation, and the floor stands only while cold alone can keep Coinbase alive. ⚠ The guard runs ONLY in a month the CB top-up actually runs (`defenseShortfallUsd > 0`), or a face claims "Strike gave way" in a month nothing was handed over. ⚠ And it stands DOWN when `cbDoomedThisMonth` — feeding reserved cold into the pool Morpho is about to seize costs Strike its cap for nothing. Its risk math lives in `cbDefense.ts` as leaves (`cbSurvivalCollateralBtc`, `cbDoomedThisMonth`), never open-coded in the engine; `CB_SURVIVAL_BUFFER` is its OWN constant, not a second use of `TOPUP_MARGIN_BUFFER`. Pinned by three labelled grids (5,760 / 360 / 2,806) whose counts must not drift, and by fixtures B/C/D |
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
 | The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |

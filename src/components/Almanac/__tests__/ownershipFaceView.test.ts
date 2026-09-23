@@ -40,6 +40,19 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   collateralValue: 240_000,
   equity: 140_000,
   postLiquidation: false,
+  // The support policy's row fields — neutral, as the engine reports them when no policy is applied.
+  policyZone: null,
+  multiple: null,
+  cbCeilingHeadroomUsd: null,
+  strikeCeilingHeadroomUsd: null,
+  restoreUsd: 0,
+  payDownUsd: 0,
+  cashReserveUsd: 0,
+  cashToBillsUsd: 0,
+  cashToCureUsd: 0,
+  strikeCall: 'none',
+  strikeCureColdBtc: 0,
+  strikeLiquidatedBtc: 0,
   ...o,
 });
 

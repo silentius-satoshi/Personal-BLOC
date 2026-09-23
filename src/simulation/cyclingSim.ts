@@ -4,6 +4,10 @@ import {
   CB_SURVIVAL_BUFFER,
 } from './cbDefense';
 import { ltvOf } from './ltv';
+import {
+  policyZone, ceilingHeadroomUsd, sweepKeepBtc, resolveStrikeCall, nextBreakerState, allocatePayDown,
+  BREAKER_START, SUPPORT_EPS, type PolicyState, type BreakerState, type StrikeCallResult,
+} from './supportPolicy';
 
 /**
  * Cycling strategy — pure projection engine (Almanac `cycling` face).
@@ -17,13 +21,17 @@ import { ltvOf } from './ltv';
  * (surplus retires Strike, then buys), `clearBoth` (surplus retires Strike, then Coinbase, then buys).
  * `mode` defaults to `'cycle'`, so every pre-S1 call site is byte-identical. For `hold` the "never draw"
  * baseline is SELF-REFERENTIAL — the strategy IS the baseline, so a view must not compare the two.
- * The cold-storage / unpledged reserve IS modeled (opt-in `coldStoreBufferPct`); a support-line "switch"
- * mode is still NOT MODELED.
+ * The cold-storage / unpledged reserve IS modeled (opt-in `coldStoreBufferPct`). The support-line "switch"
+ * IS modeled too, as the opt-in SUPPORT-ANCHORED POLICY (`supportPolicy`, cycle mode only): one stress price —
+ * support(t) — replaces every price-relative rule in the draw, the migration and the sweep; zones by
+ * price ÷ support decide draw / hold / pay down; two breakers; Strike's margin call is MODELLED (cure or sale).
+ * Absent (or invalid) ⇒ byte-identical to the engine before it (pinned by the G1 golden).
  *
  * 🔴 §2 ISOLATION WALL — this module imports NOTHING from powerLaw/cycleModel. The price path arrives as a
  * plain `number[]` and the three lender ratios (`strikeMaxDrawLtv`, `strikeMarginLtv`) arrive as plain
  * numbers, so the engine is a leaf: clock-free, power-law-free, store-free, fixture-testable. The VIEW does
- * the labelled crossing (the OutlookProjection/MonthBreakdown precedent).
+ * the labelled crossing (the OutlookProjection/MonthBreakdown precedent). The support path is a plain
+ * `number[]` too — `./supportPolicy` is a leaf that imports only `./ltv`.
  *
  * ⚠ THE STRIKE LEG HAS ITS OWN LTV CAP (opt-in `strikeLtvCapPct`): cold → Strike, with a reservation that
  * stops Coinbase spending the coins Strike needs — and a survival guard that makes the reservation give way
@@ -35,6 +43,43 @@ import { ltvOf } from './ltv';
  * denominator. Collapsing them understates CB LTV by ~16 points on a real position, which lets the cap
  * fire late and runs the liquidation test on a frozen denominator.
  */
+
+/**
+ * The SUPPORT-ANCHORED POLICY's inputs (spec v1.2). Every stop is measured AT SUPPORT, so a ceiling never moves
+ * with today's price: Coinbase debt ≤ cbColl × S × cbStop, Strike balance ≤ strikeColl × S × strikeStop.
+ */
+export interface SupportPolicyInputs {
+  /** support[m], m = 0..N — the SAME length as pricePath. 🔴 Built by the VIEW (plBandAt 'floor'), NEVER
+   *  stressed and NEVER phase-shifted: the stress lens moves the price, not the line. */
+  supportPath: number[];
+  /** Coinbase stop at support, % (default 60 → liquidated 30.2% below support). Clamped to the CB cap. */
+  cbStopAtSupportPct: number;
+  /** Strike stop at support, % (default 50 — Strike's own max draw, applied at support). Clamped to the Strike cap. */
+  strikeStopAtSupportPct: number;
+  /** Buy with the line while price ÷ support ≤ this (default 1.5 — every recorded cycle low sat under it). */
+  accumulateBelow: number;
+  /** Pay down while price ÷ support > this (default 2.0); between the two, hold. Must exceed accumulateBelow. */
+  payDownAbove: number;
+  /** Months of bills of borrowing room at support kept as Coinbase COLLATERAL, never swept (default 12).
+   *  ⚠ It is also the flywheel's working room: a buffer of 0 starves the draw to support's monthly growth. */
+  bearBufferMonths: number;
+  /** Cash held outside the loop (the view passes cashReserveMonths × expenses). Spent on bills first (only what
+   *  income and the line cannot pay), then on a Strike cure. Never refilled. */
+  openingCashUsd: number;
+  /** STRIKE_CURE_LTV — a call must be cured back to this. */
+  strikeCureLtv: number;
+  /** strikeLiqLtvOf(store.strikeLiquidationLtvPct) — at or over this the sale is immediate. */
+  strikePartialLiqLtv: number;
+  /** STRIKE_RETRIEVE_MAX_LTV — collateral leaves Strike only at or below this LTV. */
+  strikeRetrieveMaxLtv: number;
+  /** Default ON. TEST-ONLY: no face may pass it (a grep test enforces that). false = flag the call, sell
+   *  nothing (the HEAD behaviour). */
+  modelStrikeLiquidation?: boolean;
+}
+
+/** Why a supplied policy was IGNORED (the engine then runs byte-identically to having none). */
+export type PolicyIgnoredReason =
+  | 'mode' | 'supportPath' | 'cbStop' | 'strikeStop' | 'zones' | 'buffer' | 'cash' | 'strikeLadder' | 'retrieveLtv';
 
 export interface CyclingInputs {
   /**
@@ -73,8 +118,26 @@ export interface CyclingInputs {
    *
    * 🔴 §2 WALL: "below the path price" — the engine still knows nothing about the power law. On the
    * support path that reads as "below support"; the VIEW does the labelling, as always.
+   *
+   * ⚠ IGNORED when the support policy applies — the policy's own sweep (keep what Coinbase needs AT SUPPORT,
+   * plus the buffer) replaces it.
    */
   coldStoreBufferPct?: number;
+
+  /**
+   * SUPPORT-ANCHORED POLICY (opt-in; absent ⇒ byte-identical, pinned by the G1 golden). One stress price —
+   * support(t) — replaces every `price × (1 − buffer)` in the draw test, the migration and the sweep; zones by
+   * price ÷ support decide draw / hold / pay down; two breakers; Strike's margin call is MODELLED (cure or sale),
+   * not just flagged. While it applies, `cbLtvCapPct` and `strikeLtvCapPct` become the DEFENSE lines (where the
+   * debt shift and the top-ups fire if price breaks below support) and `coldStoreBufferPct` is ignored.
+   * 🔴 §2 WALL: `supportPolicy.supportPath` is a plain number[] built by the VIEW, NEVER stressed and NEVER
+   * phase-shifted. Cycle mode only. Invalid → ignored (byte-identical) with `policyIgnoredReason`.
+   */
+  supportPolicy?: SupportPolicyInputs;
+  /** TEST-ONLY (a grep test enforces it): income[m]. A finite, non-negative entry replaces `income` that month
+   *  (0 is valid — an income shock); anything else, or no entry, falls back to `income`. Absent ⇒ constant
+   *  `income`, byte-identical. The never-draw baseline uses the same path. */
+  incomePath?: number[];
 
   /**
    * The owner's REAL unpledged reserve at month 0 (`getCurrentColdBtc()`). Optional, defaults to 0, so
@@ -106,7 +169,7 @@ export interface CyclingInputs {
   strikeAprPct: number;
   cbAprPct: number;
   cycleMonths: number;           // refinance cadence (cycle mode only)
-  cbLtvCapPct: number;           // stop-drawing cap, as a percentage (cycle mode only)
+  cbLtvCapPct: number;           // stop-drawing cap, as a percentage (cycle mode only) — the DEFENSE line under the policy
   /**
    * DEBT-SHIFT DEFENSE (opt-in; false/undefined = off → byte-identical to the pre-defense engine).
    *
@@ -143,6 +206,9 @@ export interface CyclingInputs {
    * ⚠ THE CAP NEVER OUTRANKS COINBASE SURVIVAL. In a month where the Coinbase top-up needs the reserved
    * cold (or the Strike collateral the cap would protect) to stay clear of its liquidation, the survival
    * guard cuts the reserve and drops the floor — Strike gives way, and `firstSurvivalYieldMonth` says so.
+   *
+   * Under the support policy this is Strike's DEFENSE line, and the policy's Strike stop at support is clamped
+   * to it (a stop above its defense line would pull cold at support).
    */
   strikeLtvCapPct?: number;
   /** Default ON. Unlike every other opt-in here, absent means ENABLED — safe because the guard body also
@@ -237,6 +303,32 @@ export interface CyclingRow {
   equity: number;
   /** True AT `liqMonth` (the seizure happens within that row) and every row after it. */
   postLiquidation: boolean;
+
+  // ── SUPPORT POLICY (all null / 0 / 'none' when the policy is not applied) ──────────────────────────────
+  /** The month's state: the zone by price ÷ support, or 'broken' once the hard breaker has latched. Month 0
+   *  carries the OPENING zone (no action is taken at month 0). */
+  policyZone: PolicyState | null;
+  /** price ÷ support this month. */
+  multiple: number | null;
+  /** Room under each ceiling AT SUPPORT at month-end: `coll × support × stop − debt`. NEGATIVE = over it. */
+  cbCeilingHeadroomUsd: number | null;
+  strikeCeilingHeadroomUsd: number | null;
+  /** Surplus that repaid a leg over its ceiling (Coinbase first — it liquidates instantly). */
+  restoreUsd: number;
+  /** Surplus that retired debt in `payDown` / `broken` (Strike first, then Coinbase — to zero). */
+  payDownUsd: number;
+  /** The cash reserve left at month-end (never refilled). */
+  cashReserveUsd: number;
+  /** Cash that paid bills income and the line could not. */
+  cashToBillsUsd: number;
+  /** Cash that cured a Strike call. */
+  cashToCureUsd: number;
+  /** How a Strike margin call resolved this month ('none' = no call). */
+  strikeCall: StrikeCallResult['state'];
+  /** Cold moved into the Strike pool to cure a call (joins `coldRetrievedBtc`). */
+  strikeCureColdBtc: number;
+  /** Strike collateral SOLD this month (the proceeds retire the balance 1:1). */
+  strikeLiquidatedBtc: number;
 }
 
 export interface CyclingResult {
@@ -245,6 +337,8 @@ export interface CyclingResult {
   /**
    * First month the draw stopped (CB LTV reached the cap). NOT necessarily terminal: on a RISING path the
    * de-levering can pull LTV back under the cap and the draw resumes — see `drawingResumedMonth`.
+   * Under the support policy it means "the draw stopped for a ZONE or CEILING reason" (a hold / pay-down /
+   * paused / broken month, or an accumulate month the ceilings left no room in) — not "CB LTV reached the cap".
    */
   stopMonth: number | null;
   /** First month the engine actually entered the drawing branch, else null (the draw never ran). Ground
@@ -253,8 +347,14 @@ export interface CyclingResult {
   /** First month the draw resumed AFTER a stop, else null. With stopMonth, distinguishes a pause from a stop. */
   drawingResumedMonth: number | null;
   liqMonth: number | null;              // CB LTV reached CB_LLTV
-  strikeMarginMonth: number | null;     // Strike LTV reached its margin-call line
-  creditExhaustedMonth: number | null;  // first month the Strike line couldn't fund the full bill
+  /** First month-end at or over Strike's margin-call line. ⚠ M1: under the support policy (with the call
+   *  modelled) it is read AFTER the call resolves, and a resolved call ends at ≤ 65% — so the call is reported
+   *  by `strikeCall` / `firstStrikeCallMonth` instead, and this stays null unless a sale leaves a deficiency. */
+  strikeMarginMonth: number | null;
+  /** First month Strike's OWN capacity — min(line, collateral × price × max draw) − drawn — couldn't fund the
+   *  full bill. Under the policy it keeps exactly that meaning (v1.1 #1): a draw cut by the POLICY's ceilings
+   *  sets `firstCeilingThrottleMonth` instead. */
+  creditExhaustedMonth: number | null;
   seizedBtc: number | null;
   survivorBtc: number | null;
   deficiencyUsd: number | null;         // debt surviving an under-collateralised liquidation
@@ -308,6 +408,36 @@ export interface CyclingResult {
   totalColdFromStrike: number;
   /** First month the sweep moved anything, else null — "not yet" is the honest answer for a long while. */
   firstColdMonth: number | null;
+
+  // ── SUPPORT POLICY (neutral — false / null / 0 — when the policy is not applied) ───────────────────────
+  policyApplied: boolean;
+  /** Why a supplied policy was ignored; null when applied or when none was supplied. */
+  policyIgnoredReason: PolicyIgnoredReason | null;
+  /** Months (m ≥ 1) spent in each state. Sums to the horizon when the policy applies. */
+  monthsInZone: Record<PolicyState, number>;
+  firstPausedMonth: number | null;
+  firstPayDownMonth: number | null;
+  /** The month the hard breaker latched — "Model broken — decide again". */
+  modelBrokenMonth: number | null;
+  /** First accumulate month whose draw the policy's ceilings cut below what Strike alone would have funded
+   *  (including a cut to zero). The policy-side twin of `creditExhaustedMonth`; the two never share a cause. */
+  firstCeilingThrottleMonth: number | null;
+  firstStrikeCallMonth: number | null;
+  strikeCallsCured: number;
+  /** Calls that ended in a sale ('sold' or 'soldImmediate'). */
+  strikeCallsSold: number;
+  totalStrikeLiquidatedBtc: number;
+  firstStrikeLiquidationMonth: number | null;
+  totalRestoreUsd: number;
+  totalPayDownUsd: number;
+  /** Cash ledger: openingCashUsd − totalCashToBillsUsd − totalCashToCureUsd === cashLeftUsd. */
+  openingCashUsd: number;
+  cashLeftUsd: number;
+  totalCashToBillsUsd: number;
+  totalCashToCureUsd: number;
+  /** Cold pulled back out of cold storage in months with price ≥ support. The policy's promise is that this
+   *  is 0 for any position that opens inside both ceilings (gate G2). */
+  coldRetrievedAboveSupportBtc: number;
 }
 
 /** Liquidation penalty as a fraction (≈ 0.04384) — derived from the shared incentive factor, not a literal. */
@@ -323,6 +453,73 @@ export function effectiveStrikeCapPct(raw: number | undefined, strikeMarginLtv: 
   return Number.isFinite(skCapRaw) && skCapRaw > 0
     ? Math.min(skCapRaw, strikeMarginLtv * (1 - TOPUP_MARGIN_BUFFER) * 100)
     : 0;
+}
+
+/** The policy the engine actually runs: the validated inputs, the two CLAMPED stops, the buffer in dollars. */
+interface ActivePolicy {
+  supportPath: number[];
+  cbStop: number;
+  skStop: number;
+  accumulateBelow: number;
+  payDownAbove: number;
+  bufferUsd: number;
+  openingCashUsd: number;
+  cureLtv: number;
+  partialLiqLtv: number;
+  retrieveMaxLtv: number;
+  modelStrikeLiquidation: boolean;
+}
+
+/**
+ * Validate a supplied policy against the run it would join. Invalid ⇒ IGNORED: the engine then runs
+ * byte-identically to having no policy, and `policyIgnoredReason` says why. The faces clamp their controls, so
+ * this is a backstop, not a UX.
+ */
+function resolveSupportPolicy(
+  p: SupportPolicyInputs,
+  ctx: {
+    mode: CyclingMode; pathLength: number; cap: number; skCapPct: number;
+    strikeMarginLtv: number; strikeMaxDrawLtv: number; expenses: number;
+  },
+): { ok: true; policy: ActivePolicy } | { ok: false; reason: PolicyIgnoredReason } {
+  const fin = (x: number): boolean => Number.isFinite(x);
+  if (ctx.mode !== 'cycle') return { ok: false, reason: 'mode' };
+  const sp = p.supportPath;
+  if (!Array.isArray(sp) || sp.length !== ctx.pathLength || !sp.every((s) => fin(s) && s > 0)) {
+    return { ok: false, reason: 'supportPath' };
+  }
+  const cbRaw = p.cbStopAtSupportPct / 100;
+  if (!(fin(cbRaw) && cbRaw > 0 && cbRaw < CB_LLTV)) return { ok: false, reason: 'cbStop' };
+  // 🔴 THE CLAMPS — a stop at support can never exceed its leg's DEFENSE line (the `coldFloorLtv = Math.min(…,
+  // cap)` precedent: the knobs compose instead of fighting). A stop above its defense line would pull cold AT
+  // support by construction, which breaks the policy's own promise (G2).
+  const cbStop = Math.min(cbRaw, ctx.cap);
+  if (!(cbStop > 0)) return { ok: false, reason: 'cbStop' };   // a CB cap of 0 (or junk) leaves no stop
+  const skRaw = p.strikeStopAtSupportPct / 100;
+  if (!(fin(skRaw) && skRaw > 0 && skRaw < ctx.strikeMarginLtv)) return { ok: false, reason: 'strikeStop' };
+  const skStop = ctx.skCapPct > 0 ? Math.min(skRaw, ctx.skCapPct / 100) : skRaw;
+  const a = p.accumulateBelow;
+  const b = p.payDownAbove;
+  if (!(fin(a) && fin(b) && a > 0 && a < b)) return { ok: false, reason: 'zones' };
+  if (!(fin(p.bearBufferMonths) && p.bearBufferMonths >= 0)) return { ok: false, reason: 'buffer' };
+  if (!(fin(p.openingCashUsd) && p.openingCashUsd >= 0)) return { ok: false, reason: 'cash' };
+  const cure = p.strikeCureLtv;
+  const liq = p.strikePartialLiqLtv;
+  const margin = ctx.strikeMarginLtv;
+  if (!(fin(cure) && fin(liq) && fin(margin) && cure > 0 && cure < margin && margin < liq && liq <= 1)) {
+    return { ok: false, reason: 'strikeLadder' };
+  }
+  const retrieve = p.strikeRetrieveMaxLtv;
+  if (!(fin(retrieve) && retrieve > 0 && retrieve <= ctx.strikeMaxDrawLtv)) return { ok: false, reason: 'retrieveLtv' };
+  return {
+    ok: true,
+    policy: {
+      supportPath: sp, cbStop, skStop, accumulateBelow: a, payDownAbove: b,
+      bufferUsd: p.bearBufferMonths * ctx.expenses, openingCashUsd: p.openingCashUsd,
+      cureLtv: cure, partialLiqLtv: liq, retrieveMaxLtv: retrieve,
+      modelStrikeLiquidation: p.modelStrikeLiquidation !== false,
+    },
+  };
 }
 
 
@@ -410,10 +607,61 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalUnfundedUsd = 0;
   let firstUnfundedMonth: number | null = null;
 
+  // TEST-ONLY income path. Absent ⇒ the constant `income`, byte-identical. 0 is a valid entry (an income shock).
+  const incomePath = inputs.incomePath;
+  const incomeAt = (m: number): number => {
+    if (incomePath === undefined) return income;
+    const v = incomePath[m];
+    return Number.isFinite(v) && v >= 0 ? v : income;
+  };
+
+  // ── SUPPORT-ANCHORED POLICY (opt-in) ── validated once; invalid ⇒ ignored (byte-identical) with the reason.
+  let policy: ActivePolicy | null = null;
+  let policyIgnoredReason: PolicyIgnoredReason | null = null;
+  if (inputs.supportPolicy !== undefined) {
+    const v = resolveSupportPolicy(inputs.supportPolicy, {
+      mode, pathLength: pricePath.length, cap, skCapPct, strikeMarginLtv, strikeMaxDrawLtv, expenses,
+    });
+    if (v.ok) policy = v.policy;
+    else policyIgnoredReason = v.reason;
+  }
+  let breaker: BreakerState = BREAKER_START;
+  let cashReserve = policy !== null ? policy.openingCashUsd : 0;
+  const openingCashUsd = cashReserve;
+  let strikeHoldUntil = 0;   // Strike's 60-day hold after collateral goes IN: no migration before this month
+  const monthsInZone: Record<PolicyState, number> = { paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 };
+  let firstPausedMonth: number | null = null;
+  let firstPayDownMonth: number | null = null;
+  let firstCeilingThrottleMonth: number | null = null;
+  let firstStrikeCallMonth: number | null = null;
+  let firstStrikeLiquidationMonth: number | null = null;
+  let strikeCallsCured = 0;
+  let strikeCallsSold = 0;
+  let totalStrikeLiquidatedBtc = 0;
+  let totalRestoreUsd = 0;
+  let totalPayDownUsd = 0;
+  let totalCashToBillsUsd = 0;
+  let totalCashToCureUsd = 0;
+  let coldRetrievedAboveSupportBtc = 0;
+
+  /** Coinbase → cold, attributing the migrated Strike coins FIFO (display only). ONE copy of the rule, shared by
+   *  the classic sweep and the policy's sweep. */
+  const sweepToCold = (m: number, excess: number): void => {
+    const moved = Math.min(excess, cbColl);
+    cbColl -= moved;
+    coldBtc += moved;
+    const fromStrikeAttrib = Math.min(moved, strikeToCbPending);
+    strikeToCbPending -= fromStrikeAttrib;
+    coldFromStrike += fromStrikeAttrib;
+    coldFromCb += moved - fromStrikeAttrib;
+    if (firstColdMonth === null) firstColdMonth = m;
+  };
+
   const rows: CyclingRow[] = [];
 
   for (let m = 0; m <= months; m++) {
     const price = pricePath[m];
+    const inc = incomeAt(m);
     let strikeDrawn = 0;
     let strikeShortfall = 0;
     let btcBoughtUsd = 0;
@@ -430,14 +678,59 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let strikeReserveCutBtc = 0;
     let unfundedUsd = 0;
 
+    // ── POLICY STATE (step 2) ── month 0 is the opening: its zone is reported, no action is taken, and it never
+    // feeds the breaker (it is not a month-end of the plan).
+    const S = policy !== null ? policy.supportPath[m] : 0;
+    const k = policy !== null ? price / S : 0;
+    let state: PolicyState | null = null;
+    if (policy !== null) {
+      if (m > 0) breaker = nextBreakerState(breaker, price, S, m);
+      state = breaker.broken ? 'broken' : policyZone(price, S, policy.accumulateBelow, policy.payDownAbove);
+      if (m > 0) {
+        monthsInZone[state] += 1;
+        if (state === 'paused' && firstPausedMonth === null) firstPausedMonth = m;
+        if (state === 'payDown' && firstPayDownMonth === null) firstPayDownMonth = m;
+      }
+    }
+    let restoreUsd = 0;
+    let payDownUsd = 0;
+    let cashToBillsUsd = 0;
+    let cashToCureUsd = 0;
+    let strikeCall: StrikeCallResult['state'] = 'none';
+    let strikeCureColdBtc = 0;
+    let strikeLiquidatedBtc = 0;
+    const coldRetrievedAtStart = coldRetrievedBtc;
+
     if (m > 0) {
       const ci = cbDebt * cmr;
       cbDebt += ci;
       totalCbInterest += ci;
 
       if (mode === 'cycle') {
-        // The cap is a COINBASE threshold — test it against CB LTV, never a blended figure.
-        const drawing = ltvOf(cbDebt, cbColl, price) < cap && liqMonth === null;
+        // ── POLICY DRAW (step 3 — replaces the price-relative draw test) ── `accumulate` only. The draw is capped
+        // AT SUPPORT by both ceilings, and by what Coinbase can take back at the next refinance: Strike is a
+        // CONDUIT, not a store — its unused line is the reservoir the debt-shift defense draws on below support.
+        // The two causes of a short draw stay separate (v1.1 #1), and both are silent once Coinbase is liquidated
+        // (v1.2 #9 — at HEAD a credit exhaustion needed a drawing month, which already required that).
+        let policyAvailable = 0;
+        if (policy !== null && state === 'accumulate') {
+          const cbRoom = Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt);
+          const cbAbsorb = Math.max(0, cbMaxDrawForHeadroom(cbRoom, cbDebt) - strikeBal);
+          const skRoom = Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal;
+          const skCeil = ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop);
+          const strikeCap = Math.max(0, skRoom);                       // Strike's OWN capacity
+          const policyCap = Math.max(0, Math.min(skCeil, cbAbsorb));   // what the policy allows
+          policyAvailable = Math.min(strikeCap, policyCap);
+          if (liqMonth === null) {
+            if (strikeCap < expenses && creditExhaustedMonth === null) creditExhaustedMonth = m;
+            if (policyCap < Math.min(strikeCap, expenses) && firstCeilingThrottleMonth === null) firstCeilingThrottleMonth = m;
+          }
+        }
+        // The cap is a COINBASE threshold — test it against CB LTV, never a blended figure. (Under the policy the
+        // test is the ceilings' room at support, above — never today's price.)
+        const drawing = policy !== null
+          ? policyAvailable > 0 && liqMonth === null
+          : ltvOf(cbDebt, cbColl, price) < cap && liqMonth === null;
 
         if (drawing) {
           // Ground truth for the view's "this run never draws" notice — the opening LTV alone cannot
@@ -448,10 +741,13 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           // The Strike line is a hard constraint: min(credit line, collateral × price × max-draw LTV).
           // What it can't fund comes out of income, which is what would actually happen — so the
           // constraint is self-limiting (fewer sats bought) rather than a hard stop.
-          const available = Math.max(0, Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal);
+          const available = policy !== null
+            ? policyAvailable
+            : Math.max(0, Math.min(strikeCreditLine, strikeColl * price * strikeMaxDrawLtv) - strikeBal);
           strikeDrawn = Math.min(expenses, available);
           strikeShortfall = expenses - strikeDrawn;
-          if (strikeShortfall > 0 && creditExhaustedMonth === null) creditExhaustedMonth = m;
+          // Under the policy the cause was recorded at the decision: a policy-cut draw is NOT "credit exhausted".
+          if (policy === null && strikeShortfall > 0 && creditExhaustedMonth === null) creditExhaustedMonth = m;
 
           strikeBal += strikeDrawn;
           const si = strikeBal * smr;
@@ -460,19 +756,63 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
 
           // ⭐ THE FLYWHEEL: the line paid the bill, so ALL of income buys bitcoin — less only the part
           // of the bill the line could not fund. Not the surplus.
-          btcBoughtUsd = Math.max(0, income - strikeShortfall);
+          btcBoughtUsd = Math.max(0, inc - strikeShortfall);
           // The line ran dry AND income can't meet the rest of the bill: nothing pays the difference.
-          unfundedUsd = Math.max(0, strikeShortfall - income);
+          unfundedUsd = Math.max(0, strikeShortfall - inc);
+          // Policy: the cash reserve pays what income and the line could not (it is never refilled).
+          if (policy !== null && unfundedUsd > 0) {
+            cashToBillsUsd = Math.min(cashReserve, unfundedUsd);
+            cashReserve -= cashToBillsUsd;
+            unfundedUsd -= cashToBillsUsd;
+          }
           if (price > 0) cbColl += btcBoughtUsd / price;
+        } else if (policy !== null) {
+          // ── NOT DRAWING, under the policy (step 4) ──
+          if (stopMonth === null && liqMonth === null) stopMonth = m;
+          const si = strikeBal * smr;
+          strikeBal += si;
+          totalStrikeInterest += si;
+          // Bills: income → cash → unfunded.
+          unfundedUsd = Math.max(0, expenses - inc);
+          if (unfundedUsd > 0) {
+            cashToBillsUsd = Math.min(cashReserve, unfundedUsd);
+            cashReserve -= cashToBillsUsd;
+            unfundedUsd -= cashToBillsUsd;
+          }
+          let surplus = Math.max(0, inc - expenses);
+          // a) RESTORE (any zone): a leg over its ceiling AT SUPPORT is repaid first, by exactly its excess —
+          //    Coinbase before Strike, because Coinbase liquidates instantly and Strike has a cure window.
+          const cbPay = Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop)));
+          cbDebt -= cbPay;
+          surplus -= cbPay;
+          const skPay = Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop)));
+          strikeBal -= skPay;
+          surplus -= skPay;
+          restoreUsd = cbPay + skPay;
+          // b) PAY DOWN (payDown, broken): Strike first (13%), then Coinbase — to ZERO, not to a buffer. The buffer
+          //    is kept as Coinbase COLLATERAL by the sweep instead. The 0.005 residual sweep is the clearStrike
+          //    precedent (half a cent — never "correct" it to 1e-9).
+          if (state === 'payDown' || state === 'broken') {
+            const a = allocatePayDown(surplus, strikeBal, cbDebt);
+            strikeBal -= a.toStrikeUsd;
+            cbDebt -= a.toCbUsd;
+            if (strikeBal < 0.005) strikeBal = 0;
+            if (cbDebt < 0.005) cbDebt = 0;
+            payDownUsd = a.toStrikeUsd + a.toCbUsd;
+            surplus = a.leftUsd;
+          }
+          // c) the rest buys, into the Coinbase pool.
+          btcBoughtUsd = surplus;
+          if (surplus > 0 && price > 0) cbColl += surplus / price;
         } else {
           if (stopMonth === null && liqMonth === null) stopMonth = m;
           const si = strikeBal * smr;
           strikeBal += si;
           totalStrikeInterest += si;
           // Not drawing: income pays the bill itself, so only the surplus is left to buy.
-          btcBoughtUsd = Math.max(0, income - expenses);
+          btcBoughtUsd = Math.max(0, inc - expenses);
           // Bills above income with the draw halted: nothing pays the difference.
-          unfundedUsd = Math.max(0, expenses - income);
+          unfundedUsd = Math.max(0, expenses - inc);
           if (price > 0) cbColl += btcBoughtUsd / price;
         }
 
@@ -488,7 +828,27 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // `stressed` is the raw price: the honest reading of "no buffer requested". Byte-identical to the
         // pre-A3 engine only when BOTH are off.
         // 🔴 Never after a liquidation: a seizure ENDS the Coinbase loop (see the refinance below).
-        if ((coldOn || defend) && liqMonth === null && m % cycle === 0 && price > 0 && strikeColl > 0) {
+        if (policy !== null) {
+          // POLICY MIGRATION (step 5 — replaces the stressed-price rule; this IS the ratchet fix). Keep what the
+          // FULL line needs AT SUPPORT — `max(line, balance) / (strikeStop × S)` — not what today's balance needs
+          // at today's price (the old `keepForMargin` was evaluated while the balance was $0, so it reserved
+          // nothing for the debt Strike is later asked to absorb). Strike's retrieval rules: all-or-nothing, only at
+          // ≤ retrieveMax LTV before and < the max-draw LTV after, never inside the 60-day hold that follows
+          // collateral going IN, and not while paused or broken.
+          if (state !== 'paused' && state !== 'broken' && liqMonth === null && m % cycle === 0 && price > 0
+            && strikeColl > 0 && m >= strikeHoldUntil) {
+            const keep = Math.max(strikeCreditLine, strikeBal) / (policy.skStop * S);
+            const move = strikeColl - keep;
+            if (move > 0 && ltvOf(strikeBal, strikeColl, price) <= policy.retrieveMaxLtv
+              && ltvOf(strikeBal, strikeColl - move, price) < strikeMaxDrawLtv) {
+              strikeColl -= move;
+              cbColl += move;
+              strikeToCbBtc = move;
+              strikeToCbPending += move;
+              totalStrikeToCbBtc += move;
+            }
+          }
+        } else if ((coldOn || defend) && liqMonth === null && m % cycle === 0 && price > 0 && strikeColl > 0) {
           const stressed = price * (1 - coldBuffer);
           const keepForLine = strikeCreditLine / (stressed * strikeMaxDrawLtv);
           const keepForMargin = strikeMarginLtv > 0 ? strikeBal / (strikeMarginLtv * stressed) : 0;
@@ -513,10 +873,18 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // seizure re-borrowed the Strike balance on Coinbase — a NEW loan the one-shot breach check below can
         // never liquidate, so the run silently re-levered a facility that no longer exists. The Strike balance
         // now stays on Strike, accruing at its own rate.
-        if (liqMonth === null && m % cycle === 0 && strikeBal > 0) {
-          const headroom = defend
-            ? Math.max(0, cap * cbColl * price - cbDebt)
-            : Number.POSITIVE_INFINITY;
+        // POLICY (step 6): `accumulate` / `hold` only, and ALWAYS capped — at the ceiling at support and at the
+        // defense line at today's price, `defend` or not. No refinance in payDown / broken (the surplus is retiring
+        // Strike; a refinance there pays a 2% fee on debt about to be repaid) or paused (the support ceiling can
+        // still show room below support, and moving debt onto Coinbase there raises its LTV at today's price
+        // exactly when Coinbase is most exposed).
+        if (liqMonth === null && m % cycle === 0 && strikeBal > 0
+          && (policy === null || state === 'accumulate' || state === 'hold')) {
+          const headroom = policy !== null
+            ? Math.max(0, Math.min(ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop), cap * cbColl * price - cbDebt))
+            : defend
+              ? Math.max(0, cap * cbColl * price - cbDebt)
+              : Number.POSITIVE_INFINITY;
           const sweepCash = Math.min(strikeBal, cbMaxDrawForHeadroom(headroom, cbDebt));
           if (sweepCash > 0) {
             const fee = cbBorrowFee(sweepCash, cbDebt);
@@ -662,8 +1030,42 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             coldRetrievedBtc += st.fromColdBtc;
             totalStrikeTopUpBtc += st.fromColdBtc;
             if (firstStrikeTopUpMonth === null) firstStrikeTopUpMonth = m;
+            // Policy: adding collateral to Strike starts its 60-day hold — no migration out before m + 2.
+            if (policy !== null) strikeHoldUntil = m + 2;
           }
           if (st.shortfallBtc > 0 && strikeTopUpExhaustedMonth === null) strikeTopUpExhaustedMonth = m;
+        }
+
+        // ── STRIKE MARGIN CALL (policy, step 8) ── MODELLED, not just flagged. A monthly engine cannot see the
+        // 72-hour window, so a month-end at or over the call is UNCURED: cash, then cold, then a sale down to the
+        // cure LTV; at or over the partial-liquidation LTV the sale is immediate (resolveStrikeCall).
+        // ⚠ NOT gated on liqMonth (v1.1 #3): Strike is a separate facility, and a Coinbase seizure does not end it —
+        // skipping the sale after one would overstate the survivor coins.
+        if (policy !== null && policy.modelStrikeLiquidation && price > 0) {
+          const c = resolveStrikeCall({
+            strikeBalance: strikeBal, strikeCollateralBtc: strikeColl, price,
+            callLtv: strikeMarginLtv, cureLtv: policy.cureLtv, partialLiqLtv: policy.partialLiqLtv,
+            cashUsd: cashReserve, coldBtc,
+          });
+          if (c.state !== 'none') {
+            strikeCall = c.state;
+            cashToCureUsd = c.cureCashUsd;
+            cashReserve -= c.cureCashUsd;
+            strikeCureColdBtc = c.cureColdBtc;
+            coldBtc -= c.cureColdBtc;
+            coldRetrievedBtc += c.cureColdBtc;   // 🔴 joins the one retrieval counter, or the cold ledger breaks
+            strikeLiquidatedBtc = c.soldBtc;
+            strikeColl = c.collateralAfter;
+            strikeBal = c.balanceAfter;
+            if (c.cureColdBtc > 0) strikeHoldUntil = m + 2;
+            if (firstStrikeCallMonth === null) firstStrikeCallMonth = m;
+            if (c.state === 'cured') strikeCallsCured += 1;
+            else strikeCallsSold += 1;
+            if (c.soldBtc > 0) {
+              totalStrikeLiquidatedBtc += c.soldBtc;
+              if (firstStrikeLiquidationMonth === null) firstStrikeLiquidationMonth = m;
+            }
+          }
         }
       } else {
         // Non-cycle modes: no draw, no refinance. Both legs accrue at their own rates; the surplus
@@ -672,9 +1074,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         strikeBal += si;
         totalStrikeInterest += si;
 
-        let cash = Math.max(0, income - expenses);
+        let cash = Math.max(0, inc - expenses);
         // Only the surplus is ever funded here too, so a deficit goes unpaid (C1's deficitMode notice).
-        unfundedUsd = Math.max(0, expenses - income);
+        unfundedUsd = Math.max(0, expenses - inc);
         if (mode === 'clearStrike' || mode === 'clearBoth') {
           const pay = Math.min(cash, strikeBal);
           strikeBal -= pay;
@@ -702,24 +1104,31 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     // is gone for good, so every LATER month starts from a smaller base. On a rising path that never
     // matters (LTV keeps falling anyway); on a flat or falling one it does. The sweep is a RISK TRANSFER,
     // not free safety, and `coldStoreBufferPct` is the size of the transfer.
-    if (coldOn && m > 0 && liqMonth === null && price > 0) {
+    if (policy !== null) {
+      // ── POLICY SWEEP (step 9 — replaces the price-relative floor; this IS the forward-looking Coinbase reserve).
+      // Coinbase keeps what it needs AT SUPPORT plus the bear buffer, so it never enters a drawdown holding less
+      // than it needs at the line — and never less than the defense line needs at today's price. The buffer stays
+      // as COLLATERAL (room under the ceiling), never as unpaid debt. Not below support (the collateral is needed
+      // where it is) and not once broken (the premise "safe at support" is suspect).
+      if (m > 0 && state !== 'paused' && state !== 'broken' && liqMonth === null && price > 0 && cbColl > 0) {
+        const keep = Math.max(sweepKeepBtc(cbDebt, policy.bufferUsd, S, policy.cbStop), cbDebt / (cap * price));
+        const excess = cbColl - keep;
+        if (excess > 0) sweepToCold(m, excess);
+      }
+    } else if (coldOn && m > 0 && liqMonth === null && price > 0) {
       // ── COINBASE leg (the ONLY sweep leg): the loan de-levers as price rises, freeing collateral
       // above the buffer's floor. The Strike surplus already flowed in via the cadence migration above;
       // this leg moves the true excess on to cold, attributing the migrated coins FIFO (display only).
       if (cbColl > 0) {
         const required = cbDebt / (coldFloorLtv * price);   // collateral the buffer demands we keep
         const excess = cbColl - required;
-        if (excess > 0) {
-          const moved = Math.min(excess, cbColl);
-          cbColl -= moved;
-          coldBtc += moved;
-          const fromStrikeAttrib = Math.min(moved, strikeToCbPending);
-          strikeToCbPending -= fromStrikeAttrib;
-          coldFromStrike += fromStrikeAttrib;
-          coldFromCb += moved - fromStrikeAttrib;
-          if (firstColdMonth === null) firstColdMonth = m;
-        }
+        if (excess > 0) sweepToCold(m, excess);
       }
+    }
+
+    // G2's measure: cold pulled back OUT of cold storage in a month at or above support.
+    if (policy !== null && m > 0 && k >= 1 - SUPPORT_EPS) {
+      coldRetrievedAboveSupportBtc += coldRetrievedBtc - coldRetrievedAtStart;
     }
 
     const cbLtv = ltvOf(cbDebt, cbColl, price);
@@ -737,6 +1146,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       totalUnfundedUsd += unfundedUsd;
       if (firstUnfundedMonth === null) firstUnfundedMonth = m;
     }
+    totalRestoreUsd += restoreUsd;
+    totalPayDownUsd += payDownUsd;
+    totalCashToBillsUsd += cashToBillsUsd;
+    totalCashToCureUsd += cashToCureUsd;
     rows.push({
       m,
       yearLabel: (startYear + m / 12).toFixed(1),
@@ -750,6 +1163,14 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       cbLtv, strikeLtv,
       collateralValue, equity: collateralValue - (cbDebt + strikeBal),
       postLiquidation: liqMonth !== null,
+      policyZone: state,
+      multiple: policy !== null ? k : null,
+      cbCeilingHeadroomUsd: policy !== null ? ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop) : null,
+      strikeCeilingHeadroomUsd: policy !== null ? ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop) : null,
+      restoreUsd, payDownUsd,
+      cashReserveUsd: cashReserve,   // 0 when the policy is not applied
+      cashToBillsUsd, cashToCureUsd,
+      strikeCall, strikeCureColdBtc, strikeLiquidatedBtc,
     });
 
     // The seizure is applied AFTER the row is pushed, so the liquidation row honestly shows the position
@@ -783,7 +1204,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;
     baseStrikeBal *= 1 + smr;
-    if (pricePath[m] > 0) baseBtc += surplus / pricePath[m];
+    // The same income path as the strategy (absent ⇒ the constant surplus, byte-identical).
+    const monthSurplus = incomePath === undefined ? surplus : Math.max(0, incomeAt(m) - expenses);
+    if (pricePath[m] > 0) baseBtc += monthSurplus / pricePath[m];
   }
   const last = rows[rows.length - 1];
   const baselineEquity = baseBtc * last.price - (baseCbDebt + baseStrikeBal);
@@ -801,5 +1224,11 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     baselineEquity, baselineBtc: baseBtc,
     openingColdBtc,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
+    policyApplied: policy !== null, policyIgnoredReason,
+    monthsInZone, firstPausedMonth, firstPayDownMonth, modelBrokenMonth: breaker.brokenMonth,
+    firstCeilingThrottleMonth, firstStrikeCallMonth, strikeCallsCured, strikeCallsSold,
+    totalStrikeLiquidatedBtc, firstStrikeLiquidationMonth, totalRestoreUsd, totalPayDownUsd,
+    openingCashUsd, cashLeftUsd: cashReserve, totalCashToBillsUsd, totalCashToCureUsd,
+    coldRetrievedAboveSupportBtc,
   };
 }
