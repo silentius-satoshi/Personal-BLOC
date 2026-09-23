@@ -17,6 +17,12 @@ import {
  * ⚠ The G1 golden (`goldens/supportPolicyG1.golden.json`) is the policy-ABSENT engine at 2125cc2, captured
  * before a line of the policy existed. Regenerate it only deliberately, from the SHA in its meta. A diff to it
  * means policy-absent behaviour moved.
+ *
+ * ⚠ The G1 runs feed the engine the golden's STORED price path, never a recomputed P2. P2 is built with
+ * Math.pow, which ECMAScript leaves implementation-approximated: its last bit differs between Node 22 (CI) and
+ * Node 26 on about one input in ten, and that alone failed CI when the runs recomputed the path. The engine is
+ * pure + − × ÷ (IEEE-exact on every runtime; a G1 test walks its imports to keep it so), so a stored input
+ * reproduces bit for bit anywhere. The path itself is held to the store within a relative 1e-12.
  */
 
 const smr = SP_REPRO.strikeAprPct / 100 / 12;
@@ -86,14 +92,34 @@ const NEW_ROW_FIELDS = [
 ] as const;
 
 describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD engine', () => {
-  it('the fixture and the paths are exactly what the golden was captured from', () => {
+  it('the fixture and the paths are what the golden was captured from (paths to 1e-12 — P2 uses Math.pow)', () => {
     expect(json(SP_REPRO)).toEqual(golden.meta.inputs);
     expect(golden.runs.map((g) => g.phase)).toEqual([0, -4]);
-    for (const g of golden.runs) expect(pathP2(g.phase)).toEqual(g.pricePath);
+    for (const g of golden.runs) {
+      const path = pathP2(g.phase);
+      expect(path).toHaveLength(g.pricePath.length);
+      path.forEach((p, m) => expect(Math.abs(p / g.pricePath[m] - 1), `phase ${g.phase}, m${m}`).toBeLessThan(1e-12));
+    }
   });
 
   it('⭐ policy absent: every pre-existing row and result field equals the golden (P2, phase 0 and −4)', () => {
-    for (const g of golden.runs) expectGolden(runCyclingSim({ ...SP_REPRO, pricePath: pathP2(g.phase) }), g);
+    for (const g of golden.runs) expectGolden(runCyclingSim({ ...SP_REPRO, pricePath: g.pricePath }), g);
+  });
+
+  it('the engine is pure + − × ÷ — no implementation-approximated Math in its import graph (G1 stays exact)', () => {
+    const APPROXIMATED = /Math\.(a?sinh?|a?cosh?|a?tanh?|atan2|cbrt|exp|expm1|hypot|log|log1p|log2|log10|pow)\b|\*\*/;
+    const seen = new Set<string>();
+    const walk = (file: string): void => {
+      if (seen.has(file)) return;
+      seen.add(file);
+      const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
+      for (const m of src.matchAll(/from '\.\/(\w+)'/g)) walk(`${m[1]}.ts`);
+      const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+      expect(code, file).not.toMatch(APPROXIMATED);
+    };
+    walk('cyclingSim.ts');
+    expect([...seen]).toEqual(expect.arrayContaining(
+      ['cyclingSim.ts', 'supportPolicy.ts', 'cbDefense.ts', 'runCoinbaseLoan.ts', 'ltv.ts']));
   });
 
   it('policy absent: the 12 new row fields and the new result fields are all neutral', () => {
@@ -148,7 +174,7 @@ describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD en
       ['retrieveLtv', policyFor(SUPPORT, { strikeRetrieveMaxLtv: 0.51 })],
     ];
     for (const [reason, supportPolicy] of cases) {
-      const r = runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0), supportPolicy });
+      const r = runCyclingSim({ ...SP_REPRO, pricePath: golden.runs[0].pricePath, supportPolicy });
       expect(r.policyApplied, reason).toBe(false);
       expect(r.policyIgnoredReason, reason).toBe(reason);
       expectGolden(r, golden.runs[0]);

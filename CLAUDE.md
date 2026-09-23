@@ -2954,7 +2954,9 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   `cyclingSimPolicy.test.ts` (⭐ G1–G4 plus every behaviour above); `supportPolicyPaths.ts` (the shared fixture +
   P1–P9 builders — NOT a test file; P9's dip is placed at its no-crash twin's measured peak); **the G1 golden**
   `goldens/supportPolicyG1.golden.json` (the policy-absent engine at 2125cc2 on SP_REPRO × P2 — ⚠ regenerate it ONLY
-  deliberately, from the SHA in its meta; a diff to it means policy-absent behaviour moved); `supportPolicyReport.test.ts`
+  deliberately, from the SHA in its meta; a diff to it means policy-absent behaviour moved. ⚠ The G1 runs feed the
+  engine the golden's STORED price path, never a recomputed P2 — P2 is built with `Math.pow`, whose last bit differs
+  between Node 22 (CI) and Node 26; see the exact-golden Critical Constraints row); `supportPolicyReport.test.ts`
   (the committed A5 generator — `describe.runIf(SP_REPORT)`, skipped by the normal suite; run
   `SP_REPORT=1 npx vitest run src/simulation/__tests__/supportPolicyReport.test.ts --reporter=verbose` — ⚠ keep
   `--reporter=verbose`, or a non-TTY run drops the output; the output is never committed).
@@ -5021,8 +5023,9 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
     junk → 0; sweep keep and junk → +∞; sale sizing and its clamp; ⭐ `resolveStrikeCall` cases a–e (cash first,
     ≥ at the call, the immediate sale leaves cash AND cold untouched, a partial cure spends cold before selling);
     the breaker's consecutive rule and LATCH; pay-down order.
-  - `cyclingSimPolicy.test.ts` — ⭐ **G1** (policy absent, and every invalid variant, deep-equal the golden;
-    non-cycle modes ignore it); the alignment pin + the opening row; ⭐ the ceiling invariant **plus the CONDUIT
+  - `cyclingSimPolicy.test.ts` — ⭐ **G1** (policy absent, and every invalid variant, deep-equal the golden on its
+    STORED path; the path itself matches P2 to a relative 1e-12; non-cycle modes ignore it; a guard walks
+    `cyclingSim.ts`'s imports and fails on any implementation-approximated Math); the alignment pin + the opening row; ⭐ the ceiling invariant **plus the CONDUIT
     clause** (an accumulate row's Strike balance ≤ one month's interest on a full bill — ⚠ it is this clause, not
     the Strike ceiling, that catches price-for-support in the draw: once the migration keeps the full line at
     support, Strike's own ceiling cannot bind); ⭐ **G2** on every A5 path (non-vacuity from test 16's fixture +
@@ -5365,6 +5368,10 @@ coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the
 claim RULE is unit-tested (`resolveScrollClaim`) instead; the iOS blur-races-pointerdown timing; the
 standalone-PWA container; true 60fps.
+
+**⚠️ CI runs Node 22.23.2; local is Node 26.** Their `Math.pow` differs in the last bit on about 1 input in 10,
+so an exact comparison over a `Math.pow`-built value can pass locally and fail CI. Reproduce CI's runtime with
+`npx -y -p node@22.23.2 -- node node_modules/vitest/vitest.mjs run <file>`.
 
 **⚠️ The typecheck gate:** root `tsconfig.json` is references-only (`"files": []`), so `tsc` / `tsc --noEmit` is a NO-OP that compiles nothing and always reports 0 — it never catches type errors. The real typecheck is **`npx tsc -b`** (build mode, what `npm run build` runs). Vercel's `vite build` strips types with esbuild and does **not** typecheck, so type errors only surface via `tsc -b` locally.
 
@@ -7388,6 +7395,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 
 | Constraint | Rule |
 |---|---|
+| An exact (deep-equal) golden may depend only on `+ − × ÷` | Store any input built with `Math.pow`/`log`/`exp`/`**` (a power-law or cycle price path) IN the golden and feed it back — never recompute it at test time. ECMAScript leaves those functions implementation-approximated, and `Math.pow`'s last bit differs between Node 22 (CI) and Node 26 on about 1 input in 10: the support-policy G1 golden passed locally and failed CI for that alone. The engine is pure `+ − × ÷` (IEEE-exact on every runtime; a G1 test walks `cyclingSim.ts`'s imports and fails on any approximated Math), which is what lets a stored input reproduce bit for bit. A value that must be recomputed gets a tolerance (`toBeCloseTo`, or a relative 1e-12) |
 | Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. Reverting the policy to price-relative rules is what G2 catches |
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
