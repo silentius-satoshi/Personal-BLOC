@@ -108,3 +108,35 @@ describe('emergencyModel — directive fixtures', () => {
     expect(CB_LADDER).toEqual({ watch: 0.69, prepare: 0.72, execute: 0.75, lastResort: 0.81 });
   });
 });
+
+// ── LTVs through the shared `ltvOf` — debt with no collateral is ∞, never a flattering 0 ──────────────
+// Synthetic: the Directive BASE with the relevant collateral removed. Before this, all three sites used
+// `x > 0 ? a / b : 0`, so Coinbase debt with NO collateral behind it classified as 'normal'.
+describe('emergencyModel — LTVs route through ltvOf', () => {
+  it('⭐ no debt and no collateral stays 0 / normal — the ∞ is for UNBACKED debt only', () => {
+    // Pinned first: ltvOf's "nothing at all" case is 0, not ∞, so an empty position never alarms.
+    const empty: EmergencyState = { ...BASE, cbDebt: 0, cbCollateralBtc: 0, skDrawn: 0, skCollateralBtc: 0 };
+    const r = classifyStage(empty);
+    expect(r.cbLtv).toBe(0);
+    expect(r.stage).toBe('normal');
+    expect(drawToLtv(empty, 30).newSkLtv).toBe(0);
+    expect(floorTable(empty)[0].strikeSurvivesFurtherPct).toBe(1);
+  });
+
+  it('⭐ classifyStage: Coinbase debt with zero collateral is ∞ and liquidated, not normal', () => {
+    const r = classifyStage({ ...BASE, cbCollateralBtc: 0 });
+    expect(r.cbLtv).toBe(Number.POSITIVE_INFINITY);
+    expect(r.stage).toBe('liquidated');
+  });
+
+  it('⭐ drawToLtv: a Strike balance with zero collateral reports newSkLtv ∞', () => {
+    const r = drawToLtv({ ...BASE, skCollateralBtc: 0 }, 30);
+    expect(r.drawUsd).toBe(0);                          // no capacity without collateral
+    expect(r.newSkLtv).toBe(Number.POSITIVE_INFINITY);
+  });
+
+  it('⭐ floorTable: the standing row survives no further drop when Strike debt has no collateral', () => {
+    const standing = floorTable({ ...BASE, skCollateralBtc: 0 }).find((r) => r.standing)!;
+    expect(standing.strikeSurvivesFurtherPct).toBe(0);
+  });
+});

@@ -22,6 +22,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
 } from './cyclingFaceView';
+import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import { useStressLens } from './useStressLens';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
@@ -281,6 +282,9 @@ export default function CyclingFace() {
   // What the Strike cap did — defended / short / yielded / called — in the words the face shows.
   const capReading = strikeCapReading(sim, strikeCapEff);
   const capWarn = capReading.state === 'called' || capReading.state === 'short' || capReading.state === 'yielded';
+  // Bills nothing paid in the model — read off the DISPLAYED run (`sim`), so the stress lens moves it. Only
+  // cycleUnfunded: this face is cycle-only, and its C2 notice is out of scope here.
+  const { cycleUnfunded } = modeConstraints('cycle', sim.firstDrawMonth, income, expenses, sim.totalUnfundedUsd);
   // The first month NEITHER lever could hold the stop. While the shift alone ran short the top-up covers
   // it, so its exhaustion is the real residual; if no top-up ever fired, the shift's is.
   const unhedgedMonth = totalTopUpBtc > 0 ? topUpExhaustedMonth : defenseExhaustedMonth;
@@ -936,7 +940,7 @@ export default function CyclingFace() {
       </section>
 
       {/* 7 · CONSTRAINTS + MILESTONES */}
-      {(creditExhaustedMonth !== null || capWarn) && (
+      {(creditExhaustedMonth !== null || capWarn || cycleUnfunded) && (
         <div className={styles.constraints}>
           {creditExhaustedMonth !== null && (
             <div>
@@ -944,6 +948,7 @@ export default function CyclingFace() {
               {fmtUSD(rows[creditExhaustedMonth].strikeShortfall)}/mo of bills funded from income thereafter.
             </div>
           )}
+          {cycleUnfunded && <div>{unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd)}</div>}
           {/* A call, a short, or the survival guard's yield — the Strike cap's reading, one definition. */}
           {capWarn && <div>{strikeCapNote(capReading)}</div>}
         </div>

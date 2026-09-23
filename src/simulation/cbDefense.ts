@@ -168,7 +168,10 @@ export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
   const target = input.targetCbLtvPct / 100;
   const canPrice = target > 0 && input.price > 0;
   const requiredBtc = canPrice ? Math.max(0, input.cbDebt / (target * input.price) - input.cbCollateralBtc) : 0;
-  const fromColdBtc = Math.min(requiredBtc, Math.max(0, input.coldBtc));
+  // ⚠ `Number.isFinite && > 0`, NOT `Math.max(0, x)` — the latter returns NaN for NaN and would poison
+  // every figure downstream. Same guard as the `topUpStrikeLtv` twin, so junk cold reads as an EMPTY pool
+  // on both legs.
+  const fromColdBtc = Math.min(requiredBtc, Number.isFinite(input.coldBtc) && input.coldBtc > 0 ? input.coldBtc : 0);
   const remaining = requiredBtc - fromColdBtc;
   // ⚠ Bounded a buffer INSIDE the call line, never on it. Consequence to expect: a leg already inside the
   // buffer now yields ZERO available collateral where it previously yielded a sliver taken right up to the
@@ -273,12 +276,23 @@ export const CB_SURVIVAL_BUFFER = 0.05;
  * The survival guard's risk number — the Strike reserve may never claim cold that Coinbase needs to stay
  * alive. Guarded like every pool figure: a non-positive price, a non-positive or non-finite denominator,
  * or any NaN/∞ input returns 0, never NaN (the `Number.isFinite && > 0` rule, never `Math.max(0, NaN)`).
+ *
+ * `stopLtv` (optional) — the Coinbase STOP the top-up actually aims at. The target LTV is the LOOSER of the
+ * survival line and the stop: above an 81.7% stop (0.86 × 0.95) the top-up only restores the stop, so a need
+ * sized to the survival line would claim coins the top-up never takes — and the guard would report a Strike
+ * yield that handed nothing to Coinbase. Because the need FALLS as the target LTV rises,
+ * need(max(line, stop)) === min(need(line), need(stop)). ⚠ Absent / junk / at-or-below the line ≡ the
+ * 5-arg value, byte-identical (a test pins it).
  */
 export function cbSurvivalCollateralBtc(
   cbDebt: number, cbCollateralBtc: number, price: number, lltv: number, buffer: number = CB_SURVIVAL_BUFFER,
+  stopLtv?: number,
 ): number {
   if (!(price > 0)) return 0;
-  const denom = lltv * (1 - buffer) * price;
+  const line = lltv * (1 - buffer);
+  const s = stopLtv ?? 0;
+  const target = Number.isFinite(s) && s > line ? s : line;
+  const denom = target * price;
   if (!(denom > 0) || !Number.isFinite(denom)) return 0;
   const debt = Number.isFinite(cbDebt) && cbDebt > 0 ? cbDebt : 0;
   const coll = Number.isFinite(cbCollateralBtc) && cbCollateralBtc > 0 ? cbCollateralBtc : 0;

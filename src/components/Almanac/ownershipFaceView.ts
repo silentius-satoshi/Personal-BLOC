@@ -1,6 +1,7 @@
 import type { CyclingRow, CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { btcGained } from './cyclingFaceView';
+import { fmtUSD } from '../../utils/format';
 
 /**
  * Ownership face display math (S3). REUSES the shared Cycling helpers rather than defining a second set
@@ -106,18 +107,38 @@ export interface ModeConstraints {
   degenerateCap: boolean;
   /** C1 — a no-draw mode with a deficit: the bills are funded by nothing (no coins sold, no debt grown). */
   deficitMode: boolean;
+  /**
+   * The cycle-mode twin of C1: the ENGINE found bills neither income nor the Strike line paid
+   * (`totalUnfundedUsd > 0` — the stop halted the draw, or the line ran dry). Cycle-only on purpose: the
+   * no-draw modes already carry `deficitMode`, and one gap must never raise two notices.
+   */
+  cycleUnfunded: boolean;
 }
 
+/** ⚠ `totalUnfundedUsd` is REQUIRED — pass the SAME `sim` that supplies `firstDrawMonth` (the displayed run),
+ *  so the stress lens moves the notice with the rest of the face. */
 export function modeConstraints(
   mode: CyclingMode,
   firstDrawMonth: number | null,
   income: number,
   expenses: number,
+  totalUnfundedUsd: number,
 ): ModeConstraints {
   return {
     degenerateCap: mode === 'cycle' && firstDrawMonth === null,
     deficitMode: mode !== 'cycle' && expenses > income,
+    cycleUnfunded: mode === 'cycle' && totalUnfundedUsd > 0,
   };
+}
+
+/** The cycleUnfunded notice — ONE sentence for all three faces. CAUSE-NEUTRAL: the gap comes either from the
+ *  stop halting the draw or from the credit line running out, and the copy must be true in both (it sits
+ *  beside CyclingFace's credit-exhausted notice). Empty when there is no gap. */
+export function unfundedNote(firstUnfundedMonth: number | null, totalUnfundedUsd: number): string {
+  if (firstUnfundedMonth === null) return '';
+  return `From month ${firstUnfundedMonth}, bills exceed what income and the credit line can cover — `
+    + `${fmtUSD(totalUnfundedUsd)} over this run is paid by nothing in the model. `
+    + 'The never-draw comparison has the same gap.';
 }
 
 /** One sentence per strategy. ⚠ `hold` IS the never-draw baseline (C3) — the note says so, and no view may

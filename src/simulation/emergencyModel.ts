@@ -9,6 +9,9 @@
 import { CB_LLTV } from './runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, BLOC_OPERATING_CEILING } from './strikeCredit';
 import { strikeDrawCapacity } from './cbDefense';
+// THE LTV definition (zero-import leaf — the §7 wall holds). Debt with no collateral is ∞, never a
+// flattering 0: Coinbase debt with nothing behind it must classify as 'liquidated', not 'normal'.
+import { ltvOf } from './ltv';
 
 // Strike partial-liquidation / margin-call LTV used by the coupling warnings (distinct from the 0.50 draw
 // cap and the 0.15 operating ceiling). Emergency-local per the directive's §10 formulas.
@@ -44,7 +47,7 @@ export interface StageResult {
 }
 
 export function classifyStage(s: EmergencyState): StageResult {
-  const cbLtv = s.cbCollateralBtc * s.price > 0 ? s.cbDebt / (s.cbCollateralBtc * s.price) : 0;
+  const cbLtv = ltvOf(s.cbDebt, s.cbCollateralBtc, s.price);
   const liqPrice = cbPriceAt(s.cbDebt, s.cbCollateralBtc, CB_LLTV);
   const distancePct = s.price > 0 ? (s.price - liqPrice) / s.price : 0;
 
@@ -133,7 +136,7 @@ export function drawToLtv(
   const liqPrice = cbPriceAt(s.cbDebt, s.cbCollateralBtc, CB_LLTV);
 
   const newDrawn = s.skDrawn + drawUsd;
-  const newSkLtv = skValue > 0 ? newDrawn / skValue : 0;
+  const newSkLtv = ltvOf(newDrawn, s.skCollateralBtc, s.price);
   const newSkMarginCallPrice =
     s.skCollateralBtc > 0 ? newDrawn / (s.skCollateralBtc * STRIKE_MARGIN_CALL_LTV) : 0;
 
@@ -162,7 +165,7 @@ export interface FloorRow {
 /** The "how low can I push the floor" table: standing (no action) + slow top-ups at [20,25,30,50]% ceilings. */
 export function floorTable(s: EmergencyState): FloorRow[] {
   const standingLiq = cbPriceAt(s.cbDebt, s.cbCollateralBtc, CB_LLTV);
-  const currentSkLtv = s.skCollateralBtc * s.price > 0 ? s.skDrawn / (s.skCollateralBtc * s.price) : 0;
+  const currentSkLtv = ltvOf(s.skDrawn, s.skCollateralBtc, s.price);
 
   const standing: FloorRow = {
     ceilingPct: 0,

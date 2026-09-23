@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE } from '../ownershipFaceView';
+import { chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote } from '../ownershipFaceView';
 import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import type { CyclingRow } from '../../../simulation/cyclingSim';
@@ -15,6 +15,7 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeDrawn: 0,
   strikeShortfall: 0,
   btcBoughtUsd: 0,
+  unfundedUsd: 0,
   defenseDrawnUsd: 0,
   cbLtvPreDefense: null,
   defenseShortfallUsd: 0,
@@ -119,11 +120,31 @@ describe('shared ownership rules — extracted from OwnershipFace (one definitio
   });
 
   it('modeConstraints: C2 only in cycle mode on the engine\'s ground truth, C1 only for a no-draw deficit', () => {
-    expect(modeConstraints('cycle', null, 8_000, 6_000)).toEqual({ degenerateCap: true, deficitMode: false });
-    expect(modeConstraints('cycle', 1, 8_000, 6_000)).toEqual({ degenerateCap: false, deficitMode: false });
-    expect(modeConstraints('cycle', null, 5_000, 6_000).deficitMode).toBe(false);   // cycle draws — never C1
-    expect(modeConstraints('hold', null, 5_000, 6_000)).toEqual({ degenerateCap: false, deficitMode: true });
-    expect(modeConstraints('clearBoth', 3, 6_000, 6_000).deficitMode).toBe(false);  // equal is not a deficit
+    expect(modeConstraints('cycle', null, 8_000, 6_000, 0)).toEqual({ degenerateCap: true, deficitMode: false, cycleUnfunded: false });
+    expect(modeConstraints('cycle', 1, 8_000, 6_000, 0)).toEqual({ degenerateCap: false, deficitMode: false, cycleUnfunded: false });
+    expect(modeConstraints('cycle', null, 5_000, 6_000, 0).deficitMode).toBe(false);   // cycle draws — never C1
+    expect(modeConstraints('hold', null, 5_000, 6_000, 0)).toEqual({ degenerateCap: false, deficitMode: true, cycleUnfunded: false });
+    expect(modeConstraints('clearBoth', 3, 6_000, 6_000, 0).deficitMode).toBe(false);  // equal is not a deficit
+  });
+
+  it('⭐ modeConstraints: cycleUnfunded only in cycle mode, only when the engine found an unpaid gap', () => {
+    expect(modeConstraints('cycle', 1, 4_000, 6_000, 46_000).cycleUnfunded).toBe(true);
+    expect(modeConstraints('cycle', 1, 4_000, 6_000, 0).cycleUnfunded).toBe(false);
+    // Non-cycle modes keep C1 (deficitMode) — never a second notice for the same gap.
+    for (const mode of ['hold', 'clearStrike', 'clearBoth'] as const) {
+      const c = modeConstraints(mode, null, 4_000, 6_000, 48_000);
+      expect(c.cycleUnfunded).toBe(false);
+      expect(c.deficitMode).toBe(true);
+    }
+  });
+
+  it('⭐ unfundedNote: cause-neutral — true whether the stop halted the draw or the credit line ran out', () => {
+    expect(unfundedNote(2, 46_000)).toBe(
+      'From month 2, bills exceed what income and the credit line can cover — $46,000 over this run is paid by '
+      + 'nothing in the model. The never-draw comparison has the same gap.',
+    );
+    expect(unfundedNote(7, 2_499.6)).toContain('$2,500 over this run');   // rounded to the dollar
+    expect(unfundedNote(null, 0)).toBe('');
   });
 
   it('MODE_NOTE: hold says it IS the baseline (C3), and every strategy has a note', () => {

@@ -24,7 +24,7 @@ import {
   strikeCapReading, strikeCapNote, strikeYieldSentence, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
 } from './cyclingFaceView';
-import { ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE } from './ownershipFaceView';
+import { ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -363,7 +363,9 @@ export default function OwnershipFace() {
 
   // C2 (the cap never lets the draw run — judged on the engine's firstDrawMonth, never the opening LTV) and
   // C1 (a no-draw mode with a deficit) — modeConstraints (ownershipFaceView), the one definition.
-  const { degenerateCap, deficitMode } = modeConstraints(mode, sim.firstDrawMonth, income, expenses);
+  // cycleUnfunded reads the SAME `sim` as firstDrawMonth — the displayed run, so the stress lens moves it.
+  const { degenerateCap, deficitMode, cycleUnfunded } = modeConstraints(
+    mode, sim.firstDrawMonth, income, expenses, sim.totalUnfundedUsd);
 
   const cbZone = (ltv: number): string => LEVEL_COLOR[cbZoneLevel(ltv, s.cbLtvTriggerPct)];
 
@@ -908,7 +910,7 @@ export default function OwnershipFace() {
           </div>
 
           {/* ⚠ C1 + C2 — the constraint notices (read like the credit-exhausted case). */}
-          {(degenerateCap || deficitMode) && (
+          {(degenerateCap || deficitMode || cycleUnfunded) && (
             <div className={styles.constraints}>
               {degenerateCap && (
                 <div>
@@ -923,6 +925,7 @@ export default function OwnershipFace() {
                   stays flat and debt only accrues; the curve is optimistic exactly here.
                 </div>
               )}
+              {cycleUnfunded && <div>{unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd)}</div>}
             </div>
           )}
 

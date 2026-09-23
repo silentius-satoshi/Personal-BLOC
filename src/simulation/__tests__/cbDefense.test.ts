@@ -189,6 +189,18 @@ describe('topUpToCbLtv — grow the CB denominator, cold first', () => {
     expect(zeroMargin.fromStrikeBtc).toBe(0);
     expect(zeroMargin.shortfallBtc).toBeGreaterThan(0);
   });
+
+  it('⭐ coldBtc = NaN yields fromColdBtc 0 and no NaN anywhere — the topUpStrikeLtv twin\'s guard', () => {
+    // `Math.max(0, NaN)` is NaN, and `Math.min(required, NaN)` carried it into fromColdBtc → topUpBtc →
+    // shortfallBtc → cbLtvAfter. Junk cold must read as an EMPTY pool, exactly as it does on the Strike side.
+    const r = topUpToCbLtv({ ...TOPUP, coldBtc: NaN });
+    expect(r.fromColdBtc).toBe(0);
+    for (const [k, v] of Object.entries(r)) {
+      if (typeof v === 'number') expect(Number.isNaN(v), `${k} is NaN`).toBe(false);
+    }
+    // With cold read as empty, the Strike collateral above the buffered margin line is the only source.
+    expect(r.fromStrikeBtc).toBeCloseTo(r.requiredBtc, 9);
+  });
 });
 
 /**
@@ -338,6 +350,39 @@ describe('cbSurvivalCollateralBtc — the collateral Coinbase needs to stay aliv
         expect(Number.isFinite(r)).toBe(true);
         expect(r).toBeGreaterThanOrEqual(0);
       }
+    }
+  });
+
+  // ── stopLtv: the need is capped at what reaching the Coinbase STOP takes ─────────────────────────────
+  // Above an 81.7% stop (0.86 × 0.95) the CB top-up only aims at the stop, so reserving cold for the
+  // survival line would claim coins the top-up never takes. The target is the LOOSER of the two lines.
+  const LINE = 0.86 * (1 - CB_SURVIVAL_BUFFER);
+
+  it('⭐ (b) a stop at or below the survival line returns exactly the 5-arg value', () => {
+    const fiveArg = cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86);
+    for (const stop of [0.5, 0.7, 0.81, LINE]) {
+      expect(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86, CB_SURVIVAL_BUFFER, stop)).toBe(fiveArg);
+    }
+  });
+
+  it('⭐ (c) a stop above the line agrees with topUpToCbLtv on "BTC to reach an LTV"', () => {
+    // The two leaves must share one answer: the collateral that lands Coinbase exactly on the stop.
+    for (const stop of [0.82, 0.84, 0.85]) {
+      const need = cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86, CB_SURVIVAL_BUFFER, stop);
+      const required = topUpToCbLtv({
+        cbDebt: 50_000, cbCollateralBtc: 1, price: 45_000, targetCbLtvPct: stop * 100,
+        coldBtc: 0, strikeCollateralBtc: 0, strikeBalance: 0, marginLtv: 0.7,
+      }).requiredBtc;
+      expect(need).toBeGreaterThan(0);
+      expect(need).toBeCloseTo(required, 12);
+      expect(need).toBeLessThan(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86));   // the cap bites
+    }
+  });
+
+  it('⭐ (d) a junk or zero stop falls back to the survival line — never NaN, never looser', () => {
+    const fiveArg = cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86);
+    for (const stop of [NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY, 0, -0.5]) {
+      expect(cbSurvivalCollateralBtc(50_000, 1, 45_000, 0.86, CB_SURVIVAL_BUFFER, stop)).toBe(fiveArg);
     }
   });
 });

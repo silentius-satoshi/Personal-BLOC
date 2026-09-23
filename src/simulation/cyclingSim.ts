@@ -1,6 +1,7 @@
 import { CB_LLTV, CB_LIF, cbBorrowFee, cbMaxDrawForHeadroom } from './runCoinbaseLoan';
 import {
   defendCbLtv, topUpToCbLtv, topUpStrikeLtv, cbSurvivalCollateralBtc, cbDoomedThisMonth, TOPUP_MARGIN_BUFFER,
+  CB_SURVIVAL_BUFFER,
 } from './cbDefense';
 import { ltvOf } from './ltv';
 
@@ -180,6 +181,14 @@ export interface CyclingRow {
    * thing this strategy is measured against. Exposed so one number answers "what buys bitcoin".
    */
   btcBoughtUsd: number;
+  /**
+   * Bills NOTHING paid this month — DISCLOSURE ONLY, the funding is unchanged. The engine funds only what
+   * income and the Strike line can cover; when bills exceed both, no coins are sold and no debt grows for the
+   * gap, so the model silently drops it. Drawing month: `max(0, strikeShortfall − income)` (the line ran
+   * dry); stopped month and every non-cycle mode: `max(0, expenses − income)` (only the surplus is ever
+   * funded there). 0 at m = 0. Whenever it is > 0, `btcBoughtUsd` is 0. The never-draw baseline has the same gap.
+   */
+  unfundedUsd: number;
 
   /** Debt-shift defense: CB debt moved to Strike this month to hold the cap (0 when not defended). */
   defenseDrawnUsd: number;
@@ -254,6 +263,10 @@ export interface CyclingResult {
   /** Coinbase origination fees paid across the horizon, and how many borrows paid them. */
   totalCbFees: number;
   cbFeeCount: number;
+  /** Σ `unfundedUsd` over the run — bills the model paid with nothing (disclosure only), and the first month
+   *  it happened (null if never). True in every mode; the faces' notice is cycle-only (C1 covers the rest). */
+  totalUnfundedUsd: number;
+  firstUnfundedMonth: number | null;
   /** CASH moved from Strike to Coinbase across every refinance (the fee brackets key off this basis).
    *  `totalCbFees / totalRefinancedUsd` is the run's realized blended origination-fee fraction. */
   totalRefinancedUsd: number;
@@ -394,6 +407,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let strikeTopUpExhaustedMonth: number | null = null;
   let totalStrikeTopUpBtc = 0;
   let firstSurvivalYieldMonth: number | null = null;
+  let totalUnfundedUsd = 0;
+  let firstUnfundedMonth: number | null = null;
 
   const rows: CyclingRow[] = [];
 
@@ -413,6 +428,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let strikeReserveBtc = 0;
     let strikeTopUpShortfallBtc = 0;
     let strikeReserveCutBtc = 0;
+    let unfundedUsd = 0;
 
     if (m > 0) {
       const ci = cbDebt * cmr;
@@ -445,6 +461,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           // ⭐ THE FLYWHEEL: the line paid the bill, so ALL of income buys bitcoin — less only the part
           // of the bill the line could not fund. Not the surplus.
           btcBoughtUsd = Math.max(0, income - strikeShortfall);
+          // The line ran dry AND income can't meet the rest of the bill: nothing pays the difference.
+          unfundedUsd = Math.max(0, strikeShortfall - income);
           if (price > 0) cbColl += btcBoughtUsd / price;
         } else {
           if (stopMonth === null && liqMonth === null) stopMonth = m;
@@ -453,6 +471,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           totalStrikeInterest += si;
           // Not drawing: income pays the bill itself, so only the surplus is left to buy.
           btcBoughtUsd = Math.max(0, income - expenses);
+          // Bills above income with the draw halted: nothing pays the difference.
+          unfundedUsd = Math.max(0, expenses - income);
           if (price > 0) cbColl += btcBoughtUsd / price;
         }
 
@@ -467,7 +487,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // run when the defense is on even with the sweep off. With the sweep off `coldBuffer` is 0, so
         // `stressed` is the raw price: the honest reading of "no buffer requested". Byte-identical to the
         // pre-A3 engine only when BOTH are off.
-        if ((coldOn || defend) && m % cycle === 0 && price > 0 && strikeColl > 0) {
+        // 🔴 Never after a liquidation: a seizure ENDS the Coinbase loop (see the refinance below).
+        if ((coldOn || defend) && liqMonth === null && m % cycle === 0 && price > 0 && strikeColl > 0) {
           const stressed = price * (1 - coldBuffer);
           const keepForLine = strikeCreditLine / (stressed * strikeMaxDrawLtv);
           const keepForMargin = strikeMarginLtv > 0 ? strikeBal / (strikeMarginLtv * stressed) : 0;
@@ -488,7 +509,11 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // ⚠ With the defense ON the sweep is capped by the remaining CB headroom (cbMaxDrawForHeadroom —
         // fee-inclusive), so it can never push LTV back over the cap: the mirror image of the defense
         // paydown. As the price recovers, this is what shifts the debt back to Coinbase.
-        if (m % cycle === 0 && strikeBal > 0) {
+        // 🔴 LIQUIDATION IS TERMINAL FOR THE LOOP, not just for the draw. Ungated, the first cadence after a
+        // seizure re-borrowed the Strike balance on Coinbase — a NEW loan the one-shot breach check below can
+        // never liquidate, so the run silently re-levered a facility that no longer exists. The Strike balance
+        // now stays on Strike, accruing at its own rate.
+        if (liqMonth === null && m % cycle === 0 && strikeBal > 0) {
           const headroom = defend
             ? Math.max(0, cap * cbColl * price - cbDebt)
             : Number.POSITIVE_INFINITY;
@@ -567,7 +592,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             strikeCollateralBtc: strikeColl, strikeBalance: strikeBal, marginLtv: strikeMarginLtv,
           }))
         ) {
-          const survivalBtc = cbSurvivalCollateralBtc(cbDebt, cbColl, price, CB_LLTV);
+          // ⚠ Capped at the STOP (the leaf's `stopLtv`): the CB top-up below only aims at `cap`, so above an
+          // 81.7% stop a survival-line need would reserve coins the top-up never takes — a phantom yield.
+          const survivalBtc = cbSurvivalCollateralBtc(cbDebt, cbColl, price, CB_LLTV, CB_SURVIVAL_BUFFER, cap);
           const allowed = Math.max(0, coldBtc - survivalBtc);
           if (strikeReserveBtc > allowed) {
             strikeReserveCutBtc = strikeReserveBtc - allowed;
@@ -646,6 +673,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         totalStrikeInterest += si;
 
         let cash = Math.max(0, income - expenses);
+        // Only the surplus is ever funded here too, so a deficit goes unpaid (C1's deficitMode notice).
+        unfundedUsd = Math.max(0, expenses - income);
         if (mode === 'clearStrike' || mode === 'clearBoth') {
           const pay = Math.min(cash, strikeBal);
           strikeBal -= pay;
@@ -704,12 +733,16 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     // and is still never a denominator; adding cold here is what keeps "yours" honest once coins leave.
     const btcHeld = strikeColl + cbColl + coldBtc;
     const collateralValue = btcHeld * price;
+    if (unfundedUsd > 0) {
+      totalUnfundedUsd += unfundedUsd;
+      if (firstUnfundedMonth === null) firstUnfundedMonth = m;
+    }
     rows.push({
       m,
       yearLabel: (startYear + m / 12).toFixed(1),
       price,
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
-      strikeDrawn, strikeShortfall, btcBoughtUsd,
+      strikeDrawn, strikeShortfall, btcBoughtUsd, unfundedUsd,
       defenseDrawnUsd, cbLtvPreDefense, defenseShortfallUsd, defended: defenseDrawnUsd > 0,
       strikeToCbBtc, topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
       strikeTopUpBtc, strikeReserveBtc, strikeTopUpShortfallBtc, strikeReserveCutBtc,
@@ -760,6 +793,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     stopMonth, firstDrawMonth, drawingResumedMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth,
     seizedBtc, survivorBtc, deficiencyUsd,
     totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount, totalRefinancedUsd,
+    totalUnfundedUsd, firstUnfundedMonth,
     firstDefenseMonth, defenseExhaustedMonth, totalDefenseDrawnUsd, defenseCount,
     firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
     totalStrikeToCbBtc, totalColdRetrievedBtc: coldRetrievedBtc,

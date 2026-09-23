@@ -165,6 +165,16 @@ src/
                                 # seizure PRESERVES the deficiency (both facilities are full-recourse); the row is
                                 # pushed PRE-seizure so it shows the position that breached and m+1 opens on the
                                 # survivor. CB_LIQUIDATION_PENALTY is derived (CB_LIF − 1), not a literal.
+                                # ⚠ Terminal for the WHOLE Coinbase loop, not just the draw: the refinance and
+                                # the cascade migration are gated `liqMonth === null` too. Ungated, they
+                                # re-levered Coinbase after a seizure — a NEW loan the one-shot breach check
+                                # could never liquidate. A post-seizure Strike balance now stays on Strike,
+                                # accruing at its own APR (which is why post-seizure Strike calls can occur).
+                                # DISCLOSURE: row `unfundedUsd` (bills nothing paid — drawing month
+                                # max(0, strikeShortfall − income), stopped month and every non-cycle mode
+                                # max(0, expenses − income); > 0 ⇒ btcBoughtUsd 0) + result totalUnfundedUsd /
+                                # firstUnfundedMonth. Funding and baseline math unchanged (see the Unfunded
+                                # bills subsection under the Cycling face).
                                 # `defendCbLtv?: boolean` (default FALSE) adds the debt-shift cap defense —
                                 # above the cap, draw Strike to PAY COINBASE DOWN to the cap; a due refinance
                                 # sweeps only up to the remaining CB headroom (cbMaxDrawForHeadroom), so it
@@ -190,6 +200,12 @@ src/
                                 # (0.05 — its OWN constant, NOT TOPUP_MARGIN_BUFFER) + cbSurvivalCollateralBtc +
                                 # cbDoomedThisMonth (the futility check; buffer 0 and the MARGIN bound, both
                                 # deliberate — see its docblock). Coinbase survival > Strike cap > Coinbase cap.
+                                # cbSurvivalCollateralBtc gains an optional 6th `stopLtv?` — ⚠ absent (or junk,
+                                # or ≤ the survival line) ≡ byte-identical; the target LTV is the LOOSER of the
+                                # survival line and the stop, i.e. min(need(line), need(stop)), so above an 81.7%
+                                # stop the guard reserves only what the CB top-up can use. topUpToCbLtv's cold
+                                # guard is now `Number.isFinite && > 0` (was Math.max(0, x) → NaN for NaN),
+                                # matching its topUpStrikeLtv twin — ⚠ Infinity cold now reads as 0 too.
                                 # Coinbase side: strikeDrawCapacity(collBtc, drawn,
                                 # price, maxDrawLtv, creditLine=∞) = min(creditLine, collateral×price×maxDrawLtv)
                                 # − drawn; defendCbLtv(input) → paydown needed/capacity/draw/shortfall,
@@ -227,7 +243,10 @@ src/
                                 # collBtc to tell the two apart). Was hand-written 5× (cbDefense, cyclingSim,
                                 # strikeCredit, cbMetrics, runCoinbaseLoan) + a 6th drifted copy in LiqSimulator
                                 # that printed 0.0% for an unbacked loan. __tests__/ltv.test.ts greps src/
-                                # (excluding __tests__) and FAILS if a new copy appears
+                                # (excluding __tests__) and FAILS if a new copy appears. emergencyModel's three
+                                # LTVs now route through it too. ⚠ NAMED FOLLOW-UP: runAdvisor (4 copies) +
+                                # AdvisorMain (1) still open-code the flattering `x > 0 ? a/b : 0` shape (the
+                                # grep doesn't see it — it is deliberately NOT widened yet)
     cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan + ltvOfUsd from ./ltv
@@ -235,7 +254,7 @@ src/
                                 # standalone: imports cbBorrowFee/cbMaxDrawForHeadroom (runCoinbaseLoan, a
                                 # leaf) so the REVERSE ROTATION pays the same origination fee the real move does
     strikeCredit.ts             # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15, and emergencyModel consumes it
-    emergencyModel.ts           # Emergency Console pure model (Phase 1) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Doctrine: collateral top-up is the PRIMARY lever (grow the CB denominator → push liq DOWN); paydown = Wall-2 fallback. CB_LADDER (69/72/75/81, liq=CB_LLTV 0.86) + STRIKE_MARGIN_CALL_LTV 0.70. classifyStage / firepower (slow=cured, fast=stuck) / drawToLtv (clamps to the 50% Strike line) / floorTable / direSwitch|wall3Sale|wall4External (paydown walls) / surplus. Imports CB_LLTV (runCoinbaseLoan) + STRIKE_MAX_DRAW_LTV/BLOC_OPERATING_CEILING (strikeCredit); NO cycle/power-law imports (§7 hard wall)
+    emergencyModel.ts           # Emergency Console pure model (Phase 1) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Doctrine: collateral top-up is the PRIMARY lever (grow the CB denominator → push liq DOWN); paydown = Wall-2 fallback. CB_LADDER (69/72/75/81, liq=CB_LLTV 0.86) + STRIKE_MARGIN_CALL_LTV 0.70. classifyStage / firepower (slow=cured, fast=stuck) / drawToLtv (clamps to the 50% Strike line) / floorTable / direSwitch|wall3Sale|wall4External (paydown walls) / surplus. Imports CB_LLTV (runCoinbaseLoan) + STRIKE_MAX_DRAW_LTV/BLOC_OPERATING_CEILING (strikeCredit) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). Its three LTVs (classifyStage cbLtv, drawToLtv newSkLtv, floorTable currentSkLtv) go through ltvOf — so Coinbase debt with ZERO collateral now reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'. EmergencyConsole renders all three via fmtLtvPct. ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1) still open-code `x > 0 ? a/b : 0`; and the zero-collateral CB reading is still incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
                                 # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
                                 # copy is GONE; the two can no longer drift). deriveSafetyView → {capacityUsed,
@@ -2711,6 +2730,14 @@ at month 46 with 1.17 ₿ sitting unspent in cold** — holding the line there n
   form could flip on an ulp. A cut reserve or a dropped floor records `firstSurvivalYieldMonth`.
   ⚠ It is gated on `defenseShortfallUsd > 0` so it can never report a yield in a month where nothing was
   handed over (reachable whenever the CB stop sits above the 81.7% survival line).
+  ⚠ **The need is the LEAF's, capped at the stop:** `cbSurvivalCollateralBtc(cbDebt, cbColl, price, CB_LLTV,
+  CB_SURVIVAL_BUFFER, cap)` — the `stopLtv` param makes the target the looser of the survival line and the stop,
+  i.e. min(need(line), need(stop)). The CB top-up only aims at the stop, so above an 81.7% stop (the slider
+  reaches 85) a survival-line need claimed coins the top-up never took and reported "Strike gave way" in a month
+  Strike still got its whole need. Measured against the pre-fix engine: stops ≤ 81 are byte-identical; at 82–85
+  (2,926 stressed runs each) only telemetry moves (`strikeReserveBtc` / `strikeReserveCutBtc` /
+  `firstSurvivalYieldMonth`) — no coin, debt, LTV or liquidation figure — and the phantom yields fall 606 → 579,
+  595 → 493, 587 → 408, 582 → 326. Never open-code the cap in the engine.
 - **THE FUTILITY CHECK (F1)** stands the guard down when `cbDoomedThisMonth` — Coinbase cannot clear its
   ACTUAL 86% line this month even with ALL the cold plus every spare Strike coin. A yield there is futile: it
   feeds the reserved cold into the pool Morpho is about to seize. Two decisions its docblock carries, because
@@ -2730,11 +2757,13 @@ at month 46 with 1.17 ₿ sitting unspent in cold** — holding the line there n
   (`cbFutilityCheck: false`), **guard + F1** = shipped. Coinbase liquidated EARLIER than the same run with the
   cap off: synthetic single-crash grid (5,760) **526 → 0 → 0**; face-world grid (360) **24 → 14 → 14**;
   reachability grid (2,806) **158 → 94 → 94**. What it costs Strike, in ABSOLUTE counts: face-world grid,
-  yields 108 → 59, Strike-worse 23 → 13, **futile 15 → 5**, Strike calls 76 (unguarded) → 91 → 82;
-  reachability grid, yields 704 → 395, Strike-worse 86 → 44, **futile 60 → 18**, calls 840 → 951 → 912.
+  yields 108 → 59, Strike-worse 29 → 13, **futile 21 → 5**, Strike calls 80 (unguarded) → 97 → 82;
+  reachability grid, yields 704 → 395, Strike-worse 96 → 44, **futile 70 → 18**, calls 858 → 968 → 920.
+  These Strike figures moved with the terminal-liquidation fix (a post-seizure Strike balance is no longer
+  refinanced onto Coinbase, so it stays on Strike and can reach its call); every Coinbase count is unchanged.
   ⚠ **F1 moves no liquidation month at all** — the CB-earlier and CB-survived counts are identical with and
   without it; a doomed month liquidates Coinbase whatever Strike hands over. ⚠ **If a percentage is quoted,
-  it carries the clause that the harm-per-doomed-yield RATE rises under F1 (86/455 → 44/146) only because F1
+  it carries the clause that the harm-per-doomed-yield RATE rises under F1 (96/455 → 44/146) only because F1
   removes the harmless futile yields from the denominator, while absolute harm falls** — without it a later
   reader reads F1 as a regression and reverts it.
 - **⚠ THE RESIDUAL 14 (face-world) / 94 (reachability) ARE INTERTEMPORAL, with two measured mechanisms:**
@@ -2765,6 +2794,37 @@ at month 46 with 1.17 ₿ sitting unspent in cold** — holding the line there n
   reservation), **A2 fixture C** (the guard), **A3/A5** (the three-arm grids, every count above),
   **A4** (the Support no-op), **A6 fixture D** (the futility pin, run with the flag false vs true), the M1
   floor pin, and the grep test for both flags. Suite 1,434 → **1,489**.
+
+#### Unfunded bills — disclosure only (engine + all three faces; NO store change)
+
+The engine funds only what income and the Strike line can cover. When bills exceed both, no coins are sold and
+no debt grows for the gap, so the model used to drop it silently in cycle mode (C1's `deficitMode` notice was
+non-cycle only). Now it is disclosed. The funding logic and the baseline math are unchanged.
+- **`CyclingRow.unfundedUsd`** covers the bills nothing paid this month:
+  - drawing month: `max(0, strikeShortfall − income)` (the credit line ran dry);
+  - stopped month: `max(0, expenses − income)` (the stop halted the draw);
+  - every non-cycle mode: `max(0, expenses − income)`. Those modes also fund only the surplus, so the field is
+    true in every mode;
+  - 0 at m = 0. Whenever it is > 0, `btcBoughtUsd` is 0.
+- **`CyclingResult.totalUnfundedUsd`** (Σ rows) and **`firstUnfundedMonth`** (null if never).
+- **`modeConstraints(mode, firstDrawMonth, income, expenses, totalUnfundedUsd)`**: the 5th arg is REQUIRED, so
+  an unthreaded face fails `tsc`. It returns `cycleUnfunded = mode === 'cycle' && totalUnfundedUsd > 0`. It is
+  cycle-only on purpose: the no-draw modes keep `deficitMode`, and one gap must never raise two notices.
+- **The notice** is `unfundedNote(firstUnfundedMonth, totalUnfundedUsd)` (ownershipFaceView), ONE sentence
+  for Cycling, Ownership and Strategy. It sits in each face's existing `.constraints` block (no new CSS), and
+  on CyclingFace it sits beside the untouched credit-exhausted notice. ⚠ **CAUSE-NEUTRAL:** "From month N, bills
+  exceed what income and the credit line can cover — $X over this run is paid by nothing in the model. The
+  never-draw comparison has the same gap." "The draw has stopped" would be false for the credit-line case.
+- ⚠ Every face reads it from the SAME `sim` that supplies `firstDrawMonth` (the displayed run), so the stress
+  lens moves the notice. CyclingFace destructures `cycleUnfunded` ONLY. It does not render `degenerateCap`,
+  which is out of scope there.
+- **The never-draw baseline has the same gap.** It also buys only `max(0, income − expenses)` and pays for
+  nothing else, which is why the notice says so rather than treating the gap as the strategy's cost.
+- ⚠ **Path-dependent** (pinned both ways):
+  - $4k income against $6k bills at a 45% stop costs **$46,000** over 24 months on a flat $100k path (the stop
+    holds from month 2);
+  - on REPRO's own 4-yr path it costs **$2,000**: the month-1 on-the-line step stops the draw for one month,
+    then the rising price lets it resume.
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -4788,7 +4848,10 @@ is exactly how LiqSimulator drifted. ⚠ `runCoinbaseLoan` was the one OUTLIER o
 it omitted the `collateral <= 0` term, so a zero *price* reported ∞ where every other surface reports
 0. Normalising it is inert only because `LiquidationModeler` returns early on
 `liquidationPrice === 0 || btcPrice === 0` — if that early return is ever removed, this becomes
-load-bearing.
+load-bearing. ⚠ **Named follow-up:** `emergencyModel`'s three LTVs now route through `ltvOf`, but
+`runAdvisor` (4 copies) and `AdvisorMain` (1) still open-code the flattering `x > 0 ? a / b : 0` shape. The
+computation grep only matches the `<= 0 ? Number.POSITIVE_INFINITY` shape, so it cannot see them — and it is
+deliberately NOT widened until those five are migrated.
 
 ⚠ **`deriveOwnership`'s `coldBtc` has TWO caller conventions.** It is ADDED to `btcHeld`, which is right
 only when the caller's `btcHeld` EXCLUDES cold: the **viewer** passes strike+cb plus cold separately
@@ -4818,8 +4881,47 @@ pin re-derives `debt × CB_LIF / price` from the breaching row rather than trust
 
 
 All tests must pass — `npx vitest run` before every commit. (Every ⭐ below for the Advisor price path, the cold ledger, the
-Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total and the daily-month collateral correction
-was mutation-checked: revert the fix → the test goes red.)
+Coinbase debt events, the paydown badge, `provisional`, the Ledger cold total, the daily-month collateral correction
+and the engine defense fixes was mutation-checked: revert the fix → the test goes red.)
+- **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
+  - `cyclingSim.test.ts`:
+    - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
+      $150k) with defense, sweep 30 and cadence 1. After the seizure: no `strikeToCbBtc`, `cbDebt` grows by
+      interest only, and the fee count, fee total and refinanced total equal the run cut off at the seizure.
+      Each gate reverted alone goes red (refinance → the month-6 re-borrow; migration → month 10);
+    - ⭐ **above an 81.7% stop, no phantom yield.** A stop-84 single crash where the CB top-up runs: no
+      `firstSurvivalYieldMonth`, no cut, the reserve is Strike's whole need, and the coin movement is what it
+      always was. The premise is stated with the old 5-arg need. Reverting the engine call OR the leaf goes red;
+    - ⭐ **unfunded bills**, 4 cases:
+      - the stopped branch: $46,000 on a flat $100k (the stop holds from month 2), and $2,000 on REPRO's own
+        4-yr path;
+      - the drawing branch: the line runs dry under an 85% stop, $3,000 a month;
+      - a default budget → 0;
+      - `hold` → a gap > 0 while `cycleUnfunded` stays false.
+
+      Every case checks Σ rows, `> 0 ⇒ btcBoughtUsd 0`, and `firstUnfundedMonth`. Zeroing each branch alone goes
+      red;
+    - ⚠ the A3/A5 guard-only `strikeWorse`/`futile` and the calls pins MOVED with the terminal-liquidation fix
+      (see the STRIKE-side evidence bullet). Every Coinbase count is unchanged.
+  - `cbDefense.test.ts`:
+    - ⭐ `topUpToCbLtv` with NaN cold → `fromColdBtc` 0, no NaN anywhere;
+    - `cbSurvivalCollateralBtc(…, stopLtv)`, with the existing tests unchanged:
+      - (b) at or below the survival line ≡ the 5-arg value;
+      - (c) ⭐ above it ≡ `topUpToCbLtv(...).requiredBtc` at that stop (the two leaves agree on "BTC to reach an
+        LTV");
+      - (d) NaN / ±∞ / 0 / negative ≡ the 5-arg value.
+
+      (b) and (d) are red only under `tsc` at the old signature, since JS ignores an extra argument.
+  - `emergencyModel.test.ts`, LTVs through `ltvOf`:
+    - no-debt-no-collateral stays 0 / `'normal'`;
+    - ⭐ zero-collateral CB debt → ∞ / `'liquidated'`;
+    - ⭐ `drawToLtv` → `newSkLtv` ∞;
+    - ⭐ `floorTable`'s standing row → `strikeSurvivesFurtherPct` 0.
+
+    Each site reverted alone goes red, and the Directive fixtures don't move.
+  - `ownershipFaceView.test.ts`:
+    - ⭐ `cycleUnfunded` only in cycle mode;
+    - ⭐ `unfundedNote`'s exact cause-neutral sentence.
 - **`provisional` clears on a reading** (`provisional-clears-on-reading-spec-v1`, 16 tests; every ⭐ mutation-checked):
   - `dailyMode.test.ts`:
     - ⭐ a reading emits `provisional: false` explicitly;

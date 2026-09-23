@@ -25,7 +25,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
 } from './cyclingFaceView';
-import { chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE } from './ownershipFaceView';
+import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -260,7 +260,9 @@ export default function UnifiedFace() {
     : '';
   const verdict = verdictVsNeverDraw(sim, mode);
   const hero = ownershipHero(selRow, rows[0]);
-  const { degenerateCap, deficitMode } = modeConstraints(mode, sim.firstDrawMonth, s.income, s.expenses);
+  // cycleUnfunded reads the SAME `sim` as firstDrawMonth — the displayed run, so the stress lens moves it.
+  const { degenerateCap, deficitMode, cycleUnfunded } = modeConstraints(
+    mode, sim.firstDrawMonth, s.income, s.expenses, sim.totalUnfundedUsd);
   const strikeLiqLtv = strikeLiqLtvOf(s.strikeLiquidationLtvPct);
   const cbZone = (ltv: number): string => LEVEL_COLOR[cbZoneLevel(ltv, s.cbLtvTriggerPct)];
   const skZone = (ltv: number): string => LEVEL_COLOR[strikeZoneLevel(ltv, strikeLiqLtv)];
@@ -469,8 +471,8 @@ export default function UnifiedFace() {
         </div>
       </section>
 
-      {/* C1 + C2 — the constraint notices, one definition (modeConstraints). */}
-      {(degenerateCap || deficitMode) && (
+      {/* C1 + C2 + the cycle-mode unfunded gap — the constraint notices, one definition (modeConstraints). */}
+      {(degenerateCap || deficitMode || cycleUnfunded) && (
         <div className={styles.constraints}>
           {degenerateCap && (
             <div>
@@ -484,6 +486,7 @@ export default function UnifiedFace() {
               stays flat and debt only accrues; the curve is optimistic exactly here.
             </div>
           )}
+          {cycleUnfunded && <div>{unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd)}</div>}
         </div>
       )}
 

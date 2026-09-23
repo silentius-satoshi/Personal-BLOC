@@ -9,6 +9,7 @@ import { cbSurvivalCollateralBtc } from '../cbDefense';
 import { cycleConvergencePath } from '../cyclePath';
 import { plConvergencePath } from '../powerLaw';
 import { applyPathStress } from '../../components/Almanac/cyclingFaceView';
+import { modeConstraints } from '../../components/Almanac/ownershipFaceView';
 import { cbMetrics } from '../cbMetrics';
 import { CB_LLTV, CB_LIF, cbBorrowFee, CB_FEE_TIER_BREAK, cbMaxDrawForHeadroom, CB_PLATFORM_FEE_PCT, cbNetApr } from '../runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV } from '../strikeCredit';
@@ -453,6 +454,31 @@ describe('runCyclingSim — liquidation is terminal, and honest', () => {
   it('drawing never resumes after a liquidation', () => {
     const r = run({ cbLtvCapPct: 85, pricePath: flat(240) });
     for (let m = r.liqMonth!; m < r.rows.length; m++) expect(r.rows[m].strikeDrawn).toBe(0);
+  });
+
+  it('⭐ a liquidation ENDS the Coinbase loop — no refinance and no cascade migration after the seizure', () => {
+    // A V-path: a crash liquidates Coinbase at month 4 with the debt-shift defense holding ~$29k on Strike,
+    // then the price recovers to $150k. Before the gate, the refinance re-borrowed that Strike balance on
+    // Coinbase every month after the seizure (and the cascade migration moved Strike collateral in), building
+    // a NEW Coinbase loan the one-shot breach check could never liquidate.
+    const V = [78_000, 78_000, 60_000, 45_000, 30_000, 30_000, 30_000, 30_000, 60_000, 90_000, 120_000,
+      ...new Array(13).fill(150_000)];
+    const cfg = { pricePath: V, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30, cycleMonths: 1 };
+    const r = run(cfg);
+    const cmr = LIVE.cbAprPct / 100 / 12;
+    expect(r.liqMonth).toBe(4);                                        // ⚠ fixture-bound
+    const L = r.liqMonth!;
+    expect(r.rows[L].strikeBalance).toBeGreaterThan(20_000);           // non-vacuous: debt WAS left on Strike
+    for (let m = L + 1; m < r.rows.length; m++) {
+      expect(r.rows[m].strikeToCbBtc, `migration at month ${m}`).toBe(0);
+      expect(r.rows[m].cbDebt, `a Coinbase borrow at month ${m}`)
+        .toBeLessThanOrEqual(r.rows[m - 1].cbDebt * (1 + cmr) + 1e-6);   // interest only, never a re-borrow
+    }
+    // The engine is causal, so the run cut off at the seizure paid every fee the full run may pay.
+    const upToSeizure = run({ ...cfg, pricePath: V.slice(0, L + 1) });
+    expect(r.cbFeeCount).toBe(upToSeizure.cbFeeCount);
+    expect(r.totalCbFees).toBe(upToSeizure.totalCbFees);
+    expect(r.totalRefinancedUsd).toBe(upToSeizure.totalRefinancedUsd);
   });
 
   it('exactly at 86% the collateral covers the debt — no deficiency', () => {
@@ -918,23 +944,24 @@ describe('runCyclingSim — guards', () => {
   });
 });
 
+/**
+ * The spec's reproduction — round synthetic figures: 1.0 ₿ on each venue, $20k Strike / $40k Coinbase, a
+ * $60k line, 13% / 6.2%, $8k income against $6k expenses, cadence 1, defense on, sweep 30, CB cap 50.
+ * ⚠ startDate PINNED at 2027-01-01Z — an implied "today" rots. The spec's §A3 table was measured from a
+ * 2026-09-21 start, which is the ONLY reason its margin call reads month 46 where this one reads 43: a
+ * different phase of the same 4-yr cycle, same behaviour.
+ */
+const REPRO: CyclingInputs = {
+  startYear: 2027,
+  strikeCollateralBtc: 1, strikeBalance: 20_000, strikeCreditLine: 60_000,
+  strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
+  cbCollateralBtc: 1, cbDebt: 40_000,
+  income: 8_000, expenses: 6_000, strikeAprPct: 13, cbAprPct: 6.2,
+  cycleMonths: 1, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30,
+  pricePath: cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1),
+};
+
 describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase survival guard', () => {
-  /**
-   * The spec's reproduction — round synthetic figures: 1.0 ₿ on each venue, $20k Strike / $40k Coinbase, a
-   * $60k line, 13% / 6.2%, $8k income against $6k expenses, cadence 1, defense on, sweep 30, CB cap 50.
-   * ⚠ startDate PINNED at 2027-01-01Z — an implied "today" rots. The spec's §A3 table was measured from a
-   * 2026-09-21 start, which is the ONLY reason its margin call reads month 46 where this one reads 43: a
-   * different phase of the same 4-yr cycle, same behaviour.
-   */
-  const REPRO: CyclingInputs = {
-    startYear: 2027,
-    strikeCollateralBtc: 1, strikeBalance: 20_000, strikeCreditLine: 60_000,
-    strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
-    cbCollateralBtc: 1, cbDebt: 40_000,
-    income: 8_000, expenses: 6_000, strikeAprPct: 13, cbAprPct: 6.2,
-    cycleMonths: 1, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30,
-    pricePath: cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1),
-  };
   /** A single crash at month 1: no refinance (cadence 999), no sweep, 0.3 ₿ of real reserve. */
   const CRASH: Omit<CyclingInputs, 'pricePath'> = {
     ...REPRO, cycleMonths: 999, coldStoreBufferPct: 0, strikeBalance: 32_000, cbDebt: 50_000,
@@ -1151,6 +1178,40 @@ describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase surv
     expect(r.liqMonth).toBeNull();
   });
 
+  it('⭐ above an 81.7% stop the guard reserves only what reaching the STOP takes — no phantom yield', () => {
+    // CB stop 84, a crash to $59,100: Coinbase opens month 1 at ~85% — over its stop, under the 86% line (not
+    // doomed) — with a dry Strike line, so the shift falls short and the CB top-up runs. Strike sits at ~64%
+    // and wants 0.083 ₿ of the 0.1 ₿ cold. income = expenses, so no purchase moves either LTV.
+    // The top-up only aims at the STOP, so Coinbase takes just the to-stop need. Sizing the reserve cut
+    // against the 81.7% survival line claimed coins it never took, and reported "Strike gave way to keep
+    // Coinbase alive" in a month where Strike still got its whole need.
+    const price = 59_100;
+    const r = runCyclingSim({
+      ...CRASH, cbLtvCapPct: 84, income: 6_000, expenses: 6_000, strikeBalance: 38_000, openingColdBtc: 0.1,
+      pricePath: [100_000, price],
+    });
+    const x = r.rows[1];
+    const toStop = x.cbDebt / (0.84 * price) - 1;                      // collateral 1 ₿ before the top-up
+    const strikeNeed = x.strikeBalance / (0.60 * price) - 1;           // Strike collateral 1 ₿ before it
+    // The premise, stated with the OLD rule: the survival-line need leaves less spare cold than Strike wants.
+    expect(cbSurvivalCollateralBtc(x.cbDebt, 1, price, CB_LLTV)).toBeGreaterThan(0.1 - strikeNeed);
+    expect(0.1 - toStop).toBeGreaterThanOrEqual(strikeNeed);           // ...but the stop's need does not
+    expect(x.defenseShortfallUsd).toBeGreaterThan(0);                  // the guard's gate is open
+    expect(x.topUpBtc).toBeGreaterThan(0);                             // and the CB top-up ran
+    // No yield, nothing cut, the reserve is the whole Strike need.
+    expect(r.firstSurvivalYieldMonth).toBeNull();
+    expect(r.rows.every((row) => row.strikeReserveCutBtc === 0)).toBe(true);
+    expect(x.strikeReserveBtc).toBeCloseTo(strikeNeed, 12);
+    // Coin movement is what it always was: Coinbase gets the to-stop need, Strike its whole need.
+    expect(x.topUpFromColdBtc).toBeCloseTo(toStop, 12);
+    expect(x.topUpFromStrikeBtc).toBe(0);
+    expect(x.strikeTopUpBtc).toBeCloseTo(strikeNeed, 12);
+    expect(x.cbLtv).toBeCloseTo(0.84, 12);
+    expect(x.strikeLtv).toBeCloseTo(0.60, 12);
+    expect(r.liqMonth).toBeNull();
+    expect(r.strikeMarginMonth).toBeNull();
+  });
+
   /** One (base, arm) pair of runs per case; `off` and `v1` are arm-independent and computed once. */
   const ARMS = [['guard-only', { cbFutilityCheck: false }], ['guard+F1', {}]] as const;
   const strikeWorse = (g: CyclingResult, u: CyclingResult) =>
@@ -1200,9 +1261,12 @@ describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase surv
     const g = tallyGrid(faceWorld);
     // Coinbase liquidated EARLIER than with the cap off: spec v1 24 → guard 14 → guard + F1 14.
     expect([g.unguarded.cbEarlier, g['guard-only'].cbEarlier, g['guard+F1'].cbEarlier]).toEqual([24, 14, 14]);
-    expect(g['guard-only']).toMatchObject({ yielded: 108, survived: 26, died: 82, strikeWorse: 23, futile: 15 });
+    // ⚠ guard-only strikeWorse/futile and the calls moved with the terminal-liquidation fix (the refinance no
+    // longer moves a post-seizure Strike balance onto Coinbase, so it stays on Strike and can reach its call).
+    // Every Coinbase count is unchanged.
+    expect(g['guard-only']).toMatchObject({ yielded: 108, survived: 26, died: 82, strikeWorse: 29, futile: 21 });
     expect(g['guard+F1']).toMatchObject({ yielded: 59, survived: 26, died: 33, strikeWorse: 13, futile: 5 });
-    expect([g.unguarded.calls, g['guard-only'].calls, g['guard+F1'].calls]).toEqual([76, 91, 82]);
+    expect([g.unguarded.calls, g['guard-only'].calls, g['guard+F1'].calls]).toEqual([80, 97, 82]);
 
     // SYNTHETIC SINGLE-CRASH GRID — 5 Strike balances × 4 CB debts × 6 cold seeds × 3 pre-crash spans ×
     // 4 depths × sweep on/off × cadence 1/999, CB cap 50, Strike cap 60 vs off.
@@ -1249,9 +1313,10 @@ describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase surv
     expect(reach).toHaveLength(2_806);
     const g = tallyGrid(reach);
     expect([g.unguarded.cbEarlier, g['guard-only'].cbEarlier, g['guard+F1'].cbEarlier]).toEqual([158, 94, 94]);
-    expect(g['guard-only']).toMatchObject({ yielded: 704, survived: 249, died: 455, strikeWorse: 86, futile: 60 });
+    // ⚠ Same terminal-liquidation moves as A3 (guard-only strikeWorse/futile + calls); Coinbase counts unchanged.
+    expect(g['guard-only']).toMatchObject({ yielded: 704, survived: 249, died: 455, strikeWorse: 96, futile: 70 });
     expect(g['guard+F1']).toMatchObject({ yielded: 395, survived: 249, died: 146, strikeWorse: 44, futile: 18 });
-    expect([g.unguarded.calls, g['guard-only'].calls, g['guard+F1'].calls]).toEqual([840, 951, 912]);
+    expect([g.unguarded.calls, g['guard-only'].calls, g['guard+F1'].calls]).toEqual([858, 968, 920]);
     // ⭐ C6: scrub to month 8, then stress to 0.50 — the guard yields in month 8 and Coinbase SURVIVES.
     const c6 = runCyclingSim({ ...REPRO, startYear: 2026, strikeLtvCapPct: 60, pricePath: applyPathStress(path, 8, 0.5) });
     expect(c6.firstSurvivalYieldMonth).toBe(8);
@@ -1290,5 +1355,79 @@ describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase surv
       { cwd: process.cwd(), encoding: 'utf8' },
     ).trim().split('\n').filter(Boolean);
     expect(faces).toContain('src/components/Almanac/CyclingFace.tsx');
+  });
+});
+
+describe('runCyclingSim — unfunded bills (disclosure only)', () => {
+  // The engine funds only what income and the Strike line can cover. When bills exceed both, nothing pays the
+  // gap: no coins are sold, no debt grows for it. These fields DISCLOSE that gap — the funding and the
+  // never-draw baseline are unchanged (the baseline has the same gap).
+  const everyRowConsistent = (r: CyclingResult) => {
+    expect(r.totalUnfundedUsd).toBeCloseTo(r.rows.reduce((s, x) => s + x.unfundedUsd, 0), 9);
+    expect(r.rows[0].unfundedUsd).toBe(0);                          // month 0 is the opening position
+    for (const x of r.rows) if (x.unfundedUsd > 0) expect(x.btcBoughtUsd).toBe(0);
+    const first = r.rows.find((x) => x.unfundedUsd > 0);
+    expect(r.firstUnfundedMonth).toBe(first ? first.m : null);
+  };
+
+  it('⭐ STOPPED branch: bills above income while the stop halts the draw — the gap is disclosed, not paid', () => {
+    // $4,000 income against $6,000 bills, a 45% stop, a flat $100k: month 1 draws, the refinance lands
+    // Coinbase ON the stop, interest keeps it there — so the stop holds from month 2, and every stopped month
+    // leaves $2,000 of bills paid by nothing. 23 months × $2,000.
+    const r = runCyclingSim({ ...REPRO, income: 4_000, expenses: 6_000, cbLtvCapPct: 45, pricePath: new Array(25).fill(100_000) });
+    expect(r.firstDrawMonth).toBe(1);
+    expect(r.stopMonth).toBe(2);
+    expect(r.drawingResumedMonth).toBeNull();
+    everyRowConsistent(r);
+    for (let m = 2; m < r.rows.length; m++) expect(r.rows[m].unfundedUsd).toBe(2_000);
+    expect(r.firstUnfundedMonth).toBe(2);
+    expect(r.totalUnfundedUsd).toBe(46_000);
+    // ⚠ FIXTURE-BOUND and PATH-DEPENDENT: on REPRO's own 4-yr path the same budget stops for ONE month (the
+    // month-1 on-the-line step down), then the rising price lets the draw resume — a $2,000 gap, not $46,000.
+    const onCycle = runCyclingSim({ ...REPRO, income: 4_000, expenses: 6_000, cbLtvCapPct: 45, pricePath: REPRO.pricePath.slice(0, 25) });
+    everyRowConsistent(onCycle);
+    expect(onCycle.totalUnfundedUsd).toBe(2_000);
+    expect(onCycle.firstUnfundedMonth).toBe(1);
+  });
+
+  it('⭐ DRAWING branch: the credit line runs dry while CB LTV is still under the stop — the gap counts too', () => {
+    // A $25k line with $20k already drawn: month 1 draws the last $5k, then the line is empty. CB LTV stays far
+    // under an 85% stop (no refinance, no sweep), so every month is a DRAWING month with the whole $6,000 bill
+    // short and only $3,000 of income to meet it — $3,000 a month paid by nothing.
+    const r = runCyclingSim({
+      ...REPRO, income: 3_000, expenses: 6_000, strikeCreditLine: 25_000, cbLtvCapPct: 85,
+      cycleMonths: 999, coldStoreBufferPct: 0, defendCbLtv: false, pricePath: new Array(13).fill(100_000),
+    });
+    expect(r.stopMonth).toBeNull();                                  // never left the drawing branch
+    everyRowConsistent(r);
+    expect(r.rows[1].unfundedUsd).toBe(0);                           // month 1: the line funded $5k of it
+    const dry = r.rows.slice(2);
+    for (const x of dry) {
+      expect(x.strikeDrawn).toBe(0);
+      expect(x.strikeShortfall).toBe(6_000);
+      expect(x.unfundedUsd).toBe(3_000);                             // shortfall − income
+      expect(x.btcBoughtUsd).toBe(0);
+    }
+    expect(r.firstUnfundedMonth).toBe(2);
+    expect(r.totalUnfundedUsd).toBe(3_000 * dry.length);
+  });
+
+  it('a default budget (income above bills) has no gap', () => {
+    const r = runCyclingSim(REPRO);
+    expect(r.totalUnfundedUsd).toBe(0);
+    expect(r.firstUnfundedMonth).toBeNull();
+    expect(r.rows.every((x) => x.unfundedUsd === 0)).toBe(true);
+  });
+
+  it('⭐ non-cycle modes disclose the gap too — but the cycle-only notice stays off (C1 covers them)', () => {
+    // `hold` also funds only the surplus, so a deficit is unpaid there as well. The field is true in every
+    // mode; the notice is cycle-only because deficitMode already speaks for the no-draw modes.
+    const r = runCyclingSim({ ...REPRO, mode: 'hold', income: 4_000, expenses: 6_000, pricePath: REPRO.pricePath.slice(0, 25) });
+    everyRowConsistent(r);
+    expect(r.totalUnfundedUsd).toBeGreaterThan(0);
+    expect(r.totalUnfundedUsd).toBe(2_000 * 24);
+    const c = modeConstraints('hold', r.firstDrawMonth, 4_000, 6_000, r.totalUnfundedUsd);
+    expect(c.cycleUnfunded).toBe(false);
+    expect(c.deficitMode).toBe(true);
   });
 });
