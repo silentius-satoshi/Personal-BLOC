@@ -106,6 +106,20 @@ describe('runCyclingSim — the refinance loop and the stop', () => {
     for (let m = r.stopMonth!; m < r.rows.length; m++) expect(r.rows[m].strikeDrawn).toBe(0);
   });
 
+  it('⭐ the stop is AT the cap: an LTV exactly on it does not draw; a hair under it does', () => {
+    // EXACT in floating point by construction: CB APR 0% (no interest before the test), a flat price, and debt =
+    // cap × collateral × price, so month 1's draw test reads 78,000 / (2 × 78,000) = 0.5 — exactly the 50% cap.
+    // This is the only place `<` vs `<=` can be seen: on a Math.pow-built path the draw-test LTV never lands
+    // exactly on the cap (P9-OFF's month-end sits on it, but the next test comes after a month of price growth).
+    const at = run({ cbLtvCapPct: 50, cbAprPct: 0, cbDebt: 78_000, pricePath: flat(12) });
+    expect(at.rows[0].cbLtv).toBe(0.5);                // the premise
+    expect(at.rows[1].strikeDrawn).toBe(0);            // reaching the cap IS the stop
+    expect(at.stopMonth).toBe(1);
+    expect(at.firstDrawMonth).toBe(2);                 // month 1's surplus buys collateral, so month 2 is back under
+    const under = run({ cbLtvCapPct: 50, cbAprPct: 0, cbDebt: 77_999, pricePath: flat(12) });
+    expect(under.firstDrawMonth).toBe(1);
+  });
+
   it('⭐ the default cap (50%) survives 20 years without liquidating — the face\'s own claim', () => {
     // If this fails, the face's default view argues against the strategy it is demonstrating.
     const r = run({ cbLtvCapPct: 50, pricePath: flat(240) });

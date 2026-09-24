@@ -9,7 +9,9 @@
  * does not move with today's price.
  *
  *   k = price / support      paused < 1 ≤ accumulate ≤ accumulateBelow < hold ≤ payDownAbove < payDown
- *   hard breaker             2 consecutive month-ends below 0.9 × support → 'broken', LATCHED for the run
+ *   hard breaker             2 consecutive month-ends below 0.9 × support → 'broken', LATCHED for the run —
+ *                            unless the OPT-IN re-arm is set: N consecutive month-ends at or above support reset it
+ *                            (`nextRearmableBreakerState`, which WRAPS `nextBreakerState` — one trip rule)
  *
  * 🔴 Pure leaf: imports only the zero-import `./ltv`. Support arrives as a plain number — this module has never
  * heard of the power law (the §2 wall). Every function is guarded so it NEVER returns NaN: guards are
@@ -91,7 +93,8 @@ export interface StrikeCallResult {
  * A monthly engine cannot see the 72 hours, so a call is treated as UNCURED at month-end and resolved here:
  *   1. LTV < callLtv → 'none', nothing changes.
  *   2. LTV ≥ partialLiqLtv → 'soldImmediate': sold down to cureLtv; there is no cure window, so cash and cold
- *      are NOT touched.
+ *      are NOT touched. A sale that would sell nothing (Strike's collateral is already gone) is 'none' — no
+ *      phantom sales.
  *   3. otherwise: CASH first (repay up to `bal − cureLtv·coll·P`), THEN COLD (move up to `bal/(cureLtv·P) −
  *      coll` into the Strike pool), THEN a sale of whatever is still above cureLtv ('sold'; else 'cured').
  *
@@ -116,6 +119,10 @@ export function resolveStrikeCall(input: StrikeCallInput): StrikeCallResult {
 
   if (ltv >= partialLiqLtv) {
     const sold = collateralToSellForLtv(bal, coll, price, cureLtv);
+    // ⚠ NO PHANTOM SALES (v1.3 #13). Once a sale has emptied Strike's collateral the LTV is ∞, so every later
+    // month lands here and "sells" nothing — that is not a call, there is nothing left to seize. The balance left
+    // is unsecured (full-recourse) debt, and the restore rule repays it from surplus.
+    if (!(sold > DUST_BTC)) return none;
     return {
       state: 'soldImmediate', cureCashUsd: 0, cureColdBtc: 0, soldBtc: sold,
       balanceAfter: bal - sold * price, collateralAfter: coll - sold,
@@ -153,6 +160,9 @@ export const BREAKER_START: BreakerState = Object.freeze({ monthsBelow: 0, broke
  * CONSECUTIVE month-ends below `(1 − HARD_BREAKER_DEPTH) × support`, with the same float guard as 'paused'
  * (a price computed onto 0.9 × support is not below it). Junk (non-finite price, bad support) carries the
  * previous state unchanged — no information, and never NaN.
+ *
+ * ⚠ THE TRIP RULE LIVES HERE AND ONLY HERE. The opt-in re-arm is a LAYER on top (`nextRearmableBreakerState`
+ * wraps this function); it never re-implements the trip, and the engine calls only the wrapper.
  */
 export function nextBreakerState(prev: BreakerState, price: number, support: number, month: number): BreakerState {
   if (prev.broken) return prev;
@@ -161,6 +171,36 @@ export function nextBreakerState(prev: BreakerState, price: number, support: num
   const monthsBelow = below ? prev.monthsBelow + 1 : 0;
   if (monthsBelow >= HARD_BREAKER_MONTHS) return { monthsBelow, broken: true, brokenMonth: month };
   return { monthsBelow, broken: false, brokenMonth: null };
+}
+
+/** The breaker plus the OPT-IN re-arm counter (v1.3 #14). */
+export interface RearmableBreakerState extends BreakerState {
+  /** CONSECUTIVE month-ends at or above support while broken (0 whenever it is not broken). */
+  monthsAtOrAbove: number;
+}
+export const REARMABLE_BREAKER_START: RearmableBreakerState = Object.freeze({ ...BREAKER_START, monthsAtOrAbove: 0 });
+
+/**
+ * One month-end of the hard breaker with the OPT-IN re-arm (v1.3 #14). A LAYER over `nextBreakerState`, never a
+ * copy of it: while not broken it delegates the trip rule to that function unchanged, so the rule lives in one
+ * place. The engine imports ONLY this wrapper.
+ *
+ *   rearmMonths null (absent) ⇒ exactly `nextBreakerState` — LATCHED for the run, today's behaviour.
+ *   rearmMonths N             ⇒ while broken, N CONSECUTIVE month-ends at or above support (the 'paused' float
+ *                               guard: k ≥ 1 − SUPPORT_EPS) reset it — on the Nth month-end itself, so that month
+ *                               acts on its zone (the mirror of the trip, whose 2nd month below is itself broken).
+ *                               A month-end below support resets the count; a later break latches again, and
+ *                               re-arms again after another N.
+ * Junk (non-finite price, bad support) carries the state unchanged — no information, and never NaN.
+ */
+export function nextRearmableBreakerState(
+  prev: RearmableBreakerState, price: number, support: number, month: number, rearmMonths: number | null,
+): RearmableBreakerState {
+  if (!prev.broken) return { ...nextBreakerState(prev, price, support, month), monthsAtOrAbove: 0 };
+  if (rearmMonths === null || !(support > 0) || !allFinite(price, support)) return prev;
+  const monthsAtOrAbove = price / support >= 1 - SUPPORT_EPS ? prev.monthsAtOrAbove + 1 : 0;
+  if (monthsAtOrAbove >= rearmMonths) return REARMABLE_BREAKER_START;
+  return { ...prev, monthsAtOrAbove };
 }
 
 /** Surplus → Strike first (13%), then Coinbase. Returns the amounts; the engine applies them together with the

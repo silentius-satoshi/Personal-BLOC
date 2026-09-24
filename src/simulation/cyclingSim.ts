@@ -5,8 +5,8 @@ import {
 } from './cbDefense';
 import { ltvOf } from './ltv';
 import {
-  policyZone, ceilingHeadroomUsd, sweepKeepBtc, resolveStrikeCall, nextBreakerState, allocatePayDown,
-  BREAKER_START, SUPPORT_EPS, type PolicyState, type BreakerState, type StrikeCallResult,
+  policyZone, ceilingHeadroomUsd, sweepKeepBtc, resolveStrikeCall, nextRearmableBreakerState, allocatePayDown,
+  REARMABLE_BREAKER_START, SUPPORT_EPS, type PolicyState, type RearmableBreakerState, type StrikeCallResult,
 } from './supportPolicy';
 
 /**
@@ -75,11 +75,18 @@ export interface SupportPolicyInputs {
   /** Default ON. TEST-ONLY: no face may pass it (a grep test enforces that). false = flag the call, sell
    *  nothing (the HEAD behaviour). */
   modelStrikeLiquidation?: boolean;
+  /** OPT-IN breaker re-arm (v1.3 #14) — NO default: the owner picks one from the A5 re-arm table.
+   *  Absent ⇒ the hard breaker LATCHES for the run (the shipped behaviour, byte-identical). N ⇒ it re-arms on the
+   *  Nth CONSECUTIVE month-end at or above support (that month then acts on its zone); a month-end below support
+   *  resets the count; a later break latches again. A finite integer ≥ 1, else the policy is IGNORED ('rearm').
+   *  The engine reaches the breaker only through `nextRearmableBreakerState`, a layer over the one trip rule. */
+  breakerRearmMonths?: number;
 }
 
 /** Why a supplied policy was IGNORED (the engine then runs byte-identically to having none). */
 export type PolicyIgnoredReason =
-  | 'mode' | 'supportPath' | 'cbStop' | 'strikeStop' | 'zones' | 'buffer' | 'cash' | 'strikeLadder' | 'retrieveLtv';
+  | 'mode' | 'supportPath' | 'cbStop' | 'strikeStop' | 'zones' | 'buffer' | 'cash' | 'strikeLadder' | 'retrieveLtv'
+  | 'rearm';
 
 export interface CyclingInputs {
   /**
@@ -305,8 +312,8 @@ export interface CyclingRow {
   postLiquidation: boolean;
 
   // ── SUPPORT POLICY (all null / 0 / 'none' when the policy is not applied) ──────────────────────────────
-  /** The month's state: the zone by price ÷ support, or 'broken' once the hard breaker has latched. Month 0
-   *  carries the OPENING zone (no action is taken at month 0). */
+  /** The month's state: the zone by price ÷ support, or 'broken' while the hard breaker is tripped (latched for
+   *  the run unless the opt-in re-arm resets it). Month 0 carries the OPENING zone (no action is taken at month 0). */
   policyZone: PolicyState | null;
   /** price ÷ support this month. */
   multiple: number | null;
@@ -417,8 +424,14 @@ export interface CyclingResult {
   monthsInZone: Record<PolicyState, number>;
   firstPausedMonth: number | null;
   firstPayDownMonth: number | null;
-  /** The month the hard breaker latched — "Model broken — decide again". */
+  /** The month the hard breaker FIRST tripped — "Model broken — decide again". With the opt-in re-arm it stays
+   *  the first break; the later ones count in `breakCount`. */
   modelBrokenMonth: number | null;
+  /** First month the opt-in re-arm reset the breaker (null when latched, or it never saw N month-ends at or above
+   *  support). */
+  firstRearmMonth: number | null;
+  /** How many times the hard breaker tripped (at most 1 when latched). */
+  breakCount: number;
   /** First accumulate month whose draw the policy's ceilings cut below what Strike alone would have funded
    *  (including a cut to zero). The policy-side twin of `creditExhaustedMonth`; the two never share a cause. */
   firstCeilingThrottleMonth: number | null;
@@ -468,6 +481,8 @@ interface ActivePolicy {
   partialLiqLtv: number;
   retrieveMaxLtv: number;
   modelStrikeLiquidation: boolean;
+  /** The opt-in re-arm: null = latched for the run. */
+  rearmMonths: number | null;
 }
 
 /**
@@ -511,6 +526,9 @@ function resolveSupportPolicy(
   }
   const retrieve = p.strikeRetrieveMaxLtv;
   if (!(fin(retrieve) && retrieve > 0 && retrieve <= ctx.strikeMaxDrawLtv)) return { ok: false, reason: 'retrieveLtv' };
+  // Absent = latched (the shipped behaviour); anything supplied must be a whole number of months, at least one.
+  const rearm = p.breakerRearmMonths;
+  if (rearm !== undefined && !(Number.isInteger(rearm) && rearm >= 1)) return { ok: false, reason: 'rearm' };
   return {
     ok: true,
     policy: {
@@ -518,6 +536,7 @@ function resolveSupportPolicy(
       bufferUsd: p.bearBufferMonths * ctx.expenses, openingCashUsd: p.openingCashUsd,
       cureLtv: cure, partialLiqLtv: liq, retrieveMaxLtv: retrieve,
       modelStrikeLiquidation: p.modelStrikeLiquidation !== false,
+      rearmMonths: rearm ?? null,
     },
   };
 }
@@ -625,7 +644,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     if (v.ok) policy = v.policy;
     else policyIgnoredReason = v.reason;
   }
-  let breaker: BreakerState = BREAKER_START;
+  let breaker: RearmableBreakerState = REARMABLE_BREAKER_START;
+  let modelBrokenMonth: number | null = null;   // the FIRST trip (the re-arm can reset `breaker.brokenMonth`)
+  let firstRearmMonth: number | null = null;
+  let breakCount = 0;
   let cashReserve = policy !== null ? policy.openingCashUsd : 0;
   const openingCashUsd = cashReserve;
   let strikeHoldUntil = 0;   // Strike's 60-day hold after collateral goes IN: no migration before this month
@@ -684,7 +706,15 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     const k = policy !== null ? price / S : 0;
     let state: PolicyState | null = null;
     if (policy !== null) {
-      if (m > 0) breaker = nextBreakerState(breaker, price, S, m);
+      if (m > 0) {
+        const wasBroken = breaker.broken;
+        breaker = nextRearmableBreakerState(breaker, price, S, m, policy.rearmMonths);
+        if (!wasBroken && breaker.broken) {
+          breakCount += 1;
+          if (modelBrokenMonth === null) modelBrokenMonth = m;
+        }
+        if (wasBroken && !breaker.broken && firstRearmMonth === null) firstRearmMonth = m;
+      }
       state = breaker.broken ? 'broken' : policyZone(price, S, policy.accumulateBelow, policy.payDownAbove);
       if (m > 0) {
         monthsInZone[state] += 1;
@@ -1225,7 +1255,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     openingColdBtc,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
     policyApplied: policy !== null, policyIgnoredReason,
-    monthsInZone, firstPausedMonth, firstPayDownMonth, modelBrokenMonth: breaker.brokenMonth,
+    monthsInZone, firstPausedMonth, firstPayDownMonth, modelBrokenMonth, firstRearmMonth, breakCount,
     firstCeilingThrottleMonth, firstStrikeCallMonth, strikeCallsCured, strikeCallsSold,
     totalStrikeLiquidatedBtc, firstStrikeLiquidationMonth, totalRestoreUsd, totalPayDownUsd,
     openingCashUsd, cashLeftUsd: cashReserve, totalCashToBillsUsd, totalCashToCureUsd,

@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
   policyZone, ceilingHeadroomUsd, sweepKeepBtc, collateralToSellForLtv, resolveStrikeCall, nextBreakerState,
-  allocatePayDown, BREAKER_START, SUPPORT_EPS, HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS,
-  type BreakerState, type StrikeCallInput,
+  nextRearmableBreakerState, allocatePayDown, BREAKER_START, REARMABLE_BREAKER_START, SUPPORT_EPS,
+  HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS, type BreakerState, type RearmableBreakerState, type StrikeCallInput,
 } from '../supportPolicy';
 
 /**
@@ -155,6 +155,19 @@ describe('⭐ resolveStrikeCall — cash, then cold, then a sale; ≥ 85% is sol
     expect(r.soldBtc).toBe(0);
   });
 
+  it('f · no phantom sale: an EMPTIED Strike (collateral 0, LTV ∞) is not a call — cash and cold untouched', () => {
+    // After a sale takes the whole collateral, the balance left is unsecured debt; there is nothing to sell, so it
+    // must not count as a sale month after month (v1.3 #13). The restore rule repays it from surplus.
+    const emptied = resolveStrikeCall({ ...base, strikeBalance: 13_000, strikeCollateralBtc: 0, cashUsd: 5_000, coldBtc: 0.5 });
+    expect(emptied).toEqual({
+      state: 'none', cureCashUsd: 0, cureColdBtc: 0, soldBtc: 0, balanceAfter: 13_000, collateralAfter: 0,
+    });
+    // A dust remainder is the same case: the whole of it is below DUST_BTC, so nothing is sellable.
+    const dust = resolveStrikeCall({ ...base, strikeBalance: 13_000, strikeCollateralBtc: 1e-13 });
+    expect(dust.state).toBe('none');
+    expect(dust.soldBtc).toBe(0);
+  });
+
   it('NaN cash / cold read as empty — a plain sale, and no NaN anywhere', () => {
     const r = resolveStrikeCall({ ...base, cashUsd: Number.NaN, coldBtc: Number.NaN });
     expect(r.state).toBe('sold');
@@ -204,6 +217,62 @@ describe('nextBreakerState — 2 consecutive month-ends below 0.9 × support, th
     const one = nextBreakerState(BREAKER_START, 0.85 * S, S, 1);
     expect(nextBreakerState(one, Number.NaN, S, 2)).toEqual(one);
     expect(nextBreakerState(one, 0.85 * S, 0, 2)).toEqual(one);
+  });
+});
+
+describe('nextRearmableBreakerState — the OPT-IN re-arm, a layer over the one trip rule (v1.3 #14)', () => {
+  /** Month-ends 1, 2, … at the given multiples of support; rearm null = latched. */
+  const walk = (multiples: number[], rearm: number | null): RearmableBreakerState[] => {
+    const out: RearmableBreakerState[] = [];
+    let s = REARMABLE_BREAKER_START;
+    multiples.forEach((k, i) => { s = nextRearmableBreakerState(s, k * S, S, i + 1, rearm); out.push(s); });
+    return out;
+  };
+  const brokenFlags = (states: RearmableBreakerState[]): boolean[] => states.map((x) => x.broken);
+
+  it('rearm null ⇒ exactly nextBreakerState — latched through a full recovery', () => {
+    const ks = [0.95, 0.85, 0.85, 1.2, 1.5, 2.0, 0.85, 1.0];
+    let plain = BREAKER_START;
+    walk(ks, null).forEach((w, i) => {
+      plain = nextBreakerState(plain, ks[i] * S, S, i + 1);
+      expect({ monthsBelow: w.monthsBelow, broken: w.broken, brokenMonth: w.brokenMonth }).toEqual(plain);
+      expect(w.monthsAtOrAbove).toBe(0);
+    });
+    expect(plain.broken).toBe(true);   // non-vacuous: the sequence does break
+  });
+
+  it('N = 3 re-arms on exactly the 3rd month-end at or above support — not the 2nd', () => {
+    const s = walk([0.85, 0.85, 1.0, 1.0, 1.0], 3);
+    expect(s[1]).toEqual({ monthsBelow: 2, broken: true, brokenMonth: 2, monthsAtOrAbove: 0 });   // tripped
+    expect(s[2]).toMatchObject({ broken: true, monthsAtOrAbove: 1 });
+    expect(s[3]).toMatchObject({ broken: true, monthsAtOrAbove: 2 });   // N − 1: still broken
+    expect(s[4]).toEqual(REARMABLE_BREAKER_START);                      // N: re-armed, monthsBelow 0
+  });
+
+  it('a month-end below support resets the count', () => {
+    // Twice at support, then 0.95 × S (below support, above the breaker's 0.9), then three more at support.
+    expect(brokenFlags(walk([0.85, 0.85, 1.0, 1.0, 0.95, 1.0, 1.0, 1.0], 3)))
+      .toEqual([false, true, true, true, true, true, true, false]);
+    // Without the dip it re-arms three months earlier.
+    expect(brokenFlags(walk([0.85, 0.85, 1.0, 1.0, 1.0], 3))).toEqual([false, true, true, true, false]);
+  });
+
+  it('the float guard: a price computed ONTO the line counts; one a hair under resets', () => {
+    expect(brokenFlags(walk([0.85, 0.85, 1 - 1e-12, 1 - 1e-12], 2))).toEqual([false, true, true, false]);
+    expect(brokenFlags(walk([0.85, 0.85, 1 - 1e-6, 1.0, 1.0], 2))).toEqual([false, true, true, true, false]);
+  });
+
+  it('a later break latches again — and re-arms again after another N', () => {
+    const s = walk([0.85, 0.85, 1.0, 1.0, 0.85, 0.85, 1.0, 1.0], 2);
+    expect(brokenFlags(s)).toEqual([false, true, true, false, false, true, true, false]);
+    expect(s[5]).toEqual({ monthsBelow: 2, broken: true, brokenMonth: 6, monthsAtOrAbove: 0 });
+  });
+
+  it('junk carries the state (no information, never NaN)', () => {
+    const counting = walk([0.85, 0.85, 1.0], 3)[2];
+    expect(counting).toMatchObject({ broken: true, monthsAtOrAbove: 1 });
+    expect(nextRearmableBreakerState(counting, Number.NaN, S, 4, 3)).toEqual(counting);
+    expect(nextRearmableBreakerState(counting, S, 0, 4, 3)).toEqual(counting);
   });
 });
 

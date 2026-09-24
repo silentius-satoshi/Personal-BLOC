@@ -23,6 +23,10 @@ import {
  * Node 26 on about one input in ten, and that alone failed CI when the runs recomputed the path. The engine is
  * pure + − × ÷ (IEEE-exact on every runtime; a G1 test walks its imports to keep it so), so a stored input
  * reproduces bit for bit anywhere. The path itself is held to the store within a relative 1e-12.
+ *
+ * ⚠ runs[2] (P9-OFF, $4k / $6k, added in Run 1.1) is REGRESSION COVERAGE of the defense-heavy policy-OFF engine —
+ * its month-end CB LTV sits on the 70% cap and the debt shift and top-up fire. It is NOT a mutant-killer: the
+ * draw-test LTV never lands on or just over the cap there. The exact-at-cap pin in cyclingSim.test.ts is.
  */
 
 const smr = SP_REPRO.strikeAprPct / 100 / 12;
@@ -59,6 +63,14 @@ const LIQ_BASE: Omit<CyclingInputs, 'pricePath'> = {
 const liqRun = (pricePath = LIQ_PATH, o: Partial<SupportPolicyInputs> = {}): CyclingResult =>
   runCyclingSim({ ...LIQ_BASE, pricePath, supportPolicy: policyFor(supportPathFor(SP_START, pricePath.length - 1), o) });
 
+/** v1.3 #13's fixture — one crash to 0.30 × support takes Strike over 100% LTV, so its sale takes the WHOLE
+ *  collateral; Coinbase is debt-free, so nothing else moves. Every month stays below support (paused, then broken). */
+const EMPTY_SUPPORT = supportPathFor(SP_START, 12);
+const EMPTY_PATH = EMPTY_SUPPORT.map((s, m) => (m === 0 ? 1.35 * S0 : 0.3 * s));
+const EMPTY_BASE: Omit<CyclingInputs, 'pricePath'> = { ...SP_REPRO, strikeBalance: 34_000, strikeCreditLine: 40_000, cbDebt: 0 };
+const emptyRun = (): CyclingResult =>
+  runCyclingSim({ ...EMPTY_BASE, pricePath: EMPTY_PATH, supportPolicy: policyFor(EMPTY_SUPPORT) });
+
 /** The coin ledger: coins leave only by purchase in, Strike sale out, or Coinbase seizure out. ⚠ The seizure is
  *  applied AFTER its row is pushed, so a liquidation in the LAST month has not left `last.btcHeld` yet. */
 function expectLedgersFoot(r: CyclingResult, inputs: CyclingInputs): void {
@@ -73,7 +85,12 @@ function expectLedgersFoot(r: CyclingResult, inputs: CyclingInputs): void {
 // ── Test 8 · G1 ───────────────────────────────────────────────────────────────────────────────────────────
 
 interface GoldenRun {
-  name: string; phase: number; pricePath: number[]; rowKeys: string[]; rows: unknown[][]; result: Record<string, unknown>;
+  name: string; pricePath: number[]; rowKeys: string[]; rows: unknown[][]; result: Record<string, unknown>;
+  /** P2 runs: the cycle's phase shift. */
+  phase?: number;
+  /** P9-OFF: the inputs it overrides on SP_REPRO, and the month its 0.80 × support dip starts. */
+  overrides?: Partial<CyclingInputs>;
+  dipStart?: number;
 }
 const golden = JSON.parse(
   readFileSync(new URL('./goldens/supportPolicyG1.golden.json', import.meta.url), 'utf8'),
@@ -92,28 +109,42 @@ const NEW_ROW_FIELDS = [
 ] as const;
 
 describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD engine', () => {
-  it('the fixture and the paths are what the golden was captured from (paths to 1e-12 — P2 uses Math.pow)', () => {
+  it('the fixture and the paths are what the golden was captured from (paths to 1e-12 — both use Math.pow)', () => {
     expect(json(SP_REPRO)).toEqual(golden.meta.inputs);
-    expect(golden.runs.map((g) => g.phase)).toEqual([0, -4]);
-    for (const g of golden.runs) {
-      const path = pathP2(g.phase);
+    expect(golden.runs.map((g) => g.name)).toEqual(['P2 phase 0', 'P2 phase -4', 'P9-OFF $4k / $6k']);
+    const expectPath = (path: number[], g: GoldenRun): void => {
       expect(path).toHaveLength(g.pricePath.length);
-      path.forEach((p, m) => expect(Math.abs(p / g.pricePath[m] - 1), `phase ${g.phase}, m${m}`).toBeLessThan(1e-12));
-    }
+      path.forEach((p, m) => expect(Math.abs(p / g.pricePath[m] - 1), `${g.name}, m${m}`).toBeLessThan(1e-12));
+    };
+    const [p2a, p2b, p9] = golden.runs;
+    expect([p2a.phase, p2b.phase]).toEqual([0, -4]);
+    for (const g of [p2a, p2b]) expectPath(pathP2(g.phase!), g);
+    // P9-OFF is P1 with 0.80 × support at its STORED dip — deliberately NOT buildP9, which runs the policy engine:
+    // G1 must never depend on the thing it is guarding against.
+    expect(p9.overrides).toEqual({ income: 4_000 });
+    const dip = p9.dipStart!;
+    expectPath(pathP1().map((p, m) => (m === dip || m === dip + 1 ? 0.8 * SUPPORT[m] : p)), p9);
+    // Why it is here: the OFF engine sits on its 70% cap at month-end, defense-heavy.
+    const cbLtv = p9.rowKeys.indexOf('cbLtv');
+    expect(p9.rows.filter((row) => Math.abs((row[cbLtv] as number) - 0.7) < 1e-9).length).toBeGreaterThanOrEqual(10);
   });
 
-  it('⭐ policy absent: every pre-existing row and result field equals the golden (P2, phase 0 and −4)', () => {
-    for (const g of golden.runs) expectGolden(runCyclingSim({ ...SP_REPRO, pricePath: g.pricePath }), g);
+  it('⭐ policy absent: every pre-existing row and result field equals the golden (P2 phase 0 and −4, P9-OFF)', () => {
+    for (const g of golden.runs) expectGolden(runCyclingSim({ ...SP_REPRO, ...g.overrides, pricePath: g.pricePath }), g);
   });
 
   it('the engine is pure + − × ÷ — no implementation-approximated Math in its import graph (G1 stays exact)', () => {
     const APPROXIMATED = /Math\.(a?sinh?|a?cosh?|a?tanh?|atan2|cbrt|exp|expm1|hypot|log|log1p|log2|log10|pow)\b|\*\*/;
+    // A relative import in EITHER quote style — a double-quoted import must not slip a module past the walk.
+    const RELATIVE_IMPORT = /from\s*['"]\.\/(\w+)['"]/g;
+    expect([...'import a from "./dq";\nimport { b } from \'./sq\';'.matchAll(RELATIVE_IMPORT)].map((m) => m[1]))
+      .toEqual(['dq', 'sq']);
     const seen = new Set<string>();
     const walk = (file: string): void => {
       if (seen.has(file)) return;
       seen.add(file);
       const src = readFileSync(new URL(`../${file}`, import.meta.url), 'utf8');
-      for (const m of src.matchAll(/from '\.\/(\w+)'/g)) walk(`${m[1]}.ts`);
+      for (const m of src.matchAll(RELATIVE_IMPORT)) walk(`${m[1]}.ts`);
       const code = src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
       expect(code, file).not.toMatch(APPROXIMATED);
     };
@@ -138,10 +169,10 @@ describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD en
     expect(r.policyIgnoredReason).toBeNull();
     expect(r.monthsInZone).toEqual({ paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 });
     for (const k of ['firstPausedMonth', 'firstPayDownMonth', 'modelBrokenMonth', 'firstCeilingThrottleMonth',
-      'firstStrikeCallMonth', 'firstStrikeLiquidationMonth'] as const) expect(r[k]).toBeNull();
+      'firstStrikeCallMonth', 'firstStrikeLiquidationMonth', 'firstRearmMonth'] as const) expect(r[k]).toBeNull();
     for (const k of ['strikeCallsCured', 'strikeCallsSold', 'totalStrikeLiquidatedBtc', 'totalRestoreUsd',
       'totalPayDownUsd', 'openingCashUsd', 'cashLeftUsd', 'totalCashToBillsUsd', 'totalCashToCureUsd',
-      'coldRetrievedAboveSupportBtc'] as const) expect(r[k]).toBe(0);
+      'coldRetrievedAboveSupportBtc', 'breakCount'] as const) expect(r[k]).toBe(0);
   });
 
   it('⭐ an INVALID policy is ignored: the same golden, policyApplied false, and the reason', () => {
@@ -172,6 +203,11 @@ describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD en
       ['strikeLadder', policyFor(SUPPORT, { strikePartialLiqLtv: 1.01 })],
       ['retrieveLtv', policyFor(SUPPORT, { strikeRetrieveMaxLtv: 0 })],
       ['retrieveLtv', policyFor(SUPPORT, { strikeRetrieveMaxLtv: 0.51 })],
+      ['rearm', policyFor(SUPPORT, { breakerRearmMonths: 0 })],
+      ['rearm', policyFor(SUPPORT, { breakerRearmMonths: -1 })],
+      ['rearm', policyFor(SUPPORT, { breakerRearmMonths: 1.5 })],
+      ['rearm', policyFor(SUPPORT, { breakerRearmMonths: Number.NaN })],
+      ['rearm', policyFor(SUPPORT, { breakerRearmMonths: Number.POSITIVE_INFINITY })],
     ];
     for (const [reason, supportPolicy] of cases) {
       const r = runCyclingSim({ ...SP_REPRO, pricePath: golden.runs[0].pricePath, supportPolicy });
@@ -494,6 +530,34 @@ describe('⭐ the Strike margin call is MODELLED — cure or sale', () => {
     expect(r.rows[1].strikeLtv).toBeGreaterThanOrEqual(SP_REPRO.strikeMarginLtv);
   });
 
+  it('⭐ no phantom sales: a sale that EMPTIES Strike is its last call — restore repays the debt left (v1.3 #13)', () => {
+    const r = emptyRun();
+    const x = r.rows[1];
+    const preBal = x.strikeBalance + x.strikeLiquidatedBtc * x.price;            // the proceeds retired it 1:1
+    expect(preBal / (EMPTY_BASE.strikeCollateralBtc * x.price)).toBeGreaterThan(1);   // the premise: over 100%
+    expect(x.strikeCall).toBe('soldImmediate');
+    expect(x.strikeLiquidatedBtc).toBe(EMPTY_BASE.strikeCollateralBtc);           // the WHOLE collateral …
+    expect(x.strikeCollateralBtc).toBe(0);                                         // … so Strike is empty
+    for (const y of r.rows.slice(2)) expect(y.strikeCall, `m${y.m}`).toBe('none');  // nothing left to sell
+    expect(r.strikeCallsSold).toBe(1);
+    expect(r.firstStrikeLiquidationMonth).toBe(1);
+    expect(r.totalStrikeLiquidatedBtc).toBe(EMPTY_BASE.strikeCollateralBtc);
+    expect(r.strikeMarginMonth).toBe(1);   // M1's exception: the sale left a deficiency (unsecured → LTV ∞)
+    // The deficiency is unsecured debt; the restore rule repays it from surplus until it is gone.
+    let restoring = 0;
+    for (let m = 2; m < r.rows.length; m++) {
+      const prev = r.rows[m - 1];
+      const y = r.rows[m];
+      if (prev.strikeBalance === 0) { expect(y.restoreUsd, `m${m}`).toBe(0); continue; }
+      expect(y.restoreUsd, `m${m}`).toBeGreaterThan(0);
+      expect(y.strikeBalance).toBeCloseTo(prev.strikeBalance * (1 + smr) - y.restoreUsd - y.payDownUsd, 6);
+      restoring++;
+    }
+    expect(restoring).toBeGreaterThan(1);
+    expect(r.last.strikeBalance).toBe(0);
+    expectLedgersFoot(r, { ...EMPTY_BASE, pricePath: EMPTY_PATH });
+  });
+
   it('with the Strike cap off, a call is cured from COLD before the sale (1.857 coins saved per cold coin)', () => {
     const r = callRun({}, { strikeLtvCapPct: 0, openingColdBtc: 0.1 });
     const x = r.rows[1];
@@ -606,6 +670,107 @@ describe('the breakers', () => {
   });
 });
 
+// ── v1.3 #14 · the breaker re-arm (opt-in; no default) ──────────────────────────────────────────────────
+
+describe('the breaker re-arm — opt-in, latched when absent (v1.3 #14)', () => {
+  const withPolicy = (c: CyclingInputs, o: Partial<SupportPolicyInputs>): CyclingInputs =>
+    ({ ...c, supportPolicy: { ...c.supportPolicy!, ...o } });
+  /** price[m] = k[m] × support[m]; the last multiple holds to the end of the horizon. */
+  const kPath = (ks: number[]): number[] => SUPPORT.map((s, m) => (m < ks.length ? ks[m] : ks[ks.length - 1]) * s);
+
+  it('absent ≡ undefined ≡ a re-arm that can never fire — the WHOLE result, on every A5 path', () => {
+    let latched = 0;
+    for (const c of a5Cases()) {
+      const absent = runCyclingSim(c.on);
+      if (absent.modelBrokenMonth !== null) latched++;
+      expect(runCyclingSim(withPolicy(c.on, { breakerRearmMonths: undefined })), c.name).toEqual(absent);
+      expect(runCyclingSim(withPolicy(c.on, { breakerRearmMonths: SP_MONTHS + 1 })), c.name).toEqual(absent);
+    }
+    expect(latched).toBeGreaterThan(0);   // non-vacuous: some paths break (P3, P6, P9), so the latch is exercised
+  });
+
+  it('P6: re-arms on exactly the Nth month-end at or above support — not N − 1 — and that month acts on its zone', () => {
+    const path = pathP6();
+    const latched = on(path);
+    const broke = latched.modelBrokenMonth!;
+    // The first month-end back at or above support after the break; P6 then stays ON the line to the end.
+    const back = path.findIndex((p, m) => m > broke && aboveSupport(p, SUPPORT[m]));
+    expect(path.slice(back).every((p, i) => aboveSupport(p, SUPPORT[back + i]))).toBe(true);
+    for (const n of [3, 6]) {
+      const r = on(path, { breakerRearmMonths: n });
+      const rearm = back + n - 1;
+      expect(r.firstRearmMonth, `N ${n}`).toBe(rearm);
+      expect(r.rows[rearm - 1].policyZone).toBe('broken');
+      expect(r.rows[rearm].policyZone).toBe('accumulate');
+      expect(r.rows.slice(0, rearm)).toEqual(latched.rows.slice(0, rearm));   // nothing leaks before it fires
+      expect(r.modelBrokenMonth).toBe(broke);
+      expect(r.breakCount).toBe(1);
+      expect(r.monthsInZone.broken).toBe(rearm - broke);
+      expect(r.rows.slice(rearm).some((x) => x.strikeDrawn > 0)).toBe(true);   // and the draw resumes
+    }
+    expect(latched.breakCount).toBe(1);
+    expect(latched.firstRearmMonth).toBeNull();
+  });
+
+  it('a month-end below support resets the count', () => {
+    // Broken at m3; at support m4–m5; m6 dips to 0.95 × S (below support, above the breaker's 0.9); then back.
+    const dip = on(kPath([1.35, 1.2, 0.85, 0.85, 1.0, 1.0, 0.95, 1.0, 1.0, 1.0, 1.1]), { breakerRearmMonths: 3 });
+    expect(dip.modelBrokenMonth).toBe(3);
+    expect(dip.firstRearmMonth).toBe(9);
+    expect(dip.rows[8].policyZone).toBe('broken');
+    expect(dip.rows[9].policyZone).not.toBe('broken');
+    // The same path without the dip re-arms at m6: the dip is what moved it.
+    const noDip = on(kPath([1.35, 1.2, 0.85, 0.85, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.1]), { breakerRearmMonths: 3 });
+    expect(noDip.firstRearmMonth).toBe(6);
+  });
+
+  it('a second break after a re-arm: breakCount 2, and the FIRST break stays modelBrokenMonth', () => {
+    const r = on(kPath([1.35, 1.2, 0.85, 0.85, 1.0, 1.0, 1.0, 1.2, 0.85, 0.85, 1.0, 1.0, 1.0, 1.2]), { breakerRearmMonths: 3 });
+    expect(r.breakCount).toBe(2);
+    expect(r.modelBrokenMonth).toBe(3);
+    expect(r.firstRearmMonth).toBe(6);
+    // The second break latches again, until another N month-ends at or above support.
+    expect(r.rows.slice(9, 12).every((x) => x.policyZone === 'broken')).toBe(true);
+    expect(r.rows[12].policyZone).not.toBe('broken');
+    expect(r.monthsInZone.broken).toBe(6);
+  });
+
+  it('G2, G3 and G4 still hold on every A5 path with N = 6 — and the re-arm actually engages', () => {
+    let rearmed = 0;
+    for (const c of a5Cases()) {
+      const inputs = withPolicy(c.on, { breakerRearmMonths: 6 });
+      const r = runCyclingSim(inputs);
+      expect(insideBothCeilings(r), c.name).toBe(true);
+      expect(r.coldRetrievedAboveSupportBtc, c.name).toBe(0);                                   // G2
+      for (let m = 1; m < r.rows.length; m++) {
+        if (aboveSupport(r.rows[m].price, c.support[m])) {
+          expect(r.rows[m].coldRetrievedBtc - r.rows[m - 1].coldRetrievedBtc, `${c.name} m${m}`).toBe(0);
+        }
+      }
+      if (minMultiple(inputs.pricePath, c.support) >= 0.8 - 1e-9) expect(r.liqMonth, c.name).toBeNull();   // G3
+      expectLedgersFoot(r, inputs);                                                             // G4
+      if (r.firstRearmMonth !== null) {
+        rearmed++;
+        expect(r.rows, c.name).not.toEqual(runCyclingSim(c.on).rows);
+      }
+    }
+    expect(rearmed).toBeGreaterThan(0);
+  });
+
+  it('layered, not duplicated: one trip rule, and the engine reaches the breaker ONLY through the wrapper', () => {
+    const leaf = readFileSync(new URL('../supportPolicy.ts', import.meta.url), 'utf8');
+    const from = leaf.indexOf('export function nextRearmableBreakerState');
+    expect(from).toBeGreaterThan(0);
+    const wrapper = leaf.slice(from, leaf.indexOf('\n}\n', from) + 2);
+    expect(wrapper).toMatch(/nextBreakerState\(/);      // it DELEGATES the trip …
+    expect(wrapper).not.toMatch(/HARD_BREAKER_/);       // … and never re-implements it
+    const engine = readFileSync(new URL('../cyclingSim.ts', import.meta.url), 'utf8');
+    expect(engine).toMatch(/\bnextRearmableBreakerState\b/);
+    expect(engine).not.toMatch(/\bnextBreakerState\b/);
+    expect(engine).not.toMatch(/(?<![A-Z_])BREAKER_START\b/);
+  });
+});
+
 // ── Test 20 · G4 ────────────────────────────────────────────────────────────────────────────────────────
 
 describe('⭐ G4 · the coin, cold and cash ledgers foot on every path', () => {
@@ -621,7 +786,16 @@ describe('⭐ G4 · the coin, cold and cash ledgers foot on every path', () => {
     const coldCure: CyclingInputs = { ...CALL_BASE, strikeLtvCapPct: 0, openingColdBtc: 0.1, pricePath: CALL_PATH };
     runs.push({ r: callRun({}, { strikeLtvCapPct: 0, openingColdBtc: 0.1 }), inputs: coldCure });
     runs.push({ r: liqRun(), inputs: { ...LIQ_BASE, pricePath: LIQ_PATH } });
+    runs.push({ r: emptyRun(), inputs: { ...EMPTY_BASE, pricePath: EMPTY_PATH } });
     for (const { r, inputs } of runs) expectLedgersFoot(r, inputs);
+    // Every modelled call MOVED something — cure cash, cure cold or coins sold. A call that moves nothing is a
+    // phantom (v1.3 #13): an emptied Strike has nothing left to sell.
+    for (const { r } of runs) {
+      for (const x of r.rows) {
+        if (x.strikeCall === 'none') continue;
+        expect(x.cashToCureUsd > 0 || x.strikeCureColdBtc > 0 || x.strikeLiquidatedBtc > 0, `m${x.m} ${x.strikeCall}`).toBe(true);
+      }
+    }
     // Non-vacuity: every ledger term actually moves somewhere in the set.
     expect(runs.some(({ r }) => r.totalStrikeLiquidatedBtc > 0)).toBe(true);
     expect(runs.some(({ r }) => r.rows.some((x) => x.strikeCureColdBtc > 0))).toBe(true);
