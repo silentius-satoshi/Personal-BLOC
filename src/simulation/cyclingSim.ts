@@ -404,6 +404,10 @@ export interface CyclingResult {
   firstSurvivalYieldMonth: number | null;
   baselineEquity: number;               // "never draw" comparison, on the SAME price path
   baselineBtc: number;
+  /** The never-draw baseline's OWN unpaid bills: Σ m = 1..N of max(0, expenses − income[m]). It pays bills from income
+   *  and funds nothing else, so a deficit month goes unpaid there too. Always computed (not a policy field), from the
+   *  same per-month income the baseline already reads; `baselineAllInEquity` subtracts it. */
+  baselineUnfundedUsd: number;
   /** The reserve the run STARTED with (`openingColdBtc`, 0 when not supplied). Reported so the cold ledger
    *  foots: opening + totalColdFromCb + totalColdFromStrike − totalColdRetrievedBtc === totalColdBtc. */
   openingColdBtc: number;
@@ -448,6 +452,9 @@ export interface CyclingResult {
   cashLeftUsd: number;
   totalCashToBillsUsd: number;
   totalCashToCureUsd: number;
+  /** Σ `strikeCureColdBtc` — cold moved into the Strike pool to cure calls. A PART of `totalColdRetrievedBtc`, never
+   *  an addition to it. */
+  totalStrikeCureColdBtc: number;
   /** Cold pulled back out of cold storage in months with price ≥ support. The policy's promise is that this
    *  is 0 for any position that opens inside both ceilings (gate G2). */
   coldRetrievedAboveSupportBtc: number;
@@ -466,6 +473,34 @@ export function effectiveStrikeCapPct(raw: number | undefined, strikeMarginLtv: 
   return Number.isFinite(skCapRaw) && skCapRaw > 0
     ? Math.min(skCapRaw, strikeMarginLtv * (1 - TOPUP_MARGIN_BUFFER) * 100)
     : 0;
+}
+
+/** The two stops AT SUPPORT the policy actually runs, as fractions — each clamped to its leg's DEFENSE line
+ *  (a stop above its defense line would pull cold at support by construction). ONE definition: the engine
+ *  and the faces' readouts both call it. `strikeCapEffPct` is effectiveStrikeCapPct's result (0 = off).
+ *  Range validation stays in `resolveSupportPolicy` — this is only the clamp, the `effectiveStrikeCapPct` precedent. */
+export function effectivePolicyStops(
+  cbStopAtSupportPct: number, strikeStopAtSupportPct: number, cbLtvCapPct: number, strikeCapEffPct: number,
+): { cbStop: number; skStop: number } {
+  const skRaw = strikeStopAtSupportPct / 100;
+  return {
+    cbStop: Math.min(cbStopAtSupportPct / 100, cbLtvCapPct / 100),
+    skStop: strikeCapEffPct > 0 ? Math.min(skRaw, strikeCapEffPct / 100) : skRaw,
+  };
+}
+
+/** Equity after the bills nothing paid AND the cash the reserve spent. Money from outside the loop is never a
+ *  gain, and a bill nobody paid is never free (spec v1.4 #21). The faces' "Net equity" tile stays raw equity;
+ *  this is what the VERDICT compares. The adjustments are summed first, so a run with none returns
+ *  `last.equity` exactly. */
+export function allInEquity(r: Pick<CyclingResult,
+  'last' | 'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd'>): number {
+  return r.last.equity - (r.totalUnfundedUsd + r.totalCashToBillsUsd + r.totalCashToCureUsd);
+}
+
+/** The never-draw baseline on the same basis: its equity after its OWN unpaid bills (it holds no reserve). */
+export function baselineAllInEquity(r: Pick<CyclingResult, 'baselineEquity' | 'baselineUnfundedUsd'>): number {
+  return r.baselineEquity - r.baselineUnfundedUsd;
 }
 
 /** The policy the engine actually runs: the validated inputs, the two CLAMPED stops, the buffer in dollars. */
@@ -493,7 +528,7 @@ interface ActivePolicy {
 function resolveSupportPolicy(
   p: SupportPolicyInputs,
   ctx: {
-    mode: CyclingMode; pathLength: number; cap: number; skCapPct: number;
+    mode: CyclingMode; pathLength: number; cbLtvCapPct: number; skCapPct: number;
     strikeMarginLtv: number; strikeMaxDrawLtv: number; expenses: number;
   },
 ): { ok: true; policy: ActivePolicy } | { ok: false; reason: PolicyIgnoredReason } {
@@ -507,12 +542,12 @@ function resolveSupportPolicy(
   if (!(fin(cbRaw) && cbRaw > 0 && cbRaw < CB_LLTV)) return { ok: false, reason: 'cbStop' };
   // 🔴 THE CLAMPS — a stop at support can never exceed its leg's DEFENSE line (the `coldFloorLtv = Math.min(…,
   // cap)` precedent: the knobs compose instead of fighting). A stop above its defense line would pull cold AT
-  // support by construction, which breaks the policy's own promise (G2).
-  const cbStop = Math.min(cbRaw, ctx.cap);
+  // support by construction, which breaks the policy's own promise (G2). ONE definition, shared with the faces'
+  // readouts: `effectivePolicyStops`. Its Strike stop is only read after the range check below.
+  const { cbStop, skStop } = effectivePolicyStops(p.cbStopAtSupportPct, p.strikeStopAtSupportPct, ctx.cbLtvCapPct, ctx.skCapPct);
   if (!(cbStop > 0)) return { ok: false, reason: 'cbStop' };   // a CB cap of 0 (or junk) leaves no stop
   const skRaw = p.strikeStopAtSupportPct / 100;
   if (!(fin(skRaw) && skRaw > 0 && skRaw < ctx.strikeMarginLtv)) return { ok: false, reason: 'strikeStop' };
-  const skStop = ctx.skCapPct > 0 ? Math.min(skRaw, ctx.skCapPct / 100) : skRaw;
   const a = p.accumulateBelow;
   const b = p.payDownAbove;
   if (!(fin(a) && fin(b) && a > 0 && a < b)) return { ok: false, reason: 'zones' };
@@ -639,7 +674,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let policyIgnoredReason: PolicyIgnoredReason | null = null;
   if (inputs.supportPolicy !== undefined) {
     const v = resolveSupportPolicy(inputs.supportPolicy, {
-      mode, pathLength: pricePath.length, cap, skCapPct, strikeMarginLtv, strikeMaxDrawLtv, expenses,
+      mode, pathLength: pricePath.length, cbLtvCapPct, skCapPct, strikeMarginLtv, strikeMaxDrawLtv, expenses,
     });
     if (v.ok) policy = v.policy;
     else policyIgnoredReason = v.reason;
@@ -664,6 +699,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalPayDownUsd = 0;
   let totalCashToBillsUsd = 0;
   let totalCashToCureUsd = 0;
+  let totalStrikeCureColdBtc = 0;
   let coldRetrievedAboveSupportBtc = 0;
 
   /** Coinbase → cold, attributing the migrated Strike coins FIFO (display only). ONE copy of the rule, shared by
@@ -1180,6 +1216,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     totalPayDownUsd += payDownUsd;
     totalCashToBillsUsd += cashToBillsUsd;
     totalCashToCureUsd += cashToCureUsd;
+    totalStrikeCureColdBtc += strikeCureColdBtc;
     rows.push({
       m,
       yearLabel: (startYear + m / 12).toFixed(1),
@@ -1231,12 +1268,15 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   // verdict by exactly the seed (0 today, since no caller passes one).
   let baseBtc = inputs.strikeCollateralBtc + inputs.cbCollateralBtc + openingColdBtc;
   const surplus = Math.max(0, income - expenses);
+  let baselineUnfundedUsd = 0;
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;
     baseStrikeBal *= 1 + smr;
     // The same income path as the strategy (absent ⇒ the constant surplus, byte-identical).
     const monthSurplus = incomePath === undefined ? surplus : Math.max(0, incomeAt(m) - expenses);
     if (pricePath[m] > 0) baseBtc += monthSurplus / pricePath[m];
+    // The baseline's own gap: the part of the bill its income can't cover, with nothing else to pay it.
+    baselineUnfundedUsd += Math.max(0, expenses - incomeAt(m));
   }
   const last = rows[rows.length - 1];
   const baselineEquity = baseBtc * last.price - (baseCbDebt + baseStrikeBal);
@@ -1251,14 +1291,14 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
     totalStrikeToCbBtc, totalColdRetrievedBtc: coldRetrievedBtc,
     firstStrikeTopUpMonth, strikeTopUpExhaustedMonth, totalStrikeTopUpBtc, firstSurvivalYieldMonth,
-    baselineEquity, baselineBtc: baseBtc,
+    baselineEquity, baselineBtc: baseBtc, baselineUnfundedUsd,
     openingColdBtc,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
     policyApplied: policy !== null, policyIgnoredReason,
     monthsInZone, firstPausedMonth, firstPayDownMonth, modelBrokenMonth, firstRearmMonth, breakCount,
     firstCeilingThrottleMonth, firstStrikeCallMonth, strikeCallsCured, strikeCallsSold,
     totalStrikeLiquidatedBtc, firstStrikeLiquidationMonth, totalRestoreUsd, totalPayDownUsd,
-    openingCashUsd, cashLeftUsd: cashReserve, totalCashToBillsUsd, totalCashToCureUsd,
+    openingCashUsd, cashLeftUsd: cashReserve, totalCashToBillsUsd, totalCashToCureUsd, totalStrikeCureColdBtc,
     coldRetrievedAboveSupportBtc,
   };
 }

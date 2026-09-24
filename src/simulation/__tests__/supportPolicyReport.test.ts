@@ -1,12 +1,10 @@
 import { describe, it, expect } from 'vitest';
-import { runCyclingSim, type CyclingInputs, type CyclingResult, type SupportPolicyInputs } from '../cyclingSim';
+import { runCyclingSim, allInEquity, type CyclingInputs, type CyclingResult, type SupportPolicyInputs } from '../cyclingSim';
 import { SUPPORT_EPS, type PolicyState } from '../supportPolicy';
-import { cycleConvergencePath } from '../cyclePath';
-import { STRIKE_MAX_DRAW_LTV } from '../strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
-import { applyPathStress } from '../../components/Almanac/cyclingFaceView';
 import {
-  SUPPORT, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, buildP9, a5Cases, minMultiple,
+  SUPPORT, SP_REPRO, CASH_6_USD, policyFor, buildP9, a5Cases, minMultiple, faceWorldGrid, syntheticGrid, reachGrid,
+  type GridCell,
 } from './supportPolicyPaths';
 
 /**
@@ -21,7 +19,7 @@ import {
  * `cyclingSimPolicy.test.ts`; this file measures and discloses. Its only assertions are FIDELITY checks: the
  * three grids are rebuilt exactly as `cyclingSim.test.ts` builds them, and the policy-OFF arm must reproduce that
  * file's pinned counts — or the grid numbers below describe some other grid; the re-arm table's break / re-arm
- * months must be the engine's own events; and net equity must not move when cash only replaces unpaid bills (P7).
+ * months must be the engine's own events; and all-in equity must not move when cash only replaces unpaid bills (P7).
  */
 
 // ── formatting (manual, locale-free, so the output is byte-deterministic) ─────────────────────────────────────
@@ -55,13 +53,9 @@ function peak(r: CyclingResult, key: 'cbLtv' | 'strikeLtv'): { v: number; m: num
 const flaggedCallMonths = (r: CyclingResult): number => r.rows.filter((x) => x.strikeLtv >= STRIKE_MARGIN_CALL_LTV).length;
 /** The verdict-adjusted equity: a cash cure lowered the debt with money from OUTSIDE the loop (spec §A3). */
 const adjEquity = (r: CyclingResult): number => r.last.equity - r.totalCashToCureUsd;
-/**
- * NET EQUITY — the comparison that counts every dollar: money from outside the loop is never a gain, and a bill
- * nobody paid is never free. equity − unpaid bills − cash spent on bills − cash spent on cures. The OFF arm holds no
- * reserve, so its last two terms are 0.
- */
-const netEquity = (r: CyclingResult): number =>
-  r.last.equity - r.totalUnfundedUsd - r.totalCashToBillsUsd - r.totalCashToCureUsd;
+// ALL-IN EQUITY is the engine's `allInEquity` — ONE definition, shared with the faces' verdict: money from outside the
+// loop is never a gain, and a bill nobody paid is never free. equity − unpaid bills − cash spent on bills − cash spent
+// on cures. The OFF arm holds no reserve, so its last two terms are 0.
 const insideBoth = (r: CyclingResult): boolean =>
   (r.rows[0].cbCeilingHeadroomUsd ?? -1) >= 0 && (r.rows[0].strikeCeilingHeadroomUsd ?? -1) >= 0;
 /** Break and re-arm months, read off the zone strip (row 0 is the opening and is never 'broken'). */
@@ -84,64 +78,18 @@ const rearmLabel = (n: Rearm): string => (n === null ? 'latched' : `${n}`);
 const withPolicy = (c: CyclingInputs, o: Partial<SupportPolicyInputs>): CyclingInputs =>
   ({ ...c, supportPolicy: { ...c.supportPolicy!, ...o } });
 
-// ── the existing grids, rebuilt EXACTLY as cyclingSim.test.ts builds them ────────────────────────────────────
-const GRID_REPRO: CyclingInputs = {
-  startYear: 2027,
-  strikeCollateralBtc: 1, strikeBalance: 20_000, strikeCreditLine: 60_000,
-  strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
-  cbCollateralBtc: 1, cbDebt: 40_000,
-  income: 8_000, expenses: 6_000, strikeAprPct: 13, cbAprPct: 6.2,
-  cycleMonths: 1, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30,
-  pricePath: cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1),
-};
-interface GridCell { off: CyclingInputs; support: number[] }
-function faceWorldGrid(): GridCell[] {
-  const path = cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1);
-  const support = supportPathFor(new Date('2027-01-01T00:00:00Z'), 60);
-  const out: GridCell[] = [];
-  for (const cbLtvCapPct of [50, 60, 70]) {
-    for (let from = 1; from <= 59; from += 2) {
-      for (const lens of [0.35, 0.5, 0.65, 0.8]) {
-        out.push({ off: { ...GRID_REPRO, cbLtvCapPct, strikeLtvCapPct: 60, pricePath: applyPathStress(path, from, lens) }, support });
-      }
-    }
-  }
-  return out;
-}
-function syntheticGrid(): (GridCell & { capOff: CyclingInputs })[] {
-  const out: (GridCell & { capOff: CyclingInputs })[] = [];
-  for (const strikeBalance of [0, 10_000, 20_000, 30_000, 40_000]) for (const cbDebt of [40_000, 50_000, 60_000, 70_000])
-  for (const openingColdBtc of [0, 0.1, 0.2, 0.3, 0.5, 1.0]) for (const pre of [1, 3, 6]) for (const depth of [0.4, 0.5, 0.6, 0.7])
-  for (const coldStoreBufferPct of [0, 30]) for (const cycleMonths of [1, 999]) {
-    const capOff: CyclingInputs = {
-      ...GRID_REPRO, cbLtvCapPct: 50, strikeBalance, cbDebt, openingColdBtc, coldStoreBufferPct, cycleMonths,
-      pricePath: [...new Array(pre + 1).fill(100_000), ...new Array(12).fill(100_000 * depth)],
-    };
-    out.push({ capOff, off: { ...capOff, strikeLtvCapPct: 60 }, support: supportPathFor(new Date('2027-01-01T00:00:00Z'), pre + 12) });
-  }
-  return out;
-}
-function reachGrid(): GridCell[] {
-  const path = cycleConvergencePath(100_000, new Date('2026-09-21T00:00:00Z'), 60, 1);
-  const support = supportPathFor(new Date('2026-09-21T00:00:00Z'), 60);
-  const out: GridCell[] = [];
-  for (let from = 0; from <= 60; from++) {
-    for (let k = 35; k <= 80; k++) {
-      out.push({ off: { ...GRID_REPRO, startYear: 2026, strikeLtvCapPct: 60, pricePath: applyPathStress(path, from, k / 100) }, support });
-    }
-  }
-  return out;
-}
+// ── the existing grids live in supportPolicyPaths.ts (rebuilt EXACTLY as cyclingSim.test.ts builds them; the
+// fidelity asserts below prove it) — shared with the faces' exhaustive neverDraws test.
 
 /** One re-arm setting across a grid. Scalars only — keeping every cell's full result would hold ~1M rows. */
 interface RearmTally {
   broken: number; firstBreaks: number[]; rearmed: number; firstRearms: number[]; breaks: number;
-  liq: number; liqMonths: number[]; held: number[]; debt: number[]; netEquity: number[];
+  liq: number; liqMonths: number[]; held: number[]; debt: number[]; allIn: number[];
   unfundedSum: number; unfundedCells: number; peakCb: number[]; g2Violations: number; g3OnLiq: number;
 }
 const newRearmTally = (): RearmTally => ({
   broken: 0, firstBreaks: [], rearmed: 0, firstRearms: [], breaks: 0, liq: 0, liqMonths: [], held: [], debt: [],
-  netEquity: [], unfundedSum: 0, unfundedCells: 0, peakCb: [], g2Violations: 0, g3OnLiq: 0,
+  allIn: [], unfundedSum: 0, unfundedCells: 0, peakCb: [], g2Violations: 0, g3OnLiq: 0,
 });
 function noteRearm(t: RearmTally, r: CyclingResult, inside: boolean, inScope: boolean): void {
   if (r.modelBrokenMonth !== null) { t.broken++; t.firstBreaks.push(r.modelBrokenMonth); }
@@ -150,7 +98,7 @@ function noteRearm(t: RearmTally, r: CyclingResult, inside: boolean, inScope: bo
   if (r.liqMonth !== null) { t.liq++; t.liqMonths.push(r.liqMonth); }
   t.held.push(r.last.btcHeld);
   t.debt.push(r.last.debt);
-  t.netEquity.push(netEquity(r));
+  t.allIn.push(allInEquity(r));
   t.unfundedSum += r.totalUnfundedUsd;
   if (r.totalUnfundedUsd > 0) t.unfundedCells++;
   t.peakCb.push(peak(r, 'cbLtv').v);
@@ -234,39 +182,39 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     out('cold 0; $8k income / $6k bills; 13% / 6.27%; cadence 1; CB cap 70; Strike cap 60; defend on. OFF = the faces\'');
     out('defaults (sweep 30). ON = the default policy (stops 60 / 50 at support, zones 1.5 / 2.0, 12-month buffer, cash 0).');
     out(`Support at start S₀ = ${usd(SUPPORT[0])}; every path opens at 1.35 × S₀ = ${usd(1.35 * SUPPORT[0])}.`);
-    out('Net equity = equity − unpaid bills − cash spent on bills − cash spent on cures.');
+    out('All-in equity = equity − unpaid bills − cash spent on bills − cash spent on cures.');
     out();
 
     // ── G5 · the face defaults ──
     out('## G5 — disclosure on the face-default paths (OFF vs ON)');
     out();
-    out('| Path | ₿ held OFF | ₿ held ON | cold OFF | cold ON | debt OFF | debt ON | equity OFF | equity ON | net equity OFF | net equity ON |');
+    out('| Path | ₿ held OFF | ₿ held ON | cold OFF | cold ON | debt OFF | debt ON | equity OFF | equity ON | all-in equity OFF | all-in equity ON |');
     out('|---|---|---|---|---|---|---|---|---|---|---|');
     for (const name of ['P1', 'P2', 'P2 (phase −4)']) {
       const r = runs.find((x) => x.c.name === name)!;
-      out(`| ${name} | ${btc(r.off.last.btcHeld)} | ${btc(r.on.last.btcHeld)} | ${btc(r.off.totalColdBtc)} | ${btc(r.on.totalColdBtc)} | ${usd(r.off.last.debt)} | ${usd(r.on.last.debt)} | ${usd(r.off.last.equity)} | ${usd(adjEquity(r.on))} | ${usd(netEquity(r.off))} | ${usd(netEquity(r.on))} |`);
+      out(`| ${name} | ${btc(r.off.last.btcHeld)} | ${btc(r.on.last.btcHeld)} | ${btc(r.off.totalColdBtc)} | ${btc(r.on.totalColdBtc)} | ${usd(r.off.last.debt)} | ${usd(r.on.last.debt)} | ${usd(r.off.last.equity)} | ${usd(adjEquity(r.on))} | ${usd(allInEquity(r.off))} | ${usd(allInEquity(r.on))} |`);
     }
     out();
 
     // ── end-of-run per path ──
     out('## Per path — end of run (OFF vs ON, cash 0; ON with 6 months of cash in brackets where it differs)');
     out();
-    out('| Path | ₿ held OFF | ₿ held ON | cold OFF | cold ON | debt OFF | debt ON | equity OFF | equity ON (adj.) | net equity OFF | net equity ON | CB liq OFF / ON | unfunded OFF / ON | cash left (cash 6) |');
+    out('| Path | ₿ held OFF | ₿ held ON | cold OFF | cold ON | debt OFF | debt ON | equity OFF | equity ON (adj.) | all-in equity OFF | all-in equity ON | CB liq OFF / ON | unfunded OFF / ON | cash left (cash 6) |');
     out('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const { c, off, on, on6 } of runs) {
       const alt = (a: string, b: string): string => (a === b ? a : `${a} [${b}]`);
-      out(`| ${c.name} | ${btc(off.last.btcHeld)} | ${alt(btc(on.last.btcHeld), btc(on6.last.btcHeld))} | ${btc(off.totalColdBtc)} | ${alt(btc(on.totalColdBtc), btc(on6.totalColdBtc))} | ${usd(off.last.debt)} | ${alt(usd(on.last.debt), usd(on6.last.debt))} | ${usd(off.last.equity)} | ${alt(usd(adjEquity(on)), usd(adjEquity(on6)))} | ${usd(netEquity(off))} | ${alt(usd(netEquity(on)), usd(netEquity(on6)))} | ${mo(off.liqMonth)} / ${alt(mo(on.liqMonth), mo(on6.liqMonth))} | ${usd(off.totalUnfundedUsd)} / ${alt(usd(on.totalUnfundedUsd), usd(on6.totalUnfundedUsd))} | ${usd(on6.cashLeftUsd)} |`);
+      out(`| ${c.name} | ${btc(off.last.btcHeld)} | ${alt(btc(on.last.btcHeld), btc(on6.last.btcHeld))} | ${btc(off.totalColdBtc)} | ${alt(btc(on.totalColdBtc), btc(on6.totalColdBtc))} | ${usd(off.last.debt)} | ${alt(usd(on.last.debt), usd(on6.last.debt))} | ${usd(off.last.equity)} | ${alt(usd(adjEquity(on)), usd(adjEquity(on6)))} | ${usd(allInEquity(off))} | ${alt(usd(allInEquity(on)), usd(allInEquity(on6)))} | ${mo(off.liqMonth)} / ${alt(mo(on.liqMonth), mo(on6.liqMonth))} | ${usd(off.totalUnfundedUsd)} / ${alt(usd(on.totalUnfundedUsd), usd(on6.totalUnfundedUsd))} | ${usd(on6.cashLeftUsd)} |`);
     }
     out();
-    out('Equity alone ignores unpaid bills; compare the arms on net equity.');
+    out('Equity alone ignores unpaid bills; compare the arms on all-in equity.');
     out();
     // FIDELITY: on P7 the cash only replaces bills that would otherwise go unpaid (no Strike call there), so cash 0
-    // and cash 6 must print the same net equity — or the definition is counting outside money as a gain.
+    // and cash 6 must print the same all-in equity — or the definition is counting outside money as a gain.
     const p7c0 = runs.find((x) => x.c.name === 'P7 (cash 0)')!.on;
     const p7c6 = runs.find((x) => x.c.name === 'P7 (cash 6)')!.on;
     expect(p7c6.totalCashToBillsUsd).toBeGreaterThan(0);   // non-vacuous: the cash did pay bills
-    expect(usd(netEquity(p7c0))).toBe(usd(netEquity(p7c6)));
-    expect(Math.abs(netEquity(p7c0) - netEquity(p7c6))).toBeLessThan(1e-6);
+    expect(usd(allInEquity(p7c0))).toBe(usd(allInEquity(p7c6)));
+    expect(Math.abs(allInEquity(p7c0) - allInEquity(p7c6))).toBeLessThan(1e-6);
 
     // ── risk: peaks, calls, cold above support ──
     out('## Per path — how close to a line (peak LTV at price, with its month) and the Strike leg');
@@ -346,7 +294,7 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     // ── breaker re-arm (v1.3 #14): measured before any default changes ──
     out('## Breaker re-arm — latched vs 3 / 6 / 12 month-ends at or above support (ON, cash 0; no default is set)');
     out();
-    out('| Path | re-arm | ₿ held | debt | unfunded | equity (adj.) | net equity | CB liq | peak CB LTV | breaks | re-arms | G2 | G3 |');
+    out('| Path | re-arm | ₿ held | debt | unfunded | equity (adj.) | all-in equity | CB liq | peak CB LTV | breaks | re-arms | G2 | G3 |');
     out('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const name of ['P3', 'P6', 'P9 ($4k / $6k)']) {
       const run = runs.find((x) => x.c.name === name)!;
@@ -362,7 +310,7 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
         const g2 = inside ? (r.coldRetrievedAboveSupportBtc === 0 ? '✓' : `✗ ${btc(r.coldRetrievedAboveSupportBtc)}`) : 'n/a (opens over a ceiling)';
         const g3 = inside && minK >= 0.8 - 1e-9 ? (r.liqMonth === null ? '✓' : `✗ ${mo(r.liqMonth)}`) : `n/a (min ${minK.toFixed(2)} × S)`;
         const p = peak(r, 'cbLtv');
-        out(`| ${name} | ${rearmLabel(n)} | ${btc(r.last.btcHeld)} | ${usd(r.last.debt)} | ${usd(r.totalUnfundedUsd)} | ${usd(adjEquity(r))} | ${usd(netEquity(r))} | ${mo(r.liqMonth)} | ${pct(p.v)} ${mo(p.m)} | ${moList(ev.breaks)} | ${moList(ev.rearms)} | ${g2} | ${g3} |`);
+        out(`| ${name} | ${rearmLabel(n)} | ${btc(r.last.btcHeld)} | ${usd(r.last.debt)} | ${usd(r.totalUnfundedUsd)} | ${usd(adjEquity(r))} | ${usd(allInEquity(r))} | ${mo(r.liqMonth)} | ${pct(p.v)} ${mo(p.m)} | ${moList(ev.breaks)} | ${moList(ev.rearms)} | ${g2} | ${g3} |`);
       }
     }
     out();
@@ -395,12 +343,12 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     out();
     out('### Breaker re-arm across the grids (ON, cash 0)');
     out();
-    out('| Grid | re-arm | broken cells (median first break) | re-armed cells (median first re-arm) | Σ breaks | CB liq cells (median month) | median ₿ held | median debt | median net equity | unfunded Σ (cells > 0) | peak CB LTV median / max | G2 violations | G3 in-scope CB liq |');
+    out('| Grid | re-arm | broken cells (median first break) | re-armed cells (median first re-arm) | Σ breaks | CB liq cells (median month) | median ₿ held | median debt | median all-in equity | unfunded Σ (cells > 0) | peak CB LTV median / max | G2 violations | G3 in-scope CB liq |');
     out('|---|---|---|---|---|---|---|---|---|---|---|---|---|');
     for (const { name, t } of tallies) {
       for (const n of REARMS) {
         const r = t.rearm.get(n)!;
-        out(`| ${name} | ${rearmLabel(n)} | ${r.broken} (${medianMo(r.firstBreaks)}) | ${r.rearmed} (${medianMo(r.firstRearms)}) | ${r.breaks} | ${r.liq} (${medianMo(r.liqMonths)}) | ${btc(median(r.held))} | ${usd(median(r.debt))} | ${usd(median(r.netEquity))} | ${usd(r.unfundedSum)} (${r.unfundedCells}) | ${pct(median(r.peakCb))} / ${pct(Math.max(...r.peakCb))} | ${r.g2Violations} | ${r.g3OnLiq} |`);
+        out(`| ${name} | ${rearmLabel(n)} | ${r.broken} (${medianMo(r.firstBreaks)}) | ${r.rearmed} (${medianMo(r.firstRearms)}) | ${r.breaks} | ${r.liq} (${medianMo(r.liqMonths)}) | ${btc(median(r.held))} | ${usd(median(r.debt))} | ${usd(median(r.allIn))} | ${usd(r.unfundedSum)} (${r.unfundedCells}) | ${pct(median(r.peakCb))} / ${pct(Math.max(...r.peakCb))} | ${r.g2Violations} | ${r.g3OnLiq} |`);
       }
     }
     out();

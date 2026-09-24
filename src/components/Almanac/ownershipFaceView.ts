@@ -1,13 +1,14 @@
 import type { CyclingRow, CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { btcGained } from './cyclingFaceView';
+import { policyLimitPct } from './supportPolicyView';
 import { fmtUSD } from '../../utils/format';
 
 /**
  * Ownership face display math (S3). REUSES the shared Cycling helpers rather than defining a second set
  * (B1): `btcGained` / `clampMonth` / `holdingsSplit` / `applyPathStress` / `debtSplit` come straight from
- * cyclingFaceView. This module adds only the ownership-specific bits. Pure, store-free, type-only imports
- * (the testable-leaf rule).
+ * cyclingFaceView. This module adds only the ownership-specific bits. Pure, store-free leaf imports only —
+ * the support policy's chart limit comes from supportPolicyView (the testable-leaf rule).
  *
  * 🔴 Must never be imported by anything in the risk core (same discipline as cyclingFaceView).
  */
@@ -32,15 +33,20 @@ export interface OwnershipChartRow {
   /** null when no finite liquidation price exists (debt-free leg, or debt with no collateral). Plotting a
    *  $0 line would read as "never liquidates", which is the inverse of an unbacked position's truth. */
   liq: number | null;
+  /** The support policy's Coinbase limit at TODAY'S price, % (`policyLimitPct`, rounded to 1 dp like the other LTV
+   *  series) — the LTV chart's dashed series. null without a stop (policy off) or without a multiple. */
+  cbLimit: number | null;
 }
 
 /** Chart series for the three ownership views (held/owed/yours · LTV · price & liq). `yours`/`owed` read
- *  deriveOwnership — the definition, never an open-coded subtraction. */
-export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): OwnershipChartRow[] {
+ *  deriveOwnership — the definition, never an open-coded subtraction. Pass `cbStopEffPct` (the effective Coinbase
+ *  stop at support) only while the policy applies; without it `cbLimit` is null on every row. */
+export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number, cbStopEffPct?: number): OwnershipChartRow[] {
   return rows.map((r) => {
     const o = deriveOwnership(r.btcHeld, r.debt, r.price);
     const ltvPct = (fraction: number): number | null =>
       Number.isFinite(fraction) ? +(fraction * 100).toFixed(1) : null;
+    const limit = cbStopEffPct === undefined ? null : policyLimitPct(r, cbStopEffPct);
     return {
       m: r.m,
       held: +r.btcHeld.toFixed(4),
@@ -55,6 +61,7 @@ export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number): Owners
       liq: cbLiqLtv > 0 && r.cbCollateralBtc > 0 && r.cbDebt > 0
         ? Math.round(r.cbDebt / (cbLiqLtv * r.cbCollateralBtc))
         : null,
+      cbLimit: limit === null ? null : +limit.toFixed(1),
     };
   });
 }
@@ -133,12 +140,20 @@ export function modeConstraints(
 
 /** The cycleUnfunded notice — ONE sentence for all three faces. CAUSE-NEUTRAL: the gap comes either from the
  *  stop halting the draw or from the credit line running out, and the copy must be true in both (it sits
- *  beside CyclingFace's credit-exhausted notice). Empty when there is no gap. */
-export function unfundedNote(firstUnfundedMonth: number | null, totalUnfundedUsd: number): string {
+ *  beside CyclingFace's credit-exhausted notice). Empty when there is no gap.
+ *  ⚠ Pass `baselineUnfundedUsd` (the engine's `sim.baselineUnfundedUsd`) and the last sentence states the never-draw
+ *  baseline's OWN measured gap — "the same gap" is not true under the support policy, which can leave bills unpaid
+ *  where the baseline pays them. Two arguments keep today's sentence until the faces pass it (Run 2b), which then
+ *  makes it required. */
+export function unfundedNote(firstUnfundedMonth: number | null, totalUnfundedUsd: number, baselineUnfundedUsd?: number): string {
   if (firstUnfundedMonth === null) return '';
+  const baseline = baselineUnfundedUsd === undefined
+    ? 'The never-draw comparison has the same gap.'
+    : baselineUnfundedUsd >= 0.5
+      ? `The never-draw comparison leaves ${fmtUSD(baselineUnfundedUsd)} unpaid over the same run.`
+      : 'The never-draw comparison pays every bill over the same run.';
   return `From month ${firstUnfundedMonth}, bills exceed what income and the credit line can cover — `
-    + `${fmtUSD(totalUnfundedUsd)} over this run is paid by nothing in the model. `
-    + 'The never-draw comparison has the same gap.';
+    + `${fmtUSD(totalUnfundedUsd)} over this run is paid by nothing in the model. ${baseline}`;
 }
 
 /** One sentence per strategy. ⚠ `hold` IS the never-draw baseline (C3) — the note says so, and no view may

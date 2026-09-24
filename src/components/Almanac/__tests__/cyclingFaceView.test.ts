@@ -6,11 +6,17 @@ import {
   cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, MILESTONE_MONTHS, fixedMilestoneMonths,
   verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeYieldSentence, DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
-  strikeCapReadout, STRIKE_CAP_TIP,
+  strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
   type StrikeCapReading,
 } from '../cyclingFaceView';
 import { cbBarLevel } from '../../../simulation/cbMetrics';
-import { runCyclingSim, effectiveStrikeCapPct, type CyclingRow, type CyclingInputs } from '../../../simulation/cyclingSim';
+import {
+  runCyclingSim, effectiveStrikeCapPct, allInEquity, baselineAllInEquity, type CyclingRow, type CyclingInputs,
+} from '../../../simulation/cyclingSim';
+import { fmtUSD } from '../../../utils/format';
+import {
+  SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP3,
+} from '../../../simulation/__tests__/supportPolicyPaths';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
 import { cycleConvergencePath } from '../../../simulation/cyclePath';
@@ -520,13 +526,17 @@ describe('shared face rules — extracted from the parent faces (one definition 
 
   it('⭐ verdictVsNeverDraw: liquidation outranks, hold IS the baseline, otherwise equity decides', () => {
     const last = mkRow({ equity: 150_000, btcHeld: 3.2 });
-    const base = { last, baselineEquity: 140_000, baselineBtc: 3.0 };
+    // No unpaid bills and no reserve cash on either side, so the all-in basis equals the raw one here.
+    const base = {
+      last, baselineEquity: 140_000, baselineBtc: 3.0,
+      totalUnfundedUsd: 0, totalCashToBillsUsd: 0, totalCashToCureUsd: 0, baselineUnfundedUsd: 0,
+    };
     expect(verdictVsNeverDraw({ ...base, liqMonth: null }, 'cycle')).toEqual({
-      kind: 'wins', wins: true, equityDelta: 10_000, btcDelta: last.btcHeld - 3.0,
+      kind: 'wins', wins: true, equityDelta: 10_000, btcDelta: last.btcHeld - 3.0, allIn: false,
     });
     expect(verdictVsNeverDraw({ ...base, liqMonth: null, baselineEquity: 160_000 }, 'cycle').kind).toBe('loses');
-    // Liquidation outranks the equity comparison — but `wins` stays the RAW comparison, because the Cycling
-    // face colours its Net-equity tile on it even in a liquidated run.
+    // Liquidation outranks the equity comparison — but `wins` stays the equity comparison (all-in), because the
+    // Cycling face colours its Net-equity tile on it even in a liquidated run.
     const liq = verdictVsNeverDraw({ ...base, liqMonth: 30 }, 'cycle');
     expect(liq.kind).toBe('liquidated');
     expect(liq.wins).toBe(true);
@@ -549,10 +559,13 @@ describe('shared face rules — extracted from the parent faces (one definition 
 });
 
 describe('strikeCapReading / strikeCapNote — what the Strike cap did, in plain words', () => {
-  /** A synthetic result — only the six fields the reading reads. */
+  /** A synthetic result — only the fields the reading reads. The support policy's call fields are neutral, as the
+   *  engine reports them with the policy off. */
   const res = (o: Partial<Parameters<typeof strikeCapReading>[0]> = {}): Parameters<typeof strikeCapReading>[0] => ({
     strikeMarginMonth: null, firstSurvivalYieldMonth: null, strikeTopUpExhaustedMonth: null,
-    firstStrikeTopUpMonth: null, totalStrikeTopUpBtc: 0, liqMonth: null, ...o,
+    firstStrikeTopUpMonth: null, totalStrikeTopUpBtc: 0, liqMonth: null,
+    firstStrikeCallMonth: null, strikeCallsCured: 0, strikeCallsSold: 0, totalCashToCureUsd: 0,
+    totalStrikeCureColdBtc: 0, totalStrikeLiquidatedBtc: 0, ...o,
   });
 
   it('the shared defaults: 60, on, and a 50–68 slider (67/68 run as the engine\'s 66.5 ceiling)', () => {
@@ -660,5 +673,110 @@ describe('strikeCapReading / strikeCapNote — what the Strike cap did, in plain
     const off = strikeCapReading(runCyclingSim({ ...base, strikeLtvCapPct: 0 }), 0);
     expect(off.state).toBe('called');
     expect(strikeCapNote(off)).toMatch(/^Strike LTV crosses 70% at month \d+ — margin-call territory on the Strike leg\.$/);
+  });
+});
+
+// ── Run 2a · the helper extensions (support policy faces, §A4) ───────────────────────────────────────────────
+
+describe('creditExhaustedNote — extracted from CyclingFace\'s constraints box; never "$0/mo"', () => {
+  it('today\'s sentence verbatim when there IS a shortfall; the no-figure sentence when the month did not draw', () => {
+    expect(creditExhaustedNote({ creditExhaustedMonth: null, rows: [] })).toBe('');
+    const rows = (shortfall: number) => [mkRow(), mkRow(), mkRow({ strikeShortfall: shortfall })];
+    expect(creditExhaustedNote({ creditExhaustedMonth: 2, rows: rows(1_000) }))
+      .toBe('Strike credit exhausted at month 2 — $1,000/mo of bills funded from income thereafter.');
+    expect(creditExhaustedNote({ creditExhaustedMonth: 2, rows: rows(0) }))
+      .toBe("Strike's own line can't fund the full bill from month 2 — income covers the rest.");
+    expect(creditExhaustedNote({ creditExhaustedMonth: 2, rows: rows(0.3) })).not.toContain('$0/mo');   // dust
+  });
+
+  it('⭐ against the engine: a policy month that did not draw never prints $0/mo; a drawing month keeps the figure', () => {
+    const noDraw = runPolicy(pathP1(), {}, { strikeBalance: 30_000 });   // Strike opens fully drawn: month 1 cannot draw
+    expect(noDraw.creditExhaustedMonth).toBe(1);
+    expect(noDraw.rows[1].strikeShortfall).toBe(0);
+    expect(creditExhaustedNote(noDraw)).toBe("Strike's own line can't fund the full bill from month 1 — income covers the rest.");
+    const short = runPolicy(pathP1(), {}, { strikeCreditLine: 5_000 });   // a $5k line under a $6k bill, drawing
+    expect(short.rows[1].strikeShortfall).toBeCloseTo(1_000, 9);
+    expect(creditExhaustedNote(short)).toBe('Strike credit exhausted at month 1 — $1,000/mo of bills funded from income thereafter.');
+    // Policy off: exactly the face's sentence today (fmtUSD of that month's shortfall).
+    const off = runCyclingSim({ ...SP_REPRO, strikeCreditLine: 5_000, pricePath: pathP1() });
+    const m = off.creditExhaustedMonth!;
+    expect(creditExhaustedNote(off))
+      .toBe(`Strike credit exhausted at month ${m} — ${fmtUSD(off.rows[m].strikeShortfall)}/mo of bills funded from income thereafter.`);
+  });
+});
+
+describe('strikeCapReading — the support policy\'s modelled calls: sold and cured', () => {
+  const res = (o: Partial<Parameters<typeof strikeCapReading>[0]> = {}): Parameters<typeof strikeCapReading>[0] => ({
+    strikeMarginMonth: null, firstSurvivalYieldMonth: null, strikeTopUpExhaustedMonth: null,
+    firstStrikeTopUpMonth: null, totalStrikeTopUpBtc: 0, liqMonth: null,
+    firstStrikeCallMonth: null, strikeCallsCured: 0, strikeCallsSold: 0, totalCashToCureUsd: 0,
+    totalStrikeCureColdBtc: 0, totalStrikeLiquidatedBtc: 0, ...o,
+  });
+  const SOLD = { firstStrikeCallMonth: 18, strikeCallsSold: 1, totalStrikeLiquidatedBtc: 0.1429 };
+  const CURED = { firstStrikeCallMonth: 18, strikeCallsCured: 1, totalCashToCureUsd: 4_000, totalStrikeCureColdBtc: 0.05 };
+
+  it('⭐ the full precedence: sold > cured > called > yielded > short > defended > idle', () => {
+    const all = { strikeMarginMonth: 40, firstSurvivalYieldMonth: 30, strikeTopUpExhaustedMonth: 20, firstStrikeTopUpMonth: 10 };
+    expect(strikeCapReading(res({ ...all, ...CURED, ...SOLD, strikeCallsCured: 1 }), 60).state).toBe('sold');
+    expect(strikeCapReading(res({ ...all, ...CURED }), 60).state).toBe('cured');
+    expect(strikeCapReading(res(all), 60).state).toBe('called');
+    expect(strikeCapReading(res({ ...all, strikeMarginMonth: null }), 60).state).toBe('yielded');
+    expect(strikeCapReading(res({ firstStrikeTopUpMonth: 10, strikeTopUpExhaustedMonth: 20 }), 60).state).toBe('short');
+    expect(strikeCapReading(res({ firstStrikeTopUpMonth: 10, totalStrikeTopUpBtc: 0.1 }), 60).state).toBe('defended');
+    expect(strikeCapReading(res(), 60).state).toBe('idle');
+    // A modelled call outranks "off" exactly as a flagged one does.
+    expect(strikeCapReading(res(CURED), 0).state).toBe('cured');
+    expect(strikeCapReading(res(SOLD), 0).state).toBe('sold');
+  });
+
+  it('the notes are the policy card\'s call sentences — with the yield appended exactly as for a flagged call', () => {
+    expect(strikeCapNote(strikeCapReading(res(SOLD), 60))).toBe('Strike margin call in month 18 — 0.1429 ₿ sold to bring it back to 65%.');
+    expect(strikeCapNote(strikeCapReading(res(CURED), 60)))
+      .toBe('Strike margin call in month 18 — cured with $4,000 of cash and 0.0500 ₿ from cold; nothing sold.');
+    expect(strikeCapNote(strikeCapReading(res({ ...SOLD, firstSurvivalYieldMonth: 12 }), 60)))
+      .toBe('Strike margin call in month 18 — 0.1429 ₿ sold to bring it back to 65%. Strike gave way to keep Coinbase alive in month 12.');
+  });
+
+  it('against the engine: the call fixture reads sold, with cash cured; with the policy off it never reaches either', () => {
+    expect(strikeCapReading(callRun(), 60).state).toBe('sold');
+    expect(strikeCapReading(callRun({ openingCashUsd: CASH_6_USD }), 60).state).toBe('cured');
+    const off = strikeCapReading(runCyclingSim({ ...CALL_BASE, pricePath: CALL_PATH }), 60);
+    expect(off.call).toBeNull();
+    expect(['sold', 'cured']).not.toContain(off.state);
+  });
+});
+
+describe('⭐ verdictVsNeverDraw — the all-in basis (spec v1.4 #21)', () => {
+  it('a result with unpaid bills on BOTH sides flips `wins` against the raw-equity answer', () => {
+    const last = mkRow({ equity: 100_000, btcHeld: 2 });
+    const sim = {
+      liqMonth: null, last, baselineEquity: 95_000, baselineBtc: 2,
+      totalUnfundedUsd: 10_000, totalCashToBillsUsd: 0, totalCashToCureUsd: 0, baselineUnfundedUsd: 2_000,
+    };
+    expect(sim.last.equity).toBeGreaterThan(sim.baselineEquity);   // raw: the run wins by $5,000 …
+    expect(verdictVsNeverDraw(sim, 'cycle')).toEqual({            // … all-in it loses by $3,000
+      kind: 'loses', wins: false, equityDelta: -3_000, btcDelta: 0, allIn: true,
+    });
+  });
+
+  it('⭐ the engine: policy on, $4k of income against $6k of bills on P3 — loses on raw equity, wins all-in', () => {
+    const r = runPolicy(pathP3(), {}, { income: 4_000 });
+    expect(r.totalUnfundedUsd).toBeGreaterThan(0);                        // bills unpaid on BOTH sides …
+    expect(r.baselineUnfundedUsd).toBeGreaterThan(r.totalUnfundedUsd);    // … more of them on the baseline's
+    expect(r.last.equity).toBeLessThan(r.baselineEquity);                 // raw: the run loses
+    const v = verdictVsNeverDraw(r, 'cycle');
+    expect(v.wins).toBe(true);                                            // all-in: it wins
+    expect(v.kind).toBe('wins');
+    expect(v.allIn).toBe(true);
+    expect(v.equityDelta).toBe(allInEquity(r) - baselineAllInEquity(r));
+  });
+
+  it('cash from outside the loop is never a gain — the reserve that paid bills or cured a call counts against the run', () => {
+    const last = mkRow({ equity: 100_000, btcHeld: 2 });
+    const base = { liqMonth: null, last, baselineEquity: 95_000, baselineBtc: 2, totalUnfundedUsd: 0, baselineUnfundedUsd: 0 };
+    const v = verdictVsNeverDraw({ ...base, totalCashToBillsUsd: 4_000, totalCashToCureUsd: 2_000 }, 'cycle');
+    expect(v.equityDelta).toBe(-1_000);
+    expect(v.allIn).toBe(true);
+    expect(v.kind).toBe('loses');
   });
 });

@@ -196,6 +196,11 @@ src/
                                 # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
                                 # added to the never-draw baseline (the owner holds it in that world too).
                                 # NOT wired from the faces — that is its own spec
+                                # RUN 2a: `effectivePolicyStops` (beside effectiveStrikeCapPct) is the ONE stop
+                                # clamp — resolveSupportPolicy and the faces' readout both call it (a source test
+                                # forbids an inline copy). `allInEquity` / `baselineAllInEquity` are the verdict's
+                                # basis; the result adds `baselineUnfundedUsd` (the never-draw baseline's own gap,
+                                # always computed, from the same per-month income) + `totalStrikeCureColdBtc`
     supportPolicy.ts            # SUPPORT-ANCHORED POLICY leaf — imports only the zero-import ./ltv (support
                                 # arrives as a plain number; the §2 wall holds). policyZone (k = price ÷ support →
                                 # paused/accumulate/hold/payDown, junk → 'paused'), ceilingHeadroomUsd (room at
@@ -533,6 +538,17 @@ src/
                                 # overlaying the app header, pinned on scroll). "Sandbox — example plan, edits reset on reload
                                 # · Get the real thing →" linking VITE_PUBLIC_SITE_URL || '/'. Flag unset on the owner/public
                                 # builds → dead branch, tree-shaken
+
+    Almanac/                    # (the faces are documented in § Almanac / CycleClock; listed here: Run 2's pure layer)
+      supportPolicyInputs.ts    # Support policy — the faces' ONLY §2 crossing for it: buildSupportPath(start, months)
+                                # = plBandAt('floor', start, m), bit-equal to the on-the-line price path from month 1;
+                                # supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → the engine input, or
+                                # undefined when off / not cycle. See § Support-anchored policy → Faces (Run 2)
+      supportPolicyView.ts      # Support policy — pure display math: settings, defaults, ranges and the clamp;
+                                # ZONE_LABEL / ZONE_LETTER; policyReading → policyHeadline / policyDetails /
+                                # neverDrawsNote; policyPauseReason; drawPauseClause; zoneStrip; policyLimitPct;
+                                # coldShown; the call sentence. No belief, no store, no React — and it never imports
+                                # cyclingFaceView (which imports it)
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
@@ -2478,8 +2494,10 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   `DEFAULT_STRIKE_CAP_PCT = 60` (between the 50% draw ceiling and the 70% call: 50 thrashes every month, 65
   leaves five points, 60 gives ten either side) and **`DEFAULT_STRIKE_CAP_ON = true`** — safe ONLY because it
   is a measured no-op on the default Support view. The reading is one shared helper, not three copies:
-  `strikeCapReading(sim, effectiveCapPct)` → `off | idle | defended | short | yielded | called`, precedence
-  **called > yielded > short > defended > idle**, rendered by `strikeCapNote`. ⚠ **COPY TRUTH:** the yield
+  `strikeCapReading(sim, effectiveCapPct)` → `off | idle | defended | short | yielded | called | cured | sold`,
+  precedence **sold > cured > called > yielded > short > defended > idle** (`sold` / `cured` are the support policy's
+  MODELLED calls, from the result's call fields — no face reaches them until Run 2b passes a policy), rendered by
+  `strikeCapNote` (a modelled call reads the policy card's own call sentence). ⚠ **COPY TRUTH:** the yield
   sentence says "gave way to **keep Coinbase alive**" ONLY when Coinbase survived; otherwise it says Coinbase
   was liquidated anyway — and since a run can be BOTH called and yielded, the liquidated branch must survive
   being appended to the call (three unit cases pin it). `defended` must never read as a margin call.
@@ -2835,11 +2853,15 @@ non-cycle only). Now it is disclosed. The funding logic and the baseline math ar
   on CyclingFace it sits beside the untouched credit-exhausted notice. ⚠ **CAUSE-NEUTRAL:** "From month N, bills
   exceed what income and the credit line can cover — $X over this run is paid by nothing in the model. The
   never-draw comparison has the same gap." "The draw has stopped" would be false for the credit-line case.
+  ⚠ Run 2a: an optional third argument, `sim.baselineUnfundedUsd`, replaces the last sentence with the baseline's
+  measured gap ("…leaves $Y unpaid over the same run." / "…pays every bill over the same run."). Two arguments keep
+  today's sentence until 2b passes it and makes it required.
 - ⚠ Every face reads it from the SAME `sim` that supplies `firstDrawMonth` (the displayed run), so the stress
   lens moves the notice. CyclingFace destructures `cycleUnfunded` ONLY. It does not render `degenerateCap`,
   which is out of scope there.
-- **The never-draw baseline has the same gap.** It also buys only `max(0, income − expenses)` and pays for
-  nothing else, which is why the notice says so rather than treating the gap as the strategy's cost.
+- **The never-draw baseline has its own gap — now MEASURED** (`baselineUnfundedUsd`, Run 2a). It buys only
+  `max(0, income − expenses)` and pays for nothing else. The verdict counts unpaid bills on BOTH sides
+  (`verdictVsNeverDraw` compares `allInEquity` with `baselineAllInEquity`), so a gap is never free on either side.
 - ⚠ **Path-dependent** (pinned both ways):
   - $4k income against $6k bills at a 45% stop costs **$46,000** over 24 months on a flat $100k path (the stop
     holds from month 2);
@@ -2925,6 +2947,8 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   `firstCeilingThrottleMonth` instead. Both are gated on `liqMonth === null`. `stopMonth` under the policy means
   "the draw stopped for a zone or ceiling reason". ⚠ **Run 2 note (v1.2 #11):** the "Strike credit exhausted" copy
   reads `rows[m].strikeShortfall`, which is 0 in a non-drawing policy month — word it from the cause fields.
+  → `creditExhaustedNote(sim)` (cyclingFaceView, Run 2a) keeps the "$/mo" figure only when there is a shortfall;
+  CyclingFace switches to it in 2b.
 - 🔴 **§2 wall:** `cyclingSim` imports `./supportPolicy`, a leaf that imports only `./ltv`. `supportPath` is a plain
   `number[]` built by the VIEW (Run 2: `supportPolicyInputs.ts`; in Run 1 only the test helper builds it) —
   **NEVER stressed, NEVER phase-shifted**: the stress lens moves the price, not the line.
@@ -2952,7 +2976,8 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
     same ₿ (the coins only sit on Coinbase rather than in cold); after a LATCHED break (P3, P6, P9) it never borrows
     again unless the opt-in re-arm is set, so its long-run numbers after a break are conservative by construction;
     under P7's income shock it leaves far more bills unfunded than OFF without cash (it will not borrow below
-    support). ⚠ **Compare the arms on NET equity** (equity − unpaid bills − cash spent on bills and cures): equity
+    support). ⚠ **Compare the arms on ALL-IN equity** (`allInEquity`: equity − unpaid bills − cash spent on bills and
+    cures — the report's column since Run 2a): equity
     alone counts an unpaid bill as free and outside cash as a gain.
 - **Risks, in plain words:** the whole policy is a bet on the power-law line, especially its slope (fits run
   b = 5.63–5.96; P8 measures a wrong line — on a 5.63 line P1 is paused the whole run and never borrows); tops are
@@ -2976,6 +3001,50 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   (the committed A5 generator — `describe.runIf(SP_REPORT)`, skipped by the normal suite; run
   `SP_REPORT=1 npx vitest run src/simulation/__tests__/supportPolicyReport.test.ts --reporter=verbose` — ⚠ keep
   `--reporter=verbose`, or a non-TTY run drops the output; the output is never committed).
+
+#### Support policy — Faces (Run 2; 2a = the pure layer, built; 2b = the wiring)
+
+Spec: `pbloc-spec-support-policy-faces-v1.md` (v1.1). **2a changed no `.tsx`** — no face runs the policy yet.
+⚠ **2a moves the verdict to the all-in basis before 2b's copy says so (v1.1 #4): keep 2a on `support-policy-faces`
+and merge 2a and 2b to `main` TOGETHER.**
+- **Defaults** (`DEFAULT_SUPPORT_POLICY_SETTINGS`, frozen, decision 1): ON, Coinbase 60% / Strike 50% at support,
+  zones 1.5× / 2.0×, a 12-month bear buffer, a cash reserve of 0 months (a SESSION setting — no store field).
+  **Re-arm 6** (`DEFAULT_BREAKER_REARM_MONTHS`, the owner's pick from Run 1.1's table): a constant, never a control;
+  `undefined` would latch. `effectivePolicySettings` clamps into `SUPPORT_POLICY_RANGES` (junk → the default), pushes
+  `payDownAbove` to ≥ `accumulateBelow + 0.1`, and derives the stops the run USES through the engine's
+  `effectivePolicyStops` — never a second clamp — plus `cbClamped` / `skClamped`.
+- **`supportPolicyInputs.ts` is the faces' ONLY §2 crossing for the policy.** `buildSupportPath` is
+  `plBandAt('floor', …)`, bit-equal to the on-the-line price path from month 1, so 2b's `supportAtMonth` can read it.
+  `supportPolicyFor` returns `undefined` when off or not `cycle` (the engine then runs as today). The cash is months ×
+  the face's bills, and the re-arm key is OMITTED when the constant is undefined (a latched run is Run 1's object).
+  It never sets a test-only input — a key-set test pins that.
+- **`supportPolicyView.ts`** (pure; no belief, store or React; never imports `cyclingFaceView`, which imports it):
+  `policyReading` → `policyHeadline` / `policyDetails` / `neverDrawsNote`.
+  - Headline precedence: **latched break > sold > re-armed break > over the limit > cold pulled above support > cured
+    > paused > zone**. A re-armed break reads `warn`, a latched one `bad`; buy and pay down `good`, hold `quiet`.
+  - Detail order: room (Coinbase, Strike) · breaker · call · cash · unpaid · the cold promise or alarm.
+  - **`neverDraws` is TOTAL and TRUE** for every applied run that never draws, read only from result fields:
+    `'liquidated'` first (month 0 → "Coinbase starts this scenario past its liquidation line…", never "in month 0"),
+    then `'ceiling'` (a limit blocked a buy-zone month that had line room) or `'line'` (Strike's own capacity was 0 in
+    every buy-zone month), then `'zone'` (never in the buy zone, some month above it), else `'belowSupport'` (paused or
+    broken all run). An exhaustive test checks each kind's defining property on every A5 path and grid cell.
+  - Also: `policyPauseReason` (the real reason a month did not borrow), `drawPauseClause` (policy off → today's words
+    verbatim), `zoneStrip` (its counts ARE the engine's `monthsInZone`), `policyLimitPct` (the dashed limit: stop ÷
+    multiple), `coldShown`, and `strikeCallSummary` / `strikeCallSentence` (shared with `strikeCapNote`).
+- **Every sentence is TRUE of its run.** Where the spec's wording would be false for a case it did not cover, the
+  case gets its own pinned variant: the zone sentence on a path that also went under support, "below support" as the
+  cause of a hold month's unpaid bill, "the limits are full" when Strike's own line bound. A $0.50 dust floor stops a
+  ceiling-capped refinance's ~1e-10 overage printing "$0 over". `roomMonths` is null when bills are ≤ 0.
+- **The verdict is ALL-IN** (v1.4 #21): `verdictVsNeverDraw` compares `allInEquity` with `baselineAllInEquity`, so
+  unpaid bills and reserve cash count on BOTH sides; `equityDelta` is all-in and `allIn` flags any adjustment.
+  ⚠ `wins` is all-in while the Net-equity tile's VALUE stays raw — 2b's tile sub-line reconciles the two.
+- **Helper extensions:** `strikeCapReading` gains `sold` / `cured`; `creditExhaustedNote(sim)`;
+  `chartOwnershipRows(…, cbStopEffPct?)` → `cbLimit`; `unfundedNote(…, baselineUnfundedUsd?)`.
+- 🔴 **`modelStrikeLiquidation` and `incomePath` appear nowhere under `src/components/`, tests and comments included**
+  (the forbidden-input grep matches text). A component test reaches P7 only through `a5Cases()`.
+- **2b, not built:** the shared card and the wiring on the three faces — every policy object memoised on stable
+  identities, or the lens reset fires every render; `supportAtMonth` from `supportPath`; the cold-card and
+  defense-line relabels; the structural guards; the device gate.
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -5064,7 +5133,7 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
     `goldens/supportPolicyG1.golden.json` (⚠ regenerate only deliberately, from the SHA in its meta — a diff means
     policy-absent behaviour moved), `supportPolicyReport.test.ts` (the env-gated A5 generator; its only asserts are
     FIDELITY — the OFF arm reproduces this suite's pinned 82 / 920 / 0, the re-arm table's months are the engine's
-    events, and P7's net equity is the same with cash 0 and cash 6).
+    events, and P7's all-in equity is the same with cash 0 and cash 6).
   - ⚠ The policy-OFF draw test's knife-edge mutants — `<` → `<=`, cap +0.1 pt, cap +1 pt — are NOT seen by the G1
     golden, P9-OFF included: the draw test runs after a month of interest and price growth, so its LTV never lands on
     or just over the cap. The whole suite sees all three: the ⭐ exact-at-cap pin in `cyclingSim.test.ts` (0% CB APR,
@@ -5072,6 +5141,34 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
     the CB_LIF seizure pin, and +1 pt the A3/A5 grid pins. Mutation checks run in memory through vitest's Node API,
     and each must prove it applied (an exact-once match, controls green and red) before it can read as survived.
   - `cyclingSim.test.ts`'s TEST-ONLY grep now also covers `incomePath` and `modelStrikeLiquidation`.
+- **Support policy faces — the pure layer** (Run 2a; every guarded line mutation-checked — revert it → red):
+  - `cyclingSimPolicy.test.ts`:
+    - `effectivePolicyStops`: a unit table; the engine's opening headrooms recover the helper's stops across a grid;
+      above the defense line ≡ the clamped value; a source guard against an inline copy;
+    - `baselineUnfundedUsd`: 0 on SP_REPRO, N × the gap, P7's income path, absent from the G1 golden;
+    - `totalStrikeCureColdBtc`: Σ rows, and the ledger foots;
+    - `allInEquity`: ⭐ P7 cash 0 ≡ cash 6, exact with no adjustments, cure cash subtracted.
+  - `supportPolicyInputs.test.ts`:
+    - the path, ⭐ bit-equal to the on-the-line price path from month 1;
+    - `supportPolicyFor`: off / non-cycle → undefined, the cash, the liquidation fallback and the exact key set;
+    - ⭐ the re-arm key is absent under a `vi.doMock` override of the constant;
+    - ⭐ a face-shaped input IS Run 1's default policy plus the re-arm.
+  - `supportPolicyView.test.ts`:
+    - defaults, ranges, the clamp, the push and the flags; ⭐ the readout agrees with the engine's headrooms;
+    - exhaustive labels and the call sentences;
+    - ⭐ every adjacent headline pair, including a sale vs a re-armed break;
+    - the details' order and edge cases;
+    - Run 1's fixtures: the restore, P6 latched vs re-arm, the calls, P7, the cold alarm;
+    - ⭐ `neverDraws` over every A5 path and grid cell, with each kind's defining property;
+    - pause reasons; `drawPauseClause`; the strip, limit and cold gate; a layering guard.
+  - `cyclingFaceView.test.ts` / `ownershipFaceView.test.ts`:
+    - `creditExhaustedNote` never prints "$0/mo"; `strikeCapReading` sold / cured;
+    - ⭐ the all-in verdict: a synthetic flip, and the engine's P3 $4k / $6k run, which loses on raw equity and wins
+      all-in;
+    - `cbLimit` and the three-argument `unfundedNote`.
+    - The ONE moved pin: the verdict `toEqual` gains `allIn: false`, values unchanged.
+  - Run 1's `CALL_*` / `callRun`, `runPolicy`, `RESTORE_OPENING`, `OVER_CEILING_COLD_OPENING` and the report's grid
+    builders now live in `supportPolicyPaths.ts`, and the report's figures are byte-identical after the "all-in" rename.
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
@@ -7425,6 +7522,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
 | `incomePath` and `modelStrikeLiquidation` are test-only | No component may pass either — the survival-guard grep test in `cyclingSim.test.ts` covers both. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. Neither may reach a face |
+| The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted) | `verdictVsNeverDraw` compares `allInEquity` (equity − unpaid bills − reserve cash spent on bills and cures) with `baselineAllInEquity` (baseline equity − its own unpaid bills). Equity alone counts an unpaid bill as free and outside cash as a gain. The Net-equity tile's VALUE stays raw |
+| The stop clamp has one definition, `effectivePolicyStops` | The engine's `resolveSupportPolicy` and the faces' `effectivePolicySettings` both call it; a source test fails on any `Math.min(` left in `resolveSupportPolicy`, so the readout can never describe a different run |
+| A face builds `supportPath` only through `buildSupportPath` and never stresses or phase-shifts it | `supportPolicyInputs.ts` is the only component module that turns the power law into a support path; the view modules import no belief (a layering test). The stress lens moves the price, not the line |
 | The Strike cap never outranks Coinbase survival, and never yields when the yield cannot save Coinbase this month | Priority: **Coinbase survival > Strike cap > Coinbase cap** — Morpho liquidates instantly at 86%, Strike gives 72 hours to cure. So the Strike reserve may claim only the cold Coinbase does not need to sit `CB_SURVIVAL_BUFFER` inside its liquidation, and the floor stands only while cold alone can keep Coinbase alive. ⚠ The guard runs ONLY in a month the CB top-up actually runs (`defenseShortfallUsd > 0`), or a face claims "Strike gave way" in a month nothing was handed over. ⚠ And it stands DOWN when `cbDoomedThisMonth` — feeding reserved cold into the pool Morpho is about to seize costs Strike its cap for nothing. Its risk math lives in `cbDefense.ts` as leaves (`cbSurvivalCollateralBtc`, `cbDoomedThisMonth`), never open-coded in the engine; `CB_SURVIVAL_BUFFER` is its OWN constant, not a second use of `TOPUP_MARGIN_BUFFER`. Pinned by three labelled grids (5,760 / 360 / 2,806) whose counts must not drift, and by fixtures B/C/D |
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
 | The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |

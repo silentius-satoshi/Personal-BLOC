@@ -1,7 +1,7 @@
 /**
  * Shared fixture + price paths for the support-anchored policy (spec v1.2). NOT a test file — imported by
- * `cyclingSimPolicy.test.ts` (the gates) AND `supportPolicyReport.test.ts` (the A5 report), so the numbers the
- * owner approves and the numbers the gates pin come from ONE definition.
+ * `cyclingSimPolicy.test.ts` (the gates), `supportPolicyReport.test.ts` (the A5 report) AND the faces' view tests
+ * (Run 2), so the numbers the owner approves and the numbers the gates pin come from ONE definition.
  *
  * 🔴 ROUND SYNTHETIC FIGURES ONLY. This repo is public — never an owner's real position.
  *
@@ -14,7 +14,7 @@ import { cycleConvergencePath } from '../cyclePath';
 import { ltvOf } from '../ltv';
 import { STRIKE_MAX_DRAW_LTV, STRIKE_CURE_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
-import { strikeLiqLtvOf } from '../../components/Almanac/cyclingFaceView';
+import { strikeLiqLtvOf, applyPathStress } from '../../components/Almanac/cyclingFaceView';
 
 /** ⚠ PINNED start — an implied "today" rots. */
 export const SP_START = new Date('2027-01-01T00:00:00Z');
@@ -195,3 +195,77 @@ export function a5Cases(): A5Case[] {
 /** Lowest multiple of support over the path (m ≥ 0). */
 export const minMultiple = (pricePath: number[], support: number[]): number =>
   Math.min(...pricePath.map((p, m) => p / support[m]));
+
+// ── Run 1's named fixtures — shared with the faces' view tests (Run 2), so both read ONE definition ─────────────
+
+/** SP_REPRO + the default policy on `pricePath`, with overrides for the policy and the inputs (the gates' `on`). */
+export const runPolicy = (pricePath: number[], o: Partial<SupportPolicyInputs> = {}, extra: Partial<CyclingInputs> = {},
+  support: number[] = SUPPORT): CyclingResult =>
+  runCyclingSim({ ...SP_REPRO, ...extra, pricePath, supportPolicy: policyFor(support, o) });
+
+/** Test 16's fixture — Strike near its ceiling, Coinbase DEBT-FREE (else Coinbase liquidates at 0.65 × S before
+ *  the call can be isolated — flagged), then a fall to 0.65 × support for two months. */
+export const CALL_SUPPORT = supportPathFor(SP_START, 2);
+export const CALL_PATH = [1.35 * S0, 0.65 * CALL_SUPPORT[1], 0.65 * CALL_SUPPORT[2]];
+export const CALL_BASE: Omit<CyclingInputs, 'pricePath'> = { ...SP_REPRO, strikeBalance: 34_000, strikeCreditLine: 40_000, cbDebt: 0 };
+export const callRun = (o: Partial<SupportPolicyInputs> = {}, extra: Partial<CyclingInputs> = {}): CyclingResult =>
+  runCyclingSim({ ...CALL_BASE, ...extra, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT, o) });
+
+/** Test 15's opening (on P1) — BOTH legs over their ceilings at support, or "Coinbase before Strike" could not fail.
+ *  CB debt $48k (not the spec's $50k): at $50k month 1 opens at 70.3% at price and the Coinbase DEBT SHIFT fires,
+ *  which moves debt onto Strike and muddies the ordering. */
+export const RESTORE_OPENING: Partial<CyclingInputs> = { cbDebt: 48_000, strikeCollateralBtc: 0.5, strikeBalance: 20_000 };
+
+/** G2's scope fixture (on P1) — Coinbase opens at 75% at support with Strike's line full, so on the line the debt
+ *  shift has no capacity and the top-up takes cold AT support: the Run 1 fixture that pulls cold at or above support. */
+export const OVER_CEILING_COLD_OPENING: Partial<CyclingInputs> = { cbDebt: 52_000, strikeBalance: 30_000, openingColdBtc: 0.5 };
+
+// ── the existing grids, rebuilt EXACTLY as cyclingSim.test.ts builds them (the report asserts that they are) ──────
+
+export const GRID_REPRO: CyclingInputs = {
+  startYear: 2027,
+  strikeCollateralBtc: 1, strikeBalance: 20_000, strikeCreditLine: 60_000,
+  strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV, strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
+  cbCollateralBtc: 1, cbDebt: 40_000,
+  income: 8_000, expenses: 6_000, strikeAprPct: 13, cbAprPct: 6.2,
+  cycleMonths: 1, cbLtvCapPct: 50, defendCbLtv: true, coldStoreBufferPct: 30,
+  pricePath: cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1),
+};
+export interface GridCell { off: CyclingInputs; support: number[] }
+export function faceWorldGrid(): GridCell[] {
+  const path = cycleConvergencePath(100_000, new Date('2027-01-01T00:00:00Z'), 60, 1);
+  const support = supportPathFor(new Date('2027-01-01T00:00:00Z'), 60);
+  const out: GridCell[] = [];
+  for (const cbLtvCapPct of [50, 60, 70]) {
+    for (let from = 1; from <= 59; from += 2) {
+      for (const lens of [0.35, 0.5, 0.65, 0.8]) {
+        out.push({ off: { ...GRID_REPRO, cbLtvCapPct, strikeLtvCapPct: 60, pricePath: applyPathStress(path, from, lens) }, support });
+      }
+    }
+  }
+  return out;
+}
+export function syntheticGrid(): (GridCell & { capOff: CyclingInputs })[] {
+  const out: (GridCell & { capOff: CyclingInputs })[] = [];
+  for (const strikeBalance of [0, 10_000, 20_000, 30_000, 40_000]) for (const cbDebt of [40_000, 50_000, 60_000, 70_000])
+  for (const openingColdBtc of [0, 0.1, 0.2, 0.3, 0.5, 1.0]) for (const pre of [1, 3, 6]) for (const depth of [0.4, 0.5, 0.6, 0.7])
+  for (const coldStoreBufferPct of [0, 30]) for (const cycleMonths of [1, 999]) {
+    const capOff: CyclingInputs = {
+      ...GRID_REPRO, cbLtvCapPct: 50, strikeBalance, cbDebt, openingColdBtc, coldStoreBufferPct, cycleMonths,
+      pricePath: [...new Array(pre + 1).fill(100_000), ...new Array(12).fill(100_000 * depth)],
+    };
+    out.push({ capOff, off: { ...capOff, strikeLtvCapPct: 60 }, support: supportPathFor(new Date('2027-01-01T00:00:00Z'), pre + 12) });
+  }
+  return out;
+}
+export function reachGrid(): GridCell[] {
+  const path = cycleConvergencePath(100_000, new Date('2026-09-21T00:00:00Z'), 60, 1);
+  const support = supportPathFor(new Date('2026-09-21T00:00:00Z'), 60);
+  const out: GridCell[] = [];
+  for (let from = 0; from <= 60; from++) {
+    for (let k = 35; k <= 80; k++) {
+      out.push({ off: { ...GRID_REPRO, startYear: 2026, strikeLtvCapPct: 60, pricePath: applyPathStress(path, from, k / 100) }, support });
+    }
+  }
+  return out;
+}

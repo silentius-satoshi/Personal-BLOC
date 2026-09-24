@@ -1,17 +1,22 @@
-import type { CyclingRow, CyclingResult, CyclingMode } from '../../simulation/cyclingSim';
+import {
+  allInEquity, baselineAllInEquity, type CyclingRow, type CyclingResult, type CyclingMode,
+} from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
+import { fmtUSD } from '../../utils/format';
+import { strikeCallSummary, strikeCallSentence, type StrikeCallSummary } from './supportPolicyView';
 
 /**
  * Pure display math for the Almanac Cycling face. No React, no store, no imports from powerLaw/cycleModel —
- * TYPE imports of the engine's row/result/mode, the ownership leaf (the single definition of yoursBtc, S2′),
- * the zero-import Coinbase constants (the refinance break-even fallback, CB_LLTV for the zone band), the
- * shared gauge rules (cbMetrics' barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit) and the Strike
- * margin-call line (emergencyModel) — every one a leaf. Extracted so it is testable without a render harness
- * (the repo has none).
+ * the engine's row/result/mode types and its two equity helpers (allInEquity / baselineAllInEquity — the ONE
+ * all-in definition), the ownership leaf (the single definition of yoursBtc, S2′), the zero-import Coinbase
+ * constants (the refinance break-even fallback, CB_LLTV for the zone band), the shared gauge rules (cbMetrics'
+ * barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
+ * fmtUSD, and the support policy's call sentence (supportPolicyView — which must never import this module back).
+ * No belief anywhere in that graph. Extracted so it is testable without a render harness (the repo has none).
  *
  * Architecture invariant 2 (one definition of every risk number via cbMetrics / computeStrikeLtv) governs
  * the user's LIVE position. These are projected hypotheticals on a speculative price path — routing them
@@ -386,28 +391,59 @@ export interface NeverDrawVerdict {
   /** Liquidation outranks everything; `hold` IS the never-draw baseline (C3), so there is nothing to
    *  compare; otherwise the run wins or loses on end equity. */
   kind: NeverDrawVerdictKind;
-  /** The raw equity comparison, independent of `kind` — the Net-equity tile colours on it even when the
-   *  run liquidated, exactly as the Cycling face always has. */
+  /** The ALL-IN equity comparison (spec v1.4 #21 — unpaid bills and reserve cash counted on BOTH sides),
+   *  independent of `kind`: the Net-equity tile colours on it even when the run liquidated. ⚠ The tile's VALUE
+   *  stays raw equity, so where the two bases differ 2b's copy must say so (see `allIn`). */
   wins: boolean;
+  /** allInEquity(run) − baselineAllInEquity(run). Equal to the raw delta when `allIn` is false. */
   equityDelta: number;
   btcDelta: number;
+  /** True when any adjustment is non-zero, so the copy can say "after unpaid bills". */
+  allIn: boolean;
 }
 
-/** The verdict against the never-draw baseline on the SAME price path. */
+/**
+ * The verdict against the never-draw baseline on the SAME price path, on the ALL-IN basis. The model drops a bill
+ * nothing pays, so equity alone flatters whichever side leaves more unpaid — and cash from outside the loop is never
+ * a gain. Both sides therefore compare equity after their own unpaid bills (and the strategy's reserve cash).
+ */
 export function verdictVsNeverDraw(
-  sim: Pick<CyclingResult, 'liqMonth' | 'last' | 'baselineEquity' | 'baselineBtc'>,
+  sim: Pick<CyclingResult, 'liqMonth' | 'last' | 'baselineEquity' | 'baselineBtc'
+    | 'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd' | 'baselineUnfundedUsd'>,
   mode: CyclingMode,
 ): NeverDrawVerdict {
-  const wins = sim.last.equity > sim.baselineEquity;
+  const run = allInEquity(sim);
+  const base = baselineAllInEquity(sim);
+  const wins = run > base;
   const kind: NeverDrawVerdictKind = sim.liqMonth !== null ? 'liquidated'
     : mode === 'hold' ? 'baseline'
     : wins ? 'wins' : 'loses';
   return {
     kind,
     wins,
-    equityDelta: sim.last.equity - sim.baselineEquity,
+    equityDelta: run - base,
     btcDelta: sim.last.btcHeld - sim.baselineBtc,
+    allIn: sim.totalUnfundedUsd > 0 || sim.totalCashToBillsUsd > 0 || sim.totalCashToCureUsd > 0
+      || sim.baselineUnfundedUsd > 0,
   };
+}
+
+/**
+ * The Strike-credit notice — extracted from CyclingFace's constraints box so it has ONE definition (the face calls
+ * it from Run 2b). '' when Strike's own line never ran short.
+ * ⚠ Under the support policy `creditExhaustedMonth` is recorded at the DECISION, including a month that then did not
+ * draw at all, whose `strikeShortfall` is 0 — today's copy would print "$0/mo" (spec v1.2 #11). The dollar figure is
+ * kept only when there is a shortfall worth a dollar.
+ */
+export function creditExhaustedNote(
+  sim: { creditExhaustedMonth: number | null; rows: ReadonlyArray<Pick<CyclingRow, 'strikeShortfall'>> },
+): string {
+  const m = sim.creditExhaustedMonth;
+  if (m === null) return '';
+  const shortfall = sim.rows[m]?.strikeShortfall ?? 0;
+  return shortfall >= 0.5
+    ? `Strike credit exhausted at month ${m} — ${fmtUSD(shortfall)}/mo of bills funded from income thereafter.`
+    : `Strike's own line can't fund the full bill from month ${m} — income covers the rest.`;
 }
 
 /** The price the cold-storage buffer survives down to. The knob is a PRICE, not a percentage — "survive a
@@ -461,10 +497,11 @@ export const STRIKE_CAP_TIP: readonly string[] = [
   'One thing outranks the cap: when Coinbase would otherwise be liquidated, Strike gives way. Morpho liquidates instantly at 86% with no cure window; Strike gives 72 hours to cure.',
 ];
 
-export type StrikeCapState = 'off' | 'idle' | 'defended' | 'short' | 'yielded' | 'called';
+export type StrikeCapState = 'off' | 'idle' | 'defended' | 'short' | 'yielded' | 'called' | 'cured' | 'sold';
 
 export interface StrikeCapReading {
-  /** Precedence: called > yielded > short > defended > idle. `off` only when the cap is off AND no call. */
+  /** Precedence: sold > cured > called > yielded > short > defended > idle. `off` only when the cap is off AND
+   *  nothing was called — a call outranks it, flagged (`called`) or modelled by the support policy (`cured`/`sold`). */
   state: StrikeCapState;
   /** The cap the engine RAN, as a percentage (effectiveStrikeCapPct) — 0 when off. */
   capPct: number;
@@ -477,21 +514,30 @@ export interface StrikeCapReading {
   marginMonth: number | null;
   /** Coinbase's liquidation month — decides whether "gave way to keep Coinbase alive" is TRUE. */
   liqMonth: number | null;
+  /** The support policy's MODELLED calls (cure or sale) — null when there were none, and always null with the
+   *  policy off, where a call is only flagged (`marginMonth`). */
+  call: StrikeCallSummary | null;
 }
 
 /**
  * What the Strike cap did on this run, for the faces to say in plain words. `capPct` is the EFFECTIVE cap
  * (pass effectiveStrikeCapPct's result, never the raw slider value). A margin call outranks everything —
- * with the cap on or off, a call is a call.
+ * with the cap on or off, a call is a call. A SALE (coins actually lost) outranks a cure, and a modelled call
+ * outranks a flagged one: under the policy a sale can also leave a deficiency that sets `strikeMarginMonth`.
  */
 export function strikeCapReading(
   sim: Pick<CyclingResult,
     'strikeMarginMonth' | 'firstSurvivalYieldMonth' | 'strikeTopUpExhaustedMonth' | 'firstStrikeTopUpMonth'
-    | 'totalStrikeTopUpBtc' | 'liqMonth'>,
+    | 'totalStrikeTopUpBtc' | 'liqMonth'
+    | 'firstStrikeCallMonth' | 'strikeCallsCured' | 'strikeCallsSold' | 'totalCashToCureUsd'
+    | 'totalStrikeCureColdBtc' | 'totalStrikeLiquidatedBtc'>,
   capPct: number,
 ): StrikeCapReading {
   const on = capPct > 0;
-  const state: StrikeCapState = sim.strikeMarginMonth !== null ? 'called'
+  const call = strikeCallSummary(sim);
+  const state: StrikeCapState = call !== null && call.sold > 0 ? 'sold'
+    : call !== null ? 'cured'
+    : sim.strikeMarginMonth !== null ? 'called'
     : !on ? 'off'
     : sim.firstSurvivalYieldMonth !== null ? 'yielded'
     : sim.strikeTopUpExhaustedMonth !== null ? 'short'
@@ -506,6 +552,7 @@ export function strikeCapReading(
     yieldMonth: sim.firstSurvivalYieldMonth,
     marginMonth: sim.strikeMarginMonth,
     liqMonth: sim.liqMonth,
+    call,
   };
 }
 
@@ -544,6 +591,13 @@ export function strikeCapNote(r: StrikeCapReading): string {
     case 'called': {
       const y = strikeYieldSentence(r);
       return `Strike LTV crosses ${call} at month ${r.marginMonth} — margin-call territory on the Strike leg.${y ? ` ${y}` : ''}`;
+    }
+    case 'cured':
+    case 'sold': {
+      // The support policy's modelled call — the same sentence the policy card shows (strikeCallSentence). The yield
+      // sentence is appended exactly as it is for a flagged call (M10), so it is never hidden behind one.
+      const y = strikeYieldSentence(r);
+      return `${r.call ? strikeCallSentence(r.call) : ''}${y ? ` ${y}` : ''}`;
     }
   }
 }

@@ -3,6 +3,7 @@ import { chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfunded
 import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import type { CyclingRow } from '../../../simulation/cyclingSim';
+import { runPolicy, pathP1 } from '../../../simulation/__tests__/supportPolicyPaths';
 
 /** A plain fixture row — no engine run needed for display math. */
 const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
@@ -163,5 +164,40 @@ describe('shared ownership rules — extracted from OwnershipFace (one definitio
   it('MODE_NOTE: hold says it IS the baseline (C3), and every strategy has a note', () => {
     expect(MODE_NOTE.hold).toContain('IS the never-draw baseline');
     expect(Object.keys(MODE_NOTE).sort()).toEqual(['clearBoth', 'clearStrike', 'cycle', 'hold']);
+  });
+});
+
+// ── Run 2a · the support policy's extensions (support policy faces, §A4) ─────────────────────────────────────────
+
+describe('chartOwnershipRows — the policy limit series (cbLimit)', () => {
+  it('is policyLimitPct, rounded to 1 dp like the other LTV series, when the stop is given; null without it', () => {
+    const r = mkRow({ multiple: 1.35 });
+    expect(chartOwnershipRows([r], CB_LLTV)[0].cbLimit).toBeNull();                 // policy off: no series
+    expect(chartOwnershipRows([r], CB_LLTV, 60)[0].cbLimit).toBe(+(60 / 1.35).toFixed(1));
+    expect(chartOwnershipRows([mkRow({ multiple: 2 })], CB_LLTV, 60)[0].cbLimit).toBe(30);   // half at 2× support
+    expect(chartOwnershipRows([mkRow({ multiple: null })], CB_LLTV, 60)[0].cbLimit).toBeNull();
+  });
+
+  it('on the support line it is a flat line at the stop — the whole idea of the policy in one series', () => {
+    const rows = chartOwnershipRows(runPolicy(pathP1()).rows, CB_LLTV, 60);
+    expect(rows.slice(1).every((x) => x.cbLimit === 60)).toBe(true);
+  });
+});
+
+describe('unfundedNote — the baseline\'s own gap', () => {
+  it('⭐ three arguments: the never-draw comparison\'s measured gap replaces the fixed sentence', () => {
+    expect(unfundedNote(12, 72_000, 144_000)).toBe(
+      'From month 12, bills exceed what income and the credit line can cover — $72,000 over this run is paid by '
+      + 'nothing in the model. The never-draw comparison leaves $144,000 unpaid over the same run.',
+    );
+    expect(unfundedNote(12, 72_000, 0)).toBe(
+      'From month 12, bills exceed what income and the credit line can cover — $72,000 over this run is paid by '
+      + 'nothing in the model. The never-draw comparison pays every bill over the same run.',
+    );
+    expect(unfundedNote(null, 0, 5_000)).toBe('');
+  });
+
+  it('two arguments keep today\'s sentence until the faces pass the figure (Run 2b)', () => {
+    expect(unfundedNote(2, 46_000)).toContain('The never-draw comparison has the same gap.');
   });
 });

@@ -1,14 +1,15 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import {
-  runCyclingSim, type CyclingInputs, type CyclingResult, type CyclingRow, type SupportPolicyInputs,
-  type PolicyIgnoredReason,
+  runCyclingSim, effectivePolicyStops, effectiveStrikeCapPct, allInEquity, baselineAllInEquity,
+  type CyclingInputs, type CyclingResult, type CyclingRow, type SupportPolicyInputs, type PolicyIgnoredReason,
 } from '../cyclingSim';
 import { collateralToSellForLtv, SUPPORT_EPS } from '../supportPolicy';
 import { STRIKE_CURE_LTV } from '../strikeCredit';
 import {
   SP_START, SP_MONTHS, SUPPORT, S0, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, pathP1, pathP2, pathP3,
   pathP4, pathP5, pathP6, incomeShockP7, buildP9, a5Cases, minMultiple, cbLtvAtSupport, multiplePath, type A5Case,
+  runPolicy as on, CALL_SUPPORT, CALL_PATH, CALL_BASE, callRun, RESTORE_OPENING, OVER_CEILING_COLD_OPENING,
 } from './supportPolicyPaths';
 
 /**
@@ -35,23 +36,11 @@ const cmr = SP_REPRO.cbAprPct / 100 / 12;
 const CB_STOP = 0.60;
 const SK_STOP = 0.50;
 
-const on = (pricePath: number[], o: Partial<SupportPolicyInputs> = {}, extra: Partial<CyclingInputs> = {},
-  support: number[] = SUPPORT): CyclingResult =>
-  runCyclingSim({ ...SP_REPRO, ...extra, pricePath, supportPolicy: policyFor(support, o) });
-
 const field = (x: CyclingRow, k: string): unknown => (x as unknown as Record<string, unknown>)[k];
 const json = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
 const aboveSupport = (price: number, support: number): boolean => price / support >= 1 - SUPPORT_EPS;
 const insideBothCeilings = (r: CyclingResult): boolean =>
   (r.rows[0].cbCeilingHeadroomUsd ?? -1) >= 0 && (r.rows[0].strikeCeilingHeadroomUsd ?? -1) >= 0;
-
-/** Test 16's fixture — Strike near its ceiling, Coinbase DEBT-FREE (else Coinbase liquidates at 0.65 × S before
- *  the call can be isolated — flagged), then a fall to 0.65 × support for two months. */
-const CALL_SUPPORT = supportPathFor(SP_START, 2);
-const CALL_PATH = [1.35 * S0, 0.65 * CALL_SUPPORT[1], 0.65 * CALL_SUPPORT[2]];
-const CALL_BASE: Omit<CyclingInputs, 'pricePath'> = { ...SP_REPRO, strikeBalance: 34_000, strikeCreditLine: 40_000, cbDebt: 0 };
-const callRun = (o: Partial<SupportPolicyInputs> = {}, extra: Partial<CyclingInputs> = {}): CyclingResult =>
-  runCyclingSim({ ...CALL_BASE, ...extra, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT, o) });
 
 /** v1.1 #3's fixture — Coinbase is DOOMED at month 1 (Strike's line is nearly used and too little collateral can
  *  move), and Strike is called LATER as the price keeps falling. income = bills, so no surplus pays Strike down. */
@@ -172,7 +161,7 @@ describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD en
       'firstStrikeCallMonth', 'firstStrikeLiquidationMonth', 'firstRearmMonth'] as const) expect(r[k]).toBeNull();
     for (const k of ['strikeCallsCured', 'strikeCallsSold', 'totalStrikeLiquidatedBtc', 'totalRestoreUsd',
       'totalPayDownUsd', 'openingCashUsd', 'cashLeftUsd', 'totalCashToBillsUsd', 'totalCashToCureUsd',
-      'coldRetrievedAboveSupportBtc', 'breakCount'] as const) expect(r[k]).toBe(0);
+      'totalStrikeCureColdBtc', 'coldRetrievedAboveSupportBtc', 'breakCount'] as const) expect(r[k]).toBe(0);
   });
 
   it('⭐ an INVALID policy is ignored: the same golden, policyApplied false, and the reason', () => {
@@ -314,7 +303,7 @@ describe('⭐ G2 · cold is never retrieved at or above support (openings inside
   it('an opening OVER the Coinbase ceiling can pull cold AT support — and the field counts every coin of it', () => {
     // Why G2 is scoped to openings inside both ceilings: Coinbase opens at 75% at support with Strike's line full,
     // so on the line the debt shift has no capacity and the top-up takes cold — at a price ON support.
-    const r = on(pathP1(), {}, { cbDebt: 52_000, strikeBalance: 30_000, openingColdBtc: 0.5 });
+    const r = on(pathP1(), {}, OVER_CEILING_COLD_OPENING);
     expect(r.rows[0].cbCeilingHeadroomUsd!).toBeLessThan(0);
     let atOrAbove = 0;
     for (let m = 1; m < r.rows.length; m++) {
@@ -455,10 +444,8 @@ describe('pay-down goes to ZERO, and the buffer is kept as Coinbase COLLATERAL',
 // ── Test 15 · restore ───────────────────────────────────────────────────────────────────────────────────
 
 describe('restore — a leg over its ceiling is repaid first, Coinbase before Strike', () => {
-  // ⚠ FLAGGED: Strike is over its ceiling too, or "Coinbase before Strike" could not fail. CB debt $48k (not the
-  // spec's $50k): at $50k month 1 opens at 70.3% at price and the Coinbase DEBT SHIFT fires, which moves debt onto
-  // Strike and muddies the ordering this test is about.
-  const RESTORE = { cbDebt: 48_000, strikeCollateralBtc: 0.5, strikeBalance: 20_000 };
+  // ⚠ FLAGGED: Strike is over its ceiling too, or "Coinbase before Strike" could not fail (RESTORE_OPENING's docblock).
+  const RESTORE = RESTORE_OPENING;
 
   it('month 1: no draw, the whole surplus goes to Coinbase, Strike only accrues interest', () => {
     const r = on(pathP1(), {}, RESTORE);
@@ -923,5 +910,136 @@ describe('P9 — the dip lands where the twin\'s Coinbase LTV at support peaks',
       const dip = m === p9.dipStart || m === p9.dipStart + 1;
       expect(p9.path[m]).toBe(dip ? 0.8 * SUPPORT[m] : SUPPORT[m]);
     }
+  });
+});
+
+// ── Run 2a · the faces' pure layer: the engine's side (spec: support policy faces, §A1) ────────────────────────
+
+describe('effectivePolicyStops — the ONE stop clamp, shared by the engine and the faces\' readouts', () => {
+  it('clamps each stop to its defense line, as fractions — the Strike stop only while the Strike cap is on', () => {
+    expect(effectivePolicyStops(60, 50, 70, 60)).toEqual({ cbStop: 0.6, skStop: 0.5 });
+    expect(effectivePolicyStops(80, 50, 70, 60).cbStop).toBe(70 / 100);
+    expect(effectivePolicyStops(60, 58, 70, 55).skStop).toBe(55 / 100);
+    expect(effectivePolicyStops(60, 58, 70, 0).skStop).toBe(58 / 100);   // the Strike cap off → never clamped
+    expect(effectivePolicyStops(60, 50, 0, 60).cbStop).toBe(0);          // no CB defense line → the engine ignores it
+  });
+
+  it('⭐ the engine runs exactly the helper\'s stops — recovered from every run\'s opening headrooms', () => {
+    // Row 0 reports `coll × S₀ × stop − debt` for each leg, so the stop the engine ran is (headroom + debt) / (coll × S₀).
+    let cbClamped = 0;
+    let skClamped = 0;
+    for (const cbStop of [50, 60, 65, 70, 80]) for (const cbCap of [55, 60, 70])
+    for (const skStop of [40, 50, 58]) for (const skCap of [0, 45, 55, 60]) {
+      const r = on(pathP2(0), { cbStopAtSupportPct: cbStop, strikeStopAtSupportPct: skStop },
+        { cbLtvCapPct: cbCap, strikeLtvCapPct: skCap });
+      expect(r.policyApplied).toBe(true);
+      const want = effectivePolicyStops(cbStop, skStop, cbCap, effectiveStrikeCapPct(skCap, SP_REPRO.strikeMarginLtv));
+      const x = r.rows[0];
+      expect((x.cbCeilingHeadroomUsd! + x.cbDebt) / (x.cbCollateralBtc * SUPPORT[0])).toBeCloseTo(want.cbStop, 12);
+      expect((x.strikeCeilingHeadroomUsd! + x.strikeBalance) / (x.strikeCollateralBtc * SUPPORT[0])).toBeCloseTo(want.skStop, 12);
+      if (want.cbStop < cbStop / 100) cbClamped++;
+      if (want.skStop < skStop / 100) skClamped++;
+    }
+    expect(cbClamped).toBeGreaterThan(0);   // non-vacuous: the grid clamps both legs
+    expect(skClamped).toBeGreaterThan(0);
+  });
+
+  it('a stop above its defense line runs byte-identically to the clamped value — both legs, two more paths', () => {
+    // Test 22 pins this on P2; P4 (paused months) and P6 (a break) add runs where the ceilings decide more.
+    for (const path of [pathP4(), pathP6()]) {
+      expect(on(path, { cbStopAtSupportPct: 68 }, { cbLtvCapPct: 62 }).rows)
+        .toEqual(on(path, { cbStopAtSupportPct: 62 }, { cbLtvCapPct: 62 }).rows);
+      expect(on(path, { strikeStopAtSupportPct: 57 }, { strikeLtvCapPct: 52 }).rows)
+        .toEqual(on(path, { strikeStopAtSupportPct: 52 }, { strikeLtvCapPct: 52 }).rows);
+    }
+  });
+
+  it('there is no second copy: resolveSupportPolicy calls effectivePolicyStops and holds no inline clamp', () => {
+    const src = readFileSync(new URL('../cyclingSim.ts', import.meta.url), 'utf8');
+    const from = src.indexOf('function resolveSupportPolicy(');
+    expect(from).toBeGreaterThan(0);
+    // Code only — the clamp's comment quotes the `Math.min(…, cap)` precedent (the G1 walker strips comments too).
+    const body = src.slice(from, src.indexOf('\n}\n', from)).replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
+    expect(body).toMatch(/effectivePolicyStops\(/);
+    expect(body).not.toMatch(/Math\.min\(/);
+  });
+});
+
+describe('baselineUnfundedUsd — the never-draw baseline\'s OWN unpaid bills', () => {
+  it('0 on SP_REPRO (income covers the bills), policy off or on', () => {
+    expect(runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0) }).baselineUnfundedUsd).toBe(0);
+    expect(on(pathP2(0)).baselineUnfundedUsd).toBe(0);
+  });
+
+  it('N × the monthly gap on a deficit budget — whatever the strategy does', () => {
+    const gap = SP_REPRO.expenses - 4_000;
+    for (const r of [runCyclingSim({ ...SP_REPRO, income: 4_000, pricePath: pathP1() }), on(pathP1(), {}, { income: 4_000 })]) {
+      expect(r.baselineUnfundedUsd).toBe(SP_MONTHS * gap);   // 72 × $2,000
+    }
+  });
+
+  it('honours an income path: P7\'s twelve months without income, and no other month', () => {
+    const extra = { incomePath: incomeShockP7() };
+    expect(runCyclingSim({ ...SP_REPRO, ...extra, pricePath: pathP4() }).baselineUnfundedUsd).toBe(12 * SP_REPRO.expenses);
+    expect(on(pathP4(), {}, extra).baselineUnfundedUsd).toBe(12 * SP_REPRO.expenses);
+  });
+
+  it('the G1 golden is untouched — it stores pre-existing fields only — and P9-OFF\'s gap is 72 × $2,000', () => {
+    for (const g of golden.runs) expect(Object.keys(g.result)).not.toContain('baselineUnfundedUsd');
+    const p9 = golden.runs[2];
+    expect(runCyclingSim({ ...SP_REPRO, ...p9.overrides, pricePath: p9.pricePath }).baselineUnfundedUsd).toBe(SP_MONTHS * 2_000);
+  });
+});
+
+describe('totalStrikeCureColdBtc — Σ the cold a cure moved into Strike', () => {
+  it('equals Σ rows on the cold-cure fixtures (a partial cure before a sale, and a full cure); the cold ledger foots', () => {
+    for (const cold of [0.1, 1]) {
+      const extra = { strikeLtvCapPct: 0, openingColdBtc: cold };
+      const r = callRun({}, extra);
+      const sum = r.rows.reduce((t, x) => t + x.strikeCureColdBtc, 0);
+      expect(sum).toBeGreaterThan(0);
+      expect(r.totalStrikeCureColdBtc).toBe(sum);
+      expect(r.totalStrikeCureColdBtc).toBeLessThanOrEqual(r.totalColdRetrievedBtc);   // a PART of it, never more
+      expectLedgersFoot(r, { ...CALL_BASE, ...extra, pricePath: CALL_PATH });
+    }
+    expect(callRun({}, { strikeLtvCapPct: 0, openingColdBtc: 1 }).strikeCallsSold).toBe(0);   // the full cure sold nothing
+  });
+
+  it('0 with the policy off, and 0 when cash alone cured the call', () => {
+    expect(runCyclingSim({ ...CALL_BASE, strikeLtvCapPct: 0, openingColdBtc: 1, pricePath: CALL_PATH }).totalStrikeCureColdBtc).toBe(0);
+    const cash = callRun({ openingCashUsd: CASH_6_USD });
+    expect(cash.strikeCallsCured).toBe(1);
+    expect(cash.totalStrikeCureColdBtc).toBe(0);
+  });
+});
+
+describe('allInEquity / baselineAllInEquity — the verdict\'s basis (spec v1.4 #21)', () => {
+  it('⭐ P7: cash that only replaces unpaid bills changes nothing all-in (cash 0 ≡ cash 6)', () => {
+    const extra = { incomePath: incomeShockP7() };
+    const c0 = on(pathP4(), {}, extra);
+    const c6 = on(pathP4(), { openingCashUsd: CASH_6_USD }, extra);
+    expect(c6.totalCashToBillsUsd).toBeGreaterThan(0);               // non-vacuous: the cash paid bills …
+    expect(c6.totalUnfundedUsd).toBeLessThan(c0.totalUnfundedUsd);   // … so fewer went unpaid …
+    expect(c6.last.equity).toBe(c0.last.equity);                     // … and the position never saw it
+    expect(allInEquity(c6)).toBe(allInEquity(c0));
+  });
+
+  it('no unpaid bills and no cash → exactly last.equity; the baseline likewise', () => {
+    for (const r of [runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0) }), on(pathP2(0))]) {
+      expect(allInEquity(r)).toBe(r.last.equity);
+      expect(baselineAllInEquity(r)).toBe(r.baselineEquity);
+    }
+  });
+
+  it('cure cash is subtracted too — money from outside the loop is never a gain', () => {
+    const r = callRun({ openingCashUsd: CASH_6_USD });
+    expect(r.totalCashToCureUsd).toBeGreaterThan(0);
+    expect(r.totalUnfundedUsd + r.totalCashToBillsUsd).toBe(0);
+    expect(r.last.equity - allInEquity(r)).toBeCloseTo(r.totalCashToCureUsd, 9);
+  });
+
+  it('the baseline subtracts its own gap: P7 → baselineEquity − 12 months of bills', () => {
+    const r = on(pathP4(), {}, { incomePath: incomeShockP7() });
+    expect(baselineAllInEquity(r)).toBe(r.baselineEquity - 12 * SP_REPRO.expenses);
   });
 });
