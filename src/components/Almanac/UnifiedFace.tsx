@@ -13,7 +13,7 @@ import {
 } from '../../simulation/cyclePath';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
+import { STRIKE_MAX_DRAW_LTV, STRIKE_CURE_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
 import { deriveCbCollateral } from '../../simulation/logUtils';
@@ -21,11 +21,19 @@ import {
   applyPathStress, btcGained, clampMonth, fmtLtvPct, cashFlowAtMonth,
   refinanceFeeFraction, refinanceBreakEvenMonths, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
   coldBeyondRecord, cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
-  verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
+  verdictVsNeverDraw, verdictBasisClause, coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
+  drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
+import {
+  DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
+  policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, coldShown,
+  shownUsd, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
+} from './supportPolicyView';
+import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
+import SupportPolicyCard from './SupportPolicyCard';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -45,7 +53,8 @@ import styles from './UnifiedFace.module.css';
  * ⚠ A SUMMARY, NOT THE UNION OF EVERY CARD. Nine engine controls (ten with the 4-yr cycle's timing) —
  * fewer than either parent. Income, bills and both APRs come straight from the live plan; the venue split,
  * the safety gauges, the rate sliders and the live Morpho check stay on the parent faces. Do not grow this
- * face into a third copy of both.
+ * face into a third copy of both. The shared Support policy card (Run 2b — its settings collapsed behind a
+ * disclosure) is the ONE addition: it is the same card on all three faces, so the rule still holds.
  *
  * Every rule comes from the shared, tested helpers (cyclingFaceView / ownershipFaceView) — no fourth copy
  * of any number. One convention per behaviour: Milestone rows JUMP THE SCRUBBER (Ownership's convention),
@@ -98,6 +107,8 @@ interface Overlay {
   /** 0 = sweep off. */
   coldStoreBufferPct?: number;
   mode?: CyclingMode;
+  /** The support policy's settings, patched over DEFAULT_SUPPORT_POLICY_SETTINGS ("Reset to live" clears it). */
+  supportPolicy?: Partial<SupportPolicySettings>;
 }
 
 const fmtK = (n: number): string => {
@@ -107,6 +118,8 @@ const fmtK = (n: number): string => {
   return `${n < 0 ? '−' : ''}$${Math.round(a)}`;
 };
 const fmtSigned = (n: number): string => `${n >= 0 ? '+' : '−'}${fmtUSD(Math.abs(n))}`;
+/** A signed compact figure for a tile sub-line — fmtK already carries the "−". */
+const fmtSignedK = (n: number): string => `${n >= 0 ? '+' : ''}${fmtK(n)}`;
 const fmtBtc = (n: number): string => `${n.toFixed(4)} ₿`;
 const sBtc = (n: number): string => `${n >= 0 ? '+' : '−'}${Math.abs(n).toFixed(3)} ₿`;
 const fmtHorizon = (v: number): string => {
@@ -178,6 +191,28 @@ export default function UnifiedFace() {
     [s.cbLoanBalance, s.cbAprPct, s.cbLoanBalanceAsOf],
   );
 
+  // ── The support policy — every object memoised on STABLE identities. One built during render would get a new
+  // identity every render: `engineInputs` would rebuild, both engine calls re-run, and the lens reset below would fire
+  // on every render, killing an engaged stress (the bug class useStressLens exists for). Only a policy edit moves them.
+  const policyRaw = useMemo(
+    () => ({ ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...overlay.supportPolicy }),
+    [overlay.supportPolicy],
+  );
+  const policySettings = useMemo(
+    () => effectivePolicySettings(policyRaw, { cbLtvCapPct: capPct, strikeCapEffPct: strikeCapEff }),
+    [policyRaw, capPct, strikeCapEff],
+  );
+  // 🔴 Built ONLY through buildSupportPath (the faces' one §2 crossing for the policy) and NEVER stressed or
+  // phase-shifted: the stress run spreads the same `engineInputs`, so the lens moves the price, never the line.
+  const supportPath = useMemo(() => buildSupportPath(startDate, months), [startDate, months]);
+  const supportPolicy = useMemo(
+    () => supportPolicyFor(policySettings, supportPath, s.expenses, s.strikeLiquidationLtvPct, mode),
+    [policySettings, supportPath, s.expenses, s.strikeLiquidationLtvPct, mode],
+  );
+  const setPolicy = (patch: Partial<SupportPolicySettings>) =>
+    setOverlay((o) => ({ ...o, supportPolicy: { ...o.supportPolicy, ...patch } }));
+  const resetPolicy = () => setOverlay(({ supportPolicy: _dropped, ...rest }) => rest);
+
   // ⚠ DECLARED ABOVE `pricePath` ON PURPOSE — the anchor split (useStressLens). The path is built from the
   // held anchor, never the polled quote, or a stress scenario could not outlive one tick.
   const { lens, setLens, anchorPrice, priceHeld, livePrice, drift } = useStressLens(s.btcPrice, s.btcPriceMode);
@@ -213,9 +248,11 @@ export default function UnifiedFace() {
     coldStoreBufferPct: coldBufferPct,
     defendCbLtv: true,
     mode,
+    supportPolicy,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
     cbDebt, s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
+    supportPolicy,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -244,6 +281,7 @@ export default function UnifiedFace() {
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
     s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
+    supportPolicy,
   ]);
 
   const { rows, last, liqMonth } = sim;
@@ -254,8 +292,9 @@ export default function UnifiedFace() {
 
   // ── The shared readings — every one a tested helper ──
   const capReading = strikeCapReading(sim, strikeCapEff);
-  const capTone = capReading.state === 'called' ? styles.stateBad
-    : capReading.state === 'short' || capReading.state === 'yielded' ? styles.stateWarn
+  // A modelled call (the support policy's) reads like a flagged one: a sale is bad, a cure a warning (v1.1 #5).
+  const capTone = capReading.state === 'called' || capReading.state === 'sold' ? styles.stateBad
+    : capReading.state === 'short' || capReading.state === 'yielded' || capReading.state === 'cured' ? styles.stateWarn
     : capReading.state === 'defended' ? styles.stateGood
     : '';
   const verdict = verdictVsNeverDraw(sim, mode);
@@ -267,7 +306,19 @@ export default function UnifiedFace() {
   const cbZone = (ltv: number): string => LEVEL_COLOR[cbZoneLevel(ltv, s.cbLtvTriggerPct)];
   const skZone = (ltv: number): string => LEVEL_COLOR[strikeZoneLevel(ltv, strikeLiqLtv)];
 
-  const supportAtMonth = plBandAt('floor', startDate, monthIdx);
+  // The support policy's reading of the DISPLAYED run. Every relabel below is gated on the engine having APPLIED it
+  // (non-cycle modes, or a policy the engine ignored, read exactly as before).
+  const applied = sim.policyApplied;
+  const reading = policyReading(sim, monthIdx, s.expenses);
+  const alert = policyAlert(reading, policySettings);
+  // Under the policy the unpaid line names the real cause (v1.2 #8); off, the baseline's own gap is required.
+  const unpaidNote = applied ? policyUnpaidNote(reading)
+    : cycleUnfunded ? unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd, sim.baselineUnfundedUsd) : null;
+  // A month the policy did not borrow in, and why (null in a drawing month, month 0, or with no bills).
+  const pauseReason = applied ? policyPauseReason(selRow, policySettings, s.expenses) : null;
+
+  // One source for the support line at this month: the SAME path the engine's policy reads (bit-equal to plBandAt).
+  const supportAtMonth = supportPath[monthIdx];
   const belowSupport = isBelowSupport(selRow.price, supportAtMonth);
   const surviveMult = surviveFairMultiple(selRow.price, plBandAt('fair', startDate, monthIdx), coldBufferPct);
   const coldDeeperThanRecord = coldBeyondRecord(selRow.price, supportAtMonth, coldBufferPct);
@@ -283,7 +334,9 @@ export default function UnifiedFace() {
   );
   const milestoneRows = mergeMilestoneRows(fixedMilestoneMonths(months), horizonTurns);
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
-  const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV), [rows]);
+  // The effective Coinbase stop feeds the dashed policy-limit series only while the policy applies (a primitive dep).
+  const limitStopPct = applied ? policySettings.cbStopEffPct : undefined;
+  const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV, limitStopPct), [rows, limitStopPct]);
 
   // ⚠ An oscillating path tracks no line, and PL_BAND_LABEL is a Record<PlBand> that 'fourYear' is not.
   const pathNote = pathKind === 'fourYear'
@@ -301,15 +354,18 @@ export default function UnifiedFace() {
     ['CB LTV', fmtLtvPct(selRow.cbLtv),
       selRow.defended && selRow.cbLtvPreDefense !== null
         ? `defended from ${fmtLtvPct(selRow.cbLtvPreDefense)}`
-        : `stop ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`,
+        : applied ? policyTileSub(policySettings, capPct) : `stop ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`,
       cbZone(selRow.cbLtv)],
     ['Strike LTV', fmtLtvPct(selRow.strikeLtv),
       selRow.strikeTopUpBtc > 0
         ? `+${selRow.strikeTopUpBtc.toFixed(4)} ₿ from cold`
-        : `${strikeCapPct > 0 ? `cap ${strikeCapReadout(strikeCapPct, strikeCapEff)} · ` : ''}call ${(STRIKE_MARGIN_CALL_LTV * 100).toFixed(0)}%`,
+        : `${strikeCapPct > 0 ? `${applied ? 'defense' : 'cap'} ${strikeCapReadout(strikeCapPct, strikeCapEff)} · ` : ''}call ${(STRIKE_MARGIN_CALL_LTV * 100).toFixed(0)}%`,
       skZone(selRow.strikeLtv)],
+    // The VALUE stays raw equity; the tile's colour is the all-in verdict, so the sub-line says so when they differ
+    // (v1.1 #5) — the colour and the number then agree.
     ['Net equity', fmtK(selRow.equity),
-      !atEnd ? `at month ${monthIdx}` : mode === 'hold' ? 'hold is the baseline' : `never-draw: ${fmtK(sim.baselineEquity)}`,
+      !atEnd ? `at month ${monthIdx}` : mode === 'hold' ? 'hold is the baseline'
+        : verdict.allIn ? `all-in vs never-draw: ${fmtSignedK(verdict.equityDelta)}` : `never-draw: ${fmtK(sim.baselineEquity)}`,
       atEnd && mode !== 'hold' ? (verdict.wins ? 'var(--green)' : 'var(--amber)') : (selRow.equity >= 0 ? 'var(--green)' : 'var(--red)')],
     ['BTC price', fmtK(selRow.price), `from ${fmtK(anchorPrice)}`, pathColor],
   ];
@@ -342,6 +398,10 @@ export default function UnifiedFace() {
         </div>
       )}
       <div className={`${styles.stateLine} ${capTone}`}>{strikeCapNote(capReading)}</div>
+      {/* The support policy's alert — only a warn or bad headline, and never the Strike call (the line above has it). */}
+      {alert && (
+        <div className={`${styles.stateLine} ${alert.tone === 'bad' ? styles.stateBad : styles.stateWarn}`}>{alert.text}</div>
+      )}
 
       {/* 1 · PRICE PATH — the belief. */}
       <section className={styles.card}>
@@ -407,15 +467,19 @@ export default function UnifiedFace() {
         <div className={styles.sliderPair}>
           <SliderInput label="Refinance cadence" value={cycleMonths} onChange={(v) => set('cycleMonths', v)}
             min={1} max={12} step={1} display={`${cycleMonths} mo`} minLabel="1 mo" maxLabel="12 mo" />
-          <SliderInput label="Coinbase LTV stop" value={capPct} onChange={(v) => set('cbLtvCapPct', v)}
+          {/* Under the support policy this is where the DEFENSES fire below support — the policy's own limit sits at
+              support and is clamped to it, which is why the slider stays. */}
+          <SliderInput label={applied ? 'Coinbase defense line' : 'Coinbase LTV stop'} value={capPct}
+            onChange={(v) => set('cbLtvCapPct', v)}
             min={20} max={85} step={1} display={`${capPct}%`} minLabel="20%" maxLabel="85%" />
         </div>
+        {applied && <p className={styles.noteQuiet}>{defenseLineNote('coinbase', policySettings)}</p>}
 
         {/* The Strike-side twin of the stop above — a face-local 44px range, never ui/SliderInput. */}
         <div className={styles.capBlock}>
           <div className={styles.scrubHead}>
             <span className={styles.cardLabel}>
-              Strike LTV cap
+              {applied ? 'Strike defense line' : 'Strike LTV cap'}
               <InfoTip label="About the Strike LTV cap">
                 {STRIKE_CAP_TIP.map((line) => <p key={line}>{line}</p>)}
                 <p><strong>This run:</strong> {strikeCapNote(capReading)}</p>
@@ -432,52 +496,75 @@ export default function UnifiedFace() {
               aria-label="Strike LTV cap"
             />
           )}
+          {applied && <p className={styles.noteQuiet}>{defenseLineNote('strike', policySettings, strikeCapPct > 0)}</p>}
           <div className={styles.presetRow}>
             <button type="button" className={styles.ghostBtn}
               onClick={() => set('strikeLtvCapPct', strikeCapPct > 0 ? 0 : DEFAULT_STRIKE_CAP_PCT)}>
-              {strikeCapPct > 0 ? 'Turn Strike cap off' : `Defend Strike at ${DEFAULT_STRIKE_CAP_PCT}%`}
+              {strikeCapPct > 0 ? `Turn Strike ${applied ? 'defense' : 'cap'} off` : `Defend Strike at ${DEFAULT_STRIKE_CAP_PCT}%`}
             </button>
           </div>
         </div>
 
         {/* Cold storage — the knob is a PRICE; the fair-value translation rides along so the buffer can
-            never be read as more precise than it is (the engine docblock's rule). */}
+            never be read as more precise than it is (the engine docblock's rule). While the support policy applies
+            its own sweep decides what goes to cold, so the buffer, its fair-value text and the toggle are hidden. */}
         <div className={styles.capBlock}>
           <div className={styles.scrubHead}>
             <span className={styles.cardLabel}>Cold storage</span>
             <span className={styles.scrubValue}>
-              {coldBufferPct > 0 ? `${sim.totalColdBtc.toFixed(3)} ₿ to custody` : 'off'}
+              {coldShown(coldBufferPct, sim) ? `${sim.totalColdBtc.toFixed(3)} ₿ to custody` : 'off'}
             </span>
           </div>
-          {coldBufferPct > 0 && (
+          {applied ? (
+            <p className={styles.noteQuiet}>
+              {policyColdNote(policySettings)}
+              {sim.firstColdMonth !== null
+                ? ` First coins move at month ${sim.firstColdMonth}.`
+                : ' Nothing moves to cold on this path.'}
+            </p>
+          ) : (
             <>
-              <SliderInput label="Keep me safe down to" value={coldBufferPct}
-                onChange={(v) => set('coldStoreBufferPct', v)} min={5} max={80} step={1}
-                display={fmtUSD(coldSurvivePrice(selRow.price, coldBufferPct))} minLabel="closer" maxLabel="deeper" />
-              <p className={styles.noteQuiet}>
-                {coldBufferPct}% below the modeled {fmtUSD(selRow.price)} at month {monthIdx} — down to{' '}
-                {(surviveMult * 100).toFixed(1)}% of fair ({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the
-                fitted floor).
-                {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded.'}
-              </p>
+              {coldBufferPct > 0 && (
+                <>
+                  <SliderInput label="Keep me safe down to" value={coldBufferPct}
+                    onChange={(v) => set('coldStoreBufferPct', v)} min={5} max={80} step={1}
+                    display={fmtUSD(coldSurvivePrice(selRow.price, coldBufferPct))} minLabel="closer" maxLabel="deeper" />
+                  <p className={styles.noteQuiet}>
+                    {coldBufferPct}% below the modeled {fmtUSD(selRow.price)} at month {monthIdx} — down to{' '}
+                    {(surviveMult * 100).toFixed(1)}% of fair ({(surviveMult / (PL_A_FLOOR / PL_A_FAIR)).toFixed(2)}× the
+                    fitted floor).
+                    {coldDeeperThanRecord && ' That is deeper than any bottom ever recorded.'}
+                  </p>
+                </>
+              )}
+              <div className={styles.presetRow}>
+                <button type="button" className={styles.ghostBtn}
+                  onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
+                  {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
+                </button>
+              </div>
             </>
           )}
-          <div className={styles.presetRow}>
-            <button type="button" className={styles.ghostBtn}
-              onClick={() => set('coldStoreBufferPct', coldBufferPct > 0 ? 0 : DEFAULT_COLD_BUFFER_PCT)}>
-              {coldBufferPct > 0 ? 'Turn sweep off' : 'Sweep to cold storage'}
-            </button>
-          </div>
         </div>
       </section>
 
+      {/* The Support policy card — the ONE addition to this summary face (the summary-not-union rule holds). */}
+      <SupportPolicyCard
+        sim={sim} monthIdx={monthIdx} raw={policyRaw} settings={policySettings}
+        onChange={setPolicy} onReset={resetPolicy} mode={mode} expenses={s.expenses}
+      />
+
       {/* C1 + C2 + the cycle-mode unfunded gap — the constraint notices, one definition (modeConstraints). */}
-      {(degenerateCap || deficitMode || cycleUnfunded) && (
+      {(degenerateCap || deficitMode || unpaidNote) && (
         <div className={styles.constraints}>
           {degenerateCap && (
             <div>
-              The draw never runs on this path at a {capPct}% stop (it opens at {fmtLtvPct(rows[0].cbLtv)} CB LTV).
-              This run measures the refinance, not the strategy. Raise the stop to model the draw.
+              {applied ? neverDrawsNote(reading, policySettings) : (
+                <>
+                  The draw never runs on this path at a {capPct}% stop (it opens at {fmtLtvPct(rows[0].cbLtv)} CB LTV).
+                  This run measures the refinance, not the strategy. Raise the stop to model the draw.
+                </>
+              )}
             </div>
           )}
           {deficitMode && (
@@ -486,7 +573,7 @@ export default function UnifiedFace() {
               stays flat and debt only accrues; the curve is optimistic exactly here.
             </div>
           )}
-          {cycleUnfunded && <div>{unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd)}</div>}
+          {unpaidNote && <div>{unpaidNote}</div>}
         </div>
       )}
 
@@ -612,7 +699,7 @@ export default function UnifiedFace() {
                     <Line type="monotone" dataKey="held" name="Held" stroke="var(--text-muted)" strokeWidth={1.5} dot={false} isAnimationActive={false} />
                     <Line type="monotone" dataKey="yours" name="Yours" stroke="var(--btc)" strokeWidth={2} dot={false} isAnimationActive={false} />
                     <Line type="monotone" dataKey="owed" name="Owed" stroke="var(--text-faint)" strokeWidth={1.5} strokeDasharray="4 4" dot={false} isAnimationActive={false} />
-                    {coldBufferPct > 0 && (
+                    {coldShown(coldBufferPct, sim) && (
                       <Line type="monotone" dataKey="cold" name="Cold" stroke="var(--btc)" strokeWidth={1.5} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
                     )}
                   </LineChart>
@@ -632,11 +719,16 @@ export default function UnifiedFace() {
                       label={{ value: 'Strike call', fill: 'var(--amber)', fontSize: 9.5, position: 'insideTopLeft' }} />
                     {strikeCapPct > 0 && (
                       <ReferenceLine y={strikeCapEff} stroke="var(--text-primary)" strokeDasharray="2 3"
-                        label={{ value: 'Strike cap', fill: 'var(--text-primary)', fontSize: 9.5, position: 'insideBottomLeft' }} />
+                        label={{ value: applied ? 'Strike defense' : 'Strike cap', fill: 'var(--text-primary)', fontSize: 9.5, position: 'insideBottomLeft' }} />
                     )}
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
                     <Line type="monotone" dataKey="cbLtv" name="Coinbase" stroke="var(--coinbase)" strokeWidth={2} dot={false} isAnimationActive={false} />
                     <Line type="monotone" dataKey="strikeLtv" name="Strike" stroke="var(--text-primary)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    {/* The policy's Coinbase limit at today's price — dashed in the colour of the Coinbase line it bounds ON
+                        THIS CHART (--coinbase here; the Cycling face's CB line is --btc). Don't "unify" the two. */}
+                    {applied && (
+                      <Line type="monotone" dataKey="cbLimit" name="Policy limit" stroke="var(--coinbase)" strokeWidth={1.5} strokeDasharray="5 4" dot={false} isAnimationActive={false} />
+                    )}
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -683,13 +775,12 @@ export default function UnifiedFace() {
               <>
                 <div className={styles.verdictHead}>
                   {modeLabel} {verdict.wins ? 'wins' : 'loses'} — {fmtSigned(verdict.equityDelta)} equity vs paying bills from income
+                  {verdictBasisClause(sim)}
                 </div>
                 <div className={styles.verdictSub}>
                   {fmtBtc(last.btcHeld)} vs {fmtBtc(sim.baselineBtc)} ({verdict.btcDelta >= 0 ? '+' : '−'}
                   {Math.abs(verdict.btcDelta).toFixed(4)} ₿)
-                  {mode === 'cycle' && sim.stopMonth !== null && (sim.drawingResumedMonth === null
-                    ? ` · drawing stopped at month ${sim.stopMonth}`
-                    : ` · drawing paused at month ${sim.stopMonth}, resumed at ${sim.drawingResumedMonth}`)}
+                  {mode === 'cycle' && drawPauseClause(sim, policySettings)}
                 </div>
               </>
             )}
@@ -697,16 +788,22 @@ export default function UnifiedFace() {
 
           <section className={styles.card}>
             <span className={styles.cardLabel}>Cash flow at month {monthIdx}</span>
+            {/* Every branch is a tested helper, and each is TRUE of its month: the opening takes no action; no bills is
+                not a pause; a drawing month names what paid and what didn't; a paused month names the policy's reason. */}
             <p className={styles.noteQuiet}>
-              {cf.mode === 'drawing' ? (
+              {selRow.m === 0 ? OPENING_CASH_FLOW_NOTE
+              : mode === 'cycle' && !(s.expenses > 0) ? noBillsNote(selRow)
+              : cf.mode === 'drawing' ? (() => {
+                const c = drawingCashFlowNote(selRow, s.income, s.expenses, s.blocApr, applied);
+                return <>{c.before}{c.strong !== '' && <strong>{c.strong}</strong>}{c.after}</>;
+              })()
+              : cf.mode === 'stopped' && pauseReason !== null ? (
                 <>
-                  The line pays your {fmtUSD(cf.lineFundedUsd)} of bills, so all{' '}
-                  <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong> — not just the{' '}
-                  {fmtUSD(Math.max(0, s.income - s.expenses))} left over.
-                  {cf.incomeCoveredUsd > 0 && ` Your paycheck covers ${fmtUSD(cf.incomeCoveredUsd)} the line couldn't reach.`}
-                  {' '}Those bills become {s.blocApr}% debt until they move to Coinbase.
+                  {pauseReason}{' '}
+                  {shownUsd(cf.buysUsd) ? <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin.</strong> : 'No bitcoin bought this month.'}
                 </>
-              ) : cf.mode === 'stopped' ? (
+              ) : cf.mode === 'stopped' && selRow.postLiquidation ? liquidatedCashFlowNote(selRow)
+              : cf.mode === 'stopped' ? (
                 <>
                   Borrowing paused — the loan is at your {capPct}% stop. Your paycheck pays the bills again, so only{' '}
                   <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong> until the price recovers.
@@ -735,6 +832,7 @@ export default function UnifiedFace() {
               <thead>
                 <tr>
                   <th className={`${styles.msTh} ${styles.msYear}`}>Year</th>
+                  {applied && <th className={styles.msTh}>Zone</th>}
                   <th className={styles.msTh}>Price</th>
                   <th className={styles.msTh}>Held</th>
                   <th className={styles.msTh}>Yours</th>
@@ -761,6 +859,14 @@ export default function UnifiedFace() {
                           <span className={styles.msTurn}>{turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}</span>
                         )}
                       </td>
+                      {applied && (
+                        <td className={styles.msTd}
+                          style={r.policyZone ? { color: ZONE_COLOR[r.policyZone] } : undefined}
+                          title={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}
+                          aria-label={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}>
+                          {r.policyZone ? ZONE_LETTER[r.policyZone] : '—'}
+                        </td>
+                      )}
                       <td className={styles.msTd}>{fmtK(r.price)}</td>
                       <td className={styles.msTd}>{r.btcHeld.toFixed(3)}</td>
                       <td className={`${styles.msTd} ${styles.msYours}`}>{ownershipHero(r, rows[0]).yoursBtc.toFixed(3)}</td>
@@ -783,8 +889,11 @@ export default function UnifiedFace() {
         <strong>A pattern, not a forecast.</strong> The power law is a historical regression, firewalled from
         every risk calculation. Both facilities are full-recourse; Morpho liquidates instantly at{' '}
         {(CB_LLTV * 100).toFixed(0)}% with no cure window, Strike calls at{' '}
-        {(STRIKE_MARGIN_CALL_LTV * 100).toFixed(0)}% with 72 hours to cure. The engine flags a Strike call but
-        does not model the seizure. Not financial advice.
+        {(STRIKE_MARGIN_CALL_LTV * 100).toFixed(0)}% with 72 hours to cure.{' '}
+        {applied
+          ? `With the support policy on, a Strike margin call is modelled — cash, then cold, then a sale back to ${Math.round(STRIKE_CURE_LTV * 100)}%.`
+          : 'The engine flags a Strike call but does not model the seizure.'}{' '}
+        Not financial advice.
       </div>
     </div>
   );

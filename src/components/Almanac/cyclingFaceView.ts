@@ -7,7 +7,9 @@ import { cbBarLevel, barLevel, type SafetyLevel } from '../../simulation/cbMetri
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { fmtUSD } from '../../utils/format';
-import { strikeCallSummary, strikeCallSentence, type StrikeCallSummary } from './supportPolicyView';
+import {
+  strikeCallSummary, strikeCallSentence, shownUsd, billsRemainderTail, type StrikeCallSummary,
+} from './supportPolicyView';
 
 /**
  * Pure display math for the Almanac Cycling face. No React, no store, no imports from powerLaw/cycleModel —
@@ -15,7 +17,8 @@ import { strikeCallSummary, strikeCallSentence, type StrikeCallSummary } from '.
  * all-in definition), the ownership leaf (the single definition of yoursBtc, S2′), the zero-import Coinbase
  * constants (the refinance break-even fallback, CB_LLTV for the zone band), the shared gauge rules (cbMetrics'
  * barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
- * fmtUSD, and the support policy's call sentence (supportPolicyView — which must never import this module back).
+ * fmtUSD, and from supportPolicyView the support policy's call sentence, the one dust floor (`shownUsd`) and the
+ * bills-remainder tail (that module must never import this one back).
  * No belief anywhere in that graph. Extracted so it is testable without a render harness (the repo has none).
  *
  * Architecture invariant 2 (one definition of every risk number via cbMetrics / computeStrikeLtv) governs
@@ -108,7 +111,9 @@ export interface CashFlowAtMonth {
   buysUsd: number;
   /** Bill dollars the credit line funded this month (0 unless drawing). */
   lineFundedUsd: number;
-  /** Bill dollars income had to cover because the line could not (0 when fully funded). */
+  /** Bill dollars the PAYCHECK actually paid because the line could not — capped at income (C1). When the shortfall
+   *  is bigger than the paycheck, the rest went to the cash reserve or unpaid (`billsRemainderTail`), so
+   *  `buysUsd + incomeCoveredUsd === income` in every drawing month. 0 when fully funded. */
   incomeCoveredUsd: number;
   /** True when `buysUsd` exceeds the surplus — i.e. the line is doing the work. */
   leveraged: boolean;
@@ -127,9 +132,83 @@ export function cashFlowAtMonth(
     mode,
     buysUsd: row.btcBoughtUsd,
     lineFundedUsd: drawing ? row.strikeDrawn : 0,
-    incomeCoveredUsd: drawing ? row.strikeShortfall : 0,
+    incomeCoveredUsd: drawing ? Math.min(Math.max(0, income), row.strikeShortfall) : 0,
     leveraged: row.btcBoughtUsd > surplus + 1e-9,
   };
+}
+
+/** A cash-flow sentence with ONE emphasised span — the faces bold the figure that buys bitcoin (today's `<strong>`).
+ *  Joined (`cashFlowText`), it is the plain copy the tests pin. */
+export interface CashFlowCopy { before: string; strong: string; after: string }
+export const cashFlowText = (c: CashFlowCopy): string => c.before + c.strong + c.after;
+
+/**
+ * The DRAWING-month cash-flow sentence (cashFlowAtMonth mode 'drawing'), ONE definition for the Cycling and Strategy
+ * faces (C1). Three shapes, each true of its row:
+ *  • full draw (no shortfall worth a dollar) — today's sentence, unchanged;
+ *  • partial draw — the line paid part, the paycheck the rest (capped at income), then what the reserve / unpaid bills
+ *    did. The CAUSE differs: with the policy off it is the line's own reach; with it on, the limits at support capped
+ *    the draw (hedged "or Strike's own line", as the accumulate pause reason is — a row can't say which bound);
+ *  • zero draw — nothing was borrowed, so no debt sentence, and never "the line pays your $0 of bills". Policy off,
+ *    Strike's own line is full. Policy on, a drawing month always draws something, so this is only a sub-dollar room
+ *    left by the limits at support — said as the accumulate pause reason says it.
+ * Where nothing bought bitcoin, it says so instead of "all $0/mo buys bitcoin — not just the $0 left over".
+ */
+export function drawingCashFlowNote(
+  row: Pick<CyclingRow, 'btcBoughtUsd' | 'strikeDrawn' | 'strikeShortfall' | 'cashToBillsUsd' | 'unfundedUsd'>,
+  income: number,
+  expenses: number,
+  strikeAprPct: number,
+  policyApplied: boolean,
+): CashFlowCopy {
+  const cf = cashFlowAtMonth(row, income, expenses, true);
+  const buys = `${fmtUSD(cf.buysUsd)}/mo buys bitcoin`;
+  const bought = shownUsd(cf.buysUsd);
+  const tail = billsRemainderTail(row);
+  const leftOver = ` — not just the ${fmtUSD(Math.max(0, income - expenses))} left over.`;
+  const debt = ` Those bills become ${strikeAprPct}% debt until they move to Coinbase.`;
+  if (!shownUsd(row.strikeDrawn)) {
+    const pays = tail !== '' ? 'pays what it can' : 'pays the bills';
+    const why = policyApplied
+      ? "The limits at support (or Strike's own line) leave no room to borrow this month"
+      : "Strike's line has no room left";
+    return bought
+      ? { before: `${why}, so your paycheck ${pays}: `, strong: buys, after: `.${tail}` }
+      : { before: `${why}, so your paycheck ${pays}. No bitcoin bought this month.${tail}`, strong: '', after: '' };
+  }
+  if (!shownUsd(row.strikeShortfall)) {
+    return { before: `The line pays your ${fmtUSD(cf.lineFundedUsd)} of bills, so all `, strong: buys, after: `${leftOver}${debt}` };
+  }
+  const cause = policyApplied
+    ? ` The limits at support (or Strike's own line) capped the draw, so your paycheck covers the other ${fmtUSD(cf.incomeCoveredUsd)}.`
+    : ` Your paycheck covers ${fmtUSD(cf.incomeCoveredUsd)} the line couldn't reach.`;
+  const head = `The line pays ${fmtUSD(cf.lineFundedUsd)} of your bills`;
+  return bought
+    ? { before: `${head}, so all `, strong: buys, after: `${leftOver}${cause}${tail}${debt}` }
+    : { before: `${head}.${cause}${tail} No bitcoin bought this month.${debt}`, strong: '', after: '' };
+}
+
+/** Month 0 is the opening — the engine takes no action there, so no draw, stop or pause sentence is true of it. */
+export const OPENING_CASH_FLOW_NOTE = "Today's opening position — nothing is drawn or bought until month 1.";
+
+/**
+ * A month with NO bills (v1.2 #9) — checked FIRST in cycle mode, policy on or off. With nothing to fund, a "drawing"
+ * month draws $0, so cashFlowAtMonth reads it as stopped and the faces said "no room to borrow" / "the loan hit your
+ * stop … until the price recovers" (with the WHOLE income buying). Spare income that repaid debt first says so.
+ */
+export function noBillsNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'payDownUsd' | 'restoreUsd'>): string {
+  const repaid = row.payDownUsd + row.restoreUsd;
+  return `No bills to fund, so ${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin.`
+    + (shownUsd(repaid) ? ` ${fmtUSD(repaid)} of spare income paid debt down first.` : '');
+}
+
+/** A non-drawing month after a Coinbase liquidation, with the policy OFF (v1.2 #9 — the stopped sentence promised
+ *  "until the price recovers"). With the policy on, `policyPauseReason` says the loop has ended. */
+export function liquidatedCashFlowNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'unfundedUsd'>): string {
+  return 'Coinbase has been liquidated — borrowing has ended. '
+    + (shownUsd(row.unfundedUsd)
+      ? `Your paycheck pays what it can — ${fmtUSD(row.unfundedUsd)} of bills went unpaid this month.`
+      : `Your paycheck pays the bills, so ${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin.`);
 }
 
 export interface BtcGain {
@@ -398,8 +477,33 @@ export interface NeverDrawVerdict {
   /** allInEquity(run) − baselineAllInEquity(run). Equal to the raw delta when `allIn` is false. */
   equityDelta: number;
   btcDelta: number;
-  /** True when any adjustment is non-zero, so the copy can say "after unpaid bills". */
+  /** True when any adjustment is real (the $0.50 dust floor), so the copy can say "after unpaid bills". */
   allIn: boolean;
+}
+
+type AllInFields = Pick<CyclingResult,
+  'totalUnfundedUsd' | 'totalCashToBillsUsd' | 'totalCashToCureUsd' | 'baselineUnfundedUsd'>;
+
+/** Which all-in adjustments are REAL — through the one dust floor, so ~1e-10 of float residue never flips the verdict
+ *  head to "…after unpaid bills" (v1.2 #11). ONE predicate for `allIn` and for `verdictBasisClause`. */
+function allInParts(sim: AllInFields): { unpaid: boolean; cash: boolean } {
+  return {
+    unpaid: shownUsd(sim.totalUnfundedUsd) || shownUsd(sim.baselineUnfundedUsd),
+    cash: shownUsd(sim.totalCashToBillsUsd) || shownUsd(sim.totalCashToCureUsd),
+  };
+}
+
+/**
+ * The verdict head's basis clause when the all-in adjustments are real — '' otherwise. ⚠ "after unpaid bills" alone
+ * would be false for a run whose reserve cash only cured a Strike call with every bill paid, so the clause names what
+ * was actually counted. (Reserve cash spent on bills implies the baseline left those same months unpaid.)
+ */
+export function verdictBasisClause(sim: AllInFields): string {
+  const p = allInParts(sim);
+  return p.unpaid && p.cash ? ', after unpaid bills and reserve cash'
+    : p.unpaid ? ', after unpaid bills'
+    : p.cash ? ', after reserve cash'
+    : '';
 }
 
 /**
@@ -418,13 +522,13 @@ export function verdictVsNeverDraw(
   const kind: NeverDrawVerdictKind = sim.liqMonth !== null ? 'liquidated'
     : mode === 'hold' ? 'baseline'
     : wins ? 'wins' : 'loses';
+  const parts = allInParts(sim);
   return {
     kind,
     wins,
     equityDelta: run - base,
     btcDelta: sim.last.btcHeld - sim.baselineBtc,
-    allIn: sim.totalUnfundedUsd > 0 || sim.totalCashToBillsUsd > 0 || sim.totalCashToCureUsd > 0
-      || sim.baselineUnfundedUsd > 0,
+    allIn: parts.unpaid || parts.cash,
   };
 }
 

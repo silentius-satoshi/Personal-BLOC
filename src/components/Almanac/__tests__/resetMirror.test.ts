@@ -18,6 +18,7 @@ import { join } from 'node:path';
  */
 const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx'] as const;
 const ENGINE_DEPS = /const engineInputs = useMemo\(\(\) => \(\{[\s\S]*?\}\), \[([\s\S]*?)\]\);/;
+const ENGINE_BODY = /const engineInputs = useMemo\(\(\) => \(\{([\s\S]*?)\}\), \[/;
 const RESET_DEPS = /useEffect\(\(\) => \{ setLens\(1\); \}, \[([\s\S]*?)\]\);/;
 const LEGITIMATE_OMISSIONS = new Set(['startDate']);
 
@@ -47,5 +48,13 @@ describe.each(FACES)('%s — the lens reset mirrors the engine inputs', (face) =
   it('⭐ every engine input except startDate also resets the lens', () => {
     const missing = engineDeps.filter((d) => !LEGITIMATE_OMISSIONS.has(d) && !resetDeps.includes(d));
     expect(missing, `${face}: engine inputs that do not reset the lens`).toEqual([]);
+  });
+
+  it('⭐ the support policy (Run 2b) reaches the engine AND resets the lens', () => {
+    // In the object handed to the engine, in its memo's deps, and in the reset list — a policy setting changed under
+    // an engaged stress must clear the scenario, exactly like every other engine input.
+    expect(src.match(ENGINE_BODY)?.[1] ?? '', `${face}: engineInputs body`).toMatch(/\bsupportPolicy\b/);
+    expect(engineDeps, `${face}: engineInputs deps`).toContain('supportPolicy');
+    expect(resetDeps, `${face}: lens-reset deps`).toContain('supportPolicy');
   });
 });

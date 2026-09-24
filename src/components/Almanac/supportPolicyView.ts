@@ -1,16 +1,21 @@
-import { effectivePolicyStops, type CyclingResult, type CyclingRow } from '../../simulation/cyclingSim';
+import {
+  effectivePolicyStops, type CyclingResult, type CyclingRow, type PolicyIgnoredReason,
+} from '../../simulation/cyclingSim';
 import { HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS, type PolicyState } from '../../simulation/supportPolicy';
-import { STRIKE_CURE_LTV } from '../../simulation/strikeCredit';
+import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
+import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
+import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { fmtUSD } from '../../utils/format';
 
 /**
- * Support-anchored policy — the faces' pure display math (Run 2a). No React, no store, and NOTHING from
- * powerLaw / cycleModel: it reads the engine's result and writes the copy. The support path is built in ONE place,
- * `supportPolicyInputs.ts` (the faces' only §2 crossing), so this module never sees a belief.
+ * Support-anchored policy — the faces' pure display math (Run 2a, extended for the faces in Run 2b). No React, no
+ * store, and NOTHING from powerLaw / cycleModel: it reads the engine's result and writes the copy. The support path is
+ * built in ONE place, `supportPolicyInputs.ts` (the faces' only §2 crossing), so this module never sees a belief.
  *
  * Imports: the engine's types and `effectivePolicyStops` (the ONE stop clamp), the policy leaf's `PolicyState` and
- * breaker constants (so the broken sentence cannot drift from the rule), `STRIKE_CURE_LTV` (the 65% a sale restores)
- * and `fmtUSD`. ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
+ * breaker constants (so the broken sentence cannot drift from the rule), the lender FACTS the readouts quote
+ * (`STRIKE_CURE_LTV` — the 65% a sale restores; `STRIKE_MARGIN_CALL_LTV`, `STRIKE_MAX_DRAW_LTV`, `CB_LLTV`) and
+ * `fmtUSD`. ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
  * 🔴 Must never be imported by anything in the risk core (the cyclingFaceView discipline).
  *
  * Every sentence must be TRUE of the run it describes. Where the spec's wording would be false for a case it did not
@@ -64,6 +69,9 @@ export interface EffectivePolicySettings extends SupportPolicySettings {
   skStopEffPct: number;
   cbClamped: boolean;   // the Coinbase stop was held to the CB defense line
   skClamped: boolean;
+  /** `payDownAbove` was pushed above the slider's value to keep the hold band open (the pay-down slider starts at
+   *  1.5× while the buy zone reaches 2.0×). Set HERE, beside the two clamps, so a readout never re-derives it. */
+  payDownPushed: boolean;
 }
 
 const inRange = (v: number, r: { readonly min: number; readonly max: number }, fallback: number): number =>
@@ -80,8 +88,8 @@ export function effectivePolicySettings(
   const cbStopAtSupportPct = inRange(raw.cbStopAtSupportPct, R.cbStopAtSupportPct, D.cbStopAtSupportPct);
   const strikeStopAtSupportPct = inRange(raw.strikeStopAtSupportPct, R.strikeStopAtSupportPct, D.strikeStopAtSupportPct);
   const accumulateBelow = inRange(raw.accumulateBelow, R.accumulateBelow, D.accumulateBelow);
-  const payDownAbove = Math.max(
-    inRange(raw.payDownAbove, R.payDownAbove, D.payDownAbove), round2(accumulateBelow + PAY_DOWN_MIN_GAP));
+  const payDownSet = inRange(raw.payDownAbove, R.payDownAbove, D.payDownAbove);
+  const payDownAbove = Math.max(payDownSet, round2(accumulateBelow + PAY_DOWN_MIN_GAP));
   const bearBufferMonths = inRange(raw.bearBufferMonths, R.bearBufferMonths, D.bearBufferMonths);
   const cashReserveMonths = inRange(raw.cashReserveMonths, R.cashReserveMonths, D.cashReserveMonths);
   const { cbStop, skStop } = effectivePolicyStops(
@@ -93,6 +101,7 @@ export function effectivePolicySettings(
     skStopEffPct: skStop * 100,
     cbClamped: cbStop < cbStopAtSupportPct / 100,
     skClamped: skStop < strikeStopAtSupportPct / 100,
+    payDownPushed: payDownAbove > payDownSet,
   };
 }
 
@@ -110,6 +119,23 @@ export const ZONE_LETTER: Record<PolicyState, 'A' | 'H' | 'D' | 'P' | 'B'> = {
   accumulate: 'A', hold: 'H', payDown: 'D', paused: 'P', broken: 'B',
 };
 
+/** The zones in reading order — the legend, the strip's aria-label and any list of zones follow it. */
+export const ZONE_ORDER: readonly PolicyState[] = ['accumulate', 'hold', 'payDown', 'paused', 'broken'];
+
+/**
+ * One colour per zone — the strip, its legend and the Milestones column read this ONE map (tokens, never hex). Each
+ * reaches ≥ 3:1 on --surface, the --maroon-lift rule for text AND graphical objects: accumulate --green 9.10:1, hold
+ * --text-muted 5.29:1, pay down --btc 8.17:1, paused --amber 8.73:1, broken --red 5.07:1. ⚠ Hold is NOT --text-faint:
+ * that measures 2.52:1 on --surface and fails. The tones match ZONE_TONE (good / quiet / warn / bad).
+ */
+export const ZONE_COLOR: Record<PolicyState, string> = {
+  accumulate: 'var(--green)',
+  hold: 'var(--text-muted)',
+  payDown: 'var(--btc)',
+  paused: 'var(--amber)',
+  broken: 'var(--red)',
+};
+
 // ── formatting (the view writes the numbers) ─────────────────────────────────────────────────────────────────
 
 /** A live multiple of support, 2 dp — "1.35". */
@@ -118,10 +144,19 @@ const fmtK = (k: number): string => k.toFixed(2);
 const fmtThreshold = (x: number): string => String(Number(x.toFixed(2)));
 /** 4 dp + ₿ (the strikeCapNote convention), widening to 8 dp when 4 dp would print a real amount as zero. */
 const fmtBtc = (x: number): string => `${x >= 5e-5 ? x.toFixed(4) : x.toFixed(8)} ₿`;
+/** A stop as a percentage for copy: float residue trimmed (0.55 × 100 = 55.00000000000001 → "55"), a real half point
+ *  kept ("66.5"). */
+export const fmtPolicyPct = (pct: number): string => String(Number(pct.toFixed(1)));
 /** A dollar amount below this prints as "$0" — float dust (a ceiling-capped refinance can leave ~1e-10 over the
- *  limit), never a statement worth a sentence. */
-const DUST_USD = 0.5;
-const shownUsd = (x: number): boolean => Number.isFinite(x) && x >= DUST_USD;
+ *  limit), never a statement worth a sentence. ⚠ THE one dust floor for the policy's copy and the all-in verdict —
+ *  cyclingFaceView / ownershipFaceView import it; never a second constant. */
+export const DUST_USD = 0.5;
+export const shownUsd = (x: number): boolean => Number.isFinite(x) && x >= DUST_USD;
+const monthsLabel = (n: number): string => (n === 1 ? '1 month' : `${n} months`);
+/** How far below support the effective Coinbase / Strike stop is liquidated / called, as a whole percentage. */
+const cbBreakBelowPct = (s: EffectivePolicySettings): number => Math.round((1 - s.cbStopEffPct / 100 / CB_LLTV) * 100);
+const skCallBelowPct = (s: EffectivePolicySettings): number =>
+  Math.round((1 - s.skStopEffPct / 100 / STRIKE_MARGIN_CALL_LTV) * 100);
 const COUNT_WORD = ['zero', 'one', 'two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten'];
 const countWord = (n: number): string => COUNT_WORD[n] ?? String(n);
 
@@ -203,6 +238,10 @@ export interface PolicyReading {
   cb: PolicyRoom | null;
   sk: PolicyRoom | null;
   brokenMonth: number | null; rearmMonth: number | null; breakCount: number;
+  /** The breaker's re-arm rule the faces hand the engine — `DEFAULT_BREAKER_REARM_MONTHS` (null = a true latch). The
+   *  result does not carry its inputs, so the reading supplies the constant; the broken sentence states the rule
+   *  from here even when it never fires in-run (v1.2 #12). */
+  rearmRule: number | null;
   /** The run ENDS broken (a latched break, or a later one that never re-armed). Decides the break's tone. */
   brokenAtEnd: boolean;
   call: StrikeCallSummary | null;
@@ -245,7 +284,8 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
   if (!sim.policyApplied) {
     return {
       applied: false, zone: null, multiple: null, cb: null, sk: null,
-      brokenMonth: null, rearmMonth: null, breakCount: 0, brokenAtEnd: false, call: null,
+      brokenMonth: null, rearmMonth: null, breakCount: 0, rearmRule: DEFAULT_BREAKER_REARM_MONTHS ?? null,
+      brokenAtEnd: false, call: null,
       cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
       firstThrottleMonth: null, monthsInZone: zeroZones(), liqMonth: null, neverDraws: null,
     };
@@ -261,6 +301,7 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
     brokenMonth: sim.modelBrokenMonth,
     rearmMonth: sim.firstRearmMonth,
     breakCount: sim.breakCount,
+    rearmRule: DEFAULT_BREAKER_REARM_MONTHS ?? null,
     brokenAtEnd: sim.last.policyZone === 'broken',
     call: strikeCallSummary(sim),
     cash: {
@@ -292,10 +333,15 @@ function zoneLine(r: PolicyReading): string {
 function brokenSentence(r: PolicyReading): string {
   const head = `Price spent ${countWord(HARD_BREAKER_MONTHS)} month-ends more than ${Math.round(HARD_BREAKER_DEPTH * 100)}% `
     + `under support in month ${r.brokenMonth} — the model is treated as broken: no new debt.`;
-  if (r.rearmMonth === null) return `${head} It stays that way for the rest of this run.`;
-  const n = DEFAULT_BREAKER_REARM_MONTHS;
-  const rearm = n !== undefined
-    ? ` It re-arms after ${n} months back on the line (month ${r.rearmMonth}).`
+  // v1.2 #12: with a re-arm rule the break is NOT "for the rest of this run" just because the rule never fired in it —
+  // say the rule, and that the run ends first. Only a true latch (no rule) stays that way.
+  if (r.rearmMonth === null) {
+    return r.rearmRule !== null
+      ? `${head} It re-arms after ${r.rearmRule} months back on the line — that doesn't happen before this run ends.`
+      : `${head} It stays that way for the rest of this run.`;
+  }
+  const rearm = r.rearmRule !== null
+    ? ` It re-arms after ${r.rearmRule} months back on the line (month ${r.rearmMonth}).`
     : ` It re-armed in month ${r.rearmMonth}.`;
   const again = r.breakCount > 1
     ? ` It broke ${r.breakCount} times in all${r.brokenAtEnd ? ' and stays broken to the end of this run' : ''}.`
@@ -345,7 +391,10 @@ const UNPAID_CAUSE: Record<PolicyState, string> = {
   accumulate: "the credit line and the limits at support couldn't cover them",
 };
 
-function unpaidLine(r: PolicyReading): string | null {
+/** The unpaid line — ONE sentence for the card's details and each face's constraints slot, which shows it in place of
+ *  `unfundedNote` while the policy applies (v1.2 #8: that note's "income and the credit line can't cover" is false in a
+ *  month the policy chose not to borrow). Null when nothing went unpaid, or only float dust did. */
+export function policyUnpaidNote(r: PolicyReading): string | null {
   if (r.unpaid === null || !shownUsd(r.unpaid.totalUsd)) return null;
   const cause = r.unpaid.zone === null ? 'nothing in the model paid them' : UNPAID_CAUSE[r.unpaid.zone];
   const act = shownUsd(r.cash.openingUsd) ? 'A larger cash reserve would cover them.' : 'Set a cash reserve to cover them.';
@@ -380,10 +429,21 @@ export function policyDetails(r: PolicyReading, _s: EffectivePolicySettings): st
     r.brokenMonth !== null ? brokenSentence(r) : null,
     r.call !== null ? strikeCallSentence(r.call) : null,
     cashLine(r),
-    unpaidLine(r),
+    policyUnpaidNote(r),
     r.coldAboveSupportBtc > 0 ? coldAlarm(r) : COLD_PROMISE,
   ];
   return lines.filter((l): l is string => l !== null);
+}
+
+/**
+ * The headline for a face's ALERT slot — Strategy's state line, Ownership's verdict list, Cycling's constraints box
+ * (spec B3): only a warn or bad tone, and read WITHOUT the Strike call. Every face already shows a modelled call through
+ * `strikeCapNote` (the extended strikeCapReading), so a sold / cured call here would print the same sentence twice —
+ * and hide whatever ranks below it. Null when there is nothing to warn about.
+ */
+export function policyAlert(r: PolicyReading, s: EffectivePolicySettings): { tone: 'warn' | 'bad'; text: string } | null {
+  const h = policyHeadline({ ...r, call: null }, s);
+  return h.tone === 'warn' || h.tone === 'bad' ? { tone: h.tone, text: h.text } : null;
 }
 
 /** The sentence for `neverDraws` — '' when there is none. Each is TRUE of every run its kind covers. */
@@ -416,10 +476,21 @@ export function neverDrawsNote(r: PolicyReading, s: EffectivePolicySettings): st
 
 // ── why a month did not borrow ───────────────────────────────────────────────────────────────────────────────
 
-/** Null when the month drew, the policy is off, or it is the opening (month 0 takes no action). Else ONE sentence
- *  naming the real reason, plus what spare income, the cash reserve and unpaid bills did that month. */
-export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings): string | null {
-  if (row.policyZone === null || row.m === 0 || row.strikeDrawn > 0) return null;
+/**
+ * What the cash reserve and unpaid bills did this month — the tail EVERY month's cash-flow sentence shares (the pause
+ * reason's and the drawing month's, C1), so it has one definition. '' when neither passed the dust floor.
+ */
+export function billsRemainderTail(row: Pick<CyclingRow, 'cashToBillsUsd' | 'unfundedUsd'>): string {
+  return (shownUsd(row.cashToBillsUsd) ? ` Your cash reserve paid ${fmtUSD(row.cashToBillsUsd)} of bills.` : '')
+    + (shownUsd(row.unfundedUsd) ? ` ${fmtUSD(row.unfundedUsd)} of bills went unpaid.` : '');
+}
+
+/** Null when the month drew, the policy is off, it is the opening (month 0 takes no action), or there are NO bills —
+ *  a month with nothing to fund borrows nothing and needs no reason (v1.2 #9: the faces print `noBillsNote` there;
+ *  "no room to borrow" would be false). Else ONE sentence naming the real reason, plus what spare income, the cash
+ *  reserve and unpaid bills did that month. `expenses` is the face's effective bills. */
+export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, expenses: number): string | null {
+  if (!(expenses > 0) || row.policyZone === null || row.m === 0 || row.strikeDrawn > 0) return null;
   const k = row.multiple !== null && Number.isFinite(row.multiple) ? fmtK(row.multiple) : '—';
   // "pays the bills" is true only when nothing else paid them and none went unpaid.
   const paycheck = shownUsd(row.cashToBillsUsd) || shownUsd(row.unfundedUsd)
@@ -437,7 +508,8 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings): 
         head = shownUsd(row.payDownUsd)
           ? `Price is ${k}× support — above ${payDownAt}, so spare income pays debt down (${fmtUSD(row.payDownUsd)} this month) before buying.`
           : row.debt > 0
-            ? `Price is ${k}× support — above ${payDownAt}, so spare income pays debt down before buying (there was none this month).`
+            // v1.2 #10: "(there was none this month)" read as "no debt" in a sentence that exists because there IS debt.
+            ? `Price is ${k}× support — above ${payDownAt}, so spare income pays debt down before buying (nothing was left for it this month).`
             : `Price is ${k}× support — above ${payDownAt}, and there's no debt left to pay down, so spare income buys.`;
         break;
       case 'paused':
@@ -454,8 +526,7 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings): 
   }
   return head
     + (shownUsd(row.restoreUsd) ? ` ${fmtUSD(row.restoreUsd)} of spare income repaid a loan over its limit first.` : '')
-    + (shownUsd(row.cashToBillsUsd) ? ` Your cash reserve paid ${fmtUSD(row.cashToBillsUsd)} of bills.` : '')
-    + (shownUsd(row.unfundedUsd) ? ` ${fmtUSD(row.unfundedUsd)} of bills went unpaid.` : '');
+    + billsRemainderTail(row);
 }
 
 /** The pause clause's reason at the stop month, under the policy. */
@@ -496,6 +567,24 @@ export function drawPauseClause(
     : ` · borrowing paused at month ${sim.stopMonth}${reason}, resumed at ${sim.drawingResumedMonth}`;
 }
 
+/**
+ * Ownership's verdict for the first month the policy stopped borrowing — the pause clause's reason, as a sentence. Its
+ * policy-off sentence ("Drawing stops … at the 70% Coinbase stop") is false under the policy: the zone or the limits
+ * at support stopped the draw, not Coinbase's LTV. '' when the policy is off or the run never stopped.
+ */
+export function policyStopSentence(
+  sim: Pick<CyclingResult, 'stopMonth' | 'drawingResumedMonth' | 'policyApplied'>
+    & { rows: ReadonlyArray<Pick<CyclingRow, 'policyZone'>> },
+  s: EffectivePolicySettings,
+): string {
+  if (!sim.policyApplied || sim.stopMonth === null) return '';
+  const why = stopReason(sim.rows[sim.stopMonth]?.policyZone ?? null, s);
+  const reason = why === '' ? '' : ` (${why})`;
+  return sim.drawingResumedMonth === null
+    ? `Borrowing stops in month ${sim.stopMonth}${reason} and doesn't resume on this path.`
+    : `Borrowing pauses in month ${sim.stopMonth}${reason} and runs again from month ${sim.drawingResumedMonth}.`;
+}
+
 // ── the strip, the chart line, the cold gate ─────────────────────────────────────────────────────────────────
 
 /** Month-by-month zones for the strip (one cell per month, m0..N) plus the counts its aria-label reads — over m ≥ 1,
@@ -524,4 +613,118 @@ export function policyLimitPct(row: Pick<CyclingRow, 'multiple'>, cbStopEffPct: 
  *  policy's own sweep runs (it replaces the buffer while the policy applies). */
 export function coldShown(coldBufferPct: number, sim: Pick<CyclingResult, 'policyApplied'>): boolean {
   return sim.policyApplied || coldBufferPct > 0;
+}
+
+// ── the card's copy and the faces' policy notes (Run 2b) ──────────────────────────────────────────────────────
+
+const ZONE_WORDS: Record<PolicyState, string> = {
+  accumulate: 'buy with the line', hold: 'hold', payDown: 'pay down', paused: 'paused below support', broken: 'model broken',
+};
+
+/** The zone strip's accessible name, from `zoneStrip().counts` (m ≥ 1, the engine's own count): "Zones by month: buy
+ *  with the line 29 months, hold 23, pay down 20." — the zones that occur, in reading order. */
+export function zoneStripLabel(counts: Record<PolicyState, number>): string {
+  const parts = ZONE_ORDER.filter((z) => counts[z] > 0)
+    .map((z, i) => `${ZONE_WORDS[z]} ${counts[z]}${i === 0 ? ` ${counts[z] === 1 ? 'month' : 'months'}` : ''}`);
+  return parts.length === 0 ? 'Zones by month: none.' : `Zones by month: ${parts.join(', ')}.`;
+}
+
+const IGNORED_WHY: Record<PolicyIgnoredReason, string> = {
+  mode: 'it applies to the Cycle strategy only',
+  supportPath: "the support line doesn't cover this horizon",
+  cbStop: 'the Coinbase defense line leaves no room for a limit',
+  strikeStop: `the Strike limit must sit under Strike's ${Math.round(STRIKE_MARGIN_CALL_LTV * 100)}% margin call`,
+  zones: 'the buy zone must sit under the pay-down line',
+  buffer: 'the borrowing room kept must be zero or more',
+  cash: 'the cash reserve must be zero or more',
+  strikeLadder: `Strike's liquidation LTV (edited on the safety dashboard) must sit above its `
+    + `${Math.round(STRIKE_MARGIN_CALL_LTV * 100)}% margin call`,
+  retrieveLtv: `Strike's retrieval LTV must sit at or under its ${Math.round(STRIKE_MAX_DRAW_LTV * 100)}% draw limit`,
+  rearm: "the breaker's re-arm must be a whole number of months",
+};
+
+/** Why the engine IGNORED a policy the face asked for — so the card never renders an empty "on" state. Reachable from a
+ *  face: a Strike liquidation LTV at or under the 70% call (the dashboard allows 0–100) fails the engine's
+ *  `strikeLadder` check. '' when nothing was ignored. */
+export function policyIgnoredNote(reason: PolicyIgnoredReason | null): string {
+  if (reason === null) return '';
+  return `The policy can't run here: ${IGNORED_WHY[reason]}. Limits are measured at today's price instead.`;
+}
+
+export interface SettingReadout {
+  /** The slider's big value. */
+  value: string;
+  /** A quiet line under the slider ('' for none) — so the 20px value never wraps into three lines at phone width. */
+  clause: string;
+}
+
+/**
+ * The six settings' readouts. The stops name the EFFECTIVE stop — the one the run uses (v1.2 #13) — and how far below
+ * support it liquidates (Coinbase, `1 − stop/0.86`) or is called (Strike, `1 − stop/0.70`); a clamped stop says it
+ * was held to its defense line. A pushed pay-down line says so (`payDownPushed`), so the value never disagrees with the
+ * run in silence.
+ */
+export function settingReadouts(s: EffectivePolicySettings, expenses: number): {
+  cbStop: SettingReadout; skStop: SettingReadout; accumulateBelow: SettingReadout; payDownAbove: SettingReadout;
+  bearBuffer: SettingReadout; cashReserve: SettingReadout;
+} {
+  const bills = Number.isFinite(expenses) && expenses > 0 ? expenses : 0;
+  const held = (effPct: number): string => `held to your ${fmtPolicyPct(effPct)}% defense line: `;
+  const months = (n: number): SettingReadout =>
+    (n > 0 ? { value: monthsLabel(n), clause: `${fmtUSD(n * bills)} of bills` } : { value: 'none', clause: '' });
+  return {
+    cbStop: {
+      value: `${fmtPolicyPct(s.cbStopAtSupportPct)}%`,
+      clause: `${s.cbClamped ? held(s.cbStopEffPct) : ''}liquidated ${cbBreakBelowPct(s)}% below support`,
+    },
+    skStop: {
+      value: `${fmtPolicyPct(s.strikeStopAtSupportPct)}%`,
+      clause: `${s.skClamped ? held(s.skStopEffPct) : ''}margin call ${skCallBelowPct(s)}% below support`,
+    },
+    accumulateBelow: { value: `${s.accumulateBelow.toFixed(2)}× support`, clause: '' },
+    payDownAbove: {
+      value: `${s.payDownAbove.toFixed(2)}× support`,
+      clause: s.payDownPushed ? `held above your ${s.accumulateBelow.toFixed(2)}× buy zone` : '',
+    },
+    bearBuffer: months(s.bearBufferMonths),
+    cashReserve: months(s.cashReserveMonths),
+  };
+}
+
+/** The line a defense-line control shows while the policy applies. Every "limit X% at support" is the EFFECTIVE stop
+ *  (C4) — never the slider's value. With the Strike cap off there is no Strike defense line to describe. */
+export function defenseLineNote(leg: 'coinbase' | 'strike', s: EffectivePolicySettings, capOn = true): string {
+  const eff = leg === 'coinbase' ? s.cbStopEffPct : s.skStopEffPct;
+  const clamped = leg === 'coinbase' ? s.cbClamped : s.skClamped;
+  const asked = leg === 'coinbase' ? s.cbStopAtSupportPct : s.strikeStopAtSupportPct;
+  const limit = clamped
+    ? `The policy's own limit (${fmtPolicyPct(asked)}%) is held to this line: ${fmtPolicyPct(eff)}% at support.`
+    : `The policy's own limit is ${fmtPolicyPct(eff)}% at support.`;
+  return capOn
+    ? `Where the defenses fire if price breaks below support. ${limit}`
+    : `Off — the Strike top-up doesn't fire if price breaks below support. ${limit}`;
+}
+
+/** The CB LTV tile's sub-line while the policy applies — the EFFECTIVE limit at support and the defense line (C4). */
+export function policyTileSub(s: EffectivePolicySettings, cbLtvCapPct: number): string {
+  return `limit ${fmtPolicyPct(s.cbStopEffPct)}% at support · defense ${fmtPolicyPct(cbLtvCapPct)}%`;
+}
+
+/** The cold-storage card's sentence while the policy applies (its sweep replaces the buffer's). ⚠ "unless the model is
+ *  treated as broken": the engine never sweeps while broken, even with price back above support. */
+export function policyColdNote(s: EffectivePolicySettings): string {
+  const buffer = s.bearBufferMonths > 0 ? ` plus ${monthsLabel(s.bearBufferMonths)} of bills` : '';
+  return `The support policy decides what goes to cold: Coinbase keeps what it needs at support${buffer}; the rest goes `
+    + 'to cold whenever price is at or above support, unless the model is treated as broken.';
+}
+
+/** The card's InfoTip — what it does, the three rules, the evidence — from the settings the run uses (C4). */
+export function policyTip(s: EffectivePolicySettings): string[] {
+  return [
+    "Every limit is measured at the power-law support line instead of today's price, so borrowing can't grow with a rally.",
+    `Buy with the line up to ${fmtThreshold(s.accumulateBelow)}× support; hold to ${fmtThreshold(s.payDownAbove)}×; `
+      + 'pay down above; pause below support.',
+    `Every recorded cycle low sat at or above ~0.98× support; a ${fmtPolicyPct(s.cbStopEffPct)}% Coinbase limit set `
+      + `there survives a ${cbBreakBelowPct(s)}% break below it.`,
+  ];
 }

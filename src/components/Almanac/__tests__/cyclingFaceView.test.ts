@@ -7,15 +7,17 @@ import {
   verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeYieldSentence, DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
+  verdictBasisClause, drawingCashFlowNote, cashFlowText, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   type StrikeCapReading,
 } from '../cyclingFaceView';
+import { billsRemainderTail, shownUsd } from '../supportPolicyView';
 import { cbBarLevel } from '../../../simulation/cbMetrics';
 import {
   runCyclingSim, effectiveStrikeCapPct, allInEquity, baselineAllInEquity, type CyclingRow, type CyclingInputs,
 } from '../../../simulation/cyclingSim';
 import { fmtUSD } from '../../../utils/format';
 import {
-  SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP3,
+  SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP2, pathP3, a5Cases,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
@@ -778,5 +780,170 @@ describe('⭐ verdictVsNeverDraw — the all-in basis (spec v1.4 #21)', () => {
     expect(v.equityDelta).toBe(-1_000);
     expect(v.allIn).toBe(true);
     expect(v.kind).toBe('loses');
+  });
+});
+
+// ── Run 2b · v1.2 + the owner's C1 — every cash-flow sentence true of its month ─────────────────────────────────────
+
+describe('⭐ verdictVsNeverDraw.allIn and the head\'s basis clause — through the ONE dust floor (v1.2 #11)', () => {
+  const last = mkRow({ equity: 100_000, btcHeld: 2 });
+  const sim = (o: Partial<{ totalUnfundedUsd: number; totalCashToBillsUsd: number; totalCashToCureUsd: number; baselineUnfundedUsd: number }>) => ({
+    liqMonth: null, last, baselineEquity: 95_000, baselineBtc: 2,
+    totalUnfundedUsd: 0, totalCashToBillsUsd: 0, totalCashToCureUsd: 0, baselineUnfundedUsd: 0, ...o,
+  });
+
+  it('float residue on every adjustment never flips the basis; a real half-dollar does', () => {
+    const dust = sim({ totalUnfundedUsd: 1e-10, totalCashToBillsUsd: 1e-10, totalCashToCureUsd: 1e-10, baselineUnfundedUsd: 1e-10 });
+    expect(verdictVsNeverDraw(dust, 'cycle').allIn).toBe(false);
+    expect(verdictBasisClause(dust)).toBe('');
+    expect(verdictVsNeverDraw(sim({ baselineUnfundedUsd: 0.49 }), 'cycle').allIn).toBe(false);
+    expect(verdictVsNeverDraw(sim({ baselineUnfundedUsd: 0.5 }), 'cycle').allIn).toBe(true);
+  });
+
+  it('the clause names what was counted — "after unpaid bills" alone is false for a cure paid from the reserve', () => {
+    expect(verdictBasisClause(sim({ totalUnfundedUsd: 10_000 }))).toBe(', after unpaid bills');
+    expect(verdictBasisClause(sim({ baselineUnfundedUsd: 2_000 }))).toBe(', after unpaid bills');
+    expect(verdictBasisClause(sim({ totalCashToCureUsd: 4_000 }))).toBe(', after reserve cash');
+    expect(verdictBasisClause(sim({ totalCashToBillsUsd: 4_000, baselineUnfundedUsd: 4_000 }))).toBe(', after unpaid bills and reserve cash');
+    expect(verdictBasisClause(sim({}))).toBe('');
+    // The engine: the cash cure pays every bill and the baseline has none unpaid — reserve cash is the only adjustment.
+    const cured = callRun({ openingCashUsd: CASH_6_USD });
+    expect([cured.totalUnfundedUsd, cured.baselineUnfundedUsd, cured.totalCashToBillsUsd]).toEqual([0, 0, 0]);
+    expect(cured.totalCashToCureUsd).toBeGreaterThan(0);
+    expect(verdictBasisClause(cured)).toBe(', after reserve cash');
+    expect(verdictVsNeverDraw(cured, 'cycle').allIn).toBe(true);
+  });
+});
+
+describe('⭐ noBillsNote — no bills is not a pause (v1.2 #9)', () => {
+  it('exact copy; the paid-down suffix shows at $0.50 and not below', () => {
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 8_000 }))).toBe('No bills to fund, so $8,000/mo buys bitcoin.');
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 6_000, payDownUsd: 1_500, restoreUsd: 500 })))
+      .toBe('No bills to fund, so $6,000/mo buys bitcoin. $2,000 of spare income paid debt down first.');
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 8_000, payDownUsd: 0.3, restoreUsd: 0.2 }))).toContain('of spare income paid debt down first.');
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 8_000, payDownUsd: 0.29, restoreUsd: 0.2 }))).toBe('No bills to fund, so $8,000/mo buys bitcoin.');
+  });
+
+  it('against the engine: at $0 of bills the "drawing" month draws $0 — policy on and off read the same true sentence', () => {
+    const off = runCyclingSim({ ...SP_REPRO, expenses: 0, pricePath: pathP1() }).rows[1];
+    const on = runPolicy(pathP1(), {}, { expenses: 0 }).rows[1];
+    for (const r of [off, on]) {
+      expect(r.strikeDrawn).toBe(0);
+      expect(cashFlowAtMonth(r, SP_REPRO.income, 0, true).mode).toBe('stopped');   // why the old copy lied
+      expect(noBillsNote(r)).toBe('No bills to fund, so $8,000/mo buys bitcoin.');
+    }
+    // Pay down with no bills: spare income retires the opening debt first, and the sentence says so.
+    const pd = runPolicy(pathP2(0), {}, { expenses: 0 }).rows.find((r) => r.policyZone === 'payDown' && shownUsd(r.payDownUsd))!;
+    expect(pd).toBeDefined();
+    expect(noBillsNote(pd)).toBe(`No bills to fund, so ${fmtUSD(pd.btcBoughtUsd)}/mo buys bitcoin. `
+      + `${fmtUSD(pd.payDownUsd + pd.restoreUsd)} of spare income paid debt down first.`);
+  });
+});
+
+describe('the opening and the post-liquidation sentences', () => {
+  it('month 0 takes no action — so the opening sentence is the only true one there', () => {
+    const r0 = runCyclingSim({ ...SP_REPRO, pricePath: pathP1() }).rows[0];
+    expect([r0.strikeDrawn, r0.btcBoughtUsd]).toEqual([0, 0]);
+    expect(OPENING_CASH_FLOW_NOTE).toBe("Today's opening position — nothing is drawn or bought until month 1.");
+  });
+
+  it('after a liquidation (policy off) borrowing has ended — never "until the price recovers"', () => {
+    expect(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 2_000 })))
+      .toBe('Coinbase has been liquidated — borrowing has ended. Your paycheck pays the bills, so $2,000/mo buys bitcoin.');
+    expect(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 2_000 })))
+      .toBe('Coinbase has been liquidated — borrowing has ended. Your paycheck pays what it can — $2,000 of bills went unpaid this month.');
+  });
+});
+
+describe('⭐ C1 — the drawing-month sentence names the cause and the remainder', () => {
+  const p9 = a5Cases().find((c) => c.name === 'P9 ($4k / $6k)')!;
+  const drawingRows = (r: ReturnType<typeof runCyclingSim>, income: number) =>
+    r.rows.filter((x) => x.m > 0 && cashFlowAtMonth(x, income, 6_000, true).mode === 'drawing');
+
+  it('⭐ (a) incomeCoveredUsd is what the paycheck paid — capped at income, so buys + covered === income', () => {
+    const off = runCyclingSim(p9.off);
+    const over = drawingRows(off, 4_000).filter((x) => x.strikeShortfall > 4_000);
+    expect(over.length).toBeGreaterThan(0);                  // the defect's row shape exists on this path
+    for (const x of over) {
+      const cf = cashFlowAtMonth(x, 4_000, 6_000, true);
+      expect(cf.incomeCoveredUsd).toBe(4_000);               // never "$4,052 on a $4,000 paycheck"
+      expect(cf.buysUsd + cf.incomeCoveredUsd).toBeCloseTo(4_000, 9);
+    }
+    for (const r of [off, runCyclingSim(p9.on)]) {
+      for (const x of drawingRows(r, 4_000)) {
+        const cf = cashFlowAtMonth(x, 4_000, 6_000, true);
+        expect(cf.buysUsd + cf.incomeCoveredUsd).toBeCloseTo(4_000, 9);
+      }
+    }
+  });
+
+  it('full draw: today\'s sentence, unchanged — the bold span is the figure that buys', () => {
+    const c = drawingCashFlowNote(mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 8_000 }), 8_000, 6_000, 13, false);
+    expect(cashFlowText(c)).toBe('The line pays your $6,000 of bills, so all $8,000/mo buys bitcoin — not just the $2,000 left over. '
+      + 'Those bills become 13% debt until they move to Coinbase.');
+    expect(c.strong).toBe('$8,000/mo buys bitcoin');
+    expect(drawingCashFlowNote(mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 8_000 }), 8_000, 6_000, 13, true))
+      .toEqual(c);                                          // a full draw reads the same, policy on or off
+  });
+
+  it('partial draw: the cause by policy state; with nothing left to buy it says so instead of "all $0/mo"', () => {
+    const row = mkRow({ strikeDrawn: 4_000, strikeShortfall: 2_000, btcBoughtUsd: 6_000 });
+    expect(cashFlowText(drawingCashFlowNote(row, 8_000, 6_000, 13, false)))
+      .toBe('The line pays $4,000 of your bills, so all $6,000/mo buys bitcoin — not just the $2,000 left over. '
+        + "Your paycheck covers $2,000 the line couldn't reach. Those bills become 13% debt until they move to Coinbase.");
+    expect(cashFlowText(drawingCashFlowNote(row, 8_000, 6_000, 13, true)))
+      .toBe('The line pays $4,000 of your bills, so all $6,000/mo buys bitcoin — not just the $2,000 left over. '
+        + "The limits at support (or Strike's own line) capped the draw, so your paycheck covers the other $2,000. "
+        + 'Those bills become 13% debt until they move to Coinbase.');
+    const short = mkRow({ strikeDrawn: 1_500, strikeShortfall: 4_500, btcBoughtUsd: 0, unfundedUsd: 500 });
+    const c = drawingCashFlowNote(short, 4_000, 6_000, 13, false);
+    expect(cashFlowText(c)).toBe("The line pays $1,500 of your bills. Your paycheck covers $4,000 the line couldn't reach. "
+      + '$500 of bills went unpaid. No bitcoin bought this month. Those bills become 13% debt until they move to Coinbase.');
+    expect(c.strong).toBe('');
+  });
+
+  it('⭐ policy on, P9 ($4k): the limits at support capped the draw — not "credit exhausted", and never more than the paycheck', () => {
+    const on = runCyclingSim(p9.on);
+    expect(on.creditExhaustedMonth).toBeNull();              // premise: Strike's OWN line never ran short
+    expect(on.firstCeilingThrottleMonth).not.toBeNull();
+    const partial = drawingRows(on, 4_000).filter((x) => shownUsd(x.strikeDrawn) && shownUsd(x.strikeShortfall));
+    expect(partial.length).toBeGreaterThan(0);
+    for (const x of partial) {
+      const text = cashFlowText(drawingCashFlowNote(x, 4_000, 6_000, 13, true));
+      const covered = cashFlowAtMonth(x, 4_000, 6_000, true).incomeCoveredUsd;
+      expect(covered).toBeLessThanOrEqual(4_000);
+      expect(text).toContain(`The limits at support (or Strike's own line) capped the draw, so your paycheck covers the other ${fmtUSD(covered)}.`);
+      expect(text).not.toContain("the line couldn't reach");
+    }
+  });
+
+  it('⭐ policy off, P2: a full Strike line reads "no room left" — never "the line pays your $0 of bills"', () => {
+    const off = runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0) });
+    const zero = drawingRows(off, SP_REPRO.income).filter((x) => !shownUsd(x.strikeDrawn));
+    expect(zero.length).toBeGreaterThan(0);
+    for (const x of zero) {
+      const text = cashFlowText(drawingCashFlowNote(x, SP_REPRO.income, SP_REPRO.expenses, 13, false));
+      expect(text).toBe(`Strike's line has no room left, so your paycheck pays the bills: ${fmtUSD(x.btcBoughtUsd)}/mo buys bitcoin.`);
+      expect(text).not.toMatch(/The line pays your \$0|debt until/);
+    }
+  });
+
+  it('zero draw with bills unpaid: "pays what it can", no bitcoin bought, then the tail — P9 ($4k) off', () => {
+    const off = runCyclingSim(p9.off);
+    const x = drawingRows(off, 4_000).find((r) => !shownUsd(r.strikeDrawn) && shownUsd(r.unfundedUsd))!;
+    expect(x).toBeDefined();
+    expect(cashFlowText(drawingCashFlowNote(x, 4_000, 6_000, 13, false)))
+      .toBe(`Strike's line has no room left, so your paycheck pays what it can. No bitcoin bought this month.${billsRemainderTail(x)}`);
+  });
+
+  it('⭐ policy on, a sub-dollar draw: the limits at support left no room — never "Strike\'s line has no room left"', () => {
+    // Under the policy a drawing month always draws SOMETHING (policyAvailable > 0), so a zero draw there is only a
+    // sub-dollar room left by the limits — the cause is the limits, never a full Strike line.
+    const dust = mkRow({ strikeDrawn: 1e-10, strikeShortfall: 6_000 - 1e-10, btcBoughtUsd: 2_000 });
+    expect(cashFlowText(drawingCashFlowNote(dust, 8_000, 6_000, 13, true)))
+      .toBe("The limits at support (or Strike's own line) leave no room to borrow this month, so your paycheck pays the bills: "
+        + '$2,000/mo buys bitcoin.');
+    expect(cashFlowText(drawingCashFlowNote(dust, 8_000, 6_000, 13, false)))
+      .toBe("Strike's line has no room left, so your paycheck pays the bills: $2,000/mo buys bitcoin.");
   });
 });

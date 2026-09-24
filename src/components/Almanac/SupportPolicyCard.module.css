@@ -1,0 +1,170 @@
+/* The Support policy card — shared by the Cycling, Ownership and Strategy faces (the FreshnessBadge precedent: a
+   shared Almanac component owns its own CSS). Tokens only — zero new hex. The zone colours are NOT here: they come
+   from ZONE_COLOR (supportPolicyView), inline, so the strip, its legend and the Milestones column read ONE map. */
+
+.card {
+  margin-top: 13px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+
+.label {
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+
+.quiet {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+
+/* ── The headline, in its tone ───────────────────────────────────────────────────────────────── */
+.headline {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.toneGood { color: var(--green); }
+.toneQuiet { color: var(--text-secondary); }
+.toneWarn { color: var(--amber); }
+.toneBad { color: var(--red); }
+
+/* ── The zone strip — one flex cell per month; min-width 0 so it never scrolls sideways ──────────── */
+.stripWrap {
+  position: relative;
+  margin: 12px 0 6px;
+  padding: 3px 0;
+}
+.strip {
+  display: flex;
+  gap: 1px;
+  height: 14px;
+  border-radius: 3px;
+  overflow: hidden;
+}
+/* Past 96 months the 1px gaps would outweigh the cells on a phone, so they drop to 0. */
+.stripTight { gap: 0; }
+.cell {
+  flex: 1 1 0;
+  min-width: 0;
+}
+/* The inspected month: a 2px bar over the strip, centred on its cell (never narrower than 2px, whatever the horizon). */
+.marker {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text-primary);
+  pointer-events: none;
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+.legendItem {
+  display: inline-flex;
+  align-items: baseline;
+}
+.legendLetter {
+  font-family: var(--mono);
+  font-weight: 700;
+  margin-right: 4px;
+}
+
+/* ── The detail lines ────────────────────────────────────────────────────────────────────────── */
+.details {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.details li + li { margin-top: 4px; }
+
+/* ── The Settings disclosure — a native <details>, collapsed by default; thumb-sized summary ─────── */
+.disclosure {
+  margin-top: 10px;
+  border-top: 1px solid var(--line-2);
+}
+.summary {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.summary::-webkit-details-marker { display: none; }
+.summary::before {
+  content: '▸';
+  display: inline-block;
+  margin-right: 8px;
+  transition: transform 0.12s;
+}
+.disclosure[open] > .summary::before { transform: rotate(90deg); }
+.summary:focus-visible {
+  outline: 2px solid var(--btc);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 4px 0 2px;
+}
+/* The clause under a slider's value — a quiet line, so the slider's 20px value never wraps at phone width. */
+.readout {
+  margin: -6px 0 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+
+/* ── Buttons — 44px touch targets ────────────────────────────────────────────────────────────── */
+.btnRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+.btn {
+  min-height: 44px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: none;
+  color: var(--text-secondary);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.btn:hover { background: var(--bg-hover); }
+.btn:focus-visible {
+  outline: 2px solid var(--btc);
+  outline-offset: 2px;
+}

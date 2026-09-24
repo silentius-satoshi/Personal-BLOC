@@ -1,9 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote } from '../ownershipFaceView';
+import {
+  chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote, strikeCallVerdict,
+} from '../ownershipFaceView';
+import { strikeCapReading, strikeCapNote } from '../cyclingFaceView';
 import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
-import type { CyclingRow } from '../../../simulation/cyclingSim';
-import { runPolicy, pathP1 } from '../../../simulation/__tests__/supportPolicyPaths';
+import { effectiveStrikeCapPct, type CyclingRow } from '../../../simulation/cyclingSim';
+import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
+import { runPolicy, pathP1, callRun, CASH_6_USD } from '../../../simulation/__tests__/supportPolicyPaths';
 
 /** A plain fixture row — no engine run needed for display math. */
 const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
@@ -153,12 +157,13 @@ describe('shared ownership rules — extracted from OwnershipFace (one definitio
   });
 
   it('⭐ unfundedNote: cause-neutral — true whether the stop halted the draw or the credit line ran out', () => {
-    expect(unfundedNote(2, 46_000)).toBe(
+    // Moved pin (v1.2 #8): the baseline's gap is now REQUIRED and measured — "has the same gap" was an assumption.
+    expect(unfundedNote(2, 46_000, 48_000)).toBe(
       'From month 2, bills exceed what income and the credit line can cover — $46,000 over this run is paid by '
-      + 'nothing in the model. The never-draw comparison has the same gap.',
+      + 'nothing in the model. The never-draw comparison leaves $48,000 unpaid over the same run.',
     );
-    expect(unfundedNote(7, 2_499.6)).toContain('$2,500 over this run');   // rounded to the dollar
-    expect(unfundedNote(null, 0)).toBe('');
+    expect(unfundedNote(7, 2_499.6, 0)).toContain('$2,500 over this run');   // rounded to the dollar
+    expect(unfundedNote(null, 0, 0)).toBe('');
   });
 
   it('MODE_NOTE: hold says it IS the baseline (C3), and every strategy has a note', () => {
@@ -195,9 +200,40 @@ describe('unfundedNote — the baseline\'s own gap', () => {
       + 'nothing in the model. The never-draw comparison pays every bill over the same run.',
     );
     expect(unfundedNote(null, 0, 5_000)).toBe('');
+    expect(unfundedNote(12, 72_000, 0.3)).toContain('pays every bill');   // the one dust floor
+  });
+});
+
+describe('⭐ strikeCallVerdict — Ownership enters its Strike-call branch on the READING (C2)', () => {
+  const cap = (r: ReturnType<typeof callRun>) => strikeCapReading(r, effectiveStrikeCapPct(60, STRIKE_MARGIN_CALL_LTV));
+
+  it('the support policy\'s sale and cash cure: the flag is null, yet the verdict names the call', () => {
+    const sold = callRun();
+    const cured = callRun({ openingCashUsd: CASH_6_USD });
+    // Premise — M1: under the policy a resolved call ends at ≤ 65%, so the old branch key never fired.
+    expect(sold.strikeMarginMonth).toBeNull();
+    expect(cured.strikeMarginMonth).toBeNull();
+    expect(cap(sold).state).toBe('sold');
+    expect(cap(cured).state).toBe('cured');
+    expect(strikeCallVerdict(cap(sold))).toEqual({ color: 'var(--red)', text: strikeCapNote(cap(sold)) });
+    expect(strikeCallVerdict(cap(sold))!.text).toMatch(/^Strike margin call in month 1 — .+ sold to bring it back to 65%\.$/);
+    expect(strikeCallVerdict(cap(cured))).toEqual({ color: 'var(--amber)', text: strikeCapNote(cap(cured)) });
+    expect(strikeCallVerdict(cap(cured))!.text).toContain('cured with');
   });
 
-  it('two arguments keep today\'s sentence until the faces pass the figure (Run 2b)', () => {
-    expect(unfundedNote(2, 46_000)).toContain('The never-draw comparison has the same gap.');
+  it('a flagged call keeps today\'s sentence (policy off, byte-identical) — with the yield appended; nothing else enters', () => {
+    const res = (o: Partial<Parameters<typeof strikeCapReading>[0]>): Parameters<typeof strikeCapReading>[0] => ({
+      strikeMarginMonth: null, firstSurvivalYieldMonth: null, strikeTopUpExhaustedMonth: null,
+      firstStrikeTopUpMonth: null, totalStrikeTopUpBtc: 0, liqMonth: null,
+      firstStrikeCallMonth: null, strikeCallsCured: 0, strikeCallsSold: 0, totalCashToCureUsd: 0,
+      totalStrikeCureColdBtc: 0, totalStrikeLiquidatedBtc: 0, ...o,
+    });
+    expect(strikeCallVerdict(strikeCapReading(res({ strikeMarginMonth: 46 }), 60)))
+      .toEqual({ color: 'var(--red)', text: 'Strike margin call in month 46. 72-hour cure window, unlike Coinbase.' });
+    expect(strikeCallVerdict(strikeCapReading(res({ strikeMarginMonth: 46, firstSurvivalYieldMonth: 40 }), 60))!.text)
+      .toBe('Strike margin call in month 46. 72-hour cure window, unlike Coinbase. Strike gave way to keep Coinbase alive in month 40.');
+    for (const o of [{}, { firstStrikeTopUpMonth: 10, totalStrikeTopUpBtc: 0.1 }, { strikeTopUpExhaustedMonth: 8 }, { firstSurvivalYieldMonth: 8 }]) {
+      expect(strikeCallVerdict(strikeCapReading(res(o), 60))).toBeNull();
+    }
   });
 });

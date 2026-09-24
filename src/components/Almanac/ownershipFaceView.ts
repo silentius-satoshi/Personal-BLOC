@@ -1,7 +1,7 @@
 import type { CyclingRow, CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
-import { btcGained } from './cyclingFaceView';
-import { policyLimitPct } from './supportPolicyView';
+import { btcGained, strikeCapNote, strikeYieldSentence, type StrikeCapReading } from './cyclingFaceView';
+import { policyLimitPct, shownUsd } from './supportPolicyView';
 import { fmtUSD } from '../../utils/format';
 
 /**
@@ -138,22 +138,50 @@ export function modeConstraints(
   };
 }
 
-/** The cycleUnfunded notice — ONE sentence for all three faces. CAUSE-NEUTRAL: the gap comes either from the
- *  stop halting the draw or from the credit line running out, and the copy must be true in both (it sits
- *  beside CyclingFace's credit-exhausted notice). Empty when there is no gap.
- *  ⚠ Pass `baselineUnfundedUsd` (the engine's `sim.baselineUnfundedUsd`) and the last sentence states the never-draw
- *  baseline's OWN measured gap — "the same gap" is not true under the support policy, which can leave bills unpaid
- *  where the baseline pays them. Two arguments keep today's sentence until the faces pass it (Run 2b), which then
- *  makes it required. */
-export function unfundedNote(firstUnfundedMonth: number | null, totalUnfundedUsd: number, baselineUnfundedUsd?: number): string {
+/** The cycleUnfunded notice with the policy OFF — ONE sentence for all three faces. CAUSE-NEUTRAL: the gap comes
+ *  either from the stop halting the draw or from the credit line running out, and the copy must be true in both (it
+ *  sits beside CyclingFace's credit-exhausted notice). Empty when there is no gap.
+ *  ⚠ `baselineUnfundedUsd` (the engine's `sim.baselineUnfundedUsd`) is REQUIRED (Run 2b): the last sentence states the
+ *  never-draw baseline's OWN measured gap — the old "has the same gap" was an assumption, not a measurement. Under
+ *  the support policy the faces show `policyUnpaidNote` instead, which names the real cause (v1.2 #8). */
+export function unfundedNote(firstUnfundedMonth: number | null, totalUnfundedUsd: number, baselineUnfundedUsd: number): string {
   if (firstUnfundedMonth === null) return '';
-  const baseline = baselineUnfundedUsd === undefined
-    ? 'The never-draw comparison has the same gap.'
-    : baselineUnfundedUsd >= 0.5
-      ? `The never-draw comparison leaves ${fmtUSD(baselineUnfundedUsd)} unpaid over the same run.`
-      : 'The never-draw comparison pays every bill over the same run.';
+  const baseline = shownUsd(baselineUnfundedUsd)
+    ? `The never-draw comparison leaves ${fmtUSD(baselineUnfundedUsd)} unpaid over the same run.`
+    : 'The never-draw comparison pays every bill over the same run.';
   return `From month ${firstUnfundedMonth}, bills exceed what income and the credit line can cover — `
     + `${fmtUSD(totalUnfundedUsd)} over this run is paid by nothing in the model. ${baseline}`;
+}
+
+export interface VerdictLine {
+  color: 'var(--red)' | 'var(--amber)';
+  text: string;
+}
+
+/**
+ * The Ownership verdict's Strike-call branch, ENTERED on the reading (C2) — never on `strikeMarginMonth` alone. Under
+ * the support policy that flag stays null for a cure or a clean sale (M1: the call is resolved before it is read), so
+ * a face keyed on it fell through to the stop sentence and never named the sale.
+ *   called → today's sentence (+ the yield sentence), red · sold → red · cured → amber — the last two through
+ *   `strikeCapNote`, the same words the other faces show. Null for every other state.
+ * The liquidation verdict still outranks this one; the face's cap note carries a call that a liquidation pushed aside.
+ */
+export function strikeCallVerdict(cap: StrikeCapReading): VerdictLine | null {
+  switch (cap.state) {
+    case 'called': {
+      const y = strikeYieldSentence(cap);
+      return {
+        color: 'var(--red)',
+        text: `Strike margin call in month ${cap.marginMonth}. 72-hour cure window, unlike Coinbase.${y ? ` ${y}` : ''}`,
+      };
+    }
+    case 'sold':
+      return { color: 'var(--red)', text: strikeCapNote(cap) };
+    case 'cured':
+      return { color: 'var(--amber)', text: strikeCapNote(cap) };
+    default:
+      return null;
+  }
 }
 
 /** One sentence per strategy. ⚠ `hold` IS the never-draw baseline (C3) — the note says so, and no view may
