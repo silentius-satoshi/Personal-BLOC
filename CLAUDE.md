@@ -2955,9 +2955,15 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   capacity `min(line, coll × price × 50%) − drawn` < the bill; a draw cut by the policy's ceilings sets
   `firstCeilingThrottleMonth` instead. Both are gated on `liqMonth === null`. `stopMonth` under the policy means
   "the draw stopped for a zone or ceiling reason". ⚠ **Run 2 note (v1.2 #11):** the "Strike credit exhausted" copy
-  reads `rows[m].strikeShortfall`, which is 0 in a non-drawing policy month — word it from the cause fields.
-  → `creditExhaustedNote(sim)` (cyclingFaceView, Run 2a) keeps the "$/mo" figure only when there is a shortfall;
-  CyclingFace renders it since 2b.
+  read `rows[m].strikeShortfall`, which is 0 in a non-drawing policy month — word it from the cause fields.
+  → `creditExhaustedNote({ creditExhaustedMonth })` (cyclingFaceView; CyclingFace renders it) names the MONTH only:
+  "Strike's own line first falls short of the full bill in month N — in those months your paycheck covers what it
+  can." No figure and no "thereafter" (Run 2b.1), because any figure from the first short month is false: with the
+  policy off its shortfall is neither what the paycheck paid (a shortfall above the paycheck is partly unpaid) nor a
+  constant (the full draw can resume) — pinned on P9 ($4k / $6k), where both happen; with it on, the month is
+  recorded at the decision and may not have drawn at all. The unpaid line beside it carries the money. Ownership's
+  verdict says the same: "Strike's line first falls short of the full bill in month N. In those months your paycheck
+  covers what it can, so fewer sats get bought — self-limiting, not a hard stop."
 - 🔴 **§2 wall:** `cyclingSim` imports `./supportPolicy`, a leaf that imports only `./ltv`. `supportPath` is a plain
   `number[]` built by the VIEW (Run 2: `supportPolicyInputs.ts`; in Run 1 only the test helper builds it) —
   **NEVER stressed, NEVER phase-shifted**: the stress lens moves the price, not the line.
@@ -3096,39 +3102,56 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - ⚠ **`cashFlowAtMonth.incomeCoveredUsd` is what the paycheck actually PAID** — `min(max(0, income),
     strikeShortfall)`, ≤ income — so `buys + incomeCovered === income` in every drawing month (v1.3 #15).
     `drawingCashFlowNote` names the cause and the remainder:
-    - full draw → today's sentence;
+    - full draw → today's sentence; with nothing bought → "The line pays your $D of bills. No bitcoin bought this
+      month." + the debt sentence (the strong span empty), never "all $0/mo buys bitcoin — not just the $0 left over";
     - partial → "The line pays $D of your bills, so all $B/mo buys bitcoin — not just the $S left over." + the cause
       (off: "Your paycheck covers $X the line couldn't reach."; on: "The limits at support (or Strike's own line)
-      capped the draw, so your paycheck covers the other $X.") + the remainder tail + the debt sentence;
+      capped the draw, so your paycheck covers the other $X.") + the remainder tail + the debt sentence. When the
+      paycheck paid nothing (`!shownUsd(incomeCoveredUsd)`), the cause drops the figure — off "Your paycheck covers
+      none of the rest.", on "…capped the draw, and your paycheck covers none of the rest." — never "covers $0";
     - zero draw → "Strike's line has no room left, so your paycheck pays the bills: $B/mo buys bitcoin." — never
       "the line pays your $0". Under the policy a drawing month always draws something, so a zero draw there is only
       a sub-dollar room left by the limits, and it reads "The limits at support (or Strike's own line) leave no room
       to borrow this month…".
 
+    ⚠ **A $0 paycheck is never named as a figure** (the income slider reaches $0; policy off too). The full-draw and
+    partial branches above named it before 2b.1 — on P1 at a $0 paycheck, in every drawing month of both arms.
+
     `billsRemainderTail` is the ONE remainder tail, shared with `policyPauseReason`. Ownership's paycheck clause reads
-    the same fields ("— the line pays $D of the bills." when income covered part).
+    the same fields ("— the line pays $D of the bills." when income covered part), and its last branch takes the
+    pause branch's `shownUsd(cf.buysUsd)` switch — "No bitcoin bought this month." instead of "$0/mo is buying
+    bitcoin this month." (policy off too).
   - Constraints: `policyUnpaidNote` under the policy, else `unfundedNote(…, sim.baselineUnfundedUsd)`. Cycling adds
-    `creditExhaustedNote(sim)` and the throttle line ("From month N the policy limited borrowing…"). The
-    degenerate-cap notice (Ownership, Strategy) → `neverDrawsNote`.
+    `creditExhaustedNote(sim)` (the month only, off too) and the throttle line ("From month N the policy limited
+    borrowing…"). The degenerate-cap notice (Ownership, Strategy) → `neverDrawsNote`.
+  - **Rates card** (Cycling, Ownership): `rateStopNote(applied)` (cyclingFaceView), one definition. Off → the card's
+    two draw-stop sentences verbatim; both figures in them (peak CB LTV moving under a point across 3–16%; an 85%
+    stop pulled in 7 months) were measured with the policy off. On → "With the support policy on, the limits at
+    support cap the draw, so a higher rate leaves less room to borrow." — raising the defense line past the policy's
+    own limit at support never releases the draw. The face supplies the spacing on either side (`{' '}`).
   - Relabels: "Coinbase defense line" / "Strike defense line" + `defenseLineNote` (the notes, the sliders, the Strike
     buttons); the chart's STOP → DEFENSE and Strategy's "Strike defense" line; the CB LTV tile sub → `policyTileSub`
     (Cycling, Strategy — Ownership's tile keeps its liquidation price, which never named the stop); the Strategy
-    disclaimer's modelled-call sentence.
+    disclaimer's modelled-call sentence; the Strike range's accessible name follows its visible label
+    (`aria-label={applied ? 'Strike defense line' : 'Strike LTV cap'}`, all three faces).
   - **Cold card:** the buffer slider, its fair-value text, Cycling's InfoTip and the sweep toggle hide;
     `policyColdNote` + the first-coins month show. The Cold column and the cold chart series gate on `coldShown`.
   - **Charts:** a dashed "Policy limit" series (`policyLimitPct` / `cbLimit`) as a DIRECT recharts child, in the colour
     of the Coinbase line it bounds ON THAT CHART — `--btc` on Cycling, `--coinbase` on Strategy and Ownership (a
     comment at each site; don't "unify" them).
   - **Milestones:** a Zone column (`ZONE_LETTER`, `ZONE_COLOR`, `title` / `aria-label` = `ZONE_LABEL`).
-- **Helper extensions:** `strikeCapReading` gains `sold` / `cured`; `creditExhaustedNote(sim)`;
+- **Helper extensions:** `strikeCapReading` gains `sold` / `cured`; `creditExhaustedNote({ creditExhaustedMonth })`
+  (2b.1 narrowed it — no rows, no figure); `rateStopNote(policyApplied)` (2b.1);
   `chartOwnershipRows(…, cbStopEffPct?)` → `cbLimit`; `unfundedNote`'s third argument is REQUIRED.
 - 🔴 **`modelStrikeLiquidation` and `incomePath` appear nowhere under `src/components/`, tests and comments included**
   (the forbidden-input grep matches text). A component test reaches P7 only through `a5Cases()`.
 - **Structural guards:** `resetMirror.test.ts` (`supportPolicy` in the `engineInputs` body and both dep arrays, on
   all three faces) and `supportPolicyWiring.test.ts` (the four memos; `buildSupportPath(startDate, months)`; never
   stressed or phase-shifted; every engine run spreads `engineInputs`; no `plBandAt('floor'`; the card rendered;
-  Cycling's literal `'cycle'`; the card imports no belief or store; the disclosure collapsed). Each proven red by a
-  temporary edit.
+  Cycling's literal `'cycle'`; the card imports no belief or store; the disclosure collapsed; and the 2b fixes at the
+  face — Cycling and Strategy call `drawingCashFlowNote(` while "the line couldn't reach" appears in no face, and
+  Ownership calls `strikeCallVerdict(capReading)` with no `if (sim.strikeMarginMonth !== null)`). Each proven red by
+  a temporary edit.
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -4015,7 +4038,9 @@ more than twice what the origination fee cost. Modelling the loan at Morpho's ma
 understate the bill; it tells the owner the liquidation is further away than it is. Pinned by a test.
 ⚠ The faces' old "the rate is a cost, not a danger" copy was AMENDED rather than deleted: it holds *while
 the draw cap binds* (the cap absorbs the rate into less accumulation, peak CB LTV moving under a point
-across 3–16%), and stops holding once the cap is set high enough not to bind. Both halves are now stated.
+across 3–16%), and stops holding once the cap is set high enough not to bind. Both halves are now stated — with
+the support policy OFF; with it on (the faces' default) the card shows `rateStopNote`'s policy variant instead
+(§ Support-anchored policy → Faces).
 
 ### Origination fee — `cbBorrowFee` / `cbMaxDrawForHeadroom`
 
@@ -5285,6 +5310,18 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
   - `resetMirror.test.ts`: ⭐ `supportPolicy` in the `engineInputs` body and both dep arrays — proven red on all three
     faces with the key in `engineInputs` only.
   - `supportPolicyWiring.test.ts` (source-reading): see § Faces (Run 2) → Structural guards.
+- **Support policy faces — copy follow-ups** (Run 2b.1; every ⭐ proven red by a temporary edit):
+  - `cyclingFaceView.test.ts`:
+    - ⭐ `rateStopNote`: both strings pinned (a dash drifting in "3–16%" goes red), no edge spaces;
+    - ⭐ a $0 paycheck: the full draw ("No bitcoin bought this month.", identical policy on) and the partial draw
+      ("covers none of the rest", off and on); ⭐ the engine: P1 at a $0 paycheck, off and on, both shapes present,
+      and no drawing month's text matches `/\$0(?![\d,])/`;
+    - ⭐ `creditExhaustedNote`: one sentence for every case; the engine's no-draw decision month keeps no "$0/mo"; ⭐ on
+      P9 ($4k / $6k), policy off, it names `creditExhaustedMonth` with no "$" and no "thereafter" — the premises
+      (a shortfall above the paycheck, a later full draw) asserted by predicate.
+    - Moved pins: every `creditExhaustedNote` expectation (the "$X/mo … thereafter" and "income covers the rest"
+      sentences are gone); the never-"$0/mo" check is kept on the engine's no-draw month.
+  - `supportPolicyWiring.test.ts`: the two face-level pins (see § Faces (Run 2) → Structural guards).
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to

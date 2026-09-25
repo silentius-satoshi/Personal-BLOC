@@ -90,6 +90,22 @@ export function refinanceBreakEvenMonths(
 }
 
 /**
+ * The rates card's sentences on what the Coinbase rate does to the draw — ONE definition for the Cycling and Ownership
+ * faces. With the policy off: the two sentences the card has always shown, verbatim. Both figures in them (peak CB LTV
+ * moving under a point across 3–16%; an 85% stop pulled in 7 months) were measured with the policy OFF. With it on, the
+ * control beside the stop is the defense line, and raising it past the policy's own limit at support never releases
+ * the draw — so the rate costs room to borrow, not a liquidation date, and neither figure applies.
+ * No leading or trailing space: the face supplies the spacing on either side, exactly as the paragraph rendered before.
+ */
+export function rateStopNote(policyApplied: boolean): string {
+  return policyApplied
+    ? 'With the support policy on, the limits at support cap the draw, so a higher rate leaves less room to borrow.'
+    : 'While the draw stop binds, the rate is a cost rather than a danger — peak CB LTV moves under a point across a '
+      + '3–16% range, because the stop absorbs it into less accumulation. Set the stop high enough that it no longer '
+      + 'binds and the rate moves the liquidation DATE instead: at an 85% stop, 1.5 extra points pulls it in 7 months.';
+}
+
+/**
  * What is actually buying bitcoin at a given month, in plain terms.
  *
  * ⚠ THE BUG THIS REPLACES: the Cash flow card said "Surplus $X/mo buys bitcoin", where X was
@@ -145,14 +161,16 @@ export const cashFlowText = (c: CashFlowCopy): string => c.before + c.strong + c
 /**
  * The DRAWING-month cash-flow sentence (cashFlowAtMonth mode 'drawing'), ONE definition for the Cycling and Strategy
  * faces (C1). Three shapes, each true of its row:
- *  • full draw (no shortfall worth a dollar) — today's sentence, unchanged;
+ *  • full draw (no shortfall worth a dollar) — today's sentence while something bought bitcoin;
  *  • partial draw — the line paid part, the paycheck the rest (capped at income), then what the reserve / unpaid bills
  *    did. The CAUSE differs: with the policy off it is the line's own reach; with it on, the limits at support capped
  *    the draw (hedged "or Strike's own line", as the accumulate pause reason is — a row can't say which bound);
  *  • zero draw — nothing was borrowed, so no debt sentence, and never "the line pays your $0 of bills". Policy off,
  *    Strike's own line is full. Policy on, a drawing month always draws something, so this is only a sub-dollar room
  *    left by the limits at support — said as the accumulate pause reason says it.
- * Where nothing bought bitcoin, it says so instead of "all $0/mo buys bitcoin — not just the $0 left over".
+ * A $0 paycheck is never named as a figure (the income slider reaches $0; policy on and off). Where nothing bought
+ * bitcoin the sentence says "No bitcoin bought this month." instead of "all $0/mo buys bitcoin — not just the $0 left
+ * over"; where the paycheck paid none of the shortfall the cause says it "covers none of the rest" instead of "$0".
  */
 export function drawingCashFlowNote(
   row: Pick<CyclingRow, 'btcBoughtUsd' | 'strikeDrawn' | 'strikeShortfall' | 'cashToBillsUsd' | 'unfundedUsd'>,
@@ -177,11 +195,20 @@ export function drawingCashFlowNote(
       : { before: `${why}, so your paycheck ${pays}. No bitcoin bought this month.${tail}`, strong: '', after: '' };
   }
   if (!shownUsd(row.strikeShortfall)) {
-    return { before: `The line pays your ${fmtUSD(cf.lineFundedUsd)} of bills, so all `, strong: buys, after: `${leftOver}${debt}` };
+    const full = `The line pays your ${fmtUSD(cf.lineFundedUsd)} of bills`;
+    return bought
+      ? { before: `${full}, so all `, strong: buys, after: `${leftOver}${debt}` }
+      : { before: `${full}. No bitcoin bought this month.${debt}`, strong: '', after: '' };
   }
+  // What the paycheck paid of the shortfall — named only when it is worth a dollar, never "$0".
+  const covered = shownUsd(cf.incomeCoveredUsd) ? fmtUSD(cf.incomeCoveredUsd) : null;
   const cause = policyApplied
-    ? ` The limits at support (or Strike's own line) capped the draw, so your paycheck covers the other ${fmtUSD(cf.incomeCoveredUsd)}.`
-    : ` Your paycheck covers ${fmtUSD(cf.incomeCoveredUsd)} the line couldn't reach.`;
+    ? ` The limits at support (or Strike's own line) capped the draw, ${covered !== null
+      ? `so your paycheck covers the other ${covered}.`
+      : 'and your paycheck covers none of the rest.'}`
+    : covered !== null
+      ? ` Your paycheck covers ${covered} the line couldn't reach.`
+      : ' Your paycheck covers none of the rest.';
   const head = `The line pays ${fmtUSD(cf.lineFundedUsd)} of your bills`;
   return bought
     ? { before: `${head}, so all `, strong: buys, after: `${leftOver}${cause}${tail}${debt}` }
@@ -533,21 +560,19 @@ export function verdictVsNeverDraw(
 }
 
 /**
- * The Strike-credit notice — extracted from CyclingFace's constraints box so it has ONE definition (the face calls
- * it from Run 2b). '' when Strike's own line never ran short.
- * ⚠ Under the support policy `creditExhaustedMonth` is recorded at the DECISION, including a month that then did not
- * draw at all, whose `strikeShortfall` is 0 — today's copy would print "$0/mo" (spec v1.2 #11). The dollar figure is
- * kept only when there is a shortfall worth a dollar.
+ * The Strike-credit notice — ONE definition, rendered in CyclingFace's constraints box (Ownership's verdict says the
+ * same in its own words). '' when Strike's own line never ran short.
+ * It names the MONTH only — no dollar figure and no "thereafter"; the unpaid line beside it carries the money. Any
+ * figure taken from the first short month would be false:
+ *  • policy off, that month's shortfall is neither what the paycheck paid (a shortfall bigger than the paycheck is
+ *    partly unpaid) nor a constant (the line's reach moves with the price, and the full draw can resume);
+ *  • policy on, `creditExhaustedMonth` is recorded at the DECISION — the month may not have drawn at all, and its
+ *    `strikeShortfall` is then 0 (the "$0/mo" of spec v1.2 #11).
  */
-export function creditExhaustedNote(
-  sim: { creditExhaustedMonth: number | null; rows: ReadonlyArray<Pick<CyclingRow, 'strikeShortfall'>> },
-): string {
+export function creditExhaustedNote(sim: { creditExhaustedMonth: number | null }): string {
   const m = sim.creditExhaustedMonth;
   if (m === null) return '';
-  const shortfall = sim.rows[m]?.strikeShortfall ?? 0;
-  return shortfall >= 0.5
-    ? `Strike credit exhausted at month ${m} — ${fmtUSD(shortfall)}/mo of bills funded from income thereafter.`
-    : `Strike's own line can't fund the full bill from month ${m} — income covers the rest.`;
+  return `Strike's own line first falls short of the full bill in month ${m} — in those months your paycheck covers what it can.`;
 }
 
 /** The price the cold-storage buffer survives down to. The knob is a PRICE, not a percentage — "survive a

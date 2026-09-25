@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
-  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, rateStopNote, cashFlowAtMonth,
   coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, nextTurnsText, fmtPhaseShift,
   cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, MILESTONE_MONTHS, fixedMilestoneMonths,
   verdictVsNeverDraw, coldSurvivePrice, surviveFairMultiple,
@@ -78,6 +78,10 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeLiquidatedBtc: 0,
   ...o,
 });
+
+/** P9 ($4k / $6k) from the A5 paths — a $4,000 paycheck under $6,000 of bills. Shared by the credit notice and the
+ *  drawing-month sentence. */
+const p9 = a5Cases().find((c) => c.name === 'P9 ($4k / $6k)')!;
 
 describe('applyPathStress — the lens rolls the remaining band path forward', () => {
   const path = [78_000, 80_000, 82_000, 84_000, 86_000];
@@ -159,6 +163,22 @@ describe('refinance fee math — the marginal brackets, not a flat 2%', () => {
     expect(refinanceBreakEvenMonths(0.02, 5, 5)).toBeNull();
     expect(refinanceBreakEvenMonths(0, 13, 5)).toBeNull();
     expect(refinanceBreakEvenMonths(NaN, 13, 5)).toBeNull();
+  });
+});
+
+describe('rateStopNote — the rates card\'s draw sentences, by policy state (one definition for both faces)', () => {
+  it('policy off: the card\'s two sentences, verbatim — both figures were measured with the policy off', () => {
+    expect(rateStopNote(false)).toBe('While the draw stop binds, the rate is a cost rather than a danger — peak CB LTV '
+      + 'moves under a point across a 3–16% range, because the stop absorbs it into less accumulation. Set the stop high '
+      + 'enough that it no longer binds and the rate moves the liquidation DATE instead: at an 85% stop, 1.5 extra points '
+      + 'pulls it in 7 months.');
+  });
+  it('policy on: the limits at support cap the draw — neither stop figure applies', () => {
+    expect(rateStopNote(true))
+      .toBe('With the support policy on, the limits at support cap the draw, so a higher rate leaves less room to borrow.');
+  });
+  it('no edge spaces — the face supplies the spacing on either side', () => {
+    for (const applied of [false, true]) expect(rateStopNote(applied)).toBe(rateStopNote(applied).trim());
   });
 });
 
@@ -680,30 +700,41 @@ describe('strikeCapReading / strikeCapNote — what the Strike cap did, in plain
 
 // ── Run 2a · the helper extensions (support policy faces, §A4) ───────────────────────────────────────────────
 
-describe('creditExhaustedNote — extracted from CyclingFace\'s constraints box; never "$0/mo"', () => {
-  it('today\'s sentence verbatim when there IS a shortfall; the no-figure sentence when the month did not draw', () => {
-    expect(creditExhaustedNote({ creditExhaustedMonth: null, rows: [] })).toBe('');
-    const rows = (shortfall: number) => [mkRow(), mkRow(), mkRow({ strikeShortfall: shortfall })];
-    expect(creditExhaustedNote({ creditExhaustedMonth: 2, rows: rows(1_000) }))
-      .toBe('Strike credit exhausted at month 2 — $1,000/mo of bills funded from income thereafter.');
-    expect(creditExhaustedNote({ creditExhaustedMonth: 2, rows: rows(0) }))
-      .toBe("Strike's own line can't fund the full bill from month 2 — income covers the rest.");
-    expect(creditExhaustedNote({ creditExhaustedMonth: 2, rows: rows(0.3) })).not.toContain('$0/mo');   // dust
+describe('creditExhaustedNote — the month only: no figure, no "thereafter", never "$0/mo"', () => {
+  const note = (m: number) =>
+    `Strike's own line first falls short of the full bill in month ${m} — in those months your paycheck covers what it can.`;
+
+  it('ONE sentence for every case; \'\' when Strike\'s own line never ran short', () => {
+    expect(creditExhaustedNote({ creditExhaustedMonth: null })).toBe('');
+    expect(creditExhaustedNote({ creditExhaustedMonth: 2 })).toBe(note(2));
   });
 
-  it('⭐ against the engine: a policy month that did not draw never prints $0/mo; a drawing month keeps the figure', () => {
+  it('⭐ against the engine: the same sentence whether the first short month drew or not — never "$0/mo"', () => {
     const noDraw = runPolicy(pathP1(), {}, { strikeBalance: 30_000 });   // Strike opens fully drawn: month 1 cannot draw
     expect(noDraw.creditExhaustedMonth).toBe(1);
-    expect(noDraw.rows[1].strikeShortfall).toBe(0);
-    expect(creditExhaustedNote(noDraw)).toBe("Strike's own line can't fund the full bill from month 1 — income covers the rest.");
+    expect(noDraw.rows[1].strikeShortfall).toBe(0);                      // the v1.2 #11 shape: recorded at the decision
+    expect(creditExhaustedNote(noDraw)).toBe(note(1));
+    expect(creditExhaustedNote(noDraw)).not.toContain('$0/mo');
     const short = runPolicy(pathP1(), {}, { strikeCreditLine: 5_000 });   // a $5k line under a $6k bill, drawing
     expect(short.rows[1].strikeShortfall).toBeCloseTo(1_000, 9);
-    expect(creditExhaustedNote(short)).toBe('Strike credit exhausted at month 1 — $1,000/mo of bills funded from income thereafter.');
-    // Policy off: exactly the face's sentence today (fmtUSD of that month's shortfall).
+    expect(creditExhaustedNote(short)).toBe(note(1));
     const off = runCyclingSim({ ...SP_REPRO, strikeCreditLine: 5_000, pricePath: pathP1() });
-    const m = off.creditExhaustedMonth!;
-    expect(creditExhaustedNote(off))
-      .toBe(`Strike credit exhausted at month ${m} — ${fmtUSD(off.rows[m].strikeShortfall)}/mo of bills funded from income thereafter.`);
+    expect(creditExhaustedNote(off)).toBe(note(off.creditExhaustedMonth!));
+  });
+
+  it('⭐ P9 ($4k / $6k), policy off: it names creditExhaustedMonth — no "$", never "thereafter"', () => {
+    const off = runCyclingSim(p9.off);
+    const m = off.creditExhaustedMonth;
+    expect(m).not.toBeNull();
+    // Why the old "$X/mo of bills funded from income thereafter" was false twice on this run:
+    expect(off.rows[m!].strikeShortfall).toBeGreaterThan(p9.off.income);   // the shortfall is more than the paycheck
+    expect(off.rows.some((r) => r.m > m! && shownUsd(r.strikeDrawn) && !shownUsd(r.strikeShortfall)))
+      .toBe(true);                                                         // and the full draw comes back later
+    const text = creditExhaustedNote(off);
+    expect(text).toContain(`month ${m}`);
+    expect(text).not.toContain('$');
+    expect(text).not.toContain('thereafter');
+    expect(text).toBe(note(m!));
   });
 });
 
@@ -856,7 +887,6 @@ describe('the opening and the post-liquidation sentences', () => {
 });
 
 describe('⭐ C1 — the drawing-month sentence names the cause and the remainder', () => {
-  const p9 = a5Cases().find((c) => c.name === 'P9 ($4k / $6k)')!;
   const drawingRows = (r: ReturnType<typeof runCyclingSim>, income: number) =>
     r.rows.filter((x) => x.m > 0 && cashFlowAtMonth(x, income, 6_000, true).mode === 'drawing');
 
@@ -945,5 +975,41 @@ describe('⭐ C1 — the drawing-month sentence names the cause and the remainde
         + '$2,000/mo buys bitcoin.');
     expect(cashFlowText(drawingCashFlowNote(dust, 8_000, 6_000, 13, false)))
       .toBe("Strike's line has no room left, so your paycheck pays the bills: $2,000/mo buys bitcoin.");
+  });
+
+  it('⭐ a $0 paycheck, full draw: "No bitcoin bought this month." — never "all $0/mo … the $0 left over"', () => {
+    const row = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 0 });
+    const c = drawingCashFlowNote(row, 0, 6_000, 13, false);
+    expect(cashFlowText(c)).toBe('The line pays your $6,000 of bills. No bitcoin bought this month. '
+      + 'Those bills become 13% debt until they move to Coinbase.');
+    expect(c.strong).toBe('');
+    expect(drawingCashFlowNote(row, 0, 6_000, 13, true)).toEqual(c);   // identical with the policy on
+  });
+
+  it('⭐ a $0 paycheck, partial draw: the cause drops the figure — "covers none of the rest", never "covers $0"', () => {
+    const row = mkRow({ strikeDrawn: 4_000, strikeShortfall: 2_000, btcBoughtUsd: 0, unfundedUsd: 2_000 });
+    expect(cashFlowText(drawingCashFlowNote(row, 0, 6_000, 13, false)))
+      .toBe('The line pays $4,000 of your bills. Your paycheck covers none of the rest. $2,000 of bills went unpaid. '
+        + 'No bitcoin bought this month. Those bills become 13% debt until they move to Coinbase.');
+    expect(cashFlowText(drawingCashFlowNote(row, 0, 6_000, 13, true)))
+      .toBe("The line pays $4,000 of your bills. The limits at support (or Strike's own line) capped the draw, and your "
+        + 'paycheck covers none of the rest. $2,000 of bills went unpaid. No bitcoin bought this month. '
+        + 'Those bills become 13% debt until they move to Coinbase.');
+  });
+
+  it('⭐ against the engine: P1 at a $0 paycheck — no drawing month names $0, policy off or on', () => {
+    const p1 = a5Cases().find((c) => c.name === 'P1')!;
+    for (const [inputs, applied] of [[p1.off, false], [p1.on, true]] as const) {
+      const run = runCyclingSim({ ...inputs, income: 0 });
+      expect(run.policyApplied).toBe(applied);
+      const drawing = drawingRows(run, 0);
+      // Both $0 shapes occur in each arm: full draws (nothing bought) and partial draws (nothing covered).
+      expect(drawing.some((x) => shownUsd(x.strikeDrawn) && !shownUsd(x.strikeShortfall))).toBe(true);
+      expect(drawing.some((x) => shownUsd(x.strikeDrawn) && shownUsd(x.strikeShortfall))).toBe(true);
+      for (const x of drawing) {
+        expect(cashFlowText(drawingCashFlowNote(x, 0, inputs.expenses, inputs.strikeAprPct, applied)))
+          .not.toMatch(/\$0(?![\d,])/);
+      }
+    }
   });
 });

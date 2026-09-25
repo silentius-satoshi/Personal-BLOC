@@ -18,7 +18,7 @@ import { deriveOwnership } from '../../simulation/ownership';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import {
   applyPathStress, debtSplit, clampMonth, holdingsSplit,
-  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, rateStopNote, cashFlowAtMonth,
   mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
   cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
@@ -473,7 +473,7 @@ export default function OwnershipFace() {
     if (sim.creditExhaustedMonth !== null) {
       return {
         color: 'var(--amber)' as const,
-        text: `Strike line stops funding the full bill in month ${sim.creditExhaustedMonth}. Income covers the shortfall, so fewer sats get bought — self-limiting, not a hard stop.`,
+        text: `Strike's line first falls short of the full bill in month ${sim.creditExhaustedMonth}. In those months your paycheck covers what it can, so fewer sats get bought — self-limiting, not a hard stop.`,
       };
     }
     if (sim.stopMonth !== null) {
@@ -864,7 +864,11 @@ export default function OwnershipFace() {
                       : 'No bitcoin bought this month.'}</>
                   );
                 }
-                return <>{coverLine} {fmtUSD(cf.buysUsd)}/mo is buying bitcoin this month.</>;
+                return (
+                  <>{coverLine} {shownUsd(cf.buysUsd)
+                    ? `${fmtUSD(cf.buysUsd)}/mo is buying bitcoin this month.`
+                    : 'No bitcoin bought this month.'}</>
+                );
               })()}
             </div>
 
@@ -941,7 +945,7 @@ export default function OwnershipFace() {
                   min={STRIKE_CAP_RANGE.min} max={STRIKE_CAP_RANGE.max} step={STRIKE_CAP_RANGE.step}
                   value={strikeCapPct}
                   onChange={(e) => set('strikeLtvCapPct', Number(e.target.value))}
-                  aria-label="Strike LTV cap"
+                  aria-label={applied ? 'Strike defense line' : 'Strike LTV cap'}
                 />
               )}
               <div className={styles.presetRow}>
@@ -987,10 +991,7 @@ export default function OwnershipFace() {
               platform fee, which is billed onto the balance monthly.
               This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% all-in over{' '}
               {CB_REALIZED_NET_APR.months} months since {CB_REALIZED_NET_APR.since} (max {CB_REALIZED_NET_APR.max}%) —
-              one cycle, so it says what has happened, not what can. While the draw stop binds, the rate is a
-              cost rather than a danger — peak CB LTV moves under a point across a 3–16% range, because the
-              stop absorbs it into less accumulation. Set the stop high enough that it no longer binds and
-              the rate moves the liquidation DATE instead: at an 85% stop, 1.5 extra points pulls it in 7 months.
+              one cycle, so it says what has happened, not what can.{' '}{rateStopNote(applied)}
               {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
               {fmtK(CB_FEE_TIER_BREAK)}, {CB_FEE_TIER2_PCT * 100}% above, added to principal so it compounds.
               This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows — a blended{' '}

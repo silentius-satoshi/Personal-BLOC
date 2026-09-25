@@ -493,7 +493,7 @@ export default function UnifiedFace() {
               min={STRIKE_CAP_RANGE.min} max={STRIKE_CAP_RANGE.max} step={STRIKE_CAP_RANGE.step}
               value={strikeCapPct}
               onChange={(e) => set('strikeLtvCapPct', Number(e.target.value))}
-              aria-label="Strike LTV cap"
+              aria-label={applied ? 'Strike defense line' : 'Strike LTV cap'}
             />
           )}
           {applied && <p className={styles.noteQuiet}>{defenseLineNote('strike', policySettings, strikeCapPct > 0)}</p>}

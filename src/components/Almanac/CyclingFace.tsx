@@ -16,7 +16,7 @@ import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
 import {
   applyPathStress, debtSplit, btcGained, holdingsSplit, clampMonth,
-  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, cashFlowAtMonth,
+  fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, rateStopNote, cashFlowAtMonth,
   coldBeyondRecord, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
   cbZoneLevel, isBelowSupport, fixedMilestoneMonths, verdictVsNeverDraw, verdictBasisClause,
   coldSurvivePrice, surviveFairMultiple,
@@ -984,7 +984,7 @@ export default function CyclingFace() {
                 min={STRIKE_CAP_RANGE.min} max={STRIKE_CAP_RANGE.max} step={STRIKE_CAP_RANGE.step}
                 value={strikeCapPct}
                 onChange={(e) => set('strikeLtvCapPct', Number(e.target.value))}
-                aria-label="Strike LTV cap"
+                aria-label={applied ? 'Strike defense line' : 'Strike LTV cap'}
               />
             )}
             {applied && <p className={styles.noteQuiet}>{defenseLineNote('strike', policySettings, strikeCapPct > 0)}</p>}
@@ -1039,10 +1039,7 @@ export default function CyclingFace() {
           platform fee, which is billed onto the balance monthly.
           This loan has cost {CB_REALIZED_NET_APR.p10}–{CB_REALIZED_NET_APR.p90}% all-in over{' '}
           {CB_REALIZED_NET_APR.months} months since {CB_REALIZED_NET_APR.since} (max {CB_REALIZED_NET_APR.max}%) —
-          one cycle, so it says what has happened, not what can. While the draw stop binds, the rate is a
-          cost rather than a danger — peak CB LTV moves under a point across a 3–16% range, because the
-          stop absorbs it into less accumulation. Set the stop high enough that it no longer binds and the
-          rate moves the liquidation DATE instead: at an 85% stop, 1.5 extra points pulls it in 7 months.
+          one cycle, so it says what has happened, not what can.{' '}{rateStopNote(applied)}
           {' '}Each sweep to Coinbase also pays their origination fee — {CB_FEE_TIER1_PCT * 100}% under{' '}
           {fmtK(CB_FEE_TIER_BREAK)}, {CB_FEE_TIER2_PCT * 100}% above, added to principal so it compounds.
           This run: {fmtUSD(Math.round(sim.totalCbFees))} over {sim.cbFeeCount} borrows — a blended{' '}
@@ -1057,7 +1054,7 @@ export default function CyclingFace() {
         <div className={styles.constraints}>
           {/* The support policy's alert first — a warn or bad headline, never the Strike call (the cap note has it). */}
           {alert && <div style={{ color: alert.tone === 'bad' ? 'var(--red)' : 'var(--amber)' }}>{alert.text}</div>}
-          {/* creditExhaustedNote keeps the $/mo figure only when there is a shortfall (never "$0/mo"). */}
+          {/* creditExhaustedNote names the month only — the unpaid line below carries the money. */}
           {creditNote && <div>{creditNote}</div>}
           {throttleNote && <div>{throttleNote}</div>}
           {unpaidNote && <div>{unpaidNote}</div>}

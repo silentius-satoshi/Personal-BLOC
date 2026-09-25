@@ -13,7 +13,11 @@ import { join } from 'node:path';
  *    and is never stressed or phase-shifted: the stress lens moves the price, not the line. The stress run spreads
  *    the SAME `engineInputs`, so it receives the identical policy;
  *  - the support readout at the inspected month reads that same path, never a second `plBandAt('floor', …)`;
- *  - every face renders the one shared card, and the card imports no belief and no store.
+ *  - every face renders the one shared card, and the card imports no belief and no store;
+ *  - the 2b copy fixes stay in their helpers: a drawing month's sentence comes from `drawingCashFlowNote` (Cycling,
+ *    Strategy), so the old inline "the line couldn't reach" appears in no face; and Ownership's verdict enters its
+ *    call branch on `strikeCallVerdict(capReading)`, never on `if (sim.strikeMarginMonth !== null)` — under the
+ *    policy a cure or a clean sale leaves that flag null.
  *
  * Each check was proven red by a temporary edit to a real face (or the card) before it landed.
  */
@@ -64,6 +68,24 @@ describe('CyclingFace.tsx — no mode of its own', () => {
     expect(readAlmanac('CyclingFace.tsx')).toMatch(
       /supportPolicyFor\(policySettings, supportPath, expenses, s\.strikeLiquidationLtvPct, 'cycle'\)/,
     );
+  });
+});
+
+describe('the 2b copy fixes, pinned at the face', () => {
+  it.each(['CyclingFace.tsx', 'UnifiedFace.tsx'] as const)(
+    '⭐ %s renders a drawing month through drawingCashFlowNote(', (face) => {
+      expect(readAlmanac(face)).toMatch(/\bdrawingCashFlowNote\(/);
+    },
+  );
+
+  it.each(FACES)("⭐ %s never inlines \"the line couldn't reach\" — it lives only in the helper", (face) => {
+    expect(readAlmanac(face)).not.toMatch(/the\s+line\s+couldn(?:'|\u2019|&apos;|&#39;|&rsquo;)t\s+reach/);
+  });
+
+  it('⭐ OwnershipFace.tsx enters its call verdict on the reading, never on strikeMarginMonth alone', () => {
+    const src = readAlmanac('OwnershipFace.tsx');
+    expect(src).toMatch(/\bstrikeCallVerdict\(capReading\)/);
+    expect(src).not.toMatch(/if\s*\(\s*sim\.strikeMarginMonth\s*!==\s*null\s*\)/);
   });
 });
 
