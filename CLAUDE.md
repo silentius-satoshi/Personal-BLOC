@@ -3098,7 +3098,20 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - **Cash flow, in order (off too):** month 0 → `OPENING_CASH_FLOW_NOTE`; cycle mode with bills ≤ $0 → `noBillsNote`
     (checked FIRST — never a fourth `cashFlowAtMonth` mode); a drawing month → `drawingCashFlowNote`; a non-drawing
     month under the policy → `policyPauseReason` + what bought bitcoin; post-liquidation → `liquidatedCashFlowNote`;
-    otherwise today's sentence (Cycling's word "ceiling" is now "stop" — "ceiling" means the policy's limit).
+    otherwise (a stopped month, policy off) → `stoppedCashFlowNote(row, capPct)`; Strategy's non-cycle modes (`hold`,
+    `clearStrike`, `clearBoth`) → `noDrawCashFlowNote(row)`. Every branch is a tested helper (2b.2 moved the last two
+    inline sentences). In a stopped month and every non-cycle mode the engine funds only the surplus —
+    `btcBoughtUsd` = max(0, income − bills), `unfundedUsd` = max(0, bills − income) — so each helper has three shapes:
+    - `stoppedCashFlowNote`: bills unpaid → "Borrowing paused — the loan hit your N% stop. Your paycheck pays what it
+      can — $U of bills went unpaid this month. No bitcoin bought this month."; paid in full, nothing bought → "…Your
+      paycheck pays the bills again, so no bitcoin is bought until the price recovers."; otherwise the old sentence
+      ("…so only $B/mo buys bitcoin until the price recovers."). It says "stop" — "ceiling" means the policy's limit.
+      ⚠ Strategy said "the loan is at your N% stop"; it now takes the helper's "hit" (a policy-off change).
+    - `noDrawCashFlowNote`: bills unpaid → "No draw in this strategy: your paycheck pays what it can — $U of bills went
+      unpaid this month. No bitcoin bought this month."; nothing left → "No draw in this strategy: after the bills and
+      any repayments, nothing is left to buy bitcoin this month." (e.g. `clearBoth` while the debt is repaid);
+      otherwise the old sentence ("No draw in this strategy: $B/mo buys bitcoin — whatever the surplus leaves after
+      its repayments."). The constraints box's deficit notice is unchanged.
   - ⚠ **`cashFlowAtMonth.incomeCoveredUsd` is what the paycheck actually PAID** — `min(max(0, income),
     strikeShortfall)`, ≤ income — so `buys + incomeCovered === income` in every drawing month (v1.3 #15).
     `drawingCashFlowNote` names the cause and the remainder:
@@ -3115,7 +3128,10 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       to borrow this month…".
 
     ⚠ **A $0 paycheck is never named as a figure** (the income slider reaches $0; policy off too). The full-draw and
-    partial branches above named it before 2b.1 — on P1 at a $0 paycheck, in every drawing month of both arms.
+    partial branches above named it before 2b.1 — on P1 at a $0 paycheck, in every drawing month of both arms — and
+    the stopped and no-draw sentences before 2b.2 (P2 and P4 at a $0 paycheck; `hold` at $4k / $6k in every month).
+    ⚠ **"Pays the bills again" is said only when nothing went unpaid** — the old stopped sentence said it with bills
+    above the paycheck (P9 $4k / $6k, policy off).
 
     `billsRemainderTail` is the ONE remainder tail, shared with `policyPauseReason`. Ownership's paycheck clause reads
     the same fields ("— the line pays $D of the bills." when income covered part), and its last branch takes the
@@ -3148,10 +3164,11 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
 - **Structural guards:** `resetMirror.test.ts` (`supportPolicy` in the `engineInputs` body and both dep arrays, on
   all three faces) and `supportPolicyWiring.test.ts` (the four memos; `buildSupportPath(startDate, months)`; never
   stressed or phase-shifted; every engine run spreads `engineInputs`; no `plBandAt('floor'`; the card rendered;
-  Cycling's literal `'cycle'`; the card imports no belief or store; the disclosure collapsed; and the 2b fixes at the
+  Cycling's literal `'cycle'`; the card imports no belief or store; the disclosure collapsed; the 2b fixes at the
   face — Cycling and Strategy call `drawingCashFlowNote(` while "the line couldn't reach" appears in no face, and
-  Ownership calls `strikeCallVerdict(capReading)` with no `if (sim.strikeMarginMonth !== null)`). Each proven red by
-  a temporary edit.
+  Ownership calls `strikeCallVerdict(capReading)` with no `if (sim.strikeMarginMonth !== null)`; and 2b.2's — Cycling
+  and Strategy call `stoppedCashFlowNote(`, Strategy calls `noDrawCashFlowNote(`, and "pays the bills again" and "No
+  draw in this strategy" appear in no face, whitespace-tolerant). Each proven red by a temporary edit.
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -5322,6 +5339,16 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
     - Moved pins: every `creditExhaustedNote` expectation (the "$X/mo … thereafter" and "income covers the rest"
       sentences are gone); the never-"$0/mo" check is kept on the engine's no-draw month.
   - `supportPolicyWiring.test.ts`: the two face-level pins (see § Faces (Run 2) → Structural guards).
+- **Support policy faces — the last inline cash-flow sentences** (Run 2b.2; every ⭐ proven red by a temporary edit):
+  - `cyclingFaceView.test.ts`:
+    - ⭐ `stoppedCashFlowNote` and `noDrawCashFlowNote`, every shape whole (bills $6,000 against a $4,000 / $6,000 /
+      $8,000 paycheck), and the $0.50 dust floor (sub-50¢ residue never reads as "$0 of bills went unpaid");
+    - ⭐ the engine: P9 ($4k / $6k), policy off — its stopped month reads the unpaid shape, never "pays the bills
+      again"; P2 at a $0 paycheck, policy off — no stopped month names $0 or says "pays the bills again"; P1 in `hold`
+      at $4k / $6k — every month names $2,000 unpaid and no $0.
+  - `supportPolicyWiring.test.ts`: the 2b.2 face-level pins (see § Faces (Run 2) → Structural guards); restoring
+    either face from before 2b.2 turns them red.
+  - No pin moved — no test pinned either sentence.
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to

@@ -8,6 +8,7 @@ import {
   strikeCapReading, strikeCapNote, strikeYieldSentence, DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
   verdictBasisClause, drawingCashFlowNote, cashFlowText, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
+  stoppedCashFlowNote, noDrawCashFlowNote,
   type StrikeCapReading,
 } from '../cyclingFaceView';
 import { billsRemainderTail, shownUsd } from '../supportPolicyView';
@@ -1010,6 +1011,91 @@ describe('⭐ C1 — the drawing-month sentence names the cause and the remainde
         expect(cashFlowText(drawingCashFlowNote(x, 0, inputs.expenses, inputs.strikeAprPct, applied)))
           .not.toMatch(/\$0(?![\d,])/);
       }
+    }
+  });
+});
+
+describe('⭐ the stopped month and the no-draw modes — "pays the bills again" only when nothing went unpaid (2b.2)', () => {
+  // Bills $6,000 in every row: a $4,000 paycheck leaves $2,000 unpaid, $6,000 buys nothing, $8,000 buys $2,000.
+  const UNPAID = mkRow({ btcBoughtUsd: 0, unfundedUsd: 2_000 });
+  const EVEN = mkRow({ btcBoughtUsd: 0, unfundedUsd: 0 });
+  const SURPLUS = mkRow({ btcBoughtUsd: 2_000, unfundedUsd: 0 });
+  const stoppedRows = (r: ReturnType<typeof runCyclingSim>, income: number, expenses: number) =>
+    r.rows.filter((x) => x.m > 0 && !x.postLiquidation && cashFlowAtMonth(x, income, expenses, true).mode === 'stopped');
+
+  it('⭐ stoppedCashFlowNote — every shape, whole', () => {
+    const unpaid = stoppedCashFlowNote(UNPAID, 70);
+    expect(cashFlowText(unpaid)).toBe('Borrowing paused — the loan hit your 70% stop. Your paycheck pays what it can — '
+      + '$2,000 of bills went unpaid this month. No bitcoin bought this month.');
+    expect(unpaid.strong).toBe('');
+    const even = stoppedCashFlowNote(EVEN, 70);
+    expect(cashFlowText(even)).toBe('Borrowing paused — the loan hit your 70% stop. Your paycheck pays the bills again, '
+      + 'so no bitcoin is bought until the price recovers.');
+    expect(even.strong).toBe('');
+    expect(stoppedCashFlowNote(SURPLUS, 70)).toEqual({
+      before: 'Borrowing paused — the loan hit your 70% stop. Your paycheck pays the bills again, so only ',
+      strong: '$2,000/mo buys bitcoin',
+      after: ' until the price recovers.',
+    });
+  });
+
+  it('⭐ noDrawCashFlowNote — every shape, whole', () => {
+    const unpaid = noDrawCashFlowNote(UNPAID);
+    expect(cashFlowText(unpaid)).toBe('No draw in this strategy: your paycheck pays what it can — $2,000 of bills went '
+      + 'unpaid this month. No bitcoin bought this month.');
+    expect(unpaid.strong).toBe('');
+    const even = noDrawCashFlowNote(EVEN);
+    expect(cashFlowText(even))
+      .toBe('No draw in this strategy: after the bills and any repayments, nothing is left to buy bitcoin this month.');
+    expect(even.strong).toBe('');
+    expect(noDrawCashFlowNote(SURPLUS)).toEqual({
+      before: 'No draw in this strategy: ',
+      strong: '$2,000/mo buys bitcoin',
+      after: ' — whatever the surplus leaves after its repayments.',
+    });
+  });
+
+  it('⭐ the ONE dust floor: sub-50¢ residue never reads as "$0 of bills went unpaid"', () => {
+    const dust = mkRow({ btcBoughtUsd: 0, unfundedUsd: 0.3 });
+    expect(stoppedCashFlowNote(dust, 70)).toEqual(stoppedCashFlowNote(EVEN, 70));
+    expect(noDrawCashFlowNote(dust)).toEqual(noDrawCashFlowNote(EVEN));
+  });
+
+  it('⭐ P9 ($4k / $6k), policy off: the stopped month reads the unpaid shape — never "pays the bills again"', () => {
+    const off = runCyclingSim(p9.off);
+    const stopped = stoppedRows(off, p9.off.income, p9.off.expenses);
+    expect(stopped.length).toBeGreaterThan(0);
+    for (const x of stopped) {
+      expect(x.unfundedUsd).toBeCloseTo(2_000, 6);              // the gap the constraints box reports
+      const text = cashFlowText(stoppedCashFlowNote(x, p9.off.cbLtvCapPct));
+      expect(text).toBe(`Borrowing paused — the loan hit your ${p9.off.cbLtvCapPct}% stop. Your paycheck pays what it `
+        + 'can — $2,000 of bills went unpaid this month. No bitcoin bought this month.');
+      expect(text).not.toMatch(/pays the bills again/);
+    }
+  });
+
+  it('⭐ P2 at a $0 paycheck, policy off: no stopped month names $0 or says "pays the bills again"', () => {
+    const p2 = a5Cases().find((c) => c.name === 'P2')!;
+    const off = runCyclingSim({ ...p2.off, income: 0 });
+    const stopped = stoppedRows(off, 0, p2.off.expenses);
+    expect(stopped.length).toBeGreaterThan(0);
+    for (const x of stopped) {
+      const text = cashFlowText(stoppedCashFlowNote(x, p2.off.cbLtvCapPct));
+      expect(text).not.toMatch(/\$0(?![\d,])/);
+      expect(text).not.toMatch(/pays the bills again/);
+    }
+  });
+
+  it('⭐ P1 in hold at $4k / $6k: every month names $2,000 unpaid — never $0', () => {
+    const p1 = a5Cases().find((c) => c.name === 'P1')!;
+    const run = runCyclingSim({ ...p1.off, mode: 'hold', income: 4_000 });
+    const months = run.rows.filter((x) => x.m > 0);
+    expect(months.length).toBeGreaterThan(0);
+    for (const x of months) {
+      expect(cashFlowAtMonth(x, 4_000, p1.off.expenses, false).mode).toBe('noDraw');
+      const text = cashFlowText(noDrawCashFlowNote(x));
+      expect(text).toContain('$2,000 of bills went unpaid this month');
+      expect(text).not.toMatch(/\$0(?![\d,])/);
     }
   });
 });

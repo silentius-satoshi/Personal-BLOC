@@ -17,7 +17,10 @@ import { join } from 'node:path';
  *  - the 2b copy fixes stay in their helpers: a drawing month's sentence comes from `drawingCashFlowNote` (Cycling,
  *    Strategy), so the old inline "the line couldn't reach" appears in no face; and Ownership's verdict enters its
  *    call branch on `strikeCallVerdict(capReading)`, never on `if (sim.strikeMarginMonth !== null)` — under the
- *    policy a cure or a clean sale leaves that flag null.
+ *    policy a cure or a clean sale leaves that flag null;
+ *  - so do 2b.2's: a stopped month's sentence comes from `stoppedCashFlowNote` (Cycling, Strategy) and Strategy's
+ *    no-draw modes read `noDrawCashFlowNote`, so "pays the bills again" and "No draw in this strategy" appear in no
+ *    face — inlined, the first was said even when bills went unpaid, and both named $0.
  *
  * Each check was proven red by a temporary edit to a real face (or the card) before it landed.
  */
@@ -86,6 +89,26 @@ describe('the 2b copy fixes, pinned at the face', () => {
     const src = readAlmanac('OwnershipFace.tsx');
     expect(src).toMatch(/\bstrikeCallVerdict\(capReading\)/);
     expect(src).not.toMatch(/if\s*\(\s*sim\.strikeMarginMonth\s*!==\s*null\s*\)/);
+  });
+});
+
+describe('the 2b.2 cash-flow helpers, pinned at the face', () => {
+  it.each(['CyclingFace.tsx', 'UnifiedFace.tsx'] as const)(
+    '⭐ %s renders a stopped month through stoppedCashFlowNote(', (face) => {
+      expect(readAlmanac(face)).toMatch(/\bstoppedCashFlowNote\(/);
+    },
+  );
+
+  it('⭐ UnifiedFace.tsx renders a no-draw mode through noDrawCashFlowNote(', () => {
+    expect(readAlmanac('UnifiedFace.tsx')).toMatch(/\bnoDrawCashFlowNote\(/);
+  });
+
+  it.each(FACES)('⭐ %s never inlines "pays the bills again" — it lives only in stoppedCashFlowNote', (face) => {
+    expect(readAlmanac(face)).not.toMatch(/pays\s+the\s+bills\s+again/);
+  });
+
+  it.each(FACES)('⭐ %s never inlines "No draw in this strategy" — it lives only in noDrawCashFlowNote', (face) => {
+    expect(readAlmanac(face)).not.toMatch(/No\s+draw\s+in\s+this\s+strategy/);
   });
 });
 

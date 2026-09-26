@@ -116,8 +116,10 @@ export function rateStopNote(policyApplied: boolean): string {
  * The distinction is real, so the copy has to follow the month:
  *  • drawing  — the credit line paid the bill, so ALL of income buys (less any part the line could not
  *               fund). The bill becomes Strike debt: accumulation is LEVERED, not free.
- *  • stopped  — the cap has halted the draw, so income pays the bill itself and only the surplus buys.
- *  • no-draw modes — surplus retires the named leg(s) first, and whatever survives buys.
+ *  • stopped  — the cap has halted the draw, so income pays what it can of the bill and only a surplus buys;
+ *               a deficit goes unpaid (`stoppedCashFlowNote` says which).
+ *  • no-draw modes — surplus retires the named leg(s) first, and whatever survives buys; a deficit goes unpaid
+ *               (`noDrawCashFlowNote`).
  */
 export type BuyMode = 'drawing' | 'stopped' | 'noDraw';
 
@@ -236,6 +238,55 @@ export function liquidatedCashFlowNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'u
     + (shownUsd(row.unfundedUsd)
       ? `Your paycheck pays what it can — ${fmtUSD(row.unfundedUsd)} of bills went unpaid this month.`
       : `Your paycheck pays the bills, so ${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin.`);
+}
+
+/**
+ * A STOPPED month with the policy OFF — ONE definition for the Cycling and Strategy faces (2b.2). Reached when
+ * cashFlowAtMonth reads 'stopped' with no pause reason (the policy's own sentence covers its months) and the month is
+ * not post-liquidation (`liquidatedCashFlowNote`). The engine funds only the surplus there: `btcBoughtUsd` is
+ * max(0, income − bills) and `unfundedUsd` is max(0, bills − income), so at most one of them is non-zero. Three
+ * shapes, each true of its row:
+ *  • bills unpaid — the paycheck pays what it can, the gap is named, nothing is bought;
+ *  • paid in full, nothing left — the paycheck pays the bills again, and no bitcoin is bought until the price recovers;
+ *  • otherwise — the sentence the faces always showed, with the bold span `$B/mo buys bitcoin`.
+ * "Pays the bills again" is said only when nothing went unpaid, and a $0 figure is never named. It says "stop" —
+ * "ceiling" means the support policy's limit.
+ */
+export function stoppedCashFlowNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'unfundedUsd'>, capPct: number): CashFlowCopy {
+  const head = `Borrowing paused — the loan hit your ${capPct}% stop. Your paycheck`;
+  if (shownUsd(row.unfundedUsd)) {
+    return {
+      before: `${head} pays what it can — ${fmtUSD(row.unfundedUsd)} of bills went unpaid this month. No bitcoin bought this month.`,
+      strong: '',
+      after: '',
+    };
+  }
+  if (!shownUsd(row.btcBoughtUsd)) {
+    return { before: `${head} pays the bills again, so no bitcoin is bought until the price recovers.`, strong: '', after: '' };
+  }
+  return { before: `${head} pays the bills again, so only `, strong: `${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin`, after: ' until the price recovers.' };
+}
+
+/**
+ * Strategy's no-draw modes (`hold`, `clearStrike`, `clearBoth` — cashFlowAtMonth mode 'noDraw'), 2b.2. The surplus
+ * retires the named leg(s) first and whatever survives buys; a deficit goes unpaid (`unfundedUsd`, and then
+ * `btcBoughtUsd` is 0). Three shapes: bills unpaid → the paycheck pays what it can and the gap is named; nothing
+ * left after the bills and any repayments → it says so; otherwise the sentence the face always showed. A $0 figure is
+ * never named. The deficit notice in the constraints box is separate and unchanged.
+ */
+export function noDrawCashFlowNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'unfundedUsd'>): CashFlowCopy {
+  const head = 'No draw in this strategy: ';
+  if (shownUsd(row.unfundedUsd)) {
+    return {
+      before: `${head}your paycheck pays what it can — ${fmtUSD(row.unfundedUsd)} of bills went unpaid this month. No bitcoin bought this month.`,
+      strong: '',
+      after: '',
+    };
+  }
+  if (!shownUsd(row.btcBoughtUsd)) {
+    return { before: `${head}after the bills and any repayments, nothing is left to buy bitcoin this month.`, strong: '', after: '' };
+  }
+  return { before: head, strong: `${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin`, after: ' — whatever the surplus leaves after its repayments.' };
 }
 
 export interface BtcGain {

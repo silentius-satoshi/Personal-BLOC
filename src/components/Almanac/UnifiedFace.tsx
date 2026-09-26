@@ -24,7 +24,8 @@ import {
   verdictVsNeverDraw, verdictBasisClause, coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
-  drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
+  drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
+  OPENING_CASH_FLOW_NOTE,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
@@ -789,7 +790,8 @@ export default function UnifiedFace() {
           <section className={styles.card}>
             <span className={styles.cardLabel}>Cash flow at month {monthIdx}</span>
             {/* Every branch is a tested helper, and each is TRUE of its month: the opening takes no action; no bills is
-                not a pause; a drawing month names what paid and what didn't; a paused month names the policy's reason. */}
+                not a pause; a drawing month names what paid and what didn't; a paused month names the policy's reason;
+                a stopped month (policy off) and a no-draw mode name what went unpaid (2b.2). */}
             <p className={styles.noteQuiet}>
               {selRow.m === 0 ? OPENING_CASH_FLOW_NOTE
               : mode === 'cycle' && !(s.expenses > 0) ? noBillsNote(selRow)
@@ -803,17 +805,14 @@ export default function UnifiedFace() {
                   {shownUsd(cf.buysUsd) ? <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin.</strong> : 'No bitcoin bought this month.'}
                 </>
               ) : cf.mode === 'stopped' && selRow.postLiquidation ? liquidatedCashFlowNote(selRow)
-              : cf.mode === 'stopped' ? (
-                <>
-                  Borrowing paused — the loan is at your {capPct}% stop. Your paycheck pays the bills again, so only{' '}
-                  <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong> until the price recovers.
-                </>
-              ) : (
-                <>
-                  No draw in this strategy: <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong> — whatever the surplus
-                  leaves after its repayments.
-                </>
-              )}
+              : cf.mode === 'stopped' ? (() => {
+                const c = stoppedCashFlowNote(selRow, capPct);
+                return <>{c.before}{c.strong !== '' && <strong>{c.strong}</strong>}{c.after}</>;
+              })()
+              : (() => {
+                const c = noDrawCashFlowNote(selRow);
+                return <>{c.before}{c.strong !== '' && <strong>{c.strong}</strong>}{c.after}</>;
+              })()}
             </p>
             {mode === 'cycle' && sim.cbFeeCount > 0 && (
               <p className={styles.noteQuiet}>

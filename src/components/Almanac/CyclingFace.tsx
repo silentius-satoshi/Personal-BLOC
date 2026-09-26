@@ -23,6 +23,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
+  stoppedCashFlowNote,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
@@ -903,7 +904,8 @@ export default function CyclingFace() {
             // income buys. Scrub past the cap and this sentence changes — that IS the flywheel.
             // Every branch is a tested helper, TRUE of its month: the opening takes no action; no bills is not a
             // pause (v1.2 #9); a drawing month names what paid and what didn't (C1); a paused month names the
-            // policy's reason. ⚠ Never a fourth cashFlowAtMonth mode.
+            // policy's reason; a stopped month (policy off) names what went unpaid (2b.2). ⚠ Never a fourth
+            // cashFlowAtMonth mode.
             const cf = cashFlowAtMonth(selRow, income, expenses, true);
             const pause = applied ? policyPauseReason(selRow, policySettings, expenses) : null;
             const month = `Month ${monthIdx}: `;
@@ -923,13 +925,8 @@ export default function CyclingFace() {
                 );
               }
               if (selRow.postLiquidation) return <>{month}{liquidatedCashFlowNote(selRow)}</>;
-              return (
-                <>
-                  {month}Borrowing paused — the loan hit your {capPct}% stop. Your paycheck
-                  pays the bills again, so only <strong>{fmtUSD(cf.buysUsd)}/mo buys bitcoin</strong>{' '}
-                  until the price recovers.
-                </>
-              );
+              const note = stoppedCashFlowNote(selRow, capPct);
+              return <>{month}{note.before}{note.strong !== '' && <strong>{note.strong}</strong>}{note.after}</>;
             })();
             return <p className={styles.noteQuiet}>{copy}</p>;
           })()}
