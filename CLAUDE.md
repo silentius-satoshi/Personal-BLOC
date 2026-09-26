@@ -3112,6 +3112,18 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       any repayments, nothing is left to buy bitcoin this month." (e.g. `clearBoth` while the debt is repaid);
       otherwise the old sentence ("No draw in this strategy: $B/mo buys bitcoin — whatever the surplus leaves after
       its repayments."). The constraints box's deficit notice is unchanged.
+    - `liquidatedCashFlowNote` (post-liquidation, policy off — with it on, `policyPauseReason` says the loop has
+      ended): bills unpaid → "Coinbase has been liquidated — borrowing has ended. Your paycheck pays what it can — $U
+      of bills went unpaid this month."; paid in full, nothing bought (the paycheck exactly equals the bills) → "…Your
+      paycheck pays the bills. No bitcoin bought this month." (2b.3); otherwise "…Your paycheck pays the bills, so
+      $B/mo buys bitcoin."
+    - `noBillsNote` (checked first; policy on and off) has three shapes too, for a different reason: with no bills the
+      whole paycheck is spare, and under the policy a pay-down month retires debt before it buys. Something bought →
+      "No bills to fund, so $B/mo buys bitcoin." (+ " $R of spare income paid debt down first." when some went to
+      debt); nothing bought, debt repaid → "No bills to fund. $R of spare income paid debt down, so no bitcoin bought
+      this month."; nothing bought, nothing repaid (a $0 paycheck) → "No bills to fund. No bitcoin bought this
+      month." (both 2b.3). ⚠ The debt-repaid shape is reached with the policy ON, the default: on P2 at $0 of bills,
+      the first pay-down months send all the spare income to debt.
   - ⚠ **`cashFlowAtMonth.incomeCoveredUsd` is what the paycheck actually PAID** — `min(max(0, income),
     strikeShortfall)`, ≤ income — so `buys + incomeCovered === income` in every drawing month (v1.3 #15).
     `drawingCashFlowNote` names the cause and the remainder:
@@ -3127,16 +3139,24 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       a sub-dollar room left by the limits, and it reads "The limits at support (or Strike's own line) leave no room
       to borrow this month…".
 
-    ⚠ **A $0 paycheck is never named as a figure** (the income slider reaches $0; policy off too). The full-draw and
-    partial branches above named it before 2b.1 — on P1 at a $0 paycheck, in every drawing month of both arms — and
-    the stopped and no-draw sentences before 2b.2 (P2 and P4 at a $0 paycheck; `hold` at $4k / $6k in every month).
+    ⚠ **No cash-flow sentence on any face prints a figure under $0.50 for what bought bitcoin** (policy on and off) —
+    it says "No bitcoin bought this month." or the shape's own words ("nothing is left to buy bitcoin", "no bitcoin is
+    bought until the price recovers", "paid debt down, so no bitcoin bought"). The floor is the ONE `shownUsd`. The
+    rule grew out of "a $0 paycheck is never named as a figure" (the income slider reaches $0), which still holds —
+    "covers none of the rest", never "covers $0". The full-draw and partial branches above named a $0 paycheck before
+    2b.1 — on P1, in every drawing month of both arms — and the stopped and no-draw sentences before 2b.2 (P2 and P4 at
+    a $0 paycheck; `hold` at $4k / $6k in every month). 2b.3 closed the last three: `noBillsNote` with the policy ON
+    (P2 at $0 of bills), `liquidatedCashFlowNote` when the paycheck exactly equals the bills, and Ownership's leveraged
+    branch, which printed a sub-50¢ buy unguarded (reachable only when income ≤ bills and the line's room lands within
+    50¢ of the gap). A face-level pin counts the dust switches (§ Structural guards).
     ⚠ **"Pays the bills again" is said only when nothing went unpaid** — the old stopped sentence said it with bills
     above the paycheck (P9 $4k / $6k, policy off).
 
     `billsRemainderTail` is the ONE remainder tail, shared with `policyPauseReason`. Ownership's paycheck clause reads
     the same fields ("— the line pays $D of the bills." when income covered part), and its last branch takes the
     pause branch's `shownUsd(cf.buysUsd)` switch — "No bitcoin bought this month." instead of "$0/mo is buying
-    bitcoin this month." (policy off too).
+    bitcoin this month." (policy off too). Its leveraged branch fires only above that floor (`cf.leveraged &&
+    shownUsd(cf.buysUsd)`, 2b.3), so a sub-50¢ leveraged month falls through to the last branch.
   - Constraints: `policyUnpaidNote` under the policy, else `unfundedNote(…, sim.baselineUnfundedUsd)`. Cycling adds
     `creditExhaustedNote(sim)` (the month only, off too) and the throttle line ("From month N the policy limited
     borrowing…"). The degenerate-cap notice (Ownership, Strategy) → `neverDrawsNote`.
@@ -3168,7 +3188,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   face — Cycling and Strategy call `drawingCashFlowNote(` while "the line couldn't reach" appears in no face, and
   Ownership calls `strikeCallVerdict(capReading)` with no `if (sim.strikeMarginMonth !== null)`; and 2b.2's — Cycling
   and Strategy call `stoppedCashFlowNote(`, Strategy calls `noDrawCashFlowNote(`, and "pays the bills again" and "No
-  draw in this strategy" appear in no face, whitespace-tolerant). Each proven red by a temporary edit.
+  draw in this strategy" appear in no face, whitespace-tolerant; and 2b.3's — in every face `shownUsd(cf.buysUsd)`
+  appears at least as often as `fmtUSD(cf.buysUsd)`, so each printed buy figure has its dust switch, also
+  whitespace-tolerant). Each proven red by a temporary edit.
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -5349,6 +5371,19 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
   - `supportPolicyWiring.test.ts`: the 2b.2 face-level pins (see § Faces (Run 2) → Structural guards); restoring
     either face from before 2b.2 turns them red.
   - No pin moved — no test pinned either sentence.
+- **Support policy faces — the last zero buy figures** (Run 2b.3; every ⭐ proven red by a temporary edit):
+  - `cyclingFaceView.test.ts`:
+    - ⭐ `noBillsNote`'s two new shapes whole (debt repaid, nothing bought; nothing bought, nothing repaid) and
+      `liquidatedCashFlowNote`'s paid-in-full shape;
+    - ⭐ the $0.50 dust floor: a 30¢ repayment reads as nothing repaid, a 30¢ gap after a liquidation as paid in full;
+    - ⭐ the engine: P2 with the policy on at $0 of bills — no month's `noBillsNote` (m > 0) matches
+      `/\$0(?![\d,])/`, with the debt-repaid, nothing-bought row asserted present.
+  - `supportPolicyWiring.test.ts`: ⭐ every face switches each printed buy figure on the dust floor — red on
+    Ownership's unguarded leveraged branch.
+  - Moved pin: the `noBillsNote` engine case's pay-down row. Its predicate (`policyZone === 'payDown' &&
+    shownUsd(payDownUsd)`) landed on P2 month 21, which sent all the spare income to debt and bought nothing, so the
+    pin enshrined "so $0/mo buys bitcoin." It now finds two rows by predicate: the first pay-down month that bought
+    nothing (the new shape) and the first that both bought and repaid (today's shape, unchanged, asserted present).
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to

@@ -20,7 +20,9 @@ import { join } from 'node:path';
  *    policy a cure or a clean sale leaves that flag null;
  *  - so do 2b.2's: a stopped month's sentence comes from `stoppedCashFlowNote` (Cycling, Strategy) and Strategy's
  *    no-draw modes read `noDrawCashFlowNote`, so "pays the bills again" and "No draw in this strategy" appear in no
- *    face — inlined, the first was said even when bills went unpaid, and both named $0.
+ *    face — inlined, the first was said even when bills went unpaid, and both named $0;
+ *  - and 2b.3's: every buy figure a face prints (`fmtUSD(cf.buysUsd)`) has its dust switch (`shownUsd(cf.buysUsd)`),
+ *    counted off the source — Ownership's leveraged branch printed a sub-50¢ buy unguarded, as "$0/mo".
  *
  * Each check was proven red by a temporary edit to a real face (or the card) before it landed.
  */
@@ -109,6 +111,16 @@ describe('the 2b.2 cash-flow helpers, pinned at the face', () => {
 
   it.each(FACES)('⭐ %s never inlines "No draw in this strategy" — it lives only in noDrawCashFlowNote', (face) => {
     expect(readAlmanac(face)).not.toMatch(/No\s+draw\s+in\s+this\s+strategy/);
+  });
+});
+
+describe('the 2b.3 dust guard, pinned at the face', () => {
+  it.each(FACES)('⭐ %s switches every printed buy figure on the dust floor (2b.3)', (face) => {
+    const src = readAlmanac(face);
+    const printed = src.match(/fmtUSD\(\s*cf\.buysUsd\s*\)/g) ?? [];
+    const switched = src.match(/shownUsd\(\s*cf\.buysUsd\s*\)/g) ?? [];
+    expect(printed.length, `${face}: buy figures printed`).toBeGreaterThan(0);
+    expect(switched.length, `${face}: dust switches on the buy figure`).toBeGreaterThanOrEqual(printed.length);
   });
 });
 

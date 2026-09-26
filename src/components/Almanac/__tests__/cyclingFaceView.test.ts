@@ -864,11 +864,39 @@ describe('⭐ noBillsNote — no bills is not a pause (v1.2 #9)', () => {
       expect(cashFlowAtMonth(r, SP_REPRO.income, 0, true).mode).toBe('stopped');   // why the old copy lied
       expect(noBillsNote(r)).toBe('No bills to fund, so $8,000/mo buys bitcoin.');
     }
-    // Pay down with no bills: spare income retires the opening debt first, and the sentence says so.
-    const pd = runPolicy(pathP2(0), {}, { expenses: 0 }).rows.find((r) => r.policyZone === 'payDown' && shownUsd(r.payDownUsd))!;
-    expect(pd).toBeDefined();
-    expect(noBillsNote(pd)).toBe(`No bills to fund, so ${fmtUSD(pd.btcBoughtUsd)}/mo buys bitcoin. `
-      + `${fmtUSD(pd.payDownUsd + pd.restoreUsd)} of spare income paid debt down first.`);
+    // Pay down with no bills: spare income retires the opening debt first, and the sentence says so. The first
+    // pay-down months send ALL of it to debt and buy nothing — that row pinned "so $0/mo buys bitcoin" before 2b.3 —
+    // and a later pay-down month both repays and buys.
+    const rows = runPolicy(pathP2(0), {}, { expenses: 0 }).rows;
+    const payDown = (r: CyclingRow) => r.policyZone === 'payDown' && shownUsd(r.payDownUsd);
+    const repaidAll = rows.find((r) => payDown(r) && !shownUsd(r.btcBoughtUsd))!;
+    expect(repaidAll).toBeDefined();
+    expect(noBillsNote(repaidAll)).toBe(`No bills to fund. ${fmtUSD(repaidAll.payDownUsd + repaidAll.restoreUsd)} of `
+      + 'spare income paid debt down, so no bitcoin bought this month.');
+    const both = rows.find((r) => payDown(r) && shownUsd(r.btcBoughtUsd))!;
+    expect(both).toBeDefined();
+    expect(noBillsNote(both)).toBe(`No bills to fund, so ${fmtUSD(both.btcBoughtUsd)}/mo buys bitcoin. `
+      + `${fmtUSD(both.payDownUsd + both.restoreUsd)} of spare income paid debt down first.`);
+  });
+
+  it('⭐ nothing bought: the repayment, or "No bitcoin bought this month." — never "$0/mo buys bitcoin" (2b.3)', () => {
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 0, payDownUsd: 8_000 })))
+      .toBe('No bills to fund. $8,000 of spare income paid debt down, so no bitcoin bought this month.');
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 0 }))).toBe('No bills to fund. No bitcoin bought this month.');
+  });
+
+  it('⭐ the ONE dust floor: a 30¢ repayment is never named — it reads as nothing repaid (2b.3)', () => {
+    expect(noBillsNote(mkRow({ btcBoughtUsd: 0, payDownUsd: 0.3 }))).toBe(noBillsNote(mkRow({ btcBoughtUsd: 0 })));
+  });
+
+  it('⭐ against the engine: P2, policy on, $0 of bills — no month\'s sentence names $0 (2b.3)', () => {
+    const on = runPolicy(pathP2(0), {}, { expenses: 0 });
+    expect(on.policyApplied).toBe(true);
+    // Month 0 is excluded: every face shows the opening sentence there, never noBillsNote.
+    const months = on.rows.filter((r) => r.m > 0);
+    // Premise: the defect's row shape occurs — a pay-down month that sent all the spare income to debt.
+    expect(months.some((r) => shownUsd(r.payDownUsd + r.restoreUsd) && !shownUsd(r.btcBoughtUsd))).toBe(true);
+    for (const r of months) expect(noBillsNote(r)).not.toMatch(/\$0(?![\d,])/);
   });
 });
 
@@ -884,6 +912,16 @@ describe('the opening and the post-liquidation sentences', () => {
       .toBe('Coinbase has been liquidated — borrowing has ended. Your paycheck pays the bills, so $2,000/mo buys bitcoin.');
     expect(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 2_000 })))
       .toBe('Coinbase has been liquidated — borrowing has ended. Your paycheck pays what it can — $2,000 of bills went unpaid this month.');
+  });
+
+  it('⭐ after a liquidation, paid in full with nothing left: "No bitcoin bought this month." — never "$0/mo" (2b.3)', () => {
+    expect(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 0 })))
+      .toBe('Coinbase has been liquidated — borrowing has ended. Your paycheck pays the bills. No bitcoin bought this month.');
+  });
+
+  it('⭐ the ONE dust floor: a 30¢ gap after a liquidation reads as paid in full (2b.3)', () => {
+    expect(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 0.3 })))
+      .toBe(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 0 })));
   });
 });
 

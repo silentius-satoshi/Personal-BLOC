@@ -847,7 +847,9 @@ export default function OwnershipFace() {
                 if (selRow.m === 0) return <> {OPENING_CASH_FLOW_NOTE}</>;
                 // No bills → nothing for the line or a pause to fund — checked FIRST (v1.2 #9), never a cash-flow mode.
                 if (mode === 'cycle' && !(expenses > 0)) return <> {noBillsNote(selRow)}</>;
-                if (cf.leveraged) {
+                // The buy figure is printed only above the ONE dust floor (2b.3): a sub-50¢ leveraged month falls
+                // through to the last branch, "No bitcoin bought this month." — never "$0/mo is buying bitcoin".
+                if (cf.leveraged && shownUsd(cf.buysUsd)) {
                   return (
                     <>{coverLine} <strong>{fmtUSD(cf.buysUsd)}/mo is buying bitcoin</strong>
                       {covering

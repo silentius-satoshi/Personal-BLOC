@@ -223,21 +223,36 @@ export const OPENING_CASH_FLOW_NOTE = "Today's opening position — nothing is d
 /**
  * A month with NO bills (v1.2 #9) — checked FIRST in cycle mode, policy on or off. With nothing to fund, a "drawing"
  * month draws $0, so cashFlowAtMonth reads it as stopped and the faces said "no room to borrow" / "the loan hit your
- * stop … until the price recovers" (with the WHOLE income buying). Spare income that repaid debt first says so.
+ * stop … until the price recovers" (with the WHOLE income buying). Three shapes, each true of its row (2b.3):
+ *  • something bought — `$B/mo buys bitcoin`, plus the repayment when spare income paid debt down first;
+ *  • nothing bought, debt repaid — reached with the policy ON, the default: a pay-down month can send ALL the spare
+ *    income to debt, so the sentence names the repayment instead of "$0/mo buys bitcoin";
+ *  • nothing bought, nothing repaid (a $0 paycheck) — "No bitcoin bought this month."
+ * Both figures go through the ONE dust floor (`shownUsd`), so a figure under 50¢ is never named.
  */
 export function noBillsNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'payDownUsd' | 'restoreUsd'>): string {
   const repaid = row.payDownUsd + row.restoreUsd;
+  if (!shownUsd(row.btcBoughtUsd)) {
+    return shownUsd(repaid)
+      ? `No bills to fund. ${fmtUSD(repaid)} of spare income paid debt down, so no bitcoin bought this month.`
+      : 'No bills to fund. No bitcoin bought this month.';
+  }
   return `No bills to fund, so ${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin.`
     + (shownUsd(repaid) ? ` ${fmtUSD(repaid)} of spare income paid debt down first.` : '');
 }
 
 /** A non-drawing month after a Coinbase liquidation, with the policy OFF (v1.2 #9 — the stopped sentence promised
- *  "until the price recovers"). With the policy on, `policyPauseReason` says the loop has ended. */
+ *  "until the price recovers"). With the policy on, `policyPauseReason` says the loop has ended. The engine funds only
+ *  the surplus here, so three shapes (2b.3): bills unpaid → the gap is named; paid in full with nothing left (the
+ *  paycheck exactly equals the bills) → "No bitcoin bought this month."; otherwise `$B/mo buys bitcoin`. A $0 figure
+ *  is never named. */
 export function liquidatedCashFlowNote(row: Pick<CyclingRow, 'btcBoughtUsd' | 'unfundedUsd'>): string {
   return 'Coinbase has been liquidated — borrowing has ended. '
     + (shownUsd(row.unfundedUsd)
       ? `Your paycheck pays what it can — ${fmtUSD(row.unfundedUsd)} of bills went unpaid this month.`
-      : `Your paycheck pays the bills, so ${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin.`);
+      : shownUsd(row.btcBoughtUsd)
+        ? `Your paycheck pays the bills, so ${fmtUSD(row.btcBoughtUsd)}/mo buys bitcoin.`
+        : 'Your paycheck pays the bills. No bitcoin bought this month.');
 }
 
 /**
