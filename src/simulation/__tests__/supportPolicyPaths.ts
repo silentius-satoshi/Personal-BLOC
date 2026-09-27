@@ -211,6 +211,34 @@ export const CALL_BASE: Omit<CyclingInputs, 'pricePath'> = { ...SP_REPRO, strike
 export const callRun = (o: Partial<SupportPolicyInputs> = {}, extra: Partial<CyclingInputs> = {}): CyclingResult =>
   runCyclingSim({ ...CALL_BASE, ...extra, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT, o) });
 
+/** A stress as a face's lens applies it — price × f from month 12 (applyPathStress(p, 12, f), inlined). */
+export const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) => (m >= 12 ? x * f : x));
+
+// ── the cold-rules measurement (spec: cold rules below support v1) — shared by its tests and the report ──────────
+
+/** The TEST-ONLY switches measured against today's order (`base`), all POLICY ON: D the doom gate on the emergency
+ *  Coinbase top-up, C cold before the debt shift, and both. */
+export const COLD_RULE_VARIANTS = [
+  ['base', {}],
+  ['D', { doomGateCbTopUp: true }],
+  ['C', { coldBeforeShift: true }],
+  ['C+D', { doomGateCbTopUp: true, coldBeforeShift: true }],
+] as const satisfies ReadonlyArray<readonly [string, Partial<CyclingInputs>]>;
+
+export interface ColdRuleRow { name: string; on: CyclingInputs; support: number[] }
+/** The measurement's rows, POLICY ON (the switches are policy-only): every A5 path, P1 and P2 × 0.6 / 0.5 / 0.4 / 0.35
+ *  from month 12, and the CALL fixture. No seed — each consumer adds its own `openingColdBtc`. */
+export function coldRuleRows(): ColdRuleRow[] {
+  return [
+    ...a5Cases().map((c) => ({ name: c.name, on: c.on, support: c.support })),
+    ...[0.6, 0.5, 0.4, 0.35].flatMap((f) => (['P1', 'P2'] as const).map((p) => ({
+      name: `${p} × ${f} from m12`, support: SUPPORT,
+      on: { ...SP_REPRO, pricePath: stressFrom12(p === 'P1' ? pathP1() : pathP2(0), f), supportPolicy: policyFor(SUPPORT) },
+    }))),
+    { name: 'CALL fixture', on: { ...CALL_BASE, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT) }, support: CALL_SUPPORT },
+  ];
+}
+
 /** Test 15's opening (on P1) — BOTH legs over their ceilings at support, or "Coinbase before Strike" could not fail.
  *  CB debt $48k (not the spec's $50k): at $50k month 1 opens at 70.3% at price and the Coinbase DEBT SHIFT fires,
  *  which moves debt onto Strike and muddies the ordering. */

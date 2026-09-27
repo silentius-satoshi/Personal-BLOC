@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
+import { isDeepStrictEqual } from 'node:util';
+import { topUpStrikeLtv } from '../cbDefense';
 import {
   runCyclingSim, effectivePolicyStops, effectiveStrikeCapPct, allInEquity, baselineAllInEquity,
   type CyclingInputs, type CyclingResult, type CyclingRow, type SupportPolicyInputs, type PolicyIgnoredReason,
@@ -10,6 +12,7 @@ import {
   SP_START, SP_MONTHS, SUPPORT, S0, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, pathP1, pathP2, pathP3,
   pathP4, pathP5, pathP6, incomeShockP7, buildP9, a5Cases, minMultiple, cbLtvAtSupport, multiplePath, type A5Case,
   runPolicy as on, CALL_SUPPORT, CALL_PATH, CALL_BASE, callRun, RESTORE_OPENING, OVER_CEILING_COLD_OPENING,
+  stressFrom12, coldRuleRows, COLD_RULE_VARIANTS, syntheticGrid,
 } from './supportPolicyPaths';
 
 /**
@@ -1049,8 +1052,6 @@ describe('allInEquity / baselineAllInEquity — the verdict\'s basis (spec v1.4 
 describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc, real-cold spec v1)', () => {
   /** A round synthetic reserve. The faces pass `getCurrentColdBtc()`; the engine takes it as `openingColdBtc`. */
   const SEED = 0.5;
-  /** The stress inlined as a face's lens applies it — price × f from month 12 (no view imports in the engine tests). */
-  const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) => (m >= 12 ? x * f : x));
   /** The only row fields an unspent seed may move: the pool it sits in, the total, and their dollar value. */
   const MOVED = ['btcHeld', 'coldBtc', 'collateralValue', 'equity'];
 
@@ -1118,5 +1119,152 @@ describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc,
     // Fixture-bound: with no reserve the call is cured by a sale; with one, the Strike cap's top-up holds the line.
     expect(callRun().totalStrikeLiquidatedBtc).toBeCloseTo(0.2565, 4);
     expect(callRun({}, { openingColdBtc: SEED }).totalStrikeLiquidatedBtc).toBe(0);
+  });
+});
+
+// ── cold rules below support (spec: cold rules measurement v1) — the TEST-ONLY switches D and C ─────────────────────
+
+describe('⭐ cold rules below support — D (doom gate) and C (cold before the shift), TEST-ONLY and policy-only', () => {
+  const SEED = 0.5;
+  const D = { doomGateCbTopUp: true } as const;
+  const C = { coldBeforeShift: true } as const;
+  /** D, C and C + D — the variants the report measures against today's order. */
+  const SWITCHED = COLD_RULE_VARIANTS.filter(([name]) => name !== 'base');
+
+  it('⭐ off is byte-identical: both switches false (policy on) ≡ absent; both true with the policy OFF ≡ absent', () => {
+    // Every A5 path plus the measurement's stress rows and the CALL fixture — the stress rows are where the switches
+    // BIND, which is what keeps this comparison from passing vacuously.
+    let dBinds = 0;
+    let cBinds = 0;
+    for (const row of coldRuleRows()) {
+      for (const seed of [0, SEED]) {
+        const label = `${row.name} · seed ${seed}`;
+        const on: CyclingInputs = { ...row.on, openingColdBtc: seed };
+        const absent = runCyclingSim(on);
+        expect(runCyclingSim({ ...on, doomGateCbTopUp: false, coldBeforeShift: false }), label).toEqual(absent);
+        const off: CyclingInputs = { ...on, supportPolicy: undefined };
+        expect(runCyclingSim({ ...off, ...D, ...C }), `${label}, policy off`).toEqual(runCyclingSim(off));
+        if (!isDeepStrictEqual(runCyclingSim({ ...on, ...D }), absent)) dBinds++;
+        if (!isDeepStrictEqual(runCyclingSim({ ...on, ...C }), absent)) cBinds++;
+      }
+    }
+    expect(dBinds).toBeGreaterThan(0);
+    expect(cBinds).toBeGreaterThan(0);
+  });
+
+  it('⭐ D never pours into a doomed Coinbase — P1 × 0.35 from month 12, a 0.5 ₿ seed', () => {
+    const inputs: CyclingInputs = {
+      ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
+    };
+    const base = runCyclingSim(inputs);
+    // Premise: today's order liquidates Coinbase at month 12 with the seed inside that month's top-up.
+    expect(base.liqMonth).toBe(12);
+    expect(base.rows[12].topUpFromColdBtc).toBeGreaterThan(0);
+    const d = runCyclingSim({ ...inputs, ...D });
+    expect(d.liqMonth).toBe(12);                       // D cannot save Coinbase — it only stops feeding it
+    expect(d.rows[12].topUpFromColdBtc).toBe(0);
+    expect(d.rows[12].topUpFromStrikeBtc).toBe(0);
+    for (const x of d.rows.slice(12)) expect(x.coldBtc, `m${x.m}`).toBeGreaterThanOrEqual(SEED);   // the seed survives
+    expectLedgersFoot(d, inputs);
+  });
+
+  it('⭐ C spends cold before any shift — P1 × 0.5 from month 12, a 0.5 ₿ seed', () => {
+    const inputs: CyclingInputs = {
+      ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.5), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
+    };
+    const base = runCyclingSim(inputs);
+    const b = base.rows[12];
+    // Premise: a below-support month, Coinbase over its line before the shift, the shift fires, and cold is there.
+    expect(aboveSupport(b.price, SUPPORT[12])).toBe(false);
+    expect(b.cbLtvPreDefense!).toBeGreaterThan(SP_REPRO.cbLtvCapPct / 100);
+    expect(b.defenseDrawnUsd).toBeGreaterThan(0);
+    expect(base.rows[11].coldBtc).toBeGreaterThanOrEqual(SEED);
+    const c = runCyclingSim({ ...inputs, ...C });
+    const x = c.rows[12];
+    expect(x.topUpFromColdBtc).toBeGreaterThan(0);
+    expect(x.topUpFromStrikeBtc).toBe(0);                                    // cold only
+    expect(x.defenseDrawnUsd).toBeLessThan(b.defenseDrawnUsd);
+    expect(x.cbLtv).toBeCloseTo(SP_REPRO.cbLtvCapPct / 100, 12);             // the line still holds, cold + a smaller shift
+    expect(c.totalStrikeInterest).toBeLessThan(base.totalStrikeInterest);   // less debt parked at Strike's 13%
+    expectLedgersFoot(c, inputs);
+  });
+
+  it('⭐ C never takes the cold Strike\'s cap needs on the pre-shift state — scarce cold, both legs over their lines', () => {
+    // ⚠ A Strike cap of 40, deliberately. With a cap at or above Strike's 50% draw line, a pre-shift Strike reserve
+    // and debt-shift capacity never coexist (a reserve needs LTV over the cap, capacity needs it under 50%), so C's
+    // reserve and its smaller shift can only meet in one month under a cap below 50. income = bills, so month 1
+    // (paused) only accrues interest before the defense: its pre-shift state is the opening plus one month of it.
+    const COLD = 0.17;
+    const support = supportPathFor(SP_START, 1);
+    const price = 0.8 * support[1];
+    const inputs: CyclingInputs = {
+      ...SP_REPRO, strikeBalance: 26_000, cbDebt: 41_500, income: 6_000, strikeLtvCapPct: 40, openingColdBtc: COLD,
+      pricePath: [1.35 * S0, price], supportPolicy: policyFor(support),
+    };
+    const skBalPre = 26_000 + 26_000 * smr;   // the engine's own arithmetic, so the reconstruction is exact
+    const cbDebtPre = 41_500 + 41_500 * cmr;
+    const reserve = topUpStrikeLtv({
+      strikeBalance: skBalPre, strikeCollateralBtc: 1, price, targetStrikeLtvPct: 40, coldBtc: COLD,
+    }).fromColdBtc;
+    const toLine = cbDebtPre / ((SP_REPRO.cbLtvCapPct / 100) * price) - 1;
+    const base = runCyclingSim(inputs);
+    const b = base.rows[1];
+    // Premise: below support, Coinbase over its line and the shift fires; Strike wants cold before the shift, and the
+    // cold cannot cover both legs — so the reserve BINDS what C may take.
+    expect(aboveSupport(price, support[1])).toBe(false);
+    expect(b.cbLtvPreDefense!).toBeGreaterThan(SP_REPRO.cbLtvCapPct / 100);
+    expect(b.defenseDrawnUsd).toBeGreaterThan(0);
+    expect(reserve).toBeGreaterThan(0);
+    expect(COLD).toBeLessThan(reserve + toLine);
+    const c = runCyclingSim({ ...inputs, ...C });
+    const x = c.rows[1];
+    expect(x.topUpFromColdBtc).toBeGreaterThan(0);
+    expect(x.topUpFromStrikeBtc).toBe(0);                                    // cold only
+    expect(x.defenseDrawnUsd).toBeLessThan(b.defenseDrawnUsd);
+    expect(x.cbLtv).toBeCloseTo(SP_REPRO.cbLtvCapPct / 100, 12);             // the shift still covers what C left
+    // The reserve holds: C took at most cold − reserve, and Strike's top-up got its whole pre-shift need.
+    expect(x.topUpFromColdBtc).toBeLessThanOrEqual(COLD - reserve + 1e-12);
+    expect(x.strikeTopUpBtc).toBeGreaterThanOrEqual(reserve - 1e-12);
+    expectLedgersFoot(c, inputs);
+  });
+
+  it('C restoring the line in full books no shift — not even the float dust of its own top-up (the synthetic grid)', () => {
+    // Topping up to the line EXACTLY can land an ulp over it, and the shift's `> cap` test would then book a phantom
+    // defense (and, in some cells, a phantom shortfall that wakes the guard and the emergency top-up). Grid-wide, not
+    // one cell: which cells hit that ulp moves with the last bit of the support path, which is Math.pow-built.
+    let restored = 0;
+    let phantom = 0;
+    for (const c of syntheticGrid()) {
+      const r = runCyclingSim({ ...c.off, supportPolicy: policyFor(c.support), ...C });
+      for (const x of r.rows) {
+        if (x.topUpFromColdBtc > 0 && x.cbLtvPreDefense === null) restored++;
+        if ((x.defenseDrawnUsd > 0 && x.defenseDrawnUsd < 0.01) || (x.defenseShortfallUsd > 0 && x.defenseShortfallUsd < 0.01)) phantom++;
+      }
+    }
+    expect(restored).toBeGreaterThan(0);   // non-vacuous: C does restore the line in full, many times
+    expect(phantom).toBe(0);
+  });
+
+  it('⭐ G2 holds under every variant — D, C and C + D on every A5 path and stress row, seeds 0 / 0.5', () => {
+    let belowSupportRetrievals = 0;
+    for (const row of coldRuleRows()) {
+      for (const seed of [0, SEED]) {
+        for (const [name, v] of SWITCHED) {
+          const label = `${row.name} · seed ${seed} · ${name}`;
+          const inputs: CyclingInputs = { ...row.on, ...v, openingColdBtc: seed };
+          const r = runCyclingSim(inputs);
+          expect(r.policyApplied, label).toBe(true);
+          expect(insideBothCeilings(r), label).toBe(true);
+          expect(r.coldRetrievedAboveSupportBtc, label).toBe(0);
+          for (let m = 1; m < r.rows.length; m++) {
+            const moved = r.rows[m].coldRetrievedBtc - r.rows[m - 1].coldRetrievedBtc;
+            if (aboveSupport(r.rows[m].price, row.support[m])) expect(moved, `${label} m${m}`).toBe(0);
+            else if (moved > 0) belowSupportRetrievals++;
+          }
+          expectLedgersFoot(r, inputs);
+        }
+      }
+    }
+    expect(belowSupportRetrievals).toBeGreaterThan(0);   // non-vacuous: the variants DO spend cold, below support
   });
 });
