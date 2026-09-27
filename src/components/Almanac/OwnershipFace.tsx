@@ -23,7 +23,7 @@ import {
   cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
-  noBillsNote, OPENING_CASH_FLOW_NOTE,
+  noBillsNote, OPENING_CASH_FLOW_NOTE, seedLine,
 } from './cyclingFaceView';
 import {
   ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, MODE_NOTE,
@@ -199,6 +199,8 @@ export default function OwnershipFace() {
     strikeBalance: st.advisorActualBlocBalance,
     // Derive INSIDE the selector (C6 precedent) so the value stays a primitive — neither dep array changes.
     cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    // The owner's REAL cold reserve — it seeds the engine's cold pool (real-cold spec v1). A primitive, like the legs.
+    openingColdBtc: st.getCurrentColdBtc(),
     cbLoanBalance: st.cbLoanBalance,
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
@@ -287,6 +289,7 @@ export default function OwnershipFace() {
     strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
     cbCollateralBtc: s.cbCollateralBtc,
     cbDebt,
+    openingColdBtc: s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
     strikeLtvCapPct: strikeCapPct,
@@ -295,7 +298,7 @@ export default function OwnershipFace() {
     mode,
     supportPolicy,
   }), [
-    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
     supportPolicy,
   ]);
@@ -366,7 +369,7 @@ export default function OwnershipFace() {
   useEffect(() => { setLens(1); }, [
     monthIdx,
     pricePath, cbDebt,
-    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
     supportPolicy,
   ]);
@@ -382,7 +385,9 @@ export default function OwnershipFace() {
   // The share bar reads the CLAMPED shares directly (they sum to 1 when hasData — B3), never 1 − yours.
   const lendersShare = hero.lendersShare;
 
-  const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
+  // Every opening figure includes the cold reserve — the engine's month 0 holds it (real-cold spec v1). The Held tile
+  // already reads rows[0]; the seed row and "Opening position" read this.
+  const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc + s.openingColdBtc;
   const openingDebt = cbDebt + s.strikeBalance;
 
   const bands = plBandsAt(startDate);
@@ -516,9 +521,7 @@ export default function OwnershipFace() {
       </div>
 
       <div className={styles.seedRow}>
-        <span className={styles.seedLabel}>
-          Seeded from your live plan · {fmtBtc(openingBtc)} against {fmtUSD(openingDebt)}
-        </span>
+        <span className={styles.seedLabel}>{seedLine(openingBtc, s.openingColdBtc, openingDebt)}</span>
         {dirty && (
           <button type="button" className={styles.ghostBtn} onClick={() => setOverlay({})}>Reset to live</button>
         )}

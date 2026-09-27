@@ -1043,3 +1043,80 @@ describe('allInEquity / baselineAllInEquity — the verdict\'s basis (spec v1.4 
     expect(baselineAllInEquity(r)).toBe(r.baselineEquity - 12 * SP_REPRO.expenses);
   });
 });
+
+// ── real cold (spec v1) — the owner's reserve seeds the cold pool ─────────────────────────────────────────────
+
+describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc, real-cold spec v1)', () => {
+  /** A round synthetic reserve. The faces pass `getCurrentColdBtc()`; the engine takes it as `openingColdBtc`. */
+  const SEED = 0.5;
+  /** The stress inlined as a face's lens applies it — price × f from month 12 (no view imports in the engine tests). */
+  const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) => (m >= 12 ? x * f : x));
+  /** The only row fields an unspent seed may move: the pool it sits in, the total, and their dollar value. */
+  const MOVED = ['btcHeld', 'coldBtc', 'collateralValue', 'equity'];
+
+  it.each([
+    ['P1, policy on', { ...SP_REPRO, pricePath: pathP1(), supportPolicy: policyFor(SUPPORT) }],
+    ['P2, policy off', { ...SP_REPRO, pricePath: pathP2(0) }],
+    ['P2, policy on', { ...SP_REPRO, pricePath: pathP2(0), supportPolicy: policyFor(SUPPORT) }],
+  ] as [string, CyclingInputs][])('⭐ a seed nothing spends changes nothing but the seed — %s', (_name, inputs) => {
+    const base = runCyclingSim(inputs);
+    const seeded = runCyclingSim({ ...inputs, openingColdBtc: SEED });
+    // Premise: the seeded run retrieves exactly what the unseeded run does — the swept pool already sufficed.
+    seeded.rows.forEach((x, m) => expect(x.coldRetrievedBtc, `m${m}`).toBe(base.rows[m].coldRetrievedBtc));
+    seeded.rows.forEach((x, m) => {
+      const b = base.rows[m];
+      expect(x.btcHeld, `m${m}`).toBeCloseTo(b.btcHeld + SEED, 9);
+      expect(x.coldBtc, `m${m}`).toBeCloseTo(b.coldBtc + SEED, 9);
+      expect(x.collateralValue, `m${m}`).toBeCloseTo(b.collateralValue + SEED * x.price, 6);
+      expect(x.equity, `m${m}`).toBeCloseTo(b.equity + SEED * x.price, 6);
+      for (const k of Object.keys(x)) if (!MOVED.includes(k)) expect(field(x, k), `m${m} ${k}`).toEqual(field(b, k));
+    });
+    // The never-draw baseline holds the reserve too, so the verdict never credits the strategy with it.
+    expect(seeded.baselineBtc).toBeCloseTo(base.baselineBtc + SEED, 9);
+    expect(seeded.last.btcHeld - seeded.baselineBtc).toBeCloseTo(base.last.btcHeld - base.baselineBtc, 9);
+    expect(allInEquity(seeded) - baselineAllInEquity(seeded))
+      .toBeCloseTo(allInEquity(base) - baselineAllInEquity(base), 6);
+  });
+
+  it('⭐ G2 holds with the reserve — every A5 path, policy on: no cold out at or above support; the ledgers foot', () => {
+    const runs: { name: string; inputs: CyclingInputs; support: number[] }[] = a5Cases()
+      .map((c) => ({ name: c.name, inputs: { ...c.on, openingColdBtc: SEED }, support: c.support }));
+    // Non-vacuity: two seeded runs that DO spend the reserve — below support, where the policy allows it.
+    runs.push({
+      name: 'P1 × 0.4 from m12', support: SUPPORT,
+      inputs: { ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED },
+    });
+    runs.push({
+      name: 'CALL fixture', support: CALL_SUPPORT,
+      inputs: { ...CALL_BASE, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT), openingColdBtc: SEED },
+    });
+    let belowSupportRetrievals = 0;
+    for (const { name, inputs, support } of runs) {
+      const r = runCyclingSim(inputs);
+      expect(r.openingColdBtc, name).toBe(SEED);
+      expect(insideBothCeilings(r), name).toBe(true);
+      expect(r.coldRetrievedAboveSupportBtc, name).toBe(0);
+      for (let m = 1; m < r.rows.length; m++) {
+        const moved = r.rows[m].coldRetrievedBtc - r.rows[m - 1].coldRetrievedBtc;
+        if (aboveSupport(r.rows[m].price, support[m])) expect(moved, `${name} m${m}`).toBe(0);
+        else if (moved > 0) belowSupportRetrievals++;
+      }
+      expectLedgersFoot(r, inputs);
+    }
+    expect(belowSupportRetrievals).toBeGreaterThan(0);
+  });
+
+  it('⭐ the reserve saves what the swept pool couldn\'t — P1 × 0.4 from month 12 (both arms); the Strike call fixture', () => {
+    for (const policyOn of [false, true]) {
+      const inputs: CyclingInputs = {
+        ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4), ...(policyOn ? { supportPolicy: policyFor(SUPPORT) } : {}),
+      };
+      const arm = `policy ${policyOn ? 'on' : 'off'}`;
+      expect(runCyclingSim(inputs).liqMonth, `${arm}, no reserve`).toBe(12);
+      expect(runCyclingSim({ ...inputs, openingColdBtc: SEED }).liqMonth, `${arm}, ${SEED} ₿`).toBeNull();
+    }
+    // Fixture-bound: with no reserve the call is cured by a sale; with one, the Strike cap's top-up holds the line.
+    expect(callRun().totalStrikeLiquidatedBtc).toBeCloseTo(0.2565, 4);
+    expect(callRun({}, { openingColdBtc: SEED }).totalStrikeLiquidatedBtc).toBe(0);
+  });
+});

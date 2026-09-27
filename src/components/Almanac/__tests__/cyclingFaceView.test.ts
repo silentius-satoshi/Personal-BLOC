@@ -8,7 +8,7 @@ import {
   strikeCapReading, strikeCapNote, strikeYieldSentence, DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
   verdictBasisClause, drawingCashFlowNote, cashFlowText, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
-  stoppedCashFlowNote, noDrawCashFlowNote,
+  stoppedCashFlowNote, noDrawCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
   type StrikeCapReading,
 } from '../cyclingFaceView';
 import { billsRemainderTail, shownUsd } from '../supportPolicyView';
@@ -294,6 +294,89 @@ describe('holdingsSplit', () => {
     expect(s).toEqual({ strike: 0.75, coinbase: 1.25, cold: 1.00, combined: 3 });
     // The three venues account for the whole stack — a split that does not add up is a display lie.
     expect(s.strike + s.coinbase + s.cold).toBeCloseTo(s.combined, 9);
+  });
+});
+
+// ── real cold (spec v1) — the cold card's origin line, its moves sentence, the seed row ─────────────────────────
+
+describe('coldOriginsParts — where the cold came from (real-cold spec v1)', () => {
+  const ledger = (o: Partial<{ openingColdBtc: number; totalColdFromCb: number; totalColdFromStrike: number;
+    totalColdRetrievedBtc: number }> = {}) => ({
+    openingColdBtc: 0, totalColdFromCb: 0, totalColdFromStrike: 0, totalColdRetrievedBtc: 0, ...o,
+  });
+  const texts = (o: Parameters<typeof ledger>[0]): string[] => coldOriginsParts(ledger(o)).map((p) => p.text);
+
+  it('no reserve, nothing retrieved → the sweep\'s two origins only (as before)', () => {
+    expect(texts({ totalColdFromCb: 1.2, totalColdFromStrike: 0.3 }))
+      .toEqual(['1.200 ₿ from Coinbase', '0.300 ₿ from Strike']);
+  });
+
+  it('a reserve comes first, with the cold dot', () => {
+    const parts = coldOriginsParts(ledger({ openingColdBtc: 0.5, totalColdFromCb: 1.2, totalColdFromStrike: 0.3 }));
+    expect(parts.map((p) => p.text)).toEqual(['0.500 ₿ you hold today', '1.200 ₿ from Coinbase', '0.300 ₿ from Strike']);
+    expect(parts.map((p) => p.venue)).toEqual(['cold', 'coinbase', 'strike']);
+  });
+
+  it('a retrieval comes last, dot-less and negative — "used to defend the loans", never "retrieved for the top-up"', () => {
+    const parts = coldOriginsParts(ledger({ totalColdFromCb: 1.2, totalColdRetrievedBtc: 0.25 }));
+    expect(parts.map((p) => p.text)).toEqual(['1.200 ₿ from Coinbase', '0.000 ₿ from Strike', '− 0.250 ₿ used to defend the loans']);
+    expect(parts[2]).toMatchObject({ venue: null, btc: -0.25 });
+  });
+
+  it('all four, in order', () => {
+    expect(texts({ openingColdBtc: 0.5, totalColdFromCb: 1.2, totalColdFromStrike: 0.3, totalColdRetrievedBtc: 0.25 }))
+      .toEqual(['0.500 ₿ you hold today', '1.200 ₿ from Coinbase', '0.300 ₿ from Strike', '− 0.250 ₿ used to defend the loans']);
+  });
+
+  it('a reserve or a retrieval under the display floor reads as none — never "0.000 ₿ you hold today" / "− 0.000 ₿"', () => {
+    expect(texts({ openingColdBtc: 0.0004, totalColdRetrievedBtc: 0.0004 }))
+      .toEqual(['0.000 ₿ from Coinbase', '0.000 ₿ from Strike']);
+  });
+
+  it('⭐ the parts foot with the engine\'s cold ledger — on a run where all four appear (P2, policy off, 0.5 ₿)', () => {
+    const r = runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0), openingColdBtc: 0.5 });
+    const parts = coldOriginsParts(r);
+    expect(parts.map((p) => p.venue)).toEqual(['cold', 'coinbase', 'strike', null]);   // premise: all four
+    expect(parts.reduce((t, p) => t + p.btc, 0)).toBeCloseTo(r.totalColdBtc, 9);
+    expect(r.openingColdBtc + r.totalColdFromCb + r.totalColdFromStrike - r.totalColdRetrievedBtc)
+      .toBeCloseTo(r.totalColdBtc, 9);
+  });
+});
+
+describe('coldMovesSentence — with a reserve the sweep moves NEW coins; without one each face keeps its words', () => {
+  const NONE = ' Nothing moves yet on this path — the honest answer for a while.';
+  it('with a reserve', () => {
+    expect(coldMovesSentence('Oct 2029', true, NONE)).toBe(' New coins first move Oct 2029.');
+    expect(coldMovesSentence('at month 37', true, NONE)).toBe(' New coins first move at month 37.');
+    expect(coldMovesSentence(null, true, NONE)).toBe(' No new coins move to cold on this path.');
+  });
+  it('without one — byte-identical to the faces\' old sentences', () => {
+    expect(coldMovesSentence('Oct 2029', false, NONE)).toBe(' First coins move Oct 2029.');
+    expect(coldMovesSentence('at month 37', false, ' Nothing moves to cold on this path.')).toBe(' First coins move at month 37.');
+    expect(coldMovesSentence(null, false, NONE)).toBe(NONE);
+    expect(coldMovesSentence(null, false, ' Nothing moves to cold on this path.')).toBe(' Nothing moves to cold on this path.');
+  });
+});
+
+describe('seedLine — every opening figure includes the reserve, and says how much is cold', () => {
+  it('no reserve → the old row, byte-identical', () => {
+    expect(seedLine(2, 0, 60_000)).toBe(`Seeded from your live plan · 2.0000 ₿ against ${fmtUSD(60_000)}`);
+  });
+  it('a reserve → the total includes it, and the parenthetical names it', () => {
+    expect(seedLine(2.5, 0.5, 60_000))
+      .toBe(`Seeded from your live plan · 2.5000 ₿ (0.5000 ₿ in cold storage) against ${fmtUSD(60_000)}`);
+  });
+  it('a reserve under the display floor gets no parenthetical', () => {
+    expect(seedLine(2.0004, 0.0004, 60_000)).toBe(`Seeded from your live plan · 2.0004 ₿ against ${fmtUSD(60_000)}`);
+  });
+});
+
+describe('sweepOffReserveNote — policy off, sweep off, a reserve: a defense can still draw it', () => {
+  it('names the Strike cap only while it is on (its top-up draws the reserve too)', () => {
+    expect(sweepOffReserveNote(true)).toBe(
+      'Sweep off: nothing new moves to cold. A defense can still draw on your reserve if the Coinbase stop or the Strike cap is hit.');
+    expect(sweepOffReserveNote(false)).toBe(
+      'Sweep off: nothing new moves to cold. A defense can still draw on your reserve if the Coinbase stop is hit.');
   });
 });
 

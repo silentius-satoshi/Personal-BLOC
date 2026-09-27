@@ -195,7 +195,9 @@ src/
                                 # byte-identical) SEEDS the cold pool with the owner's REAL unpledged reserve,
                                 # so the top-up's "cold FIRST" can spend coins the sim never swept; it is also
                                 # added to the never-draw baseline (the owner holds it in that world too).
-                                # NOT wired from the faces — that is its own spec
+                                # WIRED from the three engine faces (real-cold spec v1): each passes
+                                # getCurrentColdBtc(). ⚠ The emergency CB top-up is NOT doom-gated — in a month
+                                # Coinbase can't survive it still takes the cold the Strike reserve doesn't hold
                                 # RUN 2a: `effectivePolicyStops` (beside effectiveStrikeCapPct) is the ONE stop
                                 # clamp — resolveSupportPolicy and the faces' readout both call it (a source test
                                 # forbids an inline copy). `allInEquity` / `baselineAllInEquity` are the verdict's
@@ -2705,10 +2707,12 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   must keep footing) and is ALSO added to the never-draw `baselineBtc`: ⚠ the baseline compares against
   "the untouched opening position" and the owner holds that reserve in the never-draw world too, so
   omitting it would credit the strategy with coins it never earned, inflating the verdict by exactly the
-  seed. ⚠ **The faces do NOT pass it yet** — wiring `getCurrentColdBtc()` changes every projection and is
-  its own spec, which must also fix `CyclingFace`'s cold-split line (a seed is a third origin neither
-  `totalColdFromCb` nor `totalColdFromStrike` carries) and its "First coins move …" line (a seeded run
-  holds coins at month 0 while `firstColdMonth` stays null until a sweep).
+  seed. **Wired (real-cold spec v1):** all three engine faces pass `getCurrentColdBtc()` — see **Real cold in
+  the projections** under § Cold ledger for what it fixed (the cold split's third origin, the moves sentence, the
+  opening figures, `coldShown`, the policy-off slider gate). ⚠ **The emergency Coinbase top-up is NOT
+  doom-gated:** `cbDoomedThisMonth` only stops the survival guard yielding the STRIKE reserve; in a month Coinbase
+  cannot survive, the top-up still hands it the rest of the cold (spec v1.1). The engine fix is its own spec; the
+  cold card's reserve sentence is gated per run until then.
 - **⚠ "LTV stop" is the standard USER-FACING word for the threshold** — Cycling's slider is already
   `CB LTV stop`, the chart reference reads `STOP X%`, Ownership's slider is `Coinbase LTV stop`, and prose
   says "stop"/"LTV-stop defense". Internal identifiers (`cbLtvCapPct`, `cap`, `capPct`) are unchanged; only
@@ -3172,6 +3176,25 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     (`aria-label={applied ? 'Strike defense line' : 'Strike LTV cap'}`, all three faces).
   - **Cold card:** the buffer slider, its fair-value text, Cycling's InfoTip and the sweep toggle hide;
     `policyColdNote` + the first-coins month show. The Cold column and the cold chart series gate on `coldShown`.
+  - **Cold card with the owner's reserve (real-cold spec v1)** — every rule a tested helper, every sentence true of its run:
+    - `coldShown` also opens for a reserve (`shownBtc(openingColdBtc)`), policy and sweep off included.
+    - `shownBtc` / **`DISPLAY_DUST_BTC` (0.0005)** is THE display floor for a BTC figure the cold card prints (3 dp): a
+      residue that rounds to 0.000 reads as none. ⚠ Not `DUST_BTC` — supportPolicy.ts has a private `DUST_BTC = 1e-12`.
+    - Headline "… ₿ **in** your own custody by {end}" (was "into" — false once cold is there at month 0); Strategy's
+      value "… ₿ **in** custody".
+    - The split line is `coldOriginsParts(sim)`: `C ₿ you hold today` (reserve, iff `shownBtc`) · `X ₿ from Coinbase` ·
+      `Y ₿ from Strike` · `− R ₿ used to defend the loans` (iff `shownBtc(R)`; every retrieval — CB top-up, Strike
+      top-up, Strike cure — so never "retrieved for the top-up"). The signed parts foot with the cold ledger.
+    - `coldMovesSentence(label, reserve, noneWithoutReserve)`: with a reserve " New coins first move {label}." / " No new
+      coins move to cold on this path."; without one each face keeps its own sentence byte-identical.
+    - `policyReserveNote(sim)` (policy on, after `policyColdNote`): " Your reserve is spent only in a break below support,
+      and never on a loan that can't be saved." — the second clause is DROPPED when cold went into Coinbase in the
+      month it was liquidated (`rows[liqMonth].topUpFromColdBtc > 0`: the CB top-up is not doom-gated), and the whole
+      sentence is omitted when `coldRetrievedAboveSupportBtc > 0` (the policy card's `coldAlarm` says it).
+    - Cycling, policy off: the "Keep me safe down to" slider + its sentence sit behind `coldBufferPct > 0`; with the sweep
+      off and a reserve, `sweepOffReserveNote(strikeCapEff > 0)` — "Sweep off: nothing new moves to cold. A defense can
+      still draw on your reserve if the Coinbase stop[ or the Strike cap] is hit." (the Strike cap's top-up draws it
+      too). Strategy is a summary face: no sweep-off line (its slider was already gated).
   - **Charts:** a dashed "Policy limit" series (`policyLimitPct` / `cbLimit`) as a DIRECT recharts child, in the colour
     of the Coinbase line it bounds ON THAT CHART — `--btc` on Cycling, `--coinbase` on Strategy and Ownership (a
     comment at each site; don't "unify" them).
@@ -4379,9 +4402,10 @@ before: that is the fix, not a regression.
   stay separable even though the CB pool commingles them.
 - **Retrieval (the emergency top-up reverses the Coinbase→cold hop).** `coldRetrievedBtc` is cumulative;
   the pool invariant is now **`openingColdBtc + coldFromCb + coldFromStrike − coldRetrievedBtc ===
-  coldBtc`** (the opening reserve is a THIRD origin the two split fields do not carry — 0 for every
-  current caller) and the Cycling card prints the `− ₿X retrieved for the top-up` line so the origins
-  still reconcile.
+  coldBtc`** (the opening reserve is a THIRD origin the two split fields do not carry — the owner's real cold
+  since real-cold spec v1) and the Cycling card prints it as `C ₿ you hold today` beside the two sweep origins,
+  less `− R ₿ used to defend the loans` (every retrieval: the CB top-up, the Strike top-up, a Strike cure), so the
+  origins still reconcile.
 
 🔴 **ON BY DEFAULT in BOTH faces** (`DEFAULT_COLD_ON = true`, `DEFAULT_COLD_BUFFER_PCT = 30`). Both faces
 run the SAME engine, so a different default in one would make them disagree about one position. The
@@ -4479,11 +4503,30 @@ anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | '
   - The SAFE snapshot is unchanged.
 - **Surfaces:**
   - `ViewerHomeView` (owner Dashboard, trusted viewer, preview) reads the getter.
+  - The three engine faces (Cycling, Strategy, Ownership) read the getter into the engine's `openingColdBtc`
+    (real-cold spec v1 — see "Real cold in the projections" below).
   - The Daily trio card gains a quiet cold footer row — shown when the total is > 0 or any cold move exists, and
     NOT a 4th cell.
   - Settings shows "Anchored <date> · N journal moves since", or "Not dated yet".
   - The Monthly Playbook is unchanged (it is a Strike plan).
 - `resetPlanToSeeds` now resets `coldStorageBtc` and its stamp; it used to leave the cold balance behind.
+
+**Real cold in the projections (real-cold spec v1 / v1.1 — store unchanged, NO bump; engine logic untouched).** The
+three engine faces (Cycling, Strategy, Ownership) read `getCurrentColdBtc()` into the engine's `openingColdBtc`, so every
+projection starts with the owner's real reserve in the cold pool and a crash defense can spend coins that exist, not
+only the ones the run swept. The never-draw baseline holds the same reserve, so an UNSPENT reserve moves nothing but
+itself: `btcHeld`/`coldBtc` +C, `collateralValue`/`equity` +C × price, the verdict's ₿ and all-in deltas unchanged (pinned).
+- **Wiring, each face:** the `useShallow` selector `openingColdBtc: st.getCurrentColdBtc()` (a primitive); `openingColdBtc`
+  in the `engineInputs` body and deps AND the lens-reset deps — a cold move logged on the Daily view clears a stress.
+- **Every opening figure includes the reserve:** `openingBtc = strike + CB + cold` feeds "from X ₿", the seed row
+  (`seedLine`: `· X ₿ (C ₿ in cold storage) against $Y` when a reserve shows) and Ownership's "Opening position".
+- **The cold card:** § Support policy — Faces (Run 2) → "Cold card with the owner's reserve".
+- ⚠ **The emergency Coinbase top-up is NOT doom-gated** (spec v1.1 corrects decision 1): the futility check covers only
+  the Strike reserve's yield, so in a month Coinbase cannot survive the top-up still pours the rest of the cold in —
+  measured on P1 × 0.35 from m12 (policy on, a synthetic 0.5 ₿): all 0.5 ₿ went into the month-12 top-up, and Coinbase
+  was liquidated that month. The reserve is not lost wholesale — Morpho's seizure is sized by the debt (× `CB_LIF`) —
+  but the seizure grew by 0.256 ₿ and the run ended 0.041 ₿ lower net of the seed. The engine fix is its own spec; the
+  cold card's reserve sentence is gated per run until then.
 
 ---
 
@@ -5384,6 +5427,31 @@ the engine defense fixes and the support-anchored policy was mutation-checked: r
     shownUsd(payDownUsd)`) landed on P2 month 21, which sent all the spare income to debt and bought nothing, so the
     pin enshrined "so $0/mo buys bitcoin." It now finds two rows by predicate: the first pay-down month that bought
     nothing (the new shape) and the first that both bought and repaid (today's shape, unchanged, asserted present).
+- **Real cold in the projections** (real-cold spec v1; every ⭐ proven red by a temporary edit):
+  - `cyclingSimPolicy.test.ts` — "real cold" block (a synthetic 0.5 ₿ seed; stress inlined as price × f from m12):
+    - ⭐ a seed nothing spends changes nothing but the seed (P1 on, P2 off, P2 on): premise = per-row retrievals equal;
+      only `btcHeld` / `coldBtc` / `collateralValue` / `equity` move; `baselineBtc` +seed; the verdict's ₿ and all-in
+      deltas equal. Red: the seed dropped from the baseline;
+    - ⭐ G2 holds with the reserve on every A5 path (policy on) + two below-support spends (non-vacuity); ledgers foot.
+      Red: the emergency top-up ungated (fires without a breach). ⚠ A price-relative reversion of the four ceiling
+      sites (draw CB room, Strike ceiling, refinance cap, sweep keep) stays GREEN here (and in the unseeded G2) —
+      defense in depth: the zones still keep cold below support. It turns four ceiling-at-support mechanism tests red
+      instead: "every accumulate row sits under both ceilings at support", "P2 pay-down rows repay before they buy",
+      "P2 at $16k / $6k: … 12 × bills of room at support", "every refinance month ends at or under the ceiling at
+      support";
+    - ⭐ the reserve saves what the swept pool couldn't: P1 × 0.4 from m12, both arms, liq 12 → none; the CALL fixture's
+      sale → 0. Red: the engine ignores the seed.
+  - `supportPolicyView.test.ts`: `shownBtc` / `DISPLAY_DUST_BTC`; ⭐ `coldShown` opens for a reserve alone;
+    `policyReserveNote` every variant, incl. ⭐ the doomed-top-up engine run (P1 × 0.35, premise asserted). The three
+    existing `coldShown` literals gained `openingColdBtc: 0` (type-only — no value moved).
+  - `cyclingFaceView.test.ts`: `coldOriginsParts` every shape + ⭐ the footing on an engine run with all four parts;
+    `coldMovesSentence`, `seedLine`, `sweepOffReserveNote`.
+  - `resetMirror.test.ts`: ⭐ `openingColdBtc` in the `engineInputs` body, its deps and the lens-reset deps.
+  - `coldWiring.test.ts` (new, source-reading): ⭐ the selector reads `getCurrentColdBtc()`; ⭐ `openingBtc` includes the
+    reserve; ⭐ no `deriveOwnership` call under `src/components/Almanac/` takes 4 args; ⭐ the "Keep me safe down to"
+    slider sits behind `coldBufferPct > 0` (Cycling, Strategy).
+  - `supportPolicyReport.test.ts` (env-gated): a "Real cold" table (A5 paths + P1/P2 × {0.6, 0.5, 0.4} + the CALL
+    fixture × policy off/on × seed 0/0.5) and the P1 × 0.35 doomed-top-up table.
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
@@ -7733,8 +7801,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Constraint | Rule |
 |---|---|
 | An exact (deep-equal) golden may depend only on `+ − × ÷` | Store any input built with `Math.pow`/`log`/`exp`/`**` (a power-law or cycle price path) IN the golden and feed it back — never recompute it at test time. ECMAScript leaves those functions implementation-approximated, and `Math.pow`'s last bit differs between Node 22 (CI) and Node 26 on about 1 input in 10: the support-policy G1 golden passed locally and failed CI for that alone. The engine is pure `+ − × ÷` (IEEE-exact on every runtime; a G1 test walks `cyclingSim.ts`'s imports and fails on any approximated Math), which is what lets a stored input reproduce bit for bit. A value that must be recomputed gets a tolerance (`toBeCloseTo`, or a relative 1e-12) |
-| Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. Reverting the policy to price-relative rules is what G2 catches |
+| Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. A price-relative revert of the ceilings is caught by the ceiling-at-support tests; G2 catches a full reversion (the OFF-like behavior that pulls cold above support on the P2 family) |
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
+| Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter — the engine's `btcHeld` already holds it | The three engine faces read `getCurrentColdBtc()` into `openingColdBtc`; `openingBtc = strike + CB + cold` feeds every "from X ₿", the seed row and "Opening position" — leaving the reserve out reads an unspent reserve as bitcoin gained. A 4th `deriveOwnership` argument would count the pool twice (`yoursShare` is clamped, so the wrong answer still looks plausible). Both pinned by `coldWiring.test.ts` (the deriveOwnership check walks the whole `src/components/Almanac/` directory) |
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
 | `incomePath` and `modelStrikeLiquidation` are test-only | No component may pass either — the survival-guard grep test in `cyclingSim.test.ts` covers both. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. Neither may reach a face |
 | The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted) | `verdictVsNeverDraw` compares `allInEquity` (equity − unpaid bills − reserve cash spent on bills and cures) with `baselineAllInEquity` (baseline equity − its own unpaid bills). Equity alone counts an unpaid bill as free and outside cash as a gain. The Net-equity tile's VALUE stays raw |

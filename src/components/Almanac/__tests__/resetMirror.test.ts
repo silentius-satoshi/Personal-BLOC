@@ -57,4 +57,11 @@ describe.each(FACES)('%s — the lens reset mirrors the engine inputs', (face) =
     expect(engineDeps, `${face}: engineInputs deps`).toContain('supportPolicy');
     expect(resetDeps, `${face}: lens-reset deps`).toContain('supportPolicy');
   });
+
+  it('⭐ the owner\'s cold reserve (real-cold spec v1) reaches the engine AND resets the lens', () => {
+    // A cold move logged on the Daily view changes the reserve — an engaged stress measured against the old one must clear.
+    expect(src.match(ENGINE_BODY)?.[1] ?? '', `${face}: engineInputs body`).toMatch(/\bopeningColdBtc: s\.openingColdBtc\b/);
+    expect(engineDeps, `${face}: engineInputs deps`).toContain('s.openingColdBtc');
+    expect(resetDeps, `${face}: lens-reset deps`).toContain('s.openingColdBtc');
+  });
 });

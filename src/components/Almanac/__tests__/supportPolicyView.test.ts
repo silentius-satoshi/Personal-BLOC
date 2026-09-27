@@ -7,7 +7,7 @@ import {
   policyDetails, neverDrawsNote, policyPauseReason, drawPauseClause, zoneStrip, policyLimitPct, coldShown,
   strikeCallSummary, strikeCallSentence, billsRemainderTail, policyUnpaidNote, policyAlert, policyStopSentence,
   policyIgnoredNote, zoneStripLabel, settingReadouts, defenseLineNote, policyTileSub, policyColdNote, policyTip,
-  fmtPolicyPct, DUST_USD, shownUsd,
+  fmtPolicyPct, DUST_USD, shownUsd, DISPLAY_DUST_BTC, shownBtc, policyReserveNote,
   type PolicyReading, type PolicyTone, type SupportPolicySettings, type NeverDraws,
 } from '../supportPolicyView';
 import { supportPolicyFor } from '../supportPolicyInputs';
@@ -698,9 +698,85 @@ describe('zoneStrip / policyLimitPct / coldShown', () => {
   });
 
   it('coldShown: the classic sweep on, or the policy\'s own sweep running', () => {
-    expect(coldShown(0, { policyApplied: false })).toBe(false);
-    expect(coldShown(30, { policyApplied: false })).toBe(true);
-    expect(coldShown(0, { policyApplied: true })).toBe(true);
+    expect(coldShown(0, { policyApplied: false, openingColdBtc: 0 })).toBe(false);
+    expect(coldShown(30, { policyApplied: false, openingColdBtc: 0 })).toBe(true);
+    expect(coldShown(0, { policyApplied: true, openingColdBtc: 0 })).toBe(true);
+  });
+
+  it('⭐ coldShown: the owner\'s reserve alone opens the cold card (policy off, sweep off) — above the display floor', () => {
+    // Real-cold spec v1: the reserve seeds the pool, so cold is there from month 0 with no sweep at all.
+    expect(coldShown(0, { policyApplied: false, openingColdBtc: 0.5 })).toBe(true);
+    expect(coldShown(0, { policyApplied: false, openingColdBtc: DISPLAY_DUST_BTC })).toBe(true);
+    expect(coldShown(0, { policyApplied: false, openingColdBtc: 0.0004 })).toBe(false);   // rounds to 0.000 — none
+    // Through the engine: a seeded run reports the reserve it started with, and that alone shows the card.
+    const seeded = runCyclingSim({ ...SP_REPRO, coldStoreBufferPct: 0, openingColdBtc: 0.5, pricePath: pathP1() });
+    expect(seeded.policyApplied).toBe(false);
+    expect(coldShown(0, seeded)).toBe(true);
+  });
+});
+
+// ── real cold (spec v1) — the display floor and the reserve sentence ─────────────────────────────────────────────
+
+describe('shownBtc — the ONE display floor for a BTC figure the cold card prints (3 dp)', () => {
+  it('0.0005 shows; 0.0004 (prints 0.000) does not; junk never shows', () => {
+    expect(DISPLAY_DUST_BTC).toBe(0.0005);
+    expect(shownBtc(0.0005)).toBe(true);
+    expect(shownBtc(0.0004)).toBe(false);
+    expect(shownBtc(0)).toBe(false);
+    expect(shownBtc(-1)).toBe(false);
+    expect(shownBtc(Number.NaN)).toBe(false);
+    expect(shownBtc(Number.POSITIVE_INFINITY)).toBe(false);
+  });
+});
+
+describe('policyReserveNote — the cold card\'s reserve sentence, gated per run (real-cold spec v1)', () => {
+  const FULL = " Your reserve is spent only in a break below support, and never on a loan that can't be saved.";
+  const FIRST_ONLY = ' Your reserve is spent only in a break below support.';
+  /** P1, stressed by `f` from month 12 (inlined — the engine test's shape). */
+  const p1x = (f: number): number[] => pathP1().map((x, m) => (m >= 12 ? x * f : x));
+
+  it('the full sentence when it is true of the run — a reserve the policy never had to spend', () => {
+    const r = runPolicy(pathP1(), {}, { openingColdBtc: 0.5 });
+    expect(r.totalColdRetrievedBtc).toBe(0);
+    expect(policyReserveNote(r)).toBe(FULL);
+  });
+
+  it('the full sentence when the reserve was spent below support AND saved the loan (P1 × 0.4)', () => {
+    const r = runPolicy(p1x(0.4), {}, { openingColdBtc: 0.5 });
+    expect(r.totalColdRetrievedBtc).toBeGreaterThan(0);   // premise: the reserve WAS spent …
+    expect(r.liqMonth).toBeNull();                          // … and Coinbase survived
+    expect(policyReserveNote(r)).toBe(FULL);
+  });
+
+  it('⭐ the second clause is dropped when cold went into Coinbase in the month it was liquidated (P1 × 0.35)', () => {
+    // The futility check keeps only the STRIKE reserve out of a doomed Coinbase; the emergency top-up is not
+    // doom-gated, so the rest of the cold goes into a loan liquidated that month — "never on a loan that can't be
+    // saved" is false for this run. Not lost wholesale: Morpho's seizure is sized by the debt (× CB_LIF), but here it
+    // grew by 0.256 ₿ and the run ended 0.041 ₿ lower net of the seed.
+    const r = runPolicy(p1x(0.35), {}, { openingColdBtc: 0.5 });
+    expect(r.liqMonth).not.toBeNull();                                    // premise: doomed …
+    expect(r.rows[r.liqMonth!].topUpFromColdBtc).toBeGreaterThan(0);    // … and the reserve fed it that month
+    expect(policyReserveNote(r)).toBe(FIRST_ONLY);
+  });
+
+  it('a liquidation that took no cold that month keeps the full sentence (synthetic)', () => {
+    const base = runPolicy(pathP1(), {}, { openingColdBtc: 0.5 });
+    const rows = base.rows.map((x) => ({ ...x, topUpFromColdBtc: 0 }));
+    expect(policyReserveNote({ ...base, liqMonth: 12, rows })).toBe(FULL);
+    rows[12] = { ...rows[12], topUpFromColdBtc: 0.1 };
+    expect(policyReserveNote({ ...base, liqMonth: 12, rows })).toBe(FIRST_ONLY);
+  });
+
+  it('none when cold came out at or above support — the first clause is false, and the policy card\'s alarm says so', () => {
+    const r = runPolicy(pathP1(), {}, OVER_CEILING_COLD_OPENING);
+    expect(r.coldRetrievedAboveSupportBtc).toBeGreaterThan(0);   // premise: an opening over the Coinbase ceiling
+    expect(policyReserveNote(r)).toBe('');
+  });
+
+  it('none with the policy off, with no reserve, or with a reserve under the display floor', () => {
+    expect(policyReserveNote(runCyclingSim({ ...SP_REPRO, openingColdBtc: 0.5, pricePath: pathP1() }))).toBe('');
+    expect(policyReserveNote(runPolicy(pathP1()))).toBe('');
+    expect(policyReserveNote(runPolicy(pathP1(), {}, { openingColdBtc: 0.0004 }))).toBe('');
   });
 });
 

@@ -4,7 +4,7 @@ import { SUPPORT_EPS, type PolicyState } from '../supportPolicy';
 import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 import {
   SUPPORT, SP_REPRO, CASH_6_USD, policyFor, buildP9, a5Cases, minMultiple, faceWorldGrid, syntheticGrid, reachGrid,
-  type GridCell,
+  pathP1, pathP2, CALL_BASE, CALL_PATH, CALL_SUPPORT, type GridCell,
 } from './supportPolicyPaths';
 
 /**
@@ -350,6 +350,53 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
         const r = t.rearm.get(n)!;
         out(`| ${name} | ${rearmLabel(n)} | ${r.broken} (${medianMo(r.firstBreaks)}) | ${r.rearmed} (${medianMo(r.firstRearms)}) | ${r.breaks} | ${r.liq} (${medianMo(r.liqMonths)}) | ${btc(median(r.held))} | ${usd(median(r.debt))} | ${usd(median(r.allIn))} | ${usd(r.unfundedSum)} (${r.unfundedCells}) | ${pct(median(r.peakCb))} / ${pct(Math.max(...r.peakCb))} | ${r.g2Violations} | ${r.g3OnLiq} |`);
       }
+    }
+    out();
+
+    // ── real cold (spec v1): the owner's reserve seeded into the cold pool ──
+    out('## Real cold — the owner\'s reserve seeded into the cold pool (seed 0 vs 0.5 ₿; policy OFF / ON)');
+    out();
+    out('Cold used = cold drawn back out by any defense. Cold used ≥ support: ON = the policy\'s own field (its G2 promise —');
+    out('0 in every ON row); OFF = the same measure read off the rows (the policy field is 0 by construction there) — OFF rows');
+    out('may be above 0 and are reported, not flagged. Strike sales are modelled only under the policy.');
+    out();
+    out('| Row | arm | seed ₿ | cold used | cold used ≥ support | Strike ₿ sold | CB liq | ₿ held − seed |');
+    out('|---|---|---|---|---|---|---|---|');
+    const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) => (m >= 12 ? x * f : x));
+    const coldRows: { name: string; off: CyclingInputs; on: CyclingInputs; support: number[] }[] = [
+      ...cases.map((c) => ({ name: c.name, off: c.off, on: c.on, support: c.support })),
+      ...[0.6, 0.5, 0.4].flatMap((f) => (['P1', 'P2'] as const).map((p) => {
+        const off: CyclingInputs = { ...SP_REPRO, pricePath: stressFrom12(p === 'P1' ? pathP1() : pathP2(0), f) };
+        return { name: `${p} × ${f} from m12`, off, on: { ...off, supportPolicy: policyFor(SUPPORT) }, support: SUPPORT };
+      })),
+      {
+        name: 'CALL fixture', off: { ...CALL_BASE, pricePath: CALL_PATH },
+        on: { ...CALL_BASE, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT) }, support: CALL_SUPPORT,
+      },
+    ];
+    for (const row of coldRows) {
+      for (const [arm, inputs] of [['OFF', row.off], ['ON', row.on]] as const) {
+        for (const seed of [0, 0.5]) {
+          const r = runCyclingSim({ ...inputs, openingColdBtc: seed });
+          const above = arm === 'ON' ? r.coldRetrievedAboveSupportBtc : coldRetrievedAbove(r, row.support);
+          const sold = arm === 'ON' ? btc(r.totalStrikeLiquidatedBtc) : '— (flag only)';
+          out(`| ${row.name} | ${arm} | ${seed} | ${btc(r.totalColdRetrievedBtc)} | ${btc(above)} | ${sold} | ${mo(r.liqMonth)} | ${btc(r.last.btcHeld - seed)} |`);
+        }
+      }
+    }
+    out();
+    // The doomed top-up (spec v1.1): the emergency Coinbase top-up is not doom-gated, so the reserve can go into a loan
+    // that is liquidated in the same month anyway.
+    out('### The doomed top-up — P1 × 0.35 from m12, policy ON');
+    out();
+    out('| seed ₿ | CB liq | cold into that month\'s top-up | seized | ₿ held | ₿ held − seed |');
+    out('|---|---|---|---|---|---|');
+    for (const seed of [0, 0.5]) {
+      const r = runCyclingSim({
+        ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: seed,
+      });
+      const into = r.liqMonth !== null ? r.rows[r.liqMonth].topUpFromColdBtc : 0;
+      out(`| ${seed} | ${mo(r.liqMonth)} | ${btc(into)} | ${btc(r.seizedBtc ?? 0)} | ${btc(r.last.btcHeld)} | ${btc(r.last.btcHeld - seed)} |`);
     }
     out();
 

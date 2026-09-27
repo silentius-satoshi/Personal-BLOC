@@ -25,13 +25,13 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
-  OPENING_CASH_FLOW_NOTE,
+  OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
-  policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, coldShown,
-  shownUsd, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
+  policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, policyReserveNote,
+  coldShown, shownUsd, shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard from './SupportPolicyCard';
@@ -164,6 +164,8 @@ export default function UnifiedFace() {
     strikeBalance: st.advisorActualBlocBalance,
     // Derived INSIDE the selector so the value stays a primitive (the parents' precedent).
     cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    // The owner's REAL cold reserve — it seeds the engine's cold pool (real-cold spec v1). A primitive (the parents').
+    openingColdBtc: st.getCurrentColdBtc(),
     cbLoanBalance: st.cbLoanBalance,
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
@@ -239,6 +241,7 @@ export default function UnifiedFace() {
     strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
     cbCollateralBtc: s.cbCollateralBtc,
     cbDebt,
+    openingColdBtc: s.openingColdBtc,
     income: s.income,
     expenses: s.expenses,
     strikeAprPct: s.blocApr,
@@ -251,7 +254,7 @@ export default function UnifiedFace() {
     mode,
     supportPolicy,
   }), [
-    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
     supportPolicy,
   ]);
@@ -280,7 +283,7 @@ export default function UnifiedFace() {
   useEffect(() => { setLens(1); }, [
     monthIdx,
     pricePath, cbDebt,
-    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
     supportPolicy,
   ]);
@@ -288,7 +291,8 @@ export default function UnifiedFace() {
   const { rows, last, liqMonth } = sim;
   const selRow = rows[monthIdx] ?? last;
   const atEnd = monthIdx === rows.length - 1;
-  const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
+  // Every opening figure includes the cold reserve — the engine's month 0 holds it (real-cold spec v1).
+  const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc + s.openingColdBtc;
   const openingDebt = cbDebt + s.strikeBalance;
 
   // ── The shared readings — every one a tested helper ──
@@ -381,9 +385,7 @@ export default function UnifiedFace() {
       </div>
 
       <div className={styles.seedRow}>
-        <span className={styles.seedLabel}>
-          Seeded from your live plan · {fmtBtc(openingBtc)} against {fmtUSD(openingDebt)}
-        </span>
+        <span className={styles.seedLabel}>{seedLine(openingBtc, s.openingColdBtc, openingDebt)}</span>
         {dirty && (
           <button type="button" className={styles.ghostBtn} onClick={() => setOverlay({})}>Reset to live</button>
         )}
@@ -513,15 +515,15 @@ export default function UnifiedFace() {
           <div className={styles.scrubHead}>
             <span className={styles.cardLabel}>Cold storage</span>
             <span className={styles.scrubValue}>
-              {coldShown(coldBufferPct, sim) ? `${sim.totalColdBtc.toFixed(3)} ₿ to custody` : 'off'}
+              {coldShown(coldBufferPct, sim) ? `${sim.totalColdBtc.toFixed(3)} ₿ in custody` : 'off'}
             </span>
           </div>
           {applied ? (
             <p className={styles.noteQuiet}>
               {policyColdNote(policySettings)}
-              {sim.firstColdMonth !== null
-                ? ` First coins move at month ${sim.firstColdMonth}.`
-                : ' Nothing moves to cold on this path.'}
+              {policyReserveNote(sim)}
+              {coldMovesSentence(sim.firstColdMonth === null ? null : `at month ${sim.firstColdMonth}`,
+                shownBtc(sim.openingColdBtc), ' Nothing moves to cold on this path.')}
             </p>
           ) : (
             <>

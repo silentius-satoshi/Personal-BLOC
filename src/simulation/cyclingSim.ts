@@ -151,7 +151,9 @@ export interface CyclingInputs {
    * every pre-existing call site is byte-identical. Seeds the cold pool so the emergency top-up's FIRST
    * source is the reserve that actually exists, instead of only the coins this simulation itself swept.
    *
-   * ⚠ NOT wired from the faces yet — that changes every projection and needs its own spec.
+   * Wired from the three engine faces (Cycling, Strategy, Ownership), which pass `getCurrentColdBtc()` (real-cold
+   * spec v1). ⚠ The emergency Coinbase top-up is NOT doom-gated: in a month Coinbase cannot survive, it still takes
+   * the cold the Strike reserve does not hold (the futility check guards only that reserve's yield).
    */
   openingColdBtc?: number;
 
@@ -1265,7 +1267,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   // cold-storage sweep above; using it here would make the baseline pay for the strategy's own transfer.
   // ⚠ `openingColdBtc` IS part of the untouched opening position — the owner holds that reserve in the
   // never-draw world too. Omitting it would credit the strategy with coins it never earned, inflating the
-  // verdict by exactly the seed (0 today, since no caller passes one).
+  // verdict by exactly the seed (the faces pass the owner's real reserve).
   let baseBtc = inputs.strikeCollateralBtc + inputs.cbCollateralBtc + openingColdBtc;
   const surplus = Math.max(0, income - expenses);
   let baselineUnfundedUsd = 0;

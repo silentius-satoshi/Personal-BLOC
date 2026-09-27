@@ -23,13 +23,13 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
-  stoppedCashFlowNote,
+  stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
-  policyUnpaidNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, policyLimitPct, coldShown,
-  shownUsd, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
+  policyUnpaidNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, policyReserveNote, policyLimitPct,
+  coldShown, shownUsd, shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard from './SupportPolicyCard';
@@ -140,6 +140,13 @@ const fmtHorizon = (v: number): string => {
   return `${y}y ${m}m`;
 };
 
+/** This face's own "nothing moves" sentence without a reserve — kept byte-identical (coldMovesSentence). */
+const NOTHING_MOVES_YET = ' Nothing moves yet on this path — the honest answer for a while.';
+/** The cold card's origin dots — the venue bar's own colours, so a part reads as the venue it came from. */
+const COLD_DOT: Record<'cold' | 'coinbase' | 'strike', string> = {
+  cold: styles.venueDotCold, coinbase: styles.venueDotCb, strike: styles.venueDotStrike,
+};
+
 interface TipItem { name?: string; dataKey?: string | number; value?: number; color?: string }
 function ChartTip({ active, payload, label, money }: {
   active?: boolean; payload?: TipItem[]; label?: string | number; money?: boolean;
@@ -174,6 +181,9 @@ export default function CyclingFace() {
     // Derive INSIDE the selector so the value stays a primitive — `useShallow` keeps comparing numbers
     // and neither dep array below changes. Mirrors :101's Strike leg: both legs read through their derive.
     cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    // The owner's REAL cold reserve (anchor + journal) — it seeds the engine's cold pool, so a defense can spend coins
+    // that exist, not only the ones this run swept (real-cold spec v1). A primitive, like the two legs above.
+    openingColdBtc: st.getCurrentColdBtc(),
     cbLoanBalance: st.cbLoanBalance,
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
@@ -281,6 +291,7 @@ export default function CyclingFace() {
     strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
     cbCollateralBtc: s.cbCollateralBtc,
     cbDebt,
+    openingColdBtc: s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths,
     cbLtvCapPct: capPct,
     strikeLtvCapPct: strikeCapPct,
@@ -288,7 +299,7 @@ export default function CyclingFace() {
     defendCbLtv: true,
     supportPolicy,
   }), [
-    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct,
     supportPolicy,
   ]);
@@ -364,6 +375,9 @@ export default function CyclingFace() {
   const fairAtMonth = plBandAt('fair', startDate, monthIdx);
   const surviveMult = surviveFairMultiple(selRow.price, fairAtMonth, coldBufferPct);
   const coldDeeperThanRecord = coldBeyondRecord(selRow.price, supportAtMonth, coldBufferPct);
+  // The cold card's moves sentence speaks of NEW coins once the owner holds a reserve (real-cold spec v1).
+  const reserveShown = shownBtc(sim.openingColdBtc);
+  const firstColdLabel = sim.firstColdMonth === null ? null : bandDateLabel(sim.firstColdMonth);
 
   // Write the clamped value back so re-growing the horizon doesn't snap to a stale index.
   useEffect(() => { setSelectedMonth((m) => Math.min(m, baseRowCount - 1)); }, [baseRowCount]);
@@ -376,13 +390,15 @@ export default function CyclingFace() {
   useEffect(() => { setLens(1); }, [
     monthIdx,
     pricePath, cbDebt,
-    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc,
+    s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct,
     supportPolicy,
   ]);
 
   const bands = plBandsAt(startDate);
-  const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc;
+  // Every opening figure includes the cold reserve — the engine's month 0 holds it, so "from X ₿" would otherwise
+  // read an unspent reserve as bitcoin gained.
+  const openingBtc = s.strikeCollateralBtc + s.cbCollateralBtc + s.openingColdBtc;
   const openingDebt = cbDebt + s.strikeBalance;
   const verdict = verdictVsNeverDraw(sim, 'cycle');
   const wins = verdict.wins;
@@ -462,9 +478,7 @@ export default function CyclingFace() {
       </div>
 
       <div className={styles.seedRow}>
-        <span className={styles.seedLabel}>
-          Seeded from your live plan · {fmtBtc(openingBtc)} against {fmtUSD(openingDebt)}
-        </span>
+        <span className={styles.seedLabel}>{seedLine(openingBtc, s.openingColdBtc, openingDebt)}</span>
         {dirty && (
           <button type="button" className={styles.ghostBtn} onClick={() => setOverlay({})}>Reset to live</button>
         )}
@@ -777,29 +791,32 @@ export default function CyclingFace() {
         {coldShown(coldBufferPct, sim) && (
           <>
             {/* ⚠ The headline is the OUTCOME, not the constraint. "Survive a break of 30%" is the rule the
-                engine follows; "₿4.99 into your own custody" is the thing the owner actually wants, and
+                engine follows; "₿4.99 in your own custody" is the thing the owner actually wants, and
                 leading with the rule made the card read like a risk setting rather than a plan. */}
             <div className={styles.coldHead}>
               <span className={styles.coldBig}>{sim.totalColdBtc.toFixed(3)} ₿</span>
+              {/* "in", not "into": with a reserve the coins are there from month 0 — "in" is true either way. */}
               <span className={styles.coldBigSub}>
-                into your own custody by {bandDateLabel(rows.length - 1)}
+                in your own custody by {bandDateLabel(rows.length - 1)}
               </span>
             </div>
+            {/* Where it came from — the reserve you hold today, the sweep's two origins, less what the defenses used.
+                One helper (coldOriginsParts); the parts foot with the engine's cold ledger. */}
             <div className={styles.coldSplit}>
-              <span><span className={styles.venueDotCb} /> {sim.totalColdFromCb.toFixed(3)} ₿ from Coinbase</span>
-              <span><span className={styles.venueDotStrike} /> {sim.totalColdFromStrike.toFixed(3)} ₿ from Strike</span>
-              {sim.totalColdRetrievedBtc > 0 && (
-                <span>− {sim.totalColdRetrievedBtc.toFixed(3)} ₿ retrieved for the top-up</span>
-              )}
+              {coldOriginsParts(sim).map((p) => (
+                <span key={p.venue ?? 'used'}>
+                  {p.venue !== null && <span className={COLD_DOT[p.venue]} />}
+                  {p.text}
+                </span>
+              ))}
             </div>
             {applied ? (
               <p className={styles.noteQuiet}>
                 {policyColdNote(policySettings)}
-                {sim.firstColdMonth !== null
-                  ? ` First coins move ${bandDateLabel(sim.firstColdMonth)}.`
-                  : ' Nothing moves yet on this path — the honest answer for a while.'}
+                {policyReserveNote(sim)}
+                {coldMovesSentence(firstColdLabel, reserveShown, NOTHING_MOVES_YET)}
               </p>
-            ) : (
+            ) : coldBufferPct > 0 ? (
               <>
                 <div className={styles.sliderStack}>
                   {/* The knob is a PRICE, not a percentage. "Survive a drop to $61,236" is a decision you can
@@ -813,11 +830,13 @@ export default function CyclingFace() {
                 <p className={styles.noteQuiet}>
                   That is <strong>{coldBufferPct}% below</strong> the modeled price at {bandDateLabel(monthIdx)}
                   {' '}({fmtUSD(selRow.price)}), and it holds Coinbase at {coldLtvPct.toFixed(1)}% LTV.
-                  {sim.firstColdMonth !== null
-                    ? ` First coins move ${bandDateLabel(sim.firstColdMonth)}.`
-                    : ' Nothing moves yet on this path — the honest answer for a while.'}
+                  {coldMovesSentence(firstColdLabel, reserveShown, NOTHING_MOVES_YET)}
                 </p>
               </>
+            ) : (
+              // Sweep off — reachable only with a reserve, since coldShown then opens the card for the owner's cold
+              // alone. No 0% slider: the knob means nothing while the sweep is off.
+              <p className={styles.noteQuiet}>{sweepOffReserveNote(strikeCapEff > 0)}</p>
             )}
           </>
         )}

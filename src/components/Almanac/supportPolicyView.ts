@@ -152,6 +152,12 @@ export const fmtPolicyPct = (pct: number): string => String(Number(pct.toFixed(1
  *  cyclingFaceView / ownershipFaceView import it; never a second constant. */
 export const DUST_USD = 0.5;
 export const shownUsd = (x: number): boolean => Number.isFinite(x) && x >= DUST_USD;
+/** A BTC figure below this prints as 0.000 at the cold card's 3 dp — never a statement worth a line. ⚠ THE one display
+ *  floor for a BTC figure the cold card prints (the reserve part, the "used" part, `coldShown`'s reserve term). ⚠ NOT
+ *  `DUST_BTC`: supportPolicy.ts has a module-private `DUST_BTC = 1e-12` (engine float noise) — one name with two meanings
+ *  would invite a wrong import. */
+export const DISPLAY_DUST_BTC = 0.0005;
+export const shownBtc = (x: number): boolean => Number.isFinite(x) && x >= DISPLAY_DUST_BTC;
 const monthsLabel = (n: number): string => (n === 1 ? '1 month' : `${n} months`);
 /** How far below support the effective Coinbase / Strike stop is liquidated / called, as a whole percentage. */
 const cbBreakBelowPct = (s: EffectivePolicySettings): number => Math.round((1 - s.cbStopEffPct / 100 / CB_LLTV) * 100);
@@ -609,10 +615,11 @@ export function policyLimitPct(row: Pick<CyclingRow, 'multiple'>, cbStopEffPct: 
   return k !== null && Number.isFinite(k) && k > 0 && Number.isFinite(cbStopEffPct) ? cbStopEffPct / k : null;
 }
 
-/** Whether cold can be non-zero, so the Cold column and the cold chart series show: the classic sweep is on, or the
- *  policy's own sweep runs (it replaces the buffer while the policy applies). */
-export function coldShown(coldBufferPct: number, sim: Pick<CyclingResult, 'policyApplied'>): boolean {
-  return sim.policyApplied || coldBufferPct > 0;
+/** Whether cold can be non-zero, so the cold card, the Cold column and the cold chart series show: the classic sweep is
+ *  on, the policy's own sweep runs (it replaces the buffer while the policy applies), or the owner holds cold today —
+ *  the reserve seeds the pool (`openingColdBtc`), so it is there from month 0 with no sweep at all. */
+export function coldShown(coldBufferPct: number, sim: Pick<CyclingResult, 'policyApplied' | 'openingColdBtc'>): boolean {
+  return sim.policyApplied || coldBufferPct > 0 || shownBtc(sim.openingColdBtc);
 }
 
 // ── the card's copy and the faces' policy notes (Run 2b) ──────────────────────────────────────────────────────
@@ -716,6 +723,26 @@ export function policyColdNote(s: EffectivePolicySettings): string {
   const buffer = s.bearBufferMonths > 0 ? ` plus ${monthsLabel(s.bearBufferMonths)} of bills` : '';
   return `The support policy decides what goes to cold: Coinbase keeps what it needs at support${buffer}; the rest goes `
     + 'to cold whenever price is at or above support, unless the model is treated as broken.';
+}
+
+/**
+ * The reserve sentence the cold card appends after `policyColdNote` when the owner holds cold (real-cold spec v1) —
+ * gated per run, so every clause is TRUE of the run it describes:
+ *  • '' when the policy is off, there is no reserve worth a line, or cold came out AT OR ABOVE support — the first clause
+ *    is false then (a position that opened over a ceiling), and the policy card's `coldAlarm` already says so;
+ *  • the second clause is dropped when cold went into Coinbase in the month it was liquidated. ⚠ The futility check
+ *    (`cbDoomedThisMonth`) only keeps the STRIKE RESERVE out of a doomed Coinbase; the emergency Coinbase top-up is not
+ *    doom-gated and still hands it the rest of the cold, so "never on a loan that can't be saved" is false for that run.
+ *    The engine fix is its own spec — until it lands, the copy says only what is true.
+ */
+export function policyReserveNote(sim: Pick<CyclingResult,
+  'policyApplied' | 'openingColdBtc' | 'coldRetrievedAboveSupportBtc' | 'liqMonth'>
+  & { rows: ReadonlyArray<Pick<CyclingRow, 'topUpFromColdBtc'>> }): string {
+  if (!sim.policyApplied || !shownBtc(sim.openingColdBtc) || sim.coldRetrievedAboveSupportBtc > 0) return '';
+  const intoDoomedCoinbase = sim.liqMonth !== null && (sim.rows[sim.liqMonth]?.topUpFromColdBtc ?? 0) > 0;
+  return intoDoomedCoinbase
+    ? ' Your reserve is spent only in a break below support.'
+    : " Your reserve is spent only in a break below support, and never on a loan that can't be saved.";
 }
 
 /** The card's InfoTip — what it does, the three rules, the evidence — from the settings the run uses (C4). */

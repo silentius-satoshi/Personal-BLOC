@@ -8,7 +8,7 @@ import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { fmtUSD } from '../../utils/format';
 import {
-  strikeCallSummary, strikeCallSentence, shownUsd, billsRemainderTail, type StrikeCallSummary,
+  strikeCallSummary, strikeCallSentence, shownUsd, shownBtc, billsRemainderTail, type StrikeCallSummary,
 } from './supportPolicyView';
 
 /**
@@ -17,8 +17,8 @@ import {
  * all-in definition), the ownership leaf (the single definition of yoursBtc, S2′), the zero-import Coinbase
  * constants (the refinance break-even fallback, CB_LLTV for the zone band), the shared gauge rules (cbMetrics'
  * barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
- * fmtUSD, and from supportPolicyView the support policy's call sentence, the one dust floor (`shownUsd`) and the
- * bills-remainder tail (that module must never import this one back).
+ * fmtUSD, and from supportPolicyView the support policy's call sentence, the two display floors (`shownUsd`, `shownBtc`)
+ * and the bills-remainder tail (that module must never import this one back).
  * No belief anywhere in that graph. Extracted so it is testable without a render harness (the repo has none).
  *
  * Architecture invariant 2 (one definition of every risk number via cbMetrics / computeStrikeLtv) governs
@@ -328,13 +328,14 @@ export function btcGained(row: CyclingRow, base: CyclingRow, rowPriceOverride?: 
 export interface HoldingsSplit {
   strike: number;
   coinbase: number;
-  /** Unpledged, self-custodied. 0 unless the cold-storage sweep is on. */
+  /** Unpledged, self-custodied. 0 unless the cold-storage sweep is on or the owner holds cold today. */
   cold: number;
   combined: number;
 }
 
 /**
- * Where the stack sits. THREE VENUES now — the cold-storage reserve IS modeled (engine: coldStoreBufferPct).
+ * Where the stack sits. THREE VENUES now — cold IS modeled: the owner's real reserve seeds the pool
+ * (engine: openingColdBtc) and the sweep adds to it (engine: coldStoreBufferPct).
  * ⚠ `cold` is the only one of the three that is not collateral for anything: it backs no loan, sits in no
  * LTV denominator, and cannot be seized. `strike` and `coinbase` are both pledged, to different lenders.
  */
@@ -345,6 +346,74 @@ export function holdingsSplit(row: CyclingRow): HoldingsSplit {
     cold: row.coldBtc,
     combined: row.btcHeld,
   };
+}
+
+// ── the cold card and the seed row (real-cold spec v1 — the owner's reserve seeds the pool) ───────────────────
+
+/** One part of the cold card's origin line. `venue` picks the dot the face draws (none for the "used" part); `btc` is
+ *  SIGNED — the "used" part is negative — so the parts foot with the engine's cold ledger. */
+export interface ColdOriginPart {
+  venue: 'cold' | 'coinbase' | 'strike' | null;
+  btc: number;
+  text: string;
+}
+
+/**
+ * Where the cold came from, in order: the reserve the owner holds today, the coins swept from Coinbase and from Strike,
+ * and what the defenses drew back out. The parts foot with the cold ledger:
+ *   openingColdBtc + totalColdFromCb + totalColdFromStrike − totalColdRetrievedBtc === totalColdBtc.
+ * The reserve and the "used" parts show only above the ONE display floor (`shownBtc`), so a residue that rounds to 0.000
+ * reads as none — never "− 0.000 ₿". Coinbase and Strike always show: 0.000 there is the honest "nothing yet".
+ * ⚠ "used to defend the loans", not "retrieved for the top-up": `totalColdRetrievedBtc` also counts the Strike top-up
+ * and a Strike cure from cold, which a reserve makes common.
+ */
+export function coldOriginsParts(sim: Pick<CyclingResult,
+  'openingColdBtc' | 'totalColdFromCb' | 'totalColdFromStrike' | 'totalColdRetrievedBtc'>): ColdOriginPart[] {
+  const b3 = (x: number): string => `${x.toFixed(3)} ₿`;
+  const parts: ColdOriginPart[] = [];
+  if (shownBtc(sim.openingColdBtc)) {
+    parts.push({ venue: 'cold', btc: sim.openingColdBtc, text: `${b3(sim.openingColdBtc)} you hold today` });
+  }
+  parts.push({ venue: 'coinbase', btc: sim.totalColdFromCb, text: `${b3(sim.totalColdFromCb)} from Coinbase` });
+  parts.push({ venue: 'strike', btc: sim.totalColdFromStrike, text: `${b3(sim.totalColdFromStrike)} from Strike` });
+  if (shownBtc(sim.totalColdRetrievedBtc)) {
+    parts.push({
+      venue: null, btc: -sim.totalColdRetrievedBtc, text: `− ${b3(sim.totalColdRetrievedBtc)} used to defend the loans`,
+    });
+  }
+  return parts;
+}
+
+/**
+ * The cold card's "moves" sentence — ONE definition for the Cycling and Strategy faces; the caller supplies the date
+ * label ("Oct 2029" / "at month 37"). With a reserve, cold is there from month 0, so "First coins move …" would be false:
+ * the sentence speaks of NEW coins (the sweep's first month). Without one each face keeps its own words — it passes its
+ * no-reserve "nothing moves" sentence, byte-identical to before.
+ */
+export function coldMovesSentence(firstColdLabel: string | null, reserve: boolean, noneWithoutReserve: string): string {
+  if (firstColdLabel !== null) {
+    return reserve ? ` New coins first move ${firstColdLabel}.` : ` First coins move ${firstColdLabel}.`;
+  }
+  return reserve ? ' No new coins move to cold on this path.' : noneWithoutReserve;
+}
+
+/**
+ * The seed row — ONE definition for the three engine faces. `openingBtc` INCLUDES the cold reserve (every opening
+ * figure does: the engine's month 0 holds it), and when there is one worth a line the row says how much of it is cold.
+ */
+export function seedLine(openingBtc: number, openingColdBtc: number, openingDebt: number): string {
+  const cold = shownBtc(openingColdBtc) ? ` (${openingColdBtc.toFixed(4)} ₿ in cold storage)` : '';
+  return `Seeded from your live plan · ${openingBtc.toFixed(4)} ₿${cold} against ${fmtUSD(openingDebt)}`;
+}
+
+/**
+ * The Cycling cold card's line when the policy is OFF and the sweep is OFF but the owner holds cold (only then does the
+ * card show with the sweep off). Nothing new moves to cold, yet a defense can still draw the reserve: the Coinbase
+ * top-up when the stop is hit and, while the Strike cap is on, the Strike top-up when the cap is hit.
+ */
+export function sweepOffReserveNote(strikeCapOn: boolean): string {
+  return 'Sweep off: nothing new moves to cold. A defense can still draw on your reserve if the Coinbase stop'
+    + `${strikeCapOn ? ' or the Strike cap' : ''} is hit.`;
 }
 
 /**
