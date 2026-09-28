@@ -748,23 +748,43 @@ describe('policyReserveNote — the cold card\'s reserve sentence, gated per run
     expect(policyReserveNote(r)).toBe(FULL);
   });
 
-  it('⭐ the second clause is dropped when cold went into Coinbase in the month it was liquidated (P1 × 0.35)', () => {
-    // The futility check keeps only the STRIKE reserve out of a doomed Coinbase; the emergency top-up is not
-    // doom-gated, so the rest of the cold goes into a loan liquidated that month — "never on a loan that can't be
-    // saved" is false for this run. Not lost wholesale: Morpho's seizure is sized by the debt (× CB_LIF), but here it
-    // grew by 0.256 ₿ and the run ended 0.041 ₿ lower net of the seed.
+  it('⭐ the full sentence when Coinbase dies but no cold ever went into it — the doom gate held the reserve (P1 × 0.35)', () => {
+    // The doom gate (the default under the policy) skips the emergency top-up in the month Coinbase cannot survive, so
+    // the reserve stays in cold through the liquidation — the second clause is true of this run.
     const r = runPolicy(p1x(0.35), {}, { openingColdBtc: 0.5 });
-    expect(r.liqMonth).not.toBeNull();                                    // premise: doomed …
-    expect(r.rows[r.liqMonth!].topUpFromColdBtc).toBeGreaterThan(0);    // … and the reserve fed it that month
+    expect(r.liqMonth).not.toBeNull();                                    // premise: Coinbase was liquidated …
+    expect(r.totalTopUpFromColdBtc).toBe(0);                             // … and no cold ever entered it
+    expect(policyReserveNote(r)).toBe(FULL);
+  });
+
+  it('⭐ the second clause is dropped when cold went into Coinbase in an EARLIER month and it died later (a two-step crash)', () => {
+    // The futility check is same-month: × 0.5 from month 12 is still savable, so the emergency top-up spends the reserve
+    // there; × 0.3 from month 14 then dooms Coinbase with that cold inside, and the doom gate can only keep the reserve
+    // out of the month it dies. "Never on a loan that can't be saved" is false for this run.
+    const path = pathP1().map((x, m) => (m >= 14 ? x * 0.3 : m >= 12 ? x * 0.5 : x));
+    const r = runPolicy(path, {}, { openingColdBtc: 0.5 });
+    expect(r.liqMonth).toBe(14);
+    expect(r.rows[12].topUpFromColdBtc).toBeGreaterThan(0);               // savable then …
+    expect(r.rows[12].topUpFromColdBtc).toBeCloseTo(0.1229, 4);           //   (fixture-bound)
+    expect(r.rows[14].topUpFromColdBtc).toBe(0);                          // … none in the month it died …
+    expect(r.coldRetrievedAboveSupportBtc).toBe(0);                       // … the first clause is true …
+    expect(r.deficiencyUsd!).toBeGreaterThan(0);                          // … and it died short of its debt
     expect(policyReserveNote(r)).toBe(FIRST_ONLY);
   });
 
-  it('a liquidation that took no cold that month keeps the full sentence (synthetic)', () => {
+  it('only cold at or before the liquidation month drops the clause (synthetic rows)', () => {
     const base = runPolicy(pathP1(), {}, { openingColdBtc: 0.5 });
     const rows = base.rows.map((x) => ({ ...x, topUpFromColdBtc: 0 }));
     expect(policyReserveNote({ ...base, liqMonth: 12, rows })).toBe(FULL);
-    rows[12] = { ...rows[12], topUpFromColdBtc: 0.1 };
-    expect(policyReserveNote({ ...base, liqMonth: 12, rows })).toBe(FIRST_ONLY);
+    // In the liquidation month itself …
+    expect(policyReserveNote({ ...base, liqMonth: 12, rows: rows.map((x, m) => (m === 12 ? { ...x, topUpFromColdBtc: 0.1 } : x)) }))
+      .toBe(FIRST_ONLY);
+    // … in an earlier month …
+    expect(policyReserveNote({ ...base, liqMonth: 12, rows: rows.map((x, m) => (m === 5 ? { ...x, topUpFromColdBtc: 0.1 } : x)) }))
+      .toBe(FIRST_ONLY);
+    // … but never after it: "up to and including" the liquidation month.
+    expect(policyReserveNote({ ...base, liqMonth: 12, rows: rows.map((x, m) => (m === 13 ? { ...x, topUpFromColdBtc: 0.1 } : x)) }))
+      .toBe(FULL);
   });
 
   it('none when cold came out at or above support — the first clause is false, and the policy card\'s alarm says so', () => {

@@ -1124,43 +1124,59 @@ describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc,
 
 // ── cold rules below support (spec: cold rules measurement v1) — the TEST-ONLY switches D and C ─────────────────────
 
-describe('⭐ cold rules below support — D (doom gate) and C (cold before the shift), TEST-ONLY and policy-only', () => {
+describe('⭐ cold rules — D ADOPTED (default on under the policy), C measured (default off), Strike first after a liquidation', () => {
   const SEED = 0.5;
-  const D = { doomGateCbTopUp: true } as const;
-  const C = { coldBeforeShift: true } as const;
-  /** D, C and C + D — the variants the report measures against today's order. */
-  const SWITCHED = COLD_RULE_VARIANTS.filter(([name]) => name !== 'base');
+  /** The pre-adoption order — the doom gate off (TEST-ONLY). */
+  const OLD = { doomGateCbTopUp: false } as const;
+  /** C alone — D switched off EXPLICITLY, or C silently runs as C + D now that D is on by default. */
+  const C = { doomGateCbTopUp: false, coldBeforeShift: true } as const;
+  /** P1 × 0.35 from month 12 with a 0.5 ₿ seed — the doomed month D fixes, and a deficiency after the seizure. */
+  const doomed = (): CyclingInputs => ({
+    ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
+  });
+  /** The runs the default checks sweep: every A5 path, the measurement's stress rows and the CALL fixture × seeds
+   *  0 / 0.5, policy on. The stress rows are where the switches bind. */
+  const sweep = (): { label: string; inputs: CyclingInputs }[] => coldRuleRows().flatMap((row) =>
+    [0, SEED].map((seed) => ({ label: `${row.name} · seed ${seed}`, inputs: { ...row.on, openingColdBtc: seed } })));
 
-  it('⭐ off is byte-identical: both switches false (policy on) ≡ absent; both true with the policy OFF ≡ absent', () => {
-    // Every A5 path plus the measurement's stress rows and the CALL fixture — the stress rows are where the switches
-    // BIND, which is what keeps this comparison from passing vacuously.
-    let dBinds = 0;
-    let cBinds = 0;
-    for (const row of coldRuleRows()) {
-      for (const seed of [0, SEED]) {
-        const label = `${row.name} · seed ${seed}`;
-        const on: CyclingInputs = { ...row.on, openingColdBtc: seed };
-        const absent = runCyclingSim(on);
-        expect(runCyclingSim({ ...on, doomGateCbTopUp: false, coldBeforeShift: false }), label).toEqual(absent);
-        const off: CyclingInputs = { ...on, supportPolicy: undefined };
-        expect(runCyclingSim({ ...off, ...D, ...C }), `${label}, policy off`).toEqual(runCyclingSim(off));
-        if (!isDeepStrictEqual(runCyclingSim({ ...on, ...D }), absent)) dBinds++;
-        if (!isDeepStrictEqual(runCyclingSim({ ...on, ...C }), absent)) cBinds++;
+  it('⭐ D is the default under the policy — absent ≡ on; the policy-off arm ignores it; C stays default off', () => {
+    for (const { label, inputs } of sweep()) {
+      const absent = runCyclingSim(inputs);
+      expect(runCyclingSim({ ...inputs, doomGateCbTopUp: true }), label).toEqual(absent);
+      expect(runCyclingSim({ ...inputs, coldBeforeShift: false }), `${label}, C off`).toEqual(absent);
+      const off: CyclingInputs = { ...inputs, supportPolicy: undefined };
+      const offAbsent = runCyclingSim(off);
+      for (const v of [true, false]) {
+        expect(runCyclingSim({ ...off, doomGateCbTopUp: v }), `${label}, policy off, D ${v}`).toEqual(offAbsent);
       }
+      expect(runCyclingSim({ ...off, coldBeforeShift: true }), `${label}, policy off, C`).toEqual(offAbsent);
     }
-    expect(dBinds).toBeGreaterThan(0);
-    expect(cBinds).toBeGreaterThan(0);
+    // Non-vacuous: the pre-adoption order differs from the default on the doomed month D fixes.
+    expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), ...OLD }), runCyclingSim(doomed()))).toBe(false);
   });
 
-  it('⭐ D never pours into a doomed Coinbase — P1 × 0.35 from month 12, a 0.5 ₿ seed', () => {
-    const inputs: CyclingInputs = {
-      ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
-    };
-    const base = runCyclingSim(inputs);
-    // Premise: today's order liquidates Coinbase at month 12 with the seed inside that month's top-up.
-    expect(base.liqMonth).toBe(12);
-    expect(base.rows[12].topUpFromColdBtc).toBeGreaterThan(0);
-    const d = runCyclingSim({ ...inputs, ...D });
+  it('⭐ D is inert without a liquidation — every run the old order survives is identical under the default', () => {
+    let survivors = 0;
+    let survivorsWithTopUp = 0;
+    for (const { label, inputs } of sweep()) {
+      const old = runCyclingSim({ ...inputs, ...OLD });
+      if (old.liqMonth !== null) continue;
+      survivors++;
+      if (old.totalTopUpBtc > 0) survivorsWithTopUp++;
+      expect(runCyclingSim(inputs), label).toEqual(old);
+    }
+    // Non-vacuous: surviving runs DO use the emergency top-up, so a gate weaker than doom would move them.
+    expect(survivors).toBeGreaterThan(0);
+    expect(survivorsWithTopUp).toBeGreaterThan(0);
+  });
+
+  it('⭐ D never pours into a doomed Coinbase — P1 × 0.35 from month 12, a 0.5 ₿ seed (the default)', () => {
+    const inputs = doomed();
+    const old = runCyclingSim({ ...inputs, ...OLD });
+    // Premise: the pre-adoption order liquidates Coinbase at month 12 with the seed inside that month's top-up.
+    expect(old.liqMonth).toBe(12);
+    expect(old.rows[12].topUpFromColdBtc).toBeGreaterThan(0);
+    const d = runCyclingSim(inputs);                   // the default: the doom gate on
     expect(d.liqMonth).toBe(12);                       // D cannot save Coinbase — it only stops feeding it
     expect(d.rows[12].topUpFromColdBtc).toBe(0);
     expect(d.rows[12].topUpFromStrikeBtc).toBe(0);
@@ -1168,11 +1184,73 @@ describe('⭐ cold rules below support — D (doom gate) and C (cold before the 
     expectLedgersFoot(d, inputs);
   });
 
+  it('⭐ Strike first after a liquidation is on by default and policy-only — and absent before any liquidation', () => {
+    for (const { label, inputs } of sweep()) {
+      const absent = runCyclingSim(inputs);
+      expect(runCyclingSim({ ...inputs, strikeFirstAfterLiquidation: true }), label).toEqual(absent);
+      if (absent.liqMonth === null) {
+        expect(runCyclingSim({ ...inputs, strikeFirstAfterLiquidation: false }), `${label}, no liquidation`).toEqual(absent);
+      }
+      const off: CyclingInputs = { ...inputs, supportPolicy: undefined };
+      const offAbsent = runCyclingSim(off);
+      for (const v of [true, false]) {
+        expect(runCyclingSim({ ...off, strikeFirstAfterLiquidation: v }), `${label}, policy off, ${v}`).toEqual(offAbsent);
+      }
+    }
+    // Non-vacuous: after a liquidation that left a deficiency, the pre-adoption repayment order differs.
+    expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), strikeFirstAfterLiquidation: false }), runCyclingSim(doomed())))
+      .toBe(false);
+    // BEFORE any liquidation a pay-down month still restores Coinbase first — the `liqMonth` half of the gate. Both legs
+    // open over their ceilings at support, so a Strike-first restore would ALSO total $2,000: only the balances say
+    // which leg was paid.
+    const pd = on(multiplePath([[0, 1.35], [1, 2.5], [SP_MONTHS, 2.5]]), {}, RESTORE_OPENING);
+    const x = pd.rows[1];
+    expect(x.policyZone).toBe('payDown');
+    expect(pd.liqMonth).toBeNull();
+    expect(x.restoreUsd).toBeCloseTo(2_000, 9);
+    expect(x.cbDebt).toBeCloseTo(48_000 * (1 + cmr) - 2_000, 6);
+    expect(x.strikeBalance).toBeCloseTo(20_000 * (1 + smr), 6);          // Strike only accrues
+  });
+
+  it('⭐ Strike first after a liquidation — the surplus retires Strike before the Coinbase leftover', () => {
+    const inputs = doomed();
+    const first = runCyclingSim(inputs);                                              // the default
+    const old = runCyclingSim({ ...inputs, strikeFirstAfterLiquidation: false });     // the pre-adoption order
+    // Premise: liquidated at month 12 with a DEFICIENCY. ⚠ Row 12 is pushed PRE-seizure — its cbDebt is the whole debt
+    // that breached — so the post-seizure Coinbase base is `deficiencyUsd`. The seizure never touches Strike, so
+    // Strike's base is row 12's balance.
+    expect(old.liqMonth).toBe(12);
+    expect(old.deficiencyUsd!).toBeGreaterThan(0);
+    const m = 13;
+    const prev = old.rows[12];
+    const deficiency = old.deficiencyUsd!;
+    const surplus = SP_REPRO.income - SP_REPRO.expenses;
+    expect(old.rows[m].policyZone).toBe('broken');
+    expect(prev.strikeBalance).toBeGreaterThan(0);
+    expect(surplus).toBeGreaterThan(0);
+    // …and Strike sits inside its own ceiling at support, the only reason Strike's half of the restore takes nothing
+    // below (it still runs, by design).
+    expect(prev.strikeBalance * (1 + smr)).toBeLessThan(prev.strikeCollateralBtc * SUPPORT[m] * SK_STOP);
+    expect(first.rows.slice(0, m)).toEqual(old.rows.slice(0, m));      // identical until the order acts
+    // Pre-adoption order: Coinbase first — the surplus repays the deficiency, Strike only accrues.
+    expect(old.rows[m].restoreUsd).toBeCloseTo(surplus, 9);
+    expect(old.rows[m].cbDebt).toBeCloseTo(deficiency * (1 + cmr) - surplus, 6);
+    expect(old.rows[m].strikeBalance).toBeCloseTo(prev.strikeBalance * (1 + smr), 6);
+    // The default: Strike first — no restore, the surplus pays Strike down, Coinbase only accrues.
+    const x = first.rows[m];
+    expect(x.restoreUsd).toBe(0);
+    expect(x.payDownUsd).toBeCloseTo(surplus, 9);
+    expect(x.strikeBalance).toBeCloseTo(prev.strikeBalance * (1 + smr) - surplus, 6);
+    expect(x.cbDebt).toBeCloseTo(deficiency * (1 + cmr), 6);
+    expectLedgersFoot(first, inputs);
+    expectLedgersFoot(old, inputs);
+  });
+
   it('⭐ C spends cold before any shift — P1 × 0.5 from month 12, a 0.5 ₿ seed', () => {
     const inputs: CyclingInputs = {
       ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.5), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
     };
-    const base = runCyclingSim(inputs);
+    const base = runCyclingSim({ ...inputs, ...OLD });   // C is measured against the pre-adoption order (no doom here)
     const b = base.rows[12];
     // Premise: a below-support month, Coinbase over its line before the shift, the shift fires, and cold is there.
     expect(aboveSupport(b.price, SUPPORT[12])).toBe(false);
@@ -1207,7 +1285,7 @@ describe('⭐ cold rules below support — D (doom gate) and C (cold before the 
       strikeBalance: skBalPre, strikeCollateralBtc: 1, price, targetStrikeLtvPct: 40, coldBtc: COLD,
     }).fromColdBtc;
     const toLine = cbDebtPre / ((SP_REPRO.cbLtvCapPct / 100) * price) - 1;
-    const base = runCyclingSim(inputs);
+    const base = runCyclingSim({ ...inputs, ...OLD });
     const b = base.rows[1];
     // Premise: below support, Coinbase over its line and the shift fires; Strike wants cold before the shift, and the
     // cold cannot cover both legs — so the reserve BINDS what C may take.
@@ -1245,11 +1323,11 @@ describe('⭐ cold rules below support — D (doom gate) and C (cold before the 
     expect(phantom).toBe(0);
   });
 
-  it('⭐ G2 holds under every variant — D, C and C + D on every A5 path and stress row, seeds 0 / 0.5', () => {
+  it('⭐ G2 holds under every variant — base, D (the default), C and C + D on every A5 path and stress row, seeds 0 / 0.5', () => {
     let belowSupportRetrievals = 0;
     for (const row of coldRuleRows()) {
       for (const seed of [0, SEED]) {
-        for (const [name, v] of SWITCHED) {
+        for (const [name, v] of COLD_RULE_VARIANTS) {
           const label = `${row.name} · seed ${seed} · ${name}`;
           const inputs: CyclingInputs = { ...row.on, ...v, openingColdBtc: seed };
           const r = runCyclingSim(inputs);

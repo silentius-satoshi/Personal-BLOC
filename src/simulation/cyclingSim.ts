@@ -152,9 +152,10 @@ export interface CyclingInputs {
    * source is the reserve that actually exists, instead of only the coins this simulation itself swept.
    *
    * Wired from the three engine faces (Cycling, Strategy, Ownership), which pass `getCurrentColdBtc()` (real-cold
-   * spec v1). ⚠ The emergency Coinbase top-up is NOT doom-gated: in a month Coinbase cannot survive, it still takes
-   * the cold the Strike reserve does not hold (the futility check guards only that reserve's yield). The test-only
-   * `doomGateCbTopUp` measures gating it; the default is unchanged.
+   * spec v1). ⚠ Under the support policy the emergency Coinbase top-up IS doom-gated (`doomGateCbTopUp`, adopted, default
+   * on): in a month Coinbase cannot survive, the reserve stays out of it. SAME-MONTH — cold topped in while Coinbase was
+   * still savable can be lost to a later liquidation. With the policy off the top-up is NOT doom-gated (that arm is
+   * unchanged, real-cold decision 1): it still takes the cold the Strike reserve does not hold.
    */
   openingColdBtc?: number;
 
@@ -231,21 +232,32 @@ export interface CyclingInputs {
    *  mutation check is a runnable test rather than a hand edit. `cbSurvivalGuard: false` still disables
    *  guard and futility together (that is the spec-v1 design); this flag isolates F1 alone. */
   cbFutilityCheck?: boolean;
-  /** D — THE DOOM GATE. Default OFF and TEST-ONLY (the same grep test: no face may pass it); policy-only — without
-   *  an applied support policy it does nothing. When on, the emergency Coinbase top-up is SKIPPED ENTIRELY (no
-   *  cold, no Strike collateral) in a month `cbDoomedThisMonth` says Coinbase dies whatever it is handed —
-   *  evaluated on the post-shift state with exactly the futility check's inputs. The futility check only stops
-   *  the Strike reserve's YIELD; this stops the top-up itself pouring cold into a loan Morpho seizes that month.
-   *  Exists so the env-gated report can measure it; adopting it is the owner's call, not this flag's default. */
+  /** D — THE DOOM GATE. ADOPTED 2026-09-27: DEFAULT ON under the support policy (absent means ENABLED — the
+   *  `cbSurvivalGuard` pattern); policy-only, so the policy-off engine is unchanged. In a month `cbDoomedThisMonth` says
+   *  Coinbase dies whatever it is handed — asked on the post-shift state with exactly the futility check's inputs — the
+   *  emergency Coinbase top-up is SKIPPED ENTIRELY (no cold, no Strike collateral). The futility check alone only
+   *  stopped the Strike reserve's YIELD; this stops the top-up itself pouring cold into a loan Morpho seizes that month.
+   *  ⚠ SAME-MONTH BY DESIGN: cold topped into a Coinbase that was still savable can be lost to a LATER liquidation (the
+   *  cold card's reserve sentence gates on exactly that). `false` restores the pre-adoption order — TEST-ONLY (the same
+   *  grep test: no face may pass it), kept so the report and the tests can measure the old order. Do NOT "fix" this
+   *  default to off. */
   doomGateCbTopUp?: boolean;
-  /** C — COLD BEFORE THE DEBT SHIFT. Default OFF and TEST-ONLY (the same grep test); policy-only. In a month the
-   *  price is BELOW support (the policy's cold rule) and CB LTV at today's price is over the defense line (the
-   *  debt shift's own trigger), cold tops Coinbase up to the line BEFORE any debt moves onto Strike: cold only,
-   *  and never the cold Strike's cap needs on that pre-shift state (Coinbase survival > Strike cap > Coinbase
-   *  cap). The regular sequence then runs unchanged on what remains; `cbLtvPreDefense` reads the LTV the shift
-   *  saw, after this top-up. With `doomGateCbTopUp` on too, it is skipped in a month Coinbase is doomed.
-   *  Measured in the env-gated report; adoption pending the owner. */
+  /** C — COLD BEFORE THE DEBT SHIFT. MEASURED, NOT ADOPTED — moved to the crash-playbook item (it re-measures C with
+   *  the shift fix). Default OFF and TEST-ONLY (the same grep test); policy-only. In a month the price is BELOW support
+   *  (the policy's cold rule) and CB LTV at today's price is over the defense line (the debt shift's own trigger), cold
+   *  tops Coinbase up to the line BEFORE any debt moves onto Strike: cold only, and never the cold Strike's cap needs on
+   *  that pre-shift state (Coinbase survival > Strike cap > Coinbase cap). The regular sequence then runs unchanged on
+   *  what remains; `cbLtvPreDefense` reads the LTV the shift saw, after this top-up. With the doom gate on — the default
+   *  since its adoption — it is skipped in a month Coinbase is doomed. */
   coldBeforeShift?: boolean;
+  /** STRIKE FIRST AFTER A COINBASE LIQUIDATION. Default ON and TEST-ONLY (the same grep test: no face may pass it);
+   *  policy-only by construction. After a liquidation, in a pay-down or broken month, the restore skips Coinbase's half,
+   *  so the pay-down retires STRIKE first and the Coinbase leftover after it. WHY: the restore pays "Coinbase before
+   *  Strike" because Coinbase liquidates instantly — once it HAS been liquidated that reason is gone. What is left there
+   *  is unsecured debt at the Coinbase rate, while Strike's balance costs 13% and can still be called. `false` is the
+   *  pre-adoption order, kept so the report can measure it. Before a liquidation — and in paused / accumulate / hold
+   *  months after one — the restore is unchanged (the plan after a liquidation belongs to the crash playbook). */
+  strikeFirstAfterLiquidation?: boolean;
   /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
    *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
   mode?: CyclingMode;
@@ -697,10 +709,12 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     if (v.ok) policy = v.policy;
     else policyIgnoredReason = v.reason;
   }
-  // The TEST-ONLY cold rules (D, C) — POLICY-ONLY BY CONSTRUCTION: with no applied policy both are false, so the
-  // policy-off engine can never reach either branch. Absent / false ⇒ byte-identical.
-  const doomGate = policy !== null && inputs.doomGateCbTopUp === true;
+  // The cold rules and the repayment order — POLICY-ONLY BY CONSTRUCTION: with no applied policy all three are false, so
+  // the policy-off engine never reaches them. The doom gate (D) and Strike-first-after-a-liquidation are ADOPTED and
+  // default ON under the policy (absent ⇒ on; `false` is the TEST-ONLY pre-adoption order); C stays default OFF.
+  const doomGate = policy !== null && inputs.doomGateCbTopUp !== false;
   const coldFirst = policy !== null && inputs.coldBeforeShift === true;
+  const strikeFirstAfterLiq = policy !== null && inputs.strikeFirstAfterLiquidation !== false;
   let breaker: RearmableBreakerState = REARMABLE_BREAKER_START;
   let modelBrokenMonth: number | null = null;   // the FIRST trip (the re-arm can reset `breaker.brokenMonth`)
   let firstRearmMonth: number | null = null;
@@ -877,7 +891,15 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           let surplus = Math.max(0, inc - expenses);
           // a) RESTORE (any zone): a leg over its ceiling AT SUPPORT is repaid first, by exactly its excess —
           //    Coinbase before Strike, because Coinbase liquidates instantly and Strike has a cure window.
-          const cbPay = Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop)));
+          //    ⚠ EXCEPT after a Coinbase liquidation, in a pay-down or broken month (`strikeFirstAfterLiquidation`,
+          //    default on): that reason is gone once Coinbase HAS been liquidated — the leftover is unsecured debt at the
+          //    Coinbase rate, while Strike costs 13% and can still be called. Coinbase's half is skipped, so the pay-down
+          //    (b) retires Strike first and the leftover after it. (`liqMonth` is still null DURING the liquidation month
+          //    — it is set at the month-end breach — so this acts from the month after.)
+          const cbRestoreSkipped = strikeFirstAfterLiq && liqMonth !== null && (state === 'payDown' || state === 'broken');
+          const cbPay = cbRestoreSkipped
+            ? 0
+            : Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop)));
           cbDebt -= cbPay;
           surplus -= cbPay;
           const skPay = Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop)));
@@ -991,11 +1013,12 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           }
         }
 
-        // ── C · COLD BEFORE THE SHIFT (TEST-ONLY, policy-only, default off) ── below support, with Coinbase over its
-        // defense line, cold tops it up to the line FIRST — before any debt moves onto Strike. It holds back the
-        // cold Strike's cap needs on this PRE-shift state (the engine's own reserve call) and takes no Strike
-        // collateral; the regular sequence below then runs unchanged on what remains. With the doom gate (D) on
-        // as well, it is skipped in a month Coinbase is doomed. Its cold books exactly like the emergency top-up's.
+        // ── C · COLD BEFORE THE SHIFT (TEST-ONLY, policy-only, default off; measured, not adopted — the crash-playbook
+        // item) ── below support, with Coinbase over its defense line, cold tops it up to the line FIRST — before any
+        // debt moves onto Strike. It holds back the cold Strike's cap needs on this PRE-shift state (the engine's own
+        // reserve call) and takes no Strike collateral; the regular sequence below then runs unchanged on what remains.
+        // With the doom gate on (the default), it is skipped in a month Coinbase is doomed. Its cold books exactly like
+        // the emergency top-up's.
         let coldFirstRestored = false;
         if (coldFirst && defend && liqMonth === null && price > 0 && k < 1 - SUPPORT_EPS
           && ltvOf(cbDebt, cbColl, price) > cap && !(doomGate && cbDoomedNow(price))) {
@@ -1107,8 +1130,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // AFTER the shift and BEFORE the cold sweep, so the sweep can never undo it.
         // With the Strike cap armed it is served first out of what's LEFT OVER: the cold minus the Strike
         // reserve, and Strike collateral only down to the cap (both 0/undefined when the cap is off).
-        // D (TEST-ONLY, policy-only, default off): skipped entirely in a month Coinbase is doomed — the same
-        // post-shift question the futility check asks.
+        // THE DOOM GATE (D — adopted, default ON under the policy; `false` is the TEST-ONLY pre-adoption order): skipped
+        // entirely in a month Coinbase is doomed — the same post-shift question the futility check asks. Same-month by
+        // design: a top-up in a month Coinbase was still savable can be lost to a later liquidation.
         if (defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0 && !(doomGate && cbDoomedNow(price))) {
           const t = topUpToCbLtv({
             cbDebt,

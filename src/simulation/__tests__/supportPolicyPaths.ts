@@ -216,12 +216,13 @@ export const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) =
 
 // ── the cold-rules measurement (spec: cold rules below support v1) — shared by its tests and the report ──────────
 
-/** The TEST-ONLY switches measured against today's order (`base`), all POLICY ON: D the doom gate on the emergency
- *  Coinbase top-up, C cold before the debt shift, and both. */
+/** The cold rules measured, all POLICY ON — EXPLICIT, so every table keeps its meaning across the adoption: `base` is the
+ *  PRE-ADOPTION order (the doom gate off), `D` ≡ the default since D was adopted, `C` cold before the debt shift with D
+ *  off, `C+D` both. ⚠ C must switch D off explicitly, or it silently becomes C + D (D is on by default now). */
 export const COLD_RULE_VARIANTS = [
-  ['base', {}],
+  ['base', { doomGateCbTopUp: false }],
   ['D', { doomGateCbTopUp: true }],
-  ['C', { coldBeforeShift: true }],
+  ['C', { doomGateCbTopUp: false, coldBeforeShift: true }],
   ['C+D', { doomGateCbTopUp: true, coldBeforeShift: true }],
 ] as const satisfies ReadonlyArray<readonly [string, Partial<CyclingInputs>]>;
 

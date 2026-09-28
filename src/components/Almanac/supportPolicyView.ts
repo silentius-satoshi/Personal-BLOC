@@ -730,17 +730,20 @@ export function policyColdNote(s: EffectivePolicySettings): string {
  * gated per run, so every clause is TRUE of the run it describes:
  *  • '' when the policy is off, there is no reserve worth a line, or cold came out AT OR ABOVE support — the first clause
  *    is false then (a position that opened over a ceiling), and the policy card's `coldAlarm` already says so;
- *  • the second clause is dropped when cold went into Coinbase in the month it was liquidated. ⚠ The futility check
- *    (`cbDoomedThisMonth`) only keeps the STRIKE RESERVE out of a doomed Coinbase; the emergency Coinbase top-up is not
- *    doom-gated and still hands it the rest of the cold, so "never on a loan that can't be saved" is false for that run.
- *    The engine fix is its own spec — until it lands, the copy says only what is true.
+ *  • the second clause is dropped when cold went into Coinbase in ANY month up to and including the one it was
+ *    liquidated in. The doom gate keeps the reserve out of the month Coinbase dies, but the futility check
+ *    (`cbDoomedThisMonth`) is SAME-MONTH by design: cold topped into a Coinbase that was still savable then can be
+ *    lost to a later liquidation, and "never on a loan that can't be saved" is false for that run. It errs one way
+ *    only — the pool is fungible, so cold swept back out before the liquidation still drops the clause: the copy
+ *    may say less than it could, never more.
  */
 export function policyReserveNote(sim: Pick<CyclingResult,
   'policyApplied' | 'openingColdBtc' | 'coldRetrievedAboveSupportBtc' | 'liqMonth'>
   & { rows: ReadonlyArray<Pick<CyclingRow, 'topUpFromColdBtc'>> }): string {
   if (!sim.policyApplied || !shownBtc(sim.openingColdBtc) || sim.coldRetrievedAboveSupportBtc > 0) return '';
-  const intoDoomedCoinbase = sim.liqMonth !== null && (sim.rows[sim.liqMonth]?.topUpFromColdBtc ?? 0) > 0;
-  return intoDoomedCoinbase
+  const intoLiquidatedCoinbase = sim.liqMonth !== null
+    && sim.rows.slice(0, sim.liqMonth + 1).some((r) => r.topUpFromColdBtc > 0);
+  return intoLiquidatedCoinbase
     ? ' Your reserve is spent only in a break below support.'
     : " Your reserve is spent only in a break below support, and never on a loan that can't be saved.";
 }
