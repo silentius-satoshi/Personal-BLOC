@@ -3338,6 +3338,10 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     `drawingCashFlowNote` names the cause and the remainder:
     - full draw → today's sentence; with nothing bought → "The line pays your $D of bills. No bitcoin bought this
       month." + the debt sentence (the strong span empty), never "all $0/mo buys bitcoin — not just the $0 left over";
+    - ⚠ the closing "— not just the $S left over" clause (BOTH bought arms) is DROPPED when the surplus is under the
+      dust floor, so on a deficit budget the sentence ends at "buys bitcoin." — the clause carries the full stop, so
+      the else is "."; `shownUsd` is the exact gate, since fmtUSD rounds and the smallest surplus that passes (50¢)
+      renders as $1;
     - partial → "The line pays $D of your bills, so all $B/mo buys bitcoin — not just the $S left over." + the cause
       (off: "Your paycheck covers $X the line couldn't reach."; on: "The limits at support (or Strike's own line)
       capped the draw, so your paycheck covers the other $X.") + the remainder tail + the debt sentence. When the
@@ -3357,7 +3361,10 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     a $0 paycheck; `hold` at $4k / $6k in every month). 2b.3 closed the last three: `noBillsNote` with the policy ON
     (P2 at $0 of bills), `liquidatedCashFlowNote` when the paycheck exactly equals the bills, and Ownership's leveraged
     branch, which printed a sub-50¢ buy unguarded (reachable only when income ≤ bills and the line's room lands within
-    50¢ of the gap). A face-level pin counts the dust switches (§ Structural guards).
+    50¢ of the gap). A face-level pin counts the dust switches (§ Structural guards). ⚠ The rule covers the $0 SURPLUS
+    too: `drawingCashFlowNote`'s left-over clause named "the $0 left over" on any deficit budget until the Decision
+    face's Appendix A — 2b.1 had closed the $0 PAYCHECK by guarding on `bought`, which a deficit budget passes (at
+    $4k / $6k the line pays the bills, so the whole $4,000 buys). It fired on a real A5 path.
     ⚠ **"Pays the bills again" is said only when nothing went unpaid** — the old stopped sentence said it with bills
     above the paycheck (P9 $4k / $6k, policy off).
 

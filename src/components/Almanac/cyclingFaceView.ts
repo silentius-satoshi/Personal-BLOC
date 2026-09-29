@@ -244,6 +244,8 @@ export const cashFlowText = (c: CashFlowCopy): string => c.before + c.strong + c
  * A $0 paycheck is never named as a figure (the income slider reaches $0; policy on and off). Where nothing bought
  * bitcoin the sentence says "No bitcoin bought this month." instead of "all $0/mo buys bitcoin — not just the $0 left
  * over"; where the paycheck paid none of the shortfall the cause says it "covers none of the rest" instead of "$0".
+ * ⚠ Nor is a $0 SURPLUS: on a deficit budget (bills above the paycheck) the closing "— not just the $X left over"
+ * clause is dropped entirely, since every other guard here is on `bought` rather than on the surplus.
  */
 export function drawingCashFlowNote(
   row: Pick<CyclingRow, 'btcBoughtUsd' | 'strikeDrawn' | 'strikeShortfall' | 'cashToBillsUsd' | 'unfundedUsd'>,
@@ -256,7 +258,11 @@ export function drawingCashFlowNote(
   const buys = `${fmtUSD(cf.buysUsd)}/mo buys bitcoin`;
   const bought = shownUsd(cf.buysUsd);
   const tail = billsRemainderTail(row);
-  const leftOver = ` — not just the ${fmtUSD(Math.max(0, income - expenses))} left over.`;
+  // The closing clause carries the sentence's full stop, so a deficit budget drops the whole clause rather than
+  // naming "the $0 left over". `shownUsd` is the exact gate: fmtUSD rounds, so the smallest surplus that passes
+  // (50¢) renders as $1 — nothing that survives it can print $0.
+  const surplus = Math.max(0, income - expenses);
+  const leftOver = shownUsd(surplus) ? ` — not just the ${fmtUSD(surplus)} left over.` : '.';
   const debt = ` Those bills become ${strikeAprPct}% debt until they move to Coinbase.`;
   if (!shownUsd(row.strikeDrawn)) {
     const pays = tail !== '' ? 'pays what it can' : 'pays the bills';

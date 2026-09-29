@@ -1137,6 +1137,69 @@ describe('⭐ C1 — the drawing-month sentence names the cause and the remainde
       }
     }
   });
+  // ── the left-over clause on a DEFICIT budget (Appendix A) ─────────────────────────────────────────────────────
+  // `income − expenses` is 0 whenever the bills exceed the paycheck, so the closing clause named "the $0 left over"
+  // in BOTH bought arms. Every guard above is on `bought`, not on the surplus, so the $0-paycheck cases take the
+  // `!bought` branch and never reached it — the shape below (a deficit AND a buy) is what was missing.
+
+  it('⭐ a deficit budget, full draw ($4k / $6k): the clause is dropped — never "not just the $0 left over"', () => {
+    const row = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 4_000 });
+    const c = drawingCashFlowNote(row, 4_000, 6_000, 13, false);
+    expect(cashFlowText(c)).toBe('The line pays your $6,000 of bills, so all $4,000/mo buys bitcoin. '
+      + 'Those bills become 13% debt until they move to Coinbase.');
+    expect(c.strong).toBe('$4,000/mo buys bitcoin');
+    expect(drawingCashFlowNote(row, 4_000, 6_000, 13, true)).toEqual(c);   // identical with the policy on
+  });
+
+  it('⭐ a deficit budget, partial draw ($4k / $6k): the cause follows the dropped clause straight on', () => {
+    // A real row: buys + covered === income (2,000 + 2,000 = 4,000) — the invariant (a) pins.
+    const row = mkRow({ strikeDrawn: 4_000, strikeShortfall: 2_000, btcBoughtUsd: 2_000 });
+    expect(cashFlowText(drawingCashFlowNote(row, 4_000, 6_000, 13, false)))
+      .toBe('The line pays $4,000 of your bills, so all $2,000/mo buys bitcoin. '
+        + "Your paycheck covers $2,000 the line couldn't reach. Those bills become 13% debt until they move to Coinbase.");
+    expect(cashFlowText(drawingCashFlowNote(row, 4_000, 6_000, 13, true)))
+      .toBe('The line pays $4,000 of your bills, so all $2,000/mo buys bitcoin. '
+        + "The limits at support (or Strike's own line) capped the draw, so your paycheck covers the other $2,000. "
+        + 'Those bills become 13% debt until they move to Coinbase.');
+  });
+
+  it('⭐ the ONE dust floor: a 49¢ surplus drops the clause, 50¢ keeps it — so it can never print "$0"', () => {
+    const row = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 6_000 });
+    expect(cashFlowText(drawingCashFlowNote(row, 6_000.49, 6_000, 13, false)))
+      .toBe('The line pays your $6,000 of bills, so all $6,000/mo buys bitcoin. '
+        + 'Those bills become 13% debt until they move to Coinbase.');
+    // AT the floor the clause returns, and fmtUSD rounds it to $1 — nothing that passes shownUsd can render as $0.
+    expect(cashFlowText(drawingCashFlowNote(row, 6_000.5, 6_000, 13, false)))
+      .toBe('The line pays your $6,000 of bills, so all $6,000/mo buys bitcoin — not just the $1 left over. '
+        + 'Those bills become 13% debt until they move to Coinbase.');
+  });
+
+  it('⭐ no deficit-budget sentence names $0, policy off or on', () => {
+    const full = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 4_000 });
+    const partial = mkRow({ strikeDrawn: 4_000, strikeShortfall: 2_000, btcBoughtUsd: 2_000 });
+    const dust = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 6_000 });
+    for (const [row, income] of [[full, 4_000], [partial, 4_000], [dust, 6_000.49], [dust, 6_000.5]] as const) {
+      for (const applied of [false, true]) {
+        expect(cashFlowText(drawingCashFlowNote(row, income, 6_000, 13, applied))).not.toMatch(/\$0(?![\d,])/);
+      }
+    }
+  });
+
+  it('⭐ against the engine: every A5 path at $4k / $6k — no drawing month names $0, policy off or on', () => {
+    let bought = 0;
+    for (const c of a5Cases()) {
+      for (const [inputs, applied] of [[c.off, false], [c.on, true]] as const) {
+        const run = runCyclingSim({ ...inputs, income: 4_000 });
+        expect(run.policyApplied).toBe(applied);
+        for (const x of drawingRows(run, 4_000)) {
+          if (shownUsd(x.btcBoughtUsd)) bought++;          // the defect's row shape: a deficit budget AND a buy
+          expect(cashFlowText(drawingCashFlowNote(x, 4_000, inputs.expenses, inputs.strikeAprPct, applied)))
+            .not.toMatch(/\$0(?![\d,])/);
+        }
+      }
+    }
+    expect(bought).toBeGreaterThan(0);                     // premise: the sweep reaches that shape
+  });
 });
 
 describe('⭐ the stopped month and the no-draw modes — "pays the bills again" only when nothing went unpaid (2b.2)', () => {
