@@ -102,6 +102,17 @@ export const pathP4 = (): number[] => multiplePath(P4_KNOTS);
 export const pathP5 = (): number[] => multiplePath(P5_KNOTS);
 export const pathP6 = (): number[] => multiplePath(P6_KNOTS);
 
+/**
+ * A FALSE RECOVERY, then a second drop (Decision face, I24). The shape that separates a run seeded with the
+ * policy's memory from one without it: the first leg trips the breaker, the recovery to 1.05× tempts a re-arm, and
+ * the second leg to `depth` is where an unseeded re-plan — which has forgotten the break — re-borrows and is
+ * liquidated. Round synthetic knots.
+ */
+export const falseRecoveryPath = (depth: number, support = SUPPORT): number[] => multiplePath(
+  [[0, 1.35], [6, 0.8], [9, 0.8], [10, 1.05], [14, 1.05], [17, depth], [23, depth], [40, 1.2], [72, 1.2]],
+  support,
+);
+
 /** P7 — P4's path with no income for m12–m23 (the hidden liquidity risk: credit is gone in a crash). */
 export const incomeShockP7 = (income = SP_REPRO.income): number[] =>
   Array.from({ length: SP_MONTHS + 1 }, (_, m) => (m >= 12 && m <= 23 ? 0 : income));

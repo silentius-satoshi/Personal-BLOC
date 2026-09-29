@@ -250,6 +250,10 @@ export interface PolicyReading {
   rearmRule: number | null;
   /** The run ENDS broken (a latched break, or a later one that never re-armed). Decides the break's tone. */
   brokenAtEnd: boolean;
+  /** The run OPENED broken — the Decision face seeded the breaker from month-end prices (`openingBreaker`). ⚠ The
+   *  engine leaves `brokenMonth` (`modelBrokenMonth`) NULL for a seeded break, so every reader that asks "did this
+   *  run have a break" must go through `hadBreak`, never `brokenMonth` alone. */
+  openingBroken: boolean;
   call: StrikeCallSummary | null;
   cash: { openingUsd: number; leftUsd: number; toBillsUsd: number; toCureUsd: number };
   /** `zone` is the state of the FIRST unpaid month — the cause the unpaid line names. */
@@ -297,7 +301,7 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
     return {
       applied: false, zone: null, multiple: null, cb: null, sk: null,
       brokenMonth: null, rearmMonth: null, breakCount: 0, rearmRule: DEFAULT_BREAKER_REARM_MONTHS ?? null,
-      brokenAtEnd: false, call: null,
+      brokenAtEnd: false, openingBroken: false, call: null,
       cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
       firstThrottleMonth: null, monthsInZone: zeroZones(), liqMonth: null, neverDraws: null,
       afterLiquidation: false, strikeOwes: false,
@@ -316,6 +320,7 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
     breakCount: sim.breakCount,
     rearmRule: DEFAULT_BREAKER_REARM_MONTHS ?? null,
     brokenAtEnd: sim.last.policyZone === 'broken',
+    openingBroken: sim.openingBroken,
     call: strikeCallSummary(sim),
     cash: {
       openingUsd: sim.openingCashUsd, leftUsd: sim.cashLeftUsd,
@@ -345,9 +350,27 @@ function zoneLine(r: PolicyReading): string {
   return `${ZONE_LABEL[r.zone]}${k}`;
 }
 
+/** The breaker tripped INSIDE the run — so there is a month to name. The ONLY reader of `brokenMonth` as a
+ *  break test; everything that asks "did this run have a break" uses `hadBreak`. */
+const brokeInRun = (r: PolicyReading): boolean => r.brokenMonth !== null;
+
+/**
+ * A run HAD a break: it tripped in-run, or it OPENED broken (a seeded breaker — the Decision face's memory from
+ * prices). ⚠ ONE predicate, read by BOTH the headline and the detail lines. Gating either on `brokenMonth` alone
+ * showed a seeded break in one and dropped it from the other.
+ */
+export const hadBreak = (r: PolicyReading): boolean => brokeInRun(r) || r.openingBroken;
+
 function brokenSentence(r: PolicyReading): string {
-  const head = `Price spent ${countWord(HARD_BREAKER_MONTHS)} month-ends more than ${Math.round(HARD_BREAKER_DEPTH * 100)}% `
-    + `under support in month ${r.brokenMonth} — the model is treated as broken: no new debt.`;
+  const spent = `spent ${countWord(HARD_BREAKER_MONTHS)} month-ends more than ${Math.round(HARD_BREAKER_DEPTH * 100)}% `
+    + 'under support';
+  const broke = ' — the model is treated as broken: no new debt.';
+  // A SEEDED break (the Decision face folds the breaker over real month-end closes) has no in-run month to name,
+  // so it says WHEN instead of WHICH month; an in-run trip after it is then a SECOND break.
+  const head = r.openingBroken
+    ? `Before today, price ${spent}${broke}`
+    : `Price ${spent} in month ${r.brokenMonth}${broke}`;
+  const againInRun = r.openingBroken && brokeInRun(r) ? ` It broke again in month ${r.brokenMonth}.` : '';
   // v1.2 #12: with a re-arm rule the break is NOT "for the rest of this run" just because the rule never fired in it —
   // say the rule, and that the run ends first. Only a true latch (no rule) stays that way.
   if (r.rearmMonth === null) {
@@ -358,10 +381,13 @@ function brokenSentence(r: PolicyReading): string {
   const rearm = r.rearmRule !== null
     ? ` It re-arms after ${r.rearmRule} months back on the line (month ${r.rearmMonth}).`
     : ` It re-armed in month ${r.rearmMonth}.`;
-  const again = r.breakCount > 1
-    ? ` It broke ${r.breakCount} times in all${r.brokenAtEnd ? ' and stays broken to the end of this run' : ''}.`
+  // ⚠ `breakCount` counts IN-RUN trips only, so a run that opened broken has one more break than it says.
+  const totalBreaks = r.breakCount + (r.openingBroken ? 1 : 0);
+  const again = totalBreaks > 1
+    ? ` It broke ${totalBreaks} times in all${r.brokenAtEnd ? ' and stays broken to the end of this run' : ''}.`
     : '';
-  return `${head}${rearm}${again}`;
+  // The total comes AFTER the second break is named, or it reads as the count of something not yet mentioned.
+  return `${head}${rearm}${againInRun}${again}`;
 }
 
 /** When spare income reaches a leg that is over its limit. Before a liquidation Coinbase is repaid first (it liquidates
@@ -448,7 +474,7 @@ export function policyUnpaidNote(r: PolicyReading): string | null {
  */
 export function policyHeadline(r: PolicyReading, _s: EffectivePolicySettings): { tone: PolicyTone; text: string } {
   if (!r.applied) return { tone: 'quiet', text: '' };
-  const broken = r.brokenMonth !== null;
+  const broken = hadBreak(r);
   if (broken && r.brokenAtEnd) return { tone: 'bad', text: brokenSentence(r) };
   if (r.call !== null && r.call.sold > 0) return { tone: 'bad', text: strikeCallSentence(r.call) };
   if (broken) return { tone: 'warn', text: brokenSentence(r) };
@@ -471,7 +497,7 @@ export function policyDetails(r: PolicyReading, _s: EffectivePolicySettings): st
   const lines = [
     cbLine(r),
     skLine(r),
-    r.brokenMonth !== null ? brokenSentence(r) : null,
+    hadBreak(r) ? brokenSentence(r) : null,
     r.call !== null ? strikeCallSentence(r.call) : null,
     cashLine(r),
     policyUnpaidNote(r),

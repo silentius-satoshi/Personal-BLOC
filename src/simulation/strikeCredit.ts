@@ -10,6 +10,11 @@ export const STRIKE_CURE_LTV = 0.65;
 // in as plain numbers, like strikeMaxDrawLtv, so the engine stays a leaf.
 export const STRIKE_RETRIEVE_MAX_LTV = 0.40;
 
+/** What Strike actually lends. The minimum varies by state and $3,500 is the lowest; the maximum is $250,000.
+ *  The Decision face's suggested line is clamped to this range, so it can never suggest a line Strike won't open. */
+export const STRIKE_LINE_MIN_USD = 3_500;
+export const STRIKE_LINE_MAX_USD = 250_000;
+
 // The 15% Strike/BLOC operating ceiling — the LTV the advisor keeps the Strike BLOC at in steady state
 // (blocTarget = btcHeld × price × this). SINGLE definition for the advisor path (runAdvisor's blocLtvCeiling
 // param): every view passes this instead of a bare 0.15 literal. (The separate tier-minimum 0.15 in

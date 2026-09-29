@@ -133,6 +133,39 @@ src/
                                 # number of ms → exactly invertible). shiftedCycleTurns (unclipped) feeds
                                 # upcomingCycleTurns (path note) + cycleTurnsInHorizon (Milestones: nearest row,
                                 # ties → later, row 0 SNAPS to 1). 🔴 A belief — never importable by the risk core
+    placement.ts                # THE MOVE — the support policy's collateral placement for THIS month, previewed at
+                                # today's inputs (Decision face, §4.1). 🔴 IT IS THE ENGINE'S OWN STEPS 5 AND 9:
+                                # placementPlan calls strikeKeepCollateralBtc and cbKeepCollateralBtc, the same two
+                                # leaves runCyclingSim calls, so the card, the run and the schedule are one plan —
+                                # never a second placement rule. Direct routing (Coinbase filled to its keep, the
+                                # rest straight to cold) reaches the engine's end state in one hop; an equivalence
+                                # sweep over 20,000 random positions pins month 1 ≡ plan.after.
+                                # 🔴 THE STATES, IN THIS ORDER: 'unavailable' → 'cbPastLiquidation' → 'broken' →
+                                # 'paused' → 'ready'. A seizure is the most urgent fact and BELOW support it is
+                                # the likeliest, so a pause must never hide it (the card would never name the 86%
+                                # line or the Emergency Console). 'broken' reads the breaker seed — the SAME seed
+                                # the run's openingBreaker gets — because a broken model is the engine's own zone
+                                # and steps 5 and 9 never run there. Every state but 'ready' is inert.
+                                # 🔴 `opening` vs `after`: `after` is the end state steps 5 and 9 reach (the I3
+                                # contract); `opening` is what the owner ACTUALLY holds once today's move is made
+                                # or deferred — `after` when seeded, today's holdings otherwise. The run seeds
+                                # from `opening` (D10), and the cliff and cbOverCeilingUsd read it, because a
+                                # sub-threshold move reaches `after` but never happens.
+                                # StrikeLeg moves / nothing / hold / ltv (all-or-nothing, like step 5).
+                                # + cbOverCeilingUsd (a FACT about the position, reported in every state but
+                                # unavailable), MOVE_THRESHOLD_BTC 0.01 (moves under it WAIT for next month's
+                                # re-plan; crash moves never do) and suggestedLineUsd (2 months of bills or one
+                                # Coinbase paydown × 1.25, clamped to Strike's own range — ⚠ the "suggested line",
+                                # never InputsPanel's "Recommended min", which is a different strategy's figure).
+                                # PURE LEAF: supportPolicy + cbDefense + cbMetrics + strikeCredit + runCoinbaseLoan
+                                # + emergencyModel + ltv. No belief, no store, no React, no components/
+    planSearch.ts               # Path evaluation for the Decision face (§4.3) — a CONSUMER of runCyclingSim, like
+                                # runAdvisor; paths arrive as plain number[]. evaluatePaths → per-path outcome +
+                                # worstIndex (any liquidation > none; earlier > later; then the least `yours`; ties
+                                # → the lowest index). ⚠ M4: a run whose policyApplied differs from what was asked
+                                # is NOT ranked. ⚠ yoursAtHorizon is deriveOwnership at THREE args (a row's btcHeld
+                                # already holds cold). worstCasePath = the stitched floor; ragged → []. ⚠ The extra
+                                # runs are a SELECTOR for the Worst (modeled) crown, never a second truth
     cyclingSim.ts               # Cycling strategy PURE engine (Almanac cycling/ownership/strategy faces) —
                                 # + the STRIKE LTV CAP (strikeLtvCapPct, 0/undefined = off → byte-identical,
                                 # pinned by a HEAD golden): a cold → Strike top-up with a TWO-PART reservation
@@ -220,6 +253,9 @@ src/
                                 # arrives as a plain number; the §2 wall holds). policyZone (k = price ÷ support →
                                 # paused/accumulate/hold/payDown, junk → 'paused'), ceilingHeadroomUsd (room at
                                 # support, negative = over), sweepKeepBtc ((debt + buffer)/(S × stop), junk → +∞),
+                                # + strikeKeepCollateralBtc (step 5's keep: max(line, bal) / (skStop × S)) and
+                                # cbKeepCollateralBtc (step 9's keep: max(sweepKeepBtc, debt / (cap × price))) —
+                                # 🔴 ONE DEFINITION EACH, shared with the Decision face's THE MOVE (junk → +∞).
                                 # collateralToSellForLtv, resolveStrikeCall (cash → cold → sale to the cure LTV;
                                 # ≥ partial-liq → immediate; an emptied Strike is 'none' — no phantom sales),
                                 # nextBreakerState (2 month-ends < 0.9 × S, LATCHED — the ONE trip rule),
@@ -574,10 +610,44 @@ src/
                                 # builds → dead branch, tree-shaken
 
     Almanac/                    # (the faces are documented in § Almanac / CycleClock; listed here: Run 2's files)
+      decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
+                                # ONE field → action table in the engine's month order (a field added to CyclingRow
+                                # without a row here is a step the printed schedule silently drops; a completeness
+                                # sweep enumerates it). todayActions reads the PLAN, rowActions a row verbatim;
+                                # planSchedule · planOutcome · coinbaseLoanLine · scheduleToText (the print
+                                # artifact). 🔴 moveCard(ctx) is THE MOVE's copy AS DATA — every §7 line, in §7's
+                                # order, each with a tone — so the face renders and composes NOTHING (a sentence
+                                # written in JSX is one no test can reach). 🔴 The cliff is cbMetrics().liqPrice,
+                                # the same formula the Safety Dashboard uses — never a second one; it reads
+                                # plan.opening. 🔴 The state-line block is an EXHAUSTIVE switch with a `never`
+                                # default: as an if/else chain a state with no branch fell into the READY arm, so
+                                # an inert plan printed "Nothing to move". 🔴 ONE "has a Coinbase loan" predicate,
+                                # `hasCbLoan && shownUsd(cbDebt)` — the setting alone let a paid-off loan print
+                                # "$0 debt" and a "$0" seizure price. 'unavailable' prints the plan-of-record line
+                                # and one sentence, nothing else. No figure under its dust floor is ever named
+                                # ($0, 0.000 ₿, NaN, Infinity and undefined appear nowhere)
+      decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
+                                # EXACT: history's last point IS forward's first; the support line spans both
+                                # halves — history via supportAtDates, forward via the engine's own path; history
+                                # stride-downsampled to ≤ 800 keeping the first and last) + cliffPath (the cliff
+                                # per row, null with no loan, no collateral, and ON and AFTER the liquidation row).
+                                # ⚠ An uncomputable point is a GAP (null), never 0 — a zero draws to the floor of
+                                # a log axis and reads as a crash that never happened
       supportPolicyInputs.ts    # Support policy — the faces' ONLY §2 crossing for it: buildSupportPath(start, months)
                                 # = plBandAt('floor', start, m), bit-equal to the on-the-line price path from month 1;
                                 # supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → the engine input, or
-                                # undefined when off / not cycle. See § Support-anchored policy → Faces (Run 2)
+                                # undefined when off / not cycle. See § Support-anchored policy → Faces (Run 2).
+                                # + THE POLICY'S MEMORY (Decision face §4.5–4.6): supportAtDates(dates) (plFloor per
+                                # date — the chart's history half reads the SAME line as the engine's forward path,
+                                # bit-aligned with buildSupportPath) · breakerFromHistory(history, today, rearm) →
+                                # { state, lastMonthEndISO } | null — the breaker folded over real month-end closes
+                                # vs support, through the engine's OWN nextRearmableBreakerState (never a second
+                                # trip rule); a month's close is the last point before the next month's UTC start
+                                # and only within 7 days of it, junk CARRIES the state, and no usable month ⇒ null
+                                # so the card SAYS the history didn't load · holdMonthsFrom(throughISO, startDate)
+                                # → Strike's hold in engine months. ⚠ R4 — this module does NOT import
+                                # Tools/crashPlaybookView: it takes the throughISO strikeHoldFrom already computed.
+                                # History is typed structurally (HistoryPoint), so the §2 crossing imports no hook
       supportPolicyView.ts      # Support policy — pure display math: settings, defaults, ranges and the clamp
                                 # (payDownPushed); ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading →
                                 # policyHeadline / policyDetails / neverDrawsNote; policyPauseReason; policyUnpaidNote;
@@ -3114,7 +3184,8 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
      one month's interest on a bill.)
   4. **not drawing:** Strike interest; bills income → cash → unfunded; restore (Coinbase first — except after a
      liquidation, see Restore above); payDown/broken → pay down; the rest buys;
-  5. **migration** (the RATCHET FIX): keep `max(line, bal) / (strikeStop × S)` — the FULL line at support, not today's
+  5. **migration** (the RATCHET FIX): keep `strikeKeepCollateralBtc(line, bal, strikeStop, S)` =
+     `max(line, bal) / (strikeStop × S)` — the FULL line at support, not today's
      balance at today's price (the old `keepForMargin` ran while the balance was $0). Strike's retrieval rules:
      all-or-nothing, only at ≤ `STRIKE_RETRIEVE_MAX_LTV` (40%) before and < 50% after, never inside the 60-day hold
      that follows ANY cold → Strike move (`strikeHoldUntil = m + 2`), never while paused/broken;
@@ -3129,7 +3200,8 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
      ⚠ **Why spend a partial cure:** each cold coin moved in saves `0.65/0.35 = 1.857` coins from the sale (a sold
      coin also retires debt). ⚠ **NOT gated on `liqMonth`** (v1.1 #3) — Strike is a separate facility; a Coinbase
      seizure does not end it, and skipping the sale would overstate the survivor coins;
-  9. **sweep** (the FORWARD-LOOKING COINBASE RESERVE): Coinbase keeps what it needs AT SUPPORT plus the buffer, so it
+  9. **sweep** (the FORWARD-LOOKING COINBASE RESERVE), keep = `cbKeepCollateralBtc(cbDebt, buffer, S, cbStop, cap,
+     price)`: Coinbase keeps what it needs AT SUPPORT plus the buffer, so it
      never enters a drawdown holding less than it needs at the line. Not while paused (the collateral is needed
      where it is) or broken (the premise "safe at support" is suspect);
   10. LTV / breach unchanged.
@@ -3157,6 +3229,25 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
 - 🔴 **§2 wall:** `cyclingSim` imports `./supportPolicy`, a leaf that imports only `./ltv`. `supportPath` is a plain
   `number[]` built by the VIEW (Run 2: `supportPolicyInputs.ts`; in Run 1 only the test helper builds it) —
   **NEVER stressed, NEVER phase-shifted**: the stress lens moves the price, not the line.
+- **Decision-face fields (Run A).** FOUR additive `CyclingRow` fields, and TWO optional opening inputs.
+  - `sweptToColdBtc` — step 9's Coinbase → cold move THIS month. ⚠ A FLOW beside cumulative neighbours: Σ over the
+    run = the last row's `coldFromCb + coldFromStrike`. ⚠ `sweepToCold` RETURNS what it moved and **both** call
+    sites accumulate it — the classic one is reached only by a policy-OFF run, so the footings are pinned on BOTH
+    arms (a policy-on-only pin lets a dropped `+=` there survive).
+  - `refinancedUsd` / `refinancedFeeUsd` — step 6's cash and its capitalised fee. Σ = `totalRefinancedUsd` /
+    `totalCbFees`.
+  - `strikeKeepBtc` — step 5's keep when that gated block evaluated it and it is finite, else `null`. Policy-only.
+  - `openingBreaker?` / `openingStrikeHoldMonths?` — **THE POLICY'S MEMORY, seeded from PRICES** (D14). Absent or
+    JUNK ⇒ byte-identical (`validOpeningBreaker` / `validHold`; junk reads as absent). ⚠ **NOT test-only** — the
+    Decision face sets them, so they must never join the forbidden-input grep.
+  - result `openingBroken` — the run OPENED broken. ⚠ `modelBrokenMonth` stays the first IN-RUN trip, so a seeded
+    break has `openingBroken: true` and `brokenMonth: null`; every copy reader must test BOTH, through the ONE
+    `hadBreak` predicate in `supportPolicyView.ts` (`policyHeadline` AND `policyDetails`).
+  - **The memory doctrine:** a run shown as this month's move starts from the real balances — which carry every
+    past decision — plus the breaker folded over month-end closes (`breakerFromHistory`) and Strike's hold from
+    LOGGED deposits (`holdMonthsFrom`). **Never from a decision log.** Measured: unseeded, a false-recovery crash
+    re-borrows, is liquidated, and ends ~1 ₿ behind; seeded, every re-planned crash path reproduces the continuous
+    run exactly (`decisionMemory.test.ts`).
 - **Fields:** see `SupportPolicyInputs`, `CyclingRow`, `CyclingResult` and `PolicyIgnoredReason` in `cyclingSim.ts`.
   Every policy field is neutral (null / 0 / `'none'`) when the policy is not applied. Month 0 carries the OPENING
   zone and headrooms (no action) — the free over-the-ceiling check. A CB cap ≤ 0 leaves no effective stop →
@@ -5805,6 +5896,52 @@ goes red.)
     mechanically) and a third block, `-t "repayment"` — Strike first off vs on (every zone) × D off / on per grid × seed,
     with a fidelity check that the deficiency does not depend on the order; the real-cold doomed-top-up table carries
     the doom-gate-off arm.
+- **Decision face (Run A — the engine touchpoints and the pure layer)** (every ⭐ proven red by a mutation):
+  - **The temporary snapshot (§6.1) — the proof the extraction is inert.** Taken BEFORE any engine edit, over
+    **6,362 runs**: `a5Cases()` ON and OFF, plus every `faceWorldGrid()` / `reachGrid()` cell both arms. ⚠ BOTH
+    arms (R2): `sweepToCold`'s classic call site is reached only by a policy-OFF run. Three checkpoints — deep-equal
+    after the keep extraction; **stored-keys** after the four row fields, then snapshot #2 with every key; deep-equal
+    against #2 after the opening inputs, with `openingBroken` false everywhere. ⚠ `CyclingResult.last` is a full row
+    INSIDE the result, so a stored-keys comparison must project it onto the same keys or the added fields read as a
+    diff. **Never committed.** Any diff stops the run.
+  - `cyclingSimPolicy.test.ts` — I22 (both leaves called, neither expression inlined; `strikeKeepBtc` ≡ the leaf at
+    that month, through the engine's own `effectivePolicyStops`); ⭐ the three footings on BOTH arms + per-arm
+    non-vacuity; `strikeKeepBtc` null with the policy absent; I23 (absent ⇒ identical; ⭐ junk ⇒ as if absent; policy
+    OFF inert; ⭐ a seeded broken breaker re-arms at the Nth month with `modelBrokenMonth` still null; ⭐ a seeded
+    hold blocks the migration, with the unseeded run migrating inside the same window).
+  - `placement.test.ts` — I1 (both keeps are the leaves), I2 (conservation; a fill and a drain never coexist),
+    ⭐ **I3 the equivalence sweep** (20,001 random positions across all three zones, every routing branch reached —
+    v1's rejected "excess → cold" rule fails it by 1.2 ₿), I4 (every gate, incl. ⭐ the all-or-nothing "under 50%
+    after" refusal, and `cbToCold` independent of a blocked Strike leg), I5, ⭐ I6/I7 against the engine over
+    `a5Cases()` × four owner fixtures, I8 (the suggested line's rounding, clamps and defense term), I16 (junk in ⇒
+    no junk out, per input), I27 (the 0.01 ₿ threshold), ⭐ I30 (`cbOverCeilingUsd`, incl. SP_REPRO with
+    `cbDebt: 50_000`). ⚠ Below support, over-the-ceiling and past-liquidation coincide by construction, so that
+    case also pins the state CHECK ORDER.
+  - `planSearch.test.ts` — I9 (the stitched floor; ragged → []), I11 (⭐ each ranking rule, ties → lowest index,
+    ⭐ M4 on a genuinely MIXED call — the support path covers one price path but not the other), I10/I12.
+  - `decisionMemory.test.ts` — ⭐ **I24**: chains of fresh two-month runs, each from the realized balances and
+    seeded with the breaker folded over the realized month-ends, reproduce the continuous run to 1e-9 ₿ on P6, both
+    false-recovery paths and a stressed P2. ⭐ NON-VACUITY: unseeded, the $50k false recovery re-borrows, is
+    liquidated, and ends behind. Adds `falseRecoveryPath` to `supportPolicyPaths.ts`.
+  - `decisionView.test.ts` — ⭐ **I13** the completeness sweep (12,215 runs / ~490k rows: `a5Cases()` both arms ×
+    four owner fixtures, both grids off and on, the synthetic grid, and the three `callRun` fixtures — the ONLY
+    source of a cash cure, a cold cure and a Strike sale; every kind reached). ⚠ Collect mismatches, don't `expect`
+    in the innermost loop (8M assertions is 110s of suite time; one assertion at the end is 3s), and reuse the
+    schedule's own actions rather than re-deriving them. I14 (no `$0`, no `0.000 ₿`), ⭐ I31 (`moveCard`'s every
+    line by example, plus a sweep of placement states × the breaker's four readings × with and without a loan),
+    ⭐ I29's line, ⭐ S3's over-the-limit line REPLACING the aligned line.
+  - `decisionChartView.test.ts` — I15 (⭐ the exact seam; the support line continuous across it), downsampling,
+    I16 (a gap, never a 0), ⭐ I29's cliff path (≡ `cbMetrics().liqPrice`; under the path on a run that never
+    liquidates; null with no loan, no collateral, and on/after the liquidation row — ⚠ a RUN can't test the no-loan
+    case, since the policy buys and pledges its way into one).
+  - `supportPolicyInputs.test.ts` — ⭐ `supportAtDates` bit-equal to `buildSupportPath`; ⭐ I25 (the fold equals a
+    direct fold and the engine's own zone, on three paths × 72 months, from a 2027-01-31 start so `addMonths` lands
+    every engine month on a calendar month-end; ⚠ `brokenMonth` is excluded — a seeded break has no "correct" month
+    number, which is why the engine never reads one); junk CARRIES the state; no usable history ⇒ null; I26.
+  - `supportPolicyView.test.ts` — ⭐ the opening-broken reading through **both** `policyHeadline` and
+    `policyDetails` (R1), ⭐ R5's re-arm clause with `brokenMonth` null and "It broke again in month N.", the
+    in-run head unchanged, and ⭐ a source test that `brokenMonth !== null` survives exactly once (inside
+    `brokeInRun`) with both gates calling `hadBreak`.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -8242,6 +8379,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
 | `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift` and `topUpFirstAnyDepth` are test-only | No component may pass any of them — the survival-guard grep test in `cyclingSim.test.ts` covers all seven. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules` and `topUpBeforeShift` are ADOPTED and default ON under the policy (the `cbSurvivalGuard` pattern — absent means enabled; never "fix" a default to off): `false` exists only so the report and the tests can run the earlier order. `topUpFirstAnyDepth` defaults OFF (measured and rejected — the depth gate). All five are policy-only by construction. None may reach a face. (`coldBeforeShift` is deleted — C is retired.) |
 | Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules | Every Strike leg of a Coinbase top-up takes at most `strikeReleasableBtc` — ≤ 40% LTV before, strictly < 50% after, never within 60 days of a deposit — and every doom question counts only that figure. One definition (cbDefense), measured on the current state (`releasableNow`). The old margin × 0.95 bound modelled a move Strike would never allow; the policy-OFF arm still uses it (a named follow-up). Collateral leaving Strike starts no hold. Pinned by the three release-rule fixtures and the release-aware doom fixture in `cyclingSimPolicy.test.ts` |
+| The keeps have ONE definition each | `strikeKeepCollateralBtc` (step 5) and `cbKeepCollateralBtc` (step 9), in `supportPolicy.ts`. The engine and THE MOVE call the SAME functions — THE MOVE is never a second placement rule. A source test pins both call sites and fails if either expression is inlined again; an equivalence sweep over 20,000 random positions pins month 1 ≡ `placementPlan(...).after`. ⚠ Both use only `Math.max` and `/`: `cyclingSim.ts`'s import graph is walked for `Math.pow`/`**`, which would break the G1 golden's exactness |
+| A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't | The real balances carry every past decision; the BREAKER does not. So the run is seeded with `breakerFromHistory` (folded over real month-end closes vs support, through the engine's own `nextRearmableBreakerState` — never a second trip rule) and with Strike's hold from LOGGED deposits (`holdMonthsFrom`). **Never from a decision log.** When the price history does not load, `breakerFromHistory` returns `null` and the card SAYS the run assumes "not broken" — it never assumes it silently. ⚠ `openingBreaker` / `openingStrikeHoldMonths` are REAL inputs, not test-only: they must never join the forbidden-input grep. ⚠ A seeded break leaves `brokenMonth` null, so every copy reader goes through `hadBreak`, never `brokenMonth !== null` |
+| THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice` | Every line THE MOVE shows is built as DATA by `moveCard` (`decisionView.ts`), in §7's order, each with a tone — the face renders them and composes nothing, because a sentence written in JSX is a sentence no test can reach. The Coinbase seizure price is `cbMetrics(...).liqPrice` wherever it prints (`moveCard`) or draws (`cliffPath`) — the same formula the Safety Dashboard and the CB Loan tab already use, never a second one |
 | `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console and the Monthly Playbook's THIS MONTH line both build through it; never copy it. The card (`playbookCard`) and the line (`monthPlaybookLine`) read one private reading, so they never disagree on a step, a gap or an outcome |
 | The console's doom warning keys off the after-state (≥ 86%), never `result.doomed` | `doomed` is read at the open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read. Pinned both ways in `crashPlaybookView.test.ts`: keying the warning off `result.doomed` turns the doomed-but-saved ⭐ and the exact-86% ⭐ red |
 | Every crash-day step amount is floored to its printed precision | A binding Strike release is 0.5999999996 ₿: rounded to 5 dp it prints `0.60000` — exactly the 50% Strike refuses — and a line-capped shift of $3,487.50 must print `$3,487`, never a draw over the line. `fmtStepBtc` (5 dp, then 8 dp, none under a satoshi) and `fmtStepUsd` (whole dollars, none under $1), with a float guard (`0.3 − 0.25` still prints `0.05000`). Pinned by the short fixture (rounding prints `0.60000` → red) and the formatter ⭐s |

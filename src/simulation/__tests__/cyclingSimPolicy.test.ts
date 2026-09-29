@@ -9,7 +9,9 @@ import {
   runCyclingSim, effectivePolicyStops, effectiveStrikeCapPct, allInEquity, baselineAllInEquity,
   type CyclingInputs, type CyclingResult, type CyclingRow, type SupportPolicyInputs, type PolicyIgnoredReason,
 } from '../cyclingSim';
-import { collateralToSellForLtv, SUPPORT_EPS } from '../supportPolicy';
+import {
+  collateralToSellForLtv, strikeKeepCollateralBtc, SUPPORT_EPS, type RearmableBreakerState,
+} from '../supportPolicy';
 import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../strikeCredit';
 import {
   SP_START, SP_MONTHS, SUPPORT, S0, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, pathP1, pathP2, pathP3,
@@ -1654,5 +1656,133 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
       }
     }
     expect(below).toBeGreaterThan(0);   // non-vacuous: both variants DO spend cold, below support
+  });
+});
+
+// ── Decision face Run A · the three engine touchpoints ────────────────────────────────────────────────────────
+//
+// Touchpoint 1 is a pure extraction (proven byte-identical by the temp snapshot, never committed); these pin the
+// two leaves are actually CALLED, the four additive row fields foot on BOTH arms, and the two opening inputs are
+// inert when absent.
+
+describe('⭐ Decision face · I22 — the keeps have ONE definition each', () => {
+  it('⭐ the engine calls both leaves and inlines neither expression', () => {
+    const src = readFileSync(new URL('../cyclingSim.ts', import.meta.url), 'utf8');
+    expect(src).toMatch(/strikeKeepCollateralBtc\(strikeCreditLine, strikeBal, policy\.skStop, S\)/);
+    expect(src).toMatch(/cbKeepCollateralBtc\(cbDebt, policy\.bufferUsd, S, policy\.cbStop, cap, price\)/);
+    // The expressions the leaves replaced must not survive anywhere — THE MOVE would then be a second rule.
+    expect(src).not.toMatch(/Math\.max\(strikeCreditLine, strikeBal\)\s*\/\s*\(/);
+    expect(src).not.toMatch(/sweepKeepBtc\(cbDebt, policy\.bufferUsd/);
+  });
+
+  it('the leaves reproduce the values the engine reports (strikeKeepBtc ≡ the leaf at that month)', () => {
+    const r = on(pathP2(0));
+    // The stop the RUN uses, through the engine's own clamp — never a literal.
+    const { skStop } = effectivePolicyStops(60, 50, SP_REPRO.cbLtvCapPct,
+      effectiveStrikeCapPct(SP_REPRO.strikeLtvCapPct ?? 0, STRIKE_MARGIN_CALL_LTV));
+    const rows = r.rows.filter((x) => x.strikeKeepBtc !== null);
+    expect(rows.length).toBeGreaterThan(0);
+    for (const x of rows) {
+      expect(x.strikeKeepBtc).toBeCloseTo(
+        strikeKeepCollateralBtc(SP_REPRO.strikeCreditLine, x.strikeBalance, skStop, SUPPORT[x.m]), 6,
+      );
+    }
+  });
+});
+
+describe('⭐ Decision face · the four additive row fields foot on BOTH arms (R2)', () => {
+  // ⚠ BOTH arms: `sweptToColdBtc` accumulates at TWO call sites, and the classic sweep's is reached only by a
+  // policy-OFF run. A policy-on-only test would satisfy its own non-vacuity and miss a dropped `+=` there.
+  const ARMS = a5Cases().flatMap((c) => [
+    { name: `${c.name} · on`, inputs: c.on },
+    { name: `${c.name} · off`, inputs: c.off },
+  ]);
+
+  it.each(ARMS)('$name — Σ sweptToColdBtc, Σ refinancedUsd and Σ refinancedFeeUsd match their totals', ({ inputs }) => {
+    const r = runCyclingSim(inputs);
+    const sum = (f: (x: CyclingRow) => number): number => r.rows.reduce((a, x) => a + f(x), 0);
+    expect(sum((x) => x.sweptToColdBtc)).toBeCloseTo(r.last.coldFromCb + r.last.coldFromStrike, 8);
+    expect(sum((x) => x.refinancedUsd)).toBeCloseTo(r.totalRefinancedUsd, 8);
+    expect(sum((x) => x.refinancedFeeUsd)).toBeCloseTo(r.totalCbFees, 8);
+  });
+
+  it('⭐ non-vacuous on EACH arm: some row sweeps to cold and some row refinances, policy on AND off', () => {
+    for (const arm of ['on', 'off'] as const) {
+      const runs = a5Cases().map((c) => runCyclingSim(arm === 'on' ? c.on : c.off));
+      expect(runs.some((r) => r.rows.some((x) => x.sweptToColdBtc > 0)), `${arm}: a sweep`).toBe(true);
+      expect(runs.some((r) => r.rows.some((x) => x.refinancedUsd > 0)), `${arm}: a refinance`).toBe(true);
+      expect(runs.some((r) => r.rows.some((x) => x.refinancedFeeUsd > 0)), `${arm}: a fee`).toBe(true);
+    }
+  });
+
+  it('policy absent: strikeKeepBtc is null in every row (it is policy-only)', () => {
+    const r = runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0) });
+    expect(r.policyApplied).toBe(false);
+    for (const x of r.rows) expect(x.strikeKeepBtc).toBeNull();
+  });
+});
+
+describe('⭐ Decision face · I23 — the two opening inputs', () => {
+  const base = (): CyclingInputs => ({ ...SP_REPRO, pricePath: pathP2(0), supportPolicy: policyFor(SUPPORT) });
+
+  it('absent ⇒ byte-identical, and openingBroken false', () => {
+    const plain = runCyclingSim(base());
+    expect(plain.openingBroken).toBe(false);
+    expect(runCyclingSim({ ...base(), openingBreaker: undefined, openingStrikeHoldMonths: undefined }))
+      .toEqual(plain);
+  });
+
+  it('⭐ JUNK reads as absent — a malformed seed can never change a run', () => {
+    const plain = runCyclingSim(base());
+    const junk = [
+      { monthsBelow: -1, monthsAtOrAbove: 0, broken: true, brokenMonth: null },
+      { monthsBelow: 1.5, monthsAtOrAbove: 0, broken: true, brokenMonth: null },
+      { monthsBelow: 0, monthsAtOrAbove: Number.NaN, broken: true, brokenMonth: null },
+      { monthsBelow: 0, monthsAtOrAbove: 0, broken: 'yes', brokenMonth: null },
+      { monthsBelow: 0, monthsAtOrAbove: 0, broken: true, brokenMonth: Number.NaN },
+    ] as unknown as RearmableBreakerState[];
+    for (const b of junk) {
+      const r = runCyclingSim({ ...base(), openingBreaker: b });
+      expect(r).toEqual(plain);
+      expect(r.openingBroken).toBe(false);
+    }
+    for (const h of [-1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(runCyclingSim({ ...base(), openingStrikeHoldMonths: h })).toEqual(plain);
+    }
+  });
+
+  it('policy OFF: the inputs are inert and openingBroken stays false', () => {
+    const off = runCyclingSim({ ...SP_REPRO, pricePath: pathP2(0) });
+    const seeded = runCyclingSim({
+      ...SP_REPRO, pricePath: pathP2(0),
+      openingBreaker: { monthsBelow: 2, monthsAtOrAbove: 0, broken: true, brokenMonth: 3 },
+      openingStrikeHoldMonths: 4,
+    });
+    expect(seeded.openingBroken).toBe(false);
+    expect(seeded.rows.map((x) => x.strikeToCbBtc)).toEqual(off.rows.map((x) => x.strikeToCbBtc));
+  });
+
+  it('⭐ a seeded BROKEN breaker on an at-or-above-support path: rows 0–5 broken, row 6 re-armed', () => {
+    // A path sitting ON support, so every month-end is "at or above" and the re-arm counts cleanly.
+    const onLine = SUPPORT.slice();
+    const r = runCyclingSim({
+      ...SP_REPRO, pricePath: onLine, supportPolicy: policyFor(SUPPORT, { breakerRearmMonths: 6 }),
+      openingBreaker: { monthsBelow: 2, monthsAtOrAbove: 0, broken: true, brokenMonth: null },
+    });
+    expect(r.openingBroken).toBe(true);
+    for (let m = 0; m <= 5; m++) expect(r.rows[m].policyZone, `m${m}`).toBe('broken');
+    expect(r.rows[6].policyZone).not.toBe('broken');
+    expect(r.firstRearmMonth).toBe(6);
+    expect(r.modelBrokenMonth).toBeNull();      // a SEEDED break is not an in-run trip
+    expect(r.breakCount).toBe(0);
+  });
+
+  it('⭐ a seeded HOLD blocks the migration until its month', () => {
+    const h = 4;
+    const seeded = runCyclingSim({ ...base(), openingStrikeHoldMonths: h });
+    const plain = runCyclingSim(base());
+    for (let m = 0; m < h; m++) expect(seeded.rows[m].strikeToCbBtc, `m${m}`).toBe(0);
+    // Non-vacuous: without the seed the same run DOES migrate inside that window.
+    expect(plain.rows.slice(0, h).some((x) => x.strikeToCbBtc > 0)).toBe(true);
   });
 });

@@ -5,7 +5,8 @@ import {
 } from './cbDefense';
 import { ltvOf } from './ltv';
 import {
-  policyZone, ceilingHeadroomUsd, sweepKeepBtc, resolveStrikeCall, nextRearmableBreakerState, allocatePayDown,
+  policyZone, ceilingHeadroomUsd, strikeKeepCollateralBtc, cbKeepCollateralBtc, resolveStrikeCall,
+  nextRearmableBreakerState, allocatePayDown,
   REARMABLE_BREAKER_START, SUPPORT_EPS, type PolicyState, type RearmableBreakerState, type StrikeCallResult,
 } from './supportPolicy';
 
@@ -164,6 +165,23 @@ export interface CyclingInputs {
    * still takes the cold the Strike reserve does not hold, after the shift.
    */
   openingColdBtc?: number;
+
+  /**
+   * THE POLICY'S MEMORY, seeded from PRICES — not from a decision log (Decision face, D14). A run shown as "this
+   * month's move" starts from the real balances, which carry every past decision; the breaker is the one thing they
+   * do not carry, so the face folds it over real month-end closes vs support (`breakerFromHistory`) and seeds it
+   * here. Measured: unseeded, a false-recovery crash re-borrows, is liquidated, and ends ~1 ₿ behind; seeded, every
+   * re-planned crash path reproduces the continuous run exactly.
+   * ⚠ NOT a test-only input — the Decision face sets it, so it must never join the forbidden-input grep.
+   * Absent or JUNK ⇒ `REARMABLE_BREAKER_START`, i.e. byte-identical to a run that never seeds.
+   */
+  openingBreaker?: RearmableBreakerState;
+  /**
+   * Strike's 60-day hold as of month 0, in engine months (`holdMonthsFrom` over the LOGGED deposit's `throughISO`):
+   * no migration and no Strike release before this month. The engine otherwise knows only the holds its own cold →
+   * Strike moves create. ⚠ Not test-only, same as `openingBreaker`. Absent or junk ⇒ 0.
+   */
+  openingStrikeHoldMonths?: number;
 
   /** price[m] for m = 0..N. The view builds it (plConvergencePath); the engine never derives a price. */
   pricePath: number[];
@@ -332,6 +350,19 @@ export interface CyclingRow {
 
   /** Routine migration (sweep cascade): Strike collateral moved to the CB pool this month. */
   strikeToCbBtc: number;
+  /** Step 9's Coinbase → cold move THIS month (the classic sweep's and the policy's alike). ⚠ A FLOW, unlike the
+   *  cumulative `coldBtc` / `coldFromCb` / `coldFromStrike` beside it — Σ over the run equals the last row's
+   *  `coldFromCb + coldFromStrike`. Cross-row deltas of the cumulative fields would NOT reproduce it, because the
+   *  emergency top-up retrieves from the same pool. */
+  sweptToColdBtc: number;
+  /** Step 6's refinance THIS month: the Strike debt moved to Coinbase (the cash), and Coinbase's origination fee
+   *  on it (capitalised on top). Σ over the run equals `totalRefinancedUsd` / `totalCbFees`. */
+  refinancedUsd: number;
+  refinancedFeeUsd: number;
+  /** Step 5's keep — the Strike collateral the FULL line needs AT SUPPORT — when the migration block actually
+   *  evaluated it and it is finite; otherwise `null`. Policy-only, so `null` whenever the policy is not applied
+   *  (and on a paused, broken, post-liquidation, off-cadence or in-hold month). */
+  strikeKeepBtc: number | null;
   /** Emergency top-up: BTC moved into the CB pool this month from cold + Strike collateral. */
   topUpBtc: number;
   topUpFromColdBtc: number;
@@ -481,6 +512,10 @@ export interface CyclingResult {
   /** The reserve the run STARTED with (`openingColdBtc`, 0 when not supplied). Reported so the cold ledger
    *  foots: opening + totalColdFromCb + totalColdFromStrike − totalColdRetrievedBtc === totalColdBtc. */
   openingColdBtc: number;
+  /** The run OPENED with a broken breaker (a valid seeded `openingBreaker` whose `broken` was true), policy applied.
+   *  ⚠ `modelBrokenMonth` stays the first trip INSIDE the run — a seeded `brokenMonth` is never read — so a run that
+   *  opens broken has `openingBroken: true` and `modelBrokenMonth: null`. The card's copy must test BOTH. */
+  openingBroken: boolean;
   /** NET BTC in cold storage at the end of the run (the opening reserve when the sweep is off and nothing
    *  was retrieved); gross swept = totalColdFromCb + totalColdFromStrike, and
    *  opening + gross − totalColdRetrievedBtc === this. */
@@ -647,6 +682,21 @@ function resolveSupportPolicy(
 }
 
 
+/** A seeded opening breaker, or null when absent/JUNK — junk reads as absent, so a malformed seed can never change
+ *  a run. Valid: finite integer counts ≥ 0, a boolean `broken`, and `brokenMonth` null or a finite integer. */
+function validOpeningBreaker(b: RearmableBreakerState | undefined): RearmableBreakerState | null {
+  if (b === null || typeof b !== 'object') return null;
+  const okCount = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 0;
+  if (!okCount(b.monthsBelow) || !okCount(b.monthsAtOrAbove) || typeof b.broken !== 'boolean') return null;
+  if (!(b.brokenMonth === null || (typeof b.brokenMonth === 'number' && Number.isFinite(b.brokenMonth)))) return null;
+  return { monthsBelow: b.monthsBelow, monthsAtOrAbove: b.monthsAtOrAbove, broken: b.broken, brokenMonth: b.brokenMonth };
+}
+
+/** A seeded Strike hold in engine months, or null when absent/junk. */
+function validHold(v: number | undefined): number | null {
+  return typeof v === 'number' && Number.isFinite(v) && Number.isInteger(v) && v >= 0 ? v : null;
+}
+
 export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const {
     startYear, strikeCreditLine, strikeMaxDrawLtv, strikeMarginLtv,
@@ -761,13 +811,16 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const strikeFirstAfterLiq = policy !== null && inputs.strikeFirstAfterLiquidation !== false;
   // The crash playbook's depth gate: top up first from here up to support (+∞ with no policy — never reached).
   const topUpDepth = policy !== null ? ceilingLiquidationMultiple(policy.cbStop, CB_LLTV) : Number.POSITIVE_INFINITY;
-  let breaker: RearmableBreakerState = REARMABLE_BREAKER_START;
+  const seededBreaker = validOpeningBreaker(inputs.openingBreaker);
+  let breaker: RearmableBreakerState = seededBreaker ?? REARMABLE_BREAKER_START;
+  const openingBroken = policy !== null && seededBreaker !== null && seededBreaker.broken;
   let modelBrokenMonth: number | null = null;   // the FIRST trip (the re-arm can reset `breaker.brokenMonth`)
   let firstRearmMonth: number | null = null;
   let breakCount = 0;
   let cashReserve = policy !== null ? policy.openingCashUsd : 0;
   const openingCashUsd = cashReserve;
-  let strikeHoldUntil = 0;   // Strike's 60-day hold after collateral goes IN: no migration before this month
+  let strikeHoldUntil = validHold(inputs.openingStrikeHoldMonths) ?? 0;   // Strike's 60-day hold after collateral
+  // goes IN: no migration before this month. Seeded from the owner's LOGGED Strike deposit (Decision face, D14).
   const monthsInZone: Record<PolicyState, number> = { paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 };
   let firstPausedMonth: number | null = null;
   let firstPayDownMonth: number | null = null;
@@ -786,7 +839,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
 
   /** Coinbase → cold, attributing the migrated Strike coins FIFO (display only). ONE copy of the rule, shared by
    *  the classic sweep and the policy's sweep. */
-  const sweepToCold = (m: number, excess: number): void => {
+  const sweepToCold = (m: number, excess: number): number => {
     const moved = Math.min(excess, cbColl);
     cbColl -= moved;
     coldBtc += moved;
@@ -795,6 +848,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     coldFromStrike += fromStrikeAttrib;
     coldFromCb += moved - fromStrikeAttrib;
     if (firstColdMonth === null) firstColdMonth = m;
+    return moved;
   };
 
   /** STRIKE'S RELEASE RULES on the CURRENT state: what Strike will release now — at or under 40% before, under 50% after,
@@ -833,6 +887,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let strikeTopUpShortfallBtc = 0;
     let strikeReserveCutBtc = 0;
     let unfundedUsd = 0;
+    let sweptToColdBtc = 0;
+    let refinancedUsd = 0;
+    let refinancedFeeUsd = 0;
+    let strikeKeepBtc: number | null = null;
 
     // ── POLICY STATE (step 2) ── month 0 is the opening: its zone is reported, no action is taken, and it never
     // feeds the breaker (it is not a month-end of the plan).
@@ -1032,7 +1090,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           // collateral going IN, and not while paused or broken.
           if (state !== 'paused' && state !== 'broken' && liqMonth === null && m % cycle === 0 && price > 0
             && strikeColl > 0 && m >= strikeHoldUntil) {
-            const keep = Math.max(strikeCreditLine, strikeBal) / (policy.skStop * S);
+            const keep = strikeKeepCollateralBtc(strikeCreditLine, strikeBal, policy.skStop, S);
+            if (Number.isFinite(keep)) strikeKeepBtc = keep;
             const move = strikeColl - keep;
             if (move > 0 && ltvOf(strikeBal, strikeColl, price) <= policy.retrieveMaxLtv
               && ltvOf(strikeBal, strikeColl - move, price) < strikeMaxDrawLtv) {
@@ -1084,6 +1143,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           if (sweepCash > 0) {
             const fee = cbBorrowFee(sweepCash, cbDebt);
             cbDebt += sweepCash + fee;
+            refinancedUsd += sweepCash;
+            refinancedFeeUsd += fee;
             totalRefinancedUsd += sweepCash;
             totalCbFees += fee;
             cbFeeCount += 1;
@@ -1369,9 +1430,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       // as COLLATERAL (room under the ceiling), never as unpaid debt. Not below support (the collateral is needed
       // where it is) and not once broken (the premise "safe at support" is suspect).
       if (m > 0 && state !== 'paused' && state !== 'broken' && liqMonth === null && price > 0 && cbColl > 0) {
-        const keep = Math.max(sweepKeepBtc(cbDebt, policy.bufferUsd, S, policy.cbStop), cbDebt / (cap * price));
+        const keep = cbKeepCollateralBtc(cbDebt, policy.bufferUsd, S, policy.cbStop, cap, price);
         const excess = cbColl - keep;
-        if (excess > 0) sweepToCold(m, excess);
+        if (excess > 0) sweptToColdBtc += sweepToCold(m, excess);
       }
     } else if (coldOn && m > 0 && liqMonth === null && price > 0) {
       // ── COINBASE leg (the ONLY sweep leg): the loan de-levers as price rises, freeing collateral
@@ -1380,7 +1441,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       if (cbColl > 0) {
         const required = cbDebt / (coldFloorLtv * price);   // collateral the buffer demands we keep
         const excess = cbColl - required;
-        if (excess > 0) sweepToCold(m, excess);
+        if (excess > 0) sweptToColdBtc += sweepToCold(m, excess);
       }
     }
 
@@ -1416,7 +1477,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
       strikeDrawn, strikeShortfall, btcBoughtUsd, unfundedUsd,
       defenseDrawnUsd, cbLtvPreDefense, defenseShortfallUsd, defended: defenseDrawnUsd > 0,
-      strikeToCbBtc, topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
+      strikeToCbBtc, sweptToColdBtc, refinancedUsd, refinancedFeeUsd, strikeKeepBtc,
+      topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
       strikeTopUpBtc, strikeReserveBtc, strikeTopUpShortfallBtc, strikeReserveCutBtc,
       strikeCollateralBtc: strikeColl, cbCollateralBtc: cbColl, coldBtc, coldFromCb, coldFromStrike, btcHeld,
       cbLtv, strikeLtv,
@@ -1485,6 +1547,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     firstStrikeTopUpMonth, strikeTopUpExhaustedMonth, totalStrikeTopUpBtc, firstSurvivalYieldMonth,
     baselineEquity, baselineBtc: baseBtc, baselineUnfundedUsd,
     openingColdBtc,
+    openingBroken,
     totalColdBtc: coldBtc, totalColdFromCb: coldFromCb, totalColdFromStrike: coldFromStrike, firstColdMonth,
     policyApplied: policy !== null, policyIgnoredReason,
     monthsInZone, firstPausedMonth, firstPayDownMonth, modelBrokenMonth, firstRearmMonth, breakCount,

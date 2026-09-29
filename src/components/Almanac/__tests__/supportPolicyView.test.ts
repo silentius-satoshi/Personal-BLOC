@@ -63,7 +63,7 @@ const reading = (o: Partial<PolicyReading> = {}): PolicyReading => ({
   applied: true, zone: 'accumulate', multiple: 1.35,
   cb: { roomUsd: 41_700, roomMonths: 7, over: false }, sk: { roomUsd: 30_000, roomMonths: 5, over: false },
   brokenMonth: null, rearmMonth: null, breakCount: 0, rearmRule: DEFAULT_BREAKER_REARM_MONTHS ?? null,
-  brokenAtEnd: false, call: null,
+  brokenAtEnd: false, openingBroken: false, call: null,
   cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
   firstThrottleMonth: null, monthsInZone: zones0(), liqMonth: null, neverDraws: null,
   afterLiquidation: false, strikeOwes: false, ...o,
@@ -1117,5 +1117,84 @@ describe('policyColdNote — the cold card while the policy decides what goes to
     expect(policyColdNote(one)).toContain('plus 1 month of bills;');
     const none = effectivePolicySettings({ ...DEFAULT_SUPPORT_POLICY_SETTINGS, bearBufferMonths: 0 }, { cbLtvCapPct: 70, strikeCapEffPct: 60 });
     expect(policyColdNote(none)).toContain('Coinbase keeps what it needs at support; the rest');
+  });
+});
+
+// ── Decision face Run A · a run that OPENED broken (R1, R5) ───────────────────────────────────────────────────
+//
+// The Decision face seeds the breaker from month-end PRICES, so the engine leaves `brokenMonth`
+// (`modelBrokenMonth`) NULL for that break. Every reader that asks "did this run have a break" must therefore go
+// through ONE predicate — gating on `brokenMonth` alone showed the break in the headline and dropped it from the
+// detail lines.
+
+describe('⭐ Decision face · the opening-broken reading, through BOTH readers', () => {
+  const OPENING_HEAD = 'Before today, price spent two month-ends more than 10% under support — '
+    + 'the model is treated as broken: no new debt.';
+  const opened = (o: Partial<PolicyReading> = {}): PolicyReading =>
+    reading({ openingBroken: true, brokenMonth: null, brokenAtEnd: true, ...o });
+
+  it('⭐ policyHeadline shows the break, with the opening head', () => {
+    expect(policyHeadline(opened(), S)).toEqual({
+      tone: 'bad',
+      text: `${OPENING_HEAD} It re-arms after 6 months back on the line — that doesn't happen before this run ends.`,
+    });
+  });
+
+  it('⭐ policyDetails shows the SAME sentence — a seeded break is never dropped from the card', () => {
+    const lines = policyDetails(opened(), S);
+    expect(lines.some((l) => l.startsWith(OPENING_HEAD))).toBe(true);
+  });
+
+  it('⭐ R5 — the re-arm clause reads with brokenMonth null', () => {
+    expect(policyHeadline(opened({ rearmMonth: 36, brokenAtEnd: false }), S)).toEqual({
+      tone: 'warn',
+      text: `${OPENING_HEAD} It re-arms after 6 months back on the line (month 36).`,
+    });
+  });
+
+  it('⭐ R5 — a later in-run trip adds "It broke again in month N." (and N6\'s total counts the opening one)', () => {
+    expect(policyHeadline(opened({ rearmMonth: 36, brokenMonth: 41, breakCount: 1, brokenAtEnd: true }), S).text)
+      .toBe(`${OPENING_HEAD} It re-arms after 6 months back on the line (month 36). It broke again in month 41. `
+        + 'It broke 2 times in all and stays broken to the end of this run.');
+  });
+
+  it('⭐ N6 — the break count includes the OPENING break, after "It broke again in month N."', () => {
+    // Opens broken, re-arms, then trips twice more in-run: three breaks in all, not two. `breakCount` counts
+    // in-run trips only, so the opening one has to be added.
+    expect(policyHeadline(opened({
+      rearmMonth: 36, brokenMonth: 41, breakCount: 2, brokenAtEnd: true,
+    }), S).text).toBe(`${OPENING_HEAD} It re-arms after 6 months back on the line (month 36). `
+      + 'It broke again in month 41. It broke 3 times in all and stays broken to the end of this run.');
+  });
+
+  it('N6 — an IN-RUN-only run is unchanged: breakCount alone', () => {
+    expect(policyHeadline(reading({
+      brokenMonth: 11, rearmMonth: 36, breakCount: 2, brokenAtEnd: false,
+    }), S).text).toBe(`${BROKEN_HEAD} It re-arms after 6 months back on the line (month 36). `
+      + 'It broke 2 times in all.');
+  });
+
+  it('a true latch with no re-arm rule still says so', () => {
+    expect(policyHeadline(opened({ rearmRule: null }), S).text)
+      .toBe(`${OPENING_HEAD} It stays that way for the rest of this run.`);
+  });
+
+  it('an in-run break is UNCHANGED — the head names its month, as before', () => {
+    expect(policyHeadline(reading({ brokenMonth: 11, rearmMonth: 36, brokenAtEnd: false }), S).text)
+      .toBe(`${BROKEN_HEAD} It re-arms after 6 months back on the line (month 36).`);
+  });
+
+  it('no break at all: neither reader shows a breaker sentence', () => {
+    expect(policyDetails(reading(), S).some((l) => l.includes('treated as broken'))).toBe(false);
+    expect(policyHeadline(reading(), S).text).not.toContain('treated as broken');
+  });
+
+  it('⭐ ONE predicate: no bare `brokenMonth !== null` survives outside the single in-run helper', () => {
+    const src = readFileSync(join(process.cwd(), 'src/components/Almanac/supportPolicyView.ts'), 'utf8');
+    // Exactly one occurrence — inside `brokeInRun`, the only reader of the field as a break test.
+    expect(src.match(/brokenMonth !== null/g) ?? []).toHaveLength(1);
+    expect(src).toMatch(/const brokeInRun = \(r: PolicyReading\): boolean => r\.brokenMonth !== null;/);
+    // Both gates call the shared predicate.
+    expect(src.match(/hadBreak\(r\)/g) ?? []).toHaveLength(2);
   });
 });

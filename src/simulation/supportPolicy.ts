@@ -64,6 +64,36 @@ export function sweepKeepBtc(cbDebt: number, bufferUsd: number, support: number,
   return (debt + buffer) / (support * stopLtv);
 }
 
+/**
+ * STEP 5'S KEEP — the Strike collateral the FULL credit line needs AT SUPPORT: `max(line, balance) /
+ * (skStop × support)`. Measured at support, never at today's price, so it does not shrink as the price rises
+ * (the ratchet fix). ⚠ ONE DEFINITION: the engine's migration and the Decision face's THE MOVE both call this,
+ * so the card can never become a second placement rule.
+ * Junk → +∞ (keep everything — the `sweepKeepBtc` convention; the engine's `move = coll − keep` is then
+ * negative, so nothing migrates, exactly as a NaN/∞ keep behaved before the extraction).
+ */
+export function strikeKeepCollateralBtc(
+  creditLine: number, strikeBalance: number, skStop: number, support: number,
+): number {
+  if (!(support > 0) || !(skStop > 0) || !allFinite(creditLine, strikeBalance, skStop, support)) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.max(creditLine, strikeBalance) / (skStop * support);
+}
+
+/**
+ * STEP 9'S KEEP — what Coinbase must hold: what it needs AT SUPPORT plus the bear buffer (`sweepKeepBtc`), and
+ * never less than its DEFENSE line needs at today's price. The max of the two is what the sweep leaves behind.
+ * ⚠ ONE DEFINITION, shared with THE MOVE (see `strikeKeepCollateralBtc`). Junk → +∞ (sweep nothing).
+ */
+export function cbKeepCollateralBtc(
+  cbDebt: number, bufferUsd: number, support: number, cbStop: number, cap: number, price: number,
+): number {
+  const atSupport = sweepKeepBtc(cbDebt, bufferUsd, support, cbStop);
+  if (!(cap > 0) || !(price > 0) || !allFinite(cbDebt, cap, price)) return Number.POSITIVE_INFINITY;
+  return Math.max(atSupport, cbDebt / (cap * price));
+}
+
 /** BTC to sell so that `(bal − sold·P) / ((coll − sold)·P) = target`, i.e. `(bal − target·coll·P) /
  *  ((1 − target)·P)` — sale proceeds retire the balance 1:1. Clamped to [0, coll]. When the clamp binds, the
  *  debt left is a deficiency (full recourse). Junk → 0 (sell nothing). */
