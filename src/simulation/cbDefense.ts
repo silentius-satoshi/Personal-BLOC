@@ -28,8 +28,8 @@ import { ltvOf } from './ltv';
 
 /**
  * Strike draw capacity — the engine-consistent headroom: `min(creditLine, collateral × price × maxDrawLtv)
- * − drawn`, floored at 0. This is the same constraint the cycling engine's expense draw uses; the Emergency
- * Console passes no credit line (Infinity), which reduces it to the 50%-LTV line exactly.
+ * − drawn`, floored at 0. This is the same constraint the cycling engine's expense draw uses; with no credit
+ * line (the default, Infinity) it reduces to the 50%-LTV line exactly.
  */
 export function strikeDrawCapacity(
   strikeCollateralBtc: number,

@@ -116,13 +116,10 @@
 .stageAct   { color: var(--red);   border-color: var(--red);   background: color-mix(in srgb, var(--red) 12%, transparent); }
 .stageLtv { font-size: 15px; font-weight: 700; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 
-.stageStats, .calcGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.fpGrid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.stageStats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 .stat { display: flex; flex-direction: column; gap: 2px; }
 .statLabel { font-size: 11px; color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.03em; }
 .statValue { font-size: 15px; font-weight: 650; color: var(--text-primary); font-variant-numeric: tabular-nums; }
-.statValueGreen { font-size: 15px; font-weight: 650; color: var(--green); font-variant-numeric: tabular-nums; }
-.statValueAmber { font-size: 15px; font-weight: 650; color: var(--amber); font-variant-numeric: tabular-nums; }
 
 /* ── Rail ── */
 .rail { position: relative; height: 8px; border-radius: 4px; background: var(--border); overflow: visible; margin-top: 4px; }
@@ -135,28 +132,23 @@
 .simScrub .slider { flex: 1; }
 .simScrubValue { font-size: 13px; font-weight: 650; color: var(--amber); font-variant-numeric: tabular-nums; flex-shrink: 0; }
 
-/* ── Firepower ── */
-.toggle { display: inline-flex; gap: 2px; background: var(--bg-input); border: 1px solid var(--border); border-radius: 8px; padding: 2px; }
-.toggleBtn { font-size: 12px; font-weight: 600; color: var(--text-muted); background: transparent; border: none; border-radius: 6px; padding: 4px 10px; cursor: pointer; font-family: inherit; }
-.toggleActive { color: var(--text-primary); background: var(--bg-hover); }
-.fpCell { display: flex; flex-direction: column; gap: 3px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; }
-.fpWhen { font-size: 11px; color: var(--text-faint); }
-.fpBtc { font-size: 16px; font-weight: 700; color: var(--btc); font-variant-numeric: tabular-nums; }
-.fpUsd { font-size: 12px; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+/* ── Crash playbook ── */
+/* The order badge is NEUTRAL on purpose — never green, amber or red: the stage chip above carries the risk read. */
+.orderBadge { flex-shrink: 0; font-size: 11px; font-weight: 600; color: var(--text-primary); background: var(--bg-input); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px; white-space: nowrap; }
+.playbookText { margin: 0; font-size: 13px; color: var(--text-primary); line-height: 1.45; }
+/* No flex on the <ol> — it keeps its list markers; spacing comes from the sibling rule. */
+.steps { margin: 0; padding-left: 20px; font-size: 13px; color: var(--text-primary); line-height: 1.45; font-variant-numeric: tabular-nums; }
+.steps li + li { margin-top: 4px; }
+.afterLine { margin: 0; font-size: 12px; color: var(--text-secondary); line-height: 1.45; font-variant-numeric: tabular-nums; }
+.pastLiq { margin: 0; font-size: 12px; color: var(--red); line-height: 1.45; }
+.outcomeHeld { margin: 0; font-size: 13px; color: var(--text-primary); line-height: 1.45; }
+.outcomeShort { margin: 0; font-size: 13px; color: var(--amber); line-height: 1.45; }
+/* The .staleBanner treatment. */
+.doomWarn { margin: 0; padding: 12px 14px; border: 1px solid var(--red); border-radius: 12px; background: color-mix(in srgb, var(--red) 12%, transparent); color: var(--text-primary); font-size: 13px; line-height: 1.45; }
 
 /* ── Slider / inputs ── */
 .slider { width: 100%; accent-color: var(--orange); cursor: pointer; }
-.capFlag { font-size: 11px; font-weight: 600; color: var(--amber); }
 .numInput { width: 120px; margin-left: 8px; padding: 6px 8px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-input); color: var(--text-primary); font-family: inherit; font-size: 13px; }
-
-/* ── Table ── */
-.tableWrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-.table { width: 100%; border-collapse: collapse; font-size: 12px; }
-.th { text-align: right; padding: 6px 8px; color: var(--text-faint); font-weight: 600; border-bottom: 1px solid var(--border); white-space: nowrap; }
-.th:first-child { text-align: left; }
-.td { text-align: right; padding: 7px 8px; color: var(--text-primary); border-bottom: 1px solid color-mix(in srgb, var(--border) 50%, transparent); font-variant-numeric: tabular-nums; white-space: nowrap; }
-.td:first-child { text-align: left; }
-.rowActive td { background: color-mix(in srgb, var(--orange) 10%, transparent); }
 
 /* ── Walls ── */
 .wall { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
@@ -165,7 +157,6 @@
 .wallContent { display: flex; flex-direction: column; gap: 8px; padding: 12px; }
 .wallBody { margin: 0; font-size: 13px; color: var(--text-primary); font-variant-numeric: tabular-nums; }
 .wallLabel { font-size: 12px; color: var(--text-muted); display: flex; align-items: center; }
-.coupling { margin: 0; font-size: 12px; color: var(--amber); line-height: 1.45; }
 
 /* ── Checklist ── */
 .checkRow { display: flex; align-items: flex-start; gap: 9px; font-size: 13px; color: var(--text-primary); line-height: 1.4; cursor: pointer; }
@@ -173,6 +164,5 @@
 .checkDone { color: var(--text-faint); text-decoration: line-through; }
 
 @media (max-width: 480px) {
-  .stageStats, .calcGrid { grid-template-columns: 1fr 1fr; }
-  .fpGrid { grid-template-columns: 1fr; }
+  .stageStats { grid-template-columns: 1fr 1fr; }
 }

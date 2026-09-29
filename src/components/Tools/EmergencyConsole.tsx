@@ -2,20 +2,21 @@ import { useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { plBandsAt } from '../../simulation/powerLaw';
-import { deriveCurrentPosition } from '../../simulation/logUtils';
-import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
+import { crashPlaybook } from '../../simulation/crashPlaybook';
 import {
   classifyStage,
-  firepower,
-  drawToLtv,
-  floorTable,
-  direSwitch,
   wall3Sale,
   wall4External,
-  surplus,
   type EmergencyState,
   type LadderStage,
 } from '../../simulation/emergencyModel';
+import {
+  playbookInputFromLive,
+  playbookCard,
+  strikeHoldFrom,
+  waitingCard,
+  type PlaybookCard,
+} from './crashPlaybookView';
 import { fmtUSD, todayLocalISO, fmtLtvPct } from '../../utils/format';
 import styles from './EmergencyConsole.module.css';
 
@@ -31,6 +32,9 @@ const FILL_COLOR: Record<LadderStage, string> = {
   normal: 'var(--green)', watch: 'var(--amber)', prepare: 'var(--amber)',
   execute: 'var(--red)', lastResort: 'var(--red)', liquidated: 'var(--red)',
 };
+const OUTCOME_CLASS: Record<NonNullable<PlaybookCard['outcome']>['kind'], string> = {
+  held: styles.outcomeHeld, short: styles.outcomeShort, doom: styles.doomWarn,
+};
 
 const DAY_MS = 86_400_000;
 
@@ -42,35 +46,39 @@ function fmtAge(ms: number): string {
   return `${Math.floor(h / 24)}d`;
 }
 
+// Order-neutral: the playbook names the order on the day (a shift-first day draws before any collateral moves).
 const CHECKLIST = [
   'Confirm the live Coinbase LTV in your Loan Center',
-  'Draw from Strike and buy the top-up BTC',
-  'Pledge the BTC to Coinbase (watch the new floor land)',
-  'Re-check the new Strike margin-call price — you are now more exposed there',
-  'If the floor is still breached, execute Wall 2 (Dire Switch paydown)',
+  "Work the playbook's steps in the order it lists them",
+  'Cold coins: send the named amount into your Coinbase collateral',
+  'Strike collateral: release the named amount — Strike allows it only at or under 40% LTV, down to under 50%, and never within 60 days of a deposit',
+  'Debt shift: draw the named amount on Strike and pay Coinbase down with it',
+  'Re-check both LTVs and the new Strike margin-call price',
+  "If the playbook says Coinbase can't clear 86%, the last resorts above are the only ways out",
 ];
 
+/**
+ * The crash-day page for `ltvTriggered` CB mode — READ-ONLY (no dayLog writes). Its card is `crashPlaybook` on the live
+ * position and the owner's real cold, at the effective price, built through crashPlaybookView — so the console and the
+ * engine give ONE answer. The power-law support crossing stays here; the model and the view module stay belief-free.
+ */
 export function EmergencyConsole() {
   const cbLoanBalance   = useStore((s) => s.cbLoanBalance);
   const cbAprPct        = useStore((s) => s.cbAprPct);
   const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
   const cbCollateralBtc = useStore((s) => s.cbCollateralBtc);
-  const ceilingPct      = useStore((s) => s.cbEmergencyCeilingPct);
+  const cbLtvTargetPct  = useStore((s) => s.cbLtvTargetPct);    // the line the playbook restores
+  const cbLtvTriggerPct = useStore((s) => s.cbLtvTriggerPct);   // the line it fires at — between the two, the plan waits
   const livePrice       = useStore((s) => s.btcPrice);
   const btcPriceMode    = useStore((s) => s.btcPriceMode);
   const btcPriceUpdatedAt = useStore((s) => s.btcPriceUpdatedAt);
-  const income          = useStore((s) => s.income);
-  const expenses        = useStore((s) => s.expenses);
-  const blocApr         = useStore((s) => s.blocApr);
-  const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
+  const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);   // the LIVE Strike balance
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
+  const coldBtc         = useStore((s) => s.getCurrentColdBtc());   // the live cold total
   const creditLine      = useStore((s) => s.creditLine);
-  const monthlyLog      = useStore((s) => s.monthlyLog);
+  const dayLog          = useStore((s) => s.dayLog);   // Strike's 60-day hold reads the logged Strike deposits
 
-  const [assumption, setAssumption] = useState<'cured' | 'stuck'>('stuck');
-  const [targetLtv, setTargetLtv]   = useState(ceilingPct);
-  const [openWall, setOpenWall]     = useState<number | null>(1);
-  const [paydownUsd, setPaydownUsd] = useState(0);
+  const [openWall, setOpenWall]     = useState<number | null>(null);
   const [saleTargetLiq, setSaleTargetLiq] = useState(35_000);
   const [cashUsd, setCashUsd]       = useState(0);
   const [checked, setChecked]       = useState<Record<number, boolean>>({});
@@ -83,25 +91,25 @@ export function EmergencyConsole() {
   const price = simPrice ?? livePrice;   // the effective price every model consumer + readout below uses
   const toggleSim = () => setSimPrice((sp) => (sp === null ? livePrice : null));
 
-  const { btcHeld: skCollateralBtc, blocBalance: skDrawn } =
-    deriveCurrentPosition(monthlyLog, currentBtcHeld, advisorActualBlocBalance);
-
   // The accrual boundary — the model consumes the ALREADY-accrued CB debt.
   const cbDebt = accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf);
-  const s: EmergencyState = { cbDebt, cbCollateralBtc, skCollateralBtc, skDrawn, price, ceilingPct };
+  const s: EmergencyState = { cbDebt, cbCollateralBtc, price };
 
   // The power-law SUPPORT line — the fitted deep-drawdown floor. The view crosses into the power law here
   // (the model stays §7-clean); a simulation below it is flagged, never blocked.
   const support = plBandsAt(new Date(todayLocalISO())).floor;
   const stage = classifyStage(s);
-  const fp    = firepower(s);
-  const draw  = drawToLtv(s, targetLtv, creditLine);
-  const rows  = floorTable(s);
-  const executePrice = stage.bandPrices.execute;
 
-  // Monthly surplus available to service the emergency (interest on the drawn-to-ceiling Strike balance).
-  const skDrawnAtCeiling = (ceilingPct / 100) * skCollateralBtc * price;
-  const monthlySurplus = surplus(income, expenses, skDrawnAtCeiling, blocApr);
+  // The crash playbook on the live position: between the target and the trigger the plan waits; otherwise
+  // crashPlaybook's answer, restoring the target.
+  const today = todayLocalISO();
+  const hold = strikeHoldFrom(dayLog, today);
+  const input = playbookInputFromLive({
+    price, support, cbDebt, cbCollateralBtc,
+    strikeBalance: advisorActualBlocBalance, strikeCollateralBtc: currentBtcHeld, creditLine, coldBtc,
+    cbLtvTargetPct, dayLog, todayISO: today,
+  });
+  const card = waitingCard(input, cbLtvTriggerPct) ?? playbookCard(crashPlaybook(input), input, hold);
 
   // ── Staleness ──────────────────────────────────────────────────────────────────
   const now = Date.now();
@@ -195,121 +203,37 @@ export function EmergencyConsole() {
         )}
       </div>
 
-      {/* 3 — Firepower */}
+      {/* 3 — Crash playbook (crashPlaybook on the live position, at the effective price) */}
       <div className={styles.card}>
         <div className={styles.cardHead}>
-          <span className={styles.cardTitle}>Firepower — collateral you can raise</span>
-          <div className={styles.toggle}>
-            <button className={`${styles.toggleBtn} ${assumption === 'stuck' ? styles.toggleActive : ''}`} onClick={() => setAssumption('stuck')}>Stuck</button>
-            <button className={`${styles.toggleBtn} ${assumption === 'cured' ? styles.toggleActive : ''}`} onClick={() => setAssumption('cured')}>Cured</button>
-          </div>
+          <span className={styles.cardTitle}>Crash playbook</span>
+          <span className={styles.orderBadge}>{card.badge}</span>
         </div>
-        <div className={styles.fpGrid}>
-          <div className={styles.fpCell}>
-            <span className={styles.fpWhen}>At current price ({fmtUSD(price)})</span>
-            <span className={styles.fpBtc}>{(assumption === 'cured' ? fp.slowBtc : fp.fastBtc(price)).toFixed(5)} ₿</span>
-            <span className={styles.fpUsd}>{fmtUSD(assumption === 'cured' ? fp.slowUsd(price) : fp.fastUsd(price))}</span>
-          </div>
-          <div className={styles.fpCell}>
-            <span className={styles.fpWhen}>At execute band ({fmtUSD(executePrice)})</span>
-            <span className={styles.fpBtc}>{(assumption === 'cured' ? fp.slowBtc : fp.fastBtc(executePrice)).toFixed(5)} ₿</span>
-            <span className={styles.fpUsd}>{fmtUSD(assumption === 'cured' ? fp.slowUsd(executePrice) : fp.fastUsd(executePrice))}</span>
-          </div>
-          <div className={styles.fpCell}>
-            <span className={styles.fpWhen}>At support ({fmtUSD(support)})</span>
-            <span className={styles.fpBtc}>{(assumption === 'cured' ? fp.slowBtc : fp.fastBtc(support)).toFixed(5)} ₿</span>
-            <span className={styles.fpUsd}>{fmtUSD(assumption === 'cured' ? fp.slowUsd(support) : fp.fastUsd(support))}</span>
-          </div>
-        </div>
-        <p className={styles.hint}>
-          {assumption === 'cured'
-            ? 'Cured: assumes Strike was first paid down to the 15% operating ceiling — the whole band is free headroom.'
-            : 'Stuck: uses your live Strike draw. Slower — you carry the current balance into the emergency.'}
-          {' '}Monthly surplus to service: {fmtUSD(monthlySurplus)}.
-        </p>
+        {card.pastLiquidation && <p className={styles.pastLiq}>{card.pastLiquidation}</p>}
+        <p className={styles.playbookText}>{card.depth}</p>
+        {card.steps.length > 0 && (
+          <ol className={styles.steps}>
+            {card.steps.map((step, i) => <li key={i}>{step}</li>)}
+          </ol>
+        )}
+        {card.gap && <p className={styles.hint}>{card.gap}</p>}
+        {card.strikeNote && <p className={styles.hint}>{card.strikeNote}</p>}
+        {card.after && <p className={styles.afterLine}>{card.after}</p>}
+        {card.outcome && <p className={OUTCOME_CLASS[card.outcome.kind]}>{card.outcome.text}</p>}
       </div>
 
-      {/* 4 — Action calculator */}
+      {/* 4 — Last resorts (paydown-numerator walls) */}
       <div className={styles.card}>
-        <div className={styles.cardHead}>
-          <span className={styles.cardTitle}>Draw to {targetLtv}% Strike LTV</span>
-          {draw.capped && <span className={styles.capFlag}>capped by the Strike line</span>}
-        </div>
-        <input
-          type="range"
-          className={styles.slider}
-          min={Math.round(BLOC_OPERATING_CEILING * 100)}
-          max={50}
-          step={1}
-          value={targetLtv}
-          onChange={(e) => setTargetLtv(Number(e.target.value))}
-        />
-        <div className={styles.calcGrid}>
-          <div className={styles.stat}><span className={styles.statLabel}>Draw</span><span className={styles.statValue}>{fmtUSD(draw.drawUsd)}</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>BTC added</span><span className={styles.statValue}>{draw.btcAdded.toFixed(5)} ₿</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>New floor</span><span className={styles.statValueGreen}>{fmtUSD(draw.newLiqPrice)}</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>Floor ↓</span><span className={styles.statValueGreen}>{fmtUSD(draw.liqDrop)}</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>New Strike LTV</span><span className={styles.statValue}>{fmtLtvPct(draw.newSkLtv, 1)}</span></div>
-          <div className={styles.stat}><span className={styles.statLabel}>Strike MC price</span><span className={styles.statValueAmber}>{fmtUSD(draw.newSkMarginCallPrice)}</span></div>
-        </div>
-        <p className={styles.hint}>
-          Available on the Strike line: {fmtUSD(draw.availableCredit)} (50% LTV cap and your credit line).
-          Top-up is the primary lever — it lowers the CB floor without paying down debt.{' '}
-          New floor {draw.newLiqPrice < support
-            ? `sits ${fmtUSD(support - draw.newLiqPrice)} below`
-            : `still sits ${fmtUSD(draw.newLiqPrice - support)} above`} the support line ({fmtUSD(support)}).
-        </p>
-      </div>
+        <span className={styles.cardTitle}>Last resorts</span>
 
-      {/* 5 — Floor table */}
-      <div className={styles.card}>
-        <span className={styles.cardTitle}>How low can the floor go</span>
-        <div className={styles.tableWrap}>
-          <table className={styles.table}>
-            <thead>
-              <tr><th className={styles.th}>Ceiling</th><th className={styles.th}>BTC added</th><th className={styles.th}>Floor</th><th className={styles.th}>vs standing</th><th className={styles.th}>SK survives</th></tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r.standing ? 'standing' : r.ceilingPct} className={!r.standing && r.ceilingPct === ceilingPct ? styles.rowActive : ''}>
-                  <td className={styles.td}>{r.standing ? 'Standing' : `${r.ceilingPct}%`}</td>
-                  <td className={styles.td}>{r.standing ? '—' : `${r.btcAdded.toFixed(5)} ₿`}</td>
-                  <td className={styles.td}>{fmtUSD(r.floor)}</td>
-                  <td className={styles.td}>{r.standing ? '—' : `↓ ${fmtUSD(r.deltaVsStanding)}`}</td>
-                  <td className={styles.td}>{fmtLtvPct(r.strikeSurvivesFurtherPct, 0)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className={styles.hint}>
-          Support today {fmtUSD(support)} — a floor below it holds through the fitted floor; a floor above it
-          liquidates first.
-        </p>
-      </div>
-
-      {/* 6 — Ladder accordion (Walls 1–4) */}
-      <div className={styles.card}>
-        <span className={styles.cardTitle}>Walls — the response ladder</span>
-
-        <Wall n={1} title="Wall 1 · Collateral top-up (primary)" open={openWall === 1} onToggle={() => setOpenWall(openWall === 1 ? null : 1)}>
-          <p className={styles.wallBody}>Draw to {ceilingPct}% → add {draw.btcAdded.toFixed(5)} ₿ → floor {fmtUSD(draw.newLiqPrice)}.</p>
-          <p className={styles.coupling}>⚠ Coupling: this raises your Strike margin-call price to {fmtUSD(draw.newSkMarginCallPrice)}. You are now more exposed on Strike.</p>
-        </Wall>
-
-        <Wall n={2} title="Wall 2 · Dire Switch (paydown)" open={openWall === 2} onToggle={() => setOpenWall(openWall === 2 ? null : 2)}>
-          <input type="range" className={styles.slider} min={0} max={Math.max(1, Math.round(cbDebt))} step={100} value={paydownUsd} onChange={(e) => setPaydownUsd(Number(e.target.value))} />
-          <p className={styles.wallBody}>Pay down {fmtUSD(paydownUsd)} → liq {fmtUSD(direSwitch(s, paydownUsd).liqAfter)}.</p>
-        </Wall>
-
-        <Wall n={3} title="Wall 3 · Sell to pay down" open={openWall === 3} onToggle={() => setOpenWall(openWall === 3 ? null : 3)}>
+        <Wall n={3} title="Sell to pay down" open={openWall === 3} onToggle={() => setOpenWall(openWall === 3 ? null : 3)}>
           <label className={styles.wallLabel}>Target liq price
             <input type="number" className={styles.numInput} value={saleTargetLiq} onChange={(e) => setSaleTargetLiq(Number(e.target.value))} />
           </label>
           <p className={styles.wallBody}>Paydown needed {fmtUSD(wall3Sale(s, saleTargetLiq).paydownNeeded)} → sell {wall3Sale(s, saleTargetLiq).btcToSell.toFixed(5)} ₿.</p>
         </Wall>
 
-        <Wall n={4} title="Wall 4 · External cash" open={openWall === 4} onToggle={() => setOpenWall(openWall === 4 ? null : 4)}>
+        <Wall n={4} title="Outside cash" open={openWall === 4} onToggle={() => setOpenWall(openWall === 4 ? null : 4)}>
           <label className={styles.wallLabel}>Cash injected
             <input type="number" className={styles.numInput} value={cashUsd} onChange={(e) => setCashUsd(Number(e.target.value))} />
           </label>
@@ -317,7 +241,7 @@ export function EmergencyConsole() {
         </Wall>
       </div>
 
-      {/* 7 — Crash-day checklist (session-only) */}
+      {/* 5 — Crash-day checklist (session-only) */}
       <div className={styles.card}>
         <span className={styles.cardTitle}>Crash-day checklist</span>
         {CHECKLIST.map((item, i) => (
@@ -326,7 +250,7 @@ export function EmergencyConsole() {
             <span className={checked[i] ? styles.checkDone : ''}>{item}</span>
           </label>
         ))}
-        <p className={styles.hint}>Session-only — resets when you leave. Live target: draw {fmtUSD(draw.drawUsd)} → buy {draw.btcAdded.toFixed(5)} ₿ → floor {fmtUSD(draw.newLiqPrice)}.</p>
+        <p className={styles.hint}>Session-only — resets when you leave.</p>
       </div>
 
     </div>

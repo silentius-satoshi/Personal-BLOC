@@ -2,6 +2,8 @@
 
 *Part 3: Defend · The Personal ₿LOC Book*
 
+> ⚠ **Outdated since crash playbook Run 2.** The console now runs `crashPlaybook` on the live position (CLAUDE.md § Emergency Console); this chapter is rewritten in a later docs pass.
+
 There is a page in Personal ₿LOC built for one day: the day the price is falling fast and your Coinbase LTV is climbing toward a line that liquidates instantly, with no phone call and no grace period. On that day you do not want a simulator, a chart, or a decision to make from first principles. You want the decision already made, the amounts already computed, and the fallbacks already ranked. That page is the Emergency Console.
 
 It appears when your Coinbase strategy is set to LTV-triggered mode (the crash-defense posture; monthly mode keeps the quieter Liquidation Simulator). And it is a **read-only calculator** — it computes what to do and by how much, but it never writes to your journal and never touches your funds. Real moves happen on your lender's screen and get logged through the daily flow like any other day. The console plans the defense; you execute it. Planning software, not an execution venue.
@@ -71,7 +73,7 @@ Model it before you live it: planning software, not financial advice — the dec
 
 - **Files:** `src/simulation/emergencyModel.ts` (`CB_LADDER`, `classifyStage`, `firepower`, `drawToLtv`, `floorTable`, `direSwitch`, `wall3Sale`, `wall4External`, `surplus`, `STRIKE_MARGIN_CALL_LTV`), `src/components/Almanac/EmergencyConsole.tsx` (seven sections: staleness banner · stage header + band rail · firepower toggle · draw-to-LTV calculator · floor table · Walls 1–4 accordion · session-only checklist), `src/simulation/cbMetrics.ts` (`accruedCbBalance`, the accrual boundary), `src/simulation/strikeCredit.ts` (`STRIKE_MAX_DRAW_LTV`, `BLOC_OPERATING_CEILING`)
 - **Numbers:** ladder 0.69 / 0.72 / 0.75 / 0.81 vs `CB_LLTV` 0.86 (instant, `CB_LIF` ≈ 1.04384, ~4.4% penalty) · Strike margin call 0.70 · draw clamp 0.50 · operating ceiling 0.15 · emergency ceiling default 30, clamped 20–50 · floor-table ceilings 20 / 25 / 30 / 50%
-- **Tests:** `src/simulation/__tests__/emergencyModel.test.ts` — Directive fixtures ±$1 (liq 41,650.62; bands watch 51,912 / execute 47,759 / last-resort 44,222; slow floor 38,842 / fast floor 39,621 at crash price 48,000; `drawToLtv(30)` @ 48,000 → $5,990.73, 50%-line clamp; walls round-trip; ladder pinned at 69/72/75/81)
+- **Tests:** `src/simulation/__tests__/emergencyModel.test.ts`
 
 *Related chapters: ch03 (the 15% ceiling and why cured matters), ch05 (the wall the Almanac stays behind), ch06 (logging the real moves), ch09 (the dashboard that sends you here).*
 

@@ -255,7 +255,7 @@ src/
                                 # ltvOf (simulation/ltv.ts), so skLtvAfter can be ∞ (debt with no Strike collateral) where it
                                 # used to report a flat 0 — any future consumer MUST use fmtLtvPct.
                                 # Consumed by cyclingSim (the automatic
-                                # defense + top-up), crashPlaybook and emergencyModel.drawToLtv (capacity only)
+                                # defense + top-up) and crashPlaybook
                                 # STRIKE'S RELEASE RULES (crash playbook Run 1): strikeReleasableBtc (collateral
                                 # leaves Strike only at or under 40% before, only down to strictly under 50% after —
                                 # × (1 − STRIKE_RELEASE_EPS 1e-9) — and never within 60 days of a deposit; junk → 0,
@@ -273,7 +273,8 @@ src/
                                 # shift first elsewhere, then the fallback top-up, skipped when doomed after the shift.
                                 # ⚠ cyclingSim runs the same sequence inline with the engine's exact arithmetic; a
                                 # parity test (the Strike cap off) pins engine ≡ crashPlaybook — never fork it. Its
-                                # consumers are Run 2 (Emergency Console) and Run 3 (the Playbook's crash line)
+                                # consumers: the Emergency Console, via components/Tools/crashPlaybookView (Run 2), and
+                                # the Monthly Playbook's crash line (Run 3)
     runNoBitcoin.ts
     runSellToLive.ts
     runSmartBLOC_Living.ts      # Living on Bitcoin tab simulation
@@ -294,8 +295,8 @@ src/
                                 # collBtc to tell the two apart). Was hand-written 5× (cbDefense, cyclingSim,
                                 # strikeCredit, cbMetrics, runCoinbaseLoan) + a 6th drifted copy in LiqSimulator
                                 # that printed 0.0% for an unbacked loan. __tests__/ltv.test.ts greps src/
-                                # (excluding __tests__) and FAILS if a new copy appears. emergencyModel's three
-                                # LTVs now route through it too. ⚠ NAMED FOLLOW-UP: runAdvisor (4 copies) +
+                                # (excluding __tests__) and FAILS if a new copy appears. emergencyModel's LTV
+                                # (classifyStage) routes through it too. ⚠ NAMED FOLLOW-UP: runAdvisor (4 copies) +
                                 # AdvisorMain (1) still open-code the flattering `x > 0 ? a/b : 0` shape (the
                                 # grep doesn't see it — it is deliberately NOT widened yet)
     cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
@@ -307,8 +308,8 @@ src/
     strikeCredit.ts             # + STRIKE_CURE_LTV (0.65 — a call must be cured back to it) and STRIKE_RETRIEVE_MAX_LTV
                                 # (0.40 — collateral leaves Strike only at or below it); the support policy's
                                 # inputs, passed in by the view — the engine imports neither.
-                                # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15, and emergencyModel consumes it
-    emergencyModel.ts           # Emergency Console pure model (Phase 1) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Doctrine: collateral top-up is the PRIMARY lever (grow the CB denominator → push liq DOWN); paydown = Wall-2 fallback. CB_LADDER (69/72/75/81, liq=CB_LLTV 0.86) + STRIKE_MARGIN_CALL_LTV 0.70. classifyStage / firepower (slow=cured, fast=stuck) / drawToLtv (clamps to the 50% Strike line) / floorTable / direSwitch|wall3Sale|wall4External (paydown walls) / surplus. Imports CB_LLTV (runCoinbaseLoan) + STRIKE_MAX_DRAW_LTV/BLOC_OPERATING_CEILING (strikeCredit) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). Its three LTVs (classifyStage cbLtv, drawToLtv newSkLtv, floorTable currentSkLtv) go through ltvOf — so Coinbase debt with ZERO collateral now reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'. EmergencyConsole renders all three via fmtLtvPct. ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1) still open-code `x > 0 ? a/b : 0`; and the zero-collateral CB reading is still incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
+                                # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15
+    emergencyModel.ts           # The Emergency Console's retained pure model (crash playbook Run 2) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Holds ONLY the stage ladder (CB_LADDER 69/72/75/81, liq = CB_LLTV 0.86; classifyStage → stage / cbLtv / liqPrice / distancePct / bandPrices), STRIKE_MARGIN_CALL_LTV 0.70 (the engine's inputs, the faces and the crash playbook import it from here) and the two last-resort walls (wall3Sale · wall4External). EmergencyState = { cbDebt, cbCollateralBtc, price } — the Strike position lives in CrashPlaybookInput; the crash-day answer is crashPlaybook, via components/Tools/crashPlaybookView. Deleted in Run 2: the Phase-1 buy-and-pledge functions (firepower, drawToLtv, floorTable, direSwitch, surplus). Imports CB_LLTV (runCoinbaseLoan) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). classifyStage's LTV goes through ltvOf — so Coinbase debt with ZERO collateral reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'; EmergencyConsole renders it via fmtLtvPct. ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1) still open-code `x > 0 ? a/b : 0`; and the zero-collateral CB reading is still incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
                                 # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
                                 # copy is GONE; the two can no longer drift). deriveSafetyView → {capacityUsed,
@@ -603,13 +604,26 @@ src/
                                 # local `value > 0 ? … : 0`, which rendered 0.0% for an unbacked loan).
                                 # Rendered via fmtLtvPct. Pinned by __tests__/liqSimulatorView.test.ts (no
                                 # .test.tsx render harness exists, so this is what makes the fix pinnable)
-      EmergencyConsole.tsx      # Emergency Console (Phase 1) — the actionable crash-day page for `ltvTriggered`
-                                # CB mode; READ-ONLY calculator (no dayLog writes). Reads store, builds cbDebt via
-                                # accruedCbBalance (the accrual boundary) + Strike position via deriveCurrentPosition,
-                                # feeds emergencyModel. 7 sections: staleness banner / stage header + band rail /
-                                # firepower (cured|stuck toggle) / draw-to-LTV action calculator / floor table /
-                                # Walls 1–4 accordion (Wall 2 salvaged paydown slider) / session-only crash checklist
+      EmergencyConsole.tsx      # Emergency Console (crash playbook Run 2) — the crash-day page for `ltvTriggered` CB
+                                # mode; READ-ONLY (no dayLog writes). Store reads above the early return; cbDebt via
+                                # accruedCbBalance (the accrual boundary); support via plBandsAt (the view keeps the
+                                # crossing); card = waitingCard(input, cbLtvTriggerPct) ?? playbookCard(crashPlaybook(
+                                # input), input, hold) on playbookInputFromLive(...) at the EFFECTIVE price (simulated
+                                # while simulating). Sections: staleness banner / simulate banner / stage header + band
+                                # rail + sim scrub (unchanged) / Crash playbook card / Last resorts (Sell to pay down ·
+                                # Outside cash, both collapsed) / 7-item session-only checklist. See § Emergency Console
       EmergencyConsole.module.css
+      crashPlaybookView.ts      # crash playbook Run 2 — the ONE live front-end of crashPlaybook (the console uses it,
+                                # Run 3 imports it — never copy it). PURE: no power law, cycle model, store or React (a
+                                # layering test). strikeHoldFrom (Strike's 60-day hold, from LOGGED target:'strike'
+                                # deposits; yyyy-mm-dd dates only) · playbookInputFromLive (the one live
+                                # CrashPlaybookInput builder: cold under a satoshi → 0; the stop at support through
+                                # effectivePolicyStops on the support policy's DEFAULTS; the lender constants; the hold)
+                                # · fmtStepBtc / fmtStepUsd (FLOORED to their printed precision) · fmtMultiplePair
+                                # (widens 2 → 6 dp until k and the depth differ) · waitingCard (target < LTV < trigger,
+                                # under 86% → the plan waits) · playbookCard (the card's shapes). ⚠ No inline min in
+                                # the file (a source guard). Pinned by __tests__/crashPlaybookView.test.ts +
+                                # __tests__/emergencyConsoleWiring.test.ts
       toolShell.module.css      # Shared `.toolContainer` (Almanac's tokens: 600px centered + iOS-safe overflow).
                                 # Phase 1 adopters: EmergencyConsole + LiqSimulator. FOLLOW-UP (device-verify pending):
                                 # Converter / Mining / PowerLaw / Almanac still to adopt via `composes:`
@@ -1453,7 +1467,7 @@ cbPaymentStrategy:   'monthly' | 'ltvTriggered';  // default 'monthly'
 cbLtvTriggerPct:     number;                       // default 75 (percent, e.g. 75 = 75%)
 cbLtvTargetPct:      number;                       // default 65 (percent, pay down to this LTV)
 cbRotateBackPct:     number;                       // default 55 (percent, reverse-rotation gate; synced in SETTINGS_FIELDS/payload like trigger/target)
-cbEmergencyCeilingPct: number;                     // Emergency Console — target Strike LTV for crash-day collateral top-ups; default 30, CLAMPED 20–50 in the setter; synced (in SETTINGS_FIELDS/payload)
+cbEmergencyCeilingPct: number;                     // retained for sync compatibility — no UI consumer since the crash playbook (Run 2); default 30, clamped 20–50 in the setter; synced
 cbLoanBalanceAsOf:      string | null;             // v13 — ISO date cbLoanBalance was last re-anchored (interest accrues daily from here); synced
 cbLiquidationPriceAsOf: string | null;             // v13 — ISO date cbLiquidationPrice was last re-entered (drifts up with interest); synced
 strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liquidation LTV, default 85 (published terms); synced
@@ -2714,9 +2728,6 @@ line still leaves LTV above the stop, the FALLBACK top-up moves collateral into 
   resort in exactly the position that needs one. ⚠ Behavioural consequence: a leg already inside the buffer
   now yields **zero** available collateral where it previously yielded a sliver taken up to the call line —
   that is the correct answer, and it is what the updated `cbDefense.test.ts` shortfall case pins.
-  `emergencyModel.drawToLtv` delegates its capacity
-  to the same helper; its optional `creditLine` defaults to ∞, so the spec §10 50%-line-only fixtures stay
-  byte-identical (the console passes its real line).
 - **`runCyclingSim` gains `defendCbLtv?: boolean` — default FALSE (byte-identical engine). BOTH faces pass
   TRUE, AUTOMATICALLY — no UI toggle.** Cycle mode only; never post-liquidation. Sequence per month:
   interest → draw decision → cascade migration → refinance → debt shift → **top-up** (`shortfallUsd > 0`
@@ -4109,43 +4120,60 @@ union+tombstones (`mergeRecords`), so the next relay pull unions back any day/mo
 
 ---
 
-## Emergency Console (Phase 1 — actionable crash-day page for `ltvTriggered`; store stays v19)
+## Emergency Console (crash playbook Run 2 — the crash-day page for `ltvTriggered`; store unchanged)
 
-Replaces the passive Liq Sim **for `ltvTriggered` CB mode only** with an actionable, **READ-ONLY**
-calculator implementing the Emergency Directive. Monthly mode keeps `LiqSimulator` untouched. NO dayLog
-writes / execution — real draws are still logged through Daily flows.
+The console runs `crashPlaybook` — the one crash-day answer the engine also runs — on the live position and the owner's
+real cold. Spec: `pbloc-spec-crash-playbook-run2-v1.md` (Run 2 of 3). **READ-ONLY** — no dayLog writes; real moves
+happen on the lenders' screens and are logged through the Daily flows. Monthly CB mode keeps `LiqSimulator`, unchanged.
 
-- **Mode gate (`AppShell.tsx`):** the `liqsim` render branch is `cbPaymentStrategy === 'ltvTriggered' ?
-  <EmergencyConsole/> : <LiqSimulator/>`. Tab KEY stays `'liqsim'` (no tabOrder/hiddenTabs migration, still
-  `hasCbLoan`-gated); the tab LABEL swaps to `Emergency`/`Emerg` by mode via a `withEmergencyLabel` resolver
-  mapped over `mainTabs` + `toolTabsList` (label-only — `SortableTab`/`ToolsDropdown` internals unchanged; their
-  tab-prop types were widened to `{key,fullLabel,shortLabel}` strings so the override typechecks).
-- **`emergencyModel.ts` (pure, clock-free):** all debt math consumes the pre-accrued `cbDebt` — the VIEW builds
-  it via `accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf)` (cbMetrics) at the boundary, so the model
-  never touches a clock and is fixture-testable. Strike position from `deriveCurrentPosition`. Functions:
-  `classifyStage` (stage from cbLtv vs `CB_LADDER` 69/72/75/81; liq = CB_LLTV 0.86; band price = `cbDebt/(cbColl×band)`),
-  `firepower` (slow=cured `(ceiling−0.15)×skColl`, fast=stuck `(ceiling×skColl×P − skDrawn)/P`), `drawToLtv`
-  (capacity via the shared `strikeDrawCapacity` from `cbDefense.ts` — `min(creditLine, 50% line) − drawn`;
-  `creditLine` defaults to ∞ so the §10 fixtures are unchanged; the console passes its real line),
-  `floorTable` ([20,25,30,50]% + standing), `direSwitch`/`wall3Sale`/`wall4External` (paydown-numerator walls),
-  `surplus`.
-- **INVARIANTS:** emergency debt math **always** flows through `accruedCbBalance` (never raw `cbLoanBalance`);
-  **collateral top-up is the primary lever** (grow the CB denominator → floor DOWN; paydown is the Dire
-  Switch/Wall-2 fallback only); **`BLOC_OPERATING_CEILING` (strikeCredit.ts) is the single 0.15 definition** for
-  the advisor path; emergencyModel imports **nothing** from cycle/power-law (§7 hard wall — grep-clean).
-- **Support line (view-level crossing):** `EmergencyConsole.tsx` imports `plBandsAt` (today's floor) — the model
-  stays §7-clean. Surfaces: a "Support line" stat + a liq-vs-support sentence; a green rail tick (the rail range
-  always includes support); an "At support" third firepower cell; a floor-table caption ("a floor below support
-  holds through the fitted floor; a floor above it liquidates first"); the New-floor readout compares to support;
-  and the simulate slider keeps its full range but flags "below the support line — outside the fitted drawdown
-  envelope" in amber when dragged below it (never clamped). Capacity now includes the owner's credit line.
-- **New synced setting `cbEmergencyCeilingPct`** (default 30, **clamped 20–50 in the setter**; SETTINGS_FIELDS +
-  buildSettingsPayload + migrate `?? 30` + both reset presets; rides `partializeState`'s `...rest`). Settings →
-  Coinbase Loan renders its NumberInput **only** in the `cbPaymentStrategy === 'ltvTriggered'` fragment. NO store
-  version bump (additive defaulted field).
+- **Mode gate (unchanged):** `CbDefenseTool` renders `cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole/> :
+  <LiqSimulator/>` for both the `liqsim` tab and the Almanac's defense face. Tab KEY stays `'liqsim'` (no
+  tabOrder/hiddenTabs migration, still `hasCbLoan`-gated); the tab LABEL swaps to `Emergency`/`Emerg` by mode via
+  `withEmergencyLabel` (label-only).
+- **The gate — the playbook runs at the TRIGGER and restores the TARGET (A0).** The Advisor's `cbLtvTriggered` and
+  SimpleModeView's `cbTriggered` both fire at `>= cbLtvTriggerPct`; a target gate would tell the owner to draw on Strike
+  on an ordinary 68% day. `waitingCard(input, cbLtvTriggerPct)`: target < LTV < trigger (and under 86%) → "No action …
+  where your plan waits"; otherwise null and the playbook runs — at or under the target it reads "nothing to do", at or
+  over the trigger (or past 86%) it acts.
+- **Inputs — `playbookInputFromLive` (crashPlaybookView), the one live builder:**
+  - the Coinbase debt ALREADY accrued (`accruedCbBalance` — the accrual boundary stays in the component);
+  - the Strike balance is the LIVE `advisorActualBlocBalance` (A1), never `deriveCurrentPosition`'s last logged
+    `strikeBal` — that lags a knob re-anchor, and the playbook decides Strike's releases (the 40% rule), so a stale
+    balance could name a release Strike refuses. Collateral `getCurrentBtcHeld()`; cold `getCurrentColdBtc()`, under a
+    satoshi → 0;
+  - the Coinbase stop at support through `effectivePolicyStops` on the support policy's DEFAULTS (the console has no
+    policy settings; persisting them is its own spec);
+  - Strike's 60-day hold from `strikeHoldFrom(dayLog, today)` — logged `target:'strike'` deposits only (a collateral
+    increase entered only as a reading is invisible). With no deposit in the window the app assumes the line is more
+    than 60 days old, and the card says so;
+  - the EFFECTIVE price (simulated while simulating); support = `plBandsAt(today).floor` — the component keeps the
+    power-law crossing, and both the model and the view module stay belief-free.
+- **The card (`playbookCard`):** a neutral order badge · the depth sentence (top up first between the liquidation depth
+  and support; shift first below the depth, at or above support, or when doomed at the open) · the past-liquidation
+  note (opening ≥ 86%) · the steps in the playbook's order · a gap note when no step, no shift or no top-up is available
+  · the Strike note (the hold with its dates, else Strike's release rules + "the app assumes yours is") · the after line
+  · the outcome: held / short / doom. `'none'` reads "nothing to do", or "Check figures" on junk.
+- **⚠ The doom warning reads the AFTER-state (`after.cbLtv >= 86%`), never `result.doomed`.** `doomed` is read at the
+  open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt
+  shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is
+  not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read.
+- **⚠ Step amounts are FLOORED to their printed precision** (`fmtStepBtc`: 5 dp, then 8 dp, none under a satoshi;
+  `fmtStepUsd`: whole dollars, none under $1). A binding Strike release of 0.5999999996 ₿ rounds to `0.60000` — exactly
+  the 50% Strike refuses — and a line-capped shift of $3,487.50 must never print a draw over the line.
+  `fmtMultiplePair` widens the support multiple and the depth (2 → 6 dp) until they differ.
+- **Last resorts:** "Sell to pay down" (`wall3Sale`) and "Outside cash" (`wall4External`) — both start collapsed.
+  **Checklist:** 7 order-neutral items, session-only.
+- **Deleted in Run 2:** the Phase-1 buy-and-pledge functions `firepower`, `drawToLtv`, `floorTable`, `direSwitch` and
+  `surplus` (emergencyModel), with the Firepower card, the Draw-to-LTV calculator, the floor table and Walls 1–2.
+  `EmergencyState` is now `{ cbDebt, cbCollateralBtc, price }`. The Settings "Emergency ceiling %" field (deleted in Run 2)
+  went with them, but `cbEmergencyCeilingPct` STAYS in the store — synced, migrated `?? 30`, clamped 20–50, in
+  `SETTINGS_FIELDS`, the payloads and both reset presets (sync compatibility; removing it is a store change).
+- **INVARIANTS:** Coinbase debt math always flows through `accruedCbBalance` (never raw `cbLoanBalance`); the console
+  consumes `crashPlaybook`, never forks it; `emergencyModel` and `crashPlaybookView` import nothing from the cycle model
+  or the power law (§7 — the view module's layering test pins it); READ-ONLY, no dayLog writes.
 - **Phase 2 (Recovery/repatriation, `spareBtcOnCb`) is NOT built** — specced but deferred; not prebuilt.
-- Tests: `src/simulation/__tests__/emergencyModel.test.ts` reproduces the directive fixtures ±$1 (liq 41650.62,
-  slow floor 38842, fast floor 39621, bands 51912/47759/44222, drawToLtv(30)@48000 slow 5990.73) + clamp/wall math.
+- Tests: `crashPlaybookView.test.ts` and `emergencyConsoleWiring.test.ts` (§ Test Suite → "Crash playbook (Run 2 — the
+  Emergency Console)"), and the retained `emergencyModel.test.ts`.
 
 ---
 
@@ -4352,8 +4380,9 @@ sweeps to save on fees" is the obvious wrong intuition and someone will have it.
   inverses so the brackets can't drift apart.
 
 `runBLOC` / `runBlocYearOne` / `emergencyModel` are untouched — none of them models a Coinbase *borrow*
-(`emergencyModel.drawToLtv` sizes a STRIKE draw; `cbPaydownDraw` in the Advisor is a Strike draw paying
-CB down, the opposite direction, and correctly pays no CB fee).
+(`emergencyModel` models no borrow at all; `cbPaydownDraw` in the Advisor is a Strike draw paying CB down,
+the opposite direction, and correctly pays no CB fee). The crash playbook's debt shift is the same move — a
+Strike draw that pays Coinbase down — so it pays no Coinbase fee either.
 
 
 ### `cbMetrics.ts` — shared CB LTV / liq-price source of truth (v13)
@@ -5463,7 +5492,7 @@ is exactly how LiqSimulator drifted. ⚠ `runCoinbaseLoan` was the one OUTLIER o
 it omitted the `collateral <= 0` term, so a zero *price* reported ∞ where every other surface reports
 0. Normalising it is inert only because `LiquidationModeler` returns early on
 `liquidationPrice === 0 || btcPrice === 0` — if that early return is ever removed, this becomes
-load-bearing. ⚠ **Named follow-up:** `emergencyModel`'s three LTVs now route through `ltvOf`, but
+load-bearing. ⚠ **Named follow-up:** `emergencyModel`'s LTV now routes through `ltvOf`, but
 `runAdvisor` (4 copies) and `AdvisorMain` (1) still open-code the flattering `x > 0 ? a / b : 0` shape. The
 computation grep only matches the `<= 0 ? Number.POSITIVE_INFINITY` shape, so it cannot see them — and it is
 deliberately NOT widened until those five are migrated.
@@ -5719,6 +5748,32 @@ goes red.)
   - `supportPolicyReport.test.ts` (env-gated) — the `-t "crash playbook"` block: pre / R / playbook / anyDepth per set,
     all grids, double drops by first-leg depth, custody, the invariants ("STOP — invariant broken" if either is non-zero)
     and §4 v1.1 applied mechanically.
+- **Crash playbook (Run 2 — the Emergency Console)** (every ⭐ proven red by a temporary edit; round synthetic figures):
+  - `src/components/Tools/__tests__/crashPlaybookView.test.ts`:
+    - the builder: ⭐ pass-through + the four lender constants; ⭐ the stop at support through `effectivePolicyStops`
+      (target 70 → 0.60, 55 → 0.55, every target 40–85 equal to the helper), with a source guard — the module calls
+      `effectivePolicyStops(` and holds no inline min (the values alone can't tell the one clamp from a copy);
+      ⭐ cold under a satoshi (or junk) → 0;
+    - ⭐ Strike's 60-day hold on both sides (60 days back → in hold through the deposit + 60 days; 61 → free); the
+      latest deposit sets the dates, a future-dated one counts; other targets, a withdrawal and junk dates never hold;
+      the builder's `strikeInHold` agrees;
+    - the formatters: ⭐ `fmtStepBtc` FLOORS (a binding release prints `0.59999`, never `0.60000`); ⭐ the float guard
+      (`0.3 − 0.25` prints `0.05000`, `0.04999` without it); `fmtStepUsd` (whole dollars, none under $1);
+      ⭐ `fmtMultiplePair` widens (0.70× → `0.700` / `0.698`; 0.6975× → `0.6975` / `0.6977`);
+    - `waitingCard`: the target–trigger band waits; at the trigger, at or under the target, past 86% and on junk → null;
+    - `playbookCard`, one fixture per shape with exact strings: none / junk; ⭐ top up first (LIVE); cold then Strike;
+      below the depth; at or above support; ⭐ doomed at the open, saved by the debt shift (held — never doom);
+      ⭐ the doom warning (after ≥ 86%, the cold untouched); ⭐ short (the floored release, the named rest); ⭐ an exact
+      tie at 86% (not doomed, no step, the whole card `toEqual`, outcome doom); the four gap shapes; the widened
+      multiples; no Strike balance;
+    - ⭐ the sweep (the spec grid, the waiting card included): no NaN / Infinity / undefined / "$0" / "0.00000 ₿";
+      topUpFirst never ends past 86% — a tie AT 86% is possible (the exact-86% ⭐); a held outcome ends at or under
+      the target; ⭐ residue cold never moves; non-vacuous (every order and outcome occurs);
+    - ⭐ layering: the module imports no power law, cycle model, store or React.
+  - `src/components/Tools/__tests__/emergencyConsoleWiring.test.ts` (source-reading): ⭐ the console calls the view's
+    four helpers, `crashPlaybook(` and `accruedCbBalance(`, reads the live figures (the Strike balance is
+    `advisorActualBlocBalance`) and keeps `plBandsAt(`; ⭐ none of the Phase-1 surface survives in it; ⭐ SettingsMain
+    has no "Emergency ceiling" field (deleted in Run 2) and no reader of its setting.
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
@@ -5748,13 +5803,11 @@ goes red.)
       - (d) NaN / ±∞ / 0 / negative ≡ the 5-arg value.
 
       (b) and (d) are red only under `tsc` at the old signature, since JS ignores an extra argument.
-  - `emergencyModel.test.ts`, LTVs through `ltvOf`:
+  - `emergencyModel.test.ts`, the LTV through `ltvOf`:
     - no-debt-no-collateral stays 0 / `'normal'`;
-    - ⭐ zero-collateral CB debt → ∞ / `'liquidated'`;
-    - ⭐ `drawToLtv` → `newSkLtv` ∞;
-    - ⭐ `floorTable`'s standing row → `strikeSurvivesFurtherPct` 0.
+    - ⭐ zero-collateral CB debt → ∞ / `'liquidated'`.
 
-    Each site reverted alone goes red, and the Directive fixtures don't move.
+    Reverted, the site goes red, and the `classifyStage` pins don't move (the other two sites were deleted in Run 2).
   - `ownershipFaceView.test.ts`:
     - ⭐ `cycleUnfunded` only in cycle mode;
     - ⭐ `unfundedNote`'s exact cause-neutral sentence.
@@ -5928,7 +5981,7 @@ goes red.)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
-- `emergencyModel.test.ts` — Emergency Console Phase 1 pure model (9 cases), Directive fixtures ±$1: `classifyStage` liq 41650.62 + bands watch 51912/execute 47759/lastResort 44222; `firepower` slow floor 38842 (cured) / fast floor 39621 (stuck, crash 48000); `floorTable` ceiling-30 row; `drawToLtv(30)@48000` slow drawUsd 5990.73 + newSkLtv=0.30 + 50%-line clamp (capped); walls (direSwitch/wall3Sale/wall4External round-trip to a target liq); `surplus`; CB_LADDER fixed 69/72/75/81
+- `emergencyModel.test.ts` — the Emergency Console's retained model (crash playbook Run 2): `classifyStage` (the liquidation price, the ladder band prices, a positive distance), the two last-resort walls (`wall3Sale` / `wall4External` round-trip to a target liquidation price), `CB_LADDER` pinned, and the LTV through `ltvOf` (⭐ no debt and no collateral stays 0 / normal; ⭐ zero-collateral Coinbase debt is ∞ / liquidated). Deleted in Run 2 with their tests: `firepower`, `drawToLtv`, `floorTable`, `direSwitch`, `surplus`
 - `src/simulation/__tests__/cycleModel.test.ts` — Almanac CycleClock P1 (12 cases): `epochFromHeight` epoch-5 classification + 2028 rollover (Epoch 6/1.5625, no code change); `epochProgress.fraction` 0..1 single-source (half-open — ~1 just below endBlock, 0 at rollover) + `blocksRemaining === 1_050_000 − h` exactness; `dateAtBlock` 144-blocks≈1-day; `blockAtDate(H4.date)===H4.block`; `CYCLE_TURNS` IMG_7080 premise (14 turns, anchor high @ 6 Oct 2025, first low Mon 5 Oct 2026 @ +364d, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `nextTurnAfter` selection + null past end
 - `living.test.ts`
 - `mining.test.ts`
@@ -8074,7 +8127,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
 | `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift` and `topUpFirstAnyDepth` are test-only | No component may pass any of them — the survival-guard grep test in `cyclingSim.test.ts` covers all seven. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules` and `topUpBeforeShift` are ADOPTED and default ON under the policy (the `cbSurvivalGuard` pattern — absent means enabled; never "fix" a default to off): `false` exists only so the report and the tests can run the earlier order. `topUpFirstAnyDepth` defaults OFF (measured and rejected — the depth gate). All five are policy-only by construction. None may reach a face. (`coldBeforeShift` is deleted — C is retired.) |
 | Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules | Every Strike leg of a Coinbase top-up takes at most `strikeReleasableBtc` — ≤ 40% LTV before, strictly < 50% after, never within 60 days of a deposit — and every doom question counts only that figure. One definition (cbDefense), measured on the current state (`releasableNow`). The old margin × 0.95 bound modelled a move Strike would never allow; the policy-OFF arm still uses it (a named follow-up). Collateral leaving Strike starts no hold. Pinned by the three release-rule fixtures and the release-aware doom fixture in `cyclingSimPolicy.test.ts` |
-| `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides |
+| `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console uses it and Run 3 imports it; never copy it |
+| The console's doom warning keys off the after-state (≥ 86%), never `result.doomed` | `doomed` is read at the open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read. Pinned both ways in `crashPlaybookView.test.ts`: keying the warning off `result.doomed` turns the doomed-but-saved ⭐ and the exact-86% ⭐ red |
+| Every crash-day step amount is floored to its printed precision | A binding Strike release is 0.5999999996 ₿: rounded to 5 dp it prints `0.60000` — exactly the 50% Strike refuses — and a line-capped shift of $3,487.50 must print `$3,487`, never a draw over the line. `fmtStepBtc` (5 dp, then 8 dp, none under a satoshi) and `fmtStepUsd` (whole dollars, none under $1), with a float guard (`0.3 − 0.25` still prints `0.05000`). Pinned by the short fixture (rounding prints `0.60000` → red) and the formatter ⭐s |
 | The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted) | `verdictVsNeverDraw` compares `allInEquity` (equity − unpaid bills − reserve cash spent on bills and cures) with `baselineAllInEquity` (baseline equity − its own unpaid bills). Equity alone counts an unpaid bill as free and outside cash as a gain. The Net-equity tile's VALUE stays raw |
 | Policy objects on a face are memoised on stable identities, or the lens reset fires every render | `policyRaw` / `policySettings` / `supportPath` / `supportPolicy` are each a `useMemo`, and `supportPolicy` sits in BOTH `engineInputs` and the lens-reset deps. An object built during render has a new identity every render: `engineInputs` rebuilds, both engine runs re-run, and the lens-reset effect fires on every render, so an engaged price stress dies at once — the `useStressLens` bug class. Pinned by `supportPolicyWiring.test.ts` + `resetMirror.test.ts` |
 | The stop clamp has one definition, `effectivePolicyStops` | The engine's `resolveSupportPolicy` and the faces' `effectivePolicySettings` both call it; a source test fails on any `Math.min(` left in `resolveSupportPolicy`, so the readout can never describe a different run |

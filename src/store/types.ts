@@ -75,7 +75,7 @@ export interface StoreState {
   cbLtvTriggerPct:      number;
   cbLtvTargetPct:       number;
   cbRotateBackPct:      number;
-  cbEmergencyCeilingPct: number;           // Emergency Console — target Strike LTV for crash-day collateral top-ups (clamp 20–50)
+  cbEmergencyCeilingPct: number;           // retained for sync compatibility — no UI consumer since the crash playbook (Run 2); clamped 20–50 in the setter
   cbLoanBalanceAsOf:      string | null;   // ISO date — when cbLoanBalance was last re-anchored (interest accrues daily from here)
   cbLiquidationPriceAsOf: string | null;   // ISO date — when cbLiquidationPrice was last re-entered (drifts up as interest accrues)
   strikeLiquidationLtvPct: number;         // Strike partial-liquidation LTV (published terms: 85%)
