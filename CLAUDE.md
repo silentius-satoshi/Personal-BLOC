@@ -613,17 +613,23 @@ src/
                                 # rail + sim scrub (unchanged) / Crash playbook card / Last resorts (Sell to pay down ·
                                 # Outside cash, both collapsed) / 7-item session-only checklist. See § Emergency Console
       EmergencyConsole.module.css
-      crashPlaybookView.ts      # crash playbook Run 2 — the ONE live front-end of crashPlaybook (the console uses it,
-                                # Run 3 imports it — never copy it). PURE: no power law, cycle model, store or React (a
-                                # layering test). strikeHoldFrom (Strike's 60-day hold, from LOGGED target:'strike'
-                                # deposits; yyyy-mm-dd dates only) · playbookInputFromLive (the one live
-                                # CrashPlaybookInput builder: cold under a satoshi → 0; the stop at support through
-                                # effectivePolicyStops on the support policy's DEFAULTS; the lender constants; the hold)
-                                # · fmtStepBtc / fmtStepUsd (FLOORED to their printed precision) · fmtMultiplePair
-                                # (widens 2 → 6 dp until k and the depth differ) · waitingCard (target < LTV < trigger,
-                                # under 86% → the plan waits) · playbookCard (the card's shapes). ⚠ No inline min in
-                                # the file (a source guard). Pinned by __tests__/crashPlaybookView.test.ts +
-                                # __tests__/emergencyConsoleWiring.test.ts
+      crashPlaybookView.ts      # crash playbook Runs 2–3 — the ONE live front-end of crashPlaybook: the console and the
+                                # Monthly Playbook's THIS MONTH line both build through it — never copy it. PURE: no
+                                # power law, cycle model, store or React (a layering test). strikeHoldFrom (Strike's
+                                # 60-day hold, from LOGGED target:'strike' deposits; yyyy-mm-dd dates only) ·
+                                # playbookInputFromLive (the one live CrashPlaybookInput builder: cold under a satoshi →
+                                # 0; the stop at support through effectivePolicyStops on the support policy's DEFAULTS;
+                                # the lender constants; the hold) · playbookDepthFor (the liquidation depth for a live
+                                # target — it shares the builder's ONE stop call) · fmtStepBtc / fmtStepUsd (FLOORED to
+                                # their printed precision) · fmtMultiplePair (widens 2 → 6 dp until k and the depth
+                                # differ) · waitingCard (target < LTV < trigger, under 86% → the plan waits) ·
+                                # playbookCard (the card's shapes) · monthPlaybookLine (the THIS MONTH line — compact,
+                                # with the card's listed steps, gap and outcome through one private reading:
+                                # listSteps / gapKind / outcomeKind) · CB_PAYDOWN_LABEL / IF_YOU_SHIFT_DEBT (the one
+                                # label for the projection's Coinbase paydown). ⚠ No inline min in the file, and exactly
+                                # one effectivePolicyStops call (source guards). Pinned by
+                                # __tests__/crashPlaybookView.test.ts + __tests__/emergencyConsoleWiring.test.ts +
+                                # __tests__/monthlyPlaybookWiring.test.ts
       toolShell.module.css      # Shared `.toolContainer` (Almanac's tokens: 600px centered + iOS-safe overflow).
                                 # Phase 1 adopters: EmergencyConsole + LiqSimulator. FOLLOW-UP (device-verify pending):
                                 # Converter / Mining / PowerLaw / Almanac still to adopt via `composes:`
@@ -1029,7 +1035,8 @@ src/
       AdvisorMain.tsx           # Progress bar, position cards, This Month's Plan (Pay/Skip),
                                 # MonthlyLogSection, <OutlookProjection>. Its OWN runAdvisor call is the
                                 # FLAT operating plan (drives This Month's Plan + carousel + overlay);
-                                # the scenario projection is the separate OutlookProjection call
+                                # the scenario projection is the separate OutlookProjection call. Its ltvTriggered CB
+                                # LTV alert names the projection's figure with CB_PAYDOWN_LABEL (crash playbook Run 3)
       AdvisorMain.module.css
       OutlookProjection.tsx     # SHARED scenario projection (bear/flat/powerlaw/bull table) — owns the
                                 # growthScenario picker + scenario→rate + its OWN runAdvisor; rendered by
@@ -1046,7 +1053,11 @@ src/
                                 # NOW; CB signal entries (amber forward paydown, green ↩ rotation, ⚠ capped,
                                 # amber row-wash swatch) gated on hasCbLoan && cbPaymentStrategy ===
                                 # 'ltvTriggered' (Option B). Swatches reuse the table's own classes so
-                                # colors never drift; only the layout wrappers are new
+                                # colors never drift; only the layout wrappers are new. Crash playbook Run 3: the
+                                # ltvTriggered CB column header is CB_PAYDOWN_LABEL ("CB paydown (if you shift debt)"),
+                                # and the legend's CB entry names the crash playbook's band ("between D× and 1× support
+                                # the crash playbook tops up first when it can"), D = playbookDepthFor(cbLtvTargetPct)
+                                # — never a literal
       AdvisorSidebar.tsx        # BTC LIVE badge, YOUR PROGRESS (start date, BLOC balance,
                                 # BTC held), read-only summaries, priority rules
       AdvisorSidebar.module.css
@@ -1346,11 +1357,18 @@ src/
                                 # band to match the engine: below the 75% trigger → neutral "CB runway: Z% / before
                                 # 75% trigger" (Z = cbLtvTriggerPct − currentCbLtv×100, the LTV gap to the trigger as a
                                 # PERCENTAGE; the cbRunwayToTrigger dollar derivation still gates the block's >0
-                                # visibility but the displayed value is the % gap); at/above trigger →
-                                # "CB paydown: $X / to reach 65% LTV" (balance −
-                                # collateral×price×target%, the engine's draw; green/red by Strike-credit
-                                # affordability). cbTriggered reuses currentCbLtv; the old single cbPaydownBuffer/
-                                # cbBufferAffordable + the 65%-keyed CURRENT-box line are gone. The NDP badge moved to
+                                # visibility but the displayed value is the % gap); at/above trigger → the crash
+                                # playbook's line (crash playbook Run 3: monthPlaybookLine over crashPlaybook(
+                                # playbookInputFromLive(...)) — the Emergency Console's builder on the live position —
+                                # listing the order, the past-liquidation / gap notes, EVERY listed step and the held /
+                                # short / doom outcome; the block's gate is cbTriggered ? playbookLine !== null :
+                                # cbRunwayToTrigger > 0). cbTriggered reuses currentCbLtv; the old cbPaydownToTarget /
+                                # cbPaydownAffordable ("CB paydown: $X", green/red by a naive creditLine − drawn) are
+                                # deleted, as were the older cbPaydownBuffer/cbBufferAffordable + the 65%-keyed
+                                # CURRENT-box line. Box 3's title reads "AFTER THIS MONTH (if you shift debt)" in a month
+                                # the projection pays Coinbase down (afterIncludesShift: currentRow.cbPaydownDraw > 0),
+                                # and the THIS MONTH ALSO strip's CB alert reads CB_PAYDOWN_LABEL — see § The Monthly
+                                # Playbook's crash line. The NDP badge moved to
                                 # the THIS MONTH box. In the
                                 # dot-rows the Pay/Skip pills sit BEFORE the amount so the amount anchors right
                                 # across current/projected/logged months. The Strike LTV line AND the whole CB LOAN column were
@@ -1829,7 +1847,8 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   treated as false). Its ACTIVITY CARD lists the current strategy month's `dayLog` (`selectMonthEvents` +
   `describeDayEvent`, both PURE in `dailyView.ts`), empty state "No activity logged this month." A read-only PLAN
   REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
-  `cbPaydownDraw`, monthly shows `plan.cbPayment`). Month indicator only — no scrubber.
+  `cbPaydownDraw` under `CB_PAYDOWN_LABEL` — "CB paydown (if you shift debt)", crash playbook Run 3 — monthly shows
+  `plan.cbPayment`). Month indicator only — no scrubber.
 - **Daily | Monthly toggle** — a segmented control (`<ViewToggle>` from `src/components/Layout/ViewToggle.tsx`;
   `.viewToggle*` in `ViewToggle.module.css`) bound to `simpleView`; rendered INSIDE each JOURNAL view (DailyModeView +
   SimpleModeView) immediately after its header and before `<SafetyDashboard>` (header → toggle → SafetyDashboard),
@@ -4177,6 +4196,64 @@ happen on the lenders' screens and are logged through the Daily flows. Monthly C
 
 ---
 
+## The Monthly Playbook's crash line (crash playbook Run 3; store unchanged)
+
+On a crash day the Monthly Playbook's THIS MONTH box shows the crash playbook's own line — the same steps, from the same
+builder, as the Emergency Console — and every place the projection's Coinbase paydown appears is labelled "(if you
+shift debt)". Spec: `pbloc-spec-crash-playbook-run3-v1.md` (Run 3 of 3). The projection (`runAdvisor`) is unchanged: it
+still models the debt shift.
+
+- **Where and when:** Box 2 (THIS MONTH) of `SimpleModeView`, `ltvTriggered` mode only. The gate is
+  `cbTriggered ? playbookLine !== null : cbRunwayToTrigger > 0`. `cbTriggered` (Coinbase at or over its trigger) and the
+  "CB runway" branch below the trigger are unchanged.
+- **Inputs — the console's builder:** `playbookInputFromLive` gets:
+  - the store price (live or manual — the Playbook has no simulation);
+  - the ACCRUED Coinbase debt (`effectiveCbBalance`);
+  - the LIVE Strike balance (`advisorActualBlocBalance`, never the start-of-month projection base);
+  - `getCurrentBtcHeld()` and `getCurrentColdBtc()`;
+  - the target, the dayLog (Strike's 60-day hold) and today.
+
+  Support is `plBandsAt(today).floor` — the view keeps the power-law crossing. When the console is not simulating, the
+  console and the box name the same amounts.
+- **One reading:** `listSteps` / `gapKind` / `outcomeKind` (private to `crashPlaybookView`) feed BOTH `playbookCard` and
+  `monthPlaybookLine`, so the box and the console can't disagree on a step, a gap or an outcome.
+  - `playbookCard`'s output is byte-identical to Run 2's: deep-equal before and after the refactor across the sweep
+    grid × four targets.
+  - Amounts are the console's floored `fmtStepBtc` / `fmtStepUsd`.
+  - Doom reads the after-state, never `result.doomed`.
+- **The compact shapes:** a LIST, one line per item, because the box is a third of the row (about 70px of text on a
+  phone):
+  - the order: "Crash playbook: top up first" / "Crash playbook: shift debt first";
+  - the past-liquidation note (red): "Coinbase is at or past 86%";
+  - the gap: "No step available" / "No room on the Strike line" / "Nothing to top up with";
+  - every listed step: "Move ₿X from cold" / "Release ₿X from Strike" / "Shift $X to Strike";
+  - the outcome: "Coinbase back to T%" (green) / "Still ₿X short of T%" (amber) / "Can't clear 86% — see Emergency"
+    (red).
+
+  It prints no LTV.
+- **Every listed step, never "the first two" (B1):** the playbook lists at most three steps, each kind at most once. A
+  shift-first day can list all three: a line-capped shift, then cold, then a Strike release.
+- **Box 3's suffix (B6):** AFTER THIS MONTH reads the engine row, which books the projection's debt shift. So in a month
+  the projection pays Coinbase down (`afterIncludesShift`: `currentRow.cbPaydownDraw > 0`), its title reads "AFTER THIS
+  MONTH (if you shift debt)". Beside a Box 2 that may say "move cold / release Strike collateral", an unlabelled Box 3
+  would contradict it.
+- **One label:** `CB_PAYDOWN_LABEL` = "CB paydown (if you shift debt)"; `IF_YOU_SHIFT_DEBT` is its suffix.
+  - It appears at four sites:
+    - OutlookProjection's `ltvTriggered` header and legend;
+    - AdvisorMain's CB LTV alert;
+    - DailyModeView's plan reference;
+    - the THIS MONTH ALSO strip.
+  - `monthlyPlaybookWiring.test.ts` fails if any of the four says "CB paydown" or "pay down CB", comments included.
+  - ⚠ JSX drops the whitespace at a line break next to an expression, so each label expression keeps its neighbouring
+    text on its line. The same test pins the spacing.
+- **The legend's depth is computed:** `playbookDepthFor(cbLtvTargetPct)` — the builder's stop at support ÷ 86%, through
+  the ONE `effectivePolicyStops` call (≈ 0.70× at a 60% target and up, 0.64× at 55%). The legend reads "between D× and
+  1× support the crash playbook tops up first when it can". Never a literal.
+- **Deleted:** `cbPaydownToTarget` and `cbPaydownAffordable` — the Playbook's last naive `creditLine − drawn` reader.
+- Tests: § Test Suite → "Crash playbook (Run 3 — the Monthly Playbook)".
+
+---
+
 ## Tab Architecture (`AppShell.tsx`)
 
 ```typescript
@@ -5774,6 +5851,37 @@ goes red.)
     four helpers, `crashPlaybook(` and `accruedCbBalance(`, reads the live figures (the Strike balance is
     `advisorActualBlocBalance`) and keeps `plBandsAt(`; ⭐ none of the Phase-1 surface survives in it; ⭐ SettingsMain
     has no "Emergency ceiling" field (deleted in Run 2) and no reader of its setting.
+- **Crash playbook (Run 3 — the Monthly Playbook)** (every ⭐ proven red by a temporary edit; round synthetic figures):
+  - `crashPlaybookView.test.ts` (extended):
+    - `monthPlaybookLine` — one exact whole-object `toEqual` per shape (the `LINE_CASES` table; the `LINE_*` strings
+      are the line's, not the card's):
+      - none / junk → null;
+      - ⭐ top up first (LIVE);
+      - cold then Strike;
+      - ⭐ three listed steps — premise `result.steps.length === 3`; `.slice(0, 2)` → red;
+      - ⭐ doomed at the open, saved by the shift — premise `result.doomed`; doom keyed off `result.doomed` → red;
+      - the doom outcome;
+      - ⭐ short — `₿0.59999`; `fmtColdBtc` prints `₿0.60000` → red;
+      - the gaps: Strike over 40%, a $0.30 line, nothing movable, the exact-86% tie;
+      - at or above support.
+    - `playbookDepthFor`:
+      - ⭐ it equals the builder's stop at support ÷ 86% for every target 40–85 (`'0.70'` at 65, `'0.64'` at 55; a
+        literal → red);
+      - ⭐ the module calls `effectivePolicyStops(` exactly once. A second inlined call → red, while the Run 2 presence
+        guard stays green.
+    - The sweep gains a 72% Coinbase LTV (a waiting card clearly inside the band) and the line:
+      - ⭐ the line lists exactly the card's steps — count, order, printed amount — and some line lists three;
+      - the line is null iff `'none'`;
+      - it has the same outcome kind, gap presence and past-liquidation presence as the card;
+      - no NaN / Infinity / undefined / "$0" / "₿0.00000".
+  - `monthlyPlaybookWiring.test.ts` (new, source-reading):
+    - ⭐ the one label;
+    - ⭐ the four label sites render `CB_PAYDOWN_LABEL` and say neither "CB paydown" nor "pay down CB", comments included;
+    - ⭐ the space beside every label expression is kept. JSX drops whitespace at a line break, so "between" ⏎
+      `{playbookDepthFor(…)}` renders "between0.70×";
+    - ⭐ SimpleModeView builds through `playbookInputFromLive` / `crashPlaybook` / `monthPlaybookLine` / `plBandsAt` on the
+      live figures (`strikeBalance: advisorActualBlocBalance`), suffixes Box 3, and holds neither deleted name;
+    - ⭐ OutlookProjection computes the legend's depth (no `0.70×` literal).
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
@@ -8127,9 +8235,10 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
 | `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift` and `topUpFirstAnyDepth` are test-only | No component may pass any of them — the survival-guard grep test in `cyclingSim.test.ts` covers all seven. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules` and `topUpBeforeShift` are ADOPTED and default ON under the policy (the `cbSurvivalGuard` pattern — absent means enabled; never "fix" a default to off): `false` exists only so the report and the tests can run the earlier order. `topUpFirstAnyDepth` defaults OFF (measured and rejected — the depth gate). All five are policy-only by construction. None may reach a face. (`coldBeforeShift` is deleted — C is retired.) |
 | Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules | Every Strike leg of a Coinbase top-up takes at most `strikeReleasableBtc` — ≤ 40% LTV before, strictly < 50% after, never within 60 days of a deposit — and every doom question counts only that figure. One definition (cbDefense), measured on the current state (`releasableNow`). The old margin × 0.95 bound modelled a move Strike would never allow; the policy-OFF arm still uses it (a named follow-up). Collateral leaving Strike starts no hold. Pinned by the three release-rule fixtures and the release-aware doom fixture in `cyclingSimPolicy.test.ts` |
-| `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console uses it and Run 3 imports it; never copy it |
+| `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console and the Monthly Playbook's THIS MONTH line both build through it; never copy it. The card (`playbookCard`) and the line (`monthPlaybookLine`) read one private reading, so they never disagree on a step, a gap or an outcome |
 | The console's doom warning keys off the after-state (≥ 86%), never `result.doomed` | `doomed` is read at the open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read. Pinned both ways in `crashPlaybookView.test.ts`: keying the warning off `result.doomed` turns the doomed-but-saved ⭐ and the exact-86% ⭐ red |
 | Every crash-day step amount is floored to its printed precision | A binding Strike release is 0.5999999996 ₿: rounded to 5 dp it prints `0.60000` — exactly the 50% Strike refuses — and a line-capped shift of $3,487.50 must print `$3,487`, never a draw over the line. `fmtStepBtc` (5 dp, then 8 dp, none under a satoshi) and `fmtStepUsd` (whole dollars, none under $1), with a float guard (`0.3 − 0.25` still prints `0.05000`). Pinned by the short fixture (rounding prints `0.60000` → red) and the formatter ⭐s |
+| The projection's Coinbase paydown is always labelled `CB_PAYDOWN_LABEL` | `runAdvisor` models only the debt shift — a Strike draw that pays Coinbase down — while the crash playbook may top up first, so a bare "CB paydown" reads as the plan. `CB_PAYDOWN_LABEL` ("CB paydown (if you shift debt)", crashPlaybookView) is the one label, at four sites: OutlookProjection's `ltvTriggered` header and legend, AdvisorMain's CB LTV alert, DailyModeView's plan reference, and SimpleModeView's THIS MONTH ALSO strip. Box 3's title adds `IF_YOU_SHIFT_DEBT` in a month the projection shifts. `monthlyPlaybookWiring.test.ts` fails if any of the four says "CB paydown" or "pay down CB" — comments included — and pins the JSX spacing beside each label (a line break next to an expression drops the space). The other "CB paydown" wordings name different things and stay: the CB Loan tab's Emergency Protocol, the Advisor sidebar's tier rules, LiqSimulator's monthly mode, and the journal's CB paydown event |
 | The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted) | `verdictVsNeverDraw` compares `allInEquity` (equity − unpaid bills − reserve cash spent on bills and cures) with `baselineAllInEquity` (baseline equity − its own unpaid bills). Equity alone counts an unpaid bill as free and outside cash as a gain. The Net-equity tile's VALUE stays raw |
 | Policy objects on a face are memoised on stable identities, or the lens reset fires every render | `policyRaw` / `policySettings` / `supportPath` / `supportPolicy` are each a `useMemo`, and `supportPolicy` sits in BOTH `engineInputs` and the lens-reset deps. An object built during render has a new identity every render: `engineInputs` rebuilds, both engine runs re-run, and the lens-reset effect fires on every render, so an engaged price stress dies at once — the `useStressLens` bug class. Pinned by `supportPolicyWiring.test.ts` + `resetMirror.test.ts` |
 | The stop clamp has one definition, `effectivePolicyStops` | The engine's `resolveSupportPolicy` and the faces' `effectivePolicySettings` both call it; a source test fails on any `Math.min(` left in `resolveSupportPolicy`, so the readout can never describe a different run |

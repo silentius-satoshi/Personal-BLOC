@@ -11,6 +11,7 @@ import { cycleConvergencePath } from '../../simulation/cyclePath';
 import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
 import { fmtUSD, fmtLtvPct, todayLocalISO } from '../../utils/format';
 import { scenarioSubtitle, lineStep, footerCbLtv, type GrowthScenario } from './outlookView';
+import { CB_PAYDOWN_LABEL, playbookDepthFor } from '../Tools/crashPlaybookView';
 import styles from './AdvisorMain.module.css';
 
 // THE shared scenario projection — rendered by BOTH AdvisorMain (Section 4) and Simple Mode's
@@ -195,7 +196,7 @@ export function OutlookProjection({
               <th>Price</th>
               <th>Tier</th>
               <th>BLOC Draw</th>
-              {hasCbLoan && <th>{cbPaymentStrategy === 'ltvTriggered' ? 'CB Paydown' : 'CB Payment'}</th>}
+              {hasCbLoan && <th>{cbPaymentStrategy === 'ltvTriggered' ? CB_PAYDOWN_LABEL : 'CB Payment'}</th>}
               <th>BTC Bought</th>
               <th>Drawn</th>
               {hasCbLoan && <th>CB LTV</th>}
@@ -305,7 +306,10 @@ export function OutlookProjection({
           <>
             <span className={styles.legendItem}>
               <span className={styles.triggerCell}>$0</span>
-              <span className={styles.legendLabel}>CB paydown — Strike defends CB LTV (forward rescue)</span>
+              <span className={styles.legendLabel}>
+                {CB_PAYDOWN_LABEL} — the projection shifts debt to Strike; between {playbookDepthFor(cbLtvTargetPct).toFixed(2)}× and
+                1× support the crash playbook tops up first when it can
+              </span>
             </span>
             <span className={styles.legendItem}>
               <span className={styles.rotateCell}>↩</span>

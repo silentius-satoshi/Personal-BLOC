@@ -1,4 +1,4 @@
-import type { CrashPlaybookInput, CrashPlaybookResult } from '../../simulation/crashPlaybook';
+import type { CrashPlaybookInput, CrashPlaybookResult, CrashPlaybookStep } from '../../simulation/crashPlaybook';
 import { ceilingLiquidationMultiple } from '../../simulation/cbDefense';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../../simulation/strikeCredit';
@@ -15,18 +15,24 @@ import { fmtUSD, fmtLtvPct } from '../../utils/format';
 
 /**
  * THE CRASH PLAYBOOK, LIVE — the one front-end that runs `crashPlaybook` on the owner's real position (crash playbook
- * Run 2). The Emergency Console uses it now and the Monthly Playbook's crash line (Run 3) imports it — never copy it:
- * the console and the engine must give ONE answer.
+ * Runs 2 and 3). The Emergency Console and the Monthly Playbook's THIS MONTH line (Run 3) both build through it — never
+ * copy it: the console, the Playbook and the engine must give ONE answer.
  *
  * Pure: plain numbers in, plain strings out. It imports nothing from the power law, the cycle model, the store or React
  * (a layering test pins it) — support arrives as a number, and the component keeps the power-law crossing.
  *
+ *   CB_PAYDOWN_LABEL        the one label for the projection's Coinbase paydown (IF_YOU_SHIFT_DEBT is its suffix)
  *   strikeHoldFrom          Strike's 60-day hold, read from the Strike deposits you LOGGED
  *   playbookInputFromLive   the one builder of a live CrashPlaybookInput
+ *   playbookDepthFor        the liquidation depth for a live target — where top-up-first begins
  *   fmtStepBtc / fmtStepUsd step amounts, FLOORED to their printed precision
  *   fmtMultiplePair         the support multiple and the liquidation depth, widened until they differ
  *   waitingCard             Coinbase between its target and its trigger — the plan waits
  *   playbookCard            the crash-day card
+ *   monthPlaybookLine       the Monthly Playbook's THIS MONTH line — the card's steps, gap and outcome, compact
+ *
+ * The card and the line read ONE private reading (listSteps / gapKind / outcomeKind), so the console and the Playbook
+ * can never disagree on a step, a gap or an outcome.
  *
  * ⚠ THE DOOM WARNING READS THE AFTER-STATE (`after.cbLtv >= lltv`), NEVER `result.doomed`. `doomed` is read at the
  * open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt
@@ -44,6 +50,12 @@ import { fmtUSD, fmtLtvPct } from '../../utils/format';
 export const STRIKE_HOLD_DAYS = 60;
 /** One satoshi. A BTC figure under it is float residue, never a step. */
 export const SAT_BTC = 1e-8;
+
+/** The projection's Coinbase paydown is the debt shift — a Strike draw that pays Coinbase down. On a crash day the
+ *  playbook may top up first instead, so every place the projection's paydown appears says so. ONE label; never a bare
+ *  "CB paydown". */
+export const IF_YOU_SHIFT_DEBT = 'if you shift debt';
+export const CB_PAYDOWN_LABEL = `CB paydown (${IF_YOU_SHIFT_DEBT})`;
 
 const DAY_MS = 86_400_000;
 /** The dayLog's date convention. Anything else is junk — V8 would read '2026-9-30' as LOCAL time, not UTC midnight. */
@@ -100,9 +112,21 @@ export interface LivePlaybookFigures {
   todayISO: string;            // todayLocalISO()
 }
 
+/** The Coinbase stop at support for a live target — the one clamp (`effectivePolicyStops`) on the policy's defaults. */
+function cbStopAtSupportFor(targetPct: number): number {
+  const D = DEFAULT_SUPPORT_POLICY_SETTINGS;
+  return effectivePolicyStops(D.cbStopAtSupportPct, D.strikeStopAtSupportPct, targetPct, 0).cbStop;
+}
+
+/** The liquidation depth for a live target (≈ 0.70× support at a 60% target and up): the playbook tops up first from
+ *  here up to support. */
+export function playbookDepthFor(targetPct: number): number {
+  return ceilingLiquidationMultiple(cbStopAtSupportFor(targetPct), CB_LLTV);
+}
+
 /**
- * THE one builder of a live `CrashPlaybookInput` — the console uses it and Run 3 imports it; never copy it. The live
- * figures pass through untouched, with:
+ * THE one builder of a live `CrashPlaybookInput` — the console and the Monthly Playbook's THIS MONTH line both build
+ * through it; never copy it. The live figures pass through untouched, with:
  *  - cold under a satoshi (or not finite) → 0: netted cold moves leave ~1e-17 of residue, and without this the playbook
  *    would "move 0.00000000 ₿";
  *  - the Coinbase stop AT SUPPORT through `effectivePolicyStops` on the support policy's DEFAULTS — the one stop clamp,
@@ -110,7 +134,6 @@ export interface LivePlaybookFigures {
  *  - the lender facts (Morpho's 86% and Strike's three lines) and Strike's 60-day hold.
  */
 export function playbookInputFromLive(live: LivePlaybookFigures): CrashPlaybookInput {
-  const D = DEFAULT_SUPPORT_POLICY_SETTINGS;
   return {
     price: live.price,
     support: live.support,
@@ -121,7 +144,7 @@ export function playbookInputFromLive(live: LivePlaybookFigures): CrashPlaybookI
     strikeCreditLine: live.creditLine,
     coldBtc: Number.isFinite(live.coldBtc) && live.coldBtc >= SAT_BTC ? live.coldBtc : 0,
     targetCbLtvPct: live.cbLtvTargetPct,
-    cbStopAtSupport: effectivePolicyStops(D.cbStopAtSupportPct, D.strikeStopAtSupportPct, live.cbLtvTargetPct, 0).cbStop,
+    cbStopAtSupport: cbStopAtSupportFor(live.cbLtvTargetPct),
     lltv: CB_LLTV,
     maxDrawLtv: STRIKE_MAX_DRAW_LTV,
     marginLtv: STRIKE_MARGIN_CALL_LTV,
@@ -213,6 +236,41 @@ const GAP_NO_SHIFT = 'The Strike line has no room to shift debt, so collateral g
 const GAP_NO_TOP_UP =
   'Nothing can top up first — no cold, and no Strike collateral Strike will release now — so the debt shifts.';
 
+// ── the shared reading — the card and the THIS MONTH line read it, so they can never disagree ──────────────────────
+
+/** A step as LISTED: its amount already floored to its printed precision (fmtStepBtc / fmtStepUsd). */
+interface ListedStep { kind: CrashPlaybookStep['kind']; amount: string }
+
+/** The steps as LISTED — floored to their printed precision; a step that floors to nothing is not listed. */
+function listSteps(result: CrashPlaybookResult): ListedStep[] {
+  const listed: ListedStep[] = [];
+  for (const step of result.steps) {
+    const amount = step.kind === 'shiftToStrike' ? fmtStepUsd(step.usd) : fmtStepBtc(step.btc);
+    if (amount !== null) listed.push({ kind: step.kind, amount });
+  }
+  return listed;
+}
+
+type GapKind = 'noRoom' | 'nothing' | 'noShift' | 'noTopUp';
+/** Read on the LISTED steps: none listed → noRoom (after ≥ lltv) / nothing; shiftFirst without a listed shift →
+ *  noShift; topUpFirst without a listed collateral step → noTopUp; else null. */
+function gapKind(result: CrashPlaybookResult, listed: readonly ListedStep[], lltv: number): GapKind | null {
+  if (listed.length === 0) return result.after.cbLtv >= lltv ? 'noRoom' : 'nothing';
+  if (result.order === 'shiftFirst' && !listed.some((s) => s.kind === 'shiftToStrike')) return 'noShift';
+  if (result.order === 'topUpFirst' && !listed.some((s) => s.kind !== 'shiftToStrike')) return 'noTopUp';
+  return null;
+}
+
+/** Doom reads the AFTER-state, never result.doomed (the docblock says why); then short (≥ SAT_BTC), else held. */
+function outcomeKind(result: CrashPlaybookResult, lltv: number): 'held' | 'short' | 'doom' {
+  if (result.after.cbLtv >= lltv) return 'doom';
+  return result.shortfallBtc >= SAT_BTC ? 'short' : 'held';
+}
+
+const GAP_TEXT: Record<GapKind, string> = {
+  noRoom: GAP_NO_ROOM, nothing: GAP_NOTHING, noShift: GAP_NO_SHIFT, noTopUp: GAP_NO_TOP_UP,
+};
+
 /**
  * The crash-day card for a playbook result. Shapes: `'none'` → "nothing to do" (or "Check figures" on junk); otherwise
  * the depth sentence (why this order), the past-liquidation note (opening ≥ 86%), the steps in the playbook's order
@@ -259,35 +317,18 @@ export function playbookCard(result: CrashPlaybookResult, input: CrashPlaybookIn
       + `instantly, so in a real crash you would have to act before the price fell this far.`
     : null;
 
-  // 4 · the steps, in the playbook's order.
-  const steps: string[] = [];
-  let listedShift = false;
-  let listedCollateral = false;
-  let listedRelease = false;
-  for (const step of result.steps) {
-    if (step.kind === 'shiftToStrike') {
-      const usd = fmtStepUsd(step.usd);
-      if (usd === null) continue;
-      steps.push(`Draw ${usd} on Strike and pay Coinbase down with it.`);
-      listedShift = true;
-      continue;
-    }
-    const btc = fmtStepBtc(step.btc);
-    if (btc === null) continue;
-    listedCollateral = true;
-    if (step.kind === 'coldToCoinbase') {
-      steps.push(`Move ${btc} ₿${usdAside(btc, P)} from cold storage into Coinbase.`);
-    } else {
-      listedRelease = true;
-      steps.push(`Release ${btc} ₿${usdAside(btc, P)} of Strike collateral into Coinbase.`);
-    }
-  }
+  // 4 · the steps, in the playbook's order — the shared reading's listed steps.
+  const listed = listSteps(result);
+  const steps = listed.map((s) => {
+    if (s.kind === 'shiftToStrike') return `Draw ${s.amount} on Strike and pay Coinbase down with it.`;
+    if (s.kind === 'coldToCoinbase') return `Move ${s.amount} ₿${usdAside(s.amount, P)} from cold storage into Coinbase.`;
+    return `Release ${s.amount} ₿${usdAside(s.amount, P)} of Strike collateral into Coinbase.`;
+  });
+  const listedRelease = listed.some((s) => s.kind === 'strikeToCoinbase');
 
   // 5 · the gap — read on the LISTED steps.
-  let gap: string | null = null;
-  if (steps.length === 0) gap = a.cbLtv >= input.lltv ? GAP_NO_ROOM : GAP_NOTHING;
-  else if (result.order === 'shiftFirst' && !listedShift) gap = GAP_NO_SHIFT;
-  else if (result.order === 'topUpFirst' && !listedCollateral) gap = GAP_NO_TOP_UP;
+  const gk = gapKind(result, listed, input.lltv);
+  const gap = gk === null ? null : GAP_TEXT[gk];
 
   // 6 · the Strike note — the hold with its dates; else the release rules, when a release is listed or the gap names
   //     Strike's releases and there is Strike collateral to speak of.
@@ -296,7 +337,7 @@ export function playbookCard(result: CrashPlaybookResult, input: CrashPlaybookIn
     strikeNote = `Strike's collateral is on hold through ${fmtTurnDate(new Date(hold.throughISO))} — you logged a `
       + `Strike deposit on ${fmtTurnDate(new Date(hold.depositISO))}, and Strike releases nothing within `
       + `${STRIKE_HOLD_DAYS} days of one.`;
-  } else if (listedRelease || ((gap === GAP_NOTHING || gap === GAP_NO_TOP_UP) && input.strikeCollateralBtc > 0)) {
+  } else if (listedRelease || ((gk === 'nothing' || gk === 'noTopUp') && input.strikeCollateralBtc > 0)) {
     strikeNote = `Strike releases collateral only at or under ${pct(STRIKE_RETRIEVE_MAX_LTV)}% LTV, only down to under `
       + `${pct(STRIKE_MAX_DRAW_LTV)}%, and only on a line more than ${STRIKE_HOLD_DAYS} days old — the app assumes `
       + `yours is.`;
@@ -316,25 +357,74 @@ export function playbookCard(result: CrashPlaybookResult, input: CrashPlaybookIn
   }
 
   // 8 · the outcome — doom reads the AFTER-state, never result.doomed (the docblock says why).
+  const kind = outcomeKind(result, input.lltv);
   let outcome: PlaybookCard['outcome'];
-  if (a.cbLtv >= input.lltv) {
+  if (kind === 'doom') {
     outcome = {
-      kind: 'doom',
+      kind,
       text: `Coinbase can't clear ${L}% even with every coin the rules allow — only the last resorts below remain.`,
     };
-  } else if (result.shortfallBtc >= SAT_BTC) {
+  } else if (kind === 'short') {
     const sf = fmtColdBtc(result.shortfallBtc);
     outcome = {
-      kind: 'short',
+      kind,
       text: `Still ${sf} ₿${usdAside(sf, P)} short of your ${t}% target — Coinbase ends at ${fmtLtvPct(a.cbLtv, 1)}, `
         + `under its ${L}% liquidation line.`,
     };
   } else {
-    outcome = { kind: 'held', text: `Coinbase is back at your ${t}% target.` };
+    outcome = { kind, text: `Coinbase is back at your ${t}% target.` };
   }
 
   return {
     badge: result.order === 'topUpFirst' ? 'Top up first' : 'Shift first',
     depth: depthText, pastLiquidation, steps, gap, strikeNote, after, outcome,
+  };
+}
+
+// ── the Monthly Playbook's THIS MONTH line (crash playbook Run 3) ────────────────────────────────────────────────
+
+export interface MonthPlaybookLine {
+  order: string;
+  pastLiquidation: string | null;
+  gap: string | null;
+  steps: string[];
+  outcome: { kind: 'held' | 'short' | 'doom'; text: string };
+}
+
+/** The line's gap notes — the card's four, compact. */
+const LINE_GAP: Record<GapKind, string> = {
+  noRoom: 'No step available',
+  nothing: 'No step available',
+  noShift: 'No room on the Strike line',
+  noTopUp: 'Nothing to top up with',
+};
+
+/**
+ * The crash-day card, compact, for the Monthly Playbook's THIS MONTH box — a third of the row even on a phone, so a
+ * LIST (one line per item), never a sentence: the order, the past-liquidation note, the gap, EVERY listed step (a
+ * shift-first day can list three — a line-capped shift, then cold, then a Strike release — so never "the first two")
+ * and the outcome. It reads the card's own reading, so the box and the console print the same steps, floored the same
+ * way, and agree on the gap and the outcome — doom from the after-state. It prints no LTV. `'none'` → null.
+ */
+export function monthPlaybookLine(result: CrashPlaybookResult, input: CrashPlaybookInput): MonthPlaybookLine | null {
+  if (result.order === 'none') return null;
+  const t = fmtPolicyPct(input.targetCbLtvPct);
+  const L = pct(input.lltv);
+  const open = ltvOf(input.cbDebt, input.cbCollateralBtc, input.price);
+  const listed = listSteps(result);
+  const gk = gapKind(result, listed, input.lltv);
+  const kind = outcomeKind(result, input.lltv);
+  return {
+    order: result.order === 'topUpFirst' ? 'Crash playbook: top up first' : 'Crash playbook: shift debt first',
+    pastLiquidation: open >= input.lltv ? `Coinbase is at or past ${L}%` : null,
+    gap: gk === null ? null : LINE_GAP[gk],
+    steps: listed.map((s) => {
+      if (s.kind === 'shiftToStrike') return `Shift ${s.amount} to Strike`;   // the amount carries its $
+      if (s.kind === 'coldToCoinbase') return `Move ₿${s.amount} from cold`;
+      return `Release ₿${s.amount} from Strike`;
+    }),
+    outcome: kind === 'doom' ? { kind, text: `Can't clear ${L}% — see Emergency` }
+      : kind === 'short' ? { kind, text: `Still ₿${fmtColdBtc(result.shortfallBtc)} short of ${t}%` }
+      : { kind, text: `Coinbase back to ${t}%` },
   };
 }

@@ -19,6 +19,7 @@ import { OutlookProjection } from './OutlookProjection';
 import styles from './AdvisorMain.module.css';
 import { CB_FEE_TIER1_PCT } from '../../simulation/runCoinbaseLoan';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
+import { CB_PAYDOWN_LABEL } from '../Tools/crashPlaybookView';
 
 interface ActionRowProps {
   icon: string;
@@ -325,7 +326,7 @@ export function AdvisorMain() {
 
                     {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && overriddenPlan.cbLtvTriggered && (
                       <div className={styles.mandatoryRow}>
-                        <span className={styles.mandatoryLabel}>⚠ CB LTV alert — BLOC draws to pay down CB</span>
+                        <span className={styles.mandatoryLabel}>⚠ CB LTV alert — {CB_PAYDOWN_LABEL}</span>
                         <span className={styles.mandatoryValue}>{fmtUSD(overriddenPlan.cbPaydownDraw)}</span>
                       </div>
                     )}

@@ -18,6 +18,7 @@ import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
 import { fmtUSD, todayLocalISO, toLocalISO, fmtLtvPct } from '../../utils/format';
+import { CB_PAYDOWN_LABEL } from '../Tools/crashPlaybookView';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
@@ -167,7 +168,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const cbRefAmount = !hasCbLoan ? 0
     : cbPaymentStrategy === 'ltvTriggered' ? (currentRow?.cbPaydownDraw ?? 0)
     : (plan?.cbPayment ?? 0);
-  const cbRefLabel  = cbPaymentStrategy === 'ltvTriggered' ? 'CB paydown' : 'CB payment';
+  const cbRefLabel  = cbPaymentStrategy === 'ltvTriggered' ? CB_PAYDOWN_LABEL : 'CB payment';
   const summaryText = currentRow && plan ? composeMonthSummary({
     month: currentMonth, isLogged: false, hasCbLoan,
     cbLtv: plan.cbLtv, triggerPct: cbLtvTriggerPct,

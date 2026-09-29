@@ -3,10 +3,12 @@ import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
   strikeHoldFrom, playbookInputFromLive, fmtStepBtc, fmtStepUsd, fmtMultiplePair, waitingCard, playbookCard,
-  STRIKE_HOLD_DAYS, SAT_BTC, type LivePlaybookFigures, type PlaybookCard,
+  monthPlaybookLine, playbookDepthFor,
+  STRIKE_HOLD_DAYS, SAT_BTC, type LivePlaybookFigures, type PlaybookCard, type MonthPlaybookLine,
 } from '../crashPlaybookView';
 import { crashPlaybook, type CrashPlaybookInput, type CrashPlaybookResult } from '../../../simulation/crashPlaybook';
 import { effectivePolicyStops } from '../../../simulation/cyclingSim';
+import { ltvOf } from '../../../simulation/ltv';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
@@ -14,8 +16,8 @@ import { DEFAULT_SUPPORT_POLICY_SETTINGS } from '../../Almanac/supportPolicyView
 import type { DayEvent } from '../../../simulation/types';
 
 /**
- * The crash playbook, live (crash playbook Run 2) — the one front-end the Emergency Console runs and Run 3 imports.
- * Round synthetic figures only — this repo is public.
+ * The crash playbook, live (crash playbook Runs 2 and 3) — the one front-end the Emergency Console and the Monthly
+ * Playbook's THIS MONTH line both build through. Round synthetic figures only — this repo is public.
  *
  * LIVE = crashPlaybook.test's BASE as live figures: price $80k at support $100k (k = 0.8), Coinbase $60k on 1 ₿ (75%),
  * Strike $8k on 1 ₿ (10%), a $40k line, no cold, target 70, an empty dayLog, today 2026-10-15.
@@ -30,13 +32,13 @@ const move = (
   date: string, target: 'strike' | 'cb' | 'cold' = 'strike', kind: 'deposit' | 'withdraw' = 'deposit',
 ): DayEvent => ({ id: `${kind}-${target}-${date}`, date, ts: Date.parse(date) || 0, kind, amount: 0.1, target });
 
-/** The console's composition: live figures → input, hold, result, card. */
+/** The console's composition: live figures → input, hold, result, card — and the Monthly Playbook's THIS MONTH line. */
 function run(over: Partial<LivePlaybookFigures> = {}) {
   const live = { ...LIVE, ...over };
   const input = playbookInputFromLive(live);
   const hold = strikeHoldFrom(live.dayLog, live.todayISO);
   const result = crashPlaybook(input);
-  return { input, hold, result, card: playbookCard(result, input, hold) };
+  return { input, hold, result, card: playbookCard(result, input, hold), line: monthPlaybookLine(result, input) };
 }
 
 const RULES_NOTE = 'Strike releases collateral only at or under 40% LTV, only down to under 50%, and only on a line '
@@ -82,6 +84,25 @@ describe('playbookInputFromLive — the one live builder', () => {
     expect(playbookInputFromLive({ ...LIVE, coldBtc: -0.5 }).coldBtc).toBe(0);
     expect(playbookInputFromLive({ ...LIVE, coldBtc: 0.01 }).coldBtc).toBe(0.01);
     expect(playbookInputFromLive({ ...LIVE, coldBtc: SAT_BTC }).coldBtc).toBe(SAT_BTC);   // a whole satoshi is real
+  });
+});
+
+// ── the liquidation depth for a live target (crash playbook Run 3 — the Outlook legend's band edge) ───────────────
+
+describe('playbookDepthFor — the liquidation depth for a live target', () => {
+  it("⭐ is the builder's stop at support over 86%, for every target — never a literal", () => {
+    for (let t = 40; t <= 85; t++) {
+      expect(playbookDepthFor(t), `target ${t}`)
+        .toBe(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: t }).cbStopAtSupport / CB_LLTV);
+    }
+    expect(playbookDepthFor(65).toFixed(2)).toBe('0.70');
+    expect(playbookDepthFor(55).toFixed(2)).toBe('0.64');   // the depth moves with the target
+  });
+
+  it('⭐ the builder and the depth share ONE stop call — the module calls the clamp exactly once', () => {
+    // The values cannot tell one shared call from two copies of it — the source can.
+    const src = readFileSync(join(process.cwd(), 'src/components/Tools/crashPlaybookView.ts'), 'utf8');
+    expect((src.match(/effectivePolicyStops\(/g) ?? []).length).toBe(1);
   });
 });
 
@@ -381,6 +402,67 @@ describe('playbookCard — one fixture per shape', () => {
   });
 });
 
+// ── the Monthly Playbook's THIS MONTH line (crash playbook Run 3) ────────────────────────────────────────────────
+
+// The LINE's strings — HELD, DOOM and PAST_86 above are the CARD's.
+const LINE_TOP = 'Crash playbook: top up first';
+const LINE_SHIFT = 'Crash playbook: shift debt first';
+const LINE_PAST = 'Coinbase is at or past 86%';
+const LINE_HELD = { kind: 'held', text: 'Coinbase back to 70%' } as const;
+const LINE_DOOM = { kind: 'doom', text: "Can't clear 86% — see Emergency" } as const;
+
+// [case, override of LIVE, the expected line]
+const LINE_CASES: [string, Partial<LivePlaybookFigures>, MonthPlaybookLine | null][] = [
+  ['none', { cbDebt: 50_000 }, null],
+  ['junk support', { support: 0 }, null],
+  ['junk price', { price: NaN }, null],
+  ['⭐ top up first (LIVE)', {},
+    { order: LINE_TOP, pastLiquidation: null, gap: null, steps: ['Release ₿0.07142 from Strike'], outcome: LINE_HELD }],
+  ['cold, then Strike', { coldBtc: 0.05 },
+    { order: LINE_TOP, pastLiquidation: null, gap: null,
+      steps: ['Move ₿0.05000 from cold', 'Release ₿0.02142 from Strike'], outcome: LINE_HELD }],
+  ['⭐ three listed steps',
+    { price: 60_000, cbDebt: 153_000, cbCollateralBtc: 3, strikeBalance: 0, creditLine: 10_000, coldBtc: 0.1 },
+    { order: LINE_SHIFT, pastLiquidation: null, gap: null,
+      steps: ['Shift $10,000 to Strike', 'Move ₿0.10000 from cold', 'Release ₿0.30476 from Strike'], outcome: LINE_HELD }],
+  ['⭐ doomed at the open, saved by the shift', { cbDebt: 75_000, dayLog: [move('2026-09-01')] },
+    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $19,000 to Strike'], outcome: LINE_HELD }],
+  ['the doom outcome', { cbDebt: 75_000, strikeBalance: 36_000, coldBtc: 0.02 },
+    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $4,000 to Strike'], outcome: LINE_DOOM }],
+  ['⭐ short', { cbDebt: 204_000, cbCollateralBtc: 3, strikeBalance: 16_000 },
+    { order: LINE_TOP, pastLiquidation: null, gap: null, steps: ['Release ₿0.59999 from Strike'],
+      outcome: { kind: 'short', text: 'Still ₿0.04286 short of 70%' } }],
+  ['gap: Strike over 40%', { strikeBalance: 36_000 },
+    { order: LINE_TOP, pastLiquidation: null, gap: 'Nothing to top up with', steps: ['Shift $4,000 to Strike'],
+      outcome: LINE_HELD }],
+  ['gap: a $0.30 line', { price: 60_000, creditLine: 8_000.30, coldBtc: 0.5 },
+    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: 'No room on the Strike line',
+      steps: ['Move ₿0.42856 from cold'], outcome: LINE_HELD }],
+  ['gap: nothing movable', { strikeBalance: 40_000, dayLog: [move('2026-10-05')] },
+    { order: LINE_TOP, pastLiquidation: null, gap: 'No step available', steps: [],
+      outcome: { kind: 'short', text: 'Still ₿0.07143 short of 70%' } }],
+  ['gap: the exact-86% tie', { cbDebt: 68_800, strikeBalance: 40_000 },
+    { order: LINE_TOP, pastLiquidation: LINE_PAST, gap: 'No step available', steps: [], outcome: LINE_DOOM }],
+  ['at or above support', { price: 110_000, cbDebt: 80_000 },
+    { order: LINE_SHIFT, pastLiquidation: null, gap: null, steps: ['Shift $3,000 to Strike'], outcome: LINE_HELD }],
+];
+
+describe('monthPlaybookLine — the THIS MONTH line, one exact object per shape', () => {
+  for (const [name, over, expected] of LINE_CASES) {
+    it(name, () => expect(run(over).line).toEqual(expected));
+  }
+
+  it('the ⭐ premises — the playbook lists three steps, and the doomed fixture is doomed at the open', () => {
+    const over = (name: string): Partial<LivePlaybookFigures> => {
+      const row = LINE_CASES.find(([n]) => n === name);
+      if (!row) throw new Error(`no LINE_CASES row named ${name}`);
+      return row[1];
+    };
+    expect(run(over('⭐ three listed steps')).result.steps.length).toBe(3);
+    expect(run(over('⭐ doomed at the open, saved by the shift')).result.doomed).toBe(true);
+  });
+});
+
 // ── the sweep ────────────────────────────────────────────────────────────────────────────────────────────────────
 
 describe('⭐ the sweep — the spec grid, every card clean', () => {
@@ -394,11 +476,12 @@ describe('⭐ the sweep — the spec grid, every card clean', () => {
     input: CrashPlaybookInput;
     result: CrashPlaybookResult;
     card: PlaybookCard;
+    line: MonthPlaybookLine | null;
     waiting: PlaybookCard | null;
   }
   const cases: Case[] = [];
   const ks = [...Array.from({ length: 19 }, (_, i) => 0.40 + i * 0.05), 0.6975, 0.70];
-  for (const k of ks) for (const cbLtv of [0.66, 0.75, 0.90]) for (const cbColl of [1, 3])
+  for (const k of ks) for (const cbLtv of [0.66, 0.72, 0.75, 0.90]) for (const cbColl of [1, 3])
     for (const skLtv of [0, 0.30, 0.45]) for (const skColl of [0, 1]) for (const cold of [0, 5.55e-17, 0.1])
       for (const line of [10_000, 200_000]) for (const inHold of [false, true]) {
         const price = k * 100_000;
@@ -411,7 +494,7 @@ describe('⭐ the sweep — the spec grid, every card clean', () => {
         const input = playbookInputFromLive(live);
         const result = crashPlaybook(input);
         const card = playbookCard(result, input, strikeHoldFrom(live.dayLog, live.todayISO));
-        cases.push({ live, input, result, card, waiting: waitingCard(input, 75) });
+        cases.push({ live, input, result, card, line: monthPlaybookLine(result, input), waiting: waitingCard(input, 75) });
       }
   const at = (c: Case): string => JSON.stringify(c.live);
 
@@ -419,6 +502,37 @@ describe('⭐ the sweep — the spec grid, every card clean', () => {
     expect(new Set(cases.map((c) => c.result.order))).toEqual(new Set(['none', 'topUpFirst', 'shiftFirst']));
     expect(new Set(cases.map((c) => c.card.outcome?.kind))).toEqual(new Set([undefined, 'held', 'short', 'doom']));
     expect(cases.some((c) => c.waiting !== null)).toBe(true);
+    // A waiting card clearly inside the band — not only the float-noise cell (k 0.85, 75% on 3 ₿ opens at 0.7499…).
+    expect(cases.some((c) => c.waiting !== null
+      && ltvOf(c.input.cbDebt, c.input.cbCollateralBtc, c.input.price) < 0.749)).toBe(true);
+  });
+
+  const amount = (s: string): string | undefined => s.match(/\d[\d,.]*\d|\d/)?.[0];
+  const LINE_BAD = /NaN|Infinity|undefined|\$0(?![\d,])|₿0\.0{5,8}(?!\d)/;
+  const lineTexts = (l: MonthPlaybookLine): string[] =>
+    [l.order, l.pastLiquidation, l.gap, ...l.steps, l.outcome.text].filter((x): x is string => typeof x === 'string');
+
+  it("⭐ the THIS MONTH line lists exactly the card's steps — same count, same order, same printed amount", () => {
+    for (const c of cases) expect((c.line?.steps ?? []).map(amount), at(c)).toEqual(c.card.steps.map(amount));
+    expect(cases.some((c) => c.line?.steps.length === 3)).toBe(true);   // non-vacuous: a line lists three steps
+  });
+
+  it('the line is null iff the order is none, and agrees with the card on the outcome, the gap and past 86%', () => {
+    for (const c of cases) {
+      if (c.result.order === 'none') {
+        expect(c.line, at(c)).toBeNull();
+        continue;
+      }
+      expect(c.line, at(c)).not.toBeNull();
+      const line = c.line as MonthPlaybookLine;
+      expect(line.outcome.kind, at(c)).toBe(c.card.outcome?.kind);
+      expect(line.gap !== null, at(c)).toBe(c.card.gap !== null);
+      expect(line.pastLiquidation !== null, at(c)).toBe(c.card.pastLiquidation !== null);
+    }
+  });
+
+  it('no line string prints NaN, Infinity, undefined, "$0" or "₿0.00000"', () => {
+    for (const c of cases) if (c.line) for (const s of lineTexts(c.line)) expect(s, at(c)).not.toMatch(LINE_BAD);
   });
 
   it('no card string prints NaN, Infinity, undefined, "$0" or "0.00000 ₿"', () => {

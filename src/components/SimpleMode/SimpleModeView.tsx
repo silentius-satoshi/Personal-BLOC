@@ -16,6 +16,9 @@ import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
 import { accruedCbBalance, accruedCbLiquidationPrice, barLevel, cbBarLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { plBandsAt } from '../../simulation/powerLaw';
+import { crashPlaybook } from '../../simulation/crashPlaybook';
+import { playbookInputFromLive, monthPlaybookLine, CB_PAYDOWN_LABEL, IF_YOU_SHIFT_DEBT } from '../Tools/crashPlaybookView';
 import styles from './SimpleModeView.module.css';
 
 const LEVEL_COLOR: Record<SafetyLevel, string> = {
@@ -23,6 +26,9 @@ const LEVEL_COLOR: Record<SafetyLevel, string> = {
   watch: 'var(--amber)',
   act:   'var(--red)',
 };
+
+// The crash playbook's outcome on the THIS MONTH line — held, short of the target, or can't clear the liquidation line.
+const OUTCOME_COLOR = { held: 'var(--green)', short: 'var(--amber)', doom: 'var(--red)' } as const;
 
 interface SimpleModeViewProps {
   onOpenSettings: () => void;
@@ -83,6 +89,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
   const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
   const dayLog                      = useStore((s) => s.dayLog);   // §3 — month-to-date ledger progress
+  const coldBtc                     = useStore((s) => s.getCurrentColdBtc());   // the live cold total — the crash playbook's first source
 
   // §3 — advisorSkip* are DORMANT (retained in the store/payload for sync compat; no consumers).
   const viewerMode           = useStore((s) => s.viewerMode);   // read-only viewer → hide/disable mutation controls
@@ -233,15 +240,21 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   // prompt the user into the Ledger to log + sign off.
   const needsSignoff = !strategyDone && (currentEntry ? currentEntry.confirmed === false : true);
 
-  // CB runway/paydown indicator (ltvTriggered only), banded to match the engine: below the 75% trigger we're
-  // deliberately idle → show RUNWAY (headroom before the trigger); at/above it the engine draws → show the
-  // PAYDOWN to the 65% target. Reuses currentCbLtv.
+  // CB runway / crash playbook (ltvTriggered only), banded to match the engine: below the trigger the plan waits → the
+  // RUNWAY (the LTV gap to the trigger); at or over it → the crash playbook's line — the Emergency Console's answer on the
+  // live position, built through crashPlaybookView's one builder, restoring the target. Reuses currentCbLtv.
   const cbTriggered = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && currentCbLtv >= cbLtvTriggerPct / 100;
   const cbRunwayToTrigger = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
      ? Math.max(0, cbCollateralBtc * btcPrice * (cbLtvTriggerPct / 100) - effectiveCbBalance) : 0;
-  const cbPaydownToTarget = hasCbLoan && cbPaymentStrategy === 'ltvTriggered'
-     ? Math.max(0, effectiveCbBalance - cbCollateralBtc * btcPrice * (cbLtvTargetPct / 100)) : 0;
-  const cbPaydownAffordable = cbPaydownToTarget <= Math.max(0, creditLine - advisorActualBlocBalance);
+  const today = todayLocalISO();
+  const playbookInput = playbookInputFromLive({
+    price: btcPrice, support: plBandsAt(new Date(today)).floor, cbDebt: effectiveCbBalance, cbCollateralBtc,
+    strikeBalance: advisorActualBlocBalance, strikeCollateralBtc: currentBtcHeld, creditLine, coldBtc,
+    cbLtvTargetPct, dayLog, todayISO: today,
+  });
+  const playbookLine = cbTriggered ? monthPlaybookLine(crashPlaybook(playbookInput), playbookInput) : null;
+  // Box 3 reads the engine row, which books the projection's debt shift in a month it pays Coinbase down.
+  const afterIncludesShift = hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (currentRow?.cbPaydownDraw ?? 0) > 0;
 
   // ── Month scrubber — projection-vs-reality split (spec v2) ─────────────────────────────────
   // Snap the selection to "now" whenever the real month advances; free scrubbing within a session.
@@ -489,15 +502,20 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                   {ndp.status === 'overdue'  && '⛔ NDP overdue'}
                 </span>
               )}
-              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (cbTriggered ? cbPaydownToTarget > 0 : cbRunwayToTrigger > 0) && (
+              {hasCbLoan && cbPaymentStrategy === 'ltvTriggered' && (cbTriggered ? playbookLine !== null : cbRunwayToTrigger > 0) && (
                 <>
                   <div className={styles.positionDivider} />
-                  {cbTriggered ? (
+                  {playbookLine ? (
                     <>
-                      <span className={styles.positionStat} style={{ color: cbPaydownAffordable ? 'var(--green)' : 'var(--red)' }}>
-                        CB paydown: {fmtUSD(cbPaydownToTarget)}
+                      <span className={styles.positionStat}>{playbookLine.order}</span>
+                      {playbookLine.pastLiquidation && (
+                        <span className={styles.positionStatHint} style={{ color: 'var(--red)' }}>{playbookLine.pastLiquidation}</span>
+                      )}
+                      {playbookLine.gap && <span className={styles.positionStatHint}>{playbookLine.gap}</span>}
+                      {playbookLine.steps.map((step) => <span key={step} className={styles.positionStat}>{step}</span>)}
+                      <span className={styles.positionStatHint} style={{ color: OUTCOME_COLOR[playbookLine.outcome.kind] }}>
+                        {playbookLine.outcome.text}
                       </span>
-                      <span className={styles.positionStatHint}>to reach {cbLtvTargetPct}% LTV</span>
                     </>
                   ) : (
                     <>
@@ -513,7 +531,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
 
             {/* Box 3 — AFTER THIS MONTH (where it leaves you) — mirrors Box 1 line-for-line */}
             <div className={styles.positionCol}>
-              <span className={styles.positionTitle}>AFTER THIS MONTH</span>
+              <span className={styles.positionTitle}>AFTER THIS MONTH{afterIncludesShift && <span className={styles.projSuffix}> ({IF_YOU_SHIFT_DEBT})</span>}</span>
               <span className={styles.positionStat}><span className={styles.btcAmt}>₿ {eomBtcHeld.toFixed(5)}</span> <span className={styles.parenSub}>({fmtUSD(eomBtcHeld * btcPrice)})</span></span>
               <span className={styles.positionStat}>{fmtUSD(eomBlocBalance)} <span className={styles.parenSub}>(<span style={eomStressed ? { color: 'var(--amber)' } : undefined}>{fmtLtvPct(eomLtv)} LTV</span>)</span></span>
               <span className={styles.positionStat}>Avail: {fmtUSD(availCredit.available)}</span>
@@ -762,7 +780,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                   {sCbTriggered && (
                     <div className={styles.alsoRow}>
                       <span className={styles.alsoIcon}>⚠</span>
-                      <span className={styles.alsoText}>CB LTV alert — draw from BLOC to pay down CB</span>
+                      <span className={styles.alsoText}>CB LTV alert — {CB_PAYDOWN_LABEL}</span>
                       <span className={styles.alsoAmt} style={{ color: 'var(--amber)' }}>{fmtUSD(selectedRow?.cbPaydownDraw ?? 0)}</span>
                     </div>
                   )}
