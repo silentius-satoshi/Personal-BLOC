@@ -14,6 +14,12 @@
  * survival guard's risk math lives here too (`cbSurvivalCollateralBtc`, `cbDoomedThisMonth`): Coinbase
  * survival outranks the Strike cap, which outranks the Coinbase cap.
  *
+ * STRIKE'S RELEASE RULES are leaves here too (`strikeReleasableBtc`, `STRIKE_RELEASE_EPS`): collateral leaves Strike
+ * only at or under 40% LTV, only down to UNDER 50% after the move, and never within 60 days of a deposit. The crash
+ * playbook (`crashPlaybook.ts`, and the engine under the support policy) moves Strike collateral into Coinbase only
+ * through them — the margin-bound grab above is a move Strike would never allow. `ceilingLiquidationMultiple` is the
+ * playbook's depth gate.
+ *
  * 🔴 Pure leaf: imports only the zero-import `./ltv` (no store, no power law, no cyclingSim). The lender
  * ratios arrive as plain numbers, so the engine, the two faces' stress readout, and the Emergency Console
  * can all share ONE capacity definition and can never drift.
@@ -143,6 +149,11 @@ export interface CbTopUpInput {
   /** THE STRIKE FLOOR (opt-in). When the Strike defense is armed its cap binds this grab too — otherwise
    *  the cold reservation is a fiction: Coinbase simply takes the COLLATERAL instead of the coins. */
   strikeFloorLtv?: number;
+  /** STRIKE'S RELEASE RULES (opt-in): the most Strike collateral Strike will release now (`strikeReleasableBtc` —
+   *  at or under 40% LTV before, under 50% after, never within 60 days of a deposit). It caps the Strike leg on top of
+   *  the margin bound and the floor. ⚠ Absent ≡ byte-identical to the function without it (a test pins it);
+   *  non-finite or negative ≡ 0 — never move Strike collateral on junk. */
+  strikeReleaseCapBtc?: number;
 }
 
 export interface CbTopUpResult {
@@ -162,6 +173,8 @@ export interface CbTopUpResult {
  * Emergency collateral top-up: grow the CB denominator from the cold reserve first, then from the Strike
  * collateral above `marginLtv × (1 − TOPUP_MARGIN_BUFFER)` — the true last resort, which sacrifices the
  * 50% line backing but STOPS A BUFFER SHORT of the margin call rather than landing on it.
+ * With `strikeReleaseCapBtc` (the support policy's crash playbook) the Strike leg is also capped by what Strike will
+ * release under its terms — at or under 40% before, under 50% after, never within 60 days of a deposit.
  * Pure; guarded so zero price / zero collateral never yields NaN.
  */
 export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
@@ -185,7 +198,11 @@ export function topUpToCbLtv(input: CbTopUpInput): CbTopUpResult {
   const strikeAvailable = canPrice
     ? strikeCollateralAboveLtv(input.strikeCollateralBtc, input.strikeBalance, input.price, bound)
     : 0;
-  const fromStrikeBtc = Math.min(remaining, strikeAvailable);
+  // Strike's release rules cap the leg when supplied. Absent → no third term (the pre-cap function, byte-identical).
+  const releaseCap = input.strikeReleaseCapBtc;
+  const fromStrikeBtc = releaseCap === undefined
+    ? Math.min(remaining, strikeAvailable)
+    : Math.min(remaining, strikeAvailable, Number.isFinite(releaseCap) && releaseCap > 0 ? releaseCap : 0);
   const topUpBtc = fromColdBtc + fromStrikeBtc;
   const shortfallBtc = Math.max(0, requiredBtc - topUpBtc);
   return {
@@ -216,6 +233,67 @@ export function strikeCollateralAboveLtv(
     ? Math.max(0, strikeCollateralBtc - Math.max(0, strikeBalance) / (boundLtv * price))
     : 0;
 }
+
+/** Strike's "under 50% after" is STRICT: collateral may leave only down to `maxAfterLtv × (1 − STRIKE_RELEASE_EPS)`,
+ *  so a release can never land ON the draw line. */
+export const STRIKE_RELEASE_EPS = 1e-9;
+
+export interface StrikeReleaseInput {
+  strikeCollateralBtc: number;
+  strikeBalance: number;
+  price: number;
+  /** STRIKE_RETRIEVE_MAX_LTV (40%) — collateral leaves Strike only while its LTV is at or under this. */
+  retrieveMaxLtv: number;
+  /** STRIKE_MAX_DRAW_LTV (50%) — the move must leave Strike strictly UNDER this. */
+  maxAfterLtv: number;
+  /** Collateral went IN within the last 60 days (Strike's hold) — nothing leaves until it ends. */
+  inHold: boolean;
+}
+
+/**
+ * The BTC Strike will release NOW, under its terms: only while its LTV is at or under `retrieveMaxLtv` (40%) before
+ * the move — EQUAL is allowed, the policy migration's own rule — only down to strictly under `maxAfterLtv` (50%)
+ * after it, and never within 60 days of a deposit (`inHold`).
+ *
+ * ⚠ WHY THIS EXISTS. The emergency top-up's Strike leg used to be bounded only by the margin buffer (0.70 × 0.95 =
+ * 66.5%), a move Strike never allows: in the scratch probe every Strike-leg move broke these rules. Under the support
+ * policy every defense move — and the doom question — goes through this function instead.
+ *
+ * Guarded: in the hold, above `retrieveMaxLtv`, at a non-positive price, or on any non-finite input → 0 (never NaN).
+ */
+export function strikeReleasableBtc(input: StrikeReleaseInput): number {
+  const { strikeCollateralBtc, strikeBalance, price, retrieveMaxLtv, maxAfterLtv, inHold } = input;
+  if (inHold) return 0;
+  for (const v of [strikeCollateralBtc, strikeBalance, price, retrieveMaxLtv, maxAfterLtv]) {
+    if (!Number.isFinite(v)) return 0;
+  }
+  if (!(price > 0)) return 0;
+  if (ltvOf(strikeBalance, strikeCollateralBtc, price) > retrieveMaxLtv) return 0;
+  return strikeCollateralAboveLtv(strikeCollateralBtc, strikeBalance, price, maxAfterLtv * (1 - STRIKE_RELEASE_EPS));
+}
+
+/**
+ * The support multiple at which a Coinbase loan sitting AT its support ceiling reaches its liquidation LTV:
+ * `cbStopAtSupport / lltv` (0.60 / 0.86 ≈ 0.70 × support at the default stop). THE CRASH PLAYBOOK'S DEPTH GATE — top up
+ * first from here up to support; deeper than this, a Coinbase at its ceiling is already past 86%, so spending every coin
+ * there leaves nothing for a second leg, and the debt shift goes first.
+ * Junk or a non-positive input → +∞, so junk never tops up first (the pre-playbook order).
+ */
+export function ceilingLiquidationMultiple(cbStopAtSupport: number, lltv: number): number {
+  return Number.isFinite(cbStopAtSupport) && cbStopAtSupport > 0 && Number.isFinite(lltv) && lltv > 0
+    ? cbStopAtSupport / lltv
+    : Number.POSITIVE_INFINITY;
+}
+
+/**
+ * A debt shift under half a cent after a top-up-first step is FLOAT DUST, never a defense. A release leaves Strike a
+ * relative STRIKE_RELEASE_EPS under its 50% draw line, so the shift that follows has capacity of about balance × 1e-9
+ * (≈ $0.00003 on a $30k balance). Counted, it would set `defended`, bump the defense count, and show a "$0" shift.
+ * The engine and `crashPlaybook` both drop it and keep its need as the shortfall — so the survival guard and the
+ * fallback top-up still run. Half a cent is the engine's existing residual precedent (clearStrike / clearBoth /
+ * the pay-down's 0.005 sweep). Owner decision, 2026-09-28.
+ */
+export const SHIFT_DUST_USD = 0.005;
 
 export interface StrikeTopUpInput {
   strikeBalance: number;
@@ -311,6 +389,11 @@ export interface CbDoomInput {
   strikeBalance: number;
   /** Strike's margin-call LTV. */
   marginLtv: number;
+  /** STRIKE'S RELEASE RULES (opt-in): what Strike will release now (`strikeReleasableBtc` — at or under 40% before,
+   *  under 50% after, never within 60 days of a deposit). Present ⇒ it REPLACES the margin-bound Strike term, because
+   *  under the rules that is all the top-up can actually get. Present but non-finite ⇒ false (the junk rule).
+   *  ⚠ Absent ≡ byte-identical to the check without it (a test pins it). */
+  strikeReleasableBtc?: number;
 }
 
 /**
@@ -326,6 +409,8 @@ export interface CbDoomInput {
  * buffered survival line; using CB_SURVIVAL_BUFFER here would declare savable positions doomed.
  * ⚠ THE STRIKE BOUND IS `marginLtv × (1 − TOPUP_MARGIN_BUFFER)`, NOT THE STRIKE CAP. The question is what
  * is POSSIBLE, not what policy allows; using the cap would also declare savable positions doomed.
+ * ⚠ UNDER STRIKE'S RELEASE RULES (`strikeReleasableBtc` supplied) the Strike term is what Strike will release now —
+ * at or under 40% before, under 50% after, never within 60 days of a deposit — because that is all it can hand over.
  *
  * Same-month only — it cannot see a later month's doom (that needs a forward-looking Coinbase reserve).
  * Guarded: a non-positive price or any non-finite input returns false (never throws, never NaN), so junk
@@ -333,12 +418,15 @@ export interface CbDoomInput {
  */
 export function cbDoomedThisMonth(input: CbDoomInput): boolean {
   const { cbDebt, cbCollateralBtc, price, lltv, coldBtc, strikeCollateralBtc, strikeBalance, marginLtv } = input;
+  const release = input.strikeReleasableBtc;
   if (!(price > 0)) return false;
   for (const v of [cbDebt, cbCollateralBtc, price, lltv, coldBtc, strikeCollateralBtc, strikeBalance, marginLtv]) {
     if (!Number.isFinite(v)) return false;
   }
+  if (release !== undefined && !Number.isFinite(release)) return false;
   const need = cbSurvivalCollateralBtc(cbDebt, cbCollateralBtc, price, lltv, 0);
-  const possible = Math.max(0, coldBtc)
-    + strikeCollateralAboveLtv(strikeCollateralBtc, strikeBalance, price, marginLtv * (1 - TOPUP_MARGIN_BUFFER));
+  const possible = Math.max(0, coldBtc) + (release !== undefined
+    ? Math.max(0, release)
+    : strikeCollateralAboveLtv(strikeCollateralBtc, strikeBalance, price, marginLtv * (1 - TOPUP_MARGIN_BUFFER)));
   return possible < need;
 }

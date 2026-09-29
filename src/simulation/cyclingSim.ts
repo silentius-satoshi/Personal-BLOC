@@ -1,7 +1,7 @@
 import { CB_LLTV, CB_LIF, cbBorrowFee, cbMaxDrawForHeadroom } from './runCoinbaseLoan';
 import {
   defendCbLtv, topUpToCbLtv, topUpStrikeLtv, cbSurvivalCollateralBtc, cbDoomedThisMonth, TOPUP_MARGIN_BUFFER,
-  CB_SURVIVAL_BUFFER,
+  CB_SURVIVAL_BUFFER, strikeReleasableBtc, ceilingLiquidationMultiple, SHIFT_DUST_USD,
 } from './cbDefense';
 import { ltvOf } from './ltv';
 import {
@@ -36,6 +36,10 @@ import {
  * ⚠ THE STRIKE LEG HAS ITS OWN LTV CAP (opt-in `strikeLtvCapPct`): cold → Strike, with a reservation that
  * stops Coinbase spending the coins Strike needs — and a survival guard that makes the reservation give way
  * whenever Coinbase would otherwise be liquidated. Coinbase survival > Strike cap > Coinbase cap.
+ *
+ * ⚠ UNDER THE SUPPORT POLICY THE DEFENSE MONTH IS THE CRASH PLAYBOOK (`crashPlaybook.ts` is the same sequence as a
+ * standalone function; a parity test pins the two with the Strike cap off): every Strike → Coinbase collateral move
+ * obeys Strike's release rules, and between the liquidation depth and support the top-up runs BEFORE the debt shift.
  *
  * ⚠ TWO COLLATERAL POOLS, NEVER ONE. Strike-pledged BTC cannot also back Morpho. `strikeColl` and `cbColl`
  * are separate denominators (purchases only ever grow `cbColl`; the sweep cascade / top-up may MOVE Strike
@@ -152,10 +156,12 @@ export interface CyclingInputs {
    * source is the reserve that actually exists, instead of only the coins this simulation itself swept.
    *
    * Wired from the three engine faces (Cycling, Strategy, Ownership), which pass `getCurrentColdBtc()` (real-cold
-   * spec v1). ⚠ Under the support policy the emergency Coinbase top-up IS doom-gated (`doomGateCbTopUp`, adopted, default
-   * on): in a month Coinbase cannot survive, the reserve stays out of it. SAME-MONTH — cold topped in while Coinbase was
-   * still savable can be lost to a later liquidation. With the policy off the top-up is NOT doom-gated (that arm is
-   * unchanged, real-cold decision 1): it still takes the cold the Strike reserve does not hold.
+   * spec v1). ⚠ Under the support policy the reserve follows the CRASH PLAYBOOK: between the liquidation depth and
+   * support it goes into Coinbase BEFORE the debt shift (top up first); below the depth it is still the fallback after
+   * the shift. Both steps are doom-gated (`doomGateCbTopUp`, adopted, default on): in a month Coinbase cannot survive,
+   * the reserve stays out of it. SAME-MONTH — cold topped in while Coinbase was still savable can be lost to a later
+   * liquidation. With the policy off the top-up is NOT doom-gated (that arm is unchanged, real-cold decision 1): it
+   * still takes the cold the Strike reserve does not hold, after the shift.
    */
   openingColdBtc?: number;
 
@@ -194,6 +200,10 @@ export interface CyclingInputs {
    * FALLBACK — COLLATERAL TOP-UP: if the Strike line still leaves CB LTV above the stop, BTC moves into
    * the CB pool from the COLD reserve first, then from the Strike collateral above its margin requirement
    * (the true last resort — it sacrifices the 50% line backing). No debt changes hands.
+   *
+   * ⚠ UNDER THE SUPPORT POLICY this is the CRASH PLAYBOOK: the Strike leg takes only what Strike will release under its
+   * rules (`strikeReleaseRules`), and between the liquidation depth and support the top-up runs FIRST, before the shift
+   * (`topUpBeforeShift`). The policy-off arm is the sequence above, unchanged.
    *
    * Cycle mode only; other modes never draw and never refinance.
    */
@@ -234,29 +244,47 @@ export interface CyclingInputs {
   cbFutilityCheck?: boolean;
   /** D — THE DOOM GATE. ADOPTED 2026-09-27: DEFAULT ON under the support policy (absent means ENABLED — the
    *  `cbSurvivalGuard` pattern); policy-only, so the policy-off engine is unchanged. In a month `cbDoomedThisMonth` says
-   *  Coinbase dies whatever it is handed — asked on the post-shift state with exactly the futility check's inputs — the
-   *  emergency Coinbase top-up is SKIPPED ENTIRELY (no cold, no Strike collateral). The futility check alone only
-   *  stopped the Strike reserve's YIELD; this stops the top-up itself pouring cold into a loan Morpho seizes that month.
-   *  ⚠ SAME-MONTH BY DESIGN: cold topped into a Coinbase that was still savable can be lost to a LATER liquidation (the
-   *  cold card's reserve sentence gates on exactly that). `false` restores the pre-adoption order — TEST-ONLY (the same
-   *  grep test: no face may pass it), kept so the report and the tests can measure the old order. Do NOT "fix" this
-   *  default to off. */
+   *  Coinbase dies whatever it is handed, no collateral goes into it (no cold, no Strike collateral):
+   *   · the crash playbook's TOP-UP-FIRST step is skipped — asked BEFORE the shift, on the pre-shift state;
+   *   · the emergency Coinbase top-up is skipped — asked on the post-shift state, with exactly the futility check's inputs.
+   *  Under Strike's release rules (`strikeReleaseRules`, default on) its doom question counts only the Strike collateral
+   *  Strike will RELEASE now — not the margin-bound collateral the top-up could never actually get. The futility check
+   *  alone only stopped the Strike reserve's YIELD; this stops the top-ups themselves pouring cold into a loan Morpho
+   *  seizes that month. ⚠ SAME-MONTH BY DESIGN: cold topped into a Coinbase that was still savable can be lost to a LATER
+   *  liquidation (the cold card's reserve sentence gates on exactly that). `false` restores the pre-adoption order —
+   *  TEST-ONLY (the same grep test: no face may pass it), kept so the report and the tests can measure the old order. Do
+   *  NOT "fix" this default to off. */
   doomGateCbTopUp?: boolean;
-  /** C — COLD BEFORE THE DEBT SHIFT. MEASURED, NOT ADOPTED — moved to the crash-playbook item (it re-measures C with
-   *  the shift fix). Default OFF and TEST-ONLY (the same grep test); policy-only. In a month the price is BELOW support
-   *  (the policy's cold rule) and CB LTV at today's price is over the defense line (the debt shift's own trigger), cold
-   *  tops Coinbase up to the line BEFORE any debt moves onto Strike: cold only, and never the cold Strike's cap needs on
-   *  that pre-shift state (Coinbase survival > Strike cap > Coinbase cap). The regular sequence then runs unchanged on
-   *  what remains; `cbLtvPreDefense` reads the LTV the shift saw, after this top-up. With the doom gate on — the default
-   *  since its adoption — it is skipped in a month Coinbase is doomed. */
-  coldBeforeShift?: boolean;
+  /** STRIKE'S RELEASE RULES. Default ON and TEST-ONLY (the same grep test: no face may pass it); policy-only by
+   *  construction. Strike releases collateral only at or under 40% LTV, only down to under 50% after the move, and
+   *  never within 60 days of a deposit — so under the policy every Strike → Coinbase move by a defense (the top-up-first
+   *  step and the emergency top-up) is capped by `strikeReleasableBtc`, and the doom question counts only that. WHY:
+   *  the emergency top-up's Strike leg was bounded only by the margin buffer (0.70 × 0.95 = 66.5%) — a move Strike never
+   *  allows; in the scratch probe every Strike-leg move broke the rules. `false` = the pre-playbook bound, kept so the
+   *  report can measure the honesty cost (a CORRECTION, never a §4 decision). */
+  strikeReleaseRules?: boolean;
+  /** TOP UP FIRST — the crash playbook's order. Default ON and TEST-ONLY (the same grep test); policy-only. Between the
+   *  liquidation depth (`ceilingLiquidationMultiple(cbStop, CB_LLTV)` ≈ 0.70 × support at the default 60% stop) and
+   *  support, with Coinbase over its defense line and not doomed, collateral goes in BEFORE any debt moves onto Strike:
+   *  cold first (less the Strike cap's pre-shift reserve), then releasable Strike collateral; the shift covers only what
+   *  is left, and a top-up that restores the line in full skips it. WHY: each $d the shift moves onto Strike cuts what
+   *  Strike can release by d / (0.5·P) while cutting Coinbase's need at 86% by only d / (0.86·P) — and past 40% Strike
+   *  releases nothing — so shifting first spends rescue capacity faster than it buys safety, at 13%. Deeper than the
+   *  depth the shift goes first, as before. `false` = shift first at every depth (the pre-playbook order). */
+  topUpBeforeShift?: boolean;
+  /** Drops the depth gate — top up first at ANY depth below support. Default OFF and TEST-ONLY (the same grep test);
+   *  policy-only; no effect with `topUpBeforeShift: false`. MEASURED AND REJECTED: it loses bitcoin on double drops,
+   *  and every loss starts with a first leg deeper than the gate (spending every coin there leaves nothing for the
+   *  second leg). Kept so the report can show why the gate exists. */
+  topUpFirstAnyDepth?: boolean;
   /** STRIKE FIRST AFTER A COINBASE LIQUIDATION. Default ON and TEST-ONLY (the same grep test: no face may pass it);
-   *  policy-only by construction. After a liquidation, in a pay-down or broken month, the restore skips Coinbase's half,
-   *  so the pay-down retires STRIKE first and the Coinbase leftover after it. WHY: the restore pays "Coinbase before
-   *  Strike" because Coinbase liquidates instantly — once it HAS been liquidated that reason is gone. What is left there
-   *  is unsecured debt at the Coinbase rate, while Strike's balance costs 13% and can still be called. `false` is the
-   *  pre-adoption order, kept so the report can measure it. Before a liquidation — and in paused / accumulate / hold
-   *  months after one — the restore is unchanged (the plan after a liquidation belongs to the crash playbook). */
+   *  policy-only by construction. After a liquidation, in EVERY zone, spare income retires STRIKE first and the Coinbase
+   *  leftover after it: in a pay-down or broken month the restore skips Coinbase's half, so the pay-down retires Strike
+   *  first; in a paused, accumulate or hold month the same restore budget is reordered — Strike first, up to its whole
+   *  balance, then the leftover. WHY: the restore pays "Coinbase before Strike" because Coinbase liquidates instantly —
+   *  once it HAS been liquidated that reason is gone. What is left there is unsecured debt at the Coinbase rate, while
+   *  Strike's balance costs 13% and can still be called. `false` is the pre-adoption order (Coinbase first in every
+   *  zone), kept so the report can measure it. Before a liquidation the restore is unchanged. */
   strikeFirstAfterLiquidation?: boolean;
   /** Strategy (S1): `cycle` is today's behaviour byte-identical; the others never draw and never
    *  refinance — surplus retires the named leg(s) first, then buys into the Coinbase pool. */
@@ -350,10 +378,16 @@ export interface CyclingRow {
   /** Room under each ceiling AT SUPPORT at month-end: `coll × support × stop − debt`. NEGATIVE = over it. */
   cbCeilingHeadroomUsd: number | null;
   strikeCeilingHeadroomUsd: number | null;
-  /** Surplus that repaid a leg over its ceiling (Coinbase first — it liquidates instantly). */
+  /** Surplus that repaid a leg over its ceiling (Coinbase first — it liquidates instantly; after a Coinbase liquidation,
+   *  Strike first in every zone — `strikeFirstAfterLiquidation`). */
   restoreUsd: number;
   /** Surplus that retired debt in `payDown` / `broken` (Strike first, then Coinbase — to zero). */
   payDownUsd: number;
+  /** What spare income repaid on EACH leg this month — the restore plus the pay-down (support policy's non-drawing
+   *  months; 0 elsewhere and with the policy off). strikeRepaidUsd + cbRepaidUsd = restoreUsd + payDownUsd (to float
+   *  rounding). Lets the copy name what was repaid without an order word. */
+  strikeRepaidUsd: number;
+  cbRepaidUsd: number;
   /** The cash reserve left at month-end (never refilled). */
   cashReserveUsd: number;
   /** Cash that paid bills income and the line could not. */
@@ -413,10 +447,16 @@ export interface CyclingResult {
   defenseExhaustedMonth: number | null;
   totalDefenseDrawnUsd: number;
   defenseCount: number;
-  /** Emergency top-up telemetry (0/null when `defendCbLtv` is off or it never fired). */
+  /** Emergency top-up telemetry (0/null when `defendCbLtv` is off or it never fired). Under the support policy it also
+   *  counts the crash playbook's top-up-first step (collateral in before the shift). */
   firstTopUpMonth: number | null;
-  /** First month even the top-up could NOT restore the stop — both sources exhausted. */
+  /** First month even the top-up could NOT restore the stop — both sources exhausted. (The top-up-first step never sets
+   *  it: a short top-up is normal there, the shift covers the rest. Under the policy read `firstUnheldMonth`.) */
   topUpExhaustedMonth: number | null;
+  /** SUPPORT POLICY: the first month the crash playbook ran (`cbLtvPreDefense` set) and Coinbase still ended the defense
+   *  block over its defense line (ulp-tolerant) — the residual is unhedged. Doomed months count. Null with the policy
+   *  off (the faces read topUpExhaustedMonth / defenseExhaustedMonth there). */
+  firstUnheldMonth: number | null;
   totalTopUpBtc: number;
   totalTopUpFromColdBtc: number;
   totalTopUpFromStrikeBtc: number;
@@ -680,6 +720,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let totalStrikeToCbBtc = 0;
   let firstTopUpMonth: number | null = null;
   let topUpExhaustedMonth: number | null = null;
+  let firstUnheldMonth: number | null = null;
   let totalTopUpBtc = 0;
   let totalTopUpFromColdBtc = 0;
   let totalTopUpFromStrikeBtc = 0;
@@ -709,12 +750,17 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     if (v.ok) policy = v.policy;
     else policyIgnoredReason = v.reason;
   }
-  // The cold rules and the repayment order — POLICY-ONLY BY CONSTRUCTION: with no applied policy all three are false, so
-  // the policy-off engine never reaches them. The doom gate (D) and Strike-first-after-a-liquidation are ADOPTED and
-  // default ON under the policy (absent ⇒ on; `false` is the TEST-ONLY pre-adoption order); C stays default OFF.
+  // The cold rules, the crash playbook and the repayment order — POLICY-ONLY BY CONSTRUCTION: with no applied policy every
+  // switch below is false, so the policy-off engine never reaches them. The doom gate (D), Strike's release rules, top up
+  // first and Strike-first-after-a-liquidation are ADOPTED and default ON under the policy (absent ⇒ on; `false` is the
+  // TEST-ONLY pre-adoption order); top up first at any depth stays default OFF (measured and rejected).
   const doomGate = policy !== null && inputs.doomGateCbTopUp !== false;
-  const coldFirst = policy !== null && inputs.coldBeforeShift === true;
+  const releaseRules = policy !== null && inputs.strikeReleaseRules !== false;
+  const topUpFirst = policy !== null && inputs.topUpBeforeShift !== false;
+  const anyDepth = policy !== null && inputs.topUpFirstAnyDepth === true;
   const strikeFirstAfterLiq = policy !== null && inputs.strikeFirstAfterLiquidation !== false;
+  // The crash playbook's depth gate: top up first from here up to support (+∞ with no policy — never reached).
+  const topUpDepth = policy !== null ? ceilingLiquidationMultiple(policy.cbStop, CB_LLTV) : Number.POSITIVE_INFINITY;
   let breaker: RearmableBreakerState = REARMABLE_BREAKER_START;
   let modelBrokenMonth: number | null = null;   // the FIRST trip (the re-arm can reset `breaker.brokenMonth`)
   let firstRearmMonth: number | null = null;
@@ -751,11 +797,20 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     if (firstColdMonth === null) firstColdMonth = m;
   };
 
-  /** THE FUTILITY CHECK's question, asked of the CURRENT state — ONE copy of its inputs, shared by the survival
-   *  guard and the two test-only cold rules (C asks it before the debt shift, D after it). */
-  const cbDoomedNow = (price: number): boolean => cbDoomedThisMonth({
+  /** STRIKE'S RELEASE RULES on the CURRENT state: what Strike will release now — at or under 40% before, under 50% after,
+   *  never inside the 60-day hold that follows collateral going IN. Only called under the rules (policy applied). */
+  const releasableNow = (m: number, price: number): number => (policy === null ? 0 : strikeReleasableBtc({
+    strikeCollateralBtc: strikeColl, strikeBalance: strikeBal, price,
+    retrieveMaxLtv: policy.retrieveMaxLtv, maxAfterLtv: strikeMaxDrawLtv, inHold: m < strikeHoldUntil,
+  }));
+
+  /** THE FUTILITY CHECK's question, asked of the CURRENT state — ONE copy of its inputs, shared by the survival guard,
+   *  the top-up-first gate (asked before the debt shift) and the doom gate (asked after it). Under Strike's release rules
+   *  the Strike term is the collateral Strike will release NOW; otherwise, today's margin-bound call. */
+  const cbDoomedNow = (price: number, m: number): boolean => cbDoomedThisMonth({
     cbDebt, cbCollateralBtc: cbColl, price, lltv: CB_LLTV, coldBtc,
     strikeCollateralBtc: strikeColl, strikeBalance: strikeBal, marginLtv: strikeMarginLtv,
+    ...(releaseRules ? { strikeReleasableBtc: releasableNow(m, price) } : {}),
   });
 
   const rows: CyclingRow[] = [];
@@ -803,6 +858,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     }
     let restoreUsd = 0;
     let payDownUsd = 0;
+    let strikeRepaidUsd = 0;
+    let cbRepaidUsd = 0;
     let cashToBillsUsd = 0;
     let cashToCureUsd = 0;
     let strikeCall: StrikeCallResult['state'] = 'none';
@@ -891,21 +948,40 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           let surplus = Math.max(0, inc - expenses);
           // a) RESTORE (any zone): a leg over its ceiling AT SUPPORT is repaid first, by exactly its excess —
           //    Coinbase before Strike, because Coinbase liquidates instantly and Strike has a cure window.
-          //    ⚠ EXCEPT after a Coinbase liquidation, in a pay-down or broken month (`strikeFirstAfterLiquidation`,
-          //    default on): that reason is gone once Coinbase HAS been liquidated — the leftover is unsecured debt at the
-          //    Coinbase rate, while Strike costs 13% and can still be called. Coinbase's half is skipped, so the pay-down
-          //    (b) retires Strike first and the leftover after it. (`liqMonth` is still null DURING the liquidation month
-          //    — it is set at the month-end breach — so this acts from the month after.)
-          const cbRestoreSkipped = strikeFirstAfterLiq && liqMonth !== null && (state === 'payDown' || state === 'broken');
-          const cbPay = cbRestoreSkipped
-            ? 0
-            : Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop)));
-          cbDebt -= cbPay;
-          surplus -= cbPay;
-          const skPay = Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop)));
-          strikeBal -= skPay;
-          surplus -= skPay;
-          restoreUsd = cbPay + skPay;
+          //    ⚠ EXCEPT after a Coinbase liquidation, in EVERY zone (`strikeFirstAfterLiquidation`, default on): that
+          //    reason is gone once Coinbase HAS been liquidated — the leftover is unsecured debt at the Coinbase rate,
+          //    while Strike costs 13% and can still be called. In a pay-down or broken month Coinbase's half is skipped,
+          //    so the pay-down (b) retires Strike first and the leftover after it; in a paused, accumulate or hold month
+          //    (P3) the SAME restore budget is reordered — Strike first, up to its whole balance, then the leftover.
+          //    (`liqMonth` is still null DURING the liquidation month — it is set at the month-end breach — so this acts
+          //    from the month after.)
+          const afterLiq = strikeFirstAfterLiq && liqMonth !== null;
+          if (afterLiq && state !== 'payDown' && state !== 'broken') {
+            const cbExcess = Math.max(0, -ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop));
+            const skExcess = Math.max(0, -ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop));
+            const budget = Math.min(surplus, cbExcess + skExcess);
+            const skPay = Math.min(budget, Math.max(0, strikeBal));
+            const cbPay = Math.min(budget - skPay, Math.max(0, cbDebt));
+            strikeBal -= skPay;
+            cbDebt -= cbPay;
+            surplus -= skPay + cbPay;
+            restoreUsd = skPay + cbPay;
+            strikeRepaidUsd += skPay;
+            cbRepaidUsd += cbPay;
+          } else {
+            const cbRestoreSkipped = afterLiq;   // only a pay-down or broken month reaches here after a liquidation
+            const cbPay = cbRestoreSkipped
+              ? 0
+              : Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop)));
+            cbDebt -= cbPay;
+            surplus -= cbPay;
+            const skPay = Math.min(surplus, Math.max(0, -ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop)));
+            strikeBal -= skPay;
+            surplus -= skPay;
+            restoreUsd = cbPay + skPay;
+            cbRepaidUsd += cbPay;
+            strikeRepaidUsd += skPay;
+          }
           // b) PAY DOWN (payDown, broken): Strike first (13%), then Coinbase — to ZERO, not to a buffer. The buffer
           //    is kept as Coinbase COLLATERAL by the sweep instead. The 0.005 residual sweep is the clearStrike
           //    precedent (half a cent — never "correct" it to 1e-9).
@@ -916,6 +992,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             if (strikeBal < 0.005) strikeBal = 0;
             if (cbDebt < 0.005) cbDebt = 0;
             payDownUsd = a.toStrikeUsd + a.toCbUsd;
+            strikeRepaidUsd += a.toStrikeUsd;
+            cbRepaidUsd += a.toCbUsd;
             surplus = a.leftUsd;
           }
           // c) the rest buys, into the Coinbase pool.
@@ -1013,15 +1091,21 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           }
         }
 
-        // ── C · COLD BEFORE THE SHIFT (TEST-ONLY, policy-only, default off; measured, not adopted — the crash-playbook
-        // item) ── below support, with Coinbase over its defense line, cold tops it up to the line FIRST — before any
-        // debt moves onto Strike. It holds back the cold Strike's cap needs on this PRE-shift state (the engine's own
-        // reserve call) and takes no Strike collateral; the regular sequence below then runs unchanged on what remains.
-        // With the doom gate on (the default), it is skipped in a month Coinbase is doomed. Its cold books exactly like
-        // the emergency top-up's.
-        let coldFirstRestored = false;
-        if (coldFirst && defend && liqMonth === null && price > 0 && k < 1 - SUPPORT_EPS
-          && ltvOf(cbDebt, cbColl, price) > cap && !(doomGate && cbDoomedNow(price))) {
+        // ── TOP UP FIRST — the crash playbook (policy-only, default on; `topUpBeforeShift`) ── between the liquidation
+        // depth and support, with Coinbase over its defense line and not doomed, collateral goes in BEFORE any debt moves
+        // onto Strike: cold first (less the Strike cap's reserve on this PRE-shift state — the engine's own reserve
+        // call), then the Strike collateral Strike will RELEASE now; the shift below covers only what is left. WHY: each
+        // $d the shift moves onto Strike cuts what Strike can release by d / (0.5·P) but Coinbase's need at 86% by only
+        // d / (0.86·P) — and past 40% Strike releases nothing — so shifting first spends rescue capacity faster than it
+        // buys safety, at 13%. Deeper than the depth the shift goes first (a Coinbase at its support ceiling is already
+        // past 86% there; spending every coin leaves nothing for a second leg). Booked exactly like the emergency top-up;
+        // it never sets topUpExhaustedMonth (a short top-up is normal here), and collateral leaving Strike starts no hold.
+        let topUpFirstRan = false;
+        let topUpFirstRestored = false;
+        if (topUpFirst && defend && liqMonth === null && price > 0 && k < 1 - SUPPORT_EPS
+          && (anyDepth || k >= topUpDepth) && ltvOf(cbDebt, cbColl, price) > cap && !(doomGate && cbDoomedNow(price, m))) {
+          topUpFirstRan = true;
+          cbLtvPreDefense = ltvOf(cbDebt, cbColl, price);
           const reserve = skDefend
             ? topUpStrikeLtv({
               strikeBalance: strikeBal, strikeCollateralBtc: strikeColl, price,
@@ -1031,21 +1115,26 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           const t = topUpToCbLtv({
             cbDebt, cbCollateralBtc: cbColl, price, targetCbLtvPct: cbLtvCapPct,
             coldBtc: Math.max(0, coldBtc - reserve),
-            strikeCollateralBtc: 0, strikeBalance: 0, marginLtv: strikeMarginLtv,   // cold ONLY
+            strikeCollateralBtc: strikeColl, strikeBalance: strikeBal, marginLtv: strikeMarginLtv,
+            strikeFloorLtv: skDefend ? skCapPct / 100 : undefined,
+            strikeReleaseCapBtc: releaseRules ? releasableNow(m, price) : undefined,
           });
-          if (t.fromColdBtc > 0) {
+          topUpBtc += t.topUpBtc;
+          topUpFromColdBtc += t.fromColdBtc;
+          topUpFromStrikeBtc += t.fromStrikeBtc;
+          if (t.topUpBtc > 0) {
             coldBtc -= t.fromColdBtc;
-            cbColl += t.fromColdBtc;
+            strikeColl -= t.fromStrikeBtc;
+            cbColl += t.topUpBtc;
             coldRetrievedBtc += t.fromColdBtc;   // 🔴 joins the one retrieval counter, or the cold ledger breaks
-            topUpBtc += t.fromColdBtc;
-            topUpFromColdBtc += t.fromColdBtc;
-            totalTopUpBtc += t.fromColdBtc;
+            totalTopUpBtc += t.topUpBtc;
             totalTopUpFromColdBtc += t.fromColdBtc;
+            totalTopUpFromStrikeBtc += t.fromStrikeBtc;
             if (firstTopUpMonth === null) firstTopUpMonth = m;
           }
           // The line restored in full leaves the shift nothing to do — its `> cap` test would only see the float
           // dust of this top-up's own arithmetic, and book a phantom defense.
-          coldFirstRestored = t.shortfallBtc <= 0;
+          topUpFirstRestored = t.shortfallBtc <= 0;
         }
 
         // ── DEBT-SHIFT DEFENSE (cycle + defendCbLtv) ────────────────────────────────────────────────
@@ -1053,7 +1142,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // shifting the debt to the more expensive but still-open Strike facility until the price recovers.
         // ⚠ Runs AFTER the refinance (the headroom-capped sweep sits at/below the cap) and BEFORE the cold
         // sweep — the sweep can move STRIKE collateral the defense needs for its 50%-line capacity.
-        if (defend && liqMonth === null && price > 0 && !coldFirstRestored) {
+        if (defend && liqMonth === null && price > 0 && !topUpFirstRestored) {
           const ltvBefore = ltvOf(cbDebt, cbColl, price);
           if (ltvBefore > cap) {
             const d = defendCbLtv({
@@ -1067,17 +1156,24 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
               maxDrawLtv: strikeMaxDrawLtv,
               marginLtv: strikeMarginLtv,
             });
-            cbLtvPreDefense = ltvBefore;
-            defenseDrawnUsd = d.drawUsd;
-            defenseShortfallUsd = d.shortfallUsd;
-            if (d.drawUsd > 0) {
-              cbDebt -= d.drawUsd;      // pay the CB loan down — no CB origination fee on a paydown
-              strikeBal += d.drawUsd;   // the debt now sits on Strike; its interest starts next month
-              totalDefenseDrawnUsd += d.drawUsd;
+            // A top-up-first month reports the LTV before the PLAYBOOK, not the LTV the shift saw (`??=` — with the
+            // policy off it is always null here, so that arm is identical).
+            cbLtvPreDefense ??= ltvBefore;
+            // ⚠ THE DUST DROP (SHIFT_DUST_USD, owner decision 2026-09-28): after a top-up-first step a sub-half-cent draw
+            // is float dust — a release leaves Strike a relative 1e-9 under its draw line — never a shift. Its need stays
+            // the shortfall, so the survival guard and the fallback top-up below still run.
+            const dust = topUpFirstRan && d.drawUsd < SHIFT_DUST_USD;
+            const drawUsd = dust ? 0 : d.drawUsd;
+            defenseDrawnUsd = drawUsd;
+            defenseShortfallUsd = dust ? d.paydownNeededUsd : d.shortfallUsd;
+            if (drawUsd > 0) {
+              cbDebt -= drawUsd;      // pay the CB loan down — no CB origination fee on a paydown
+              strikeBal += drawUsd;   // the debt now sits on Strike; its interest starts next month
+              totalDefenseDrawnUsd += drawUsd;
               defenseCount += 1;
               if (firstDefenseMonth === null) firstDefenseMonth = m;
             }
-            if (d.shortfallUsd > 0 && defenseExhaustedMonth === null) defenseExhaustedMonth = m;
+            if (defenseShortfallUsd > 0 && defenseExhaustedMonth === null) defenseExhaustedMonth = m;
           }
         }
 
@@ -1107,7 +1203,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         let skFloorOn = skDefend;
         if (
           survivalGuard && skDefend && defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0
-          && !(futility && cbDoomedNow(price))
+          && !(futility && cbDoomedNow(price, m))
         ) {
           // ⚠ Capped at the STOP (the leaf's `stopLtv`): the CB top-up below only aims at `cap`, so above an
           // 81.7% stop a survival-line need would reserve coins the top-up never takes — a phantom yield.
@@ -1133,7 +1229,9 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // THE DOOM GATE (D — adopted, default ON under the policy; `false` is the TEST-ONLY pre-adoption order): skipped
         // entirely in a month Coinbase is doomed — the same post-shift question the futility check asks. Same-month by
         // design: a top-up in a month Coinbase was still savable can be lost to a later liquidation.
-        if (defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0 && !(doomGate && cbDoomedNow(price))) {
+        // Under Strike's release rules (policy, default on) the Strike leg takes only what Strike will release NOW,
+        // measured on the POST-shift state — the shift's new debt may have taken Strike over 40%, and then it releases none.
+        if (defend && liqMonth === null && price > 0 && defenseShortfallUsd > 0 && !(doomGate && cbDoomedNow(price, m))) {
           const t = topUpToCbLtv({
             cbDebt,
             cbCollateralBtc: cbColl,
@@ -1144,8 +1242,10 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             strikeBalance: strikeBal,
             marginLtv: strikeMarginLtv,
             strikeFloorLtv: skFloorOn ? skCapPct / 100 : undefined,
+            strikeReleaseCapBtc: releaseRules ? releasableNow(m, price) : undefined,
           });
-          // `+=`, not `=`: C's cold-first top-up may already have booked cold this month (0 otherwise — identical).
+          // `+=`, not `=`: the crash playbook's top-up-first step may already have booked collateral this month (0
+          // otherwise — identical).
           topUpBtc += t.topUpBtc;
           topUpFromColdBtc += t.fromColdBtc;
           topUpFromStrikeBtc += t.fromStrikeBtc;
@@ -1161,6 +1261,11 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           }
           if (t.shortfallBtc > 0 && topUpExhaustedMonth === null) topUpExhaustedMonth = m;
         }
+
+        // The crash playbook's residual (policy only): it ran this month and Coinbase still ends the defense block over
+        // its line — ulp-tolerant, since a top-up landing exactly on the line can sit an ulp over it. Doomed months count.
+        if (policy !== null && firstUnheldMonth === null && cbLtvPreDefense !== null
+          && ltvOf(cbDebt, cbColl, price) > cap * (1 + 1e-9)) firstUnheldMonth = m;
 
         // ── STRIKE COLLATERAL TOP-UP ── cold → Strike, AFTER Coinbase has taken its (capped) share.
         // Recomputed, not replayed: the CB top-up may still have taken Strike collateral down to the cap,
@@ -1321,7 +1426,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       multiple: policy !== null ? k : null,
       cbCeilingHeadroomUsd: policy !== null ? ceilingHeadroomUsd(cbDebt, cbColl, S, policy.cbStop) : null,
       strikeCeilingHeadroomUsd: policy !== null ? ceilingHeadroomUsd(strikeBal, strikeColl, S, policy.skStop) : null,
-      restoreUsd, payDownUsd,
+      restoreUsd, payDownUsd, strikeRepaidUsd, cbRepaidUsd,
       cashReserveUsd: cashReserve,   // 0 when the policy is not applied
       cashToBillsUsd, cashToCureUsd,
       strikeCall, strikeCureColdBtc, strikeLiquidatedBtc,
@@ -1375,7 +1480,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount, totalRefinancedUsd,
     totalUnfundedUsd, firstUnfundedMonth,
     firstDefenseMonth, defenseExhaustedMonth, totalDefenseDrawnUsd, defenseCount,
-    firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
+    firstTopUpMonth, topUpExhaustedMonth, firstUnheldMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
     totalStrikeToCbBtc, totalColdRetrievedBtc: coldRetrievedBtc,
     firstStrikeTopUpMonth, strikeTopUpExhaustedMonth, totalStrikeTopUpBtc, firstSurvivalYieldMonth,
     baselineEquity, baselineBtc: baseBtc, baselineUnfundedUsd,

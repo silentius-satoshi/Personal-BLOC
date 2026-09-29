@@ -9,6 +9,7 @@ import {
   strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
   verdictBasisClause, drawingCashFlowNote, cashFlowText, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, noDrawCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
   type StrikeCapReading,
 } from '../cyclingFaceView';
 import { billsRemainderTail, shownUsd } from '../supportPolicyView';
@@ -18,7 +19,7 @@ import {
 } from '../../../simulation/cyclingSim';
 import { fmtUSD } from '../../../utils/format';
 import {
-  SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP2, pathP3, a5Cases,
+  SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP2, pathP3, a5Cases, buildP9,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
@@ -71,6 +72,8 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeCeilingHeadroomUsd: null,
   restoreUsd: 0,
   payDownUsd: 0,
+  strikeRepaidUsd: 0,
+  cbRepaidUsd: 0,
   cashReserveUsd: 0,
   cashToBillsUsd: 0,
   cashToCureUsd: 0,
@@ -1218,5 +1221,94 @@ describe('⭐ the stopped month and the no-draw modes — "pays the bills again"
       expect(text).toContain('$2,000 of bills went unpaid this month');
       expect(text).not.toMatch(/\$0(?![\d,])/);
     }
+  });
+});
+
+// ── the crash playbook in the faces' words (crash playbook Run 1) ───────────────────────────────────────────────
+
+describe('the crash playbook in the faces\' words — playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth', () => {
+  type NoteSim = Parameters<typeof playbookNote>[0];
+  const sim = (o: Partial<NoteSim> = {}): NoteSim => ({
+    policyApplied: true, totalTopUpBtc: 0, totalTopUpFromColdBtc: 0, totalTopUpFromStrikeBtc: 0,
+    totalDefenseDrawnUsd: 0, defenseCount: 0, firstTopUpMonth: null, firstDefenseMonth: null, firstUnheldMonth: null, ...o,
+  });
+  const HELD = ' The 70% defense line held.';
+  const HELD_SHIFTED = ' The 70% defense line held; the refinance shifts the debt back to Coinbase as the price recovers.';
+
+  it('playbookNote — moved only, with both sources or one', () => {
+    const moved = { totalTopUpBtc: 0.0632, totalTopUpFromColdBtc: 0.05, totalTopUpFromStrikeBtc: 0.0132, firstTopUpMonth: 18 };
+    expect(playbookNote(sim(moved), 70)).toBe('Crash playbook: 0.0632 ₿ of collateral moved into Coinbase '
+      + `(0.0500 ₿ from cold storage, 0.0132 ₿ released from Strike), starting month 18.${HELD}`);
+    expect(playbookNote(sim({ ...moved, totalTopUpBtc: 0.05, totalTopUpFromStrikeBtc: 0 }), 70))
+      .toBe(`Crash playbook: 0.0500 ₿ of collateral moved into Coinbase (0.0500 ₿ from cold storage), starting month 18.${HELD}`);
+    expect(playbookNote(sim({ ...moved, totalTopUpBtc: 0.0632, totalTopUpFromColdBtc: 0, totalTopUpFromStrikeBtc: 0.0632 }), 70))
+      .toBe(`Crash playbook: 0.0632 ₿ of collateral moved into Coinbase (0.0632 ₿ released from Strike), starting month 18.${HELD}`);
+    // Each source under the display floor, the total above it: no parentheses at all.
+    expect(playbookNote(sim({ totalTopUpBtc: 0.0006, totalTopUpFromColdBtc: 0.0003, totalTopUpFromStrikeBtc: 0.0003, firstTopUpMonth: 5 }), 70))
+      .toBe(`Crash playbook: 0.0006 ₿ of collateral moved into Coinbase, starting month 5.${HELD}`);
+  });
+
+  it('playbookNote — shifted only, both (M is the earlier month), unheld, dust, policy off', () => {
+    expect(playbookNote(sim({ totalDefenseDrawnUsd: 3_900, defenseCount: 1, firstDefenseMonth: 12 }), 70))
+      .toBe(`Crash playbook: $3,900 of Coinbase debt shifted to Strike across 1 month, starting month 12.${HELD_SHIFTED}`);
+    const both = sim({
+      totalTopUpBtc: 0.1, totalTopUpFromColdBtc: 0.1, firstTopUpMonth: 14,
+      totalDefenseDrawnUsd: 12_400, defenseCount: 3, firstDefenseMonth: 12,
+    });
+    expect(playbookNote(both, 65)).toBe('Crash playbook: 0.1000 ₿ of collateral moved into Coinbase (0.1000 ₿ from cold storage); '
+      + '$12,400 of Coinbase debt shifted to Strike across 3 months, starting month 12. '
+      + 'The 65% defense line held; the refinance shifts the debt back to Coinbase as the price recovers.');
+    expect(playbookNote({ ...both, firstUnheldMonth: 20 }, 65)).toBe('Crash playbook: 0.1000 ₿ of collateral moved into Coinbase '
+      + '(0.1000 ₿ from cold storage); $12,400 of Coinbase debt shifted to Strike across 3 months, starting month 12. '
+      + 'From month 20 the playbook could not hold the 65% defense line — the residual is unhedged.');
+    // Dust on both sides — nothing worth a sentence; and nothing at all.
+    expect(playbookNote(sim({ totalTopUpBtc: 0.0004, totalDefenseDrawnUsd: 0.3, defenseCount: 1, firstDefenseMonth: 9 }), 70)).toBeNull();
+    expect(playbookNote(sim(), 70)).toBeNull();
+    // A shown shift beside a dust top-up names only the shift.
+    expect(playbookNote(sim({ totalTopUpBtc: 0.0004, firstTopUpMonth: 9, totalDefenseDrawnUsd: 900, defenseCount: 1, firstDefenseMonth: 9 }), 70))
+      .toBe(`Crash playbook: $900 of Coinbase debt shifted to Strike across 1 month, starting month 9.${HELD_SHIFTED}`);
+    // Policy off → null (the face renders its own, unchanged note).
+    expect(playbookNote({ ...both, policyApplied: false }, 65)).toBeNull();
+  });
+
+  it('defendedFromSub — policy off is today\'s rule exactly; on, a month collateral moved in counts too', () => {
+    const shifted = mkRow({ defended: true, defenseDrawnUsd: 3_900, cbLtvPreDefense: 0.74 });
+    const toppedUp = mkRow({ defended: false, topUpBtc: 0.06, cbLtvPreDefense: 0.72 });
+    const dust = mkRow({ defended: false, topUpBtc: 0.0004, cbLtvPreDefense: 0.72 });
+    for (const applied of [false, true]) {
+      expect(defendedFromSub(shifted, applied)).toBe(`defended from ${fmtLtvPct(0.74)}`);
+      expect(defendedFromSub(mkRow(), applied)).toBeNull();                                   // no defense ran
+      expect(defendedFromSub(mkRow({ defended: true, cbLtvPreDefense: null }), applied)).toBeNull();
+    }
+    expect(defendedFromSub(toppedUp, false)).toBeNull();                                      // today's rule: a shift only
+    expect(defendedFromSub(toppedUp, true)).toBe(`defended from ${fmtLtvPct(0.72)}`);
+    expect(defendedFromSub(dust, true)).toBeNull();                                           // under the display floor
+  });
+
+  it('collateralMovedFlag and unheldMonth — policy on and off (off = today\'s rule)', () => {
+    expect(collateralMovedFlag(mkRow({ topUpBtc: 0.06 }), true)).toBe(true);
+    expect(collateralMovedFlag(mkRow({ topUpBtc: 0.06 }), false)).toBe(false);
+    expect(collateralMovedFlag(mkRow({ topUpBtc: 0.0004 }), true)).toBe(false);
+    const u = { firstUnheldMonth: 21, totalTopUpBtc: 0.2, topUpExhaustedMonth: 19, defenseExhaustedMonth: 17 };
+    expect(unheldMonth(u, true)).toBe(21);
+    expect(unheldMonth(u, false)).toBe(19);                                                   // a top-up fired → its exhaustion
+    expect(unheldMonth({ ...u, totalTopUpBtc: 0 }, false)).toBe(17);                          // none → the shift's
+    expect(unheldMonth({ ...u, firstUnheldMonth: null }, true)).toBeNull();
+  });
+
+  it('⭐ engine-backed — P9 at $4k with a 0.05 ₿ reserve: the dip month is held by collateral, and the note says so', () => {
+    const p9 = buildP9(4_000);
+    const r = runPolicy(p9.path, {}, { income: 4_000, openingColdBtc: 0.05 });
+    const x = r.rows[p9.dipStart];
+    // Premise: the playbook topped the dip up — no shift at all.
+    expect(x.topUpBtc).toBeGreaterThan(0);
+    expect(x.defended).toBe(false);
+    expect(x.cbLtvPreDefense!).toBeGreaterThan(SP_REPRO.cbLtvCapPct / 100);
+    expect(collateralMovedFlag(x, true)).toBe(true);
+    expect(defendedFromSub(x, true)).toBe(`defended from ${fmtLtvPct(x.cbLtvPreDefense!)}`);
+    expect(unheldMonth(r, true)).toBeNull();
+    expect(playbookNote(r, SP_REPRO.cbLtvCapPct)).toBe(`Crash playbook: ${r.totalTopUpBtc.toFixed(4)} ₿ of collateral moved into Coinbase `
+      + `(${r.totalTopUpFromColdBtc.toFixed(4)} ₿ from cold storage, ${r.totalTopUpFromStrikeBtc.toFixed(4)} ₿ released from Strike), `
+      + `starting month ${p9.dipStart}. The ${SP_REPRO.cbLtvCapPct}% defense line held.`);
   });
 });

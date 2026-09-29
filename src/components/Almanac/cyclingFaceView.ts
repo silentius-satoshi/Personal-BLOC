@@ -6,7 +6,7 @@ import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbBarLevel, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 import {
   strikeCallSummary, strikeCallSentence, shownUsd, shownBtc, billsRemainderTail, type StrikeCallSummary,
 } from './supportPolicyView';
@@ -17,7 +17,7 @@ import {
  * all-in definition), the ownership leaf (the single definition of yoursBtc, S2′), the zero-import Coinbase
  * constants (the refinance break-even fallback, CB_LLTV for the zone band), the shared gauge rules (cbMetrics'
  * barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
- * fmtUSD, and from supportPolicyView the support policy's call sentence, the two display floors (`shownUsd`, `shownBtc`)
+ * fmtUSD and fmtLtvPct, and from supportPolicyView the support policy's call sentence, the two display floors (`shownUsd`, `shownBtc`)
  * and the bills-remainder tail (that module must never import this one back).
  * No belief anywhere in that graph. Extracted so it is testable without a render harness (the repo has none).
  *
@@ -63,6 +63,77 @@ export function debtSplit(row: CyclingRow): DebtSplit {
 /** Re-exported so the Almanac keeps its existing import site, but there is ONE definition app-wide —
  *  see utils/format. A second copy is how half the surfaces ended up still printing "Infinity%". */
 export { fmtLtvPct } from '../../utils/format';
+
+// ── the crash playbook, in the faces' words (crash playbook Run 1) ───────────────────────────────────────────
+
+/**
+ * The faces' defense note while the support policy applies — the CRASH PLAYBOOK's run in one sentence (the policy-off
+ * note is the faces' own JSX, byte-identical to before). Null with the policy off, or when nothing moved and nothing
+ * shifted above the dust floors (`shownBtc` / `shownUsd`):
+ *   "Crash playbook: 0.1234 ₿ of collateral moved into Coinbase (0.0500 ₿ from cold storage, 0.0734 ₿ released from
+ *    Strike); $3,900 of Coinbase debt shifted to Strike across 2 months, starting month 18. The 70% defense line held;
+ *    the refinance shifts the debt back to Coinbase as the price recovers."
+ * Each part — and each item in the parentheses — appears only when shown. M is the earlier of the first top-up and the
+ * first shift. The outcome reads `firstUnheldMonth`: the month the playbook could not hold the line, else "held".
+ */
+export function playbookNote(
+  sim: Pick<CyclingResult, 'policyApplied' | 'totalTopUpBtc' | 'totalTopUpFromColdBtc' | 'totalTopUpFromStrikeBtc'
+    | 'totalDefenseDrawnUsd' | 'defenseCount' | 'firstTopUpMonth' | 'firstDefenseMonth' | 'firstUnheldMonth'>,
+  capPct: number,
+): string | null {
+  if (!sim.policyApplied) return null;
+  const moved = shownBtc(sim.totalTopUpBtc);
+  const shifted = shownUsd(sim.totalDefenseDrawnUsd);
+  if (!moved && !shifted) return null;
+  const b4 = (x: number): string => `${x.toFixed(4)} ₿`;
+  const sources = [
+    ...(shownBtc(sim.totalTopUpFromColdBtc) ? [`${b4(sim.totalTopUpFromColdBtc)} from cold storage`] : []),
+    ...(shownBtc(sim.totalTopUpFromStrikeBtc) ? [`${b4(sim.totalTopUpFromStrikeBtc)} released from Strike`] : []),
+  ];
+  const parts = [
+    ...(moved ? [`${b4(sim.totalTopUpBtc)} of collateral moved into Coinbase${sources.length > 0 ? ` (${sources.join(', ')})` : ''}`] : []),
+    ...(shifted
+      ? [`${fmtUSD(sim.totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across ${sim.defenseCount} month${sim.defenseCount === 1 ? '' : 's'}`]
+      : []),
+  ];
+  const firsts = [sim.firstTopUpMonth, sim.firstDefenseMonth].filter((x): x is number => x !== null);
+  const start = firsts.length > 0 ? `, starting month ${Math.min(...firsts)}` : '';
+  const outcome = sim.firstUnheldMonth !== null
+    ? ` From month ${sim.firstUnheldMonth} the playbook could not hold the ${capPct}% defense line — the residual is unhedged.`
+    : ` The ${capPct}% defense line held${shifted ? '; the refinance shifts the debt back to Coinbase as the price recovers.' : '.'}`;
+  return `Crash playbook: ${parts.join('; ')}${start}.${outcome}`;
+}
+
+/**
+ * The CB LTV tile's "defended from X%" — the LTV the month's defense started from. Policy off: exactly today's rule (a
+ * month that shifted debt). Policy on: also a month the playbook moved collateral in (above the display floor), since the
+ * top-up-first step can hold the line with no shift at all. Null otherwise — the face keeps its usual sub-line.
+ */
+export function defendedFromSub(
+  row: Pick<CyclingRow, 'cbLtvPreDefense' | 'defended' | 'topUpBtc'>,
+  applied: boolean,
+): string | null {
+  if (row.cbLtvPreDefense === null) return null;
+  return row.defended || (applied && shownBtc(row.topUpBtc)) ? `defended from ${fmtLtvPct(row.cbLtvPreDefense)}` : null;
+}
+
+/** The Milestones "⇡" flag: collateral moved into Coinbase that month (policy on, above the display floor). */
+export function collateralMovedFlag(row: Pick<CyclingRow, 'topUpBtc'>, applied: boolean): boolean {
+  return applied && shownBtc(row.topUpBtc);
+}
+
+/**
+ * The first month the defense could not hold the line — "unheld from mo U" on the Debt-shifted tile and the note's
+ * residual. Policy on: the engine's `firstUnheldMonth` (the crash playbook's own measure). Policy off: exactly today's
+ * rule — the top-up's exhaustion once a top-up fired, else the shift's.
+ */
+export function unheldMonth(
+  sim: Pick<CyclingResult, 'firstUnheldMonth' | 'totalTopUpBtc' | 'topUpExhaustedMonth' | 'defenseExhaustedMonth'>,
+  applied: boolean,
+): number | null {
+  if (applied) return sim.firstUnheldMonth;
+  return sim.totalTopUpBtc > 0 ? sim.topUpExhaustedMonth : sim.defenseExhaustedMonth;
+}
 
 /**
  * The run's realized blended origination-fee fraction: fees paid ÷ cash refinanced. The fee is MARGINAL

@@ -7,7 +7,7 @@ import {
   policyDetails, neverDrawsNote, policyPauseReason, drawPauseClause, zoneStrip, policyLimitPct, coldShown,
   strikeCallSummary, strikeCallSentence, billsRemainderTail, policyUnpaidNote, policyAlert, policyStopSentence,
   policyIgnoredNote, zoneStripLabel, settingReadouts, defenseLineNote, policyTileSub, policyColdNote, policyTip,
-  fmtPolicyPct, DUST_USD, shownUsd, DISPLAY_DUST_BTC, shownBtc, policyReserveNote,
+  fmtPolicyPct, DUST_USD, shownUsd, DISPLAY_DUST_BTC, shownBtc, policyReserveNote, repaidTail,
   type PolicyReading, type PolicyTone, type SupportPolicySettings, type NeverDraws,
 } from '../supportPolicyView';
 import { supportPolicyFor } from '../supportPolicyInputs';
@@ -21,7 +21,7 @@ import { fmtUSD } from '../../../utils/format';
 import {
   SP_START, SP_MONTHS, SUPPORT, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, pathP1, pathP2, pathP4, pathP6,
   multiplePath, a5Cases, runPolicy, callRun, RESTORE_OPENING, OVER_CEILING_COLD_OPENING,
-  faceWorldGrid, syntheticGrid, reachGrid,
+  faceWorldGrid, syntheticGrid, reachGrid, stressFrom12,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 
 /**
@@ -65,7 +65,8 @@ const reading = (o: Partial<PolicyReading> = {}): PolicyReading => ({
   brokenMonth: null, rearmMonth: null, breakCount: 0, rearmRule: DEFAULT_BREAKER_REARM_MONTHS ?? null,
   brokenAtEnd: false, call: null,
   cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
-  firstThrottleMonth: null, monthsInZone: zones0(), liqMonth: null, neverDraws: null, ...o,
+  firstThrottleMonth: null, monthsInZone: zones0(), liqMonth: null, neverDraws: null,
+  afterLiquidation: false, strikeOwes: false, ...o,
 });
 
 const BROKEN_HEAD = 'Price spent two month-ends more than 10% under support in month 11 — the model is treated as broken: no new debt.';
@@ -573,7 +574,9 @@ describe('policyPauseReason — the real reason a month did not borrow', () => {
     expect(policyPauseReason({ ...payDown, payDownUsd: 2_000 }, S, BILLS))
       .toBe('Price is 2.31× support — above 2×, so spare income pays debt down ($2,000 this month) before buying.');
     expect(policyPauseReason(paused, S, BILLS)).toBe('Price is under support (0.94×) — the policy borrows nothing until it is back on the line.');
-    expect(policyPauseReason(broken, S, BILLS)).toBe('The model is treated as broken — no new debt.');
+    // Crash playbook Run 1 (a moved pin — the latent defect, fixed): a broken month now names what spare income repaid
+    // on each leg. P6's first broken month (11) pays its $2,000 down on Coinbase; the old tail was silent about it.
+    expect(policyPauseReason(broken, S, BILLS)).toBe('The model is treated as broken — no new debt. Spare income repaid $2,000 of Coinbase debt.');
     // The row cannot say whether a limit or Strike's own line bound, so the sentence names both.
     expect(policyPauseReason({ ...blocked, restoreUsd: 0 }, S, BILLS))
       .toBe("The limits at support (or Strike's own line) leave no room to borrow this month, so your paycheck pays the bills.");
@@ -638,9 +641,127 @@ describe('policyPauseReason — the real reason a month did not borrow', () => {
     const cell = reachGrid()[0];
     const liq = runCyclingSim({ ...cell.off, supportPolicy: policyFor(cell.support) });
     expect(liq.rows[1].postLiquidation).toBe(true);
-    // The seizure left a deficiency over the Coinbase limit, so the month's spare income repaid it — true, and said.
+    // Crash playbook Run 1 (a moved pin): after a liquidation Strike is repaid first in EVERY zone (P3), so this paused
+    // month's $2,000 retires Strike, not the Coinbase leftover — and the repaid tail names the leg (no order word).
     expect(policyPauseReason(liq.rows[1], S, BILLS)).toBe(
-      'Coinbase has been liquidated — the policy borrows nothing more. $2,000 of spare income repaid a loan over its limit first.');
+      'Coinbase has been liquidated — the policy borrows nothing more. Spare income repaid $2,000 of Strike debt.');
+  });
+});
+
+// ── after a Coinbase liquidation — the repayment order and the lines (crash playbook Run 1) ─────────────────────────
+
+describe('after a Coinbase liquidation — the order the lines name, and what spare income repaid (crash playbook Run 1)', () => {
+  /** P1 × 0.35 from month 12 with a 0.5 ₿ reserve: Coinbase is liquidated at month 12 short of its debt; from month 13
+   *  (broken) spare income retires Strike first, reaches $0 there in month 18, and the Coinbase leftover after it. */
+  const r = runPolicy(stressFrom12(pathP1(), 0.35), {}, { openingColdBtc: 0.5 });
+  const overLine = (rd: PolicyReading, when: string): string =>
+    `Coinbase was liquidated in month 12 and is still ${fmtUSD(-rd.cb!.roomUsd)} over its limit at support — spare income repays it ${when}`;
+
+  it('⭐ months 13–16: Coinbase over its limit is repaid AFTER Strike — the line says so, and the headline agrees', () => {
+    expect(r.liqMonth).toBe(12);
+    expect(r.deficiencyUsd!).toBeGreaterThan(0);                  // premise: a leftover survived the seizure …
+    for (let m = 13; m <= 16; m++) {
+      const rd = read(r, m);
+      expect(rd.afterLiquidation, `m${m}`).toBe(true);
+      expect(rd.cb!.over, `m${m}`).toBe(true);                    // … over its limit at support …
+      expect(rd.strikeOwes, `m${m}`).toBe(true);                  // … while Strike still owes
+      expect(r.rows[m].strikeBalance, `m${m}`).toBeGreaterThan(0);
+      expect(policyDetails(rd, S)[0], `m${m}`).toBe(overLine(rd, 'after Strike'));
+      // The run is broken from month 13 (the break outranks), so the headline is read with the break cleared.
+      expect(policyHeadline({ ...rd, brokenMonth: null, brokenAtEnd: false }, S), `m${m}`)
+        .toEqual({ tone: 'warn', text: overLine(rd, 'after Strike') });
+      // Strike sits inside its limit: after a liquidation it gets no line — "room at support" would read as runway.
+      expect(rd.sk!.over, `m${m}`).toBe(false);
+      expect(policyDetails(rd, S).some((l) => l.startsWith('Strike')), `m${m}`).toBe(false);
+    }
+    // The liquidation month itself keeps today's words: its restore still paid Coinbase first (the row is pushed pre-seizure).
+    const r12 = read(r, 12);
+    expect(r12.afterLiquidation).toBe(false);
+    expect(policyDetails(r12, S)[0]).toMatch(/^Coinbase: \$[\d,]+ of room at support/);
+    expect(policyDetails(r12, S)[1]).toMatch(/^Strike: \$[\d,]+ of room at support$/);
+    // Strike over its limit after a liquidation is repaid FIRST, even with Coinbase over too (a constructed reading —
+    // Strike never goes over on this path).
+    expect(policyDetails({ ...read(r, 13), sk: { roomUsd: -1_000, roomMonths: 0, over: true } }, S)[1])
+      .toBe('Strike is $1,000 over its limit at support — spare income repays it first');
+  });
+
+  it('⭐ "after Strike" only while Strike owes: month 18 (Strike repaid) reads "first", month 17 keeps "after Strike"', () => {
+    const r17 = read(r, 17);
+    const r18 = read(r, 18);
+    // Premises: after the liquidation, Coinbase over its limit both months; Strike under the dust floor at month 18 only.
+    expect([r17.afterLiquidation, r18.afterLiquidation]).toEqual([true, true]);
+    expect([r17.cb!.over, r18.cb!.over]).toEqual([true, true]);
+    expect(shownUsd(r.rows[17].strikeBalance)).toBe(true);
+    expect(shownUsd(r.rows[18].strikeBalance)).toBe(false);
+    expect([r17.strikeOwes, r18.strikeOwes]).toEqual([true, false]);
+    expect(policyDetails(r17, S)[0]).toBe(overLine(r17, 'after Strike'));
+    expect(policyDetails(r18, S)[0]).toBe(overLine(r18, 'first'));
+    expect(policyHeadline({ ...r18, brokenMonth: null, brokenAtEnd: false }, S).text).toBe(overLine(r18, 'first'));
+    // …and every later month Coinbase stays over with Strike at $0 (19–23): spare income goes straight to Coinbase.
+    for (let m = 19; m <= 23; m++) expect(policyDetails(read(r, m), S)[0], `m${m}`).toBe(overLine(read(r, m), 'first'));
+  });
+
+  it('a liquidated run with no leftover over its limit reads "the policy borrows nothing more" — never "room at support"', () => {
+    // Engine-backed: by month 24 the leftover is repaid and Coinbase is back inside its limit.
+    const r24 = read(r, 24);
+    expect(r24.afterLiquidation).toBe(true);
+    expect(r24.cb!.over).toBe(false);
+    expect(policyDetails(r24, S)[0]).toBe('Coinbase was liquidated in month 12 — the policy borrows nothing more');
+    expect(policyDetails(r24, S).join(' ')).not.toContain('room at support');
+    // Constructed: both legs inside their limits.
+    const rd = reading({
+      afterLiquidation: true, liqMonth: 5, zone: 'paused', multiple: 0.9,
+      cb: { roomUsd: 12_000, roomMonths: 2, over: false }, sk: { roomUsd: 30_000, roomMonths: 5, over: false },
+    });
+    expect(policyDetails(rd, S)[0]).toBe('Coinbase was liquidated in month 5 — the policy borrows nothing more');
+    expect(policyDetails(rd, S).join(' ')).not.toContain('room at support');
+  });
+
+  it('the accumulate headline after a liquidation reads "the policy borrows nothing more", quiet — never "Buy with the line"', () => {
+    // CONSTRUCTED on purpose: no grid reaches this case — after a liquidation a break or an over line always outranks the
+    // zone line — but the copy must still be true if one ever does. Nothing is borrowed once Coinbase is gone.
+    const rd = reading({
+      afterLiquidation: true, liqMonth: 7, zone: 'accumulate', multiple: 1.2, cb: { roomUsd: 5_000, roomMonths: 1, over: false },
+    });
+    expect(policyHeadline(rd, S)).toEqual({ tone: 'quiet', text: 'Coinbase was liquidated in month 7 — the policy borrows nothing more' });
+    // Every other zone keeps its line — each is still true after a liquidation.
+    expect(policyHeadline({ ...rd, zone: 'hold', multiple: 1.7 }, S)).toEqual({ tone: 'quiet', text: 'Hold — no new debt · 1.70× support' });
+    expect(policyHeadline({ ...rd, zone: 'payDown', multiple: 2.3 }, S)).toEqual({ tone: 'good', text: 'Pay down · 2.30× support' });
+    expect(policyHeadline({ ...rd, zone: 'paused', multiple: 0.9 }, S)).toEqual({ tone: 'warn', text: 'Paused — below support · 0.90× support' });
+    // Before a liquidation the accumulate line is unchanged.
+    expect(policyHeadline({ ...rd, afterLiquidation: false }, S)).toEqual({ tone: 'good', text: 'Buy with the line · 1.20× support' });
+  });
+
+  it('⭐ the pause reason names what spare income repaid on each leg — after a liquidation, and in a broken month', () => {
+    const x13 = r.rows[13];
+    // Premises: post-liquidation, broken, and the whole $2,000 of spare income went to Strike.
+    expect([x13.postLiquidation, x13.policyZone]).toEqual([true, 'broken']);
+    expect(x13.strikeRepaidUsd).toBeCloseTo(2_000, 9);
+    expect(x13.cbRepaidUsd).toBe(0);
+    expect(policyPauseReason(x13, S, BILLS))
+      .toBe('Coinbase has been liquidated — the policy borrows nothing more. Spare income repaid $2,000 of Strike debt.');
+    // Month 18 splits it: the last of Strike, then the Coinbase leftover.
+    const x18 = r.rows[18];
+    expect(shownUsd(x18.strikeRepaidUsd) && shownUsd(x18.cbRepaidUsd)).toBe(true);
+    expect(policyPauseReason(x18, S, BILLS)).toBe('Coinbase has been liquidated — the policy borrows nothing more. '
+      + `Spare income repaid ${fmtUSD(x18.strikeRepaidUsd)} of Strike debt and ${fmtUSD(x18.cbRepaidUsd)} of Coinbase debt.`);
+    // P6's first broken month (no liquidation): its pay-down went to Coinbase — the old tail said nothing of it.
+    const p6b = firstRow(runPolicy(pathP6()), 'broken');
+    expect(p6b.m).toBe(11);
+    expect([p6b.postLiquidation, p6b.strikeRepaidUsd, p6b.restoreUsd]).toEqual([false, 0, 0]);
+    expect(p6b.cbRepaidUsd).toBeCloseTo(2_000, 9);
+    expect(policyPauseReason(p6b, S, BILLS)).toBe('The model is treated as broken — no new debt. Spare income repaid $2,000 of Coinbase debt.');
+  });
+
+  it('repaidTail — the four shapes, dust included; every other branch keeps the restore tail', () => {
+    expect(repaidTail({ strikeRepaidUsd: 1_200, cbRepaidUsd: 800 }))
+      .toBe(' Spare income repaid $1,200 of Strike debt and $800 of Coinbase debt.');
+    expect(repaidTail({ strikeRepaidUsd: 1_200, cbRepaidUsd: 0.49 })).toBe(' Spare income repaid $1,200 of Strike debt.');
+    expect(repaidTail({ strikeRepaidUsd: 0.3, cbRepaidUsd: 800 })).toBe(' Spare income repaid $800 of Coinbase debt.');
+    expect(repaidTail({ strikeRepaidUsd: 0.3, cbRepaidUsd: 0.49 })).toBe('');
+    // A hold month before any liquidation still says the restore tail — the only branches that changed are the two above.
+    const hold = { ...firstRow(runPolicy(pathP2(0)), 'hold'), multiple: 1.62, restoreUsd: 1_200, strikeRepaidUsd: 0, cbRepaidUsd: 1_200 };
+    expect(policyPauseReason(hold, S, BILLS)).toContain('$1,200 of spare income repaid a loan over its limit first.');
   });
 });
 

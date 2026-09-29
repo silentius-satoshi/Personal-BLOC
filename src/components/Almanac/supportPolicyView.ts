@@ -260,6 +260,12 @@ export interface PolicyReading {
   monthsInZone: Record<PolicyState, number>;
   liqMonth: number | null;
   neverDraws: NeverDraws | null;
+  /** The inspected month comes AFTER a Coinbase liquidation (strictly — the liquidation month's own restore still paid
+   *  Coinbase first, so it keeps today's words). The engine repays Strike first from then on, in every zone. */
+  afterLiquidation: boolean;
+  /** Strike still owes at the inspected month (above the dust floor) — after a liquidation, spare income repays
+   *  Coinbase's leftover only after Strike while this holds; once Strike is repaid it goes straight to Coinbase. */
+  strikeOwes: boolean;
 }
 
 const zeroZones = (): Record<PolicyState, number> => ({ paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 });
@@ -294,6 +300,7 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
       brokenAtEnd: false, call: null,
       cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
       firstThrottleMonth: null, monthsInZone: zeroZones(), liqMonth: null, neverDraws: null,
+      afterLiquidation: false, strikeOwes: false,
     };
   }
   const row: CyclingRow | undefined = sim.rows[monthIdx];
@@ -321,6 +328,8 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
     monthsInZone: { ...sim.monthsInZone },
     liqMonth: sim.liqMonth,
     neverDraws: neverDrawsOf(sim),
+    afterLiquidation: sim.liqMonth !== null && monthIdx > sim.liqMonth,
+    strikeOwes: row !== undefined && shownUsd(row.strikeBalance),
   };
 }
 
@@ -355,9 +364,24 @@ function brokenSentence(r: PolicyReading): string {
   return `${head}${rearm}${again}`;
 }
 
-function overSentence(leg: 'Coinbase' | 'Strike', roomUsd: number, afterCoinbase: boolean): string {
-  return `${leg} is ${fmtUSD(-roomUsd)} over its limit at support — spare income repays it `
-    + `${afterCoinbase ? 'after Coinbase' : 'first'}`;
+/** When spare income reaches a leg that is over its limit. Before a liquidation Coinbase is repaid first (it liquidates
+ *  instantly); after one, Strike is — while it still owes. */
+type RepayOrder = 'first' | 'afterCoinbase' | 'afterStrike';
+const REPAY_WHEN: Record<RepayOrder, string> = { first: 'first', afterCoinbase: 'after Coinbase', afterStrike: 'after Strike' };
+
+function overSentence(leg: 'Coinbase' | 'Strike', roomUsd: number, order: RepayOrder): string {
+  return `${leg} is ${fmtUSD(-roomUsd)} over its limit at support — spare income repays it ${REPAY_WHEN[order]}`;
+}
+
+/** The Coinbase line AFTER a Coinbase liquidation. Over its limit: the leftover is repaid after Strike while Strike still
+ *  owes, else first (once Strike is repaid, spare income goes straight to Coinbase). Not over: the policy borrows nothing
+ *  more — never "room at support", which reads as borrowing runway. */
+function liquidatedCbSentence(r: PolicyReading, rm: PolicyRoom): string {
+  const head = `Coinbase was liquidated in month ${r.liqMonth}`;
+  return rm.over
+    ? `${head} and is still ${fmtUSD(-rm.roomUsd)} over its limit at support — spare income repays it `
+      + REPAY_WHEN[r.strikeOwes ? 'afterStrike' : 'first']
+    : `${head} — the policy borrows nothing more`;
 }
 
 function roomSentence(leg: 'Coinbase' | 'Strike', rm: PolicyRoom, withMonths: boolean): string {
@@ -370,9 +394,16 @@ function roomSentence(leg: 'Coinbase' | 'Strike', rm: PolicyRoom, withMonths: bo
 }
 
 const cbLine = (r: PolicyReading): string | null =>
-  r.cb === null ? null : r.cb.over ? overSentence('Coinbase', r.cb.roomUsd, false) : roomSentence('Coinbase', r.cb, true);
+  r.cb === null ? null
+    : r.afterLiquidation ? liquidatedCbSentence(r, r.cb)
+    : r.cb.over ? overSentence('Coinbase', r.cb.roomUsd, 'first') : roomSentence('Coinbase', r.cb, true);
+/** After a liquidation Strike is repaid FIRST whenever it is over its limit, and a Strike that is inside its limit gets no
+ *  line at all: the policy borrows nothing more, so "room at support" would read as borrowing runway. */
 const skLine = (r: PolicyReading): string | null =>
-  r.sk === null ? null : r.sk.over ? overSentence('Strike', r.sk.roomUsd, r.cb?.over === true) : roomSentence('Strike', r.sk, false);
+  r.sk === null ? null
+    : r.sk.over ? overSentence('Strike', r.sk.roomUsd, !r.afterLiquidation && r.cb?.over === true ? 'afterCoinbase' : 'first')
+    : r.afterLiquidation ? null
+    : roomSentence('Strike', r.sk, false);
 
 const coldAlarm = (r: PolicyReading): string =>
   `${fmtBtc(r.coldAboveSupportBtc)} came out of cold while price was above support — the position opened over its limits.`;
@@ -411,6 +442,9 @@ export function policyUnpaidNote(r: PolicyReading): string | null {
  * ONE line for the face's state area. Precedence — the bad tone first (each adjacent pair is tested):
  *   latched break > call sold > re-armed break > over the limit > cold pulled above support > call cured > paused > zone
  * Run-level events (the breaker, calls, cold) read the result; over / paused / zone read the inspected month.
+ * After a Coinbase liquidation the over lines use the post-liquidation order (`cbLine` / `skLine`), and an accumulate
+ * month's zone line becomes "…the policy borrows nothing more" (quiet) — never "Buy with the line", since nothing is
+ * borrowed once Coinbase is gone. Every other zone line stays true there.
  */
 export function policyHeadline(r: PolicyReading, _s: EffectivePolicySettings): { tone: PolicyTone; text: string } {
   if (!r.applied) return { tone: 'quiet', text: '' };
@@ -418,11 +452,16 @@ export function policyHeadline(r: PolicyReading, _s: EffectivePolicySettings): {
   if (broken && r.brokenAtEnd) return { tone: 'bad', text: brokenSentence(r) };
   if (r.call !== null && r.call.sold > 0) return { tone: 'bad', text: strikeCallSentence(r.call) };
   if (broken) return { tone: 'warn', text: brokenSentence(r) };
-  if (r.cb?.over) return { tone: 'warn', text: overSentence('Coinbase', r.cb.roomUsd, false) };
-  if (r.sk?.over) return { tone: 'warn', text: overSentence('Strike', r.sk.roomUsd, false) };
+  if (r.cb?.over) {
+    return { tone: 'warn', text: r.afterLiquidation ? liquidatedCbSentence(r, r.cb) : overSentence('Coinbase', r.cb.roomUsd, 'first') };
+  }
+  if (r.sk?.over) return { tone: 'warn', text: overSentence('Strike', r.sk.roomUsd, 'first') };
   if (r.coldAboveSupportBtc > 0) return { tone: 'warn', text: coldAlarm(r) };
   if (r.call !== null) return { tone: 'warn', text: strikeCallSentence(r.call) };
   if (r.zone === null) return { tone: 'quiet', text: '' };
+  if (r.afterLiquidation && r.zone === 'accumulate') {
+    return { tone: 'quiet', text: `Coinbase was liquidated in month ${r.liqMonth} — the policy borrows nothing more` };
+  }
   return { tone: ZONE_TONE[r.zone], text: zoneLine(r) };
 }
 
@@ -491,10 +530,29 @@ export function billsRemainderTail(row: Pick<CyclingRow, 'cashToBillsUsd' | 'unf
     + (shownUsd(row.unfundedUsd) ? ` ${fmtUSD(row.unfundedUsd)} of bills went unpaid.` : '');
 }
 
+/**
+ * What spare income repaid on each leg this month (the engine's `strikeRepaidUsd` / `cbRepaidUsd` — the restore plus the
+ * pay-down). Four shapes: both legs · Strike only · Coinbase only · '' (neither passes the dust floor). NO order word: a
+ * broken month's restore and pay-down run in different orders, and after a liquidation the order changes again.
+ */
+export function repaidTail(row: Pick<CyclingRow, 'strikeRepaidUsd' | 'cbRepaidUsd'>): string {
+  const sk = shownUsd(row.strikeRepaidUsd);
+  const cb = shownUsd(row.cbRepaidUsd);
+  if (sk && cb) {
+    return ` Spare income repaid ${fmtUSD(row.strikeRepaidUsd)} of Strike debt and ${fmtUSD(row.cbRepaidUsd)} of Coinbase debt.`;
+  }
+  if (sk) return ` Spare income repaid ${fmtUSD(row.strikeRepaidUsd)} of Strike debt.`;
+  if (cb) return ` Spare income repaid ${fmtUSD(row.cbRepaidUsd)} of Coinbase debt.`;
+  return '';
+}
+
 /** Null when the month drew, the policy is off, it is the opening (month 0 takes no action), or there are NO bills —
  *  a month with nothing to fund borrows nothing and needs no reason (v1.2 #9: the faces print `noBillsNote` there;
  *  "no room to borrow" would be false). Else ONE sentence naming the real reason, plus what spare income, the cash
- *  reserve and unpaid bills did that month. `expenses` is the face's effective bills. */
+ *  reserve and unpaid bills did that month. `expenses` is the face's effective bills.
+ *  The post-liquidation and broken months name what spare income repaid on EACH leg (`repaidTail`) — the restore tail
+ *  ("repaid a loan over its limit first") is false after a liquidation (Strike is repaid first, over its limit or not)
+ *  and silent about a broken month's pay-down. Every other month keeps the restore tail. */
 export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, expenses: number): string | null {
   if (!(expenses > 0) || row.policyZone === null || row.m === 0 || row.strikeDrawn > 0) return null;
   const k = row.multiple !== null && Number.isFinite(row.multiple) ? fmtK(row.multiple) : '—';
@@ -503,8 +561,10 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, e
     ? 'your paycheck pays what it can' : 'your paycheck pays the bills';
   const payDownAt = `${fmtThreshold(s.payDownAbove)}×`;
   let head: string;
+  let repaid = false;   // the post-liquidation and broken months name what was repaid on each leg
   if (row.postLiquidation) {
     head = 'Coinbase has been liquidated — the policy borrows nothing more.';
+    repaid = true;
   } else {
     switch (row.policyZone) {
       case 'hold':
@@ -523,6 +583,7 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, e
         break;
       case 'broken':
         head = 'The model is treated as broken — no new debt.';
+        repaid = true;
         break;
       case 'accumulate':
         // The draw is capped by the limits at support AND by Strike's own line; a row cannot say which one bound.
@@ -530,9 +591,8 @@ export function policyPauseReason(row: CyclingRow, s: EffectivePolicySettings, e
         break;
     }
   }
-  return head
-    + (shownUsd(row.restoreUsd) ? ` ${fmtUSD(row.restoreUsd)} of spare income repaid a loan over its limit first.` : '')
-    + billsRemainderTail(row);
+  const restoreTail = shownUsd(row.restoreUsd) ? ` ${fmtUSD(row.restoreUsd)} of spare income repaid a loan over its limit first.` : '';
+  return head + (repaid ? repaidTail(row) : restoreTail) + billsRemainderTail(row);
 }
 
 /** The pause clause's reason at the stop month, under the policy. */

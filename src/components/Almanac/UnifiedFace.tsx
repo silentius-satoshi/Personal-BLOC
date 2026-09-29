@@ -25,7 +25,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
-  OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine,
+  OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
@@ -357,9 +357,10 @@ export default function UnifiedFace() {
     ['BTC held', fmtBtc(selRow.btcHeld), `from ${fmtBtc(openingBtc)}`, 'var(--green)'],
     ['Total debt', fmtK(selRow.debt), `from ${fmtK(openingDebt)}`, 'var(--orange)'],
     ['CB LTV', fmtLtvPct(selRow.cbLtv),
-      selRow.defended && selRow.cbLtvPreDefense !== null
-        ? `defended from ${fmtLtvPct(selRow.cbLtvPreDefense)}`
-        : applied ? policyTileSub(policySettings, capPct) : `stop ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`,
+      // Under the policy a month the crash playbook moved collateral in counts as defended too (it can hold the line
+      // with no shift) — defendedFromSub (cyclingFaceView), the one definition.
+      defendedFromSub(selRow, applied)
+        ?? (applied ? policyTileSub(policySettings, capPct) : `stop ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`),
       cbZone(selRow.cbLtv)],
     ['Strike LTV', fmtLtvPct(selRow.strikeLtv),
       selRow.strikeTopUpBtc > 0
@@ -855,6 +856,7 @@ export default function UnifiedFace() {
                       <td className={`${styles.msTd} ${styles.msYear}`}>
                         {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
                         {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                        {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
                         {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
                         {turn && (
                           <span className={styles.msTurn}>{turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}</span>

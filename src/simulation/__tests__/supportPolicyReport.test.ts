@@ -6,7 +6,10 @@ import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 import {
   SUPPORT, SP_REPRO, CASH_6_USD, policyFor, buildP9, a5Cases, minMultiple, faceWorldGrid, syntheticGrid, reachGrid,
   pathP1, pathP2, CALL_BASE, CALL_PATH, CALL_SUPPORT, type GridCell, stressFrom12, coldRuleRows, COLD_RULE_VARIANTS,
+  CRASH_PLAYBOOK_VARIANTS, doubleDropRows,
 } from './supportPolicyPaths';
+import { ceilingLiquidationMultiple } from '../cbDefense';
+import { CB_LLTV } from '../runCoinbaseLoan';
 
 /**
  * A5 MEASUREMENT REPORT GENERATOR (spec v1.2 — committed so the numbers the owner approves are re-runnable in
@@ -166,8 +169,8 @@ function tallyGrid(cells: GridCell[]): GridTally {
   return t;
 }
 
-// ── COLD RULES BELOW SUPPORT (spec: cold rules measurement v1) — D the doom gate, C cold before the debt shift ─────────
-// Measured, never adopted here: both switches are TEST-ONLY and default off. Every run is POLICY ON (they are policy-only).
+// ── COLD RULES BELOW SUPPORT (spec: cold rules measurement v1) — D the doom gate; C retired (the crash playbook) ───────
+// D is TEST-ONLY (adopted, default on). Every run is POLICY ON (it is policy-only) and on the PRE-PLAYBOOK order.
 
 type ColdVariant = (typeof COLD_RULE_VARIANTS)[number][0];
 const sum = (xs: number[]): number => xs.reduce((s, x) => s + x, 0);
@@ -239,10 +242,9 @@ function noteVs(t: VsTally, r: CyclingResult, ref: CyclingResult): void {
 const fmtVs = (v: VsTally): string => `₿ ${v.btcBetter} / ${v.btcWorse} · all-in ${v.allInBetter} / ${v.allInWorse} (Σ ${sUsd(v.allInDeltaUsd)})`;
 
 /** Every variant on every cell — each with its OWN inputs (base is the explicit pre-adoption order, not the default);
- *  `seed` null keeps the grid's own `openingColdBtc`. `cdVsD` is §4 v1.1's cost-only check: C + D against D. */
-function tallyColdGrid(cells: GridCell[], seed: number | null): { t: Map<ColdVariant, ColdTally>; cdVsD: VsTally } {
+ *  `seed` null keeps the grid's own `openingColdBtc`. */
+function tallyColdGrid(cells: GridCell[], seed: number | null): { t: Map<ColdVariant, ColdTally> } {
   const out = new Map<ColdVariant, ColdTally>(COLD_RULE_VARIANTS.map(([name]) => [name, newColdTally()]));
-  const cdVsD = newVsTally();
   for (const c of cells) {
     const inputs: CyclingInputs = {
       ...c.off, supportPolicy: policyFor(c.support), ...(seed === null ? {} : { openingColdBtc: seed }),
@@ -251,10 +253,91 @@ function tallyColdGrid(cells: GridCell[], seed: number | null): { t: Map<ColdVar
       COLD_RULE_VARIANTS.map(([name, v]): [ColdVariant, CyclingResult] => [name, runCyclingSim({ ...inputs, ...v })]));
     const base = runs.get('base')!;
     for (const [name] of COLD_RULE_VARIANTS) noteCold(out.get(name)!, runs.get(name)!, base);
-    noteVs(cdVsD, runs.get('C+D')!, runs.get('D')!);
   }
-  return { t: out, cdVsD };
+  return { t: out };
 }
+
+// ── THE CRASH PLAYBOOK (spec: crash playbook v1, Run 1) — pre / R / playbook / anyDepth, all POLICY ON ─────────────────
+// Four runs per cell, scalars only; three comparisons. The depth gate is ceilingLiquidationMultiple(cbStop, CB_LLTV).
+
+type PlaybookVariant = (typeof CRASH_PLAYBOOK_VARIANTS)[number][0];
+const PB_PAIRS = [['R vs pre', 'R', 'pre'], ['playbook vs R', 'playbook', 'R'], ['anyDepth vs R', 'anyDepth', 'R']] as const;
+type PbPairName = (typeof PB_PAIRS)[number][0];
+/** One run's scalars — all a cell keeps. */
+interface PbStats {
+  btc: number; allIn: number; liq: number | null; sales: number; soldBtc: number; shifted: number; skInt: number;
+  outOfStrike: number; intoDoomed: number; lostInCb: number; g2: boolean; coldMonths: number;
+}
+const pbStats = (r: CyclingResult): PbStats => ({
+  btc: r.last.btcHeld, allIn: allInEquity(r), liq: r.liqMonth, sales: r.strikeCallsSold, soldBtc: r.totalStrikeLiquidatedBtc,
+  shifted: r.totalDefenseDrawnUsd, skInt: r.totalStrikeInterest, outOfStrike: r.totalTopUpFromStrikeBtc,
+  intoDoomed: intoDoomedBtc(r),
+  // Coins topped into Coinbase at or before the month it was liquidated — all of them went with the seizure.
+  lostInCb: r.liqMonth === null ? 0 : sum(r.rows.slice(0, r.liqMonth + 1).map((x) => x.topUpBtc)),
+  g2: insideBoth(r) && r.coldRetrievedAboveSupportBtc > 0,
+  coldMonths: sum(r.rows.map((x) => x.coldBtc)),
+});
+interface PbCell {
+  label: string; k1: number | null; f1: number | null;
+  stats: Record<PlaybookVariant, PbStats>; changed: Record<PbPairName, boolean>;
+}
+function runPbCell(label: string, inputs: CyclingInputs, f1: number | null = null, k1: number | null = null): PbCell {
+  const runs = new Map<PlaybookVariant, CyclingResult>(
+    CRASH_PLAYBOOK_VARIANTS.map(([name, v]): [PlaybookVariant, CyclingResult] => [name, runCyclingSim({ ...inputs, ...v })]));
+  const stats = Object.fromEntries([...runs].map(([n, r]) => [n, pbStats(r)])) as Record<PlaybookVariant, PbStats>;
+  const changed = Object.fromEntries(PB_PAIRS.map(([p, a, b]) => [p, !isDeepStrictEqual(runs.get(a), runs.get(b))])) as
+    Record<PbPairName, boolean>;
+  return { label, f1, k1, stats, changed };
+}
+interface PbTally {
+  n: number; changed: number; btcBetter: number; btcWorse: number; btcDelta: number;
+  allInBetter: number; allInWorse: number; allInDelta: number; allInLoss: number;
+  survToLiq: number; liqToSurv: number; salesChanged: number; coldChanged: number;
+  refShifted: number; vShifted: number; refSkInt: number; vSkInt: number; refOut: number; vOut: number;
+  refInto: number; vInto: number; refLost: number; vLost: number; refG2: number; vG2: number; refCold: number; vCold: number;
+  btcWorseCells: string[]; allInWorseCells: string[];
+}
+function tallyPb(cells: PbCell[], pair: PbPairName): PbTally {
+  const [, vName, refName] = PB_PAIRS.find(([p]) => p === pair)!;
+  const t: PbTally = {
+    n: 0, changed: 0, btcBetter: 0, btcWorse: 0, btcDelta: 0, allInBetter: 0, allInWorse: 0, allInDelta: 0, allInLoss: 0,
+    survToLiq: 0, liqToSurv: 0, salesChanged: 0, coldChanged: 0, refShifted: 0, vShifted: 0, refSkInt: 0, vSkInt: 0,
+    refOut: 0, vOut: 0, refInto: 0, vInto: 0, refLost: 0, vLost: 0, refG2: 0, vG2: 0, refCold: 0, vCold: 0,
+    btcWorseCells: [], allInWorseCells: [],
+  };
+  for (const c of cells) {
+    const v = c.stats[vName];
+    const ref = c.stats[refName];
+    t.n++;
+    if (c.changed[pair]) t.changed++;
+    const d = v.btc - ref.btc;
+    if (d > 1e-9) t.btcBetter++;
+    if (d < -1e-9) { t.btcWorse++; t.btcWorseCells.push(`${c.label} (${sBtc(d)})`); }
+    t.btcDelta += d;
+    const a = v.allIn - ref.allIn;
+    if (a > 0.5) t.allInBetter++;
+    if (a < -0.5) { t.allInWorse++; t.allInLoss += a; t.allInWorseCells.push(`${c.label} (${sUsd(a)})`); }
+    t.allInDelta += a;
+    if (ref.liq === null && v.liq !== null) t.survToLiq++;
+    if (ref.liq !== null && v.liq === null) t.liqToSurv++;
+    if (v.sales !== ref.sales || Math.abs(v.soldBtc - ref.soldBtc) > 1e-9) t.salesChanged++;
+    if (Math.abs(v.coldMonths - ref.coldMonths) > 1e-9) t.coldChanged++;
+    t.refShifted += ref.shifted; t.vShifted += v.shifted;
+    t.refSkInt += ref.skInt; t.vSkInt += v.skInt;
+    t.refOut += ref.outOfStrike; t.vOut += v.outOfStrike;
+    t.refInto += ref.intoDoomed; t.vInto += v.intoDoomed;
+    t.refLost += ref.lostInCb; t.vLost += v.lostInCb;
+    if (ref.g2) t.refG2++;
+    if (v.g2) t.vG2++;
+    t.refCold += ref.coldMonths; t.vCold += v.coldMonths;
+  }
+  return t;
+}
+const arrow = (a: string, b: string): string => (a === b ? a : `${a} → ${b}`);
+const pbRow = (set: string, pair: PbPairName, t: PbTally): string =>
+  `| ${set} | ${pair} | ${t.n} | ${t.changed} | ${t.btcBetter} / ${t.btcWorse} (${sBtc(t.btcDelta, 3)}) | ${t.allInBetter} / ${t.allInWorse} (Σ ${sUsd(t.allInDelta)} · loss ${usd(t.allInLoss)}) | ${t.survToLiq} | ${t.liqToSurv} | ${t.salesChanged} | ${arrow(usd(t.refShifted), usd(t.vShifted))} | ${arrow(usd(t.refSkInt), usd(t.vSkInt))} | ${arrow(btc(t.refOut, 3), btc(t.vOut, 3))} | ${arrow(btc(t.refInto, 3), btc(t.vInto, 3))} | ${arrow(btc(t.refLost, 3), btc(t.vLost, 3))} | ${arrow(`${t.refG2}`, `${t.vG2}`)} | ${arrow(btc(t.refCold, 1), btc(t.vCold, 1))} |`;
+const listCells = (xs: string[], cap = 12): string =>
+  (xs.length === 0 ? 'none' : `${xs.slice(0, cap).join(' · ')}${xs.length > cap ? ` · … (+${xs.length - cap} more)` : ''}`);
 
 describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurement report', () => {
   it('prints the report (and checks the grids are the grids)', () => {
@@ -531,17 +614,18 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
   }, 300_000);
 
   // ── the cold-rules measurement — its own block, so it can be run and read alone (`-t "cold rules"`) ──
-  it('prints the cold rules measurement (D doom gate, C cold before the shift; policy ON)', () => {
+  it('prints the cold rules measurement (D doom gate, on the pre-playbook order; C retired; policy ON)', () => {
     const lines: string[] = [];
     const out = (s = ''): void => { lines.push(s); };
     out('<!-- SP_REPORT COLD RULES BEGIN -->');
-    out('# Cold rules below support — D (doom gate, ADOPTED) and C (cold before the debt shift, not adopted), measured');
+    out('# Cold rules below support — D (doom gate, ADOPTED), measured; C retired');
     out();
-    out('Every run is policy ON. The variants are EXPLICIT: base = the pre-adoption order (the doom gate off); D = the');
-    out('default since its adoption (D skips the emergency Coinbase top-up in a month Coinbase is doomed, asked after the');
-    out('shift); C = cold tops Coinbase up to its defense line BEFORE the shift, below support, holding back Strike\'s');
-    out('pre-shift need — with D off; C+D = both. ⚠ Every run also repays STRIKE FIRST after a Coinbase liquidation (the');
-    out('adopted default), so base\'s numbers moved from the measurement wherever a post-liquidation deficiency exists.');
+    out('Every run is policy ON and on the PRE-PLAYBOOK order: Strike\'s release rules off and no top-up before the shift.');
+    out('C (cold before the debt shift) is RETIRED — the crash playbook supersedes it (its own block, `-t "crash playbook"`).');
+    out('The variants are EXPLICIT: base = the pre-adoption order (the doom gate off); D = the doom gate on (it skips the');
+    out('emergency Coinbase top-up in a month Coinbase is doomed, asked after the shift). ⚠ Every run also repays STRIKE');
+    out('FIRST after a Coinbase liquidation, now in EVERY zone (the adopted default), so base\'s numbers moved from the');
+    out('measurement wherever a post-liquidation deficiency exists.');
     out('Δ₿ = ₿ held at the end − base\'s (same cell, same seed); better / worse = Δ₿ > 1e-9 / < −1e-9. ₿ into a doomed CB =');
     out('cold + Strike collateral topped into Coinbase in its liquidation month. G2 counts cells that open inside both');
     out('ceilings and pull cold at or above support — it must be 0.');
@@ -557,12 +641,12 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     out();
     out('| Grid | seed ₿ | variant | cells | CB liq cells | Strike call cells | Strike sales (cells, ₿) | Σ cold used ₿ | Σ ₿ into a doomed CB | Σ debt shifted | Σ Strike interest | better / worse | Σ Δ₿ · median Δ₿ | G2 violations (in scope) |');
     out('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
-    const tallies: { grid: string; seed: string; t: Map<ColdVariant, ColdTally>; cdVsD: VsTally }[] = [];
+    const tallies: { grid: string; seed: string; t: Map<ColdVariant, ColdTally> }[] = [];
     for (const [grid, cells, seeds] of grids) {
       for (const seed of seeds) {
-        const { t, cdVsD } = tallyColdGrid(cells, seed);
+        const { t } = tallyColdGrid(cells, seed);
         const seedLabel = seed === null ? 'own (0–1.0)' : `${seed}`;
-        tallies.push({ grid, seed: seedLabel, t, cdVsD });
+        tallies.push({ grid, seed: seedLabel, t });
         for (const [name] of COLD_RULE_VARIANTS) {
           const x = t.get(name)!;
           const vs = name === 'base' ? '—' : `${x.better} / ${x.worse}`;
@@ -576,20 +660,14 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     // ── rows ──
     out('## Rows — the A5 paths, P1 / P2 × 0.6 / 0.5 / 0.4 / 0.35 from m12, and the CALL fixture');
     out();
-    out('One value = all four variants agree; otherwise base / D / C / C+D.');
+    out('One value = both variants agree; otherwise base / D.');
     out();
     out('| Row | seed ₿ | CB liq | Strike ₿ sold | cold used ₿ | debt shifted | Strike interest | ₿ held − seed |');
     out('|---|---|---|---|---|---|---|---|');
-    const four = (xs: string[]): string => (xs.every((x) => x === xs[0]) ? xs[0] : xs.join(' / '));
-    // Rows against base (₿, all-in, liquidations, sales) — and C + D against D, the cost-only check (§4 v1.1).
+    const both = (xs: string[]): string => (xs.every((x) => x === xs[0]) ? xs[0] : xs.join(' / '));
+    // Rows against base (₿, all-in, liquidations, sales).
     const rowTally = new Map<ColdVariant, { worse: number; allInWorse: number; liq: number; sales: number; intoDoomed: string[] }>(
       COLD_RULE_VARIANTS.map(([name]) => [name, { worse: 0, allInWorse: 0, liq: 0, sales: 0, intoDoomed: [] }]));
-    const rowCdVsD = newVsTally();
-    const rowCdWorse: string[] = [];
-    let rowShiftedD = 0;
-    let rowShiftedCd = 0;
-    let rowSkIntD = 0;
-    let rowSkIntCd = 0;
     for (const row of coldRuleRows()) {
       for (const seed of [0, 0.5]) {
         const rs = COLD_RULE_VARIANTS.map(([, v]) => runCyclingSim({ ...row.on, ...v, openingColdBtc: seed }));
@@ -602,17 +680,7 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
           if (Math.abs(r.totalStrikeLiquidatedBtc - rs[0].totalStrikeLiquidatedBtc) > 1e-9) t.sales++;
           if (intoDoomedBtc(r) > 0) t.intoDoomed.push(`${row.name} (seed ${seed}) ${btc(intoDoomedBtc(r), 3)}`);
         });
-        const [, d, , cd] = rs;
-        const before = { ...rowCdVsD };
-        noteVs(rowCdVsD, cd, d);
-        if (rowCdVsD.btcWorse > before.btcWorse || rowCdVsD.allInWorse > before.allInWorse) {
-          rowCdWorse.push(`${row.name} (seed ${seed}): ₿ ${sBtc(cd.last.btcHeld - d.last.btcHeld)}, all-in ${sUsd(allInEquity(cd) - allInEquity(d))}`);
-        }
-        rowShiftedD += d.totalDefenseDrawnUsd;
-        rowShiftedCd += cd.totalDefenseDrawnUsd;
-        rowSkIntD += d.totalStrikeInterest;
-        rowSkIntCd += cd.totalStrikeInterest;
-        out(`| ${row.name} | ${seed} | ${four(rs.map((r) => mo(r.liqMonth)))} | ${four(rs.map((r) => btc(r.totalStrikeLiquidatedBtc)))} | ${four(rs.map((r) => btc(r.totalColdRetrievedBtc)))} | ${four(rs.map((r) => usd(r.totalDefenseDrawnUsd)))} | ${four(rs.map((r) => usd(r.totalStrikeInterest)))} | ${four(rs.map((r) => btc(r.last.btcHeld - seed)))} |`);
+        out(`| ${row.name} | ${seed} | ${both(rs.map((r) => mo(r.liqMonth)))} | ${both(rs.map((r) => btc(r.totalStrikeLiquidatedBtc)))} | ${both(rs.map((r) => btc(r.totalColdRetrievedBtc)))} | ${both(rs.map((r) => usd(r.totalDefenseDrawnUsd)))} | ${both(rs.map((r) => usd(r.totalStrikeInterest)))} | ${both(rs.map((r) => btc(r.last.btcHeld - seed)))} |`);
       }
     }
     out();
@@ -626,21 +694,7 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     }
     const dRows = rowTally.get('D')!;
     out(`- **D · rows:** ₿ worse ${dRows.worse} · all-in worse ${dRows.allInWorse} · CB liquidation changed ${dRows.liq} · Strike sales changed ${dRows.sales}.`);
-    for (const { grid, seed, t } of tallies) {
-      const b = t.get('base')!;
-      const c = t.get('C')!;
-      out(`- **C · ${grid} · seed ${seed}:** better / worse ${c.better} / ${c.worse} (Σ Δ₿ ${sBtc(sum(c.deltas))}) · CB liq cells ${b.liq} → ${c.liq}: survival → liquidation ${c.survToLiq.length} (median ${medianMo(c.survToLiq)}), liquidation → survival ${c.liqToSurv.length} (median ${medianMo(c.liqToSurv)}) · Strike sale cells ${b.saleCells} → ${c.saleCells} (₿ ${btc(b.soldBtc, 3)} → ${btc(c.soldBtc, 3)}) · median ₿ held ${btc(median(b.held))} → ${btc(median(c.held))} · all-in equity better / worse ${c.allInBetter} / ${c.allInWorse} (Σ ${sUsd(c.allInDeltaUsd)}).`);
-    }
-    const cRows = rowTally.get('C')!;
-    out(`- **C · rows:** worse ${cRows.worse} · CB liquidation changed ${cRows.liq} · Strike sales changed ${cRows.sales}.`);
-    // C + D against D (the adopted order) — the cost-only check of §4 v1.1.
-    for (const { grid, seed, t, cdVsD } of tallies) {
-      const d = t.get('D')!;
-      const cd = t.get('C+D')!;
-      out(`- **C+D vs D · ${grid} · seed ${seed}:** better / worse ${fmtVs(cdVsD)} · ₿ into a doomed CB ${btc(cd.intoDoomed, 3)} (D ${btc(d.intoDoomed, 3)}) · Σ debt shifted ${usd(d.shifted)} → ${usd(cd.shifted)} · Σ Strike interest ${usd(d.skInterest)} → ${usd(cd.skInterest)}.`);
-    }
-    out(`- **C+D vs D · rows:** better / worse ${fmtVs(rowCdVsD)} · worse on: ${rowCdWorse.length ? rowCdWorse.join(' · ') : 'none'}.`);
-    for (const name of ['base', 'D', 'C', 'C+D'] as const) {
+    for (const name of ['base', 'D'] as const) {
       const into = rowTally.get(name)!.intoDoomed;
       out(`- **₿ into a doomed CB · rows · ${name}:** ${into.length ? into.join(' · ') : 'none'}.`);
     }
@@ -658,22 +712,6 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
       .map(({ seed, t }) => `synthetic · seed ${seed}: ${t.get('D')!.allInWorse} cells, Σ loss ${sUsd(t.get('D')!.allInLossUsd)} (net Σ ${sUsd(t.get('D')!.allInDeltaUsd)})`);
     const dPass = dBtcWorse === 0 && dLiqChanged === 0 && dSalesChanged === 0 && dRecoveringWorse === 0;
     out(`- **§4 v1.1 · D:** ${dPass ? 'PASS' : 'FAIL'} — ₿ worse ${dBtcWorse} (grids + rows) · liquidations changed ${dLiqChanged} · sales changed ${dSalesChanged} · all-in worse on the recovering grids — ${recoveringAllInWorse.map((x) => `${x.label}: ${x.n}`).join(', ')}; rows: ${dRows.allInWorse} · all-in loss allowed and named (no recovery): ${named.join('; ')}.`);
-    // §4 v1.1 — C (C + D vs D): no liquidation or sale change, never worse on ₿ or all-in, the cold rule kept, and a cut.
-    const cdLiqChanged = tallies.reduce((s, { t }) => s + Math.abs(t.get('C+D')!.liq - t.get('D')!.liq), 0) + Math.abs(rowTally.get('C+D')!.liq - dRows.liq);
-    const cdSaleChanged = tallies.reduce((s, { t }) => s + Math.abs(t.get('C+D')!.saleCells - t.get('D')!.saleCells), 0);
-    const cdWorseGrid = tallies.reduce((s, { cdVsD }) => s + cdVsD.btcWorse + cdVsD.allInWorse, 0);
-    const cdIntoGrid = tallies.reduce((s, { t }) => s + t.get('C+D')!.intoDoomed, 0);
-    const cdIntoRows = rowTally.get('C+D')!.intoDoomed;
-    const shifted = (name: ColdVariant): number => tallies.reduce((s, { t }) => s + t.get(name)!.shifted, 0);
-    const skInt = (name: ColdVariant): number => tallies.reduce((s, { t }) => s + t.get(name)!.skInterest, 0);
-    const shiftedD = shifted('D') + rowShiftedD;
-    const shiftedCd = shifted('C+D') + rowShiftedCd;
-    const skIntD = skInt('D') + rowSkIntD;
-    const skIntCd = skInt('C+D') + rowSkIntCd;
-    const cuts = shiftedCd < shiftedD || skIntCd < skIntD;
-    const cPass = cdLiqChanged === 0 && cdSaleChanged === 0 && cdWorseGrid === 0 && rowCdWorse.length === 0
-      && cdIntoGrid === 0 && cdIntoRows.length === 0 && cuts;
-    out(`- **§4 v1.1 · C (C+D vs D):** ${cPass ? 'PASS' : 'FAIL'} — liquidation-cell change ${cdLiqChanged}, sale-cell change ${cdSaleChanged} · worse cells (₿ + all-in): grids ${cdWorseGrid}, rows ${rowCdWorse.length ? rowCdWorse.join(' · ') : 'none'} · ₿ into a doomed CB: grids ${btc(cdIntoGrid, 3)}, rows ${cdIntoRows.length ? cdIntoRows.join(' · ') : 'none'} · Σ debt shifted ${usd(shiftedD)} → ${usd(shiftedCd)} · Σ Strike interest ${usd(skIntD)} → ${usd(skIntCd)} (grids + rows).`);
     out('<!-- SP_REPORT COLD RULES END -->');
 
     console.log(lines.join('\n'));
@@ -686,9 +724,10 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     out('<!-- SP_REPORT REPAYMENT BEGIN -->');
     out('# Repayment after a Coinbase liquidation — Strike first (the adopted default) vs Coinbase first');
     out();
-    out('Every run is policy ON. off = the pre-adoption order: after a liquidation, a pay-down or broken month\'s restore pays');
-    out('the Coinbase leftover first. on = the default: Strike first, the leftover after it. Each with the doom gate (D) off');
-    out('and on; on is compared with off per cell (₿ held > 1e-9, all-in equity > 50¢). The deficiency is the debt a seizure');
+    out('Every run is policy ON and on the crash-playbook order (the defaults). Strike first now covers EVERY zone after a');
+    out('liquidation (P3, crash playbook Run 1): off = Coinbase first — after a liquidation, the restore and the pay-down pay');
+    out('the Coinbase leftover first, in every zone; on = the default: Strike first, the leftover after it. Each with the doom');
+    out('gate (D) off and on; on is compared with off per cell (₿ held > 1e-9, all-in equity > 50¢). The deficiency is the debt a seizure');
     out('left — it does not depend on the order. CB debt left = a liquidated cell still owing Coinbase at the end; months to');
     out('clear = from the liquidation to the deficiency repaid, over the cells that clear. D − base = §4 v1.1\'s check, under');
     out('each order.');
@@ -780,4 +819,145 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
 
     console.log(lines.join('\n'));
   }, 300_000);
+
+  // ── the crash playbook — its own block (`-t "crash playbook"`) ──
+  it('prints the crash playbook measurement (pre / R / playbook / anyDepth; policy ON, the new repayment order)', () => {
+    const lines: string[] = [];
+    const out = (s = ''): void => { lines.push(s); };
+    const depth = ceilingLiquidationMultiple(0.6, CB_LLTV);
+    out('<!-- SP_REPORT CRASH PLAYBOOK BEGIN -->');
+    out('# The crash playbook — Strike\'s release rules, top up first above the liquidation depth, measured');
+    out();
+    out('Every run is policy ON and on the NEW repayment order (Strike first after a Coinbase liquidation, in every zone).');
+    out(`The variants: pre = the adopted order before the playbook (the release rules off, no top-up before the shift);`);
+    out(`R = Strike's release rules alone (≤ 40% before, < 50% after, no move within 60 days of a deposit); playbook = the`);
+    out(`defaults (R + top up first, between the depth ${depth.toFixed(4)} × support and support); anyDepth = top up first at`);
+    out('every depth below support (measured, rejected). Better / worse: ₿ held > 1e-9; all-in equity > 50¢. Values in the');
+    out('Σ columns read reference → variant. ₿ into a doomed CB = coins topped into Coinbase in its liquidation month; ₿ lost');
+    out('in CB = coins topped in at or before it. G2 = cells that open inside both ceilings and pull cold at or above support.');
+    out('₿-months in cold = Σ of each month-end cold balance.');
+    out();
+
+    // ── the sets ──
+    const gridSets: [string, GridCell[], (number | null)[]][] = [
+      ['face-world', faceWorldGrid(), [0, 0.5]],
+      ['synthetic', syntheticGrid(), [null]],
+      ['reachability', reachGrid(), [0, 0.5]],
+    ];
+    const sets: { name: string; recovering: boolean; grid: boolean; cells: PbCell[] }[] = [];
+    for (const [grid, cells, seeds] of gridSets) {
+      for (const seed of seeds) {
+        const seedLabel = seed === null ? 'own seeds' : `seed ${seed}`;
+        sets.push({
+          name: `${grid}, ${seedLabel}`, recovering: grid !== 'synthetic', grid: true,
+          cells: cells.map((c, i) => runPbCell(`${grid} #${i} (${seedLabel})`, {
+            ...c.off, supportPolicy: policyFor(c.support), ...(seed === null ? {} : { openingColdBtc: seed }),
+          })),
+        });
+      }
+    }
+    sets.push({
+      name: 'rows', recovering: true, grid: false,
+      cells: coldRuleRows().flatMap((row) => [0, 0.5].map((seed) =>
+        runPbCell(`${row.name} · seed ${seed}`, { ...row.on, openingColdBtc: seed }))),
+    });
+    const drops = doubleDropRows().map((d) => runPbCell(d.name, d.on, d.f1, d.on.pricePath[12] / d.support[12]));
+    sets.push({ name: 'double drops', recovering: false, grid: false, cells: drops });
+
+    out('## Sets');
+    out();
+    out('| Set | Comparison | cells | changed | ₿ better / worse (Σ Δ₿) | all-in better / worse (Σ · loss) | survival → liquidated | liquidated → survival | Strike-sale cells changed | Σ debt shifted | Σ Strike interest | Σ ₿ out of Strike by a defense | ₿ into a doomed CB | ₿ lost in CB | G2 | ₿-months in cold |');
+    out('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+    const tallies = new Map<string, Map<PbPairName, PbTally>>();
+    for (const set of sets) {
+      const m = new Map<PbPairName, PbTally>(PB_PAIRS.map(([p]) => [p, tallyPb(set.cells, p)]));
+      tallies.set(set.name, m);
+      for (const [p] of PB_PAIRS) out(pbRow(set.name, p, m.get(p)!));
+    }
+    out();
+    const gridCells = sets.filter((x) => x.grid).flatMap((x) => x.cells);
+    out(`## All grids (${gridCells.length} cells)`);
+    out();
+    out('| Set | Comparison | cells | changed | ₿ better / worse (Σ Δ₿) | all-in better / worse (Σ · loss) | survival → liquidated | liquidated → survival | Strike-sale cells changed | Σ debt shifted | Σ Strike interest | Σ ₿ out of Strike by a defense | ₿ into a doomed CB | ₿ lost in CB | G2 | ₿-months in cold |');
+    out('|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|');
+    const allGrids = new Map<PbPairName, PbTally>(PB_PAIRS.map(([p]) => [p, tallyPb(gridCells, p)]));
+    for (const [p] of PB_PAIRS) out(pbRow('all grids', p, allGrids.get(p)!));
+    out();
+
+    // ── double drops by first-leg depth ──
+    out('## Double drops by first-leg depth — anyDepth vs R');
+    out();
+    out(`k1 = month 12's price ÷ support. The depth gate is ${depth.toFixed(4)}: a loss whose first leg sits below it is one the gate prevents.`);
+    out();
+    out('| f1 | rows | ₿ better / worse | Σ gain ₿ | Σ loss ₿ | losses with k1 below the depth |');
+    out('|---|---|---|---|---|---|');
+    for (const f1 of [0.7, 0.6, 0.5, 0.4]) {
+      const cs = drops.filter((c) => c.f1 === f1);
+      let better = 0;
+      let worse = 0;
+      let gain = 0;
+      let loss = 0;
+      let deeper = 0;
+      for (const c of cs) {
+        const d = c.stats.anyDepth.btc - c.stats.R.btc;
+        if (d > 1e-9) { better++; gain += d; }
+        if (d < -1e-9) { worse++; loss += d; if ((c.k1 ?? 1) < depth) deeper++; }
+      }
+      out(`| ${f1} | ${cs.length} | ${better} / ${worse} | ${sBtc(gain, 3)} | ${btc(loss, 3)} | ${deeper} of ${worse} |`);
+    }
+    out();
+
+    // ── custody ──
+    out('## Custody — ₿-months in cold, R → playbook');
+    out();
+    out('| Set | R | playbook | change | cells changed |');
+    out('|---|---|---|---|---|');
+    for (const set of sets) {
+      const t = tallies.get(set.name)!.get('playbook vs R')!;
+      const change = t.refCold > 0 ? `${(((t.vCold - t.refCold) / t.refCold) * 100).toFixed(2)}%` : '—';
+      out(`| ${set.name} | ${btc(t.refCold, 1)} | ${btc(t.vCold, 1)} | ${change} | ${t.coldChanged} |`);
+    }
+    out();
+
+    // ── invariants — bugs, not §4 outcomes ──
+    out('## Invariants under the playbook (bugs, not §4 outcomes)');
+    out();
+    let broken = false;
+    for (const set of sets) {
+      const g2 = set.cells.filter((c) => c.stats.playbook.g2).map((c) => c.label);
+      const into = set.cells.filter((c) => c.stats.playbook.intoDoomed > 0)
+        .map((c) => `${c.label} ${btc(c.stats.playbook.intoDoomed, 4)}`);
+      const intoSum = sum(set.cells.map((c) => c.stats.playbook.intoDoomed));
+      out(`- **${set.name}:** G2 violations ${g2.length} · ₿ into a doomed Coinbase ${btc(intoSum, 4)}.`);
+      if (g2.length > 0 || into.length > 0) {
+        broken = true;
+        out(`  - **STOP — invariant broken.** G2 cells: ${listCells(g2)}; ₿ into a doomed Coinbase: ${listCells(into)}.`);
+      }
+    }
+    out(broken ? '- **STOP — invariant broken** (see above).' : '- Both invariants hold on every set.');
+    out();
+
+    // ── §4 v1.1, applied mechanically ──
+    out('## §4 v1.1 — applied mechanically');
+    out();
+    const across = (pair: PbPairName, pick: (t: PbTally) => number, filter: (s: (typeof sets)[number]) => boolean = () => true): number =>
+      sets.filter(filter).reduce((acc, set) => acc + pick(tallies.get(set.name)!.get(pair)!), 0);
+    const pbBtcWorse = across('playbook vs R', (t) => t.btcWorse);
+    const pbAllInBlocking = across('playbook vs R', (t) => t.allInWorse, (s) => s.name !== 'synthetic, own seeds');
+    const synth = tallies.get('synthetic, own seeds')!.get('playbook vs R')!;
+    out(`- **playbook vs R:** ${pbBtcWorse === 0 && pbAllInBlocking === 0 ? 'PASS' : 'FAIL'} — ₿ worse ${pbBtcWorse} (every set) · all-in worse outside the synthetic grid ${pbAllInBlocking} · all-in on the synthetic grid (no recovery, named): ${synth.allInWorse} worse (Σ loss ${usd(synth.allInLoss)}) · liquidations changed ${across('playbook vs R', (t) => t.survToLiq + t.liqToSurv)} · sale cells changed ${across('playbook vs R', (t) => t.salesChanged)}.`);
+    const adBtcWorse = across('anyDepth vs R', (t) => t.btcWorse);
+    const adAllInBlocking = across('anyDepth vs R', (t) => t.allInWorse, (s) => s.name !== 'synthetic, own seeds');
+    const adDeeper = drops.filter((c) => c.stats.anyDepth.btc - c.stats.R.btc < -1e-9 && (c.k1 ?? 1) < depth).length;
+    const adDropWorse = tallies.get('double drops')!.get('anyDepth vs R')!.btcWorse;
+    out(`- **anyDepth vs R:** ${adBtcWorse === 0 && adAllInBlocking === 0 ? 'PASS' : 'FAIL'} (expected FAIL — the reason for the gate) — ₿ worse ${adBtcWorse}: ${sets.map((set) => `${set.name} ${tallies.get(set.name)!.get('anyDepth vs R')!.btcWorse}`).join(', ')} · of the double-drop losses, ${adDeeper} of ${adDropWorse} start below the depth · all-in worse outside the synthetic grid ${adAllInBlocking} · ₿-worse cells: ${listCells(sets.flatMap((set) => tallies.get(set.name)!.get('anyDepth vs R')!.btcWorseCells), 8)}.`);
+    out('- **R vs pre — a correction, not a decision** (the engine now obeys Strike\'s release rules). Its cost, by set:');
+    for (const set of sets) {
+      const t = tallies.get(set.name)!.get('R vs pre')!;
+      out(`  - ${set.name}: ₿ ${t.btcBetter} / ${t.btcWorse} (${sBtc(t.btcDelta, 3)}) · all-in ${t.allInBetter} / ${t.allInWorse} (Σ ${sUsd(t.allInDelta)}) · survival → liquidated ${t.survToLiq} · liquidated → survival ${t.liqToSurv} · sale cells changed ${t.salesChanged}.`);
+    }
+    out('<!-- SP_REPORT CRASH PLAYBOOK END -->');
+
+    console.log(lines.join('\n'));
+  }, 600_000);
 });

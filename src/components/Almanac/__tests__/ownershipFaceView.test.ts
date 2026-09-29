@@ -52,6 +52,8 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeCeilingHeadroomUsd: null,
   restoreUsd: 0,
   payDownUsd: 0,
+  strikeRepaidUsd: 0,
+  cbRepaidUsd: 0,
   cashReserveUsd: 0,
   cashToBillsUsd: 0,
   cashToCureUsd: 0,

@@ -23,6 +23,9 @@ import { join } from 'node:path';
  *    face — inlined, the first was said even when bills went unpaid, and both named $0;
  *  - and 2b.3's: every buy figure a face prints (`fmtUSD(cf.buysUsd)`) has its dust switch (`shownUsd(cf.buysUsd)`),
  *    counted off the source — Ownership's leveraged branch printed a sub-50¢ buy unguarded, as "$0/mo".
+ *  - and the crash playbook's (Run 1): each face reads the CB LTV tile's "defended from" through `defendedFromSub`, Cycling
+ *    and Ownership render the policy-on note through `playbookNote`, and the old defense note renders only with the
+ *    policy OFF — its policy-on wording ("Coinbase defense line: … When the line ran short …") is gone from every face.
  *
  * Each check was proven red by a temporary edit to a real face (or the card) before it landed.
  */
@@ -121,6 +124,32 @@ describe('the 2b.3 dust guard, pinned at the face', () => {
     const switched = src.match(/shownUsd\(\s*cf\.buysUsd\s*\)/g) ?? [];
     expect(printed.length, `${face}: buy figures printed`).toBeGreaterThan(0);
     expect(switched.length, `${face}: dust switches on the buy figure`).toBeGreaterThanOrEqual(printed.length);
+  });
+});
+
+describe('the crash playbook in the faces (Run 1), pinned at the face', () => {
+  it.each(FACES)('⭐ %s reads the CB LTV tile\'s "defended from" through defendedFromSub(', (face) => {
+    expect(readAlmanac(face)).toMatch(/\bdefendedFromSub\(/);
+  });
+
+  it.each(['CyclingFace.tsx', 'OwnershipFace.tsx'] as const)('⭐ %s renders the policy-on note through playbookNote(', (face) => {
+    expect(readAlmanac(face)).toMatch(/\bplaybookNote\(/);
+  });
+
+  it.each(FACES)('⭐ %s carries no policy-on wording of the old defense note', (face) => {
+    const src = readAlmanac(face);
+    expect(src).not.toMatch(/'Coinbase defense line'\s*:\s*'LTV stop defense'/);
+    expect(src).not.toMatch(/applied\s*\?\s*'defense line'\s*:\s*'stop'/);
+    expect(src).not.toMatch(/Coinbase defense line:/);
+  });
+
+  it.each(['CyclingFace.tsx', 'OwnershipFace.tsx'] as const)('⭐ %s renders the old defense note only with the policy OFF', (face) => {
+    const src = readAlmanac(face);
+    const gate = src.indexOf('{!applied && defenseActive && (');
+    expect(gate, `${face}: the policy-off gate`).toBeGreaterThan(0);
+    // The old note's words appear exactly once, inside that gate.
+    expect(src.match(/When the line ran short/g)?.length).toBe(1);
+    expect(src.indexOf('When the line ran short')).toBeGreaterThan(gate);
   });
 });
 

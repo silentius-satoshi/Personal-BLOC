@@ -2,8 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   strikeDrawCapacity, defendCbLtv, topUpToCbLtv, TOPUP_MARGIN_BUFFER,
   topUpStrikeLtv, strikeCollateralAboveLtv, CB_SURVIVAL_BUFFER, cbSurvivalCollateralBtc, cbDoomedThisMonth,
-  type CbDefenseInput, type CbTopUpInput, type StrikeTopUpInput, type CbDoomInput,
+  strikeReleasableBtc, ceilingLiquidationMultiple, STRIKE_RELEASE_EPS, SHIFT_DUST_USD,
+  type CbDefenseInput, type CbTopUpInput, type StrikeTopUpInput, type CbDoomInput, type StrikeReleaseInput,
 } from '../cbDefense';
+import { ltvOf } from '../ltv';
 
 /**
  * Debt-shift defense math. Synthetic fixture (this repo is public): 72k CB debt against 2 ₿ at $48k is a
@@ -428,5 +430,135 @@ describe('cbDoomedThisMonth — the futility check', () => {
         expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0, [k]: bad })).toBe(false);
       }
     }
+  });
+});
+
+// ── Strike's release rules and the crash playbook's leaves (crash playbook Run 1) ─────────────────────────────────
+
+describe('strikeReleasableBtc — what Strike will release now (≤ 40% before, < 50% after, no 60-day hold)', () => {
+  /** 1 ₿ backing $40,000 at $100k: EXACTLY 40% — 40,000 / 100,000 is the double nearest 0.4, the literal itself. */
+  const R: StrikeReleaseInput = {
+    strikeCollateralBtc: 1, strikeBalance: 40_000, price: 100_000, retrieveMaxLtv: 0.4, maxAfterLtv: 0.5, inHold: false,
+  };
+
+  it('⭐ at exactly 40% before, it releases down to just under 50% after — never onto the line', () => {
+    expect(ltvOf(40_000, 1, 100_000)).toBe(0.4);                    // premise: exactly on the rule (equal is allowed)
+    const rel = strikeReleasableBtc(R);
+    expect(rel).toBe(strikeCollateralAboveLtv(1, 40_000, 100_000, 0.5 * (1 - STRIKE_RELEASE_EPS)));
+    const after = 40_000 / ((1 - rel) * 100_000);
+    expect(after).toBeLessThan(0.5);
+    expect(after).toBeCloseTo(0.5, 8);
+  });
+
+  it('⭐ at 40.01% before it releases nothing; inside the hold, nothing — whatever the LTV', () => {
+    expect(strikeReleasableBtc({ ...R, strikeBalance: 40_010 })).toBe(0);
+    expect(strikeReleasableBtc({ ...R, inHold: true })).toBe(0);
+    expect(strikeReleasableBtc({ ...R, strikeBalance: 10_000, inHold: true })).toBe(0);
+    expect(strikeReleasableBtc({ ...R, strikeBalance: 10_000 })).toBeGreaterThan(0);   // non-vacuous: out of the hold it does
+  });
+
+  it('a balance of 0 releases all the collateral', () => {
+    expect(strikeReleasableBtc({ ...R, strikeBalance: 0 })).toBe(1);
+  });
+
+  it('junk → 0, never NaN (a non-finite input, or a price at or under zero)', () => {
+    for (const k of ['strikeCollateralBtc', 'strikeBalance', 'price', 'retrieveMaxLtv', 'maxAfterLtv'] as const) {
+      for (const bad of [NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+        expect(strikeReleasableBtc({ ...R, [k]: bad }), `${k} ${bad}`).toBe(0);
+      }
+    }
+    expect(strikeReleasableBtc({ ...R, price: 0 })).toBe(0);
+    expect(strikeReleasableBtc({ ...R, price: -1 })).toBe(0);
+  });
+});
+
+describe('ceilingLiquidationMultiple — the crash playbook\'s depth gate', () => {
+  it('is the support multiple where a Coinbase at its support ceiling reaches its liquidation LTV: stop ÷ lltv', () => {
+    expect(ceilingLiquidationMultiple(0.6, 0.86)).toBe(0.6 / 0.86);
+    expect(ceilingLiquidationMultiple(0.6, 0.86)).toBeCloseTo(0.6977, 4);
+  });
+
+  it('junk or a non-positive input → +∞, so junk never tops up first', () => {
+    for (const [a, b] of [[0, 0.86], [-0.6, 0.86], [0.6, 0], [0.6, -1], [NaN, 0.86], [0.6, NaN], [Infinity, 0.86], [0.6, Infinity]]) {
+      expect(ceilingLiquidationMultiple(a, b), `${a}, ${b}`).toBe(Number.POSITIVE_INFINITY);
+    }
+  });
+
+  it('SHIFT_DUST_USD is half a cent — the engine\'s residual precedent', () => {
+    expect(SHIFT_DUST_USD).toBe(0.005);
+  });
+});
+
+describe('topUpToCbLtv — Strike\'s release cap (strikeReleaseCapBtc)', () => {
+  const DRAIN: CbTopUpInput = { ...TOPUP, cbDebt: 200_000, coldBtc: 0, strikeCollateralBtc: 2 };
+
+  it('⭐ the cap binds the Strike leg only — cold is still taken first, in full', () => {
+    const bare = topUpToCbLtv(DRAIN);
+    const capped = topUpToCbLtv({ ...DRAIN, strikeReleaseCapBtc: 0.1 });
+    expect(bare.fromStrikeBtc).toBeGreaterThan(0.1);                  // premise: the cap is tighter than the margin bound
+    expect(capped.fromStrikeBtc).toBe(0.1);
+    expect(capped.fromColdBtc).toBe(bare.fromColdBtc);
+    expect(capped.shortfallBtc).toBeGreaterThan(bare.shortfallBtc);
+    const withCold = topUpToCbLtv({ ...TOPUP, coldBtc: 0.05, strikeReleaseCapBtc: 0 });
+    expect(withCold.fromColdBtc).toBe(0.05);
+    expect(withCold.fromStrikeBtc).toBe(0);
+  });
+
+  it('⭐ absent ≡ byte-identical across the existing fixtures — and a cap that does not bind changes nothing', () => {
+    const fixtures: CbTopUpInput[] = [
+      TOPUP, { ...TOPUP, coldBtc: 0.05 }, { ...TOPUP, coldBtc: 0, strikeCollateralBtc: 0.28 },
+      { ...TOPUP, cbDebt: 200_000, coldBtc: 0, strikeCollateralBtc: 2, marginLtv: 0.85 }, { ...TOPUP, cbDebt: 60_000 },
+      { ...TOPUP, price: 0 }, { ...TOPUP, coldBtc: 0, marginLtv: 0 }, DRAIN, { ...DRAIN, strikeFloorLtv: 0.6 },
+    ];
+    for (const f of fixtures) {
+      const bare = topUpToCbLtv(f);
+      expect(topUpToCbLtv({ ...f, strikeReleaseCapBtc: undefined })).toStrictEqual(bare);
+      expect(topUpToCbLtv({ ...f, strikeReleaseCapBtc: 1e9 })).toStrictEqual(bare);
+    }
+  });
+
+  it('a NaN, negative or infinite cap moves no Strike collateral — and never yields NaN', () => {
+    for (const bad of [NaN, -0.1, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY]) {
+      const r = topUpToCbLtv({ ...DRAIN, strikeReleaseCapBtc: bad });
+      expect(r.fromStrikeBtc, `${bad}`).toBe(0);
+      for (const [k, v] of Object.entries(r)) if (typeof v === 'number') expect(Number.isNaN(v), `${bad}: ${k}`).toBe(false);
+    }
+  });
+});
+
+describe('cbDoomedThisMonth — under Strike\'s release rules (strikeReleasableBtc)', () => {
+  const EXACT: CbDoomInput = {
+    cbDebt: 100_000, cbCollateralBtc: 1, price: 100_000, lltv: 0.5,
+    coldBtc: 1, strikeCollateralBtc: 0, strikeBalance: 0, marginLtv: 0.7,
+  };
+
+  it('⭐ the release figure REPLACES the margin term — a state alive under the margin bound, doomed under the rules', () => {
+    // 1 ₿ backing $30,600 at $100k (30.6% ≤ 40%): 0.5399 ₿ spare at the 66.5% margin bound (0.5 cold + 0.54 ≥ the 1 ₿
+    // need → alive), but Strike releases only down to under 50%: 0.388 ₿ (0.5 + 0.388 < 1 → doomed).
+    const x: CbDoomInput = { ...EXACT, coldBtc: 0.5, strikeCollateralBtc: 1, strikeBalance: 30_600 };
+    const rel = strikeReleasableBtc({
+      strikeCollateralBtc: 1, strikeBalance: 30_600, price: 100_000, retrieveMaxLtv: 0.4, maxAfterLtv: 0.5, inHold: false,
+    });
+    expect(rel).toBeCloseTo(0.388, 3);
+    expect(cbDoomedThisMonth(x)).toBe(false);
+    expect(cbDoomedThisMonth({ ...x, strikeReleasableBtc: rel })).toBe(true);
+    expect(cbDoomedThisMonth({ ...x, strikeReleasableBtc: 0.5 })).toBe(false);   // exactly enough
+    expect(cbDoomedThisMonth({ ...x, strikeReleasableBtc: -1 })).toBe(true);     // negative reads as none
+  });
+
+  it('⭐ absent ≡ byte-identical; present but non-finite → false (the junk rule)', () => {
+    // Absent is the margin term, exactly as before: each case's pre-change verdict, by hand (need = 1 ₿ at 50%).
+    const cases: [CbDoomInput, boolean][] = [
+      [EXACT, false],                                                                     // 1 ₿ of cold meets it exactly
+      [{ ...EXACT, coldBtc: 1 - 1e-8 }, true],
+      [{ ...EXACT, coldBtc: 0.5, strikeCollateralBtc: 0.5 }, false],                       // + 0.5 ₿ spare at the margin bound
+      [{ ...EXACT, coldBtc: 0.5, strikeCollateralBtc: 1, strikeBalance: 30_600 }, false],  // + 0.54 ₿ spare
+      [{ ...EXACT, coldBtc: 0, price: 0 }, false],                                         // junk → not doomed
+    ];
+    for (const [c, doomed] of cases) {
+      expect(cbDoomedThisMonth(c)).toBe(doomed);
+      expect(cbDoomedThisMonth({ ...c, strikeReleasableBtc: undefined })).toBe(doomed);
+    }
+    for (const bad of [NaN, Number.POSITIVE_INFINITY]) expect(cbDoomedThisMonth({ ...EXACT, coldBtc: 0, strikeReleasableBtc: bad })).toBe(false);
   });
 });

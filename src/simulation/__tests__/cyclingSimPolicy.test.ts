@@ -1,18 +1,21 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
-import { topUpStrikeLtv } from '../cbDefense';
+import { topUpStrikeLtv, strikeReleasableBtc, ceilingLiquidationMultiple, cbDoomedThisMonth } from '../cbDefense';
+import { crashPlaybook, type CrashPlaybookInput, type CrashPlaybookOrder } from '../crashPlaybook';
+import { CB_LLTV } from '../runCoinbaseLoan';
+import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 import {
   runCyclingSim, effectivePolicyStops, effectiveStrikeCapPct, allInEquity, baselineAllInEquity,
   type CyclingInputs, type CyclingResult, type CyclingRow, type SupportPolicyInputs, type PolicyIgnoredReason,
 } from '../cyclingSim';
 import { collateralToSellForLtv, SUPPORT_EPS } from '../supportPolicy';
-import { STRIKE_CURE_LTV } from '../strikeCredit';
+import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../strikeCredit';
 import {
   SP_START, SP_MONTHS, SUPPORT, S0, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, pathP1, pathP2, pathP3,
   pathP4, pathP5, pathP6, incomeShockP7, buildP9, a5Cases, minMultiple, cbLtvAtSupport, multiplePath, type A5Case,
   runPolicy as on, CALL_SUPPORT, CALL_PATH, CALL_BASE, callRun, RESTORE_OPENING, OVER_CEILING_COLD_OPENING,
-  stressFrom12, coldRuleRows, COLD_RULE_VARIANTS, syntheticGrid,
+  stressFrom12, coldRuleRows, COLD_RULE_VARIANTS, CRASH_PLAYBOOK_VARIANTS, doubleDropRows, syntheticGrid, reachGrid,
 } from './supportPolicyPaths';
 
 /**
@@ -156,12 +159,16 @@ describe('⭐ G1 · policy absent (or invalid) ⇒ byte-identical to the HEAD en
       expect(x.strikeCall).toBe('none');
       for (const k of ['restoreUsd', 'payDownUsd', 'cashReserveUsd', 'cashToBillsUsd', 'cashToCureUsd',
         'strikeCureColdBtc', 'strikeLiquidatedBtc']) expect(field(x, k)).toBe(0);
+      // The crash playbook's repayment split (Run 1) — policy-only, so 0 here.
+      expect(x.strikeRepaidUsd).toBe(0);
+      expect(x.cbRepaidUsd).toBe(0);
     }
     expect(r.policyApplied).toBe(false);
     expect(r.policyIgnoredReason).toBeNull();
     expect(r.monthsInZone).toEqual({ paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 });
     for (const k of ['firstPausedMonth', 'firstPayDownMonth', 'modelBrokenMonth', 'firstCeilingThrottleMonth',
       'firstStrikeCallMonth', 'firstStrikeLiquidationMonth', 'firstRearmMonth'] as const) expect(r[k]).toBeNull();
+    expect(r.firstUnheldMonth).toBeNull();   // the crash playbook's residual (Run 1) — policy-only
     for (const k of ['strikeCallsCured', 'strikeCallsSold', 'totalStrikeLiquidatedBtc', 'totalRestoreUsd',
       'totalPayDownUsd', 'openingCashUsd', 'cashLeftUsd', 'totalCashToBillsUsd', 'totalCashToCureUsd',
       'totalStrikeCureColdBtc', 'coldRetrievedAboveSupportBtc', 'breakCount'] as const) expect(r[k]).toBe(0);
@@ -351,14 +358,18 @@ describe('⭐ G3 · no Coinbase liquidation on a path that stays at or above 0.8
     expect(offDefended.totalColdRetrievedBtc).toBeGreaterThan(0);
     expect(policy.liqMonth).toBeNull();
     expect(policy.firstDefenseMonth).toBeNull();          // the ceiling, not the defense stack, is what held
+    expect(policy.firstTopUpMonth).toBeNull();            // …no collateral moved either (the crash playbook, Run 1)
     expect(policy.totalColdRetrievedBtc).toBe(0);
   });
 
-  it('P9 is a REAL test: the ceiling fills, the dip engages the Coinbase defense, and Coinbase survives', () => {
+  it('P9 is a REAL test: the ceiling fills, the dip engages the crash playbook, and Coinbase survives', () => {
     const p9 = buildP9(4_000);
     expect(p9.twin.firstCeilingThrottleMonth).not.toBeNull();         // the ceiling fills on this budget
     const r = on(p9.path, {}, { income: 4_000 });
-    expect(r.firstDefenseMonth).not.toBeNull();                      // …and the dip engages the defense
+    // ⚠ MOVED PIN (crash playbook Run 1): the dip sits at 0.80 × support — inside [0.6/0.86, 1) — so the playbook tops
+    // Coinbase up with released Strike collateral BEFORE any debt shift, and here the top-up restores the line in full:
+    // no shift fires, so firstDefenseMonth stays null. The defense still engages — as a top-up.
+    expect(r.firstDefenseMonth ?? r.firstTopUpMonth).not.toBeNull();  // …and the dip engages the defense
     expect(r.liqMonth).toBeNull();
   });
 });
@@ -1122,14 +1133,13 @@ describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc,
   });
 });
 
-// ── cold rules below support (spec: cold rules measurement v1) — the TEST-ONLY switches D and C ─────────────────────
+// ── cold rules below support (spec: cold rules measurement v1) — the TEST-ONLY switch D; C retired ─────────────────
 
-describe('⭐ cold rules — D ADOPTED (default on under the policy), C measured (default off), Strike first after a liquidation', () => {
+describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired, Strike first after a liquidation', () => {
   const SEED = 0.5;
-  /** The pre-adoption order — the doom gate off (TEST-ONLY). */
+  /** The pre-adoption order — the doom gate off (TEST-ONLY). ⚠ These tests run on the SHIPPED defaults (the crash
+   *  playbook included): the doom gate now also gates the top-up-first step, and each claim still holds there. */
   const OLD = { doomGateCbTopUp: false } as const;
-  /** C alone — D switched off EXPLICITLY, or C silently runs as C + D now that D is on by default. */
-  const C = { doomGateCbTopUp: false, coldBeforeShift: true } as const;
   /** P1 × 0.35 from month 12 with a 0.5 ₿ seed — the doomed month D fixes, and a deficiency after the seizure. */
   const doomed = (): CyclingInputs => ({
     ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
@@ -1139,17 +1149,15 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C measured
   const sweep = (): { label: string; inputs: CyclingInputs }[] => coldRuleRows().flatMap((row) =>
     [0, SEED].map((seed) => ({ label: `${row.name} · seed ${seed}`, inputs: { ...row.on, openingColdBtc: seed } })));
 
-  it('⭐ D is the default under the policy — absent ≡ on; the policy-off arm ignores it; C stays default off', () => {
+  it('⭐ D is the default under the policy — absent ≡ on; the policy-off arm ignores it', () => {
     for (const { label, inputs } of sweep()) {
       const absent = runCyclingSim(inputs);
       expect(runCyclingSim({ ...inputs, doomGateCbTopUp: true }), label).toEqual(absent);
-      expect(runCyclingSim({ ...inputs, coldBeforeShift: false }), `${label}, C off`).toEqual(absent);
       const off: CyclingInputs = { ...inputs, supportPolicy: undefined };
       const offAbsent = runCyclingSim(off);
       for (const v of [true, false]) {
         expect(runCyclingSim({ ...off, doomGateCbTopUp: v }), `${label}, policy off, D ${v}`).toEqual(offAbsent);
       }
-      expect(runCyclingSim({ ...off, coldBeforeShift: true }), `${label}, policy off, C`).toEqual(offAbsent);
     }
     // Non-vacuous: the pre-adoption order differs from the default on the doomed month D fixes.
     expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), ...OLD }), runCyclingSim(doomed()))).toBe(false);
@@ -1246,84 +1254,7 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C measured
     expectLedgersFoot(old, inputs);
   });
 
-  it('⭐ C spends cold before any shift — P1 × 0.5 from month 12, a 0.5 ₿ seed', () => {
-    const inputs: CyclingInputs = {
-      ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.5), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
-    };
-    const base = runCyclingSim({ ...inputs, ...OLD });   // C is measured against the pre-adoption order (no doom here)
-    const b = base.rows[12];
-    // Premise: a below-support month, Coinbase over its line before the shift, the shift fires, and cold is there.
-    expect(aboveSupport(b.price, SUPPORT[12])).toBe(false);
-    expect(b.cbLtvPreDefense!).toBeGreaterThan(SP_REPRO.cbLtvCapPct / 100);
-    expect(b.defenseDrawnUsd).toBeGreaterThan(0);
-    expect(base.rows[11].coldBtc).toBeGreaterThanOrEqual(SEED);
-    const c = runCyclingSim({ ...inputs, ...C });
-    const x = c.rows[12];
-    expect(x.topUpFromColdBtc).toBeGreaterThan(0);
-    expect(x.topUpFromStrikeBtc).toBe(0);                                    // cold only
-    expect(x.defenseDrawnUsd).toBeLessThan(b.defenseDrawnUsd);
-    expect(x.cbLtv).toBeCloseTo(SP_REPRO.cbLtvCapPct / 100, 12);             // the line still holds, cold + a smaller shift
-    expect(c.totalStrikeInterest).toBeLessThan(base.totalStrikeInterest);   // less debt parked at Strike's 13%
-    expectLedgersFoot(c, inputs);
-  });
-
-  it('⭐ C never takes the cold Strike\'s cap needs on the pre-shift state — scarce cold, both legs over their lines', () => {
-    // ⚠ A Strike cap of 40, deliberately. With a cap at or above Strike's 50% draw line, a pre-shift Strike reserve
-    // and debt-shift capacity never coexist (a reserve needs LTV over the cap, capacity needs it under 50%), so C's
-    // reserve and its smaller shift can only meet in one month under a cap below 50. income = bills, so month 1
-    // (paused) only accrues interest before the defense: its pre-shift state is the opening plus one month of it.
-    const COLD = 0.17;
-    const support = supportPathFor(SP_START, 1);
-    const price = 0.8 * support[1];
-    const inputs: CyclingInputs = {
-      ...SP_REPRO, strikeBalance: 26_000, cbDebt: 41_500, income: 6_000, strikeLtvCapPct: 40, openingColdBtc: COLD,
-      pricePath: [1.35 * S0, price], supportPolicy: policyFor(support),
-    };
-    const skBalPre = 26_000 + 26_000 * smr;   // the engine's own arithmetic, so the reconstruction is exact
-    const cbDebtPre = 41_500 + 41_500 * cmr;
-    const reserve = topUpStrikeLtv({
-      strikeBalance: skBalPre, strikeCollateralBtc: 1, price, targetStrikeLtvPct: 40, coldBtc: COLD,
-    }).fromColdBtc;
-    const toLine = cbDebtPre / ((SP_REPRO.cbLtvCapPct / 100) * price) - 1;
-    const base = runCyclingSim({ ...inputs, ...OLD });
-    const b = base.rows[1];
-    // Premise: below support, Coinbase over its line and the shift fires; Strike wants cold before the shift, and the
-    // cold cannot cover both legs — so the reserve BINDS what C may take.
-    expect(aboveSupport(price, support[1])).toBe(false);
-    expect(b.cbLtvPreDefense!).toBeGreaterThan(SP_REPRO.cbLtvCapPct / 100);
-    expect(b.defenseDrawnUsd).toBeGreaterThan(0);
-    expect(reserve).toBeGreaterThan(0);
-    expect(COLD).toBeLessThan(reserve + toLine);
-    const c = runCyclingSim({ ...inputs, ...C });
-    const x = c.rows[1];
-    expect(x.topUpFromColdBtc).toBeGreaterThan(0);
-    expect(x.topUpFromStrikeBtc).toBe(0);                                    // cold only
-    expect(x.defenseDrawnUsd).toBeLessThan(b.defenseDrawnUsd);
-    expect(x.cbLtv).toBeCloseTo(SP_REPRO.cbLtvCapPct / 100, 12);             // the shift still covers what C left
-    // The reserve holds: C took at most cold − reserve, and Strike's top-up got its whole pre-shift need.
-    expect(x.topUpFromColdBtc).toBeLessThanOrEqual(COLD - reserve + 1e-12);
-    expect(x.strikeTopUpBtc).toBeGreaterThanOrEqual(reserve - 1e-12);
-    expectLedgersFoot(c, inputs);
-  });
-
-  it('C restoring the line in full books no shift — not even the float dust of its own top-up (the synthetic grid)', () => {
-    // Topping up to the line EXACTLY can land an ulp over it, and the shift's `> cap` test would then book a phantom
-    // defense (and, in some cells, a phantom shortfall that wakes the guard and the emergency top-up). Grid-wide, not
-    // one cell: which cells hit that ulp moves with the last bit of the support path, which is Math.pow-built.
-    let restored = 0;
-    let phantom = 0;
-    for (const c of syntheticGrid()) {
-      const r = runCyclingSim({ ...c.off, supportPolicy: policyFor(c.support), ...C });
-      for (const x of r.rows) {
-        if (x.topUpFromColdBtc > 0 && x.cbLtvPreDefense === null) restored++;
-        if ((x.defenseDrawnUsd > 0 && x.defenseDrawnUsd < 0.01) || (x.defenseShortfallUsd > 0 && x.defenseShortfallUsd < 0.01)) phantom++;
-      }
-    }
-    expect(restored).toBeGreaterThan(0);   // non-vacuous: C does restore the line in full, many times
-    expect(phantom).toBe(0);
-  });
-
-  it('⭐ G2 holds under every variant — base, D (the default), C and C + D on every A5 path and stress row, seeds 0 / 0.5', () => {
+  it('⭐ G2 holds under both variants — base and D, pinned to the pre-playbook order, on every A5 path and stress row, seeds 0 / 0.5', () => {
     let belowSupportRetrievals = 0;
     for (const row of coldRuleRows()) {
       for (const seed of [0, SEED]) {
@@ -1344,5 +1275,384 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C measured
       }
     }
     expect(belowSupportRetrievals).toBeGreaterThan(0);   // non-vacuous: the variants DO spend cold, below support
+  });
+});
+
+// ── the crash playbook (spec: crash playbook v1, Run 1) — Strike's release rules, top up first above the liquidation ──
+// depth, Strike first after a liquidation in every zone. The TEST-ONLY switches: strikeReleaseRules / topUpBeforeShift
+// (default on), topUpFirstAnyDepth (default off).
+
+describe('⭐ the crash playbook — release rules, top up first above the depth, Strike first after a liquidation', () => {
+  const SEED = 0.5;
+  const DEPTH = ceilingLiquidationMultiple(CB_STOP, CB_LLTV);   // 0.6 / 0.86 — where a Coinbase at its support ceiling reaches 86%
+  const SP3 = supportPathFor(SP_START, 3);
+  /** Zero rates, income = bills, the Strike cap off — month 1's state before the defense IS the opening. */
+  const Z: Omit<CyclingInputs, 'pricePath'> = { ...SP_REPRO, income: 6_000, strikeAprPct: 0, cbAprPct: 0, strikeLtvCapPct: 0 };
+  /** A 2-point path: the opening, then month 1 at k × support. */
+  const twoPoint = (k: number, o: Partial<CyclingInputs> = {}): CyclingInputs => ({
+    ...Z, ...o, pricePath: [1.35 * S0, k * SP3[1]], supportPolicy: policyFor(SP3.slice(0, 2)),
+  });
+  /** Strike's release rules alone — the playbook's comparison order. */
+  const R_ONLY = { topUpBeforeShift: false } as const;
+  const releasable = (strikeCollateralBtc: number, strikeBalance: number, price: number): number => strikeReleasableBtc({
+    strikeCollateralBtc, strikeBalance, price, retrieveMaxLtv: STRIKE_RETRIEVE_MAX_LTV, maxAfterLtv: STRIKE_MAX_DRAW_LTV,
+    inHold: false,
+  });
+  /** The release-aware doom fixture: k 0.6 (below the depth), Coinbase $50k on 1 ₿ (117%), Strike at 36% with its line
+   *  full (so no shift), no cold. */
+  const DOOM = (): CyclingInputs => {
+    const bal = 0.36 * 0.6 * SP3[1];
+    return twoPoint(0.6, { cbDebt: 50_000, strikeBalance: bal, strikeCreditLine: bal });
+  };
+  /** P9 at $4k / $6k with a 0.05 ₿ reserve — its dip lands at 0.80 × support, inside the band. */
+  const P9 = buildP9(4_000);
+  const p9Seeded = (): CyclingInputs => ({
+    ...SP_REPRO, income: 4_000, pricePath: P9.path, supportPolicy: policyFor(SUPPORT), openingColdBtc: 0.05,
+  });
+  /** P1 × f from month 12 with a 0.5 ₿ reserve. */
+  const p1Stress = (f: number): CyclingInputs => ({
+    ...SP_REPRO, pricePath: stressFrom12(pathP1(), f), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
+  });
+  const g2 = (label: string, r: CyclingResult, support: number[]): number => {
+    expect(r.policyApplied, label).toBe(true);
+    expect(insideBothCeilings(r), label).toBe(true);
+    expect(r.coldRetrievedAboveSupportBtc, label).toBe(0);
+    let below = 0;
+    for (let m = 1; m < r.rows.length; m++) {
+      const moved = r.rows[m].coldRetrievedBtc - r.rows[m - 1].coldRetrievedBtc;
+      if (aboveSupport(r.rows[m].price, support[m])) expect(moved, `${label} m${m}`).toBe(0);
+      else if (moved > 0) below++;
+    }
+    return below;
+  };
+
+  it('⭐ the switches — absent ≡ the playbook (rules on, top up first on, any depth off); the policy-off arm ignores all three', () => {
+    const runs = [
+      ...coldRuleRows().flatMap((row) => [0, SEED].map((seed) => ({
+        label: `${row.name} · seed ${seed}`, inputs: { ...row.on, openingColdBtc: seed },
+      }))),
+      ...doubleDropRows().filter((_, i) => i % 40 === 0).map((d) => ({ label: d.name, inputs: d.on })),
+    ];
+    for (const { label, inputs } of runs) {
+      const absent = runCyclingSim(inputs);
+      expect(runCyclingSim({ ...inputs, strikeReleaseRules: true, topUpBeforeShift: true, topUpFirstAnyDepth: false }), label)
+        .toEqual(absent);
+      const off: CyclingInputs = { ...inputs, supportPolicy: undefined };
+      const offAbsent = runCyclingSim(off);
+      for (const v of [true, false]) {
+        expect(runCyclingSim({ ...off, strikeReleaseRules: v }), `${label}, policy off, rules ${v}`).toEqual(offAbsent);
+        expect(runCyclingSim({ ...off, topUpBeforeShift: v }), `${label}, policy off, top up first ${v}`).toEqual(offAbsent);
+        expect(runCyclingSim({ ...off, topUpFirstAnyDepth: v }), `${label}, policy off, any depth ${v}`).toEqual(offAbsent);
+      }
+    }
+    // Non-vacuous — each switch moves a named fixture.
+    expect(isDeepStrictEqual(runCyclingSim({ ...DOOM(), strikeReleaseRules: false }), runCyclingSim(DOOM()))).toBe(false);
+    expect(isDeepStrictEqual(runCyclingSim({ ...p9Seeded(), ...R_ONLY }), runCyclingSim(p9Seeded()))).toBe(false);
+    expect(isDeepStrictEqual(runCyclingSim({ ...p1Stress(0.5), topUpFirstAnyDepth: true }), runCyclingSim(p1Stress(0.5))))
+      .toBe(false);
+  });
+
+  it('⭐ release rule 1 — Strike over 40% releases nothing: no Strike leg, the shift covers the rest', () => {
+    const p = 0.8 * SP3[1];
+    const inputs = twoPoint(0.8, { cbDebt: 42_000, strikeBalance: 0.46 * p, strikeCreditLine: 30_000 });
+    const r = runCyclingSim(inputs);
+    const x = r.rows[1];
+    expect(x.cbLtvPreDefense!).toBeGreaterThan(0.7);      // premise: in the band (k 0.8), Coinbase over its line
+    expect(releasable(1, 0.46 * p, p)).toBe(0);
+    expect(x.topUpFromStrikeBtc).toBe(0);
+    expect(x.defenseDrawnUsd).toBeGreaterThan(0);
+    expect(x.cbLtv).toBeCloseTo(0.7, 12);
+    // At the old margin bound (66.5%) the top-up would have taken Strike collateral.
+    expect(runCyclingSim({ ...inputs, strikeReleaseRules: false }).rows[1].topUpFromStrikeBtc).toBeGreaterThan(0);
+  });
+
+  it('⭐ release rule 2 — a release leaves Strike UNDER 50% (the line full, Strike at 36%, a need above the release)', () => {
+    const p = 0.8 * SP3[1];
+    const bal = 0.36 * p;
+    const inputs = twoPoint(0.8, { cbDebt: 54_000, strikeBalance: bal, strikeCreditLine: bal });
+    const rel = releasable(1, bal, p);
+    expect(54_000 / (0.7 * p) - 1).toBeGreaterThan(rel);   // premise: the release binds
+    const r = runCyclingSim(inputs);
+    const x = r.rows[1];
+    expect(x.topUpFromStrikeBtc).toBe(rel);                 // exactly what Strike releases
+    expect(x.defenseDrawnUsd).toBe(0);                      // the line is full
+    expect(x.strikeLtv).toBeLessThan(0.5);
+    expect(runCyclingSim({ ...inputs, strikeReleaseRules: false }).rows[1].strikeLtv).toBeGreaterThan(0.5);
+  });
+
+  it('⭐ release rule 3 — nothing leaves Strike within 60 days of a deposit (the hold)', () => {
+    // Month 1 (k 0.68, below the depth): Coinbase over its line with the line full, and the Strike cap (30) moves all
+    // 0.09 ₿ of cold into Strike — its hold runs through month 2. Month 2 (k 0.72, in the band): Coinbase still over its
+    // line, Strike UNDER its 30% floor and under 40% — releasable but for the hold. Month 3: out of the hold.
+    const path = [1.35 * S0, 0.68 * SP3[1], 0.72 * SP3[2], 0.72 * SP3[3]];
+    const inputs: CyclingInputs = {
+      ...Z, strikeLtvCapPct: 30, strikeBalance: 16_000, strikeCreditLine: 16_000, cbDebt: 38_400, openingColdBtc: 0.09,
+      pricePath: path, supportPolicy: policyFor(SP3),
+    };
+    const r = runCyclingSim(inputs);
+    // Premises: month 1 moved cold into Strike; month 2 is in the band and over the line, and its opening Strike state
+    // (row 1's end — zero rates, a paused month) would release collateral, through the leaf, were it not held.
+    expect(r.rows[1].strikeTopUpBtc).toBeGreaterThan(0);
+    expect(0.72).toBeGreaterThanOrEqual(DEPTH);
+    const open2 = r.rows[1];
+    const skLtv2 = open2.strikeBalance / (open2.strikeCollateralBtc * path[2]);
+    expect(skLtv2).toBeLessThan(0.3);                                  // under its 30% floor…
+    expect(skLtv2).toBeLessThanOrEqual(STRIKE_RETRIEVE_MAX_LTV);       // …and at or under 40%
+    expect(releasable(open2.strikeCollateralBtc, open2.strikeBalance, path[2])).toBeGreaterThan(0);
+    expect(r.rows[2].cbLtvPreDefense!).toBeGreaterThan(0.7);
+    expect(r.rows[2].topUpFromStrikeBtc).toBe(0);                      // held
+    expect(r.rows[3].cbLtvPreDefense!).toBeGreaterThan(0.7);
+    expect(r.rows[3].topUpFromStrikeBtc).toBeGreaterThan(0);           // out of the hold
+    expectLedgersFoot(r, inputs);
+  });
+
+  it('⭐ the doom question counts only what Strike will RELEASE — doomed under the rules, saved at the old margin bound', () => {
+    const inputs = DOOM();
+    const price = inputs.pricePath[1];
+    const bal = inputs.strikeBalance;
+    // Premise, through the leaves: Strike at 36% releases 0.28 ₿ — short of Coinbase's need at 86% — where the old
+    // margin bound (66.5%) offered 0.46 ₿, enough.
+    const rel = releasable(1, bal, price);
+    expect(rel).toBeCloseTo(0.28, 6);
+    const doomIn = {
+      cbDebt: 50_000, cbCollateralBtc: 1, price, lltv: CB_LLTV, coldBtc: 0, strikeCollateralBtc: 1, strikeBalance: bal,
+      marginLtv: STRIKE_MARGIN_CALL_LTV,
+    };
+    expect(cbDoomedThisMonth(doomIn)).toBe(false);
+    expect(cbDoomedThisMonth({ ...doomIn, strikeReleasableBtc: rel })).toBe(true);
+    const r = runCyclingSim(inputs);
+    expect(r.rows[1].topUpBtc).toBe(0);                 // doomed: nothing goes into Coinbase
+    expect(r.rows[1].defenseDrawnUsd).toBe(0);          // the line is full: no shift either
+    expect(r.liqMonth).toBe(1);
+    const old = runCyclingSim({ ...inputs, strikeReleaseRules: false });
+    expect(old.rows[1].topUpFromStrikeBtc).toBeCloseTo(1 - 0.36 / (STRIKE_MARGIN_CALL_LTV * 0.95), 9);   // ~0.46 ₿
+    expect(old.liqMonth).toBeNull();
+    expectLedgersFoot(r, inputs);
+    expectLedgersFoot(old, { ...inputs, strikeReleaseRules: false });
+  });
+
+  it('⭐ top up first — P9\'s dip at 0.80 × support takes all the cold, then released Strike collateral, and shifts nothing', () => {
+    const inputs = p9Seeded();
+    const m = P9.dipStart;
+    const r = runCyclingSim(inputs);
+    const rOnly = runCyclingSim({ ...inputs, ...R_ONLY });
+    const x = r.rows[m];
+    // Premise: the dip is inside the band, and Coinbase opens the defense over its line.
+    expect(x.multiple!).toBeGreaterThanOrEqual(DEPTH);
+    expect(x.multiple!).toBeLessThan(1 - SUPPORT_EPS);
+    expect(x.cbLtvPreDefense!).toBeGreaterThan(0.7);
+    expect(r.rows[m - 1].coldBtc).toBeGreaterThan(0);
+    expect(x.topUpFromColdBtc).toBe(r.rows[m - 1].coldBtc);   // all the cold first
+    expect(x.topUpFromStrikeBtc).toBeGreaterThan(0);           // then released Strike collateral
+    expect(x.defenseDrawnUsd).toBe(0);                         // no debt moves onto Strike
+    expect(x.cbLtv).toBeCloseTo(0.7, 12);
+    expect(r.rows.slice(0, m)).toEqual(rOnly.rows.slice(0, m));      // identical until the dip
+    expect(x.cbLtvPreDefense).toBe(rOnly.rows[m].cbLtvPreDefense);   // the same opening…
+    expect(rOnly.rows[m].defenseDrawnUsd).toBeGreaterThan(0);        // …which the release rules alone meet with a shift
+    // With no reserve the same dip takes Strike collateral only.
+    const bare = runCyclingSim({ ...inputs, openingColdBtc: 0 }).rows[m];
+    expect(bare.topUpFromColdBtc).toBe(0);
+    expect(bare.topUpFromStrikeBtc).toBeGreaterThan(0);
+    expect(bare.defenseDrawnUsd).toBe(0);
+    expect(r.firstUnheldMonth).toBeNull();
+    expectLedgersFoot(r, inputs);
+  });
+
+  it('⭐ shift first below the depth — P1 × 0.5 from month 12 (a 0.5 ₿ reserve) is exactly the release rules alone', () => {
+    const inputs = p1Stress(0.5);
+    const r = runCyclingSim(inputs);
+    expect(r.rows[12].multiple!).toBeLessThan(DEPTH);         // premise: below the depth…
+    expect(r.rows[12].cbLtvPreDefense).not.toBeNull();         // …and the defense runs there
+    expect(r).toEqual(runCyclingSim({ ...inputs, ...R_ONLY }));
+  });
+
+  it('⭐ the dust drop — after a binding release a sub-half-cent shift is no shift; the whole need stays the shortfall and the fallback runs', () => {
+    // Coinbase $145k on 3 ₿ (84.5%), Strike $11k on 1 ₿ (19%) with $29k of line room: Strike releases ~0.615 ₿, short of
+    // the ~0.623 ₿ need, and is left a relative 1e-9 under its 50% draw line — room for a ~$0.00001 draw.
+    const inputs = twoPoint(0.8, { cbCollateralBtc: 3, cbDebt: 145_000, strikeBalance: 11_000, strikeCreditLine: 40_000 });
+    const p = inputs.pricePath[1];
+    const r = runCyclingSim(inputs);
+    const x = r.rows[1];
+    expect(x.topUpFromStrikeBtc).toBe(releasable(1, 11_000, p));   // premise: the release binds…
+    expect(x.cbLtv).toBeGreaterThan(0.7);                          // …the line is still short…
+    expect(inputs.strikeCreditLine).toBeGreaterThan(11_000);       // …and the line has room
+    expect(x.defenseDrawnUsd).toBe(0);
+    expect(x.defended).toBe(false);
+    expect(r.firstDefenseMonth).toBeNull();
+    expect(x.defenseShortfallUsd).toBeCloseTo(145_000 - 0.7 * x.cbCollateralBtc * p, 6);   // the whole need
+    expect(r.topUpExhaustedMonth).toBe(1);                         // the fallback ran — with nothing left to move
+    expect(r.firstUnheldMonth).toBe(1);
+  });
+
+  it('a top-up that restores the line in full books no shift — never the float dust of its own arithmetic (the synthetic grid)', () => {
+    // Topping up to the line EXACTLY can land an ulp over it; the shift's `> cap` test would then book a phantom defense
+    // (or a phantom shortfall that wakes the guard and the fallback). Grid-wide: which cells hit that ulp moves with the
+    // last bit of the Math.pow-built support path.
+    let restored = 0;
+    let phantom = 0;
+    for (const c of syntheticGrid()) {
+      const r = runCyclingSim({ ...c.off, supportPolicy: policyFor(c.support) });
+      for (const x of r.rows) {
+        if (x.topUpBtc > 0 && x.defenseDrawnUsd === 0 && x.defenseShortfallUsd === 0) restored++;
+        if ((x.defenseDrawnUsd > 0 && x.defenseDrawnUsd < 0.01) || (x.defenseShortfallUsd > 0 && x.defenseShortfallUsd < 0.01)) phantom++;
+      }
+    }
+    expect(restored).toBeGreaterThan(0);   // non-vacuous: top up first does restore the line in full, many times
+    expect(phantom).toBe(0);
+  });
+
+  it('⭐ top up first never takes the cold Strike\'s cap needs on the pre-shift state — scarce cold, both legs over their lines', () => {
+    // ⚠ A Strike cap of 40, deliberately: with a cap at or above Strike's 50% draw line a pre-shift Strike reserve and
+    // debt-shift capacity never coexist. income = bills, so month 1 only accrues interest before the defense.
+    const COLD = 0.17;
+    const support = supportPathFor(SP_START, 1);
+    const price = 0.8 * support[1];
+    const inputs: CyclingInputs = {
+      ...SP_REPRO, strikeBalance: 26_000, cbDebt: 41_500, income: 6_000, strikeLtvCapPct: 40, openingColdBtc: COLD,
+      pricePath: [1.35 * S0, price], supportPolicy: policyFor(support),
+    };
+    const skBalPre = 26_000 + 26_000 * smr;   // the engine's own arithmetic, so the reconstruction is exact
+    const cbDebtPre = 41_500 + 41_500 * cmr;
+    const reserve = topUpStrikeLtv({
+      strikeBalance: skBalPre, strikeCollateralBtc: 1, price, targetStrikeLtvPct: 40, coldBtc: COLD,
+    }).fromColdBtc;
+    const toLine = cbDebtPre / ((SP_REPRO.cbLtvCapPct / 100) * price) - 1;
+    const base = runCyclingSim({ ...inputs, ...R_ONLY });
+    const b = base.rows[1];
+    // Premise: in the band, Coinbase over its line, the release rules alone shift; Strike wants cold before the shift,
+    // Strike (over 40%) releases nothing, and the cold cannot cover both legs — so the reserve BINDS the top-up.
+    expect(price / support[1]).toBeGreaterThanOrEqual(DEPTH);
+    expect(b.cbLtvPreDefense!).toBeGreaterThan(SP_REPRO.cbLtvCapPct / 100);
+    expect(b.defenseDrawnUsd).toBeGreaterThan(0);
+    expect(releasable(1, skBalPre, price)).toBe(0);
+    expect(reserve).toBeGreaterThan(0);
+    expect(COLD).toBeLessThan(reserve + toLine);
+    const r = runCyclingSim(inputs);
+    const x = r.rows[1];
+    expect(x.topUpFromColdBtc).toBeGreaterThan(0);
+    expect(x.topUpFromStrikeBtc).toBe(0);
+    expect(x.defenseDrawnUsd).toBeLessThan(b.defenseDrawnUsd);
+    expect(x.cbLtv).toBeCloseTo(SP_REPRO.cbLtvCapPct / 100, 12);   // the shift still covers what the top-up left
+    // The reserve holds: the top-up took at most cold − reserve, and Strike's top-up got its whole pre-shift need.
+    expect(x.topUpFromColdBtc).toBeLessThanOrEqual(COLD - reserve + 1e-12);
+    expect(x.strikeTopUpBtc).toBeGreaterThanOrEqual(reserve - 1e-12);
+    expectLedgersFoot(r, inputs);
+  });
+
+  it('⭐ P3 — after a Coinbase liquidation a paused month repays STRIKE first, then the Coinbase leftover', () => {
+    const cell = reachGrid()[0];
+    const inputs: CyclingInputs = { ...cell.off, supportPolicy: policyFor(cell.support) };
+    const first = runCyclingSim(inputs);
+    const old = runCyclingSim({ ...inputs, strikeFirstAfterLiquidation: false });
+    // Premise: liquidated at the opening with a deficiency; month 1 is paused with a surplus, Strike owes, and the
+    // restore budget is positive.
+    expect(first.liqMonth).toBe(0);
+    expect(first.deficiencyUsd!).toBeGreaterThan(0);
+    const x = first.rows[1];
+    const y = old.rows[1];
+    expect(x.policyZone).toBe('paused');
+    expect(first.rows[0].strikeBalance).toBeGreaterThan(0);
+    expect(y.restoreUsd).toBeGreaterThan(0);
+    expect(x.restoreUsd).toBeCloseTo(y.restoreUsd, 9);   // the same budget…
+    expect(x.strikeRepaidUsd).toBeCloseTo(x.restoreUsd, 9);   // …to Strike first
+    expect(x.cbRepaidUsd).toBe(0);
+    expect(y.cbRepaidUsd).toBeCloseTo(y.restoreUsd, 9);       // the pre-adoption order: Coinbase first
+    expect(y.strikeRepaidUsd).toBe(0);
+    expectLedgersFoot(first, inputs);
+    expectLedgersFoot(old, inputs);
+  });
+
+  it('the repayment split — Strike + Coinbase repaid = restore + pay-down on every row; 0 with the policy off', () => {
+    let skRows = 0;
+    let cbRows = 0;
+    for (const row of coldRuleRows()) {
+      for (const seed of [0, SEED]) {
+        const r = runCyclingSim({ ...row.on, openingColdBtc: seed });
+        for (const x of r.rows) {
+          expect(x.strikeRepaidUsd + x.cbRepaidUsd, `${row.name} · seed ${seed} m${x.m}`).toBeCloseTo(x.restoreUsd + x.payDownUsd, 6);
+          if (x.strikeRepaidUsd > 0) skRows++;
+          if (x.cbRepaidUsd > 0) cbRows++;
+        }
+        const off = runCyclingSim({ ...row.on, openingColdBtc: seed, supportPolicy: undefined });
+        for (const x of off.rows) {
+          expect(x.strikeRepaidUsd, `${row.name} off m${x.m}`).toBe(0);
+          expect(x.cbRepaidUsd, `${row.name} off m${x.m}`).toBe(0);
+        }
+      }
+    }
+    expect(skRows).toBeGreaterThan(0);   // non-vacuous: both legs are repaid somewhere
+    expect(cbRows).toBeGreaterThan(0);
+  });
+
+  it('firstUnheldMonth — null when the playbook held (P9); the month it could not (P1 × 0.35); null with the policy off', () => {
+    expect(runCyclingSim(p9Seeded()).firstUnheldMonth).toBeNull();
+    const r = runCyclingSim(p1Stress(0.35));
+    expect(r.liqMonth).toBe(12);
+    expect(r.firstUnheldMonth).toBe(12);
+    expect(r.topUpExhaustedMonth).toBeNull();   // the doom gate skipped the fallback — a residual it never sees
+    expect(runCyclingSim({ ...p1Stress(0.35), supportPolicy: undefined }).firstUnheldMonth).toBeNull();
+  });
+
+  it('⭐ parity — the engine\'s month is crashPlaybook() exactly (the Strike cap off, zero rates, a 2-point path)', () => {
+    const cases: { label: string; inputs: CyclingInputs }[] = [];
+    for (const k of [0.5, 0.6, 0.8, 0.95]) {
+      for (const cold of [0, 0.02, 1]) {
+        for (const sk of ['20%', '45%', 'bal 0'] as const) {
+          const p = k * SP3[1];
+          const strikeBalance = sk === '20%' ? 0.2 * p : sk === '45%' ? 0.45 * p : 0;
+          cases.push({
+            label: `k ${k} · cold ${cold} · Strike ${sk}`,
+            inputs: twoPoint(k, { cbDebt: 0.76 * p, strikeBalance, strikeCreditLine: 40_000, openingColdBtc: cold }),
+          });
+        }
+      }
+    }
+    cases.push({ label: 'binding release', inputs: twoPoint(0.8, { cbCollateralBtc: 3, cbDebt: 145_000, strikeBalance: 11_000, strikeCreditLine: 40_000 }) });
+    cases.push({ label: 'doomed', inputs: DOOM() });
+    cases.push({ label: 'under the line', inputs: twoPoint(0.8, { cbDebt: 0.6 * 0.8 * SP3[1] }) });
+    const orders = new Set<CrashPlaybookOrder>();
+    const kinds = new Set<string>();
+    const { cbStop } = effectivePolicyStops(60, 50, Z.cbLtvCapPct, 0);
+    for (const { label, inputs } of cases) {
+      const x = runCyclingSim(inputs).rows[1];
+      expect(x.strikeCall, label).toBe('none');   // premise: nothing after the defense moved a pool
+      const input: CrashPlaybookInput = {
+        price: inputs.pricePath[1], support: SP3[1], cbDebt: inputs.cbDebt, cbCollateralBtc: inputs.cbCollateralBtc,
+        strikeBalance: inputs.strikeBalance, strikeCollateralBtc: inputs.strikeCollateralBtc,
+        strikeCreditLine: inputs.strikeCreditLine, coldBtc: inputs.openingColdBtc ?? 0, targetCbLtvPct: inputs.cbLtvCapPct,
+        cbStopAtSupport: cbStop, lltv: CB_LLTV, maxDrawLtv: inputs.strikeMaxDrawLtv, marginLtv: inputs.strikeMarginLtv,
+        retrieveMaxLtv: STRIKE_RETRIEVE_MAX_LTV, strikeInHold: false,
+      };
+      const pb = crashPlaybook(input);
+      orders.add(pb.order);
+      for (const s of pb.steps) kinds.add(s.kind);
+      expect(x.cbDebt, label).toBe(pb.after.cbDebt);
+      expect(x.strikeBalance, label).toBe(pb.after.strikeBalance);
+      expect(x.cbCollateralBtc, label).toBe(pb.after.cbCollateralBtc);
+      expect(x.strikeCollateralBtc, label).toBe(pb.after.strikeCollateralBtc);
+      expect(x.coldBtc, label).toBe(pb.after.coldBtc);
+      const sum = (kind: string): number => pb.steps.reduce((t, s) => t + (s.kind === kind ? ('btc' in s ? s.btc : s.usd) : 0), 0);
+      expect(x.topUpFromColdBtc, label).toBe(sum('coldToCoinbase'));
+      expect(x.topUpFromStrikeBtc, label).toBe(sum('strikeToCoinbase'));
+      expect(x.defenseDrawnUsd, label).toBe(sum('shiftToStrike'));
+    }
+    expect([...orders].sort()).toEqual(['none', 'shiftFirst', 'topUpFirst']);
+    expect([...kinds].sort()).toEqual(['coldToCoinbase', 'shiftToStrike', 'strikeToCoinbase']);
+  });
+
+  it('⭐ G2 holds under the playbook and any depth — every A5 path and stress row, seeds 0 / 0.5; the ledgers foot', () => {
+    let below = 0;
+    for (const row of coldRuleRows()) {
+      for (const seed of [0, SEED]) {
+        for (const [name, v] of CRASH_PLAYBOOK_VARIANTS) {
+          if (name !== 'playbook' && name !== 'anyDepth') continue;
+          const inputs: CyclingInputs = { ...row.on, ...v, openingColdBtc: seed };
+          const r = runCyclingSim(inputs);
+          below += g2(`${row.name} · seed ${seed} · ${name}`, r, row.support);
+          expectLedgersFoot(r, inputs);
+        }
+      }
+    }
+    expect(below).toBeGreaterThan(0);   // non-vacuous: both variants DO spend cold, below support
   });
 });

@@ -24,6 +24,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   noBillsNote, OPENING_CASH_FLOW_NOTE, seedLine,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
 } from './cyclingFaceView';
 import {
   ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, MODE_NOTE,
@@ -330,9 +331,6 @@ export default function OwnershipFace() {
   const isCall = capReading.state === 'called' || capReading.state === 'sold' || capReading.state === 'cured';
   const capNoteShown = capReading.state === 'defended' || capReading.state === 'short'
     || capReading.state === 'yielded' || (isCall && liqMonth !== null);
-  // The first month NEITHER lever could hold the stop. While the shift alone ran short the top-up covers
-  // it, so its exhaustion is the real residual; if no top-up ever fired, the shift's is.
-  const unhedgedMonth = sim.totalTopUpBtc > 0 ? sim.topUpExhaustedMonth : sim.defenseExhaustedMonth;
 
   const selRow = rows[monthIdx] ?? last;
   const atEnd = monthIdx === rows.length - 1;
@@ -346,6 +344,11 @@ export default function OwnershipFace() {
   const alert = policyAlert(reading, policySettings);
   // A month the policy did not borrow in, and why (null in a drawing month, month 0, or with no bills).
   const pauseReason = applied ? policyPauseReason(selRow, policySettings, expenses) : null;
+  // The first month the defense could not hold the line — unheldMonth (cyclingFaceView), the one definition: policy
+  // off, the top-up's exhaustion once a top-up fired, else the shift's; policy on, the crash playbook's own measure.
+  const unhedgedMonth = unheldMonth(sim, applied);
+  // The crash playbook's run in one sentence (policy on only — the policy-off note below is unchanged).
+  const playbook = playbookNote(sim, capPct);
 
   // Break-even on the refinance: the fee is paid once per dollar moved, the rate saving accrues forever.
   // ⚠ Use the run's REALIZED blended fee, not tier 1: the fee is marginal (2% below the $250k break, 1%
@@ -442,10 +445,9 @@ export default function OwnershipFace() {
     ['Held', fmtBtc(selRow.btcHeld), `from ${fmtBtc(rows[0].btcHeld)}`, 'var(--green)'],
     ['Owed', fmtBtc(owedBtc), `${fmtK(selRow.debt)} of debt`, 'var(--text-muted)'],
     ['Coinbase LTV', fmtLtvPct(selRow.cbLtv),
-      // In a defended month the headline sits at the cap — show the shock that was absorbed right there.
-      selRow.defended && selRow.cbLtvPreDefense !== null
-        ? `defended from ${fmtLtvPct(selRow.cbLtvPreDefense)}`
-        : `liq ${fmtLiqK(cbLiq)} · 86% instant`,
+      // In a defended month the headline sits at the cap — show the shock that was absorbed right there (under the
+      // policy, a month the playbook moved collateral in counts too: it can hold the line with no shift).
+      defendedFromSub(selRow, applied) ?? `liq ${fmtLiqK(cbLiq)} · 86% instant`,
       cbZone(selRow.cbLtv)],
     ['Strike LTV', fmtLtvPct(selRow.strikeLtv), `liq ${fmtLiqK(strikeLiq)} · 85%, 72h cure`,
       LEVEL_COLOR[strikeZoneLevel(selRow.strikeLtv, strikeLiqLtv)]],
@@ -571,9 +573,10 @@ export default function OwnershipFace() {
             </p>
           )}
 
-          {defenseActive && (
+          {/* The policy-off defense note — its words unchanged. Under the policy the crash playbook's note replaces it. */}
+          {!applied && defenseActive && (
             <p className={styles.noteQuiet}>
-              {applied ? 'Coinbase defense line' : 'LTV stop defense'}: {fmtK(sim.totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across{' '}
+              LTV stop defense: {fmtK(sim.totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across{' '}
               {sim.defenseCount} month{sim.defenseCount === 1 ? '' : 's'}
               {sim.firstDefenseMonth !== null ? `, starting month ${sim.firstDefenseMonth}` : ''}.
               {sim.totalTopUpBtc > 0 && (
@@ -582,10 +585,11 @@ export default function OwnershipFace() {
                 Strike pledge{sim.firstTopUpMonth !== null ? `, starting month ${sim.firstTopUpMonth}` : ''}.</>
               )}
               {unhedgedMonth !== null
-                ? ` From month ${unhedgedMonth} even the available collateral could not hold the ${capPct}% ${applied ? 'defense line' : 'stop'} — the residual is unhedged.`
-                : ` The ${capPct}% ${applied ? 'defense line' : 'stop'} held; the refinance shifts the debt back to Coinbase as the price recovers.`}
+                ? ` From month ${unhedgedMonth} even the available collateral could not hold the ${capPct}% stop — the residual is unhedged.`
+                : ` The ${capPct}% stop held; the refinance shifts the debt back to Coinbase as the price recovers.`}
             </p>
           )}
+          {applied && playbook !== null && <p className={styles.noteQuiet}>{playbook}</p>}
 
           {/* ── SCRUBBERS — one card holding both range inputs (A1) ── */}
           <section className={`${styles.card} ${styles.scrubCard}`}>
@@ -1062,6 +1066,7 @@ export default function OwnershipFace() {
                       <td className={`${styles.msTd} ${styles.msYear}`}>
                         {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
                         {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                        {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
                         {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
                         {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}
                         {turn && (

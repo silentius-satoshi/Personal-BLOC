@@ -24,6 +24,7 @@ import {
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
@@ -326,8 +327,8 @@ export default function CyclingFace() {
 
   const {
     rows, last, stopMonth, liqMonth,
-    firstDefenseMonth, defenseExhaustedMonth, totalDefenseDrawnUsd, defenseCount,
-    firstTopUpMonth, topUpExhaustedMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
+    firstDefenseMonth, totalDefenseDrawnUsd, defenseCount,
+    firstTopUpMonth, totalTopUpBtc, totalTopUpFromColdBtc, totalTopUpFromStrikeBtc,
   } = sim;
   const defenseActive = defenseCount > 0;
   // What the Strike cap did — defended / short / yielded / called — in the words the face shows. A modelled call
@@ -350,9 +351,11 @@ export default function CyclingFace() {
   const throttleNote = applied && sim.firstCeilingThrottleMonth !== null
     ? `From month ${sim.firstCeilingThrottleMonth} the policy limited borrowing to keep both loans inside their limits at support.`
     : '';
-  // The first month NEITHER lever could hold the stop. While the shift alone ran short the top-up covers
-  // it, so its exhaustion is the real residual; if no top-up ever fired, the shift's is.
-  const unhedgedMonth = totalTopUpBtc > 0 ? topUpExhaustedMonth : defenseExhaustedMonth;
+  // The first month the defense could not hold the line — unheldMonth (cyclingFaceView), the one definition: policy
+  // off, the top-up's exhaustion once a top-up fired, else the shift's; policy on, the crash playbook's own measure.
+  const unhedgedMonth = unheldMonth(sim, applied);
+  // The crash playbook's run in one sentence (policy on only — the policy-off note below is unchanged).
+  const playbook = playbookNote(sim, capPct);
 
   const selRow = rows[monthIdx] ?? last;
   const atEnd = monthIdx === rows.length - 1;
@@ -442,10 +445,10 @@ export default function CyclingFace() {
     ['BTC held', fmtBtc(selRow.btcHeld), `from ${openingBtc.toFixed(4)} ₿`, 'var(--green)'],
     ['Total debt', fmtK(selRow.debt), `from ${fmtK(openingDebt)}`, 'var(--orange)'],
     ['CB LTV', fmtLtvPct(selRow.cbLtv),
-      // In a defended month the headline sits at the cap — show the shock that was absorbed right there.
-      selRow.defended && selRow.cbLtvPreDefense !== null
-        ? `defended from ${fmtLtvPct(selRow.cbLtvPreDefense)}`
-        : applied ? policyTileSub(policySettings, capPct) : `stop ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`,
+      // In a defended month the headline sits at the cap — show the shock that was absorbed right there (under the
+      // policy, a month the playbook moved collateral in counts too: it can hold the line with no shift).
+      defendedFromSub(selRow, applied)
+        ?? (applied ? policyTileSub(policySettings, capPct) : `stop ${capPct}% · liq ${(CB_LLTV * 100).toFixed(0)}%`),
       cbZone(selRow.cbLtv)],
     // The VALUE stays raw equity; the tile's colour is the all-in verdict, so the sub-line says so when they differ
     // (v1.1 #5) — the colour and the number then agree.
@@ -600,9 +603,10 @@ export default function CyclingFace() {
         )}
       </div>
 
-      {defenseActive && (
+      {/* The policy-off defense note — its words unchanged. Under the policy the crash playbook's note replaces it. */}
+      {!applied && defenseActive && (
         <p className={styles.noteQuiet}>
-          {applied ? 'Coinbase defense line' : 'LTV stop defense'}: {fmtK(totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across {defenseCount}{' '}
+          LTV stop defense: {fmtK(totalDefenseDrawnUsd)} of Coinbase debt shifted to Strike across {defenseCount}{' '}
           month{defenseCount === 1 ? '' : 's'}{firstDefenseMonth !== null ? `, starting month ${firstDefenseMonth}` : ''}.
           {totalTopUpBtc > 0 && (
             <> When the line ran short, {fmtBtc(totalTopUpBtc)} of collateral was moved into Coinbase —
@@ -610,10 +614,11 @@ export default function CyclingFace() {
             Strike pledge{firstTopUpMonth !== null ? `, starting month ${firstTopUpMonth}` : ''}.</>
           )}
           {unhedgedMonth !== null
-            ? ` From month ${unhedgedMonth} even the available collateral could not hold the ${capPct}% ${applied ? 'defense line' : 'stop'} — the residual is unhedged.`
-            : ` The ${capPct}% ${applied ? 'defense line' : 'stop'} held; the refinance shifts the debt back to Coinbase as the price recovers.`}
+            ? ` From month ${unhedgedMonth} even the available collateral could not hold the ${capPct}% stop — the residual is unhedged.`
+            : ` The ${capPct}% stop held; the refinance shifts the debt back to Coinbase as the price recovers.`}
         </p>
       )}
+      {applied && playbook !== null && <p className={styles.noteQuiet}>{playbook}</p>}
       {/* The Strike cap holding the line is a success, not a warning — so it is a quiet line here, while a
           short, a yield or a call goes in the constraints box below. */}
       {capReading.state === 'defended' && <p className={styles.noteQuiet}>{strikeCapNote(capReading)}</p>}
@@ -1109,6 +1114,7 @@ export default function CyclingFace() {
                     <td className={`${styles.msTd} ${styles.msYear}`}>
                       {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
                       {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                      {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
                       {r.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
                       {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}
                       {turn && (

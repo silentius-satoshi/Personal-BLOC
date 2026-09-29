@@ -216,15 +216,47 @@ export const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) =
 
 // ── the cold-rules measurement (spec: cold rules below support v1) — shared by its tests and the report ──────────
 
-/** The cold rules measured, all POLICY ON — EXPLICIT, so every table keeps its meaning across the adoption: `base` is the
- *  PRE-ADOPTION order (the doom gate off), `D` ≡ the default since D was adopted, `C` cold before the debt shift with D
- *  off, `C+D` both. ⚠ C must switch D off explicitly, or it silently becomes C + D (D is on by default now). */
+/** The cold rules measured, all POLICY ON — EXPLICIT, so every table keeps its meaning across the adoptions: `base` is the
+ *  PRE-ADOPTION order (the doom gate off), `D` the doom gate on. BOTH are pinned to the PRE-PLAYBOOK order — Strike's
+ *  release rules off and shift first — so D is still measured as it was adopted. (C, cold before the debt shift, is
+ *  retired: the crash playbook's top-up-first step supersedes it.) */
 export const COLD_RULE_VARIANTS = [
-  ['base', { doomGateCbTopUp: false }],
-  ['D', { doomGateCbTopUp: true }],
-  ['C', { doomGateCbTopUp: false, coldBeforeShift: true }],
-  ['C+D', { doomGateCbTopUp: true, coldBeforeShift: true }],
+  ['base', { doomGateCbTopUp: false, strikeReleaseRules: false, topUpBeforeShift: false }],
+  ['D', { doomGateCbTopUp: true, strikeReleaseRules: false, topUpBeforeShift: false }],
 ] as const satisfies ReadonlyArray<readonly [string, Partial<CyclingInputs>]>;
+
+/** The crash playbook measured, all POLICY ON (spec: crash playbook v1): `pre` the adopted order before the playbook,
+ *  `R` Strike's release rules alone, `playbook` ≡ the defaults (the rules + top up first above the liquidation depth),
+ *  `anyDepth` top up first at every depth below support (measured and rejected). */
+export const CRASH_PLAYBOOK_VARIANTS = [
+  ['pre', { strikeReleaseRules: false, topUpBeforeShift: false }],
+  ['R', { topUpBeforeShift: false }],
+  ['playbook', {}],
+  ['anyDepth', { topUpFirstAnyDepth: true }],
+] as const satisfies ReadonlyArray<readonly [string, Partial<CyclingInputs>]>;
+
+export interface DoubleDropRow {
+  name: string; on: CyclingInputs; support: number[];
+  /** The first leg (from month 12) and the second (from month t2 on top of it). */
+  f1: number; t2: number; f2: number; seed: number;
+}
+/** Two legs of a crash, POLICY ON — 800 rows: P1 / P2 × f1 {0.7, 0.6, 0.5, 0.4} from month 12 × t2 {13, 14, 16, 18, 24}
+ *  × f2 {0.9, 0.8, 0.7, 0.6, 0.5} × seed {0, 0.25, 0.5, 1.0}. P1 sits on support at month 12, so k = f1 there. */
+export function doubleDropRows(): DoubleDropRow[] {
+  const out: DoubleDropRow[] = [];
+  for (const [label, base] of [['P1', pathP1()], ['P2', pathP2(0)]] as const) {
+    for (const f1 of [0.7, 0.6, 0.5, 0.4]) for (const t2 of [13, 14, 16, 18, 24]) for (const f2 of [0.9, 0.8, 0.7, 0.6, 0.5]) {
+      const pricePath = base.map((x, m) => (m >= t2 ? x * f1 * f2 : m >= 12 ? x * f1 : x));
+      for (const seed of [0, 0.25, 0.5, 1.0]) {
+        out.push({
+          name: `${label} × ${f1} m12 × ${f2} m${t2} · seed ${seed}`, support: SUPPORT, f1, t2, f2, seed,
+          on: { ...SP_REPRO, pricePath, supportPolicy: policyFor(SUPPORT), openingColdBtc: seed },
+        });
+      }
+    }
+  }
+  return out;
+}
 
 export interface ColdRuleRow { name: string; on: CyclingInputs; support: number[] }
 /** The measurement's rows, POLICY ON (the switches are policy-only): every A5 path, P1 and P2 × 0.6 / 0.5 / 0.4 / 0.35
