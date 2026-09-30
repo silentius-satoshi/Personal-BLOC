@@ -17,6 +17,7 @@ import ScenarioFace from './ScenarioFace';
 import CyclingFace from './CyclingFace';
 import OwnershipFace from './OwnershipFace';
 import UnifiedFace from './UnifiedFace';
+import DecisionFace from './DecisionFace';
 import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
@@ -50,7 +51,7 @@ import styles from './AlmanacView.module.css';
  * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
  * six faces under one hub is navigation only — it crosses neither wall.
  */
-type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified';
+type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified' | 'decision';
 
 export default function AlmanacView() {
   const [face, setFace] = useState<Face>('halving');
@@ -114,6 +115,8 @@ export default function AlmanacView() {
     { key: 'ownership' as Face, label: '⚖ Ownership' },   // S3 — UNGATED, after cycling
     // The ELEVENTH face — gated like cycling (the strategy is a Strike→Coinbase loop), after ownership.
     ...(hasCbLoan ? [{ key: 'unified' as Face, label: '◈ Strategy' }] : []),
+    // The TWELFTH face — UNGATED (decision 2: without a loan the whole schedule shows), and appended LAST.
+    { key: 'decision' as Face, label: '◆ Decision' },
   ];
 
   // The face content for a face key. Pure presentation — switching faces never remounts the hub's
@@ -131,6 +134,7 @@ export default function AlmanacView() {
     // face added to the union without a branch here compiles clean and silently shows the wrong tool (C8).
     if (f === 'ownership') return <OwnershipFace />;
     if (f === 'unified')   return <UnifiedFace />;
+    if (f === 'decision')  return <DecisionFace onNavigate={setFace} />;
     return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
   };
 

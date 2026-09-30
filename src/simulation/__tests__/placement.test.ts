@@ -623,3 +623,24 @@ describe('⭐ N5 — `opening` is the position the owner actually ends up holdin
       Math.max(0, -ceilingHeadroomUsd(BASE.cbDebt, p.opening.cbCollateralBtc, BASE.support, BASE.cbStop)), 9);
   });
 });
+
+// ── M7 · the one mutation Run A's tests missed ───────────────────────────────────────────────────────────────
+
+describe('⭐ M7 — cbOverCeilingUsd reads `opening` where `opening` and `after` DIFFER and Coinbase is over', () => {
+  // ⚠ The I30 case above is vacuous for this: at BASE's $60,000 Coinbase sits under its limit at support, so `after`
+  // and `opening` both read 0. Here the deferred 0.004 ₿ WOULD have gone to Coinbase, and Coinbase is $20,000 over.
+  it('⭐ Strike 0.004 ₿ over its keep, $140,000 on 2 ₿: exactly $20,000 over — not the $19,760 `after` implies', () => {
+    const p = plan({ strikeCollateralBtc: 0.804, cbDebt: 140_000 });
+    // Premise: the Strike keep is 40,000 / (0.5 × 100,000) = 0.8 ₿, so 0.004 ₿ moves to Coinbase — under the
+    // threshold, so nothing is seeded and `opening` is today's 2 ₿ while `after` holds 2.004 ₿.
+    expect(p.state).toBe('ready');
+    expect(p.strikeKeepBtc).toBeCloseTo(0.8, 12);
+    expect(p.strikeToCbBtc).toBeCloseTo(0.004, 12);
+    expect(p.worthMoving).toBe(false);
+    expect(p.seeded).toBe(false);
+    expect(p.opening.cbCollateralBtc).toBe(2);
+    expect(p.after.cbCollateralBtc).toBeCloseTo(2.004, 12);
+    // 140,000 − 2 × 100,000 × 0.6 = 20,000. Reading `after` gives 140,000 − 2.004 × 60,000 = 19,760.
+    expect(p.cbOverCeilingUsd).toBeCloseTo(20_000, 6);
+  });
+});

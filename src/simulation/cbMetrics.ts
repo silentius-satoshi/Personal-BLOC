@@ -1,5 +1,6 @@
 import { ltvOfUsd } from './ltv';
 import { CB_LLTV } from './runCoinbaseLoan';
+import { shownUsd } from '../utils/format';
 
 export interface CbMetrics {
   ltv:          number;   // loanBalance / (collateralBtc × price)
@@ -7,6 +8,12 @@ export interface CbMetrics {
   triggerPrice: number;   // price at which CB LTV hits the trigger %
   pctToTrigger: number;   // (triggerPrice − price) / price; positive = price above trigger
   pctToLiq:     number;   // (liqPrice − price) / price; uses COMPUTED liqPrice only
+}
+
+/** Coinbase's seizure price: where `balance` on `collateralBtc` reaches CB_LLTV — 0 with no collateral (the guard
+ *  `cbMetrics` has always had). ONE expression, two readers: `cbMetrics().liqPrice` and `cbSeizurePrice`. */
+function liqPriceOf(balance: number, collateralBtc: number): number {
+  return collateralBtc > 0 ? balance / (collateralBtc * CB_LLTV) : 0;
 }
 
 /**
@@ -25,11 +32,32 @@ export function cbMetrics(
   // Positive debt with no collateral is not a healthy zero-LTV position. Keep the sentinel finite
   // for normal zero-price guards, but classify an actually unbacked loan as immediately unsafe.
   const ltv           = ltvOfUsd(loanBalance, collateralUsd, collateralBtc);
-  const liqPrice      = collateralBtc > 0 ? loanBalance / (collateralBtc * CB_LLTV) : 0;
+  const liqPrice      = liqPriceOf(loanBalance, collateralBtc);
   const triggerPrice  = collateralBtc > 0 ? loanBalance / (collateralBtc * (triggerPct / 100)) : 0;
   const pctToTrigger  = price > 0 ? (triggerPrice - price) / price : 0;
   const pctToLiq      = price > 0 ? (liqPrice - price) / price : 0;
   return { ltv, liqPrice, triggerPrice, pctToTrigger, pctToLiq };
+}
+
+/**
+ * Coinbase's seizure price for ONE projected row, or null when there is none — 🔴 THE one per-row rule. The Decision
+ * face's cliff (`cliffPath`) draws it and the Worst (modeled) ranking (`planSearch`) measures its cushion against it,
+ * so the line on the chart and the ranking's "closest to seizure" can never disagree.
+ *
+ * Null:
+ *  - on a `postLiquidation` row — the engine marks the liquidation row (pushed pre-seizure) and every row after it;
+ *    there is no loan left to seize, and "the months before a liquidation" is this same cutoff;
+ *  - when the debt is under the dust floor (`shownUsd`) — a residue is not a loan;
+ *  - with no Coinbase collateral (`liqPriceOf` gives 0, and 0 is not a price);
+ *  - when the price is not a finite positive number.
+ * Otherwise it is exactly `cbMetrics(...).liqPrice` — the Safety Dashboard's formula, never a second one.
+ */
+export function cbSeizurePrice(
+  row: { cbDebt: number; cbCollateralBtc: number; postLiquidation: boolean },
+): number | null {
+  if (row.postLiquidation || !shownUsd(row.cbDebt)) return null;
+  const p = liqPriceOf(row.cbDebt, row.cbCollateralBtc);
+  return Number.isFinite(p) && p > 0 ? p : null;
 }
 
 /**

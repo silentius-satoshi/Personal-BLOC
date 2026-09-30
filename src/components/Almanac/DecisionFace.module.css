@@ -1,0 +1,249 @@
+/* Almanac Decision face — the TWELFTH face. Every shared class COMPOSES a parent's (the UnifiedFace precedent), so
+   the faces can never drift apart visually. The only NEW rules are THE MOVE card's lines, the path picker's
+   sublabels, the chart's empty state and legend, the schedule table and the print gate. Tokens only — zero new hex. */
+
+/* ── From CyclingFace ─────────────────────────────────────────────────────────────────────────── */
+.face { composes: face from './CyclingFace.module.css'; }
+.head { composes: head from './CyclingFace.module.css'; }
+.title { composes: title from './CyclingFace.module.css'; }
+.framing { composes: framing from './CyclingFace.module.css'; }
+.ghostBtn { composes: ghostBtn from './CyclingFace.module.css'; }
+.card { composes: card from './CyclingFace.module.css'; }
+.cardLabel { composes: cardLabel from './CyclingFace.module.css'; }
+.noteQuiet { composes: noteQuiet from './CyclingFace.module.css'; }
+.sliderPair { composes: sliderPair from './CyclingFace.module.css'; }
+.bandBtn { composes: bandBtn from './CyclingFace.module.css'; }
+.bandBtnOn { composes: bandBtnOn from './CyclingFace.module.css'; }
+.presetRow { composes: presetRow from './CyclingFace.module.css'; }
+.statGrid { composes: statGrid from './CyclingFace.module.css'; }
+.stat { composes: stat from './CyclingFace.module.css'; }
+.statValue { composes: statValue from './CyclingFace.module.css'; }
+.statSub { composes: statSub from './CyclingFace.module.css'; }
+/* The 44px face-local range input — never the shared ui/SliderInput, whose track change would relayout three tabs. */
+.scrubHead { composes: scrubHead from './CyclingFace.module.css'; }
+.scrubValue { composes: scrubValue from './CyclingFace.module.css'; }
+.scrub { composes: scrub from './CyclingFace.module.css'; }
+.tooltip { composes: tooltip from './CyclingFace.module.css'; }
+.tooltipHead { composes: tooltipHead from './CyclingFace.module.css'; }
+.tooltipRow { composes: tooltipRow from './CyclingFace.module.css'; }
+.disclaimer { composes: disclaimer from './CyclingFace.module.css'; }
+
+/* ── From OwnershipFace / UnifiedFace ─────────────────────────────────────────────────────────── */
+/* ⚠ The local height follows `composes:` on the same rule, so it wins by source order (the Mining/PowerLaw rule). */
+.chartBox { composes: chartBox from './OwnershipFace.module.css'; height: 280px; }
+.stateLine { composes: stateLine from './UnifiedFace.module.css'; }
+
+/* ── New to this face ─────────────────────────────────────────────────────────────────────────── */
+
+/* THE MOVE — the card the face opens with, so it carries the bitcoin accent on its border. */
+.moveCard {
+  composes: card from './CyclingFace.module.css';
+  border-color: color-mix(in srgb, var(--btc) 35%, var(--line));
+}
+.moveLine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px 10px;
+  margin-top: 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--text-secondary);
+}
+.moveLine:first-of-type { margin-top: 0; }
+/* The plan-of-record line and the path-invariant line frame the move; they read quieter than it. */
+.moveQuiet {
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.toneGood { color: var(--green); }
+.toneWarn { color: var(--amber); }
+.toneBad { color: var(--red); }
+
+/* The path picker — six options, so a grid rather than the parents' single flex row (which clips at phone width):
+   the four modelled paths on one row, the two worst options beneath, each two columns wide for its sublabel (D3). */
+.pathRow {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+}
+.pathWide { grid-column: span 2; }
+/* A disabled option reads as such. */
+.pathSub {
+  display: block;
+  margin-top: 2px;
+  font-size: 9.5px;
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-faint);
+}
+.bandBtn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* The chart — an empty state the size of the chart, and a legend of the series actually drawn. */
+.chartEmpty {
+  height: 280px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-faint);
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin-top: 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.legendSwatch {
+  display: inline-block;
+  width: 14px;
+  border-top: 2px solid currentColor;
+}
+.legendDash { border-top-style: dashed; }
+.legendDot { border-top-style: dotted; }
+
+/* The schedule — Moves is a wrapped list, so the table never needs a horizontal scroll at phone width. Every month
+   stays in it, but a 60-month plan of wrapped moves runs to thousands of pixels on a phone, so the table scrolls in a
+   box of its own and the outcome and the what-ifs below stay within reach. The header row sticks. */
+.schedWrap {
+  margin-top: 10px;
+  max-height: 460px;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  border-top: 1px solid var(--line-2);
+  border-bottom: 1px solid var(--line-2);
+}
+.schedTable {
+  width: 100%;
+  border-collapse: collapse;
+  table-layout: fixed;
+  font-size: 12px;
+}
+.schedTh {
+  text-align: left;
+  padding: 0 6px 8px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  font-weight: 600;
+  vertical-align: bottom;
+  border-bottom: 1px solid var(--line);
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+  padding-top: 8px;
+}
+.colMonth { width: 64px; }
+.colKeep { width: 76px; text-align: right; }
+.colZone { width: 40px; text-align: center; }
+.schedRow { cursor: pointer; }
+.schedRow:hover { background: var(--bg-hover); }
+.schedRow:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--btc) 60%, transparent);
+  outline-offset: -2px;
+}
+.schedRowOn { background: var(--surface-2); }
+.schedRowOn .schedMonth { color: var(--btc); }
+/* Rows past a liquidation are the aftermath — dimmed. */
+.schedRowPost { opacity: 0.55; }
+.schedTd {
+  padding: 9px 6px;
+  vertical-align: top;
+  border-top: 1px solid var(--line-2);
+  color: var(--text-secondary);
+}
+.schedMonth {
+  font-family: var(--mono);
+  font-size: 11px;
+  white-space: nowrap;
+}
+.schedMoves {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-wrap: anywhere;
+}
+.schedMoves li + li { margin-top: 3px; }
+.schedNum {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+.schedZone {
+  text-align: center;
+  font-family: var(--mono);
+  font-weight: 600;
+}
+.schedNone { color: var(--text-faint); }
+/* A crash row's note and its console link — a row of its own beneath the row button (C2). */
+.crashRow td {
+  padding: 0 6px 10px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--amber);
+}
+.consoleLink {
+  margin-left: 6px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: var(--btc);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Tap-through. */
+.tapRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 13px;
+}
+.tapLabel {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+/* ── The print gate (G7) — execute = print, never act ─────────────────────────────────────────────
+   A CSS module loads app-wide once the hub imports this face, so a bare `@media print` block here would take over
+   printing on EVERY page. Every rule below is gated on the body class the Print button sets and the face clears
+   (afterprint, the next pointerdown, keydown or window focus, unmount — never synchronously after print). The
+   artifact is a portal on <body>: the same text Copy and Download produce. */
+.printArea { display: none; }
+@media print {
+  :global(body.decision-print) { background: white !important; }
+  :global(body.decision-print) > :not(.printArea) { display: none !important; }
+  :global(body.decision-print) > .printArea {
+    display: block;
+    margin: 0;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    font-family: var(--mono);
+    font-size: 10pt;
+    line-height: 1.45;
+    color: black;
+  }
+}

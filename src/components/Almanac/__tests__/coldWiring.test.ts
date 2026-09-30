@@ -17,7 +17,8 @@ import { join } from 'node:path';
  *
  * Each check was proven red by a temporary edit to a real face before it landed.
  */
-const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx'] as const;
+// DecisionFace (Run B): its `openingBtc` feeds the schedule header (G8) — the reserve is in it like everywhere else.
+const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx'] as const;
 const ALMANAC = join(process.cwd(), 'src/components/Almanac');
 const readAlmanac = (file: string): string => readFileSync(join(ALMANAC, file), 'utf8');
 

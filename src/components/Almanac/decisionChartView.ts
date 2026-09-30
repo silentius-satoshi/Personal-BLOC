@@ -1,14 +1,13 @@
 import type { CyclingRow } from '../../simulation/cyclingSim';
-import { cbMetrics } from '../../simulation/cbMetrics';
+import { cbSeizurePrice } from '../../simulation/cbMetrics';
 import { addMonths } from '../../simulation/powerLaw';
 import type { HistoryPoint } from './supportPolicyInputs';
-import { shownUsd } from './supportPolicyView';
 
 /**
  * The Decision face's chart series — pure, so the seam, the gaps and the cliff are all testable.
  *
- * 🔴 THE CLIFF IS `cbMetrics().liqPrice`, the same formula THE MOVE prints and the Safety Dashboard already uses.
- * Never a second one.
+ * 🔴 THE CLIFF IS `cbSeizurePrice` — `cbMetrics().liqPrice` per row, the formula THE MOVE prints and the Safety
+ * Dashboard already uses, and the line the Worst (modeled) ranking measures its cushion against. Never a second one.
  * ⚠ An uncomputable point is a GAP (`null`), never 0 — a zero would draw a line to the floor of a log axis and
  * read as a crash that never happened.
  */
@@ -34,21 +33,15 @@ export const MAX_HISTORY_POINTS = 800;
 const ok = (x: number): boolean => Number.isFinite(x) && x > 0;
 
 /**
- * Coinbase's seizure price in each month — the price at which its LTV reaches 86%.
- * `null` with no loan, with no Coinbase collateral, and ON and AFTER the liquidation row (there is no loan left
- * to seize, so a line there would be a cliff for a position that no longer exists).
+ * Coinbase's seizure price in each month — the price at which its LTV reaches 86%. It is `cbSeizurePrice` per row:
+ * 🔴 THE one rule the Worst (modeled) ranking reads too (`minCushionOf`), so the line drawn here and the crown's
+ * "closest to Coinbase's seizure price" can never disagree. `null` with no loan (⚠ F3 — a balance under the dust
+ * floor is not one, and `fmtUSD` would print its seizure price as "$0"), with no Coinbase collateral, and ON and
+ * AFTER the liquidation row (there is no loan left to seize, so a line there would be a cliff for a position that no
+ * longer exists).
  */
-export function cliffPath(rows: readonly CyclingRow[], cbLtvTriggerPct: number): (number | null)[] {
-  let liq: number | null = null;
-  for (const r of rows) if (r.postLiquidation && liq === null) liq = r.m;
-  return rows.map((r) => {
-    if (liq !== null && r.m >= liq) return null;
-    // ⚠ F3 — the SAME dust floor THE MOVE's cliff line uses: a balance under 50¢ is not a loan, and
-    // `fmtUSD` would print its seizure price as "$0" ("Coinbase seizes this loan at $0 — 100% below today").
-    if (!shownUsd(r.cbDebt) || !(r.cbCollateralBtc > 0)) return null;
-    const p = cbMetrics(r.cbDebt, r.cbCollateralBtc, r.price, cbLtvTriggerPct).liqPrice;
-    return ok(p) ? p : null;
-  });
+export function cliffPath(rows: readonly CyclingRow[]): (number | null)[] {
+  return rows.map((r) => cbSeizurePrice(r));
 }
 
 /** Keep at most `max` points, evenly strided, always keeping the first and the last. */
@@ -122,4 +115,62 @@ export function buildChartSeries(
     cliff: gapped(cliff),
     seamT,
   };
+}
+
+/**
+ * The log Y-axis's domain: every plotted price, 20% below the lowest and 25% above the highest. A log axis cannot
+ * take `'auto'` near zero, so the face always passes an explicit positive domain. Gaps (`null`) are skipped, so a gap
+ * never drags the floor to 0. Nothing plotted ⇒ `null`, and the face shows its placeholder.
+ */
+export function chartDomain(series: DecisionChartSeries): [number, number] | null {
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = 0;
+  for (const pts of [series.history, series.forward, series.floor, series.support, series.cliff]) {
+    for (const p of pts) {
+      const v = p.price;
+      if (v === null || !ok(v)) continue;
+      if (v < lo) lo = v;
+      if (v > hi) hi = v;
+    }
+  }
+  return Number.isFinite(lo) && hi > 0 ? [lo * 0.8, hi * 1.25] : null;
+}
+
+/** The time axis's extent: the earliest and latest point of any series. Nothing plotted ⇒ `null`. */
+export function xExtent(series: DecisionChartSeries): [number, number] | null {
+  let lo = Number.POSITIVE_INFINITY;
+  let hi = Number.NEGATIVE_INFINITY;
+  for (const pts of [series.history, series.forward, series.floor, series.support, series.cliff]) {
+    for (const p of pts) {
+      if (!Number.isFinite(p.t)) continue;
+      if (p.t < lo) lo = p.t;
+      if (p.t > hi) hi = p.t;
+    }
+  }
+  if (Number.isFinite(series.seamT)) {
+    lo = Math.min(lo, series.seamT);
+    hi = Math.max(hi, series.seamT);
+  }
+  return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] : null;
+}
+
+const YEAR_MS = 365.25 * 86_400_000;
+
+/**
+ * Year ticks for the time axis — on 1 January (UTC), every 2, 4 or 8 years depending on the span, so a phone never
+ * gets more than a handful of labels. ⚠ The face passes these explicitly: with per-series data and no chart-level
+ * data, recharts falls back to one tick per data point, hundreds of them overlapping. Junk ⇒ none.
+ */
+export function yearTicks(minT: number, maxT: number): number[] {
+  if (!Number.isFinite(minT) || !Number.isFinite(maxT) || !(maxT > minT)) return [];
+  const span = (maxT - minT) / YEAR_MS;
+  const step = span <= 12 ? 2 : span <= 24 ? 4 : 8;
+  const first = new Date(minT).getUTCFullYear();
+  const out: number[] = [];
+  for (let y = Math.ceil(first / step) * step; ; y += step) {
+    const t = Date.UTC(y, 0, 1);
+    if (t > maxT) break;
+    if (t >= minT) out.push(t);
+  }
+  return out;
 }

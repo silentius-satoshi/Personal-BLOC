@@ -3,6 +3,14 @@ import type { MiningCurrency } from '../simulation/types';
 export const fmtUSD = (n: number): string =>
   '$' + Math.round(Math.abs(n)).toLocaleString();
 
+/** A dollar amount below this prints as "$0" — float dust (a ceiling-capped refinance can leave ~1e-10 over the
+ *  limit), never a statement worth a sentence. ⚠ THE one dust floor: the policy's copy, the all-in verdict, the
+ *  Decision face and Coinbase's seizure price (`cbSeizurePrice`, simulation/cbMetrics) all read it. It lives here, not
+ *  in a component module, because src/simulation needs it too; `supportPolicyView` re-exports it for the faces. Never
+ *  a second constant — a source guard counts the definitions. */
+export const DUST_USD = 0.5;
+export const shownUsd = (x: number): boolean => Number.isFinite(x) && x >= DUST_USD;
+
 // LOCAL calendar-day ISO strings (yyyy-mm-dd) — getFullYear/getMonth/getDate are LOCAL accessors, unlike
 // toISOString() (always UTC). Use these anywhere "today" or a specific local Date must become the correct
 // wall-clock calendar day string; UTC-anchored/UTC-convention dates (Almanac, calendarModel.ts) do NOT use these.

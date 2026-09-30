@@ -130,3 +130,36 @@ test.describe('Navigation gestures (P3)', () => {
     await expect(page.getByLabel('Log an event')).toBeVisible();       // left Almanac → journal
   });
 });
+
+// ── Decision face (Run B, G9) — nothing else ever mounts the face: the every-pill test above taps by an explicit
+// name list, and the repo has no render harness. So: open it, with the price history stubbed and with it failing.
+test.describe('Decision face — the smoke', () => {
+  const MOVE_TITLE = "The support policy's move this month";
+
+  test('opens with price history: THE MOVE and the chart render, and nothing crashes', async ({ page }) => {
+    await page.route(/blockchain\.info/, (r) => r.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+    }));
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const move = page.getByRole('region', { name: MOVE_TITLE });
+    await expect(move).toBeVisible({ timeout: 8000 });
+    await expect(move.getByText(/Your Monthly Playbook is your plan of record/)).toBeVisible();
+    await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('opens with the price history failing: it still renders, and says the history did not load', async ({ page }) => {
+    await page.route(/blockchain\.info/, (r) => r.fulfill({ status: 500, body: '' }));
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const move = page.getByRole('region', { name: MOVE_TITLE });
+    await expect(move).toBeVisible({ timeout: 8000 });
+    await expect(move.getByText("Price history didn't load, so this run assumes the model isn't treated as broken."))
+      .toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+});

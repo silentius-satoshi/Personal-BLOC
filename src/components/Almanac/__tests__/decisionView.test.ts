@@ -2,7 +2,10 @@ import { describe, it, expect } from 'vitest';
 import {
   ACTION_FIELDS, rowActions, todayActions, planSchedule, planOutcome, coinbaseLoanLine, scheduleToText,
   moveCard, MOVE_CARD_TITLE, PLAN_OF_RECORD_LINE, fmtBtc3,
-  type ActionKind, type MoveCardContext, type BreakerReading,
+  PATH_INVARIANT_LINE, BREAKER_LOADING_LINE, crashNote, consoleLinkLabel, decisionDisclaimer, pathSublabel,
+  pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles, scheduleFileName, manualPriceNote,
+  stressNote, BELOW_SUPPORT_NOTE, moveCardText,
+  type ActionKind, type MoveCardContext, type BreakerReading, type PathNoteInput,
 } from '../decisionView';
 import {
   placementPlan, MOVE_THRESHOLD_BTC,
@@ -37,11 +40,13 @@ const PLACE: PlacementInput = {
 };
 const place = (o: Partial<PlacementInput> = {}) => placementPlan({ ...PLACE, ...o });
 
-const BREAKERS: [string, BreakerReading | null][] = [
+const BREAKERS: [string, BreakerReading | 'loading' | null][] = [
   ['clean', { broken: false, monthsAtOrAbove: 0, monthsBelow: 0, lastMonthEndLabel: '31 Aug 2026' }],
   ['one short', { broken: false, monthsAtOrAbove: 0, monthsBelow: 1, lastMonthEndLabel: '31 Aug 2026' }],
   ['broken', { broken: true, monthsAtOrAbove: 2, monthsBelow: 2, lastMonthEndLabel: '31 Aug 2026' }],
   ['no history', null],
+  // G5 — the fetch is still in flight: history is [] until it lands, which is NOT "didn't load".
+  ['loading', 'loading'],
 ];
 
 const CTX: MoveCardContext = {
@@ -95,7 +100,7 @@ describe('⭐ I13 — every ACTION_FIELDS entry that fires appears in the schedu
       const sched = planSchedule(sim, plan);
       // ⚠ Membership, not `toContain` per action: scanning the whole printout for every action is O(n²) over a
       // sweep this size (110s vs 3s). `scheduleToText` writes each action as "  - <text>".
-      const printed = new Set(scheduleToText(sched, 'h', 'a', 'd')
+      const printed = new Set(scheduleToText(sched, 'h', 'a', 'd', true)
         .split('\n').filter((l) => l.startsWith('  - ')).map((l) => l.slice(4)));
       // The schedule already derived every row's actions — re-deriving them here doubles the sweep's cost.
       const byMonth = new Map(sched.map((r) => [r.m, r.actions]));
@@ -144,7 +149,7 @@ describe('⭐ I14 — no schedule line prints "$0" or "0.000 ₿"', () => {
             expect(a.text, `${c.name} ${row.label} ${a.kind}`).not.toMatch(NO_ZERO_BTC);
           }
         }
-        const text = scheduleToText(sched, 'header', 'answer', 'disclaimer');
+        const text = scheduleToText(sched, 'header', 'move', 'disclaimer', false);
         expect(text).not.toMatch(NO_ZERO);
         expect(text).not.toMatch(NO_ZERO_BTC);
       }
@@ -229,9 +234,9 @@ describe('planOutcome and scheduleToText', () => {
   it('⭐ the printout carries the header, THE MOVE, every action and the disclaimer', () => {
     const sim = runCyclingSim({ ...SP_REPRO, pricePath: SUPPORT, supportPolicy: policyFor(SUPPORT) });
     const sched = planSchedule(sim, place({ strikeCollateralBtc: 10 }));
-    const text = scheduleToText(sched, 'HEADER', 'THE ANSWER LINE', 'DISCLAIMER');
+    const text = scheduleToText(sched, 'HEADER', 'THE MOVE LINE', 'DISCLAIMER', true);
     expect(text.startsWith('HEADER')).toBe(true);
-    expect(text).toContain('THE ANSWER LINE');
+    expect(text).toContain('THE MOVE LINE');
     expect(text.endsWith('DISCLAIMER')).toBe(true);
     for (const r of sched) for (const a of r.actions) expect(text).toContain(a.text);
   });
@@ -243,7 +248,7 @@ describe('planOutcome and scheduleToText', () => {
     };
     const sched = planSchedule(crashed, place());
     expect(sched.find((r) => r.m === 3)!.crash).toBe(true);
-    expect(scheduleToText(sched, 'h', 'a', 'd')).toContain('work from the Emergency Console');
+    expect(scheduleToText(sched, 'h', 'a', 'd', true)).toContain('work from the Emergency Console');
   });
 });
 
@@ -581,5 +586,295 @@ describe('⭐ N5 — a move under the threshold is not a move', () => {
     expect(line).toMatch(/collateral moves to Coinbase in month \d+/);
     // Non-vacuous: a real move DOES say today.
     expect(coinbaseLoanLine(sim, place({ strikeCollateralBtc: 10 }), false)).toContain('today');
+  });
+});
+
+// ── Run B — the rest of the face's copy (G3, G4, G5, B2, B3) ────────────────────────────────────────────────
+
+describe('⭐ B3 — the path-invariant line', () => {
+  it('⭐ closes every card that renders the policy — ready, paused, broken and past liquidation', () => {
+    for (const plan of [
+      place({ strikeCollateralBtc: 10 }), place({ support: 200_000 }), place({ broken: true }),
+      place({ cbDebt: CB_LLTV * 2 * 100_000 }),
+    ]) {
+      const c = card({ plan });
+      expect(c.lines[c.lines.length - 1], plan.state).toEqual({ key: 'pathInvariant', tone: 'plain', text: PATH_INVARIANT_LINE });
+    }
+    expect(PATH_INVARIANT_LINE)
+      .toBe("This move is measured at today's support and today's price, so switching paths below doesn't change it.");
+  });
+
+  it('never on a card with nothing to measure — unavailable, or the policy off or ignored', () => {
+    for (const o of [
+      { plan: place({ price: Number.NaN }) }, { policyApplied: false }, { policyApplied: false, policyEnabled: false },
+    ] as Partial<MoveCardContext>[]) {
+      expect(card(o).lines.find((l) => l.key === 'pathInvariant'), JSON.stringify(o.plan?.state ?? o)).toBeUndefined();
+    }
+  });
+});
+
+describe('⭐ the line\'s button — Try $L and Back to $X come from the card, not the face', () => {
+  it('⭐ not covered ⇒ Try the suggestion', () => {
+    expect(keyed({ ownerLineUsd: 10_000, runLineUsd: 10_000, suggestedLineUsd: 20_000 }, 'line')!.action)
+      .toEqual({ kind: 'tryLine', label: 'Try $20,000', lineUsd: 20_000 });
+  });
+  it('⭐ what-if engaged ⇒ Back to your own line', () => {
+    expect(keyed({ runLineUsd: 80_000 }, 'line')!.action)
+      .toEqual({ kind: 'backToLine', label: 'Back to $40,000', lineUsd: 40_000 });
+    expect(keyed({ runLineUsd: 10_000, suggestedLineUsd: 20_000 }, 'line')!.action!.kind).toBe('backToLine');
+  });
+  it('covered ⇒ no button', () => {
+    expect(keyed({ ownerLineUsd: 40_000, runLineUsd: 40_000, suggestedLineUsd: 20_000 }, 'line')!.action)
+      .toBeUndefined();
+  });
+});
+
+describe('⭐ G5 — the breaker line has a LOADING reading', () => {
+  it('⭐ loading is its own line, never "didn\'t load"', () => {
+    const l = keyed({ breaker: 'loading' }, 'breaker')!;
+    expect(l.text).toBe(BREAKER_LOADING_LINE);
+    expect(BREAKER_LOADING_LINE)
+      .toBe("Loading price history — until it arrives, this run assumes the model isn't treated as broken.");
+    expect(l.tone).toBe('plain');
+    expect(l.text).not.toContain("didn't load");
+  });
+
+  it('⭐ breakerReading: a seed is a reading; no seed is loading, or null once the fetch settled', () => {
+    const seed = {
+      state: { broken: false, monthsBelow: 1, monthsAtOrAbove: 0, brokenMonth: null },
+      lastMonthEndISO: '2026-08-31',
+    };
+    expect(breakerReading(seed, false))
+      .toEqual({ broken: false, monthsAtOrAbove: 0, monthsBelow: 1, lastMonthEndLabel: '31 Aug 2026' });
+    // A seed wins over a loading flag — history arrived.
+    expect(breakerReading(seed, true)).toEqual(breakerReading(seed, false));
+    expect(breakerReading(null, true)).toBe('loading');
+    expect(breakerReading(null, false)).toBeNull();
+    // September through the fixed month table — never ICU's "Sept".
+    expect((breakerReading({ ...seed, lastMonthEndISO: '2026-09-30' }, false) as BreakerReading).lastMonthEndLabel)
+      .toBe('30 Sep 2026');
+    const broken = breakerReading({
+      state: { broken: true, monthsBelow: 2, monthsAtOrAbove: 3, brokenMonth: 7 }, lastMonthEndISO: '2026-08-31',
+    }, false) as BreakerReading;
+    expect(broken).toEqual({ broken: true, monthsAtOrAbove: 3, monthsBelow: 2, lastMonthEndLabel: '31 Aug 2026' });
+  });
+
+  it('a malformed month-end never prints "NaN" — the label falls back to the raw date', () => {
+    const r = breakerReading({
+      state: { broken: false, monthsBelow: 0, monthsAtOrAbove: 0, brokenMonth: null }, lastMonthEndISO: 'not-a-date',
+    }, false) as BreakerReading;
+    expect(r.lastMonthEndLabel).toBe('not-a-date');
+  });
+});
+
+describe('⭐ D13 — the crash note, one sentence for the screen and the printout', () => {
+  it('⭐ both variants, verbatim', () => {
+    expect(crashNote(true))
+      .toBe("A crash month — these are the monthly model's estimates; on the day, work from the Emergency Console.");
+    expect(crashNote(false))
+      .toBe("A crash month — these are the monthly model's estimates; on the day, work from the Emergency Console "
+        + '(it runs when your Coinbase strategy is LTV-triggered).');
+  });
+
+  it('⭐ scheduleToText prints crashNote — the old "work from the Emergency Console on the day" line is gone', () => {
+    const sim = runCyclingSim({ ...SP_REPRO, pricePath: SUPPORT, supportPolicy: policyFor(SUPPORT) });
+    const crashed: CyclingResult = {
+      ...sim, rows: sim.rows.map((r) => (r.m === 3 ? { ...r, topUpFromColdBtc: 0.5 } : r)),
+    };
+    const sched = planSchedule(crashed, place());
+    for (const runs of [true, false]) {
+      const text = scheduleToText(sched, 'h', 'a', 'd', runs);
+      expect(text).toContain(`  ! ${crashNote(runs)}`);
+      expect(text).not.toContain('on the day.\n');
+    }
+  });
+
+  it('the console link says which month it belongs to', () => {
+    expect(consoleLinkLabel(7)).toBe('Open the Emergency Console for month 7');
+  });
+});
+
+describe('⭐ G4 — the disclaimer is Strategy\'s policy-aware wording, as one string', () => {
+  it('⭐ policy on, and policy off', () => {
+    const head = 'A pattern, not a forecast. The power law is a historical regression, firewalled from every risk '
+      + 'calculation. Both facilities are full-recourse; Morpho liquidates instantly at 86% with no cure window, '
+      + 'Strike calls at 70% with 72 hours to cure. ';
+    expect(decisionDisclaimer(true)).toBe(`${head}With the support policy on, a Strike margin call is modelled — `
+      + 'cash, then cold, then a sale back to 65%. Not financial advice.');
+    expect(decisionDisclaimer(false))
+      .toBe(`${head}The engine flags a Strike call but does not model the seizure. Not financial advice.`);
+  });
+});
+
+describe('⭐ D3 — the two worst options\' sublabels', () => {
+  it('⭐ stitched: identical to Support while it is, else what it is', () => {
+    expect(pathSublabel('worstStitched', true, 'Support path')).toBe('identical to Support on these settings');
+    expect(pathSublabel('worstStitched', false, 'Support path')).toBe("stitched floor — no single model's future");
+  });
+  it('⭐ modeled: names the crown, so it renames itself when the crown moves', () => {
+    expect(pathSublabel('worstModeled', true, pathNoun('floor', 'Support'))).toBe('currently the Support path');
+    expect(pathSublabel('worstModeled', false, pathNoun('fourYear', '4-yr cycle'))).toBe('currently the 4-yr cycle');
+  });
+});
+
+describe('⭐ the path note — the parents\' words, plus what the two worst options are', () => {
+  const BASE_NOTE: PathNoteInput = {
+    choice: 'floor', kind: 'floor', label: 'Support', bandTodayUsd: 64_000, onTheLine: true, priceHeld: false,
+    anchorPrice: 80_000, month1Usd: 64_000, nextTurns: '', stitchedIsSupport: false, worstBy: 'cushion',
+  };
+  const note = (o: Partial<PathNoteInput> = {}) => pathNote({ ...BASE_NOTE, ...o });
+  const D4 = ' No modelled future dips under Support on these settings, so the stitched floor is Support itself.';
+
+  it('⭐ a band on the line — with its month-1 step, signed and computed', () => {
+    expect(note()).toBe('Sits on the power-law support line — today at $64,000. Month 1 steps −20.0% to $64,000.');
+  });
+  it('a band reverting, from today\'s price or the held one', () => {
+    expect(note({ choice: 'fair', kind: 'fair', label: 'Fair', bandTodayUsd: 170_000, onTheLine: false }))
+      .toBe("Converges from today's $80,000 toward the power-law fair line — today at $170,000.");
+    expect(note({
+      choice: 'ceiling', kind: 'ceiling', label: 'Resistance', bandTodayUsd: 350_000, onTheLine: false, priceHeld: true,
+    })).toBe('Converges from the held $80,000 toward the power-law resistance line — today at $350,000.');
+  });
+  it('⭐ the 4-yr cycle, with its next turns', () => {
+    expect(note({
+      choice: 'fourYear', kind: 'fourYear', label: '4-yr cycle', bandTodayUsd: null, month1Usd: 88_000,
+      nextTurns: 'Next low 5 Oct 2026, next high 3 Sep 2029',
+    })).toBe('Rides the 4-yr cycle — tops on the fair line, troughs on the support line. '
+      + 'Next low 5 Oct 2026, next high 3 Sep 2029. Month 1 steps +10.0% to $88,000.');
+  });
+  it('⭐ Worst (modeled) names its crown AND the rule that crowned it, then describes that path (W1)', () => {
+    const body = 'Sits on the power-law support line — today at $64,000. Month 1 steps −20.0% to $64,000.';
+    expect(note({ choice: 'worstModeled', worstBy: 'liquidation' }))
+      .toBe(`The modelled future that liquidates first — currently the Support path. ${body}`);
+    expect(note({ choice: 'worstModeled', worstBy: 'cushion' }))
+      .toBe(`The modelled future that comes closest to Coinbase's seizure price — currently the Support path. ${body}`);
+    expect(note({ choice: 'worstModeled', worstBy: 'equity' }))
+      .toBe(`The modelled future that ends poorest in dollars — currently the Support path. ${body}`);
+    expect(note({ choice: 'worstModeled', worstBy: 'index' }))
+      .toBe(`The modelled futures tie on these settings — currently the Support path. ${body}`);
+  });
+  it('only Worst (modeled) carries a crown sentence — a plain path never names a rule', () => {
+    for (const worstBy of ['liquidation', 'cushion', 'equity', 'index'] as const) {
+      expect(note({ worstBy })).toBe(note());
+    }
+  });
+  it('⭐ Worst (stitched) is no single model\'s future', () => {
+    expect(note({ choice: 'worstStitched', kind: null, onTheLine: false, bandTodayUsd: null }))
+      .toBe("The lowest price any modelled future shows in each month — no single model's future.");
+  });
+  it('⭐ D4 — the degeneracy is stated while it holds', () => {
+    expect(note({ stitchedIsSupport: true })).toBe(
+      `Sits on the power-law support line — today at $64,000. Month 1 steps −20.0% to $64,000.${D4}`);
+    expect(note({ choice: 'fair', kind: 'fair', label: 'Fair', stitchedIsSupport: true }).endsWith(D4)).toBe(true);
+  });
+  it('no step clause without a month 1, and no band clause without a band value', () => {
+    expect(note({ month1Usd: null })).toBe('Sits on the power-law support line — today at $64,000.');
+    expect(note({ bandTodayUsd: null, month1Usd: null })).toBe('Sits on the power-law support line.');
+  });
+});
+
+describe('the schedule header, the outcome tiles, the file name and the manual-price note', () => {
+  it('⭐ G8 — the header names the modeled plan, the date, the path, the horizon and what is held today', () => {
+    expect(scheduleHeader({ todayISO: '2026-09-29', pathLabel: 'Support', months: 60, openingBtc: 4.5 }))
+      .toBe('The MODELED plan · 29 Sep 2026 · Support · 60-month horizon · from 4.500 ₿ held today');
+    expect(scheduleHeader({ todayISO: '2026-09-29', pathLabel: 'Fair', months: 12, openingBtc: 0.0001 }))
+      .toBe('The MODELED plan · 29 Sep 2026 · Fair · 12-month horizon');
+  });
+
+  it('⭐ the four outcome tiles — a clean run', () => {
+    expect(outcomeTiles(
+      { cold: 1.25, yours: 3.5, allIn: 0, liqMonth: null },
+      { kind: 'wins', wins: true, equityDelta: 12_345, btcDelta: 0.2, allIn: false }, '', 60,
+    )).toEqual([
+      { key: 'cold', label: 'In cold storage', value: '1.250 ₿', sub: 'at month 60', tone: 'good' },
+      { key: 'yours', label: 'Yours', value: '3.500 ₿', sub: 'held less debt, at month 60', tone: 'plain' },
+      { key: 'vsNeverDraw', label: 'vs never drawing', value: '+$12,345', sub: 'all-in equity', tone: 'good' },
+      { key: 'liquidation', label: 'Coinbase liquidation', value: 'none', sub: 'through month 60', tone: 'good' },
+    ]);
+  });
+
+  it('⭐ …and a liquidated one, with unpaid bills', () => {
+    const t = outcomeTiles(
+      { cold: 0, yours: -0.25, allIn: 0, liqMonth: 14 },
+      { kind: 'liquidated', wins: false, equityDelta: -5_000, btcDelta: -1, allIn: true }, ', after unpaid bills', 60,
+    );
+    expect(t.map((x) => [x.key, x.value, x.sub, x.tone])).toEqual([
+      ['cold', 'none', 'at month 60', 'plain'],
+      ['yours', '−0.250 ₿', 'held less debt, at month 60', 'warn'],
+      ['vsNeverDraw', '−$5,000', 'all-in equity, after unpaid bills', 'bad'],
+      ['liquidation', 'month 14', 'Morpho seizes at 86%', 'bad'],
+    ]);
+  });
+
+  it('⭐ no tile ever prints "$0" or "0.000 ₿" — dust reads as even / none', () => {
+    const t = outcomeTiles(
+      { cold: 0.0002, yours: 0.0002, allIn: 0, liqMonth: null },
+      { kind: 'loses', wins: false, equityDelta: -0.3, btcDelta: 0, allIn: false }, '', 24,
+    );
+    expect(t.map((x) => x.value)).toEqual(['none', 'none', 'even', 'none']);
+    for (const x of t) {
+      expect(x.value).not.toMatch(NO_ZERO);
+      expect(x.value).not.toMatch(NO_ZERO_BTC);
+    }
+    expect(t[2].tone).toBe('warn');
+  });
+
+  it('the file name, and the manual-price note only in manual mode', () => {
+    expect(scheduleFileName('2026-09-29')).toBe('personal-bloc-decision-plan-2026-09-29.txt');
+    expect(manualPriceNote('manual')).toBe("Today's point is your manual price, not the live quote.");
+    expect(manualPriceNote('live')).toBeNull();
+  });
+});
+
+describe('the stress card\'s two notes, and THE MOVE as text for the printout', () => {
+  it('⭐ the stress note says what follows the stress — and that the move does not', () => {
+    expect(stressNote(64_000)).toBe('Stress from this month forward — the chart, the schedule and the outcome follow; '
+      + "the move above stays measured at today's price. Changing the month or any input resets. "
+      + 'Support line at this month: $64,000.');
+    // No support figure ⇒ no "$0" and no "$NaN".
+    for (const bad of [0, Number.NaN, Number.POSITIVE_INFINITY]) {
+      const n = stressNote(bad);
+      expect(n).not.toMatch(NO_ZERO);
+      expect(n).not.toMatch(/NaN|Infinity/);
+      expect(n.endsWith('Changing the month or any input resets.')).toBe(true);
+    }
+  });
+
+  it('the below-support note is the parents\' words', () => {
+    expect(BELOW_SUPPORT_NOTE)
+      .toBe('Below the power-law support line — outside the fitted drawdown envelope. Nothing calibrates this depth.');
+  });
+
+  it('⭐ moveCardText carries the title and every line, in order — and nothing else', () => {
+    const c = card({ plan: place({ strikeCollateralBtc: 10 }) });
+    expect(moveCardText(c)).toBe([c.title, ...c.lines.map((l) => l.text)].join('\n'));
+    expect(moveCardText(c).split('\n')[1]).toBe(PLAN_OF_RECORD_LINE);
+  });
+});
+
+describe('⭐ policy off or ignored ⇒ no move today, anywhere (the card, the Today row, the Coinbase-loan line)', () => {
+  // THE MOVE card shows no move unless the policy applies; the schedule and the loan line must agree with it.
+  const offSim = () => runCyclingSim({ ...SP_REPRO, pricePath: SUPPORT });   // no supportPolicy ⇒ not applied
+  const onSim = () => runCyclingSim({ ...SP_REPRO, pricePath: SUPPORT, supportPolicy: policyFor(SUPPORT) });
+
+  it('⭐ the Today row lists no move, and no keep, when the run did not apply the policy', () => {
+    const plan = place({ strikeCollateralBtc: 10 });
+    expect(plan.worthMoving).toBe(true);                  // premise: there IS a move to make
+    const off = offSim();
+    expect(off.policyApplied).toBe(false);
+    const today = planSchedule(off, plan)[0];
+    expect(today.actions).toEqual([]);
+    expect(today.keepAtSupportBtc).toBeNull();
+    // Non-vacuous: the same plan on an applied run lists its move.
+    expect(planSchedule(onSim(), plan)[0].actions.length).toBeGreaterThan(0);
+  });
+
+  it('⭐ the Coinbase-loan line never says "today" when the policy did not apply', () => {
+    const plan = place({ strikeCollateralBtc: 10, cbDebt: 0, cbCollateralBtc: 0, bufferUsd: 72_000 });
+    expect(plan.strikeToCbBtc).toBeGreaterThan(0);        // premise: today's move reaches Coinbase
+    const onLine = coinbaseLoanLine(onSim(), plan, false);
+    expect(onLine).toContain('collateral moves to Coinbase today');
+    const offLine = coinbaseLoanLine(offSim(), plan, false);
+    expect(offLine ?? '').not.toContain('today');
   });
 });

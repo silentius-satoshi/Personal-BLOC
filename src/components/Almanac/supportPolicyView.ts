@@ -5,7 +5,7 @@ import { HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS, type PolicyState } from '../..
 import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, DUST_USD, shownUsd } from '../../utils/format';
 
 /**
  * Support-anchored policy — the faces' pure display math (Run 2a, extended for the faces in Run 2b). No React, no
@@ -14,8 +14,8 @@ import { fmtUSD } from '../../utils/format';
  *
  * Imports: the engine's types and `effectivePolicyStops` (the ONE stop clamp), the policy leaf's `PolicyState` and
  * breaker constants (so the broken sentence cannot drift from the rule), the lender FACTS the readouts quote
- * (`STRIKE_CURE_LTV` — the 65% a sale restores; `STRIKE_MARGIN_CALL_LTV`, `STRIKE_MAX_DRAW_LTV`, `CB_LLTV`) and
- * `fmtUSD`. ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
+ * (`STRIKE_CURE_LTV` — the 65% a sale restores; `STRIKE_MARGIN_CALL_LTV`, `STRIKE_MAX_DRAW_LTV`, `CB_LLTV`) and, from
+ * utils/format, `fmtUSD` and the dust floor (`DUST_USD` / `shownUsd`, re-exported for the faces). ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
  * 🔴 Must never be imported by anything in the risk core (the cyclingFaceView discipline).
  *
  * Every sentence must be TRUE of the run it describes. Where the spec's wording would be false for a case it did not
@@ -147,11 +147,9 @@ const fmtBtc = (x: number): string => `${x >= 5e-5 ? x.toFixed(4) : x.toFixed(8)
 /** A stop as a percentage for copy: float residue trimmed (0.55 × 100 = 55.00000000000001 → "55"), a real half point
  *  kept ("66.5"). */
 export const fmtPolicyPct = (pct: number): string => String(Number(pct.toFixed(1)));
-/** A dollar amount below this prints as "$0" — float dust (a ceiling-capped refinance can leave ~1e-10 over the
- *  limit), never a statement worth a sentence. ⚠ THE one dust floor for the policy's copy and the all-in verdict —
- *  cyclingFaceView / ownershipFaceView import it; never a second constant. */
-export const DUST_USD = 0.5;
-export const shownUsd = (x: number): boolean => Number.isFinite(x) && x >= DUST_USD;
+/** The dust floor — a dollar amount below it prints as "$0". ⚠ DEFINED ONCE, in utils/format (Coinbase's seizure
+ *  price in src/simulation reads it too), and re-exported here so every face and view keeps its import. */
+export { DUST_USD, shownUsd };
 /** A BTC figure below this prints as 0.000 at the cold card's 3 dp — never a statement worth a line. ⚠ THE one display
  *  floor for a BTC figure the cold card prints (the reserve part, the "used" part, `coldShown`'s reserve term). ⚠ NOT
  *  `DUST_BTC`: supportPolicy.ts has a module-private `DUST_BTC = 1e-12` (engine float noise) — one name with two meanings

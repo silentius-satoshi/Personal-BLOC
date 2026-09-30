@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { DUST_USD as FORMAT_DUST_USD, shownUsd as formatShownUsd } from '../../../utils/format';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, DEFAULT_BREAKER_REARM_MONTHS, SUPPORT_POLICY_RANGES, PAY_DOWN_MIN_GAP,
   effectivePolicySettings, ZONE_LABEL, ZONE_LETTER, ZONE_ORDER, ZONE_COLOR, policyReading, policyHeadline,
@@ -954,6 +955,24 @@ describe('the one dust floor, and the stop formatter', () => {
   it('DUST_USD is $0.50: below it a figure is never a sentence; junk is never shown', () => {
     expect(DUST_USD).toBe(0.5);
     expect([shownUsd(0.49), shownUsd(0.5), shownUsd(Number.NaN), shownUsd(Number.POSITIVE_INFINITY)]).toEqual([false, true, false, false]);
+  });
+
+  it('⭐ W1 — ONE definition in src/: the floor lives in utils/format, and this module re-exports the same binding', () => {
+    const SRC_DIR = join(process.cwd(), 'src');
+    const walk = (dir: string): string[] => readdirSync(dir).flatMap((f) => {
+      const p = join(dir, f);
+      if (statSync(p).isDirectory()) return f === '__tests__' ? [] : walk(p);
+      return /\.(ts|tsx)$/.test(f) ? [p] : [];
+    });
+    const files = walk(SRC_DIR);
+    const definedIn = (re: RegExp): string[] =>
+      files.filter((f) => re.test(readFileSync(f, 'utf8'))).map((f) => f.slice(SRC_DIR.length + 1));
+    expect(files.length, 'source files found').toBeGreaterThan(100);        // non-vacuous: the walker sees src/
+    expect(definedIn(/\bDUST_USD\s*=/)).toEqual(['utils/format.ts']);
+    expect(definedIn(/\bshownUsd\s*=/)).toEqual(['utils/format.ts']);
+    // The faces import it from here — the SAME binding, so Coinbase's seizure price and the copy share one floor.
+    expect(DUST_USD).toBe(FORMAT_DUST_USD);
+    expect(shownUsd).toBe(formatShownUsd);
   });
 
   it('fmtPolicyPct trims float residue and keeps a real half point', () => {

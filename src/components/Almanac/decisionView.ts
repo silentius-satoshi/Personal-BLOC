@@ -8,9 +8,14 @@ import { HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS } from '../../simulation/suppor
 import { ceilingLiquidationMultiple } from '../../simulation/cbDefense';
 import { cbMetrics } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../../simulation/strikeCredit';
+import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../../simulation/strikeCredit';
+import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
+import type { PathKind } from '../../simulation/cyclePath';
+import type { WorstBy } from '../../simulation/planSearch';
 import { STRIKE_HOLD_DAYS } from '../Tools/crashPlaybookView';
 import { DISPLAY_DUST_BTC, policyIgnoredNote, shownBtc, shownUsd } from './supportPolicyView';
+import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
+import type { BreakerSeed } from './supportPolicyInputs';
 import { fmtUSD } from '../../utils/format';
 
 /**
@@ -189,11 +194,13 @@ export function todayActions(plan: PlacementPlan): Action[] {
 }
 
 export function planSchedule(sim: CyclingResult, plan: PlacementPlan): ScheduleRow[] {
+  // ⚠ Today's move is the POLICY's: when the run did not apply it (off, or ignored), THE MOVE card names no move,
+  // so neither does the Today row — and it shows no keep, as the policy-absent rows below it don't.
   const rows: ScheduleRow[] = [{
     m: 0,
     label: 'Today',
-    actions: todayActions(plan),
-    keepAtSupportBtc: plan.strikeKeepBtc,
+    actions: sim.policyApplied ? todayActions(plan) : [],
+    keepAtSupportBtc: sim.policyApplied ? plan.strikeKeepBtc : null,
     zone: sim.policyApplied ? sim.rows[0]?.policyZone ?? null : null,
     crash: false,
   }];
@@ -232,8 +239,9 @@ export function coinbaseLoanLine(
 ): string | null {
   if (hasCbLoan) return null;
   // ⚠ F2 — "today" only when the move is actually MADE: a sub-threshold plan reaches Coinbase in `after` but
-  // moves nothing today, and the line said "collateral moves to Coinbase today".
-  const movesToday = plan.state === 'ready' && plan.worthMoving && shownBtc(plan.strikeToCbBtc);
+  // moves nothing today, and the line said "collateral moves to Coinbase today". And only when the run applied the
+  // policy — off or ignored, THE MOVE card names no move today.
+  const movesToday = sim.policyApplied && plan.state === 'ready' && plan.worthMoving && shownBtc(plan.strikeToCbBtc);
   const firstMove = sim.rows.find((r) => r.m > 0 && shownBtc(r.strikeToCbBtc));
   if (!movesToday && firstMove === undefined) return null;
   const when = movesToday ? 'today' : `in month ${firstMove!.m}`;
@@ -245,32 +253,64 @@ export function coinbaseLoanLine(
       + `borrow is in month ${firstBorrow.m}.`;
 }
 
-/** The print artifact — the schedule as plain text, carrying THE MOVE and the disclaimer with it. */
+/**
+ * The print artifact — the schedule as plain text, carrying THE MOVE and the disclaimer with it.
+ * `consoleRuns` is REQUIRED: a crash row prints `crashNote(consoleRuns)`, the one sentence the screen shows too
+ * (D13), so the printout can't drift from the face.
+ */
 export function scheduleToText(
-  rows: ScheduleRow[], header: string, answer: string, disclaimer: string,
+  rows: ScheduleRow[], header: string, move: string, disclaimer: string, consoleRuns: boolean,
 ): string {
-  const out: string[] = [header, '', answer, ''];
+  const out: string[] = [header, '', move, ''];
   for (const r of rows) {
     if (r.actions.length === 0) continue;
     out.push(`${r.label}${r.zone !== null ? ` (${r.zone})` : ''}`);
     for (const a of r.actions) out.push(`  - ${a.text}`);
-    if (r.crash) out.push('  ! A crash month — work from the Emergency Console on the day.');
+    if (r.crash) out.push(`  ! ${crashNote(consoleRuns)}`);
     out.push('');
   }
   out.push(disclaimer);
   return out.join('\n');
 }
 
+/**
+ * D13 — a crash month points to the Emergency Console; it never restates it. `consoleRuns` is
+ * `hasCbLoan && cbPaymentStrategy === 'ltvTriggered'` — the console only runs then, and only then does the face
+ * add a tap-through to it.
+ */
+export function crashNote(consoleRuns: boolean): string {
+  const head = "A crash month — these are the monthly model's estimates; on the day, work from the Emergency Console";
+  return consoleRuns ? `${head}.` : `${head} (it runs when your Coinbase strategy is LTV-triggered).`;
+}
+
+/** The crash row's tap-through, named for its month (C2: it sits on a row of its own, beneath the row button). */
+export const consoleLinkLabel = (m: number): string => `Open the Emergency Console for month ${m}`;
+
 // ── THE MOVE's copy (v1.3) ───────────────────────────────────────────────────────────────────────────────────
 
 export type MoveTone = 'plain' | 'good' | 'warn' | 'bad';
-export interface MoveLine { key: string; tone: MoveTone; text: string }
+/** The line's button — the one what-if THE MOVE offers. The face renders it and composes nothing. */
+export interface LineAction { kind: 'tryLine' | 'backToLine'; label: string; lineUsd: number }
+export interface MoveLine { key: string; tone: MoveTone; text: string; action?: LineAction }
 export interface MoveCardCopy { title: string; lines: MoveLine[] }
 
 export const MOVE_CARD_TITLE = "The support policy's move this month";
 /** N3 — what the card says when the plan could not be worked out at all. */
 export const UNAVAILABLE_LINE =
   "The move can't be worked out right now — today's price, the support line or a balance isn't available.";
+
+/** The face's framing line, under its title. */
+export const DECISION_FRAMING =
+  "What the support policy would do this month, and the modeled plan that follows — a model, never advice.";
+
+/** B3 — THE MOVE is measured at S₀ and today's anchor, so no path choice changes it. The owner's copy never says
+ *  "THE MOVE" (this spec's internal name). */
+export const PATH_INVARIANT_LINE =
+  "This move is measured at today's support and today's price, so switching paths below doesn't change it.";
+
+/** G5 — the price history is still in flight. `[]` until it lands is NOT "didn't load". */
+export const BREAKER_LOADING_LINE =
+  "Loading price history — until it arrives, this run assumes the model isn't treated as broken.";
 
 export const PLAN_OF_RECORD_LINE =
   'Your Monthly Playbook is your plan of record — it runs your Coinbase strategy. This card shows what the support '
@@ -295,7 +335,8 @@ export interface MoveCardContext {
   /** Strike's 60-day hold, from the owner's LOGGED deposits (the face calls `strikeHoldFrom`). */
   holdThroughISO: string | null;
   holdDepositISO: string | null;
-  breaker: BreakerReading | null;
+  /** `'loading'` while the history fetch is in flight; `null` once it settled with nothing usable. */
+  breaker: BreakerReading | 'loading' | null;
   /** The run's re-arm rule, in months (null = a true latch). */
   rearmRule: number | null;
   /** The line the RUN uses, and the owner's own — equal unless the what-if is engaged. */
@@ -347,8 +388,8 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
   const hasLoan = ctx.hasCbLoan && shownUsd(ctx.cbDebt);
 
   // ── the moves ──────────────────────────────────────────────────────────────────────────────────────────────
-  // Only when the move is actually MADE (N5): under the threshold nothing moves, and the batch line is the
-  // answer — listing legs there described a position that will not exist.
+  // Only when the move is actually MADE (N5): under the threshold nothing moves, and the batch line says why —
+  // listing legs there described a position that will not exist.
   const parts: string[] = [];
   if (plan.state === 'ready' && plan.worthMoving) {
     if (shownBtc(plan.after.strikeCollateralBtc)) parts.push(`keep ${fmtBtc3(plan.after.strikeCollateralBtc)} ₿ on Strike`);
@@ -455,6 +496,9 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
 
   // ── the line ───────────────────────────────────────────────────────────────────────────────────────────────
   lines.push(...lineLines(ctx, hasLoan));
+
+  // ── path-invariant by construction (B3) ────────────────────────────────────────────────────────────────────
+  lines.push(line('pathInvariant', 'plain', PATH_INVARIANT_LINE));
   return { title: MOVE_CARD_TITLE, lines };
 }
 
@@ -474,6 +518,7 @@ function ltvBlockedText(plan: PlacementPlan): string {
 
 function breakerLine(ctx: MoveCardContext): MoveLine {
   const depth = Math.round(HARD_BREAKER_DEPTH * 100);
+  if (ctx.breaker === 'loading') return line('breaker', 'plain', BREAKER_LOADING_LINE);
   if (ctx.breaker === null) {
     return line('breaker', 'warn',
       "Price history didn't load, so this run assumes the model isn't treated as broken.");
@@ -500,7 +545,10 @@ function lineLines(ctx: MoveCardContext, hasLoan: boolean): MoveLine[] {
     : '';
   const whatIf = Math.abs(ctx.runLineUsd - ctx.ownerLineUsd) >= 1;
   if (whatIf) {
-    const out = [line('line', 'plain', `Modeling a ${fmtUSD(ctx.runLineUsd)} line.`)];
+    const out: MoveLine[] = [{
+      ...line('line', 'plain', `Modeling a ${fmtUSD(ctx.runLineUsd)} line.`),
+      action: { kind: 'backToLine', label: `Back to ${fmtUSD(ctx.ownerLineUsd)}`, lineUsd: ctx.ownerLineUsd },
+    }];
     if (ctx.runLineUsd > ctx.ownerLineUsd) {
       out.push(line('lineHold', 'warn',
         `Raising your line restarts Strike's ${STRIKE_HOLD_DAYS}-day hold — move the coins first.`));
@@ -510,8 +558,210 @@ function lineLines(ctx: MoveCardContext, hasLoan: boolean): MoveLine[] {
   return ctx.ownerLineUsd >= ctx.suggestedLineUsd
     ? [line('line', 'good',
       `Your ${fmtUSD(ctx.ownerLineUsd)} line already covers ${LINE_MONTHS_WORD} months of bills${paydown}.`)]
-    : [line('line', 'plain',
-      `A ${fmtUSD(ctx.suggestedLineUsd)} line would cover ${LINE_MONTHS_WORD} months of bills${paydown}, with 25% spare.`)];
+    : [{
+      ...line('line', 'plain',
+        `A ${fmtUSD(ctx.suggestedLineUsd)} line would cover ${LINE_MONTHS_WORD} months of bills${paydown}, with 25% spare.`),
+      action: { kind: 'tryLine', label: `Try ${fmtUSD(ctx.suggestedLineUsd)}`, lineUsd: ctx.suggestedLineUsd },
+    }];
 }
 
 const LINE_MONTHS_WORD = 'two';
+
+// ── Run B — the rest of the face's copy ──────────────────────────────────────────────────────────────────────
+// ⚠ I31 (Run B): DecisionFace.tsx holds labels only. Every sentence it shows lives here, where a test reaches it.
+
+/** The breaker seed, as the card reads it. A seed is a reading; no seed is `'loading'` while the fetch is in flight
+ *  and `null` once it settled with nothing usable (G5). The date goes through the fixed month table (no "Sept"). */
+export function breakerReading(seed: BreakerSeed | null, loading: boolean): BreakerReading | 'loading' | null {
+  if (seed === null) return loading ? 'loading' : null;
+  const d = new Date(seed.lastMonthEndISO);
+  return {
+    broken: seed.state.broken,
+    monthsAtOrAbove: seed.state.monthsAtOrAbove,
+    monthsBelow: seed.state.monthsBelow,
+    lastMonthEndLabel: Number.isFinite(d.getTime()) ? fmtTurnDate(d) : seed.lastMonthEndISO,
+  };
+}
+
+/** B2 — §4.5's chart note: in manual price mode, today's point is the owner's own price. */
+export function manualPriceNote(mode: 'live' | 'manual'): string | null {
+  return mode === 'manual' ? "Today's point is your manual price, not the live quote." : null;
+}
+
+/**
+ * G4 — the parents' disclaimer, Strategy's policy-aware wording, as ONE string for the screen and the printout.
+ * Every figure comes from its constant.
+ */
+export function decisionDisclaimer(policyApplied: boolean): string {
+  return 'A pattern, not a forecast. The power law is a historical regression, firewalled from every risk '
+    + `calculation. Both facilities are full-recourse; Morpho liquidates instantly at ${pctInt(CB_LLTV)} with no cure `
+    + `window, Strike calls at ${pctInt(STRIKE_MARGIN_CALL_LTV)} with 72 hours to cure. `
+    + (policyApplied
+      ? 'With the support policy on, a Strike margin call is modelled — cash, then cold, then a sale back to '
+        + `${pctInt(STRIKE_CURE_LTV)}.`
+      : 'The engine flags a Strike call but does not model the seizure.')
+    + ' Not financial advice.';
+}
+
+/**
+ * D2 — the face's path choice. The two worst options are face-local, NEVER members of `PathKind`: the face
+ * resolves either to a plain `number[]` before the engine sees it, and neither ever reaches `plBandsAt`,
+ * `plBandAt` or `PL_BAND_LABEL` (all `Record<PlBand, …>`).
+ */
+export type DecisionPath = PathKind | 'worstStitched' | 'worstModeled';
+
+/** A modelled path as a noun: "Support path", "Fair path", "Resistance path" — and "4-yr cycle", which is no line.
+ *  `label` is the resolved kind's own label (the face passes `PL_BAND_LABEL[kind]` or '4-yr cycle'). */
+export function pathNoun(kind: PathKind, label: string): string {
+  return kind === 'fourYear' ? label : `${label} path`;
+}
+
+/** D3 — the two worst options' sublabels. Stitched says so while it is just Support under another name; modeled
+ *  names its crown, so it renames itself when a what-if moves the crown. */
+export function pathSublabel(
+  choice: 'worstStitched' | 'worstModeled', stitchedIsSupport: boolean, crownNoun: string,
+): string {
+  if (choice === 'worstStitched') {
+    return stitchedIsSupport ? 'identical to Support on these settings' : "stitched floor — no single model's future";
+  }
+  return `currently the ${crownNoun}`;
+}
+
+export interface PathNoteInput {
+  choice: DecisionPath;
+  /** The kind the displayed path resolves to — the crown's kind for Worst (modeled); null for the stitched floor. */
+  kind: PathKind | null;
+  /** That kind's own label ("Support", "Fair", "Resistance", "4-yr cycle"). */
+  label: string;
+  /** Today's value of the band, for a band path; null for the cycle and the stitched floor. */
+  bandTodayUsd: number | null;
+  onTheLine: boolean;
+  priceHeld: boolean;
+  anchorPrice: number;
+  /** The displayed path's month 1; null when the path has none. */
+  month1Usd: number | null;
+  /** `nextTurnsText(…)` for the cycle; '' when none. */
+  nextTurns: string;
+  /** The stitched floor is Support bit for bit (D4) — the note says so while it holds. */
+  stitchedIsSupport: boolean;
+  /** The rule that crowned Worst (modeled) — the ranking's own `worstBy`; the crown sentence names it. */
+  worstBy: WorstBy;
+}
+
+/** I31 / W1 — the crown sentence names the rule that decided it. On that rule the crown is the extreme of the whole
+ *  field (`pickWorst`), so the sentence is true against every modelled future, not just the runner-up. */
+const CROWN_CLAUSE: Record<WorstBy, string> = {
+  liquidation: 'The modelled future that liquidates first',
+  cushion: "The modelled future that comes closest to Coinbase's seizure price",
+  equity: 'The modelled future that ends poorest in dollars',
+  index: 'The modelled futures tie on these settings',
+};
+
+const signedPct = (x: number): string => `${x >= 0 ? '+' : '−'}${Math.abs(x * 100).toFixed(1)}%`;
+
+/**
+ * The path note under the picker — the parents' words for a modelled path, plus what the two worst options are.
+ * ⚠ The month-1 step is printed SIGNED and computed from the path, never a direction word: on the line, month 0
+ * is the live price and month 1 sits ON the curve, so the step's sign depends on the anchor (the named trap).
+ */
+export function pathNote(n: PathNoteInput): string {
+  const d4 = n.stitchedIsSupport
+    ? ' No modelled future dips under Support on these settings, so the stitched floor is Support itself.'
+    : '';
+  if (n.choice === 'worstStitched' || n.kind === null) {
+    return "The lowest price any modelled future shows in each month — no single model's future." + d4;
+  }
+  const step = n.onTheLine && n.month1Usd !== null && n.month1Usd > 0 && n.anchorPrice > 0
+    ? ` Month 1 steps ${signedPct(n.month1Usd / n.anchorPrice - 1)} to ${fmtUSD(n.month1Usd)}.`
+    : '';
+  const from = `Converges from ${n.priceHeld ? 'the held' : "today's"} ${fmtUSD(n.anchorPrice)} toward`;
+  const body = n.kind === 'fourYear'
+    ? `${n.onTheLine ? 'Rides' : from} the 4-yr cycle — tops on the fair line, troughs on the support line.`
+      + (n.nextTurns !== '' ? ` ${n.nextTurns}.` : '')
+    : `${n.onTheLine ? 'Sits on' : from} the power-law ${n.label.toLowerCase()} line`
+      + (n.bandTodayUsd !== null && n.bandTodayUsd > 0 ? ` — today at ${fmtUSD(n.bandTodayUsd)}.` : '.');
+  const crown = n.choice === 'worstModeled'
+    ? `${CROWN_CLAUSE[n.worstBy]} — currently the ${pathNoun(n.kind, n.label)}. `
+    : '';
+  return crown + body + step + d4;
+}
+
+/** G8 — the schedule's header, on screen and in the printout: "the MODELED plan", the date, the path, the horizon,
+ *  and what is held today (the move conserves the total, so seeding never changes it). */
+export function scheduleHeader(o: { todayISO: string; pathLabel: string; months: number; openingBtc: number }): string {
+  const d = new Date(o.todayISO);
+  const parts = [
+    'The MODELED plan',
+    Number.isFinite(d.getTime()) ? fmtTurnDate(d) : o.todayISO,
+    o.pathLabel,
+    `${o.months}-month horizon`,
+  ];
+  if (shownBtc(o.openingBtc)) parts.push(`from ${fmtBtc3(o.openingBtc)} ₿ held today`);
+  return parts.join(' · ');
+}
+
+export interface OutcomeTile {
+  key: 'cold' | 'yours' | 'vsNeverDraw' | 'liquidation';
+  label: string;
+  value: string;
+  sub: string;
+  tone: MoveTone;
+}
+
+const signedBtc3 = (n: number): string => `${n < 0 ? '−' : ''}${fmtBtc3(Math.abs(n))} ₿`;
+
+/** §7's outcome strip, read off the displayed run. Every figure passes its dust floor — a tile never prints "$0" or
+ *  "0.000 ₿"; dust reads as "none" or "even". */
+export function outcomeTiles(
+  o: { cold: number; yours: number; allIn: number; liqMonth: number | null },
+  verdict: NeverDrawVerdict, basisClause: string, horizonMonth: number,
+): OutcomeTile[] {
+  const delta = verdict.equityDelta;
+  return [
+    {
+      key: 'cold', label: 'In cold storage',
+      value: shownBtc(o.cold) ? `${fmtBtc3(o.cold)} ₿` : 'none',
+      sub: `at month ${horizonMonth}`,
+      tone: shownBtc(o.cold) ? 'good' : 'plain',
+    },
+    {
+      key: 'yours', label: 'Yours',
+      value: shownBtc(Math.abs(o.yours)) ? signedBtc3(o.yours) : 'none',
+      sub: `held less debt, at month ${horizonMonth}`,
+      tone: o.yours < 0 && shownBtc(Math.abs(o.yours)) ? 'warn' : 'plain',
+    },
+    {
+      key: 'vsNeverDraw', label: 'vs never drawing',
+      value: shownUsd(Math.abs(delta)) ? `${delta >= 0 ? '+' : '−'}${fmtUSD(Math.abs(delta))}` : 'even',
+      sub: `all-in equity${basisClause}`,
+      tone: verdict.kind === 'liquidated' ? 'bad' : verdict.wins ? 'good' : 'warn',
+    },
+    {
+      key: 'liquidation', label: 'Coinbase liquidation',
+      value: o.liqMonth === null ? 'none' : `month ${o.liqMonth}`,
+      sub: o.liqMonth === null ? `through month ${horizonMonth}` : `Morpho seizes at ${pctInt(CB_LLTV)}`,
+      tone: o.liqMonth === null ? 'good' : 'bad',
+    },
+  ];
+}
+
+/** The Download's file name. */
+export const scheduleFileName = (todayISO: string): string => `personal-bloc-decision-plan-${todayISO}.txt`;
+
+/** THE MOVE as plain text, for the printout: the title, then every line in the card's order. */
+export function moveCardText(card: MoveCardCopy): string {
+  return [card.title, ...card.lines.map((l) => l.text)].join('\n');
+}
+
+/** The stress card's note. THE MOVE is measured at today's anchor, so a stress never moves it — the note says so. */
+export function stressNote(supportAtMonthUsd: number): string {
+  return 'Stress from this month forward — the chart, the schedule and the outcome follow; '
+    + "the move above stays measured at today's price. Changing the month or any input resets."
+    + (shownUsd(supportAtMonthUsd) && Number.isFinite(supportAtMonthUsd)
+      ? ` Support line at this month: ${fmtUSD(supportAtMonthUsd)}.`
+      : '');
+}
+
+/** The parents' below-support note, as a string the face renders. */
+export const BELOW_SUPPORT_NOTE =
+  'Below the power-law support line — outside the fitted drawdown envelope. Nothing calibrates this depth.';

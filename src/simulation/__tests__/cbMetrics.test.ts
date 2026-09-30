@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
-import { cbMetrics, accruedCbBalance, barLevel, cbBarLevel, CB_ACT_LTV_FACTOR, worseLevel } from '../cbMetrics';
+import {
+  cbMetrics, cbSeizurePrice, accruedCbBalance, barLevel, cbBarLevel, CB_ACT_LTV_FACTOR, worseLevel,
+} from '../cbMetrics';
 import { CB_LLTV } from '../runCoinbaseLoan';
 
 // Shared baseline: $60k loan, 1.48 ₿ collateral, $100k BTC, 75% trigger.
@@ -38,6 +40,40 @@ describe('cbMetrics', () => {
     expect(zp.ltv).toBe(0);
     expect(zp.pctToTrigger).toBe(0);
     expect(zp.pctToLiq).toBe(0);
+  });
+});
+
+describe('cbSeizurePrice — THE one per-row seizure price (the Decision face\'s cliff and its Worst (modeled) ranking)', () => {
+  const row = (cbDebt: number, cbCollateralBtc = 2, postLiquidation = false) =>
+    ({ cbDebt, cbCollateralBtc, postLiquidation });
+
+  it('is exactly cbMetrics().liqPrice — no second formula', () => {
+    for (const [debt, coll] of [[60_000, 2], [43_000, 1], [10_000, 0.5]] as const) {
+      expect(cbSeizurePrice(row(debt, coll))).toBe(cbMetrics(debt, coll, PRICE, TRIG).liqPrice);
+    }
+  });
+
+  it('⭐ null under the dust floor — 49¢ owed is not a loan; 50¢ is', () => {
+    expect(cbSeizurePrice(row(0))).toBeNull();
+    expect(cbSeizurePrice(row(0.49))).toBeNull();
+    expect(cbSeizurePrice(row(0.5))).toBe(cbMetrics(0.5, 2, PRICE, TRIG).liqPrice);
+  });
+
+  it('⭐ null with no Coinbase collateral — never a $0 seizure price', () => {
+    expect(cbSeizurePrice(row(60_000, 0))).toBeNull();
+    expect(cbSeizurePrice(row(60_000, -1))).toBeNull();
+  });
+
+  it('⭐ null on a postLiquidation row — the liquidation row and every row after: no loan left to seize', () => {
+    expect(cbSeizurePrice(row(60_000, 2, true))).toBeNull();
+    expect(cbSeizurePrice(row(60_000, 2, false))).not.toBeNull();
+  });
+
+  it('never NaN or Infinity — junk reads as no seizure price', () => {
+    expect(cbSeizurePrice(row(Number.NaN))).toBeNull();
+    expect(cbSeizurePrice(row(Number.POSITIVE_INFINITY))).toBeNull();
+    expect(cbSeizurePrice(row(60_000, Number.NaN))).toBeNull();
+    expect(cbSeizurePrice(row(60_000, Number.POSITIVE_INFINITY))).toBeNull();
   });
 });
 

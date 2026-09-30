@@ -16,7 +16,8 @@ import { join } from 'node:path';
  * Proven red against the unfixed faces before `coldBufferPct` was added — a regex that matched nothing
  * would pass without testing anything, which is why the first case asserts the lists are real.
  */
-const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx'] as const;
+// DecisionFace (Run B) is the fourth engine face — its reset must mirror its engine inputs like the other three.
+const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx'] as const;
 const ENGINE_DEPS = /const engineInputs = useMemo\(\(\) => \(\{[\s\S]*?\}\), \[([\s\S]*?)\]\);/;
 const ENGINE_BODY = /const engineInputs = useMemo\(\(\) => \(\{([\s\S]*?)\}\), \[/;
 const RESET_DEPS = /useEffect\(\(\) => \{ setLens\(1\); \}, \[([\s\S]*?)\]\);/;
@@ -60,7 +61,13 @@ describe.each(FACES)('%s — the lens reset mirrors the engine inputs', (face) =
 
   it('⭐ the owner\'s cold reserve (real-cold spec v1) reaches the engine AND resets the lens', () => {
     // A cold move logged on the Daily view changes the reserve — an engaged stress measured against the old one must clear.
-    expect(src.match(ENGINE_BODY)?.[1] ?? '', `${face}: engineInputs body`).toMatch(/\bopeningColdBtc: s\.openingColdBtc\b/);
+    // ⚠ WIDENED for the Decision face (Run B, G1): its run starts from THE MOVE's position when the move is made
+    // (`seedFromMove ? placement.opening.coldBtc : s.openingColdBtc`), so the literal parents' form can't hold there.
+    // The regex accepts the bare form OR a ternary whose ELSE-branch is the store's reserve — an inverted ternary, or
+    // a seed with no store fallback, still fails it (both proven red). The full seeding rule is pinned in
+    // decisionWiring.test.ts.
+    expect(src.match(ENGINE_BODY)?.[1] ?? '', `${face}: engineInputs body`)
+      .toMatch(/\bopeningColdBtc: (?:[^,\n]*? : )?s\.openingColdBtc\b/);
     expect(engineDeps, `${face}: engineInputs deps`).toContain('s.openingColdBtc');
     expect(resetDeps, `${face}: lens-reset deps`).toContain('s.openingColdBtc');
   });
