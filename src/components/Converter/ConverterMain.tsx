@@ -1,8 +1,7 @@
-import { useState, useRef, useMemo } from 'react';
+import { useState, useRef, useMemo, useId } from 'react';
 import { useStore } from '../../store/useStore';
+import { SATS_PER_BTC, fmtUsdLocal, rateRows } from './converterView';
 import styles from './ConverterMain.module.css';
-
-const SATS_PER_BTC = 100_000_000;
 
 type ActiveField = 'sats' | 'btc' | 'usd';
 
@@ -12,12 +11,6 @@ function fmtSats(n: number): string {
 
 function fmtBtc(n: number): string {
   return n.toFixed(8).replace(/\.?0+$/, '');
-}
-
-function fmtUsdLocal(n: number): string {
-  if (n < 0.01) return '$' + n.toFixed(6);
-  if (n < 1)    return '$' + n.toFixed(4);
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
 interface ConverterFieldProps {
@@ -78,6 +71,15 @@ export function ConverterMain() {
     setRawValue(value);
     setStoredRawValue(value);
   };
+  // S2 (spec pbloc-spec-sats-rates-v1): a rates row fills the converter through the fields' OWN updates — the state and
+  // the store together. A row that wrote only the store changed nothing on screen: this component reads the store only
+  // in its useState initialisers above.
+  const fillFromRate = (sats: number) => {
+    updateActiveField('sats');
+    updateRawValue(String(sats));
+  };
+  const rates = useMemo(() => rateRows(btcPrice), [btcPrice]);
+  const ratesTitleId = useId();
 
   const { sats, btc, usd } = useMemo(() => {
     const n = parseFloat(rawValue) || 0;
@@ -137,6 +139,35 @@ export function ConverterMain() {
           onChange={(v) => updateRawValue(v)}
         />
       </div>
+
+      {/* The Satoshi Rates — its own card under the converter it feeds (spec pbloc-spec-sats-rates-v1; it was the
+          sidebar's last section). The cells print rateRows' text; a row (tap, click, or Enter / Space) fills the
+          converter. */}
+      <section className={styles.ratesCard} aria-labelledby={ratesTitleId}>
+        <h3 id={ratesTitleId} className={styles.ratesTitle}>Satoshi Rates</h3>
+        <div className={styles.ratesScroll}>
+          <table className={styles.ratesTable}>
+            <thead>
+              <tr>
+                <th>Satoshis</th>
+                <th>Bitcoin</th>
+                <th>US Dollar</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rates.map((r) => (
+                <tr key={r.sats} role="button" tabIndex={0}
+                  onClick={() => fillFromRate(r.sats)}
+                  onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fillFromRate(r.sats); } }}>
+                  <td>{r.satsText}</td>
+                  <td>{r.btcText}</td>
+                  <td>{r.usdText}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   );
 }

@@ -135,7 +135,7 @@ export default function AlmanacView() {
     if (f === 'ownership') return <OwnershipFace />;
     if (f === 'unified')   return <UnifiedFace />;
     if (f === 'decision')  return <DecisionFace onNavigate={setFace} />;
-    return <div className={styles.faceStack}><ConverterMain /><div className={styles.facePanel}><ConverterSidebar /></div></div>;
+    return <div className={styles.faceStack}><ConverterMain /><div className={`${styles.facePanel} ${styles.facePanelInset}`}><ConverterSidebar /></div></div>;
   };
 
   return (

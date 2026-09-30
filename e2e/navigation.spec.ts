@@ -306,3 +306,72 @@ test.describe('Decision face — the smoke', () => {
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 });
+
+// ── Sats face — the rates under the converter (spec pbloc-spec-sats-rates-v1). Every assertion carries a tag (S1, PREMISE,
+// S2, KEY, D2, D1@w, SCROLL@w), so each named mutation can be shown to fail at its own assertion.
+test.describe('Sats face — the rates under the converter', () => {
+  test('the rates sit under the converter; a tap or Enter fills it; one line per row; no sideways scroll; the panel inset', async ({ page }) => {
+    // The spot price answered with the store's own default (82,000), registered BEFORE the app loads, so the widths
+    // measured below can't move with the market.
+    await page.route(/api\.coinbase\.com\/v2\/prices/, (r) =>
+      r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { amount: '82000' } }) }));
+    await openAlmanacSimple(page);
+    await page.getByRole('button', { name: /丰 Sats/ }).click();
+    const rates = page.getByRole('region', { name: 'Satoshi Rates' });
+    await expect(rates, 'S1').toBeVisible();
+
+    // S1 — in the converter's column, right after the converter card; never in the side panel.
+    const where = await rates.evaluate((el) => ({
+      inPanel: el.closest('[class*="facePanel"]') !== null,
+      prev: el.previousElementSibling?.textContent ?? '',
+    }));
+    expect(where.inPanel, 'S1').toBe(false);
+    expect(where.prev, 'S1').toMatch(/SATOSHIS[\s\S]*BITCOIN[\s\S]*US DOLLAR/);
+
+    const fields = rates.locator('xpath=preceding-sibling::*[1]').locator('input');
+    await expect(fields.nth(0), 'PREMISE').toHaveValue('0');
+    await expect(fields.nth(1), 'PREMISE').toHaveValue('0');
+
+    // S2 — ONE tap on the 1,000 row fills the converter at once. The filter still matches with the unit words back, so
+    // that mutation fails at D1, not at a timeout here.
+    const rows = rates.locator('tbody tr');
+    await rows.filter({ has: page.locator('td', { hasText: /^丰 1,000(?:\s|$)/ }) }).tap();
+    await expect(fields.nth(0), 'S2').toHaveValue('1,000');
+    await expect(fields.nth(1), 'S2').toHaveValue('0.00001');
+
+    // KEY — Tab from US DOLLAR lands on the first row, and Enter fills it.
+    await fields.nth(2).focus();
+    await page.keyboard.press('Tab');
+    await expect(rows.first(), 'KEY').toBeFocused();
+    await page.keyboard.press('Enter');
+    await expect(fields.nth(0), 'KEY').toHaveValue('1');
+    await expect(fields.nth(1), 'KEY').toHaveValue('0.00000001');
+
+    // D2 — the side panel's first text gets the converter's 16px gutter.
+    const panelText = (await page.getByText('Sats Per Dollar', { exact: true }).boundingBox())!;
+    expect(panelText.x, 'D2').toBeGreaterThanOrEqual(16);
+
+    // D1 — one line per cell (the Decision D2 rule: every line box of the text shares one top). No sideways scroll: the
+    // page itself can't scroll sideways (overflow-x: hidden on html, body and the tool container), so the check is the
+    // table's own scroll box. 350 stands for the full-mode tab: the Almanac box there is 316px, the full-mode tab's box
+    // at 390.
+    const measure = () => rates.evaluate((el) => {
+      const table = el.querySelector('table')!;
+      const box = table.parentElement!;
+      const lines = [...table.querySelectorAll('tbody td')].map((td) => {
+        const range = document.createRange();
+        range.selectNodeContents(td);
+        return new Set([...range.getClientRects()].map((q) => Math.round(q.top))).size;
+      });
+      return { maxLines: Math.max(...lines), scrolls: box.scrollWidth > box.clientWidth };
+    });
+    for (const width of [390, 375, 350]) {
+      await page.setViewportSize({ width, height: 844 });
+      const m = await measure();
+      expect(m.maxLines, `D1@${width}`).toBe(1);
+      expect(m.scrolls, `SCROLL@${width}`).toBe(false);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    expect((await measure()).scrolls, 'SCROLL@1280').toBe(false);
+  });
+});

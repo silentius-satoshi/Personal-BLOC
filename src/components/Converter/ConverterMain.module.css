@@ -82,3 +82,77 @@
   color: var(--text-ghost);
   flex-shrink: 0;
 }
+
+/* The Satoshi Rates (spec pbloc-spec-sats-rates-v1) — its own card under the converter card, moved from the sidebar.
+   The card has no padding: the table fills it and the cells carry the inset. */
+.ratesCard {
+  background: var(--bg-card);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+
+/* The section header this table had in the sidebar, without its rule line. */
+.ratesTitle {
+  font-size: 8px;
+  font-weight: 700;
+  color: var(--orange);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  padding: 14px 16px 6px;
+}
+
+.ratesScroll {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+.ratesTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.ratesTable th {
+  text-align: left;
+  padding: 8px 16px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.8px;
+  text-transform: uppercase;
+  color: var(--text-ghost);
+  border-bottom: 1px solid var(--border);
+}
+
+.ratesTable td {
+  padding: 10px 16px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border);
+}
+
+.ratesTable tr:last-child td { border-bottom: none; }
+
+.ratesTable tbody tr {
+  cursor: pointer;
+  transition: background 0.1s;
+}
+
+.ratesTable tbody tr:hover { background: rgba(255, 255, 255, 0.03); }
+
+.ratesTable tbody tr:focus-visible {
+  outline: 2px solid color-mix(in srgb, var(--btc) 60%, transparent);
+  outline-offset: -2px;
+}
+
+.ratesTable td:first-child { color: var(--text-primary); font-weight: 500; }
+.ratesTable td:last-child  { color: var(--orange); font-weight: 600; }
+
+/* D1, tightened (the owner, 2026-09-30) — one line per row on a phone, on BOTH surfaces. At this size the rows need
+   305px (312 from $100k); at 13px with 12px padding they need 350. The card gets 356px in the Almanac face at 390 but
+   316px in the full-mode tab (AppShell's 20px + the 16px gutters). No column min-widths: the sidebar's 120 / 130 / 90
+   set a 340px floor, which overflows that 316px box. The e2e measures 390, 375 and 350 (= the full-mode box). */
+@media (max-width: 480px) {
+  .ratesTable { font-size: 12px; }
+  .ratesTable th,
+  .ratesTable td { padding-left: 8px; padding-right: 8px; }
+  .ratesTitle { padding-left: 8px; padding-right: 8px; }
+}

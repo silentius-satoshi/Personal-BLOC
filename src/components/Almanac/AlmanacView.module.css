@@ -44,6 +44,17 @@
   }
 }
 
+/* D2 (spec pbloc-spec-sats-rates-v1) — the SATS face's panel only. On a phone, ConverterSidebar's text sat at x = 0
+   while the converter's starts at 16px (its toolContainer gutter). ConverterSidebar can't pad itself: in the full-mode
+   Sats tab AppShell's .sidebar already pads it, so it would double there. Mining's panel pads itself (16px) and Power
+   Law's is left to its redesign, so neither takes this class. From 768px the grid's own 16px padding applies. */
+.facePanelInset {}
+@media (max-width: 767px) {
+  .facePanelInset {
+    padding: 0 16px;
+  }
+}
+
 .eyebrow {
   display: flex;
   align-items: center;

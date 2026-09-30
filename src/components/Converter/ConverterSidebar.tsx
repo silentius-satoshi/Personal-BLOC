@@ -1,22 +1,14 @@
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { fmtUSD } from '../../utils/format';
+import { SATS_PER_BTC, fmtUsdLocal } from './converterView';
 import styles from './ConverterSidebar.module.css';
 
-const SATS_PER_BTC = 100_000_000;
-
-function fmtUsdLocal(n: number): string {
-  if (n < 0.01) return '$' + n.toFixed(6);
-  if (n < 1)    return '$' + n.toFixed(4);
-  return '$' + n.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
+// The rates table moved under the converter, into ConverterMain (spec pbloc-spec-sats-rates-v1).
 export function ConverterSidebar() {
   const { livePrice } = useBtcPrice();
   const btcPrice             = useStore((s) => s.btcPrice);
   const setBtcPrice          = useStore((s) => s.setBtcPrice);
-  const setStoredActiveField = useStore((s) => s.setConverterActiveField);
-  const setStoredRawValue    = useStore((s) => s.setConverterRawValue);
 
   const satsPerDollar = btcPrice > 0 ? SATS_PER_BTC / btcPrice : null;
 
@@ -87,33 +79,6 @@ export function ConverterSidebar() {
         A satoshi (sat) is the smallest unit of Bitcoin.<br />
         1 BTC = 100,000,000 sats.<br />
         Named after Bitcoin's creator, Satoshi Nakamoto.
-      </div>
-
-      <hr className={styles.divider} />
-
-      <div className={styles.sectionHeader}>Satoshi Rates</div>
-
-      <div className={styles.tableCard}>
-        <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table className={styles.table}>
-            <thead>
-              <tr>
-                <th>Satoshis</th>
-                <th>Bitcoin</th>
-                <th>US Dollar</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[1, 10, 100, 1_000, 10_000, 100_000, 1_000_000, 10_000_000, 100_000_000].map((s) => (
-                <tr key={s} onClick={() => { setStoredActiveField('sats'); setStoredRawValue(String(s)); }}>
-                  <td>丰 {s.toLocaleString()} {s === 1 ? 'Satoshi' : 'Satoshis'}</td>
-                  <td>₿ {(s / SATS_PER_BTC).toFixed(8)} BTC</td>
-                  <td>{fmtUsdLocal((s / SATS_PER_BTC) * btcPrice)}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
       </div>
     </div>
   );

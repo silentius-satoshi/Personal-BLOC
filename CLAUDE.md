@@ -1201,8 +1201,27 @@ src/
                                 # concept on one screen)
 
     Converter/
-      ConverterMain.tsx
-      ConverterSidebar.tsx
+      ConverterMain.tsx         # The title, the converter card (SATOSHIS / BITCOIN / US DOLLAR), then the Satoshi Rates
+                                # card (spec pbloc-spec-sats-rates-v1 — it was the sidebar's last section): a
+                                # <section aria-labelledby> holding the nine rows from rateRows(btcPrice). Each row is
+                                # <tr role="button" tabIndex={0}> (the Decision row idiom: a tap, a click, Enter or Space)
+                                # → fillFromRate → the fields' OWN updateActiveField / updateRawValue, which set the state
+                                # AND the store (S2). ⚠ The store is written ONLY by those two. This component reads it
+                                # once, in its useState initialisers, so a row that wrote the store alone changed nothing
+                                # on screen — the old sidebar table did exactly that. converterWiring pins it
+      ConverterMain.module.css  # + the rates card: the table fills it (the card has no padding); the title is the
+                                # sidebar's old section header (8px, orange). No column min-widths: their 340px floor
+                                # overflows the full-mode tab's 316px box. ≤480px — D1 TIGHTENED (the owner): 12px text,
+                                # 8px cell padding, so every row is one line on a phone. The rows need 305px (312 from
+                                # $100k); the card gets 356px in the Almanac face at 390 and 316px in the full-mode tab
+                                # (AppShell's 20px + the 16px gutters) — 13px / 12px would need 350
+      ConverterSidebar.tsx      # Four sections: Sats Per Dollar, Bitcoin Price, Key Equivalences, What is a Satoshi? — no
+                                # table and no store writes (the rates moved under the converter)
+      converterView.ts          # PURE (no store, no React). The ONE SATS_PER_BTC and fmtUsdLocal the Sats page prints
+                                # (6 decimals under a cent, 4 under a dollar, then 2, grouped) · RATE_SATS (1 →
+                                # 100,000,000) · rateRows(btcPrice) → { sats, satsText, btcText, usdText }. D1: no unit
+                                # words in the cells — "丰 1,000", "₿ 0.00001000", "$0.8200"; the column headers name the
+                                # units. S4: no usable price (Number.isFinite && > 0 fails) → "—", never "$0.000000"
 
     Mining/
       MiningMain.tsx
@@ -2584,6 +2603,14 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   grid (`280px 1fr`) so the Almanac hub gets the same panel-width rhythm as the standalone tabs. A `.facePanel`
   wrapper div (`order:-1; grid-column:1` at `≥768px`, no-op below it) pins the panel to the left column
   regardless of each face's own mobile DOM order.
+- **D2 (spec `pbloc-spec-sats-rates-v1`): the Sats panel alone also takes `.facePanelInset`** (`padding: 0 16px`
+  below 768px), so on a phone ConverterSidebar's text starts at the converter's 16px gutter instead of x = 0.
+  - ConverterSidebar can't pad itself: AppShell's `.sidebar` already pads it in the full-mode tab, so it would
+    double there.
+  - Mining's panel pads itself (16px), and Power Law's sidebar is left to its redesign, so neither takes the class.
+  - From 768px the grid's own 16px padding applies.
+  - ⚠ decisionWiring's I21 check finds the Converter fallback in `renderFace` by its literal prefix, so D2 edits only
+    the panel wrapper after it: `return <div className={styles.faceStack}><ConverterMain />`.
 - **Panel stacking mirrors each tool's own mobile DOM order** (confirmed from `AppShell.tsx`'s sidebar+main
   mount order and `AppShell.module.css`'s `[data-active-tab]` rules): mining = `<MiningInputsPanel/>` then
   `<MiningMain/>`; powerlaw = `<PowerLawSidebar/>` then `<PowerLawMain/>` (both panel-first — AppShell has NO
@@ -6497,6 +6524,35 @@ goes red.)
       - MiningMain's `.main.main` is deleted;
       - ConverterMain's is un-doubled;
       - `.moveCard`'s `border-color` goes back beside `composes:`.
+- **Sats face — the rates under the converter** (spec `pbloc-spec-sats-rates-v1`; every ⭐ red under its named mutation,
+  at its own test or tagged assertion, every file restored and hash-checked):
+  - `src/components/Converter/__tests__/converterView.test.ts`:
+    - ⭐ `rateRows(82_000)`: the nine rows exact, with no unit words, covering fmtUsdLocal's three bands (V3: the unit
+      words back → red);
+    - ⭐ S4: at 0, −1, NaN and ∞ every dollar cell is "—" (V1: the guard dropped; V2: `>= 0`; V2b: `Number.isFinite`
+      dropped → "$∞"). The sats and bitcoin cells are compared with the priced rows, never with literals, so V3 turns
+      only the first test red.
+  - `src/components/Converter/__tests__/converterWiring.test.ts` (source-reading, 3 checks):
+    - ⭐ ConverterSidebar renders no table, no store setter and no table styles, and keeps its four headers (W1: the
+      old block pasted back);
+    - ⭐ S2: `fillFromRate` calls the fields' own updates; the store setters appear once each, inside those updates;
+      the row — sliced, since ConverterField has an Enter handler of its own — has the click and Enter / Space (W2: the
+      row on the store setters; W3: `onKeyDown` dropped);
+    - ⭐ the `<section>` prints `rateRows`' text — no price, `SATS_PER_BTC`, `fmtUsdLocal(`, `toFixed(` or
+      `toLocaleString(` inside it — after the converter card, and neither component defines the unit or the formatter
+      (W4: a dollar cell back on inline maths).
+  - e2e (`navigation.spec.ts`, "Sats face") — every assertion is tagged, and each mutation, run with `--retries=0`, is
+    red at its own tag:
+
+    | Tag | Mutation |
+    |---|---|
+    | S1 | E2: `<ConverterMain />` wrapped in a `.facePanel` div |
+    | S2 | E1: the row back on the store setters (the fields stay "0") |
+    | KEY | E5: `tabIndex` dropped |
+    | D2 | E4: the inset class removed (x = 0) |
+    | D1@390 | E3: the unit words back |
+    | D1@375 | E6: the ≤480px rule back to 13px / 12px |
+    | SCROLL@350 | E7: the sidebar's three min-widths back (340 in 316) |
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -6915,6 +6971,16 @@ also asserts the polished chart:
   Resistance · Fair · Support;
 - the swatch line lists exactly those three bands. The stub prices ONE row, and one point draws no history, so this
   is P3 at runtime.
+
+**The Sats face test** (spec `pbloc-spec-sats-rates-v1`) answers the spot price with the store's own 82,000, so the
+widths can't move with the market. It checks:
+- the "Satoshi Rates" region sits right after the converter card, never in a `.facePanel`;
+- ONE `tap()` on the 1,000 row fills SATOSHIS and BITCOIN; Tab from US DOLLAR lands on the first row, and Enter fills it;
+- the side panel's first text is at x ≥ 16 (D2);
+- at 390, 375 and 350, every cell is one line and the table's own scroll box doesn't scroll; at 1280 it doesn't scroll.
+
+The page itself can't scroll sideways (`overflow-x: hidden` on html, body and the tool container), so the scroll box is
+the check. **350 stands for the full-mode tab:** the Almanac box there is 316px, the full-mode tab's box at 390.
 
 ⚠ Touch-only: the e2e never takes the fine-pointer box branch — P8's unit check in `powerLawWiring` covers it. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
