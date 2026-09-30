@@ -1,5 +1,6 @@
 import type { CyclingRow } from '../../simulation/cyclingSim';
 import { cbSeizurePrice } from '../../simulation/cbMetrics';
+import { sameSeries } from '../../simulation/planSearch';
 import { addMonths } from '../../simulation/powerLaw';
 import type { HistoryPoint } from './supportPolicyInputs';
 
@@ -155,3 +156,14 @@ export function xExtent(series: DecisionChartSeries): [number, number] | null {
 }
 
 // The date ticks moved to `lib/chartZoom.ts` (`timeTicks`) with chart zoom — one ladder, shared by every zoomed chart.
+
+/**
+ * The legend note's test: after today, IS the displayed path the support line — so the dashed path covers it and the
+ * two read as one line? Months 1…horizon, bit for bit through `sameSeries` — never a tolerance, the Worst (stitched)
+ * rule. Month 0 is today's spot price, so it is skipped. A short or ragged series, or a horizon under a month: false.
+ */
+export function pathOnSupport(path: readonly number[], support: readonly number[], months: number): boolean {
+  if (!Number.isInteger(months) || months < 1) return false;
+  if (path.length < months + 1 || support.length < months + 1) return false;
+  return sameSeries(path.slice(1, months + 1), support.slice(1, months + 1));
+}

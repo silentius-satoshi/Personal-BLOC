@@ -475,7 +475,9 @@ src/
                                 # listeners once a gesture starts, rAF-batched, capture on ARM — usePointerDrag's
                                 # PATTERNS, not the hook (its axis lock cancels a box, a second pointer cancels a pinch).
                                 # The touchmove is the ONE non-passive listener (the pinch; Z6's sideways scrub);
-                                # touchstart / touchend / touchcancel are passive. VIEW ONLY — nothing is persisted
+                                # touchstart / touchend / touchcancel are passive. A pinch's release lands its last move,
+                                # as a drag's does (Z14). pressMode = nextMode (Z15: a computer's pressed Pan clicks back
+                                # to Zoom). VIEW ONLY — nothing is persisted
 
   store/
     useStore.ts                 # Zustand store — Phase 1c: now COMPOSITION ONLY (~44 lines). Spreads the 9 slice
@@ -594,7 +596,9 @@ src/
                                 # recharts `domain`). toUnit/fromUnit/pxToX/pxToY (y inverted)/clampToRect/inRect ·
                                 # classifyBox (Plotly's dragbox rule: MIN_DRAG_PX 8, BAND_PX 20)/boxRect/boxToPins ·
                                 # lockAxis (Z6: null under 8px — it may be a tap; more sideways than vertical → 'x', the
-                                # page holds; else 'y', it scrolls) · scaleDomain/stepPins (ZOOM_STEP 2)/panPins/pinchPins
+                                # page holds; else 'y', it scrolls) · ZoomMode + nextMode (Z15: an unpressed button
+                                # selects its mode; the pressed one returns a computer to Zoom, a touch device to Scroll)
+                                # · scaleDomain/stepPins (ZOOM_STEP 2)/panPins/pinchPins
                                 # (PINCH_AXIS_MIN_PX 40) · normalizePins (raise to the minimum, cap at full → auto, then
                                 # SHIFT, never clip; data shorter than the minimum → auto, Z3a)/effectiveView/isZoomed ·
                                 # timeTicks (1 mo…8 y ladder; ≡ the old yearTicks at density 6)/tickDensity/fmtTimeTick
@@ -683,7 +687,9 @@ src/
                                 # scheduleHeader · outcomeTiles · scheduleFileName · manualPriceNote · stressNote
                                 # · BELOW_SUPPORT_NOTE · moveCardText · DECISION_FRAMING. ⚠ The Today row (planSchedule)
                                 # and coinbaseLoanLine's "today" require sim.policyApplied — off or ignored, the card
-                                # names no move, so neither does anything else
+                                # names no move, so neither does anything else. Chart zoom follow-up:
+                                # SCHEDULE_KEEP_HEADER ("Strike keep" — one line, D2) + SCHEDULE_KEEP_KEY (what the
+                                # column is, Z12) · ON_SUPPORT_NOTE (the legend note)
       decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
                                 # EXACT: history's last point IS forward's first; the support line spans both
                                 # halves — history via supportAtDates, forward via the engine's own path; history
@@ -695,7 +701,9 @@ src/
                                 # Run B: chartDomain (an explicit positive log domain, ×0.8 / ×1.25; null ⇒ the
                                 # placeholder) · xExtent (the full extent — the date ticks moved to lib/chartZoom.ts as
                                 # timeTicks, chart zoom) — ⚠ with per-series data and no chart-level data, recharts
-                                # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks
+                                # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks.
+                                # + pathOnSupport(path, support, months) — the legend note's test: sameSeries over
+                                # months 1…horizon, bit for bit (month 0 is spot), never a tolerance
       supportPolicyInputs.ts    # Support policy — the faces' ONLY §2 crossing for it: buildSupportPath(start, months)
                                 # = plBandAt('floor', start, m), bit-equal to the on-the-line price path from month 1;
                                 # supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → the engine input, or
@@ -3690,7 +3698,13 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   settled with nothing usable ("Price history didn't load…"). History lands after mount, so the runs re-run once and
   an engaged stress resets once (§7 — expected).
 - **The schedule** — `planSchedule(sim, placement)`: Today reads the PLAN; months ≥ 1 read `ACTION_FIELDS` verbatim.
-  Columns Month · Moves (a wrapped list — never a horizontal scroll) · Keep ₿ at support · Zone (`ZONE_*`). **C2:** the
+  Columns Month · Moves (a wrapped list — never a horizontal scroll) · **Strike keep** · Zone (`ZONE_*`). **D2:** the
+  keep header is `SCHEDULE_KEEP_HEADER` ("Strike keep") on ONE line — `.colKeep` is 88px (11 mono capitals ≈ 73px +
+  12px padding; Moves keeps ≥ 121px at a 375px viewport), measured by an e2e at 390px and 375px. The old "Keep ₿ at
+  support" wrapped in its 76px column beside "Zone" and read as one phrase. A quiet key under the schedule's header
+  line, `SCHEDULE_KEEP_KEY` — "Strike keep: what your full line needs on Strike at support." — says what the column
+  is: THE MOVE's phrase for the same formula, `strikeKeepBtc` = max(line, balance) / (skStop × support) (Z12). On
+  screen only: the printout has no keep column. **C2:** the
   WHOLE row is the button (`<tr role="button" tabIndex={0}>`, Enter / Space → the scrubber); a crash row's note
   (`crashNote`, D13 — the SAME sentence the printout carries) and its "→ Emergency Console" link go on a SIBLING row
   beneath, never inside the button; the link appears only when `hasCbLoan && ltvTriggered` (the only time the defense
@@ -3733,7 +3747,12 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   path is the one `sim` ran (`stressPath` while engaged); the stitched floor is drawn once (not when it IS the
   displayed path, nor on the line while it is Support); the cliff is `cliffPath` — `cbSeizurePrice` per row, the rule
   the Worst (modeled) cushion reads too (dotted red). Manual price mode adds
-  `manualPriceNote` (B2). A failed or empty history leaves the forward half and a quiet note.
+  `manualPriceNote` (B2). A failed or empty history leaves the forward half and a quiet note. **The legend note:**
+  when the displayed path IS the support line after today — `pathOnSupport(displayedPath, supportPath, months)`:
+  `sameSeries` over months 1…horizon, bit for bit, never a tolerance (the Worst (stitched) rule; month 0 is spot) — a
+  quiet `ON_SUPPORT_NOTE` sits under the legend. On the defaults (Support, on the line) the dashed green path is drawn
+  over the solid green support line, so the two read as one and the legend's Support line can't be told apart. A
+  stress hides the note (the displayed path is then the stress path).
 - **The line doctrine (D11, decision 4).** ONE line per run: `runLine = overlay.creditLine ?? s.creditLine` feeds BOTH
   `engineInputs.strikeCreditLine` and `placementInput.creditLine`. The card's **Try $L / Back to $X** button is
   `MoveLine.action` (the face composes it from nothing). ⚠ The **suggested line** (`suggestedLineUsd`: two months of
@@ -3762,8 +3781,10 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   policy memos and `buildSupportPath(startDate, months)`,
   never stressed; `placementInput` priced at `anchorPrice` / `supportPath[0]` with the seed's `broken`, and reading no
   path, choice or stress; B1's card context; the seeding rule and its policy gate; the memory reaching the engine;
-  `supportAtDates` passed as a FUNCTION; `useId`; C2's row shape; C1's listeners and the no-synchronous-clear rule;
-  no buffer / stop / mode control; I19; I20; the hub (I21); I28; I31. ⚠ **`resetMirror.test.ts`'s cold regex is
+  `supportAtDates` passed as a FUNCTION; `useId`; the legend note reads `pathOnSupport(displayedPath, supportPath,
+  months)`, never `pricePath`; C2's row shape; C1's listeners and the no-synchronous-clear rule; no buffer / stop /
+  mode control; I19; I20; the hub (I21); I28; I31 (its non-vacuity anchor is the JSX text 'Moves' since D2 moved the
+  keep header into `decisionView`). ⚠ **`resetMirror.test.ts`'s cold regex is
   WIDENED** to `/\bopeningColdBtc: (?:[^,\n]*? : )?s\.openingColdBtc\b/` — the bare form or a ternary whose ELSE
   branch is the store's reserve (G1); an inverted ternary and a seed with no fallback both fail it. `coldWiring` and
   `stressAnchor` list the face too; the forbidden-input grep covers it with no change.
@@ -5841,7 +5862,7 @@ is pressed (a mouse can't scroll by dragging).
 | Esc during a drag | cancels it | cancels; the view snaps back |
 | Double-click | reset | reset |
 | Wheel / trackpad scroll | scrolls the page (no wheel listener) | same |
-| Toolbar — Zoom · Pan · + · − · Reset (Z9, pinned) | at the plot's top right, fading in on hover, focus or while zoomed. Zoom and Pan are a radio pair; + and − scale ×2 about the centre (log space on price); Reset is disabled until zoomed | |
+| Toolbar — Zoom · Pan · + · − · Reset (Z9, pinned) | at the plot's top right, fading in on hover, focus or while zoomed. Zoom is the resting mode, and **Pan is a toggle — click it again to go back to Zoom** (Z15; clicking the pressed Zoom keeps Zoom). + and − scale ×2 about the centre (log space on price); Reset is disabled until zoomed | |
 
 **Gestures — phone (the iOS PWA).** Nothing is pressed by default ("Scroll"); the toolbar is a slim always-visible row
 above the plot (it never covers data — Decision's chart box grows 280 → 316px for it), and Zoom / Pan are toggles.
@@ -5870,9 +5891,16 @@ above the plot (it never covers data — Decision's chart box grows 280 → 316p
   tap rule's and the drag's arm threshold), `'x'` when more sideways than vertical, else `'y'` (a perfect diagonal
   scrolls). Only a Scroll-mode stroke that starts on the plot, with one finger on the screen, is tracked. `'y'` lets go
   (the page scrolls, as before); `'x'` cancels every remaining cancelable touchmove. A scrub is not `dragging`, so the
-  tooltip shows throughout. It exists because on the iPhone a sideways scrub's vertical drift scrolled the page under
-  `pan-y` and the chart slid away (the owner's device check). The stroke, like `drag` and `pinch`, lives in the gesture
-  effect's closure — one per chart (Z11).
+  tooltip shows throughout. **Why it exists (Z13):** the owner's device check — made on the chart BEFORE chart zoom,
+  which set no `touch-action` at all — found a sideways scrub's vertical drift scrolling the page, so the chart slid
+  away. `pan-y` arrived with chart zoom, and whether WebKit's `pan-y` alone holds the page is untested: the lock exists
+  because `pan-y` alone isn't guaranteed. The stroke, like `drag` and `pinch`, lives in the gesture effect's closure —
+  one per chart (Z11).
+- **The pinch lands its last move at release (Z14)**, as the drag does: each move records the fingers, and the release
+  applies them itself — a lift before the next frame would otherwise drop the final move with the queued frame.
+- **The toolbar's mode rule (Z15)** is the pure `nextMode(cur, pressed, fine)`: an unpressed button selects its mode;
+  pressing the pressed one returns a computer to Zoom, its resting mode (so Pan is a toggle and the pressed Zoom
+  stays), and a touch device to Scroll (`null`). `pressMode` only calls it — a wiring check pins that.
 - Double-tap is detected on `pointerup` (each tap < 250 ms and < 8px; two within 300 ms and 30px); a mouse uses the
   native `dblclick`.
 - 🔴 **Z1:** `.plot`, `.box` and `.note` are `pointer-events: none`. They paint above the SVG, so without it recharts
@@ -5907,7 +5935,8 @@ around conditional children. Then add the file to `ADOPTERS` in `chartZoomWiring
 `src/components/ui/__tests__/chartZoomWiring.test.ts` (the recipe per adopter; VIEW ONLY — `zoom` reaches no data
 memo, and the eight `buildChartSeries` arguments stand; zero imports in `chartZoom.ts`; exactly ONE `passive: false`,
 on the touchmove; every touch listener states its `passive:`, touchstart's `true`; the lock goes through `lockAxis(`;
-Z1's three rules; Z9's order), plus two e2e — the Decision zoom smoke and the Z6 synthetic-touch test — and the Power
+`pressMode` goes through `nextMode(`; Z1's three rules; Z9's order), plus two e2e — the Decision zoom smoke and the
+Z6 synthetic-touch test, whose pinch lifts in the same task as its last move and so proves Z14 too — and the Power
 Law drag test's zoom assertions (see § Build & Deploy → E2E). **The iOS device gate stays mandatory** — Chromium can't
 prove the arbitration: (1) a vertical scroll that starts on each chart is smooth (if not, pinch moves to Zoom/Pan-only —
 decision 1's fallback); (2) a sideways drag moves the tooltip and the page stays still, even with a wobble, while a
@@ -6274,8 +6303,8 @@ goes red.)
   - `decisionChartView.test.ts` — ⭐ `chartDomain` (spans every plotted price; a gap never drags it to 0; nothing ⇒
     null) and ⭐ `xExtent`. Its three `yearTicks` cases moved to `chartZoom.test.ts` with chart zoom: `timeTicks`
     gives two of them unchanged, and the ≤ 6-year span yearly labels, by design.
-  - `decisionWiring.test.ts` (new, source-reading, 35 checks — 36 with W1's — see § Decision face → the wiring
-    guard). Every check proven red by one of 23 temporary edits, each restoring the file.
+  - `decisionWiring.test.ts` (new, source-reading, 35 checks — 36 with W1's, 37 with the legend note's — see
+    § Decision face → the wiring guard). Every check proven red by one of 23 temporary edits, each restoring the file.
 - **Decision face — W1: Worst (modeled) = closest to a forced sale** (each ⭐ red under a named mutation, every file
   restored):
   - `planSearch.test.ts` — I11 AMENDED, each rule ALONE deciding and `worstBy` naming it: ⭐ rule 1 (a doomed path
@@ -6329,7 +6358,9 @@ goes red.)
     - ⭐ 16 the base formatter while its labels are distinct; ⭐ 17 the double tap; 18 the note's wording;
       ⭐ 19–20 Z3a / Z3b;
     - ⭐ 21 `lockAxis` (Z6) — red dropping the absolute values (a leftward scrub reads as vertical), the 8px gate (a
-      tap's twitch locks), or with ties held sideways.
+      tap's twitch locks), or with ties held sideways;
+    - ⭐ 22 `nextMode` (Z15) — red under the old radio rule (a computer keeps the pressed Pan), or resting on Zoom on
+      a phone too (a touch device could never get back to scrolling).
   - `src/components/ui/__tests__/chartZoomWiring.test.ts` — source-reading:
     - per adopter (`ADOPTERS`: DecisionFace, PowerLawChart): `useChartZoom(` once; both axes `domain={zoom.view.x|y}`
       with `allowDataOverflow` and `ticks={`; `timeTicks(` / `logTicks(`; the probe; the tooltip's `active`;
@@ -6339,11 +6370,26 @@ goes red.)
     - ⭐ every touch listener states its `passive:` option and touchstart's is `true` (red dropping touchstart's
       options object — an element's listener is non-passive by default in WebKit);
     - ⭐ the Z6 lock goes through `lockAxis(` (red open-coding it in the hook);
+    - ⭐ `pressMode` goes through `nextMode(` (Z15 — red with the old rule inline);
     - Z1's three `pointer-events: none` rules; ⭐ Z9's toolbar order (red swapping + and − back);
     - its helpers: `tag()` skips a `/>` inside `{…}`, and `memoBody()` matches parens, so a multi-line memo never
       runs into the next.
   - e2e: the Decision zoom smoke, ⭐ the Z6 synthetic-touch test (red dropping the scrub's preventDefault, or holding a
-    vertical stroke too), and the Power Law drag test's zoom assertions — § Build & Deploy → E2E.
+    vertical stroke too; its pinch lifts in the same task as its last move, so ⭐ Z14 — red dropping the release's
+    apply), and the Power Law drag test's zoom assertions — § Build & Deploy → E2E.
+- **Decision face — the chart zoom follow-up** (D2 and the legend note, spec v1.5; every ⭐ red under its named
+  mutation, every file restored and hash-checked):
+  - `decisionChartView.test.ts` — ⭐ `pathOnSupport` on the defaults, Support on the line (premise: month 0 is spot;
+    red comparing from month 0); ⭐ bit for bit — a one-ulp nudge in one month is off the line (red with a relative
+    1e-12 tolerance); false with a stress, a 48-month window, Fair, a short or ragged path, and months 0; ⭐ every
+    month 1…horizon is compared — a one-ulp sweep (red stopping a month short or starting a month late); ⭐ both a
+    month short → false over the horizon (red without the length guard).
+  - `decisionView.test.ts` — ⭐ `SCHEDULE_KEEP_HEADER` / `SCHEDULE_KEEP_KEY` and ⭐ `ON_SUPPORT_NOTE`, pinned exactly.
+  - `decisionWiring.test.ts` — ⭐ the note reads `pathOnSupport(displayedPath, supportPath, months)` (red with
+    `pricePath`, which would keep the note under an engaged stress); I31's non-vacuity anchor is now 'Moves'.
+  - e2e — ⭐ D2: the `schedule-keep` header cell is ONE line and doesn't overflow at 390px and 375px (red with "Keep ₿
+    at support" restored: two lines at 390px); ⭐ the first Decision smoke sees the legend note on the defaults (red
+    when it isn't rendered).
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -6751,8 +6797,11 @@ labels; a double-click → the full view and the recorded labels; then Z1's HOVE
 overlay never takes the pointer); and the **Z6 synthetic-touch test**, which dispatches `Touch` / `TouchEvent`s at the
 plot centre (`dispatchEvent` returns false if and only if a listener cancelled the event): a sideways stroke is free
 under 8px and held from the move that passes it, wobble included; a vertical stroke is never held, even when it turns
-sideways; a touchstart never is; a second finger hands a held scrub to the pinch, which zooms. It proves the HOOK's
-decisions, not iOS's scroll arbitration. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+sideways; a touchstart never is; a second finger hands a held scrub to the pinch, which zooms — its fingers lift in
+the SAME task as its last move, so the zoom needs the release itself to land the pinch (Z14). It proves the HOOK's
+decisions, not iOS's scroll arbitration. The first Decision smoke also sees the **legend note** on the defaults
+(Support, on the line), and **D2** measures the schedule's `schedule-keep` header at 390px and at 375px
+(`setViewportSize`): ONE line — its text Range's client rects share one top — and no overflow. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the

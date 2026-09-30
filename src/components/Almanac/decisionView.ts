@@ -765,3 +765,13 @@ export function stressNote(supportAtMonthUsd: number): string {
 /** The parents' below-support note, as a string the face renders. */
 export const BELOW_SUPPORT_NOTE =
   'Below the power-law support line — outside the fitted drawdown envelope. Nothing calibrates this depth.';
+
+/** D2 — the schedule's keep column. The header must fit one line in its column at phone width (the e2e measures it
+ *  at 390px and 375px); the key, under the schedule's header line, says what the column is. It is THE MOVE's phrase
+ *  for the same formula (Z12): max(line, balance) / (skStop × support) — the engine's `strikeKeepBtc`. */
+export const SCHEDULE_KEEP_HEADER = 'Strike keep';
+export const SCHEDULE_KEEP_KEY = 'Strike keep: what your full line needs on Strike at support.';
+
+/** The legend note (`pathOnSupport`): after today the displayed path IS the support line — both green, the dashed
+ *  path drawn over it — so the legend's Support line can't be told apart. */
+export const ON_SUPPORT_NOTE = 'After today the modeled path runs on the support line, so the two are drawn as one.';

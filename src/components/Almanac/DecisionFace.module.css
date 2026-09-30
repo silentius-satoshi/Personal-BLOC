@@ -156,7 +156,9 @@
   padding-top: 8px;
 }
 .colMonth { width: 64px; }
-.colKeep { width: 76px; text-align: right; }
+/* D2 — 88px holds "Strike keep" on ONE line (11 mono capitals ≈ 73px + 12px padding) and leaves Moves ≥ 121px at a
+   375px viewport. The e2e measures it at 390px and 375px. */
+.colKeep { width: 88px; text-align: right; }
 .colZone { width: 40px; text-align: center; }
 .schedRow { cursor: pointer; }
 .schedRow:hover { background: var(--bg-hover); }

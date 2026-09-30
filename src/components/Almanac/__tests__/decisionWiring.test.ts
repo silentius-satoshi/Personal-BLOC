@@ -167,6 +167,11 @@ describe('⭐ the chart', () => {
     expect(SRC).toMatch(/const displayedPath = lens === 1 \? pricePath : stressPath;/);
   });
 
+  it('⭐ the legend note reads the DISPLAYED path against the support line, so an engaged stress hides it', () => {
+    expect(SRC).toMatch(/pathOnSupport\(displayedPath, supportPath, months\)/);
+    expect(SRC).not.toMatch(/pathOnSupport\(pricePath/);
+  });
+
   it('⭐ the gradient id is per mount (useId), never a document-global literal', () => {
     expect(SRC).toMatch(/\buseId\(\)/);
     expect(SRC).toMatch(/<linearGradient id=\{gradientId\}/);
@@ -279,7 +284,7 @@ describe('⭐ I31 (Run B) — the face composes no sentence', () => {
 
   it('the extraction is real (non-vacuous)', () => {
     expect(strings.length).toBeGreaterThan(50);
-    expect(jsxText.some((t) => t.includes('Keep ₿ at support'))).toBe(true);
+    expect(jsxText.some((t) => t.includes('Moves'))).toBe(true);
     expect(strings.some((t) => t === 'Worst (stitched)')).toBe(true);
   });
 

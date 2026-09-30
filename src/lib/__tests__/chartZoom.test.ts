@@ -8,7 +8,7 @@ import {
   scaleDomain, stepPins, panPins, pinchPins,
   normalizePins, effectiveView, isZoomed,
   timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter,
-  isDoubleTap, zoomBackNote, lockAxis,
+  isDoubleTap, zoomBackNote, lockAxis, nextMode,
   MIN_SPAN_TIME_LOG,
   type Domain, type Pins, type PlotRect, type Scales, type View,
 } from '../chartZoom';
@@ -350,5 +350,20 @@ describe('⭐ 21 · the scrub lock (Z6)', () => {
     expect(lockAxis(8, 8)).toBe('y');           // a perfect diagonal scrolls, as before
     expect(lockAxis(Number.NaN, 20)).toBeNull();
     expect(lockAxis(20, Number.POSITIVE_INFINITY)).toBeNull();
+  });
+});
+
+describe('⭐ 22 · the toolbar\'s mode rule (Z15)', () => {
+  it('⭐ 22 (Z15) — on a computer Pan toggles back to Zoom, the resting mode; on a phone a pressed mode toggles off to Scroll', () => {
+    // mutations: the old radio rule (a computer keeps the pressed mode) → clicking the pressed Pan leaves Pan on;
+    // rest on Zoom on a phone too → a touch device could never get back to scrolling the page
+    expect(nextMode('pan', 'pan', true)).toBe('zoom');
+    expect(nextMode('zoom', 'zoom', true)).toBe('zoom');
+    expect(nextMode('zoom', 'pan', true)).toBe('pan');
+    expect(nextMode('pan', 'zoom', true)).toBe('zoom');
+    expect(nextMode(null, 'pan', false)).toBe('pan');
+    expect(nextMode('pan', 'pan', false)).toBeNull();
+    expect(nextMode('zoom', 'zoom', false)).toBeNull();
+    expect(nextMode('zoom', 'pan', false)).toBe('pan');
   });
 });

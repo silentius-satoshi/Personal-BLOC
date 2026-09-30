@@ -27,11 +27,14 @@ import {
 import {
   buildSupportPath, supportPolicyFor, supportAtDates, breakerFromHistory, holdMonthsFrom,
 } from './supportPolicyInputs';
-import { buildChartSeries, cliffPath, chartDomain, xExtent, type DecisionChartSeries } from './decisionChartView';
+import {
+  buildChartSeries, cliffPath, chartDomain, xExtent, pathOnSupport, type DecisionChartSeries,
+} from './decisionChartView';
 import {
   moveCard, moveCardText, planSchedule, planOutcome, coinbaseLoanLine, scheduleToText, crashNote, consoleLinkLabel,
   decisionDisclaimer, pathSublabel, pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles,
-  scheduleFileName, manualPriceNote, stressNote, fmtBtc3, BELOW_SUPPORT_NOTE, DECISION_FRAMING,
+  scheduleFileName, manualPriceNote, stressNote, fmtBtc3, BELOW_SUPPORT_NOTE, DECISION_FRAMING, ON_SUPPORT_NOTE,
+  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY,
   type DecisionPath, type LineAction, type MoveTone,
 } from './decisionView';
 import SupportPolicyCard from './SupportPolicyCard';
@@ -477,6 +480,8 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   const hasCliff = chart.cliff.some((p) => p.price !== null);
   // The stitched floor is always drawn — once: not when it IS the displayed path, nor on the line while it is Support.
   const drawFloor = !sameSeries(stitched, displayedPath) && !(onTheLine && stitchedIsSupport);
+  // The legend note — the DISPLAYED path (a stress hides it) against the support line, bit for bit after today.
+  const onSupport = pathOnSupport(displayedPath, supportPath, months);
   const inspectT = addMonths(startDate, monthIdx).getTime();
   const manualNote = manualPriceNote(s.btcPriceMode);
 
@@ -594,6 +599,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
             <span className={styles.legendItem} style={{ color: 'var(--red)' }}><i className={`${styles.legendSwatch} ${styles.legendDot}`} />Coinbase seizes</span>
           )}
         </div>
+        {onSupport && <p className={styles.noteQuiet}>{ON_SUPPORT_NOTE}</p>}
         {domain !== null && xRange !== null && historical.length === 0 && (
           <p className={styles.noteQuiet}>{historyLoading ? 'Loading price history…' : 'Price history unavailable'}</p>
         )}
@@ -605,13 +611,14 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
       <section className={styles.card}>
         <span className={styles.cardLabel}>Schedule</span>
         <p className={styles.noteQuiet}>{header}</p>
+        <p className={styles.noteQuiet}>{SCHEDULE_KEEP_KEY}</p>
         <div className={styles.schedWrap}>
           <table className={styles.schedTable}>
             <thead>
               <tr>
                 <th className={`${styles.schedTh} ${styles.colMonth}`}>Month</th>
                 <th className={styles.schedTh}>Moves</th>
-                <th className={`${styles.schedTh} ${styles.colKeep}`}>Keep ₿ at support</th>
+                <th className={`${styles.schedTh} ${styles.colKeep}`} data-testid="schedule-keep">{SCHEDULE_KEEP_HEADER}</th>
                 <th className={`${styles.schedTh} ${styles.colZone}`}>Zone</th>
               </tr>
             </thead>

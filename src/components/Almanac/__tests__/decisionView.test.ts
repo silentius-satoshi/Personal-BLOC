@@ -4,7 +4,7 @@ import {
   moveCard, MOVE_CARD_TITLE, PLAN_OF_RECORD_LINE, fmtBtc3,
   PATH_INVARIANT_LINE, BREAKER_LOADING_LINE, crashNote, consoleLinkLabel, decisionDisclaimer, pathSublabel,
   pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles, scheduleFileName, manualPriceNote,
-  stressNote, BELOW_SUPPORT_NOTE, moveCardText,
+  stressNote, BELOW_SUPPORT_NOTE, moveCardText, ON_SUPPORT_NOTE, SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY,
   type ActionKind, type MoveCardContext, type BreakerReading, type PathNoteInput,
 } from '../decisionView';
 import {
@@ -876,5 +876,17 @@ describe('⭐ policy off or ignored ⇒ no move today, anywhere (the card, the T
     expect(onLine).toContain('collateral moves to Coinbase today');
     const offLine = coinbaseLoanLine(offSim(), plan, false);
     expect(offLine ?? '').not.toContain('today');
+  });
+});
+
+describe('⭐ chart zoom follow-up — the schedule\'s keep column (D2) and the legend note', () => {
+  it('⭐ D2 — the header fits one line, and the key says what the column is: Strike\'s keep at support (Z12)', () => {
+    // THE MOVE's phrase for the same formula: max(line, balance) / (skStop × support) — strikeKeepBtc.
+    expect(SCHEDULE_KEEP_HEADER).toBe('Strike keep');
+    expect(SCHEDULE_KEEP_KEY).toBe('Strike keep: what your full line needs on Strike at support.');
+  });
+
+  it('⭐ the legend note says the modeled path and the support line are drawn as one', () => {
+    expect(ON_SUPPORT_NOTE).toBe('After today the modeled path runs on the support line, so the two are drawn as one.');
   });
 });

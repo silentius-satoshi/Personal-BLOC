@@ -145,6 +145,8 @@ test.describe('Navigation gestures (P3)', () => {
 // name list, and the repo has no render harness. So: open it, with the price history stubbed and with it failing.
 test.describe('Decision face — the smoke', () => {
   const MOVE_TITLE = "The support policy's move this month";
+  // decisionView's ON_SUPPORT_NOTE (Playwright can't import src/) — the legend note on the defaults.
+  const ON_SUPPORT = 'After today the modeled path runs on the support line, so the two are drawn as one.';
 
   test('opens with price history: THE MOVE and the chart render, and nothing crashes', async ({ page }) => {
     await page.route(/blockchain\.info/, (r) => r.fulfill({
@@ -158,7 +160,32 @@ test.describe('Decision face — the smoke', () => {
     await expect(move).toBeVisible({ timeout: 8000 });
     await expect(move.getByText(/Your Monthly Playbook is your plan of record/)).toBeVisible();
     await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
+    // The defaults (Support, on the line): after today the path IS the support line — the legend says so.
+    await expect(page.getByText(ON_SUPPORT)).toBeVisible();
     await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('D2: the schedule\'s "Strike keep" header is ONE line, at 390px and at 375px', async ({ page }) => {
+    await page.route(/blockchain\.info/, (r) => r.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+    }));
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const th = page.getByTestId('schedule-keep');
+    for (const width of [390, 375]) {
+      await page.setViewportSize({ width, height: 844 });
+      await th.scrollIntoViewIfNeeded();
+      // One line = every line box of the cell's text shares one top; and nothing spills past the cell.
+      const m = await th.evaluate((el) => {
+        const range = document.createRange();
+        range.selectNodeContents(el);
+        const tops = new Set([...range.getClientRects()].map((q) => Math.round(q.top)));
+        return { lines: tops.size, overflows: el.scrollWidth > el.clientWidth };
+      });
+      expect(m, `at ${width}px`).toEqual({ lines: 1, overflows: false });
+    }
   });
 
   test('chart zoom: a dragged box zooms, a double-click zooms back out, and the tooltip still answers', async ({ page }) => {
@@ -216,7 +243,7 @@ test.describe('Decision face — the smoke', () => {
     await expect(zoom).toHaveAttribute('data-zoomed', 'false');
     const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
     const at = { px: plot.x + plot.width / 2, py: plot.y + plot.height / 2 };
-    const held = await page.evaluate(async ({ px, py }) => {
+    const held = await page.evaluate(({ px, py }) => {
       const target = document.elementFromPoint(px, py)!;               // recharts' surface — .plot never takes it (Z1)
       const touch = (id: number, x: number, y: number) => new Touch({ identifier: id, target, clientX: x, clientY: y });
       /** true = the event went through; false = a listener cancelled it. */
@@ -241,7 +268,8 @@ test.describe('Decision face — the smoke', () => {
       r.twoStart = fire('touchstart', two, [two[1]]);
       const spread = [touch(3, px + 30, py), touch(4, px - 60, py)];
       r.pinch = fire('touchmove', spread);
-      await new Promise<void>((done) => requestAnimationFrame(() => done()));   // the pinch applies on a frame
+      // The fingers lift in the SAME task — no frame runs between the last move and the release, so the zoom below
+      // needs the release itself to land the pinch (Z14), as a drag's release does.
       fire('touchend', [], spread);
       return r;
     }, at);

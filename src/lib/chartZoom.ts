@@ -121,6 +121,21 @@ export function lockAxis(dx: number, dy: number): LockAxis | null {
   return ax > ay ? 'x' : 'y';
 }
 
+// ── The toolbar's mode (Z15) ────────────────────────────────────────────────────────────────────────────────────
+
+/** Zoom draws a box, Pan pans; `null` is Scroll — a touch device's resting mode (the page scrolls over the chart). */
+export type ZoomMode = 'zoom' | 'pan' | null;
+
+/**
+ * The mode after a press on the Zoom or Pan button. An unpressed button selects its mode. Pressing the pressed one:
+ * on a computer (`fine`) Zoom is the resting mode, so Pan toggles back to Zoom and Zoom stays; on a touch device it
+ * toggles off to Scroll (`null`).
+ */
+export function nextMode(cur: ZoomMode, pressed: 'zoom' | 'pan', fine: boolean): ZoomMode {
+  if (cur !== pressed) return pressed;
+  return fine ? 'zoom' : null;
+}
+
 // ── Step, pan, pinch — scaled space; the hook normalizes every result ──────────────────────────────────────────
 
 /** + halves the visible span, − doubles it, about the centre (log space on a log axis). */

@@ -2,9 +2,9 @@ import { createElement, useCallback, useEffect, useMemo, useRef, useState } from
 import type { CSSProperties, ReactElement, RefObject } from 'react';
 import {
   MIN_DRAG_PX, MIN_SPAN_TIME_LOG,
-  boxRect, boxToPins, classifyBox, effectiveView, inRect, isDoubleTap, isZoomed, lockAxis, normalizePins, panPins,
-  pinchPins, stepPins, zoomBackNote,
-  type LockAxis, type MinSpan, type Pins, type PlotRect, type Pt, type Scales, type Tap, type View,
+  boxRect, boxToPins, classifyBox, effectiveView, inRect, isDoubleTap, isZoomed, lockAxis, nextMode, normalizePins,
+  panPins, pinchPins, stepPins, zoomBackNote,
+  type LockAxis, type MinSpan, type Pins, type PlotRect, type Pt, type Scales, type Tap, type View, type ZoomMode,
 } from '../lib/chartZoom';
 import { PlotProbe } from '../components/ui/ChartZoomFrame';
 
@@ -29,7 +29,6 @@ import { PlotProbe } from '../components/ui/ChartZoomFrame';
  *    A touchstart is passive — never cancelled — so taps always reach the tooltip and the double-tap reset.
  */
 
-export type ZoomMode = 'zoom' | 'pan' | null;
 const NO_PINS: Pins = { x: null, y: null };
 /** How long the once-per-session note stays, then how long its fade runs. */
 const NOTE_MS = 3600;
@@ -45,7 +44,8 @@ export interface ChartZoom {
   view: View;
   zoomed: boolean;
   mode: ZoomMode;
-  /** Zoom / Pan button: a radio pair on a fine-pointer device; a toggle (off = scroll) on a touch device. */
+  /** The Zoom / Pan buttons (`nextMode`, Z15): on a computer Pan is a toggle back to Zoom, the resting mode; on a
+   *  touch device a pressed mode toggles off to Scroll. */
   pressMode: (m: 'zoom' | 'pan') => void;
   zoomIn: () => void;
   zoomOut: () => void;
@@ -91,7 +91,8 @@ interface Drag {
   key: (e: KeyboardEvent) => void;
 }
 
-interface Pinch { from: [Pt, Pt]; startView: View }
+/** `last` is the latest move's fingers — the release lands it (Z14), the way a drag's release does. */
+interface Pinch { from: [Pt, Pt]; startView: View; last: [Pt, Pt] | null }
 
 /** Z6 — a one-finger stroke in Scroll mode: undecided (`null`) until it passes 8px, then locked to an axis. */
 interface Stroke { id: number; start: Pt; lock: LockAxis | null }
@@ -150,8 +151,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     commit(stepPins(live.current.view, 'out', live.current.scales), live.current.fine ? 'mouse' : 'touch');
   }, [commit]);
   const pressMode = useCallback((m: 'zoom' | 'pan') => {
-    // Fine pointer: a radio pair, one always pressed (Plotly). Touch: a toggle — off returns the chart to scrolling.
-    setMode((cur) => (cur === m ? (live.current.fine ? cur : null) : m));
+    setMode((cur) => nextMode(cur, m, live.current.fine));   // Z15 — the rule is pure and tested (lib/chartZoom)
   }, []);
 
   const onRect = useCallback((r: PlotRect) => {
@@ -291,11 +291,18 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     // The pinch — two fingers that STARTED on the chart (targetTouches), in every mode.
     const pts = (e: TouchEvent): [Pt, Pt] => [local(e.targetTouches[0]), local(e.targetTouches[1])];
     const endPinch = () => {
-      if (!pinch) return;
+      const p = pinch;
+      if (!p) return;
       pinch = null;
-      pending = null;
+      pending = null;   // a queued frame is superseded: the release applies the final position below
       setDragging(false);
-      if (isZoomed(live.current.clamped)) showNoteOnce('touch');
+      const L = live.current;
+      let final = L.clamped;   // the last render's view — stale if a move is still queued, hence `last`
+      if (p.last && L.rect) {
+        final = normalizePins(pinchPins(p.startView, p.from, p.last, L.rect, L.scales), L.full, L.scales, L.min);
+        setPins(final);   // Z14 — the release lands the last move, as endDrag does
+      }
+      if (isZoomed(final)) showNoteOnce('touch');
     };
     const touchById = (list: TouchList, id: number): Touch | null => {
       for (let i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i];
@@ -307,7 +314,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
       stroke = null;                    // a new finger ends any scrub — a second one hands it over to the pinch
       if (e.targetTouches.length === 2 && L.rect) {
         if (drag) endDrag('abandon');   // a second finger turns a one-finger box or pan into a pinch
-        pinch = { from: pts(e), startView: L.view };
+        pinch = { from: pts(e), startView: L.view, last: null };
         setDragging(true);
         return;
       }
@@ -325,6 +332,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
         if (!e.cancelable) { endPinch(); return; }
         e.preventDefault();
         const to = pts(e);
+        p.last = to;
         frame(() => {
           const L = live.current;
           if (!L.rect || pinch !== p) return;

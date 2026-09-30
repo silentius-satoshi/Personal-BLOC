@@ -124,6 +124,14 @@ describe('⭐ the shared pieces', () => {
     expect(hook).not.toMatch(/Math\.abs\([^)]*\)\s*>=?\s*Math\.abs\(/);
   });
 
+  it('⭐ Z15 — pressMode goes through nextMode( (pure, tested), never an inline rule', () => {
+    const hook = read('hooks/useChartZoom.ts');
+    const at = hook.indexOf('const pressMode = useCallback(');
+    expect(at, 'pressMode').toBeGreaterThan(-1);
+    const body = hook.slice(at, hook.indexOf('}, []);', at));
+    expect(body).toMatch(/\bnextMode\(/);
+  });
+
   it('⭐ Z9 — the toolbar reads Zoom · Pan · + · − · Reset (the plan\'s and bitbo\'s order)', () => {
     const frame = read('components/ui/ChartZoomFrame.tsx');
     const labels = [...frame.matchAll(/aria-label="([^"]+)"/g)].map((m) => m[1]).filter((l) => l !== 'Chart zoom');

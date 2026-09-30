@@ -2,13 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  buildChartSeries, cliffPath, downsample, chartDomain, xExtent, MAX_HISTORY_POINTS,
+  buildChartSeries, cliffPath, downsample, chartDomain, xExtent, pathOnSupport, MAX_HISTORY_POINTS,
 } from '../decisionChartView';
-import { supportAtDates, type HistoryPoint } from '../supportPolicyInputs';
+import { buildSupportPath, supportAtDates, type HistoryPoint } from '../supportPolicyInputs';
+import { applyPathStress } from '../cyclingFaceView';
 import { cbMetrics } from '../../../simulation/cbMetrics';
 import { runCyclingSim, type CyclingInputs } from '../../../simulation/cyclingSim';
 import { minCushionOf } from '../../../simulation/planSearch';
-import { addMonths } from '../../../simulation/powerLaw';
+import { addMonths, plConvergencePath, PL_ON_THE_LINE } from '../../../simulation/powerLaw';
 import { SP_REPRO, SUPPORT, SP_START, policyFor, pathP1, pathP2 } from '../../../simulation/__tests__/supportPolicyPaths';
 
 /**
@@ -335,4 +336,59 @@ describe('⭐ the time axis — its extent', () => {
   });
 
   // The year-tick cases moved to src/lib/__tests__/chartZoom.test.ts with `timeTicks` (chart zoom).
+});
+
+describe('⭐ the legend note — pathOnSupport, bit for bit over months 1…horizon', () => {
+  // Month 0 is today's spot price. From month 1 the on-the-line Support path IS the support line: the face's
+  // buildSupportPath is bit-equal to it. A round synthetic anchor; the start is the pinned SP_START.
+  const H = 60;
+  const path = (band: 'floor' | 'fair', window: number = PL_ON_THE_LINE) => plConvergencePath(80_000, band, START, H, window);
+  const support = buildSupportPath(START, H);
+
+  it('⭐ the defaults — Support, on the line — are on the support line after today', () => {
+    // mutation: compare from month 0 → never true, because month 0 is spot
+    const onLine = path('floor');
+    expect(onLine[0]).not.toBe(support[0]);   // premise: month 0 is spot, not support
+    expect(pathOnSupport(onLine, support, H)).toBe(true);
+  });
+
+  it('⭐ bit for bit, never a tolerance — a one-ulp nudge in one month is off the line', () => {
+    // mutation: a relative 1e-12 tolerance → the nudged path reads as on support
+    const nudged = [...path('floor')];
+    nudged[30] = nudged[30] * (1 + Number.EPSILON);
+    expect(nudged[30]).not.toBe(support[30]);                           // premise: it moved…
+    expect(Math.abs(nudged[30] / support[30] - 1)).toBeLessThan(1e-12);   // …by less than any tolerance would allow
+    expect(pathOnSupport(nudged, support, H)).toBe(false);
+  });
+
+  it('false with a stress, a 48-month window, Fair, a short or ragged path, and months 0', () => {
+    const onLine = path('floor');
+    expect(pathOnSupport(applyPathStress(onLine, 12, 0.9), support, H)).toBe(false);
+    expect(pathOnSupport(path('floor', 48), support, H)).toBe(false);
+    expect(pathOnSupport(path('fair'), support, H)).toBe(false);
+    expect(pathOnSupport(onLine.slice(0, H), support, H)).toBe(false);           // short
+    expect(pathOnSupport(onLine, support.slice(0, H - 5), H)).toBe(false);       // ragged support
+    expect(pathOnSupport(onLine, support, 0)).toBe(false);
+  });
+
+  it('⭐ every month 1…horizon is compared — a one-ulp nudge in ANY one of them is off the line (a sweep)', () => {
+    // mutations: stop a month short (slice(1, months)) → a last-month nudge reads as on support;
+    // start a month late (slice(2, …)) → a month-1 nudge does
+    const onLine = path('floor');
+    let checked = 0;
+    for (let m = 1; m <= H; m++) {
+      const nudged = [...onLine];
+      nudged[m] = nudged[m] * (1 + Number.EPSILON);
+      expect(nudged[m], `month ${m} moved`).not.toBe(support[m]);
+      expect(pathOnSupport(nudged, support, H), `month ${m}`).toBe(false);
+      checked++;
+    }
+    expect(checked).toBe(H);   // non-vacuous: every month 1…H was nudged
+  });
+
+  it('⭐ a path and a support line that are BOTH a month short are not on the line over the horizon', () => {
+    // mutation: drop the length guard → sameSeries compares two equally short slices and reads true
+    expect(pathOnSupport(path('floor').slice(0, H), support.slice(0, H), H)).toBe(false);
+    expect(pathOnSupport(path('floor').slice(0, H), support.slice(0, H), H - 1)).toBe(true);   // premise: on the line where both reach
+  });
 });
