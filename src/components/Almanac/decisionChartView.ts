@@ -154,23 +154,4 @@ export function xExtent(series: DecisionChartSeries): [number, number] | null {
   return Number.isFinite(lo) && Number.isFinite(hi) ? [lo, hi] : null;
 }
 
-const YEAR_MS = 365.25 * 86_400_000;
-
-/**
- * Year ticks for the time axis — on 1 January (UTC), every 2, 4 or 8 years depending on the span, so a phone never
- * gets more than a handful of labels. ⚠ The face passes these explicitly: with per-series data and no chart-level
- * data, recharts falls back to one tick per data point, hundreds of them overlapping. Junk ⇒ none.
- */
-export function yearTicks(minT: number, maxT: number): number[] {
-  if (!Number.isFinite(minT) || !Number.isFinite(maxT) || !(maxT > minT)) return [];
-  const span = (maxT - minT) / YEAR_MS;
-  const step = span <= 12 ? 2 : span <= 24 ? 4 : 8;
-  const first = new Date(minT).getUTCFullYear();
-  const out: number[] = [];
-  for (let y = Math.ceil(first / step) * step; ; y += step) {
-    const t = Date.UTC(y, 0, 1);
-    if (t > maxT) break;
-    if (t >= minT) out.push(t);
-  }
-  return out;
-}
+// The date ticks moved to `lib/chartZoom.ts` (`timeTicks`) with chart zoom — one ladder, shared by every zoomed chart.

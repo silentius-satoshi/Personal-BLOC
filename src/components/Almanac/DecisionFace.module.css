@@ -31,6 +31,11 @@
 /* ── From OwnershipFace / UnifiedFace ─────────────────────────────────────────────────────────── */
 /* ⚠ The local height follows `composes:` on the same rule, so it wins by source order (the Mining/PowerLaw rule). */
 .chartBox { composes: chartBox from './OwnershipFace.module.css'; height: 280px; }
+/* Chart zoom: on a touch device the zoom toolbar is a row above the plot — the box grows by it, so the plot keeps its
+   280px. (The complement of ChartZoomFrame's fine-pointer overlay query.) */
+@media not all and (hover: hover) and (pointer: fine) {
+  .chartBox { height: 316px; }
+}
 .stateLine { composes: stateLine from './UnifiedFace.module.css'; }
 
 /* ── New to this face ─────────────────────────────────────────────────────────────────────────── */

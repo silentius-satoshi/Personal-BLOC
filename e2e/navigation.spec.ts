@@ -93,7 +93,7 @@ test.describe('Navigation gestures (P3)', () => {
     }
   });
 
-  test('a horizontal scrub on the Power Law chart stays on the Power Law face', async ({ page }) => {
+  test('a horizontal drag on the Power Law chart stays on the face, and zooms the chart', async ({ page }) => {
     // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both).
     await page.route(/blockchain\.info/, (r) =>
       r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) }));
@@ -102,6 +102,9 @@ test.describe('Navigation gestures (P3)', () => {
     await page.getByRole('button', { name: /Power Law/ }).click();      // tap to the powerlaw face
     const chart = page.locator('.recharts-wrapper').first();
     await expect(chart).toBeVisible({ timeout: 8000 });
+    // Z8 — on the phone layout the chart's top sits at or below the bottom of the 844px viewport. Before chart zoom this
+    // test measured it there, so its drag started OFF-SCREEN and never touched the chart: it passed vacuously.
+    await chart.scrollIntoViewIfNeeded();
     const box = (await chart.boundingBox())!;
     const scrollBefore = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     // Horizontal drag with a ±30px vertical wobble, STARTING inside the chart.
@@ -114,12 +117,19 @@ test.describe('Navigation gestures (P3)', () => {
     }
     await page.mouse.up();
     await page.waitForTimeout(60);
-    // No face-pager exists to steal the scrub → still on the Power Law face (chart present).
+    // No face-pager exists to steal the drag → still on the Power Law face (chart present).
     await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
     // ⚠ Synthetic page.mouse cannot drive native TOUCH scroll, so this passes trivially in Chromium; kept as
     // a guard + intent marker (the real proof is the iOS device gate, like the P1.3 handoff fixmes).
     const scrollAfter = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     expect(scrollAfter).toBe(scrollBefore);
+    // Chart zoom (Z2): a MOUSE drag now draws a zoom box — this one ends 220px sideways and 30px down, so it zooms
+    // both axes — and a double-click inside the plot zooms back out. Proves PowerLawChart's wiring at runtime.
+    const zoom = page.getByTestId('chart-zoom');
+    await expect(zoom).toHaveAttribute('data-zoomed', 'true');
+    const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
+    await page.mouse.dblclick(plot.x + plot.width / 2, plot.y + plot.height / 2);
+    await expect(zoom).toHaveAttribute('data-zoomed', 'false');
   });
 
   test('edge-swipe back works on Almanac (left bezel → journal)', async ({ page }) => {
@@ -148,6 +158,99 @@ test.describe('Decision face — the smoke', () => {
     await expect(move).toBeVisible({ timeout: 8000 });
     await expect(move.getByText(/Your Monthly Playbook is your plan of record/)).toBeVisible();
     await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('chart zoom: a dragged box zooms, a double-click zooms back out, and the tooltip still answers', async ({ page }) => {
+    await page.route(/blockchain\.info/, (r) => r.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+    }));
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const zoom = page.getByTestId('chart-zoom');
+    await zoom.scrollIntoViewIfNeeded();
+    await expect(zoom).toHaveAttribute('data-zoomed', 'false');
+    const ticks = () => zoom.locator('.recharts-xAxis .recharts-cartesian-axis-tick-value').allTextContents();
+    const before = await ticks();
+    expect(before.length).toBeGreaterThan(0);
+    const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
+    // A box across the middle 40% × 50% of the plot (mobile emulation: no mode pressed — a MOUSE still draws a box).
+    const x0 = plot.x + plot.width * 0.3, x1 = plot.x + plot.width * 0.7;
+    const y0 = plot.y + plot.height * 0.25, y1 = plot.y + plot.height * 0.75;
+    await page.mouse.move(x0, y0);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(x0 + ((x1 - x0) * i) / 10, y0 + ((y1 - y0) * i) / 10);
+      await page.waitForTimeout(8);
+    }
+    await page.mouse.up();
+    await expect(zoom).toHaveAttribute('data-zoomed', 'true');
+    await expect(zoom.getByText('Double-click to zoom back out')).toBeVisible();
+    await expect.poll(ticks).not.toEqual(before);
+    // Double-click back out: the full view, and today's labels.
+    await page.mouse.dblclick(plot.x + plot.width / 2, plot.y + plot.height / 2);
+    await expect(zoom).toHaveAttribute('data-zoomed', 'false');
+    await expect.poll(ticks).toEqual(before);
+    // Z1 — the overlay never takes the pointer: a hover inside the plot still raises recharts' tooltip.
+    await page.mouse.move(plot.x + plot.width * 0.45, plot.y + plot.height * 0.5);
+    await page.mouse.move(plot.x + plot.width * 0.5, plot.y + plot.height * 0.5);
+    await expect(zoom.locator('.recharts-tooltip-wrapper').first()).toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('chart zoom Z6: in Scroll mode a sideways stroke is held once it passes 8px; a tap, a vertical stroke and a touchstart never are', async ({ page }) => {
+    // ⚠ Synthetic TouchEvents prove the HOOK's decisions — which touches it cancels — not iOS's scroll arbitration
+    // (that is device-gate step 2). dispatchEvent returns false if and only if a listener called preventDefault.
+    await page.route(/blockchain\.info/, (r) => r.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+    }));
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const zoom = page.getByTestId('chart-zoom');
+    await zoom.scrollIntoViewIfNeeded();
+    await expect(zoom).toHaveAttribute('data-mode', 'none');            // premise: Scroll mode (nothing pressed)
+    await expect(zoom).toHaveAttribute('data-zoomed', 'false');
+    const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
+    const at = { px: plot.x + plot.width / 2, py: plot.y + plot.height / 2 };
+    const held = await page.evaluate(async ({ px, py }) => {
+      const target = document.elementFromPoint(px, py)!;               // recharts' surface — .plot never takes it (Z1)
+      const touch = (id: number, x: number, y: number) => new Touch({ identifier: id, target, clientX: x, clientY: y });
+      /** true = the event went through; false = a listener cancelled it. */
+      const fire = (type: string, touches: Touch[], changed: Touch[] = touches) => target.dispatchEvent(
+        new TouchEvent(type, { touches, targetTouches: touches, changedTouches: changed, bubbles: true, cancelable: true }));
+      const r: Record<string, boolean> = {};
+      // A sideways stroke that wobbles: free under 8px (it may be a tap), held from the move that passes 8px on.
+      r.sideStart = fire('touchstart', [touch(1, px, py)]);
+      r.sideUnder8 = fire('touchmove', [touch(1, px + 3, py + 1)]);
+      r.sideLock = fire('touchmove', [touch(1, px + 12, py + 3)]);
+      r.sideWobble = fire('touchmove', [touch(1, px + 20, py - 9)]);
+      fire('touchend', [], [touch(1, px + 20, py - 9)]);
+      // A vertical start scrolls, as before — even when the finger turns sideways later.
+      r.vertStart = fire('touchstart', [touch(2, px, py)]);
+      r.vertLock = fire('touchmove', [touch(2, px + 2, py + 12)]);
+      r.vertTurn = fire('touchmove', [touch(2, px + 40, py + 14)]);
+      fire('touchend', [], [touch(2, px + 40, py + 14)]);
+      // A second finger hands a held scrub over to the pinch, which spreads the dates.
+      fire('touchstart', [touch(3, px, py)]);
+      r.scrub = fire('touchmove', [touch(3, px + 12, py)]);
+      const two = [touch(3, px + 12, py), touch(4, px - 40, py)];
+      r.twoStart = fire('touchstart', two, [two[1]]);
+      const spread = [touch(3, px + 30, py), touch(4, px - 60, py)];
+      r.pinch = fire('touchmove', spread);
+      await new Promise<void>((done) => requestAnimationFrame(() => done()));   // the pinch applies on a frame
+      fire('touchend', [], spread);
+      return r;
+    }, at);
+    expect(held).toEqual({
+      sideStart: true, sideUnder8: true, sideLock: false, sideWobble: false,
+      vertStart: true, vertLock: true, vertTurn: true,
+      scrub: false, twoStart: true, pinch: false,
+    });
+    await expect(zoom).toHaveAttribute('data-zoomed', 'true');           // the pinch took over and zoomed the dates
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 

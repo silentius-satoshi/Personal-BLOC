@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  buildChartSeries, cliffPath, downsample, chartDomain, xExtent, yearTicks, MAX_HISTORY_POINTS,
+  buildChartSeries, cliffPath, downsample, chartDomain, xExtent, MAX_HISTORY_POINTS,
 } from '../decisionChartView';
 import { supportAtDates, type HistoryPoint } from '../supportPolicyInputs';
 import { cbMetrics } from '../../../simulation/cbMetrics';
@@ -319,7 +319,7 @@ describe('⭐ chartDomain — an explicit, positive log-axis domain', () => {
   });
 });
 
-describe('⭐ the time axis — its extent, and ticks a person can read', () => {
+describe('⭐ the time axis — its extent', () => {
   // ⚠ With per-series data and no chart-level data, recharts falls back to a tick per data point — hundreds of
   // overlapping labels. The face passes these explicitly.
   it('⭐ xExtent spans the first history point to the last forward month', () => {
@@ -334,20 +334,5 @@ describe('⭐ the time axis — its extent, and ticks a person can read', () => 
     expect(xExtent({ history: [], forward: [], floor: [], support: [], cliff: [], seamT: Number.NaN })).toBeNull();
   });
 
-  const Y = (y: number) => Date.UTC(y, 0, 1);
-  it('⭐ every 4 years across a history-plus-5-year span, on the year boundary', () => {
-    expect(yearTicks(Date.UTC(2010, 6, 17), Date.UTC(2031, 8, 29))).toEqual([2012, 2016, 2020, 2024, 2028].map(Y));
-  });
-  it('every 8 years across a history-plus-20-year span, every 2 across a short one', () => {
-    expect(yearTicks(Date.UTC(2010, 6, 17), Date.UTC(2046, 8, 29))).toEqual([2016, 2024, 2032, 2040].map(Y));
-    expect(yearTicks(Date.UTC(2026, 8, 29), Date.UTC(2031, 8, 29))).toEqual([2028, 2030].map(Y));
-  });
-  it('ticks are unique, ascending and inside the span — and junk gives none', () => {
-    const t = yearTicks(Date.UTC(2011, 0, 1), Date.UTC(2046, 0, 1));
-    expect(new Set(t).size).toBe(t.length);
-    t.forEach((v, i) => { if (i > 0) expect(v).toBeGreaterThan(t[i - 1]); });
-    for (const v of t) { expect(v).toBeGreaterThanOrEqual(Date.UTC(2011, 0, 1)); expect(v).toBeLessThanOrEqual(Date.UTC(2046, 0, 1)); }
-    expect(yearTicks(Number.NaN, Y(2030))).toEqual([]);
-    expect(yearTicks(Y(2030), Y(2020))).toEqual([]);
-  });
+  // The year-tick cases moved to src/lib/__tests__/chartZoom.test.ts with `timeTicks` (chart zoom).
 });

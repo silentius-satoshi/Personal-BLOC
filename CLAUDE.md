@@ -465,6 +465,17 @@ src/
                                 # The JS side of the reduced-motion policy — lets finger-tracking motion drivers SNAP
                                 # between rest states instead of animating (gestures still FUNCTION; the global.css block
                                 # strips CSS transitions/animations). NO consumer yet (P1+)
+    useChartZoom.ts             # Chart zoom — the thin React adapter over lib/chartZoom (§ Chart zoom). useChartZoom(
+                                # full: View, scales, min = MIN_SPAN_TIME_LOG) → { view, zoomed, mode, pressMode, zoomIn,
+                                # zoomOut, reset, dragging, areaRef, boxRef, plotStyle, plotWidth, probe, note: { text,
+                                # fading } | null, touchAction }. `full` is NON-NULL: an adopter mounts it only once it
+                                # has an extent. Clamps at RENDER + a tolerant write-back (the clampMonth pattern). The
+                                # gesture state (drag · pinch · the Z6 stroke) lives in ONE effect closure per chart —
+                                # never module state (Z11); only the once-per-session note flag is module-level. Window
+                                # listeners once a gesture starts, rAF-batched, capture on ARM — usePointerDrag's
+                                # PATTERNS, not the hook (its axis lock cancels a box, a second pointer cancels a pinch).
+                                # The touchmove is the ONE non-passive listener (the pinch; Z6's sideways scrub);
+                                # touchstart / touchend / touchcancel are passive. VIEW ONLY — nothing is persisted
 
   store/
     useStore.ts                 # Zustand store — Phase 1c: now COMPOSITION ONLY (~44 lines). Spreads the 9 slice
@@ -576,6 +587,21 @@ src/
                                 # never passes. ⚠ The encrypted path is NOT a word quiz: the saved artifact is a
                                 # passphrase-locked ncryptsec, so quizzing the words would verify something the user never
                                 # saved. Tested in src/lib/__tests__/recoveryQuiz.test.ts
+    chartZoom.ts                # Chart zoom — the PURE, VIEW-ONLY math (§ Chart zoom). ZERO imports (chartZoomWiring pins
+                                # it). The view is two domains, each axis AUTO (null — the chart's full extent) or PINNED;
+                                # every op runs in SCALED space (identity / ln), so +/−, pan, pinch and the clamp are one
+                                # code path on both axes. Domain = a MUTABLE [lo, hi] tuple (it passes straight to a
+                                # recharts `domain`). toUnit/fromUnit/pxToX/pxToY (y inverted)/clampToRect/inRect ·
+                                # classifyBox (Plotly's dragbox rule: MIN_DRAG_PX 8, BAND_PX 20)/boxRect/boxToPins ·
+                                # lockAxis (Z6: null under 8px — it may be a tap; more sideways than vertical → 'x', the
+                                # page holds; else 'y', it scrolls) · scaleDomain/stepPins (ZOOM_STEP 2)/panPins/pinchPins
+                                # (PINCH_AXIS_MIN_PX 40) · normalizePins (raise to the minimum, cap at full → auto, then
+                                # SHIFT, never clip; data shorter than the minimum → auto, Z3a)/effectiveView/isZoomed ·
+                                # timeTicks (1 mo…8 y ladder; ≡ the old yearTicks at density 6)/tickDensity/fmtTimeTick
+                                # (UTC, a fixed month table — never ICU's "Sept") · logTicks (d3-scale's log.ticks,
+                                # ported)/priceTickFormatter (the chart's own formatter unless its labels repeat or a
+                                # positive tick reads as zero, Z3b) · isDoubleTap/zoomBackNote. MIN_SPAN_TIME_LOG =
+                                # { 90 days, ln 1.1 }. Tested in src/lib/__tests__/chartZoom.test.ts
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
@@ -627,8 +653,9 @@ src/
       DecisionFace.tsx          # Decision face (Run B) — the TWELFTH face (+ .module.css, composes the parents'). THE
                                 # MOVE card, the Coinbase-loan line, the chart, the schedule (Copy · Download .txt ·
                                 # Print), the outcome strip, the what-ifs, the tap-through. ONE run, many lenses. 🔴 It
-                                # composes NO sentence (I31, pinned by decisionWiring's literal scan). See § Decision
-                                # face (Run B)
+                                # composes NO sentence (I31, pinned by decisionWiring's literal scan). The chart is the
+                                # memoised same-file DecisionChart sub-component (chart zoom — a pan re-renders only
+                                # it, not the 60-row schedule). See § Decision face (Run B) and § Chart zoom
       decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
                                 # ONE field → action table in the engine's month order (a field added to CyclingRow
                                 # without a row here is a step the printed schedule silently drops; a completeness
@@ -666,8 +693,9 @@ src/
                                 # ⚠ An uncomputable point is a GAP (null), never 0 — a zero draws to the floor of
                                 # a log axis and reads as a crash that never happened.
                                 # Run B: chartDomain (an explicit positive log domain, ×0.8 / ×1.25; null ⇒ the
-                                # placeholder) · xExtent + yearTicks (every 2/4/8 years by span) — ⚠ with per-series
-                                # data and no chart-level data, recharts falls back to one tick PER DATA POINT
+                                # placeholder) · xExtent (the full extent — the date ticks moved to lib/chartZoom.ts as
+                                # timeTicks, chart zoom) — ⚠ with per-series data and no chart-level data, recharts
+                                # falls back to one tick PER DATA POINT, so the axis always takes explicit ticks
       supportPolicyInputs.ts    # Support policy — the faces' ONLY §2 crossing for it: buildSupportPath(start, months)
                                 # = plBandAt('floor', start, m), bit-equal to the on-the-line price path from month 1;
                                 # supportPolicyFor(settings, path, bills, strikeLiqPct, mode) → the engine input, or
@@ -891,6 +919,16 @@ src/
                                 # touch-action [P1.3 — the non-passive touchmove handoff owns scroll-vs-drag]; max-height
                                 # from the prop, inline) + .grab (36×5 radius 3, eases
                                 # to --text-muted while the sheet has [data-tracking]). P1.2: was a single .scrim>.sheet
+      ChartZoomFrame.tsx        # Chart zoom — the shared UI (+ .module.css, tokens only). div.frame > the toolbar (Zoom ·
+                                # Pan · + · − · Reset — Z9, pinned; inline SVG, aria-pressed; a row above the plot on a
+                                # touch device, a hover overlay at the plot's top right on a fine pointer) + div.area (the
+                                # gesture surface: touch-action by mode, user-select none, data-testid="chart-zoom" +
+                                # data-zoomed / data-mode / data-dragging) holding the chart, div.plot (at the probed plot
+                                # rect, data-testid="chart-zoom-plot") > div.box, and div.note (role=status). 🔴 Z1:
+                                # .plot, .box and .note are pointer-events: none, or recharts gets no hover and no tap and
+                                # the tooltip dies. Also exports PlotProbe — the <Customized component={zoom.probe}/>
+                                # child that reports recharts' `offset` (the plot rect) after layout. Plain buttons (not
+                                # the shared inputs, which disable themselves for viewers): zoom writes nothing
 
     Inputs/
       InputsPanel.tsx           # Smart BLOC sidebar — .scrollArea + sticky .recommendations
@@ -1112,7 +1150,9 @@ src/
 
     PowerLaw/
       PowerLawMain.tsx
-      PowerLawChart.tsx         # Recharts log-log, YAxis scale="log"
+      PowerLawChart.tsx         # Recharts calendar time × log price (YAxis scale="log", fixed [0.01, 1e8]; NOT log-log —
+                                # the X axis is dates) + the shared chart zoom (§ Chart zoom): UTC 1-January year ticks
+                                # from timeTicks, full extent = the first and last weekly row
       PowerLawSidebar.tsx
 
     Converter/
@@ -3685,8 +3725,10 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   never liquidate — and that tiebreak crowned **Resistance**, the most bullish path, in every policy-on scenario
   measured. With the policy on, Support now comes closest in every scenario measured.
 - **The chart (D5, D6).** Recharts `ComposedChart`, log Y with an EXPLICIT domain (`chartDomain`) and an explicit
-  time extent with year ticks (`xExtent` / `yearTicks`) — ⚠ with per-series data and no chart-level data recharts
-  otherwise ticks every data point (hundreds of overlapping labels, and a duplicate-key warning at the seam). History
+  time extent (`xExtent`), with explicit ticks from chart zoom's `timeTicks` / `logTicks` — ⚠ with per-series data and
+  no chart-level data recharts otherwise ticks every data point (hundreds of overlapping labels, and a duplicate-key
+  warning at the seam). It lives in the memoised same-file `DecisionChart` sub-component (so a pan re-renders only the
+  chart) and ZOOMS (§ Chart zoom): `chartDomain` / `xExtent` stay the full view, and the axes read `zoom.view`. History
   is a gradient `Area` whose id comes from `useId()` (PriceChart's `priceFill` is document-global); the displayed
   path is the one `sim` ran (`stressPath` while engaged); the stitched floor is drawn once (not when it IS the
   displayed path, nor on the line while it is Support); the cliff is `cliffPath` — `cbSeizurePrice` per row, the rule
@@ -3791,6 +3833,11 @@ data/store change; `SwipeStrip` itself stays (Calendar + MonthlyLogOverlay still
   and the CSS above went away. A `grep -rn "gesture-exempt" src/` must come back empty.
 - **EdgeBackGesture is unaffected** — the left 20px bezel still backs out of the simple-mode Almanac subpage;
   it no longer has to win a priority contest against a pager.
+- **Chart areas carry a MODE-SCOPED `touch-action` (chart zoom).** The zoomable charts (Decision, Power Law) set it
+  on their own gesture surface: `pan-y` in Scroll mode (nothing pressed), `none` while Zoom or Pan is pressed. In
+  Scroll mode a vertical stroke still scrolls the page; a stroke that starts on the plot and passes 8px more sideways
+  than vertical holds the page still so the tooltip scrubs (Z6). This is per chart, not a hub rule — the hub still has
+  no touch-action CSS. See § Chart zoom.
 - ⚠ Do NOT re-introduce a face pager without re-deriving the chart/edge exclusions and the axis-ownership CSS
   above; the reason each existed is recorded here.
 - Tests: `e2e/navigation.spec.ts` (tap the sub-nav title halving→cycle, asserting `Open Halving Clock` has
@@ -5760,6 +5807,117 @@ TAP on a revealed control. Zero new deps. Removed the P1.3 gesture-debug scaffol
 
 ---
 
+## Chart zoom (shared, view-only — the Decision chart + PowerLawChart; store unchanged, NO bump)
+
+bitbo's Plotly zoom on the two dates × log-price charts — the Decision face chart and `PowerLawChart` (a full-mode tab
+and an Almanac face) — through ONE shared piece: the pure helpers `lib/chartZoom.ts`, the thin hook
+`hooks/useChartZoom.ts` and the frame `ui/ChartZoomFrame.tsx`. Spec `pbloc-spec-chart-zoom-v1.md` (v1.3). It stays on
+Recharts: Plotly's smallest build is ~1.2 MB against a ~2 MB offline precache, and it would look like no other chart.
+**VIEW ONLY** — no store, engine or sync change, and no number shown anywhere changes. Per mount, session only: a face
+or tab switch resets it.
+
+**The model.**
+- The view is two domains `{ x, y }`. Each axis is AUTO (`null` — it follows the chart's own full extent: `xExtent` /
+  `chartDomain` on Decision; the first and last row × `[0.01, 1e8]` on PowerLaw) or PINNED. Reset = both auto. A
+  dates-only box pins x and leaves y alone (Plotly's behaviour).
+- All the math runs in SCALED space (identity on a linear axis, `ln` on a log one), so +/−, pan, pinch and the clamp are
+  one code path on both axes, and the price axis works in log space by construction.
+- **The clamp (`normalizePins`), every render:** raise a pin's span to the minimum (90 days, ×1.1 on price), then a span
+  at or above the full span is AUTO (so data shorter than the minimum is auto, never a pin wider than the data — Z3a),
+  then SHIFT the pin back inside the full extent — never clip it, so it keeps its zoom level. The hook derives the
+  clamped view at render and writes it back in an effect with a TOLERANT compare (the `clampMonth` pattern — a log→exp
+  round trip moves the last bit, and an exact compare would write back forever).
+- **When the data changes under a zoom:** a pinned axis stays put and is clamped into the new data; an auto axis follows
+  the data. A path, reversion-window, horizon, stress or live-price change keeps the window (so paths compare in one
+  frame); Reset or a double-click brings the full view back.
+
+**Gestures — computer.** Zoom is the default mode on `(pointer: fine)`, and a mouse drag always draws a box unless Pan
+is pressed (a mouse can't scroll by dragging).
+
+| Input | Zoom (default) | Pan |
+|---|---|---|
+| Drag inside the plot | A box, shaded outside; release zooms. Plotly's dragbox rule: `dy < min(max(0.6·dx, 8), 20)` → dates only (nothing under 8px); `dx < min(0.6·dy, 20)` → price only; else both. The tooltip hides while dragging | Pans both axes, clamped to the data |
+| Drag starting on an axis label | nothing | nothing |
+| Esc during a drag | cancels it | cancels; the view snaps back |
+| Double-click | reset | reset |
+| Wheel / trackpad scroll | scrolls the page (no wheel listener) | same |
+| Toolbar — Zoom · Pan · + · − · Reset (Z9, pinned) | at the plot's top right, fading in on hover, focus or while zoomed. Zoom and Pan are a radio pair; + and − scale ×2 about the centre (log space on price); Reset is disabled until zoomed | |
+
+**Gestures — phone (the iOS PWA).** Nothing is pressed by default ("Scroll"); the toolbar is a slim always-visible row
+above the plot (it never covers data — Decision's chart box grows 280 → 316px for it), and Zoom / Pan are toggles.
+
+| Input | Scroll (default) | Zoom pressed | Pan pressed |
+|---|---|---|---|
+| One-finger vertical drag | scrolls the page, as before. A stroke that starts more vertical than sideways is never held, even if it turns sideways | draws the box | pans |
+| One-finger sideways drag | moves the tooltip. **Z6:** once a stroke that started on the plot passes 8px more sideways than vertical, the page holds still until the finger lifts, even with a wobble | draws the box | pans |
+| Tap | the tooltip at that date | same | same |
+| Double-tap | reset | same | same |
+| Two-finger pinch | zooms about the fingers. An axis scales only if the fingers started ≥ 40px apart along it (a sideways pinch zooms dates only); moving both fingers pans. A second finger hands a scrub over to the pinch | same | same |
+| After a box | — | Zoom un-presses itself (one-shot), so the next drag scrolls | Pan stays until tapped again |
+| Swipe from the left edge | back — the 20px zone sits above the page and the plot starts ~80px in | same | same |
+
+**How it's done.**
+- `touch-action` follows the mode on the gesture surface (`div.area`): `pan-y` in Scroll (the page scrolls, horizontal
+  strokes still reach recharts' tooltip, and there is no native pinch or double-tap zoom), `none` in Zoom / Pan.
+- One-finger box and pan: pointer events, window listeners once a gesture starts, capture on ARM (never at
+  pointerdown), rAF-batched; the box is drawn by direct style writes, never a React render per frame.
+- 🔴 **The `touchmove` is the ONE non-passive listener** (the DraggableSheet precedent), scoped to the chart area. It
+  calls `preventDefault()` only while two fingers that started on the chart (`targetTouches`) pinch, or under a Z6
+  sideways scrub — and only while `e.cancelable` (once the page has taken a touch it is let go). `touchstart` /
+  `touchend` / `touchcancel` are passive: **a touchstart is NEVER cancelled**, so taps always reach the tooltip and the
+  double-tap reset. A `gesturestart` preventDefault guards against WebKit's own page pinch.
+- **Z6 — the scrub lock.** The decision is the pure `lockAxis(dx, dy)`: `null` under 8px (it may still be a tap — the
+  tap rule's and the drag's arm threshold), `'x'` when more sideways than vertical, else `'y'` (a perfect diagonal
+  scrolls). Only a Scroll-mode stroke that starts on the plot, with one finger on the screen, is tracked. `'y'` lets go
+  (the page scrolls, as before); `'x'` cancels every remaining cancelable touchmove. A scrub is not `dragging`, so the
+  tooltip shows throughout. It exists because on the iPhone a sideways scrub's vertical drift scrolled the page under
+  `pan-y` and the chart slid away (the owner's device check). The stroke, like `drag` and `pinch`, lives in the gesture
+  effect's closure — one per chart (Z11).
+- Double-tap is detected on `pointerup` (each tap < 250 ms and < 8px; two within 300 ms and 30px); a mouse uses the
+  native `dblclick`.
+- 🔴 **Z1:** `.plot`, `.box` and `.note` are `pointer-events: none`. They paint above the SVG, so without it recharts
+  gets no hover and no tap and the tooltip dies on both charts (the Decision smoke's hover step proves it).
+- "Double-click to zoom back out" / "Double-tap…" shows ONCE per app session (a module flag), then fades.
+
+**The axis labels re-flow.**
+- Dates — `timeTicks(domain, tickDensity(plotWidth))`: the finest of 1 mo · 3 mo · 6 mo · 1 y · 2 y · 4 y · 8 y with
+  `span / step ≤ density`, where `density = max(6, ⌊plotWidth / 100⌋)`. At density 6 it IS the old `yearTicks` for every
+  span over 6 years (a frozen-oracle sweep pins it). Ticks sit on UTC month / 1-January starts; `fmtTimeTick` formats
+  from a fixed month table (Node's ICU prints "Sept"), and the first visible tick carries its year.
+- Price — `logTicks` is d3-scale's `log.ticks` ported (a differential test against recharts' own vendored d3 proves the
+  unzoomed axis unchanged). `priceTickFormatter` keeps each chart's own formatter unless its labels would repeat, or a
+  positive tick would read as zero (Z3b — never "$0.00" for $0.004); then it adds decimals.
+- Deliberate unzoomed differences: Decision shows 1-year labels for spans ≤ 6 years, and on a desktop the next-finer
+  step just past a `yearTicks` threshold; PowerLaw's dates are UTC 1-January starts (they were arbitrary weeks, labelled
+  in local time); both X axes gain `allowDataOverflow`, which recharts needs to narrow a domain.
+
+**⚠ Known limit (Z4, Z5).** Zoom shows only the points each chart already carries — Decision's history is
+stride-downsampled to ≤ 800 points (about weekly) and PowerLaw's rows are weekly — so a 3-month window is coarse: about
+a dozen points. Per-view resampling is a possible follow-up, and it must keep zoom out of the data memos. But the source
+itself is 4-day (blockchain.info returns one point every 4 days), so per-view resampling could at most double today's
+detail; daily detail would need another source.
+
+**Adoption recipe (for the other eight Recharts charts).** A numeric X axis; `useChartZoom(full, scales)` called once,
+with a memoised NON-NULL full extent; `domain={zoom.view.x}` / `domain={zoom.view.y}` plus `allowDataOverflow` on BOTH
+axes; explicit `ticks`; `<Customized component={zoom.probe}/>`; the Tooltip's `active={zoom.dragging ? false :
+undefined}`; the chart wrapped in `ChartZoomFrame`, inside its own memoised component; recharts' rule — no fragments
+around conditional children. Then add the file to `ADOPTERS` in `chartZoomWiring.test.ts`.
+
+**Tests.** `src/lib/__tests__/chartZoom.test.ts` (each ⭐ names the mutation that turns it red) and the source-reading
+`src/components/ui/__tests__/chartZoomWiring.test.ts` (the recipe per adopter; VIEW ONLY — `zoom` reaches no data
+memo, and the eight `buildChartSeries` arguments stand; zero imports in `chartZoom.ts`; exactly ONE `passive: false`,
+on the touchmove; every touch listener states its `passive:`, touchstart's `true`; the lock goes through `lockAxis(`;
+Z1's three rules; Z9's order), plus two e2e — the Decision zoom smoke and the Z6 synthetic-touch test — and the Power
+Law drag test's zoom assertions (see § Build & Deploy → E2E). **The iOS device gate stays mandatory** — Chromium can't
+prove the arbitration: (1) a vertical scroll that starts on each chart is smooth (if not, pinch moves to Zoom/Pan-only —
+decision 1's fallback); (2) a sideways drag moves the tooltip and the page stays still, even with a wobble, while a
+vertical start still scrolls; (3) a pinch zooms the chart, never the page; (4) a double-tap resets and a tap shows the
+tooltip; (5) Zoom is one-shot after a box; (6) Pan pans and toggles off; (7) the edge swipe goes back in every mode;
+(8) the toolbar row is tappable; (9) a pan at full history stays smooth; (10) the seam and inspected-month hairlines
+behave after a zoom.
+
+---
+
 ## Mobile Responsive
 
 - Tab bar: `overflow-x: auto`, short labels ≤640px
@@ -6114,7 +6272,8 @@ goes red.)
     (dust reads "none" / "even", never "$0" or "0.000 ₿"); `stressNote`, `moveCardText`, the file name, the
     manual-price note; ⭐ the Today row and the loan line's "today" require `sim.policyApplied`.
   - `decisionChartView.test.ts` — ⭐ `chartDomain` (spans every plotted price; a gap never drags it to 0; nothing ⇒
-    null) and ⭐ `xExtent` / `yearTicks` (every 4 years across history + 5, every 8 across history + 20, junk ⇒ none).
+    null) and ⭐ `xExtent`. Its three `yearTicks` cases moved to `chartZoom.test.ts` with chart zoom: `timeTicks`
+    gives two of them unchanged, and the ≤ 6-year span yearly labels, by design.
   - `decisionWiring.test.ts` (new, source-reading, 35 checks — 36 with W1's — see § Decision face → the wiring
     guard). Every check proven red by one of 23 temporary edits, each restoring the file.
 - **Decision face — W1: Worst (modeled) = closest to a forced sale** (each ⭐ red under a named mutation, every file
@@ -6156,6 +6315,35 @@ goes red.)
     `openingBtc` without the reserve). `stressAnchor.test.ts` — red on its own once the face existed, then listed.
   - `e2e/navigation.spec.ts` — ⭐ the Decision smoke (G9): with history stubbed (THE MOVE, the plan-of-record line,
     the chart, no crash) and with it failing (the "didn't load" breaker line). Red when the hub's branch is removed.
+- **Chart zoom** (§ Chart zoom, spec v1.3; every ⭐ red under its named mutation, every file restored and hash-checked):
+  - `src/lib/__tests__/chartZoom.test.ts` — round synthetic figures:
+    - ⭐ 1–2 scale and pixels (the log midpoint of [1,000, 100,000] is 10,000; the plot's top pixel is the HIGH end);
+    - ⭐ 3–6 the box: Plotly's rule, including the 20px cap and the 8px click; direction never matters; a dates-only box
+      leaves y auto; a box pins log-space prices;
+    - ⭐ 7–10 step, pan, pinch and the clamp. ⚠ Test 10 pins the shift at BOTH ends (Z7): a clip at the low end
+      stayed green until [−50, 50] days → [0, 100] joined the high-end case;
+    - ⭐ 11 `timeTicks` ≡ the frozen old `yearTicks` at density 6 over a 500-plus-span sweep; ⭐ 12 the zoomed re-flow
+      at UTC month starts; ⭐ 13 a fixed month table ("Sep", never ICU's "Sept");
+    - ⭐ 14–15 `logTicks` pins, and a differential over 510 domains against recharts' own vendored d3
+      (`victory-vendor/d3-scale`, imported by the TEST only) — the proof that the unzoomed axis is unchanged;
+    - ⭐ 16 the base formatter while its labels are distinct; ⭐ 17 the double tap; 18 the note's wording;
+      ⭐ 19–20 Z3a / Z3b;
+    - ⭐ 21 `lockAxis` (Z6) — red dropping the absolute values (a leftward scrub reads as vertical), the 8px gate (a
+      tap's twitch locks), or with ties held sideways.
+  - `src/components/ui/__tests__/chartZoomWiring.test.ts` — source-reading:
+    - per adopter (`ADOPTERS`: DecisionFace, PowerLawChart): `useChartZoom(` once; both axes `domain={zoom.view.x|y}`
+      with `allowDataOverflow` and `ticks={`; `timeTicks(` / `logTicks(`; the probe; the tooltip's `active`;
+    - VIEW ONLY: `zoom` reaches no data memo (Decision's `engineInputs` / `chart` / `domain` / `xRange`, PowerLaw's
+      `chartData`), and the eight `buildChartSeries` arguments stand;
+    - `chartZoom.ts` imports nothing; exactly ONE `passive: false`, on the touchmove;
+    - ⭐ every touch listener states its `passive:` option and touchstart's is `true` (red dropping touchstart's
+      options object — an element's listener is non-passive by default in WebKit);
+    - ⭐ the Z6 lock goes through `lockAxis(` (red open-coding it in the hook);
+    - Z1's three `pointer-events: none` rules; ⭐ Z9's toolbar order (red swapping + and − back);
+    - its helpers: `tag()` skips a `/>` inside `{…}`, and `memoBody()` matches parens, so a multi-line memo never
+      runs into the next.
+  - e2e: the Decision zoom smoke, ⭐ the Z6 synthetic-touch test (red dropping the scrub's preventDefault, or holding a
+    vertical stroke too), and the Power Law drag test's zoom assertions — § Build & Deploy → E2E.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -6553,12 +6741,24 @@ Almanac. **P3.1 additions:** NESTED edge-back (open a Settings subpage → one e
 chart scrub also asserts `document.scrollingElement.scrollTop` is unchanged — ⚠ that half passes TRIVIALLY in
 Chromium since synthetic `page.mouse` can't drive native touch-scroll; kept as an intent marker, the real proof is
 the device gate. Helper `mouseDragX(...,{release?})` drives raw `page.mouse` from a coordinate. (`faceHostBox` was
-deleted with the pager.) **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+deleted with the pager.) **Chart zoom:** that Power Law drag test now also asserts the drag ZOOMS the chart
+(`data-zoomed="true"` — a mouse drag draws a box) and a double-click inside `chart-zoom-plot` resets it. ⚠ **Before
+chart zoom it was VACUOUS:** on the phone layout the chart's top sits at or below the bottom of the 844px viewport
+(measured at y 841–890), so the drag was measured there, started OFF-SCREEN and never touched the chart. It now calls `scrollIntoViewIfNeeded()` first
+(Z8); the drag is unchanged — its release 29px off the left edge still registers. **Decision describe:** the zoom smoke
+(drag a box across the middle 40% × 50% of the plot → zoomed, the "Double-click to zoom back out" note and new tick
+labels; a double-click → the full view and the recorded labels; then Z1's HOVER step — the tooltip still rises, so the
+overlay never takes the pointer); and the **Z6 synthetic-touch test**, which dispatches `Touch` / `TouchEvent`s at the
+plot centre (`dispatchEvent` returns false if and only if a listener cancelled the event): a sideways stroke is free
+under 8px and held from the move that passes it, wobble included; a vertical stroke is never held, even when it turns
+sideways; a touchstart never is; a second finger hands a held scrub to the pinch, which zooms. It proves the HOOK's
+decisions, not iOS's scroll arbitration. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the
 claim RULE is unit-tested (`resolveScrollClaim`) instead; the iOS blur-races-pointerdown timing; the
-standalone-PWA container; true 60fps.
+standalone-PWA container; true 60fps; chart zoom's touch arbitration (the pinch, the Z6 scrub lock, `touch-action` by
+mode — § Chart zoom's device gate).
 
 **⚠️ CI runs Node 22.23.2; local is Node 26.** Their `Math.pow` differs in the last bit on about 1 input in 10,
 so an exact comparison over a `Math.pow`-built value can pass locally and fail CI. Reproduce CI's runtime with
@@ -8597,6 +8797,8 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't | The real balances carry every past decision; the BREAKER does not. So the run is seeded with `breakerFromHistory` (folded over real month-end closes vs support, through the engine's own `nextRearmableBreakerState` — never a second trip rule) and with Strike's hold from LOGGED deposits (`holdMonthsFrom`). **Never from a decision log.** When the price history does not load, `breakerFromHistory` returns `null` and the card SAYS the run assumes "not broken" — it never assumes it silently. ⚠ `openingBreaker` / `openingStrikeHoldMonths` are REAL inputs, not test-only: they must never join the forbidden-input grep. ⚠ A seeded break leaves `brokenMonth` null, so every copy reader goes through `hadBreak`, never `brokenMonth !== null` |
 | The Decision face seeds its run from THE MOVE only when the move is MADE | `engineInputs` start from `placement.opening` only when `seedFromMove = placement.seeded && supportPolicy !== undefined`, and from the store's own balances otherwise (v1.6, amended in Run B: with the policy off the card names no move). `placement.seeded` is false in every inert state, `'unavailable'` included, where `opening` carries placeholder zeros. ONE placement-input object (priced at the held anchor and `supportPath[0]`, with `broken` from the same `breakerSeed` the run's `openingBreaker` gets) feeds both the plan and the card (B1). Pinned by `decisionWiring.test.ts` and `resetMirror.test.ts`'s widened cold regex |
 | The Decision face's Print never clears its body class synchronously | Print sets `body.decision-print`, then calls `window.print()`; the class clears on `afterprint`, the next `pointerdown`, `keydown` or window `focus`, and on unmount. Safari and mobile browsers return from `print()` at once, before the page is laid out for print, so a synchronous clear prints the whole app. Every print rule in `DecisionFace.module.css` is gated on that class (a CSS module loads app-wide, so an ungated `@media print` would take over printing everywhere). Pinned by `decisionWiring.test.ts` (C1) |
+| Chart zoom changes the VIEW only | Zoom state reaches the axes' `domain` / `ticks`, the Tooltip's `active` and the overlay — never a series, a domain-as-data or an engine input. On Decision, `buildChartSeries`, `chartDomain`, `xExtent` and `engineInputs` stay the full view; on PowerLaw, `chartData`. A narrowed axis needs `allowDataOverflow` (recharts widens it back to the data otherwise). Pinned by `chartZoomWiring.test.ts` (VIEW ONLY + the per-adopter recipe) |
+| A chart's `touch-action` follows its zoom mode, and its one non-passive listener is the `touchmove` | `pan-y` in Scroll mode, `none` while Zoom or Pan is pressed. The `touchmove` (scoped to the chart area) is the ONLY non-passive listener: it cancels only a pinch or a Z6 sideways scrub, and only while `e.cancelable`. A `touchstart` is passive and never cancelled — taps must reach the tooltip and the double-tap reset — and a vertical stroke is never held. The lock is decided by the pure `lockAxis`, and the stroke lives in the gesture effect's closure, one per chart (never module state). Pinned by `chartZoomWiring.test.ts` and the Z6 e2e; the iOS arbitration is device-gated |
 | THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice` | Every line THE MOVE shows is built as DATA by `moveCard` (`decisionView.ts`), in §7's order, each with a tone — the face renders them and composes nothing, because a sentence written in JSX is a sentence no test can reach. The Coinbase seizure price is `cbMetrics(...).liqPrice` wherever it prints (`moveCard`), draws (`cliffPath`) or ranks (the Worst (modeled) cushion) — the same formula the Safety Dashboard and the CB Loan tab already use, never a second one. Per projected row it is ALWAYS `cbSeizurePrice` (cbMetrics), the one rule the cliff and the ranking share (W1; a source guard fails if either computes its own) |
 | `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console and the Monthly Playbook's THIS MONTH line both build through it; never copy it. The card (`playbookCard`) and the line (`monthPlaybookLine`) read one private reading, so they never disagree on a step, a gap or an outcome |
 | The console's doom warning keys off the after-state (≥ 86%), never `result.doomed` | `doomed` is read at the open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read. Pinned both ways in `crashPlaybookView.test.ts`: keying the warning off `result.doomed` turns the doomed-but-saved ⭐ and the exact-86% ⭐ red |

@@ -1,8 +1,8 @@
-import { Fragment, useEffect, useId, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import {
-  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine,
+  ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Customized,
 } from 'recharts';
 import { useStore } from '../../store/useStore';
 import { runCyclingSim, effectiveStrikeCapPct } from '../../simulation/cyclingSim';
@@ -27,7 +27,7 @@ import {
 import {
   buildSupportPath, supportPolicyFor, supportAtDates, breakerFromHistory, holdMonthsFrom,
 } from './supportPolicyInputs';
-import { buildChartSeries, cliffPath, chartDomain, xExtent, yearTicks } from './decisionChartView';
+import { buildChartSeries, cliffPath, chartDomain, xExtent, type DecisionChartSeries } from './decisionChartView';
 import {
   moveCard, moveCardText, planSchedule, planOutcome, coinbaseLoanLine, scheduleToText, crashNote, consoleLinkLabel,
   decisionDisclaimer, pathSublabel, pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles,
@@ -38,6 +38,11 @@ import SupportPolicyCard from './SupportPolicyCard';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { downloadBlob } from '../../lib/backup/downloadFile';
+import {
+  timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter, type Domain, type Scales, type View,
+} from '../../lib/chartZoom';
+import { useChartZoom } from '../../hooks/useChartZoom';
+import { ChartZoomFrame } from '../ui/ChartZoomFrame';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './DecisionFace.module.css';
 
@@ -123,7 +128,6 @@ const fmtAxisUsd = (v: number): string => {
   if (v >= 1) return `$${Math.round(v)}`;
   return `$${v.toFixed(2)}`;
 };
-const fmtYear = (t: number): string => String(new Date(t).getUTCFullYear());
 
 interface TipItem { name?: string; value?: number | null; color?: string }
 /** The faces' token tooltip, dated in UTC through the fixed month table. */
@@ -143,6 +147,82 @@ function DecisionTip({ active, payload, label }: { active?: boolean; payload?: T
     </div>
   );
 }
+
+/** Dates × log price — the chart-zoom scales (a module constant, so the hook's inputs stay stable). */
+const TIME_LOG: Scales = { x: 'linear', y: 'log' };
+
+interface DecisionChartProps {
+  chart: DecisionChartSeries;
+  xRange: Domain;
+  domain: Domain;
+  pathColor: string;
+  drawFloor: boolean;
+  hasCliff: boolean;
+  /** The inspected month's hairline, or null at month 0. */
+  inspectT: number | null;
+}
+
+/**
+ * The chart (D5, D6), with chart zoom (spec `pbloc-spec-chart-zoom-v1.md`). Memoised and fed only from the face's own
+ * memos, so a pan or pinch re-renders this chart — never the schedule. VIEW ONLY: the series, their domains and the
+ * seam all come from the face; zoom only chooses the axis domains and ticks.
+ */
+const DecisionChart = memo(function DecisionChart({
+  chart, xRange, domain, pathColor, drawFloor, hasCliff, inspectT,
+}: DecisionChartProps) {
+  const fullView = useMemo((): View => ({ x: xRange, y: domain }), [xRange, domain]);
+  const zoom = useChartZoom(fullView, TIME_LOG);
+  // Explicit ticks — with per-series data recharts would otherwise tick every data point.
+  const xAxis = useMemo(() => timeTicks(zoom.view.x, tickDensity(zoom.plotWidth)), [zoom.view.x, zoom.plotWidth]);
+  const yTicks = useMemo(() => logTicks(zoom.view.y), [zoom.view.y]);
+  const fmtPrice = useMemo(() => priceTickFormatter(yTicks, fmtAxisUsd), [yTicks]);
+  const fmtDate = useCallback((t: number, i: number) => fmtTimeTick(t, xAxis.unit, i), [xAxis.unit]);
+  // A per-mount gradient id — PriceChart's `priceFill` is a document-global SVG id, so a literal one could collide.
+  const uid = useId();
+  const gradientId = `decisionHistory${uid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  return (
+    <div className={styles.chartBox}>
+      <ChartZoomFrame zoom={zoom}>
+        <ResponsiveContainer width="100%" height="100%">
+          <ComposedChart margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+            <defs>
+              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--btc)" stopOpacity={0.22} />
+                <stop offset="100%" stopColor="var(--btc)" stopOpacity={0} />
+              </linearGradient>
+            </defs>
+            <CartesianGrid stroke="var(--line-2)" vertical={false} />
+            <XAxis dataKey="t" type="number" scale="time" domain={zoom.view.x} ticks={xAxis.ticks} allowDataOverflow
+              allowDuplicatedCategory={false} tickFormatter={fmtDate}
+              tick={{ fontSize: 10, fill: 'var(--text-faint)' }} axisLine={false} tickLine={false} />
+            <YAxis type="number" scale="log" domain={zoom.view.y} ticks={yTicks} allowDataOverflow tickFormatter={fmtPrice}
+              tick={{ fontSize: 10, fill: 'var(--text-faint)' }} axisLine={false} tickLine={false} width={52} />
+            <Tooltip content={<DecisionTip />} active={zoom.dragging ? false : undefined} />
+            <Area data={chart.history} dataKey="price" name="History" type="monotone" baseValue="dataMin"
+              stroke="var(--btc)" strokeWidth={1.5} fill={`url(#${gradientId})`} dot={false}
+              isAnimationActive={false} />
+            <Line data={chart.support} dataKey="price" name="Support" stroke="var(--green)" strokeWidth={1.25}
+              dot={false} isAnimationActive={false} connectNulls={false} />
+            {drawFloor && (
+              <Line data={chart.floor} dataKey="price" name="Stitched floor" stroke={STITCHED_COLOR}
+                strokeWidth={2} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
+            )}
+            <Line data={chart.forward} dataKey="price" name="Modeled path" stroke={pathColor} strokeWidth={1.75}
+              strokeDasharray="5 3" dot={false} isAnimationActive={false} />
+            {hasCliff && (
+              <Line data={chart.cliff} dataKey="price" name="Coinbase seizes" stroke="var(--red)"
+                strokeWidth={1.25} strokeDasharray="1 3" dot={false} isAnimationActive={false}
+                connectNulls={false} />
+            )}
+            <ReferenceLine x={chart.seamT} stroke="var(--text-faint)" strokeDasharray="2 2" />
+            {inspectT !== null && <ReferenceLine x={inspectT} stroke="var(--btc)" strokeOpacity={0.55} />}
+            <Customized component={zoom.probe} />
+          </ComposedChart>
+        </ResponsiveContainer>
+      </ChartZoomFrame>
+    </div>
+  );
+});
 
 export interface DecisionFaceProps {
   /** Tap-through to a parent face, or to the Emergency Console. A narrow union, so this face never imports the
@@ -392,15 +472,11 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     [historical, startDate, displayedPath, stitched, supportPath, months, cliff],
   );
   const domain = useMemo(() => chartDomain(chart), [chart]);
-  // Explicit extent and year ticks — with per-series data recharts would otherwise tick every data point.
+  // The chart's full extent — the unzoomed view. Chart zoom narrows the axes inside DecisionChart, never these.
   const xRange = useMemo(() => xExtent(chart), [chart]);
-  const xTicks = useMemo(() => (xRange === null ? [] : yearTicks(xRange[0], xRange[1])), [xRange]);
   const hasCliff = chart.cliff.some((p) => p.price !== null);
   // The stitched floor is always drawn — once: not when it IS the displayed path, nor on the line while it is Support.
   const drawFloor = !sameSeries(stitched, displayedPath) && !(onTheLine && stitchedIsSupport);
-  // A per-mount gradient id — PriceChart's `priceFill` is a document-global SVG id, so a literal one could collide.
-  const uid = useId();
-  const gradientId = `decisionHistory${uid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const inspectT = addMonths(startDate, monthIdx).getTime();
   const manualNote = manualPriceNote(s.btcPriceMode);
 
@@ -502,43 +578,8 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
         {domain === null || xRange === null ? (
           <div className={styles.chartEmpty}>{historyLoading ? 'Loading price history…' : 'Price history unavailable'}</div>
         ) : (
-          <div className={styles.chartBox}>
-            <ResponsiveContainer width="100%" height="100%">
-              <ComposedChart margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-                <defs>
-                  <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--btc)" stopOpacity={0.22} />
-                    <stop offset="100%" stopColor="var(--btc)" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="var(--line-2)" vertical={false} />
-                <XAxis dataKey="t" type="number" scale="time" domain={xRange} ticks={xTicks}
-                  allowDuplicatedCategory={false} tickFormatter={fmtYear}
-                  tick={{ fontSize: 10, fill: 'var(--text-faint)' }} axisLine={false} tickLine={false} />
-                <YAxis type="number" scale="log" domain={domain} allowDataOverflow tickFormatter={fmtAxisUsd}
-                  tick={{ fontSize: 10, fill: 'var(--text-faint)' }} axisLine={false} tickLine={false} width={52} />
-                <Tooltip content={<DecisionTip />} />
-                <Area data={chart.history} dataKey="price" name="History" type="monotone" baseValue="dataMin"
-                  stroke="var(--btc)" strokeWidth={1.5} fill={`url(#${gradientId})`} dot={false}
-                  isAnimationActive={false} />
-                <Line data={chart.support} dataKey="price" name="Support" stroke="var(--green)" strokeWidth={1.25}
-                  dot={false} isAnimationActive={false} connectNulls={false} />
-                {drawFloor && (
-                  <Line data={chart.floor} dataKey="price" name="Stitched floor" stroke={STITCHED_COLOR}
-                    strokeWidth={2} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
-                )}
-                <Line data={chart.forward} dataKey="price" name="Modeled path" stroke={pathColor} strokeWidth={1.75}
-                  strokeDasharray="5 3" dot={false} isAnimationActive={false} />
-                {hasCliff && (
-                  <Line data={chart.cliff} dataKey="price" name="Coinbase seizes" stroke="var(--red)"
-                    strokeWidth={1.25} strokeDasharray="1 3" dot={false} isAnimationActive={false}
-                    connectNulls={false} />
-                )}
-                <ReferenceLine x={chart.seamT} stroke="var(--text-faint)" strokeDasharray="2 2" />
-                {monthIdx > 0 && <ReferenceLine x={inspectT} stroke="var(--btc)" strokeOpacity={0.55} />}
-              </ComposedChart>
-            </ResponsiveContainer>
-          </div>
+          <DecisionChart chart={chart} xRange={xRange} domain={domain} pathColor={pathColor} drawFloor={drawFloor}
+            hasCliff={hasCliff} inspectT={monthIdx > 0 ? inspectT : null} />
         )}
         <div className={styles.legend}>
           {chart.history.length > 1 && (

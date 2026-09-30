@@ -1,0 +1,112 @@
+/* ChartZoomFrame — tokens only. The toolbar is a row above the plot on a touch device and Plotly's hover overlay on a
+   fine pointer. 🔴 Z1: .plot, .box and .note are pointer-events: none — each rule keeps its own line, and
+   chartZoomWiring.test.ts turns red if any one of them loses it. */
+
+.frame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-width: 0;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 4px;
+  padding: 0 4px 6px 0;
+}
+
+.btn {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface-2);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.btn svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.btn:hover:not(:disabled) { color: var(--text-primary); }
+.btn[aria-pressed='true'] {
+  color: var(--btc);
+  border-color: color-mix(in srgb, var(--btc) 45%, transparent);
+}
+.btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The gesture surface. No padding or border — the probed plot rect is relative to its top-left. */
+.area {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.plot {
+  position: absolute;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* The shaded-outside box: the shadow fills the plot around it, clipped by .plot's overflow. */
+.box {
+  position: absolute;
+  display: none;
+  pointer-events: none;
+  border: 1px solid var(--text-muted);
+  box-shadow: 0 0 0 9999px color-mix(in srgb, var(--bg-base) 55%, transparent);
+}
+
+.note {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  pointer-events: none;
+  padding: 4px 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface-3);
+  color: var(--text-secondary);
+  font-size: 11px;
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 400ms var(--ease-standard);
+}
+.noteFading { opacity: 0; }
+
+@media (hover: hover) and (pointer: fine) {
+  .toolbar {
+    position: absolute;
+    top: 4px;
+    right: 16px;
+    z-index: 3;
+    padding: 0;
+    opacity: 0;
+    transition: opacity var(--motion-fast) var(--ease-standard);
+  }
+  .frame:hover .toolbar,
+  .frame:focus-within .toolbar,
+  .frame[data-zoomed='true'] .toolbar { opacity: 1; }
+
+  .area[data-mode='zoom'] { cursor: crosshair; }
+  .area[data-mode='pan'] { cursor: grab; }
+  .area[data-mode='pan'][data-dragging='true'] { cursor: grabbing; }
+}

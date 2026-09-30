@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 import {
   ComposedChart,
   Line,
@@ -7,11 +7,21 @@ import {
   Tooltip,
   ReferenceLine,
   ResponsiveContainer,
+  Customized,
 } from 'recharts';
 import { fmtUSD } from '../../utils/format';
 import { PricePoint, BandPoint } from '../../hooks/usePowerLawData';
+import {
+  timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter, type Domain, type Scales, type View,
+} from '../../lib/chartZoom';
+import { useChartZoom } from '../../hooks/useChartZoom';
+import { ChartZoomFrame } from '../ui/ChartZoomFrame';
 
 const ONE_DAY = 86_400_000;
+/** The price axis's full extent (unchanged); chart zoom narrows it inside. */
+const PRICE_DOMAIN: Domain = [0.01, 100_000_000];
+/** Dates × log price — the chart-zoom scales (a module constant, so the hook's inputs stay stable). */
+const TIME_LOG: Scales = { x: 'linear', y: 'log' };
 
 interface ChartRow {
   timestamp: number;
@@ -105,73 +115,91 @@ export function PowerLawChart({ historical, bands }: Props) {
       .sort((a, b) => a.timestamp - b.timestamp);
   }, [historical, bands]);
 
+  // The full extent — the unzoomed view. Chart zoom narrows the axes; it never touches `chartData`.
+  const fullView = useMemo((): View => ({
+    x: chartData.length >= 2 ? [chartData[0].timestamp, chartData[chartData.length - 1].timestamp] : [0, ONE_DAY],
+    y: PRICE_DOMAIN,
+  }), [chartData]);
+  const zoom = useChartZoom(fullView, TIME_LOG);
+  // Explicit UTC year starts (the auto ticks sat at arbitrary weeks, labelled in local time).
+  const xAxis = useMemo(() => timeTicks(zoom.view.x, tickDensity(zoom.plotWidth)), [zoom.view.x, zoom.plotWidth]);
+  const yTicks = useMemo(() => logTicks(zoom.view.y), [zoom.view.y]);
+  const fmtPrice = useMemo(() => priceTickFormatter(yTicks, fmtY), [yTicks]);
+  const fmtDate = useCallback((t: number, i: number) => fmtTimeTick(t, xAxis.unit, i), [xAxis.unit]);
+
   return (
-    <ResponsiveContainer width="100%" height={520}>
-      <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 40, left: 10 }}>
-        <XAxis
-          dataKey="timestamp"
-          scale="time"
-          type="number"
-          domain={['auto', 'auto']}
-          tickFormatter={(ts: number) => new Date(ts).getFullYear().toString()}
-          tick={{ fontSize: 10, fill: '#666' }}
-          axisLine={false}
-          tickLine={false}
-        />
-        <YAxis
-          scale="log"
-          domain={[0.01, 100_000_000]}
-          allowDataOverflow
-          tickFormatter={fmtY}
-          tick={{ fontSize: 10, fill: '#666' }}
-          axisLine={false}
-          tickLine={false}
-          width={70}
-        />
-        <Tooltip content={<PowerLawTooltip />} />
+    <ChartZoomFrame zoom={zoom}>
+      <ResponsiveContainer width="100%" height={520}>
+        <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 40, left: 10 }}>
+          <XAxis
+            dataKey="timestamp"
+            scale="time"
+            type="number"
+            domain={zoom.view.x}
+            ticks={xAxis.ticks}
+            allowDataOverflow
+            tickFormatter={fmtDate}
+            tick={{ fontSize: 10, fill: '#666' }}
+            axisLine={false}
+            tickLine={false}
+          />
+          <YAxis
+            scale="log"
+            domain={zoom.view.y}
+            ticks={yTicks}
+            allowDataOverflow
+            tickFormatter={fmtPrice}
+            tick={{ fontSize: 10, fill: '#666' }}
+            axisLine={false}
+            tickLine={false}
+            width={70}
+          />
+          <Tooltip content={<PowerLawTooltip />} active={zoom.dragging ? false : undefined} />
 
-        <Line
-          dataKey="ceiling"
-          stroke="#E85A4F"
-          strokeWidth={1.5}
-          strokeDasharray="4 2"
-          dot={false}
-          connectNulls
-          isAnimationActive={false}
-        />
-        <Line
-          dataKey="fair"
-          stroke="#CCCCCC"
-          strokeWidth={1.5}
-          dot={false}
-          connectNulls
-          isAnimationActive={false}
-        />
-        <Line
-          dataKey="floor"
-          stroke="#4ECB82"
-          strokeWidth={1.5}
-          strokeDasharray="4 2"
-          dot={false}
-          connectNulls
-          isAnimationActive={false}
-        />
-        <Line
-          dataKey="price"
-          stroke="#E8836A"
-          strokeWidth={2}
-          dot={false}
-          connectNulls
-          isAnimationActive={false}
-        />
+          <Line
+            dataKey="ceiling"
+            stroke="#E85A4F"
+            strokeWidth={1.5}
+            strokeDasharray="4 2"
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+          <Line
+            dataKey="fair"
+            stroke="#CCCCCC"
+            strokeWidth={1.5}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+          <Line
+            dataKey="floor"
+            stroke="#4ECB82"
+            strokeWidth={1.5}
+            strokeDasharray="4 2"
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
+          <Line
+            dataKey="price"
+            stroke="#E8836A"
+            strokeWidth={2}
+            dot={false}
+            connectNulls
+            isAnimationActive={false}
+          />
 
-        <ReferenceLine
-          x={Date.now()}
-          stroke="#444"
-          strokeDasharray="3 3"
-          label={{ value: 'Today', fill: '#666', fontSize: 10, position: 'insideTopRight' }}
-        />
-      </ComposedChart>
-    </ResponsiveContainer>
+          <ReferenceLine
+            x={Date.now()}
+            stroke="#444"
+            strokeDasharray="3 3"
+            label={{ value: 'Today', fill: '#666', fontSize: 10, position: 'insideTopRight' }}
+          />
+          <Customized component={zoom.probe} />
+        </ComposedChart>
+      </ResponsiveContainer>
+    </ChartZoomFrame>
   );
 }
