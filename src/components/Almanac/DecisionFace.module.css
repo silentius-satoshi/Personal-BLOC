@@ -29,22 +29,25 @@
 .disclaimer { composes: disclaimer from './CyclingFace.module.css'; }
 
 /* ── From OwnershipFace / UnifiedFace ─────────────────────────────────────────────────────────── */
-/* ⚠ The local height follows `composes:` on the same rule, so it wins by source order (the Mining/PowerLaw rule). */
-.chartBox { composes: chartBox from './OwnershipFace.module.css'; height: 280px; }
+/* ⚠ The height takes a DOUBLED class (0,2,0). Beside `composes:` it would tie OwnershipFace's 240px (0,1,0), so the
+   bundle's rule order would decide, and that was right only because this file happens to land later (P9).
+   composedOverrides.test.ts pins the rule. */
+.chartBox { composes: chartBox from './OwnershipFace.module.css'; }
+.chartBox.chartBox { height: 280px; }
 /* Chart zoom: on a touch device the zoom toolbar is a row above the plot — the box grows by it, so the plot keeps its
    280px. (The complement of ChartZoomFrame's fine-pointer overlay query.) */
 @media not all and (hover: hover) and (pointer: fine) {
-  .chartBox { height: 316px; }
+  .chartBox.chartBox { height: 316px; }
 }
 .stateLine { composes: stateLine from './UnifiedFace.module.css'; }
 
 /* ── New to this face ─────────────────────────────────────────────────────────────────────────── */
 
 /* THE MOVE — the card the face opens with, so it carries the bitcoin accent on its border. */
-.moveCard {
-  composes: card from './CyclingFace.module.css';
-  border-color: color-mix(in srgb, var(--btc) 35%, var(--line));
-}
+.moveCard { composes: card from './CyclingFace.module.css'; }
+/* ⚠ Doubled (0,2,0): beside `composes:` the border-color would tie the composed card's `border` shorthand, which sets
+   it too (P11). */
+.moveCard.moveCard { border-color: color-mix(in srgb, var(--btc) 35%, var(--line)); }
 .moveLine {
   display: flex;
   flex-wrap: wrap;
@@ -95,7 +98,7 @@
   justify-content: center;
   font-family: var(--mono);
   font-size: 11px;
-  color: var(--text-faint);
+  color: var(--text-muted);   /* P6 — the zoom charts' one quiet-text colour (5.3:1) */
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 14px;

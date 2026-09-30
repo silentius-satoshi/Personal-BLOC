@@ -1,6 +1,5 @@
 .main {
   composes: toolContainer from '../Tools/toolShell.module.css';
-  max-width: 960px;
   --color-solo:   #FF4444;
   --color-split:  #F7931A;
   --color-pooled: #00C896;
@@ -8,6 +7,9 @@
   flex-direction: column;
   gap: 16px;
 }
+/* ⚠ The width takes a DOUBLED class (0,2,0). Beside `composes:` it ties .toolContainer's 600px (0,1,0), and production
+   emits toolShell's CSS last, so the 600px won on a computer (P10). composedOverrides.test.ts pins the rule. */
+.main.main { max-width: 960px; }
 
 .topBar {
   display: flex;

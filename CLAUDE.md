@@ -610,7 +610,12 @@ src/
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
                                 # (W1 moved it here from supportPolicyView, which re-exports it, because
-                                # src/simulation's cbSeizurePrice reads it too). A source guard pins ONE definition
+                                # src/simulation's cbSeizurePrice reads it too). A source guard pins ONE definition.
+                                # + fmtTooltipUsd — THE chart-tooltip price (Power Law polish P1): the Decision AND the
+                                # Power Law tooltips both print through it (powerLawWiring pins both). fmtUSD rounds
+                                # to whole dollars, so a real sub-50¢ price read "$0". Whole dollars from $1; two
+                                # significant digits below (never exponent notation); "under $0.01" below a cent (the
+                                # power-law bands near GENESIS reach ~1e-12); "—" for ≤ 0 / not finite
 
   components/
     Layout/
@@ -771,9 +776,10 @@ src/
                                 # one effectivePolicyStops call (source guards). Pinned by
                                 # __tests__/crashPlaybookView.test.ts + __tests__/emergencyConsoleWiring.test.ts +
                                 # __tests__/monthlyPlaybookWiring.test.ts
-      toolShell.module.css      # Shared `.toolContainer` (Almanac's tokens: 600px centered + iOS-safe overflow).
-                                # Phase 1 adopters: EmergencyConsole + LiqSimulator. FOLLOW-UP (device-verify pending):
-                                # Converter / Mining / PowerLaw / Almanac still to adopt via `composes:`
+      toolShell.module.css      # Shared `.toolContainer` (Almanac's tokens: 600px centered + iOS-safe overflow), composed
+                                # by all five tools + AlmanacView's `.container`. A wider tool overrides the 600px on a
+                                # DOUBLED class — `.main.main { max-width }`: Mining / PowerLaw 960, Converter 700 —
+                                # never beside `composes:` (P10; § Critical Constraints; composedOverrides.test.ts)
 
     ui/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
@@ -1157,11 +1163,42 @@ src/
       StressTest.tsx
 
     PowerLaw/
-      PowerLawMain.tsx
+      PowerLawMain.tsx          # Header · the chart once the history has loaded · the disclaimer. Loading and error show
+                                # PowerLawChartEmpty ("Loading price history…" / "Price history unavailable" — the raw
+                                # error is not shown), a box the chart's height: the box keeps its place when the chart
+                                # arrives, and only the swatch line under it appears then. ONE error test in both
+                                # branches (`error !== null` / `error === null`), so an empty error string can't render
+                                # both. It renders no swatches of its own: the chart lists what it draws, so nothing is
+                                # listed while loading or on error (powerLawWiring pins both)
       PowerLawChart.tsx         # Recharts calendar time × log price (YAxis scale="log", fixed [0.01, 1e8]; NOT log-log —
                                 # the X axis is dates) + the shared chart zoom (§ Chart zoom): UTC 1-January year ticks
-                                # from timeTicks, full extent = the first and last weekly row
-      PowerLawSidebar.tsx
+                                # from timeTicks, full extent = the first and last weekly row. POLISHED to the Decision
+                                # chart's conventions (spec pbloc-spec-powerlaw-polish-v1): tokens only (no hex —
+                                # powerLawWiring); the token tooltip (powerLawTooltip: a UTC "D Mon YYYY" head, prices
+                                # via fmtTooltipUsd); CartesianGrid --line-2; the history an <Area> (a per-mount useId
+                                # gradient, never animated — P2 — or it trails the bands on every pan); the bands
+                                # <Line>s from PL_SERIES; "Today" one timestamp per mount (useState); ticks
+                                # --text-muted (P6); margin {8,12,0,0}, Y width 52. Renders its own fixed-height box
+                                # (data-testid "powerlaw-chart-box") and, under it, the swatch line from
+                                # legendEntries(historyDrawn(chartData)) (data-testid "powerlaw-legend") — it lives
+                                # here because only this component has chartData (chartZoomWiring reads its memo here).
+                                # Exports PowerLawChartEmpty (the loading / error box)
+      PowerLawChart.module.css  # The box (D4): --pl-plot 480px desktop / 360px at max-width 640px, plus --pl-toolbar
+                                # 36px on touch — 480 / 396 / 516. ⚠ P8: every --pl-* value is a LENGTH (a bare 0 makes
+                                # calc() invalid → the box collapses to 0px on every fine pointer; powerLawWiring pins
+                                # the units). ⚠ The height sits on a DOUBLED class (.chartBox.chartBox and
+                                # .chartEmpty.chartEmpty), as the Decision chart's does since P9: beside `composes:` it
+                                # would tie the composed height, so load order would decide — and here OwnershipFace's
+                                # 240px won (measured; § Critical Constraints). The tooltip and swatch classes COMPOSE
+                                # the Decision chart's (CyclingFace / DecisionFace) — reused, not copied
+      powerLawView.ts           # PURE view model (+ __tests__/powerLawView.test.ts). PL_SERIES — ONE table the chart's
+                                # series, the tooltip rows and the swatches all read: History --btc area · Resistance
+                                # --amber dashed · Fair --text-secondary solid · Support --green solid (see Design
+                                # Tokens → chart colours). powerLawTooltip(t, values) · historyDrawn(rows) (P3: at least
+                                # two rows with a finite price > 0 — the log axis drops $0, and a lone point draws
+                                # nothing) · legendEntries(drawn)
+      PowerLawSidebar.tsx       # Today's model. Band names from PL_BAND_LABEL, Resistance --amber (D6 — one colour per
+                                # concept on one screen)
 
     Converter/
       ConverterMain.tsx
@@ -2521,14 +2558,20 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   `@media (max-width:640px) { .main { padding:16px } }`, since toolContainer's fixed 16px horizontal already
   covers what that query existed for), and for `AlmanacView.module.css`'s own `.container` (now
   composes-only from the same file — **zero visual change**, since `.container` WAS the byte-identical
-  reference `toolContainer` was originally extracted from). **DESKTOP-WIDTH FIX:** the 600px default
-  initially collapsed Mining (was 960px) and Converter (was 700px) on desktop — an unintended regression, not
-  the "intended" 600px-for-PowerLaw case. Fixed by RE-ASSERTING each tool's own `max-width` locally, on the
-  same `.main` rule, immediately after the `composes:` line (CSS-modules same-rule cascade: a local
-  declaration following `composes:` wins by source order) — Mining/PowerLaw → `max-width:960px`, Converter →
-  `max-width:700px`. `EmergencyConsole`/`LiqSimulator`/`AlmanacView`'s own `.container` keep the 600px
-  default unmodified (always their intended width). Mobile is unaffected either way (every viewport under
-  the relevant max-width hits `width:100%` regardless of which value is set).
+  reference `toolContainer` was originally extracted from).
+- **Desktop width.** Each wider tool overrides toolContainer's 600px default on a DOUBLED class:
+  `.main.main { max-width: 960px }` for Mining and Power Law, `700px` for the Converter.
+  - ⚠ The first fix put the `max-width` in the composing rule itself, believing that "a local declaration
+    following `composes:` wins by source order". **That is false.** The declaration ties `.toolContainer`'s
+    specificity (0,1,0), so the bundle's rule order decides, and production emits toolShell's CSS after every
+    tool's.
+  - So all three pages rendered 600px wide on a computer from the adoption until spec v1.2's P10. The e2e couldn't
+    see it: it runs 390px wide, and the dev server orders the CSS differently.
+  - `composedOverrides.test.ts` pins the rule (§ Critical Constraints).
+  - `EmergencyConsole`/`LiqSimulator`/`AlmanacView`'s own `.container` keep the 600px default unmodified (always
+    their intended width).
+  - Mobile is unaffected either way: every viewport under the relevant max-width hits `width:100%`, whichever value
+    is set.
 - **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
   eyebrow+sub-nav still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
   (unchanged content/props — `useChainTip()` stays the single per-mount data source for those two faces
@@ -3742,7 +3785,9 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   time extent (`xExtent`), with explicit ticks from chart zoom's `timeTicks` / `logTicks` — ⚠ with per-series data and
   no chart-level data recharts otherwise ticks every data point (hundreds of overlapping labels, and a duplicate-key
   warning at the seam). It lives in the memoised same-file `DecisionChart` sub-component (so a pan re-renders only the
-  chart) and ZOOMS (§ Chart zoom): `chartDomain` / `xExtent` stay the full view, and the axes read `zoom.view`. History
+  chart) and ZOOMS (§ Chart zoom): `chartDomain` / `xExtent` stay the full view, and the axes read `zoom.view`. Its
+  tick labels are `--text-muted`, like the Power Law chart's (P6), and `DecisionTip` prices through `fmtTooltipUsd` —
+  the ONE tooltip price formatter, so a sub-dollar 2010 price never reads "$0" (Power Law polish P1). History
   is a gradient `Area` whose id comes from `useId()` (PriceChart's `priceFill` is document-global); the displayed
   path is the one `sim` ran (`stressPath` while engaged); the stitched floor is drawn once (not when it IS the
   displayed path, nor on the line while it is Support); the cliff is `cliffPath` — `cbSeizurePrice` per row, the rule
@@ -5707,7 +5752,7 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 ## Design Tokens
 
 ```css
---orange: #E8836A  --green: #4ECB82  --red: #E85A4F  --amber: #E8A84A
+--orange: #E8836A  --green: #4ECB82  --red: #E8504A  --amber: #F0A030
 --bg-app / --bg-base (both #09090E, darkest)  --bg-card #111318 (slightly lighter)  --bg-input  --bg-hover
 --text-primary / secondary / ghost / muted / faint  --border
 /* Daily Mode P4a (mode-toggle-preview.html) — layered surfaces + accents, additive: */
@@ -5730,6 +5775,19 @@ export const todayLocalISO = (): string => toLocalISO(new Date());
 other two. `--coinbase` is the design system's only brand-colour token; the bar for adding a second is the
 same argument made for it (a venue read, not a level colour — no lender rule defines a venue threshold, so
 a green/amber/red on a composition bar reads as a risk verdict it doesn't have).
+
+**Chart colours — one colour per concept across faces** (Power Law polish D1, P5, P6):
+- **The concepts:** Support `--green`, Fair `--btc` and Resistance `--amber` (the faces' PATH_META), and History
+  `--btc` (the Decision chart's history area).
+- ⚠ **The one exception — Fair on the Power Law chart is `--text-secondary`.** There all four are drawn at once, over
+  the same months. Fair would collide with History outright, and `--btc` and `--amber` are only ΔE 10.8 apart. Every
+  other pair is ≥ 41 apart. Neutral is also what this chart always drew Fair in.
+- **Every series line clears 3:1** on `--surface` (green 9.1 · btc 8.2 · amber 8.7 · text-secondary 12.2).
+- **Dashes (P5):** dashed means Resistance on the Power Law chart, and a modeled path on the Decision chart. History,
+  Fair and Support are solid on both.
+- **Quiet text (P6):** both zoom charts' tick labels and the chart empty state are `--text-muted` (5.3:1). The other
+  eight charts, the Power Law subtitle and its disclaimer (`--text-ghost`, 2.0:1) wait for the queued cross-chart
+  contrast pass.
 
 **Motion vocabulary (Gesture & Motion System P0):** springs (`--ease-spring`/`--ease-spring-soft`, `linear()`
 approximations, Safari 17.2+) belong on anything that *moved under a finger* (sheets, swiped rows); beziers
@@ -6390,6 +6448,55 @@ goes red.)
   - e2e — ⭐ D2: the `schedule-keep` header cell is ONE line and doesn't overflow at 390px and 375px (red with "Keep ₿
     at support" restored: two lines at 390px); ⭐ the first Decision smoke sees the legend note on the defaults (red
     when it isn't rendered).
+- **Power Law chart polish** (spec `pbloc-spec-powerlaw-polish-v1`, P1–P11; every ⭐ red under its named mutation,
+  every file restored and hash-checked):
+  - `src/utils/__tests__/fmtTooltipUsd.test.ts` — ⭐ never "$0" for a positive price (red with `fmtUSD` for every
+    value: "$0" at $0.04; red without the sub-cent branch); ⭐ a log-spaced sweep from 1e-15 to 1e7: nothing reads as
+    zero, nothing prints in exponent notation (red with `String(v)` below a cent).
+  - `src/components/PowerLaw/__tests__/powerLawView.test.ts`:
+    - ⭐ `PL_SERIES` — the `PL_BAND_LABEL` names plus "History", D1's tokens, all distinct, only Resistance dashed (red
+      on "Fair Value", on History taking Fair's colour, on a dashed Support);
+    - ⭐ the tooltip head is UTC (red with local getters: "Dec 2026" for 1 Jan 2027);
+    - ⭐ `vite.config` pins the forks pool;
+    - ⭐ the rows: order, > 0 only, priced through `fmtTooltipUsd` (red dropping the filter, or with `fmtUSD`);
+    - ⭐ `historyDrawn` / `legendEntries` (red at `>= 1`).
+    - ⚠ **The suite's first TZ pin:** `vi.stubEnv('TZ', 'Pacific/Honolulu')` (UTC−10, no DST) BEFORE any Date is
+      made, restored in `afterAll`. In a UTC container local time IS UTC, so without it the local-getters mutation
+      would pass vacuously. The pin only takes effect in a child process, so `vite.config.ts` pins `pool: 'forks'`
+      (vitest's default, made explicit). Under `--pool=threads` the premise — `new Date(Date.UTC(2027, 0, 1))
+      .getFullYear() === 2026` — fails loudly rather than vacuously.
+  - `src/components/PowerLaw/__tests__/powerLawWiring.test.ts` (source-reading, 9 checks):
+    - no hex in any PowerLaw source file;
+    - the `useId` gradient;
+    - the grid, plus the history `<Area>` with `isAnimationActive={false}` (P2);
+    - Today as one timestamp per mount;
+    - the CSS-sized box, with every `--pl-*` value a length (P8 — red on `--pl-toolbar: 0`);
+    - ONE tooltip price formatter in both tooltips;
+    - the swatches through `legendEntries(`, with PowerLawMain rendering none and the chart only once loaded — on ONE
+      error test, `error !== null` / `error === null` (red with the chart branch back on `!error`: an empty error
+      string rendered the error box AND the chart);
+    - one tick colour on both zoom charts (P6);
+    - the sidebar's `PL_BAND_LABEL` names and `--amber` Resistance (D6).
+  - `src/styles/__tests__/composedOverrides.test.ts` — ⭐ ONE source-reading `it`, and it IS the audit (P9–P11).
+    - **What it checks.** For every composing rule in every `*.module.css` under `src/`, no single-class rule of the
+      composing class declares a property the composed class sets. Media queries are included, and the composed
+      class's own `composes:` is followed.
+    - **Shorthand-aware.** Two declarations clash when the longhands they set intersect, so `border` covers
+      `border-color`.
+    - **Non-vacuous.** A control pair must clash (`border` against `border-color`, with `border-radius` against
+      `border` as the negative), and the six doubled overrides must be found:
+      - PowerLawMain, MiningMain and ConverterMain `.main.main`;
+      - DecisionFace `.chartBox.chartBox` and `.moveCard.moveCard`;
+      - PowerLawChart `.chartBox.chartBox`.
+
+      It also finds a seventh, PowerLawChart `.chartEmpty.chartEmpty`, which is correct.
+    - **Red when:**
+      - `max-width` goes back beside `composes:` (PowerLawMain);
+      - `height` goes back beside `composes:` (DecisionFace);
+      - the Decision touch query goes back to a single `.chartBox`;
+      - MiningMain's `.main.main` is deleted;
+      - ConverterMain's is un-doubled;
+      - `.moveCard`'s `border-color` goes back beside `composes:`.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -6801,7 +6908,15 @@ sideways; a touchstart never is; a second finger hands a held scrub to the pinch
 the SAME task as its last move, so the zoom needs the release itself to land the pinch (Z14). It proves the HOOK's
 decisions, not iOS's scroll arbitration. The first Decision smoke also sees the **legend note** on the defaults
 (Support, on the line), and **D2** measures the schedule's `schedule-keep` header at 390px and at 375px
-(`setViewportSize`): ONE line — its text Range's client rects share one top — and no overflow. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
+(`setViewportSize`): ONE line — its text Range's client rects share one top — and no overflow. **The Power Law test**
+also asserts the polished chart:
+- P7: the `powerlaw-chart-box` is 396px tall at 390 wide (a 360px plot + the 36px touch toolbar row);
+- after the reset, hovering the plot's centre raises the token tooltip, headed by a UTC "D Mon YYYY" date and naming
+  Resistance · Fair · Support;
+- the swatch line lists exactly those three bands. The stub prices ONE row, and one point draws no history, so this
+  is P3 at runtime.
+
+⚠ Touch-only: the e2e never takes the fine-pointer box branch — P8's unit check in `powerLawWiring` covers it. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll
 coexistence` + `jitter handoff` are `test.fixme` device-gated) — it needs real touch + native scroll +
 `pointercancel` coordination, and synthetic touch drives no pointer pipeline / starts no native scroll, so the
@@ -8944,6 +9059,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `runAdvisor` | No imports from `runBLOC`. ⚠ **AMENDED** — it now imports `cbBorrowFee`/`cbMaxDrawForHeadroom` from `runCoinbaseLoan` (a leaf, so no cycle). The old "standalone" rule was keeping a REAL Coinbase cost out of the Advisor's reverse rotation; a duplicated fee table would have been the worse trade. CB *facts* live in `runCoinbaseLoan` and are imported by `cbMetrics`/`emergencyModel` already — this follows that precedent, not a new one. |
 | `getCollateralForTier` | Uses starting `btcPrice` — not per-month price |
 | Chart Y-axis | Always abbreviated — exact format causes label overlap |
+| Override a composed class's property on a DOUBLED selector, never beside `composes:` | A declaration in the composing rule ties the composed class's specificity (0,1,0), so the bundle's rule order decides, and that order is an accident of the import graph that differs between dev and production. P10 shipped Mining, Power Law and the Converter 600px wide in production while dev looked right. Put the override on `.x.x` (0,2,0), which wins in any order: `.main.main { max-width }`, `.chartBox.chartBox { height }`. Every single-class rule of the composing class counts, a media query's included, and so do shorthands (`border` covers `border-color`). `composedOverrides.test.ts` IS the audit, over every `*.module.css` under `src/` (P9–P11) |
 | `NumberInput` suffix | Avoid inside input — cursor issues; use external label |
 | Skip fields | Persisted + SYNCED via settings (standing plan-shaping prefs) — reset only when user toggles back to Pay |
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |

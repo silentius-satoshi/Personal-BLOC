@@ -46,7 +46,7 @@ import {
 } from '../../lib/chartZoom';
 import { useChartZoom } from '../../hooks/useChartZoom';
 import { ChartZoomFrame } from '../ui/ChartZoomFrame';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, fmtTooltipUsd, todayLocalISO } from '../../utils/format';
 import styles from './DecisionFace.module.css';
 
 /**
@@ -144,7 +144,7 @@ function DecisionTip({ active, payload, label }: { active?: boolean; payload?: T
       {rows.map((p) => (
         <div key={p.name} className={styles.tooltipRow}>
           <span style={{ color: p.color }}>{p.name}</span>
-          <strong>{fmtUSD(p.value as number)}</strong>
+          <strong>{fmtTooltipUsd(p.value as number)}</strong>
         </div>
       ))}
     </div>
@@ -197,9 +197,9 @@ const DecisionChart = memo(function DecisionChart({
             <CartesianGrid stroke="var(--line-2)" vertical={false} />
             <XAxis dataKey="t" type="number" scale="time" domain={zoom.view.x} ticks={xAxis.ticks} allowDataOverflow
               allowDuplicatedCategory={false} tickFormatter={fmtDate}
-              tick={{ fontSize: 10, fill: 'var(--text-faint)' }} axisLine={false} tickLine={false} />
+              tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
             <YAxis type="number" scale="log" domain={zoom.view.y} ticks={yTicks} allowDataOverflow tickFormatter={fmtPrice}
-              tick={{ fontSize: 10, fill: 'var(--text-faint)' }} axisLine={false} tickLine={false} width={52} />
+              tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={52} />
             <Tooltip content={<DecisionTip />} active={zoom.dragging ? false : undefined} />
             <Area data={chart.history} dataKey="price" name="History" type="monotone" baseValue="dataMin"
               stroke="var(--btc)" strokeWidth={1.5} fill={`url(#${gradientId})`} dot={false}

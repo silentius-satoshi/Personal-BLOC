@@ -1,5 +1,5 @@
 import { usePowerLawData } from '../../hooks/usePowerLawData';
-import { PowerLawChart } from './PowerLawChart';
+import { PowerLawChart, PowerLawChartEmpty } from './PowerLawChart';
 import styles from './PowerLawMain.module.css';
 
 export function PowerLawMain() {
@@ -14,24 +14,13 @@ export function PowerLawMain() {
         </p>
       </div>
 
-      {loading && (
-        <div className={styles.loading}>Loading historical data…</div>
-      )}
-      {error && (
-        <div className={styles.error}>Failed to load: {error}</div>
-      )}
-      {!loading && !error && (
-        <div className={styles.chartBox}>
-          <PowerLawChart historical={historical} bands={bands} />
-        </div>
-      )}
-
-      <div className={styles.legend}>
-        <span style={{ color: '#E85A4F' }}>– – Resistance</span>
-        <span style={{ color: '#CCC' }}>—— Fair Value</span>
-        <span style={{ color: '#4ECB82' }}>– – Support</span>
-        <span style={{ color: '#E8836A' }}>—— BTC Price (historical)</span>
-      </div>
+      {/* Loading and error show a box the chart's height, so the box keeps its place when the chart arrives; only the
+          swatch line under it appears then. The chart (its box and its swatches) renders only once the history has
+          loaded, so nothing is listed while loading or on error. ONE error test in both branches: an empty error
+          string still counts as an error, so the error box and the chart can never both render. */}
+      {loading && <PowerLawChartEmpty text="Loading price history…" />}
+      {!loading && error !== null && <PowerLawChartEmpty text="Price history unavailable" />}
+      {!loading && error === null && <PowerLawChart historical={historical} bands={bands} />}
 
       <div className={styles.disclaimer}>
         Not financial advice. Power law models rely on historical pattern extrapolation.

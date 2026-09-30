@@ -93,7 +93,7 @@ test.describe('Navigation gestures (P3)', () => {
     }
   });
 
-  test('a horizontal drag on the Power Law chart stays on the face, and zooms the chart', async ({ page }) => {
+  test('a horizontal drag on the Power Law chart stays on the face and zooms it; a 396px phone box; the tooltip and the legend name the bands', async ({ page }) => {
     // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both).
     await page.route(/blockchain\.info/, (r) =>
       r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) }));
@@ -105,6 +105,8 @@ test.describe('Navigation gestures (P3)', () => {
     // Z8 — on the phone layout the chart's top sits at or below the bottom of the 844px viewport. Before chart zoom this
     // test measured it there, so its drag started OFF-SCREEN and never touched the chart: it passed vacuously.
     await chart.scrollIntoViewIfNeeded();
+    // P7 — the phone box: a 360px plot plus the 36px touch toolbar row, at 390 wide.
+    expect((await page.getByTestId('powerlaw-chart-box').boundingBox())!.height).toBe(396);
     const box = (await chart.boundingBox())!;
     const scrollBefore = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     // Horizontal drag with a ±30px vertical wobble, STARTING inside the chart.
@@ -130,6 +132,16 @@ test.describe('Navigation gestures (P3)', () => {
     const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
     await page.mouse.dblclick(plot.x + plot.width / 2, plot.y + plot.height / 2);
     await expect(zoom).toHaveAttribute('data-zoomed', 'false');
+    // The token tooltip: a UTC "D Mon YYYY" head, and the bands by their PL_BAND_LABEL names (the stub's history
+    // reaches no row near the plot's centre, so the rows there are the bands).
+    await page.mouse.move(plot.x + plot.width * 0.45, plot.y + plot.height * 0.5);
+    await page.mouse.move(plot.x + plot.width * 0.5, plot.y + plot.height * 0.5);
+    const tip = zoom.locator('.recharts-tooltip-wrapper');
+    await expect(tip).toHaveText(/^\d{1,2} [A-Z][a-z]{2} \d{4}(?!\d)/);   // the head leads the tooltip's text
+    for (const name of ['Resistance', 'Fair', 'Support']) await expect(tip).toContainText(name);
+    // The legend lists only what is drawn. The stub prices ONE row, and one point draws no history (P3) — so exactly
+    // the three bands.
+    await expect(page.getByTestId('powerlaw-legend').locator('span')).toHaveText(['Resistance', 'Fair', 'Support']);
   });
 
   test('edge-swipe back works on Almanac (left bezel → journal)', async ({ page }) => {

@@ -1,6 +1,6 @@
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { useMempoolData } from '../../hooks/useMempoolData';
-import { plFairValue, plFloor, plCeiling } from '../../simulation/powerLaw';
+import { plFairValue, plFloor, plCeiling, PL_BAND_LABEL } from '../../simulation/powerLaw';
 import { fmtUSD } from '../../utils/format';
 import styles from './PowerLawSidebar.module.css';
 
@@ -48,19 +48,19 @@ export function PowerLawSidebar() {
       <div className={styles.sectionHeader}>Today's Model</div>
 
       <div className={styles.stat}>
-        <div className={styles.statLabel}>Resistance</div>
-        <div className={styles.statValue} style={{ color: 'var(--red)' }}>
+        <div className={styles.statLabel}>{PL_BAND_LABEL.ceiling}</div>
+        <div className={styles.statValue} style={{ color: 'var(--amber)' }}>
           {fmtUSD(ceiling)}
         </div>
       </div>
 
       <div className={styles.stat}>
-        <div className={styles.statLabel}>Fair Value</div>
+        <div className={styles.statLabel}>{PL_BAND_LABEL.fair}</div>
         <div className={styles.statValue}>{fmtUSD(fair)}</div>
       </div>
 
       <div className={styles.stat}>
-        <div className={styles.statLabel}>Support</div>
+        <div className={styles.statLabel}>{PL_BAND_LABEL.floor}</div>
         <div className={styles.statValue} style={{ color: 'var(--green)' }}>
           {fmtUSD(floor)}
         </div>
@@ -68,7 +68,7 @@ export function PowerLawSidebar() {
 
       {deviation != null && (
         <div className={styles.stat}>
-          <div className={styles.statLabel}>vs Fair Value</div>
+          <div className={styles.statLabel}>vs {PL_BAND_LABEL.fair}</div>
           <div className={styles.statValue} style={{ color: deviationColor }}>
             {deviation >= 0 ? '+' : ''}{deviation.toFixed(1)}%
           </div>

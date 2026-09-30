@@ -35,6 +35,9 @@ export default defineConfig({
   },
   test: {
     globals: true,
+    // The default, pinned on purpose: powerLawView.test.ts pins a zone BEHIND UTC with vi.stubEnv('TZ', …), and that
+    // only takes effect in a child process (forks), not in worker threads — its premise assertion fails there.
+    pool: 'forks',
     // Playwright e2e specs live in e2e/*.spec.ts — vitest's default include globs *.spec.ts, so exclude
     // them or `vitest run` would collect the Playwright suites (they import @playwright/test). Keep e2e
     // strictly on `npm run e2e`.

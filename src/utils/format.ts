@@ -3,6 +3,23 @@ import type { MiningCurrency } from '../simulation/types';
 export const fmtUSD = (n: number): string =>
   '$' + Math.round(Math.abs(n)).toLocaleString();
 
+/**
+ * THE chart-tooltip price — the Decision and Power Law tooltips both print through it (P1). `fmtUSD` rounds to whole
+ * dollars, so a real sub-50¢ price read "$0". Whole dollars from $1; below that, two significant digits (never
+ * exponent notation); under a cent, "under $0.01" (the power-law bands near GENESIS reach ~1e-12). "—" for a value no
+ * tooltip shows — ≤ 0 or not finite; both tooltips drop those rows first.
+ */
+export function fmtTooltipUsd(v: number): string {
+  if (!Number.isFinite(v) || v <= 0) return '—';
+  if (v >= 1) return fmtUSD(v);
+  if (v < 0.01) return 'under $0.01';
+  const r = Number(v.toPrecision(2));   // two significant digits: 0.045, 0.5, 0.07
+  if (r >= 1) return fmtUSD(r);         // 0.995 and up round to a dollar
+  let s = r.toFixed(Math.max(2, 1 - Math.floor(Math.log10(r))));
+  while (s.endsWith('0') && s.length - s.indexOf('.') - 1 > 2) s = s.slice(0, -1);   // 0.040 → 0.04, keep 0.50
+  return '$' + s;
+}
+
 /** A dollar amount below this prints as "$0" — float dust (a ceiling-capped refinance can leave ~1e-10 over the
  *  limit), never a statement worth a sentence. ⚠ THE one dust floor: the policy's copy, the all-in verdict, the
  *  Decision face and Coinbase's seizure price (`cbSeizurePrice`, simulation/cbMetrics) all read it. It lives here, not

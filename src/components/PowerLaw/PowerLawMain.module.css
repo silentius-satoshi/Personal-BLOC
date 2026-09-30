@@ -1,10 +1,12 @@
 .main {
   composes: toolContainer from '../Tools/toolShell.module.css';
-  max-width: 960px;
   display: flex;
   flex-direction: column;
   gap: 16px;
 }
+/* ⚠ The width takes a DOUBLED class (0,2,0). Beside `composes:` it ties .toolContainer's 600px (0,1,0), and production
+   emits toolShell's CSS last, so the 600px won on a computer (P10). composedOverrides.test.ts pins the rule. */
+.main.main { max-width: 960px; }
 
 .header {
   display: flex;
@@ -26,32 +28,8 @@
   line-height: 1.4;
 }
 
-.loading,
-.error {
-  font-size: 13px;
-  color: var(--text-muted);
-  padding: 40px 0;
-  text-align: center;
-}
-
-.error {
-  color: var(--red);
-}
-
-.chartBox {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 16px 8px 8px 0;
-}
-
-.legend {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-  font-size: 11px;
-  color: var(--text-muted);
-}
+/* The chart's box, its empty states and its swatches live in PowerLawChart.module.css (composed from the Decision
+   chart's classes). */
 
 .disclaimer {
   font-size: 9px;

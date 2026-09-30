@@ -1,5 +1,7 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useId, useMemo, useState } from 'react';
 import {
+  Area,
+  CartesianGrid,
   ComposedChart,
   Line,
   XAxis,
@@ -9,13 +11,14 @@ import {
   ResponsiveContainer,
   Customized,
 } from 'recharts';
-import { fmtUSD } from '../../utils/format';
 import { PricePoint, BandPoint } from '../../hooks/usePowerLawData';
 import {
   timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter, type Domain, type Scales, type View,
 } from '../../lib/chartZoom';
 import { useChartZoom } from '../../hooks/useChartZoom';
 import { ChartZoomFrame } from '../ui/ChartZoomFrame';
+import { PL_SERIES, powerLawTooltip, historyDrawn, legendEntries, type PlSeriesKey } from './powerLawView';
+import styles from './PowerLawChart.module.css';
 
 const ONE_DAY = 86_400_000;
 /** The price axis's full extent (unchanged); chart zoom narrows it inside. */
@@ -43,30 +46,24 @@ interface TooltipProps {
   label?: number;
 }
 
+const isSeriesKey = (k: string): k is PlSeriesKey => PL_SERIES.some((s) => s.key === k);
+
+/** The Decision chart's token tooltip. The head (the row's UTC date) and every row come from `powerLawTooltip`. */
 function PowerLawTooltip({ active, payload, label }: TooltipProps) {
-  if (!active || !payload || !label) return null;
-  const date = new Date(label);
-  const mo   = date.toLocaleString('default', { month: 'short' });
-  const yr   = date.getFullYear();
-
-  const get = (key: string) => payload.find((p) => p.dataKey === key)?.value;
-
+  if (!active || !payload?.length || typeof label !== 'number') return null;
+  const values: Partial<Record<PlSeriesKey, number>> = {};
+  for (const p of payload) if (isSeriesKey(p.dataKey)) values[p.dataKey] = p.value;
+  const tip = powerLawTooltip(label, values);
+  if (!tip) return null;
   return (
-    <div style={{
-      background: '#1a1d24',
-      border: '1px solid #2a2d38',
-      borderRadius: 6,
-      padding: '8px 12px',
-      fontSize: 11,
-      color: '#ccc',
-      lineHeight: 1.8,
-    }}>
-      <div style={{ fontWeight: 700, marginBottom: 4 }}>{mo} {yr}</div>
-      {get('ceiling') != null && <div>Resistance: <strong style={{ color: '#E85A4F' }}>{fmtUSD(get('ceiling')!)}</strong></div>}
-      {get('fair')    != null && <div>Fair Value: <strong>{fmtUSD(get('fair')!)}</strong></div>}
-      {get('floor')   != null && <div>Support:    <strong style={{ color: '#4ECB82' }}>{fmtUSD(get('floor')!)}</strong></div>}
-      {get('price')   != null && <div style={{ height: '6px' }} />}
-      {get('price')   != null && <div>BTC Price:  <strong style={{ color: '#E8836A' }}>{fmtUSD(get('price')!)}</strong></div>}
+    <div className={styles.tooltip}>
+      <div className={styles.tooltipHead}>{tip.head}</div>
+      {tip.rows.map((r) => (
+        <div key={r.key} className={styles.tooltipRow}>
+          <span style={{ color: r.color }}>{r.label}</span>
+          <strong>{r.text}</strong>
+        </div>
+      ))}
     </div>
   );
 }
@@ -127,79 +124,108 @@ export function PowerLawChart({ historical, bands }: Props) {
   const fmtPrice = useMemo(() => priceTickFormatter(yTicks, fmtY), [yTicks]);
   const fmtDate = useCallback((t: number, i: number) => fmtTimeTick(t, xAxis.unit, i), [xAxis.unit]);
 
+  // A per-mount gradient id — PriceChart's `priceFill` is a document-global SVG id, so a literal one could collide.
+  const uid = useId();
+  const gradientId = `powerLawHistory${uid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
+  // One "Today" per mount: a timestamp taken in the render would move on every re-render (every pan and pinch).
+  const [todayT] = useState(() => Date.now());
+  // The legend lists only what is drawn (P3): History once two rows carry a positive price, and the three bands.
+  const legend = useMemo(() => legendEntries(historyDrawn(chartData)), [chartData]);
+  const history = PL_SERIES.find((s) => s.key === 'price')!;
+  const bandSeries = PL_SERIES.filter((s) => s.key !== 'price');
+
   return (
-    <ChartZoomFrame zoom={zoom}>
-      <ResponsiveContainer width="100%" height={520}>
-        <ComposedChart data={chartData} margin={{ top: 10, right: 20, bottom: 40, left: 10 }}>
-          <XAxis
-            dataKey="timestamp"
-            scale="time"
-            type="number"
-            domain={zoom.view.x}
-            ticks={xAxis.ticks}
-            allowDataOverflow
-            tickFormatter={fmtDate}
-            tick={{ fontSize: 10, fill: '#666' }}
-            axisLine={false}
-            tickLine={false}
-          />
-          <YAxis
-            scale="log"
-            domain={zoom.view.y}
-            ticks={yTicks}
-            allowDataOverflow
-            tickFormatter={fmtPrice}
-            tick={{ fontSize: 10, fill: '#666' }}
-            axisLine={false}
-            tickLine={false}
-            width={70}
-          />
-          <Tooltip content={<PowerLawTooltip />} active={zoom.dragging ? false : undefined} />
+    <div className={styles.chart}>
+      <div className={styles.chartBox} data-testid="powerlaw-chart-box">
+        <ChartZoomFrame zoom={zoom}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart data={chartData} margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor={history.color} stopOpacity={0.22} />
+                  <stop offset="100%" stopColor={history.color} stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--line-2)" vertical={false} />
+              <XAxis
+                dataKey="timestamp"
+                scale="time"
+                type="number"
+                domain={zoom.view.x}
+                ticks={xAxis.ticks}
+                allowDataOverflow
+                tickFormatter={fmtDate}
+                tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                axisLine={false}
+                tickLine={false}
+              />
+              <YAxis
+                scale="log"
+                domain={zoom.view.y}
+                ticks={yTicks}
+                allowDataOverflow
+                tickFormatter={fmtPrice}
+                tick={{ fontSize: 10, fill: 'var(--text-muted)' }}
+                axisLine={false}
+                tickLine={false}
+                width={52}
+              />
+              <Tooltip content={<PowerLawTooltip />} active={zoom.dragging ? false : undefined} />
 
-          <Line
-            dataKey="ceiling"
-            stroke="#E85A4F"
-            strokeWidth={1.5}
-            strokeDasharray="4 2"
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
-          <Line
-            dataKey="fair"
-            stroke="#CCCCCC"
-            strokeWidth={1.5}
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
-          <Line
-            dataKey="floor"
-            stroke="#4ECB82"
-            strokeWidth={1.5}
-            strokeDasharray="4 2"
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
-          <Line
-            dataKey="price"
-            stroke="#E8836A"
-            strokeWidth={2}
-            dot={false}
-            connectNulls
-            isAnimationActive={false}
-          />
+              {/* History first, so the bands draw over its fill. Never animated: an animated series would trail the
+                  bands on every pan or pinch (P2). */}
+              <Area
+                dataKey="price"
+                name={history.label}
+                type="monotone"
+                baseValue="dataMin"
+                stroke={history.color}
+                strokeWidth={1.5}
+                fill={`url(#${gradientId})`}
+                dot={false}
+                connectNulls
+                isAnimationActive={false}
+              />
+              {bandSeries.map((s) => (
+                <Line
+                  key={s.key}
+                  dataKey={s.key}
+                  name={s.label}
+                  stroke={s.color}
+                  strokeWidth={1.5}
+                  strokeDasharray={s.dash === 'dashed' ? '4 2' : undefined}
+                  dot={false}
+                  connectNulls
+                  isAnimationActive={false}
+                />
+              ))}
 
-          <ReferenceLine
-            x={Date.now()}
-            stroke="#444"
-            strokeDasharray="3 3"
-            label={{ value: 'Today', fill: '#666', fontSize: 10, position: 'insideTopRight' }}
-          />
-          <Customized component={zoom.probe} />
-        </ComposedChart>
-      </ResponsiveContainer>
-    </ChartZoomFrame>
+              <ReferenceLine
+                x={todayT}
+                stroke="var(--text-faint)"
+                strokeDasharray="2 2"
+                label={{ value: 'Today', fill: 'var(--text-muted)', fontSize: 10, position: 'insideTopRight' }}
+              />
+              <Customized component={zoom.probe} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartZoomFrame>
+      </div>
+      <div className={styles.legend} data-testid="powerlaw-legend">
+        {legend.map((s) => (
+          <span key={s.key} className={styles.legendItem} style={{ color: s.color }}>
+            <i className={`${styles.legendSwatch} ${s.dash === 'dashed' ? styles.legendDash : ''}`} />{s.label}
+          </span>
+        ))}
+      </div>
+    </div>
   );
+}
+
+/**
+ * Loading and error: the chart's own box at the chart's height, so the box keeps its place when the chart arrives.
+ * The swatch line under it appears only then.
+ */
+export function PowerLawChartEmpty({ text }: { text: string }) {
+  return <div className={styles.chartEmpty}>{text}</div>;
 }
