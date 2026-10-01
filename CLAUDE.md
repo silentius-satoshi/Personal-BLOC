@@ -6765,6 +6765,32 @@ goes red.)
     | CLICK-KEEPS | E6: a press on a hover-opened tip toggles it shut |
     | AWAY-KEEPS | E7: leaving closes a pinned tip |
     | ESCAPE | E8: Escape no longer closes |
+- **The sheet-entry race** (spec `pbloc-spec-e2e-sheet-race-v1`, v1.2; tests and docs only. Every count is from
+  `--retries=0` on this Mac, and every mutation was restored and md5-checked — see § Build & Deploy → E2E):
+  - e2e (`eventSheet.spec.ts`, "the sheet openers") — one test per opener: `openConsentSheet`, `openEventSheet`,
+    `openEventSheetEdit`. Its `beforeEach` aborts the Google Fonts requests (R6), then slows the slide to 1 s with an
+    author `!important` on `[data-testid="draggable-sheet"]`. Each test reads the box top the instant the opener returns,
+    then again 1.2 s later:
+    - PREMISE: the sheet's inline transform is `translateY(0px)` (the CSSOM adds the unit, R5). The test id sits on the
+      element the entry slides, so the helper and AT-REST measure the right box; on a wrapper both would pass vacuously;
+    - ⭐ AT-REST: the two tops are equal.
+  - **Red first** — the openers as they were at `5cb35a6`:
+    - the natural race: consent ×20 → 5 failed, every one at `toHaveCount(0)` (the drag ran below the screen);
+      eventSheet ×20 → 0 failed (180 passed · 40 skipped);
+    - AT-REST ×5 → 15 of 15 red, PREMISE passing. At return vs settled: consent 779–783 vs 459.75, add 712–756 vs
+      301.75, edit 786–806 vs 608.25.
+  - **After the fix:** AT-REST ×5 → 15 passed; consent ×20 → 20 passed; eventSheet ×20 → 240 passed · 40 skipped.
+  - **Mutations:**
+
+    | # | Mutation | Result |
+    |---|---|---|
+    | M1 | `return;` as the helper's first statement | AT-REST ×5 → 15 of 15 red (at return 710–844); consent ×20 → 11 failed, every one at `toHaveCount(0)`; eventSheet ×20 → 60 failed, all at AT-REST (20 per opener), and its other tests 180 passed · 40 skipped |
+    | M2 | the edit opener's call dropped | AT-REST ×3 → only `openEventSheetEdit` red (3 of 9) |
+    | M3 | the add opener's call dropped | AT-REST ×3 → only `openEventSheet` red (3 of 9) |
+    | M4 | the consent opener's call dropped | AT-REST ×3 → only `openConsentSheet` red (3 of 9) |
+
+    The natural race is consent's alone on this Mac: under M1 the four box-reading eventSheet tests still passed 80 of
+    80, so AT-REST is what turns a lost wait red everywhere.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -7126,22 +7152,26 @@ comments already suppressed it before this commit, so enabling it is the highest
 **E2E gesture harness (Playwright, `npm run e2e`) — the app's first e2e layer, opt-in, NOT in `vitest`.**
 `@playwright/test` (chromium only) + `playwright.config.ts` (mobile-emulated 390×844, `hasTouch`/`isMobile`,
 `serviceWorkers:'block'`, **`workers:1`/`fullyParallel:false`** — gesture/rAF/spring timing flakes under
-parallel CPU contention; run serially. **`retries:1`** (2 in CI) — the drag→commit→exit-timing sheet specs are
-inherently timing-sensitive under full-suite load and occasionally flake (each passes deterministically in
-isolation); a single retry absorbs it without masking a real break) + `e2e/*.spec.ts` + `e2e/helpers.ts`. `vite.config.ts` `test.exclude:
+parallel CPU contention; run serially. **`retries:1`** (2 in CI) — a safety net for gesture timing under full-suite
+load, never a cover for a race: a genuine break fails both attempts. ⚠ It once hid one — the sheet specs did NOT pass
+deterministically in isolation until the openers waited for the sheet to rest (the sheet-entry race, below); a spec
+that fails in isolation is a bug, not a retry) + `e2e/*.spec.ts` + `e2e/helpers.ts`. `vite.config.ts` `test.exclude:
 ['e2e/**', …]` keeps `vitest run` from collecting the `.spec.ts` files (vitest's default include globs
 `*.spec.ts`). **Reach:** the dev server bypasses every auth/viewer gate via `import.meta.env.DEV`, so a
 3-field `addInitScript` localStorage seed (`onboardingComplete/simpleMode/simpleView:'daily'` + the
 `personal-bloc-onboarded` GATE key + `window.__APP_BOOTED=true` to suppress index.html's 6s boot-watchdog
 overlay) lands on DailyModeView; the FAB (`getByLabel('Log an event')`) opens EventSheet, a seeded `dayLog`
 draw event + `data-testid="log-row"` tap opens EDIT mode, `getByLabel('Almanac')` → the live-height badge
-opens the consent sheet. Gestures drive `page.mouse` (real pointer events, capture-capable) from the grabber.
+opens the consent sheet; each opener returns only once the sheet is at rest (`waitForSheetAtRest`, the sheet-entry
+race below). Gestures drive `page.mouse` (real pointer events, capture-capable) from the grabber.
 **Covers:** dirty-guard (clean flick-dismiss + `data-dirty`, cap-no-dismiss after a keystroke), keyboard
-guard (zero movement while focused), scroll coexistence (scrolled → drag blocked), reduced-motion (no
-continuous transform, still dismisses), P1.2 Bug E (sheet computed-opacity stays '1' mid-drag while the
-`sheet-backdrop` fades), P1.2 Bug D (downward drag from a mid-content field label dismisses), P1.3 focus-then-
-drag (a focused field + press elsewhere → blur + drag + dismiss; H1) + keyboard guard (press the focused field
-itself → no drag). **P2 `journal.spec.ts`:** calendar month swipe pages (multi-month seed) + boundary rubber-band;
+guard (zero movement while focused), reduced-motion (no continuous transform, still dismisses), P1.2 Bug E (sheet
+computed-opacity stays '1' mid-drag while the `sheet-backdrop` fades), P1.2 Bug D (downward drag from a mid-content
+field label dismisses), P1.3 focus-then-drag (a focused field + press elsewhere → blur + drag + dismiss; H1) +
+keyboard guard (press the focused field itself → no drag), and the sheet openers (**AT-REST**: each returns only once
+its sheet is at rest — the sheet-entry race below). NOT covered: the scroll/drag handoff — `scroll coexistence` and
+`jitter handoff` are device-gated `test.fixme`, and the rule is unit-tested through `resolveScrollClaim` (CANNOT
+cover, below). **P2 `journal.spec.ts`:** calendar month swipe pages (multi-month seed) + boundary rubber-band;
 long-press (600ms) opens the pre-dated add sheet + short-press just selects; swipe-to-delete reveal → tap DELETE →
 Snackbar → UNDO restores; one-open-row (`data-open`); ⭐ a fast flick NEVER deletes (non-negotiable 1). Selectors:
 `data-testid="day-cell"`/`data-date` (the visible CENTER pane is filtered by viewport-x since the SwipeStrip
@@ -7236,6 +7266,27 @@ the check. **350 stands for the full-mode tab:** the Almanac box there is 316px,
 
 The note locator is scoped to the card, because `DemoBanner` is the only other `role="note"`. A real phone's tap
 arbitration stays a device check.
+
+⚠ **The sheet openers wait for the sheet to rest** (the sheet-entry race, spec `pbloc-spec-e2e-sheet-race-v1`).
+DraggableSheet slides in over 280 ms, and `toBeVisible()` passes on the slide's first frame, because Playwright counts a
+translated element as visible. An opener that returned there handed its test a box read from anywhere on the way in — as
+low as the screen's bottom edge (y ≈ 844 against a settled 457) — and a drag from there ran below the screen.
+- **The inline style can't tell.** The entry is a layout effect: it writes `translateY(100%)`, forces a reflow, then
+  writes `translateY(0)` inline. So the inline style reads `translateY(0px)` the whole way in, and only the COMPUTED
+  transform moves.
+- **`waitForSheetAtRest(s)`** (`e2e/helpers.ts`) polls until the computed transform is the identity AND the box top is
+  equal on two consecutive animation frames (Playwright's own "stable" rule). Keep both: a slide that hasn't started
+  yet reads its from-state on every frame. No fixed sleep. The three openers call it before they return.
+- **The click-first tests never raced:** `click()` waits for "stable" before it clicks.
+- **It hid behind the retry.** On this Mac, with the openers as they were and `--retries=0`, consent's "clean drag past
+  threshold dismisses" failed 5 of 20, every one at `toHaveCount(0)`; eventSheet's tests failed 0 of 180. The cloud
+  never failed.
+- **AT-REST** pins it on any machine (§ Test Suite → "The sheet-entry race"). Its `beforeEach` slows the slide to 1 s (an
+  author `!important` beats the inline 280 ms) and aborts the Google Fonts requests: a late `display=swap` swap moves a
+  bottom-anchored sheet by a pixel. Never loosen AT-REST to a tolerance — that would also hide an opener that returns a
+  frame or two early.
+- **The rule:** a new spec that measures or drags a sheet right after opening it goes through the helpers, or calls
+  `waitForSheetAtRest` itself.
 
 ⚠ The phone project never matches `(pointer: fine)`. The Z18 computer test is the only fine-pointer context, and it
 checks placement only — no fine-pointer gesture. ⚠ **A long-running dev server can keep a STALE compiled copy of a

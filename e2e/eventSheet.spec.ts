@@ -1,5 +1,7 @@
 import { test, expect } from '@playwright/test';
-import { openEventSheet, openEventSheetEdit, dragDown, dragDownFrom, sheetTransform, translateYpx } from './helpers';
+import {
+  openConsentSheet, openEventSheet, openEventSheetEdit, dragDown, dragDownFrom, sheetTransform, translateYpx,
+} from './helpers';
 
 test.describe('EventSheet gesture behavior', () => {
   test('clean open is not dirty and flick-dismisses', async ({ page }) => {
@@ -132,4 +134,42 @@ test.describe('EventSheet gesture behavior', () => {
     await page.waitForTimeout(50);
     await expect(s).toHaveCount(0); // still dismisses on release past threshold
   });
+});
+
+// AT-REST — the sheet-entry race, pinned on ANY machine (spec pbloc-spec-e2e-sheet-race-v1). DraggableSheet slides in
+// over 280 ms and toBeVisible() passes on the slide's first frame, so an opener that returned there handed its test a
+// box read from anywhere on the way in. The race only fired on a fast Mac; the cloud never failed. This describe slows
+// the slide to 1 s for every machine (an author !important beats the inline 280 ms), so an opener that returns
+// mid-slide is red every time.
+test.describe('the sheet openers', () => {
+  test.beforeEach(async ({ page }) => {
+    // R6: AT-REST compares exact pixels over 1.2 s. The app font loads from Google with display=swap, and a late swap
+    // moves a bottom-anchored sheet by a pixel (it moved chart zoom's STEADY by 1 px). So remove the cause: with the
+    // font requests aborted, the fallback font is final from the start. Never loosen AT-REST to a tolerance instead —
+    // a tolerance would also hide an opener that returns a frame or two before the sheet is at rest.
+    await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+    await page.addInitScript(() => {
+      document.addEventListener('DOMContentLoaded', () => {
+        const style = document.createElement('style');
+        style.textContent = '[data-testid="draggable-sheet"] { transition-duration: 1000ms !important; }';
+        document.head.appendChild(style);
+      });
+    });
+  });
+
+  for (const [name, open] of [
+    ['openConsentSheet', openConsentSheet],
+    ['openEventSheet', openEventSheet],
+    ['openEventSheetEdit', openEventSheetEdit],
+  ] as const) {
+    test(`${name} returns once the sheet is at rest`, async ({ page }) => {
+      const s = await open(page);
+      const atReturn = (await s.boundingBox())!.y; // read at once — this is what the opener governs
+      // The test id sits on the element the entry slides, so the helper (and this test) measure the right box. The
+      // CSSOM serializes the inline translateY(0) with its unit (R5).
+      expect(await sheetTransform(s), 'PREMISE').toBe('translateY(0px)');
+      await page.waitForTimeout(1200); // the measurement window: the slowed slide (1 s) has ended by now
+      expect(atReturn, 'AT-REST').toBe((await s.boundingBox())!.y);
+    });
+  }
 });

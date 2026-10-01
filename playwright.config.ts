@@ -3,8 +3,8 @@ import { defineConfig } from '@playwright/test';
 /**
  * Gesture & Motion System — P1 e2e smoke harness (Chromium mobile-emulated only).
  * Reproduces what Chromium CAN reproduce of the DraggableSheet gesture layer (dirty-guard, keyboard
- * guard, scroll coexistence, reduced-motion). NOT a substitute for the iOS device gate — real WebKit
- * haptics / the PWA container / iOS blur-timing are out of scope. Run via `npm run e2e`; kept OUT of
+ * guard, reduced-motion). NOT a substitute for the iOS device gate — real WebKit haptics / the scroll/drag
+ * handoff / the PWA container / iOS blur-timing are out of scope. Run via `npm run e2e`; kept OUT of
  * `vitest` (see vite.config.ts test.exclude).
  */
 export default defineConfig({
@@ -14,9 +14,11 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   forbidOnly: !!process.env.CI,
-  // Gesture/animation specs (drag→commit→exit timing, rAF, spring durations) are inherently timing-sensitive
-  // under full-suite CPU load — a single retry absorbs the occasional flake without masking a real failure
-  // (a genuine break fails both attempts). Each spec passes deterministically in isolation.
+  // A retry is a safety net for gesture timing under full-suite CPU load (drag→commit→exit, rAF, spring durations),
+  // never a cover for a race: a genuine break fails both attempts. It once hid one — the sheet openers returned
+  // mid-slide, so a drag could start below the screen (spec pbloc-spec-e2e-sheet-race-v1). The openers now wait for
+  // the sheet to rest (waitForSheetAtRest, e2e/helpers.ts), and AT-REST pins it. A spec that fails in isolation is a
+  // bug, not a retry.
   retries: process.env.CI ? 2 : 1,
   reporter: [['list']],
   use: {

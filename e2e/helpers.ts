@@ -189,7 +189,10 @@ export async function swipeX(page: Page, target: Locator, dxPx: number, opts: { 
   if (release) { await page.mouse.up(); await page.waitForTimeout(40); }
 }
 
-/** Seed with a draw event, navigate, open its EventSheet in EDIT mode via the log-row tap. */
+/**
+ * Seed with a draw event, navigate, open its EventSheet in EDIT mode via the log-row tap; returns once the sheet is at
+ * rest.
+ */
 export async function openEventSheetEdit(page: Page): Promise<Locator> {
   await page.addInitScript(EVENT_SEED);
   await page.goto('/');
@@ -201,6 +204,7 @@ export async function openEventSheetEdit(page: Page): Promise<Locator> {
   await row.click();
   const s = sheet(page);
   await expect(s).toBeVisible();
+  await waitForSheetAtRest(s);
   return s;
 }
 
@@ -209,22 +213,49 @@ export function sheet(page: Page): Locator {
   return page.getByTestId('draggable-sheet');
 }
 
-/** Open the EventSheet in ADD mode via the FAB. */
+/**
+ * Wait until a just-opened sheet has stopped moving (the sheet-entry race, spec pbloc-spec-e2e-sheet-race-v1).
+ * DraggableSheet slides in over 280 ms, and toBeVisible() passes on the slide's first frame (Playwright counts a
+ * translated element as visible), so a box read straight after can sit anywhere on the way in — as low as the screen's
+ * bottom edge — and a drag from there runs below the screen. At rest: the COMPUTED transform is the identity (the
+ * inline style already reads translateY(0px) while the slide runs) AND the box top is equal on two consecutive
+ * animation frames (Playwright's own "stable" rule, which also catches a bottom-anchored sheet whose height changes).
+ * Polls; no fixed sleep. Keep both: a slide that hasn't started yet reads its from-state on every frame, so two equal
+ * frames alone would pass at the very start.
+ */
+export async function waitForSheetAtRest(s: Locator): Promise<void> {
+  await expect.poll(() => s.evaluate((el) => new Promise<boolean>((resolve) => {
+    requestAnimationFrame(() => {
+      const top = el.getBoundingClientRect().top;
+      requestAnimationFrame(() => {
+        const t = getComputedStyle(el).transform;
+        resolve((t === 'none' || new DOMMatrixReadOnly(t).isIdentity) && el.getBoundingClientRect().top === top);
+      });
+    });
+  })), { message: 'the sheet came to rest' }).toBe(true);
+}
+
+/** Open the EventSheet in ADD mode via the FAB; returns once the sheet is at rest. */
 export async function openEventSheet(page: Page): Promise<Locator> {
   await seedAndGoto(page);
   await page.getByLabel('Log an event').click();
   const s = sheet(page);
   await expect(s).toBeVisible();
+  await waitForSheetAtRest(s);
   return s;
 }
 
-/** Open the AlmanacConsentSheet (Almanac → live-height badge, which is off + unconsented by default). */
+/**
+ * Open the AlmanacConsentSheet (Almanac → live-height badge, which is off + unconsented by default); returns once the
+ * sheet is at rest.
+ */
 export async function openConsentSheet(page: Page): Promise<Locator> {
   await seedAndGoto(page);
   await page.getByLabel('Almanac').click();
   await page.getByLabel('Live block height: off, tap to toggle').click();
   const s = sheet(page);
   await expect(s).toBeVisible();
+  await waitForSheetAtRest(s);
   return s;
 }
 
