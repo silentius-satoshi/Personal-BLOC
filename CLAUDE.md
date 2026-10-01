@@ -732,8 +732,8 @@ src/
                                 # the card's copy (settingReadouts, policyIgnoredNote, policyTip) and the faces'
                                 # (defenseLineNote, policyTileSub, policyColdNote); the call sentence. No belief, no
                                 # store, no React — and it never imports cyclingFaceView (which imports it)
-      SupportPolicyCard.tsx     # Run 2b — THE support policy card, shared by the Cycling, Ownership and Strategy faces
-                                # (+ .module.css, tokens only). Props {sim, monthIdx, raw, settings, onChange, onReset,
+      SupportPolicyCard.tsx     # Run 2b — THE support policy card, shared by the Cycling, Ownership, Strategy and Decision
+                                # faces (+ .module.css, tokens only). Props {sim, monthIdx, raw, settings, onChange, onReset,
                                 # mode, expenses} — renders only what the face hands it (no belief, no store; a
                                 # structural test pins the imports). States: not cycle / off (+ Turn on) / ignored
                                 # (policyIgnoredNote) / on (headline, zone strip, details, a collapsed <details>
@@ -943,6 +943,14 @@ src/
                                 # the tooltip dies. Also exports PlotProbe — the <Customized component={zoom.probe}/>
                                 # child that reports recharts' `offset` (the plot rect) after layout. Plain buttons (not
                                 # the shared inputs, which disable themselves for viewers): zoom writes nothing
+      InfoTip.tsx               # The ⓘ tooltip primitive (+ .module.css) — § Cold-storage sweep → InfoTip. Hover opens it
+                                # for a mouse only (native pointerenter/pointerleave, pointerType 'mouse'); a tap or click
+                                # pins it; a second press, Escape or an outside pointerdown closes it. Placed against the
+                                # screen: CSS hangs the panel under the ⓘ, a useLayoutEffect slides it inside the 16px
+                                # gutters (tipShift), and again on resize. Unmounted when closed
+      infoTipModel.ts           # InfoTip's pure rules, ZERO imports: TIP_GUTTER_PX 16 · tipShift(left, right, width)
+                                # (too wide ⇒ pin the left edge; non-finite ⇒ 0) · nextTipState (closed | hover | pinned ×
+                                # hoverIn | hoverOut | press | dismiss). Pinned by infoTipModel.test.ts + infoTipWiring.test.ts
 
     Inputs/
       InputsPanel.tsx           # Smart BLOC sidebar — .scrollArea + sticky .recommendations
@@ -5126,12 +5134,58 @@ than three paragraphs of body copy nobody re-reads. **Milestones** gained a **Co
 when the sweep is on and styled `--btc`: ⚠ it is a SUBSET of the BTC column beside it (`btcHeld` is all
 three pools), never a second total to add.
 
-**`InfoTip` (`components/ui/InfoTip.tsx`)** — the repo had no tooltip primitive. ⚠ NOT a CSS `:hover` tip:
-this is a touch-first PWA, hover does not exist on a phone, and a hover-only tip is invisible to most
-users. Tap/click toggles, hover *also* opens on pointer devices, Escape and outside-`pointerdown` close.
-⚠ `pointerdown`, not `click`, or the trigger's own onClick reopens then instantly closes it in one
-gesture. The panel is UNMOUNTED when closed — a hidden-but-mounted panel leaves its text in the
-accessibility tree and in Cmd-F.
+**`InfoTip` (`components/ui/InfoTip.tsx` + the pure `infoTipModel.ts`)** — the repo's tooltip primitive. ⚠ NOT a CSS
+`:hover` tip: this is a touch-first PWA, hover does not exist on a phone, and a hover-only tip is invisible to most
+users. Spec `pbloc-spec-infotip-fit-v1` (v1.1).
+- **Where.** Eight ⓘs on four faces:
+  - the Support policy card (Decision, Cycling, Ownership, Strategy);
+  - the Strike LTV cap / defense line (Cycling, Ownership, Strategy);
+  - Cycling's Cold storage (policy off only).
+
+  Mining and Living don't use it; they share only `ui/SliderInput` (I5).
+- **Placement — measure and nudge (I1, I2).** CSS hangs the panel under the ⓘ (`left: -8px`).
+  - A `useLayoutEffect` (before paint) reads its rect and slides it sideways by
+    `tipShift(left, right, document.documentElement.clientWidth)`, so it sits inside [16, width − 16].
+  - It is placed again on every `resize`, and a rotation fires one.
+  - `place()` clears the shift before it measures, so a re-place never compounds a stale one.
+  - ⚠ **No fixed side works.** On a phone the ⓘs sit left of centre (137–174px at 390) and the panel is about 90% of
+    the screen wide. The old ≤480px rule hung it leftward and cut 44–55% off the left edge; hung rightward, it would
+    run 90–127px off the right.
+  - `max-width: min(calc(100vw - 32px), 26rem)` keeps it narrower than the space between the gutters. If it is too
+    wide anyway, the left (reading) edge is pinned.
+  - `clientWidth` leaves out a computer's scrollbar.
+  - **The gutters are the viewport's.** That works because nothing clips an InfoTip sideways inside the viewport:
+    - the faces' `.face` and `.card` have no overflow;
+    - `html`/`body` and EdgeBackGesture's `.wrap` clip at the viewport's edge;
+    - full-mode `.main` spans the viewport.
+
+    A future InfoTip inside a narrower overflow box would need that box instead.
+  - ⚠ **`.panel` has `transition-property: none`.** The global reduced-motion rule gives every element an 80ms
+    transition. Without the guard, under Reduce Motion:
+    - the panel slides in from its off-screen spot;
+    - after a resize, the re-place measures a transition that has only just started, so the panel settles in the wrong
+      place (123..466 at 375).
+- **Opening — `nextTipState`: closed / hover / pinned (I3, I4).**
+  - Hover opens it only for a mouse (`pointerType === 'mouse'`).
+  - A tap or click pins it, until a second tap or click on the ⓘ, Escape, or a tap or click outside.
+  - Moving the mouse away closes only a tip that hover opened.
+
+  The reasons:
+  - ⚠ **Never `onMouseEnter`.** A touch tap fires its pointer events, then mouseover → mouseenter → mousedown →
+    mouseup → click. So a mouseenter-open plus a click toggle shut the tip in ONE tap in Chromium (Android). Only
+    WebKit's hover heuristic spared iOS: a mouseover that reveals content swallows the click. With an ungated hover and
+    pin-on-press, iOS would need three taps to close it. On a computer, the old click toggle also closed the tip being
+    read.
+  - **Hover uses NATIVE `pointerenter` / `pointerleave` listeners on the wrap.** They fire exactly on it, and they
+    don't depend on React's over/out emulation, whose `toElement` fallback is engine-specific.
+  - The trigger's `::after` sits on `.wrap`, its containing block, inset −9px. It bridges the 8px gap above the panel
+    by 1px, so moving the mouse straight down onto the panel keeps a hover-opened tip open.
+- **Unchanged.**
+  - Escape and an outside `pointerdown` close it. ⚠ It is `pointerdown`, not `click`, or the trigger's own onClick
+    reopens it and then instantly closes it in one gesture.
+  - The panel is UNMOUNTED when closed. A hidden-but-mounted panel leaves its text in the accessibility tree and in
+    Cmd-F.
+- **Tests:** `infoTipModel.test.ts`, `infoTipWiring.test.ts` and the "InfoTip" e2e (§ Test Suite).
 
 **Ownership face.** Same default and the same cold venue row, plus a **Cold series on the Held · owed
 chart**. ⚠ It plots UNDER `yours` as a floor — the coins no lender can reach — and it is a SUBSET of
@@ -6553,6 +6607,68 @@ goes red.)
     | D1@390 | E3: the unit words back |
     | D1@375 | E6: the ≤480px rule back to 13px / 12px |
     | SCROLL@350 | E7: the sidebar's three min-widths back (340 in 316) |
+- **InfoTip fit** (spec `pbloc-spec-infotip-fit-v1`, v1.1; every ⭐ red under its named mutation, at its own test or
+  tagged assertion, every file restored and md5-checked):
+  - `src/components/ui/__tests__/infoTipModel.test.ts` (26):
+    - ⭐ `tipShift` (14) — the rows, at 390 unless noted:
+      - fits ⇒ 0;
+      - off the left, and in the left gutter ⇒ right to 16;
+      - off the right, and in the right gutter ⇒ left to width − 16;
+      - exactly on both gutters ⇒ 0;
+      - too wide ⇒ the left edge pinned (20..400 → −4);
+      - six non-finite rows, each non-zero without the guard;
+      - the spec's measured panels (129..481 at 390 → −107; 129..472 at 375 → −113).
+
+      The mutations:
+      - T1: the left branch dropped;
+      - T2: the right branch dropped;
+      - T3: gutter 0;
+      - T4: gutter 17;
+      - T5: the screen edge compared instead of the gutter — only the two in-gutter rows catch it;
+      - T6: too wide pins the right;
+      - T7: the guard dropped;
+      - T8: the too-wide check dropped.
+    - ⚠ `<` → `<=` on any of the three comparisons is an EQUIVALENT mutant. The shift is continuous at each gutter, so
+      no row can catch it. It was run once and stayed green, as expected.
+    - ⭐ `nextTipState` (12) — all 12 transitions. The mutations:
+      - R1: a press toggles a hover-opened tip shut;
+      - R2: leaving closes a pinned tip;
+      - R3: hover demotes a pinned tip;
+      - R4: a second press keeps it;
+      - R5: dismiss spares a pinned tip;
+      - R6: a first press only hovers.
+  - `src/components/ui/__tests__/infoTipWiring.test.ts` (source-reading, 8 checks, comments stripped first):
+    - the model imports nothing;
+    - the `useLayoutEffect` places the panel through `tipShift(`, with `getBoundingClientRect()` and
+      `documentElement.clientWidth`, and adds and removes a `resize` listener;
+    - no React hover props;
+    - native `pointerenter` / `pointerleave`, each `send('hover…')` gated on `pointerType === 'mouse'`;
+    - `useReducer(nextTipState`, the click sends `'press'`, and nothing toggles;
+    - the CSS: no 480px rule, `left: -8px`, the max-width tied to `2 × TIP_GUTTER_PX`, `transition-property: none`;
+    - unchanged: unmount when closed, Escape, the outside pointerdown, the aria attributes.
+
+    The mutations:
+    - W1: `onMouseEnter` back;
+    - W2: a gate dropped;
+    - W3: the resize listener dropped;
+    - W4: `window.innerWidth`;
+    - W5: the 480 rule back;
+    - W6: the transition guard dropped;
+    - W7: the click back to a toggle.
+  - e2e (`navigation.spec.ts`, "InfoTip") — every assertion is tagged, and each mutation, run with `--retries=0`, is
+    red at its own tag. The red-first run puts HEAD's InfoTip under the new test. The rects in the table are what each
+    run measured.
+
+    | Tag | Mutation |
+    |---|---|
+    | TAP | HEAD (I3): one tap leaves it shut |
+    | FIT@390 | E1: `tipShift` → 0 (129..481 at 390) |
+    | FIT@375 | E2: the resize listener dropped (22..365 at 375); E3: `transition-property` dropped (123..466 at 375 — F3) |
+    | COMPAT-MOUSE | E4: `onMouseEnter` / `onMouseLeave` back |
+    | COMPAT-TOUCH | E5: the hover-in gate dropped |
+    | CLICK-KEEPS | E6: a press on a hover-opened tip toggles it shut |
+    | AWAY-KEEPS | E7: leaving closes a pinned tip |
+    | ESCAPE | E8: Escape no longer closes |
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -6981,6 +7097,20 @@ widths can't move with the market. It checks:
 
 The page itself can't scroll sideways (`overflow-x: hidden` on html, body and the tool container), so the scroll box is
 the check. **350 stands for the full-mode tab:** the Almanac box there is 316px, the full-mode tab's box at 390.
+
+**The InfoTip test** (spec `pbloc-spec-infotip-fit-v1`) opens the Support policy ⓘ on the Decision face. It runs under
+`reducedMotion: 'reduce'`, the harder case for the placement. It checks:
+- ONE `tap()` opens it; a second tap, Escape and a tap outside each close it;
+- the panel's box sits inside [16, w − 16] at 390, 375 and 481. The tip stays open through `setViewportSize`, so this
+  also proves the re-place on resize;
+- **COMPAT:** a tap's compat mouse events and a touch pointer entering open nothing, and a mouse pointer entering opens
+  it, which is the positive control. The events are dispatched in browser order (the Z6 precedent), so this proves the
+  component's decision, not WebKit's hover heuristic;
+- with the mouse: hover opens it and leaving closes it; a click keeps it open, even after the mouse leaves; a second
+  click closes it.
+
+The note locator is scoped to the card, because `DemoBanner` is the only other `role="note"`. A real phone's tap
+arbitration stays a device check.
 
 ⚠ Touch-only: the e2e never takes the fine-pointer box branch — P8's unit check in `powerLawWiring` covers it. **CANNOT cover** (→ the iOS device gate stays MANDATORY): real WebKit system haptics (iOS
 has NO programmatic path — `hapticsSupport()` is `'none'` there); the P1.3 **scroll/drag handoff** (`scroll

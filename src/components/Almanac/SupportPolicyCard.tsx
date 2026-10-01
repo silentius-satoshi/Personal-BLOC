@@ -9,15 +9,17 @@ import {
 import styles from './SupportPolicyCard.module.css';
 
 /**
- * The Support policy card — ONE card on the three engine faces (Cycling, Ownership, Strategy). It follows the
- * FreshnessBadge precedent: a shared Almanac component with its own CSS module, so no face's module hosts it.
+ * The Support policy card — ONE card on Decision and the three engine faces (Cycling, Ownership, Strategy). It
+ * follows the FreshnessBadge precedent: a shared Almanac component with its own CSS module, so no face's module
+ * hosts it.
  *
  * Presentation only. Every sentence and number comes from `supportPolicyView` (pure, tested); the card decides only
  * what renders where. It reads the DISPLAYED run (`sim`), so the stress lens moves it with the rest of the face. The
  * settings are the face's session overlay — the card writes nothing but `onChange` / `onReset`.
  *
  * ⚠ No re-arm control: the breaker's re-arm is a constant (decision 4) — the breaker line says what it does.
- * ⚠ `ui/SliderInput` and `ui/InfoTip` are consumed exactly as they are (Mining and Living share them).
+ * ⚠ `ui/SliderInput` and `ui/InfoTip` are consumed exactly as they are. SliderInput is shared with Mining and Living;
+ * InfoTip lives only on these faces (this card, the Strike-cap ⓘs, Cycling's cold storage).
  */
 export interface SupportPolicyCardProps {
   /** The DISPLAYED run — the stress lens moves the card. */

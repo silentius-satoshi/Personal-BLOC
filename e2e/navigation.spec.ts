@@ -375,3 +375,114 @@ test.describe('Sats face — the rates under the converter', () => {
     expect((await measure()).scrolls, 'SCROLL@1280').toBe(false);
   });
 });
+
+// ── InfoTip fit (spec pbloc-spec-infotip-fit-v1, v1.1). ONE tap opens a tip; the panel sits inside the 16px gutters at
+// every width and again after a resize; Escape, a second tap and a tap outside close it; with a mouse, hover opens it, a
+// click keeps it open and a second click closes it. Every assertion carries a tag (PREMISE, TAP, FIT@w, TAP2, COMPAT-*,
+// ESCAPE, OUTSIDE, HOVER, HOVER-AWAY, CLICK-KEEPS, AWAY-KEEPS, CLICK-CLOSES), so each named mutation fails at its own.
+test.describe('InfoTip — one tap, on screen', () => {
+  test('the Support policy ⓘ on Decision: one tap opens it inside the gutters at 390, 375 and 481; the tap, Escape, outside and mouse rules', async ({ page }) => {
+    // Reduced motion is the harder case: the global rule gives every element an 80ms transition, and without the
+    // panel's `transition-property: none` a re-place after a resize measures a transition that has only just started.
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await page.route(/blockchain\.info/, (r) => r.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+    }));
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    await expect(page.getByRole('region', { name: "The support policy's move this month" })).toBeVisible({ timeout: 8000 });
+
+    const trigger = page.getByRole('button', { name: 'About the support policy' });
+    const card = trigger.locator('xpath=ancestor::section[1]');
+    // Scoped to the card: DemoBanner is the only other role="note", and a demo dev server would render it.
+    const note = card.getByRole('note');
+    // The card's top padding, clear of its rounded corner. hover() scrolls and hit-checks.
+    const away = () => card.hover({ position: { x: 40, y: 4 } });
+    // Two frames: long enough for React to render a continuous-priority update (a pointer enter or leave).
+    const settle = () => page.evaluate(() => new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r()))));
+    // Layout snaps to 1/64px; this absorbs a sub-pixel, never a mis-placement (the mutants miss by 6–107px).
+    const SUBPX = 0.5;
+    const fit = async (): Promise<string> => {
+      const w = page.viewportSize()!.width;
+      const b = await note.boundingBox({ timeout: 1000 }).catch(() => null);
+      if (!b) return `no panel at ${w}`;
+      const inside = b.x >= 16 - SUBPX && b.x + b.width <= w - 16 + SUBPX;
+      return inside ? 'inside' : `${Math.round(b.x)}..${Math.round(b.x + b.width)} at ${w}`;
+    };
+    /** A pointer entering the ⓘ from outside, dispatched the way a browser sends it: the bubbling over event on the
+     *  trigger, then the non-bubbling enter event on the wrap and on the trigger. 'compat-mouse' is what a touch tap sends
+     *  after pointerup. 50ms later — React renders a continuous-priority update in a scheduler task — what does the tip
+     *  show? It proves the component's decision, not a browser's (the Z6 precedent). */
+    const enterAs = (kind: 'compat-mouse' | 'touch' | 'mouse') => trigger.evaluate(async (btn, k) => {
+      const wrap = btn.parentElement!;
+      const make = (type: string, bubbles: boolean): Event => (k === 'compat-mouse'
+        ? new MouseEvent(type, { bubbles })
+        : new PointerEvent(type, { bubbles, pointerType: k }));
+      const [over, enter] = k === 'compat-mouse' ? ['mouseover', 'mouseenter'] : ['pointerover', 'pointerenter'];
+      btn.dispatchEvent(make(over, true));
+      wrap.dispatchEvent(make(enter, false));
+      btn.dispatchEvent(make(enter, false));
+      await new Promise((r) => setTimeout(r, 50));
+      return { expanded: btn.getAttribute('aria-expanded'), notes: wrap.querySelectorAll('[role="note"]').length };
+    }, kind);
+
+    await trigger.scrollIntoViewIfNeeded();
+    await expect(trigger, 'PREMISE').toHaveAttribute('aria-expanded', 'false');
+    await expect(note, 'PREMISE').toHaveCount(0);
+
+    // TAP — ONE tap opens it (I3: a mouseenter-open plus a click toggle shut it in the same tap).
+    await trigger.tap();
+    await expect(trigger, 'TAP').toHaveAttribute('aria-expanded', 'true');
+    await expect(note, 'TAP').toHaveCount(1);
+
+    // FIT — inside [16, w − 16] at each width. The tip stays open across the resizes, so this proves the re-place too.
+    for (const width of [390, 375, 481]) {
+      await page.setViewportSize({ width, height: 844 });
+      await expect.poll(fit, { message: `FIT@${width}` }).toBe('inside');
+    }
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    // TAP2 — a second tap on the ⓘ closes it.
+    await trigger.tap();
+    await expect(trigger, 'TAP2').toHaveAttribute('aria-expanded', 'false');
+    await expect(note, 'TAP2').toHaveCount(0);
+
+    // COMPAT — only a mouse pointer's hover opens it: a tap's compat mouse events and a touch pointer entering open
+    // nothing. The mouse row is the positive control, so the other two can't pass vacuously.
+    expect(await enterAs('compat-mouse'), 'COMPAT-MOUSE').toEqual({ expanded: 'false', notes: 0 });
+    expect(await enterAs('touch'), 'COMPAT-TOUCH').toEqual({ expanded: 'false', notes: 0 });
+    expect(await enterAs('mouse'), 'COMPAT-CONTROL').toEqual({ expanded: 'true', notes: 1 });
+
+    // ESCAPE — closes it.
+    await page.keyboard.press('Escape');
+    await expect(trigger, 'ESCAPE').toHaveAttribute('aria-expanded', 'false');
+    await expect(note, 'ESCAPE').toHaveCount(0);
+
+    // OUTSIDE — a tap outside closes it.
+    await trigger.tap();
+    await expect(trigger, 'OUTSIDE').toHaveAttribute('aria-expanded', 'true');
+    await card.tap({ position: { x: 40, y: 4 } });
+    await expect(trigger, 'OUTSIDE').toHaveAttribute('aria-expanded', 'false');
+    await expect(note, 'OUTSIDE').toHaveCount(0);
+
+    // The mouse. The move to the padding first makes the hover a real boundary crossing, whatever a tap left behind.
+    await away();
+    await trigger.hover();
+    await expect(trigger, 'HOVER').toHaveAttribute('aria-expanded', 'true');
+    await away();
+    await expect(trigger, 'HOVER-AWAY').toHaveAttribute('aria-expanded', 'false');
+    await trigger.hover();
+    await trigger.click();
+    await settle();
+    await expect(trigger, 'CLICK-KEEPS').toHaveAttribute('aria-expanded', 'true');
+    await away();
+    await settle();
+    await expect(trigger, 'AWAY-KEEPS').toHaveAttribute('aria-expanded', 'true');
+    await trigger.click();
+    await expect(trigger, 'CLICK-CLOSES').toHaveAttribute('aria-expanded', 'false');
+    await expect(note, 'CLICK-CLOSES').toHaveCount(0);
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+});

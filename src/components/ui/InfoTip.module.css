@@ -33,13 +33,15 @@
   inset: -9px;
 }
 
+/* Placement: CSS hangs the panel under the ⓘ; InfoTip slides it sideways before paint (tipShift) so it sits inside the
+   16px gutters at every width, and again on every resize. The max width leaves 16px each side, so it always fits. */
 .panel {
   position: absolute;
   top: calc(100% + 8px);
   left: -8px;
   z-index: 40;
   width: max(240px, 22rem);
-  max-width: min(90vw, 26rem);
+  max-width: min(calc(100vw - 32px), 26rem);
   padding: 10px 12px;
   border: 1px solid var(--line-2);
   border-radius: 8px;
@@ -52,10 +54,9 @@
   text-transform: none;
   box-shadow: 0 8px 24px rgb(0 0 0 / 45%);
   white-space: normal;
-}
-/* Near the right edge the panel would otherwise run off-screen on a phone. */
-@media (max-width: 480px) {
-  .panel { left: auto; right: -8px; }
+  /* The nudge must land before paint. The global reduced-motion rule gives every element an 80ms transition, and a
+     re-place after a resize would otherwise measure one that has only just started, and settle in the wrong place. */
+  transition-property: none;
 }
 .panel p { margin: 0 0 7px; }
 .panel p:last-child { margin-bottom: 0; }

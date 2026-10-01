@@ -1,6 +1,7 @@
-/* The Support policy card — shared by the Cycling, Ownership and Strategy faces (the FreshnessBadge precedent: a
-   shared Almanac component owns its own CSS). Tokens only — zero new hex. The zone colours are NOT here: they come
-   from ZONE_COLOR (supportPolicyView), inline, so the strip, its legend and the Milestones column read ONE map. */
+/* The Support policy card — shared by the Cycling, Ownership, Strategy and Decision faces (the FreshnessBadge
+   precedent: a shared Almanac component owns its own CSS). Tokens only — zero new hex. The zone colours are NOT here:
+   they come from ZONE_COLOR (supportPolicyView), inline, so the strip, its legend and the Milestones column read ONE
+   map. */
 
 .card {
   margin-top: 13px;
