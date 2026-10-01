@@ -161,7 +161,6 @@ describe('⭐ a composed class is overridden on a doubled selector, never beside
     // mutations:
     // - PowerLawMain: max-width back beside composes: → red
     // - DecisionFace: height back beside composes: → red
-    // - DecisionFace: the touch query back to a single .chartBox → red
     // - MiningMain: .main.main deleted → red
     // - ConverterMain: .main.main un-doubled → red
     // - DecisionFace: .moveCard's border-color back beside composes: → red

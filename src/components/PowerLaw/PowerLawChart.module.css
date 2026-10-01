@@ -7,25 +7,23 @@
   min-width: 0;
 }
 
-/* The Decision box pattern (D4): the chart fills a fixed-height box, and on a touch device the zoom toolbar is a row
-   above the plot, so the box grows by it and the plot keeps its height. Desktop 480px · phone 360px · +36px on touch.
-   ⚠ P8: every --pl-* value is a LENGTH. A bare `0` makes the calc() invalid, the height resolves to auto, and the box
-   and its 100%-high chart collapse to 0px on every fine pointer — which the touch-only e2e can't see. powerLawWiring
-   pins the units. */
+/* The Decision box pattern (D4): the chart fills a fixed-height box — desktop 480px, phone 360px. The zoom toolbar sits in
+   the title row above it on every device (Z18), so the box no longer grows on touch.
+   ⚠ P8: every --pl-* value is a LENGTH. A bare number makes `height: var(--pl-plot)` invalid at computed-value time, the
+   height resolves to auto, and the box and its 100%-high chart collapse to 0px. powerLawWiring pins the units. */
 .chartBox,
 .chartEmpty {
   --pl-plot: 480px;
-  --pl-toolbar: 0px;
 }
 @media (max-width: 640px) {
   .chartBox,
   .chartEmpty { --pl-plot: 360px; }
 }
-/* The complement of ChartZoomFrame's fine-pointer overlay query — exactly the Decision chart's. */
-@media not all and (hover: hover) and (pointer: fine) {
-  .chartBox,
-  .chartEmpty { --pl-toolbar: 36px; }
-}
+
+/* The title row (Z18) — the Decision chart's, reused: a card label on the left, the zoom toolbar on the right. Its
+   descendant rule (DecisionFace.module.css) reaches the label through these composed names. */
+.chartHead { composes: chartHead from '../Almanac/DecisionFace.module.css'; }
+.cardLabel { composes: cardLabel from '../Almanac/DecisionFace.module.css'; }
 
 .chartBox { composes: chartBox from '../Almanac/OwnershipFace.module.css'; }
 /* Loading and error: the same box at the chart's height, so the box keeps its place when the chart arrives. The swatch
@@ -36,7 +34,7 @@
    e2e). Specificity doesn't depend on load order. composedOverrides.test.ts pins the rule. */
 .chartBox.chartBox,
 .chartEmpty.chartEmpty {
-  height: calc(var(--pl-plot) + var(--pl-toolbar));
+  height: var(--pl-plot);
 }
 
 .tooltip { composes: tooltip from '../Almanac/CyclingFace.module.css'; }

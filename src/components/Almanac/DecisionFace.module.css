@@ -33,12 +33,8 @@
    bundle's rule order would decide, and that was right only because this file happens to land later (P9).
    composedOverrides.test.ts pins the rule. */
 .chartBox { composes: chartBox from './OwnershipFace.module.css'; }
+/* 280px on every device: the zoom toolbar sits in the title row above it (Z18), so the box never grows on touch. */
 .chartBox.chartBox { height: 280px; }
-/* Chart zoom: on a touch device the zoom toolbar is a row above the plot — the box grows by it, so the plot keeps its
-   280px. (The complement of ChartZoomFrame's fine-pointer overlay query.) */
-@media not all and (hover: hover) and (pointer: fine) {
-  .chartBox.chartBox { height: 316px; }
-}
 .stateLine { composes: stateLine from './UnifiedFace.module.css'; }
 
 /* ── New to this face ─────────────────────────────────────────────────────────────────────────── */
@@ -90,7 +86,25 @@
   cursor: not-allowed;
 }
 
-/* The chart — an empty state the size of the chart, and a legend of the series actually drawn. */
+/* The chart — a title row, an empty state the size of the chart, and a legend of the series actually drawn. */
+
+/* The title row (Z18): the card label on the left, the zoom toolbar on the right — on a phone and a computer alike, so
+   the toolbar never covers the plot. ⚠ min-height 32px, not 30 (Z22): the body's line-height is 1.5, so the label beside
+   the toolbar wraps to two 15.75px lines — 31.5px. The empty state has no toolbar (one line), so the row holds the same
+   height either way and the box keeps its place when the chart arrives. The Power Law chart composes this row. */
+.chartHead {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  margin-bottom: 10px;
+}
+/* In the row the row carries the bottom margin, and the label may wrap beside the toolbar. (0,2,0): it beats the
+   composed .cardLabel's margin (0,1,0) whatever the bundle's order (P9). */
+.chartHead .cardLabel {
+  margin-bottom: 0;
+  min-width: 0;
+}
 .chartEmpty {
   height: 280px;
   display: flex;

@@ -8,9 +8,9 @@ import {
   scaleDomain, stepPins, panPins, pinchPins,
   normalizePins, effectiveView, isZoomed,
   timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter,
-  isDoubleTap, zoomBackNote, lockAxis, nextMode,
+  isDoubleTap, zoomBackNote, lockAxis, nextMode, leavesHome,
   MIN_SPAN_TIME_LOG,
-  type Domain, type Pins, type PlotRect, type Scales, type View,
+  type AxisScale, type Domain, type Pins, type PlotRect, type Scales, type View,
 } from '../chartZoom';
 
 /**
@@ -365,5 +365,184 @@ describe('⭐ 22 · the toolbar\'s mode rule (Z15)', () => {
     expect(nextMode('pan', 'pan', false)).toBeNull();
     expect(nextMode('zoom', 'zoom', false)).toBeNull();
     expect(nextMode('zoom', 'pan', false)).toBe('pan');
+  });
+});
+
+describe('⭐ 23–28 · the reach (the Decision chart\'s price axis) and the note', () => {
+  /** HOME is the fitted view: where the chart opens, and where Reset returns. REACH is how far zoom-out and pan may go —
+   *  the Decision chart's shape: the dates' reach is home, and the price reaches $0.01–$10M. */
+  const HOME: View = { x: [0, 1_000 * DAY], y: [1_000, 100_000] };
+  const REACH: View = { x: HOME.x, y: [0.01, 10_000_000] };
+  const norm = (p: Pins, home: View = HOME, reach: View = REACH): Pins =>
+    normalizePins(p, home, TIME_LOG, MIN_SPAN_TIME_LOG, reach);
+
+  it('⭐ 23 — − from home zooms out past it, step by step, and stops at the reach', () => {
+    // mutations: ignore the reach (today's clamp) → the first step out is auto, its top 1e5; a span at the reach →
+    // auto ("always null") → the third step snaps back to home; drop the early return → the third step runs wider
+    // than the reach
+    let p = pins(null, null);
+    const views: View[] = [];
+    for (let i = 0; i < 4; i++) {
+      p = norm(stepPins(effectiveView(p, HOME), 'out', TIME_LOG));
+      views.push(effectiveView(p, HOME));
+    }
+    close(views[0].y[0], 100);                       // 2 → 4 decades about 10^4
+    close(views[0].y[1], 1_000_000);
+    close(views[1].y[0], 0.1);                       // 8 decades, shifted down inside the reach
+    close(views[1].y[1], 10_000_000);
+    for (const v of views.slice(2)) {                // the whole reach, and no further
+      close(v.y[0], 0.01);
+      close(v.y[1], 10_000_000);
+    }
+    expect(p.x).toBeNull();                          // the dates' reach is home, so they stay auto
+    expect(isZoomed(p)).toBe(true);                  // pinned: Reset stays enabled
+  });
+
+  it('⭐ 24 — a pan at home moves the price (today it snaps back); past the reach it stops at the edge, its span kept; the dates stay home', () => {
+    // mutations: ignore the reach → a pan at home is auto; clip at the reach's edge instead of shifting → the far pan
+    // loses its span
+    const up = norm(panPins(HOME, 0, RECT.height / 4, RECT, TIME_LOG));   // a drag DOWN shows higher prices
+    expect(up.y, 'the view moved').not.toBeNull();
+    close(up.y![0], 10 ** 3.5);
+    close(up.y![1], 10 ** 5.5);
+    expect(up.x).toBeNull();
+    const far = norm(panPins(HOME, 0, RECT.height * 10, RECT, TIME_LOG));
+    expect(far.y, 'the far pan').not.toBeNull();
+    close(far.y![0], 100_000);                       // the reach's top, 2 decades kept
+    close(far.y![1], 10_000_000);
+    expect(norm(panPins(HOME, RECT.width / 4, 0, RECT, TIME_LOG))).toEqual(pins(null, null));   // sideways: still home
+  });
+
+  it('⭐ 25 — a pin back at home is auto: a pan up and back down returns home (Reset\'s view, zoomed false); half a span off home stays pinned', () => {
+    // mutations: drop the home check → `back` stays pinned at ≈home; drop its `a` (or `b`) conjunct → [10², 10⁵]
+    // (or [10³, 10⁶]), which ends at home's top (or starts at its bottom), turns auto
+    const up = norm(panPins(HOME, 0, RECT.height / 4, RECT, TIME_LOG));
+    expect(isZoomed(up), 'premise: the pan left home').toBe(true);
+    const back = norm(panPins(effectiveView(up, HOME), 0, -RECT.height / 4, RECT, TIME_LOG));
+    expect(back).toEqual(pins(null, null));
+    expect(effectiveView(back, HOME)).toEqual(HOME);
+    expect(norm(pins(null, [100, 100_000])).y, 'home\'s top, half a span lower at the bottom').not.toBeNull();
+    expect(norm(pins(null, [1_000, 1_000_000])).y, 'home\'s bottom, half a span higher at the top').not.toBeNull();
+  });
+
+  it('⭐ 26 — a reach equal to home IS today\'s clamp, bit for bit (a frozen oracle; green before and after by design)', () => {
+    // mutations: drop the home check's span conjunct → [750, 1e12 − 750] on a [0, 1e12] home (within 2·EPS of it, at
+    // its place) turns auto; drop the early return → the 60-day home's pins come back pinned (Z3a)
+    const fw = (v: number, s: AxisScale): number => (s === 'log' ? Math.log(v) : v);
+    const iv = (t: number, s: AxisScale): number => (s === 'log' ? Math.exp(t) : t);
+    /** Today's normAxis (chartZoom.ts before the reach), frozen. */
+    function oldNormAxis(pin: Domain | null, full: Domain, s: AxisScale, minSpan: number): Domain | null {
+      if (pin === null) return null;
+      const f0 = fw(full[0], s), f1 = fw(full[1], s);
+      const fullSpan = f1 - f0;
+      if (!(fullSpan > 0)) return null;
+      let a = fw(pin[0], s), b = fw(pin[1], s);
+      if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
+      if (a > b) [a, b] = [b, a];
+      const c = (a + b) / 2;
+      const span = Math.max(b - a, minSpan);
+      if (span >= fullSpan * (1 - 1e-9)) return null;
+      a = c - span / 2;
+      b = c + span / 2;
+      if (a < f0) { b += f0 - a; a = f0; }
+      if (b > f1) { a -= b - f1; b = f1; }
+      return [iv(a, s), iv(b, s)];
+    }
+    const oldNorm = (p: Pins, full: View): Pins => ({
+      x: oldNormAxis(p.x, full.x, TIME_LOG.x, MIN_SPAN_TIME_LOG.x),
+      y: oldNormAxis(p.y, full.y, TIME_LOG.y, MIN_SPAN_TIME_LOG.y),
+    });
+    const homes: View[] = [
+      HOME,
+      { x: [Date.UTC(2009, 0, 3), Date.UTC(2031, 8, 30)], y: [0.04, 1_200_000] },   // the Decision chart's shape
+      { x: [0, 60 * DAY], y: [1, 1.05] },                                         // both under the minimum (Z3a)
+      { x: [0, 1e12], y: [1_000, 100_000] },
+    ];
+    // premise: the span conjunct's case is pinned today
+    expect(oldNormAxis([750, 1e12 - 750], [0, 1e12], 'linear', MIN_SPAN_TIME_LOG.x)).not.toBeNull();
+
+    let seed = 20261001;
+    const rnd = () => {   // mulberry32 — deterministic
+      seed |= 0; seed = (seed + 0x6d2b79f5) | 0;
+      let t = Math.imul(seed ^ (seed >>> 15), 1 | seed);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    const at = (d: Domain, s: AxisScale, u: number): number => {
+      const a = fw(d[0], s), b = fw(d[1], s);
+      return iv(a + u * (b - a), s);
+    };
+    const pinAt = (d: Domain, s: AxisScale, u0: number, u1: number): Domain => [at(d, s, u0), at(d, s, u1)];
+    const JUNK: Domain[] = [[Number.NaN, 1], [0, Infinity], [-Infinity, 0], [1.4e308, -1.4e308], [Infinity, -Infinity]];
+    const UNIT: [number, number][] = [
+      [0, 1], [1, 0], [0.25, 0.75], [-0.5, 0.5], [0.5, 1.5], [-0.1, 1.1], [0.5, 0.5], [0.4, 0.4 + 1e-7],
+      [0.5e-9, 1 - 0.5e-9], [0.75e-9, 1 - 0.75e-9], [-0.5e-9, 1 + 0.5e-9], [2e-9, 1], [0, 1 - 2e-9],
+    ];
+    const randomPin = (d: Domain, s: AxisScale): Domain | null => {
+      const r = rnd();
+      if (r < 0.08) return null;
+      if (r < 0.12) return JUNK[Math.floor(rnd() * JUNK.length)];
+      if (r < 0.35) {   // within ±20 ulp-ish of the full span — the threshold
+        const off = (rnd() - 0.5) * 1e-8, k = (rnd() * 40 - 20) * 1e-9;
+        return pinAt(d, s, off, 1 + off + k);
+      }
+      if (r < 0.55) {   // under the minimum
+        const c = rnd() * 1.4 - 0.2, h = rnd() * 0.02;
+        return pinAt(d, s, c - h, c + h);
+      }
+      return pinAt(d, s, rnd() * 2 - 0.5, rnd() * 2 - 0.5);
+    };
+    const sameBits = (a: Domain | null, b: Domain | null): boolean =>
+      a === null || b === null ? a === b : Object.is(a[0], b[0]) && Object.is(a[1], b[1]);
+
+    const mismatches: string[] = [];
+    let nulls = 0, pinned = 0;
+    const check = (p: Pins, home: View) => {
+      const got = normalizePins(p, home, TIME_LOG, MIN_SPAN_TIME_LOG, home);
+      const want = oldNorm(p, home);
+      for (const k of ['x', 'y'] as const) {
+        if (want[k] === null) nulls += 1; else pinned += 1;
+        if (!sameBits(got[k], want[k])) {
+          mismatches.push(`${k} [${p[k]}] on [${home[k]}]: [${got[k]}] ≠ [${want[k]}]`);
+        }
+      }
+    };
+    for (const home of homes) {
+      for (const [u0, u1] of UNIT) check({ x: pinAt(home.x, 'linear', u0, u1), y: pinAt(home.y, 'log', u0, u1) }, home);
+      for (const j of JUNK) check({ x: j, y: j }, home);
+      check(pins(null, null), home);
+      for (let i = 0; i < 3_000; i++) check({ x: randomPin(home.x, 'linear'), y: randomPin(home.y, 'log') }, home);
+    }
+    check(pins([750, 1e12 - 750], null), homes[3]);
+    expect(mismatches.slice(0, 5)).toEqual([]);
+    expect(nulls, 'auto outcomes').toBeGreaterThan(100);
+    expect(pinned, 'pinned outcomes').toBeGreaterThan(100);
+  });
+
+  it('⭐ 27 — the reach always contains home, end by end', () => {
+    // mutations: no union (the reach as given) → a home wider than the reach "zooms out" to the narrower reach — a zoom
+    // IN; drop `r0 === h0` (or `r1 === h1`) → a reach wider at the bottom (or the top) only zooms out to home instead
+    const WIDE: View = { x: HOME.x, y: [0.001, 1e9] };
+    expect(norm(stepPins(WIDE, 'out', TIME_LOG), WIDE)).toEqual(pins(null, null));
+    const bottom = norm(stepPins(HOME, 'out', TIME_LOG), HOME, { x: HOME.x, y: [10, 100_000] }).y;
+    expect(bottom, 'a reach wider at the bottom only').not.toBeNull();
+    close(bottom![0], 10);
+    close(bottom![1], 100_000);
+    const top = norm(stepPins(HOME, 'out', TIME_LOG), HOME, { x: HOME.x, y: [1_000, 10_000_000] }).y;
+    expect(top, 'a reach wider at the top only').not.toBeNull();
+    close(top![0], 1_000);
+    close(top![1], 10_000_000);
+  });
+
+  it('⭐ 28 — the note says "reset" once a view leaves home, and "zoom back out" while it stays inside', () => {
+    // mutations: `||` → `&&` in leavesHome → a price-only zoom out reads as inside; the note never says reset → after a
+    // zoom out it would say "zoom back out", which is false (a double-tap zooms back IN, to home)
+    expect(leavesHome({ x: [100 * DAY, 300 * DAY], y: [2_000, 20_000] }, HOME, TIME_LOG)).toBe(false);   // a box inside
+    expect(leavesHome(HOME, HOME, TIME_LOG)).toBe(false);
+    expect(leavesHome({ x: HOME.x, y: [100, 1_000_000] }, HOME, TIME_LOG)).toBe(true);                 // a price zoom out
+    expect(leavesHome({ x: HOME.x, y: [10 ** 3.5, 10 ** 5.5] }, HOME, TIME_LOG)).toBe(true);           // a pan up
+    expect(zoomBackNote('mouse', true)).toBe('Double-click to reset the view');
+    expect(zoomBackNote('touch', true)).toBe('Double-tap to reset the view');
+    expect(zoomBackNote('mouse', false)).toBe('Double-click to zoom back out');
   });
 });

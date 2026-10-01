@@ -1,5 +1,20 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
 import { seedAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX } from './helpers';
+
+/**
+ * Z18 — the zoom toolbar sits in the chart card's title row: above the chart (never over the plot), on the title's line,
+ * and right-aligned with the chart box. ROW reads the gesture area, which exists before and after the split, so the old
+ * overlay fails it on a computer.
+ */
+async function expectToolbarInTitleRow(page: Page, title: string, boxTestId: string): Promise<void> {
+  const bar = (await page.getByRole('toolbar', { name: 'Chart zoom' }).boundingBox())!;
+  const head = (await page.getByText(title, { exact: true }).boundingBox())!;
+  const area = (await page.getByTestId('chart-zoom').boundingBox())!;
+  expect(bar.y + bar.height, 'ROW').toBeLessThanOrEqual(area.y);
+  expect(Math.abs(bar.y + bar.height / 2 - (head.y + head.height / 2)), 'ROW').toBeLessThanOrEqual(bar.height / 2);
+  const box = (await page.getByTestId(boxTestId).boundingBox())!;
+  expect(Math.abs(bar.x + bar.width - (box.x + box.width)), 'RIGHT').toBeLessThanOrEqual(1);
+}
 
 /**
  * Gesture & Motion System — P3 navigation specs: edge-swipe-back (AppShell Branch H/I) + Almanac face nav.
@@ -93,20 +108,41 @@ test.describe('Navigation gestures (P3)', () => {
     }
   });
 
-  test('a horizontal drag on the Power Law chart stays on the face and zooms it; a 396px phone box; the tooltip and the legend name the bands', async ({ page }) => {
-    // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both).
-    await page.route(/blockchain\.info/, (r) =>
-      r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) }));
+  test('a horizontal drag on the Power Law chart stays on the face and zooms it; a 360px phone box that holds still while the history loads; the toolbar in the title row; the tooltip and the legend name the bands', async ({ page }) => {
+    // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both). The history is
+    // HELD until STEADY has read the loading box (Z22).
+    let release!: () => void;
+    const held = new Promise<void>((res) => { release = res; });
+    // STEADY measures the box, so nothing above it may change size while the history loads. The side panel above the
+    // chart adds a "vs Fair" row when the live price answers and a block line when mempool answers — so both fail here,
+    // and the panel keeps its '—' rows.
+    await page.route(/api\.coinbase\.com|mempool\.space/, (r) => r.abort());
+    await page.route(/blockchain\.info/, async (r) => {
+      await held;
+      await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) });
+    });
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
     await page.getByRole('button', { name: /Power Law/ }).click();      // tap to the powerlaw face
+    // STEADY (Z22) — the box's page top is the same while loading and once the chart arrives. The title row is one line
+    // while loading (no toolbar) and two beside the toolbar (31.5px), inside the row's 32px min-height.
+    const loading = page.getByText('Loading price history…');
+    await expect(loading).toBeVisible();
+    // The web font first: IBM Plex Mono swaps in (display=swap) and the sub-nav pills above grow 33 → 34px with it
+    // (line-height: normal), so a reading taken before the swap is 1px off one taken after — a flake, not the layout.
+    await page.evaluate(() => document.fonts.ready);
+    const before = await loading.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    release();
     const chart = page.locator('.recharts-wrapper').first();
     await expect(chart).toBeVisible({ timeout: 8000 });
+    const after = await page.getByTestId('powerlaw-chart-box').evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    expect(after, 'STEADY').toBe(before);
     // Z8 — on the phone layout the chart's top sits at or below the bottom of the 844px viewport. Before chart zoom this
     // test measured it there, so its drag started OFF-SCREEN and never touched the chart: it passed vacuously.
     await chart.scrollIntoViewIfNeeded();
-    // P7 — the phone box: a 360px plot plus the 36px touch toolbar row, at 390 wide.
-    expect((await page.getByTestId('powerlaw-chart-box').boundingBox())!.height).toBe(396);
+    // P7 — the phone box: the 360px plot alone, at 390 wide. The toolbar left the box for the title row (Z18).
+    expect((await page.getByTestId('powerlaw-chart-box').boundingBox())!.height, 'P7').toBe(360);
+    await expectToolbarInTitleRow(page, 'Price · history and the power-law bands', 'powerlaw-chart-box');
     const box = (await chart.boundingBox())!;
     const scrollBefore = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     // Horizontal drag with a ±30px vertical wobble, STARTING inside the chart.
@@ -211,6 +247,12 @@ test.describe('Decision face — the smoke', () => {
     const zoom = page.getByTestId('chart-zoom');
     await zoom.scrollIntoViewIfNeeded();
     await expect(zoom).toHaveAttribute('data-zoomed', 'false');
+    // Z18 — the box is 280px on a phone too (the toolbar row used to sit inside it: 316), and the toolbar sits in the
+    // card's title row.
+    const chartBox = page.getByTestId('decision-chart-box');
+    await expect(chartBox, 'BOX').toHaveCount(1);
+    expect((await chartBox.boundingBox())!.height, 'BOX').toBe(280);
+    await expectToolbarInTitleRow(page, 'Price · history and the modeled path', 'decision-chart-box');
     const ticks = () => zoom.locator('.recharts-xAxis .recharts-cartesian-axis-tick-value').allTextContents();
     const before = await ticks();
     expect(before.length).toBeGreaterThan(0);
@@ -292,6 +334,187 @@ test.describe('Decision face — the smoke', () => {
     });
     await expect(zoom).toHaveAttribute('data-zoomed', 'true');           // the pinch took over and zoomed the dates
     await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  /** G9's three points — the history the Decision tests stub. */
+  const stubHistory = (page: Page) => page.route(/blockchain\.info/, (r) => r.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+  }));
+
+  test('chart zoom Z17: a pinch draws no tooltip, cursor or active dots — while it runs and after it — until a fresh touch', async ({ page }) => {
+    // ⚠ Z21 — reach the face with .tap() and never move page.mouse before WAKE. Playwright's mouse stays where a .click()
+    // leaves it (the Decision tab): after the tap below, Chromium re-hovers at that mouse position and sends mouseout /
+    // mouseleave to the chart, so recharts hides the tooltip. A real phone has no second pointer.
+    await stubHistory(page);
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').tap();
+    await page.getByRole('button', { name: /◆ Decision/ }).tap();
+    const zoom = page.getByTestId('chart-zoom');
+    await zoom.scrollIntoViewIfNeeded();
+    await expect(zoom, 'PREMISE').toHaveAttribute('data-mode', 'none');            // Scroll mode (nothing pressed)
+    await expect(zoom, 'PREMISE').toHaveAttribute('data-zoomed', 'false');
+    const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
+    const at = { px: plot.x + plot.width / 2, py: plot.y + plot.height / 2 };
+    // ⚠ Synthetic TouchEvents prove what recharts DRAWS for these touches (the Z6 precedent), not iOS's arbitration. Each
+    // Touch carries pageX / pageY: recharts reads pageX (getMouseInfo), so a touch without it never moves its tooltip.
+    const r = await page.evaluate(async ({ px, py }) => {
+      const target = document.elementFromPoint(px, py)!;                              // recharts' surface (Z1)
+      const area = target.closest('[data-testid="chart-zoom"]')!;
+      const touch = (id: number, x: number, y: number) => new Touch({
+        identifier: id, target, clientX: x, clientY: y, pageX: x + window.scrollX, pageY: y + window.scrollY,
+      });
+      const fire = (type: string, touches: Touch[], changed: Touch[] = touches) => target.dispatchEvent(
+        new TouchEvent(type, { touches, targetTouches: touches, changedTouches: changed, bubbles: true, cancelable: true }));
+      // Past recharts' 16ms move throttle, with React rendered.
+      const settle = () => new Promise((res) => setTimeout(res, 60));
+      const read = () => {
+        const wrap = area.querySelector('.recharts-tooltip-wrapper');
+        return {
+          tip: wrap !== null && getComputedStyle(wrap).visibility === 'visible',
+          cursor: area.querySelectorAll('.recharts-tooltip-cursor').length,
+          dots: area.querySelectorAll('.recharts-active-dot').length,
+        };
+      };
+      // CONTROL — one finger, one sideways move: recharts tracks these touches and draws its tooltip, so the zeros
+      // below can't be vacuous.
+      fire('touchstart', [touch(9, px, py)]);
+      fire('touchmove', [touch(9, px + 12, py)]);
+      await settle();
+      const control = read().tip;
+      fire('touchend', [], [touch(9, px + 12, py)]);
+      // The pinch: A, then B, then the fingers move in turn. recharts follows changedTouches[0], so without quiet its
+      // markers jump between the fingers (the reviewer's 209 → 299 → 210 → 319 …).
+      let a = touch(1, px - 45, py);
+      let b = touch(2, px + 45, py);
+      fire('touchstart', [a]);
+      fire('touchstart', [a, b], [b]);
+      let dotsDuring = 0, tipDuring = false, cursorDuring = 0;
+      const during = () => {
+        const s = read();
+        dotsDuring = Math.max(dotsDuring, s.dots);
+        tipDuring = tipDuring || s.tip;
+        cursorDuring = Math.max(cursorDuring, s.cursor);
+      };
+      for (let i = 1; i <= 3; i++) {
+        a = touch(1, px - 45 - i, py);
+        fire('touchmove', [a, b], [a]);
+        await settle();
+        during();
+        b = touch(2, px + 45 + 20 * i, py);
+        fire('touchmove', [a, b], [b]);
+        await settle();
+        during();
+      }
+      // The release: B lifts first.
+      fire('touchend', [a], [b]);
+      await settle();
+      const after = read();
+      // The pinch's leftover finger moving alone is still the pinch, not a fresh touch.
+      a = touch(1, px - 70, py);
+      fire('touchmove', [a]);
+      await settle();
+      const leftover = read().tip;
+      fire('touchend', [], [a]);
+      // A fresh finger down and not yet moved: recharts still holds the leftover finger's place, so a wake here would
+      // pop the old tooltip back.
+      const c = touch(3, px + 30, py);
+      fire('touchstart', [c]);
+      await settle();
+      const freshStart = read().tip;
+      fire('touchend', [], [c]);
+      return {
+        control, dotsDuring, tipDuring, cursorDuring,
+        tipAfter: after.tip, cursorAfter: after.cursor, dotsAfter: after.dots, leftover, freshStart,
+      };
+    }, at);
+    expect(r.control, 'CONTROL').toBe(true);
+    expect(r.dotsDuring, 'DOTS-DURING').toBe(0);
+    expect(r.tipDuring, 'TIP-DURING').toBe(false);
+    expect(r.cursorDuring, 'CURSOR-DURING').toBe(0);
+    expect(r.tipAfter, 'TIP-AFTER').toBe(false);
+    expect(r.cursorAfter, 'CURSOR-AFTER').toBe(0);
+    expect(r.dotsAfter, 'DOTS-AFTER').toBe(0);
+    expect(r.leftover, 'LEFTOVER').toBe(false);
+    expect(r.freshStart, 'FRESH-START').toBe(false);
+    await expect(zoom, 'PINCHED').toHaveAttribute('data-zoomed', 'true');
+    await expect(zoom, 'QUIET').toHaveAttribute('data-quiet', 'true');
+    // WAKE — a fresh single tap: real Chromium input, whose compat mousemove positions recharts' tooltip (as on iOS).
+    await page.touchscreen.tap(at.px + 40, at.py);
+    await expect(zoom.locator('.recharts-tooltip-wrapper').first(), 'WAKE').toBeVisible();
+    await expect(zoom, 'WAKE').toHaveAttribute('data-quiet', 'false');
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('chart zoom — the price reach: − zooms out past the fitted view toward $0.01–$10M, a pan at home moves the view, and Reset returns home', async ({ page }) => {
+    await stubHistory(page);
+    await seedAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const zoom = page.getByTestId('chart-zoom');
+    await zoom.scrollIntoViewIfNeeded();
+    const yLabels = () => zoom.locator('.recharts-yAxis .recharts-cartesian-axis-tick-value').allTextContents();
+    await expect(zoom, 'PREMISE').toHaveAttribute('data-zoomed', 'false');
+    await expect.poll(async () => (await yLabels()).length, { message: 'PREMISE' }).toBeGreaterThan(0);
+    const home = await yLabels();
+    expect(home.some((l) => l.endsWith('M')), 'PREMISE').toBe(false);                // the fitted view tops out under $1M
+    // − twice: past the fitted view, toward the reach (today − at home snaps straight back to it).
+    const zoomOut = page.getByRole('button', { name: 'Zoom out', exact: true });
+    await zoomOut.click();
+    await zoomOut.click();
+    await expect(zoom, 'OUT').toHaveAttribute('data-zoomed', 'true');
+    await expect.poll(yLabels, { message: 'REACH' }).toContain('$1.0M');
+    // The note — a double-tap goes back IN to home here, so it never says "zoom back out".
+    await expect(zoom.getByText('Double-tap to reset the view'), 'NOTE').toBeVisible();
+    await page.getByRole('button', { name: 'Reset view', exact: true }).click();
+    await expect(zoom, 'HOME').toHaveAttribute('data-zoomed', 'false');
+    await expect.poll(yLabels, { message: 'HOME' }).toEqual(home);
+    // A pan at home moves the price — a drag DOWN shows higher prices (today it snaps straight back).
+    await page.getByRole('button', { name: 'Pan', exact: true }).click();
+    await expect(zoom).toHaveAttribute('data-mode', 'pan');
+    const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
+    const x = plot.x + plot.width / 2, y0 = plot.y + plot.height * 0.3;
+    await page.mouse.move(x, y0);
+    await page.mouse.down();
+    for (let i = 1; i <= 10; i++) {
+      await page.mouse.move(x, y0 + (plot.height * 0.4 * i) / 10);
+      await page.waitForTimeout(8);
+    }
+    await page.mouse.up();
+    await expect(zoom, 'PAN').toHaveAttribute('data-zoomed', 'true');
+    await expect.poll(yLabels, { message: 'PAN' }).not.toEqual(home);
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('chart zoom Z18 on a computer: the toolbar sits in the title row and never covers the plot', async ({ browser, baseURL }) => {
+    // The project is a phone, and Z18 is a computer complaint (the fine-pointer overlay covered the end of the modeled
+    // path), so this test opens a computer of its own. ⚠ Z20: Playwright Test applies the project's `use` (isMobile,
+    // hasTouch) to a context made inside a test — without these two `false`s the page is still a touch phone.
+    const ctx = await browser.newContext({
+      baseURL, viewport: { width: 1280, height: 900 }, serviceWorkers: 'block', isMobile: false, hasTouch: false,
+    });
+    try {
+      const page = await ctx.newPage();
+      await stubHistory(page);
+      await seedAndGoto(page);
+      await page.getByLabel('Almanac').click();
+      await page.getByRole('button', { name: /◆ Decision/ }).click();
+      const zoom = page.getByTestId('chart-zoom');
+      await zoom.scrollIntoViewIfNeeded();
+      await expect(zoom, 'MODE').toHaveAttribute('data-mode', 'zoom');              // premise: a fine pointer
+      await expectToolbarInTitleRow(page, 'Price · history and the modeled path', 'decision-chart-box');
+      // CLEAR — the plot's top right, where the modeled path ends, is the chart's own, never a toolbar button. (The old
+      // overlay spanned the plot's right − 170 … right − 4, top − 4 … top + 26.)
+      const plot = (await zoom.getByTestId('chart-zoom-plot').boundingBox())!;
+      const clear = await page.evaluate(({ x, y }) => {
+        const el = document.elementFromPoint(x, y);
+        return el !== null && el.closest('.recharts-wrapper') !== null;
+      }, { x: plot.x + plot.width - 10, y: plot.y + 10 });
+      expect(clear, 'CLEAR').toBe(true);
+      await expect(page.getByText('Something crashed')).toHaveCount(0);
+    } finally {
+      await ctx.close();
+    }
   });
 
   test('opens with the price history failing: it still renders, and says the history did not load', async ({ page }) => {

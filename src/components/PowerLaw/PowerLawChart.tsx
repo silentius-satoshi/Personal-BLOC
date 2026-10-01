@@ -15,8 +15,8 @@ import { PricePoint, BandPoint } from '../../hooks/usePowerLawData';
 import {
   timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter, type Domain, type Scales, type View,
 } from '../../lib/chartZoom';
-import { useChartZoom } from '../../hooks/useChartZoom';
-import { ChartZoomFrame } from '../ui/ChartZoomFrame';
+import { useChartZoom, type ChartZoom } from '../../hooks/useChartZoom';
+import { ChartZoomFrame, ChartZoomToolbar } from '../ui/ChartZoomFrame';
 import { PL_SERIES, powerLawTooltip, historyDrawn, legendEntries, type PlSeriesKey } from './powerLawView';
 import styles from './PowerLawChart.module.css';
 
@@ -73,6 +73,17 @@ function fmtY(v: number): string {
   if (v >= 1_000)     return '$' + (v / 1_000).toFixed(0) + 'k';
   if (v >= 1)         return '$' + v.toFixed(0);
   return '$' + v.toFixed(2);
+}
+
+/** The chart's title row (Z18) — the Decision chart's: the label, and — once the chart has data — the zoom toolbar,
+ *  right-aligned. The title is a placeholder the Power Law face redesign builds on. */
+function ChartHead({ zoom }: { zoom?: ChartZoom }) {
+  return (
+    <div className={styles.chartHead}>
+      <span className={styles.cardLabel}>Price · history and the power-law bands</span>
+      {zoom && <ChartZoomToolbar zoom={zoom} />}
+    </div>
+  );
 }
 
 interface Props {
@@ -136,6 +147,7 @@ export function PowerLawChart({ historical, bands }: Props) {
 
   return (
     <div className={styles.chart}>
+      <ChartHead zoom={zoom} />
       <div className={styles.chartBox} data-testid="powerlaw-chart-box">
         <ChartZoomFrame zoom={zoom}>
           <ResponsiveContainer width="100%" height="100%">
@@ -170,7 +182,14 @@ export function PowerLawChart({ historical, bands }: Props) {
                 tickLine={false}
                 width={52}
               />
-              <Tooltip content={<PowerLawTooltip />} active={zoom.dragging ? false : undefined} />
+              {/* Z17 — quiet through a gesture and after it (the tooltip, its cursor, every active dot); the box snaps to
+                  the pointer, even under Reduce Motion (Z23). */}
+              <Tooltip
+                content={<PowerLawTooltip />}
+                active={zoom.quiet ? false : undefined}
+                isAnimationActive={false}
+                wrapperStyle={{ transitionProperty: 'none' }}
+              />
 
               {/* History first, so the bands draw over its fill. Never animated: an animated series would trail the
                   bands on every pan or pinch (P2). */}
@@ -183,6 +202,7 @@ export function PowerLawChart({ historical, bands }: Props) {
                 strokeWidth={1.5}
                 fill={`url(#${gradientId})`}
                 dot={false}
+                activeDot={!zoom.quiet}
                 connectNulls
                 isAnimationActive={false}
               />
@@ -195,6 +215,7 @@ export function PowerLawChart({ historical, bands }: Props) {
                   strokeWidth={1.5}
                   strokeDasharray={s.dash === 'dashed' ? '4 2' : undefined}
                   dot={false}
+                  activeDot={!zoom.quiet}
                   connectNulls
                   isAnimationActive={false}
                 />
@@ -223,9 +244,14 @@ export function PowerLawChart({ historical, bands }: Props) {
 }
 
 /**
- * Loading and error: the chart's own box at the chart's height, so the box keeps its place when the chart arrives.
- * The swatch line under it appears only then.
+ * Loading and error: the chart's title row and its own box at the chart's height, so the box keeps its place when the
+ * chart arrives (the title row is 32px either way — Z22). The swatch line under it appears only then.
  */
 export function PowerLawChartEmpty({ text }: { text: string }) {
-  return <div className={styles.chartEmpty}>{text}</div>;
+  return (
+    <div className={styles.chart}>
+      <ChartHead />
+      <div className={styles.chartEmpty}>{text}</div>
+    </div>
+  );
 }

@@ -2,8 +2,8 @@ import { createElement, useCallback, useEffect, useMemo, useRef, useState } from
 import type { CSSProperties, ReactElement, RefObject } from 'react';
 import {
   MIN_DRAG_PX, MIN_SPAN_TIME_LOG,
-  boxRect, boxToPins, classifyBox, effectiveView, inRect, isDoubleTap, isZoomed, lockAxis, nextMode, normalizePins,
-  panPins, pinchPins, stepPins, zoomBackNote,
+  boxRect, boxToPins, classifyBox, effectiveView, inRect, isDoubleTap, isZoomed, leavesHome, lockAxis, nextMode,
+  normalizePins, panPins, pinchPins, stepPins, zoomBackNote,
   type LockAxis, type MinSpan, type Pins, type PlotRect, type Pt, type Scales, type Tap, type View, type ZoomMode,
 } from '../lib/chartZoom';
 import { PlotProbe } from '../components/ui/ChartZoomFrame';
@@ -27,6 +27,11 @@ import { PlotProbe } from '../components/ui/ChartZoomFrame';
  *  - `touch-action` follows the mode (`pan-y` with none, `none` in Zoom/Pan). The `touchmove` is the ONE non-passive
  *    listener (the DraggableSheet precedent): it calls preventDefault only while pinching or under a sideways scrub.
  *    A touchstart is passive — never cancelled — so taps always reach the tooltip and the double-tap reset.
+ *  - Z17 — QUIET: from the moment a box, a pan or a pinch starts, the chart hides its tooltip, cursor and active dots,
+ *    and it stays quiet after the gesture ends — until a touch that started ALONE moves, or the mouse moves. recharts
+ *    draws its active dots off its own state (never the Tooltip's `active`) and follows `changedTouches[0]`, so without
+ *    this the markers jump between a pinch's fingers and the tooltip pops back under the last one.
+ *  - The REACH: pins clamp into `reach` (how far zoom-out and pan may go; it defaults to `full`, home).
  */
 
 const NO_PINS: Pins = { x: null, y: null };
@@ -50,8 +55,12 @@ export interface ChartZoom {
   zoomIn: () => void;
   zoomOut: () => void;
   reset: () => void;
-  /** True while a box, a pan or a pinch runs — the chart hides its tooltip. */
+  /** True while a box, a pan or a pinch runs — the pan cursor reads it (`data-dragging`). */
   dragging: boolean;
+  /** Z17 — true from the moment a box, a pan or a pinch starts until a touch that started alone moves, or the mouse
+   *  moves: the chart hides its tooltip, its cursor and every active dot meanwhile. The gesture's own end never clears
+   *  it, or the tooltip would pop back where the last finger was. */
+  quiet: boolean;
   areaRef: (el: HTMLDivElement | null) => void;
   boxRef: RefObject<HTMLDivElement>;
   /** The plot rect (probed from recharts), or undefined before the first probe. */
@@ -98,15 +107,21 @@ interface Pinch { from: [Pt, Pt]; startView: View; last: [Pt, Pt] | null }
 interface Stroke { id: number; start: Pt; lock: LockAxis | null }
 
 /**
- * @param full   the chart's own full extent (the unzoomed view) — a memo, so its identity changes only with the data.
+ * @param full   HOME — the chart's own full extent (the unzoomed view, and where Reset returns) — a memo, so its identity
+ *               changes only with the data.
  * @param scales stable (a module constant).
+ * @param reach  how far zoom-out and pan may go — a memo; it always contains home, and it defaults to home (today's
+ *               clamp). The Decision chart's price reaches $0.01–$10M.
  * @param min    the minimum spans, in scaled units; stable.
  */
-export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN_TIME_LOG): ChartZoom {
+export function useChartZoom(
+  full: View, scales: Scales, reach: View = full, min: MinSpan = MIN_SPAN_TIME_LOG,
+): ChartZoom {
   const fine = useMemo(hasFinePointer, []);
   const [pins, setPins] = useState<Pins>(NO_PINS);
   const [mode, setMode] = useState<ZoomMode>(() => (fine ? 'zoom' : null));
   const [dragging, setDragging] = useState(false);
+  const [quiet, setQuiet] = useState(false);
   const [note, setNote] = useState<{ text: string; fading: boolean } | null>(null);
   const [areaEl, setAreaEl] = useState<HTMLDivElement | null>(null);
   const [plotRect, setPlotRect] = useState<PlotRect | null>(null);
@@ -114,20 +129,21 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
 
   // Clamp at RENDER (no stale frame), then write the clamped pins back — the clampMonth house pattern. The compare
   // is tolerant: a log→exp round trip moves the last bit, and an exact compare would write back forever.
-  const clamped = useMemo(() => normalizePins(pins, full, scales, min), [pins, full, scales, min]);
+  const clamped = useMemo(() => normalizePins(pins, full, scales, min, reach), [pins, full, scales, min, reach]);
   useEffect(() => { if (!samePins(clamped, pins)) setPins(clamped); }, [clamped, pins]);
   const view = useMemo(() => effectiveView(clamped, full), [clamped, full]);
   const zoomed = isZoomed(clamped);
 
   // Everything the listeners read, current on every render (usePointerDrag's cfgRef pattern).
-  const live = useRef({ view, clamped, full, scales, min, mode, fine, rect: plotRect });
-  live.current = { view, clamped, full, scales, min, mode, fine, rect: plotRect };
+  const live = useRef({ view, clamped, full, reach, scales, min, mode, fine, quiet, rect: plotRect });
+  live.current = { view, clamped, full, reach, scales, min, mode, fine, quiet, rect: plotRect };
 
   const timers = useRef<number[]>([]);
-  const showNoteOnce = useCallback((pointerType: string) => {
+  /** `outward` — the view left home (`leavesHome`), so the note says "reset", never "zoom back out". */
+  const showNoteOnce = useCallback((pointerType: string, outward: boolean) => {
     if (noteShown) return;
     noteShown = true;
-    setNote({ text: zoomBackNote(pointerType), fading: false });
+    setNote({ text: zoomBackNote(pointerType, outward), fading: false });
     timers.current.push(
       window.setTimeout(() => setNote((n) => (n ? { ...n, fading: true } : n)), NOTE_MS),
       window.setTimeout(() => setNote(null), NOTE_MS + NOTE_FADE_MS),
@@ -138,9 +154,9 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
   /** Set pins through the clamp; the first zoom of the session shows the note. */
   const commit = useCallback((next: Pins, pointerType: string) => {
     const L = live.current;
-    const n = normalizePins(next, L.full, L.scales, L.min);
+    const n = normalizePins(next, L.full, L.scales, L.min, L.reach);
     setPins(n);
-    if (isZoomed(n)) showNoteOnce(pointerType);
+    if (isZoomed(n)) showNoteOnce(pointerType, leavesHome(effectiveView(n, L.full), L.full, L.scales));
   }, [showNoteOnce]);
 
   const reset = useCallback(() => setPins(NO_PINS), []);
@@ -172,6 +188,8 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     let pending: (() => void) | null = null;
     let tapStart: (Tap & { id: number }) | null = null;
     let lastTap: Tap | null = null;
+    /** Z17 — a touch that started ALONE (no other finger down): its first move wakes a quiet chart. */
+    let wake: number | null = null;
 
     const local = (e: { clientX: number; clientY: number }): Pt => {
       const r = el.getBoundingClientRect();
@@ -250,6 +268,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
           d.armed = true;
           try { el.setPointerCapture(d.id); } catch { /* non-capturable — proceed without */ }
           setDragging(true);
+          setQuiet(true);   // Z17 — no tooltip, cursor or active dots until a fresh move after the gesture
         }
         if (!d.armed) return;
         const rect = live.current.rect;
@@ -261,7 +280,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
           const dx = d.last.x - d.start.x, dy = d.last.y - d.start.y;
           frame(() => {
             const L2 = live.current;
-            setPins(normalizePins(panPins(d.startView, dx, dy, rect, L2.scales), L2.full, L2.scales, L2.min));
+            setPins(normalizePins(panPins(d.startView, dx, dy, rect, L2.scales), L2.full, L2.scales, L2.min, L2.reach));
           });
         }
       };
@@ -299,10 +318,10 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
       const L = live.current;
       let final = L.clamped;   // the last render's view — stale if a move is still queued, hence `last`
       if (p.last && L.rect) {
-        final = normalizePins(pinchPins(p.startView, p.from, p.last, L.rect, L.scales), L.full, L.scales, L.min);
+        final = normalizePins(pinchPins(p.startView, p.from, p.last, L.rect, L.scales), L.full, L.scales, L.min, L.reach);
         setPins(final);   // Z14 — the release lands the last move, as endDrag does
       }
-      if (isZoomed(final)) showNoteOnce('touch');
+      if (isZoomed(final)) showNoteOnce('touch', leavesHome(effectiveView(final, L.full), L.full, L.scales));
     };
     const touchById = (list: TouchList, id: number): Touch | null => {
       for (let i = 0; i < list.length; i++) if (list[i].identifier === id) return list[i];
@@ -312,10 +331,14 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     const onTouchStart = (e: TouchEvent) => {
       const L = live.current;
       stroke = null;                    // a new finger ends any scrub — a second one hands it over to the pinch
+      // Z17 — only a touch that starts alone may wake a quiet chart; a second finger clears it, so a pinch's leftover
+      // finger never can.
+      wake = e.touches.length === 1 ? e.changedTouches[0]?.identifier ?? null : null;
       if (e.targetTouches.length === 2 && L.rect) {
         if (drag) endDrag('abandon');   // a second finger turns a one-finger box or pan into a pinch
         pinch = { from: pts(e), startView: L.view, last: null };
         setDragging(true);
+        setQuiet(true);                 // Z17 — the markers never follow the fingers, during the pinch or after it
         return;
       }
       // Z6: a one-finger stroke in Scroll mode that starts on the plot (a press on an axis label stays native).
@@ -336,9 +359,18 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
         frame(() => {
           const L = live.current;
           if (!L.rect || pinch !== p) return;
-          setPins(normalizePins(pinchPins(p.startView, p.from, to, L.rect, L.scales), L.full, L.scales, L.min));
+          setPins(normalizePins(pinchPins(p.startView, p.from, to, L.rect, L.scales), L.full, L.scales, L.min, L.reach));
         });
         return;
+      }
+      // Z17 — the first move of a touch that started alone wakes a quiet chart. recharts positions its tooltip from this
+      // same move, and both updates land in ONE render (touchmove is a Continuous event in React 18, so neither renders
+      // before the other) — the tooltip appears at the finger, never where the pinch ended. Never at touchstart: a tap
+      // moves no finger, so recharts would still hold the old finger's place (a tap wakes on its compat mousemove,
+      // below). Never mid-gesture: a touch box or pan exists from pointerdown.
+      if (wake !== null && !drag && e.touches.length === 1 && touchById(e.touches, wake) !== null) {
+        wake = null;
+        if (live.current.quiet) setQuiet(false);
       }
       // Z6 — the scrub: undecided until the stroke passes 8px, then locked for the rest of the touch.
       const s = stroke;
@@ -363,6 +395,12 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     };
     // WebKit's own page pinch — a second guard (the viewport already disables page zoom).
     const onGestureStart = (e: Event) => e.preventDefault();
+    // Z17 — a mouse move wakes a quiet chart: a computer's mouse, and the compat mousemove a TAP sends after touchend
+    // (a tap moves no finger, so that is how it shows recharts' tooltip at all). A Continuous event, like touchmove:
+    // this update and recharts' own land in one render. Never mid-gesture: a mouse drag moves the mouse too.
+    const onMouseMove = () => {
+      if (!drag && !pinch && live.current.quiet) setQuiet(false);
+    };
 
     el.addEventListener('pointerdown', onPointerDown);
     el.addEventListener('pointerup', onPointerUp);
@@ -373,10 +411,12 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     el.addEventListener('touchend', onTouchEnd, { passive: true });
     el.addEventListener('touchcancel', onTouchEnd, { passive: true });
     el.addEventListener('gesturestart', onGestureStart);
+    el.addEventListener('mousemove', onMouseMove, { passive: true });
     return () => {
       endDrag('abandon');
       pinch = null;
       stroke = null;
+      wake = null;
       if (raf !== null) cancelAnimationFrame(raf);
       el.removeEventListener('pointerdown', onPointerDown);
       el.removeEventListener('pointerup', onPointerUp);
@@ -387,6 +427,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
       el.removeEventListener('touchend', onTouchEnd);
       el.removeEventListener('touchcancel', onTouchEnd);
       el.removeEventListener('gesturestart', onGestureStart);
+      el.removeEventListener('mousemove', onMouseMove);
     };
   }, [areaEl, commit, reset, showNoteOnce]);
 
@@ -395,7 +436,7 @@ export function useChartZoom(full: View, scales: Scales, min: MinSpan = MIN_SPAN
     : undefined), [plotRect]);
 
   return {
-    view, zoomed, mode, pressMode, zoomIn, zoomOut, reset, dragging,
+    view, zoomed, mode, pressMode, zoomIn, zoomOut, reset, dragging, quiet,
     areaRef: setAreaEl, boxRef, plotStyle, plotWidth: plotRect?.width ?? 0, probe, note,
     touchAction: mode === null ? 'pan-y' : 'none',
   };

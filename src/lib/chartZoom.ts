@@ -3,8 +3,10 @@
  * `pbloc-spec-chart-zoom-v1.md`). PURE: no React, no DOM, no recharts, no store — and it imports NOTHING (a leaf, like
  * `simulation/ltv.ts`; `chartZoomWiring.test.ts` pins that).
  *
- * The model: the view is two domains. Each axis is AUTO (`null` — it follows the chart's own full extent) or PINNED
- * (the owner's domain). Every operation runs in SCALED space — identity on a linear axis, `ln` on a log axis — so +/−,
+ * The model: the view is two domains. Each axis is AUTO (`null` — it follows the chart's own full extent, HOME: the
+ * opening view, and where Reset returns) or PINNED (the owner's domain). Pins are clamped into the REACH — how far
+ * zoom-out and pan may go — which always contains home and is home unless a chart gives one (the Decision chart's price
+ * reaches $0.01–$10M). Every operation runs in SCALED space — identity on a linear axis, `ln` on a log axis — so +/−,
  * pan, pinch and the clamp are one piece of code on both axes, and the price axis works in log space by construction.
  * Zoom changes the view only: nothing here ever touches a series value.
  */
@@ -25,7 +27,7 @@ export interface MinSpan { x: number; y: number }
 const DAY_MS = 86_400_000;
 /** 90 days on the dates (about a dozen history points and four forward months) and ×1.1 on the price. */
 export const MIN_SPAN_TIME_LOG: MinSpan = { x: 90 * DAY_MS, y: Math.log(1.1) };
-/** A pin within this relative distance of the full span IS the full span (float guard). */
+/** A pin within this relative distance of home's (or the reach's) span IS that span (float guard). */
 const FULL_EPS = 1e-9;
 
 const fwd = (v: number, s: AxisScale): number => (s === 'log' ? Math.log(v) : v);
@@ -195,33 +197,48 @@ export function pinchPins(start: View, from: readonly [Pt, Pt], to: readonly [Pt
 
 // ── Clamp to the data ───────────────────────────────────────────────────────────────────────────────────────────
 
-function normAxis(pin: Domain | null, full: Domain, s: AxisScale, minSpan: number): Domain | null {
+function normAxis(pin: Domain | null, home: Domain, reach: Domain, s: AxisScale, minSpan: number): Domain | null {
   if (pin === null) return null;
-  const f0 = fwd(full[0], s), f1 = fwd(full[1], s);
-  const fullSpan = f1 - f0;
-  if (!(fullSpan > 0)) return null;
+  const h0 = fwd(home[0], s), h1 = fwd(home[1], s);
+  const homeSpan = h1 - h0;
+  if (!(homeSpan > 0)) return null;
+  // The reach always contains home — the union, end by end (a NaN end reads as home's, so a junk reach is home).
+  const q0 = fwd(reach[0], s), q1 = fwd(reach[1], s);
+  const r0 = q0 < h0 ? q0 : h0, r1 = q1 > h1 ? q1 : h1;
+  const reachSpan = r1 - r0;
   let a = fwd(pin[0], s), b = fwd(pin[1], s);
   if (!Number.isFinite(a) || !Number.isFinite(b)) return null;
   if (a > b) [a, b] = [b, a];
   const c = (a + b) / 2;
-  // Raise to the minimum about the centre FIRST, then cap: a span at (or above) the full span is auto. The cap is
-  // checked after the raise, so data shorter than the minimum gives auto — never a pin wider than the data (Z3a).
+  // Raise to the minimum about the centre FIRST, then cap: a span at (or above) the reach's IS the reach — auto when the
+  // reach is home. The cap is checked after the raise, so data shorter than the minimum gives auto — never a pin wider
+  // than the data (Z3a). With the reach equal to home this line is today's "a span at the full span is auto", and
+  // everything below it is today's arithmetic, so a chart with no reach is byte-identical (chartZoom test ⭐26).
   const span = Math.max(b - a, minSpan);
-  if (span >= fullSpan * (1 - FULL_EPS)) return null;
+  if (span >= reachSpan * (1 - FULL_EPS)) return r0 === h0 && r1 === h1 ? null : [inv(r0, s), inv(r1, s)];
   a = c - span / 2;
   b = c + span / 2;
   // Shift, never clip — the pin keeps its zoom level.
-  if (a < f0) { b += f0 - a; a = f0; }
-  if (b > f1) { a -= b - f1; b = f1; }
+  if (a < r0) { b += r0 - a; a = r0; }
+  if (b > r1) { a -= b - r1; b = r1; }
+  // A pin back at home — home's span, at home's place — is auto: the view Reset gives, and `zoomed` reads false again.
+  if (span >= homeSpan * (1 - FULL_EPS) && Math.abs(a - h0) <= FULL_EPS * homeSpan
+    && Math.abs(b - h1) <= FULL_EPS * homeSpan) return null;
   return [inv(a, s), inv(b, s)];
 }
 
 /**
- * Pins clamped to the data: each pinned span is raised to the minimum and capped to the full span (a pin that now
- * spans the whole extent — or data shorter than the minimum — is auto), then SHIFTED back inside the full extent.
+ * Pins clamped into the reach: each pinned span is raised to the minimum and capped to the reach's span (a pin that now
+ * spans the whole reach is the reach — auto when the reach is home — and data shorter than the minimum is auto), then
+ * SHIFTED back inside the reach. A pin back at home is auto. `full` is HOME: the chart's own fitted extent, the opening
+ * view and where Reset returns. `reach` is how far zoom-out and pan may go: it always contains home (each axis is the
+ * union), and it defaults to home — today's clamp, bit for bit.
  */
-export function normalizePins(p: Pins, full: View, sc: Scales, min: MinSpan): Pins {
-  return { x: normAxis(p.x, full.x, sc.x, min.x), y: normAxis(p.y, full.y, sc.y, min.y) };
+export function normalizePins(p: Pins, full: View, sc: Scales, min: MinSpan, reach: View = full): Pins {
+  return {
+    x: normAxis(p.x, full.x, reach.x, sc.x, min.x),
+    y: normAxis(p.y, full.y, reach.y, sc.y, min.y),
+  };
 }
 
 export function effectiveView(p: Pins, full: View): View {
@@ -230,6 +247,18 @@ export function effectiveView(p: Pins, full: View): View {
 
 export function isZoomed(p: Pins): boolean {
   return p.x !== null || p.y !== null;
+}
+
+/**
+ * True when the view leaves home on either axis — a zoom out past it, or a pan past its edge into the reach. Then a
+ * double-tap zooms back IN, so the note says "reset", never "zoom back out".
+ */
+export function leavesHome(view: View, home: View, sc: Scales): boolean {
+  const out = (d: Domain, h: Domain, s: AxisScale): boolean => {
+    const h0 = fwd(h[0], s), h1 = fwd(h[1], s), tol = FULL_EPS * (h1 - h0);
+    return fwd(d[0], s) < h0 - tol || fwd(d[1], s) > h1 + tol;
+  };
+  return out(view.x, home.x, sc.x) || out(view.y, home.y, sc.y);
 }
 
 // ── The date axis ───────────────────────────────────────────────────────────────────────────────────────────────
@@ -407,7 +436,11 @@ export function isDoubleTap(prev: Tap | null, next: Tap): boolean {
   return next.t - prev.t <= DOUBLE_TAP_MS && Math.hypot(next.x - prev.x, next.y - prev.y) <= DOUBLE_TAP_PX;
 }
 
-/** The once-per-session note, worded for the input that zoomed. */
-export function zoomBackNote(pointerType: string): string {
-  return pointerType === 'mouse' ? 'Double-click to zoom back out' : 'Double-tap to zoom back out';
+/**
+ * The once-per-session note, worded for the input that zoomed. `outward` — the view left home (a zoom out or a pan past
+ * it, `leavesHome`): a double-tap then zooms back IN, so the note says "reset the view".
+ */
+export function zoomBackNote(pointerType: string, outward = false): string {
+  const verb = pointerType === 'mouse' ? 'Double-click' : 'Double-tap';
+  return outward ? `${verb} to reset the view` : `${verb} to zoom back out`;
 }

@@ -44,8 +44,8 @@ import { downloadBlob } from '../../lib/backup/downloadFile';
 import {
   timeTicks, tickDensity, fmtTimeTick, logTicks, priceTickFormatter, type Domain, type Scales, type View,
 } from '../../lib/chartZoom';
-import { useChartZoom } from '../../hooks/useChartZoom';
-import { ChartZoomFrame } from '../ui/ChartZoomFrame';
+import { useChartZoom, type ChartZoom } from '../../hooks/useChartZoom';
+import { ChartZoomFrame, ChartZoomToolbar } from '../ui/ChartZoomFrame';
 import { fmtUSD, fmtTooltipUsd, todayLocalISO } from '../../utils/format';
 import styles from './DecisionFace.module.css';
 
@@ -153,6 +153,19 @@ function DecisionTip({ active, payload, label }: { active?: boolean; payload?: T
 
 /** Dates × log price — the chart-zoom scales (a module constant, so the hook's inputs stay stable). */
 const TIME_LOG: Scales = { x: 'linear', y: 'log' };
+/** The price axis's reach — how far zoom-out and pan go (bitbo's $0.01–$10M). Home stays the fitted chartDomain, where
+ *  the chart opens and Reset returns; normalizePins unions the two, so a path above $10M still fits. */
+const PRICE_REACH: Domain = [0.01, 10_000_000];
+
+/** The chart card's title row (Z18): the label, and — once the chart has data — the zoom toolbar, right-aligned. */
+function ChartHead({ zoom }: { zoom?: ChartZoom }) {
+  return (
+    <div className={styles.chartHead}>
+      <span className={styles.cardLabel}>Price · history and the modeled path</span>
+      {zoom && <ChartZoomToolbar zoom={zoom} />}
+    </div>
+  );
+}
 
 interface DecisionChartProps {
   chart: DecisionChartSeries;
@@ -174,7 +187,9 @@ const DecisionChart = memo(function DecisionChart({
   chart, xRange, domain, pathColor, drawFloor, hasCliff, inspectT,
 }: DecisionChartProps) {
   const fullView = useMemo((): View => ({ x: xRange, y: domain }), [xRange, domain]);
-  const zoom = useChartZoom(fullView, TIME_LOG);
+  // The reach: the dates' is home (byte-identical); the price reaches $0.01–$10M.
+  const reachView = useMemo((): View => ({ x: xRange, y: PRICE_REACH }), [xRange]);
+  const zoom = useChartZoom(fullView, TIME_LOG, reachView);
   // Explicit ticks — with per-series data recharts would otherwise tick every data point.
   const xAxis = useMemo(() => timeTicks(zoom.view.x, tickDensity(zoom.plotWidth)), [zoom.view.x, zoom.plotWidth]);
   const yTicks = useMemo(() => logTicks(zoom.view.y), [zoom.view.y]);
@@ -184,46 +199,52 @@ const DecisionChart = memo(function DecisionChart({
   const uid = useId();
   const gradientId = `decisionHistory${uid.replace(/[^a-zA-Z0-9_-]/g, '')}`;
   return (
-    <div className={styles.chartBox}>
-      <ChartZoomFrame zoom={zoom}>
-        <ResponsiveContainer width="100%" height="100%">
-          <ComposedChart margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
-            <defs>
-              <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--btc)" stopOpacity={0.22} />
-                <stop offset="100%" stopColor="var(--btc)" stopOpacity={0} />
-              </linearGradient>
-            </defs>
-            <CartesianGrid stroke="var(--line-2)" vertical={false} />
-            <XAxis dataKey="t" type="number" scale="time" domain={zoom.view.x} ticks={xAxis.ticks} allowDataOverflow
-              allowDuplicatedCategory={false} tickFormatter={fmtDate}
-              tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
-            <YAxis type="number" scale="log" domain={zoom.view.y} ticks={yTicks} allowDataOverflow tickFormatter={fmtPrice}
-              tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={52} />
-            <Tooltip content={<DecisionTip />} active={zoom.dragging ? false : undefined} />
-            <Area data={chart.history} dataKey="price" name="History" type="monotone" baseValue="dataMin"
-              stroke="var(--btc)" strokeWidth={1.5} fill={`url(#${gradientId})`} dot={false}
-              isAnimationActive={false} />
-            <Line data={chart.support} dataKey="price" name="Support" stroke="var(--green)" strokeWidth={1.25}
-              dot={false} isAnimationActive={false} connectNulls={false} />
-            {drawFloor && (
-              <Line data={chart.floor} dataKey="price" name="Stitched floor" stroke={STITCHED_COLOR}
-                strokeWidth={2} strokeDasharray="2 3" dot={false} isAnimationActive={false} />
-            )}
-            <Line data={chart.forward} dataKey="price" name="Modeled path" stroke={pathColor} strokeWidth={1.75}
-              strokeDasharray="5 3" dot={false} isAnimationActive={false} />
-            {hasCliff && (
-              <Line data={chart.cliff} dataKey="price" name="Coinbase seizes" stroke="var(--red)"
-                strokeWidth={1.25} strokeDasharray="1 3" dot={false} isAnimationActive={false}
-                connectNulls={false} />
-            )}
-            <ReferenceLine x={chart.seamT} stroke="var(--text-faint)" strokeDasharray="2 2" />
-            {inspectT !== null && <ReferenceLine x={inspectT} stroke="var(--btc)" strokeOpacity={0.55} />}
-            <Customized component={zoom.probe} />
-          </ComposedChart>
-        </ResponsiveContainer>
-      </ChartZoomFrame>
-    </div>
+    <>
+      <ChartHead zoom={zoom} />
+      <div className={styles.chartBox} data-testid="decision-chart-box">
+        <ChartZoomFrame zoom={zoom}>
+          <ResponsiveContainer width="100%" height="100%">
+            <ComposedChart margin={{ top: 8, right: 12, bottom: 0, left: 0 }}>
+              <defs>
+                <linearGradient id={gradientId} x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="var(--btc)" stopOpacity={0.22} />
+                  <stop offset="100%" stopColor="var(--btc)" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid stroke="var(--line-2)" vertical={false} />
+              <XAxis dataKey="t" type="number" scale="time" domain={zoom.view.x} ticks={xAxis.ticks} allowDataOverflow
+                allowDuplicatedCategory={false} tickFormatter={fmtDate}
+                tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} />
+              <YAxis type="number" scale="log" domain={zoom.view.y} ticks={yTicks} allowDataOverflow tickFormatter={fmtPrice}
+                tick={{ fontSize: 10, fill: 'var(--text-muted)' }} axisLine={false} tickLine={false} width={52} />
+              {/* Z17 — quiet through a gesture and after it (the tooltip, its cursor, every active dot); the box snaps to
+                  the pointer, even under Reduce Motion (Z23). */}
+              <Tooltip content={<DecisionTip />} active={zoom.quiet ? false : undefined} isAnimationActive={false}
+                wrapperStyle={{ transitionProperty: 'none' }} />
+              <Area data={chart.history} dataKey="price" name="History" type="monotone" baseValue="dataMin"
+                stroke="var(--btc)" strokeWidth={1.5} fill={`url(#${gradientId})`} dot={false}
+                activeDot={!zoom.quiet} isAnimationActive={false} />
+              <Line data={chart.support} dataKey="price" name="Support" stroke="var(--green)" strokeWidth={1.25}
+                dot={false} activeDot={!zoom.quiet} isAnimationActive={false} connectNulls={false} />
+              {drawFloor && (
+                <Line data={chart.floor} dataKey="price" name="Stitched floor" stroke={STITCHED_COLOR}
+                  strokeWidth={2} strokeDasharray="2 3" dot={false} activeDot={!zoom.quiet} isAnimationActive={false} />
+              )}
+              <Line data={chart.forward} dataKey="price" name="Modeled path" stroke={pathColor} strokeWidth={1.75}
+                strokeDasharray="5 3" dot={false} activeDot={!zoom.quiet} isAnimationActive={false} />
+              {hasCliff && (
+                <Line data={chart.cliff} dataKey="price" name="Coinbase seizes" stroke="var(--red)"
+                  strokeWidth={1.25} strokeDasharray="1 3" dot={false} activeDot={!zoom.quiet}
+                  isAnimationActive={false} connectNulls={false} />
+              )}
+              <ReferenceLine x={chart.seamT} stroke="var(--text-faint)" strokeDasharray="2 2" />
+              {inspectT !== null && <ReferenceLine x={inspectT} stroke="var(--btc)" strokeOpacity={0.55} />}
+              <Customized component={zoom.probe} />
+            </ComposedChart>
+          </ResponsiveContainer>
+        </ChartZoomFrame>
+      </div>
+    </>
   );
 });
 
@@ -579,9 +600,11 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
 
       {/* 3 · THE CHART — history, the displayed path, the stitched floor, the support line and the cliff. */}
       <section className={styles.card}>
-        <span className={styles.cardLabel}>Price · history and the modeled path</span>
         {domain === null || xRange === null ? (
-          <div className={styles.chartEmpty}>{historyLoading ? 'Loading price history…' : 'Price history unavailable'}</div>
+          <>
+            <ChartHead />
+            <div className={styles.chartEmpty}>{historyLoading ? 'Loading price history…' : 'Price history unavailable'}</div>
+          </>
         ) : (
           <DecisionChart chart={chart} xRange={xRange} domain={domain} pathColor={pathColor} drawFloor={drawFloor}
             hasCliff={hasCliff} inspectT={monthIdx > 0 ? inspectT : null} />

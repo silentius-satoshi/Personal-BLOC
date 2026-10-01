@@ -63,16 +63,18 @@ describe('⭐ the Power Law chart — tokens, the Decision chart\'s conventions'
     expect(CHART.match(/Date\.now\(\)/g)?.length).toBe(1);
   });
 
-  it('⭐ the chart fills a CSS-sized box; every --pl-* length carries a unit (P8)', () => {
-    // mutations: `height={520}` on the container → red; `--pl-toolbar: 0` (a bare 0 makes calc() invalid, so the box
-    // collapses to 0px on every fine pointer — and the touch-only e2e can't see it) → red
+  it('⭐ the chart fills a CSS-sized box; every --pl-* length carries a unit (P8); the toolbar left the box (Z18)', () => {
+    // mutations: `height={520}` on the container → red; `--pl-plot: 360` (a bare number makes `height: var(--pl-plot)`
+    // invalid at computed-value time: the height resolves to auto, and the box and its 100%-high chart collapse to
+    // 0px) → red; `--pl-toolbar` back (the old touch row inside the box) → red
     expect(tag(CHART, '<ResponsiveContainer')).toMatch(/height="100%"/);
     expect(CHART).toMatch(/className=\{styles\.chartBox\}/);
-    const css = read('PowerLawChart.module.css');
+    const css = read('PowerLawChart.module.css').replace(/\/\*[\s\S]*?\*\//g, '');
     const values = [...css.matchAll(/--pl-[a-z-]+:\s*([^;]+);/g)].map((m) => m[1].trim());
-    expect(values.length, '--pl-* declarations').toBeGreaterThanOrEqual(4);
+    expect(values.length, '--pl-* declarations').toBeGreaterThanOrEqual(2);
     for (const v of values) expect(v, `--pl-* = ${v}`).toMatch(/^\d+(?:\.\d+)?px$/);
-    expect(css).toMatch(/height:\s*calc\(var\(--pl-plot\) \+ var\(--pl-toolbar\)\)/);
+    expect(css).toMatch(/height:\s*var\(--pl-plot\)/);
+    expect(css).not.toMatch(/--pl-toolbar/);
   });
 
   it('⭐ ONE tooltip price formatter: the Decision and Power Law tooltips both price through fmtTooltipUsd (P1)', () => {
