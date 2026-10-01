@@ -1,0 +1,15 @@
+/* The Power Law face — compose-only (spec pbloc-spec-powerlaw-face-v1, I2). Every class is its namesake in
+   CyclingFace.module.css, so the face can't drift from the four faces, and composedOverrides has nothing to arbitrate.
+   Declare nothing else here — powerLawWiring's ONE-layout check fails on any other rule or declaration. */
+.face { composes: face from '../Almanac/CyclingFace.module.css'; }
+.head { composes: head from '../Almanac/CyclingFace.module.css'; }
+.title { composes: title from '../Almanac/CyclingFace.module.css'; }
+.framing { composes: framing from '../Almanac/CyclingFace.module.css'; }
+.card { composes: card from '../Almanac/CyclingFace.module.css'; }
+.cardLabel { composes: cardLabel from '../Almanac/CyclingFace.module.css'; }
+.noteQuiet { composes: noteQuiet from '../Almanac/CyclingFace.module.css'; }
+.statGrid { composes: statGrid from '../Almanac/CyclingFace.module.css'; }
+.stat { composes: stat from '../Almanac/CyclingFace.module.css'; }
+.statValue { composes: statValue from '../Almanac/CyclingFace.module.css'; }
+.statSub { composes: statSub from '../Almanac/CyclingFace.module.css'; }
+.disclaimer { composes: disclaimer from '../Almanac/CyclingFace.module.css'; }

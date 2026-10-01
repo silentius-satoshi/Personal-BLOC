@@ -7,8 +7,7 @@ import { useChainTip } from '../../hooks/useChainTip';
 import { useStore } from '../../store/useStore';
 import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
 import { MiningMain } from '../Mining/MiningMain';
-import { PowerLawSidebar } from '../PowerLaw/PowerLawSidebar';
-import { PowerLawMain } from '../PowerLaw/PowerLawMain';
+import { PowerLawFace } from '../PowerLaw/PowerLawFace';
 import { ConverterMain } from '../Converter/ConverterMain';
 import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { CbDefenseTool } from '../Tools/CbDefenseTool';
@@ -22,24 +21,26 @@ import { ledgerFaceAvailable } from '../../lib/ledgerCsv';
 import styles from './AlmanacView.module.css';
 
 /**
- * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for ELEVEN faces: Halving Clock / Cycle Clock (both
+ * Almanac — a HUB SHELL (eyebrow + sub-nav + face host) for TWELVE faces: Halving Clock / Cycle Clock (both
  * cycleModel-only, rendered inside the shared `.container`, which now itself `composes: toolContainer`),
- * Mining / Power Law / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in
- * a `.faceStack` in that tool's own mobile DOM order — mining/powerlaw panel-first, sats main-first,
- * mirroring the presence/absence of AppShell's converter-only `order` override; at ≥768px `.faceStack`
- * goes two-column mirroring AppShell's own 280px/1fr shell grid, with `.facePanel` pinning the panel to
- * the left column regardless of each face's own mobile DOM order), and the gated `defense`
+ * Mining / Sats (each embeds the REAL tool's main content PLUS its own input panel, stacked in a `.faceStack` in
+ * that tool's own mobile DOM order — mining panel-first, sats main-first, mirroring the presence/absence of
+ * AppShell's converter-only `order` override; at ≥768px `.faceStack` goes two-column mirroring AppShell's own
+ * 280px/1fr shell grid, with `.facePanel` pinning the panel to the left column regardless of each face's own
+ * mobile DOM order), the Power Law face (`PowerLawFace` — rendered BARE, in the four faces' one column; the
+ * full-mode Power Law tab mounts the same component — spec pbloc-spec-powerlaw-face-v1), and the gated `defense`
  * face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate used by the `liqsim` tab
  * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling /
- * Ownership / Strategy faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
- * through both the Ownership and the Cycling lens). Every embedded tool brings its OWN already-shipped
- * `toolContainer`-composed width — the hub adds none of its own (§8 toolContainer adoption is now CLOSED:
- * EmergencyConsole/LiqSimulator, Mining/PowerLaw/Converter, and AlmanacView's own `.container` all compose
- * from the same `toolShell.module.css`). Holds the local face state (DEFAULT halving, §14.3 — nothing
+ * Ownership / Strategy / Decision faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
+ * through both the Ownership and the Cycling lens). Every embedded tool brings its OWN width — the hub adds none
+ * of its own (§8 toolContainer adoption is now CLOSED: EmergencyConsole/LiqSimulator, Mining/Converter, and
+ * AlmanacView's own `.container` all compose from the same `toolShell.module.css`; the faces, Power Law's
+ * included, compose CyclingFace's 960px `.face`). Holds the local face state (DEFAULT halving, §14.3 — nothing
  * persisted, nothing synced). P3: the single useChainTip lives HERE and feeds the SAME height/mode to the
  * two clock faces, so switching faces is pure presentation and never remounts the data layer (§14.5 by
- * construction) — Mining/PowerLaw/Sats/defense don't consume it at all. The eyebrow badge is the
- * live-block-height toggle (device-local; one-time consent on first enable).
+ * construction) — Mining/PowerLaw/Sats/defense don't consume it at all, and no face fetches a block height of
+ * its own (D2), so the badge's "live off" holds everywhere. The eyebrow badge is the live-block-height toggle
+ * (device-local; one-time consent on first enable).
  *
  * ⚠ FACE SWITCHING IS TAP-ONLY. The sub-nav pills are the SINGLE way to change face on every platform —
  * the horizontal swipe pager (SwipeStrip) was REMOVED, along with its `shouldStart` chart/edge exclusions,
@@ -48,8 +49,8 @@ import styles from './AlmanacView.module.css';
  * starts anywhere scrolls the page. Do NOT re-introduce a pager here without re-deriving those exclusions.
  *
  * ISOLATION WALL (restated, unchanged): cycleModel/HalvingClock/CycleClock import nothing from the
- * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating all
- * six faces under one hub is navigation only — it crosses neither wall.
+ * risk/position core (§2); emergencyModel imports nothing from cycleModel/power-law (§7). Co-locating the
+ * faces under one hub is navigation only — it crosses neither wall.
  */
 type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified' | 'decision';
 
@@ -129,7 +130,7 @@ export default function AlmanacView() {
     if (f === 'cycling')  return <CyclingFace />;
     if (f === 'scenario') return <div className={styles.container}><ScenarioFace /></div>;
     if (f === 'mining')   return <div className={styles.faceStack}><div className={styles.facePanel}><MiningInputsPanel /></div><MiningMain /></div>;
-    if (f === 'powerlaw') return <div className={styles.faceStack}><div className={styles.facePanel}><PowerLawSidebar /></div><PowerLawMain /></div>;
+    if (f === 'powerlaw') return <PowerLawFace />;
     // ⚠ MUST be an explicit branch ABOVE the final return — the fallback renders the Converter, so a
     // face added to the union without a branch here compiles clean and silently shows the wrong tool (C8).
     if (f === 'ownership') return <OwnershipFace />;

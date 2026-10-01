@@ -2,7 +2,8 @@
    Active button = green-tinted (preview .subnav button.on); "soon" buttons disabled at opacity .5. */
 
 /* Hub expansion — full-width root, no max-width/padding: each face owns its own layout (Mining's 960px
-   .main, Power Law's full-width chart, the CB tools' 600px toolShell) so it isn't squeezed into .container. */
+   .main, the faces' 960px .face — Power Law's included — the CB tools' 600px toolShell) so it isn't squeezed into
+   .container. */
 .shell {
   width: 100%;
 }
@@ -11,10 +12,10 @@
   composes: toolContainer from '../Tools/toolShell.module.css';
 }
 
-/* Panel + main stacked per each embedded tool's own mobile order (mining/powerlaw panel-first,
-   sats main-first, mirroring AppShell's converter-only `order` override). No width constraint on
-   mobile — the tool inside brings its own toolContainer width. At ≥768px, goes two-column mirroring
-   AppShell.module.css's own .shell grid (280px 1fr). */
+/* Panel + main stacked per each embedded tool's own mobile order (mining panel-first, sats main-first, mirroring
+   AppShell's converter-only `order` override). Power Law has no panel — its face renders bare (spec
+   pbloc-spec-powerlaw-face-v1). No width constraint on mobile — the tool inside brings its own toolContainer width.
+   At ≥768px, goes two-column mirroring AppShell.module.css's own .shell grid (280px 1fr). */
 .faceStack {
   display: flex;
   flex-direction: column;
@@ -26,14 +27,14 @@
     grid-template-columns: 280px minmax(0, 1fr);
     align-items: start;
     gap: 20px;
-    max-width: 1240px;      /* 280 + 960, matching the widest embedded tool (Mining/PowerLaw) */
+    max-width: 1240px;      /* 280 + 960, matching the widest embedded tool (Mining) */
     margin: 0 auto;
     padding: 0 16px;
   }
 }
 
 /* Pins the panel to the left grid column regardless of DOM order — a no-op on mobile (every face's DOM
-   order is already mobile-correct) and a no-op for the already-panel-first Mining/PowerLaw faces at
+   order is already mobile-correct) and a no-op for the already-panel-first Mining face at
    desktop width; load-bearing only for the Sats face, whose DOM stays main-first (mirroring Converter's
    own mobile order) but whose panel must still land left on desktop. */
 .facePanel {}
@@ -46,8 +47,9 @@
 
 /* D2 (spec pbloc-spec-sats-rates-v1) — the SATS face's panel only. On a phone, ConverterSidebar's text sat at x = 0
    while the converter's starts at 16px (its toolContainer gutter). ConverterSidebar can't pad itself: in the full-mode
-   Sats tab AppShell's .sidebar already pads it, so it would double there. Mining's panel pads itself (16px) and Power
-   Law's is left to its redesign, so neither takes this class. From 768px the grid's own 16px padding applies. */
+   Sats tab AppShell's .sidebar already pads it, so it would double there. Mining's panel pads itself (16px), so it
+   doesn't take this class, and Power Law has no panel since its face redesign (F4 — spec
+   pbloc-spec-powerlaw-face-v1). From 768px the grid's own 16px padding applies. */
 .facePanelInset {}
 @media (max-width: 767px) {
   .facePanelInset {

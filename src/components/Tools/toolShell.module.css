@@ -1,10 +1,11 @@
 /* Shared tool-page container — extracted from AlmanacView's .container (the reference). Supplies
    structural tokens (centering, iOS-safe overflow, horizontal/bottom padding) + a 600px DEFAULT max-width —
-   correct as-is for EmergencyConsole/LiqSimulator/AlmanacView's own .container. Adopted by ALL FIVE tools.
-   Wider tools override the width on a DOUBLED class: `.main.main { max-width: 960px }` (Mining, Power Law),
-   700px (Converter). ⚠ Never beside `composes:`: a declaration there ties this rule's specificity (0,1,0), so
-   the bundle's rule order decides, and production emits this file after the tools, so all three rendered 600px
-   wide on a computer (P10). composedOverrides.test.ts pins the rule. */
+   correct as-is for EmergencyConsole/LiqSimulator/AlmanacView's own .container. Adopted by ALL FOUR tools
+   (EmergencyConsole, LiqSimulator, Mining, Converter — Power Law's became a face, spec pbloc-spec-powerlaw-face-v1).
+   Wider tools override the width on a DOUBLED class: `.main.main { max-width: 960px }` (Mining), 700px (Converter).
+   ⚠ Never beside `composes:`: a declaration there ties this rule's specificity (0,1,0), so the bundle's rule order
+   decides, and production emits this file after the tools, so Mining, Power Law (then a tool) and the Converter all
+   rendered 600px wide on a computer (P10). composedOverrides.test.ts pins the rule. */
 .toolContainer {
   width: 100%;
   box-sizing: border-box;

@@ -15,8 +15,8 @@ import { dirname, join, relative, resolve } from 'node:path';
  * This test IS the audit. For EVERY composing rule in every *.module.css under src/: no single-class rule of the
  * composing class (a media query's included) declares a property the composed class sets, following its own
  * `composes:` too. Shorthand-aware: two declarations clash when the longhands they set intersect (`border` covers
- * `border-color`, `padding` covers `padding-top`, …). Non-vacuous: a control pair must clash, and the six doubled
- * overrides must be found.
+ * `border-color`, `padding` covers `padding-top`, …). Non-vacuous: a control pair must clash, and the doubled overrides
+ * must be found.
  */
 const SRC = join(process.cwd(), 'src');
 
@@ -146,20 +146,20 @@ function propsOf(file: string, name: string, seen: Set<string> = new Set()): str
   return out;
 }
 
-/** The six overrides P9–P11 put on a doubled selector. The audit must find every one. */
+/** The overrides P9–P11 put on a doubled selector — PowerLawMain's went with its file (spec pbloc-spec-powerlaw-face-v1).
+ *  The audit must find every one. */
 const DOUBLED = [
   'components/Almanac/DecisionFace.module.css .chartBox.chartBox',
   'components/Almanac/DecisionFace.module.css .moveCard.moveCard',
   'components/Converter/ConverterMain.module.css .main.main',
   'components/Mining/MiningMain.module.css .main.main',
   'components/PowerLaw/PowerLawChart.module.css .chartBox.chartBox',
-  'components/PowerLaw/PowerLawMain.module.css .main.main',
 ];
 
 describe('⭐ a composed class is overridden on a doubled selector, never beside composes: (P9–P11)', () => {
-  it('⭐ the audit: no single-class rule of a composing class declares a property its composed class sets — and the six doubled overrides are found', () => {
+  it('⭐ the audit: no single-class rule of a composing class declares a property its composed class sets — and the doubled overrides are found', () => {
     // mutations:
-    // - PowerLawMain: max-width back beside composes: → red
+    // - MiningMain: max-width back beside composes: (`.main.main` → `.main`, C1) → red
     // - DecisionFace: height back beside composes: → red
     // - MiningMain: .main.main deleted → red
     // - ConverterMain: .main.main un-doubled → red

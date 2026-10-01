@@ -1,5 +1,10 @@
-import { test, expect, type Page } from '@playwright/test';
-import { seedAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX } from './helpers';
+import { test, expect, type Page, type Locator } from '@playwright/test';
+import { seedAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX, STORE_VERSION } from './helpers';
+
+/** The four block explorers useChainTip tries once live height is on — the consent sheet's list. */
+const EXPLORERS = /mempool\.space|blockstream\.info|blockchain\.info\/q\/|blockchair\.com/;
+/** PowerLawChart's title — powerLawView's PL_CHART_TITLE (Playwright can't import src/). */
+const PL_TITLE = 'Price and the bands';
 
 /**
  * Z18 — the zoom toolbar sits in the chart card's title row: above the chart (never over the plot), on the title's line,
@@ -108,24 +113,31 @@ test.describe('Navigation gestures (P3)', () => {
     }
   });
 
-  test('a horizontal drag on the Power Law chart stays on the face and zooms it; a 360px phone box that holds still while the history loads; the toolbar in the title row; the tooltip and the legend name the bands', async ({ page }) => {
-    // Deterministic data → loading false + error null → PowerLawMain renders the chart (it gates on both). The history is
-    // HELD until STEADY has read the loading box (Z22).
+  test('the Power Law face: the chart opens in view and holds still while the history and the price load; the toolbar in the title row; a drag zooms it; the tooltip and the legend name the bands; no explorer is contacted', async ({ page }) => {
+    // Deterministic data (spec pbloc-spec-powerlaw-face-v1). The history is HELD until STEADY has read the loading box
+    // (Z22), and the live price until PRICE — nothing above the chart may wait on it. The four block explorers are
+    // aborted, so the run is hermetic; page.on('request') still sees any attempt (Playwright emits `request` before
+    // routing), so OFFLINE holds.
     let release!: () => void;
     const held = new Promise<void>((res) => { release = res; });
-    // STEADY measures the box, so nothing above it may change size while the history loads. The side panel above the
-    // chart adds a "vs Fair" row when the live price answers and a block line when mempool answers — so both fail here,
-    // and the panel keeps its '—' rows.
-    await page.route(/api\.coinbase\.com|mempool\.space/, (r) => r.abort());
-    await page.route(/blockchain\.info/, async (r) => {
+    let releasePrice!: () => void;
+    const heldPrice = new Promise<void>((res) => { releasePrice = res; });
+    const explorer: string[] = [];
+    page.on('request', (r) => { if (EXPLORERS.test(r.url())) explorer.push(r.url()); });
+    await page.route(EXPLORERS, (r) => r.abort());
+    await page.route(/api\.coinbase\.com\/v2\/prices/, async (r) => {
+      await heldPrice;
+      await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ data: { amount: '82000' } }) });
+    });
+    await page.route(/blockchain\.info\/charts/, async (r) => {
       await held;
       await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) });
     });
     await seedAndGoto(page);
     await page.getByLabel('Almanac').click();
     await page.getByRole('button', { name: /Power Law/ }).click();      // tap to the powerlaw face
-    // STEADY (Z22) — the box's page top is the same while loading and once the chart arrives. The title row is one line
-    // while loading (no toolbar) and two beside the toolbar (31.5px), inside the row's 32px min-height.
+    // STEADY (Z22) — the box's page top is the same while loading and once the chart arrives. The title row is 32px
+    // either way; at 390 "Price and the bands" fits on one line beside the toolbar (the 360px test below pins the row).
     const loading = page.getByText('Loading price history…');
     await expect(loading).toBeVisible();
     // The web font first: IBM Plex Mono swaps in (display=swap) and the sub-nav pills above grow 33 → 34px with it
@@ -135,18 +147,40 @@ test.describe('Navigation gestures (P3)', () => {
     release();
     const chart = page.locator('.recharts-wrapper').first();
     await expect(chart).toBeVisible({ timeout: 8000 });
-    const after = await page.getByTestId('powerlaw-chart-box').evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
-    expect(after, 'STEADY').toBe(before);
-    // Z8 — on the phone layout the chart's top sits at or below the bottom of the 844px viewport. Before chart zoom this
-    // test measured it there, so its drag started OFF-SCREEN and never touched the chart: it passed vacuously.
+    const box = page.getByTestId('powerlaw-chart-box');
+    const top = () => box.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+    expect(await top(), 'STEADY').toBe(before);
+    // TOP (R1) — nothing has scrolled yet. The app scrolls <body>, not the window, so window.scrollY stays 0 while the
+    // page scrolls: add the scrollTop of every ancestor of the box. Without it, a scrolled-down open passes IN VIEW.
+    const scrolled = await box.evaluate((el) => {
+      let s = window.scrollY;
+      for (let p = el.parentElement; p; p = p.parentElement) s += p.scrollTop;
+      return s;
+    });
+    expect(scrolled, 'TOP').toBe(0);
+    // IN VIEW (F2, D1) — the whole chart is on screen when the face opens (309.5–669.5 at 390×844).
+    const b = (await box.boundingBox())!;
+    expect(b.y + b.height, 'IN VIEW').toBeLessThanOrEqual(page.viewportSize()!.height);
+    // PRICE — the tiles sit under the chart, so the price's arrival can't move it.
+    await expect(page.getByText('no live price yet'), 'PREMISE').toBeVisible();
+    releasePrice();
+    await expect(page.getByText(/(?:below|above) the fair line/)).toBeVisible({ timeout: 15000 });
+    expect(await top(), 'PRICE').toBe(before);
+    // ORDER (D1) — the tiles come after the chart: Resistance's tile sits under the box.
+    const tile = (await page.getByText('2.07× fair', { exact: true }).boundingBox())!;
+    expect(tile.y, 'ORDER').toBeGreaterThan(b.y + b.height);
+    // Z8 — now a guard: the box opens in view (IN VIEW), so this is a no-op. Before chart zoom the chart sat below the
+    // fold and the drag started OFF-SCREEN, passing vacuously; this keeps a layout that pushes the chart down from doing
+    // that again.
     await chart.scrollIntoViewIfNeeded();
     // P7 — the phone box: the 360px plot alone, at 390 wide. The toolbar left the box for the title row (Z18).
-    expect((await page.getByTestId('powerlaw-chart-box').boundingBox())!.height, 'P7').toBe(360);
-    await expectToolbarInTitleRow(page, 'Price · history and the power-law bands', 'powerlaw-chart-box');
-    const box = (await chart.boundingBox())!;
+    expect((await box.boundingBox())!.height, 'P7').toBe(360);
+    await expect(page.getByText(PL_TITLE, { exact: true }), 'TITLE').toBeVisible();
+    await expectToolbarInTitleRow(page, PL_TITLE, 'powerlaw-chart-box');
+    const area = (await chart.boundingBox())!;
     const scrollBefore = await page.evaluate(() => document.scrollingElement?.scrollTop ?? 0);
     // Horizontal drag with a ±30px vertical wobble, STARTING inside the chart.
-    const sx = box.x + box.width / 2, sy = box.y + box.height / 2;
+    const sx = area.x + area.width / 2, sy = area.y + area.height / 2;
     await page.mouse.move(sx, sy);
     await page.mouse.down();
     for (let i = 1; i <= 12; i++) {
@@ -178,6 +212,64 @@ test.describe('Navigation gestures (P3)', () => {
     // The legend lists only what is drawn. The stub prices ONE row, and one point draws no history (P3) — so exactly
     // the three bands.
     await expect(page.getByTestId('powerlaw-legend').locator('span')).toHaveText(['Resistance', 'Fair', 'Support']);
+    // OFFLINE (F1, D2) — with live height off, opening Power Law contacts no block explorer.
+    expect(explorer, 'OFFLINE').toEqual([]);
+  });
+
+  test('the Power Law title row holds at 32px on a 360px phone, in the Almanac and on the full-mode tab — which has no sidebar — so the box never moves when the chart arrives (F6)', async ({ browser, baseURL }) => {
+    // A phone context of its own (Z20: a context made inside a test takes the project's `use` — set the phone
+    // explicitly). The history is HELD until the loading box is read; the live price and the explorers are aborted, so
+    // nothing above the chart can change on a tree that still has the side panel.
+    test.setTimeout(60_000);
+    for (const surface of ['almanac', 'full'] as const) {
+      const ctx = await browser.newContext({
+        baseURL, viewport: { width: 360, height: 780 }, serviceWorkers: 'block', isMobile: true, hasTouch: true,
+      });
+      try {
+        const page = await ctx.newPage();
+        let release!: () => void;
+        const held = new Promise<void>((res) => { release = res; });
+        await page.route(/api\.coinbase\.com\/v2\/prices|mempool\.space|blockstream\.info|blockchain\.info\/q\/|blockchair\.com/, (r) => r.abort());
+        await page.route(/blockchain\.info\/charts/, async (r) => {
+          await held;
+          await r.fulfill({ contentType: 'application/json', body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1710000000, y: 60000 }] }) });
+        });
+        if (surface === 'almanac') {
+          await seedAndGoto(page);
+          await page.getByLabel('Almanac').click();
+          await page.getByRole('button', { name: /Power Law/ }).click();
+        } else {
+          await page.addInitScript(`
+            window.__APP_BOOTED = true;
+            localStorage.setItem('personal-bloc-store', JSON.stringify({
+              state: { onboardingComplete: true, simpleMode: false, simpleView: 'daily' }, version: ${STORE_VERSION}
+            }));
+            localStorage.setItem('personal-bloc-onboarded', '1');
+          `);
+          await page.goto('/');
+          const tools = page.getByRole('button', { name: /^Tools/ });
+          await expect(tools, `LANDING ${surface}`).toBeVisible({ timeout: 15_000 });
+          await tools.click();
+          await page.getByRole('button', { name: 'Power Law', exact: true }).click();
+          await expect(page.locator('aside'), `SIDEBAR ${surface}`).toBeHidden();
+        }
+        const loading = page.getByText('Loading price history…');
+        await expect(loading).toBeVisible({ timeout: 15_000 });
+        await page.evaluate(() => document.fonts.ready);
+        // ROW is found by PLACE — the box's previous sibling, the chart's title row — never by its words, so a longer
+        // title fails here.
+        const row = (el: Locator) => el.locator('xpath=preceding-sibling::*[1]');
+        expect((await row(loading).boundingBox())!.height, `ROW ${surface} loading`).toBe(32);
+        const before = await loading.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
+        release();
+        const box = page.getByTestId('powerlaw-chart-box');
+        await expect(box).toBeVisible({ timeout: 8000 });
+        expect((await row(box).boundingBox())!.height, `ROW ${surface}`).toBe(32);
+        expect(await box.evaluate((el) => el.getBoundingClientRect().top + window.scrollY), `STEADY ${surface}`).toBe(before);
+      } finally {
+        await ctx.close();
+      }
+    }
   });
 
   test('edge-swipe back works on Almanac (left bezel → journal)', async ({ page }) => {

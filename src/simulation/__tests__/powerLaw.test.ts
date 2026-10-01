@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   PL_A_FAIR, PL_A_FLOOR, PL_A_CEILING, PL_BAND_LABEL, PL_ON_THE_LINE,
-  plFairValue, plFloor, plCeiling, plBandsAt, plBandAt, plConvergencePath,
+  plFairValue, plFloor, plCeiling, plBandsAt, plBandAt, plConvergencePath, plDateAtPrice,
   type PlBand,
 } from '../powerLaw';
 
@@ -173,5 +173,34 @@ describe('plConvergencePath', () => {
   it('guards: month counts of 0 or below still yield a usable array', () => {
     expect(plConvergencePath(ANCHOR, 'fair', START, 0, 48)).toEqual([ANCHOR]);
     expect(plConvergencePath(ANCHOR, 'fair', START, -3, 48)).toEqual([ANCHOR]);
+  });
+});
+
+describe('plDateAtPrice — the inverse of plBandsAt, exact to the day (the Power Law face\'s model card)', () => {
+  // ⚠ Exact-day assertions over Math.pow are safe here, unlike an exact golden (CLAUDE.md § Critical Constraints): the
+  // real root nearest a whole day sits 0.0027 day from it (Fair at $10: 1,207.0027 days) — ten orders of magnitude past
+  // the last-bit Math.pow difference between Node 22 and Node 26 (about 1e-13 day). No runtime can move a date.
+  const DAY = 86_400_000;
+
+  it('⭐ 3 bands × 71 log-spaced levels, $1 to $10M: a UTC midnight on which the band reaches usd, and the day before it does not', () => {
+    // mutations: U1 `ceil` → `floor` (a day early); U2 `days + 1` (a day late); U3 every band through fair's A
+    let n = 0;
+    for (const band of BANDS) {
+      for (let i = 0; i <= 70; i++) {
+        const usd = 10 ** ((7 * i) / 70);
+        const d = plDateAtPrice(band, usd);
+        expect(d.getTime() % DAY, `${band} at ${usd}: a UTC midnight`).toBe(0);
+        expect(plBandsAt(d)[band], `${band} at ${usd}, on the day`).toBeGreaterThanOrEqual(usd);
+        expect(plBandsAt(new Date(d.getTime() - DAY))[band], `${band} at ${usd}, the day before`).toBeLessThan(usd);
+        n++;
+      }
+    }
+    expect(n).toBe(213);
+  });
+
+  it('⭐ the face\'s two projections: Support reaches $100k on 2028-02-29, and Fair reaches $1M on 2032-11-24', () => {
+    // From the constants alone — never today's date — so these can't rot. mutations: U1; U2; U3 (Support's date)
+    expect(plDateAtPrice('floor', 100_000).toISOString()).toBe('2028-02-29T00:00:00.000Z');
+    expect(plDateAtPrice('fair', 1_000_000).toISOString()).toBe('2032-11-24T00:00:00.000Z');
   });
 });

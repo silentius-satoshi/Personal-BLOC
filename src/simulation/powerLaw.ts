@@ -63,6 +63,20 @@ export function plBandsAt(date: Date): Record<PlBand, number> {
   return { floor: plFloor(date), fair: plFairValue(date), ceiling: plCeiling(date) };
 }
 
+/** Each band's A constant, for the inverse below. */
+const PL_A: Record<PlBand, number> = { floor: PL_A_FLOOR, fair: PL_A_FAIR, ceiling: PL_A_CEILING };
+
+/**
+ * The first UTC midnight on which `band` reaches `usd` — the inverse of plBandsAt, exact to the day:
+ *   plBandsAt(d)[band] >= usd   and   plBandsAt(d − 1 day)[band] < usd.
+ * daysSinceGenesis floors, so the day count is the CEILING of the real root. The Power Law face's model card reads
+ * its projections from this, so they can never drift from the lines the chart draws.
+ */
+export function plDateAtPrice(band: PlBand, usd: number): Date {
+  const days = Math.max(1, Math.ceil(Math.pow(usd / PL_A[band], 1 / PL_B)));
+  return new Date(GENESIS.getTime() + days * 86_400_000);
+}
+
 /**
  * ONE band's value at `startDate + months` (UTC, day-of-month clamped — the same calendar stepping the
  * convergence path uses). Lets a view mark the SUPPORT line at a selected month without duplicating

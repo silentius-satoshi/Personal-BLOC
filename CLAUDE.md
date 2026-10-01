@@ -124,6 +124,11 @@ src/
                                 # Support marker), zero-import preserved
                                 # + addMonths — now EXPORTED, shared with cyclePath.ts (⚠ day-of-month clamped,
                                 # so NOT invertible — the 4-yr cycle's phase shift deliberately does not use it)
+                                # + plDateAtPrice(band, usd) — the inverse of plBandsAt, exact to the day: the first UTC
+                                # midnight d with plBandsAt(d)[band] >= usd and the day before < usd. daysSinceGenesis
+                                # floors, so the day count is the CEILING of the real root, max(1, ceil((usd/A)^(1/B))).
+                                # The Power Law face's model card reads its projections from it (Support $100k → Feb 2028,
+                                # Fair $1M → Nov 2032); zero imports preserved
     cyclePath.ts                # 4-yr cycle price path — the Almanac faces' 4th path kind 'fourYear' (PathKind =
                                 # PlBand | 'fourYear'). Imports BOTH belief leaves so neither gains an import:
                                 # price = plFairValue(d) × cycleMultAt(d), CYCLE_TOP_MULT 1.00 (tops on fair) ↔
@@ -417,7 +422,6 @@ src/
     useSimulation.ts            # Smart BLOC tab simulation hook
     useLivingSimulation.ts      # Living on Bitcoin tab hook
     usePowerLawData.ts          # Blockchain.com historical price (via Vercel proxy in prod)
-    useMempoolData.ts           # mempool.space block height (halving computed from it)
     useMorphoRate.ts            # Live Morpho borrow APY for the confirmed cbBTC/USDC Base market via same-origin /api/morpho-rate; usePageVisibility gate + slow 5-min refresh; ephemeral, NEVER stored/synced; pure parseMorphoRate (GraphQL state.borrowApy/netBorrowApy fraction → percent ×100, null on malformed). Display-only reference beside the manual cbAprPct (Settings APR field AND the SafetyDashboard CB anchor editBox) — never feeds CB math
     useRelayStatus.ts           # Network subpage P3 — live per-relay connection dots. Owns its OWN dedicated NRelay1
                                 # probe sockets (idleTimeout:false — NOT useNostr()'s NPool, which drives zero I/O and
@@ -787,9 +791,10 @@ src/
                                 # __tests__/crashPlaybookView.test.ts + __tests__/emergencyConsoleWiring.test.ts +
                                 # __tests__/monthlyPlaybookWiring.test.ts
       toolShell.module.css      # Shared `.toolContainer` (Almanac's tokens: 600px centered + iOS-safe overflow), composed
-                                # by all five tools + AlmanacView's `.container`. A wider tool overrides the 600px on a
-                                # DOUBLED class — `.main.main { max-width }`: Mining / PowerLaw 960, Converter 700 —
-                                # never beside `composes:` (P10; § Critical Constraints; composedOverrides.test.ts)
+                                # by all four tools (EmergencyConsole, LiqSimulator, Mining, Converter — Power Law's became a
+                                # face) + AlmanacView's `.container`. A wider tool overrides the 600px on a DOUBLED class —
+                                # `.main.main { max-width }`: Mining 960, Converter 700 — never beside `composes:` (P10;
+                                # § Critical Constraints; composedOverrides.test.ts)
 
     ui/
       SliderInput.tsx           # Stacked: label → value → slider → min/max
@@ -1183,14 +1188,30 @@ src/
       StressTest.tsx
 
     PowerLaw/
-      PowerLawMain.tsx          # Header · the chart once the history has loaded · the disclaimer. Loading and error show
-                                # PowerLawChartEmpty ("Loading price history…" / "Price history unavailable" — the raw
-                                # error is not shown): the chart's title row and a box the chart's height, so the box
-                                # keeps its place when the chart arrives (Z22), and only the swatch line under it appears
-                                # then. ONE error test in both
-                                # branches (`error !== null` / `error === null`), so an empty error string can't render
-                                # both. It renders no swatches of its own: the chart lists what it draws, so nothing is
-                                # listed while loading or on error (powerLawWiring pins both)
+      PowerLawFace.tsx          # THE Power Law face (spec pbloc-spec-powerlaw-face-v1) — the four faces' layout (Ownership,
+                                # Cycling, Strategy, Decision): one column, the SAME on both surfaces, each of which mounts
+                                # it bare (AlmanacView `if (f === 'powerlaw') return <PowerLawFace />;`; AppShell's main
+                                # `<PowerLawFace />`, its sidebar `null`, and `[data-active-tab="powerlaw"]` hides the
+                                # sidebar). D1's order: the head ("POWER LAW" + PL_FRAMING) → the chart card (a
+                                # <section className={styles.card}> holding the three branches verbatim — ONE error test:
+                                # `loading` → PowerLawChartEmpty "Loading price history…"; `!loading && error !== null` →
+                                # "Price history unavailable"; `!loading && error === null` → PowerLawChart) → today's
+                                # tiles → "The model" card (modelLines) → the amber disclaimer. Nothing above the chart waits
+                                # on the network, so on a phone the chart opens on screen (309.5–669.5 at 390×844) and never
+                                # moves as the numbers fill in (F2). Hooks: useBtcPrice + usePowerLawData only — NO block-
+                                # height fetch (D2: the old side panel fetched mempool.space on open, breaking the Almanac's
+                                # "live off" promise, F1). The face types no figure and no band name (I8) — its copy comes
+                                # from powerLawView; it types only "The model" and the two chart states, as DecisionFace
+                                # does. A same-file TodayTiles owns useBtcPrice() and `today` (useState(() => new Date())),
+                                # so its own poll re-renders only the tiles; AppShell's root useBtcPrice still re-renders the
+                                # face on every 10 s poll and 30 s tick, which is why PowerLawChart is memoised (R2). Tiles:
+                                # two per row in the Almanac at every phone width; on the full-mode tab one per row below
+                                # 362px (a 288px grid at 360); five in one row on a computer. powerLawWiring pins all of it
+      PowerLawFace.module.css   # COMPOSE-ONLY: exactly twelve rules, each `composes: <name> from
+                                # '../Almanac/CyclingFace.module.css';` (face, head, title, framing, card, cardLabel,
+                                # noteQuiet, statGrid, stat, statValue, statSub, disclaimer) — nothing else, so the face
+                                # can't drift from the four and composedOverrides has nothing to arbitrate (I2; powerLawWiring's
+                                # ONE-layout check)
       PowerLawChart.tsx         # Recharts calendar time × log price (YAxis scale="log", fixed [0.01, 1e8]; NOT log-log —
                                 # the X axis is dates) + the shared chart zoom (§ Chart zoom): UTC 1-January year ticks
                                 # from timeTicks, full extent = the first and last weekly row. POLISHED to the Decision
@@ -1202,12 +1223,19 @@ src/
                                 # --text-muted (P6); margin {8,12,0,0}, Y width 52. The Tooltip stays quiet through a
                                 # gesture and after it, and every series carries activeDot={!zoom.quiet} (Z17); the box
                                 # snaps to the pointer (isAnimationActive false + transitionProperty none, Z23). Renders
-                                # its TITLE ROW (ChartHead: "Price · history and the power-law bands" — a placeholder the
-                                # face redesign builds on — plus ChartZoomToolbar, Z18), its own fixed-height box
+                                # its TITLE ROW (ChartHead: PL_CHART_TITLE "Price and the bands" — D4: in the face's card
+                                # the old "Price · history and the power-law bands" wrapped to three or four lines beside the
+                                # toolbar on a phone, past the 32px row, so the box dropped when the chart arrived (F6) —
+                                # plus ChartZoomToolbar, Z18), its own fixed-height box
                                 # (data-testid "powerlaw-chart-box") and, under it, the swatch line from
                                 # legendEntries(historyDrawn(chartData)) (data-testid "powerlaw-legend") — it lives
                                 # here because only this component has chartData (chartZoomWiring reads its memo here).
-                                # Exports PowerLawChartEmpty (the loading / error state: the same title row and box)
+                                # Exports PowerLawChartEmpty (the loading / error state: the same title row and box).
+                                # MEMOISED (R2) — `export const PowerLawChart = memo(function PowerLawChart(…))`, the
+                                # Decision chart's pattern: AppShell's root useBtcPrice re-renders the whole tree on every
+                                # 10 s poll and 30 s tick, and the props are stable references from usePowerLawData. Chart
+                                # renders in 40 s idle (dev, Strict Mode doubles): d521cd1 10 · the face with its own price
+                                # poll 20 · TodayTiles 10 · TodayTiles + memo 0 (powerLawWiring pins the memo)
       PowerLawChart.module.css  # The box (D4): --pl-plot 480px desktop / 360px at max-width 640px — the toolbar sits in
                                 # the title row (Z18), so there is no toolbar term (the old --pl-toolbar is gone). ⚠ P8:
                                 # every --pl-* value is a LENGTH (a bare number makes height: var(--pl-plot) invalid → the
@@ -1222,9 +1250,19 @@ src/
                                 # --amber dashed · Fair --text-secondary solid · Support --green solid (see Design
                                 # Tokens → chart colours). powerLawTooltip(t, values) · historyDrawn(rows) (P3: at least
                                 # two rows with a finite price > 0 — the log axis drops $0, and a lone point draws
-                                # nothing) · legendEntries(drawn)
-      PowerLawSidebar.tsx       # Today's model. Band names from PL_BAND_LABEL, Resistance --amber (D6 — one colour per
-                                # concept on one screen)
+                                # nothing) · legendEntries(drawn). THE FACE'S COPY (spec pbloc-spec-powerlaw-face-v1) — every
+                                # piece that carries a figure or a band name (I8): PL_FACE_TITLE · PL_FRAMING · PL_CHART_TITLE
+                                # · todayTiles(livePrice, plBandsAt(today)) → Price · vs Fair · Resistance · Fair · Support
+                                # (labels from PL_BAND_LABEL, values through fmtUSD; vs Fair a true minus and no sign at 0.0,
+                                # ONE `above` predicate for its sign, words and colour; no live price — null, ≤ 0 or not
+                                # finite — reads "—" with "no live price yet" and drops vs Fair, stricter than the old panel,
+                                # whose 0 read −100.0%; the band subs are the constants' own multiples, "2.07× fair" /
+                                # "the trend line" / "0.36× fair") · fmtCoef (1.16e-17 → "1.16 × 10⁻¹⁷"; a mantissa that
+                                # rounds to 10 carries) · fmtMonthYear (fmtTurnDate's fixed UTC month table, never ICU's
+                                # "Sept") · modelLines() (the formula from the constants, "(3 Jan 2009)", "On the model,
+                                # Support reaches $100k in Feb 2028 and Fair reaches $1M in Nov 2032." via plDateAtPrice —
+                                # the old panel's typed "~2033–2035" disagreed with the line — and the calibration sentence)
+                                # · PL_DISCLAIMER
 
     Converter/
       ConverterMain.tsx         # The title, the converter card (SATOSHIS / BITCOIN / US DOLLAR), then the Satoshi Rates
@@ -2483,7 +2521,7 @@ The risk-free foundation for an Almanac "CycleClock" — a pure, unit-tested dom
 presentational SVG dial. **No fetch, no lifecycle, no nav wiring, no live data, no settings** (those are
 P3/P4). The dial is built but **NOT mounted on any surface** (the surface switch is P4). Prior art for
 P3's `useChainTip`: `useMempoolData.ts` (existing tip fetch, consumed by `PowerLawSidebar`) — untouched
-in P1, superseded later.
+in P1, superseded later (both deleted by the Power Law face, spec pbloc-spec-powerlaw-face-v1, D2).
 
 - **`src/simulation/cycleModel.ts`** — PURE, standalone (no React, no fetch, no `Date.now()` in the
   exported math; callers pass `ms`/`height`). 🔴 Imports NOTHING from the risk/position core
@@ -2584,7 +2622,8 @@ navigating (mirroring `BrandingDropdown`'s `openSettings`) — fixes the "← Ba
 and simple-mode. One container, no mode branching. `AppShell.module.css` carries
 `[data-active-tab="almanac"]` sidebar-collapse rules (`.sidebar { display: none }` +
 `.main { grid-column: 1 / -1 }`) matching the liqsim/settings pattern — the empty 280px rail
-no longer renders in full-mode.
+no longer renders in full-mode. Since the Power Law face (spec pbloc-spec-powerlaw-face-v1),
+`[data-active-tab="powerlaw"]` carries the same two rules: that tab renders `<PowerLawFace />` bare, with no sidebar.
 
 ### Hub expansion — Mining / Power Law / Sats / gated defense faces (Almanac becomes a 6-face hub)
 
@@ -2597,15 +2636,15 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
 - **§8 toolContainer adoption is now CLOSED** — every tool shares one `src/components/Tools/toolShell.module.css`
   `.toolContainer` (structural tokens: centering, iOS-safe overflow, horizontal/bottom padding + a 600px
   DEFAULT max-width): `EmergencyConsole`/`LiqSimulator` adopted it in Phase 1; **this change closes the
-  deferred follow-up** for `MiningMain.module.css`, `PowerLawMain.module.css`, `ConverterMain.module.css`
-  (each `.main` now `composes: toolContainer from '../Tools/toolShell.module.css'`, dropping its own
+  deferred follow-up** for `MiningMain.module.css`, `PowerLawMain.module.css` (deleted since — the Power Law face
+  composes CyclingFace's `.face`), `ConverterMain.module.css` (each `.main` now `composes: toolContainer from '../Tools/toolShell.module.css'`, dropping its own
   width/margin/base-horizontal-padding — Mining also drops its now-redundant
   `@media (max-width:640px) { .main { padding:16px } }`, since toolContainer's fixed 16px horizontal already
   covers what that query existed for), and for `AlmanacView.module.css`'s own `.container` (now
   composes-only from the same file — **zero visual change**, since `.container` WAS the byte-identical
   reference `toolContainer` was originally extracted from).
 - **Desktop width.** Each wider tool overrides toolContainer's 600px default on a DOUBLED class:
-  `.main.main { max-width: 960px }` for Mining and Power Law, `700px` for the Converter.
+  `.main.main { max-width: 960px }` for Mining (and Power Law, until its face redesign), `700px` for the Converter.
   - ⚠ The first fix put the `max-width` in the composing rule itself, believing that "a local declaration
     following `composes:` wins by source order". **That is false.** The declaration ties `.toolContainer`'s
     specificity (0,1,0), so the bundle's rule order decides, and production emits toolShell's CSS after every
@@ -2620,10 +2659,10 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
 - **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
   eyebrow+sub-nav still sit inside `.container`; Halving/Cycle are re-wrapped in a SECOND `.container`
   (unchanged content/props — `useChainTip()` stays the single per-mount data source for those two faces
-  only); Mining/PowerLaw/Sats render each tool's own main content **stacked with its input panel** in a new
-  `.faceStack` (mobile: `display:flex; flex-direction:column; gap:16px`, no width of its own, since the tool
-  inside already brings its `toolContainer` width); `defense` renders `<CbDefenseTool/>` bare (no
-  `.faceStack` — it has no separate input panel).
+  only); Mining/Sats (and Power Law, until its face redesign) render each tool's own main content **stacked
+  with its input panel** in a new `.faceStack` (mobile: `display:flex; flex-direction:column; gap:16px`, no
+  width of its own, since the tool inside already brings its `toolContainer` width); `defense` renders
+  `<CbDefenseTool/>` bare (no `.faceStack` — it has no separate input panel).
 - **`.faceStack` goes two-column at `≥768px`** (`display:grid; grid-template-columns:280px minmax(0,1fr);
   gap:20px; max-width:1240px; margin:0 auto; padding:0 16px`) — mirrors `AppShell.module.css`'s own `.shell`
   grid (`280px 1fr`) so the Almanac hub gets the same panel-width rhythm as the standalone tabs. A `.facePanel`
@@ -2633,14 +2672,16 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   below 768px), so on a phone ConverterSidebar's text starts at the converter's 16px gutter instead of x = 0.
   - ConverterSidebar can't pad itself: AppShell's `.sidebar` already pads it in the full-mode tab, so it would
     double there.
-  - Mining's panel pads itself (16px), and Power Law's sidebar is left to its redesign, so neither takes the class.
+  - Mining's panel pads itself (16px), so it doesn't take the class; Power Law has no panel since its face redesign
+    (spec pbloc-spec-powerlaw-face-v1, F4 — resolved).
   - From 768px the grid's own 16px padding applies.
   - ⚠ decisionWiring's I21 check finds the Converter fallback in `renderFace` by its literal prefix, so D2 edits only
     the panel wrapper after it: `return <div className={styles.faceStack}><ConverterMain />`.
 - **Panel stacking mirrors each tool's own mobile DOM order** (confirmed from `AppShell.tsx`'s sidebar+main
   mount order and `AppShell.module.css`'s `[data-active-tab]` rules): mining = `<MiningInputsPanel/>` then
-  `<MiningMain/>`; powerlaw = `<PowerLawSidebar/>` then `<PowerLawMain/>` (both panel-first — AppShell has NO
-  `order` override for either tab, so they fall back to plain DOM order, sidebar before main); sats =
+  `<MiningMain/>`; powerlaw (history — now bare, see below) = `<PowerLawSidebar/>` then `<PowerLawMain/>` (both
+  panel-first — AppShell has NO `order` override for either tab, so they fall back to plain DOM order, sidebar
+  before main); sats =
   `<ConverterMain/>` then `<ConverterSidebar/>` (main-first — `converter` is the ONLY tab with an explicit
   `[data-active-tab="converter"] .main { order:1 } .sidebar { order:2 }` override, at `≤767px`). All three
   panel components (`MiningInputsPanel`, `PowerLawSidebar`, `ConverterSidebar`) are props-free,
@@ -2663,6 +2704,11 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
 - **ISOLATION WALL restated (unchanged):** `cycleModel`/`HalvingClock`/`CycleClock` import nothing from the
   risk/position core (§2); `emergencyModel` imports nothing from `cycleModel`/power-law (§7). Co-locating
   all six faces under one hub is navigation only — it crosses neither wall.
+- **Since the Power Law face (spec `pbloc-spec-powerlaw-face-v1`), Power Law renders BARE**:
+  `if (f === 'powerlaw') return <PowerLawFace />;` — the four faces' one 960px column, the same component the full-mode
+  Power Law tab mounts (AppShell's sidebar `null` + `[data-active-tab="powerlaw"]`). Mining and Sats keep the
+  `.faceStack` / `.facePanel`. `PowerLawSidebar`, `PowerLawMain` (and its toolContainer `.main.main`) and
+  `useMempoolData` are deleted, so the Power Law mentions above are history.
 - `tabOrder`/`hiddenTabs`/`ALL_TABS_META`/`ActiveTab` are UNTOUCHED — this is purely faces added inside the
   existing `almanac` tab's content, not new tabs. No store fields added; only reads of the already-existing
   `hasCbLoan`/`cbPaymentStrategy`. No persistence/sync changes. `AppShell.tsx`/`AppShell.module.css`
@@ -3931,8 +3977,9 @@ badge + an off-mode `~`/`est.` precision marker differ.
   (halving branch already had it).
 - **Settings → Display** gains an ALMANAC group "Live block height" toggle (canonical entry, owner-only
   block; viewers use the badge) — ON also sets consent (the inline host disclosure satisfies it).
-- Supersedes `useMempoolData` conceptually (PowerLawSidebar still uses the old single-provider hook,
-  unmigrated). Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).
+- Supersedes `useMempoolData`, which the Power Law face deleted (spec pbloc-spec-powerlaw-face-v1, D2): its side panel
+  fetched mempool.space on every open, even with live height off (F1). Now only `useChainTip` contacts an explorer, and
+  only after consent. Test: `src/hooks/__tests__/useChainTip.test.ts` (PROVIDERS parse per shape + guard range).
   Suite 419 → 425.
 
 ### Almanac face navigation — TAP-ONLY (the face swipe pager was REMOVED)
@@ -5016,6 +5063,15 @@ renders a raw key.** Both Almanac faces used to interpolate `{band}` / `${pathKi
 prose, so a panel headed "Resistance" read "…reverts toward the power-law ceiling line" two lines
 below. Pinned by a test that also asserts `floor`/`ceiling` never equal their own keys.
 
+**`plDateAtPrice(band, usd)`** (same module, still zero imports) — the inverse of `plBandsAt`, exact to the day: the
+first UTC midnight `d` with `plBandsAt(d)[band] >= usd` and `plBandsAt(d − 1 day)[band] < usd`. `daysSinceGenesis`
+floors, so the day count is the CEILING of the real root: `max(1, ceil((usd / A_band)^(1/B)))`. The Power Law face's
+model card reads its two projections from it — Support reaches $100k on 2028-02-29, Fair reaches $1M on 2032-11-24 — so
+the card can never drift from the lines the chart draws (the old side panel's typed "~2033–2035" did). Pinned in
+`powerLaw.test.ts`: 3 bands × 71 log-spaced levels from $1 to $10M, exact to the day, and the two dates (constants only,
+so they can't rot). ⚠ Exact-day asserts over `Math.pow` are safe here, unlike an exact golden: the real root nearest a
+whole day sits 0.0027 day from it (Fair at $10), ten orders of magnitude past Node 22's and Node 26's last-bit drift.
+
 **`PL_ON_THE_LINE = 1`** — the opt-in "on the line" preset on BOTH Almanac faces. **Not an engine
 branch:** it is `convergeMonths = 1`, where the existing weight `max(0, 1 − m/convergeMonths)` is
 already 0 for every m ≥ 1, so month 1 onward IS the band value for that month. The faces only had to
@@ -5378,8 +5434,8 @@ longer has). The cycle path oscillates support ↔ fair on `CYCLE_TURNS`: **−5
   (`coldBeyondRecord` 0/240 at 45% vs 240/240 at 46% on Support, the guard pinned on synthetic values;
   `mergeMilestoneRows`; the formatters) + `resetMirror.test.ts`.
 
-Data: Blockchain.com (dev direct, prod via `/api/btc-history` proxy). Block height: mempool.space.
-Halving computed from block height only.
+Data: Blockchain.com (dev direct, prod via `/api/btc-history` proxy). The Power Law page fetches no block height (D2 of
+spec pbloc-spec-powerlaw-face-v1 — `useMempoolData` is deleted).
 
 ---
 
@@ -6609,8 +6665,9 @@ goes red.)
     `endPinch` clearing quiet → TIP-AFTER; a second finger not clearing `wake` → LEFTOVER; a wake at touchstart →
     FRESH-START; no mousemove wake → WAKE), ⭐ the price-reach test (red ignoring the reach → OUT; a note that never says
     reset → NOTE), ⭐ the Z18 computer test (red at ROW with the toolbar back in the box, or the overlay CSS back), and
-    the Power Law drag test's zoom, ⭐ STEADY (red with the title row at 30px — on a FRESH dev server, see § Build &
-    Deploy → E2E) and title-row assertions — § Build & Deploy → E2E.
+    the Power Law drag test's zoom, ⭐ STEADY and title-row assertions — § Build & Deploy → E2E. The title row at 30px
+    (Z22) now turns the 360px Power Law test red at ROW almanac loading (30), on a FRESH dev server: since the Power Law
+    face, "Price and the bands" fits on one line beside the toolbar at 390, so the 390 test's STEADY no longer sees it.
 - **Decision face — the chart zoom follow-up** (D2 and the legend note, spec v1.5; every ⭐ red under its named
   mutation, every file restored and hash-checked):
   - `decisionChartView.test.ts` — ⭐ `pathOnSupport` on the defaults, Support on the line (premise: month 0 is spot;
@@ -6641,8 +6698,11 @@ goes red.)
       would pass vacuously. The pin only takes effect in a child process, so `vite.config.ts` pins `pool: 'forks'`
       (vitest's default, made explicit). Under `--pool=threads` the premise — `new Date(Date.UTC(2027, 0, 1))
       .getFullYear() === 2026` — fails loudly rather than vacuously.
-  - `src/components/PowerLaw/__tests__/powerLawWiring.test.ts` (source-reading, 9 checks):
-    - no hex in any PowerLaw source file;
+  - `src/components/PowerLaw/__tests__/powerLawWiring.test.ts` (source-reading, 12 checks since the Power Law face — its
+    files are read LAZILY, '' while absent, and every face check opens with a positive anchor, so a missing file is red
+    at its own assertion and can't pass a negative check):
+    - no hex in any PowerLaw source file (the list names `PowerLawChart.tsx`, `PowerLawFace.tsx` and
+      `PowerLawFace.module.css`);
     - the `useId` gradient;
     - the grid, plus the history `<Area>` with `isAnimationActive={false}` (P2);
     - Today as one timestamp per mount;
@@ -6650,11 +6710,21 @@ goes red.)
       `--pl-toolbar` (P8 — red on a unitless `--pl-plot: 360`, and with `--pl-toolbar` back: Z18 moved the toolbar to
       the title row, so a term that was always 0px went);
     - ONE tooltip price formatter in both tooltips;
-    - the swatches through `legendEntries(`, with PowerLawMain rendering none and the chart only once loaded — on ONE
-      error test, `error !== null` / `error === null` (red with the chart branch back on `!error`: an empty error
-      string rendered the error box AND the chart);
+    - the swatches through `legendEntries(`, with the FACE rendering none (its code, comments stripped) and the chart
+      only once loaded — on ONE error test, `error !== null` / `error === null` (red with the chart branch back on
+      `!error`: an empty error string rendered the error box AND the chart);
     - one tick colour on both zoom charts (P6);
-    - the sidebar's `PL_BAND_LABEL` names and `--amber` Resistance (D6).
+    - the face's copy comes from powerLawView (replaces the old sidebar check, D6): `todayTiles(`, `modelLines()`,
+      `{PL_FACE_TITLE}`, `{PL_FRAMING}`, `{PL_DISCLAIMER.lead}` / `.body`, `style={{ color: t.color }}`, and the chart's
+      `{PL_CHART_TITLE}`; no `$`+digit and no band name in the face's code (W6); D1's order in PowerLawFace's render
+      (E1); `useState(() => new Date())` for today;
+    - ONE layout — `PowerLawFace.module.css` is exactly the twelve compose-only rules (W4);
+    - both surfaces bare — the Almanac branch `<PowerLawFace />`, AppShell's `? null` inside `<aside>` and
+      `? <PowerLawFace />` inside `<main>`, both `[data-active-tab="powerlaw"]` rules, and the four old files gone
+      (W1–W3);
+    - no block-height fetch — no `useMempoolData` / `mempool` / `useChainTip` / `fetch(` in the face (W5),
+      `useMempoolData.ts` gone, the face's hooks exactly `useBtcPrice` + `usePowerLawData`, `useBtcPrice(` only in
+      TodayTiles, and `export const PowerLawChart = memo(function PowerLawChart(` (R2 — red with the memo dropped).
   - `src/styles/__tests__/composedOverrides.test.ts` — ⭐ ONE source-reading `it`, and it IS the audit (P9–P11).
     - **What it checks.** For every composing rule in every `*.module.css` under `src/`, no single-class rule of the
       composing class declares a property the composed class sets. Media queries are included, and the composed
@@ -6662,14 +6732,15 @@ goes red.)
     - **Shorthand-aware.** Two declarations clash when the longhands they set intersect, so `border` covers
       `border-color`.
     - **Non-vacuous.** A control pair must clash (`border` against `border-color`, with `border-radius` against
-      `border` as the negative), and the six doubled overrides must be found:
-      - PowerLawMain, MiningMain and ConverterMain `.main.main`;
+      `border` as the negative), and the five doubled overrides must be found (PowerLawMain's went with its file, spec
+      pbloc-spec-powerlaw-face-v1):
+      - MiningMain and ConverterMain `.main.main`;
       - DecisionFace `.chartBox.chartBox` and `.moveCard.moveCard`;
       - PowerLawChart `.chartBox.chartBox`.
 
-      It also finds a seventh, PowerLawChart `.chartEmpty.chartEmpty`, which is correct.
+      It also finds a sixth, PowerLawChart `.chartEmpty.chartEmpty`, which is correct.
     - **Red when:**
-      - `max-width` goes back beside `composes:` (PowerLawMain);
+      - `max-width` goes back beside `composes:` (MiningMain's `.main.main` → `.main` — C1);
       - `height` goes back beside `composes:` (DecisionFace);
       - MiningMain's `.main.main` is deleted;
       - ConverterMain's is un-doubled;
@@ -6791,6 +6862,36 @@ goes red.)
 
     The natural race is consent's alone on this Mac: under M1 the four box-reading eventSheet tests still passed 80 of
     80, so AT-REST is what turns a lost wait red everywhere.
+- **The Power Law face** (spec `pbloc-spec-powerlaw-face-v1`, v1.1; every ⭐ red under its named mutation, at its own test
+  or tag, every file restored and hash-checked; the e2e with `--retries=0` on a fresh server):
+  - `powerLaw.test.ts` — ⭐ `plDateAtPrice` over 3 bands × 71 log-spaced levels ($1–$10M): a UTC midnight, `≥ usd` that
+    day, `< usd` the day before; ⭐ the face's two projections (2028-02-29, 2032-11-24). U1 `ceil` → `floor`, U2 `days + 1`
+    and U3 every band through fair's A turn both red.
+  - `powerLawView.test.ts`:
+    - ⭐ today's tiles with a price — keys, labels, `$50,000 · −50.0% · $200,000 · $100,000 · $40,000`, colours, "live"
+      (V1 Resistance `--red`; V2 an ASCII hyphen);
+    - ⭐ vs Fair — 150k `+50.0%` green "above"; 100k `0.0%` green "above"; 99,990 `0.0%` red "below" (the colour follows the
+      true side); 99,900 `−0.1%` (V2; V3 `above = dev > 0`);
+    - ⭐ no live price (null, 0, −1, NaN, ∞) — "—", "no live price yet", vs Fair dropped, never NaN (V4 the guard dropped);
+    - ⭐ the band subs from the constants (V5 a typed "2.1× fair");
+    - ⭐ modelLines — under the Honolulu TZ pin: the formula, "(3 Jan 2009)", the projections line exactly, and
+      `fmtMonthYear` in UTC (premise: 1 Nov 2032 UTC is 31 Oct locally) (V7; V8; local getters → "Oct 2032");
+    - ⭐ derived, never typed — a source read of modelLines' body: `plDateAtPrice(` twice, `fmtCoef(PL_A_FAIR)`, no
+      Mon-YYYY literal, no `~20xx` or `20xx–20xx` (V6 a typed "Nov 2032" — the rendered text alone stays green; V7);
+    - ⭐ fmtCoef — `1.16 × 10⁻¹⁷`, `4.2 × 10⁻¹⁸`, `2.4 × 10⁻¹⁷`, `1 × 10⁵`, and the carry `9.999e-18 → 1 × 10⁻¹⁷` (V8; the
+      carry dropped → "10 × 10⁻¹⁸").
+  - powerLawWiring (12 checks — above): W1–W3 at "both surfaces bare"; W4 at ONE layout and the composedOverrides audit;
+    W5 at "no block-height fetch"; W6 at the copy check; the memo dropped (R2) and `useBtcPrice()` called in
+    PowerLawFace (Δ1) at "no block-height fetch"; the tiles above the chart (E1) at the copy check's D1 order too.
+  - composedOverrides: C1 (MiningMain's `.main.main` → `.main`) is red at the audit's clashes.
+  - **Red first** (the tests on d521cd1's code): 15 red — powerLaw 2 and powerLawView 7 ("not a function", except the
+    source read, at its body anchor), powerLawWiring 6 (checks 1, 7, 9–12; 2–6 and 8 green); composedOverrides green;
+    the rewritten e2e at IN VIEW (1,190.5 > 844), the 360px test at SIDEBAR full.
+  - e2e (§ Build & Deploy → E2E): E1 the tiles above the chart → IN VIEW (880.2 > 844); E2 a head line that appears
+    with the price → PRICE (310.5 → 333.25); E3 a mempool fetch in the face → OFFLINE (two requests — Strict Mode);
+    E4 the long title back → TITLE (390) and ROW almanac 47.25 (360); E5 the full-mode hide dropped → SIDEBAR full;
+    R1's probe (a 300px spacer above the chart card and the body scrolled 300 at open) → TOP (300); the title row at
+    30px (Z22) → ROW almanac loading (30), the 390 test green.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -7185,8 +7286,8 @@ the component-level grep covers them). **Almanac (face nav is TAP-ONLY — the p
 CycleClock's demoted halving card also carries — the Cycle-only string at count 1 is what proves exactly ONE
 mounted face, no neighbour panes); a committed mid-screen horizontal drag does NOT change face (the pager-removal
 regression pin); gated-face skip (`!hasCbLoan` → no defense pill after tapping every visible pill); a chart scrub
-stays on the Power Law face — the PowerLaw face's `/api/blockchain.info` route is `page.route`-fulfilled with valid
-data so the chart renders, since PowerLawMain gates it on `!loading && !error`; edge-swipe back still works on
+stays on the Power Law face — the PowerLaw face's history route (`/blockchain\.info\/charts/`) is `page.route`-fulfilled
+with valid data so the chart renders, since PowerLawFace gates it on `!loading && error === null`; edge-swipe back still works on
 Almanac. **P3.1 additions:** NESTED edge-back (open a Settings subpage → one edge-back lands on the LIST [subpage
 `← Settings` gone, the row back], a second → journal — **run against HEAD first, it FAILS**, proving the repro); the
 chart scrub also asserts `document.scrollingElement.scrollTop` is unchanged — ⚠ that half passes TRIVIALLY in
@@ -7196,7 +7297,9 @@ deleted with the pager.) **Chart zoom:** that Power Law drag test now also asser
 (`data-zoomed="true"` — a mouse drag draws a box) and a double-click inside `chart-zoom-plot` resets it. ⚠ **Before
 chart zoom it was VACUOUS:** on the phone layout the chart's top sits at or below the bottom of the 844px viewport
 (measured at y 841–890), so the drag was measured there, started OFF-SCREEN and never touched the chart. It now calls `scrollIntoViewIfNeeded()` first
-(Z8); the drag is unchanged — its release 29px off the left edge still registers. **Decision describe:** the zoom smoke
+(Z8); the drag is unchanged — its release 29px off the left edge still registers. Since the Power Law face the box opens
+in view (IN VIEW: 309.5–669.5 at 390×844), so Z8 is a no-op guard that keeps a layout which pushes the chart down from
+passing vacuously again. **Decision describe:** the zoom smoke
 (BOX: `decision-chart-box` is 280px tall — the toolbar left it, Z18; ROW / RIGHT, as below; then drag a box across the
 middle 40% × 50% of the plot → zoomed, the "Double-click to zoom back out" note and new tick labels; a double-click → the
 full view and the recorded labels; then Z1's HOVER step — the tooltip still rises, so the overlay never takes the
@@ -7228,20 +7331,43 @@ decisions, not iOS's scroll arbitration. Three more chart-zoom tests:
 The first Decision smoke also sees the **legend note** on the defaults
 (Support, on the line), and **D2** measures the schedule's `schedule-keep` header at 390px and at 375px
 (`setViewportSize`): ONE line — its text Range's client rects share one top — and no overflow. **The Power Law test**
-also asserts the polished chart:
-- STEADY (Z22): the history route is HELD until the loading box's page top (`rect.top + scrollY`) has been read, then
-  released, and the loaded `powerlaw-chart-box`'s page top must be the same. The live-price and mempool routes are
-  aborted, because the side panel above the chart grows a row when either answers. The first reading waits for
-  `document.fonts.ready`: IBM Plex Mono swaps in (`display=swap`) and the sub-nav pills above grow 33 → 34px with it
-  (`line-height: normal`), so a reading taken before the swap was 1px off one taken after — a flake, measured, never
-  the layout. Red with the title row at 30px: the two-line title (31.5px) pushes the box 1.5px down;
-- P7: the `powerlaw-chart-box` is 360px tall at 390 wide — the plot alone, since the toolbar left the box (Z18);
-- ROW / RIGHT (the shared `expectToolbarInTitleRow`): the toolbar's bottom is at or above the gesture area's top, its
-  centre within half its height of the title's, its right edge within 1px of the box's;
-- after the reset, hovering the plot's centre raises the token tooltip, headed by a UTC "D Mon YYYY" date and naming
-  Resistance · Fair · Support;
+(rewritten for the Power Law face, spec `pbloc-spec-powerlaw-face-v1`) asserts the face and the polished chart. Every
+network answer is HELD or aborted:
+- the history until STEADY has read the loading box;
+- the live price until PRICE — no longer aborted, since nothing above the chart waits on it;
+- the four block explorers are aborted (hermetic), while `page.on('request')` records any attempt — Playwright emits
+  `request` before routing.
+
+Its checks:
+- STEADY (Z22): the loaded `powerlaw-chart-box`'s page top (`rect.top + scrollY`) equals the loading box's. The first
+  reading waits for `document.fonts.ready`: IBM Plex Mono swaps in (`display=swap`) and the sub-nav pills above grow
+  33 → 34px with it (`line-height: normal`), so a reading taken before the swap was 1px off one taken after — a flake,
+  measured, never the layout;
+- TOP (R1): `window.scrollY` plus the `scrollTop` of every ancestor of the box is 0. The app scrolls `<body>`, not the
+  window, so `window.scrollY` alone stays 0 while the page scrolls. A probe — a 300px spacer above the chart card and the
+  body scrolled 300 at open — is red at TOP (300), where IN VIEW alone would pass;
+- IN VIEW: the box's bottom is ≤ 844 on open (309.5–669.5 at 390×844 — F2, D1);
+- PREMISE "no live price yet"; PRICE: after the price is released and "below / above the fair line" shows, the box's
+  page top is unchanged; ORDER: the "2.07× fair" tile sits under the box;
+- Z8 (now a no-op guard) and P7: the box is 360px tall at 390 wide — the plot alone, since the toolbar left the box
+  (Z18);
+- TITLE ("Price and the bands" — so the long title fails in 5 s, tagged) and ROW / RIGHT (the shared
+  `expectToolbarInTitleRow`): the toolbar's bottom is at or above the gesture area's top, its centre within half its
+  height of the title's, its right edge within 1px of the box's;
+- the drag zoom and the double-click reset; after the reset, hovering the plot's centre raises the token tooltip,
+  headed by a UTC "D Mon YYYY" date and naming Resistance · Fair · Support;
 - the swatch line lists exactly those three bands. The stub prices ONE row, and one point draws no history, so this
-  is P3 at runtime.
+  is P3 at runtime;
+- OFFLINE (F1, D2): no request to mempool.space, blockstream.info, blockchain.info/q/ or blockchair.com.
+
+**The 360px title-row test** (F6) opens a phone context of its own (`isMobile`, `hasTouch` — Z20) at 360×780, once in
+the Almanac (`seedAndGoto`) and once on the full-mode tab (an inline seed with `STORE_VERSION`, then LANDING on the
+Tools button). The live price and the explorers are aborted and the history held. Its checks: SIDEBAR (full-mode: the
+`aside` is hidden), ROW (the title row — found by PLACE, the box's previous sibling, never by its words — is exactly
+32px, loading and loaded) and STEADY. Red with the long title back (ROW almanac, 47.25), with the full-mode hide
+dropped (SIDEBAR full) and with the title row at 30px (Z22: ROW almanac loading, 30). At 390 the short title is one line
+beside the toolbar, so the 390 test's STEADY no longer sees the 30px mutation. `test.setTimeout(60_000)` covers its two
+boots.
 
 **The Sats face test** (spec `pbloc-spec-sats-rates-v1`) answers the spot price with the store's own 82,000, so the
 widths can't move with the market. It checks:

@@ -76,6 +76,10 @@
 [data-active-tab="almanac"]  .sidebar { display: none; }
 [data-active-tab="almanac"]  .main    { grid-column: 1 / -1; }
 
+/* Power Law: the face renders bare — one column, no sidebar (spec pbloc-spec-powerlaw-face-v1) */
+[data-active-tab="powerlaw"] .sidebar { display: none; }
+[data-active-tab="powerlaw"] .main    { grid-column: 1 / -1; }
+
 /* Bloc tab: scrollArea inside InputsPanel handles overflow — sidebar is a flex column */
 [data-active-tab="bloc"] .sidebar     { overflow: hidden; padding: 0; }
 [data-active-tab="bloc"] .sidebarInner { flex: 1; height: 100%; overflow: hidden; }

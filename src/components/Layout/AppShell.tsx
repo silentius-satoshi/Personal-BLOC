@@ -20,8 +20,7 @@ import { InputsPanel } from '../Inputs/InputsPanel';
 import { LivingInputsPanel } from '../LivingOnBitcoin/LivingInputsPanel';
 import { SmartBlocMain } from './SmartBlocMain';
 import { LivingOnBitcoin } from '../LivingOnBitcoin/LivingOnBitcoin';
-import { PowerLawSidebar } from '../PowerLaw/PowerLawSidebar';
-import { PowerLawMain }    from '../PowerLaw/PowerLawMain';
+import { PowerLawFace }    from '../PowerLaw/PowerLawFace';
 import { ConverterSidebar } from '../Converter/ConverterSidebar';
 import { ConverterMain }    from '../Converter/ConverterMain';
 import { MiningInputsPanel } from '../Mining/MiningInputsPanel';
@@ -440,7 +439,7 @@ export function AppShell() {
                activeTab === 'coinbase'   ? <CoinbaseLoanSidebar /> :
                activeTab === 'advisor'    ? <AdvisorSidebar />      :
                activeTab === 'living'     ? <LivingInputsPanel />   :
-               activeTab === 'powerlaw'   ? <PowerLawSidebar />     :
+               activeTab === 'powerlaw'   ? null                   :
                activeTab === 'converter'  ? <ConverterSidebar />    :
                activeTab === 'mining'     ? <MiningInputsPanel />   :
                                             <InputsPanel />}
@@ -452,7 +451,7 @@ export function AppShell() {
              activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
              activeTab === 'advisor'    ? <AdvisorMain />       :
              activeTab === 'living'     ? <LivingOnBitcoin />   :
-             activeTab === 'powerlaw'   ? <PowerLawMain />      :
+             activeTab === 'powerlaw'   ? <PowerLawFace />      :
              activeTab === 'converter'  ? <ConverterMain />     :
              activeTab === 'mining'     ? <MiningMain />        :
              activeTab === 'liqsim'     ? <CbDefenseTool />     :

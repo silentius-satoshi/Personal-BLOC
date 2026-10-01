@@ -1,4 +1,4 @@
-import { useCallback, useId, useMemo, useState } from 'react';
+import { memo, useCallback, useId, useMemo, useState } from 'react';
 import {
   Area,
   CartesianGrid,
@@ -17,7 +17,9 @@ import {
 } from '../../lib/chartZoom';
 import { useChartZoom, type ChartZoom } from '../../hooks/useChartZoom';
 import { ChartZoomFrame, ChartZoomToolbar } from '../ui/ChartZoomFrame';
-import { PL_SERIES, powerLawTooltip, historyDrawn, legendEntries, type PlSeriesKey } from './powerLawView';
+import {
+  PL_SERIES, PL_CHART_TITLE, powerLawTooltip, historyDrawn, legendEntries, type PlSeriesKey,
+} from './powerLawView';
 import styles from './PowerLawChart.module.css';
 
 const ONE_DAY = 86_400_000;
@@ -76,11 +78,12 @@ function fmtY(v: number): string {
 }
 
 /** The chart's title row (Z18) — the Decision chart's: the label, and — once the chart has data — the zoom toolbar,
- *  right-aligned. The title is a placeholder the Power Law face redesign builds on. */
+ *  right-aligned. The title is PL_CHART_TITLE (D4): in the face's card (2 × 15px of inset) the old long title wrapped to
+ *  three or four lines beside the toolbar on a phone, past the 32px row, so the box dropped when the chart arrived (F6). */
 function ChartHead({ zoom }: { zoom?: ChartZoom }) {
   return (
     <div className={styles.chartHead}>
-      <span className={styles.cardLabel}>Price · history and the power-law bands</span>
+      <span className={styles.cardLabel}>{PL_CHART_TITLE}</span>
       {zoom && <ChartZoomToolbar zoom={zoom} />}
     </div>
   );
@@ -91,7 +94,9 @@ interface Props {
   bands: BandPoint[];
 }
 
-export function PowerLawChart({ historical, bands }: Props) {
+/** Memoised (R2) — the Decision chart's pattern. AppShell's root useBtcPrice re-renders the whole tree on every 10 s poll
+ *  and 30 s tick; the props are stable references from usePowerLawData, so a price tick never re-renders the chart. */
+export const PowerLawChart = memo(function PowerLawChart({ historical, bands }: Props) {
   const chartData = useMemo<ChartRow[]>(() => {
     const sortedHist = [...historical].sort((a, b) => a.timestamp - b.timestamp);
 
@@ -241,7 +246,7 @@ export function PowerLawChart({ historical, bands }: Props) {
       </div>
     </div>
   );
-}
+});
 
 /**
  * Loading and error: the chart's title row and its own box at the chart's height, so the box keeps its place when the
