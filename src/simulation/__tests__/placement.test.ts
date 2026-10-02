@@ -14,7 +14,7 @@ import { CB_LLTV } from '../runCoinbaseLoan';
 import { ltvOf } from '../ltv';
 import { runCyclingSim, allInEquity, type CyclingInputs } from '../cyclingSim';
 import { deriveOwnership } from '../ownership';
-import { SP_REPRO, SUPPORT, S0, policyFor, a5Cases } from './supportPolicyPaths';
+import { SP_REPRO, SUPPORT, S0, V2_DEFAULTS, policyFor, a5Cases } from './supportPolicyPaths';
 
 /**
  * THE MOVE (`placement.ts`) — the support policy's collateral placement for this month, previewed at today's
@@ -247,7 +247,7 @@ describe('⭐ I5 — seeded ⇔ ready and worth moving', () => {
 
 // ── I6 / I7 · acting today, against the engine ───────────────────────────────────────────────────────────────
 
-describe('⭐ I6 / I7 — acting today is never worse, and month 1 has only the trickle left', () => {
+describe('⭐ I6 / I7 — acting today is never worse at the fixtures\' policy (within 0.025 ₿ at C1), and month 1 has only the trickle left', () => {
   // ⚠ FIXTURE-BOUND: re-measure if the engine changes. Round synthetic positions only.
   const FIXTURES: [string, Partial<CyclingInputs>][] = [
     ['SP_REPRO', {}],
@@ -294,6 +294,49 @@ describe('⭐ I6 / I7 — acting today is never worse, and month 1 has only the 
       }
     }
     expect(seededBetter).toBeGreaterThanOrEqual(0);   // never worse is the claim; better is a bonus
+  });
+
+  it('⭐ Policy v2 — at C1 (the faces\' defaults) acting today is never worse by more than 0.025 ₿ (F8)', () => {
+    // ⚠ FIXTURE-BOUND (measured at Policy v2): at C1, 6 of the 60 seeded runs end with fewer ₿ yours, the worst by
+    // 0.0204 ₿ — the 45% ceiling binds in year one, so the earlier draw moves buying earlier rather than adding to it.
+    // The same liqMonth in all 60; the seizure on the way down fires in none of them.
+    const C1 = {
+      ...SETTINGS, cbStop: V2_DEFAULTS.cbStopAtSupportPct / 100,
+      accumulateBelow: V2_DEFAULTS.accumulateBelow, payDownAbove: V2_DEFAULTS.payDownAbove,
+    };
+    let compared = 0;
+    let worse = 0;
+    for (const c of a5Cases()) {
+      for (const [name, over] of FIXTURES) {
+        const label = `${c.name} · ${name}`;
+        const inputs: CyclingInputs = {
+          ...c.on, ...over, cycleMonths: 1, supportPolicy: { ...c.on.supportPolicy!, ...V2_DEFAULTS },
+        };
+        const unseeded = runCyclingSim(inputs);
+        if (!unseeded.policyApplied) continue;
+        const p = placementPlan({
+          creditLine: inputs.strikeCreditLine, strikeBalance: inputs.strikeBalance,
+          strikeCollateralBtc: inputs.strikeCollateralBtc, cbDebt: inputs.cbDebt,
+          cbCollateralBtc: inputs.cbCollateralBtc, coldBtc: inputs.openingColdBtc ?? 0,
+          price: inputs.pricePath[0], support: SUPPORT[0], bufferUsd: V2_DEFAULTS.bearBufferMonths * inputs.expenses,
+          ...C1,
+        });
+        if (!p.seeded) continue;
+        const seeded = runCyclingSim({
+          ...inputs,
+          strikeCollateralBtc: p.after.strikeCollateralBtc,
+          cbCollateralBtc: p.after.cbCollateralBtc,
+          openingColdBtc: p.after.coldBtc,
+        });
+        const yours = (r: typeof seeded) => deriveOwnership(r.last.btcHeld, r.last.debt, r.last.price).yoursBtc;
+        compared += 1;
+        expect(seeded.liqMonth, label).toBe(unseeded.liqMonth);
+        expect(yours(seeded), label).toBeGreaterThanOrEqual(yours(unseeded) - 0.025);
+        if (yours(seeded) < yours(unseeded) - 1e-9) worse += 1;
+      }
+    }
+    expect(compared).toBe(60);                 // the A5 paths × the four positions — every one applies and seeds
+    expect(worse).toBeGreaterThanOrEqual(1);   // "never worse" holds at the fixtures' policy only — placement.ts says so
   });
 
   it('⭐ I7 — a seeded run only has the month-to-month trickle left to migrate', () => {

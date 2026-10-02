@@ -45,9 +45,10 @@ const RULES_NOTE = 'Strike releases collateral only at or under 40% LTV, only do
   + 'more than 60 days old — the app assumes yours is.';
 const PAST_86 = 'past its 86% liquidation line. Morpho liquidates instantly, so in a real crash you would have to act '
   + 'before the price fell this far.';
-const DOOMED_DEPTH = "Price is 0.80× support — above the 0.70× liquidation depth, but the collateral you can move can't "
+// The depth at the defaults' 45% stop (Policy v2's C1): 0.45 / 0.86 ≈ 0.52× support.
+const DOOMED_DEPTH = "Price is 0.80× support — above the 0.52× liquidation depth, but the collateral you can move can't "
   + 'clear 86%, so shift debt first.';
-const TOP_UP_DEPTH = 'Price is 0.80× support — above the 0.70× liquidation depth, so top up first.';
+const TOP_UP_DEPTH = 'Price is 0.80× support — above the 0.52× liquidation depth, so top up first.';
 const DOOM = "Coinbase can't clear 86% even with every coin the rules allow — only the last resorts below remain.";
 const HELD = { kind: 'held', text: 'Coinbase is back at your 70% target.' } as const;
 const NO_EXTRAS = { pastLiquidation: null, steps: [], gap: null, strikeNote: null, after: null, outcome: null };
@@ -58,15 +59,15 @@ describe('playbookInputFromLive — the one live builder', () => {
   it('⭐ passes the live figures through and sets the four lender constants', () => {
     expect(playbookInputFromLive(LIVE)).toEqual({
       price: 80_000, support: 100_000, cbDebt: 60_000, cbCollateralBtc: 1, strikeBalance: 8_000,
-      strikeCollateralBtc: 1, strikeCreditLine: 40_000, coldBtc: 0, targetCbLtvPct: 70, cbStopAtSupport: 0.6,
+      strikeCollateralBtc: 1, strikeCreditLine: 40_000, coldBtc: 0, targetCbLtvPct: 70, cbStopAtSupport: 0.45,
       lltv: CB_LLTV, maxDrawLtv: STRIKE_MAX_DRAW_LTV, marginLtv: STRIKE_MARGIN_CALL_LTV,
       retrieveMaxLtv: STRIKE_RETRIEVE_MAX_LTV, strikeInHold: false,
     });
   });
 
   it('⭐ the stop at support goes through effectivePolicyStops on the policy defaults — never an inline copy', () => {
-    expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 70 }).cbStopAtSupport).toBe(0.6);
-    expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 55 }).cbStopAtSupport).toBe(0.55);
+    expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 70 }).cbStopAtSupport).toBe(0.45);
+    expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 40 }).cbStopAtSupport).toBe(0.4);   // held to the target
     const D = DEFAULT_SUPPORT_POLICY_SETTINGS;
     for (let t = 40; t <= 85; t++) {
       expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: t }).cbStopAtSupport, `target ${t}`)
@@ -95,8 +96,8 @@ describe('playbookDepthFor — the liquidation depth for a live target', () => {
       expect(playbookDepthFor(t), `target ${t}`)
         .toBe(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: t }).cbStopAtSupport / CB_LLTV);
     }
-    expect(playbookDepthFor(65).toFixed(2)).toBe('0.70');
-    expect(playbookDepthFor(55).toFixed(2)).toBe('0.64');   // the depth moves with the target
+    expect(playbookDepthFor(65).toFixed(2)).toBe('0.52');
+    expect(playbookDepthFor(40).toFixed(2)).toBe('0.47');   // the depth moves with a target under the 45% stop
   });
 
   it('⭐ the builder and the depth share ONE stop call — the module calls the clamp exactly once', () => {
@@ -248,16 +249,16 @@ describe('playbookCard — one fixture per shape', () => {
   });
 
   it('below the depth — shift first, already past 86% at this price, held', () => {
-    const { result, card } = run({ price: 60_000 });
+    const { result, card } = run({ price: 50_000, cbDebt: 50_000 });
     expect(result.order).toBe('shiftFirst');
     expect(card).toEqual({
       badge: 'Shift first',
-      depth: 'Price is 0.60× support — below the 0.70× liquidation depth, so shift debt first.',
+      depth: 'Price is 0.50× support — below the 0.52× liquidation depth, so shift debt first.',
       pastLiquidation: `At this price Coinbase is at 100.0% — ${PAST_86}`,
-      steps: ['Draw $18,000 on Strike and pay Coinbase down with it.'],
+      steps: ['Draw $15,000 on Strike and pay Coinbase down with it.'],
       gap: null,
       strikeNote: null,
-      after: 'After: Coinbase 70.0% LTV, liquidation at $48,837 · Strike 43.3% LTV, margin call at $37,143.',
+      after: 'After: Coinbase 70.0% LTV, liquidation at $40,698 · Strike 46.0% LTV, margin call at $32,857.',
       outcome: HELD,
     });
   });
@@ -353,9 +354,9 @@ describe('playbookCard — one fixture per shape', () => {
   });
 
   it('gap: a $0.30 line — the shift floors to nothing, and collateral goes in instead', () => {
-    const { result, card } = run({ price: 60_000, creditLine: 8_000.30, coldBtc: 0.5 });
+    const { result, card } = run({ price: 50_000, cbDebt: 50_000, creditLine: 8_000.30, coldBtc: 0.5 });
     expect(result.steps.map((s) => s.kind)).toEqual(['shiftToStrike', 'coldToCoinbase']);   // premise: $0.30 shifted
-    expect(card.steps).toEqual(['Move 0.42856 ₿ (~$25,714) from cold storage into Coinbase.']);
+    expect(card.steps).toEqual(['Move 0.42856 ₿ (~$21,428) from cold storage into Coinbase.']);
     expect(card.gap).toBe('The Strike line has no room to shift debt, so collateral goes in instead.');
     expect(card.strikeNote).toBeNull();
     expect(card.outcome).toEqual(HELD);
@@ -387,11 +388,11 @@ describe('playbookCard — one fixture per shape', () => {
     expect(card.outcome).toEqual({ kind: 'doom', text: DOOM });
   });
 
-  it('the multiples widen inside the depth sentence (0.70× and 0.6975× support)', () => {
-    expect(run({ price: 70_000 }).card.depth)
-      .toBe('Price is 0.700× support — above the 0.698× liquidation depth, so top up first.');
-    expect(run({ price: 69_750 }).card.depth)
-      .toBe('Price is 0.6975× support — below the 0.6977× liquidation depth, so shift debt first.');
+  it('the multiples widen inside the depth sentence (0.5233× and 0.5232× support, around the 0.52326× depth)', () => {
+    expect(run({ price: 52_330 }).card.depth)
+      .toBe('Price is 0.52330× support — above the 0.52326× liquidation depth, so top up first.');
+    expect(run({ price: 52_320 }).card.depth)
+      .toBe('Price is 0.5232× support — below the 0.5233× liquidation depth, so shift debt first.');
   });
 
   it('no Strike balance — the after line says so', () => {
@@ -422,9 +423,9 @@ const LINE_CASES: [string, Partial<LivePlaybookFigures>, MonthPlaybookLine | nul
     { order: LINE_TOP, pastLiquidation: null, gap: null,
       steps: ['Move ₿0.05000 from cold', 'Release ₿0.02142 from Strike'], outcome: LINE_HELD }],
   ['⭐ three listed steps',
-    { price: 60_000, cbDebt: 153_000, cbCollateralBtc: 3, strikeBalance: 0, creditLine: 10_000, coldBtc: 0.1 },
+    { price: 50_000, cbDebt: 127_500, cbCollateralBtc: 3, strikeBalance: 0, creditLine: 10_000, coldBtc: 0.1 },
     { order: LINE_SHIFT, pastLiquidation: null, gap: null,
-      steps: ['Shift $10,000 to Strike', 'Move ₿0.10000 from cold', 'Release ₿0.30476 from Strike'], outcome: LINE_HELD }],
+      steps: ['Shift $10,000 to Strike', 'Move ₿0.10000 from cold', 'Release ₿0.25714 from Strike'], outcome: LINE_HELD }],
   ['⭐ doomed at the open, saved by the shift', { cbDebt: 75_000, dayLog: [move('2026-09-01')] },
     { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $19,000 to Strike'], outcome: LINE_HELD }],
   ['the doom outcome', { cbDebt: 75_000, strikeBalance: 36_000, coldBtc: 0.02 },
@@ -435,7 +436,7 @@ const LINE_CASES: [string, Partial<LivePlaybookFigures>, MonthPlaybookLine | nul
   ['gap: Strike over 40%', { strikeBalance: 36_000 },
     { order: LINE_TOP, pastLiquidation: null, gap: 'Nothing to top up with', steps: ['Shift $4,000 to Strike'],
       outcome: LINE_HELD }],
-  ['gap: a $0.30 line', { price: 60_000, creditLine: 8_000.30, coldBtc: 0.5 },
+  ['gap: a $0.30 line', { price: 50_000, cbDebt: 50_000, creditLine: 8_000.30, coldBtc: 0.5 },
     { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: 'No room on the Strike line',
       steps: ['Move ₿0.42856 from cold'], outcome: LINE_HELD }],
   ['gap: nothing movable', { strikeBalance: 40_000, dayLog: [move('2026-10-05')] },

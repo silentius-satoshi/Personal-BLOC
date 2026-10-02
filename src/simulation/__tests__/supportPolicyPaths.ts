@@ -42,7 +42,9 @@ export const SP_REPRO: Omit<CyclingInputs, 'pricePath'> = {
   cycleMonths: 1, cbLtvCapPct: 70, strikeLtvCapPct: 60, defendCbLtv: true, coldStoreBufferPct: 30,
 };
 
-/** The shipped defaults (spec §Decisions), with a support path. Overrides for a variant. */
+/** The ENGINE FIXTURES' policy — the pre-v2 defaults (60 · 1.5 / 2.0 · 12) every gate and pin here was measured on —
+ *  with a support path. Overrides for a variant. ⚠ Not the faces' defaults since Policy v2: those are C1
+ *  (`policyFor(support, V2_DEFAULTS)`). */
 export function policyFor(supportPath: number[], o: Partial<SupportPolicyInputs> = {}): SupportPolicyInputs {
   return {
     supportPath,
@@ -61,6 +63,10 @@ export function policyFor(supportPath: number[], o: Partial<SupportPolicyInputs>
 
 /** The cash-6 variant: six months of bills held in cash. */
 export const CASH_6_USD = 6 * SP_REPRO.expenses;
+
+/** Policy v2's C1 — the faces' defaults (`DEFAULT_SUPPORT_POLICY_SETTINGS`): a 45% Coinbase limit at support, buy up to
+ *  2.0×, pay down above 3.0×, 12 months of borrowing room kept. Spread over `policyFor` for the faces' policy. */
+export const V2_DEFAULTS = { cbStopAtSupportPct: 45, accumulateBelow: 2.0, payDownAbove: 3.0, bearBufferMonths: 12 } as const;
 
 // ── Paths. Every one starts at 1.35 × S₀ (today's multiple). ──────────────────────────────────────────────
 
@@ -221,6 +227,22 @@ export const CALL_PATH = [1.35 * S0, 0.65 * CALL_SUPPORT[1], 0.65 * CALL_SUPPORT
 export const CALL_BASE: Omit<CyclingInputs, 'pricePath'> = { ...SP_REPRO, strikeBalance: 34_000, strikeCreditLine: 40_000, cbDebt: 0 };
 export const callRun = (o: Partial<SupportPolicyInputs> = {}, extra: Partial<CyclingInputs> = {}): CyclingResult =>
   runCyclingSim({ ...CALL_BASE, ...extra, pricePath: CALL_PATH, supportPolicy: policyFor(CALL_SUPPORT, o) });
+
+/** F4's line-first fixture (Policy v2) — zero rates, income = bills, the Strike cap off. Month 1 sits at 0.80 × support
+ *  with Coinbase at 80% on 1 ₿ and Strike's line full at 45%: nothing to release (over 40%) and no line to shift onto,
+ *  so only cold can restore the defense line. Month 2 falls to k2 × support. k2 0.72: month 2 opens at 86.7% with no
+ *  reserve (seized on the way down); with 0.5 ₿, cold restores 70% in month 1 and month 2 opens at 75.9% (survives).
+ *  k2 0.5: month 2 opens at 109% and is seized with the cold inside. ⚠ It opens over its Coinbase limit at support
+ *  (0.64 × S1 > 0.6 × S0), so it sits outside G2's scope. */
+export const LINE_FIRST_SUPPORT = supportPathFor(SP_START, 2);
+export function lineFirstInputs(k2: number, openingColdBtc = 0): CyclingInputs {
+  const p1 = 0.8 * LINE_FIRST_SUPPORT[1];
+  return {
+    ...SP_REPRO, income: 6_000, strikeAprPct: 0, cbAprPct: 0, strikeLtvCapPct: 0,
+    cbDebt: 0.8 * p1, strikeBalance: 0.45 * p1, strikeCreditLine: 0.45 * p1, openingColdBtc,
+    pricePath: [1.35 * S0, p1, k2 * LINE_FIRST_SUPPORT[2]], supportPolicy: policyFor(LINE_FIRST_SUPPORT),
+  };
+}
 
 /** A stress as a face's lens applies it — price × f from month 12 (applyPathStress(p, 12, f), inlined). */
 export const stressFrom12 = (p: number[], f: number): number[] => p.map((x, m) => (m >= 12 ? x * f : x));

@@ -67,9 +67,9 @@ describe('SimpleModeView — the THIS MONTH crash line', () => {
 });
 
 describe("OutlookProjection — the legend's depth is computed", () => {
-  it('⭐ calls playbookDepthFor and holds no 0.70× literal', () => {
+  it('⭐ calls playbookDepthFor and holds no typed depth multiple (0.70× before Policy v2, 0.52× since)', () => {
     const src = read(OUTLOOK);
     expect(src).toContain('playbookDepthFor(');
-    expect(src).not.toContain('0.70×');
+    expect(src).not.toMatch(/\d\.\d{2}×/);
   });
 });

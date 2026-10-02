@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { isDeepStrictEqual } from 'node:util';
 import { topUpStrikeLtv, strikeReleasableBtc, ceilingLiquidationMultiple, cbDoomedThisMonth } from '../cbDefense';
 import { crashPlaybook, type CrashPlaybookInput, type CrashPlaybookOrder } from '../crashPlaybook';
-import { CB_LLTV } from '../runCoinbaseLoan';
+import { CB_LLTV, CB_LIF } from '../runCoinbaseLoan';
+import { ltvOf } from '../ltv';
 import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 import {
   runCyclingSim, effectivePolicyStops, effectiveStrikeCapPct, allInEquity, baselineAllInEquity,
@@ -18,6 +19,7 @@ import {
   pathP4, pathP5, pathP6, incomeShockP7, buildP9, a5Cases, minMultiple, cbLtvAtSupport, multiplePath, type A5Case,
   runPolicy as on, CALL_SUPPORT, CALL_PATH, CALL_BASE, callRun, RESTORE_OPENING, OVER_CEILING_COLD_OPENING,
   stressFrom12, coldRuleRows, COLD_RULE_VARIANTS, CRASH_PLAYBOOK_VARIANTS, doubleDropRows, syntheticGrid, reachGrid,
+  lineFirstInputs,
 } from './supportPolicyPaths';
 
 /**
@@ -43,6 +45,9 @@ const cmr = SP_REPRO.cbAprPct / 100 / 12;
 /** The default stops AFTER the engine clamps: min(60, CB cap 70) and min(50, Strike cap 60). */
 const CB_STOP = 0.60;
 const SK_STOP = 0.50;
+/** Policy v2: the MONTH-END reading — the engine before Morpho's seizure on the way down (TEST-ONLY). The tests of a
+ *  mechanism the rule makes unreachable under the policy run under it, beside one line pinning what the default does. */
+const MONTH_END = { seizeOnTheWayDown: false } as const;
 
 const field = (x: CyclingRow, k: string): unknown => (x as unknown as Record<string, unknown>)[k];
 const json = <T>(v: T): T => JSON.parse(JSON.stringify(v)) as T;
@@ -1095,9 +1100,12 @@ describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc,
   it('⭐ G2 holds with the reserve — every A5 path, policy on: no cold out at or above support; the ledgers foot', () => {
     const runs: { name: string; inputs: CyclingInputs; support: number[] }[] = a5Cases()
       .map((c) => ({ name: c.name, inputs: { ...c.on, openingColdBtc: SEED }, support: c.support }));
-    // Non-vacuity: two seeded runs that DO spend the reserve — below support, where the policy allows it.
+    // Non-vacuity: the CALL fixture spends the reserve below support, where the policy allows it. (P1 × 0.4 stays in the
+    // scope check, but since Policy v2 it spends nothing: month 12 opens past 86% and Morpho seizes it on the way down
+    // before any rescue runs. F4's line-first fixture, which does spend it, opens over its Coinbase limit at support —
+    // outside G2's scope.)
     runs.push({
-      name: 'P1 × 0.4 from m12', support: SUPPORT,
+      name: 'P1 × 0.4 from m12 (seized on the way down)', support: SUPPORT,
       inputs: { ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED },
     });
     runs.push({
@@ -1120,18 +1128,71 @@ describe('⭐ real cold — the owner\'s reserve seeds the pool (openingColdBtc,
     expect(belowSupportRetrievals).toBeGreaterThan(0);
   });
 
-  it('⭐ the reserve saves what the swept pool couldn\'t — P1 × 0.4 from month 12 (both arms); the Strike call fixture', () => {
+  it('⭐ the reserve saves what the swept pool couldn\'t — P1 × 0.4 from month 12 (policy off; the month-end reading); the Strike call fixture', () => {
+    // Policy off, and the policy's month-end reading: the reserve's top-up keeps Coinbase alive.
     for (const policyOn of [false, true]) {
       const inputs: CyclingInputs = {
-        ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4), ...(policyOn ? { supportPolicy: policyFor(SUPPORT) } : {}),
+        ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4),
+        ...(policyOn ? { supportPolicy: policyFor(SUPPORT), ...MONTH_END } : {}),
       };
-      const arm = `policy ${policyOn ? 'on' : 'off'}`;
+      const arm = policyOn ? 'the month-end reading' : 'policy off';
       expect(runCyclingSim(inputs).liqMonth, `${arm}, no reserve`).toBe(12);
       expect(runCyclingSim({ ...inputs, openingColdBtc: SEED }).liqMonth, `${arm}, ${SEED} ₿`).toBeNull();
+    }
+    // The default policy: month 12 opens past 86% at its price, so Morpho seizes it on the way down before any rescue
+    // runs — with the reserve or without it, and no cold goes into Coinbase. (F4: the reserve saves only by restoring
+    // the line BEFORE a second drop.)
+    for (const seed of [0, SEED]) {
+      const r = runCyclingSim({
+        ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4), supportPolicy: policyFor(SUPPORT), openingColdBtc: seed,
+      });
+      expect([r.liqMonth, r.seizedOnTheWayDown], `${seed} ₿`).toEqual([12, true]);
+      expect(r.totalTopUpFromColdBtc, `${seed} ₿`).toBe(0);
     }
     // Fixture-bound: with no reserve the call is cured by a sale; with one, the Strike cap's top-up holds the line.
     expect(callRun().totalStrikeLiquidatedBtc).toBeCloseTo(0.2565, 4);
     expect(callRun({}, { openingColdBtc: SEED }).totalStrikeLiquidatedBtc).toBe(0);
+  });
+});
+
+// ── Policy v2 (F4) — under the seizure on the way down, the defense line is the NEXT month's margin ──────────────────
+
+describe('⭐ the reserve saves only by restoring the line before a second drop (F4)', () => {
+  /** F4's line-first fixture: month 1 at 0.80 × support with Coinbase at 80% and Strike's line full at 45% — nothing to
+   *  release (over 40%), no line to shift onto — so only cold can restore the line; month 2 falls to k2 × support. */
+  const opensAt = (r: CyclingResult, m: number): number =>
+    ltvOf(r.rows[m - 1].cbDebt, r.rows[m - 1].cbCollateralBtc, r.rows[m].price);
+
+  it('⭐ k2 0.72 — seized on the way down with no reserve; with 0.5 ₿, cold restores 70% in month 1 and month 2 survives', () => {
+    const bare = runCyclingSim(lineFirstInputs(0.72));
+    expect(bare.rows[1].cbLtv).toBeCloseTo(0.80, 9);          // month 1: nothing could restore the line …
+    expect(bare.rows[1].topUpBtc).toBe(0);
+    expect(bare.rows[1].defenseDrawnUsd).toBe(0);
+    expect(opensAt(bare, 2)).toBeCloseTo(0.8673, 4);          // … so month 2 opens past 86% …
+    expect(bare.liqMonth).toBe(2);
+    expect(bare.seizedOnTheWayDown).toBe(true);               // … and is seized before it can act
+    const inputs = lineFirstInputs(0.72, 0.5);
+    const saved = runCyclingSim(inputs);
+    expect(saved.rows[1].topUpFromColdBtc).toBeGreaterThan(0);
+    expect(saved.rows[1].cbLtv).toBeCloseTo(0.70, 9);         // cold restored the defense line in month 1
+    expect(opensAt(saved, 2)).toBeCloseTo(0.7589, 4);         // the line is the margin the second drop eats
+    expect(saved.liqMonth).toBeNull();
+    expect(saved.seizedOnTheWayDown).toBe(false);
+    expectLedgersFoot(saved, inputs);
+  });
+
+  it('⭐ k2 0.5 — a deeper second drop seizes the pool, the cold that went in at month 1 with it', () => {
+    const r = runCyclingSim(lineFirstInputs(0.5, 0.5));
+    const coldIn = r.rows[1].topUpFromColdBtc;
+    expect(coldIn).toBeGreaterThan(0);                        // cold in at month 1 …
+    expect(opensAt(r, 2)).toBeGreaterThan(CB_LLTV);           // … month 2 opens at 109% …
+    expect(r.liqMonth).toBe(2);
+    expect(r.seizedOnTheWayDown).toBe(true);
+    expect(r.seizurePriceUsd!).toBeGreaterThan(r.rows[2].price);
+    // … and Morpho takes CB_LIF × CB_LLTV of the pool the cold joined.
+    expect(r.seizedBtc!).toBeCloseTo(CB_LIF * CB_LLTV * r.rows[1].cbCollateralBtc, 12);
+    expect(r.rows[1].cbCollateralBtc).toBeCloseTo(1 + coldIn, 12);
+    expect(r.deficiencyUsd).toBeNull();
   });
 });
 
@@ -1142,7 +1203,9 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired,
   /** The pre-adoption order — the doom gate off (TEST-ONLY). ⚠ These tests run on the SHIPPED defaults (the crash
    *  playbook included): the doom gate now also gates the top-up-first step, and each claim still holds there. */
   const OLD = { doomGateCbTopUp: false } as const;
-  /** P1 × 0.35 from month 12 with a 0.5 ₿ seed — the doomed month D fixes, and a deficiency after the seizure. */
+  /** P1 × 0.35 from month 12 with a 0.5 ₿ seed. Under the month-end reading (`MONTH_END`): the doomed month D fixes, and
+   *  a deficiency after the seizure. By default (Policy v2) month 12 opens past 86% and is seized on the way down —
+   *  repaid in full, so the tests of D and of Strike-first read it under `MONTH_END`. */
   const doomed = (): CyclingInputs => ({
     ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
   });
@@ -1161,8 +1224,11 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired,
         expect(runCyclingSim({ ...off, doomGateCbTopUp: v }), `${label}, policy off, D ${v}`).toEqual(offAbsent);
       }
     }
-    // Non-vacuous: the pre-adoption order differs from the default on the doomed month D fixes.
-    expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), ...OLD }), runCyclingSim(doomed()))).toBe(false);
+    // Non-vacuous: under the month-end reading the pre-adoption order differs on the doomed month D fixes …
+    expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), ...OLD, ...MONTH_END }), runCyclingSim({ ...doomed(), ...MONTH_END })))
+      .toBe(false);
+    // … and the default's truth (F3): Morpho seizes that month on the way down first, so D never fires.
+    expect(runCyclingSim({ ...doomed(), ...OLD })).toEqual(runCyclingSim(doomed()));
   });
 
   it('⭐ D is inert without a liquidation — every run the old order survives is identical under the default', () => {
@@ -1180,18 +1246,24 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired,
     expect(survivorsWithTopUp).toBeGreaterThan(0);
   });
 
-  it('⭐ D never pours into a doomed Coinbase — P1 × 0.35 from month 12, a 0.5 ₿ seed (the default)', () => {
-    const inputs = doomed();
+  it('⭐ D never pours into a doomed Coinbase — P1 × 0.35 from month 12, a 0.5 ₿ seed (the month-end reading)', () => {
+    // ⚠ Under the month-end reading: by default month 12 opens past 86% and is seized on the way down before any top-up
+    // could run, so D never fires there (F3) — the default's truth is pinned at the end.
+    const inputs: CyclingInputs = { ...doomed(), ...MONTH_END };
     const old = runCyclingSim({ ...inputs, ...OLD });
     // Premise: the pre-adoption order liquidates Coinbase at month 12 with the seed inside that month's top-up.
     expect(old.liqMonth).toBe(12);
     expect(old.rows[12].topUpFromColdBtc).toBeGreaterThan(0);
-    const d = runCyclingSim(inputs);                   // the default: the doom gate on
+    const d = runCyclingSim(inputs);                   // the doom gate on
     expect(d.liqMonth).toBe(12);                       // D cannot save Coinbase — it only stops feeding it
     expect(d.rows[12].topUpFromColdBtc).toBe(0);
     expect(d.rows[12].topUpFromStrikeBtc).toBe(0);
     for (const x of d.rows.slice(12)) expect(x.coldBtc, `m${x.m}`).toBeGreaterThanOrEqual(SEED);   // the seed survives
     expectLedgersFoot(d, inputs);
+    // The default's truth: seized on the way down in month 12 — before any top-up could run.
+    const v2 = runCyclingSim(doomed());
+    expect([v2.liqMonth, v2.seizedOnTheWayDown]).toEqual([12, true]);
+    expect(v2.rows[12].topUpBtc).toBe(0);
   });
 
   it('⭐ Strike first after a liquidation is on by default and policy-only — and absent before any liquidation', () => {
@@ -1207,9 +1279,11 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired,
         expect(runCyclingSim({ ...off, strikeFirstAfterLiquidation: v }), `${label}, policy off, ${v}`).toEqual(offAbsent);
       }
     }
-    // Non-vacuous: after a liquidation that left a deficiency, the pre-adoption repayment order differs.
-    expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), strikeFirstAfterLiquidation: false }), runCyclingSim(doomed())))
-      .toBe(false);
+    // Non-vacuous: under the month-end reading a liquidation leaves a deficiency, and the pre-adoption order differs …
+    expect(isDeepStrictEqual(runCyclingSim({ ...doomed(), ...MONTH_END, strikeFirstAfterLiquidation: false }),
+      runCyclingSim({ ...doomed(), ...MONTH_END }))).toBe(false);
+    // … and the default's truth (F3): the seizure on the way down repays Coinbase in full, so there is no leftover to order.
+    expect(runCyclingSim({ ...doomed(), strikeFirstAfterLiquidation: false })).toEqual(runCyclingSim(doomed()));
     // BEFORE any liquidation a pay-down month still restores Coinbase first — the `liqMonth` half of the gate. Both legs
     // open over their ceilings at support, so a Strike-first restore would ALSO total $2,000: only the balances say
     // which leg was paid.
@@ -1222,9 +1296,11 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired,
     expect(x.strikeBalance).toBeCloseTo(20_000 * (1 + smr), 6);          // Strike only accrues
   });
 
-  it('⭐ Strike first after a liquidation — the surplus retires Strike before the Coinbase leftover', () => {
-    const inputs = doomed();
-    const first = runCyclingSim(inputs);                                              // the default
+  it('⭐ Strike first after a liquidation — the surplus retires Strike before the Coinbase leftover (the month-end reading)', () => {
+    // ⚠ Under the month-end reading: by default the seizure on the way down repays Coinbase in full (no leftover — the
+    // default's truth is pinned at the end), so Strike-first acts only after a month-0 seizure.
+    const inputs: CyclingInputs = { ...doomed(), ...MONTH_END };
+    const first = runCyclingSim(inputs);                                              // Strike first (the default order)
     const old = runCyclingSim({ ...inputs, strikeFirstAfterLiquidation: false });     // the pre-adoption order
     // Premise: liquidated at month 12 with a DEFICIENCY. ⚠ Row 12 is pushed PRE-seizure — its cbDebt is the whole debt
     // that breached — so the post-seizure Coinbase base is `deficiencyUsd`. The seizure never touches Strike, so
@@ -1254,6 +1330,9 @@ describe('⭐ cold rules — D ADOPTED (default on under the policy), C retired,
     expect(x.cbDebt).toBeCloseTo(deficiency * (1 + cmr), 6);
     expectLedgersFoot(first, inputs);
     expectLedgersFoot(old, inputs);
+    // The default's truth: seized on the way down — no deficiency, nothing left on Coinbase to order against.
+    const v2 = runCyclingSim(doomed());
+    expect([v2.liqMonth, v2.seizedOnTheWayDown, v2.deficiencyUsd]).toEqual([12, true, null]);
   });
 
   it('⭐ G2 holds under both variants — base and D, pinned to the pre-playbook order, on every A5 path and stress row, seeds 0 / 0.5', () => {
@@ -1311,10 +1390,10 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
   const p9Seeded = (): CyclingInputs => ({
     ...SP_REPRO, income: 4_000, pricePath: P9.path, supportPolicy: policyFor(SUPPORT), openingColdBtc: 0.05,
   });
-  /** P1 × f from month 12 with a 0.5 ₿ reserve. */
-  const p1Stress = (f: number): CyclingInputs => ({
-    ...SP_REPRO, pricePath: stressFrom12(pathP1(), f), supportPolicy: policyFor(SUPPORT), openingColdBtc: SEED,
-  });
+  /** Below the depth (k 0.6) with Coinbase opening at 76% and a 0.5 ₿ reserve — under 86%, so Policy v2's seizure on the
+   *  way down leaves it alive and the playbook runs: shift first. (P1 × 0.5 from month 12 opens past 86% at month 12, so
+   *  since Policy v2 it is seized on the way down before any defense runs.) */
+  const belowDepth = (): CyclingInputs => twoPoint(0.6, { cbDebt: 0.76 * 0.6 * SP3[1], openingColdBtc: SEED });
   const g2 = (label: string, r: CyclingResult, support: number[]): number => {
     expect(r.policyApplied, label).toBe(true);
     expect(insideBothCeilings(r), label).toBe(true);
@@ -1347,10 +1426,12 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
         expect(runCyclingSim({ ...off, topUpFirstAnyDepth: v }), `${label}, policy off, any depth ${v}`).toEqual(offAbsent);
       }
     }
-    // Non-vacuous — each switch moves a named fixture.
-    expect(isDeepStrictEqual(runCyclingSim({ ...DOOM(), strikeReleaseRules: false }), runCyclingSim(DOOM()))).toBe(false);
+    // Non-vacuous — each switch moves a named fixture. (DOOM opens past 86% at month 1, so by default Morpho seizes it on
+    // the way down before its release rules could bind: they move it under the month-end reading.)
+    expect(isDeepStrictEqual(runCyclingSim({ ...DOOM(), ...MONTH_END, strikeReleaseRules: false }),
+      runCyclingSim({ ...DOOM(), ...MONTH_END }))).toBe(false);
     expect(isDeepStrictEqual(runCyclingSim({ ...p9Seeded(), ...R_ONLY }), runCyclingSim(p9Seeded()))).toBe(false);
-    expect(isDeepStrictEqual(runCyclingSim({ ...p1Stress(0.5), topUpFirstAnyDepth: true }), runCyclingSim(p1Stress(0.5))))
+    expect(isDeepStrictEqual(runCyclingSim({ ...belowDepth(), topUpFirstAnyDepth: true }), runCyclingSim(belowDepth())))
       .toBe(false);
   });
 
@@ -1371,9 +1452,11 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
   it('⭐ release rule 2 — a release leaves Strike UNDER 50% (the line full, Strike at 36%, a need above the release)', () => {
     const p = 0.8 * SP3[1];
     const bal = 0.36 * p;
-    const inputs = twoPoint(0.8, { cbDebt: 54_000, strikeBalance: bal, strikeCreditLine: bal });
+    // 2 ₿ on Coinbase at 82.5% — under 86%, so month 1 opens alive under Policy v2's seizure on the way down.
+    const inputs = twoPoint(0.8, { cbCollateralBtc: 2, cbDebt: 1.65 * p, strikeBalance: bal, strikeCreditLine: bal });
     const rel = releasable(1, bal, p);
-    expect(54_000 / (0.7 * p) - 1).toBeGreaterThan(rel);   // premise: the release binds
+    expect((1.65 * p) / (2 * p)).toBeLessThan(CB_LLTV);          // premise: month 1 opens under 86% …
+    expect((1.65 * p) / (0.7 * p) - 2).toBeGreaterThan(rel);     // … and the release binds
     const r = runCyclingSim(inputs);
     const x = r.rows[1];
     expect(x.topUpFromStrikeBtc).toBe(rel);                 // exactly what Strike releases
@@ -1408,8 +1491,10 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
     expectLedgersFoot(r, inputs);
   });
 
-  it('⭐ the doom question counts only what Strike will RELEASE — doomed under the rules, saved at the old margin bound', () => {
-    const inputs = DOOM();
+  it('⭐ the doom question counts only what Strike will RELEASE — doomed under the rules, saved at the old margin bound (the month-end reading)', () => {
+    // ⚠ Under the month-end reading: DOOM opens at 117% at month 1, so by default Morpho seizes it on the way down before
+    // the doom question is ever asked — the default's truth is pinned at the end.
+    const inputs: CyclingInputs = { ...DOOM(), ...MONTH_END };
     const price = inputs.pricePath[1];
     const bal = inputs.strikeBalance;
     // Premise, through the leaves: Strike at 36% releases 0.28 ₿ — short of Coinbase's need at 86% — where the old
@@ -1431,6 +1516,9 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
     expect(old.liqMonth).toBeNull();
     expectLedgersFoot(r, inputs);
     expectLedgersFoot(old, { ...inputs, strikeReleaseRules: false });
+    // The default's truth: seized on the way down in month 1.
+    const v2 = runCyclingSim(DOOM());
+    expect([v2.liqMonth, v2.seizedOnTheWayDown]).toEqual([1, true]);
   });
 
   it('⭐ top up first — P9\'s dip at 0.80 × support takes all the cold, then released Strike collateral, and shifts nothing', () => {
@@ -1460,11 +1548,12 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
     expectLedgersFoot(r, inputs);
   });
 
-  it('⭐ shift first below the depth — P1 × 0.5 from month 12 (a 0.5 ₿ reserve) is exactly the release rules alone', () => {
-    const inputs = p1Stress(0.5);
+  it('⭐ shift first below the depth — k 0.6 with Coinbase opening at 76% (a 0.5 ₿ reserve) is exactly the release rules alone', () => {
+    const inputs = belowDepth();
     const r = runCyclingSim(inputs);
-    expect(r.rows[12].multiple!).toBeLessThan(DEPTH);         // premise: below the depth…
-    expect(r.rows[12].cbLtvPreDefense).not.toBeNull();         // …and the defense runs there
+    expect(r.rows[1].multiple!).toBeLessThan(DEPTH);          // premise: below the depth…
+    expect(r.rows[1].cbLtvPreDefense).not.toBeNull();          // …and the defense runs there
+    expect(r.liqMonth).toBeNull();                             // (it opens under 86%)
     expect(r).toEqual(runCyclingSim({ ...inputs, ...R_ONLY }));
   });
 
@@ -1586,13 +1675,18 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
     expect(cbRows).toBeGreaterThan(0);
   });
 
-  it('firstUnheldMonth — null when the playbook held (P9); the month it could not (P1 × 0.35); null with the policy off', () => {
+  it('firstUnheldMonth — null when the playbook held (P9); the month it could not (Strike\'s line full at 45%); null with the policy off', () => {
     expect(runCyclingSim(p9Seeded()).firstUnheldMonth).toBeNull();
-    const r = runCyclingSim(p1Stress(0.35));
-    expect(r.liqMonth).toBe(12);
-    expect(r.firstUnheldMonth).toBe(12);
-    expect(r.topUpExhaustedMonth).toBeNull();   // the doom gate skipped the fallback — a residual it never sees
-    expect(runCyclingSim({ ...p1Stress(0.35), supportPolicy: undefined }).firstUnheldMonth).toBeNull();
+    // Month 1 at 0.80 × support with Coinbase at 80% and Strike's line full at 45%: nothing to release (over 40%), no
+    // line to shift onto, no cold — the playbook cannot restore the line. (P1 × 0.35 opens past 86% at month 12, so
+    // since Policy v2 it is seized on the way down before the playbook runs.)
+    const p = 0.8 * SP3[1];
+    const inputs = twoPoint(0.8, { cbDebt: 0.8 * p, strikeBalance: 0.45 * p, strikeCreditLine: 0.45 * p });
+    const r = runCyclingSim(inputs);
+    expect(r.liqMonth).toBeNull();                 // premise: alive — it opens, and ends, at 80%
+    expect(r.firstUnheldMonth).toBe(1);
+    expect(r.topUpExhaustedMonth).toBe(1);         // not doomed, so the fallback runs — with nothing to move
+    expect(runCyclingSim({ ...inputs, supportPolicy: undefined }).firstUnheldMonth).toBeNull();
   });
 
   it('⭐ parity — the engine\'s month is crashPlaybook() exactly (the Strike cap off, zero rates, a 2-point path)', () => {
@@ -1610,7 +1704,8 @@ describe('⭐ the crash playbook — release rules, top up first above the depth
       }
     }
     cases.push({ label: 'binding release', inputs: twoPoint(0.8, { cbCollateralBtc: 3, cbDebt: 145_000, strikeBalance: 11_000, strikeCreditLine: 40_000 }) });
-    cases.push({ label: 'doomed', inputs: DOOM() });
+    // The month-end reading: DOOM opens past 86%, so by default Morpho seizes it on the way down and no playbook runs.
+    cases.push({ label: 'doomed', inputs: { ...DOOM(), ...MONTH_END } });
     cases.push({ label: 'under the line', inputs: twoPoint(0.8, { cbDebt: 0.6 * 0.8 * SP3[1] }) });
     const orders = new Set<CrashPlaybookOrder>();
     const kinds = new Set<string>();

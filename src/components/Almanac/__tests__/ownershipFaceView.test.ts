@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest';
 import {
-  chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote, strikeCallVerdict,
+  chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote, strikeCallVerdict, liquidationVerdict,
 } from '../ownershipFaceView';
 import { strikeCapReading, strikeCapNote } from '../cyclingFaceView';
 import { deriveOwnership } from '../../../simulation/ownership';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
-import { effectiveStrikeCapPct, type CyclingRow } from '../../../simulation/cyclingSim';
+import {
+  effectiveStrikeCapPct, runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingRow,
+} from '../../../simulation/cyclingSim';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
-import { runPolicy, pathP1, callRun, CASH_6_USD } from '../../../simulation/__tests__/supportPolicyPaths';
+import {
+  runPolicy, pathP1, callRun, CASH_6_USD, stressFrom12, reachGrid, policyFor,
+} from '../../../simulation/__tests__/supportPolicyPaths';
+import { fmtUSD, fmtLtvPct } from '../../../utils/format';
 
 /** A plain fixture row — no engine run needed for display math. */
 const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
@@ -241,5 +246,32 @@ describe('⭐ strikeCallVerdict — Ownership enters its Strike-call branch on t
     for (const o of [{}, { firstStrikeTopUpMonth: 10, totalStrikeTopUpBtc: 0.1 }, { strikeTopUpExhaustedMonth: 8 }, { firstSurvivalYieldMonth: 8 }]) {
       expect(strikeCallVerdict(strikeCapReading(res(o), 60))).toBeNull();
     }
+  });
+});
+
+describe('⭐ liquidationVerdict — where the loan was seized (Policy v2, F5c)', () => {
+  it('⭐ on the way down: the month and the liquidation price — never the survivor row\'s "0.0%"; at month-end, as before', () => {
+    // P1 × 0.35 from month 12 with 0.5 ₿: the default engine seizes it on the way down in month 12, so row 12 is the
+    // survivor — it owes nothing, and its LTV reads 0.0%.
+    const r = runPolicy(stressFrom12(pathP1(), 0.35), {}, { openingColdBtc: 0.5 });
+    const v = liquidationVerdict(r)!;
+    expect(v.text).not.toContain('at 0.0%');
+    expect([r.liqMonth, r.seizedOnTheWayDown]).toEqual([12, true]);
+    const penalty = `${(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty`;
+    const tail = `Morpho seizes ${r.seizedBtc!.toFixed(4)} ₿ at a ${penalty}, leaving ${r.survivorBtc!.toFixed(4)} ₿.`;
+    expect(v).toEqual({ color: 'var(--red)', text: `Liquidated in month 12 on the way down, at ${fmtUSD(r.seizurePriceUsd!)}. ${tail}` });
+    // R1 — a seizure price under the dust floor is never named: no "at" clause.
+    expect(liquidationVerdict({ ...r, seizurePriceUsd: 0.3 })!.text).toBe(`Liquidated in month 12 on the way down. ${tail}`);
+    // A month-end seizure (reach cell 0, at the opening) keeps the breaching row's LTV — and its real deficiency.
+    const cell = reachGrid()[0];
+    const m0 = runCyclingSim({ ...cell.off, supportPolicy: policyFor(cell.support) });
+    expect([m0.liqMonth, m0.seizedOnTheWayDown]).toEqual([0, false]);
+    expect(liquidationVerdict(m0)).toEqual({
+      color: 'var(--red)',
+      text: `Liquidated in month 0 at ${fmtLtvPct(m0.rows[0].cbLtv)}. Morpho seizes ${m0.seizedBtc!.toFixed(4)} ₿ at a `
+        + `${penalty}, leaving ${m0.survivorBtc!.toFixed(4)} ₿. ${fmtUSD(m0.deficiencyUsd!)} of debt survives — both `
+        + 'facilities are full recourse.',
+    });
+    expect(liquidationVerdict(runPolicy(pathP1()))).toBeNull();
   });
 });

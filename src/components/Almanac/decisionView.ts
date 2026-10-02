@@ -145,13 +145,28 @@ const amountOf = (row: CyclingRow, f: ActionField): number => {
   return typeof v === 'number' ? v : 0;
 };
 
+/** How the run's liquidation was read: on the way down (Policy v2 — before the month acted, at the liquidation
+ *  price) or at month-end (after it, at the month's price). */
+export interface SeizureRead { onTheWayDown: boolean; priceUsd: number | null }
+export const MONTH_END_SEIZURE: SeizureRead = { onTheWayDown: false, priceUsd: null };
+
 /** Every action a MONTH ≥ 1 performs, read verbatim from its row. An amount under its floor is left out — a
- *  schedule never prints "$0" or "0.000 ₿". */
-export function rowActions(row: CyclingRow, liqMonth: number | null): Action[] {
+ *  schedule never prints "$0" or "0.000 ₿". The liquidation is listed where it happened: LAST at a month-end seizure
+ *  (after the month acted), FIRST on the way down (before it did — the actions after it are the survivor's), naming
+ *  the price only above the dust floor. */
+export function rowActions(row: CyclingRow, liqMonth: number | null, seizure: SeizureRead = MONTH_END_SEIZURE): Action[] {
   const out: Action[] = [];
   for (const f of ACTION_FIELDS) {
     if (f.field === null) {
-      if (liqMonth !== null && row.m === liqMonth) out.push({ kind: f.kind, usd: null, btc: null, text: f.text(row) });
+      if (liqMonth === null || row.m !== liqMonth) continue;
+      if (seizure.onTheWayDown) {
+        // The liquidation is ACTION_FIELDS' last entry, so every other action is already in `out`.
+        const p = seizure.priceUsd;
+        const at = p !== null && shownUsd(p) ? `, at ${fmtUSD(p)}` : '';
+        out.unshift({ kind: f.kind, usd: null, btc: null, text: `Coinbase liquidates the loan on the way down${at}.` });
+      } else {
+        out.push({ kind: f.kind, usd: null, btc: null, text: f.text(row) });
+      }
       continue;
     }
     const v = amountOf(row, f);
@@ -206,7 +221,7 @@ export function planSchedule(sim: CyclingResult, plan: PlacementPlan): ScheduleR
   }];
   for (const row of sim.rows) {
     if (row.m === 0) continue;
-    const actions = rowActions(row, sim.liqMonth);
+    const actions = rowActions(row, sim.liqMonth, { onTheWayDown: sim.seizedOnTheWayDown, priceUsd: sim.seizurePriceUsd });
     rows.push({
       m: row.m,
       label: `Month ${row.m}`,

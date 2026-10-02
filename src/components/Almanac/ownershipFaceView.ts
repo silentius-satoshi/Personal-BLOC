@@ -1,8 +1,8 @@
-import type { CyclingRow, CyclingMode } from '../../simulation/cyclingSim';
+import { CB_LIQUIDATION_PENALTY, type CyclingResult, type CyclingRow, type CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { btcGained, strikeCapNote, strikeYieldSentence, type StrikeCapReading } from './cyclingFaceView';
 import { policyLimitPct, shownUsd } from './supportPolicyView';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSD, fmtLtvPct } from '../../utils/format';
 
 /**
  * Ownership face display math (S3). REUSES the shared Cycling helpers rather than defining a second set
@@ -156,6 +156,31 @@ export function unfundedNote(firstUnfundedMonth: number | null, totalUnfundedUsd
 export interface VerdictLine {
   color: 'var(--red)' | 'var(--amber)';
   text: string;
+}
+
+/**
+ * The verdict when Coinbase was liquidated (it outranks every other verdict); null without a liquidation.
+ * At a month-end seizure it names the LTV of the row that breached (pushed pre-seizure). On the way down (Policy v2)
+ * that row is the SURVIVOR — it owes nothing, so its LTV reads "0.0%" — and the verdict names the price Morpho seized
+ * at instead, only above the dust floor (R1, the schedule's rule).
+ */
+export function liquidationVerdict(
+  sim: Pick<CyclingResult, 'liqMonth' | 'rows' | 'seizedOnTheWayDown' | 'seizurePriceUsd' | 'seizedBtc' | 'survivorBtc'
+    | 'deficiencyUsd'>,
+): VerdictLine | null {
+  const L = sim.liqMonth;
+  if (L === null) return null;
+  const b4 = (x: number): string => `${x.toFixed(4)} ₿`;
+  const p = sim.seizurePriceUsd;
+  const head = sim.seizedOnTheWayDown
+    ? `Liquidated in month ${L} on the way down${p !== null && shownUsd(p) ? `, at ${fmtUSD(p)}` : ''}.`
+    : `Liquidated in month ${L} at ${fmtLtvPct(sim.rows[L].cbLtv)}.`;
+  return {
+    color: 'var(--red)',
+    text: `${head} Morpho seizes ${b4(sim.seizedBtc ?? 0)} at a ${(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty, `
+      + `leaving ${b4(sim.survivorBtc ?? 0)}.`
+      + (sim.deficiencyUsd !== null ? ` ${fmtUSD(sim.deficiencyUsd)} of debt survives — both facilities are full recourse.` : ''),
+  };
 }
 
 /**

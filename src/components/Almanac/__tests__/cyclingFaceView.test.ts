@@ -20,6 +20,7 @@ import {
 import { fmtUSD } from '../../../utils/format';
 import {
   SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP2, pathP3, a5Cases, buildP9,
+  lineFirstInputs,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
@@ -1297,7 +1298,8 @@ describe('the crash playbook in the faces\' words — playbookNote, defendedFrom
   type NoteSim = Parameters<typeof playbookNote>[0];
   const sim = (o: Partial<NoteSim> = {}): NoteSim => ({
     policyApplied: true, totalTopUpBtc: 0, totalTopUpFromColdBtc: 0, totalTopUpFromStrikeBtc: 0,
-    totalDefenseDrawnUsd: 0, defenseCount: 0, firstTopUpMonth: null, firstDefenseMonth: null, firstUnheldMonth: null, ...o,
+    totalDefenseDrawnUsd: 0, defenseCount: 0, firstTopUpMonth: null, firstDefenseMonth: null, firstUnheldMonth: null,
+    liqMonth: null, seizedOnTheWayDown: false, ...o,
   });
   const HELD = ' The 70% defense line held.';
   const HELD_SHIFTED = ' The 70% defense line held; the refinance shifts the debt back to Coinbase as the price recovers.';
@@ -1336,6 +1338,27 @@ describe('the crash playbook in the faces\' words — playbookNote, defendedFrom
       .toBe(`Crash playbook: $900 of Coinbase debt shifted to Strike across 1 month, starting month 9.${HELD_SHIFTED}`);
     // Policy off → null (the face renders its own, unchanged note).
     expect(playbookNote({ ...both, policyApplied: false }, 65)).toBeNull();
+  });
+
+  it('⭐ playbookNote — a liquidation outranks "held" and "unheld": on the way down, and at month-end (Policy v2, F5d)', () => {
+    // F4's line-first fixture, k2 0.5 with 0.5 ₿: cold restores the 70% line in month 1 — the playbook held — and month
+    // 2's deeper drop is seized on the way down. "The 70% defense line held" would be false of this run.
+    const r = runCyclingSim(lineFirstInputs(0.5, 0.5));
+    const note = playbookNote(r, 70)!;
+    expect(note).not.toContain('held');
+    expect(r.firstUnheldMonth).toBeNull();                          // premise: the playbook held the month it ran …
+    expect([r.liqMonth, r.seizedOnTheWayDown]).toEqual([2, true]);  // … and Coinbase was seized after it
+    expect([r.totalTopUpFromStrikeBtc, r.totalDefenseDrawnUsd]).toEqual([0, 0]);   // cold alone moved
+    expect(note).toBe(`Crash playbook: ${r.totalTopUpBtc.toFixed(4)} ₿ of collateral moved into Coinbase `
+      + `(${r.totalTopUpFromColdBtc.toFixed(4)} ₿ from cold storage), starting month 1. `
+      + 'Coinbase was still seized on the way down in month 2.');
+    // Synthetic: the liquidation outranks an unheld month too, and a month-end seizure reads "liquidated".
+    const moved = { totalTopUpBtc: 0.1, totalTopUpFromColdBtc: 0.1, firstTopUpMonth: 14 };
+    const head = 'Crash playbook: 0.1000 ₿ of collateral moved into Coinbase (0.1000 ₿ from cold storage), starting month 14.';
+    expect(playbookNote(sim({ ...moved, liqMonth: 16, seizedOnTheWayDown: true, firstUnheldMonth: 15 }), 70))
+      .toBe(`${head} Coinbase was still seized on the way down in month 16.`);
+    expect(playbookNote(sim({ ...moved, liqMonth: 16, seizedOnTheWayDown: false }), 70))
+      .toBe(`${head} Coinbase was still liquidated in month 16.`);
   });
 
   it('defendedFromSub — policy off is today\'s rule exactly; on, a month collateral moved in counts too', () => {

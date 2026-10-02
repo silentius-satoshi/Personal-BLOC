@@ -20,8 +20,10 @@ import { ltvOf } from './ltv';
  * the run and the schedule can never disagree about where a coin belongs. Never re-derive either here.
  *
  * Why preview it at all, rather than read month 1 off the run: the engine's migration comes AFTER month 1's draw
- * test, so a run that has not yet moved the collateral borrows less in month 1. Acting today is measured never
- * worse, and better where the move unlocks a draw.
+ * test, so a run that has not yet moved the collateral borrows less in month 1. At the pre-v2 policy (the engine
+ * fixtures') acting today is measured never worse, and better where the move unlocks a draw. At Policy v2's defaults it
+ * is within 0.025 ₿ on the A5 paths × four positions (worse on 6 of 60): the 45% ceiling binds in year one, so the
+ * earlier draw moves buying earlier rather than adding to it.
  *
  * DIRECT ROUTING. The engine puts the WHOLE Strike excess on Coinbase (step 5) and then sweeps whatever Coinbase
  * holds beyond its keep on to cold (step 9). This leaf reaches the same end state in one hop: Coinbase is filled

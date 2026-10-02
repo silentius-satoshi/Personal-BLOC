@@ -27,7 +27,8 @@ import {
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
 } from './cyclingFaceView';
 import {
-  ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, MODE_NOTE,
+  ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, liquidationVerdict,
+  MODE_NOTE,
 } from './ownershipFaceView';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
@@ -466,13 +467,8 @@ export default function OwnershipFace() {
   }
 
   const verdict = (() => {
-    if (liqMonth !== null) {
-      return {
-        color: 'var(--red)' as const,
-        text: `Liquidated in month ${liqMonth} at ${fmtLtvPct(rows[liqMonth].cbLtv)}. Morpho seizes ${fmtBtc(sim.seizedBtc ?? 0)} at a ${(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty, leaving ${fmtBtc(sim.survivorBtc ?? 0)}.`
-          + (sim.deficiencyUsd !== null ? ` ${fmtUSD(sim.deficiencyUsd)} of debt survives — both facilities are full recourse.` : ''),
-      };
-    }
+    const liquidation = liquidationVerdict(sim);
+    if (liquidation !== null) return liquidation;
     // ⚠ Entered on the READING (C2), never on strikeMarginMonth alone: under the support policy a cure or a clean
     // sale leaves that flag null, and the verdict fell through to the stop sentence without naming the call.
     const call = strikeCallVerdict(capReading);

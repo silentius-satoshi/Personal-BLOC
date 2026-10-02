@@ -6,7 +6,7 @@ import {
 } from '../decisionChartView';
 import { buildSupportPath, supportAtDates, type HistoryPoint } from '../supportPolicyInputs';
 import { applyPathStress } from '../cyclingFaceView';
-import { cbMetrics } from '../../../simulation/cbMetrics';
+import { cbMetrics, cbSeizurePrice } from '../../../simulation/cbMetrics';
 import { runCyclingSim, type CyclingInputs } from '../../../simulation/cyclingSim';
 import { minCushionOf } from '../../../simulation/planSearch';
 import { addMonths, plConvergencePath, PL_ON_THE_LINE } from '../../../simulation/powerLaw';
@@ -267,10 +267,13 @@ describe('⭐ I29 — the cliff', () => {
       expect(ratios.length).toBeGreaterThan(0);                 // non-vacuous
       expect(minCushionOf(r.rows)).toBe(Math.min(...ratios));
     }
-    // The liquidation row is not a month BEFORE the liquidation: counted, it would sit at or under 1.
+    // The liquidation row is not a month BEFORE the liquidation. Since Policy v2 Morpho seizes on the way down, so the
+    // liquidation row is the survivor — nothing owed, no seizure price — and the cushion never counts it.
+    expect(crash.seizedOnTheWayDown).toBe(true);
     const breach = crash.rows.find((row) => row.postLiquidation)!;
-    expect(breach.price / cbMetrics(breach.cbDebt, breach.cbCollateralBtc, breach.price, TRIGGER).liqPrice)
-      .toBeLessThanOrEqual(1);
+    expect(breach.m).toBe(crash.liqMonth);
+    expect(breach.cbDebt).toBe(0);
+    expect(cbSeizurePrice(breach)).toBeNull();
     expect(minCushionOf(crash.rows)).toBeGreaterThan(1);
   });
 

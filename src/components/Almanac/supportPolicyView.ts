@@ -26,22 +26,23 @@ import { fmtUSD, DUST_USD, shownUsd } from '../../utils/format';
 
 export interface SupportPolicySettings {
   enabled: boolean;
-  cbStopAtSupportPct: number;      // 60
+  cbStopAtSupportPct: number;      // 45
   strikeStopAtSupportPct: number;  // 50
-  accumulateBelow: number;         // 1.5
-  payDownAbove: number;            // 2.0
+  accumulateBelow: number;         // 2.0
+  payDownAbove: number;            // 3.0
   bearBufferMonths: number;        // 12
   cashReserveMonths: number;       // 0
 }
 
-/** The locked defaults: ON, Coinbase 60% and Strike 50% at support, zones 1.5× / 2.0×, a 12-month bear buffer, no
- *  cash reserve (a session setting — no store field). */
+/** The locked defaults — Policy v2's C1 (BL6): ON, Coinbase 45% and Strike 50% at support, zones 2.0× / 3.0×, 12 months
+ *  of borrowing room kept, no cash reserve (a session setting — no store field). The 45% limit puts Morpho's line 47.7%
+ *  below support. ⚠ The engine fixtures (`policyFor` in the tests) keep the pre-v2 60 · 1.5 / 2.0 · 12. */
 export const DEFAULT_SUPPORT_POLICY_SETTINGS: Readonly<SupportPolicySettings> = Object.freeze({
   enabled: true,
-  cbStopAtSupportPct: 60,
+  cbStopAtSupportPct: 45,
   strikeStopAtSupportPct: 50,
-  accumulateBelow: 1.5,
-  payDownAbove: 2.0,
+  accumulateBelow: 2.0,
+  payDownAbove: 3.0,
   bearBufferMonths: 12,
   cashReserveMonths: 0,
 });
@@ -53,9 +54,9 @@ export const DEFAULT_BREAKER_REARM_MONTHS: number | undefined = 6;
 export const SUPPORT_POLICY_RANGES = {
   cbStopAtSupportPct:     { min: 40,  max: 70,  step: 1 },
   strikeStopAtSupportPct: { min: 30,  max: 60,  step: 1 },
-  accumulateBelow:        { min: 1.0, max: 2.0, step: 0.05 },
-  payDownAbove:           { min: 1.5, max: 3.0, step: 0.05 },
-  bearBufferMonths:       { min: 0,   max: 24,  step: 1 },
+  accumulateBelow:        { min: 1.0, max: 2.5, step: 0.05 },
+  payDownAbove:           { min: 1.5, max: 5.0, step: 0.05 },
+  bearBufferMonths:       { min: 0,   max: 48,  step: 1 },
   cashReserveMonths:      { min: 0,   max: 12,  step: 1 },
 } as const;
 
@@ -70,7 +71,7 @@ export interface EffectivePolicySettings extends SupportPolicySettings {
   cbClamped: boolean;   // the Coinbase stop was held to the CB defense line
   skClamped: boolean;
   /** `payDownAbove` was pushed above the slider's value to keep the hold band open (the pay-down slider starts at
-   *  1.5× while the buy zone reaches 2.0×). Set HERE, beside the two clamps, so a readout never re-derives it. */
+   *  1.5× while the buy zone reaches 2.5×). Set HERE, beside the two clamps, so a readout never re-derives it. */
   payDownPushed: boolean;
 }
 
@@ -262,8 +263,10 @@ export interface PolicyReading {
   monthsInZone: Record<PolicyState, number>;
   liqMonth: number | null;
   neverDraws: NeverDraws | null;
-  /** The inspected month comes AFTER a Coinbase liquidation (strictly — the liquidation month's own restore still paid
-   *  Coinbase first, so it keeps today's words). The engine repays Strike first from then on, in every zone. */
+  /** The inspected month comes AFTER a Coinbase liquidation. At a MONTH-END seizure strictly after — the liquidation
+   *  row is pushed pre-seizure and its restore still paid Coinbase first, so it keeps today's words. On the way down
+   *  (Policy v2) the liquidation month itself — the seizure came before the month acted, so its row is the survivor,
+   *  already repaying Strike first. The engine repays Strike first from then on, in every zone. */
   afterLiquidation: boolean;
   /** Strike still owes at the inspected month (above the dust floor) — after a liquidation, spare income repays
    *  Coinbase's leftover only after Strike while this holds; once Strike is repaid it goes straight to Coinbase. */
@@ -331,7 +334,8 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
     monthsInZone: { ...sim.monthsInZone },
     liqMonth: sim.liqMonth,
     neverDraws: neverDrawsOf(sim),
-    afterLiquidation: sim.liqMonth !== null && monthIdx > sim.liqMonth,
+    afterLiquidation: sim.liqMonth !== null
+      && (monthIdx > sim.liqMonth || (monthIdx === sim.liqMonth && sim.seizedOnTheWayDown)),
     strikeOwes: row !== undefined && shownUsd(row.strikeBalance),
   };
 }
@@ -691,9 +695,9 @@ export function zoneStrip(rows: ReadonlyArray<Pick<CyclingRow, 'm' | 'policyZone
   return { zones, counts };
 }
 
-/** The policy's Coinbase limit expressed at TODAY'S price, as a percentage: cbStopEffPct ÷ multiple. On the support
- *  line it is a flat 60; at 2× support it is 30. Null when the row has no multiple. Drawn as a dashed series on the
- *  LTV charts — the whole idea of the policy in one line. */
+/** The policy's Coinbase limit expressed at TODAY'S price, as a percentage: cbStopEffPct ÷ multiple. At the faces'
+ *  45% it is a flat 45 on the support line, and 22.5 at 2× support. Null when the row has no multiple. Drawn as a dashed
+ *  series on the LTV charts — the whole idea of the policy in one line. */
 export function policyLimitPct(row: Pick<CyclingRow, 'multiple'>, cbStopEffPct: number): number | null {
   const k = row.multiple;
   return k !== null && Number.isFinite(k) && k > 0 && Number.isFinite(cbStopEffPct) ? cbStopEffPct / k : null;

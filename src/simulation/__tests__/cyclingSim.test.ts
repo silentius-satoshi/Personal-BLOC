@@ -1357,9 +1357,9 @@ describe('runCyclingSim — Strike LTV cap (strikeLtvCapPct) + the Coinbase surv
     expect(withoutF1.rows[1].strikeLtv).toBeGreaterThan(0.60);
   });
 
-  it('⭐ the TEST-ONLY engine inputs — both survival-guard flags, incomePath, modelStrikeLiquidation, the doom gate, the repayment order and the crash playbook\'s three switches — reach no component', () => {
+  it('⭐ the TEST-ONLY engine inputs — both survival-guard flags, incomePath, modelStrikeLiquidation, the doom gate, the repayment order, the crash playbook\'s three switches and Policy v2\'s seizure on the way down — reach no component', () => {
     const hits = execSync(
-      'grep -rnE "cbSurvivalGuard|cbFutilityCheck|incomePath|modelStrikeLiquidation|doomGateCbTopUp|strikeFirstAfterLiquidation|strikeReleaseRules|topUpBeforeShift|topUpFirstAnyDepth" src/components/ || true',
+      'grep -rnE "cbSurvivalGuard|cbFutilityCheck|incomePath|modelStrikeLiquidation|doomGateCbTopUp|strikeFirstAfterLiquidation|strikeReleaseRules|topUpBeforeShift|topUpFirstAnyDepth|seizeOnTheWayDown" src/components/ || true',
       { cwd: process.cwd(), encoding: 'utf8' },
     ).trim().split('\n').filter(Boolean);
     expect(hits, `a face passes a test-only flag:\n${hits.join('\n')}`).toEqual([]);

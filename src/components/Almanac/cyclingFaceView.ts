@@ -74,11 +74,14 @@ export { fmtLtvPct } from '../../utils/format';
  *    Strike); $3,900 of Coinbase debt shifted to Strike across 2 months, starting month 18. The 70% defense line held;
  *    the refinance shifts the debt back to Coinbase as the price recovers."
  * Each part — and each item in the parentheses — appears only when shown. M is the earlier of the first top-up and the
- * first shift. The outcome reads `firstUnheldMonth`: the month the playbook could not hold the line, else "held".
+ * first shift. The outcome: a liquidation outranks both others — "Coinbase was still seized on the way down in month L"
+ * (Policy v2; month-end: "…liquidated in month L"), since a playbook that held its line can still lose the loan to a
+ * later drop; else `firstUnheldMonth`, the month the playbook could not hold the line; else "held".
  */
 export function playbookNote(
   sim: Pick<CyclingResult, 'policyApplied' | 'totalTopUpBtc' | 'totalTopUpFromColdBtc' | 'totalTopUpFromStrikeBtc'
-    | 'totalDefenseDrawnUsd' | 'defenseCount' | 'firstTopUpMonth' | 'firstDefenseMonth' | 'firstUnheldMonth'>,
+    | 'totalDefenseDrawnUsd' | 'defenseCount' | 'firstTopUpMonth' | 'firstDefenseMonth' | 'firstUnheldMonth'
+    | 'liqMonth' | 'seizedOnTheWayDown'>,
   capPct: number,
 ): string | null {
   if (!sim.policyApplied) return null;
@@ -98,9 +101,11 @@ export function playbookNote(
   ];
   const firsts = [sim.firstTopUpMonth, sim.firstDefenseMonth].filter((x): x is number => x !== null);
   const start = firsts.length > 0 ? `, starting month ${Math.min(...firsts)}` : '';
-  const outcome = sim.firstUnheldMonth !== null
-    ? ` From month ${sim.firstUnheldMonth} the playbook could not hold the ${capPct}% defense line — the residual is unhedged.`
-    : ` The ${capPct}% defense line held${shifted ? '; the refinance shifts the debt back to Coinbase as the price recovers.' : '.'}`;
+  const outcome = sim.liqMonth !== null
+    ? ` Coinbase was still ${sim.seizedOnTheWayDown ? 'seized on the way down' : 'liquidated'} in month ${sim.liqMonth}.`
+    : sim.firstUnheldMonth !== null
+      ? ` From month ${sim.firstUnheldMonth} the playbook could not hold the ${capPct}% defense line — the residual is unhedged.`
+      : ` The ${capPct}% defense line held${shifted ? '; the refinance shifts the debt back to Coinbase as the price recovers.' : '.'}`;
   return `Crash playbook: ${parts.join('; ')}${start}.${outcome}`;
 }
 

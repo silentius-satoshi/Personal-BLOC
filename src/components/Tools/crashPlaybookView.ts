@@ -118,8 +118,8 @@ function cbStopAtSupportFor(targetPct: number): number {
   return effectivePolicyStops(D.cbStopAtSupportPct, D.strikeStopAtSupportPct, targetPct, 0).cbStop;
 }
 
-/** The liquidation depth for a live target (≈ 0.70× support at a 60% target and up): the playbook tops up first from
- *  here up to support. */
+/** The liquidation depth for a live target (≈ 0.52× support at the default 45% stop, from a 45% target up; 0.47× at a
+ *  40% target): the playbook tops up first from here up to support. */
 export function playbookDepthFor(targetPct: number): number {
   return ceilingLiquidationMultiple(cbStopAtSupportFor(targetPct), CB_LLTV);
 }
@@ -176,7 +176,7 @@ export function fmtStepUsd(usd: number): string | null {
 }
 
 /** The support multiple and the liquidation depth, printed to the fewest decimals (2 → 6) that tell them apart — at a
- *  round 0.70× support both read "0.70" at 2 dp. Still equal at 6 dp → `equal: true`, and the copy says "at" / "just
+ *  round 0.52× support both read "0.52" at 2 dp. Still equal at 6 dp → `equal: true`, and the copy says "at" / "just
  *  below". */
 export function fmtMultiplePair(k: number, depth: number): { k: string; depth: string; equal: boolean } {
   for (let dp = 2; dp <= 6; dp++) {

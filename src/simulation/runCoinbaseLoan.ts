@@ -4,6 +4,17 @@ export const CB_WARN_LTV = 0.65;  // Coinbase/Morpho warning band start (watch�
 export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
 
 /**
+ * 🔴 THE Coinbase liquidation price — where `balance` on `collateralBtc` reaches CB_LLTV; 0 with no collateral. ONE
+ * expression for every reader: `cbMetrics().liqPrice` and `cbSeizurePrice` (through cbMetrics' `liqPriceOf`), and the
+ * engine's seizure on the way down (Policy v2), which seizes AT this price. It lives here, not in cbMetrics.ts: the
+ * engine's import graph must stay pure + − × ÷ (the G1 walk), and cbMetrics accrues with Math.pow — this module is
+ * already in the walk.
+ */
+export function cbLiquidationPrice(balance: number, collateralBtc: number): number {
+  return collateralBtc > 0 ? balance / (collateralBtc * CB_LLTV) : 0;
+}
+
+/**
  * Coinbase loan ORIGINATION FEE — a published FACT, not a belief.
  * "A one-time processing fee is added to your crypto-backed loan EACH TIME YOU BORROW, even when adding
  * to an existing loan… 2% on the first $250,000, 1% on the amount above $250,000… It is added to your

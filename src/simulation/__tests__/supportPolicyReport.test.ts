@@ -6,8 +6,9 @@ import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 import {
   SUPPORT, SP_REPRO, CASH_6_USD, policyFor, buildP9, a5Cases, minMultiple, faceWorldGrid, syntheticGrid, reachGrid,
   pathP1, pathP2, CALL_BASE, CALL_PATH, CALL_SUPPORT, type GridCell, stressFrom12, coldRuleRows, COLD_RULE_VARIANTS,
-  CRASH_PLAYBOOK_VARIANTS, doubleDropRows,
+  CRASH_PLAYBOOK_VARIANTS, doubleDropRows, V2_DEFAULTS,
 } from './supportPolicyPaths';
+import { deriveOwnership } from '../ownership';
 import { ceilingLiquidationMultiple } from '../cbDefense';
 import { CB_LLTV } from '../runCoinbaseLoan';
 
@@ -960,4 +961,136 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
 
     console.log(lines.join('\n'));
   }, 600_000);
+
+  // ── Policy v2 — Morpho seizes on the way down (`-t "policy v2"`) ──
+  it('prints the policy v2 measurement (the seizure on the way down; the fixtures\' policy and C1)', () => {
+    const lines: string[] = [];
+    const out = (s = ''): void => { lines.push(s); };
+    const MONTH_END = { seizeOnTheWayDown: false } as const;
+    const SETTINGS: [string, Partial<SupportPolicyInputs>][] = [['fixtures\' policy', {}], ['C1', { ...V2_DEFAULTS }]];
+    const over = (i: CyclingInputs, o: Partial<SupportPolicyInputs>, x: Partial<SupportPolicyInputs> = {}): CyclingInputs =>
+      ({ ...i, supportPolicy: { ...i.supportPolicy!, ...o, ...x } });
+    /** The grids, policy on, at settings `o`. With `cash6`, a5 runs with its cash-6 twin too — the kill sweep's 15,564
+     *  runs; without it, the M2 sets (15,549). */
+    const grids = (o: Partial<SupportPolicyInputs>, cash6: boolean): [string, CyclingInputs[]][] => [
+      ['a5', a5Cases().flatMap((c) => (cash6 ? [over(c.on, o), over(c.on, o, { openingCashUsd: CASH_6_USD })] : [over(c.on, o)]))],
+      ['cold rows', coldRuleRows().flatMap((row) => [0, 0.5].map((seed) => ({ ...over(row.on, o), openingColdBtc: seed })))],
+      ['double drops', doubleDropRows().map((d) => over(d.on, o))],
+      ['face-world', faceWorldGrid().map((c) => ({ ...c.off, supportPolicy: policyFor(c.support, o) }))],
+      ['synthetic', syntheticGrid().map((c) => ({ ...c.off, supportPolicy: policyFor(c.support, o) }))],
+      ['synthetic (cap off)', syntheticGrid().map((c) => ({ ...c.capOff, supportPolicy: policyFor(c.support, o) }))],
+      ['reach', reachGrid().map((c) => ({ ...c.off, supportPolicy: policyFor(c.support, o) }))],
+    ];
+    const yours = (r: CyclingResult): number => deriveOwnership(r.last.btcHeld, r.last.debt, r.last.price).yoursBtc;
+
+    out('<!-- SP_REPORT POLICY V2 BEGIN -->');
+    out('# Policy v2 — Morpho seizes on the way down, measured');
+    out();
+    out('Every run is policy ON. "Rule" = the default engine (the seizure on the way down); "month-end" = the same run with');
+    out('`seizeOnTheWayDown: false`. The fixtures\' policy is 60 · 1.5 / 2.0 · 12; C1 (the faces\' defaults) is 45 · 2.0 / 3.0 · 12.');
+    out();
+
+    // ── PV2-1 — the kill criterion and what the rule changes ──
+    out('## PV2-1 — what the rule liquidates (the kill sweep\'s 15,564 runs per setting)');
+    out();
+    out('Fired = seized on the way down. Same / later / hidden = where the month-end reading liquidated a fired run: the same');
+    out('month, later, or never. Δ yours = ₿ yours at the end (deriveOwnership, three arguments), rule − month-end, over fired runs.');
+    out();
+    out('| Grid | Settings | runs | liquidated: month-end → rule | fired | same / later / hidden | month-0 liquidations | Δ yours on fired (Σ · min · max) | month-end breaches m ≥ 1 | deficiencies m ≥ 1 |');
+    out('|---|---|---|---|---|---|---|---|---|---|');
+    let violations = 0;
+    const violated: string[] = [];
+    for (const [sName, o] of SETTINGS) {
+      for (const [gName, runs] of grids(o, true)) {
+        let liqMe = 0; let liqOn = 0; let fired = 0; let same = 0; let later = 0; let hidden = 0; let month0 = 0;
+        let dSum = 0; let dMin = Number.POSITIVE_INFINITY; let dMax = Number.NEGATIVE_INFINITY;
+        let breachesM1 = 0; let deficienciesM1 = 0;
+        runs.forEach((inputs, i) => {
+          const on = runCyclingSim(inputs);
+          const me = runCyclingSim({ ...inputs, ...MONTH_END });
+          if (me.liqMonth !== null) liqMe += 1;
+          if (on.liqMonth !== null) liqOn += 1;
+          if (on.liqMonth === 0) month0 += 1;
+          if (on.liqMonth !== null && on.liqMonth >= 1) {
+            if (!on.seizedOnTheWayDown) breachesM1 += 1;
+            if (on.deficiencyUsd !== null) deficienciesM1 += 1;
+          }
+          const L = on.liqMonth;
+          if (on.seizedOnTheWayDown && L !== null) {
+            fired += 1;
+            if (me.liqMonth === L) same += 1;
+            else if (me.liqMonth === null) hidden += 1;
+            else later += 1;
+            const d = yours(on) - yours(me);
+            dSum += d; dMin = Math.min(dMin, d); dMax = Math.max(dMax, d);
+            if (!isDeepStrictEqual(on.rows.slice(0, L), me.rows.slice(0, L)) || (me.liqMonth !== null && me.liqMonth < L)) {
+              violations += 1;
+              if (violated.length < 10) violated.push(`${sName} · ${gName} #${i}`);
+            }
+          } else if (!isDeepStrictEqual(on, me)) {
+            violations += 1;
+            if (violated.length < 10) violated.push(`${sName} · ${gName} #${i} (did not fire)`);
+          }
+        });
+        const dCol = fired > 0 ? `${btc(dSum, 3)} · ${btc(dMin, 3)} · ${btc(dMax, 3)}` : '—';
+        out(`| ${gName} | ${sName} | ${runs.length} | ${liqMe} → ${liqOn} | ${fired} | ${same} / ${later} / ${hidden} | ${month0} | ${dCol} | ${breachesM1} | ${deficienciesM1} |`);
+      }
+    }
+    out();
+    out(violations === 0
+      ? '- **The kill criterion holds:** every run the rule does not fire on equals its month-end reading; every fired run is identical before the month it fires, and the month-end reading never liquidated it earlier.'
+      : `- **STOP — the kill criterion is broken** on ${violations} runs: ${violated.join('; ')}.`);
+    out();
+
+    // ── PV2-2 — the runs each switch moves ──
+    const SWITCHES: [string, Partial<CyclingInputs>][] = [
+      ['doom gate off', { doomGateCbTopUp: false }],
+      ['futility check off', { cbFutilityCheck: false }],
+      ['Strike first off', { strikeFirstAfterLiquidation: false }],
+      ['survival guard off', { cbSurvivalGuard: false }],
+      ['release rules off', { strikeReleaseRules: false }],
+      ['top up first off', { topUpBeforeShift: false }],
+      ['any depth on', { topUpFirstAnyDepth: true }],
+    ];
+    out('## PV2-2 — the runs each switch moves (the M2 sets: 15,549 runs per setting)');
+    out();
+    out('Each cell: runs where flipping the switch changes the result — rule on · month-end reading. Strike first\'s');
+    out('rule-on moves are split out by the month the run was liquidated (a seizure on the way down leaves no leftover).');
+    out();
+    out(`| Switch | ${SETTINGS.map(([n]) => n).join(' | ')} |`);
+    out(`|---|${SETTINGS.map(() => '---').join('|')}|`);
+    const cells = new Map<string, string[]>(SWITCHES.map(([n]) => [n, []]));
+    let m2Runs = 0;
+    for (const [, o] of SETTINGS) {
+      const runs = grids(o, false).flatMap(([, rs]) => rs);
+      m2Runs = runs.length;
+      const moved = new Map<string, { on: number; me: number; onMonth0: number }>(
+        SWITCHES.map(([n]) => [n, { on: 0, me: 0, onMonth0: 0 }]));
+      for (const inputs of runs) {
+        const on = runCyclingSim(inputs);
+        const me = runCyclingSim({ ...inputs, ...MONTH_END });
+        for (const [n, flip] of SWITCHES) {
+          const t = moved.get(n)!;
+          if (!isDeepStrictEqual(runCyclingSim({ ...inputs, ...flip }), on)) {
+            t.on += 1;
+            if (on.liqMonth === 0) t.onMonth0 += 1;
+          }
+          if (!isDeepStrictEqual(runCyclingSim({ ...inputs, ...MONTH_END, ...flip }), me)) t.me += 1;
+        }
+      }
+      for (const [n] of SWITCHES) {
+        const t = moved.get(n)!;
+        const month0 = n === 'Strike first off' ? ` (${t.onMonth0} month-0)` : '';
+        cells.get(n)!.push(`${t.on}${month0} · ${t.me}`);
+      }
+    }
+    for (const [n] of SWITCHES) out(`| ${n} | ${cells.get(n)!.join(' | ')} |`);
+    out();
+    out(`(${m2Runs} runs per setting.)`);
+    out('<!-- SP_REPORT POLICY V2 END -->');
+
+    console.log(lines.join('\n'));
+    // FIDELITY — the kill criterion, as the sweep test pins it.
+    expect(violations).toBe(0);
+  }, 1_800_000);
 });

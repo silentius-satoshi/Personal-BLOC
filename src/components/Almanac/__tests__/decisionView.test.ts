@@ -18,8 +18,10 @@ import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { deriveOwnership } from '../../../simulation/ownership';
 import { DISPLAY_DUST_BTC, shownBtc, shownUsd } from '../supportPolicyView';
 import {
-  SP_REPRO, SUPPORT, CASH_6_USD, policyFor, a5Cases, callRun, faceWorldGrid, reachGrid, syntheticGrid,
+  SP_REPRO, SUPPORT, CASH_6_USD, policyFor, a5Cases, callRun, faceWorldGrid, reachGrid, syntheticGrid, pathP1,
+  stressFrom12,
 } from '../../../simulation/__tests__/supportPolicyPaths';
+import { fmtUSD } from '../../../utils/format';
 
 /**
  * The Decision face's schedule and THE MOVE's copy. Round synthetic figures only — this repo is public.
@@ -163,6 +165,39 @@ describe('⭐ I14 — no schedule line prints "$0" or "0.000 ₿"', () => {
     expect(kinds).not.toContain('draw');
     expect(kinds).not.toContain('coinbaseToCold');
     expect(kinds).not.toContain('refinance');
+  });
+});
+
+// ── Policy v2 · a seizure on the way down comes FIRST in its month (F5b) ─────────────────────────────────────
+
+describe('⭐ Policy v2 — a seizure on the way down is listed first, at its price (F5b)', () => {
+  /** P1 × 0.35 from month 12 with 0.5 ₿. The default engine seizes it on the way down in month 12 — before the month
+   *  acts — and the survivor still takes the month's own actions. */
+  const inputs: CyclingInputs = {
+    ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.35), supportPolicy: policyFor(SUPPORT), openingColdBtc: 0.5,
+  };
+  const last = <T>(xs: T[]): T => xs[xs.length - 1];
+
+  it('⭐ the liquidation comes first, at the liquidation price; a month-end seizure keeps it last', () => {
+    const sim = runCyclingSim(inputs);
+    expect(sim.liqMonth).toBe(12);
+    const row = planSchedule(sim, place()).find((x) => x.m === 12)!;
+    expect(row.actions[0].kind).toBe('liquidation');
+    expect(sim.seizedOnTheWayDown).toBe(true);
+    expect(row.actions[0]).toEqual({
+      kind: 'liquidation', usd: null, btc: null,
+      text: `Coinbase liquidates the loan on the way down, at ${fmtUSD(sim.seizurePriceUsd!)}.`,
+    });
+    expect(row.actions.length).toBeGreaterThan(1);             // the survivor's own actions follow
+    expect(row.crash).toBe(true);
+    // Policy off, the same path: a month-end seizure — the last thing its month does, as before.
+    const off = runCyclingSim({ ...inputs, supportPolicy: undefined });
+    expect([off.liqMonth, off.seizedOnTheWayDown]).toEqual([12, false]);
+    const offRow = planSchedule(off, place()).find((x) => x.m === 12)!;
+    expect(last(offRow.actions)).toEqual({ kind: 'liquidation', usd: null, btc: null, text: 'Coinbase liquidates the loan.' });
+    // A price under the dust floor is never named — the "at" clause drops.
+    expect(rowActions(sim.rows[12], 12, { onTheWayDown: true, priceUsd: 0.3 })[0].text)
+      .toBe('Coinbase liquidates the loan on the way down.');
   });
 });
 

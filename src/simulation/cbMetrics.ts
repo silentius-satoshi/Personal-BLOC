@@ -1,5 +1,5 @@
 import { ltvOfUsd } from './ltv';
-import { CB_LLTV } from './runCoinbaseLoan';
+import { cbLiquidationPrice } from './runCoinbaseLoan';
 import { shownUsd } from '../utils/format';
 
 export interface CbMetrics {
@@ -11,9 +11,10 @@ export interface CbMetrics {
 }
 
 /** Coinbase's seizure price: where `balance` on `collateralBtc` reaches CB_LLTV — 0 with no collateral (the guard
- *  `cbMetrics` has always had). ONE expression, two readers: `cbMetrics().liqPrice` and `cbSeizurePrice`. */
+ *  `cbMetrics` has always had). Two readers here, `cbMetrics().liqPrice` and `cbSeizurePrice` — and ONE expression,
+ *  `cbLiquidationPrice` (runCoinbaseLoan), which the engine's seizure on the way down reads too. */
 function liqPriceOf(balance: number, collateralBtc: number): number {
-  return collateralBtc > 0 ? balance / (collateralBtc * CB_LLTV) : 0;
+  return cbLiquidationPrice(balance, collateralBtc);
 }
 
 /**
@@ -45,8 +46,9 @@ export function cbMetrics(
  * so the line on the chart and the ranking's "closest to seizure" can never disagree.
  *
  * Null:
- *  - on a `postLiquidation` row — the engine marks the liquidation row (pushed pre-seizure) and every row after it;
- *    there is no loan left to seize, and "the months before a liquidation" is this same cutoff;
+ *  - on a `postLiquidation` row — the engine marks the liquidation row (pushed pre-seizure at month-end; the survivor,
+ *    owing nothing, on the way down — Policy v2) and every row after it: null either way. There is no loan left to
+ *    seize, and "the months before a liquidation" is this same cutoff;
  *  - when the debt is under the dust floor (`shownUsd`) — a residue is not a loan;
  *  - with no Coinbase collateral (`liqPriceOf` gives 0, and 0 is not a price);
  *  - when the price is not a finite positive number.

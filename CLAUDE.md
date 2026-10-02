@@ -186,15 +186,17 @@ src/
                                 # may pass them; + the cold rules and the crash playbook, policy-only — the ADOPTED
                                 # doom gate doomGateCbTopUp, strikeFirstAfterLiquidation (every zone after a
                                 # liquidation), strikeReleaseRules and topUpBeforeShift, all default ON (`false`
-                                # test-only), and topUpFirstAnyDepth, test-only default OFF — § LTV defense; C retired),
+                                # test-only), and topUpFirstAnyDepth, test-only default OFF — § LTV defense; C retired;
+                                # + Policy v2's seizeOnTheWayDown — Morpho seizes on the way down, policy-only, default
+                                # ON, `false` test-only — § Support-anchored policy → Policy v2),
                                 # effectiveStrikeCapPct (the exported clamp) and the telemetry
                                 # firstSurvivalYieldMonth/strikeReserveCutBtc. Draw bills on Strike,
                                 # refinance into Coinbase every cycleMonths, route every purchase to the CB
                                 # collateral pool, stop drawing at a CB LTV cap; verdict vs a never-draw baseline.
                                 # Pays Coinbase's origination fee (cbBorrowFee) on EVERY sweep and CAPITALISES
                                 # it; totals surface as totalCbFees/cbFeeCount.
-                                # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF/cbBorrowFee + the fee-bracket
-                                # constants (runCoinbaseLoan, a leaf) + defendCbLtv/topUpToCbLtv (cbDefense) +
+                                # 🔴 §2 wall side B: imports ONLY CB_LLTV/CB_LIF/cbBorrowFee/cbLiquidationPrice + the
+                                # fee-bracket constants (runCoinbaseLoan, a leaf) + defendCbLtv/topUpToCbLtv (cbDefense) +
                                 # the zero-import ltvOf (./ltv) + the leaf ./supportPolicy (the opt-in SUPPORT-
                                 # ANCHORED POLICY, `supportPolicy?` — see § Support-anchored policy; absent ⇒
                                 # byte-identical, pinned by the G1 golden; TEST-ONLY incomePath and
@@ -212,11 +214,21 @@ src/
                                 # credit line is a hard constraint — a draw is capped at min(creditLine,
                                 # strikeColl×price×maxDrawLtv) − strikeBal and the shortfall comes out of income
                                 # (self-limiting: fewer sats bought), surfacing as creditExhaustedMonth. Liquidation
-                                # is TERMINAL: at cbLtv ≥ CB_LLTV it seizes min(cbColl, cbDebt×CB_LIF/price) and
-                                # ⚠ subtracts the repayment rather than zeroing debt, so an under-collateralised
-                                # seizure PRESERVES the deficiency (both facilities are full-recourse); the row is
-                                # pushed PRE-seizure so it shows the position that breached and m+1 opens on the
-                                # survivor. CB_LIQUIDATION_PENALTY is derived (CB_LIF − 1), not a literal.
+                                # is TERMINAL. Under the support policy (Policy v2, seizeOnTheWayDown) Morpho seizes
+                                # ON THE WAY DOWN: after the month's interest and before any monthly action, the
+                                # carried loan at ≥ CB_LLTV at THIS month's price is seized at the liquidation price
+                                # (cbLiquidationPrice) — CB_LIF × CB_LLTV ≈ 0.898 of the pool, debt EXACTLY 0, no
+                                # deficiency — and that month's row is the SURVIVOR (result seizedOnTheWayDown /
+                                # seizurePriceUsd). Month 0 and the policy-off engine keep the MONTH-END seizure:
+                                # at cbLtv ≥ CB_LLTV it seizes min(cbColl, cbDebt×CB_LIF/price) and ⚠ subtracts the
+                                # repayment rather than zeroing debt, so an under-collateralised seizure PRESERVES
+                                # the deficiency (both facilities are full-recourse) — but a pool that COVERED the
+                                # debt repays it in full, exactly 0 (F9: the round trip left a ≈3e-11 residue); that
+                                # row is pushed PRE-seizure so it shows the position that breached and m+1 opens on
+                                # the survivor. CB_LIQUIDATION_PENALTY is derived (CB_LIF − 1), not a literal.
+                                # + supportPolicyResolution(PolicyRunContext) → { policyApplied, policyIgnoredReason }
+                                # — the run's own answer without running it (Run B's check); the run and it share
+                                # ONE resolveRunPolicy, so resolveSupportPolicy has no other caller.
                                 # ⚠ Terminal for the WHOLE Coinbase loop, not just the draw: the refinance and
                                 # the cascade migration are gated `liqMonth === null` too. Ungated, they
                                 # re-levered Coinbase after a seizure — a NEW loan the one-shot breach check
@@ -337,6 +349,11 @@ src/
                                 # and `cbMaxDrawForHeadroom(headroom, balance)` (its exact inverse). Still a
                                 # LEAF — imports only the zero-import ./ltv — which is why cyclingSim/runAdvisor/
                                 # cbMetrics/emergencyModel can all import the CB facts from it with no cycle
+                                # + cbLiquidationPrice(balance, collateralBtc) (Policy v2) — 🔴 THE liquidation price,
+                                # balance ÷ (collateral × CB_LLTV), 0 with no collateral: cbMetrics' liqPriceOf and the
+                                # engine's seizure on the way down both read it. It lives HERE, not in cbMetrics: the
+                                # engine's import graph must stay + − × ÷ (the G1 walk) and cbMetrics accrues with
+                                # Math.pow
     ltv.ts                      # 🔴 THE LTV definition — ltvOf(debt, collBtc, price) + ltvOfUsd(debt, collUsd,
                                 # collBtc). ZERO IMPORTS. debt with no collateral → ∞; collateral with no PRICE
                                 # → 0 (a zero-price guard is not an unbacked loan, so ltvOfUsd still needs
@@ -349,7 +366,9 @@ src/
                                 # grep doesn't see it — it is deliberately NOT widened yet)
     cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
-                                # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports CB_LLTV from runCoinbaseLoan + ltvOfUsd from ./ltv
+                                # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports cbLiquidationPrice from
+                                # runCoinbaseLoan (liqPriceOf delegates — ONE liquidation-price expression, shared with
+                                # the engine's seizure on the way down; a source test pins it) + ltvOfUsd from ./ltv
                                 # + cbSeizurePrice(row) (W1) — 🔴 THE one PER-ROW seizure price (cbMetrics().liqPrice
                                 # through one private liqPriceOf): the Decision face's cliff (cliffPath) draws it and
                                 # its Worst (modeled) ranking measures the cushion against it. null on a
@@ -739,7 +758,8 @@ src/
                                 # Tools/crashPlaybookView: it takes the throughISO strikeHoldFrom already computed.
                                 # History is typed structurally (HistoryPoint), so the §2 crossing imports no hook
       supportPolicyView.ts      # Support policy — pure display math: settings, defaults, ranges and the clamp
-                                # (payDownPushed); ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading →
+                                # (payDownPushed) — the defaults are Policy v2's C1 (45 · 2.0 / 3.0 · 12), the ranges
+                                # D2's (buy zone to 2.5×, pay down to 5.0×, room to 48 months); ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading →
                                 # policyHeadline / policyDetails / neverDrawsNote; policyPauseReason; policyUnpaidNote;
                                 # policyAlert; policyStopSentence; billsRemainderTail; DUST_USD / shownUsd (the ONE
                                 # dust floor — defined in utils/format since W1, re-exported here); drawPauseClause; zoneStrip / zoneStripLabel; policyLimitPct; coldShown;
@@ -3214,6 +3234,10 @@ playbook (the next section, 2026-09-28) extended Strike first to every zone and 
 
 - **POLICY-ONLY BY CONSTRUCTION.** The engine resolves both switches as `policy !== null && …`, so the policy-off engine
   never reaches them and the G1 golden is untouched. No face may pass either — the test-only grep test covers both.
+- ⚠ **POLICY V2: under Morpho's seizure on the way down (default on) D, the futility check and Strike-first are inert
+  under the policy.** A doomed month opens past 86% at its price and is seized first; a seizure on the way down repays
+  Coinbase in full, so Strike-first acts only after a month-0 seizure. The tests of all three run under the month-end
+  reading (`MONTH_END`), each beside one line pinning what the default does (§ Support-anchored policy → Policy v2).
 - **D — the doom gate, `doomGateCbTopUp`: ADOPTED, default ON under the policy** (absent ⇒ on, the `cbSurvivalGuard`
   pattern; `false` is the TEST-ONLY pre-adoption order, kept so the report and the tests can measure it — never "fix"
   the default to off). In a month `cbDoomedThisMonth` says Coinbase dies whatever it is handed — asked on the POST-shift
@@ -3221,10 +3245,10 @@ playbook (the next section, 2026-09-28) extended Strike first to every zone and 
   collateral). Since the crash playbook it also gates the TOP-UP-FIRST step (asked before it), and under Strike's
   release rules its doom question counts only the collateral Strike will RELEASE now. One helper,
   `cbDoomedNow(price, m)`, feeds the survival guard, D and the top-up-first gate, so those inputs have one definition.
-  - ⚠ **SAME-MONTH BY DESIGN.** Cold topped into a Coinbase that was still savable can be lost to a LATER liquidation. A
-    two-step crash shows it: × 0.5 from month 12 (savable — the top-up spends the reserve), then × 0.3 from month 14
-    (doomed — Coinbase dies with that cold inside). The cold card's reserve sentence gates on exactly that
-    (§ Support policy — Faces → "Cold card with the owner's reserve").
+  - ⚠ **SAME-MONTH BY DESIGN.** Cold topped into a Coinbase that was still savable can be lost to a LATER liquidation.
+    F4's line-first fixture shows it at k2 0.5 with 0.5 ₿: cold restores the 70% line in month 1 (savable), then month 2
+    opens at 109% and is seized on the way down with that cold inside. The cold card's reserve sentence gates on exactly
+    that (§ Support policy — Faces → "Cold card with the owner's reserve").
   - Measured: never worse on ₿ held in any grid cell or row, and no liquidation or Strike sale changes. It holds more ₿
     only where the pool was smaller than the debt — and there it leaves a Coinbase DEFICIENCY (the pool seized whole,
     the rest of the debt surviving) that the old order did not. All-in equity is better on the recovering grids and the
@@ -3236,8 +3260,10 @@ playbook (the next section, 2026-09-28) extended Strike first to every zone and 
   hold month (**P3**, crash playbook Run 1) the same restore budget, `min(surplus, cbExcess + skExcess)`, goes to Strike
   first, up to its whole balance, then to the Coinbase leftover. The instant-liquidation reason for "Coinbase before
   Strike" is gone once Coinbase has been liquidated — the leftover is unsecured debt at the Coinbase rate, while Strike
-  costs 13% and can still be called. `liqMonth` is still null DURING the liquidation month, so it acts from the month
-  after. Before a liquidation the restore is unchanged (Coinbase before Strike — § Support-anchored policy → Restore).
+  costs 13% and can still be called. At a month-end seizure `liqMonth` is still null DURING the liquidation month, so it
+  acts from the month after; on the way down (Policy v2) it acts in the liquidation month itself — though a seizure on
+  the way down leaves no leftover, so only a month-0 seizure gives it one. Before a liquidation the restore is unchanged
+  (Coinbase before Strike — § Support-anchored policy → Restore).
   - Measured: never worse on ₿; it cuts Strike interest and can avoid a post-liquidation Strike sale; the Coinbase
     leftover is repaid later (a short run can end still owing it). Its only all-in losses are cells where it AVOIDED a
     Strike sale on a no-recovery path — the kept coins are worth only what the sale would have retired, and the interest
@@ -3281,7 +3307,8 @@ the policy-off arm is byte-identical and the G1 golden does not move.
   - ⚠ Collateral LEAVING Strike starts no hold — only collateral going IN (the Strike cap's top-up, a cure's cold) does.
   - ⚠ **The policy-OFF Strike leg is unchanged — still margin × 0.95.** A named follow-up.
 - **TOP UP FIRST (`topUpBeforeShift`, TEST-ONLY, default ON).** Between the liquidation depth and support —
-  `ceilingLiquidationMultiple(cbStop, CB_LLTV) ≤ k < 1 − SUPPORT_EPS`, ≈ 0.698 × support on the defaults — with Coinbase
+  `ceilingLiquidationMultiple(cbStop, CB_LLTV) ≤ k < 1 − SUPPORT_EPS`, ≈ 0.698 × support at the engine fixtures' 60% stop
+  (≈ 0.52 × at the faces' 45% since Policy v2) — with Coinbase
   over its defense line and not doomed, collateral goes in BEFORE any debt moves onto Strike: cold first (less the
   Strike cap's reserve on the PRE-shift state), then releasable Strike collateral (never below the Strike cap's floor).
   The shift covers only what is left, and a top-up that restores the line in full skips the shift (the ulp lesson).
@@ -3363,15 +3390,17 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
 `src/simulation/supportPolicy.ts` is the pure leaf; `runCyclingSim` gains `supportPolicy?: SupportPolicyInputs`.
 **Absent or invalid ⇒ byte-identical** (the G1 golden). Cycle mode only (any other mode → ignored, reason `'mode'`).
 
-- **Ceilings (at support):** Coinbase debt ≤ `cbColl × S × cbStop` (default 60% → liquidated 30.2% below support);
+- **Ceilings (at support):** Coinbase debt ≤ `cbColl × S × cbStop` (the engine fixtures' 60% → liquidated 30.2% below
+  support; the faces' 45% since Policy v2 → 47.7% below);
   Strike balance ≤ `strikeColl × S × strikeStop` (default 50% — Strike's own max draw, applied at support).
   🔴 **Clamped to each leg's DEFENSE line** — `cbStop = min(stop, CB cap)`, `strikeStop = min(stop, Strike cap)` when
   the Strike cap is on — or a stop above its defense line would pull cold AT support by construction. Under the
   policy `cbLtvCapPct` / `strikeLtvCapPct` ARE the defense lines (where the debt shift and top-ups fire if price
   breaks below support), and `coldStoreBufferPct` is IGNORED (the policy's sweep replaces it).
 - **Zones** by `k = price ÷ support`: **paused** `< 1` (float guard `SUPPORT_EPS` 1e-9 — a price computed ONTO the
-  line is never below it) · **accumulate** `≤ accumulateBelow` (1.5) · **hold** `≤ payDownAbove` (2.0) ·
-  **payDown** above. No latch on zones — the 1.5–2× hold band is the hysteresis.
+  line is never below it) · **accumulate** `≤ accumulateBelow` (1.5 in the engine fixtures; 2.0 on the faces since
+  Policy v2) · **hold** `≤ payDownAbove` (2.0; the faces' 3.0) · **payDown** above. No latch on zones — the hold band
+  (1.5–2× in the fixtures, 2–3× on the faces) is the hysteresis.
 - **Hard breaker:** 2 consecutive month-ends below 0.9 × S → **`broken`, LATCHED for the rest of the run** (the
   simulation cannot re-decide for the owner): no new debt, no refinance, no migration, no sweep; the surplus pays
   down, then buys. Month 0 is the opening and never feeds it.
@@ -3401,7 +3430,9 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   totalCashToCureUsd === cashLeftUsd`. The faces' verdict must subtract `totalCashToCureUsd` (money from outside the
   loop lowered the debt); `equity` itself is unchanged.
 - **The month, in order (each step's reason is the design):**
-  1. interest; 2. state — breaker (m ≥ 1), then the zone;
+  1. interest — then **Morpho's seizure on the way down** (Policy v2: the carried loan at or past 86% at this month's
+     price is seized at the liquidation price, and the month runs on the survivor); 2. state — breaker (m ≥ 1), then the
+     zone;
   3. **draw, accumulate only:** `available = max(0, min(skRoom, skCeil, cbAbsorb))`, `cbAbsorb =
      max(0, cbMaxDrawForHeadroom(cbRoom, cbDebt) − strikeBal)`. ⚠ **Strike is a CONDUIT, not a store:** it draws only
      what Coinbase can take back at the next refinance, so its unused line stays the reservoir the debt-shift defense
@@ -3479,7 +3510,8 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   `'cbStop'`. Ledgers foot to 1e-8: coins (`opening + Σ bought − sold − seized`; ⚠ a seizure in the LAST month has not
   left `last.btcHeld` yet), cold, cash.
 - **TEST-ONLY inputs:** `incomePath` (income[m]; a finite ≥ 0 entry replaces income — 0 is an income shock; the
-  baseline uses the same path) and `modelStrikeLiquidation`. The survival-guard grep test covers both.
+  baseline uses the same path) and `modelStrikeLiquidation`. The survival-guard grep test covers both — and Policy v2's
+  `seizeOnTheWayDown` (`false` = the month-end reading).
 - **What it replaced:** the migration-ratchet fix (step 5), the forward-looking Coinbase reserve (step 9) and the
   Strike seizure (step 8) are BUILT here — in policy mode only; the policy-absent engine is unchanged. The defense order
   below support is the crash playbook (§ LTV defense → "The crash playbook", step 7).
@@ -3523,12 +3555,87 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   `SP_REPORT=1 npx vitest run src/simulation/__tests__/supportPolicyReport.test.ts --reporter=verbose` — ⚠ keep
   `--reporter=verbose`, or a non-TTY run drops the output; the output is never committed).
 
+##### Policy v2 (BL6) — Morpho seizes on the way down; the faces' defaults are C1
+
+Spec: `pbloc-spec-policy-v2-safety-v1.md` (through v1.2), Run A (the model). Run B (the faces' new surfaces) is its own
+build.
+
+- **The rule — `seizeOnTheWayDown`: policy-only, ADOPTED, default ON** (absent ⇒ on; `false` is the TEST-ONLY
+  month-end reading, kept so the tests and the report can measure the rule — never "fix" the default to off; the
+  forbidden-input grep covers it). A month-end reading runs every rescue before it looks at the loan, so a month that
+  gaps down past 86% from a month-end that looked fine was a rescue in the model and a seizure in real life. From month 1,
+  right after the month's interest and before any monthly action, the Coinbase loan carried from last month-end is read
+  at THIS month's price: at or past `CB_LLTV` Morpho seized it on the way down, at the liquidation price
+  `cbLiquidationPrice(debt, pool)` (≥ the month's price, by the test).
+  - It takes `CB_LIF × CB_LLTV ≈ 0.898` of the pool and repays the loan in full — debt EXACTLY 0, no deficiency.
+  - The month then runs on the survivor: it pays bills (income, then cash), repays Strike first and buys; it draws,
+    refinances, migrates, defends, tops up and sweeps nothing (every later gate reads `liqMonth`), and the month-end
+    breach can't fire again. The Strike call still runs (it was never gated on `liqMonth`).
+- **Result fields:** `seizedOnTheWayDown` (false at a month-end seizure and with no liquidation) and `seizurePriceUsd`
+  (the liquidation price on the way down; the month's own price at month-end — null at a price ≤ 0; null with no
+  liquidation). ⚠ **Which row is the liquidation row:** at month-end it is pushed PRE-seizure (the position that
+  breached); on the way down it is the SURVIVOR — it owes nothing, so its CB LTV reads 0.0%.
+- **Month 0 keeps the month-end reading** (an opening already past 86%), and so does the policy-off engine. Since the
+  rule, a Coinbase LEFTOVER (a deficiency) arises only from a month-0 seizure — reach cell 0 (`reachGrid()[0]`) is the
+  tests' fixture for it.
+- **F9 — the month-end seizure repays a covered pool in full.** When the pool covered the debt (`need ≤ seized`, `need =
+  debt × CB_LIF ÷ price`), the debt becomes exactly 0: the round trip (`need × price ÷ CB_LIF`) left a ≈ 3e-11 residue
+  that the faces printed as "$0 of debt survives" (29 grid runs at the commit before it). A short pool still keeps its
+  real deficiency.
+- **What it retires (F3).** Measured over PV2-2's 15,549 policy-on runs (the report's `-t "policy v2"` block), rule on ·
+  month-end reading: flipping the doom gate moves 0 runs · 1,474; the futility check 0 · 968; Strike first after a
+  liquidation 7 (all month-0 seizures) · 1,340. A doomed month opens past 86% at its price, so the rule seizes it first;
+  a seizure on the way down leaves no leftover, so Strike-first acts only after a month-0 seizure. All three stay in the
+  code: the doom gate is reached only with `seizeOnTheWayDown: false`, and the futility check also runs with the policy
+  off.
+- **The kill criterion** (I1, `seizeOnTheWayDown.test.ts`): a run the rule doesn't fire on deep-equals its month-end
+  reading; one it fires on at month L is identical through L − 1, and the month-end reading never liquidated it earlier.
+  0 violations over the kill sweep's 15,564 runs per setting.
+- **ONE liquidation price — `cbLiquidationPrice` lives in `runCoinbaseLoan.ts`, not cbMetrics.** The engine's import
+  graph must stay + − × ÷ (the G1 walk), and cbMetrics accrues with `Math.pow`; runCoinbaseLoan is already in the walk.
+  cbMetrics' `liqPriceOf` delegates to it, so `cbMetrics().liqPrice`, `cbSeizurePrice` and the engine's seizure share one
+  expression (a source test pins it).
+- **`supportPolicyResolution(PolicyRunContext)`** — would this run apply its policy, and if not, why? The run's own
+  answer without running it (Run B checks it before a run). The run and it share ONE `resolveRunPolicy` — an empty price
+  path runs as `[0]`, so its support path must be one month long — and `resolveSupportPolicy` has no other caller. Its
+  answers are pinned, not only compared with the run (F10: a shared function can't catch its own drift).
+- **C1 — the faces' defaults** (`DEFAULT_SUPPORT_POLICY_SETTINGS`): Coinbase 45% at support (Morpho's line 47.7% below
+  it), Strike 50%, buy to 2.0×, pay down above 3.0×, 12 months of room kept (the owner's pick, D1), no cash reserve.
+  - **D2** widens the sliders: the buy zone to 2.5×, pay down to 5.0×, the room to 48 months.
+  - **D3:** the Emergency Console and the Monthly Playbook follow the 45% stop — the depth is 0.45 ÷ 0.86 ≈ 0.52× support
+    (0.47× at a 40% target).
+  - ⚠ **The engine fixtures keep the pre-v2 policy:** `policyFor(support)` is 60 · 1.5 / 2.0 · 12 — every gate and pin
+    was measured on it — and the faces' policy is `policyFor(support, V2_DEFAULTS)`. supportPolicyView.test reads its
+    fixture runs with `FIXTURE_SETTINGS` (F6), never the defaults.
+- **Placement (F8):** at the fixtures' policy acting today is never worse; at C1 it is within 0.025 ₿ on the A5 paths ×
+  four positions (worse on 6 of 60) — the 45% ceiling binds in year one, so the earlier draw moves buying earlier rather
+  than adding to it.
+- **F4 — the defense line is the next month's margin.** A month that opens under 86% survives whatever the month does;
+  the top-up only lowers the LTV for the NEXT fall (Coinbase restored to 70% survives a further one-month fall of 18.6%).
+  So the reserve saves Coinbase only when nothing else can restore the line and a second drop follows. F4's line-first
+  fixture (`lineFirstInputs(k2, cold)`, supportPolicyPaths): month 1 at 0.80× support, Coinbase at 80%, Strike's line full
+  at 45%. At k2 0.72 month 2 opens at 86.7% with no reserve (seized) and at 75.9% with 0.5 ₿ (survives); at k2 0.5 it
+  opens at 109% and is seized with the cold inside. ⚠ It opens over its Coinbase limit at support — outside G2's scope.
+- **The copy the rule made false, fixed:**
+  - F5a — `policyReading.afterLiquidation`: on the way down the liquidation month itself is after it (its row is the
+    survivor, already repaying Strike first); at month-end, strictly after.
+  - F5b — the Decision schedule: `rowActions(row, liqMonth, seizure)` lists "Coinbase liquidates the loan on the way
+    down, at $P." FIRST in its month (the price only above the dust floor); a month-end seizure is still last ("Coinbase
+    liquidates the loan.").
+  - F5c — Ownership's verdict, `liquidationVerdict(sim)` (ownershipFaceView): "Liquidated in month N on the way down, at
+    $P." — the row's LTV would read 0.0% — with the "at" clause only above the dust floor (`shownUsd`); a month-end
+    seizure still reads "Liquidated in month N at X%." It outranks every other verdict.
+  - F5d — the faces' playbook note (`playbookNote`, Cycling and Ownership): a liquidation outranks both "held" and
+    "unheld" — "Coinbase was still seized on the way down in month L." / "…liquidated in month L." — since a playbook that
+    held its line can still lose the loan to a later drop.
+
 #### Support policy — Faces (Run 2: 2a the pure layer, 2b the card and the wiring — built)
 
 Spec: `pbloc-spec-support-policy-faces-v1.md` (through v1.3). ⚠ **2a and 2b merge to `main` TOGETHER** — 2a alone
 moves the verdict to the all-in basis before any copy says so (v1.1 #4).
-- **ON by default on all three engine faces** (`DEFAULT_SUPPORT_POLICY_SETTINGS`, frozen, decision 1): Coinbase 60% /
-  Strike 50% at support, zones 1.5× / 2.0×, a 12-month bear buffer, a cash reserve of 0 months. Every setting is a
+- **ON by default on all three engine faces** (`DEFAULT_SUPPORT_POLICY_SETTINGS`, frozen, decision 1): Coinbase 45% /
+  Strike 50% at support, zones 2.0× / 3.0×, 12 months of room kept, a cash reserve of 0 months — Policy v2's C1 (before it,
+  60 · 1.5 / 2.0 · 12, which the engine fixtures' `policyFor` keeps). Every setting is a
   SESSION overlay key (`Overlay.supportPolicy`) — no store field; "Reset to live" clears it. **Re-arm 6**
   (`DEFAULT_BREAKER_REARM_MONTHS`, the owner's pick from Run 1.1's table): a constant, never a control; `undefined`
   would latch. **Cycle mode only** — in any other mode the engine gets no policy and the face reads as before.
@@ -3572,12 +3679,15 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     > paused > zone**. A re-armed break reads `warn`, a latched one `bad`; buy and pay down `good`, hold `quiet`.
   - Detail order: room (Coinbase, Strike) · breaker · call · cash · unpaid · the cold promise or alarm.
   - **After a Coinbase liquidation (crash playbook Run 1).** `PolicyReading.afterLiquidation` = `monthIdx > liqMonth`,
-    STRICTLY — the liquidation month keeps today's words. The lines name the order spare income repays in, via
+    STRICTLY at a month-end seizure — the liquidation row is pre-seizure, so that month keeps today's words; on the way
+    down (Policy v2) the liquidation month itself is after it (`seizedOnTheWayDown` — its row is the survivor). The
+    lines name the order spare income repays in, via
     `overSentence(leg, roomUsd, 'first' | 'afterCoinbase' | 'afterStrike')`:
     - Coinbase over its limit: "Coinbase was liquidated in month L and is still $X over its limit at support — spare
       income repays it after Strike" — ⚠ **"after Strike" ONLY while Strike owes** (`PolicyReading.strikeOwes` =
       `shownUsd(row.strikeBalance)` at the inspected month), "…repays it first" once Strike is repaid (spare income then
-      goes straight to Coinbase; on P1 × 0.35 from month 12 with 0.5 ₿, Strike reaches $0 while Coinbase stays over);
+      goes straight to Coinbase; on reach cell 0 — a month-0 seizure, the one way a leftover arises since Policy v2 —
+      Strike reaches $0 in month 6 while Coinbase stays over until month 10);
     - Coinbase not over: "Coinbase was liquidated in month L — the policy borrows nothing more";
     - Strike over its limit: "Strike is $X over its limit at support — spare income repays it first";
     - Strike not over: the line is OMITTED — "room at support" would read as borrowing runway once nothing is borrowed.
@@ -3621,7 +3731,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - Call tones: `capWarn` / `capTone` / Ownership's cap note map `sold` → red, `cured` → amber. ⚠ **Ownership's verdict
     ENTERS its call branch on the reading** — `strikeCallVerdict(capReading)` for called / sold / cured — never on
     `strikeMarginMonth` alone (v1.3 #16): under the policy a cure or a clean sale leaves that flag null, and the
-    verdict fell through to the stop sentence. Its `stopMonth` verdict reads `policyStopSentence`.
+    verdict fell through to the stop sentence. Its `stopMonth` verdict reads `policyStopSentence`. A liquidation
+    outranks all of them through `liquidationVerdict(sim)` (Policy v2, F5c — on the way down it names the price, never
+    the survivor row's 0.0%).
   - **Cash flow, in order (off too):** month 0 → `OPENING_CASH_FLOW_NOTE`; cycle mode with bills ≤ $0 → `noBillsNote`
     (checked FIRST — never a fourth `cashFlowAtMonth` mode); a drawing month → `drawingCashFlowNote`; a non-drawing
     month under the policy → `policyPauseReason` + what bought bitcoin; post-liquidation → `liquidatedCashFlowNote`;
@@ -3703,8 +3815,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     today's rule with the policy off:
     - `playbookNote(sim, capPct)` (Cycling, Ownership; policy on): "Crash playbook: X ₿ of collateral moved into
       Coinbase (a ₿ from cold storage, b ₿ released from Strike); $Y of Coinbase debt shifted to Strike across N months,
-      starting month M." + the outcome — "From month U the playbook could not hold the C% defense line — the residual
-      is unhedged." or "The C% defense line held; the refinance shifts the debt back to Coinbase as the price
+      starting month M." + the outcome — a liquidation first (Policy v2, F5d): "Coinbase was still seized on the way down
+      in month L." / "…liquidated in month L."; else "From month U the playbook could not hold the C% defense line — the
+      residual is unhedged."; else "The C% defense line held; the refinance shifts the debt back to Coinbase as the price
       recovers." Each part only past its dust floor; null when nothing moved. The old "LTV stop defense" note renders
       only with the policy off (`{!applied && defenseActive && (`), its ternaries collapsed to the policy-off words.
     - `defendedFromSub(row, applied)` — the CB LTV tile's sub reads "defended from X%" in a month the playbook moved
@@ -3736,10 +3849,11 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       and never on a loan that can't be saved." — the second clause is DROPPED when cold went into Coinbase in ANY
       month up to and including the one it was liquidated in
       (`rows.slice(0, liqMonth + 1).some((r) => r.topUpFromColdBtc > 0)`), and the whole sentence is omitted when
-      `coldRetrievedAboveSupportBtc > 0` (the policy card's `coldAlarm` says it). The doom gate keeps the reserve out of
-      the month Coinbase dies, but it is SAME-MONTH: cold topped in while Coinbase was still savable can be lost to a
-      later liquidation (a two-step crash — × 0.5 from month 12, then × 0.3 from month 14 — shows it). It errs one way
-      only: the pool is fungible, so cold swept back out before the liquidation still drops the clause.
+      `coldRetrievedAboveSupportBtc > 0` (the policy card's `coldAlarm` says it). The seizure on the way down keeps the
+      reserve out of the month Coinbase dies (the doom gate did, before Policy v2), but only that month: cold topped in
+      while Coinbase was still savable can be lost to a later drop (F4's fixture at k2 0.5 — cold in at month 1, seized
+      on the way down at month 2 — shows it). It errs one way only: the pool is fungible, so cold swept back out before
+      the liquidation still drops the clause.
     - Cycling, policy off: the "Keep me safe down to" slider + its sentence sit behind `coldBufferPct > 0`; with the sweep
       off and a reserve, `sweepOffReserveNote(strikeCapEff > 0)` — "Sweep off: nothing new moves to cold. A defense can
       still draw on your reserve if the Coinbase stop[ or the Strike cap] is hit." (the Strike cap's top-up draws it
@@ -3752,8 +3866,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   (2b.1 narrowed it — no rows, no figure); `rateStopNote(policyApplied)` (2b.1);
   `chartOwnershipRows(…, cbStopEffPct?)` → `cbLimit`; `unfundedNote`'s third argument is REQUIRED.
 - 🔴 **No test-only engine input appears anywhere under `src/components/`, tests and comments included** — `incomePath`,
-  `modelStrikeLiquidation`, the doom gate, the repayment order and the crash playbook's three switches (the
-  forbidden-input grep matches text). A component test reaches P7 only through `a5Cases()`.
+  `modelStrikeLiquidation`, the doom gate, the repayment order, the crash playbook's three switches and Policy v2's
+  `seizeOnTheWayDown` (the forbidden-input grep matches text; the views read the RESULT field `seizedOnTheWayDown`,
+  which the grep doesn't match). A component test reaches P7 only through `a5Cases()`.
 - **Structural guards:** `resetMirror.test.ts` (`supportPolicy` in the `engineInputs` body and both dep arrays, on
   all three faces) and `supportPolicyWiring.test.ts` (the four memos; `buildSupportPath(startDate, months)`; never
   stressed or phase-shifted; every engine run spreads `engineInputs`; no `plBandAt('floor'`; the card rendered;
@@ -4718,7 +4833,8 @@ still models the debt shift.
   - ⚠ JSX drops the whitespace at a line break next to an expression, so each label expression keeps its neighbouring
     text on its line. The same test pins the spacing.
 - **The legend's depth is computed:** `playbookDepthFor(cbLtvTargetPct)` — the builder's stop at support ÷ 86%, through
-  the ONE `effectivePolicyStops` call (≈ 0.70× at a 60% target and up, 0.64× at 55%). The legend reads "between D× and
+  the ONE `effectivePolicyStops` call (≈ 0.52× at the default 45% stop — a 45% target and up — and 0.47× at 40%). The
+  legend reads "between D× and
   1× support the crash playbook tops up first when it can". Never a literal.
 - **Deleted:** `cbPaydownToTarget` and `cbPaydownAffordable` — the Playbook's last naive `creditLine − drawn` reader.
 - Tests: § Test Suite → "Crash playbook (Run 3 — the Monthly Playbook)".
@@ -5353,8 +5469,9 @@ itself: `btcHeld`/`coldBtc` +C, `collateralValue`/`equity` +C × price, the verd
 - ⚠ **Under the support policy the emergency Coinbase top-up IS doom-gated** (the doom gate, adopted 2026-09-27 —
   § LTV defense → "The cold rules below support"): in a month Coinbase cannot survive, the reserve stays out of it. On
   P1 × 0.35 from m12 (a synthetic 0.5 ₿) the pre-adoption order poured the whole reserve into the month-12 top-up and
-  Coinbase was liquidated anyway; the doom gate keeps it in cold. SAME-MONTH by design — cold topped in while Coinbase
-  was still savable can be lost to a later liquidation, which the cold card's reserve sentence gates on. With the policy
+  Coinbase was liquidated anyway; the doom gate keeps it in cold — and since Policy v2 the seizure on the way down keeps
+  it out first (month 12 opens past 86% and is seized before any top-up runs). SAME-MONTH by design — cold topped in
+  while Coinbase was still savable can be lost to a later liquidation, which the cold card's reserve sentence gates on. With the policy
   OFF the top-up is NOT doom-gated (that arm is unchanged, real-cold decision 1).
 - **Since the crash playbook (Run 1)**, between the liquidation depth and support the reserve goes into Coinbase BEFORE
   the debt shift (top up first, also doom-gated); below the depth it is still the fallback after the shift
@@ -6436,11 +6553,13 @@ goes red.)
       instead: "every accumulate row sits under both ceilings at support", "P2 pay-down rows repay before they buy",
       "P2 at $16k / $6k: … 12 × bills of room at support", "every refinance month ends at or under the ceiling at
       support";
-    - ⭐ the reserve saves what the swept pool couldn't: P1 × 0.4 from m12, both arms, liq 12 → none; the CALL fixture's
+    - ⭐ the reserve saves what the swept pool couldn't: P1 × 0.4 from m12, policy off and the month-end reading, liq 12
+      → none (by default Policy v2 seizes it on the way down at 12, with or without the reserve); the CALL fixture's
       sale → 0. Red: the engine ignores the seed.
   - `supportPolicyView.test.ts`: `shownBtc` / `DISPLAY_DUST_BTC`; ⭐ `coldShown` opens for a reserve alone;
-    `policyReserveNote` every variant (since the cold-rules adoption: ⭐ P1 × 0.35 reads the FULL sentence — the doom gate
-    held the reserve — and ⭐ the two-step crash reads the first clause only; see the cold-rules bullet below). The three
+    `policyReserveNote` every variant (⭐ P1 × 0.35 reads the FULL sentence — since Policy v2 the seizure on the way down
+    kept the reserve out — and ⭐ F4's fixture at k2 0.5 reads the first clause only; see the cold-rules bullet below;
+    the spent-and-saved FULL case is F4's fixture at k2 0.72). The three
     existing `coldShown` literals gained `openingColdBtc: 0` (type-only — no value moved).
   - `cyclingFaceView.test.ts`: `coldOriginsParts` every shape + ⭐ the footing on an engine run with all four parts;
     `coldMovesSentence`, `seedLine`, `sweepOffReserveNote`.
@@ -6455,18 +6574,21 @@ goes red.)
   - `cyclingSimPolicy.test.ts` — "cold rules" block (sweep = every A5 path, the stress rows and the CALL fixture × seeds
     0 / 0.5, policy on):
     - ⭐ D is the default: absent ≡ `doomGateCbTopUp: true`; policy OFF ignores it (`true` / `false` ≡ absent);
-      non-vacuous on P1 × 0.35. Red: the default flipped back;
+      non-vacuous on P1 × 0.35 under the month-end reading (`MONTH_END`) — by default it moves nothing there (Policy v2,
+      F3). Red: the default flipped back;
     - ⭐ D is inert without a liquidation: every run the old order survives ≡ the default; non-vacuous (survivors that DO
       use the emergency top-up). Red: the top-up gated on something weaker than doom;
-    - ⭐ D never pours into a doomed Coinbase (P1 × 0.35 from m12, 0.5 ₿): premise under `doomGateCbTopUp: false` =
+    - ⭐ D never pours into a doomed Coinbase (P1 × 0.35 from m12, 0.5 ₿, under `MONTH_END`; by default month 12 is
+      seized on the way down, `topUpBtc` 0): premise under `doomGateCbTopUp: false` =
       liquidated at month 12 with the seed in that month's top-up; the default moves no cold and no Strike collateral
       that month, and the seed stays in cold. Red: the gate removed;
     - ⭐ Strike first is on by default and policy-only: absent ≡ `true`; policy OFF ignores it; no liquidation ⇒ `false`
-      ≡ absent; non-vacuous on P1 × 0.35. Plus a pay-down month BEFORE any liquidation (`RESTORE_OPENING` on a 2.5 ×
+      ≡ absent; non-vacuous on P1 × 0.35 under `MONTH_END`. Plus a pay-down month BEFORE any liquidation (`RESTORE_OPENING` on a 2.5 ×
       support path) still restores Coinbase first — ⚠ asserted on the BALANCES (Coinbase repaid, Strike only accrues):
       both legs open over their ceilings, so a Strike-first restore would total the same `restoreUsd`. Red: the default
       flipped; the `liqMonth` condition dropped;
-    - ⭐ Strike first after a liquidation (P1 × 0.35 from m12, 0.5 ₿): ⚠ the premise is `deficiencyUsd > 0`, never the
+    - ⭐ Strike first after a liquidation (P1 × 0.35 from m12, 0.5 ₿, under `MONTH_END` — by default there is no
+      deficiency): ⚠ the premise is `deficiencyUsd > 0`, never the
       liquidation row's `cbDebt` (pushed PRE-seizure); Strike inside its own ceiling at support (why Strike's half of the
       restore takes nothing); the runs identical before the first post-liquidation month; off → the surplus repays
       Coinbase and Strike only accrues; on → it repays Strike and Coinbase only accrues; ledgers foot. Red: the gate
@@ -6474,9 +6596,9 @@ goes red.)
     - ⭐ G2 under both variants (base and D, pinned to the pre-playbook order, × the sweep; ledgers foot; non-vacuous
       below-support spends). (The C tests are gone with C — their invariants are ported to the crash-playbook block.)
   - `supportPolicyView.test.ts` — `policyReserveNote`: ⭐ P1 × 0.35 on the defaults → the FULL sentence (premise: Coinbase
-    liquidated, `totalTopUpFromColdBtc === 0`); ⭐ the two-step crash (× 0.5 from m12, × 0.3 from m14) → the first clause
-    only (premises: liquidated at 14, cold at 12, none at 14, none above support, a deficiency). Red: the gate reverted to
-    the liquidation month only. The synthetic-rows case pins "up to and including" (a later month keeps the sentence).
+    liquidated — on the way down since Policy v2 — and `totalTopUpFromColdBtc === 0`); ⭐ F4's fixture at k2 0.5 → the
+    first clause only (premises: seized on the way down at 2, cold at 1, none at 2, none above support). Red: the gate
+    reverted to the liquidation month only. The synthetic-rows case pins "up to and including" (a later month keeps the sentence).
     ⚠ No test-only input name may appear in this file — the grep test reads `src/components/`, tests included.
   - `supportPolicyPaths.ts`: `COLD_RULE_VARIANTS` is EXPLICIT — `base` = `doomGateCbTopUp: false`, `D` = true, both
     pinned to the pre-playbook order (`strikeReleaseRules: false, topUpBeforeShift: false`); plus `stressFrom12` and
@@ -6581,8 +6703,10 @@ goes red.)
   - `cbMetrics.test.ts` — `cbSeizurePrice` ≡ `cbMetrics().liqPrice`; ⭐ null under 50¢ (50¢ counts), ⭐ with no
     collateral, ⭐ on a `postLiquidation` row; junk → null. Red dropping each guard.
   - `decisionChartView.test.ts` — ⭐ the cushion reads the cliff from month 1 (min price ÷ cliff over
-    months ≥ 1, on a safe and a liquidating run; the cliff still draws month 0 — red when the cushion counts the
-    liquidation row, or the cliff skips today) and ⭐ ONE seizure-price rule (source: both files call
+    months ≥ 1, on a safe and a liquidating run; the cliff still draws month 0 — red when the cliff skips today; since
+    Policy v2 the liquidating run is seized on the way down, so its liquidation row is the survivor — no debt, no
+    seizure price — and the "cushion counts the liquidation row" mutation is caught by cbMetrics.test and
+    planSearch.test instead) and ⭐ ONE seizure-price rule (source: both files call
     `cbSeizurePrice(` and name no `CB_LLTV` / `cbMetrics(` / `.liqPrice` outside comments — red pasting a formula
     into either). The cliff tests drop the trigger argument (`liqPrice` never read it).
   - `decisionView.test.ts` — ⭐ the four crown sentences (red swapping two clauses); a plain path names no rule.
@@ -6912,7 +7036,8 @@ goes red.)
     ⭐ **parity** — the engine's month 1 ≡ `crashPlaybook().after`, bit for bit, with every order and step kind; ⭐ G2 under
     the playbook and any depth. The G3 P9 pin moved to `firstDefenseMonth ?? firstTopUpMonth` (the dip is now a top-up).
   - `supportPolicyView.test.ts` — the after-liquidation lines: ⭐ "after Strike" while Strike owes, "first" once it is
-    repaid (P1 × 0.35, months 13–18), month 12 keeps today's words, no line says "room at support"; ⭐ the accumulate
+    repaid (reach cell 0 — a month-0 seizure, the one way a leftover arises since Policy v2 — months 2–6, then 7–9 and
+    repaid at 10), month 0 keeps the words before it, no line says "room at support"; ⭐ the accumulate
     headline (constructed); ⭐ `repaidTail` in the pause reason (P6 and reach cell 0 moved — see the report).
   - `cyclingFaceView.test.ts` — `playbookNote` shapes, `defendedFromSub`, `collateralMovedFlag`, `unheldMonth`, and the
     engine-backed P9 at $4k with 0.05 ₿. `supportPolicyWiring.test.ts` — the face-level pins (Structural guards).
@@ -6922,7 +7047,7 @@ goes red.)
 - **Crash playbook (Run 2 — the Emergency Console)** (every ⭐ proven red by a temporary edit; round synthetic figures):
   - `src/components/Tools/__tests__/crashPlaybookView.test.ts`:
     - the builder: ⭐ pass-through + the four lender constants; ⭐ the stop at support through `effectivePolicyStops`
-      (target 70 → 0.60, 55 → 0.55, every target 40–85 equal to the helper), with a source guard — the module calls
+      (on Policy v2's defaults: target 70 → 0.45, 40 → 0.40, every target 40–85 equal to the helper), with a source guard — the module calls
       `effectivePolicyStops(` and holds no inline min (the values alone can't tell the one clamp from a copy);
       ⭐ cold under a satoshi (or junk) → 0;
     - ⭐ Strike's 60-day hold on both sides (60 days back → in hold through the deposit + 60 days; 61 → free); the
@@ -6959,7 +7084,7 @@ goes red.)
       - the gaps: Strike over 40%, a $0.30 line, nothing movable, the exact-86% tie;
       - at or above support.
     - `playbookDepthFor`:
-      - ⭐ it equals the builder's stop at support ÷ 86% for every target 40–85 (`'0.70'` at 65, `'0.64'` at 55; a
+      - ⭐ it equals the builder's stop at support ÷ 86% for every target 40–85 (`'0.52'` at 65, `'0.47'` at 40; a
         literal → red);
       - ⭐ the module calls `effectivePolicyStops(` exactly once. A second inlined call → red, while the Run 2 presence
         guard stays green.
@@ -6975,7 +7100,33 @@ goes red.)
       `{playbookDepthFor(…)}` renders "between0.70×";
     - ⭐ SimpleModeView builds through `playbookInputFromLive` / `crashPlaybook` / `monthPlaybookLine` / `plBandsAt` on the
       live figures (`strikeBalance: advisorActualBlocBalance`), suffixes Box 3, and holds neither deleted name;
-    - ⭐ OutlookProjection computes the legend's depth (no `0.70×` literal).
+    - ⭐ OutlookProjection computes the legend's depth — no typed depth multiple anywhere in its source (`0.70×` before
+      Policy v2, `0.52×` since).
+- **Policy v2 — Run A (the model)** (every ⭐ red under a named mutation, every file restored and md5-checked):
+  - `seizeOnTheWayDown.test.ts` (new) — ONE streaming pass over the kill sweep's grids (a5 with its cash-6 twin, the
+    cold rows × seeds 0 / 0.5, the double drops, face-world, synthetic both arms, reach) at the fixtures' policy and at
+    C1 (`V2_DEFAULTS`); each run is checked and dropped (counters and the first five violation labels kept), and the
+    switch flips run on a stride (every 4th double drop and reach cell — reach cells 0 and 4 are month-0 seizures — and
+    every 16th synthetic cell). ⭐ I1 the kill criterion (non-vacuous: fired, hidden, unchanged, same-month and later
+    all occur); ⭐ I2 the seizure (the price after the interest, 0.898 of the pool, debt exactly 0, nothing acted, the
+    survivor); ⭐ I3 month 1 on — always on the way down, no deficiency, nothing left owing; month 0 the month-end
+    reading; ⭐ I4 what the rule retires; I5 absent ≡ on, the policy-off engine ignores it; ⭐ I6 one liquidation price
+    (source and values); I8 the month-end F9 (covered pools found by predicate — the old round trip recomputed from the
+    breaching row, never a cell index); ⭐ I7 the resolution — equal to the run, all ten reasons reached, the answers
+    pinned; `resolveSupportPolicy` has one caller.
+  - `cyclingSimPolicy.test.ts` — ⭐ F4's describe (k2 0.72: saved only by the reserve's month-1 top-up; k2 0.5: seized
+    with the cold inside). The tests of a mechanism the rule retires run under `MONTH_END` (`{ seizeOnTheWayDown:
+    false }`), each beside one line pinning what the default does; the ones whose mechanism is still reachable moved to
+    fixtures that open under 86%.
+  - ⭐ I9 (`supportPolicyView.test.ts`, F5a), ⭐ I10 (`decisionView.test.ts`, F5b), ⭐ I11 (`placement.test.ts` — C1
+    within 0.025 ₿, worse at least once), F5c (`ownershipFaceView.test.ts` — the price, never "at 0.0%"; a 30¢ price
+    names no price), F5d (`cyclingFaceView.test.ts` — engine-backed on F4's fixture, plus synthetic).
+  - The forbidden-input grep in `cyclingSim.test.ts` names `seizeOnTheWayDown` (red when planted in a component file).
+  - `supportPolicyPaths.ts`: `V2_DEFAULTS` and F4's `lineFirstInputs` / `LINE_FIRST_SUPPORT`; `policyFor` stays the
+    fixtures' pre-v2 policy.
+  - `supportPolicyReport.test.ts` (env-gated) — the `-t "policy v2"` block: PV2-1 (liquidations month-end → rule, fired
+    and where the month-end reading liquidated them, Δ yours, month-end breaches and deficiencies m ≥ 1) and PV2-2 (the
+    runs each switch moves, rule on · month-end), with the kill criterion as its fidelity check.
 - **Engine defense fixes** (16 tests; every ⭐ mutation-checked):
   - `cyclingSim.test.ts`:
     - ⭐ **a liquidation ENDS the Coinbase loop.** The fixture is a V-path (crash → seizure at month 4 → recovery to
@@ -9454,10 +9605,11 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 |---|---|
 | An exact (deep-equal) golden may depend only on `+ − × ÷` | Store any input built with `Math.pow`/`log`/`exp`/`**` (a power-law or cycle price path) IN the golden and feed it back — never recompute it at test time. ECMAScript leaves those functions implementation-approximated, and `Math.pow`'s last bit differs between Node 22 (CI) and Node 26 on about 1 input in 10: the support-policy G1 golden passed locally and failed CI for that alone. The engine is pure `+ − × ÷` (IEEE-exact on every runtime; a G1 test walks `cyclingSim.ts`'s imports and fails on any approximated Math), which is what lets a stored input reproduce bit for bit. A value that must be recomputed gets a tolerance (`toBeCloseTo`, or a relative 1e-12) |
 | Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. A price-relative revert of the ceilings is caught by the ceiling-at-support tests; G2 catches a full reversion (the OFF-like behavior that pulls cold above support on the P2 family) |
+| Under the support policy, Morpho's seizure on the way down comes FIRST in the month, right after the interest | The carried loan at or past 86% at this month's price is seized at `cbLiquidationPrice` before any monthly action, repaid in full; the month runs on the survivor. Month 0 and the policy-off engine keep the month-end reading. Never move it later in the month (a rescue would then outrun a seizure the price already crossed), and never let it fire without the policy (the policy-off engine is the G1 golden). The kill criterion (I1, `seizeOnTheWayDown.test.ts`): a run it doesn't fire on equals its month-end reading; one it fires on at L is identical through L − 1 |
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
 | Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter — the engine's `btcHeld` already holds it | The three engine faces read `getCurrentColdBtc()` into `openingColdBtc`; `openingBtc = strike + CB + cold` feeds every "from X ₿", the seed row and "Opening position" — leaving the reserve out reads an unspent reserve as bitcoin gained. A 4th `deriveOwnership` argument would count the pool twice (`yoursShare` is clamped, so the wrong answer still looks plausible). Both pinned by `coldWiring.test.ts` (the deriveOwnership check walks the whole `src/components/Almanac/` directory) |
 | A stop at support can never exceed its leg's defense line (engine clamp) | `cbStop = min(stop, CB cap)`; `strikeStop = min(stop, Strike cap)` when the Strike cap is on (the `coldFloorLtv = Math.min(…, cap)` precedent). A stop above its defense line would pull cold AT support by construction. A CB cap ≤ 0 leaves no effective stop → the policy is IGNORED (`'cbStop'`), never run with a zero ceiling |
-| `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift` and `topUpFirstAnyDepth` are test-only | No component may pass any of them — the survival-guard grep test in `cyclingSim.test.ts` covers all seven. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules` and `topUpBeforeShift` are ADOPTED and default ON under the policy (the `cbSurvivalGuard` pattern — absent means enabled; never "fix" a default to off): `false` exists only so the report and the tests can run the earlier order. `topUpFirstAnyDepth` defaults OFF (measured and rejected — the depth gate). All five are policy-only by construction. None may reach a face. (`coldBeforeShift` is deleted — C is retired.) |
+| `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift`, `topUpFirstAnyDepth` and `seizeOnTheWayDown` are test-only | No component may pass any of them — the survival-guard grep test in `cyclingSim.test.ts` covers all eight. `seizeOnTheWayDown` (Policy v2) is ADOPTED and default ON under the policy; `false` is the month-end reading, kept only so the tests and the report can measure the rule. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules` and `topUpBeforeShift` are ADOPTED and default ON under the policy (the `cbSurvivalGuard` pattern — absent means enabled; never "fix" a default to off): `false` exists only so the report and the tests can run the earlier order. `topUpFirstAnyDepth` defaults OFF (measured and rejected — the depth gate). All five are policy-only by construction. None may reach a face. (`coldBeforeShift` is deleted — C is retired.) |
 | Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules | Every Strike leg of a Coinbase top-up takes at most `strikeReleasableBtc` — ≤ 40% LTV before, strictly < 50% after, never within 60 days of a deposit — and every doom question counts only that figure. One definition (cbDefense), measured on the current state (`releasableNow`). The old margin × 0.95 bound modelled a move Strike would never allow; the policy-OFF arm still uses it (a named follow-up). Collateral leaving Strike starts no hold. Pinned by the three release-rule fixtures and the release-aware doom fixture in `cyclingSimPolicy.test.ts` |
 | The keeps have ONE definition each | `strikeKeepCollateralBtc` (step 5) and `cbKeepCollateralBtc` (step 9), in `supportPolicy.ts`. The engine and THE MOVE call the SAME functions — THE MOVE is never a second placement rule. A source test pins both call sites and fails if either expression is inlined again; an equivalence sweep over 20,000 random positions pins month 1 ≡ `placementPlan(...).after`. ⚠ Both use only `Math.max` and `/`: `cyclingSim.ts`'s import graph is walked for `Math.pow`/`**`, which would break the G1 golden's exactness |
 | A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't | The real balances carry every past decision; the BREAKER does not. So the run is seeded with `breakerFromHistory` (folded over real month-end closes vs support, through the engine's own `nextRearmableBreakerState` — never a second trip rule) and with Strike's hold from LOGGED deposits (`holdMonthsFrom`). **Never from a decision log.** When the price history does not load, `breakerFromHistory` returns `null` and the card SAYS the run assumes "not broken" — it never assumes it silently. ⚠ `openingBreaker` / `openingStrikeHoldMonths` are REAL inputs, not test-only: they must never join the forbidden-input grep. ⚠ A seeded break leaves `brokenMonth` null, so every copy reader goes through `hadBreak`, never `brokenMonth !== null` |

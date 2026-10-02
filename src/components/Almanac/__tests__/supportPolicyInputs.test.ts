@@ -14,7 +14,7 @@ import {
 } from '../../../simulation/supportPolicy';
 import {
   SP_START, SP_MONTHS, SUPPORT, S0, SP_REPRO, policyFor, pathP1,
-  supportPathFor, multiplePath, P6_KNOTS, falseRecoveryPath,
+  supportPathFor, multiplePath, P6_KNOTS, falseRecoveryPath, V2_DEFAULTS,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 
 /**
@@ -95,17 +95,17 @@ describe('supportPolicyFor — the engine\'s policy input, as a face builds it',
       const p = latched.supportPolicyFor(defaults, SUPPORT, SP_REPRO.expenses, 85, 'cycle');
       expect(p).toBeDefined();
       expect(Object.keys(p!)).not.toContain('breakerRearmMonths');
-      expect(p).toEqual(policyFor(SUPPORT));   // a latched run is exactly Run 1's object
+      expect(p).toEqual(policyFor(SUPPORT, V2_DEFAULTS));   // a latched run is exactly the fixtures' object with C1 over it
     } finally {
       vi.doUnmock('../supportPolicyView');
       vi.resetModules();
     }
   });
 
-  it('⭐ a face-shaped input: the engine applies it, and it IS Run 1\'s default policy plus the re-arm', () => {
+  it('⭐ a face-shaped input: the engine applies it, and it IS the fixtures\' policy with Policy v2\'s C1 over it, plus the re-arm', () => {
     const supportPath = buildSupportPath(SP_START, SP_MONTHS);
     const policy = supportPolicyFor(defaults, supportPath, SP_REPRO.expenses, 85, 'cycle');
-    expect(policy).toEqual({ ...policyFor(SUPPORT), breakerRearmMonths: DEFAULT_BREAKER_REARM_MONTHS });
+    expect(policy).toEqual({ ...policyFor(SUPPORT, V2_DEFAULTS), breakerRearmMonths: DEFAULT_BREAKER_REARM_MONTHS });
     const r = runCyclingSim({ ...SP_REPRO, pricePath: pathP1(), supportPolicy: policy });
     expect(r.policyApplied).toBe(true);
     expect(r.policyIgnoredReason).toBeNull();

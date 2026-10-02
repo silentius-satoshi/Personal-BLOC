@@ -274,7 +274,8 @@ export function strikeReleasableBtc(input: StrikeReleaseInput): number {
 
 /**
  * The support multiple at which a Coinbase loan sitting AT its support ceiling reaches its liquidation LTV:
- * `cbStopAtSupport / lltv` (0.60 / 0.86 ≈ 0.70 × support at the default stop). THE CRASH PLAYBOOK'S DEPTH GATE — top up
+ * `cbStopAtSupport / lltv` (0.60 / 0.86 ≈ 0.70 × support at the engine fixtures' 60% stop; 0.45 / 0.86 ≈ 0.52 × at the
+ * faces' 45%). THE CRASH PLAYBOOK'S DEPTH GATE — top up
  * first from here up to support; deeper than this, a Coinbase at its ceiling is already past 86%, so spending every coin
  * there leaves nothing for a second leg, and the debt shift goes first.
  * Junk or a non-positive input → +∞, so junk never tops up first (the pre-playbook order).
