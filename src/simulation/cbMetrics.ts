@@ -43,7 +43,8 @@ export function cbMetrics(
 /**
  * Coinbase's seizure price for ONE projected row, or null when there is none — 🔴 THE one per-row rule. The Decision
  * face's cliff (`cliffPath`) draws it and the Worst (modeled) ranking (`planSearch`) measures its cushion against it,
- * so the line on the chart and the ranking's "closest to seizure" can never disagree.
+ * so the line on the chart and the ranking's "closest to seizure" can never disagree. Policy v2, Run B: the support
+ * policy card's cliff line and the three parent faces' charts (`chartCliffUsd`) read it too.
  *
  * Null:
  *  - on a `postLiquidation` row — the engine marks the liquidation row (pushed pre-seizure at month-end; the survivor,
@@ -51,7 +52,8 @@ export function cbMetrics(
  *    seize, and "the months before a liquidation" is this same cutoff;
  *  - when the debt is under the dust floor (`shownUsd`) — a residue is not a loan;
  *  - with no Coinbase collateral (`liqPriceOf` gives 0, and 0 is not a price);
- *  - when the price is not a finite positive number.
+ *  - when the PRICE is under the dust floor (`shownUsd`, Run B's R9) — a 60¢ loan on 2 ₿ seizes at 35¢, which would print
+ *    as "$0" on the card and draw a cliff at nothing on a chart. Not finite is no price either.
  * Otherwise it is exactly `cbMetrics(...).liqPrice` — the Safety Dashboard's formula, never a second one.
  */
 export function cbSeizurePrice(
@@ -59,7 +61,7 @@ export function cbSeizurePrice(
 ): number | null {
   if (row.postLiquidation || !shownUsd(row.cbDebt)) return null;
   const p = liqPriceOf(row.cbDebt, row.cbCollateralBtc);
-  return Number.isFinite(p) && p > 0 ? p : null;
+  return Number.isFinite(p) && shownUsd(p) ? p : null;
 }
 
 /**

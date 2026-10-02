@@ -1,5 +1,5 @@
-import type { CyclingResult, CyclingRow, PolicyIgnoredReason } from '../../simulation/cyclingSim';
-import { allInEquity } from '../../simulation/cyclingSim';
+import type { CyclingResult, CyclingRow, PolicyIgnoredReason, PolicyRunContext } from '../../simulation/cyclingSim';
+import { allInEquity, supportPolicyResolution } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import type { PlacementPlan } from '../../simulation/placement';
 import { MOVE_THRESHOLD_BTC } from '../../simulation/placement';
@@ -13,7 +13,7 @@ import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import type { PathKind } from '../../simulation/cyclePath';
 import type { WorstBy } from '../../simulation/planSearch';
 import { STRIKE_HOLD_DAYS } from '../Tools/crashPlaybookView';
-import { DISPLAY_DUST_BTC, policyIgnoredNote, shownBtc, shownUsd } from './supportPolicyView';
+import { DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd } from './supportPolicyView';
 import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
 import type { BreakerSeed } from './supportPolicyInputs';
 import { fmtUSD } from '../../utils/format';
@@ -495,11 +495,15 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
 
   // ── the cliff (S2) ─────────────────────────────────────────────────────────────────────────────────────────
   // ⚠ It reads `opening` (N5) — the position the owner actually ends up holding, not the deferred `after`.
+  // Policy v2, Run B (B3): never a seizure price under the dust floor ("$0"), F11's words at both ends (fmtBelowPct —
+  // never "0%" or "100% below"), and the cheap price alert right after the cliff, only while there is one.
   if (hasLoan) {
     const m = cbMetrics(ctx.cbDebt, plan.opening.cbCollateralBtc, ctx.price, ctx.cbLtvTriggerPct);
-    if (m.liqPrice > 0 && m.liqPrice < ctx.price) {
+    if (shownUsd(m.liqPrice) && m.liqPrice < ctx.price) {
       lines.push(line('cliff', 'warn',
-        `Coinbase seizes this loan at ${fmtUSD(m.liqPrice)} — ${pctInt(Math.abs(m.pctToLiq))} below today.`));
+        `Coinbase seizes this loan at ${fmtUSD(m.liqPrice)} — ${fmtBelowPct(Math.abs(m.pctToLiq))} below today.`));
+      const alert = alertLine(ctx, m);
+      if (alert !== null) lines.push(alert);
       const depth = ceilingLiquidationMultiple(ctx.cbStop, CB_LLTV);
       if (Number.isFinite(depth)) {
         lines.push(line('cliffDepth', 'plain',
@@ -515,6 +519,41 @@ export function moveCard(ctx: MoveCardContext): MoveCardCopy {
   // ── path-invariant by construction (B3) ────────────────────────────────────────────────────────────────────
   lines.push(line('pathInvariant', 'plain', PATH_INVARIANT_LINE));
   return { title: MOVE_CARD_TITLE, lines };
+}
+
+/**
+ * Policy v2, Run B (B4) — does the Decision face's run start from THE MOVE? Only when the move is worth making AND the
+ * engine will APPLY the support policy: `supportPolicyResolution` is the run's own answer, asked with the run's own
+ * inputs, so the seed and the run can never disagree. Before it the gate asked only "is a policy supplied?", and at a
+ * Strike liquidation LTV at or under its 70% call (the engine ignores the policy there — 'strikeLadder') the run
+ * started from a move the card never named.
+ */
+export function seedsFromMove(seeded: boolean, ctx: PolicyRunContext): boolean {
+  return seeded && supportPolicyResolution(ctx).policyApplied;
+}
+
+/**
+ * Policy v2, Run B (B3) — the cheap alert: the price at which Coinbase reaches the owner's trigger (`cbMetrics`'
+ * `triggerPrice`, on the opening). Between the cliff and today: set a price alert there in the exchange app. At or past
+ * it today: work from the Emergency Console now — "at or past", since at exactly the trigger "past" is false.
+ * A trigger counts only when it is a finite positive percent that fires BEFORE the seizure (its price above the
+ * cliff): 0% would put its price at ∞, and 86% or more at or under the cliff. And never on a sliver of a loan (R11): a
+ * $200 loan more than 99% below today would ask for an alert at $222.
+ */
+function alertLine(ctx: MoveCardContext, m: { liqPrice: number; triggerPrice: number; pctToLiq: number }): MoveLine | null {
+  const t = ctx.cbLtvTriggerPct;
+  const T = m.triggerPrice;
+  if (!(Number.isFinite(t) && t > 0 && T > m.liqPrice)) return null;
+  if (T < ctx.price && Math.abs(m.pctToLiq) < 0.995) {
+    return line('alert', 'plain',
+      `Set a price alert at ${fmtUSD(T)} in your exchange app — Coinbase reaches your ${t}% trigger there.${consoleTail(ctx)}`);
+  }
+  if (T >= ctx.price) {
+    return line('alert', 'warn',
+      `Coinbase is at or past your ${t}% trigger at today's price — work from the Emergency Console`
+      + `${ctx.ltvTriggered ? '' : ' (it runs when your Coinbase strategy is LTV-triggered)'}.`);
+  }
+  return null;
 }
 
 function consoleTail(ctx: MoveCardContext): string {

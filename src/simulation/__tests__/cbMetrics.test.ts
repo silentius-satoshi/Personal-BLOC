@@ -56,7 +56,10 @@ describe('cbSeizurePrice — THE one per-row seizure price (the Decision face\'s
   it('⭐ null under the dust floor — 49¢ owed is not a loan; 50¢ is', () => {
     expect(cbSeizurePrice(row(0))).toBeNull();
     expect(cbSeizurePrice(row(0.49))).toBeNull();
-    expect(cbSeizurePrice(row(0.5))).toBe(cbMetrics(0.5, 2, PRICE, TRIG).liqPrice);
+    // 50¢ owed on 0.5 ₿ seizes at $1.16 — a loan and a price. (On 2 ₿ it would seize at 29¢: no price — R9, below.)
+    expect(cbSeizurePrice(row(0.5, 0.5))).toBe(cbMetrics(0.5, 0.5, PRICE, TRIG).liqPrice);
+    // Run B's R9: a seizure PRICE under the dust floor is no price either — 60¢ owed on 2 ₿ seizes at 35¢.
+    expect(cbSeizurePrice(row(0.6, 2))).toBeNull();
   });
 
   it('⭐ null with no Coinbase collateral — never a $0 seizure price', () => {

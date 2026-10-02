@@ -10,7 +10,9 @@ import {
   cycleConvergencePath, cycleTurnsInHorizon, upcomingCycleTurns, CYCLE_PHASE_SHIFT_MAX_MONTHS, type PathKind,
 } from '../../simulation/cyclePath';
 import { accruedCbBalance, barLevel } from '../../simulation/cbMetrics';
-import { CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT } from '../../simulation/runCoinbaseLoan';
+import {
+  CB_LLTV, CB_FEE_TIER1_PCT, CB_FEE_TIER2_PCT, CB_FEE_TIER_BREAK, CB_PLATFORM_FEE_PCT, cbLiquidationPrice,
+} from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR, CREDIT_WARN_USED, CREDIT_ACT_USED } from '../../simulation/safetyView';
@@ -24,7 +26,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   noBillsNote, OPENING_CASH_FLOW_NOTE, seedLine,
-  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, openPastLltvNote,
 } from './cyclingFaceView';
 import {
   ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, liquidationVerdict,
@@ -343,6 +345,8 @@ export default function OwnershipFace() {
   const applied = sim.policyApplied;
   const reading = policyReading(sim, monthIdx, expenses);
   const alert = policyAlert(reading, policySettings);
+  // Policy v2, Run B (B5) — with the policy off, the month the month-end reading hides a seizure on the way down.
+  const openPastNote = openPastLltvNote(sim);
   // A month the policy did not borrow in, and why (null in a drawing month, month 0, or with no bills).
   const pauseReason = applied ? policyPauseReason(selRow, policySettings, expenses) : null;
   // The first month the defense could not hold the line — unheldMonth (cyclingFaceView), the one definition: policy
@@ -402,8 +406,10 @@ export default function OwnershipFace() {
   const strikeLiq = selRow.strikeCollateralBtc > 0 && strikeLiqLtv > 0
     ? selRow.strikeBalance / (selRow.strikeCollateralBtc * strikeLiqLtv)
     : selRow.strikeBalance > 0 ? Number.POSITIVE_INFINITY : 0;
+  // The liquidation price is the ONE expression (cbLiquidationPrice — the engine's and cbMetrics'); only the unbacked
+  // shell around it is this tile's.
   const cbLiq = selRow.cbCollateralBtc > 0
-    ? selRow.cbDebt / (selRow.cbCollateralBtc * CB_LLTV)
+    ? cbLiquidationPrice(selRow.cbDebt, selRow.cbCollateralBtc)
     : selRow.cbDebt > 0 ? Number.POSITIVE_INFINITY : 0;
   const nearestLiq = Math.max(strikeLiq, cbLiq);
   const liqDist = nearestLiq > 0 && Number.isFinite(nearestLiq) && selRow.price > 0
@@ -431,7 +437,7 @@ export default function OwnershipFace() {
 
   // The effective Coinbase stop feeds the dashed policy-limit series only while the policy applies (a primitive dep).
   const limitStopPct = applied ? policySettings.cbStopEffPct : undefined;
-  const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV, limitStopPct), [rows, limitStopPct]);
+  const chartRows = useMemo(() => chartOwnershipRows(rows, limitStopPct), [rows, limitStopPct]);
   const milestones = fixedMilestoneMonths(months);
   // 4-yr cycle only: turns inside the horizon become peak/trough rows. View-only, derived from the shifted
   // schedule — the SAME source the path note reads (unclipped), so the two can never disagree.
@@ -553,6 +559,8 @@ export default function OwnershipFace() {
             : { borderColor: verdict.color, color: verdict.color }}>
             {verdict.text}
           </div>
+          {/* Run B (B5) — policy off only: the month the month-end reading hides a seizure on the way down. */}
+          {openPastNote !== null && <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>{openPastNote}</p>}
           {capNoteShown && (
             <p className={styles.noteQuiet}
               style={capReading.state === 'defended' ? undefined
@@ -800,7 +808,7 @@ export default function OwnershipFace() {
                     <Tooltip content={<ChartTip kind="money" />} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
                     <Line type="monotone" dataKey="price" name="Bitcoin" stroke="var(--text-primary)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="liq" name="CB liquidation" stroke="var(--red)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line dataKey="liq" name="Coinbase seizes" stroke="var(--red)" strokeWidth={1.25} strokeDasharray="1 3" dot={false} isAnimationActive={false} connectNulls={false} />
                   </LineChart>
                 </ResponsiveContainer>
               )}

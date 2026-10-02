@@ -1007,6 +1007,8 @@ describe('baselineUnfundedUsd — the never-draw baseline\'s OWN unpaid bills', 
 
   it('the G1 golden is untouched — it stores pre-existing fields only — and P9-OFF\'s gap is 72 × $2,000', () => {
     for (const g of golden.runs) expect(Object.keys(g.result)).not.toContain('baselineUnfundedUsd');
+    // Policy v2, Run B (B5): the new result field is not in the golden either — G1 compares the STORED keys only.
+    for (const g of golden.runs) expect(Object.keys(g.result)).not.toContain('firstOpenPastLltvMonth');
     const p9 = golden.runs[2];
     expect(runCyclingSim({ ...SP_REPRO, ...p9.overrides, pricePath: p9.pricePath }).baselineUnfundedUsd).toBe(SP_MONTHS * 2_000);
   });

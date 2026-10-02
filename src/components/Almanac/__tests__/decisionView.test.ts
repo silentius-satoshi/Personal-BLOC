@@ -5,20 +5,29 @@ import {
   PATH_INVARIANT_LINE, BREAKER_LOADING_LINE, crashNote, consoleLinkLabel, decisionDisclaimer, pathSublabel,
   pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles, scheduleFileName, manualPriceNote,
   stressNote, BELOW_SUPPORT_NOTE, moveCardText, ON_SUPPORT_NOTE, SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY,
+  seedsFromMove,
   type ActionKind, type MoveCardContext, type BreakerReading, type PathNoteInput,
 } from '../decisionView';
 import {
   placementPlan, MOVE_THRESHOLD_BTC,
   type PlacementInput, type PlacementPlan, type PlacementState,
 } from '../../../simulation/placement';
-import { runCyclingSim, allInEquity, type CyclingInputs, type CyclingResult } from '../../../simulation/cyclingSim';
+import {
+  runCyclingSim, allInEquity, effectiveStrikeCapPct, type CyclingInputs, type CyclingResult,
+} from '../../../simulation/cyclingSim';
 import { cbMetrics } from '../../../simulation/cbMetrics';
 import { ceilingLiquidationMultiple } from '../../../simulation/cbDefense';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { deriveOwnership } from '../../../simulation/ownership';
-import { DISPLAY_DUST_BTC, shownBtc, shownUsd } from '../supportPolicyView';
 import {
-  SP_REPRO, SUPPORT, CASH_6_USD, policyFor, a5Cases, callRun, faceWorldGrid, reachGrid, syntheticGrid, pathP1,
+  DISPLAY_DUST_BTC, shownBtc, shownUsd, effectivePolicySettings, DEFAULT_SUPPORT_POLICY_SETTINGS,
+} from '../supportPolicyView';
+import { buildSupportPath, supportPolicyFor } from '../supportPolicyInputs';
+import { DEFAULT_STRIKE_CAP_PCT } from '../cyclingFaceView';
+import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
+import { STRIKE_MAX_DRAW_LTV } from '../../../simulation/strikeCredit';
+import {
+  SP_REPRO, SP_START, SUPPORT, CASH_6_USD, policyFor, a5Cases, callRun, faceWorldGrid, reachGrid, syntheticGrid, pathP1,
   stressFrom12,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 import { fmtUSD } from '../../../utils/format';
@@ -923,5 +932,98 @@ describe('⭐ chart zoom follow-up — the schedule\'s keep column (D2) and the 
 
   it('⭐ the legend note says the modeled path and the support line are drawn as one', () => {
     expect(ON_SUPPORT_NOTE).toBe('After today the modeled path runs on the support line, so the two are drawn as one.');
+  });
+});
+
+// ── Policy v2, Run B — THE MOVE's cliff (B3) and the seeding gate (B4) ────────────────────────────────────────────
+
+describe('⭐ Run B — THE MOVE\'s cliff: F11, the dust floor, and the price alert (B3)', () => {
+  /** The trigger price THE MOVE reads — `cbMetrics` at the owner's trigger, on the opening. */
+  const trigger = (p: PlacementPlan, debt: number): number => cbMetrics(debt, p.opening.cbCollateralBtc, 100_000, 75).triggerPrice;
+  const TAIL = ' On the day, work from the Emergency Console.';
+  const TAIL_MONTHLY = ' On the day, work from the Emergency Console (it runs when your Coinbase strategy is LTV-triggered).';
+
+  it('⭐ the alert — the trigger price between the cliff and today, right after the cliff line; none without a cliff or a valid trigger', () => {
+    const p = place();
+    const t = trigger(p, CTX.cbDebt);
+    const m = cbMetrics(CTX.cbDebt, p.opening.cbCollateralBtc, CTX.price, CTX.cbLtvTriggerPct);
+    expect(m.liqPrice < t && t < CTX.price).toBe(true);                                       // premise
+    const c = card({ plan: p });
+    const i = c.lines.findIndex((l) => l.key === 'cliff');
+    expect(i).toBeGreaterThan(0);
+    expect(c.lines[i + 1]).toEqual({
+      key: 'alert', tone: 'plain',
+      text: `Set a price alert at ${fmtUSD(t)} in your exchange app — Coinbase reaches your 75% trigger there.${TAIL}`,
+    });
+    expect(keyed({ plan: p, ltvTriggered: false }, 'alert')!.text)
+      .toBe(`Set a price alert at ${fmtUSD(t)} in your exchange app — Coinbase reaches your 75% trigger there.${TAIL_MONTHLY}`);
+    // No cliff, no alert: no loan, the policy off, past liquidation.
+    expect(keyed({ hasCbLoan: false, cbDebt: 0, plan: place({ cbDebt: 0, cbCollateralBtc: 0 }) }, 'alert')).toBeUndefined();
+    expect(keyed({ policyApplied: false, policyEnabled: false }, 'alert')).toBeUndefined();
+    expect(keyed({ plan: place({ cbDebt: CB_LLTV * 2 * 100_000 }), cbDebt: CB_LLTV * 2 * 100_000 }, 'alert')).toBeUndefined();
+    // A junk trigger names nothing — never "your 0% trigger" (a 0% trigger puts its price at ∞).
+    for (const trig of [0, Number.NaN, 86, 90]) expect(keyed({ plan: p, cbLtvTriggerPct: trig }, 'alert'), String(trig)).toBeUndefined();
+  });
+
+  it('⭐ at or past the trigger — a warn line that names the console, never a price alert above today', () => {
+    const p = place({ strikeCollateralBtc: 0.01, cbDebt: 160_000, cbCollateralBtc: 2 });
+    expect([p.seeded, p.opening.cbCollateralBtc]).toEqual([false, 2]);                       // premise: nothing moves
+    expect(trigger(p, 160_000)).toBeGreaterThan(100_000);                                     // premise: above today
+    expect(keyed({ plan: p, cbDebt: 160_000 }, 'alert')).toEqual({
+      key: 'alert', tone: 'warn', text: "Coinbase is at or past your 75% trigger at today's price — work from the Emergency Console.",
+    });
+    expect(keyed({ plan: p, cbDebt: 160_000, ltvTriggered: false }, 'alert')!.text).toBe(
+      "Coinbase is at or past your 75% trigger at today's price — work from the Emergency Console "
+      + '(it runs when your Coinbase strategy is LTV-triggered).',
+    );
+    const at = place({ strikeCollateralBtc: 0.01, cbDebt: 150_000, cbCollateralBtc: 2 });
+    expect(trigger(at, 150_000)).toBe(100_000);                                               // premise: exactly at it
+    expect(keyed({ plan: at, cbDebt: 150_000 }, 'alert')!.text).toContain('at or past your 75% trigger');
+  });
+
+  it('⭐ F11 and the dust floor — "less than 1%", "more than 99%" (no alert on a sliver), and no cliff under 50¢', () => {
+    const near = place({ strikeCollateralBtc: 0.01, cbDebt: 171_400, cbCollateralBtc: 2 });
+    expect([near.seeded, near.opening.cbCollateralBtc]).toEqual([false, 2]);                 // premise
+    expect(keyed({ plan: near, cbDebt: 171_400 }, 'cliff')!.text)
+      .toBe('Coinbase seizes this loan at $99,651 — less than 1% below today.');
+    const sliver = place({ cbDebt: 200 });
+    const ms = cbMetrics(200, sliver.opening.cbCollateralBtc, 100_000, 75);
+    expect(Math.abs(ms.pctToLiq)).toBeGreaterThanOrEqual(0.995);                              // premise
+    expect(keyed({ plan: sliver, cbDebt: 200 }, 'cliff')!.text)
+      .toBe(`Coinbase seizes this loan at ${fmtUSD(ms.liqPrice)} — more than 99% below today.`);
+    expect(keyed({ plan: sliver, cbDebt: 200 }, 'alert')).toBeUndefined();                   // R11
+    const dust = place({ strikeCollateralBtc: 0.01, cbDebt: 0.6, cbCollateralBtc: 2, bufferUsd: 150_000 });
+    expect([dust.seeded, dust.opening.cbCollateralBtc]).toEqual([false, 2]);                 // premise
+    expect(cbMetrics(0.6, 2, 100_000, 75).liqPrice).toBeLessThan(0.5);                        // premise: a 35¢ cliff …
+    expect(shownUsd(0.6)).toBe(true);                                                         // … on a loan, not dust
+    const c = card({ plan: dust, cbDebt: 0.6 });
+    expect(c.lines.find((l) => l.key === 'cliff')).toBeUndefined();
+    expect(c.lines.find((l) => l.key === 'alert')).toBeUndefined();
+    expect(c.lines.map((l) => l.text).join(' ')).not.toMatch(NO_ZERO);
+  });
+});
+
+describe('⭐ Run B — the Decision face seeds its run only when the engine applies the policy (B4)', () => {
+  it('⭐ seedsFromMove is the run\'s own answer — no seed at a Strike liquidation LTV of 1 / 50 / 70%, a seed at 0 (→ 85%), 71 and 85%', () => {
+    const months = 60;
+    const supportPath = buildSupportPath(SP_START, months);
+    const settings = effectivePolicySettings(DEFAULT_SUPPORT_POLICY_SETTINGS, {
+      cbLtvCapPct: 70, strikeCapEffPct: effectiveStrikeCapPct(DEFAULT_STRIKE_CAP_PCT, STRIKE_MARGIN_CALL_LTV),
+    });
+    // The Decision face's five engine constants (DecisionFace's ENGINE_CONTEXT — decisionWiring pins the literal).
+    const FACE = {
+      mode: 'cycle' as const, cbLtvCapPct: 70, strikeLtvCapPct: DEFAULT_STRIKE_CAP_PCT,
+      strikeMarginLtv: STRIKE_MARGIN_CALL_LTV, strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,
+    };
+    const ctx = (pct: number) => ({
+      ...FACE, supportPolicy: supportPolicyFor(settings, supportPath, SP_REPRO.expenses, pct, 'cycle'),
+      pricePath: supportPath, expenses: SP_REPRO.expenses,
+    });
+    for (const [pct, applies] of [[1, false], [50, false], [70, false], [0, true], [71, true], [85, true]] as const) {
+      expect(seedsFromMove(true, ctx(pct)), `${pct}%`).toBe(applies);
+      expect(runCyclingSim({ ...SP_REPRO, ...ctx(pct) }).policyApplied, `${pct}%: the run`).toBe(applies);
+    }
+    expect(seedsFromMove(false, ctx(85))).toBe(false);                                        // no move worth making
+    expect(seedsFromMove(true, { ...ctx(85), supportPolicy: undefined })).toBe(false);        // the policy off
   });
 });

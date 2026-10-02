@@ -11,6 +11,8 @@ import {
 import { deriveOwnership } from '../ownership';
 import { ceilingLiquidationMultiple } from '../cbDefense';
 import { CB_LLTV } from '../runCoinbaseLoan';
+import { cbSeizurePrice } from '../cbMetrics';
+import { ltvOf } from '../ltv';
 
 /**
  * A5 MEASUREMENT REPORT GENERATOR (spec v1.2 — committed so the numbers the owner approves are re-runnable in
@@ -1000,7 +1002,18 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     out('|---|---|---|---|---|---|---|---|---|---|');
     let violations = 0;
     const violated: string[] = [];
+    // Run B — PV2-4 (B1, the card's and the charts' cliff) and PV2-3's policy-on fidelity (B5), gathered in THIS pass so
+    // they cost no extra runs. `rowsV10` is v1.0's population (no a5 cash-6 copies, no synthetic cap-off arm).
+    interface CliffTally {
+      rows: number; rowsV10: number; atOrAbove: number; under1: number; over995: number;
+      minGap: number; minAt: string; fieldMismatch: number;
+    }
+    const cliffBy = new Map<string, CliffTally>();
     for (const [sName, o] of SETTINGS) {
+      const c: CliffTally = {
+        rows: 0, rowsV10: 0, atOrAbove: 0, under1: 0, over995: 0, minGap: Number.POSITIVE_INFINITY, minAt: '—', fieldMismatch: 0,
+      };
+      cliffBy.set(sName, c);
       for (const [gName, runs] of grids(o, true)) {
         let liqMe = 0; let liqOn = 0; let fired = 0; let same = 0; let later = 0; let hidden = 0; let month0 = 0;
         let dSum = 0; let dMin = Number.POSITIVE_INFINITY; let dMax = Number.NEGATIVE_INFINITY;
@@ -1031,6 +1044,22 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
             violations += 1;
             if (violated.length < 10) violated.push(`${sName} · ${gName} #${i} (did not fire)`);
           }
+          // PV2-4 · B1 — every seizure price the card and the charts draw, against its month's price.
+          const inV10 = !(gName === 'a5' && i % 2 === 1) && gName !== 'synthetic (cap off)';
+          for (const row of on.rows) {
+            const p = cbSeizurePrice(row);
+            if (p === null) continue;
+            c.rows += 1;
+            if (inV10) c.rowsV10 += 1;
+            if (!(p < row.price)) { c.atOrAbove += 1; continue; }
+            const gap = 1 - p / row.price;
+            if (gap < c.minGap) { c.minGap = gap; c.minAt = `${gName} #${i} m${row.m}`; }
+            if (gap < 0.01) c.under1 += 1;
+            if (gap >= 0.995) c.over995 += 1;
+          }
+          // PV2-3's fidelity · B5 — under the applied policy the field IS the rule's month (or null), in both readings.
+          const want = on.seizedOnTheWayDown ? on.liqMonth : null;
+          if (on.policyApplied && (on.firstOpenPastLltvMonth !== want || me.firstOpenPastLltvMonth !== want)) c.fieldMismatch += 1;
         });
         const dCol = fired > 0 ? `${btc(dSum, 3)} · ${btc(dMin, 3)} · ${btc(dMax, 3)}` : '—';
         out(`| ${gName} | ${sName} | ${runs.length} | ${liqMe} → ${liqOn} | ${fired} | ${same} / ${later} / ${hidden} | ${month0} | ${dCol} | ${breachesM1} | ${deficienciesM1} |`);
@@ -1087,10 +1116,94 @@ describe.runIf(!!process.env.SP_REPORT)('A5 — support-anchored policy measurem
     for (const [n] of SWITCHES) out(`| ${n} | ${cells.get(n)!.join(' | ')} |`);
     out();
     out(`(${m2Runs} runs per setting.)`);
+    out();
+
+    // ── PV2-3 — Run B (B5): the policy-off flag ──
+    /** Every month a run carries its Coinbase loan into at or past 86% at that month's price, before any liquidation —
+     *  rebuilt from the rows with the engine's own operations (the carried debt plus the month's interest). */
+    const openPastMonths = (r: CyclingResult, i: CyclingInputs): number[] => {
+      const cmr = i.cbAprPct / 100 / 12;
+      const ms: number[] = [];
+      for (let m = 1; m < r.rows.length; m++) {
+        if (r.liqMonth !== null && m > r.liqMonth) break;
+        const prev = r.rows[m - 1];
+        const debt = prev.cbDebt + prev.cbDebt * cmr;
+        const price = r.rows[m].price;
+        if (debt > 0 && prev.cbCollateralBtc > 0 && price > 0 && ltvOf(debt, prev.cbCollateralBtc, price) >= CB_LLTV) ms.push(m);
+      }
+      return ms;
+    };
+    out('## PV2-3 — Run B (B5): the policy-off note (the M2 sets with the policy removed: one arm, the same at both settings)');
+    out();
+    out('Flagged = `firstOpenPastLltvMonth` is set: in month N the loan opened past 86% at that month\'s price. The month-end');
+    out('reading then: never liquidated it, liquidated it that month, or liquidated it later. The faces\' note shows on');
+    out('"never" and "later" (never "that month" — no rescue happened). Rescued by = what that month did.');
+    out();
+    out('| Grid | runs | flagged | never / that month / later | the note shows | rescued by: debt shift · top-up only · buys only · other |');
+    out('|---|---|---|---|---|---|');
+    let offRuns = 0; let offFlagged = 0; let offNever = 0; let offSame = 0; let offLater = 0;
+    let offMismatch = 0; let offMulti = 0;
+    const rescuedAll = { shift: 0, topUp: 0, buys: 0, other: 0 };
+    for (const [gName, runs] of grids({}, false)) {
+      let flagged = 0; let never = 0; let same = 0; let later = 0;
+      const rescued = { shift: 0, topUp: 0, buys: 0, other: 0 };
+      for (const inputs of runs) {
+        const off: CyclingInputs = { ...inputs, supportPolicy: undefined };
+        const r = runCyclingSim(off);
+        const months = openPastMonths(r, off);
+        const N = months[0] ?? null;
+        if (r.firstOpenPastLltvMonth !== N) offMismatch += 1;
+        if (months.length >= 2) offMulti += 1;
+        if (N === null) continue;
+        flagged += 1;
+        const L = r.liqMonth;
+        if (L === N) { same += 1; continue; }
+        if (L === null) never += 1; else later += 1;
+        const row = r.rows[N];
+        if (row.defenseDrawnUsd > 0) rescued.shift += 1;
+        else if (row.topUpBtc > 0) rescued.topUp += 1;
+        else if (row.btcBoughtUsd > 0) rescued.buys += 1;
+        else rescued.other += 1;
+      }
+      offRuns += runs.length; offFlagged += flagged; offNever += never; offSame += same; offLater += later;
+      for (const k of ['shift', 'topUp', 'buys', 'other'] as const) rescuedAll[k] += rescued[k];
+      out(`| ${gName} | ${runs.length} | ${flagged} | ${never} / ${same} / ${later} | ${never + later} | `
+        + `${rescued.shift} · ${rescued.topUp} · ${rescued.buys} · ${rescued.other} |`);
+    }
+    out(`| **all** | ${offRuns} | ${offFlagged} | ${offNever} / ${offSame} / ${offLater} | ${offNever + offLater} | `
+      + `${rescuedAll.shift} · ${rescuedAll.topUp} · ${rescuedAll.buys} · ${rescuedAll.other} |`);
+    out();
+    out(`- ${offMulti} runs open past 86% in two months or more — the field keeps the first.`);
+    const onMismatch = [...cliffBy.values()].reduce((a, c) => a + c.fieldMismatch, 0);
+    out(offMismatch === 0 && onMismatch === 0
+      ? '- **Fidelity holds:** with the policy off the field is the first such month rebuilt from the rows, on every run; under the applied policy it is the month the rule seized (or null), in both readings, on every PV2-1 run.'
+      : `- **STOP — the field disagrees:** ${offMismatch} policy-off runs against the rows, ${onMismatch} policy-on runs against the rule.`);
+    out();
+
+    // ── PV2-4 — Run B (B1): the cliff under the price ──
+    out('## PV2-4 — Run B (B1): every seizure price the card and the charts draw (the kill sweep\'s runs, rule on)');
+    out();
+    out('Rows with a cliff = `cbSeizurePrice(row)` is a price (a loan above the dust floor, before any liquidation, the price');
+    out('itself above it). F11: under 1% below the price reads "less than 1%", 99.5% or more "more than 99%".');
+    out();
+    out('| Settings | rows with a cliff | v1.0\'s population | at or above the price | closest under it | under 1% | 99.5% or more |');
+    out('|---|---|---|---|---|---|---|');
+    for (const [sName, c] of cliffBy) {
+      const closest = Number.isFinite(c.minGap) ? `${(c.minGap * 100).toFixed(4)}% (${c.minAt})` : '—';
+      out(`| ${sName} | ${c.rows} | ${c.rowsV10} | ${c.atOrAbove} | ${closest} | ${c.under1} | ${c.over995} |`);
+    }
+    const cliffAbove = [...cliffBy.values()].reduce((a, c) => a + c.atOrAbove, 0);
+    out();
+    out(cliffAbove === 0
+      ? '- **The cliff sits under the price on every row** — so the card\'s line is never false, and nothing it would draw is.'
+      : `- **STOP — ${cliffAbove} rows have a cliff at or above the price.**`);
     out('<!-- SP_REPORT POLICY V2 END -->');
 
     console.log(lines.join('\n'));
-    // FIDELITY — the kill criterion, as the sweep test pins it.
+    // FIDELITY — the kill criterion, as the sweep test pins it; and Run B's two measures, as seizeOnTheWayDown.test pins them.
     expect(violations).toBe(0);
+    expect(offMismatch).toBe(0);
+    expect(onMismatch).toBe(0);
+    expect(cliffAbove).toBe(0);
   }, 1_800_000);
 });

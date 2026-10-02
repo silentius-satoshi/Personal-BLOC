@@ -1,6 +1,6 @@
 import { CB_LIQUIDATION_PENALTY, type CyclingResult, type CyclingRow, type CyclingMode } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
-import { btcGained, strikeCapNote, strikeYieldSentence, type StrikeCapReading } from './cyclingFaceView';
+import { btcGained, strikeCapNote, strikeYieldSentence, chartCliffUsd, type StrikeCapReading } from './cyclingFaceView';
 import { policyLimitPct, shownUsd } from './supportPolicyView';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
 
@@ -30,8 +30,9 @@ export interface OwnershipChartRow {
   cbLtv: number | null;
   strikeLtv: number | null;
   price: number;
-  /** null when no finite liquidation price exists (debt-free leg, or debt with no collateral). Plotting a
-   *  $0 line would read as "never liquidates", which is the inverse of an unbacked position's truth. */
+  /** Where Coinbase seizes — `chartCliffUsd`, i.e. `cbSeizurePrice` rounded (Run B, B2): null with no loan, with no
+   *  collateral, on and after a liquidation, and under the dust floor. A null is a chart GAP: plotting $0 would read as
+   *  "never liquidates", the inverse of an unbacked position's truth. */
   liq: number | null;
   /** The support policy's Coinbase limit at TODAY'S price, % (`policyLimitPct`, rounded to 1 dp like the other LTV
    *  series) — the LTV chart's dashed series. null without a stop (policy off) or without a multiple. */
@@ -41,7 +42,7 @@ export interface OwnershipChartRow {
 /** Chart series for the three ownership views (held/owed/yours · LTV · price & liq). `yours`/`owed` read
  *  deriveOwnership — the definition, never an open-coded subtraction. Pass `cbStopEffPct` (the effective Coinbase
  *  stop at support) only while the policy applies; without it `cbLimit` is null on every row. */
-export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number, cbStopEffPct?: number): OwnershipChartRow[] {
+export function chartOwnershipRows(rows: CyclingRow[], cbStopEffPct?: number): OwnershipChartRow[] {
   return rows.map((r) => {
     const o = deriveOwnership(r.btcHeld, r.debt, r.price);
     const ltvPct = (fraction: number): number | null =>
@@ -58,9 +59,7 @@ export function chartOwnershipRows(rows: CyclingRow[], cbLiqLtv: number, cbStopE
       cbLtv: ltvPct(r.cbLtv),
       strikeLtv: ltvPct(r.strikeLtv),
       price: Math.round(r.price),
-      liq: cbLiqLtv > 0 && r.cbCollateralBtc > 0 && r.cbDebt > 0
-        ? Math.round(r.cbDebt / (cbLiqLtv * r.cbCollateralBtc))
-        : null,
+      liq: chartCliffUsd(r),
       cbLimit: limit === null ? null : +limit.toFixed(1),
     };
   });
@@ -162,7 +161,8 @@ export interface VerdictLine {
  * The verdict when Coinbase was liquidated (it outranks every other verdict); null without a liquidation.
  * At a month-end seizure it names the LTV of the row that breached (pushed pre-seizure). On the way down (Policy v2)
  * that row is the SURVIVOR — it owes nothing, so its LTV reads "0.0%" — and the verdict names the price Morpho seized
- * at instead, only above the dust floor (R1, the schedule's rule).
+ * at instead, only above the dust floor (R1, the schedule's rule). A leftover debt is named only above the dust floor
+ * too (Run B, B6) — a 30¢ residue is never printed as a surviving "$0".
  */
 export function liquidationVerdict(
   sim: Pick<CyclingResult, 'liqMonth' | 'rows' | 'seizedOnTheWayDown' | 'seizurePriceUsd' | 'seizedBtc' | 'survivorBtc'
@@ -179,7 +179,7 @@ export function liquidationVerdict(
     color: 'var(--red)',
     text: `${head} Morpho seizes ${b4(sim.seizedBtc ?? 0)} at a ${(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty, `
       + `leaving ${b4(sim.survivorBtc ?? 0)}.`
-      + (sim.deficiencyUsd !== null ? ` ${fmtUSD(sim.deficiencyUsd)} of debt survives — both facilities are full recourse.` : ''),
+      + (sim.deficiencyUsd !== null && shownUsd(sim.deficiencyUsd) ? ` ${fmtUSD(sim.deficiencyUsd)} of debt survives — both facilities are full recourse.` : ''),
   };
 }
 

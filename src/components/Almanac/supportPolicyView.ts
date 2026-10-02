@@ -5,6 +5,7 @@ import { HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS, type PolicyState } from '../..
 import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
+import { cbSeizurePrice } from '../../simulation/cbMetrics';
 import { fmtUSD, DUST_USD, shownUsd } from '../../utils/format';
 
 /**
@@ -14,8 +15,9 @@ import { fmtUSD, DUST_USD, shownUsd } from '../../utils/format';
  *
  * Imports: the engine's types and `effectivePolicyStops` (the ONE stop clamp), the policy leaf's `PolicyState` and
  * breaker constants (so the broken sentence cannot drift from the rule), the lender FACTS the readouts quote
- * (`STRIKE_CURE_LTV` — the 65% a sale restores; `STRIKE_MARGIN_CALL_LTV`, `STRIKE_MAX_DRAW_LTV`, `CB_LLTV`) and, from
- * utils/format, `fmtUSD` and the dust floor (`DUST_USD` / `shownUsd`, re-exported for the faces). ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
+ * (`STRIKE_CURE_LTV` — the 65% a sale restores; `STRIKE_MARGIN_CALL_LTV`, `STRIKE_MAX_DRAW_LTV`, `CB_LLTV`), Coinbase's
+ * per-row seizure price (`cbSeizurePrice`, cbMetrics — the card's cliff line, Run B) and, from utils/format, `fmtUSD`
+ * and the dust floor (`DUST_USD` / `shownUsd`, re-exported for the faces). ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
  * 🔴 Must never be imported by anything in the risk core (the cyclingFaceView discipline).
  *
  * Every sentence must be TRUE of the run it describes. Where the spec's wording would be false for a case it did not
@@ -271,6 +273,10 @@ export interface PolicyReading {
   /** Strike still owes at the inspected month (above the dust floor) — after a liquidation, spare income repays
    *  Coinbase's leftover only after Strike while this holds; once Strike is repaid it goes straight to Coinbase. */
   strikeOwes: boolean;
+  /** Policy v2, Run B (B1) — where Coinbase seizes at the inspected month: `cbSeizurePrice` of its row (null with no
+   *  loan, on and after a liquidation, and under the dust floor), only while it sits UNDER the month's price. Measured
+   *  on the grids, it always does; at or above the price a seizure is the verdict's to report, never a detail line. */
+  cliff: { seizeUsd: number; priceUsd: number; month: number } | null;
 }
 
 const zeroZones = (): Record<PolicyState, number> => ({ paused: 0, accumulate: 0, hold: 0, payDown: 0, broken: 0 });
@@ -305,7 +311,7 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
       brokenAtEnd: false, openingBroken: false, call: null,
       cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
       firstThrottleMonth: null, monthsInZone: zeroZones(), liqMonth: null, neverDraws: null,
-      afterLiquidation: false, strikeOwes: false,
+      afterLiquidation: false, strikeOwes: false, cliff: null,
     };
   }
   const row: CyclingRow | undefined = sim.rows[monthIdx];
@@ -337,7 +343,26 @@ export function policyReading(sim: CyclingResult, monthIdx: number, expenses: nu
     afterLiquidation: sim.liqMonth !== null
       && (monthIdx > sim.liqMonth || (monthIdx === sim.liqMonth && sim.seizedOnTheWayDown)),
     strikeOwes: row !== undefined && shownUsd(row.strikeBalance),
+    cliff: cliffOf(row),
   };
+}
+
+function cliffOf(row: CyclingRow | undefined): PolicyReading['cliff'] {
+  if (row === undefined) return null;
+  const p = cbSeizurePrice(row);
+  return p !== null && p < row.price ? { seizeUsd: p, priceUsd: row.price, month: row.m } : null;
+}
+
+/**
+ * How far below a price a seizure price sits — F11's way. Under 1% reads "less than 1%", never "0% below" (a cliff a
+ * third of a percent under the price is the most urgent one there is); from 99.5% "more than 99%", never "100% below"
+ * (a broken-zone sliver of a loan — on the grids 1,163 rows, P6 at C1 among them). ONE definition: the card's cliff
+ * line and THE MOVE's (decisionView) both read it.
+ */
+export function fmtBelowPct(fraction: number): string {
+  if (fraction < 0.01) return 'less than 1%';
+  const pct = Math.round(fraction * 100);
+  return pct >= 100 ? 'more than 99%' : `${pct}%`;
 }
 
 export type PolicyTone = 'good' | 'quiet' | 'warn' | 'bad';
@@ -425,6 +450,11 @@ const cbLine = (r: PolicyReading): string | null =>
   r.cb === null ? null
     : r.afterLiquidation ? liquidatedCbSentence(r, r.cb)
     : r.cb.over ? overSentence('Coinbase', r.cb.roomUsd, 'first') : roomSentence('Coinbase', r.cb, true);
+/** B1 — where Coinbase seizes at the inspected month. Month 0 is today. */
+const cliffLine = (r: PolicyReading): string | null =>
+  r.cliff === null ? null
+    : `Coinbase seizes at ${fmtUSD(r.cliff.seizeUsd)} — ${fmtBelowPct(1 - r.cliff.seizeUsd / r.cliff.priceUsd)} below `
+      + (r.cliff.month === 0 ? "today's price" : `the price at month ${r.cliff.month}`);
 /** After a liquidation Strike is repaid FIRST whenever it is over its limit, and a Strike that is inside its limit gets no
  *  line at all: the policy borrows nothing more, so "room at support" would read as borrowing runway. */
 const skLine = (r: PolicyReading): string | null =>
@@ -493,11 +523,13 @@ export function policyHeadline(r: PolicyReading, _s: EffectivePolicySettings): {
   return { tone: ZONE_TONE[r.zone], text: zoneLine(r) };
 }
 
-/** The card's detail lines, in a fixed order: room (CB, Strike), breaker, call, cash, unpaid, cold promise or alarm. */
+/** The card's detail lines, in a fixed order: room (CB), where Coinbase seizes (Run B), room (Strike), breaker, call,
+ *  cash, unpaid, cold promise or alarm. */
 export function policyDetails(r: PolicyReading, _s: EffectivePolicySettings): string[] {
   if (!r.applied) return [];
   const lines = [
     cbLine(r),
+    cliffLine(r),
     skLine(r),
     hadBreak(r) ? brokenSentence(r) : null,
     r.call !== null ? strikeCallSentence(r.call) : null,

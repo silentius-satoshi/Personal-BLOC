@@ -497,6 +497,13 @@ export interface CyclingResult {
   /** The price Morpho seized at: the liquidation price on the way down; the month's own price at month-end (null at a
    *  price ≤ 0); null with no liquidation. */
   seizurePriceUsd: number | null;
+  /** Policy v2, Run B (B5) — the FIRST month (m ≥ 1) whose Coinbase loan, carried from last month-end, is at or past 86%
+   *  at THAT month's price after its interest — before any liquidation, while Coinbase holds collateral (so a month-0
+   *  seizure's leftover debt never counts); null if none. It is the rule's own test, computed in every mode with the
+   *  policy on or off: under the applied policy it IS the month the rule seized (or null); with the policy off it is the
+   *  month Morpho would have seized a real loan on the way down, which the month-end reading reads only after that
+   *  month's rescue (the faces' policy-off note, `openPastLltvNote`). */
+  firstOpenPastLltvMonth: number | null;
   totalStrikeInterest: number;
   totalCbInterest: number;
   /** Coinbase origination fees paid across the horizon, and how many borrows paid them. */
@@ -814,6 +821,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let deficiencyUsd: number | null = null;
   let seizedOnTheWayDown = false;
   let seizurePriceUsd: number | null = null;
+  let firstOpenPastLltvMonth: number | null = null;
   let totalStrikeInterest = 0;
   let totalCbInterest = 0;
   let totalCbFees = 0;
@@ -997,8 +1005,12 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       // the month, and Morpho seized it there — at the liquidation price, which the test guarantees is ≥ the price. Every
       // later gate reads `liqMonth`, so the month then runs on the survivor: bills, Strike first, buys — no draw,
       // refinance, migration, defense, top-up or sweep — and the month-end breach can't fire again.
-      if (seizeOnWay && liqMonth === null && cbDebt > 0 && cbColl > 0 && price > 0
-        && ltvOf(cbDebt, cbColl, price) >= CB_LLTV) {
+      // Run B (B5): ONE condition serves the rule and `firstOpenPastLltvMonth`, which is computed in every mode with the
+      // policy on or off — so the field can never drift from the rule it reports.
+      const opensPastLltv = liqMonth === null && cbDebt > 0 && cbColl > 0 && price > 0
+        && ltvOf(cbDebt, cbColl, price) >= CB_LLTV;
+      if (opensPastLltv && firstOpenPastLltvMonth === null) firstOpenPastLltvMonth = m;
+      if (seizeOnWay && opensPastLltv) {
         const px = cbLiquidationPrice(cbDebt, cbColl);   // ≥ price: that is the test above
         liqMonth = m;
         seizedOnTheWayDown = true;
@@ -1623,7 +1635,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   return {
     rows, last,
     stopMonth, firstDrawMonth, drawingResumedMonth, liqMonth, strikeMarginMonth, creditExhaustedMonth,
-    seizedBtc, survivorBtc, deficiencyUsd, seizedOnTheWayDown, seizurePriceUsd,
+    seizedBtc, survivorBtc, deficiencyUsd, seizedOnTheWayDown, seizurePriceUsd, firstOpenPastLltvMonth,
     totalStrikeInterest, totalCbInterest, totalCbFees, cbFeeCount, totalRefinancedUsd,
     totalUnfundedUsd, firstUnfundedMonth,
     firstDefenseMonth, defenseExhaustedMonth, totalDefenseDrawnUsd, defenseCount,

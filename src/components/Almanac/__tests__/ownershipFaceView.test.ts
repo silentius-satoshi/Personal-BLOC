@@ -2,15 +2,15 @@ import { describe, it, expect } from 'vitest';
 import {
   chartOwnershipRows, ownershipHero, modeConstraints, MODE_NOTE, unfundedNote, strikeCallVerdict, liquidationVerdict,
 } from '../ownershipFaceView';
-import { strikeCapReading, strikeCapNote } from '../cyclingFaceView';
+import { strikeCapReading, strikeCapNote, chartCliffUsd } from '../cyclingFaceView';
 import { deriveOwnership } from '../../../simulation/ownership';
-import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
+import { CB_LLTV, CB_LIF } from '../../../simulation/runCoinbaseLoan';
 import {
   effectiveStrikeCapPct, runCyclingSim, CB_LIQUIDATION_PENALTY, type CyclingRow,
 } from '../../../simulation/cyclingSim';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
 import {
-  runPolicy, pathP1, callRun, CASH_6_USD, stressFrom12, reachGrid, policyFor,
+  runPolicy, pathP1, callRun, CASH_6_USD, stressFrom12, reachGrid, policyFor, faceWorldGrid, SP_REPRO,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 import { fmtUSD, fmtLtvPct } from '../../../utils/format';
 
@@ -76,15 +76,15 @@ describe('chartOwnershipRows — the cold series', () => {
   it('⭐ cold is a SUBSET of held, never an addition to it', () => {
     // btcHeld is all three pools, so the Held line ALREADY contains the cold coins. Plotting cold makes
     // visible a share Held was otherwise hiding; adding them would double-count the same bitcoin.
-    const [r] = chartOwnershipRows([mkRow({ strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 1, btcHeld: 3 })], CB_LLTV);
+    const [r] = chartOwnershipRows([mkRow({ strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 1, btcHeld: 3 })]);
     expect(r.cold).toBe(1);
     expect(r.held).toBe(3);
     expect(r.cold).toBeLessThanOrEqual(r.held);
   });
 
   it('cold is 0 when the sweep is off, and the other series are untouched', () => {
-    const off = chartOwnershipRows([mkRow({ coldBtc: 0 })], CB_LLTV)[0];
-    const on  = chartOwnershipRows([mkRow({ coldBtc: 0.5 })], CB_LLTV)[0];
+    const off = chartOwnershipRows([mkRow({ coldBtc: 0 })])[0];
+    const on  = chartOwnershipRows([mkRow({ coldBtc: 0.5 })])[0];
     expect(off.cold).toBe(0);
     // held/yours/owed read btcHeld and debt, which the fixture holds constant — only `cold` moves.
     expect(on.held).toBe(off.held);
@@ -99,12 +99,12 @@ describe('chartOwnershipRows — the cold series', () => {
     const r = chartOwnershipRows([mkRow({
       strikeCollateralBtc: 1, cbCollateralBtc: 1, coldBtc: 1, btcHeld: 3,
       debt: 80_000, price: 80_000,   // 1 ₿ of debt against 2 ₿ pledged
-    })], CB_LLTV)[0];
+    })])[0];
     expect(r.yours).toBeGreaterThanOrEqual(r.cold);
   });
 
   it('rounds to 4dp like every other series, so the tooltip never shows float noise', () => {
-    const r = chartOwnershipRows([mkRow({ coldBtc: 1 / 3 })], CB_LLTV)[0];
+    const r = chartOwnershipRows([mkRow({ coldBtc: 1 / 3 })])[0];
     expect(r.cold).toBe(0.3333);
   });
 });
@@ -112,13 +112,13 @@ describe('chartOwnershipRows — the cold series', () => {
 describe('chartOwnershipRows — no fake liquidation line', () => {
   it('⭐ a debt-free leg or a zero-collateral leg produces a null liq, never a $0 line', () => {
     // $0 would read as "never liquidates". Debt-free, the price is undefined; unbacked, it is unbounded.
-    expect(chartOwnershipRows([mkRow({ cbDebt: 0, debt: 20_000 })], CB_LLTV)[0].liq).toBeNull();
-    expect(chartOwnershipRows([mkRow({ cbCollateralBtc: 0 })], CB_LLTV)[0].liq).toBeNull();
-    expect(chartOwnershipRows([mkRow()], CB_LLTV)[0].liq).toBe(Math.round(80_000 / (CB_LLTV * 2)));
+    expect(chartOwnershipRows([mkRow({ cbDebt: 0, debt: 20_000 })])[0].liq).toBeNull();
+    expect(chartOwnershipRows([mkRow({ cbCollateralBtc: 0 })])[0].liq).toBeNull();
+    expect(chartOwnershipRows([mkRow()])[0].liq).toBe(Math.round(80_000 / (CB_LLTV * 2)));
   });
 
   it('non-finite LTVs become null chart gaps, not NaN', () => {
-    const r = chartOwnershipRows([mkRow({ cbLtv: Infinity, strikeLtv: Infinity })], CB_LLTV)[0];
+    const r = chartOwnershipRows([mkRow({ cbLtv: Infinity, strikeLtv: Infinity })])[0];
     expect(r.cbLtv).toBeNull();
     expect(r.strikeLtv).toBeNull();
   });
@@ -188,14 +188,14 @@ describe('shared ownership rules — extracted from OwnershipFace (one definitio
 describe('chartOwnershipRows — the policy limit series (cbLimit)', () => {
   it('is policyLimitPct, rounded to 1 dp like the other LTV series, when the stop is given; null without it', () => {
     const r = mkRow({ multiple: 1.35 });
-    expect(chartOwnershipRows([r], CB_LLTV)[0].cbLimit).toBeNull();                 // policy off: no series
-    expect(chartOwnershipRows([r], CB_LLTV, 60)[0].cbLimit).toBe(+(60 / 1.35).toFixed(1));
-    expect(chartOwnershipRows([mkRow({ multiple: 2 })], CB_LLTV, 60)[0].cbLimit).toBe(30);   // half at 2× support
-    expect(chartOwnershipRows([mkRow({ multiple: null })], CB_LLTV, 60)[0].cbLimit).toBeNull();
+    expect(chartOwnershipRows([r])[0].cbLimit).toBeNull();                 // policy off: no series
+    expect(chartOwnershipRows([r], 60)[0].cbLimit).toBe(+(60 / 1.35).toFixed(1));
+    expect(chartOwnershipRows([mkRow({ multiple: 2 })], 60)[0].cbLimit).toBe(30);   // half at 2× support
+    expect(chartOwnershipRows([mkRow({ multiple: null })], 60)[0].cbLimit).toBeNull();
   });
 
   it('on the support line it is a flat line at the stop — the whole idea of the policy in one series', () => {
-    const rows = chartOwnershipRows(runPolicy(pathP1()).rows, CB_LLTV, 60);
+    const rows = chartOwnershipRows(runPolicy(pathP1()).rows, 60);
     expect(rows.slice(1).every((x) => x.cbLimit === 60)).toBe(true);
   });
 });
@@ -273,5 +273,39 @@ describe('⭐ liquidationVerdict — where the loan was seized (Policy v2, F5c)'
         + 'facilities are full recourse.',
     });
     expect(liquidationVerdict(runPolicy(pathP1()))).toBeNull();
+  });
+});
+
+// ── Policy v2, Run B ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('⭐ chartOwnershipRows — the cliff is cbSeizurePrice, the one per-row formula (Run B, B2)', () => {
+  it('⭐ liq is chartCliffUsd on every row — and null from the liquidation month on, where the old formula still drew', () => {
+    const p1 = runPolicy(pathP1());
+    expect(chartOwnershipRows(p1.rows).map((x) => x.liq)).toEqual(p1.rows.map((x) => chartCliffUsd(x)));
+    // Policy off: the first face-world cell with a month-end liquidation that leaves a deficiency (found by predicate).
+    let hit: ReturnType<typeof runCyclingSim> | undefined;
+    for (const c of faceWorldGrid()) {
+      const r = runCyclingSim(c.off);
+      if (r.liqMonth !== null && r.deficiencyUsd !== null) { hit = r; break; }
+    }
+    const L = hit!.liqMonth!;
+    // Premise: after the seizure the leftover debt sits against newly pledged coins — the old formula drew a cliff there.
+    expect(hit!.rows.slice(L + 1).some((x) => x.cbDebt > 0 && x.cbCollateralBtc > 0)).toBe(true);
+    const rows = chartOwnershipRows(hit!.rows);
+    expect(rows.map((x) => x.liq)).toEqual(hit!.rows.map((x) => chartCliffUsd(x)));
+    expect(rows.slice(L).every((x) => x.liq === null)).toBe(true);
+    expect(rows.slice(0, L).some((x) => x.liq !== null)).toBe(true);
+  });
+});
+
+describe('⭐ liquidationVerdict — a deficiency under the dust floor is never printed (Run B, B6)', () => {
+  it('⭐ a 30¢ leftover reads as no deficiency — never "$0 of debt survives"', () => {
+    const r = runCyclingSim({ ...SP_REPRO, cbCollateralBtc: 1, cbDebt: 50_000 / CB_LIF + 0.3, pricePath: [50_000, 50_000] });
+    expect(r.liqMonth).toBe(0);                                      // premise: seized at the opening …
+    expect(r.deficiencyUsd!).toBeCloseTo(0.3, 6);                   // … leaving 30¢ owed
+    const v = liquidationVerdict(r)!;
+    expect(v.text).not.toContain('of debt survives');
+    expect(v.text).not.toMatch(/\$0(?![\d,])/);
+    expect(v).toEqual(liquidationVerdict({ ...r, deficiencyUsd: null }));
   });
 });

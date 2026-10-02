@@ -24,7 +24,7 @@ import {
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
-  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
@@ -344,6 +344,8 @@ export default function CyclingFace() {
   const applied = sim.policyApplied;
   const reading = policyReading(sim, monthIdx, expenses);
   const alert = policyAlert(reading, policySettings);
+  // Policy v2, Run B (B5) — with the policy off, the month the month-end reading hides a seizure on the way down.
+  const openPastNote = openPastLltvNote(sim);
   // Under the policy the unpaid line names the real cause (v1.2 #8); off, the baseline's own gap is required.
   const unpaidNote = applied ? policyUnpaidNote(reading)
     : cycleUnfunded ? unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd, sim.baselineUnfundedUsd) : null;
@@ -425,10 +427,15 @@ export default function CyclingFace() {
       cbLtvPct: Number.isFinite(r.cbLtv) ? +(r.cbLtv * 100).toFixed(2) : null,
       cbLimitPct: limit === null ? null : +limit.toFixed(2),
       price: Math.round(r.price),
+      // Where Coinbase seizes — the ONE per-row rule (cbSeizurePrice, via chartCliffUsd): a gap with no loan, on and
+      // after a liquidation, and under the dust floor.
+      cliff: chartCliffUsd(r),
       collateral: Math.round(r.collateralValue),
       debt: Math.round(r.debt),
     };
   }), [rows, limitStopPct]);
+  // R10 — the cliff is drawn, and named in the price chart's Legend, only when there is one (the Decision chart's rule).
+  const hasCliff = chartRows.some((r) => r.cliff !== null);
   const tickEvery = Math.max(1, Math.floor(rows.length / 8));
 
   const milestones = fixedMilestoneMonths(months);
@@ -581,7 +588,7 @@ export default function CyclingFace() {
               window, {(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty. It seized{' '}
               <strong>{fmtBtc(sim.seizedBtc ?? 0)}</strong>, leaving{' '}
               <strong>{fmtBtc(sim.survivorBtc ?? 0)}</strong>.
-              {sim.deficiencyUsd !== null && (
+              {sim.deficiencyUsd !== null && shownUsd(sim.deficiencyUsd) && (
                 <> <strong className={styles.deficiency}>{fmtUSD(sim.deficiencyUsd)} of debt survives
                 the liquidation.</strong> Both facilities are full-recourse.</>
               )}
@@ -602,6 +609,9 @@ export default function CyclingFace() {
           </>
         )}
       </div>
+
+      {/* Run B (B5) — beside the verdict, never inside it (a green "wins" box would colour it). Policy off only. */}
+      {openPastNote !== null && <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>{openPastNote}</p>}
 
       {/* The policy-off defense note — its words unchanged. Under the policy the crash playbook's note replaces it. */}
       {!applied && defenseActive && (
@@ -889,8 +899,15 @@ export default function CyclingFace() {
               <XAxis dataKey="year" stroke="var(--text-faint)" tick={{ fontSize: 9 }} interval={tickEvery} />
               <YAxis stroke="var(--text-faint)" tick={{ fontSize: 9 }} tickFormatter={fmtK} width={52} />
               <Tooltip content={<ChartTip money />} />
+              <Legend wrapperStyle={{ fontSize: 10 }} />
               <Line type="monotone" dataKey="price" name="BTC" isAnimationActive={false} dot={false}
                 strokeWidth={2} stroke={pathColor} />
+              {/* Where Coinbase seizes, in the Decision chart's style — a direct child (`cond && <Line/>`), never a
+                  fragment, and only when there is a cliff: the Legend lists every series it is handed. */}
+              {hasCliff && (
+                <Line dataKey="cliff" name="Coinbase seizes" stroke="var(--red)" strokeWidth={1.25}
+                  strokeDasharray="1 3" dot={false} isAnimationActive={false} connectNulls={false} />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </section>

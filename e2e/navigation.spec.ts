@@ -1,5 +1,5 @@
 import { test, expect, type Page, type Locator } from '@playwright/test';
-import { seedAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX, STORE_VERSION } from './helpers';
+import { seedAndGoto, seedLoanAndGoto, openSettingsSimple, openAlmanacSimple, mouseDragX, STORE_VERSION } from './helpers';
 
 /** The four block explorers useChainTip tries once live height is on — the consent sheet's list. */
 const EXPLORERS = /mempool\.space|blockstream\.info|blockchain\.info\/q\/|blockchair\.com/;
@@ -798,6 +798,71 @@ test.describe('InfoTip — one tap, on screen', () => {
     await trigger.click();
     await expect(trigger, 'CLICK-CLOSES').toHaveAttribute('aria-expanded', 'false');
     await expect(note, 'CLICK-CLOSES').toHaveCount(0);
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+});
+
+// Policy v2, Run B — Coinbase's seizure price on screen: THE MOVE's cliff and price alert, the policy card's cliff line,
+// and the "Coinbase seizes" series on the three parent faces' charts. $50,000 on 1 ₿ at a manual $100,000 — round
+// synthetic figures; THE MOVE's are date-independent (no accrual, no poll; the pool stays 1 ₿, since its keep at support
+// is larger).
+test.describe('Policy v2 Run B — the cliff on screen', () => {
+  const MOVE_TITLE = "The support policy's move this month";
+  const CLIFF = /^Coinbase seizes at \$[\d,]+ — (?:\d+%|less than 1%|more than 99%) below the price at month 1$/;
+  const SEIZES = 'path.recharts-line-curve[stroke="var(--red)"][stroke-dasharray="1 3"]';
+  const hermetic = async (page: Page): Promise<void> => {
+    await page.route(/api\.coinbase\.com\/v2\/prices/, (r) => r.abort());
+    await page.route(/blockchain\.info/, (r) => r.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] }),
+    }));
+  };
+  const insidePhone = async (l: Locator, tag: string): Promise<void> => {
+    const b = (await l.boundingBox())!;
+    expect(b.x, `${tag}: left edge`).toBeGreaterThanOrEqual(0);
+    expect(b.x + b.width, `${tag}: right edge`).toBeLessThanOrEqual(390);
+  };
+
+  test('Decision: THE MOVE names the cliff and the price alert; the policy card names the cliff', async ({ page }) => {
+    await hermetic(page);
+    await seedLoanAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    await page.getByRole('button', { name: /◆ Decision/ }).click();
+    const move = page.getByRole('region', { name: MOVE_TITLE });
+    await expect(move).toBeVisible({ timeout: 8000 });
+    const cliff = move.getByText('Coinbase seizes this loan at $58,140 — 42% below today.', { exact: true });
+    await expect(cliff, 'MOVE-CLIFF').toBeVisible();
+    const alert = move.getByText('Set a price alert at $66,667 in your exchange app — Coinbase reaches your 75% trigger '
+      + 'there. On the day, work from the Emergency Console (it runs when your Coinbase strategy is LTV-triggered).', { exact: true });
+    await expect(alert, 'MOVE-ALERT').toBeVisible();
+    const card = page.getByText(CLIFF);
+    await expect(card, 'CARD-CLIFF').toHaveCount(1);
+    await card.scrollIntoViewIfNeeded();
+    await expect(card, 'CARD-CLIFF').toBeVisible();
+    await insidePhone(cliff, 'MOVE-CLIFF');
+    await insidePhone(alert, 'MOVE-ALERT');
+    await insidePhone(card, 'CARD-CLIFF');
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('the three charts draw "Coinbase seizes" — red, dotted, in the Decision chart\'s style', async ({ page }) => {
+    await hermetic(page);
+    await seedLoanAndGoto(page);
+    await page.getByLabel('Almanac').click();
+    // Cycling — the BTC price path card.
+    await page.getByRole('button', { name: /♻ Cycling/ }).click();
+    const pricePath = page.locator('section', { hasText: 'BTC price path' });
+    await pricePath.scrollIntoViewIfNeeded();
+    await expect(pricePath.locator(SEIZES), 'CYCLING').toHaveCount(1);
+    expect(await pricePath.locator(SEIZES).getAttribute('d'), 'CYCLING d').toBeTruthy();
+    // Ownership and Strategy — the Price & liq chart.
+    for (const face of [/⚖ Ownership/, /◈ Strategy/]) {
+      await page.getByRole('button', { name: face }).click();
+      await page.getByRole('button', { name: 'Price & liq' }).click();
+      const line = page.locator(SEIZES);
+      await expect(line, String(face)).toHaveCount(1);
+      expect(await line.getAttribute('d'), `${String(face)} d`).toBeTruthy();
+    }
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 });

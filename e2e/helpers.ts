@@ -22,6 +22,28 @@ const SEED = `
   localStorage.setItem('personal-bloc-onboarded', '1');
 `;
 
+// Policy v2, Run B — a Coinbase loan the faces can price: $50,000 on 1 ₿ at a MANUAL $100,000 (nothing polls), with no
+// as-of date (nothing accrues), so THE MOVE's cliff and trigger prices are the same on any day. Round synthetic figures.
+const LOAN_SEED = `
+  window.__APP_BOOTED = true;
+  localStorage.setItem('personal-bloc-store', JSON.stringify({
+    state: {
+      onboardingComplete: true, simpleMode: true, simpleView: 'daily',
+      hasCbLoan: true, cbLoanBalance: 50000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1,
+      btcPriceMode: 'manual', btcPrice: 100000
+    },
+    version: ${STORE_VERSION}
+  }));
+  localStorage.setItem('personal-bloc-onboarded', '1');
+`;
+
+/** Seed a $50,000 Coinbase loan on 1 ₿ at a manual $100,000 + land on DailyModeView. */
+export async function seedLoanAndGoto(page: Page): Promise<void> {
+  await page.addInitScript(LOAN_SEED);
+  await page.goto('/');
+  await expect(page.getByLabel('Log an event'), 'e2e loan seed failed to reach DailyModeView').toBeVisible({ timeout: 15_000 });
+}
+
 /** Seed localStorage before app JS, navigate, and ASSERT we reached DailyModeView. */
 export async function seedAndGoto(page: Page): Promise<void> {
   await page.addInitScript(SEED);

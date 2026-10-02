@@ -9,18 +9,18 @@ import {
   strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
   verdictBasisClause, drawingCashFlowNote, cashFlowText, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, noDrawCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
-  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
   type StrikeCapReading,
 } from '../cyclingFaceView';
 import { billsRemainderTail, shownUsd } from '../supportPolicyView';
-import { cbBarLevel } from '../../../simulation/cbMetrics';
+import { cbBarLevel, cbSeizurePrice } from '../../../simulation/cbMetrics';
 import {
   runCyclingSim, effectiveStrikeCapPct, allInEquity, baselineAllInEquity, type CyclingRow, type CyclingInputs,
 } from '../../../simulation/cyclingSim';
 import { fmtUSD } from '../../../utils/format';
 import {
   SP_REPRO, CASH_6_USD, CALL_BASE, CALL_PATH, runPolicy, callRun, pathP1, pathP2, pathP3, a5Cases, buildP9,
-  lineFirstInputs,
+  lineFirstInputs, stressFrom12, doubleDropRows, policyFor, SUPPORT,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 // Tests may import beliefs; the no-belief-imports rule restricts the cyclingFaceView MODULE, not its tests.
 import { plConvergencePath, plBandAt, addMonths } from '../../../simulation/powerLaw';
@@ -1400,5 +1400,53 @@ describe('the crash playbook in the faces\' words — playbookNote, defendedFrom
     expect(playbookNote(r, SP_REPRO.cbLtvCapPct)).toBe(`Crash playbook: ${r.totalTopUpBtc.toFixed(4)} ₿ of collateral moved into Coinbase `
       + `(${r.totalTopUpFromColdBtc.toFixed(4)} ₿ from cold storage, ${r.totalTopUpFromStrikeBtc.toFixed(4)} ₿ released from Strike), `
       + `starting month ${p9.dipStart}. The ${SP_REPRO.cbLtvCapPct}% defense line held.`);
+  });
+});
+
+// ── Policy v2, Run B ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('⭐ chartCliffUsd — the charts\' seizure price is cbSeizurePrice, rounded (Run B, B2)', () => {
+  it('⭐ a live row reads cbSeizurePrice rounded; no loan, no collateral, a liquidation row or a seizure price under 50¢ reads null', () => {
+    const live = mkRow({ cbDebt: 80_000, cbCollateralBtc: 2 });
+    expect(chartCliffUsd(live)).toBe(Math.round(cbSeizurePrice(live)!));
+    expect(chartCliffUsd(mkRow({ cbDebt: 0 }))).toBeNull();
+    expect(chartCliffUsd(mkRow({ cbDebt: 0.4 }))).toBeNull();                       // under the debt floor
+    expect(chartCliffUsd(mkRow({ cbCollateralBtc: 0 }))).toBeNull();
+    expect(chartCliffUsd(mkRow({ postLiquidation: true }))).toBeNull();             // on and after the liquidation row
+    expect(chartCliffUsd(mkRow({ cbDebt: 0.6, cbCollateralBtc: 2 }))).toBeNull();   // a 35¢ seizure price (R9)
+  });
+});
+
+describe('⭐ openPastLltvNote — with the policy off, the verdict says when the month-end reading hides a seizure (Run B, B5)', () => {
+  const NOTE = (n: number): string => `In month ${n} the Coinbase loan opened past 86% at that month's price — Morpho would `
+    + 'seize it on the way down; without the support policy, this projection reads it only at month-end, after that '
+    + 'month\'s rescue.';
+
+  it('⭐ the sentence when the run survived the month (never liquidated, or later); none applied, with no month, or liquidated that month', () => {
+    const sim = (o: Partial<{ policyApplied: boolean; firstOpenPastLltvMonth: number | null; liqMonth: number | null }> = {}) =>
+      ({ policyApplied: false, firstOpenPastLltvMonth: 12, liqMonth: null, ...o });
+    expect(openPastLltvNote(sim())).toBe(NOTE(12));
+    expect(openPastLltvNote(sim({ liqMonth: 20 }))).toBe(NOTE(12));
+    expect(openPastLltvNote(sim({ firstOpenPastLltvMonth: 3 }))).toBe(NOTE(3));
+    expect(openPastLltvNote(sim({ policyApplied: true }))).toBeNull();
+    expect(openPastLltvNote(sim({ firstOpenPastLltvMonth: null }))).toBeNull();
+    expect(openPastLltvNote(sim({ liqMonth: 12 }))).toBeNull();      // the month-end reading liquidated it that month
+  });
+
+  it('⭐ engine-backed — a rescued month is named, a same-month liquidation is not, a later one is; policy on, none', () => {
+    const half: CyclingInputs = { ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.5) };
+    const r = runCyclingSim(half);
+    expect([r.policyApplied, r.firstOpenPastLltvMonth, r.liqMonth]).toEqual([false, 12, null]);        // premise
+    expect(openPastLltvNote(r)).toBe(NOTE(12));
+    const deep = runCyclingSim({ ...SP_REPRO, pricePath: stressFrom12(pathP1(), 0.4) });
+    expect([deep.firstOpenPastLltvMonth, deep.liqMonth]).toEqual([12, 12]);                             // premise
+    expect(openPastLltvNote(deep)).toBeNull();
+    const dd = doubleDropRows().find((x) => x.name === 'P1 × 0.6 m12 × 0.6 m13 · seed 0')!;
+    const later = runCyclingSim({ ...dd.on, supportPolicy: undefined });
+    expect([later.firstOpenPastLltvMonth, later.liqMonth]).toEqual([12, 13]);                           // premise
+    expect(openPastLltvNote(later)).toBe(NOTE(12));
+    const on = runCyclingSim({ ...half, supportPolicy: policyFor(SUPPORT) });
+    expect([on.policyApplied, on.liqMonth, on.seizedOnTheWayDown]).toEqual([true, 12, true]);           // premise
+    expect(openPastLltvNote(on)).toBeNull();
   });
 });

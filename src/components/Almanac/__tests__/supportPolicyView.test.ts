@@ -8,7 +8,7 @@ import {
   policyDetails, neverDrawsNote, policyPauseReason, drawPauseClause, zoneStrip, policyLimitPct, coldShown,
   strikeCallSummary, strikeCallSentence, billsRemainderTail, policyUnpaidNote, policyAlert, policyStopSentence,
   policyIgnoredNote, zoneStripLabel, settingReadouts, defenseLineNote, policyTileSub, policyColdNote, policyTip,
-  fmtPolicyPct, DUST_USD, shownUsd, DISPLAY_DUST_BTC, shownBtc, policyReserveNote, repaidTail,
+  fmtPolicyPct, DUST_USD, shownUsd, DISPLAY_DUST_BTC, shownBtc, policyReserveNote, repaidTail, fmtBelowPct,
   type PolicyReading, type PolicyTone, type SupportPolicySettings, type NeverDraws,
 } from '../supportPolicyView';
 import { supportPolicyFor } from '../supportPolicyInputs';
@@ -18,11 +18,12 @@ import {
 } from '../../../simulation/cyclingSim';
 import type { PolicyState } from '../../../simulation/supportPolicy';
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
+import { cbSeizurePrice } from '../../../simulation/cbMetrics';
 import { fmtUSD } from '../../../utils/format';
 import {
   SP_START, SP_MONTHS, SUPPORT, SP_REPRO, CASH_6_USD, policyFor, supportPathFor, pathP1, pathP2, pathP4, pathP6,
   multiplePath, a5Cases, runPolicy, callRun, RESTORE_OPENING, OVER_CEILING_COLD_OPENING,
-  faceWorldGrid, syntheticGrid, reachGrid, stressFrom12, V2_DEFAULTS, lineFirstInputs,
+  faceWorldGrid, syntheticGrid, reachGrid, stressFrom12, V2_DEFAULTS, lineFirstInputs, doubleDropRows,
 } from '../../../simulation/__tests__/supportPolicyPaths';
 
 /**
@@ -80,9 +81,10 @@ const reading = (o: Partial<PolicyReading> = {}): PolicyReading => ({
   brokenAtEnd: false, openingBroken: false, call: null,
   cash: { openingUsd: 0, leftUsd: 0, toBillsUsd: 0, toCureUsd: 0 }, unpaid: null, coldAboveSupportBtc: 0,
   firstThrottleMonth: null, monthsInZone: zones0(), liqMonth: null, neverDraws: null,
-  afterLiquidation: false, strikeOwes: false, ...o,
+  afterLiquidation: false, strikeOwes: false, cliff: null, ...o,
 });
 
+const COLD_PROMISE_TEXT = 'Cold is never touched while price is at or above support.';
 const BROKEN_HEAD = 'Price spent two month-ends more than 10% under support in month 11 — the model is treated as broken: no new debt.';
 
 // ── 7 · defaults ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -372,7 +374,9 @@ describe('policyReading on Run 1\'s own fixtures', () => {
     expect(policyHeadline(rd, S)).toEqual({
       tone: 'warn', text: `Coinbase is ${fmtUSD(-rd.cb!.roomUsd)} over its limit at support — spare income repays it first`,
     });
-    expect(policyDetails(rd, S)[1]).toBe(`Strike is ${fmtUSD(-rd.sk!.roomUsd)} over its limit at support — spare income repays it after Coinbase`);
+    // Run B (B1): where Coinbase seizes sits right after the Coinbase line, so Strike's line is third.
+    expect(policyDetails(rd, S)[1]).toBe(`Coinbase seizes at ${fmtUSD(cbSeizurePrice(r.rows[1])!)} — 25% below the price at month 1`);
+    expect(policyDetails(rd, S)[2]).toBe(`Strike is ${fmtUSD(-rd.sk!.roomUsd)} over its limit at support — spare income repays it after Coinbase`);
     expect(policyDetails(rd, S).at(-1)).toBe('Cold is never touched while price is at or above support.');
   });
 
@@ -1260,5 +1264,66 @@ describe('⭐ Decision face · the opening-broken reading, through BOTH readers'
     expect(src).toMatch(/const brokeInRun = \(r: PolicyReading\): boolean => r\.brokenMonth !== null;/);
     // Both gates call the shared predicate.
     expect(src.match(/hadBreak\(r\)/g) ?? []).toHaveLength(2);
+  });
+});
+
+// ── Policy v2, Run B — Coinbase's seizure price on the card (B1) ─────────────────────────────────────────────────────
+
+describe('⭐ F11 — fmtBelowPct: a seizure price is never "0% below" or "100% below" (Run B)', () => {
+  it('⭐ under 1% reads "less than 1%", from 99.5% "more than 99%", the rest a whole percent', () => {
+    const cases: [number, string][] = [
+      [0.0034, 'less than 1%'], [0.0099, 'less than 1%'], [0.01, '1%'], [0.0149, '1%'], [0.42, '42%'],
+      [0.9949, '99%'], [0.995, 'more than 99%'], [0.9971, 'more than 99%'],
+    ];
+    for (const [f, text] of cases) expect(fmtBelowPct(f), String(f)).toBe(text);
+  });
+});
+
+describe('⭐ B1 — the card names where Coinbase seizes (Run B)', () => {
+  const ROOM = ['Coinbase: $41,700 of room at support — 7 months of bills', 'Strike: $30,000 of room at support'];
+
+  it('⭐ right after the Coinbase line; month 0 reads today\'s price; no cliff, no line', () => {
+    expect(policyDetails(reading({ cliff: { seizeUsd: 58_140, priceUsd: 100_000, month: 24 } }), S)).toEqual([
+      ROOM[0], 'Coinbase seizes at $58,140 — 42% below the price at month 24', ROOM[1], COLD_PROMISE_TEXT,
+    ]);
+    expect(policyDetails(reading({ cliff: { seizeUsd: 58_140, priceUsd: 100_000, month: 0 } }), S)[1])
+      .toBe("Coinbase seizes at $58,140 — 42% below today's price");
+    expect(policyDetails(reading({ cliff: null }), S)).toEqual([ROOM[0], ROOM[1], COLD_PROMISE_TEXT]);
+  });
+
+  it('⭐ engine-backed — the inspected row\'s cbSeizurePrice, F11 at both ends, none on or after a liquidation or under 50¢', () => {
+    // P1: in every month the reading's cliff IS cbSeizurePrice of that row (under its price — the B1 invariant).
+    const p1 = runPolicy(pathP1());
+    for (const row of p1.rows) {
+      const p = cbSeizurePrice(row);
+      expect(read(p1, row.m).cliff?.seizeUsd ?? null, `m${row.m}`).toBe(p !== null && p < row.price ? p : null);
+    }
+    const p1m1 = cbSeizurePrice(p1.rows[1])!;
+    expect(policyDetails(read(p1, 1), S))
+      .toContain(`Coinbase seizes at ${fmtUSD(p1m1)} — 54% below the price at month 1`);
+    // C1's double drop, month 13 — the grids' closest cliff, under 1% below the price.
+    const dd = doubleDropRows().find((x) => x.name === 'P1 × 0.5 m12 × 0.8 m13 · seed 0')!;
+    const c1 = runCyclingSim({ ...dd.on, supportPolicy: { ...dd.on.supportPolicy!, ...V2_DEFAULTS } });
+    const p13 = cbSeizurePrice(c1.rows[13])!;
+    expect(1 - p13 / c1.rows[13].price).toBeLessThan(0.01);                                    // premise
+    expect(policyDetails(read(c1, 13), S)).toContain(`Coinbase seizes at ${fmtUSD(p13)} — less than 1% below the price at month 13`);
+    // P6 at C1, month 45 — a broken-zone sliver, 99.5% or more below the price.
+    const p6 = runPolicy(pathP6(), V2_DEFAULTS);
+    const p45 = cbSeizurePrice(p6.rows[45])!;
+    expect(1 - p45 / p6.rows[45].price).toBeGreaterThanOrEqual(0.995);                        // premise
+    expect(policyDetails(read(p6, 45), S)).toContain(`Coinbase seizes at ${fmtUSD(p45)} — more than 99% below the price at month 45`);
+    // A month-0 seizure (reach cell 0): no cliff in the liquidation month or after it.
+    const cell = reachGrid()[0];
+    const m0 = runCyclingSim({ ...cell.off, supportPolicy: policyFor(cell.support) });
+    expect(m0.liqMonth).toBe(0);                                                                // premise
+    for (const m of [0, 2]) {
+      expect(read(m0, m).cliff, `m${m}`).toBeNull();
+      expect(policyDetails(read(m0, m), S).some((l) => l.startsWith('Coinbase seizes at')), `m${m}`).toBe(false);
+    }
+    // R9 — 60¢ on 2 ₿ is a loan (above the debt floor) whose seizure price is 35¢: no cliff, no line.
+    const tiny = { ...p1, rows: p1.rows.map((x) => (x.m === 1 ? { ...x, cbDebt: 0.6, cbCollateralBtc: 2 } : x)) };
+    expect(shownUsd(0.6)).toBe(true);                                                           // premise
+    expect(read(tiny, 1).cliff).toBeNull();
+    expect(policyDetails(read(tiny, 1), S).some((l) => l.startsWith('Coinbase seizes at'))).toBe(false);
   });
 });

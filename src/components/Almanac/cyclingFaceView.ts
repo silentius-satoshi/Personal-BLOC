@@ -3,7 +3,7 @@ import {
 } from '../../simulation/cyclingSim';
 import { deriveOwnership } from '../../simulation/ownership';
 import { CB_FEE_TIER1_PCT, CB_LLTV } from '../../simulation/runCoinbaseLoan';
-import { cbBarLevel, barLevel, type SafetyLevel } from '../../simulation/cbMetrics';
+import { cbBarLevel, barLevel, cbSeizurePrice, type SafetyLevel } from '../../simulation/cbMetrics';
 import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
@@ -16,7 +16,8 @@ import {
  * the engine's row/result/mode types and its two equity helpers (allInEquity / baselineAllInEquity — the ONE
  * all-in definition), the ownership leaf (the single definition of yoursBtc, S2′), the zero-import Coinbase
  * constants (the refinance break-even fallback, CB_LLTV for the zone band), the shared gauge rules (cbMetrics'
- * barLevel/cbBarLevel), the Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
+ * barLevel/cbBarLevel) and Coinbase's per-row seizure price (cbMetrics' cbSeizurePrice — the charts' cliff, Run B), the
+ * Strike draw ceiling (strikeCredit), the Strike margin-call line (emergencyModel),
  * fmtUSD and fmtLtvPct, and from supportPolicyView the support policy's call sentence, the two display floors (`shownUsd`, `shownBtc`)
  * and the bills-remainder tail (that module must never import this one back).
  * No belief anywhere in that graph. Extracted so it is testable without a render harness (the repo has none).
@@ -946,4 +947,33 @@ export function strikeCapNote(r: StrikeCapReading): string {
       return `${r.call ? strikeCallSentence(r.call) : ''}${y ? ` ${y}` : ''}`;
     }
   }
+}
+
+/**
+ * Policy v2, Run B (B2) — Coinbase's seizure price as the three parent faces' charts draw it: `cbSeizurePrice`, the ONE
+ * per-row rule (null with no loan, on and after a liquidation, and under the dust floor — R9), rounded like the price
+ * series and nothing more. A null is a GAP: the line ends at the seizure, as the Decision chart's `cliffPath` does.
+ */
+export function chartCliffUsd(row: Pick<CyclingRow, 'cbDebt' | 'cbCollateralBtc' | 'postLiquidation'>): number | null {
+  const p = cbSeizurePrice(row);
+  return p === null ? null : Math.round(p);
+}
+
+/**
+ * Policy v2, Run B (B5, D4) — the policy-off verdict's disclosure. Without the support policy the projection reads the
+ * Coinbase loan only at month-end, after that month's rescue (the debt shift, a top-up). A loan that opened a month
+ * already past 86% at that month's price would have been seized on the way down — Morpho doesn't wait for month-end —
+ * so the run shown may be one a real loan never reaches. Shown only when the run survived that month (never liquidated,
+ * or liquidated later). Null with the policy applied (the rule seized in that month, and the liquidation verdict names
+ * it), with no such month, and when the month-end reading liquidated the loan in that same month — no rescue happened,
+ * so "after that month's rescue" would be false.
+ */
+export function openPastLltvNote(
+  sim: Pick<CyclingResult, 'policyApplied' | 'firstOpenPastLltvMonth' | 'liqMonth'>,
+): string | null {
+  const n = sim.firstOpenPastLltvMonth;
+  if (sim.policyApplied || n === null || !(sim.liqMonth === null || sim.liqMonth > n)) return null;
+  return `In month ${n} the Coinbase loan opened past ${(CB_LLTV * 100).toFixed(0)}% at that month's price — Morpho would `
+    + 'seize it on the way down; without the support policy, this projection reads it only at month-end, after that '
+    + "month's rescue.";
 }

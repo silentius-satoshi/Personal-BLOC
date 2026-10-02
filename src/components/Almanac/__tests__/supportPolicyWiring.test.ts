@@ -170,3 +170,56 @@ describe('SupportPolicyCard.tsx', () => {
     expect(src).not.toMatch(/<details\b[^>]*\bopen\b/);
   });
 });
+
+// ── Policy v2, Run B ─────────────────────────────────────────────────────────────────────────────────────────────
+
+describe('Run B — Coinbase\'s seizure price on the three charts, through ONE formula (B2)', () => {
+  const SERIES = [['CyclingFace.tsx', 'cliff'], ['OwnershipFace.tsx', 'liq'], ['UnifiedFace.tsx', 'liq']] as const;
+
+  it.each(SERIES)('⭐ %s draws "Coinbase seizes" in the Decision chart\'s style', (face, key) => {
+    const src = readAlmanac(face);
+    const at = src.indexOf(`<Line dataKey="${key}"`);
+    expect(at, `${face}: <Line dataKey="${key}"`).toBeGreaterThan(0);
+    const tag = src.slice(at, src.indexOf('/>', at) + 2);
+    for (const attr of [
+      'name="Coinbase seizes"', 'stroke="var(--red)"', 'strokeWidth={1.25}', 'strokeDasharray="1 3"', 'dot={false}',
+      'isAnimationActive={false}', 'connectNulls={false}',
+    ]) expect(tag, `${face}: ${attr}`).toContain(attr);
+    expect(tag, `${face}: linear, like the Decision chart`).not.toMatch(/\btype=/);
+    if (face === 'CyclingFace.tsx') {
+      // R10 — drawn, and named in the Legend, only when a cliff exists; a direct child (`cond && <Line/>`).
+      expect(src).toMatch(/const hasCliff = chartRows\.some\(\(r\) => r\.cliff !== null\);/);
+      expect(src).toMatch(/\{hasCliff && \(?\s*<Line dataKey="cliff"/);
+    }
+  });
+
+  it('⭐ one formula — chartOwnershipRows reads chartCliffUsd and names no LLTV; both callers pass (rows, limitStopPct); Cycling\'s rows read chartCliffUsd', () => {
+    const view = readAlmanac('ownershipFaceView.ts');
+    expect(view).toMatch(/\bliq: chartCliffUsd\(r\),/);
+    expect(view).not.toMatch(/\bCB_LLTV\b|\bcbLiqLtv\b/);
+    for (const face of ['OwnershipFace.tsx', 'UnifiedFace.tsx']) {
+      expect(readAlmanac(face), face).toMatch(/chartOwnershipRows\(rows, limitStopPct\)/);
+    }
+    expect(readAlmanac('CyclingFace.tsx')).toMatch(/\bcliff: chartCliffUsd\(r\),/);
+  });
+});
+
+describe('Run B — the policy-off note on the three faces\' verdicts (B5)', () => {
+  it.each(FACES)('⭐ %s renders openPastLltvNote(sim) and never inlines its sentence', (face) => {
+    const src = readAlmanac(face);
+    expect(src).toMatch(/\bopenPastLltvNote\(sim\)/);
+    expect(src).not.toMatch(/would seize it on the way down/);
+  });
+});
+
+describe('Run B — the deficiency prints (B6)', () => {
+  it('⭐ every "$X of debt survives" is switched on the dust floor — four prints, none unguarded', () => {
+    let prints = 0;
+    for (const f of ['CyclingFace.tsx', 'UnifiedFace.tsx', 'ownershipFaceView.ts']) {
+      const src = readAlmanac(f);
+      prints += (src.match(/of debt survives/g) ?? []).length;
+      expect(src.match(/sim\.deficiencyUsd !== null(?! && shownUsd\(sim\.deficiencyUsd\))/g) ?? [], f).toEqual([]);
+    }
+    expect(prints).toBe(4);
+  });
+});

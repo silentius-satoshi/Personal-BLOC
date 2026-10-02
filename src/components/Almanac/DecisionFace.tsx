@@ -34,7 +34,7 @@ import {
   moveCard, moveCardText, planSchedule, planOutcome, coinbaseLoanLine, scheduleToText, crashNote, consoleLinkLabel,
   decisionDisclaimer, pathSublabel, pathNoun, pathNote, scheduleHeader, breakerReading, outcomeTiles,
   scheduleFileName, manualPriceNote, stressNote, fmtBtc3, BELOW_SUPPORT_NOTE, DECISION_FRAMING, ON_SUPPORT_NOTE,
-  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY,
+  SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove,
   type DecisionPath, type LineAction, type MoveTone,
 } from './decisionView';
 import SupportPolicyCard from './SupportPolicyCard';
@@ -76,6 +76,13 @@ import styles from './DecisionFace.module.css';
 const CAP_PCT = 70;
 const STRIKE_CAP_PCT = DEFAULT_STRIKE_CAP_ON ? DEFAULT_STRIKE_CAP_PCT : 0;
 const STRIKE_CAP_EFF = effectiveStrikeCapPct(STRIKE_CAP_PCT, STRIKE_MARGIN_CALL_LTV);
+/** The five engine constants the run and its policy check share (Policy v2, Run B — B4): ONE object, spread by
+ *  `engineInputs` and handed to `seedsFromMove`, so the seeding gate asks the run's own question with the run's own
+ *  inputs. A module constant — outside every dependency list. */
+const ENGINE_CONTEXT = {
+  mode: 'cycle' as const, cbLtvCapPct: CAP_PCT, strikeLtvCapPct: STRIKE_CAP_PCT,
+  strikeMarginLtv: STRIKE_MARGIN_CALL_LTV, strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,
+} as const;
 const COLD_BUFFER_PCT = 30;   // used only if the owner turns the policy off
 const CYCLE_MONTHS = 1;
 const DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE;
@@ -362,8 +369,6 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     supportPath, policySettings, s.expenses, hold.inHold, breakerSeed,
   ]);
   const placement = useMemo(() => placementPlan(placementInput), [placementInput]);
-  // D10 / v1.6 — the run starts from the move only when it is MADE. With the policy off the card names no move.
-  const seedFromMove = placement.seeded && supportPolicy !== undefined;
 
   // ── The four modelled paths, from the held anchor. Worst (stitched) is the floor under all four.
   const paths = useMemo(() => [
@@ -372,6 +377,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     plConvergencePath(anchorPrice, 'ceiling', startDate, months, convergeMonths),
     cycleConvergencePath(anchorPrice, startDate, months, convergeMonths, 0),
   ], [anchorPrice, startDate, months, convergeMonths]);
+  // D10 / v1.6, B4 — the run starts from the move only when it is MADE, and only when the engine will APPLY the policy
+  // (its own answer, asked with its own inputs): off or ignored, the card names no move. Every path is months + 1 long
+  // — the support path's length — so paths[0] stands for any of them.
+  const seedFromMove = seedsFromMove(placement.seeded, { ...ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses: s.expenses });
   const stitched = useMemo(() => worstCasePath(paths), [paths]);
   // D3 / D4 — bit for bit, or it is a second future worth offering.
   const stitchedIsSupport = useMemo(() => sameSeries(stitched, paths[0]), [stitched, paths]);
@@ -384,12 +393,11 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
 
   // ONE engine-inputs memo for the base run, the stress run and the crown. `defendCbLtv` is automatic.
   const engineInputs = useMemo(() => ({
+    ...ENGINE_CONTEXT,
     startYear: startDate.getUTCFullYear(),
     strikeCollateralBtc: seedFromMove ? placement.opening.strikeCollateralBtc : s.strikeCollateralBtc,
     strikeBalance: s.strikeBalance,
     strikeCreditLine: runLine,
-    strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,
-    strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,
     cbCollateralBtc: seedFromMove ? placement.opening.cbCollateralBtc : s.cbCollateralBtc,
     cbDebt,
     openingColdBtc: seedFromMove ? placement.opening.coldBtc : s.openingColdBtc,
@@ -398,11 +406,8 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     strikeAprPct: s.blocApr,
     cbAprPct: s.cbAprPct,
     cycleMonths: CYCLE_MONTHS,
-    cbLtvCapPct: CAP_PCT,
-    strikeLtvCapPct: STRIKE_CAP_PCT,
     coldStoreBufferPct: COLD_BUFFER_PCT,
     defendCbLtv: true,
-    mode: 'cycle' as const,
     supportPolicy,
     openingBreaker: breakerSeed?.state,
     openingStrikeHoldMonths: holdMonths,

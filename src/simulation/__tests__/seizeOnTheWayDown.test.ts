@@ -84,32 +84,46 @@ interface Tally {
   movedD: number; movedFutility: number; movedStrikeFirst: number; strikeFirstMonth0: number;
   /** I5 — `false` (the month-end reading) differs from absent; a policy-off run opens a month past 86%. */
   falseDiffers: number; offPastLltv: number;
+  /** Run B, B1 — rows with a seizure price (`cbSeizurePrice`), and those F11 words at its floor and its cap. */
+  cliffRows: number; cliffUnder1: number; cliffOver995: number;
+  /** Run B, B5 — runs checked under the applied policy; on the policy-off arm, where a flagged run's month-end reading
+   *  liquidated it (never / that month / later), and runs that open past 86% in two months or more. */
+  openChecked: number; openRescued: number; openSame: number; openLater: number; openMulti: number;
 }
 const tally = (): Tally => ({
   runs: 0, fired: 0, unchanged: 0, sameMonth: 0, later: 0, hidden: 0, firedAtMonth1: 0, monthZero: 0, monthOnePlus: 0,
   movedD: 0, movedFutility: 0, movedStrikeFirst: 0, strikeFirstMonth0: 0, falseDiffers: 0, offPastLltv: 0,
+  cliffRows: 0, cliffUnder1: 0, cliffOver995: 0,
+  openChecked: 0, openRescued: 0, openSame: 0, openLater: 0, openMulti: 0,
 });
 
-type Kind = 'kill' | 'seizure' | 'price' | 'monthOn' | 'retire' | 'absent';
+type Kind = 'kill' | 'seizure' | 'price' | 'monthOn' | 'retire' | 'absent' | 'cliff' | 'openPast';
 interface Sweep { bySettings: [string, Tally][]; first: Record<Kind, string[]>; count: Record<Kind, number> }
 
-/** Does a run (the month-end reading) carry its loan into a month at or past 86% at that month's price, before any
- *  liquidation? — the month the rule WOULD seize, were it not gated on the policy (M1's target). */
-function opensPastLltv(r: CyclingResult, i: CyclingInputs): boolean {
+/** Every month a run (the month-end reading) carries its loan into at or past 86% at that month's price, before any
+ *  liquidation — the months the rule WOULD seize, were it not gated on the policy (M1's target). Rebuilt from the rows
+ *  with the engine's own operations (the carried debt plus this month's interest), never read off the engine's field. */
+function openPastMonths(r: CyclingResult, i: CyclingInputs): number[] {
   const cmr = i.cbAprPct / 100 / 12;
+  const out: number[] = [];
   for (let m = 1; m < r.rows.length; m++) {
-    if (r.liqMonth !== null && m > r.liqMonth) return false;
+    if (r.liqMonth !== null && m > r.liqMonth) break;
     const prev = r.rows[m - 1];
     const debt = prev.cbDebt + prev.cbDebt * cmr;
     const price = r.rows[m].price;
-    if (debt > 0 && prev.cbCollateralBtc > 0 && price > 0 && ltvOf(debt, prev.cbCollateralBtc, price) >= CB_LLTV) return true;
+    if (debt > 0 && prev.cbCollateralBtc > 0 && price > 0 && ltvOf(debt, prev.cbCollateralBtc, price) >= CB_LLTV) out.push(m);
   }
-  return false;
+  return out;
 }
+const opensPastLltv = (r: CyclingResult, i: CyclingInputs): boolean => openPastMonths(r, i).length > 0;
 
 function runSweep(): Sweep {
-  const first = { kill: [], seizure: [], price: [], monthOn: [], retire: [], absent: [] } as Record<Kind, string[]>;
-  const count = { kill: 0, seizure: 0, price: 0, monthOn: 0, retire: 0, absent: 0 } as Record<Kind, number>;
+  const first = {
+    kill: [], seizure: [], price: [], monthOn: [], retire: [], absent: [], cliff: [], openPast: [],
+  } as Record<Kind, string[]>;
+  const count = {
+    kill: 0, seizure: 0, price: 0, monthOn: 0, retire: 0, absent: 0, cliff: 0, openPast: 0,
+  } as Record<Kind, number>;
   const note = (k: Kind, label: string): void => {
     count[k] += 1;
     if (first[k].length < KEEP) first[k].push(label);
@@ -169,6 +183,25 @@ function runSweep(): Sweep {
         if (on.seizedOnTheWayDown !== false || on.seizurePriceUsd !== (p0 > 0 ? p0 : null)) note('monthOn', `${label} m0`);
       }
 
+      // ── Run B, B1 · every seizure price the card and the charts draw sits under its month's price ──
+      for (const row of on.rows) {
+        const p = cbSeizurePrice(row);
+        if (p === null) continue;
+        t.cliffRows += 1;
+        if (!(p < row.price)) { note('cliff', `${label} m${row.m}: $${p} vs $${row.price}`); continue; }
+        const gap = 1 - p / row.price;
+        if (gap < 0.01) t.cliffUnder1 += 1;
+        if (gap >= 0.995) t.cliffOver995 += 1;
+      }
+
+      // ── Run B, B5 · firstOpenPastLltvMonth under the applied policy: the rule's month, or null — in BOTH readings ──
+      if (on.policyApplied) {
+        t.openChecked += 1;
+        const want = on.seizedOnTheWayDown ? on.liqMonth : null;
+        if (on.firstOpenPastLltvMonth !== want) note('openPast', `${label}: ${on.firstOpenPastLltvMonth} ≠ ${want}`);
+        if (me.firstOpenPastLltvMonth !== want) note('openPast', `${label}, month-end: ${me.firstOpenPastLltvMonth} ≠ ${want}`);
+      }
+
       if (!extra) continue;
       const flip = (x: Partial<CyclingInputs>): CyclingResult => runCyclingSim({ ...inputs, ...x });
       // ── I4 · under the rule the doom gate and the futility check change nothing, and Strike-first only a month-0
@@ -193,6 +226,19 @@ function runSweep(): Sweep {
           }
         }
         if (opensPastLltv(offAbsent, off)) t.offPastLltv += 1;
+        // ── Run B, B5 · policy off: the field is the FIRST month the loan opens past 86% (rebuilt from the rows) ──
+        const months = openPastMonths(offAbsent, off);
+        const N = months[0] ?? null;
+        if (offAbsent.firstOpenPastLltvMonth !== N) {
+          note('openPast', `${caseLabel}, policy off: ${offAbsent.firstOpenPastLltvMonth} ≠ ${N}`);
+        }
+        if (months.length >= 2) t.openMulti += 1;
+        if (N !== null) {
+          const L = offAbsent.liqMonth;
+          if (L === null) t.openRescued += 1;
+          else if (L === N) t.openSame += 1;
+          else t.openLater += 1;
+        }
       }
     }
     bySettings.push([name, t]);
@@ -316,6 +362,30 @@ describe('⭐ Policy v2 — Morpho seizes on the way down (seizeOnTheWayDown)', 
     expect(m0.rows[1].cbDebt).toBeGreaterThan(m0.deficiencyUsd!);    // still debt — it accrues
     expect(m0.seizedOnTheWayDown).toBe(false);
     expect(m0.seizurePriceUsd).toBe(s.off.pricePath[0]);
+  });
+
+  it('⭐ B1 — every seizure price the card and the charts draw sits under its month\'s price (Run B)', () => {
+    // cbSeizurePrice is null on the liquidation row and after it, so no drawn cliff is ever at or above the price —
+    // and F11's two ends are both reached: a cliff under 1% below its price, and one 99.5% or more below it.
+    expectNone('cliff');
+    expect(sum('cliffRows')).toBeGreaterThan(0);
+    expect(sum('cliffUnder1')).toBeGreaterThan(0);
+    expect(sum('cliffOver995')).toBeGreaterThan(0);
+  });
+
+  it('⭐ B5 — firstOpenPastLltvMonth: the rule\'s month under the policy; with it off, the first month the loan opens past 86% (Run B)', () => {
+    // Under the applied policy it is the month the rule seized (or null) — in the month-end reading too, which is
+    // identical through that month. With the policy off it is rebuilt from the rows: the FIRST such month, before any
+    // liquidation, while Coinbase holds collateral.
+    expectNone('openPast');
+    expect(sum('openChecked')).toBeGreaterThan(0);
+    expect(sum('fired')).toBeGreaterThan(0);
+    // Non-vacuous on the policy-off arm: a rescued month, a same-month liquidation and a later one all occur — and some
+    // run opens past 86% in two months, so the field must keep the first.
+    expect(sum('openRescued')).toBeGreaterThan(0);
+    expect(sum('openSame')).toBeGreaterThan(0);
+    expect(sum('openLater')).toBeGreaterThan(0);
+    expect(sum('openMulti')).toBeGreaterThan(0);
   });
 
   it('⭐ the resolution equals the run — every reason reached, and the answers pinned (I7)', () => {

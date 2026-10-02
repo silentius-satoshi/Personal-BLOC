@@ -25,7 +25,7 @@ import {
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
-  OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag,
+  OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
@@ -316,6 +316,8 @@ export default function UnifiedFace() {
   const applied = sim.policyApplied;
   const reading = policyReading(sim, monthIdx, s.expenses);
   const alert = policyAlert(reading, policySettings);
+  // Policy v2, Run B (B5) — with the policy off, the month the month-end reading hides a seizure on the way down.
+  const openPastNote = openPastLltvNote(sim);
   // Under the policy the unpaid line names the real cause (v1.2 #8); off, the baseline's own gap is required.
   const unpaidNote = applied ? policyUnpaidNote(reading)
     : cycleUnfunded ? unfundedNote(sim.firstUnfundedMonth, sim.totalUnfundedUsd, sim.baselineUnfundedUsd) : null;
@@ -341,7 +343,7 @@ export default function UnifiedFace() {
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
   // The effective Coinbase stop feeds the dashed policy-limit series only while the policy applies (a primitive dep).
   const limitStopPct = applied ? policySettings.cbStopEffPct : undefined;
-  const chartRows = useMemo(() => chartOwnershipRows(rows, CB_LLTV, limitStopPct), [rows, limitStopPct]);
+  const chartRows = useMemo(() => chartOwnershipRows(rows, limitStopPct), [rows, limitStopPct]);
 
   // ⚠ An oscillating path tracks no line, and PL_BAND_LABEL is a Record<PlBand> that 'fourYear' is not.
   const pathNote = pathKind === 'fourYear'
@@ -398,9 +400,11 @@ export default function UnifiedFace() {
         <div className={`${styles.stateLine} ${styles.stateBad}`}>
           Coinbase liquidated at month {liqMonth} — Morpho seized {fmtBtc(sim.seizedBtc ?? 0)} at a{' '}
           {(CB_LIQUIDATION_PENALTY * 100).toFixed(2)}% penalty, leaving {fmtBtc(sim.survivorBtc ?? 0)}.
-          {sim.deficiencyUsd !== null && ` ${fmtUSD(sim.deficiencyUsd)} of debt survives — both facilities are full recourse.`}
+          {sim.deficiencyUsd !== null && shownUsd(sim.deficiencyUsd) && ` ${fmtUSD(sim.deficiencyUsd)} of debt survives — both facilities are full recourse.`}
         </div>
       )}
+      {/* Run B (B5) — policy off only: the month the month-end reading hides a seizure on the way down. */}
+      {openPastNote !== null && <div className={`${styles.stateLine} ${styles.stateWarn}`}>{openPastNote}</div>}
       <div className={`${styles.stateLine} ${capTone}`}>{strikeCapNote(capReading)}</div>
       {/* The support policy's alert — only a warn or bad headline, and never the Strike call (the line above has it). */}
       {alert && (
@@ -746,7 +750,7 @@ export default function UnifiedFace() {
                     <Tooltip content={<ChartTip kind="money" />} />
                     <ReferenceLine x={monthIdx} stroke="var(--line-2)" />
                     <Line type="monotone" dataKey="price" name="Bitcoin" stroke={pathColor} strokeWidth={2} dot={false} isAnimationActive={false} />
-                    <Line type="monotone" dataKey="liq" name="CB liquidation" stroke="var(--red)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                    <Line dataKey="liq" name="Coinbase seizes" stroke="var(--red)" strokeWidth={1.25} strokeDasharray="1 3" dot={false} isAnimationActive={false} connectNulls={false} />
                   </LineChart>
                 </ResponsiveContainer>
               )}
@@ -765,7 +769,7 @@ export default function UnifiedFace() {
                 <div className={styles.verdictSub}>
                   Coinbase LTV reached {(CB_LLTV * 100).toFixed(0)}% — Morpho liquidates instantly, no cure window.
                   {' '}It seized <strong>{fmtBtc(sim.seizedBtc ?? 0)}</strong>, leaving <strong>{fmtBtc(sim.survivorBtc ?? 0)}</strong>.
-                  {sim.deficiencyUsd !== null && (
+                  {sim.deficiencyUsd !== null && shownUsd(sim.deficiencyUsd) && (
                     <> <strong className={styles.deficiency}>{fmtUSD(sim.deficiencyUsd)} of debt survives.</strong></>
                   )}
                 </div>

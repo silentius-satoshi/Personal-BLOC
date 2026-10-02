@@ -87,7 +87,9 @@ describe('⭐ the support policy — memoised, and its line never stressed', () 
   });
 
   it("⭐ the literal 'cycle' — no mode of its own — and the shared card is rendered", () => {
-    expect(memoBody(SRC, 'engineInputs')).toMatch(/\bmode: 'cycle' as const,/);
+    // Run B (B4): the literal lives in ENGINE_CONTEXT, which engineInputs spreads (and the seeding gate reads).
+    expect(SRC).toMatch(/const ENGINE_CONTEXT = \{\s*mode: 'cycle' as const,/);
+    expect(memoBody(SRC, 'engineInputs')).toMatch(/\.\.\.ENGINE_CONTEXT,/);
     expect(SRC).toMatch(/<SupportPolicyCard\b/);
   });
 });
@@ -126,7 +128,9 @@ describe('⭐ the run starts from THE MOVE only when it is made (D10, v1.6)', ()
   const body = memoBody(SRC, 'engineInputs');
 
   it('⭐ the seed needs a move worth making AND the policy on — off, the card names no move', () => {
-    expect(SRC).toMatch(/const seedFromMove = placement\.seeded && supportPolicy !== undefined;/);
+    // Run B (B4): "on" is the engine's own answer — seedsFromMove asks supportPolicyResolution — never "supplied".
+    expect(SRC).toMatch(/const seedFromMove = seedsFromMove\(placement\.seeded, /);
+    expect(SRC).not.toMatch(/placement\.seeded && supportPolicy !== undefined/);
   });
 
   it.each([
@@ -136,6 +140,21 @@ describe('⭐ the run starts from THE MOVE only when it is made (D10, v1.6)', ()
   ])('⭐ %s — the move when seeded, the store\'s own balance otherwise', (field, opening, store) => {
     const re = new RegExp(`\\b${field}: seedFromMove \\? placement\\.opening\\.${opening} : ${store.replace('.', '\\.')},`);
     expect(body, `${field} in engineInputs`).toMatch(re);
+  });
+});
+
+describe('⭐ B4 (Run B) — ONE engine context: the seeding gate asks the run\'s own question', () => {
+  it('⭐ ENGINE_CONTEXT holds exactly the five; engineInputs spreads it and declares none of them; the gate reads it', () => {
+    expect(SRC).toMatch(new RegExp('const ENGINE_CONTEXT = \\{\\s*mode: \'cycle\' as const,\\s*cbLtvCapPct: CAP_PCT,'
+      + '\\s*strikeLtvCapPct: STRIKE_CAP_PCT,\\s*strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,'
+      + '\\s*strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,\\s*\\} as const;'));
+    const body = memoBody(SRC, 'engineInputs');
+    expect(body, 'the engineInputs memo').not.toBe('');
+    expect(body).toMatch(/\.\.\.ENGINE_CONTEXT,/);
+    expect(body).not.toMatch(/\b(?:mode|cbLtvCapPct|strikeLtvCapPct|strikeMarginLtv|strikeMaxDrawLtv):/);
+    expect(SRC).toMatch(
+      /const seedFromMove = seedsFromMove\(placement\.seeded, \{ \.\.\.ENGINE_CONTEXT, supportPolicy, pricePath: paths\[0\], expenses: s\.expenses \}\);/,
+    );
   });
 });
 
