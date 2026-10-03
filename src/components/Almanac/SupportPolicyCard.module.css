@@ -136,6 +136,18 @@
   gap: 16px;
   padding: 4px 0 2px;
 }
+/* The same block in the control dock (sticky controls): one column on a phone, three on a computer — the panel's own
+   width decides, so no breakpoint. The buttons take a row of their own. */
+.settingsGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px 28px;
+  padding: 4px 0 2px;
+}
+.settingsGrid > .btnRow {
+  grid-column: 1 / -1;
+  margin-top: 0;
+}
 /* The clause under a slider's value — a quiet line, so the slider's 20px value never wraps at phone width. */
 .readout {
   margin: -6px 0 0;

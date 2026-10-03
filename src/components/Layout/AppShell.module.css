@@ -75,6 +75,11 @@
 [data-active-tab="liqsim"]   .main    { grid-column: 1 / -1; }
 [data-active-tab="almanac"]  .sidebar { display: none; }
 [data-active-tab="almanac"]  .main    { grid-column: 1 / -1; }
+/* The Almanac's faces dock their controls to the window's bottom edge (sticky controls). `overflow-y: auto` made .main
+   a scroll container that never scrolls — its row grows with the face — so a sticky dock stuck to .main, not the window;
+   clip + visible makes no scroll container (min-width: 0 keeps the grid item able to shrink, which a scroll container
+   got for free). The face's own bottom padding is the page's end: .main's 20px would lift the bar there. */
+[data-active-tab="almanac"] .main { overflow-x: clip; overflow-y: visible; min-width: 0; padding-bottom: 0; }
 
 /* Power Law: the face renders bare — one column, no sidebar (spec pbloc-spec-powerlaw-face-v1) */
 [data-active-tab="powerlaw"] .sidebar { display: none; }

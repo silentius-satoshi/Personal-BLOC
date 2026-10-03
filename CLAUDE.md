@@ -495,6 +495,9 @@ src/
                                 # The JS side of the reduced-motion policy — lets finger-tracking motion drivers SNAP
                                 # between rest states instead of animating (gestures still FUNCTION; the global.css block
                                 # strips CSS transitions/animations). NO consumer yet (P1+)
+    useMediaQuery.ts            # Sticky controls — useMediaQuery(query) → boolean, useReducedMotion's pattern (a synchronous
+                                # first read, then addEventListener('change'); false when matchMedia is missing). The control
+                                # dock reads '(min-width: 1024px)' for ONE markup at a time: the bar from 1024 px, the tabs below
     useChartZoom.ts             # Chart zoom — the thin React adapter over lib/chartZoom (§ Chart zoom). useChartZoom(
                                 # full: View, scales, reach = full, min = MIN_SPAN_TIME_LOG) → { view, zoomed, mode,
                                 # pressMode, zoomIn, zoomOut, reset, dragging, quiet, areaRef, boxRef, plotStyle,
@@ -707,7 +710,12 @@ src/
                                 # it, not the 60-row schedule). See § Decision face (Run B) and § Chart zoom.
                                 # Policy v2 Run B (B4): ENGINE_CONTEXT — the five engine constants (mode, the two caps,
                                 # the Strike margin and draw lines), ONE object that `engineInputs` spreads and the
-                                # seeding gate hands to `seedsFromMove`
+                                # seeding gate hands to `seedsFromMove`.
+                                # Sticky controls (Run 1): the face's LAST child is <ControlDock> — the month and the
+                                # stress live only there, and Path / Line / Policy are remote controls for the cards (the
+                                # same overlay). The Inspect-month / Price-stress card is gone; its three notes read under
+                                # the chart. PathPicker is ONE path picker for the What-if card and the dock's Path panel;
+                                # the dock's Line is `disabled={s.viewerMode}` (R1). See § Decision face → Sticky controls
       decisionView.ts           # Decision face (Run A) — the SCHEDULE and THE MOVE's copy, pure. ACTION_FIELDS is
                                 # ONE field → action table in the engine's month order (a field added to CyclingRow
                                 # without a row here is a step the printed schedule silently drops; a completeness
@@ -782,13 +790,36 @@ src/
                                 # (B1): PolicyReading.cliff (cbSeizurePrice of the inspected row, only under its price)
                                 # → the card's cliff line, right after the Coinbase line; fmtBelowPct — THE F11 wording
                                 # ("less than 1%" / "more than 99%"), shared with THE MOVE. No belief, no
-                                # store, no React — and it never imports cyclingFaceView (which imports it)
+                                # store, no React — and it never imports cyclingFaceView (which imports it).
+                                # Sticky controls: `PolicyCardState` / `policyCardState(mode, enabled, applied)` — the
+                                # card's four states (notCycle · off · notRun · on), ONE branch that the card and the
+                                # control dock's Policy panel both read, so the two can never disagree
       SupportPolicyCard.tsx     # Run 2b — THE support policy card, shared by the Cycling, Ownership, Strategy and Decision
                                 # faces (+ .module.css, tokens only). Props {sim, monthIdx, raw, settings, onChange, onReset,
                                 # mode, expenses} — renders only what the face hands it (no belief, no store; a
-                                # structural test pins the imports). States: not cycle / off (+ Turn on) / ignored
-                                # (policyIgnoredNote) / on (headline, zone strip, details, a collapsed <details>
-                                # Settings disclosure with six SliderInputs; no re-arm control)
+                                # structural test pins the imports). States, from `policyCardState`: not cycle / off
+                                # (+ Turn on) / ignored (policyIgnoredNote) / on (headline, zone strip, details, a
+                                # collapsed <details> Settings disclosure with six SliderInputs; no re-arm control).
+                                # Sticky controls: ONE settings block — `SupportPolicySliders` (the six sliders, their
+                                # clauses, Turn policy off / Reset to defaults; `layout: 'stack' | 'grid'`), rendered by the
+                                # card's disclosure and by `SupportPolicyControls`, the control dock's Policy panel (the
+                                # card's no-reading states, else the sliders in a grid). The card's markup is unchanged
+                                # on all four faces (measured: outerHTML byte-identical to HEAD's, every state)
+      ControlDock.tsx           # Sticky controls (Run 1) — THE control dock (+ .module.css, tokens only): a face's controls,
+                                # kept in reach while the face scrolls. LAYOUT ONLY — the face hands it each panel's content
+                                # and words; it owns which one is open. Sticky to the window's bottom edge, the face's LAST
+                                # child. ONE markup at a time (useMediaQuery('(min-width: 1024px)')): under 1024 px five
+                                # tabs (label over value) over one open panel — inset 14 px, clear of EdgeBackGesture's
+                                # swipe-back zone, capped at 34vh; from 1024 px a bar floating 12 px up — the live controls
+                                # side by side, chips whose panel opens upward (after the bar in the DOM, above it via
+                                # `order: -1`). Escape folds the panel from the document (Safari never focuses a clicked
+                                # button), never a typed value's, and returns focus to the chip; `aria-controls` only while
+                                # open; z-index 30, under an open InfoTip's 40. ⚠ Never `position: fixed` (F2)
+      controlDockView.ts        # Sticky controls — the dock's words, pure: DockTabView · monthTabValue / monthReadout ·
+                                # stressPct / stressTabValue / stressTone (a true minus) · PATH_TAB_VALUE (Support and Fair
+                                # from PL_BAND_LABEL, then Resist. · 4-yr · Stitched · Worst — a phone tab fits 8 characters)
+                                # · lineTabValue (rounded to one decimal first: $99,950 → "$100k") · policyTabValue ·
+                                # decisionDockTabs (the Decision face's five, in order)
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
@@ -2661,6 +2692,14 @@ and simple-mode. One container, no mode branching. `AppShell.module.css` carries
 `.main { grid-column: 1 / -1 }`) matching the liqsim/settings pattern — the empty 280px rail
 no longer renders in full-mode. Since the Power Law face (spec pbloc-spec-powerlaw-face-v1),
 `[data-active-tab="powerlaw"]` carries the same two rules: that tab renders `<PowerLawFace />` bare, with no sidebar.
+Since sticky controls (spec pbloc-spec-sticky-controls-v1, Δ1) the almanac tab adds a third rule,
+`[data-active-tab="almanac"] .main { overflow-x: clip; overflow-y: visible; min-width: 0; padding-bottom: 0; }`.
+`.main`'s `overflow-y: auto` made it a scroll container that never scrolls (its grid row grows with the face), so the
+Decision face's sticky dock stuck to `.main`, not the window, and scrolled away. `clip` + `visible` make no scroll
+container; `min-width: 0` keeps the grid item able to shrink (a scroll container got that for free); and the face's
+own bottom padding is the page's end, so `.main`'s 20px would lift the bar there. Measured before and after on all 12
+faces at 1440 and 390 px: nothing overflows `.main` sideways. The `powerlaw` rules are untouched (`powerLawWiring`
+pins them).
 
 ### Hub expansion — Mining / Power Law / Sats / gated defense faces (Almanac becomes a 6-face hub)
 
@@ -4046,7 +4085,7 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   line, `SCHEDULE_KEEP_KEY` — "Strike keep: what your full line needs on Strike at support." — says what the column
   is: THE MOVE's phrase for the same formula, `strikeKeepBtc` = max(line, balance) / (skStop × support) (Z12). On
   screen only: the printout has no keep column. **C2:** the
-  WHOLE row is the button (`<tr role="button" tabIndex={0}>`, Enter / Space → the scrubber); a crash row's note
+  WHOLE row is the button (`<tr role="button" tabIndex={0}>`, Enter / Space → the inspected month, the dock's Month); a crash row's note
   (`crashNote`, D13 — the SAME sentence the printout carries) and its "→ Emergency Console" link go on a SIBLING row
   beneath, never inside the button; the link appears only when `hasCbLoan && ltvTriggered` (the only time the defense
   face exists and the console runs) and its accessible name carries the month (`consoleLinkLabel`). ⚠ A 60-month plan
@@ -4140,6 +4179,49 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   WIDENED** to `/\bopeningColdBtc: (?:[^,\n]*? : )?s\.openingColdBtc\b/` — the bare form or a ternary whose ELSE
   branch is the store's reserve (G1); an inverted ternary and a seed with no fallback both fail it. `coldWiring` and
   `stressAnchor` list the face too; the forbidden-input grep covers it with no change.
+
+**Sticky controls — the control dock (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1; store unchanged).** On a
+phone the month slider sat 1,844 px below the chart (F1), so every drag was blind. The face's controls now ride a dock
+stuck to the window's bottom edge (`ControlDock` + `controlDockView`, see their file-list entries).
+- **The dock is the face's LAST child** — `<ControlDock panels={dockPanels} />` between the disclaimer and the print
+  portal. `position: sticky; bottom` holds it on the window's edge until the face ends, where it settles under the
+  disclaimer and never covers it. Five controls, in order: **Month · Stress · Path · Line · Policy**
+  (`decisionDockTabs`; the face's `dockContent` holds labels and readouts only — I31 holds).
+- **Month and Stress live ONLY in the dock.** The Inspect-month / Price-stress card is gone; its three notes (the
+  anchored line, `stressNote`, `BELOW_SUPPORT_NOTE`) read under the chart, after the manual-price note. Path, Line and
+  Policy are REMOTE controls — they write the same overlay and state as the What-if, Credit-line and Support policy
+  cards, which stay. `PathPicker` is ONE path picker for the What-if card and the dock's Path panel (`compact`: one
+  sideways-scrolling line, `.dockPaths`, no sublabels); the dock's Policy panel is `SupportPolicyControls`, which reads
+  the card's own `policyCardState` and renders its `SupportPolicySliders` (one settings block, one branch).
+- **Under 1024 px: tabs. From 1024 px: a bar (R2).** One markup at a time (`useMediaQuery`). Under 1024 (a phone, an
+  iPad upright, a phone sideways): five 44 px tabs, label over value, over ONE open panel (Month open at first; a
+  second tap folds it; capped at 34vh). From 1024: a bar floating 12 px up — Month and Stress side by side, Path / Line /
+  Policy as 32 px chips whose panel opens UPWARD, so the chart at the window's top stays in view. Why 1024: at 768–900 px
+  both slider heads wrapped and the bar grew 87 → 106 px, and a touch screen there would get 32 px chips (measured).
+  Measured: the dock is 134 px tall at 768–1023 px with the month panel open, 87 px from 1024.
+- **Clear of the swipe-back zone (Δ2).** The phone panel is inset 14 px, so its controls start at x 30 — right of
+  EdgeBackGesture's 20 px zone: a drag from a slider's left end moves the slider, never the page.
+- **Under an open InfoTip (Δ3).** The dock is `z-index: 30`; an InfoTip's panel is 40.
+- **The keyboard (Δ4).** While the bar's panel is open, Escape is heard on the DOCUMENT (Safari never focuses a clicked
+  button, so a listener on the dock would never hear it), except an Escape typed into a value field — that one is
+  SliderInput's own cancel, and the next folds the panel. Focus returns to the chip. The panel follows the bar in the
+  DOM (Tab goes chip → panel) and shows above it (`order: -1`). `aria-controls` is set only while a panel is open.
+- **Viewers (R1).** The dock's Line is `disabled={s.viewerMode}`, as the Credit-line card's SliderInput disables itself;
+  Month and Stress stay live for a viewer, as they were.
+- **The face's end.** `.faceDocked.faceDocked` (doubled — the composed `.face`'s `padding` shorthand would tie a single
+  class): bottom padding 0 under 1024 px, where the dock sits flush on the edge, and 12 px from 1024, so the floating
+  bar never moves when the page runs out.
+- **Full mode (Δ1).** AppShell's `.main` was a scroll container that never scrolls, so a sticky dock stuck to IT, not
+  the window — see § Almanac P4.
+- ⚠ **Never `position: fixed` (F2).** EdgeBackGesture's `.page { will-change: transform }` makes it the containing block
+  for fixed descendants, so a fixed dock scrolls away with the page (measured). Sticky also moves with the page through
+  a swipe-back.
+- ⚠ **No body `scroll-padding` (F5).** It kept scrolled-to elements above the dock, but focusing the dock itself (Tab
+  from the page) then jumped the page by ~400 px: the browser reads a sticky element's own controls as hidden under the
+  padding (measured).
+- **The cards' markup is unchanged (F9).** The Support policy card on all four faces and the What-if card: outerHTML
+  byte-identical to HEAD's in every state (on, Settings closed and open, off, not cycle, not run), production builds,
+  class tokens normalised.
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 
@@ -6891,6 +6973,48 @@ goes red.)
   - e2e — ⭐ D2: the `schedule-keep` header cell is ONE line and doesn't overflow at 390px and 375px (red with "Keep ₿
     at support" restored: two lines at 390px); ⭐ the first Decision smoke sees the legend note on the defaults (red
     when it isn't rendered).
+- **Sticky controls — the control dock** (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1; 35 named mutations,
+  each an exact-once edit, red at its own tag, every file restored and md5-checked):
+  - `src/components/Almanac/__tests__/controlDockView.test.ts` (8) — the dock's words:
+    - ⭐ TODAY and ⭐ READOUT (the month: "today" at 0; the scrubber card's readout, word for word);
+    - ⭐ OFF and ⭐ MINUS (the stress: "0%" and plain at 1×; a true minus, down bad, up good — red with a hyphen);
+    - ⭐ LENGTH — every path's tab value fits 8 characters, no two alike, and BAND: Support / Fair are `PL_BAND_LABEL`'s
+      (red with "Resistance", or a typed 'Floor');
+    - ⭐ THOUSANDS — "$40k" · "$3.5k" · "$128k", and $99,950 → "$100k" (red with the prototype's unrounded format:
+      "$100.0k");
+    - ⭐ STATES (the policy tab reads `policyCardState`'s four states) and ⭐ FIVE-TABS (the order, each from its helper).
+  - `src/components/Almanac/__tests__/controlDockWiring.test.ts` (9, source-reading):
+    - PREMISE — EdgeBackGesture's `.page` still has `will-change: transform` (red when it doesn't: the guard is then
+      vacuous);
+    - ⭐ STICKY-CSS — `.dock` is sticky, nothing in its CSS is fixed or hex (TOKENS), its z-index sits under an open
+      InfoTip's (STACK), and no stylesheet sets `scroll-padding` (NO-SCROLL-PADDING);
+    - ⭐ ONE-DOCK — the face's last child (after the disclaimer, nothing after it but the print portal), and the dock
+      reads no store (LAYOUT-ONLY);
+    - ⭐ ONCE — "Inspect month" / "Price stress multiplier" exist once, in the dock's panels, and VIEWER: the Line is
+      `disabled={s.viewerMode}` with `viewerMode: st.viewerMode,` in the selector (R1);
+    - ⭐ NOTES — the scrubber's three notes read inside the chart card;
+    - ⭐ DOUBLED — `.faceDocked.faceDocked` 0 under 1024 px and 12 px from it, the dock's media query and `WIDE` at 1024
+      (R2), and FULL-MODE: `[data-active-tab="almanac"] .main` is no scroll container (`overflow-x: clip;
+      overflow-y: visible; min-width: 0`, and no auto / scroll / hidden) with `padding-bottom: 0`;
+    - ⭐ ONE-PICKER — `PathPicker` in the What-if card and, `compact`, in the dock;
+    - ⭐ SIX-ONCE — each support-policy slider written once in the app, in SupportPolicyCard.tsx;
+    - ⭐ ONE-BRANCH — the card's disclosure and the dock's panel both render `SupportPolicySliders`, branching on
+      `policyCardState`.
+  - e2e `e2e/controlDock.spec.ts` (6) — hermetic (prices aborted, history stubbed, `seedLoanAndGoto`):
+    - phone (390×844): the edge — STICKY · OPAQUE (`rgb(14, 18, 25)`) · PINNED at scroll 0, ¼, ½, ¾ · END (under the
+      disclaimer, on the same edge) · ONCE-DOM; the tabs — TABS (five, Month open) · EDGE (the slider starts right of
+      `edge-back-zone`) · MONTH / READOUT (five ArrowRights) · FOLD · ARIA · PATH-TAB · REMOTE (the What-if card's Fair
+      pressed); Policy — POLICY (under half the screen, scrolls) · NOTE (the stress note once, in the chart card) ·
+      POLICY-TAB · REMOTE-POLICY;
+    - computer (1440×900, `isMobile: false, hasTouch: false` — Z20): the edge at 888 (12 px up) · ONCE-DOM · LAYOUT
+      1023 (the tabs) / LAYOUT 1024 (the chips); the bar — LIVE · UP (Policy's panel above the month slider, the chart
+      box above the dock) · TAB-INTO · ESCAPE (after a blur) · ESCAPE-FOCUS · EDIT-ESC (a typed value's Escape cancels
+      only the edit; a second folds the panel);
+    - full mode (Δ1): one test, two contexts (the computer and the phone), `simpleMode: false`, Tools → Almanac →
+      ◆ Decision → the edge checks with a surface tag.
+  - Measured, never moved: the phone chart-zoom tests' plot centre (y ≈ 702) clears the dock's top (y 710) by ~8–9 px,
+    and their box and pan drags end under the dock but complete (pointer capture). A taller dock would turn them red —
+    a kill criterion, never a moved target.
 - **Power Law chart polish** (spec `pbloc-spec-powerlaw-polish-v1`, P1–P11; every ⭐ red under its named mutation,
   every file restored and hash-checked):
   - `src/utils/__tests__/fmtTooltipUsd.test.ts` — ⭐ never "$0" for a positive price (red with `fmtUSD` for every
@@ -9862,6 +9986,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `getCollateralForTier` | Uses starting `btcPrice` — not per-month price |
 | Chart Y-axis | Always abbreviated — exact format causes label overlap |
 | Override a composed class's property on a DOUBLED selector, never beside `composes:` | A declaration in the composing rule ties the composed class's specificity (0,1,0), so the bundle's rule order decides, and that order is an accident of the import graph that differs between dev and production. P10 shipped Mining, Power Law and the Converter 600px wide in production while dev looked right. Put the override on `.x.x` (0,2,0), which wins in any order: `.main.main { max-width }`, `.chartBox.chartBox { height }`. Every single-class rule of the composing class counts, a media query's included, and so do shorthands (`border` covers `border-color`). `composedOverrides.test.ts` IS the audit, over every `*.module.css` under `src/` (P9–P11) |
+| Never `position: fixed` under EdgeBackGesture's `.page`, and never a body `scroll-padding` | `.page` has `will-change: transform`, which makes it the containing block for its fixed descendants: a fixed element there scrolls away with the page (measured on the control dock, F2). Pin to the window's edge with `position: sticky` as the face's LAST child — `ControlDock` does, and it also moves with the page through a swipe-back. In full mode a sticky element needs an ancestor that is no scroll container: `[data-active-tab="almanac"] .main` (Δ1). A body `scroll-padding-bottom` kept scrolled-to elements above the dock, but focusing the dock itself then jumped the page by ~400 px (F5). Pinned by `controlDockWiring.test.ts` (PREMISE, STICKY-CSS, ONE-DOCK, DOUBLED) and `e2e/controlDock.spec.ts`. Four Settings overlays already sit under `.page` (NostrAuthGate, ViewerLoginFlow, RecoveryKeyCeremony, RestoreBackupFlow — each `position: fixed`, rendered inline by SettingsMain in simple mode) — logged; not fixed in this run |
 | `NumberInput` suffix | Avoid inside input — cursor issues; use external label |
 | Skip fields | Persisted + SYNCED via settings (standing plan-shaping prefs) — reset only when user toggles back to Pay |
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |

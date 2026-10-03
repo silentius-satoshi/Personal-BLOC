@@ -1,0 +1,134 @@
+/* The control dock (sticky controls — spec pbloc-spec-sticky-controls-v1). Tokens only — zero new hex.
+   ONE rule on both sizes: the face's last child, sticky to the window's bottom edge. 🔴 Never position: fixed —
+   EdgeBackGesture's .page has will-change: transform, which traps fixed descendants (see ControlDock.tsx). */
+
+.dock {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;                          /* under an open InfoTip's panel (40): on a tie the later node — the dock — wins */
+  margin: 12px -16px 0;                 /* under 1024 px: full bleed across the face's 16px gutters */
+  padding: 8px 16px calc(10px + env(safe-area-inset-bottom, 0px));
+  background: var(--surface);           /* opaque — at 0.97 alpha the schedule's text showed through */
+  border-top: 1px solid var(--border-focus);
+  box-shadow: 0 -10px 28px rgba(0, 0, 0, 0.55);
+  /* The faces' slider track (--bg-input) all but vanishes on --surface; lifted inside the dock only. */
+  --bg-input: var(--text-ghost);
+}
+
+/* ── Under 1024 px: one tab per control, label over value, all always visible ─────────────────────── */
+.tabs {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  gap: 4px;
+}
+.tab {
+  min-width: 0;
+  min-height: 44px;                     /* touch target */
+  padding: 4px 2px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface-2);
+  color: var(--text-muted);
+  font: inherit;
+  line-height: 1.25;
+  text-align: center;
+  cursor: pointer;
+}
+.tabLabel {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.tabValue {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.tabOn {
+  border-color: var(--green);
+  background: var(--surface-3);
+}
+.tabOn .tabLabel,
+.tabOn .tabValue {
+  color: var(--green);
+}
+.panel {
+  /* Inset 14px: the controls start at x 30 — HEAD's scrubber sat at 31 — right of EdgeBackGesture's 20px swipe-back
+     zone, so a drag from a slider's left end moves the slider, never the page. Padding, not margin: this scroll box
+     also clips sideways, and the inset keeps the sliders' 2px focus ring inside it. */
+  padding: 6px 14px 0;
+  max-height: 34vh;                     /* the Policy panel scrolls inside the dock */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The stress sign, as beside its slider. Below .tabOn's (0,2,0) on purpose: an open tab reads green. */
+.good { color: var(--green); }
+.bad { color: var(--red); }
+
+/* ── 1024 px and up: a bar floating above the window's edge; the rest opens upward ────────────────── */
+@media (min-width: 1024px) {
+  .dock {
+    bottom: 12px;                       /* = the face's bottom padding (DecisionFace.module.css .faceDocked) */
+    display: flex;
+    flex-direction: column;             /* the open panel follows the bar in the DOM; .drop's order shows it above */
+    margin: 12px 0 0;
+    padding: 10px 14px;
+    border: 1px solid var(--border-focus);
+    border-radius: 12px;
+    box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.55);
+  }
+  .bar {
+    display: flex;
+    align-items: center;
+    gap: 18px;
+  }
+  .live {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+  .chips {
+    flex: none;
+    display: flex;
+    gap: 6px;
+  }
+  .chip {
+    min-height: 32px;
+    padding: 6px 11px;
+    border-radius: 999px;
+    border: 1px solid var(--line);
+    background: var(--surface-2);
+    color: var(--text-muted);
+    font: inherit;
+    font-size: 12px;
+    white-space: nowrap;
+    cursor: pointer;
+  }
+  .chip b {
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .chipOn {
+    border-color: var(--green);
+    color: var(--green);
+    background: var(--surface-3);
+  }
+  .chipOn b {
+    color: var(--green);
+  }
+  .drop {
+    order: -1;                          /* after the bar in the DOM (Tab goes chip → panel), above it on screen */
+    max-height: 50vh;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    margin-bottom: 10px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid var(--line);
+  }
+}

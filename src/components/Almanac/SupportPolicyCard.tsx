@@ -3,8 +3,8 @@ import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import {
   policyReading, policyHeadline, policyDetails, policyIgnoredNote, policyTip, settingReadouts, zoneStrip,
-  zoneStripLabel, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, ZONE_ORDER, SUPPORT_POLICY_RANGES,
-  type EffectivePolicySettings, type PolicyTone, type SupportPolicySettings,
+  zoneStripLabel, policyCardState, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, ZONE_ORDER, SUPPORT_POLICY_RANGES,
+  type EffectivePolicySettings, type PolicyCardState, type PolicyTone, type SupportPolicySettings,
 } from './supportPolicyView';
 import styles from './SupportPolicyCard.module.css';
 
@@ -18,6 +18,8 @@ import styles from './SupportPolicyCard.module.css';
  * settings are the face's session overlay — the card writes nothing but `onChange` / `onReset`.
  *
  * ⚠ No re-arm control: the breaker's re-arm is a constant (decision 4) — the breaker line says what it does.
+ * ONE settings block (sticky controls): the card's disclosure and the control dock's Policy panel both render
+ * `SupportPolicySliders`, and both branch on `policyCardState` — so the two can never offer different controls.
  * ⚠ `ui/SliderInput` and `ui/InfoTip` are consumed exactly as they are. SliderInput is shared with Mining and Living;
  * InfoTip lives only on these faces (this card, the Strike-cap ⓘs, Cycling's cold storage).
  */
@@ -47,6 +49,131 @@ const TONE_CLASS: Record<PolicyTone, string> = {
 /** Above this horizon the strip's 1px gaps would eat the cells at phone width, so they drop to 0. */
 const STRIP_GAP_MAX_MONTHS = 96;
 
+/** The card's three states that show no reading — another strategy, off, or asked for but not run — word for word. */
+function PolicyStateBody({ state, sim, onChange }: {
+  state: Exclude<PolicyCardState, 'on'>;
+  sim: CyclingResult;
+  onChange: (patch: Partial<SupportPolicySettings>) => void;
+}) {
+  if (state === 'notCycle') return <p className={styles.quiet}>Applies to the Cycle strategy only.</p>;
+  if (state === 'off') {
+    return (
+      <>
+        <p className={styles.quiet}>Off — limits are measured at today's price, the way the projection worked before.</p>
+        <div className={styles.btnRow}>
+          <button type="button" className={styles.btn} onClick={() => onChange({ enabled: true })}>Turn on</button>
+        </div>
+      </>
+    );
+  }
+  // Asked for, but the engine could not run it (a face can reach this: the dashboard's Strike liquidation LTV at or
+  // under the 70% call). Say so — never an empty "on" state.
+  return (
+    <>
+      <p className={styles.quiet}>{policyIgnoredNote(sim.policyIgnoredReason)}</p>
+      <div className={styles.btnRow}>
+        <button type="button" className={styles.btn} onClick={() => onChange({ enabled: false })}>Turn policy off</button>
+      </div>
+    </>
+  );
+}
+
+export interface SupportPolicySlidersProps {
+  raw: SupportPolicySettings;
+  settings: EffectivePolicySettings;
+  onChange: (patch: Partial<SupportPolicySettings>) => void;
+  onReset: () => void;
+  expenses: number;
+  /** 'stack' — the card's disclosure; 'grid' — the control dock's panel (one column on a phone, three on a computer). */
+  layout?: 'stack' | 'grid';
+}
+
+/** The six settings, their clauses, and Turn policy off / Reset to defaults. */
+export function SupportPolicySliders({
+  raw, settings, onChange, onReset, expenses, layout = 'stack',
+}: SupportPolicySlidersProps) {
+  const r = settingReadouts(settings, expenses);
+  const R = SUPPORT_POLICY_RANGES;
+  return (
+    <div className={layout === 'grid' ? styles.settingsGrid : styles.settings}>
+      <div>
+        <SliderInput
+          label="Coinbase limit at support" value={raw.cbStopAtSupportPct}
+          onChange={(v) => onChange({ cbStopAtSupportPct: v })}
+          min={R.cbStopAtSupportPct.min} max={R.cbStopAtSupportPct.max} step={R.cbStopAtSupportPct.step}
+          display={r.cbStop.value}
+          minLabel={`${R.cbStopAtSupportPct.min}%`} maxLabel={`${R.cbStopAtSupportPct.max}%`}
+        />
+        <p className={styles.readout}>{r.cbStop.clause}</p>
+      </div>
+      <div>
+        <SliderInput
+          label="Strike limit at support" value={raw.strikeStopAtSupportPct}
+          onChange={(v) => onChange({ strikeStopAtSupportPct: v })}
+          min={R.strikeStopAtSupportPct.min} max={R.strikeStopAtSupportPct.max} step={R.strikeStopAtSupportPct.step}
+          display={r.skStop.value}
+          minLabel={`${R.strikeStopAtSupportPct.min}%`} maxLabel={`${R.strikeStopAtSupportPct.max}%`}
+        />
+        <p className={styles.readout}>{r.skStop.clause}</p>
+      </div>
+      <SliderInput
+        label="Buy with the line up to" value={raw.accumulateBelow}
+        onChange={(v) => onChange({ accumulateBelow: v })}
+        min={R.accumulateBelow.min} max={R.accumulateBelow.max} step={R.accumulateBelow.step}
+        display={r.accumulateBelow.value}
+        minLabel={`${R.accumulateBelow.min.toFixed(2)}×`} maxLabel={`${R.accumulateBelow.max.toFixed(2)}×`}
+      />
+      <div>
+        <SliderInput
+          label="Pay down above" value={raw.payDownAbove}
+          onChange={(v) => onChange({ payDownAbove: v })}
+          min={R.payDownAbove.min} max={R.payDownAbove.max} step={R.payDownAbove.step}
+          display={r.payDownAbove.value}
+          minLabel={`${R.payDownAbove.min.toFixed(2)}×`} maxLabel={`${R.payDownAbove.max.toFixed(2)}×`}
+        />
+        {r.payDownAbove.clause && <p className={styles.readout}>{r.payDownAbove.clause}</p>}
+      </div>
+      <div>
+        <SliderInput
+          label="Borrowing room kept" value={raw.bearBufferMonths}
+          onChange={(v) => onChange({ bearBufferMonths: v })}
+          min={R.bearBufferMonths.min} max={R.bearBufferMonths.max} step={R.bearBufferMonths.step}
+          display={r.bearBuffer.value}
+          minLabel="none" maxLabel={`${R.bearBufferMonths.max} mo`}
+        />
+        {r.bearBuffer.clause && <p className={styles.readout}>{r.bearBuffer.clause}</p>}
+      </div>
+      <div>
+        <SliderInput
+          label="Cash reserve" value={raw.cashReserveMonths}
+          onChange={(v) => onChange({ cashReserveMonths: v })}
+          min={R.cashReserveMonths.min} max={R.cashReserveMonths.max} step={R.cashReserveMonths.step}
+          display={r.cashReserve.value}
+          minLabel="none" maxLabel={`${R.cashReserveMonths.max} mo`}
+        />
+        {r.cashReserve.clause && <p className={styles.readout}>{r.cashReserve.clause}</p>}
+      </div>
+      <div className={styles.btnRow}>
+        <button type="button" className={styles.btn} onClick={() => onChange({ enabled: false })}>Turn policy off</button>
+        <button type="button" className={styles.btn} onClick={onReset}>Reset to defaults</button>
+      </div>
+    </div>
+  );
+}
+
+/** The control dock's Policy panel: the card's controls without its readings — the same state branch, the same
+ *  sliders. */
+export function SupportPolicyControls({
+  sim, raw, settings, onChange, onReset, mode, expenses, layout,
+}: Omit<SupportPolicyCardProps, 'monthIdx'> & { layout?: 'stack' | 'grid' }) {
+  const state = policyCardState(mode, settings.enabled, sim.policyApplied);
+  if (state !== 'on') return <PolicyStateBody state={state} sim={sim} onChange={onChange} />;
+  return (
+    <SupportPolicySliders raw={raw} settings={settings} onChange={onChange} onReset={onReset} expenses={expenses}
+      layout={layout} />
+  );
+}
+
 export default function SupportPolicyCard({
   sim, monthIdx, raw, settings, onChange, onReset, mode, expenses,
 }: SupportPolicyCardProps) {
@@ -59,37 +186,12 @@ export default function SupportPolicyCard({
     </span>
   );
 
-  if (mode !== 'cycle') {
+  const state = policyCardState(mode, settings.enabled, sim.policyApplied);
+  if (state !== 'on') {
     return (
       <section className={styles.card}>
         {label}
-        <p className={styles.quiet}>Applies to the Cycle strategy only.</p>
-      </section>
-    );
-  }
-
-  if (!settings.enabled) {
-    return (
-      <section className={styles.card}>
-        {label}
-        <p className={styles.quiet}>Off — limits are measured at today's price, the way the projection worked before.</p>
-        <div className={styles.btnRow}>
-          <button type="button" className={styles.btn} onClick={() => onChange({ enabled: true })}>Turn on</button>
-        </div>
-      </section>
-    );
-  }
-
-  // Asked for, but the engine could not run it (a face can reach this: the dashboard's Strike liquidation LTV at or
-  // under the 70% call). Say so — never an empty "on" state.
-  if (!sim.policyApplied) {
-    return (
-      <section className={styles.card}>
-        {label}
-        <p className={styles.quiet}>{policyIgnoredNote(sim.policyIgnoredReason)}</p>
-        <div className={styles.btnRow}>
-          <button type="button" className={styles.btn} onClick={() => onChange({ enabled: false })}>Turn policy off</button>
-        </div>
+        <PolicyStateBody state={state} sim={sim} onChange={onChange} />
       </section>
     );
   }
@@ -102,8 +204,6 @@ export default function SupportPolicyCard({
   const tight = zones.length - 1 > STRIP_GAP_MAX_MONTHS;
   const markerLeft = zones.length > 0 ? ((monthIdx + 0.5) / zones.length) * 100 : 0;
   const inspected = zones[monthIdx];
-  const r = settingReadouts(settings, expenses);
-  const R = SUPPORT_POLICY_RANGES;
 
   return (
     <section className={styles.card}>
@@ -138,69 +238,7 @@ export default function SupportPolicyCard({
       {/* Collapsed by default on every face — a native disclosure (keyboard- and screen-reader-ready, no JS). */}
       <details className={styles.disclosure}>
         <summary className={styles.summary}>Settings</summary>
-        <div className={styles.settings}>
-          <div>
-            <SliderInput
-              label="Coinbase limit at support" value={raw.cbStopAtSupportPct}
-              onChange={(v) => onChange({ cbStopAtSupportPct: v })}
-              min={R.cbStopAtSupportPct.min} max={R.cbStopAtSupportPct.max} step={R.cbStopAtSupportPct.step}
-              display={r.cbStop.value}
-              minLabel={`${R.cbStopAtSupportPct.min}%`} maxLabel={`${R.cbStopAtSupportPct.max}%`}
-            />
-            <p className={styles.readout}>{r.cbStop.clause}</p>
-          </div>
-          <div>
-            <SliderInput
-              label="Strike limit at support" value={raw.strikeStopAtSupportPct}
-              onChange={(v) => onChange({ strikeStopAtSupportPct: v })}
-              min={R.strikeStopAtSupportPct.min} max={R.strikeStopAtSupportPct.max} step={R.strikeStopAtSupportPct.step}
-              display={r.skStop.value}
-              minLabel={`${R.strikeStopAtSupportPct.min}%`} maxLabel={`${R.strikeStopAtSupportPct.max}%`}
-            />
-            <p className={styles.readout}>{r.skStop.clause}</p>
-          </div>
-          <SliderInput
-            label="Buy with the line up to" value={raw.accumulateBelow}
-            onChange={(v) => onChange({ accumulateBelow: v })}
-            min={R.accumulateBelow.min} max={R.accumulateBelow.max} step={R.accumulateBelow.step}
-            display={r.accumulateBelow.value}
-            minLabel={`${R.accumulateBelow.min.toFixed(2)}×`} maxLabel={`${R.accumulateBelow.max.toFixed(2)}×`}
-          />
-          <div>
-            <SliderInput
-              label="Pay down above" value={raw.payDownAbove}
-              onChange={(v) => onChange({ payDownAbove: v })}
-              min={R.payDownAbove.min} max={R.payDownAbove.max} step={R.payDownAbove.step}
-              display={r.payDownAbove.value}
-              minLabel={`${R.payDownAbove.min.toFixed(2)}×`} maxLabel={`${R.payDownAbove.max.toFixed(2)}×`}
-            />
-            {r.payDownAbove.clause && <p className={styles.readout}>{r.payDownAbove.clause}</p>}
-          </div>
-          <div>
-            <SliderInput
-              label="Borrowing room kept" value={raw.bearBufferMonths}
-              onChange={(v) => onChange({ bearBufferMonths: v })}
-              min={R.bearBufferMonths.min} max={R.bearBufferMonths.max} step={R.bearBufferMonths.step}
-              display={r.bearBuffer.value}
-              minLabel="none" maxLabel={`${R.bearBufferMonths.max} mo`}
-            />
-            {r.bearBuffer.clause && <p className={styles.readout}>{r.bearBuffer.clause}</p>}
-          </div>
-          <div>
-            <SliderInput
-              label="Cash reserve" value={raw.cashReserveMonths}
-              onChange={(v) => onChange({ cashReserveMonths: v })}
-              min={R.cashReserveMonths.min} max={R.cashReserveMonths.max} step={R.cashReserveMonths.step}
-              display={r.cashReserve.value}
-              minLabel="none" maxLabel={`${R.cashReserveMonths.max} mo`}
-            />
-            {r.cashReserve.clause && <p className={styles.readout}>{r.cashReserve.clause}</p>}
-          </div>
-          <div className={styles.btnRow}>
-            <button type="button" className={styles.btn} onClick={() => onChange({ enabled: false })}>Turn policy off</button>
-            <button type="button" className={styles.btn} onClick={onReset}>Reset to defaults</button>
-          </div>
-        </div>
+        <SupportPolicySliders raw={raw} settings={settings} onChange={onChange} onReset={onReset} expenses={expenses} />
       </details>
     </section>
   );

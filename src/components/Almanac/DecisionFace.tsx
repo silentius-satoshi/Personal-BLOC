@@ -1,4 +1,4 @@
-import { Fragment, memo, useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { Fragment, memo, useCallback, useEffect, useId, useMemo, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
 import { useShallow } from 'zustand/react/shallow';
 import {
@@ -21,7 +21,7 @@ import {
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON,
 } from './cyclingFaceView';
 import {
-  DEFAULT_SUPPORT_POLICY_SETTINGS, DEFAULT_BREAKER_REARM_MONTHS, effectivePolicySettings,
+  DEFAULT_SUPPORT_POLICY_SETTINGS, DEFAULT_BREAKER_REARM_MONTHS, effectivePolicySettings, policyCardState,
   shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
 } from './supportPolicyView';
 import {
@@ -37,7 +37,9 @@ import {
   SCHEDULE_KEEP_HEADER, SCHEDULE_KEEP_KEY, seedsFromMove,
   type DecisionPath, type LineAction, type MoveTone,
 } from './decisionView';
-import SupportPolicyCard from './SupportPolicyCard';
+import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import ControlDock, { type DockPanel } from './ControlDock';
+import { decisionDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { downloadBlob } from '../../lib/backup/downloadFile';
@@ -108,6 +110,43 @@ const WORST_META: { key: 'worstStitched' | 'worstModeled'; label: string }[] = [
   { key: 'worstModeled', label: 'Worst (modeled)' },
 ];
 const STITCHED_COLOR = 'var(--text-primary)';
+
+/** The six price paths as buttons — ONE picker for the What-if card and the control dock's Path panel. The card adds
+ *  the worst options' sublabels; the dock's row is one line that scrolls sideways. ⚠ The card's buttons keep HEAD's
+ *  exact class tokens (no empty slot), so its markup is unchanged. */
+function PathPicker({ choice, onPick, stitchedIsSupport, crownNoun, compact }: {
+  choice: DecisionPath;
+  onPick: (p: DecisionPath) => void;
+  stitchedIsSupport: boolean;
+  crownNoun: string;
+  compact?: boolean;
+}) {
+  return (
+    <div className={compact ? styles.dockPaths : styles.pathRow}>
+      {PATH_META.map((p) => (
+        <button key={p.key} type="button"
+          className={`${styles.bandBtn} ${compact ? `${styles.dockPathBtn} ` : ''}${choice === p.key ? styles.bandBtnOn : ''}`}
+          style={choice === p.key ? { borderColor: p.color, color: p.color } : undefined}
+          aria-pressed={choice === p.key}
+          onClick={() => onPick(p.key)}>
+          {p.label}
+        </button>
+      ))}
+      {WORST_META.map((w) => {
+        const disabled = w.key === 'worstStitched' && stitchedIsSupport;
+        return (
+          <button key={w.key} type="button" disabled={disabled}
+            className={`${styles.bandBtn} ${compact ? styles.dockPathBtn : styles.pathWide} ${choice === w.key ? styles.bandBtnOn : ''}`}
+            aria-pressed={choice === w.key}
+            onClick={() => onPick(w.key)}>
+            {w.label}
+            {!compact && <span className={styles.pathSub}>{pathSublabel(w.key, stitchedIsSupport, crownNoun)}</span>}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
 
 const TONE_CLASS: Record<MoveTone, string> = {
   plain: '', good: styles.toneGood, warn: styles.toneWarn, bad: styles.toneBad,
@@ -284,6 +323,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     cbLoanBalance: st.cbLoanBalance,
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
     dayLog: st.dayLog,   // Strike's 60-day hold, from logged deposits
+    viewerMode: st.viewerMode,   // the dock's Line is locked for a viewer, as the card's SliderInput is (R1)
   })));
 
   const [overlay, setOverlay] = useState<Overlay>({});
@@ -577,8 +617,79 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     worstBy: crown.worstBy,
   });
 
+  // ── The control dock (sticky controls, spec pbloc-spec-sticky-controls-v1). The month and the stress live ONLY
+  // here; Path, Line and Policy are remote controls for the cards below — the same overlay, so the two always agree.
+  const stress = stressPct(lens);
+  const dockContent: Record<string, ReactNode> = {
+    month: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Inspect month</span>
+          <span className={styles.scrubValue}>{monthReadout(monthIdx)}</span>
+        </div>
+        <input
+          type="range" className={styles.scrub}
+          min={0} max={Math.max(0, sim.rows.length - 1)} step={1} value={monthIdx}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          aria-label="Inspect month"
+        />
+      </>
+    ),
+    stress: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Price stress</span>
+          <span className={styles.scrubValue}>
+            {fmtUSD(selRow.price)}{' · '}
+            {stress === null ? 'as modeled' : (
+              <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>{stress}</span>
+            )}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.scrub}
+          min={0.35} max={2.2} step={0.01} value={lens}
+          onChange={(e) => setLens(Number(e.target.value))}
+          aria-label="Price stress multiplier"
+        />
+      </>
+    ),
+    path: (
+      <>
+        <span className={styles.cardLabel}>What if · price path</span>
+        <PathPicker choice={choice} onPick={(p) => set('path', p)} stitchedIsSupport={stitchedIsSupport}
+          crownNoun={crownNoun} compact />
+      </>
+    ),
+    line: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Credit line (what-if)</span>
+          <span className={styles.scrubValue}>{fmtUSD(runLine)}</span>
+        </div>
+        {/* Locked for a viewer, as the card's SliderInput is (R1). Month and Stress only inspect, so they stay live. */}
+        <input
+          type="range" className={styles.scrub}
+          min={STRIKE_LINE_MIN_USD} max={STRIKE_LINE_MAX_USD} step={LINE_STEP_USD} value={runLine}
+          onChange={(e) => set('creditLine', Number(e.target.value))}
+          aria-label="Credit line (what-if)" disabled={s.viewerMode}
+        />
+      </>
+    ),
+    policy: (
+      <SupportPolicyControls
+        sim={sim} raw={policyRaw} settings={policySettings} onChange={setPolicy} onReset={resetPolicy}
+        mode="cycle" expenses={s.expenses} layout="grid"
+      />
+    ),
+  };
+  const dockPanels: DockPanel[] = decisionDockTabs({
+    monthIdx, lens, path: choice, lineUsd: runLine,
+    policy: policyCardState('cycle', policySettings.enabled, sim.policyApplied),
+  }).map((t) => ({ ...t, live: t.id === 'month' || t.id === 'stress', content: dockContent[t.id] }));
+
   return (
-    <div className={styles.face}>
+    <div className={`${styles.face} ${styles.faceDocked}`}>
       <div className={styles.head}>
         <div className={styles.title}>Decision</div>
         <div className={styles.framing}>{DECISION_FRAMING}</div>
@@ -632,6 +743,17 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
           <p className={styles.noteQuiet}>{historyLoading ? 'Loading price history…' : 'Price history unavailable'}</p>
         )}
         {manualNote !== null && <p className={styles.noteQuiet}>{manualNote}</p>}
+        {/* The month and the stress live in the control dock; their notes read under the chart they move. */}
+        {priceHeld && (
+          <p className={styles.noteQuiet}>
+            Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
+            <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
+              {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
+            </span>
+          </p>
+        )}
+        <p className={styles.noteQuiet}>{stressNote(supportAtMonth)}</p>
+        {belowSupport && <p className={`${styles.noteQuiet} ${styles.toneWarn}`}>{BELOW_SUPPORT_NOTE}</p>}
       </section>
 
       {/* 4 · THE SCHEDULE — the whole row jumps the scrubber (Ownership's convention); a crash row's note and its
@@ -717,29 +839,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
       {/* 6 · WHAT-IF — every control a session overlay; changing any of them clears an engaged stress. */}
       <section className={styles.card}>
         <span className={styles.cardLabel}>What if · price path</span>
-        <div className={styles.pathRow}>
-          {PATH_META.map((p) => (
-            <button key={p.key} type="button"
-              className={`${styles.bandBtn} ${choice === p.key ? styles.bandBtnOn : ''}`}
-              style={choice === p.key ? { borderColor: p.color, color: p.color } : undefined}
-              aria-pressed={choice === p.key}
-              onClick={() => set('path', p.key)}>
-              {p.label}
-            </button>
-          ))}
-          {WORST_META.map((w) => {
-            const disabled = w.key === 'worstStitched' && stitchedIsSupport;
-            return (
-              <button key={w.key} type="button" disabled={disabled}
-                className={`${styles.bandBtn} ${styles.pathWide} ${choice === w.key ? styles.bandBtnOn : ''}`}
-                aria-pressed={choice === w.key}
-                onClick={() => set('path', w.key)}>
-                {w.label}
-                <span className={styles.pathSub}>{pathSublabel(w.key, stitchedIsSupport, crownNoun)}</span>
-              </button>
-            );
-          })}
-        </div>
+        <PathPicker choice={choice} onPick={(p) => set('path', p)} stitchedIsSupport={stitchedIsSupport} crownNoun={crownNoun} />
         <p className={styles.noteQuiet}>{note}</p>
         <div className={styles.sliderPair}>
           <SliderInput
@@ -759,52 +859,6 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
             {onTheLine ? `Back to reverting (${fmtHorizon(REVERT_PRESET_MONTHS)})` : 'On the line'}
           </button>
         </div>
-      </section>
-
-      {/* The month scrubber and the price stress — one card, the parents' markup. */}
-      <section className={styles.card}>
-        <div className={styles.scrubHead}>
-          <span className={styles.cardLabel}>Inspect month</span>
-          <span className={styles.scrubValue}>
-            {monthIdx === 0 ? 'today' : `month ${monthIdx} · ${(monthIdx / 12).toFixed(1)} yr`}
-          </span>
-        </div>
-        <input
-          type="range" className={styles.scrub}
-          min={0} max={Math.max(0, sim.rows.length - 1)} step={1} value={monthIdx}
-          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          aria-label="Inspect month"
-        />
-        <div className={styles.scrubHead}>
-          <span className={styles.cardLabel}>Price stress</span>
-          <span className={styles.scrubValue}>
-            {fmtUSD(selRow.price)}
-            {lens === 1 ? ' · as modeled' : (
-              <>
-                {' · '}
-                <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>
-                  {lens > 1 ? '+' : '−'}{Math.abs((lens - 1) * 100).toFixed(0)}%
-                </span>
-              </>
-            )}
-          </span>
-        </div>
-        <input
-          type="range" className={styles.scrub}
-          min={0.35} max={2.2} step={0.01} value={lens}
-          onChange={(e) => setLens(Number(e.target.value))}
-          aria-label="Price stress multiplier"
-        />
-        {priceHeld && (
-          <p className={styles.noteQuiet}>
-            Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
-            <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
-            </span>
-          </p>
-        )}
-        <p className={styles.noteQuiet}>{stressNote(supportAtMonth)}</p>
-        {belowSupport && <p className={`${styles.noteQuiet} ${styles.toneWarn}`}>{BELOW_SUPPORT_NOTE}</p>}
       </section>
 
       {/* Credit line (what-if) — one line per run (D11); the suggestion is only ever a what-if (decision 4). */}
@@ -848,6 +902,9 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
         )}
       </div>
       <div className={styles.disclaimer}>{disclaimer}</div>
+
+      {/* 8 · THE CONTROL DOCK — the face's LAST child, so it settles under the disclaimer (sticky controls). */}
+      <ControlDock panels={dockPanels} />
 
       {/* The print artifact — the same text Copy and Download produce, shown only while printing (G7). */}
       {createPortal(<pre className={styles.printArea} aria-hidden="true">{scheduleText}</pre>, document.body)}

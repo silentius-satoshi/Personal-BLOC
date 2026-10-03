@@ -1,5 +1,5 @@
 import {
-  effectivePolicyStops, type CyclingResult, type CyclingRow, type PolicyIgnoredReason,
+  effectivePolicyStops, type CyclingMode, type CyclingResult, type CyclingRow, type PolicyIgnoredReason,
 } from '../../simulation/cyclingSim';
 import { HARD_BREAKER_DEPTH, HARD_BREAKER_MONTHS, type PolicyState } from '../../simulation/supportPolicy';
 import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
@@ -776,6 +776,17 @@ const IGNORED_WHY: Record<PolicyIgnoredReason, string> = {
 export function policyIgnoredNote(reason: PolicyIgnoredReason | null): string {
   if (reason === null) return '';
   return `The policy can't run here: ${IGNORED_WHY[reason]}. Limits are measured at today's price instead.`;
+}
+
+/** The Support policy card's four states — ONE branch, read by the card and by the control dock's Policy panel
+ *  (sticky controls), so the two can never disagree about what the policy is doing. 'notRun': asked for, but the
+ *  engine could not run it (`policyIgnoredNote` says why). */
+export type PolicyCardState = 'notCycle' | 'off' | 'notRun' | 'on';
+export function policyCardState(mode: CyclingMode, enabled: boolean, applied: boolean): PolicyCardState {
+  if (mode !== 'cycle') return 'notCycle';
+  if (!enabled) return 'off';
+  if (!applied) return 'notRun';
+  return 'on';
 }
 
 export interface SettingReadout {
