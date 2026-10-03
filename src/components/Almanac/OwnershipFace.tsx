@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, ReferenceLine, ResponsiveContainer, Tooltip, Legend,
@@ -35,10 +35,12 @@ import {
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
   policyUnpaidNote, neverDrawsNote, policyStopSentence, defenseLineNote, billsRemainderTail, coldShown, shownUsd,
-  ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
+  ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, policyCardState, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
-import SupportPolicyCard from './SupportPolicyCard';
+import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import ControlDock, { type DockPanel } from './ControlDock';
+import { parentDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -99,6 +101,23 @@ const PATH_META: { key: PathKind; label: string }[] = [
   { key: 'ceiling',  label: `To ${PL_BAND_LABEL.ceiling.toLowerCase()}` },
   { key: 'fourYear', label: 'Ride the 4-yr cycle' },
 ];
+
+/** The four price paths as buttons — ONE picker for the strategy card's Price path and the control dock's Path panel
+ *  (sticky controls, Run 2), so the two can never offer different paths. The card's buttons keep their exact classes. */
+function PathPicker({ pathKind, onPick }: { pathKind: PathKind; onPick: (k: PathKind) => void }) {
+  return (
+    <div className={styles.segRow}>
+      {PATH_META.map((p) => (
+        <button key={p.key} type="button"
+          className={`${styles.segBtn} ${pathKind === p.key ? styles.segBtnOn : ''}`}
+          aria-pressed={pathKind === p.key}
+          onClick={() => onPick(p.key)}>
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 interface Overlay {
   pathKind?: PathKind;
@@ -517,8 +536,84 @@ export default function OwnershipFace() {
         : `Converges from ${priceHeld ? 'the held' : "today's"} ${fmtUSD(anchorPrice)} toward the ${PL_BAND_LABEL[pathKind].toLowerCase()} line over ${convergeMonths} months. `)
       + `Today: ${PL_BAND_LABEL.floor.toLowerCase()} ${fmtK(bands.floor)} · ${PL_BAND_LABEL.fair.toLowerCase()} ${fmtK(bands.fair)} · ${PL_BAND_LABEL.ceiling.toLowerCase()} ${fmtK(bands.ceiling)}.`;
 
+  // ── The control dock (sticky controls, Run 2 — spec pbloc-spec-sticky-controls-v1). The month and the stress live ONLY
+  // here; Path and Policy are remote controls for the cards below — the same overlay, so the two always agree. The
+  // readouts are the dock's shared words (Δ10) and its sliders the faces' 44px range (Δ11: .dockScrub composes
+  // Cycling's .scrub — this face's own .scrub is a 28px native range).
+  const stress = stressPct(lens);
+  const dockContent: Record<string, ReactNode> = {
+    month: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Inspect month</span>
+          <span className={styles.scrubValue}>
+            {monthReadout(monthIdx)}
+            {selRow.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.dockScrub}
+          min={0} max={Math.max(0, rows.length - 1)} step={1} value={monthIdx}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          aria-label="Inspect month"
+        />
+      </>
+    ),
+    stress: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Price stress</span>
+          <span className={styles.scrubValue}>
+            {fmtUSD(selRow.price)}{' · '}
+            {stress === null ? 'as modeled' : (
+              <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>{stress}</span>
+            )}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.dockScrub}
+          min={0.2} max={2.2} step={0.01} value={lens}
+          onChange={(e) => setLens(Number(e.target.value))}
+          aria-label="Price stress multiplier"
+        />
+      </>
+    ),
+    path: (
+      <>
+        <span className={styles.cardLabel}>Price path</span>
+        <PathPicker pathKind={pathKind} onPick={(k) => set('pathKind', k)} />
+        {/* The card's 4-yr timing slider, while the 4-yr path is on (D7) — the same range; its note stays in the card. */}
+        {pathKind === 'fourYear' && (
+          <div className={styles.shiftBlock}>
+            <div className={styles.scrubHead}>
+              <span className={styles.cardLabel}>4-yr cycle timing</span>
+              <span className={styles.scrubValue}>{fmtPhaseShift(phaseShiftMonths)}</span>
+            </div>
+            <input
+              type="range" className={styles.dockScrub}
+              min={-CYCLE_PHASE_SHIFT_MAX_MONTHS} max={CYCLE_PHASE_SHIFT_MAX_MONTHS} step={1}
+              value={phaseShiftMonths}
+              onChange={(e) => set('phaseShiftMonths', Number(e.target.value))}
+              aria-label="4-yr cycle timing"
+            />
+          </div>
+        )}
+      </>
+    ),
+    policy: (
+      <SupportPolicyControls
+        sim={sim} raw={policyRaw} settings={policySettings} onChange={setPolicy} onReset={resetPolicy}
+        mode={mode} expenses={expenses} layout="grid"
+      />
+    ),
+  };
+  const dockPanels: DockPanel[] = parentDockTabs({
+    monthIdx, lens, path: pathKind,
+    policy: policyCardState(mode, policySettings.enabled, sim.policyApplied),
+  }).map((t) => ({ ...t, live: t.id === 'month' || t.id === 'stress', content: dockContent[t.id] }));
+
   return (
-    <div className={styles.face}>
+    <div className={`${styles.face} ${styles.faceDocked}`}>
       <div className={styles.head}>
         <div className={styles.title}>Ownership</div>
         <div className={styles.framing}>Held · owed · yours — never sell.</div>
@@ -595,59 +690,31 @@ export default function OwnershipFace() {
           )}
           {applied && playbook !== null && <p className={styles.noteQuiet}>{playbook}</p>}
 
-          {/* ── SCRUBBERS — one card holding both range inputs (A1) ── */}
-          <section className={`${styles.card} ${styles.scrubCard}`}>
-            <div className={styles.scrubHead}>
-              <span className={styles.cardLabel}>Month</span>
-              <span className={styles.scrubValue}>
-                {monthIdx === 0 ? 'today' : `${monthIdx} · ${(monthIdx / 12).toFixed(1)} yr`}
-                {selRow.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
-              </span>
-            </div>
-            <input
-              type="range" className={styles.scrub}
-              min={0} max={Math.max(0, rows.length - 1)} step={1} value={monthIdx}
-              onChange={(e) => setSelectedMonth(Number(e.target.value))}
-              aria-label="Month"
-            />
-            <div className={styles.scrubHead}>
-              <span className={styles.cardLabel}>Price stress</span>
-              <span className={styles.scrubValue}>
-                {fmtUSD(selRow.price)}
-                {off ? ` · ${lens < 1 ? '−' : '+'}${Math.abs((lens - 1) * 100).toFixed(0)}%` : ' · as modeled'}
-              </span>
-            </div>
-            <input
-              type="range" className={styles.scrub}
-              min={0.2} max={2.2} step={0.01} value={lens}
-              onChange={(e) => setLens(Number(e.target.value))}
-              aria-label="Price stress multiplier"
-            />
-            {/* The market keeps ticking while the scenario holds still — the anchor freezes the
-                projection, never the face. Only shown while held. */}
-            {priceHeld && (
-              <p className={styles.noteQuiet}>
-                Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
-                <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                  {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
-                </span>
-              </p>
-            )}
+          {/* ── The month and the stress live in the control dock (sticky controls, Run 2); their notes stay where the
+              scrubber card was, above the tiles they move. The market keeps ticking while the scenario holds still —
+              the anchor freezes the projection, never the face. Only shown while held. ── */}
+          {priceHeld && (
             <p className={styles.noteQuiet}>
-              Stress from this month forward — the projection, charts, and holdings all follow. The starting
-              price is held while stressed, so a live tick can't wipe your scenario — spot above keeps
-              updating. Any input change resets.
+              Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
+              <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
+              </span>
             </p>
-            <p className={styles.noteQuiet}>
-              Support line at this month: {fmtUSD(supportAtMonth)}.
+          )}
+          <p className={styles.noteQuiet}>
+            Stress from this month forward — the projection, charts, and holdings all follow. The starting
+            price is held while stressed, so a live tick can't wipe your scenario — spot above keeps
+            updating. Any input change resets.
+          </p>
+          <p className={styles.noteQuiet}>
+            Support line at this month: {fmtUSD(supportAtMonth)}.
+          </p>
+          {belowSupport && (
+            <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>
+              Below the power-law support line — outside the fitted drawdown envelope. The simulation keeps
+              running, but nothing calibrates this depth.
             </p>
-            {belowSupport && (
-              <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>
-                Below the power-law support line — outside the fitted drawdown envelope. The simulation keeps
-                running, but nothing calibrates this depth.
-              </p>
-            )}
-          </section>
+          )}
 
           {/* ── STAT GRID ── */}
           <div className={styles.statGrid}>
@@ -886,16 +953,7 @@ export default function OwnershipFace() {
             </div>
 
             <span className={styles.cardLabel}>Price path</span>
-            <div className={styles.segRow}>
-              {PATH_META.map((p) => (
-                <button key={p.key} type="button"
-                  className={`${styles.segBtn} ${pathKind === p.key ? styles.segBtnOn : ''}`}
-                  aria-pressed={pathKind === p.key}
-                  onClick={() => set('pathKind', p.key)}>
-                  {p.label}
-                </button>
-              ))}
-            </div>
+            <PathPicker pathKind={pathKind} onPick={(k) => set('pathKind', k)} />
             <p className={styles.noteQuiet}>{pathNote}</p>
             {pathKind === 'fourYear' && (
               <div className={styles.shiftBlock}>
@@ -1115,6 +1173,10 @@ export default function OwnershipFace() {
           </div>
         </div>
       </div>
+
+      {/* THE CONTROL DOCK — the face's LAST child, after the two-column shell, so it spans both columns and settles
+          under them (sticky controls, Run 2; F16). */}
+      <ControlDock panels={dockPanels} />
     </div>
   );
 }

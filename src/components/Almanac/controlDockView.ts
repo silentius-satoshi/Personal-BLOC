@@ -1,4 +1,5 @@
 import { PL_BAND_LABEL } from '../../simulation/powerLaw';
+import type { PathKind } from '../../simulation/cyclePath';
 import type { DecisionPath } from './decisionView';
 import type { PolicyCardState } from './supportPolicyView';
 
@@ -74,6 +75,17 @@ export function policyTabValue(state: PolicyCardState): string {
   return '—';
 }
 
+// ONE definition of each shared tab — Decision's dock and the parents' build from these, so a tab reads the same on
+// every face.
+const monthTab = (monthIdx: number): DockTabView =>
+  ({ id: 'month', label: 'Month', value: monthTabValue(monthIdx), tone: 'plain' });
+const stressTab = (lens: number): DockTabView =>
+  ({ id: 'stress', label: 'Stress', value: stressTabValue(lens), tone: stressTone(lens) });
+const pathTab = (path: DecisionPath): DockTabView =>
+  ({ id: 'path', label: 'Path', value: PATH_TAB_VALUE[path], tone: 'plain' });
+const policyTab = (policy: PolicyCardState): DockTabView =>
+  ({ id: 'policy', label: 'Policy', value: policyTabValue(policy), tone: 'plain' });
+
 /** The Decision face's five tabs, in their order. */
 export function decisionDockTabs(x: {
   monthIdx: number;
@@ -83,10 +95,31 @@ export function decisionDockTabs(x: {
   policy: PolicyCardState;
 }): DockTabView[] {
   return [
-    { id: 'month', label: 'Month', value: monthTabValue(x.monthIdx), tone: 'plain' },
-    { id: 'stress', label: 'Stress', value: stressTabValue(x.lens), tone: stressTone(x.lens) },
-    { id: 'path', label: 'Path', value: PATH_TAB_VALUE[x.path], tone: 'plain' },
+    monthTab(x.monthIdx),
+    stressTab(x.lens),
+    pathTab(x.path),
     { id: 'line', label: 'Line', value: lineTabValue(x.lineUsd), tone: 'plain' },
-    { id: 'policy', label: 'Policy', value: policyTabValue(x.policy), tone: 'plain' },
+    policyTab(x.policy),
   ];
+}
+
+/** Strategy's two views (D8). ⚠ On that face `lens` is the price stress (useStressLens); the view is `lensView` (F18). */
+export type LensView = 'position' | 'flywheel';
+
+/** The view on the Lens tab or chip — a phone tab fits 8 characters. */
+export const LENS_TAB_VALUE: Record<LensView, string> = { position: 'Position', flywheel: 'Flywheel' };
+
+/** Cycling's and Ownership's four tabs (D7): Decision's set without the credit line, which the parents don't vary. */
+export function parentDockTabs(x: {
+  monthIdx: number;
+  lens: number;
+  path: PathKind;
+  policy: PolicyCardState;
+}): DockTabView[] {
+  return [monthTab(x.monthIdx), stressTab(x.lens), pathTab(x.path), policyTab(x.policy)];
+}
+
+/** Strategy's five: the parents' four, then the Lens (D8) — a tab under 1024 px and a chip on the bar, never live (F14). */
+export function strategyDockTabs(x: Parameters<typeof parentDockTabs>[0] & { lensView: LensView }): DockTabView[] {
+  return [...parentDockTabs(x), { id: 'lens', label: 'Lens', value: LENS_TAB_VALUE[x.lensView], tone: 'plain' }];
 }

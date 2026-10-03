@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Legend,
@@ -31,10 +31,12 @@ import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, effectivePolicySettings, policyReading, policyAlert, policyPauseReason,
   policyUnpaidNote, neverDrawsNote, drawPauseClause, policyTileSub, defenseLineNote, policyColdNote, policyReserveNote,
-  coldShown, shownUsd, shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
+  coldShown, shownUsd, shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, policyCardState, type SupportPolicySettings,
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
-import SupportPolicyCard from './SupportPolicyCard';
+import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import ControlDock, { type DockPanel } from './ControlDock';
+import { strategyDockTabs, monthReadout, stressPct, type LensView } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -87,6 +89,27 @@ const PATH_META: { key: PathKind; label: string; color: string }[] = [
   { key: 'ceiling',  label: PL_BAND_LABEL.ceiling, color: 'var(--amber)' },
   { key: 'fourYear', label: '4-yr cycle',          color: 'var(--maroon-lift)' },
 ];
+
+/** The four price paths as buttons — ONE picker for the Price path card and the control dock's Path panel (sticky
+ *  controls, Run 2), so the two can never offer different paths. The card's buttons keep their exact classes. */
+function PathPicker({ pathKind, onPick }: { pathKind: PathKind; onPick: (k: PathKind) => void }) {
+  return (
+    <div className={styles.bandRow}>
+      {PATH_META.map((p) => (
+        <button
+          key={p.key}
+          type="button"
+          className={`${styles.bandBtn} ${pathKind === p.key ? styles.bandBtnOn : ''}`}
+          style={pathKind === p.key ? { borderColor: p.color, color: p.color } : undefined}
+          aria-pressed={pathKind === p.key}
+          onClick={() => onPick(p.key)}
+        >
+          {p.label}
+        </button>
+      ))}
+    </div>
+  );
+}
 
 const MODE_META: { key: CyclingMode; label: string }[] = [
   { key: 'cycle', label: 'Cycle' },
@@ -263,7 +286,8 @@ export default function UnifiedFace() {
   const baseRowCount = baseSim.rows.length;
 
   const [selectedMonth, setSelectedMonth] = useState(Math.min(DEFAULT_INSPECT_MONTH, baseRowCount - 1));
-  const [lensView, setLensView] = useState<'position' | 'flywheel'>('position');
+  // ⚠ `lensView` is the Position / Flywheel switch; `lens` (above) is the price stress (F18). The view resets nothing.
+  const [lensView, setLensView] = useState<LensView>('position');
   const [chartView, setChartView] = useState<'ownership' | 'ltv' | 'price'>('ownership');
 
   // ⚠ CLAMP AT RENDER TIME (the crash fix) — `rows[selectedMonth]` must never appear.
@@ -380,8 +404,100 @@ export default function UnifiedFace() {
 
   const modeLabel = MODE_META.find((x) => x.key === mode)!.label;
 
+  // ── The control dock (sticky controls, Run 2 — spec pbloc-spec-sticky-controls-v1). The month and the stress live ONLY
+  // here; Path and Policy are remote controls for the cards below — the same overlay, so the two always agree. The
+  // Lens (D8) lives ONLY here too: a tab, or a chip on the bar — never live (F14).
+  const stress = stressPct(lens);
+  const dockContent: Record<string, ReactNode> = {
+    month: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Inspect month</span>
+          <span className={styles.scrubValue}>
+            {monthReadout(monthIdx)}
+            {selRow.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.scrub}
+          min={0} max={Math.max(0, rows.length - 1)} step={1} value={monthIdx}
+          onChange={(e) => setSelectedMonth(Number(e.target.value))}
+          aria-label="Inspect month"
+        />
+      </>
+    ),
+    stress: (
+      <>
+        <div className={styles.scrubHead}>
+          <span className={styles.cardLabel}>Price stress</span>
+          <span className={styles.scrubValue}>
+            {fmtUSD(selRow.price)}{' · '}
+            {stress === null ? 'as modeled' : (
+              <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>{stress}</span>
+            )}
+          </span>
+        </div>
+        <input
+          type="range" className={styles.scrub}
+          min={0.35} max={2.2} step={0.01} value={lens}
+          onChange={(e) => setLens(Number(e.target.value))}
+          aria-label="Price stress multiplier"
+        />
+      </>
+    ),
+    path: (
+      <>
+        <span className={styles.cardLabel}>Price path</span>
+        <PathPicker pathKind={pathKind} onPick={(k) => set('pathKind', k)} />
+        {/* The card's 4-yr timing slider, while the 4-yr path is on (D7) — the same range. */}
+        {pathKind === 'fourYear' && (
+          <div className={styles.shiftBlock}>
+            <div className={styles.scrubHead}>
+              <span className={styles.cardLabel}>4-yr cycle timing</span>
+              <span className={styles.scrubValue}>{fmtPhaseShift(phaseShiftMonths)}</span>
+            </div>
+            <input
+              type="range" className={styles.scrub}
+              min={-CYCLE_PHASE_SHIFT_MAX_MONTHS} max={CYCLE_PHASE_SHIFT_MAX_MONTHS} step={1}
+              value={phaseShiftMonths}
+              onChange={(e) => set('phaseShiftMonths', Number(e.target.value))}
+              aria-label="4-yr cycle timing"
+            />
+          </div>
+        )}
+      </>
+    ),
+    policy: (
+      <SupportPolicyControls
+        sim={sim} raw={policyRaw} settings={policySettings} onChange={setPolicy} onReset={resetPolicy}
+        mode={mode} expenses={s.expenses} layout="grid"
+      />
+    ),
+    // THE LENS SWITCH — thumb-sized; it left the page (D8). Both views below read the same `sim`.
+    lens: (
+      <>
+        <span className={styles.cardLabel}>Lens</span>
+        <div className={`${styles.lensSwitch} ${styles.dockLens}`} role="group" aria-label="Lens">
+          {([['position', 'Position'], ['flywheel', 'Flywheel']] as const).map(([k, label]) => (
+            <button key={k} type="button"
+              className={`${styles.lensBtn} ${lensView === k ? styles.lensBtnOn : ''}`}
+              aria-pressed={lensView === k}
+              onClick={() => setLensView(k)}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </>
+    ),
+  };
+  const dockPanels: DockPanel[] = strategyDockTabs({
+    monthIdx, lens, path: pathKind,
+    policy: policyCardState(mode, policySettings.enabled, sim.policyApplied),
+    lensView,
+  }).map((t) => ({ ...t, live: t.id === 'month' || t.id === 'stress', content: dockContent[t.id] }));
+
   return (
-    <div className={styles.face}>
+    <div className={`${styles.face} ${styles.faceDocked}`}>
       <div className={styles.head}>
         <div className={styles.title}>Strategy</div>
         <div className={styles.framing}>One run, two lenses — what you own, and what the flywheel earns.</div>
@@ -414,20 +530,7 @@ export default function UnifiedFace() {
       {/* 1 · PRICE PATH — the belief. */}
       <section className={styles.card}>
         <span className={styles.cardLabel}>Price path</span>
-        <div className={styles.bandRow}>
-          {PATH_META.map((p) => (
-            <button
-              key={p.key}
-              type="button"
-              className={`${styles.bandBtn} ${pathKind === p.key ? styles.bandBtnOn : ''}`}
-              style={pathKind === p.key ? { borderColor: p.color, color: p.color } : undefined}
-              aria-pressed={pathKind === p.key}
-              onClick={() => set('pathKind', p.key)}
-            >
-              {p.label}
-            </button>
-          ))}
-        </div>
+        <PathPicker pathKind={pathKind} onPick={(k) => set('pathKind', k)} />
         <p className={styles.noteQuiet}>{pathNote}</p>
         {pathKind === 'fourYear' && (
           <div className={styles.shiftBlock}>
@@ -585,61 +688,27 @@ export default function UnifiedFace() {
         </div>
       )}
 
-      {/* 3 · SCRUBBER + LENS — one card, both range inputs. */}
-      <section className={styles.card}>
-        <div className={styles.scrubHead}>
-          <span className={styles.cardLabel}>Inspect month</span>
-          <span className={styles.scrubValue}>
-            {monthIdx === 0 ? 'today' : `month ${monthIdx} · ${(monthIdx / 12).toFixed(1)} yr`}
-            {selRow.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
-          </span>
-        </div>
-        <input
-          type="range" className={styles.scrub}
-          min={0} max={Math.max(0, rows.length - 1)} step={1} value={monthIdx}
-          onChange={(e) => setSelectedMonth(Number(e.target.value))}
-          aria-label="Inspect month"
-        />
-        <div className={styles.scrubHead}>
-          <span className={styles.cardLabel}>Price stress</span>
-          <span className={styles.scrubValue}>
-            {fmtUSD(selRow.price)}
-            {lens === 1 ? ' · as modeled' : (
-              <>
-                {' · '}
-                <span style={{ color: lens > 1 ? 'var(--green)' : 'var(--red)' }}>
-                  {lens > 1 ? '+' : '−'}{Math.abs((lens - 1) * 100).toFixed(0)}%
-                </span>
-              </>
-            )}
-          </span>
-        </div>
-        <input
-          type="range" className={styles.scrub}
-          min={0.35} max={2.2} step={0.01} value={lens}
-          onChange={(e) => setLens(Number(e.target.value))}
-          aria-label="Price stress multiplier"
-        />
-        {priceHeld && (
-          <p className={styles.noteQuiet}>
-            Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
-            <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
-              {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
-            </span>
-          </p>
-        )}
+      {/* 3 · The month and the stress live in the control dock (sticky controls, Run 2); their notes stay where the
+          scrubber card was — above the tiles, which both views share, so neither view hides them. */}
+      {priceHeld && (
         <p className={styles.noteQuiet}>
-          Stress from this month forward — both lenses follow. Changing the month or any input resets.
-          Support line at this month: {fmtUSD(supportAtMonth)}.
+          Anchored {fmtUSD(anchorPrice)} · spot {fmtUSD(livePrice)}{' '}
+          <span style={{ color: drift >= 0 ? 'var(--green)' : 'var(--red)' }}>
+            {drift >= 0 ? '+' : '−'}{Math.abs(drift * 100).toFixed(1)}%
+          </span>
         </p>
-        {belowSupport && (
-          <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>
-            Below the power-law support line — outside the fitted drawdown envelope. Nothing calibrates this depth.
-          </p>
-        )}
-      </section>
+      )}
+      <p className={styles.noteQuiet}>
+        Stress from this month forward — both lenses follow. Changing the month or any input resets.
+        Support line at this month: {fmtUSD(supportAtMonth)}.
+      </p>
+      {belowSupport && (
+        <p className={styles.noteQuiet} style={{ color: 'var(--amber)' }}>
+          Below the power-law support line — outside the fitted drawdown envelope. Nothing calibrates this depth.
+        </p>
+      )}
 
-      {/* 4 · TILES — shared by both lenses, so they sit above the switch. */}
+      {/* 4 · TILES — shared by both views (the Lens switch lives in the control dock, D8). */}
       <div className={styles.statGrid}>
         {statTiles.map(([label, value, sub, color]) => (
           <div key={label} className={styles.stat}>
@@ -650,18 +719,7 @@ export default function UnifiedFace() {
         ))}
       </div>
 
-      {/* 5 · THE LENS SWITCH — thumb-sized. Both sides read the same `sim`. */}
-      <div className={styles.lensSwitch} role="group" aria-label="Lens">
-        {([['position', 'Position'], ['flywheel', 'Flywheel']] as const).map(([k, label]) => (
-          <button key={k} type="button"
-            className={`${styles.lensBtn} ${lensView === k ? styles.lensBtnOn : ''}`}
-            aria-pressed={lensView === k}
-            onClick={() => setLensView(k)}>
-            {label}
-          </button>
-        ))}
-      </div>
-
+      {/* 5 · THE TWO VIEWS — picked by the dock's Lens (D8). Both read the same `sim`. */}
       {lensView === 'position' ? (
         <>
           {/* POSITION — the ownership lens. */}
@@ -902,6 +960,9 @@ export default function UnifiedFace() {
           : 'The engine flags a Strike call but does not model the seizure.'}{' '}
         Not financial advice.
       </div>
+
+      {/* THE CONTROL DOCK — the face's LAST child, so it settles under the disclaimer (sticky controls, Run 2). */}
+      <ControlDock panels={dockPanels} />
     </div>
   );
 }

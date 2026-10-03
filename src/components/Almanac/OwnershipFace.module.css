@@ -11,6 +11,16 @@
   box-sizing: border-box;
 }
 
+/* The control dock (sticky controls, Run 2) is the face's last child — after the two-column shell, so it spans both
+   columns — and carries the face's end: under 1024px it sits flush on the window's edge, so the face's 32px bottom
+   padding would lift it at the end of the page; from 1024px the bar floats 12px up, so the padding is 12px.
+   ⚠ Doubled (0,2,0): beside .face's `padding` shorthand a single class would tie it, and the bundle's rule order would
+   decide (P9 / P10). Decision's rule, on this face. */
+.faceDocked.faceDocked { padding-bottom: 0; }
+@media (min-width: 1024px) {
+  .faceDocked.faceDocked { padding-bottom: 12px; }
+}
+
 /* ── Face chrome — the Ledger/Scenario voice ─────────────────────────────────────────────────── */
 .head {
   margin: 4px 2px 0;
@@ -145,8 +155,7 @@
   color: var(--text-faint);
 }
 
-/* ── Scrubbers (one card, A1) ────────────────────────────────────────────────── */
-.scrubCard { margin-top: 16px; }
+/* ── Scrub heads and ranges — the control dock's panels, the card's 4-yr timing and the Strike cap ─────────── */
 .scrubHead {
   display: flex;
   justify-content: space-between;
@@ -168,6 +177,9 @@
   cursor: pointer;
   margin: 0;
 }
+/* The control dock's sliders (Δ11) — the 44px styled range the other three faces' docks use: the same touch target,
+   the same thumb, and the dock's lifted track. `composes:` only, so nothing here can tie the composed class. */
+.dockScrub { composes: scrub from './CyclingFace.module.css'; }
 .msFlag {
   font-family: var(--mono);
   font-size: 10px;
@@ -445,8 +457,8 @@
 /* The 4-yr cycle timing control, under the price-path note. */
 .shiftBlock { margin-top: 10px; }
 
-/* The Strike LTV cap control, under the Coinbase stop. Its range is 44px — a real touch target — where the
-   month/lens scrubs above stay 28px; applied alongside .scrub. */
+/* The Strike LTV cap control, under the Coinbase stop. Its range is 44px — a real touch target — where the card's
+   4-yr timing range stays 28px (the month and the stress moved to the dock's 44px .dockScrub); applied alongside .scrub. */
 .capBlock { margin: 14px 0 12px; }
 .capScrub { height: 44px; }
 

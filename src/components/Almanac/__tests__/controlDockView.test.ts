@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   monthTabValue, monthReadout, stressPct, stressTabValue, stressTone, PATH_TAB_VALUE, lineTabValue, policyTabValue,
-  decisionDockTabs,
+  decisionDockTabs, parentDockTabs, strategyDockTabs, LENS_TAB_VALUE,
 } from '../controlDockView';
 import { policyCardState } from '../supportPolicyView';
 import { PL_BAND_LABEL } from '../../../simulation/powerLaw';
@@ -88,5 +88,38 @@ describe('⭐ the Decision face\'s five tabs', () => {
       { id: 'line', label: 'Line', value: '$40k', tone: 'plain' },
       { id: 'policy', label: 'Policy', value: 'on', tone: 'plain' },
     ]);
+  });
+});
+
+// Run 2 (spec v1.6, D7 / D8) — the three parents' docks.
+describe('⭐ the parents\' tabs', () => {
+  it('⭐ PARENT-TABS — Cycling and Ownership: Month · Stress · Path · Policy, in their order, each from its helper', () => {
+    // mutation: Path before Stress → red
+    expect(parentDockTabs({ monthIdx: 19, lens: 0.7, path: 'fourYear', policy: 'notCycle' })).toEqual([
+      { id: 'month', label: 'Month', value: '19', tone: 'plain' },
+      { id: 'stress', label: 'Stress', value: '−30%', tone: 'bad' },
+      { id: 'path', label: 'Path', value: '4-yr', tone: 'plain' },
+      { id: 'policy', label: 'Policy', value: '—', tone: 'plain' },
+    ]);
+    // The band names are PL_BAND_LABEL's on the parents too (Δ6).
+    expect(parentDockTabs({ monthIdx: 0, lens: 1, path: 'floor', policy: 'on' }).map((t) => t.value))
+      .toEqual(['today', '0%', PL_BAND_LABEL.floor, 'on']);
+  });
+
+  it('⭐ STRATEGY-TABS — the same four, then the Lens: Position or Flywheel (a tab, or a chip on the bar — never live)', () => {
+    // LENS — both views, each a phone tab's 8 characters, no two alike. mutation: 'Flywheel view' → red
+    expect(Object.keys(LENS_TAB_VALUE).sort(), 'LENS').toEqual(['flywheel', 'position']);
+    for (const v of Object.values(LENS_TAB_VALUE)) expect(v.length, `LENS ${v}`).toBeLessThanOrEqual(8);
+    expect(new Set(Object.values(LENS_TAB_VALUE)).size, 'LENS').toBe(2);
+    // mutation: no Lens tab → red
+    expect(strategyDockTabs({ monthIdx: 24, lens: 1.25, path: 'ceiling', policy: 'off', lensView: 'flywheel' })).toEqual([
+      { id: 'month', label: 'Month', value: '24', tone: 'plain' },
+      { id: 'stress', label: 'Stress', value: '+25%', tone: 'good' },
+      { id: 'path', label: 'Path', value: 'Resist.', tone: 'plain' },
+      { id: 'policy', label: 'Policy', value: 'off', tone: 'plain' },
+      { id: 'lens', label: 'Lens', value: 'Flywheel', tone: 'plain' },
+    ]);
+    expect(strategyDockTabs({ monthIdx: 0, lens: 1, path: 'floor', policy: 'on', lensView: 'position' })[4])
+      .toEqual({ id: 'lens', label: 'Lens', value: 'Position', tone: 'plain' });
   });
 });

@@ -9,6 +9,16 @@
   box-sizing: border-box;
 }
 
+/* The control dock (sticky controls, Run 2) is the face's last child and carries the face's end: under 1024px it sits
+   flush on the window's edge, so the face's 32px bottom padding would lift it at the end of the page; from 1024px the
+   bar floats 12px up, so the padding is 12px and the bar never moves when the page runs out. ⚠ Doubled (0,2,0):
+   beside .face's `padding` shorthand a single class would tie it, and the bundle's rule order would decide (P9 / P10).
+   Decision's rule, on this face. */
+.faceDocked.faceDocked { padding-bottom: 0; }
+@media (min-width: 1024px) {
+  .faceDocked.faceDocked { padding-bottom: 12px; }
+}
+
 /* ── Face chrome — the Ledger/Scenario voice ─────────────────────────────────────────────────── */
 .head {
   margin: 4px 2px 0;

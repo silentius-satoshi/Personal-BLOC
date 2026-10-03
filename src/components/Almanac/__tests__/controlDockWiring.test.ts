@@ -121,6 +121,212 @@ describe('⭐ the Decision face', () => {
   });
 });
 
+// ── Run 2 (spec v1.6, D6–D8) — the same dock on the three parents ──────────────────────────────────────────────────
+const PARENTS = [
+  { name: 'Cycling', file: 'CyclingFace.tsx', css: 'CyclingFace.module.css' },
+  { name: 'Ownership', file: 'OwnershipFace.tsx', css: 'OwnershipFace.module.css' },
+  { name: 'Strategy', file: 'UnifiedFace.tsx', css: 'UnifiedFace.module.css' },
+] as const;
+type Parent = (typeof PARENTS)[number]['name'];
+/** The dock's panels: the `dockContent` object, up to `const dockPanels`. */
+const panelsOf = (face: string): string => {
+  const at = face.indexOf('const dockContent');
+  return at < 0 ? '' : face.slice(at, face.indexOf('const dockPanels', at));
+};
+/** One panel of `dockContent`: from its key to the next panel's (or to the end of the object). */
+const panel = (face: string, key: string, next: string | null): string => {
+  const p = panelsOf(face);
+  const at = p.indexOf(`${key}: (`);
+  if (at < 0) return '';
+  return next === null ? p.slice(at) : p.slice(at, p.indexOf(`${next}: (`, at));
+};
+/** The JSX tag that opens at `at`, to its `/>` — braces counted, so an arrow's `>` inside `{…}` never ends it. */
+const tagAt = (s: string, at: number): string => {
+  let depth = 0;
+  for (let i = at; i < s.length - 1; i++) {
+    if (s[i] === '{') depth++;
+    else if (s[i] === '}') depth--;
+    else if (depth === 0 && s[i] === '/' && s[i + 1] === '>') return s.slice(at, i + 2);
+  }
+  return '';
+};
+/** Every self-closing `<name …/>` tag in `s`, with where it opens. */
+const tagsOf = (s: string, name: string): { at: number; tag: string }[] =>
+  [...s.matchAll(new RegExp(`<${name}\\s`, 'g'))].map((m) => ({ at: m.index ?? 0, tag: tagAt(s, m.index ?? 0) }));
+/** A JSX attribute's raw value — `"…"` or a balanced `{…}`; 'true' for a bare one; null when absent. */
+const attr = (tag: string, name: string): string | null => {
+  const m = new RegExp(`\\s${name}(=|(?=[\\s/>]))`).exec(tag);
+  if (!m) return null;
+  const i = m.index + m[0].length;
+  if (m[1] !== '=') return 'true';
+  if (tag[i] === '"') return tag.slice(i, tag.indexOf('"', i + 1) + 1);
+  let depth = 0;
+  for (let j = i; j < tag.length; j++) {
+    if (tag[j] === '{') depth++;
+    else if (tag[j] === '}' && --depth === 0) return tag.slice(i, j + 1);
+  }
+  return null;
+};
+
+describe('⭐ the parents — Cycling, Ownership, Strategy (Run 2)', () => {
+  it('⭐ P-ONE-DOCK — each parent\'s last child: one dock, after the disclaimer (Cycling, Strategy) or after the two-column shell (Ownership, F16), nothing after it but the face\'s own closing tag', () => {
+    // mutations: the dock rendered first (Cycling) → red; the dock inside Ownership's side column → red
+    for (const p of PARENTS) {
+      const face = strip(read(p.file));
+      expect(count(face, '<ControlDock '), p.name).toBe(1);
+      expect(count(face, '<ControlDock panels={dockPanels} />'), p.name).toBe(1);
+      const at = face.indexOf('<ControlDock ');
+      expect(at, `${p.name}: after the disclaimer`).toBeGreaterThan(face.indexOf('<div className={styles.disclaimer}>'));
+      const after = face.slice(face.indexOf('/>', at) + 2).replace(/\{\s*\}/g, '').replace(/\s+/g, '');
+      expect(after, `${p.name}: the face's last child`).toBe('</div>);}');
+    }
+  });
+
+  it('⭐ P-ONCE — the scrubber cards are gone: the month and the stress exist once each, in the dock; "Inspect month" on all four; each face keeps its stress range; the dock\'s words', () => {
+    const RANGE: Record<Parent, string> = {
+      Cycling: 'min={0.35} max={2.2} step={0.01}',
+      Ownership: 'min={0.2} max={2.2} step={0.01}',
+      Strategy: 'min={0.35} max={2.2} step={0.01}',
+    };
+    for (const p of PARENTS) {
+      const face = strip(read(p.file));
+      // RENAME — one name on all four faces. mutation: Ownership's dock slider back to aria-label="Month" → red
+      expect(face, `RENAME ${p.name}`).not.toContain('aria-label="Month"');
+      expect(count(face, '>Inspect month<'), `RENAME ${p.name}`).toBe(1);
+      const panels = panelsOf(face);
+      expect(panels.length, `${p.name}: the dock's panels`).toBeGreaterThan(0);
+      for (const label of ['aria-label="Inspect month"', 'aria-label="Price stress multiplier"']) {
+        expect(count(face, label), `${p.name} ${label}`).toBe(1);
+        expect(panels, `${p.name} ${label}`).toContain(label);
+      }
+      // RANGE — the card's range, kept. mutation: Ownership's stress min 0.35 → red
+      expect(panel(face, 'stress', 'path'), `RANGE ${p.name}`).toContain(RANGE[p.name]);
+      // WORDS (I6, Δ10; R6 — the post-liq flag). mutations: Ownership's readout inline again → red; the flag dropped → red
+      const month = panel(face, 'month', 'stress');
+      expect(month, `WORDS ${p.name}`).toContain('{monthReadout(monthIdx)}');
+      expect(month, `WORDS ${p.name}: the post-liq flag`).toContain('{selRow.postLiquidation && ');
+      expect(face, `WORDS ${p.name}`).toMatch(/const stress = stressPct\(lens\);/);
+      expect(face, `WORDS ${p.name}`).not.toContain('(monthIdx / 12).toFixed(1)');
+    }
+    // SCRUB (Δ11) — Ownership's dock ranges compose Cycling's 44px scrub. mutation: back on styles.scrub → red
+    const own = strip(read('OwnershipFace.tsx'));
+    expect(panel(own, 'month', 'stress'), 'SCRUB').toContain('className={styles.dockScrub}');
+    expect(panel(own, 'stress', 'path'), 'SCRUB').toContain('className={styles.dockScrub}');
+    expect(strip(read('OwnershipFace.module.css')), 'SCRUB')
+      .toMatch(/\.dockScrub \{ composes: scrub from '\.\/CyclingFace\.module\.css'; \}/);
+  });
+
+  it('⭐ P-NOTES — the scrubber cards\' notes stay where the cards were, outside the dock', () => {
+    // mutation: the stress note moved into Cycling's Stress panel → red
+    const AT: Record<Parent, readonly [string, string]> = {
+      Cycling: ['{statTiles.map(', 'Holdings by venue'],
+      Ownership: ['{applied && playbook !== null && <p className={styles.noteQuiet}>{playbook}</p>}', '{statTiles.map('],
+      Strategy: ['{unpaidNote && <div>{unpaidNote}</div>}', '{statTiles.map('],
+    };
+    const NOTES = [
+      'Anchored {fmtUSD(anchorPrice)}', 'Stress from this month forward', 'Support line at this month:',
+      'Below the power-law support line',
+    ];
+    for (const p of PARENTS) {
+      const face = strip(read(p.file));
+      const [from, to] = AT[p.name];
+      const a = face.indexOf(from);
+      const b = face.indexOf(to, a);
+      expect(a > 0 && b > a, `${p.name}: the anchors`).toBe(true);
+      // Non-vacuous: "not in the dock" means nothing without a dock.
+      expect(panelsOf(face).length, `${p.name}: the dock's panels`).toBeGreaterThan(0);
+      for (const n of NOTES) {
+        expect(count(face, n), `${p.name}: ${n}`).toBe(1);
+        expect(face.slice(a, b), `${p.name}: ${n} in place`).toContain(n);
+        expect(panelsOf(face), `${p.name}: ${n} not in the dock`).not.toContain(n);
+      }
+    }
+  });
+
+  it('⭐ P-DOUBLED — each parent\'s bottom padding is the dock\'s: the root takes faceDocked, each module a doubled 0 / 12px pair; tokens only', () => {
+    // mutations: a single `.faceDocked` (Cycling) → red; Ownership's root without faceDocked → red here and at the e2e's END
+    for (const p of PARENTS) {
+      expect(strip(read(p.file)), p.name).toMatch(/className=\{`\$\{styles\.face\} \$\{styles\.faceDocked\}`\}/);
+      const css = strip(read(p.css));
+      expect(css, p.name).toMatch(/\.faceDocked\.faceDocked \{ padding-bottom: 0; \}/);
+      expect(css, p.name).toMatch(/@media \(min-width: 1024px\) \{\s*\.faceDocked\.faceDocked \{ padding-bottom: 12px; \}/);
+      expect(css, `TOKENS ${p.name}`).not.toMatch(/#[0-9a-fA-F]{3,8}\b/);
+    }
+  });
+
+  it('⭐ P-ONE-PICKER — each parent\'s card and dock share ONE path picker, and its buttons carry aria-pressed', () => {
+    // mutations: a second PATH_META.map for the dock (Strategy) → red; the picker without aria-pressed (Cycling) → red
+    for (const p of PARENTS) {
+      const face = strip(read(p.file));
+      expect(count(face, '{PATH_META.map((p) => ('), p.name).toBe(1);
+      expect(count(face, '<PathPicker '), p.name).toBe(2);
+      expect(panel(face, 'path', 'policy'), `${p.name}: the dock's Path panel`).toContain('<PathPicker ');
+      const at = face.indexOf('function PathPicker(');
+      expect(at, `${p.name}: the picker`).toBeGreaterThan(0);
+      expect(face.slice(at, face.indexOf('\n}', at)), `${p.name}: aria-pressed`).toContain('aria-pressed={pathKind === p.key}');
+    }
+  });
+
+  it('⭐ P-TIMING — the dock\'s 4-yr timing range is the card\'s: the same min, max, step, value, onChange, aria-label and lock (I4, I19), only while the 4-yr path is on', () => {
+    // mutations: the dock's max off by one (Cycling) → red; a lock on the card's range only (Ownership) → red
+    const ATTRS = ['min', 'max', 'step', 'value', 'onChange', 'aria-label', 'disabled'];
+    for (const p of PARENTS) {
+      const face = strip(read(p.file));
+      const tags = tagsOf(face, 'input').filter((t) => t.tag.includes('aria-label="4-yr cycle timing"'));
+      expect(tags.length, `${p.name}: the card's and the dock's`).toBe(2);
+      // Told apart by WHERE they sit: on Cycling and Strategy the two tags are the same text.
+      const from = face.indexOf('const dockContent');
+      const to = face.indexOf('const dockPanels', from);
+      const dock = tags.find((t) => t.at > from && t.at < to);
+      const card = tags.find((t) => t.at < from || t.at > to);
+      expect(dock !== undefined && card !== undefined, `${p.name}: one in the dock, one in the card`).toBe(true);
+      for (const a of ATTRS) expect(attr(dock!.tag, a), `${p.name}: ${a} (VIEWER for the lock)`).toBe(attr(card!.tag, a));
+      expect(panel(face, 'path', 'policy'), `${p.name}: only while the 4-yr path is on`).toContain("{pathKind === 'fourYear' && (");
+    }
+  });
+
+  it('⭐ P-LENS — Strategy\'s lens switch exists once, in the dock, and both views still render (I20); the dock\'s Stress moves `lens`, its Lens moves `lensView`; a flip resets nothing (F18)', () => {
+    // mutations: the switch also left on the page → red (I20); the Lens buttons write nothing → red (F18); the Stress
+    // slider writes the month → red (F18); `lensView` in the reset list → red (LENS-NO-RESET)
+    const face = strip(read('UnifiedFace.tsx'));
+    const panels = panelsOf(face);
+    expect(count(face, 'role="group" aria-label="Lens"'), 'I20').toBe(1);
+    expect(panels, 'I20').toContain('role="group" aria-label="Lens"');
+    const views = face.indexOf("{lensView === 'position' ? (");
+    expect(views, 'I20: both views').toBeGreaterThan(0);
+    expect(face.slice(views), 'I20: the Position view').toContain('Yours in bitcoin');
+    expect(face.slice(views), 'I20: the Flywheel view').toContain('Cash flow at month');
+    const stress = panel(face, 'stress', 'path');
+    const lens = panel(face, 'lens', null);
+    expect(stress, 'F18').toContain('onChange={(e) => setLens(Number(e.target.value))}');
+    expect(stress, 'F18').not.toContain('setLensView');
+    expect(lens, 'F18').toContain('onClick={() => setLensView(k)}');
+    expect(lens, 'F18').not.toMatch(/\bsetLens\(/);
+    expect(count(face, 'setLensView('), 'I20: the view is set only in the dock').toBe(count(panels, 'setLensView('));
+    expect(face, 'the Lens tab reads the view').toMatch(/strategyDockTabs\(\{[^}]*\blensView\b/);
+    const reset = /useEffect\(\(\) => \{ setLens\(1\); \}, \[([\s\S]*?)\]\);/.exec(face)?.[1] ?? '';
+    expect(reset.length, 'LENS-NO-RESET: the reset list').toBeGreaterThan(0);
+    expect(reset, 'LENS-NO-RESET').not.toMatch(/\blensView\b/);
+  });
+
+  it('⭐ P-POLICY — each dock\'s Policy panel is the card\'s own controls, with the card\'s props, branching on the face\'s mode', () => {
+    // mutation: the dock's Policy ignores onChange (Cycling) → red
+    const MODE: Record<Parent, string> = { Cycling: "'cycle'", Ownership: 'mode', Strategy: 'mode' };
+    for (const p of PARENTS) {
+      const face = strip(read(p.file));
+      const card = tagsOf(face, 'SupportPolicyCard');
+      const controls = tagsOf(face, 'SupportPolicyControls');
+      expect([card.length, controls.length], p.name).toEqual([1, 1]);
+      expect(panel(face, 'policy', p.name === 'Strategy' ? 'lens' : null), p.name).toContain('<SupportPolicyControls');
+      for (const prop of ['sim', 'raw', 'settings', 'onChange', 'onReset', 'mode', 'expenses']) {
+        expect(attr(controls[0].tag, prop), `${p.name}: ${prop}`).toBe(attr(card[0].tag, prop));
+      }
+      expect(controls[0].tag, p.name).toContain('layout="grid"');
+      expect(face, p.name).toContain(`policy: policyCardState(${MODE[p.name]}, policySettings.enabled, sim.policyApplied)`);
+    }
+  });
+});
+
 describe('⭐ ONE support-policy settings block — the card and the dock can never offer different controls', () => {
   const LABELS = [
     'Coinbase limit at support', 'Strike limit at support', 'Buy with the line up to', 'Pay down above',

@@ -805,23 +805,30 @@ src/
                                 # card's disclosure and by `SupportPolicyControls`, the control dock's Policy panel (the
                                 # card's no-reading states, else the sliders in a grid). The card's markup is unchanged
                                 # on all four faces (measured: outerHTML byte-identical to HEAD's, every state)
-      ControlDock.tsx           # Sticky controls (Run 1) — THE control dock (+ .module.css, tokens only): a face's controls,
-                                # kept in reach while the face scrolls. LAYOUT ONLY — the face hands it each panel's content
-                                # and words; it owns which one is open. Sticky to the window's bottom edge, the face's LAST
-                                # child. ONE markup at a time (useMediaQuery('(min-width: 1024px)')): under 1024 px five
-                                # tabs (label over value) over one open panel — inset 14 px, clear of EdgeBackGesture's
-                                # swipe-back zone, capped at 34vh; from 1024 px a bar floating 12 px up — the live controls
-                                # side by side, chips whose panel opens upward (after the bar in the DOM, above it via
-                                # `order: -1`). Escape folds the panel from the document (Safari never focuses a clicked
-                                # button), never a typed value's, and returns focus to the chip; under 1024 px (Run 1b) it
-                                # folds the open tab only from inside the dock — an open tab is the resting state, not a
-                                # pop-up — and gives that tab focus; `aria-controls` only while open; z-index 30, under an
+      ControlDock.tsx           # Sticky controls (Runs 1–2) — THE control dock (+ .module.css, tokens only): a face's
+                                # controls, kept in reach while the face scrolls — on the four engine faces (Decision,
+                                # Cycling, Ownership, Strategy; Run 2 changed nothing in the .tsx). LAYOUT ONLY — the face
+                                # hands it each panel's content and words; it owns which one is open. Sticky to the window's
+                                # bottom edge, the face's LAST child. ONE markup at a time (useMediaQuery('(min-width:
+                                # 1024px)')): under 1024 px four or five tabs (label over value) over one open panel — inset
+                                # 14 px, clear of EdgeBackGesture's swipe-back zone, capped at 34vh; from 1024 px a bar
+                                # floating 12 px up — the live controls side by side, chips whose panel opens upward (after
+                                # the bar in the DOM, above it via `order: -1`); Δ12 (Run 2): the bar's gap 12px and the
+                                # chip padding 6px 8px (were 18 and 11), so Strategy's default stress head stays on one line
+                                # beside its third chip. Escape folds the panel from the document (Safari never focuses a
+                                # clicked button), never a typed value's, and returns focus to the chip; under 1024 px (Run
+                                # 1b) it folds the open tab only from inside the dock — an open tab is the resting state, not
+                                # a pop-up — and gives that tab focus; `aria-controls` only while open; z-index 30, under an
                                 # open InfoTip's 40. ⚠ Never `position: fixed` (F2)
       controlDockView.ts        # Sticky controls — the dock's words, pure: DockTabView · monthTabValue / monthReadout ·
                                 # stressPct / stressTabValue / stressTone (a true minus) · PATH_TAB_VALUE (Support and Fair
                                 # from PL_BAND_LABEL, then Resist. · 4-yr · Stitched · Worst — a phone tab fits 8 characters)
                                 # · lineTabValue (rounded to one decimal first: $99,950 → "$100k") · policyTabValue ·
-                                # decisionDockTabs (the Decision face's five, in order)
+                                # decisionDockTabs (the Decision face's five, in order) · Run 2: parentDockTabs (Cycling's and
+                                # Ownership's four — Month · Stress · Path · Policy) · strategyDockTabs (those four, then the
+                                # Lens) · LensView / LENS_TAB_VALUE (Position · Flywheel). ONE private constructor per shared
+                                # tab (month, stress, path, policy) — all three builders use them, so a tab reads the same on
+                                # every face
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
@@ -2998,8 +3005,9 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
 **⚠ THE CLAMP IS A CRASH FIX, AND IT MUST HAPPEN AT RENDER TIME.** The Horizon slider is `step=1`, so one
 leftward tick shrinks `rows` while `selectedMonth` still points past the end → `rows[stale]` is `undefined`
 and every `row.*` read blows up. An effect runs *after* that render. So `monthIdx = clampMonth(selectedMonth,
-baseRowCount)` is derived during render and used EVERYWHERE — including as the scrubber's own `value`, or the
-range input renders pinned past its max. `rows[selectedMonth]` must never appear in the file. The effect
+baseRowCount)` is derived during render and used EVERYWHERE — including as the dock's month slider's own `value`
+(sticky controls, Run 2 — it was the scrubber card's), or the range input renders pinned past its max.
+`rows[selectedMonth]` must never appear in the file. The effect
 exists only to write the clamped value back so re-growing the horizon doesn't snap to a stale index. Pinned
 by `clampMonth` unit tests.
 
@@ -3072,11 +3080,12 @@ the former renders `sim.totalStrikeInterest` (CyclingRow carries no per-row cumu
 is an engine change) with a **`full horizon · N yrs`** sub-label, and the latter appears only when the run
 actually defended.
 
-⚠ The scrubber + lens live in ONE card. (It formerly carried `data-gesture-exempt` to stop a horizontal
-slider drag from paging the Almanac; the pager is gone, so the marker is too.) ⚠ The two range inputs are
-**face-local, 44px-tall** — the shared
-`ui/SliderInput` is NOT restyled, since `MiningInputsPanel`/`MiningProjectionTable`/`LivingInputsPanel`
-consume it and a track change would relayout all three.
+⚠ **The month and the stress live in the control dock** on all three parents (sticky controls, Run 2 — § Decision
+face → "Sticky controls — Run 2"); the scrubber card is gone, and its notes (the anchored line, the stress note, the
+support line, the below-support warning) stay where it was. ⚠ The dock's range inputs are **face-local, 44px-tall**
+(Ownership's `.dockScrub` composes Cycling's `.scrub` — its own `.scrub` is a 28px native range, kept for the card's
+4-yr timing, Δ11) — the shared `ui/SliderInput` is NOT restyled, since
+`MiningInputsPanel`/`MiningProjectionTable`/`LivingInputsPanel` consume it and a track change would relayout all three.
 
 **MODES:** **`mode` (S1) adds four strategies — cycle / hold / clearStrike / clearBoth.** The support-line
 "switch" (deploy / retire against the power-law support band) IS now modeled — as the opt-in
@@ -4030,9 +4039,15 @@ mismatch would mean two runs crept in (a hand check pins the two against the par
 - **READ-ONLY, zero store writes** (stricter than `ScenarioFace`, which writes a pin). Defaults mirror the
   Cycling face: Support, on the line, horizon 60, inspect month 24, cadence 1, CB stop 70, sweep 30 on,
   Strike cap 60 on, `cycle`, lens Position.
+- **The Lens lives in the control dock** (sticky controls, Run 2, D8): the thumb-sized Position | Flywheel switch left
+  the page and is the dock's fifth control — a tab under 1024 px, a chip on the bar, never live (F14). ⚠ **Two different
+  "lens"es (F18):** `lens` / `setLens` is the PRICE STRESS (useStressLens); `lensView` / `setLensView` is the view. The
+  dock's Stress writes only the first, its Lens only the second, and `lensView` is NOT in the reset effect's list —
+  flipping the view resets nothing, so a stress survives it. Only the dock shows which view is on.
 - **CSS composes from the parents** (`UnifiedFace.module.css`): chrome/cards/controls/tiles/scrubbers from
   CyclingFace, hero/share bar/chart switch/mode buttons/table from OwnershipFace. The only NEW rules are the
-  state line, the control block and the thumb-sized (44px) Position | Flywheel switch. Zero new hex.
+  state line, the control block, the thumb-sized (44px) Position | Flywheel switch and the control dock's (the doubled
+  `.faceDocked` pair; `.lensSwitch.dockLens`, the switch under its label in the Lens panel). Zero new hex.
 - **`resetMirror.test.ts` and `stressAnchor.test.ts` both cover it** — `'UnifiedFace.tsx'` is in `FACES` and
   in the anchor guard's expected list. ⚠ The mirror was run RED on all three faces (each naming
   `strikeCapPct`) before the reset arrays were wired, exactly as that file's docblock demands.
@@ -4229,6 +4244,48 @@ stuck to the window's bottom edge (`ControlDock` + `controlDockView`, see their 
 - **The cards' markup is unchanged (F9).** The Support policy card on all four faces and the What-if card: outerHTML
   byte-identical to HEAD's in every state (on, Settings closed and open, off, not cycle, not run), production builds,
   class tokens normalised.
+
+**Sticky controls — Run 2: the three parents (spec v1.6, D6–D8; store unchanged).** On a phone no parent showed its
+first chart and its month slider together (F1: 796 px apart on Cycling, 1,019 on Ownership, 840 on Strategy). Cycling,
+Ownership and Strategy now carry the same dock — `ControlDock`, `SupportPolicyControls` and the doubled `.faceDocked`
+reused, the dock's `.tsx` untouched.
+- **The face's last child** — after the disclaimer on Cycling and Strategy; on Ownership after the two-column `.shell`
+  (F16), so it spans both columns and settles under both.
+- **Cycling and Ownership: Month · Stress · Path · Policy** (`parentDockTabs`, D7 — no Line: the parents don't vary the
+  credit line). **Strategy: those four, then Lens** (`strategyDockTabs`, D8). Month and Stress are live on the bar; Path,
+  Policy and the Lens are chips.
+- **Month and Stress live ONLY in the dock.** Each scrubber card is gone; its notes stay where it was (I3), as bare
+  `noteQuiet` paragraphs: Cycling between the stat grid and Holdings by venue; Ownership in its main column above the stat
+  grid; Strategy above the tiles (both views share them, so neither hides the notes). Each face keeps its stress range
+  (Cycling and Strategy 0.35–2.2, Ownership 0.2–2.2).
+- **Ownership reads "Inspect month"** (it read "Month") — one name on all four faces — with the dock's shared words:
+  `monthReadout` ("month 24 · 2.0 yr", was "24 · 2.0 yr") and `stressPct` with its colour (Δ10). Its dock sliders are the
+  44 px styled range (Δ11: `.dockScrub { composes: scrub from './CyclingFace.module.css'; }` — `composes:` only); the
+  card's own 4-yr timing keeps its 28 px native range.
+- **Path is each face's own picker** — a face-local `PathPicker` shared by the price-path card and the dock (Cycling and
+  Strategy `.bandRow`, Ownership `.segRow` with its "To support…" / "Ride the 4-yr cycle" labels; no `compact` variant —
+  four buttons fit one line). Cycling's buttons gained `aria-pressed`, the only card markup change. While the 4-yr path
+  is on, the Path panel also holds a copy of the card's timing range (the same min, max, step, value, onChange,
+  aria-label and lock); its note stays in the card.
+- **Policy** is the card's own `SupportPolicyControls` with the card's props and the face's own `mode` / `expenses`
+  (Cycling the literal `'cycle'`); the tab reads `policyCardState(mode, …)`.
+- **Strategy's Lens** (D8) — the Position | Flywheel switch left the page (I20) and sits in the Lens panel
+  (`.lensSwitch.dockLens`). F18 (`lens` is the stress, `lensView` the view; a flip resets nothing): § Unified Strategy face.
+- **Viewers (I19)** — by construction: Month, Stress and Lens only inspect (live for a viewer, as on Decision); the path
+  buttons come from the one picker; the Policy panel is the card's own components; the one copied control is pinned.
+- **Δ12 — the bar's spacing** (`ControlDock.module.css`): gap 12px and chip padding 6px 8px (were 18 and 11) give each
+  live slider +15 px on a three-chip bar (Decision, Strategy) and +12 on a two-chip bar. Without it Strategy's default
+  stress head (254 px, beside "Lens Position ▴") wraps and the bar grows (R2's problem).
+- **Measured** (a production build, the web font loaded). The phone dock, folded · Month or Stress · Path · Path with the
+  4-yr timing · Policy · Lens: Cycling 63 · 134 · 143 · 220 · 350; Ownership 63 · 139 · 139 · 215 · 350; Strategy 63 · 134 ·
+  143 · 220 · 350 · 149 (the 34vh cap holds Policy). The bar at 1024 and 1440: Cycling 87 px with 326 px live sliders;
+  Ownership 92, 326; Strategy 87, 260; Decision 87, 274. Every default head is one line (Strategy's stress head is 254 px
+  in a 260 px slider); a `post-liq` month or a seven-figure price wraps a head on Strategy's bar — an edge state, accepted.
+  Ownership at 920–1023 px: the two-column shell over the tabs dock, full bleed.
+- **F9:** the Support policy card on all four faces (on, Settings open, off, not cycle, not run) and the three price-path
+  cards, at 390 and 1440 — outerHTML byte-identical to HEAD's, except Cycling's approved `aria-pressed`.
+- **F17 unmoved** — the "Coinbase seizes" e2e's three targets sit above the dock's top (the BTC price path card ends
+  ≈ 170 px above it; each "Price & liq" button ≈ 265 px).
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 
@@ -6980,18 +7037,20 @@ goes red.)
   - e2e — ⭐ D2: the `schedule-keep` header cell is ONE line and doesn't overflow at 390px and 375px (red with "Keep ₿
     at support" restored: two lines at 390px); ⭐ the first Decision smoke sees the legend note on the defaults (red
     when it isn't rendered).
-- **Sticky controls — the control dock** (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1, and Run 1b, v1.3; 39
-  named mutations — Run 1b's MT1–MT4 among them — each an exact-once edit, red at its own tag, every file restored and
-  md5-checked):
-  - `src/components/Almanac/__tests__/controlDockView.test.ts` (8) — the dock's words:
+- **Sticky controls — the control dock** (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1; Run 1b, v1.3; Run 2,
+  v1.6; 62 named mutations — Run 1b's MT1–MT4 and Run 2's MP1–MP23 among them — each an exact-once edit, red at its own
+  tag, every file restored and md5-checked):
+  - `src/components/Almanac/__tests__/controlDockView.test.ts` (10) — the dock's words:
     - ⭐ TODAY and ⭐ READOUT (the month: "today" at 0; the scrubber card's readout, word for word);
     - ⭐ OFF and ⭐ MINUS (the stress: "0%" and plain at 1×; a true minus, down bad, up good — red with a hyphen);
     - ⭐ LENGTH — every path's tab value fits 8 characters, no two alike, and BAND: Support / Fair are `PL_BAND_LABEL`'s
       (red with "Resistance", or a typed 'Floor');
     - ⭐ THOUSANDS — "$40k" · "$3.5k" · "$128k", and $99,950 → "$100k" (red with the prototype's unrounded format:
       "$100.0k");
-    - ⭐ STATES (the policy tab reads `policyCardState`'s four states) and ⭐ FIVE-TABS (the order, each from its helper).
-  - `src/components/Almanac/__tests__/controlDockWiring.test.ts` (9, source-reading):
+    - ⭐ STATES (the policy tab reads `policyCardState`'s four states) and ⭐ FIVE-TABS (the order, each from its helper);
+    - Run 2: ⭐ PARENT-TABS (Month · Stress · Path · Policy, each from its helper) and ⭐ STRATEGY-TABS (the same four,
+      then Lens; LENS: Position / Flywheel, each ≤ 8 characters).
+  - `src/components/Almanac/__tests__/controlDockWiring.test.ts` (17, source-reading):
     - PREMISE — EdgeBackGesture's `.page` still has `will-change: transform` (red when it doesn't: the guard is then
       vacuous);
     - ⭐ STICKY-CSS — `.dock` is sticky, nothing in its CSS is fixed or hex (TOKENS), its z-index sits under an open
@@ -7007,8 +7066,21 @@ goes red.)
     - ⭐ ONE-PICKER — `PathPicker` in the What-if card and, `compact`, in the dock;
     - ⭐ SIX-ONCE — each support-policy slider written once in the app, in SupportPolicyCard.tsx;
     - ⭐ ONE-BRANCH — the card's disclosure and the dock's panel both render `SupportPolicySliders`, branching on
-      `policyCardState`.
-  - e2e `e2e/controlDock.spec.ts` (7) — hermetic (prices aborted, history stubbed, `seedLoanAndGoto`):
+      `policyCardState`;
+    - Run 2, each looping Cycling, Ownership and Strategy:
+      - ⭐ P-ONE-DOCK — one dock, after the disclaimer, and nothing after it but the face's own closing tag;
+      - ⭐ P-ONCE — RENAME (no `aria-label="Month"`; "Inspect month" once) · the month and stress inputs once, in the
+        dock · RANGE (each face's stress range) · WORDS (`monthReadout`, the `post-liq` flag, `stressPct`; R6) · SCRUB
+        (Ownership's `.dockScrub`);
+      - ⭐ P-NOTES — the four notes once, in place, never in the dock (non-vacuous: the dock exists);
+      - ⭐ P-DOUBLED — the root takes `faceDocked`, each module the doubled 0 / 12px pair, no hex;
+      - ⭐ P-ONE-PICKER — one `PATH_META.map`, two `<PathPicker `, the picker's `aria-pressed`;
+      - ⭐ P-TIMING — the dock's 4-yr timing range carries the card's attributes and the lock, and only while 4-yr is on;
+      - ⭐ P-LENS (Strategy) — I20 (the switch once, in the dock; both views remain), F18 (the Stress writes `setLens`,
+        the Lens `setLensView`), LENS-NO-RESET;
+      - ⭐ P-POLICY — the dock's `SupportPolicyControls` carries the card's props and `layout="grid"`; the tab reads
+        `policyCardState` with the face's mode.
+  - e2e `e2e/controlDock.spec.ts` (13) — hermetic (prices aborted, history stubbed, `seedLoanAndGoto`):
     - phone (390×844): the edge — STICKY · OPAQUE (`rgb(14, 18, 25)`) · PINNED at scroll 0, ¼, ½, ¾ · END (under the
       disclaimer, on the same edge) · ONCE-DOM; the tabs — TABS (five, Month open) · EDGE (the slider starts right of
       `edge-back-zone`) · MONTH / READOUT (five ArrowRights) · FOLD · ARIA · PATH-TAB · REMOTE (the What-if card's Fair
@@ -7024,7 +7096,27 @@ goes red.)
       text-field skip → TABS-EDIT-ESC · MT4 `dropId` left on under 1024 px (the bar's document listener hears the page)
       → TABS-PAGE;
     - full mode (Δ1): one test, two contexts (the computer and the phone), `simpleMode: false`, Tools → Almanac →
-      ◆ Decision → the edge checks with a surface tag.
+      ◆ Decision → the edge checks with a surface tag;
+    - Run 2 — the parents (`expectPinned` takes `end` — the dock's preceding sibling, `.shell` on Ownership — and
+      `minScroll` 600):
+      - phone: Cycling (ONCE-DOM · TABS · EDGE · NOTE · the edge · PATH-TAB · REMOTE · TIMING · TIMING-REMOTE ·
+        PATH-4YR · POLICY-TAB · REMOTE-POLICY); Ownership (RENAME · READOUT · TABS · EDGE · NOTE · the edge, END under
+        `.shell` · PATH-TAB · REMOTE · POLICY-TAB); Strategy (TABS · EDGE · LENS-ONCE · VIEW · STRESS · LENS ·
+        STRESS-HOLDS · LENS-BACK · NOTE · the edge);
+      - computer: the three bars in one test (ONCE-DOM · LIVE · NO-WRAP at 1440 and 1024 · UP · 4YR-UP · the edge at
+        888); Strategy's Lens chip (LENS-CHIP · LENS-UP · LENS-VIEW · ESCAPE · ESCAPE-FOCUS);
+      - full mode: Ownership, the computer and the phone.
+    - Run 2's red-at: MP1 Cycling's dock first → P-ONE-DOCK, PINNED at 0 · MP2 Ownership's dock in `.side` →
+      P-ONE-DOCK, PINNED at 0 (full mode, phone), NO-WRAP (Ownership at 1440) · MP3 the switch also on the page → P-LENS
+      I20, LENS-ONCE · MP4 the Lens writes nothing → P-LENS F18, LENS · MP5 `lensView` in the reset list →
+      LENS-NO-RESET, STRESS-HOLDS · MP6 the Lens live → LIVE · MP7 the stress note in the dock → P-NOTES, NOTE · MP8
+      `aria-label="Month"` → RENAME (both) · MP9 a single `.faceDocked` → P-DOUBLED · MP10 Ownership's root without
+      `faceDocked` → P-DOUBLED, END on the same edge (phone, full mode) · MP11 the dock's timing max → P-TIMING · MP12 a
+      lock on the card's timing only → P-TIMING · MP13 a second `PATH_META.map` → P-ONE-PICKER · MP14 no `aria-pressed`
+      → P-ONE-PICKER, REMOTE · MP15 the dock's Policy ignores onChange → P-POLICY, POLICY-TAB · MP16 the Stress writes
+      the month → P-LENS F18, STRESS · MP17 Ownership's stress min 0.35 → RANGE · MP18 back on `styles.scrub` → SCRUB ·
+      MP19 no Lens tab → STRATEGY-TABS, TABS · MP20 'Flywheel view' → LENS · MP21 Path before Stress → PARENT-TABS,
+      TABS · MP22 the inline readout → WORDS, READOUT · MP23 the chip's 11px padding back → NO-WRAP (Strategy at 1440).
   - Measured, never moved: the phone chart-zoom tests' plot centre (y ≈ 702) clears the dock's top (y 710) by ~8–9 px,
     and their box and pan drags end under the dock but complete (pointer capture). A taller dock would turn them red —
     a kill criterion, never a moved target.
@@ -9999,7 +10091,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `getCollateralForTier` | Uses starting `btcPrice` — not per-month price |
 | Chart Y-axis | Always abbreviated — exact format causes label overlap |
 | Override a composed class's property on a DOUBLED selector, never beside `composes:` | A declaration in the composing rule ties the composed class's specificity (0,1,0), so the bundle's rule order decides, and that order is an accident of the import graph that differs between dev and production. P10 shipped Mining, Power Law and the Converter 600px wide in production while dev looked right. Put the override on `.x.x` (0,2,0), which wins in any order: `.main.main { max-width }`, `.chartBox.chartBox { height }`. Every single-class rule of the composing class counts, a media query's included, and so do shorthands (`border` covers `border-color`). `composedOverrides.test.ts` IS the audit, over every `*.module.css` under `src/` (P9–P11) |
-| Never `position: fixed` under EdgeBackGesture's `.page`, and never a body `scroll-padding` | `.page` has `will-change: transform`, which makes it the containing block for its fixed descendants: a fixed element there scrolls away with the page (measured on the control dock, F2). Pin to the window's edge with `position: sticky` as the face's LAST child — `ControlDock` does, and it also moves with the page through a swipe-back. In full mode a sticky element needs an ancestor that is no scroll container: `[data-active-tab="almanac"] .main` (Δ1). A body `scroll-padding-bottom` kept scrolled-to elements above the dock, but focusing the dock itself then jumped the page by ~400 px (F5). Pinned by `controlDockWiring.test.ts` (PREMISE, STICKY-CSS, ONE-DOCK, DOUBLED) and `e2e/controlDock.spec.ts`. Four Settings overlays already sit under `.page` (NostrAuthGate, ViewerLoginFlow, RecoveryKeyCeremony, RestoreBackupFlow — each `position: fixed`, rendered inline by SettingsMain in simple mode) — logged; not fixed in this run |
+| Never `position: fixed` under EdgeBackGesture's `.page`, and never a body `scroll-padding` | `.page` has `will-change: transform`, which makes it the containing block for its fixed descendants: a fixed element there scrolls away with the page (measured on the control dock, F2). Pin to the window's edge with `position: sticky` as the face's LAST child — `ControlDock` does, on all four engine faces (Decision, Cycling, Ownership — after its two-column `.shell`, F16 — and Strategy), and it also moves with the page through a swipe-back. In full mode a sticky element needs an ancestor that is no scroll container: `[data-active-tab="almanac"] .main` (Δ1). A body `scroll-padding-bottom` kept scrolled-to elements above the dock, but focusing the dock itself then jumped the page by ~400 px (F5). Pinned by `controlDockWiring.test.ts` (PREMISE, STICKY-CSS, ONE-DOCK, DOUBLED; on the parents P-ONE-DOCK and P-DOUBLED) and `e2e/controlDock.spec.ts`. Four Settings overlays already sit under `.page` (NostrAuthGate, ViewerLoginFlow, RecoveryKeyCeremony, RestoreBackupFlow — each `position: fixed`, rendered inline by SettingsMain in simple mode) — logged; not fixed in this run |
 | `NumberInput` suffix | Avoid inside input — cursor issues; use external label |
 | Skip fields | Persisted + SYNCED via settings (standing plan-shaping prefs) — reset only when user toggles back to Pay |
 | Tab hidden guard | `useEffect` in `AppShell` redirects when active tab hidden |

@@ -75,7 +75,7 @@
 /* ── 1024 px and up: a bar floating above the window's edge; the rest opens upward ────────────────── */
 @media (min-width: 1024px) {
   .dock {
-    bottom: 12px;                       /* = the face's bottom padding (DecisionFace.module.css .faceDocked) */
+    bottom: 12px;                       /* = each face's bottom padding (its .faceDocked) */
     display: flex;
     flex-direction: column;             /* the open panel follows the bar in the DOM; .drop's order shows it above */
     margin: 12px 0 0;
@@ -84,10 +84,13 @@
     border-radius: 12px;
     box-shadow: 0 -8px 28px rgba(0, 0, 0, 0.55), 0 8px 24px rgba(0, 0, 0, 0.55);
   }
+  /* Δ12 (Run 2): 12px between the bar's parts and 8px of chip padding (were 18 and 11) give each live slider 15px more
+     on a three-chip bar (Decision, Strategy) and 12px on a two-chip bar (Cycling, Ownership), so Strategy's default
+     stress head — beside its wider "Lens Position" chip — stays on one line. */
   .bar {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 12px;
   }
   .live {
     flex: 1 1 0;
@@ -100,7 +103,7 @@
   }
   .chip {
     min-height: 32px;
-    padding: 6px 11px;
+    padding: 6px 8px;
     border-radius: 999px;
     border: 1px solid var(--line);
     background: var(--surface-2);

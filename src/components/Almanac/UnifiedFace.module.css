@@ -1,7 +1,8 @@
 /* Almanac Strategy face — the ELEVENTH face. Every shared class COMPOSES a parent's, so the three faces can
    never drift apart visually: the chrome, cards, controls, tiles and scrubbers from CyclingFace; the hero,
    share bar, chart switch, mode buttons and table from OwnershipFace. The only NEW rules are the lens
-   switch, the state line and the control-block spacing. Tokens only — zero new hex. */
+   switch, the state line, the control-block spacing and the control dock's (sticky controls, Run 2: the face's
+   end and the Lens panel). Tokens only — zero new hex. */
 
 /* ── From CyclingFace ─────────────────────────────────────────────────────────────────────────── */
 .face { composes: face from './CyclingFace.module.css'; }
@@ -72,6 +73,15 @@
 
 /* ── New to this face ─────────────────────────────────────────────────────────────────────────── */
 
+/* The control dock (sticky controls, Run 2) is the face's last child and carries the face's end: under 1024px it sits
+   flush on the window's edge, so the composed .face's 32px bottom padding would lift it at the end of the page; from
+   1024px the bar floats 12px up, so the padding is 12px. ⚠ Doubled (0,2,0): beside the composed .face's `padding`
+   shorthand a single class would tie it, and the bundle's rule order would decide (P9 / P10). */
+.faceDocked.faceDocked { padding-bottom: 0; }
+@media (min-width: 1024px) {
+  .faceDocked.faceDocked { padding-bottom: 12px; }
+}
+
 /* The state line — the headline outcome, before any control. Quiet by default; the tone classes carry the
    Strike cap's reading (defended green, a short or a yield amber, a call or a liquidation red). */
 .stateLine {
@@ -130,3 +140,6 @@
   border-color: color-mix(in srgb, var(--btc) 50%, transparent);
   color: var(--text-primary);
 }
+/* In the dock's Lens panel the switch follows its label, whose own 10px margin is the gap (the Path panel's rhythm).
+   Doubled (0,2,0) over .lensSwitch's margin-top. */
+.lensSwitch.dockLens { margin-top: 0; }
