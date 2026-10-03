@@ -813,8 +813,10 @@ src/
                                 # swipe-back zone, capped at 34vh; from 1024 px a bar floating 12 px up — the live controls
                                 # side by side, chips whose panel opens upward (after the bar in the DOM, above it via
                                 # `order: -1`). Escape folds the panel from the document (Safari never focuses a clicked
-                                # button), never a typed value's, and returns focus to the chip; `aria-controls` only while
-                                # open; z-index 30, under an open InfoTip's 40. ⚠ Never `position: fixed` (F2)
+                                # button), never a typed value's, and returns focus to the chip; under 1024 px (Run 1b) it
+                                # folds the open tab only from inside the dock — an open tab is the resting state, not a
+                                # pop-up — and gives that tab focus; `aria-controls` only while open; z-index 30, under an
+                                # open InfoTip's 40. ⚠ Never `position: fixed` (F2)
       controlDockView.ts        # Sticky controls — the dock's words, pure: DockTabView · monthTabValue / monthReadout ·
                                 # stressPct / stressTabValue / stressTone (a true minus) · PATH_TAB_VALUE (Support and Fair
                                 # from PL_BAND_LABEL, then Resist. · 4-yr · Stitched · Worst — a phone tab fits 8 characters)
@@ -4206,6 +4208,11 @@ stuck to the window's bottom edge (`ControlDock` + `controlDockView`, see their 
   button, so a listener on the dock would never hear it), except an Escape typed into a value field — that one is
   SliderInput's own cancel, and the next folds the panel. Focus returns to the chip. The panel follows the bar in the
   DOM (Tab goes chip → panel) and shows above it (`order: -1`). `aria-controls` is set only while a panel is open.
+  **The tabs (Run 1b, spec v1.3 DC1)** hear Escape only while focus is INSIDE the dock — a React `onKeyDown` on the
+  dock, never a document listener. There an open tab is the dock's resting state (Month is open at first), not a pop-up
+  the person just opened, so an Escape meant for the page (an ⓘ tip, a chart drag) must never fold it. Escape folds the
+  open tab and gives that tab focus (the panel's content unmounts with the fold); a typed value's Escape stays the
+  field's. A Chromium browser focuses a clicked tab; in Safari a keyboard user Tabs into the dock.
 - **Viewers (R1).** The dock's Line is `disabled={s.viewerMode}`, as the Credit-line card's SliderInput disables itself;
   Month and Stress stay live for a viewer, as they were.
 - **The face's end.** `.faceDocked.faceDocked` (doubled — the composed `.face`'s `padding` shorthand would tie a single
@@ -6973,8 +6980,9 @@ goes red.)
   - e2e — ⭐ D2: the `schedule-keep` header cell is ONE line and doesn't overflow at 390px and 375px (red with "Keep ₿
     at support" restored: two lines at 390px); ⭐ the first Decision smoke sees the legend note on the defaults (red
     when it isn't rendered).
-- **Sticky controls — the control dock** (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1; 35 named mutations,
-  each an exact-once edit, red at its own tag, every file restored and md5-checked):
+- **Sticky controls — the control dock** (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1, and Run 1b, v1.3; 39
+  named mutations — Run 1b's MT1–MT4 among them — each an exact-once edit, red at its own tag, every file restored and
+  md5-checked):
   - `src/components/Almanac/__tests__/controlDockView.test.ts` (8) — the dock's words:
     - ⭐ TODAY and ⭐ READOUT (the month: "today" at 0; the scrubber card's readout, word for word);
     - ⭐ OFF and ⭐ MINUS (the stress: "0%" and plain at 1×; a true minus, down bad, up good — red with a hyphen);
@@ -7000,7 +7008,7 @@ goes red.)
     - ⭐ SIX-ONCE — each support-policy slider written once in the app, in SupportPolicyCard.tsx;
     - ⭐ ONE-BRANCH — the card's disclosure and the dock's panel both render `SupportPolicySliders`, branching on
       `policyCardState`.
-  - e2e `e2e/controlDock.spec.ts` (6) — hermetic (prices aborted, history stubbed, `seedLoanAndGoto`):
+  - e2e `e2e/controlDock.spec.ts` (7) — hermetic (prices aborted, history stubbed, `seedLoanAndGoto`):
     - phone (390×844): the edge — STICKY · OPAQUE (`rgb(14, 18, 25)`) · PINNED at scroll 0, ¼, ½, ¾ · END (under the
       disclaimer, on the same edge) · ONCE-DOM; the tabs — TABS (five, Month open) · EDGE (the slider starts right of
       `edge-back-zone`) · MONTH / READOUT (five ArrowRights) · FOLD · ARIA · PATH-TAB · REMOTE (the What-if card's Fair
@@ -7009,7 +7017,12 @@ goes red.)
     - computer (1440×900, `isMobile: false, hasTouch: false` — Z20): the edge at 888 (12 px up) · ONCE-DOM · LAYOUT
       1023 (the tabs) / LAYOUT 1024 (the chips); the bar — LIVE · UP (Policy's panel above the month slider, the chart
       box above the dock) · TAB-INTO · ESCAPE (after a blur) · ESCAPE-FOCUS · EDIT-ESC (a typed value's Escape cancels
-      only the edit; a second folds the panel);
+      only the edit; a second folds the panel); the tabs at 900×900 (Run 1b, DC1) — TABS · TABS-ESCAPE (Escape from the
+      Path panel's Fair button folds it) · TABS-FOCUS (the Path tab has focus) · TABS-EDIT-ESC (a typed value's Escape
+      cancels only the edit; the panel stays) · TABS-PAGE (with focus on `<body>`, Escape leaves the open tab alone).
+      Red on HEAD's dock at TABS-ESCAPE; MT1 no `onKeyDown` → TABS-ESCAPE · MT2 no focus return → TABS-FOCUS · MT3 no
+      text-field skip → TABS-EDIT-ESC · MT4 `dropId` left on under 1024 px (the bar's document listener hears the page)
+      → TABS-PAGE;
     - full mode (Δ1): one test, two contexts (the computer and the phone), `simpleMode: false`, Tools → Almanac →
       ◆ Decision → the edge checks with a surface tag.
   - Measured, never moved: the phone chart-zoom tests' plot centre (y ≈ 702) clears the dock's top (y 710) by ~8–9 px,

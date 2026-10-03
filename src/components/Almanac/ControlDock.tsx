@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from 'react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import type { DockTabView, DockTone } from './controlDockView';
 import styles from './ControlDock.module.css';
@@ -22,9 +22,14 @@ import styles from './ControlDock.module.css';
  * (so Tab goes chip → panel) and shows above it (`order: -1`). A second click or Escape folds it. Why 1024: at 768–900 px
  * both slider heads wrapped and the bar grew from 87 to 106 px (measured), and a touch screen there would get 32 px chips.
  *
- * Escape is heard on the DOCUMENT while a panel is open: Safari never focuses a clicked button, so a listener on the
- * dock alone would never hear it. An Escape typed into a value field is that field's (SliderInput cancels its own
- * edit); the next one folds the panel, and focus returns to its chip.
+ * Escape folds the open panel, and focus returns to its chip or tab. An Escape typed into a value field is that
+ * field's: SliderInput cancels its own edit, and the panel stays.
+ * - The bar: heard on the DOCUMENT while its panel is open — a pop-up the person just opened. Safari never focuses a
+ *   clicked button, so a listener on the dock alone would never hear it; and after a typed value's Escape, the next
+ *   one folds the panel.
+ * - The tabs: heard only while focus is INSIDE the dock. There an open panel is the dock's resting state (Month is
+ *   open at first), not a pop-up, so an Escape meant for the page — an ⓘ tip, a chart drag — never folds it. A
+ *   Chromium browser focuses a clicked tab; in Safari it takes Tab into the dock (spec v1.3, DC1).
  *
  * ⚠ No `scroll-padding-bottom` on the body: it kept scrolled-to elements above the dock, but then focusing the dock
  * itself (Tab from the page into it) jumped the page by ~400 px — the browser reads a sticky element's own controls as
@@ -52,6 +57,7 @@ export default function ControlDock({ panels }: ControlDockProps) {
   const panelId = `${useId()}-panel`;
   const dockRef = useRef<HTMLDivElement>(null);
   const chipRefs = useRef(new Map<string, HTMLButtonElement>());
+  const tabRefs = useRef(new Map<string, HTMLButtonElement>());
   // The bar's open panel: a non-live control that is open. Every hook runs before the layout branch.
   const dropId = wide ? (panels.find((p) => !p.live && p.id === open)?.id ?? null) : null;
 
@@ -73,11 +79,21 @@ export default function ControlDock({ panels }: ControlDockProps) {
 
   if (!wide) {
     const current = panels.find((p) => p.id === open);
+    // Escape from inside the dock folds the open panel (see the docblock: never from the page).
+    const onTabsKey = (e: ReactKeyboardEvent<HTMLDivElement>) => {
+      if (e.key !== 'Escape' || open === null) return;
+      // A typed value's Escape belongs to its field, as in the bar.
+      if (e.target instanceof HTMLInputElement && e.target.type === 'text') return;
+      const id = open;
+      setOpen(null);
+      tabRefs.current.get(id)?.focus();   // the panel's content unmounts with the fold
+    };
     return (
-      <div className={styles.dock} role="region" aria-label="Controls">
+      <div className={styles.dock} role="region" aria-label="Controls" onKeyDown={onTabsKey}>
         <div className={styles.tabs}>
           {panels.map((p) => (
             <button key={p.id} type="button" className={`${styles.tab} ${open === p.id ? styles.tabOn : ''}`}
+              ref={(el) => { if (el) tabRefs.current.set(p.id, el); else tabRefs.current.delete(p.id); }}
               aria-expanded={open === p.id} aria-controls={open === p.id ? panelId : undefined}
               onClick={() => toggle(p.id)}>
               <span className={styles.tabLabel}>{p.label}</span>

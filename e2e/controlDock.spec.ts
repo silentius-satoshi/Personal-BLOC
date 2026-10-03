@@ -176,6 +176,34 @@ test.describe('Sticky controls — computer', () => {
     await page.keyboard.press('Escape');
     await expect(setting, 'ESCAPE: the next one folds').toHaveCount(0);
   });
+
+  test('under 1024px on a computer: Escape from inside the dock folds the open tab and gives its tab focus back; a typed value\'s Escape only cancels the edit; an Escape from the page leaves the dock alone', async ({ page }) => {
+    // DC1 (spec v1.3) — the owner's computer window showed the tabs, where Escape did nothing.
+    await page.setViewportSize({ width: 900, height: 900 });
+    const dock = await openDecision(page);
+    await expect(dock.getByRole('button'), 'TABS').toHaveText([/^Month/, /^Stress/, /^Path/, /^Line/, /^Policy/]);
+    const panel = dock.locator('[id$="-panel"]');
+    // TABS-ESCAPE, TABS-FOCUS — from a control inside the panel, which unmounts with the fold: focus goes to its tab.
+    const path = dock.getByRole('button', { name: /^Path/ });
+    await path.click();
+    await dock.getByRole('button', { name: 'Fair', exact: true }).focus();
+    await page.keyboard.press('Escape');
+    await expect(panel, 'TABS-ESCAPE').toHaveCount(0);
+    await expect(path, 'TABS-FOCUS').toBeFocused();
+    // TABS-EDIT-ESC — a typed value's Escape belongs to the field: the edit is cancelled, and the panel stays.
+    await dock.getByRole('button', { name: /^Policy/ }).click();
+    const setting = dock.getByText('Coinbase limit at support', { exact: true });
+    await setting.locator('xpath=../following-sibling::div[1]').click();
+    const field = dock.locator('input[type="text"]');
+    await expect(field, 'TABS-EDIT-ESC: editing').toBeFocused();
+    await page.keyboard.press('Escape');
+    await expect(field, 'TABS-EDIT-ESC: the edit cancelled').toHaveCount(0);
+    await expect(setting, 'TABS-EDIT-ESC: the panel stays').toBeVisible();
+    // TABS-PAGE — with focus outside the dock, an Escape is the page's (an ⓘ tip, a chart drag): the open tab stays.
+    await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
+    await page.keyboard.press('Escape');
+    await expect(setting, 'TABS-PAGE').toBeVisible();
+  });
 });
 
 test.describe('Sticky controls — full mode', () => {
