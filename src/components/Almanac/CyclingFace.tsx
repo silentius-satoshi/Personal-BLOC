@@ -25,7 +25,7 @@ import {
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
-  msYearLabel, MS_TABLE,
+  msYearLabel, MS_TABLE, MS_VIEWS_CYCLING,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
@@ -36,7 +36,7 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import ControlDock, { type DockPanel } from './ControlDock';
-import MilestoneBlocks, { type MilestoneBlock } from './MilestoneBlocks';
+import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { parentDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
@@ -473,9 +473,10 @@ export default function CyclingFace() {
   );
   const milestoneRows = mergeMilestoneRows(milestones, horizonTurns);
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
-  // The Milestones where the table doesn't fit — its own figures as blocks (spec pbloc-spec-milestones-phone-v1).
+  // The Milestones where the table doesn't fit — its own figures, a few columns at a time (the switch table, spec
+  // pbloc-spec-milestones-phone-v1).
   const msTable = useMediaQuery(MS_TABLE);
-  const msBlocks: MilestoneBlock[] = milestoneRows.flatMap(({ month: m, turn }) => {
+  const msRows: MilestoneRow[] = milestoneRows.flatMap(({ month: m, turn }) => {
     const r = rows[m];
     if (!r) return [];
     const g = btcGained(r, rows[0]);
@@ -488,25 +489,24 @@ export default function CyclingFace() {
         ...(r.postLiquidation ? [{ text: 'post-liq' }] : []),
       ],
       turn: turn ? `${turn.kind === 'high' ? 'peak' : 'trough'} · ${fmtTurnDate(turn.date)}` : null,
-      zone: applied
-        ? (r.policyZone ? { letter: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], label: ZONE_LABEL[r.policyZone] } : { letter: '—' })
-        : null,
-      price: fmtK(r.price),
       post: r.postLiquidation,
-      lines: [
-        [
-          { label: 'BTC', value: `₿${r.btcHeld.toFixed(3)}` },
-          ...(coldShown(coldBufferPct, sim) ? [{ label: 'Cold', value: `₿${r.coldBtc.toFixed(3)}`, color: 'var(--btc)' }] : []),
-          {
-            label: 'BTC gained', value: `${g.gross >= 0 ? '+' : '−'}${Math.abs(g.gross).toFixed(3)}`, color: 'var(--btc)',
-            sub: `${g.yours >= 0 ? '+' : '−'}${Math.abs(g.yours).toFixed(3)} yours`, subColor: g.yours >= 0 ? 'var(--green)' : 'var(--red)',
-          },
-        ],
-        [
-          { label: 'Debt', value: fmtK(r.debt) },
-          { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
-          { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
-        ],
+      // Every figure of the table's row but the year, under its header and in its column order — a view picks by header.
+      cells: [
+        ...(applied
+          ? [r.policyZone
+            ? { label: 'Zone', value: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], name: ZONE_LABEL[r.policyZone] }
+            : { label: 'Zone', value: '—' }]
+          : []),
+        { label: 'Price', value: fmtK(r.price) },
+        { label: 'BTC', value: `₿${r.btcHeld.toFixed(3)}` },
+        ...(coldShown(coldBufferPct, sim) ? [{ label: 'Cold', value: `₿${r.coldBtc.toFixed(3)}`, color: 'var(--btc)' }] : []),
+        { label: 'Debt', value: fmtK(r.debt) },
+        { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
+        { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
+        {
+          label: 'BTC gained', value: `${g.gross >= 0 ? '+' : '−'}${Math.abs(g.gross).toFixed(3)}`, color: 'var(--btc)',
+          sub: `${g.yours >= 0 ? '+' : '−'}${Math.abs(g.yours).toFixed(3)} yours`, subColor: g.yours >= 0 ? 'var(--green)' : 'var(--red)',
+        },
       ],
     }];
   });
@@ -1270,7 +1270,8 @@ export default function CyclingFace() {
               </tbody>
             </table>
           ) : (
-            <MilestoneBlocks blocks={msBlocks} label="Milestones" />
+            <MilestoneSwitchTable rows={msRows} views={MS_VIEWS_CYCLING} label="Milestones" switchLabel="Milestones figures"
+              yearHead="Year" />
           )}
         </div>
       </section>

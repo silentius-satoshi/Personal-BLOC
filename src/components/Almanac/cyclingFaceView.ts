@@ -701,19 +701,45 @@ export function isBelowSupport(price: number, supportAtMonth: number): boolean {
   return price < supportAtMonth * (1 - 1e-9);
 }
 
-/** A milestone row's year in the blocks, where no Year header sits above it: "1 yr", "1.1 yr" — the table's own
- *  number with its unit (spec pbloc-spec-milestones-phone-v1). */
+/** A milestone row's year in the switch table's first column: "1 yr", "1.1 yr" — the computer table's own number,
+ *  with its unit (spec pbloc-spec-milestones-phone-v1). */
 export function msYearLabel(month: number): string {
   return `${Number.isInteger(month / 12) ? month / 12 : (month / 12).toFixed(1)} yr`;
 }
 
-/** Where the Milestones TABLE shows: 768 px and up — the app's tablet line; under it, the blocks (R2). Measured:
+/** Where the Milestones TABLE shows: 768 px and up — the app's tablet line; under it, the switch table (R2). Measured:
  *  Cycling's table needs 561–583 px (three seeds), and its frame is the window − 62 px (simple mode) or − 102 px (full
  *  mode): 578 / 538 at 640 px, 706 / 666 at 768. */
 export const MS_TABLE = '(min-width: 768px)';
 /** Ownership's: its two-column shell from 920 px (OwnershipFace.module.css) puts the Milestones in a 364–400 px side
- *  column — the blocks there too (R1). */
+ *  column — the switch table there too (R1). */
 export const MS_TABLE_OWNERSHIP = '(min-width: 768px) and (max-width: 919px)';
+
+/** One view of the Milestones switch table (MilestoneSwitchTable): the switch's text, its spoken name, and the table
+ *  columns it shows — by header, in the table's order. */
+export interface MsView { key: string; name: string; label: string; cols: readonly string[] }
+/** Each face's views PARTITION its table's columns less Year — every column in exactly one view, in the table's order
+ *  (milestones.test.ts, VIEWS). ₿ holds the coins, $ the dollars, LTV the loans' risk. Ownership's table has no dollar
+ *  figure but the price, so its middle view is the gain, and the price sits with the LTV it drives. A lettered view's
+ *  spoken name contains its visible text (WCAG 2.5.3, Label in Name): a voice-control "tap LTV" must find the button. */
+const MS_BTC = { key: 'btc', name: '₿', label: 'Bitcoin' } as const;
+const MS_USD = { key: 'usd', name: '$', label: 'Dollars' } as const;
+const MS_LTV = { key: 'ltv', name: 'LTV', label: 'LTV, loan to value' } as const;
+export const MS_VIEWS_CYCLING: readonly MsView[] = [
+  { ...MS_BTC, cols: ['BTC', 'Cold', 'BTC gained'] },
+  { ...MS_USD, cols: ['Price', 'Debt', 'Equity'] },
+  { ...MS_LTV, cols: ['Zone', 'CB LTV'] },
+];
+export const MS_VIEWS_STRATEGY: readonly MsView[] = [
+  { ...MS_BTC, cols: ['Held', 'Yours', 'Net gain'] },
+  { ...MS_USD, cols: ['Price', 'Debt', 'Equity'] },
+  { ...MS_LTV, cols: ['Zone', 'CB LTV', 'Strike LTV'] },
+];
+export const MS_VIEWS_OWNERSHIP: readonly MsView[] = [
+  { ...MS_BTC, cols: ['Held', 'Owed', 'Yours'] },
+  { key: 'gain', name: 'Gain', label: 'Net gain', cols: ['Net gain'] },
+  { ...MS_LTV, cols: ['Zone', 'Price', 'CB LTV'] },
+];
 
 /** The fixed Milestones rows, before any cycle turns are merged in (`mergeMilestoneRows`). */
 export const MILESTONE_MONTHS = [12, 24, 36, 60, 120] as const;

@@ -26,7 +26,7 @@ import {
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
   OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
-  msYearLabel, MS_TABLE,
+  msYearLabel, MS_TABLE, MS_VIEWS_STRATEGY,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
@@ -37,7 +37,7 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import ControlDock, { type DockPanel } from './ControlDock';
-import MilestoneBlocks, { type MilestoneBlock } from './MilestoneBlocks';
+import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { strategyDockTabs, monthReadout, stressPct, type LensView } from './controlDockView';
 import { useStressLens } from './useStressLens';
@@ -368,9 +368,10 @@ export default function UnifiedFace() {
   );
   const milestoneRows = mergeMilestoneRows(fixedMilestoneMonths(months), horizonTurns);
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
-  // The Milestones where the table doesn't fit — its own figures as blocks (spec pbloc-spec-milestones-phone-v1).
+  // The Milestones where the table doesn't fit — its own figures, a few columns at a time (the switch table, spec
+  // pbloc-spec-milestones-phone-v1).
   const msTable = useMediaQuery(MS_TABLE);
-  const msBlocks: MilestoneBlock[] = milestoneRows.flatMap(({ month: m, turn }) => {
+  const msRows: MilestoneRow[] = milestoneRows.flatMap(({ month: m, turn }) => {
     const r = rows[m];
     if (!r) return [];
     const g = btcGained(r, rows[0]);
@@ -383,25 +384,24 @@ export default function UnifiedFace() {
         ...(r.postLiquidation ? [{ text: '⚑' }] : []),
       ],
       turn: turn ? `${turn.kind === 'high' ? 'peak' : 'trough'} · ${fmtTurnDate(turn.date)}` : null,
-      zone: applied
-        ? (r.policyZone ? { letter: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], label: ZONE_LABEL[r.policyZone] } : { letter: '—' })
-        : null,
-      price: fmtK(r.price),
       selected: m === monthIdx,
       post: r.postLiquidation,
       onPick: () => setSelectedMonth(m),
-      lines: [
-        [
-          { label: 'Held', value: r.btcHeld.toFixed(3) },
-          { label: 'Yours', value: ownershipHero(r, rows[0]).yoursBtc.toFixed(3), color: 'var(--btc)' },
-          { label: 'Net gain', value: sBtc(g.yours), color: g.yours >= 0 ? 'var(--green)' : 'var(--red)', sub: `${sBtc(g.gross)} gross` },
-        ],
-        [
-          { label: 'Debt', value: fmtK(r.debt) },
-          { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
-          { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
-          { label: 'Strike LTV', value: fmtLtvPct(r.strikeLtv), color: skZone(r.strikeLtv) },
-        ],
+      // Every figure of the table's row but the year, under its header and in its column order — a view picks by header.
+      cells: [
+        ...(applied
+          ? [r.policyZone
+            ? { label: 'Zone', value: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], name: ZONE_LABEL[r.policyZone] }
+            : { label: 'Zone', value: '—' }]
+          : []),
+        { label: 'Price', value: fmtK(r.price) },
+        { label: 'Held', value: r.btcHeld.toFixed(3) },
+        { label: 'Yours', value: ownershipHero(r, rows[0]).yoursBtc.toFixed(3), color: 'var(--btc)' },
+        { label: 'Debt', value: fmtK(r.debt) },
+        { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
+        { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
+        { label: 'Strike LTV', value: fmtLtvPct(r.strikeLtv), color: skZone(r.strikeLtv) },
+        { label: 'Net gain', value: sBtc(g.yours), color: g.yours >= 0 ? 'var(--green)' : 'var(--red)', sub: `${sBtc(g.gross)} gross` },
       ],
     }];
   });
@@ -992,7 +992,8 @@ export default function UnifiedFace() {
                 </tbody>
               </table>
             ) : (
-              <MilestoneBlocks blocks={msBlocks} label="Milestones" />
+              <MilestoneSwitchTable rows={msRows} views={MS_VIEWS_STRATEGY} label="Milestones" switchLabel="Milestones figures"
+                yearHead="Year" />
             )}
           </div>
         </>

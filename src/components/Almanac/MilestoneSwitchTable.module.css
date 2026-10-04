@@ -1,0 +1,107 @@
+/* The Milestones' switch table (spec pbloc-spec-milestones-phone-v1, Run 2). Tokens only. Every header, figure and turn
+   stays on one line. Under 390 px the figures shrink with the window, as the dock's tab values do: the narrowest frame —
+   Cycling's in full mode at 320 px, 218 px — holds its ₿ view only with the clamp (a fixed 12.5 px ran 6–14 px past). */
+.wrap {
+  padding: 12px 0 4px;
+}
+.switch {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  width: fit-content;
+  margin: 0 8px 10px auto;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+.tab {
+  min-width: 48px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.tabOn {
+  background: var(--surface-2);
+  color: var(--text-primary);
+}
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.th {
+  padding: 0 clamp(3px, 1.3vw, 5px) 8px;
+  font-size: clamp(8.5px, 2.45vw, 9.5px);
+  font-weight: 400;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  text-align: right;
+  white-space: nowrap;
+  color: var(--text-muted);
+  border-bottom: 1px solid var(--line);
+}
+.td {
+  padding: 11px clamp(3px, 1.3vw, 5px);
+  font-size: clamp(10px, 3.2vw, 12.5px);
+  line-height: 1.3;
+  text-align: right;
+  vertical-align: baseline;
+  white-space: nowrap;
+}
+/* The year cell may wrap between the year and a long flag (post-liq); each stays whole. */
+.td.year { white-space: normal; }
+.th:first-child, .td:first-child { padding-left: clamp(6px, 2.2vw, 8px); }
+.th:last-child, .td:last-child { padding-right: clamp(6px, 2.2vw, 8px); }
+.year { text-align: left; }
+.yr {
+  font-size: clamp(10px, 3.2vw, 12.5px);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+/* A flag may break at its hyphen ("post-liq") when nothing else fits — full mode at 320 px with seven-figure values. */
+.flag {
+  font-size: clamp(8px, 2.6vw, 9px);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+.value {
+  display: block;
+  font-size: clamp(10px, 3.2vw, 12.5px);
+  color: var(--text-secondary);
+}
+.sub {
+  display: block;
+  margin-top: 2px;
+  font-size: clamp(8px, 2.45vw, 9.5px);
+  color: var(--text-muted);
+}
+/* A year's line and its turn's line are one row group; a line between years. */
+.row + .row > tr:first-child > td { border-top: 1px solid var(--line-2); }
+.row > tr:first-child:not(:last-child) > td { padding-bottom: 4px; }
+.turn {
+  padding: 0 8px 10px;
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  text-align: left;
+  white-space: nowrap;
+  color: var(--maroon-lift);
+}
+.pick { cursor: pointer; }
+@media (hover: hover) {
+  .pick:hover > tr > td { background: var(--bg-hover); }
+}
+.pick:focus-visible > tr > td { background: var(--bg-hover); }
+/* The picked row. DOUBLED to TIE the hover and focus rules above (0,2,2 each) — it wins by coming after them, so a row
+   picked by keyboard (focused, then Enter) stays lit. Keep it below them: LIT (Enter) in the e2e pins the order. */
+.on.on > tr > td { background: var(--surface-2); }
+.on .yr { color: var(--btc); }
+/* Rows past a liquidation — the tables' msPost. */
+.post { opacity: 0.55; }

@@ -27,7 +27,7 @@ import {
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   noBillsNote, OPENING_CASH_FLOW_NOTE, seedLine,
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, openPastLltvNote,
-  msYearLabel, MS_TABLE_OWNERSHIP,
+  msYearLabel, MS_TABLE_OWNERSHIP, MS_VIEWS_OWNERSHIP,
 } from './cyclingFaceView';
 import {
   ownershipGained, chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, strikeCallVerdict, liquidationVerdict,
@@ -41,7 +41,7 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import ControlDock, { type DockPanel } from './ControlDock';
-import MilestoneBlocks, { type MilestoneBlock } from './MilestoneBlocks';
+import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { parentDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
@@ -469,9 +469,10 @@ export default function OwnershipFace() {
   );
   const milestoneRows = mergeMilestoneRows(milestones, horizonTurns);
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
-  // The Milestones where the table doesn't fit — a phone and the side column (R1; spec pbloc-spec-milestones-phone-v1).
+  // The Milestones where the table doesn't fit — a phone and the side column (R1): its own figures, a few columns at a
+  // time (the switch table, spec pbloc-spec-milestones-phone-v1).
   const msTable = useMediaQuery(MS_TABLE_OWNERSHIP);
-  const msBlocks: MilestoneBlock[] = milestoneRows.flatMap(({ month: m, turn }) => {
+  const msRows: MilestoneRow[] = milestoneRows.flatMap(({ month: m, turn }) => {
     const r = rows[m];
     if (!r) return [];
     const g = ownershipGained(r, rows[0]);
@@ -485,23 +486,22 @@ export default function OwnershipFace() {
         ...(r.postLiquidation ? [{ text: '⚑' }] : []),
       ],
       turn: turn ? `${turn.kind === 'high' ? 'peak' : 'trough'} · ${fmtTurnDate(turn.date)}` : null,
-      zone: applied
-        ? (r.policyZone ? { letter: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], label: ZONE_LABEL[r.policyZone] } : { letter: '—' })
-        : null,
-      price: fmtK(r.price),
       selected: m === monthIdx,
       post: r.postLiquidation,
       onPick: () => setSelectedMonth(m),
-      lines: [
-        [
-          { label: 'Held', value: r.btcHeld.toFixed(3) },
-          { label: 'Owed', value: (r.debt / r.price).toFixed(3) },
-          { label: 'Yours', value: y.toFixed(3), color: 'var(--btc)' },
-        ],
-        [
-          { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
-          { label: 'Net gain', value: sBtc(g.yours), color: g.yours >= 0 ? 'var(--green)' : 'var(--red)', sub: `${sBtc(g.gross)} gross` },
-        ],
+      // Every figure of the table's row but the year, under its header and in its column order — a view picks by header.
+      cells: [
+        ...(applied
+          ? [r.policyZone
+            ? { label: 'Zone', value: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], name: ZONE_LABEL[r.policyZone] }
+            : { label: 'Zone', value: '—' }]
+          : []),
+        { label: 'Price', value: fmtK(r.price) },
+        { label: 'Held', value: r.btcHeld.toFixed(3) },
+        { label: 'Owed', value: (r.debt / r.price).toFixed(3) },
+        { label: 'Yours', value: y.toFixed(3), color: 'var(--btc)' },
+        { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
+        { label: 'Net gain', value: sBtc(g.yours), color: g.yours >= 0 ? 'var(--green)' : 'var(--red)', sub: `${sBtc(g.gross)} gross` },
       ],
     }];
   });
@@ -1202,7 +1202,8 @@ export default function OwnershipFace() {
                 </tbody>
               </table>
             ) : (
-              <MilestoneBlocks blocks={msBlocks} label="Milestones" />
+              <MilestoneSwitchTable rows={msRows} views={MS_VIEWS_OWNERSHIP} label="Milestones" switchLabel="Milestones figures"
+                yearHead="Year" />
             )}
           </div>
 
