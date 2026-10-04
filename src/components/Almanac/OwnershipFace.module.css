@@ -432,7 +432,9 @@
   text-align: right;
   border-bottom: 1px solid var(--line);
 }
-.msYear { text-align: left; }
+/* R5 (spec pbloc-spec-milestones-phone-v1): DOUBLED — a single class sat one rule above .msTd's `text-align: right`, so
+   the year cells (Ownership's, and Strategy's through composes) read right under a left header. */
+.msYear.msYear { text-align: left; }
 .msTd {
   padding: 7px;
   text-align: right;

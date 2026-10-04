@@ -498,6 +498,8 @@ src/
     useMediaQuery.ts            # Sticky controls — useMediaQuery(query) → boolean, useReducedMotion's pattern (a synchronous
                                 # first read, then addEventListener('change'); false when matchMedia is missing). The control
                                 # dock reads '(min-width: 1024px)' for ONE markup at a time: the bar from 1024 px, the tabs below
+                                # it. The three parents' Milestones read MS_TABLE / MS_TABLE_OWNERSHIP (cyclingFaceView)
+                                # the same way — the table from 768 px, the blocks under it (§ Milestones on a phone)
     useChartZoom.ts             # Chart zoom — the thin React adapter over lib/chartZoom (§ Chart zoom). useChartZoom(
                                 # full: View, scales, reach = full, min = MIN_SPAN_TIME_LOG) → { view, zoomed, mode,
                                 # pressMode, zoomIn, zoomOut, reset, dragging, quiet, areaRef, boxRef, plotStyle,
@@ -829,6 +831,18 @@ src/
                                 # Lens) · LensView / LENS_TAB_VALUE (Position · Flywheel). ONE private constructor per shared
                                 # tab (month, stress, path, policy) — all three builders use them, so a tab reads the same on
                                 # every face
+      MilestoneBlocks.tsx       # Milestones on a phone — THE Milestones as blocks, one per milestone row (+ .module.css,
+                                # tokens only). The three parents render it OR their table — useMediaQuery(MS_TABLE), ONE
+                                # markup at a time, never a CSS toggle: under 768 px, and in Ownership's side column (from
+                                # 920 px). LAYOUT ONLY and wordless: the face builds every block from its table's own
+                                # expressions (year, flags, turn, zone, price, then lines of { label, value, color?, sub?,
+                                # subColor? } cells); a zone is role="img" with a name only when the face names it.
+                                # role="list" → listitem → with onPick an inner role="button" (click, Enter, Space — as the
+                                # tables' rows); a <dl> a line, each term a dt over its dd(s). `.line` is grid-auto-flow:
+                                # column with grid-auto-columns: minmax(min-content, 1fr) — a cell never shrinks below its
+                                # content (M8: with minmax(0, 1fr) "STRIKE LTV" ran into its neighbour at 320 px); every
+                                # term, figure and sub-line nowrap. `.on` lit (--surface-2, its year --btc); `.post` 0.55
+                                # (the tables' msPost); hover only under (hover: hover)
 
     Tools/
       CbDefenseTool.tsx         # THE mode-gate (cbPaymentStrategy==='ltvTriggered' ? EmergencyConsole : LiqSimulator),
@@ -2708,7 +2722,14 @@ Decision face's sticky dock stuck to `.main`, not the window, and scrolled away.
 container; `min-width: 0` keeps the grid item able to shrink (a scroll container got that for free); and the face's
 own bottom padding is the page's end, so `.main`'s 20px would lift the bar there. Measured before and after on all 12
 faces at 1440 and 390 px: nothing overflows `.main` sideways. The `powerlaw` rules are untouched (`powerLawWiring`
-pins them).
+pins them). Since the Milestones on a phone (spec pbloc-spec-milestones-phone-v1, R3) it adds a fourth rule,
+`[data-active-tab="almanac"] .main { --dock-bleed: 20px; }` — `.main`'s own padding, which is 20px at every width. Under
+1024 px the control dock's margin is `12px calc(-16px - var(--dock-bleed, 0px)) 0`, so in full mode it also bleeds
+across `.main`'s padding. Inside it the dock was inset 20px a side: every tab was 8px narrower ("Flywheel" cut at every
+phone width measured) and the page showed beside it (M6). Simple mode's Almanac has no `[data-active-tab]`, so its dock
+keeps −16px.
+Measured: the full-mode dock spans the window from 320 to 1,000 px; from 1,001 to 1,023 px the 960px face centres and the
+dock stops 0.5–11.5 px from each edge (20.5–31.5 at `d7145dd`).
 
 ### Hub expansion — Mining / Power Law / Sats / gated defense faces (Almanac becomes a 6-face hub)
 
@@ -2921,9 +2942,10 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   (The old index-0/index-1 e2e pin is gone — the face-nav specs now tap pills by NAME, not position.)
 - **`src/components/Almanac/CyclingFace.tsx`** (+ `.module.css`) — LedgerFace chrome + its 960px `.face`.
   Sections: price path (band buttons + Reversion window + Horizon) → verdict → 6 stat cards → CB-LTV chart →
-  paired price/collateral charts → paired cash-flow/strategy cards → rates → constraint notices → milestones
-  → disclaimer. Paired rows go 2-col at ≥768px. Recharts restyled to tokens (zero new hex) with a local
-  token-surfaced tooltip; `isAnimationActive={false}` throughout.
+  paired price/collateral charts → paired cash-flow/strategy cards → rates → constraint notices → milestones (a
+  table from 768 px, blocks under it — § Milestones on a phone) → disclaimer. Paired rows go 2-col at ≥768px.
+  Recharts restyled to tokens (zero new hex) with a local token-surfaced tooltip; `isAnimationActive={false}`
+  throughout.
 - **⚠ THE §2 CROSSING LIVES IN THE VIEW, deliberately** — it imports the power law (a BELIEF) AND the risk
   constants (FACTS), builds a plain `number[]`, and hands it to an engine that has heard of neither. Exactly
   the `OutlookProjection`/`MonthBreakdown` shape. Neither wall moves.
@@ -2997,6 +3019,9 @@ component state; no store bump. The pure helpers live in **`src/components/Alman
 - **`mergeMilestoneRows(fixed, turns)`** / **`fmtTurnDate`** / **`nextTurnsText`** / **`fmtPhaseShift`** → the
   4-yr cycle's Milestones rows and copy. ⚠ These take PLAIN arrays/values: this module must never import
   `powerLaw` / `cycleModel` / `cyclePath` (its docblock promises it — the easiest wall in the repo to break).
+- **`msYearLabel(month)`** / **`MS_TABLE`** / **`MS_TABLE_OWNERSHIP`** → the Milestones on a phone (§ Milestones on a
+  phone): a block's year with its unit ("1 yr", "1.1 yr" — the table's own number), and where the table shows:
+  `'(min-width: 768px)'`; Ownership's adds `and (max-width: 919px)`, one under its two-column shell.
 - ⚠ **LTV is recomputed locally, not routed through `cbMetrics`.** Architecture invariant 2 governs the
   user's LIVE position; these are projected hypotheticals on a speculative price path, and `cbMetrics` reads
   store state. Same reasoning as the shared `ltvOf()` in `simulation/ltv.ts`. **This module must never be imported by the
@@ -3073,7 +3098,9 @@ still.
 **BTC gained:** both the tile and the Milestones column read the displayed (base or stressed) run
 (`btcGained(selRow, rows[0])` / `btcGained(r, rows[0])`), so they agree by construction. Both show **gross
 over net** — gross is accumulation, net is what survives the debt — and on a `postLiquidation` row the net
-drops hard, **shown, never clamped**.
+drops hard, **shown, never clamped**. The Milestones blocks (under 768 px — § Milestones on a phone) show it the
+same way: "BTC gained", gross first in `--btc`, "… yours" under it in green / red (R4). Strategy's and Ownership's keep
+"Net gain", net first.
 
 **The month-scoped tiles follow the scrubber; `Strike interest` and `Debt shifted` are result-level** —
 the former renders `sim.totalStrikeInterest` (CyclingRow carries no per-row cumulative interest; adding one
@@ -3796,7 +3823,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - The zone strip: one flex cell per month (`min-width: 0`; the gaps drop to 0 past 96 months, so a 240-month horizon
     never scrolls sideways), a 2px inspected-month marker, `role="img"` named by `zoneStripLabel`, a legend of the
     zones that occur.
-  - **`ZONE_COLOR` is ONE map** — strip, legend and the Milestones Zone column — each ≥ 3:1 on `--surface`:
+  - **`ZONE_COLOR` is ONE map** — strip, legend, the Milestones Zone column and the Milestones blocks' zone letter
+    (§ Milestones on a phone) — each ≥ 3:1 on `--surface`:
     accumulate `--green`, hold `--text-muted` (⚠ `--text-faint` fails 3:1), pay down `--btc`, paused `--amber`,
     broken `--red`.
 - **`supportPolicyView.ts`** (pure; no belief, store or React; never imports `cyclingFaceView`, which imports it):
@@ -3990,6 +4018,7 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     comment at each site; don't "unify" them). Policy v2 Run B (B2): the red dotted "Coinbase seizes" series on all three
     price charts — `chartCliffUsd`, one formula; Cycling's behind `hasCliff`, with a Legend (§ Policy v2 → Run B).
   - **Milestones:** a Zone column (`ZONE_LETTER`, `ZONE_COLOR`, `title` / `aria-label` = `ZONE_LABEL`), and the ⇡ flag.
+    The blocks under 768 px carry the same letter, colour and name on their head line (§ Milestones on a phone).
 - **Helper extensions:** `strikeCapReading` gains `sold` / `cured`; `creditExhaustedNote({ creditExhaustedMonth })`
   (2b.1 narrowed it — no rows, no figure); `rateStopNote(policyApplied)` (2b.1);
   `chartOwnershipRows(rows, cbStopEffPct?)` → `cbLimit` (Policy v2 Run B dropped its `cbLiqLtv`: `liq` is `chartCliffUsd`);
@@ -4036,6 +4065,14 @@ mismatch would mean two runs crept in (a hand check pins the two against the par
 - **No fourth copy of any number**: every rule is a tested helper from `cyclingFaceView` / `ownershipFaceView`
   (the B1 rule this repo already paid for once). One convention per behaviour: **Milestone rows jump the
   scrubber** (Ownership's convention) — a dead row on a face that has a scrubber is worse than a live one.
+- **Its Milestones carry Debt and Equity after Yours** (Milestones on a phone — the owner's ask): `fmtK(r.debt)` and
+  `fmtK(r.equity)`, the latter in `--text-primary` INLINE, as the table's other tinted cells. A module class beside the
+  composed `.msTd` would leave the colour to bundle order. Under 768 px the table is blocks (§ Milestones on a phone).
+  Its year cells, and Ownership's, now sit left under their left "Year" header (R5, M9). `.msYear { text-align: left }`
+  sat one rule above `.msTd { text-align: right }` in OwnershipFace.module.css (Strategy composes both), so on the tie the
+  later rule won and the years read right. The rule is DOUBLED there now — `.msYear.msYear` — the house's rule for an
+  override a later rule ties (P9 / P10). The composedOverrides audit reads only composing classes' own rules, so it neither
+  flags nor lists it — never add it to `DOUBLED`.
 - **READ-ONLY, zero store writes** (stricter than `ScenarioFace`, which writes a pin). Defaults mirror the
   Cycling face: Support, on the line, horizon 60, inspect month 24, cadence 1, CB stop 70, sweep 30 on,
   Strike cap 60 on, `cycle`, lens Position.
@@ -4215,7 +4252,10 @@ stuck to the window's bottom edge (`ControlDock` + `controlDockView`, see their 
   second tap folds it; capped at 34vh). From 1024: a bar floating 12 px up — Month and Stress side by side, Path / Line /
   Policy as 32 px chips whose panel opens UPWARD, so the chart at the window's top stays in view. Why 1024: at 768–900 px
   both slider heads wrapped and the bar grew 87 → 106 px, and a touch screen there would get 32 px chips (measured).
-  Measured: the dock is 134 px tall at 768–1023 px with the month panel open, 87 px from 1024.
+  Measured: the dock is 134 px tall at 768–1023 px with the month panel open, 87 px from 1024. A tab's value is
+  `font-size: clamp(10px, 3.1vw, 12px)` (Milestones on a phone, R3): at 12px a small phone cut "Flywheel" (340–360 px)
+  and "Support" (320 px) — 8 characters need 57.6px in a 48–56px tab. 10px at 320, 12px from 387 px. In full mode the
+  dock also bleeds across `.main`'s padding (`--dock-bleed`, § Almanac P4).
 - **Clear of the swipe-back zone (Δ2).** The phone panel is inset 14 px, so its controls start at x 30 — right of
   EdgeBackGesture's 20 px zone: a drag from a slider's left end moves the slider, never the page.
 - **Under an open InfoTip (Δ3).** The dock is `z-index: 30`; an InfoTip's panel is 40.
@@ -4245,7 +4285,8 @@ stuck to the window's bottom edge (`ControlDock` + `controlDockView`, see their 
   byte-identical to HEAD's in every state (on, Settings closed and open, off, not cycle, not run), production builds,
   class tokens normalised.
 
-**Sticky controls — Run 2: the three parents (spec v1.6, D6–D8; store unchanged).** On a phone no parent showed its
+**Sticky controls — Run 2: the three parents (spec v1.6, D6–D8; v1.7, R4–R6 and Δ12's measured need; store
+unchanged).** On a phone no parent showed its
 first chart and its month slider together (F1: 796 px apart on Cycling, 1,019 on Ownership, 840 on Strategy). Cycling,
 Ownership and Strategy now carry the same dock — `ControlDock`, `SupportPolicyControls` and the doubled `.faceDocked`
 reused, the dock's `.tsx` untouched.
@@ -4286,6 +4327,47 @@ reused, the dock's `.tsx` untouched.
   cards, at 390 and 1440 — outerHTML byte-identical to HEAD's, except Cycling's approved `aria-pressed`.
 - **F17 unmoved** — the "Coinbase seizes" e2e's three targets sit above the dock's top (the BTC price path card ends
   ≈ 170 px above it; each "Price & liq" button ≈ 265 px).
+
+### Milestones on a phone (the three parents' Milestones; store unchanged, NO bump)
+
+Spec: `pbloc-spec-milestones-phone-v1.md` (v1.1). The owner, 2026-10-03: on a phone Cycling's table scrolled sideways
+(Debt, Equity and BTC gained off the screen), Strategy's (Flywheel) and Ownership's wrapped Net gain to 4–5 lines, and
+Strategy had no Debt or Equity. Decisions: the rows stay the milestone years (D1); on a phone each row is a block (D2).
+- **M-I1 — one markup at a time.** Each face renders its table OR `MilestoneBlocks`: `const msTable =
+  useMediaQuery(MS_TABLE)` (Ownership `MS_TABLE_OWNERSHIP`), the control dock's pattern — never both, never a CSS
+  toggle. Where `matchMedia` is missing the hook says `false`: the blocks.
+- **M-I2 — the same figures.** `msBlocks` is built right after each face's `nextTurns` (D1), from the same row fields and
+  the same expressions as its table, whose JSX is unchanged. A block's terms are its table's headers less Year, Zone and
+  Price (the head line carries those): Cycling BTC · Cold (when its column shows) · BTC gained | Debt · Equity · CB LTV;
+  Strategy Held · Yours · Net gain | Debt · Equity · CB LTV · Strike LTV; Ownership Held · Owed · Yours | CB LTV ·
+  Net gain.
+  The e2e's SAME reads the table, then the blocks, off ONE page — row for row, character for character.
+- **M-I3 — the table from 768 px** (the app's tablet line), the blocks under it, on all three faces (R2). Measured:
+  Cycling's table needs 561–583 px (three seeds), and its frame is the window − 62 px (simple) or − 102 px (full): 578 /
+  538 at 640, 706 / 666 at 768. It fits from about 645 / 685 px, every seed from 700; 768 leaves ≥ 83 px. **Ownership's
+  table shows only at 768–919 px**: from 920 px its two-column shell puts the Milestones in a 364–400 px side column,
+  where the table wrapped Net gain (it needs 408–434). The blocks show there too (R1).
+- **M-I4 — the fit.** From 320 px, simple and full mode: every term and figure on one line, inside its own cell; nothing
+  past the list's edge; no sideways page. That is `.line`'s `minmax(min-content, 1fr)` (M8). Measured on a production
+  build, 320–767 px × three seeds × the default path, the 4-yr path and a deep stress: clean. The tightest text gap is
+  9.9 px (Strategy, full mode, the ×10 seed, at 320).
+- **M-I5 — the tables' interactions.** Strategy's and Ownership's blocks jump the month (tap, Enter, Space) and the picked
+  one is lit; Cycling's are not buttons, like its rows; post-liquidation blocks are dimmed (0.55, as `msPost`).
+- **M-I6 — layout only.** MilestoneBlocks reads no store and no engine and writes no word (WORDLESS) — a zone is named
+  only when the face names it (D2); tokens only.
+- **M-I7 — the computer tables unchanged** but for Strategy's Debt and Equity and R5's year alignment (§ Unified
+  Strategy face). Measured: outerHTML byte-identical to `d7145dd`'s, 18 of 18 — two seeds × three faces × the default
+  path, the 4-yr path and a deep stress; CSS-module suffixes normalised; Strategy's after removing exactly its two new
+  columns.
+- **M-I8 — no engine or store change;** `resetMirror` untouched.
+- **Ownership's table follows the stress.** Its rows are `sim`'s, the stressed run whenever a stress is on; the comment
+  above it said "UNLENSED" and was wrong (D3). SAME pins it (MM20).
+- **The turn rows are date-proof in the e2e (D7).** Ownership's default horizon (24 months) can hold no 4-yr turn: from
+  5 Oct 2026 the next is 1,064 days (35 months) out. So SAME types 36 months into its Horizon first. The cadence's longest
+  wait is under 36 months, and the non-vacuity check fails loudly if it ever changes.
+- **R3, folded in:** the dock's tab values shrink (`clamp(10px, 3.1vw, 12px)`), and in full mode the dock bleeds across
+  `.main`'s padding (`--dock-bleed`) — § Almanac P4 and the dock's "Under 1024 px: tabs" bullet.
+- Tests: § Test Suite → "Milestones on a phone".
 
 ### P3 — live block height (opt-in fetch; store stays v19)
 
@@ -6550,11 +6632,13 @@ view; (13) the chart box doesn't jump when the history loads.
 ## Mobile Responsive
 
 - Tab bar: `overflow-x: auto`, short labels ≤640px
-- All tables: wrapped in `overflow-x: auto; -webkit-overflow-scrolling: touch`
+- All tables: wrapped in `overflow-x: auto; -webkit-overflow-scrolling: touch`. The three parents' Milestones are
+  blocks, not a table, under 768 px (§ Milestones on a phone)
 - 4-col grids (Tier, Strategy): `overflow-x: auto` container, keep 4 cols
 - 3-col grids (Mining): same
 - CB Loan stat grid: 2-col at ≤640px
-- All `.main`: `padding: 16px` at ≤640px
+- AppShell's `.main`: `padding: 20px` at every width (≤640px adds only `overflow-x: hidden; min-width: 0`); the tools'
+  own `.main` compose toolContainer's 16px sides
 - `[data-active-tab="bloc"] .sidebar`: `overflow: hidden; padding: 0` (InputsPanel handles internally)
 
 ---
@@ -7038,8 +7122,8 @@ goes red.)
     at support" restored: two lines at 390px); ⭐ the first Decision smoke sees the legend note on the defaults (red
     when it isn't rendered).
 - **Sticky controls — the control dock** (Run 1, spec `pbloc-spec-sticky-controls-v1.md` v1.1; Run 1b, v1.3; Run 2,
-  v1.6; 62 named mutations — Run 1b's MT1–MT4 and Run 2's MP1–MP23 among them — each an exact-once edit, red at its own
-  tag, every file restored and md5-checked):
+  v1.6 — D6–D8 — and v1.7 — R4–R6 and Δ12's measured need; 62 named mutations — Run 1b's MT1–MT4 and Run 2's MP1–MP23
+  among them — each an exact-once edit, red at its own tag, every file restored and md5-checked):
   - `src/components/Almanac/__tests__/controlDockView.test.ts` (10) — the dock's words:
     - ⭐ TODAY and ⭐ READOUT (the month: "today" at 0; the scrubber card's readout, word for word);
     - ⭐ OFF and ⭐ MINUS (the stress: "0%" and plain at 1×; a true minus, down bad, up good — red with a hyphen);
@@ -7120,6 +7204,55 @@ goes red.)
   - Measured, never moved: the phone chart-zoom tests' plot centre (y ≈ 702) clears the dock's top (y 710) by ~8–9 px,
     and their box and pan drags end under the dock but complete (pointer capture). A taller dock would turn them red —
     a kill criterion, never a moved target.
+- **Milestones on a phone** (spec `pbloc-spec-milestones-phone-v1.md` v1.1; 22 named mutations, MM1–MM22, each an
+  exact-once edit, red at its own tag, every file restored and md5-checked; red first on `d7145dd`'s source — 7 of 7
+  and 5 of 5):
+  - `src/components/Almanac/__tests__/milestones.test.ts` (7, each titled by its tag):
+    - YEAR — `msYearLabel` over 12, 13, 18, 36, 60, 120;
+    - QUERIES — the two query strings, and SIDE: Ownership's max is one under the `.shell` breakpoint read from its CSS;
+    - ⭐ ONE-MARKUP — per face: one `useMediaQuery(MS_TABLE…)`, one `<MilestoneBlocks`, one table, the table first in the
+      switch and the blocks in its else;
+    - ⭐ STRATEGY-COLUMNS — Yours · Debt · Equity;
+    - ⭐ LAYOUT-ONLY — MilestoneBlocks imports only `react` and its CSS; WORDLESS — no word in a quoted literal, a
+      template literal's text or JSX text (roles, keys and spaces only); TOKENS — no hex;
+    - ⭐ FIT — `.line` is `minmax(min-content, 1fr)`; terms, figures and sub-lines `nowrap`;
+    - ⭐ TABS — CLAMP (`.tabValue`); BLEED (the dock's margin reads `--dock-bleed`, whose value is `.main`'s padding).
+  - e2e `e2e/milestones.spec.ts` (5) — hermetic (`seedLoanAndGoto`, prices aborted, history stubbed), every assertion
+    tagged:
+    - phone: FIT, ONCE — one list, no table, > 1 row. FIT at 390 and 320 px: no figure runs into its neighbour, every
+      figure and every turn on one line (the turn by its rect tops), every head on one line (by height — its flags are a
+      smaller font on the same line), nothing past the list's edge, no sideways page;
+    - phone: JUMP — > 1 block; one button a block on Strategy and Ownership; tap the first, Enter the last, Space the
+      first, each moving the dock's `month N · X yr`; LIT, only that block; Cycling's list holds no button;
+    - computer (Z20): SAME — on ONE page, the table (1440 px; Ownership's at 900), then the blocks at 390, row for row:
+      year, flags, turn, zone, price, DIM (opacity) and every term's figures; SAME-COLUMNS; FIT. Run on the 4-yr path
+      (Ownership's Horizon typed to 36 months first — D7) and then at month 0 with the stress at its floor. Turns, flagged
+      rows and dimmed rows are each > 0, on all three faces;
+    - computer: EDGES — 767 blocks + FIT, 768 and 1440 the table; Ownership 919 the table, 920 and 1440 the blocks;
+      NO-SCROLL; ALIGN (R5);
+    - TABS, BLEED — fresh phone contexts at 320 and 360 px, simple and full mode, Strategy's Flywheel: no value cut;
+      BLEED x 0, the window's width; FIT.
+  - Red at:
+    - MM1 Cycling's query always matches → W ONE-MARKUP · E ONCE, JUMP (rows), SAME (the blocks at 390), EDGES cycling 767;
+    - MM2 Strategy's blocks rendered over its table too → W ONE-MARKUP · E ONCE, LIT · EDGES strategy 767, by a
+      strict-mode violation (two lists) in its FIT. The 767 count check alone passed, read on the pre-resize DOM, which
+      already held the one extra list. With the real code a resize always changes the count;
+    - MM3 no Equity in Strategy's blocks → SAME-COLUMNS strategy · MM4 the blocks' Equity reads the debt → SAME strategy:
+      Equity · MM5 no Debt column → W STRATEGY-COLUMNS · E SAME-COLUMNS strategy;
+    - MM6 Ownership's blocks don't jump → JUMP ownership: one button a block · MM7 Enter ignored → JUMP strategy Enter;
+    - MM8 `minmax(0, 1fr)` → W FIT · E FIT strategy 320, TABS (FIT simple 320) · MM9 Ownership's side column the table →
+      U QUERIES · E EDGES ownership 920 · MM10 the table from 640 → U QUERIES · E EDGES cycling 767;
+    - MM11 the tab values at 12px → W CLAMP · E TABS simple 320 · MM12 no bleed → W BLEED · E TABS full 320;
+    - MM13 the component imports the store → W LAYOUT-ONLY · MM19 `aria-label={b.zone.label ?? 'no zone'}` → W WORDLESS;
+    - MM14 "1.0 yr" → U YEAR · E SAME cycling 4-yr row 1: year (row 0 is a turn, "1.1 yr" either way) · MM15 Cycling's
+      sub reads the gross → SAME cycling: BTC gained · MM16 Cycling drops `post-liq` → SAME cycling stress: flags ·
+      MM17 Strategy drops the turn → SAME strategy 4-yr: turn;
+    - MM18 the year rule single again → ALIGN EDGES strategy 768 · MM20 Ownership reads `baseSim` → SAME ownership:
+      flagged rows (non-vacuous) · MM21 Strategy's blocks drop `post` → SAME strategy stress row 0: dim · MM22
+      `.year { max-width: 24px }` → FIT cycling 390: every head on one line (and in SAME, EDGES and TABS).
+  - The e2e runs on a fresh server (D6), because this change edits a CSS module that UnifiedFace composes (R5). Its
+    out-of-tree config: the repo's own, with `testDir` and the `webServer` cwd pointed at the repo, port 5174 and
+    `reuseExistingServer: false`.
 - **Power Law chart polish** (spec `pbloc-spec-powerlaw-polish-v1`, P1–P11; every ⭐ red under its named mutation,
   every file restored and hash-checked):
   - `src/utils/__tests__/fmtTooltipUsd.test.ts` — ⭐ never "$0" for a positive price (red with `fmtUSD` for every

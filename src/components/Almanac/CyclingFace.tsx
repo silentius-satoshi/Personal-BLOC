@@ -25,6 +25,7 @@ import {
   creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
+  msYearLabel, MS_TABLE,
 } from './cyclingFaceView';
 import { modeConstraints, unfundedNote } from './ownershipFaceView';
 import {
@@ -35,6 +36,8 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import ControlDock, { type DockPanel } from './ControlDock';
+import MilestoneBlocks, { type MilestoneBlock } from './MilestoneBlocks';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { parentDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { deriveCbCollateral } from '../../simulation/logUtils';
@@ -470,6 +473,43 @@ export default function CyclingFace() {
   );
   const milestoneRows = mergeMilestoneRows(milestones, horizonTurns);
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
+  // The Milestones where the table doesn't fit — its own figures as blocks (spec pbloc-spec-milestones-phone-v1).
+  const msTable = useMediaQuery(MS_TABLE);
+  const msBlocks: MilestoneBlock[] = milestoneRows.flatMap(({ month: m, turn }) => {
+    const r = rows[m];
+    if (!r) return [];
+    const g = btcGained(r, rows[0]);
+    return [{
+      month: m,
+      year: msYearLabel(m),
+      flags: [
+        ...(r.defended ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
+        ...(collateralMovedFlag(r, applied) ? [{ text: '⇡', title: 'collateral moved into Coinbase' }] : []),
+        ...(r.postLiquidation ? [{ text: 'post-liq' }] : []),
+      ],
+      turn: turn ? `${turn.kind === 'high' ? 'peak' : 'trough'} · ${fmtTurnDate(turn.date)}` : null,
+      zone: applied
+        ? (r.policyZone ? { letter: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], label: ZONE_LABEL[r.policyZone] } : { letter: '—' })
+        : null,
+      price: fmtK(r.price),
+      post: r.postLiquidation,
+      lines: [
+        [
+          { label: 'BTC', value: `₿${r.btcHeld.toFixed(3)}` },
+          ...(coldShown(coldBufferPct, sim) ? [{ label: 'Cold', value: `₿${r.coldBtc.toFixed(3)}`, color: 'var(--btc)' }] : []),
+          {
+            label: 'BTC gained', value: `${g.gross >= 0 ? '+' : '−'}${Math.abs(g.gross).toFixed(3)}`, color: 'var(--btc)',
+            sub: `${g.yours >= 0 ? '+' : '−'}${Math.abs(g.yours).toFixed(3)} yours`, subColor: g.yours >= 0 ? 'var(--green)' : 'var(--red)',
+          },
+        ],
+        [
+          { label: 'Debt', value: fmtK(r.debt) },
+          { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
+          { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
+        ],
+      ],
+    }];
+  });
 
   const statTiles: Array<readonly [string, string, string, string]> = [
     ['BTC held', fmtBtc(selRow.btcHeld), `from ${openingBtc.toFixed(4)} ₿`, 'var(--green)'],
@@ -1152,82 +1192,86 @@ export default function CyclingFace() {
       <section className={styles.card}>
         <span className={styles.cardLabel}>Milestones</span>
         <div className={styles.msWrap}>
-          <table className={styles.msTable}>
-            <thead>
-              <tr>
-                <th className={`${styles.msTh} ${styles.msYear}`}>Year</th>
-                {applied && <th className={styles.msTh}>Zone</th>}
-                <th className={styles.msTh}>Price</th>
-                <th className={styles.msTh}>BTC</th>
-                {/* Only when cold CAN be non-zero (the sweep on, or the policy's own sweep) — an always-zero column
-                    is noise on a table this dense. */}
-                {coldShown(coldBufferPct, sim) && <th className={styles.msTh}>Cold</th>}
-                <th className={styles.msTh}>Debt</th>
-                <th className={styles.msTh}>CB LTV</th>
-                <th className={styles.msTh}>Equity</th>
-                <th className={styles.msTh}>BTC gained</th>
-              </tr>
-            </thead>
-            <tbody>
-              {milestoneRows.map(({ month: m, turn }) => {
-                const r = rows[m];
-                if (!r) return null;
-                // The table follows the scenario — under stress these rows come from the stressed run.
-                const g = btcGained(r, rows[0]);
-                return (
-                  <tr key={m} className={r.postLiquidation ? styles.msPost : undefined}>
-                    <td className={`${styles.msTd} ${styles.msYear}`}>
-                      {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
-                      {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
-                      {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
-                      {r.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
-                      {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}
-                      {turn && (
-                        <span className={styles.msTurn}>
-                          {turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}
-                        </span>
+          {msTable ? (
+            <table className={styles.msTable}>
+              <thead>
+                <tr>
+                  <th className={`${styles.msTh} ${styles.msYear}`}>Year</th>
+                  {applied && <th className={styles.msTh}>Zone</th>}
+                  <th className={styles.msTh}>Price</th>
+                  <th className={styles.msTh}>BTC</th>
+                  {/* Only when cold CAN be non-zero (the sweep on, or the policy's own sweep) — an always-zero column
+                      is noise on a table this dense. */}
+                  {coldShown(coldBufferPct, sim) && <th className={styles.msTh}>Cold</th>}
+                  <th className={styles.msTh}>Debt</th>
+                  <th className={styles.msTh}>CB LTV</th>
+                  <th className={styles.msTh}>Equity</th>
+                  <th className={styles.msTh}>BTC gained</th>
+                </tr>
+              </thead>
+              <tbody>
+                {milestoneRows.map(({ month: m, turn }) => {
+                  const r = rows[m];
+                  if (!r) return null;
+                  // The table follows the scenario — under stress these rows come from the stressed run.
+                  const g = btcGained(r, rows[0]);
+                  return (
+                    <tr key={m} className={r.postLiquidation ? styles.msPost : undefined}>
+                      <td className={`${styles.msTd} ${styles.msYear}`}>
+                        {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
+                        {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                        {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
+                        {r.postLiquidation && <span className={styles.msFlag}> post-liq</span>}
+                        {/* A 4-yr cycle turn, with its REAL date — the row can sit up to a month off the turn. */}
+                        {turn && (
+                          <span className={styles.msTurn}>
+                            {turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}
+                          </span>
+                        )}
+                      </td>
+                      {applied && (
+                        <td className={styles.msTd}
+                          style={r.policyZone ? { color: ZONE_COLOR[r.policyZone] } : undefined}
+                          title={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}
+                          aria-label={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}>
+                          {r.policyZone ? ZONE_LETTER[r.policyZone] : '—'}
+                        </td>
                       )}
-                    </td>
-                    {applied && (
-                      <td className={styles.msTd}
-                        style={r.policyZone ? { color: ZONE_COLOR[r.policyZone] } : undefined}
-                        title={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}
-                        aria-label={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}>
-                        {r.policyZone ? ZONE_LETTER[r.policyZone] : '—'}
+                      <td className={styles.msTd}>{fmtK(r.price)}</td>
+                      <td className={styles.msTd}>
+                        <span className={styles.btcPre}>₿</span>{r.btcHeld.toFixed(3)}
                       </td>
-                    )}
-                    <td className={styles.msTd}>{fmtK(r.price)}</td>
-                    <td className={styles.msTd}>
-                      <span className={styles.btcPre}>₿</span>{r.btcHeld.toFixed(3)}
-                    </td>
-                    {/* ⚠ Cold is a SUBSET of the BTC column, not an addition to it — btcHeld is all three
-                        pools. Shown in the cold accent so it reads as "…of which this is out of reach". */}
-                    {coldShown(coldBufferPct, sim) && (
-                      <td className={`${styles.msTd} ${styles.msCold}`}>
-                        <span className={styles.btcPre}>₿</span>{r.coldBtc.toFixed(3)}
+                      {/* ⚠ Cold is a SUBSET of the BTC column, not an addition to it — btcHeld is all three
+                          pools. Shown in the cold accent so it reads as "…of which this is out of reach". */}
+                      {coldShown(coldBufferPct, sim) && (
+                        <td className={`${styles.msTd} ${styles.msCold}`}>
+                          <span className={styles.btcPre}>₿</span>{r.coldBtc.toFixed(3)}
+                        </td>
+                      )}
+                      <td className={styles.msTd}>{fmtK(r.debt)}</td>
+                      <td className={styles.msTd} style={{ color: cbZone(r.cbLtv) }}>
+                        {fmtLtvPct(r.cbLtv)}
                       </td>
-                    )}
-                    <td className={styles.msTd}>{fmtK(r.debt)}</td>
-                    <td className={styles.msTd} style={{ color: cbZone(r.cbLtv) }}>
-                      {fmtLtvPct(r.cbLtv)}
-                    </td>
-                    <td className={`${styles.msTd} ${styles.msEquity}`}>{fmtK(r.equity)}</td>
-                    {/* Gross = BTC accumulated. Yours = what survives the debt. On a post-liquidation row
-                        yours drops hard — shown, never clamped. */}
-                    <td className={styles.msTd}>
-                      <div className={styles.gainGross}>
-                        {g.gross >= 0 ? '+' : '−'}{Math.abs(g.gross).toFixed(3)}
-                      </div>
-                      <div className={styles.gainNet}
-                        style={{ color: g.yours >= 0 ? 'var(--green)' : 'var(--red)' }}>
-                        {g.yours >= 0 ? '+' : '−'}{Math.abs(g.yours).toFixed(3)} yours
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+                      <td className={`${styles.msTd} ${styles.msEquity}`}>{fmtK(r.equity)}</td>
+                      {/* Gross = BTC accumulated. Yours = what survives the debt. On a post-liquidation row
+                          yours drops hard — shown, never clamped. */}
+                      <td className={styles.msTd}>
+                        <div className={styles.gainGross}>
+                          {g.gross >= 0 ? '+' : '−'}{Math.abs(g.gross).toFixed(3)}
+                        </div>
+                        <div className={styles.gainNet}
+                          style={{ color: g.yours >= 0 ? 'var(--green)' : 'var(--red)' }}>
+                          {g.yours >= 0 ? '+' : '−'}{Math.abs(g.yours).toFixed(3)} yours
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : (
+            <MilestoneBlocks blocks={msBlocks} label="Milestones" />
+          )}
         </div>
       </section>
 

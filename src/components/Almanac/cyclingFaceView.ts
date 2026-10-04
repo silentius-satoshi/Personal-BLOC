@@ -701,6 +701,20 @@ export function isBelowSupport(price: number, supportAtMonth: number): boolean {
   return price < supportAtMonth * (1 - 1e-9);
 }
 
+/** A milestone row's year in the blocks, where no Year header sits above it: "1 yr", "1.1 yr" — the table's own
+ *  number with its unit (spec pbloc-spec-milestones-phone-v1). */
+export function msYearLabel(month: number): string {
+  return `${Number.isInteger(month / 12) ? month / 12 : (month / 12).toFixed(1)} yr`;
+}
+
+/** Where the Milestones TABLE shows: 768 px and up — the app's tablet line; under it, the blocks (R2). Measured:
+ *  Cycling's table needs 561–583 px (three seeds), and its frame is the window − 62 px (simple mode) or − 102 px (full
+ *  mode): 578 / 538 at 640 px, 706 / 666 at 768. */
+export const MS_TABLE = '(min-width: 768px)';
+/** Ownership's: its two-column shell from 920 px (OwnershipFace.module.css) puts the Milestones in a 364–400 px side
+ *  column — the blocks there too (R1). */
+export const MS_TABLE_OWNERSHIP = '(min-width: 768px) and (max-width: 919px)';
+
 /** The fixed Milestones rows, before any cycle turns are merged in (`mergeMilestoneRows`). */
 export const MILESTONE_MONTHS = [12, 24, 36, 60, 120] as const;
 

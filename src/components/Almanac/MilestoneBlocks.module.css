@@ -1,0 +1,98 @@
+/* The Milestones as blocks (spec pbloc-spec-milestones-phone-v1). Tokens only. Every label and value stays on one line;
+   a line's cells share its width evenly, but never below their own content (minmax(min-content, 1fr)) — with
+   minmax(0, 1fr), "STRIKE LTV" ran into its neighbour at 320 px, and in full mode the gain's second line too; now a wide
+   cell takes what it needs from the narrow ones. */
+.list {
+  display: flex;
+  flex-direction: column;
+}
+.block {
+  border-top: 1px solid var(--line-2);
+  padding: 4px 0;
+}
+.block:first-child { border-top: none; }
+.inner {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 8px;
+  border-radius: 10px;
+}
+.pick { cursor: pointer; }
+@media (hover: hover) {
+  .pick:hover { background: var(--bg-hover); }
+}
+.on .inner { background: var(--surface-2); }
+.on .year { color: var(--btc); }
+/* Rows past a liquidation — the table's msPost. */
+.post { opacity: 0.55; }
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+.year {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--text-primary);
+}
+.flag {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--red);
+}
+.turn {
+  margin-top: -6px;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.04em;
+  color: var(--maroon-lift);
+}
+.zone {
+  font-size: 12px;
+  font-weight: 600;
+}
+.price {
+  font-size: 12.5px;
+  color: var(--text-secondary);
+}
+.line {
+  margin: 0;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(min-content, 1fr);
+  gap: 8px;
+}
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.label {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.value {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+.sub {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 9.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  white-space: nowrap;
+}

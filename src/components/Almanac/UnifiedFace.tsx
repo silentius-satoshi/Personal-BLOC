@@ -26,6 +26,7 @@ import {
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
   drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
   OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
+  msYearLabel, MS_TABLE,
 } from './cyclingFaceView';
 import { chartOwnershipRows, ownershipHero, modeConstraints, unfundedNote, MODE_NOTE } from './ownershipFaceView';
 import {
@@ -36,6 +37,8 @@ import {
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import ControlDock, { type DockPanel } from './ControlDock';
+import MilestoneBlocks, { type MilestoneBlock } from './MilestoneBlocks';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { strategyDockTabs, monthReadout, stressPct, type LensView } from './controlDockView';
 import { useStressLens } from './useStressLens';
 import { SliderInput } from '../ui/SliderInput';
@@ -365,6 +368,43 @@ export default function UnifiedFace() {
   );
   const milestoneRows = mergeMilestoneRows(fixedMilestoneMonths(months), horizonTurns);
   const nextTurns = pathKind === 'fourYear' ? upcomingCycleTurns(startDate, 2, phaseShiftMonths) : [];
+  // The Milestones where the table doesn't fit — its own figures as blocks (spec pbloc-spec-milestones-phone-v1).
+  const msTable = useMediaQuery(MS_TABLE);
+  const msBlocks: MilestoneBlock[] = milestoneRows.flatMap(({ month: m, turn }) => {
+    const r = rows[m];
+    if (!r) return [];
+    const g = btcGained(r, rows[0]);
+    return [{
+      month: m,
+      year: msYearLabel(m),
+      flags: [
+        ...(r.defended ? [{ text: '⇄', title: 'debt shifted to Strike' }] : []),
+        ...(collateralMovedFlag(r, applied) ? [{ text: '⇡', title: 'collateral moved into Coinbase' }] : []),
+        ...(r.postLiquidation ? [{ text: '⚑' }] : []),
+      ],
+      turn: turn ? `${turn.kind === 'high' ? 'peak' : 'trough'} · ${fmtTurnDate(turn.date)}` : null,
+      zone: applied
+        ? (r.policyZone ? { letter: ZONE_LETTER[r.policyZone], color: ZONE_COLOR[r.policyZone], label: ZONE_LABEL[r.policyZone] } : { letter: '—' })
+        : null,
+      price: fmtK(r.price),
+      selected: m === monthIdx,
+      post: r.postLiquidation,
+      onPick: () => setSelectedMonth(m),
+      lines: [
+        [
+          { label: 'Held', value: r.btcHeld.toFixed(3) },
+          { label: 'Yours', value: ownershipHero(r, rows[0]).yoursBtc.toFixed(3), color: 'var(--btc)' },
+          { label: 'Net gain', value: sBtc(g.yours), color: g.yours >= 0 ? 'var(--green)' : 'var(--red)', sub: `${sBtc(g.gross)} gross` },
+        ],
+        [
+          { label: 'Debt', value: fmtK(r.debt) },
+          { label: 'Equity', value: fmtK(r.equity), color: 'var(--text-primary)' },
+          { label: 'CB LTV', value: fmtLtvPct(r.cbLtv), color: cbZone(r.cbLtv) },
+          { label: 'Strike LTV', value: fmtLtvPct(r.strikeLtv), color: skZone(r.strikeLtv) },
+        ],
+      ],
+    }];
+  });
   // The effective Coinbase stop feeds the dashed policy-limit series only while the policy applies (a primitive dep).
   const limitStopPct = applied ? policySettings.cbStopEffPct : undefined;
   const chartRows = useMemo(() => chartOwnershipRows(rows, limitStopPct), [rows, limitStopPct]);
@@ -892,60 +932,68 @@ export default function UnifiedFace() {
 
           {/* MILESTONES — rows jump the scrubber (Ownership's convention). The table follows the scenario. */}
           <div className={styles.msWrap}>
-            <table className={styles.msTable}>
-              <thead>
-                <tr>
-                  <th className={`${styles.msTh} ${styles.msYear}`}>Year</th>
-                  {applied && <th className={styles.msTh}>Zone</th>}
-                  <th className={styles.msTh}>Price</th>
-                  <th className={styles.msTh}>Held</th>
-                  <th className={styles.msTh}>Yours</th>
-                  <th className={styles.msTh}>CB LTV</th>
-                  <th className={styles.msTh}>Strike LTV</th>
-                  <th className={styles.msTh}>Net gain</th>
-                </tr>
-              </thead>
-              <tbody>
-                {milestoneRows.map(({ month: m, turn }) => {
-                  const r = rows[m];
-                  if (!r) return null;
-                  const g = btcGained(r, rows[0]);
-                  return (
-                    <tr key={m} role="button" tabIndex={0}
-                      onClick={() => setSelectedMonth(m)}
-                      onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedMonth(m); } }}
-                      className={`${styles.msRow} ${m === monthIdx ? styles.msRowOn : ''} ${r.postLiquidation ? styles.msPost : ''}`}>
-                      <td className={`${styles.msTd} ${styles.msYear}`}>
-                        {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
-                        {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
-                        {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
-                        {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
-                        {turn && (
-                          <span className={styles.msTurn}>{turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}</span>
-                        )}
-                      </td>
-                      {applied && (
-                        <td className={styles.msTd}
-                          style={r.policyZone ? { color: ZONE_COLOR[r.policyZone] } : undefined}
-                          title={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}
-                          aria-label={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}>
-                          {r.policyZone ? ZONE_LETTER[r.policyZone] : '—'}
+            {msTable ? (
+              <table className={styles.msTable}>
+                <thead>
+                  <tr>
+                    <th className={`${styles.msTh} ${styles.msYear}`}>Year</th>
+                    {applied && <th className={styles.msTh}>Zone</th>}
+                    <th className={styles.msTh}>Price</th>
+                    <th className={styles.msTh}>Held</th>
+                    <th className={styles.msTh}>Yours</th>
+                    <th className={styles.msTh}>Debt</th>
+                    <th className={styles.msTh}>Equity</th>
+                    <th className={styles.msTh}>CB LTV</th>
+                    <th className={styles.msTh}>Strike LTV</th>
+                    <th className={styles.msTh}>Net gain</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {milestoneRows.map(({ month: m, turn }) => {
+                    const r = rows[m];
+                    if (!r) return null;
+                    const g = btcGained(r, rows[0]);
+                    return (
+                      <tr key={m} role="button" tabIndex={0}
+                        onClick={() => setSelectedMonth(m)}
+                        onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setSelectedMonth(m); } }}
+                        className={`${styles.msRow} ${m === monthIdx ? styles.msRowOn : ''} ${r.postLiquidation ? styles.msPost : ''}`}>
+                        <td className={`${styles.msTd} ${styles.msYear}`}>
+                          {Number.isInteger(m / 12) ? m / 12 : (m / 12).toFixed(1)}
+                          {r.defended && <span className={styles.msFlag} title="debt shifted to Strike"> ⇄</span>}
+                          {collateralMovedFlag(r, applied) && <span className={styles.msFlag} title="collateral moved into Coinbase"> ⇡</span>}
+                          {r.postLiquidation && <span className={styles.msFlag}> ⚑</span>}
+                          {turn && (
+                            <span className={styles.msTurn}>{turn.kind === 'high' ? 'peak' : 'trough'} · {fmtTurnDate(turn.date)}</span>
+                          )}
                         </td>
-                      )}
-                      <td className={styles.msTd}>{fmtK(r.price)}</td>
-                      <td className={styles.msTd}>{r.btcHeld.toFixed(3)}</td>
-                      <td className={`${styles.msTd} ${styles.msYours}`}>{ownershipHero(r, rows[0]).yoursBtc.toFixed(3)}</td>
-                      <td className={styles.msTd} style={{ color: cbZone(r.cbLtv) }}>{fmtLtvPct(r.cbLtv)}</td>
-                      <td className={styles.msTd} style={{ color: skZone(r.strikeLtv) }}>{fmtLtvPct(r.strikeLtv)}</td>
-                      <td className={styles.msTd}>
-                        <div className={styles.gainNet} style={{ color: g.yours >= 0 ? 'var(--green)' : 'var(--red)' }}>{sBtc(g.yours)}</div>
-                        <div className={styles.gainGross}>{sBtc(g.gross)} gross</div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+                        {applied && (
+                          <td className={styles.msTd}
+                            style={r.policyZone ? { color: ZONE_COLOR[r.policyZone] } : undefined}
+                            title={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}
+                            aria-label={r.policyZone ? ZONE_LABEL[r.policyZone] : undefined}>
+                            {r.policyZone ? ZONE_LETTER[r.policyZone] : '—'}
+                          </td>
+                        )}
+                        <td className={styles.msTd}>{fmtK(r.price)}</td>
+                        <td className={styles.msTd}>{r.btcHeld.toFixed(3)}</td>
+                        <td className={`${styles.msTd} ${styles.msYours}`}>{ownershipHero(r, rows[0]).yoursBtc.toFixed(3)}</td>
+                        <td className={styles.msTd}>{fmtK(r.debt)}</td>
+                        <td className={styles.msTd} style={{ color: 'var(--text-primary)' }}>{fmtK(r.equity)}</td>
+                        <td className={styles.msTd} style={{ color: cbZone(r.cbLtv) }}>{fmtLtvPct(r.cbLtv)}</td>
+                        <td className={styles.msTd} style={{ color: skZone(r.strikeLtv) }}>{fmtLtvPct(r.strikeLtv)}</td>
+                        <td className={styles.msTd}>
+                          <div className={styles.gainNet} style={{ color: g.yours >= 0 ? 'var(--green)' : 'var(--red)' }}>{sBtc(g.yours)}</div>
+                          <div className={styles.gainGross}>{sBtc(g.gross)} gross</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <MilestoneBlocks blocks={msBlocks} label="Milestones" />
+            )}
           </div>
         </>
       )}
