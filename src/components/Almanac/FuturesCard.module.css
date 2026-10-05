@@ -1,0 +1,64 @@
+/* The futures readout on the Strategy face — tokens only. Two cells to a row on a phone, four from 768 px. Every value
+   stays on one line: under 448 px the values shrink with the window (the dock's tab-value rule, R11). */
+.card {
+  margin-top: 13px;
+  padding: 14px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+}
+.label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  margin-bottom: 10px;
+}
+.quiet {
+  margin: 10px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-muted);
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 12px;
+  transition: opacity 120ms ease;
+}
+@media (min-width: 768px) {
+  .grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+/* A newer run is on its way: the figures stay, dimmed. */
+.stale { opacity: 0.55; }
+.cell {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.term {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.value {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  font-size: clamp(12px, 3.8vw, 17px);   /* two-digit ₿ ranges fit full mode's 246 px card at 320 px (L-I10) */
+  font-weight: 600;
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--text-primary);
+}
+.sub {
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-faint);
+}

@@ -40,6 +40,9 @@ import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable'
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { parentDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
+import { futuresAnchor, type FuturesJob } from './futuresRun';
+import { useFutures } from './useFutures';
+import { futuresCardLine } from './futuresView';
 import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
@@ -332,6 +335,14 @@ export default function CyclingFace() {
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
+
+  // The futures (spec pbloc-spec-policy-v2-lenses-v1): this face's own engine inputs run over the price futures, in a
+  // worker — the Support policy card's last line. The futures stand in for the price path, so neither the path nor
+  // the stress lens enters; the anchor sits on its 1% grid, so a live quote moves them only at a grid line.
+  const futuresJob = useMemo((): FuturesJob => ({
+    inputs: engineInputs, anchorPrice: futuresAnchor(anchorPrice), startISO: startDate.toISOString().slice(0, 10), months,
+  }), [engineInputs, anchorPrice, startDate, months]);
+  const futures = useFutures(futuresJob);
   const baseRowCount = baseSim.rows.length;
 
   // ── Month scrubber + price stress ─────────────────────────────────────────────────────────────
@@ -1130,6 +1141,7 @@ export default function CyclingFace() {
       <SupportPolicyCard
         sim={sim} monthIdx={monthIdx} raw={policyRaw} settings={policySettings}
         onChange={setPolicy} onReset={resetPolicy} mode="cycle" expenses={expenses}
+        futuresLine={futuresCardLine(futures.summary)} futuresRunning={futures.running}
       />
 
       <section className={styles.card}>

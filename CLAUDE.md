@@ -138,6 +138,25 @@ src/
                                 # number of ms → exactly invertible). shiftedCycleTurns (unclipped) feeds
                                 # upcomingCycleTurns (path note) + cycleTurnsInHorizon (Milestones: nearest row,
                                 # ties → later, row 0 SNAPS to 1). 🔴 A belief — never importable by the risk core
+    pricePaths.ts               # Policy v2 — the lenses: the PRICE FUTURES. A BELIEF leaf beside cyclePath — it imports ONLY
+                                # ./powerLaw and ./cycleModel and returns plain number[]s; the risk core never imports it,
+                                # and futuresRun is the one module that hands its prices to the engine. priceFutures({
+                                # anchorPrice, startDate, months, count, seed }) → { regime, prices }[] · FUTURES_SEED 2026 ·
+                                # FUTURES_COUNT 1,000 (or §9's 300 — R13 pins it to those two) · FUTURES_MAX_MONTHS 240 ·
+                                # futureSeed(seed, i). A future: price[m] = trueFair[m] × cycle[m] × exp(noise[m] + shock[m]),
+                                # price[0] = the anchor EXACTLY. The power law itself may be wrong (slope PL_B + 0.15·z, level
+                                # × exp(0.08·z′), pivoting on today's model value); the 4-yr cycle keeps the model's cadence,
+                                # each leg × U(0.75, 1.25); troughs at LogU(0.85, 1.8) × support's share of fair (derived,
+                                # never typed); the first top at LogU(0.6, 2.3) × fair, later tops keeping 40–70% of their log
+                                # distance to the trend; regimes 70 / 15 / 10 / 5 (ordinary · lost decade · support break ·
+                                # supercycle); AR(1) noise, φ 0.85, σ U(0.04, 0.10); a 15–45% shock in about one month in 60,
+                                # back in a straight log line over 3–18 months. CALIBRATED to the memo's harsh-on-purpose
+                                # targets (L-I3): the ordinary futures' deepest month-end under the MODEL's support 0.80 × at
+                                # the median and 0.59 × at p10, the worst month −34% at the median, 67% of the faces' default
+                                # runs tripping the breaker (memo 0.82 / 0.61 / −35% / 64%) — never move the bounds to fit the
+                                # code. SEEDED and PREFIX-STABLE: future i draws from its own mulberry32, seeded from (seed, i),
+                                # so the first 300 ARE the 300-future set; every future is drawn to 240 months and cut, so a
+                                # shorter horizon is a prefix of a longer one. Junk in → flat futures at the anchor
     placement.ts                # THE MOVE — the support policy's collateral placement for THIS month, previewed at
                                 # today's inputs (Decision face, §4.1). 🔴 IT IS THE ENGINE'S OWN STEPS 5 AND 9:
                                 # placementPlan calls strikeKeepCollateralBtc and cbKeepCollateralBtc, the same two
@@ -178,6 +197,17 @@ src/
                                 # runs are a SELECTOR for the Worst (modeled) crown, never a second truth.
                                 # + sameSeries(a, b) (Run B) — bit for bit (equal length, Object.is every month),
                                 # NEVER a tolerance: the face disables Worst (stitched) while it is Support
+    monteCarlo.ts               # Policy v2 — the lenses: the futures' BATCH RUNNER — the ENGINE side of the §2 wall (imports
+                                # ONLY ./cyclingSim and ./ownership, never a belief). futureOutcome(inputs, prices) → yours
+                                # (deriveOwnership of the last row, THREE args — btcHeld already holds cold), cold
+                                # (last.coldBtc), beatsNeverDraw (allInEquity > baselineAllInEquity — verdictVsNeverDraw's
+                                # `wins`, R9), seized (liqMonth OR firstOpenPastLltvMonth — at a month-end or on the way down,
+                                # R8), policyApplied; runFutures(inputs, paths) → FuturesSummary { count, months, yoursBtc /
+                                # coldBtc as p10 / p50 / p90, beatsNeverDraw / seized as counts, countsSeizures }; quantile
+                                # (linear between the nearest ranks). ⚠ countsSeizures = the policy APPLIED: without it the
+                                # month-end reading rescues loans Morpho takes during the month (REPRO, 20 yr, policy off:
+                                # liqMonth 0.6% of the futures vs the way-down test 95.1% — F4), so the coin figures would
+                                # count coins that are gone, and the faces show the chance alone (R1)
     cyclingSim.ts               # Cycling strategy PURE engine (Almanac cycling/ownership/strategy faces) —
                                 # + the STRIKE LTV CAP (strikeLtvCapPct, 0/undefined = off → byte-identical,
                                 # pinned by a HEAD golden): a cold → Strike top-up with a TWO-PART reservation
@@ -781,6 +811,46 @@ src/
                                 # → Strike's hold in engine months. ⚠ R4 — this module does NOT import
                                 # Tools/crashPlaybookView: it takes the throughISO strikeHoldFrom already computed.
                                 # History is typed structurally (HistoryPoint), so the §2 crossing imports no hook
+      futuresRun.ts             # Policy v2 — the lenses: 🔴 THE §2 CROSSING for the futures, and the only one — it imports
+                                # pricePaths AND monteCarlo, and a source test (W WALL) pins that nothing else does.
+                                # FuturesJob { inputs (the face's engineInputs, no path), anchorPrice, startISO, months,
+                                # count?, seed? } — plain data, it crosses postMessage as is. futuresFor(job) = runFutures over
+                                # priceFutures. A ONE-ENTRY CACHE of the drawn futures, keyed by anchor · start · horizon ·
+                                # count · seed and NEVER by the inputs: a setting re-runs the engine on the SAME futures (L-I6;
+                                # the worker at 240 months: 128–140 ms for a setting vs 161–184 for new futures).
+                                # futuresAnchor(price) = the face's anchor on a 1% grid in log price (≤ 0.501% off; junk
+                                # passes) — R4: a live quote moves the futures only at a grid line (measured on all four faces:
+                                # one run per crossing; 8 runs over 9 quotes 0.15% apart without the grid)
+      futures.worker.ts         # The futures worker: futuresFor off the main thread. The crypto worker's pattern — `declare
+                                # const self: DedicatedWorkerGlobalScope`, a local message contract, compiled by
+                                # tsconfig.worker.json and excluded from tsconfig.app.json; a precache entry (8 since)
+      futuresClient.ts          # runFuturesJob(job) → Promise<FuturesSummary | null> (null = superseded). The crypto client's
+                                # pattern: one lazy module worker, `new Worker(new URL('./futures.worker.ts',
+                                # import.meta.url), { type: 'module' })` (precache-safe); a `typeof Worker` check; a worker
+                                # error / message error / 20 s timeout → in-thread for the session, through the SAME
+                                # futuresFor (worst case: slower, never missing or different — L-I7). LATEST ONLY (R6): one
+                                # job in the worker, one waiting; a newer request replaces the waiting one, which settles
+                                # null. resetFuturesClientForTests(factory?)
+      useFutures.ts             # useFutures(job | null) → { summary, running }. ⚠ Keyed by the job's CONTENT (JSON.stringify),
+                                # never its identity: a face rebuilds the job on every price tick (its anchor is a dep), and
+                                # an identity key re-ran the futures on each one (measured: 8 runs instead of 1 over 9 live
+                                # quotes). Runs after FUTURES_DEBOUNCE_MS (300) of stillness; a stale result is dropped; the
+                                # last summary stays, dimmed, while a new run goes (R6)
+      futuresView.ts            # EVERY WORD of the futures (the faces compose none — I31): futuresReadout (the owner's four
+                                # numbers under the applied policy — You own · In your cold storage · Beats never borrowing ·
+                                # Coinbase seizes — else the chance alone and its note, R1) · futuresCardLine (the card's line;
+                                # "Coinbase seizes in all 1,000." when every future seizes — W-1; policy off and none seized,
+                                # "Coinbase never seizes during a month." with no comma — W-2) · futuresTitle ("Across 1,000
+                                # futures · 5 yr") · shareText (never "0%" / "100%" unless none / all; one decimal under 10%
+                                # and over 99% — R10) · rangeText · horizonText · FUTURES_TIP (names NO count — the title beside
+                                # it does, so §9's cut to 300 reads right everywhere — R12) · FUTURES_TIP_LABEL ("About the
+                                # futures" — D-1) · FUTURES_RUNNING · FUTURES_DEBOUNCE_MS
+      FuturesCard.tsx           # The futures readout on the Strategy face (+ .module.css, tokens only) — LAYOUT ONLY: reads no
+                                # store or engine and writes no word (a source test scans its literals and JSX text); a
+                                # <section> named by its title, aria-busy while a run goes (the figures dim, never blank); a
+                                # two-column grid (four from 768 px) of term · value · sub. `.value` is clamp(12px, 3.8vw,
+                                # 17px), nowrap (R11): two-digit ₿ ranges fit full mode's 246 px card at 320 px (the fit
+                                # sweep: 0 of 96, the tightest 7.7 px); a 14 px floor ran 3 of 96 past their cells (F7)
       supportPolicyView.ts      # Support policy — pure display math: settings, defaults, ranges and the clamp
                                 # (payDownPushed) — the defaults are Policy v2's C1 (45 · 2.0 / 3.0 · 12), the ranges
                                 # D2's (buy zone to 2.5×, pay down to 5.0×, room to 48 months); ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading →
@@ -807,6 +877,9 @@ src/
                                 # card's disclosure and by `SupportPolicyControls`, the control dock's Policy panel (the
                                 # card's no-reading states, else the sliders in a grid). The card's markup is unchanged
                                 # on all four faces (measured: outerHTML byte-identical to HEAD's, every state)
+                                # Policy v2 — the lenses: two optional props, futuresLine / futuresRunning — the futures' line
+                                # (FuturesLine) after the details list ('on') and inside the state body's section ('off' /
+                                # 'notRun'), never for another strategy ('notCycle', R2); `.futures` / `.futuresStale`
       ControlDock.tsx           # Sticky controls (Runs 1–2) — THE control dock (+ .module.css, tokens only): a face's
                                 # controls, kept in reach while the face scrolls — on the four engine faces (Decision,
                                 # Cycling, Ownership, Strategy; Run 2 changed nothing in the .tsx). LAYOUT ONLY — the face
@@ -3812,6 +3885,9 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   `plBandAt('floor', …)`, bit-equal to the on-the-line price path from month 1. `supportPolicyFor` returns `undefined`
   when off or not `cycle`. The cash is months × the face's bills, and the re-arm key is OMITTED when the constant is
   undefined (a latched run is Run 1's object). It never sets a test-only input — a key-set test pins that.
+- **`futuresRun.ts` is the faces' ONLY §2 crossing for the futures** (Policy v2 — the lenses), as `supportPolicyInputs`
+  is for the support path: `pricePaths` (a belief leaf beside `cyclePath`) draws them, `monteCarlo` (the engine side)
+  runs them, and only `futuresRun` imports both.
 - 🔴 **The wiring, identical on the three faces — memoised on STABLE identities.** `policyRaw` (defaults ⊕ the
   overlay key) → `policySettings` → `supportPath` (`buildSupportPath(startDate, months)`) → `supportPolicy`, each a
   `useMemo`. `supportPolicy` goes into BOTH `engineInputs` and the lens-reset deps. ⚠ An object built during render
@@ -3822,7 +3898,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - `supportAtMonth = supportPath[monthIdx]` — one source; `plBandAt('floor'` appears in no face.
   - Cycling has no mode, so it passes the literal `'cycle'` and selects `strikeLiquidationLtvPct` from the store.
 - **`SupportPolicyCard.tsx`** (+ `.module.css`, the FreshnessBadge precedent; tokens only) sits directly after each
-  face's Strategy / controls card; on the Strategy face it is the ONE addition. States:
+  face's Strategy / controls card; on the Strategy face it is one of two additions (the futures readout is the other —
+  § Unified Strategy face). States:
   - not cycle → "Applies to the Cycle strategy only."; off → "Off — limits are measured at today's price, the way
     the projection worked before." + **Turn on**;
   - **ignored** → `policyIgnoredNote(sim.policyIgnoredReason)` + Turn policy off. Reachable: a dashboard Strike
@@ -3830,6 +3907,10 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - on → the headline in its tone, the zone strip, the details, and a native `<details>` **Settings** disclosure,
     **collapsed by default**: six unchanged `SliderInput`s (value + a quiet clause line), Turn policy off, Reset to
     defaults. No re-arm control.
+  - **The futures' line** (Policy v2 — the lenses, R2): the optional `futuresLine` / `futuresRunning` props end the card
+    with `futuresCardLine` — after the details list when 'on', inside the state body's section when 'off' or 'notRun',
+    never for another strategy ('notCycle': the card already says the policy is for Cycle only). The 'off' line shows
+    the chance of a seizure alone — the price of turning the policy off. It dims while a newer run goes (`aria-busy`).
   - The zone strip: one flex cell per month (`min-width: 0`; the gaps drop to 0 past 96 months, so a 240-month horizon
     never scrolls sideways), a 2px inspected-month marker, `role="img"` named by `zoneStripLabel`, a legend of the
     zones that occur.
@@ -4070,8 +4151,11 @@ mismatch would mean two runs crept in (a hand check pins the two against the par
 - **⚠ A SUMMARY, NOT THE UNION OF EVERY CARD.** Nine engine controls (ten with the 4-yr cycle's timing) —
   fewer than either parent. Income, bills and both APRs come from the live plan; the venue split, the safety
   gauges, the rate sliders and the live Morpho check stay on the parents. Do not grow it into a third copy.
-  ⚠ **The Support policy card is the ONE addition** (Run 2b) — the same shared card the parents render, placed after
-  the Strategy card; summary-not-union still holds.
+  ⚠ **Two additions:** the Support policy card (Run 2b) — the same shared card the parents render, placed after the
+  Strategy card — and the futures readout (Policy v2 — the lenses, R3): `<FuturesCard>` under the tiles and above
+  `{lensView === 'position' ? (`, so Position and Flywheel both show it, titled with the CURRENT horizon
+  (`futuresTitle(FUTURES_COUNT, months)`; the figures under it may be a run behind). One `useFutures` run feeds the
+  readout and the card's line. Summary-not-union still holds.
 - **No fourth copy of any number**: every rule is a tested helper from `cyclingFaceView` / `ownershipFaceView`
   (the B1 rule this repo already paid for once). One convention per behaviour: **Milestone rows jump the
   scrubber** (Ownership's convention) — a dead row on a face that has a scrubber is worse than a live one.
@@ -5852,7 +5936,9 @@ longer has). The cycle path oscillates support ↔ fair on `CYCLE_TURNS`: **−5
   history (−52%, not −77%) — coherent and falsifiable, not a bug.
 - **§2 wall:** `cyclePath.ts` imports from BOTH belief leaves so neither gains an import (`powerLaw.addMonths`
   is now exported for it). `cyclingSim.ts` and `cycleModel.ts` are untouched — the engine still gets a plain
-  `number[]`. A belief: never importable by the risk core.
+  `number[]`. A belief: never importable by the risk core. The futures' `pricePaths.ts` (Policy v2 — the lenses) is the
+  same kind of leaf: it reads both belief modules, `monteCarlo` runs its paths on the engine side, and `futuresRun` is
+  the only module that imports both.
 - **Naming — a deliberate asymmetry, do not harmonize:** the module/constants are `cyclePath` / `CYCLE_*`; the
   user-facing key is `'fourYear'` ("4-yr cycle" on Cycling, "Ride the 4-yr cycle" on Ownership) because
   `'cycle'` is already a `CyclingMode` and Ownership has a Strategy "Cycle" button on the same card — which is
@@ -7296,6 +7382,59 @@ goes red.)
     cwd pointed at the repo, port 5174 and `reuseExistingServer: false` — a long-running server can serve a stale composed
     CSS module, and the owner's 5173 is never reused. The measurement harness (production builds, the fit sweep, the
     markup check against `c8d7a5b`) lives outside the tree: inside it, `npm run lint` fails on its node globals.
+- **Policy v2 — the lenses: the futures** (spec `pbloc-spec-policy-v2-lenses-v1.md` v1.3; 33 named mutations, MF1–MF33,
+  plus KILL300 — each an exact-once edit on a sandbox copy, run on the unit files and then the e2e with `--retries=0` on a
+  fresh 5174 server, restored and md5-checked, red at its own tag):
+  - `src/simulation/__tests__/futures.test.ts` (12, + the report):
+    - SEEDED (DISTINCT) · PREFIX (count, months; ⭐ R13 `PREFIX: the faces' count` — `FUTURES_COUNT` is 1,000 or §9's
+      300, nothing else) · ANCHOR · JUNK;
+    - REGIMES and CALIBRATION (dip p50 / p10, worst) — they draw a fixed `FAMILY` of 1,000, never `FUTURES_COUNT` (D-3),
+      so §9's cut moves no calibration target;
+    - WALL pricePaths · QUANTILE · OUTCOME · SEIZED (the premise: policy off, `liqMonth` null, the way-down test at
+      month 2) · SUMMARY (COUNTS on / off / hold) · WALL monteCarlo;
+    - `FUTURES_REPORT` — `describe.runIf`, skipped in the gate; F3's table:
+      `FUTURES_REPORT=1 npx vitest run src/simulation/__tests__/futures.test.ts --reporter=verbose`.
+  - `src/components/Almanac/__tests__/futuresFace.test.ts` (15) — a module-level, calling-through `vi.mock` spy on
+    `priceFutures`:
+    - RUN · SAME FUTURES (⭐ D-2 `REUSE` — a setting draws no futures, a new horizon draws once) · ANCHOR GRID;
+    - SHARE · RANGE (HORIZON, TITLE, ⭐ R12 `TIP: no count` — the ⓘ contains neither "1,000" nor the count) · FOUR ·
+      CHANCE ALONE · LINE (running, on, off, never, ⭐ W-1 `LINE all`, ⭐ W-2 `LINE off never` — both whole lines);
+    - LATEST ONLY (a fake worker; ⭐ D-2 `content key` and `300 ms`, read off `useFutures`' source) · FALLBACK (a failed
+      reply; no worker);
+    - EVERY FACE (ONE RUN, INPUTS, LINE per face) · STRATEGY (after the tiles, before the lenses; ⭐ D-1 `the tip label`)
+      · WORKER (the reply; the tsconfigs; the spawn) · LAYOUT-ONLY (imports, WORDLESS, TOKENS, CLAMP) · WALL.
+  - `e2e/futures.spec.ts` (5; hermetic; it reads shapes and behaviour, never a figure, and the count as `[\d,]+`):
+    READOUT (+ WORKER, OFF, ON) · LINE (all four faces; NOT-CYCLE) · SAME · FIT (the ×10 seed, full mode, 320 px) ·
+    FALLBACK.
+  - Red first on `45c9049`'s source: both unit files fail to load (`'../pricePaths'`; `futuresRun`, by its absolute
+    path under the spy); the e2e 5 of 5, at `READOUT: the readout` · `LINE cycling: one line` · `SAME first: the readout`
+    · `FIT: the readout` · `FALLBACK worker: the readout`.
+  - Red at (U = futures.test.ts, W = futuresFace.test.ts, E = the e2e):
+    - MF1 one generator for every future → U SEEDED (DISTINCT) · REGIMES · CALIBRATION; MF2 drawn only to the horizon →
+      U PREFIX months; MF3 month 0 from the curve → U ANCHOR · JUNK; MF4 no shocks, MF5 troughs higher → U CALIBRATION
+      dip p50; MF6 pricePaths imports the engine → U WALL pricePaths;
+    - MF7 seized from `liqMonth` alone → U SEIZED off; MF8 `countsSeizures` always true → U COUNTS off · E READOUT (OFF
+      rows), LINE (NOT-CYCLE readout); MF9 no interpolation → U QUANTILE; MF10 monteCarlo imports a belief → U WALL
+      monteCarlo;
+    - MF11 the cache keyed by nothing → W SAME FUTURES (+ RUN, LATEST ONLY) · E LINE ownership (Cycling's 60-month
+      futures on its 24-month face: the policy can't apply, so the line reads policy-off); MF12 no anchor grid → W ANCHOR
+      GRID; MF13 every share rounded → W SHARE · FOUR · LINE; MF14 the four rows whatever the policy → W CHANCE ALONE · E
+      READOUT (OFF rows), LINE (NOT-CYCLE readout);
+    - MF15 a replaced request never settles → W LATEST ONLY (timeout); MF16 a failed reply settles null → W FALLBACK
+      failed reply; MF17 no worker settles null → W FALLBACK no worker · E FALLBACK; MF18 the worker never spawns → E
+      READOUT (WORKER);
+    - MF19 the readout only in the Flywheel lens → E 5 of 5; MF20 Cycling passes no line → W LINE CyclingFace · E LINE
+      cycling; MF21 Decision on the raw anchor → W INPUTS DecisionFace; MF22 the line for another strategy too → E LINE
+      (NOT-CYCLE: no line); MF23 the card writes a word → W WORDLESS; MF24 `Math.random` → U SEEDED · PREFIX · W RUN,
+      SAME FUTURES · E SAME, FALLBACK; MF25 the values a fixed 17 px → W CLAMP · E FIT;
+    - MF26 the cache keyed by the inputs too → W SAME FUTURES: REUSE; MF27 the hook keyed by the job's identity → W
+      LATEST ONLY: content key; MF28 no debounce → W LATEST ONLY: 300 ms; MF29 the ⓘ label written in the face → W
+      STRATEGY: the tip label; MF30 "1,000" back in the ⓘ → W TIP: no count; MF31 a count of 100 → U PREFIX: the faces'
+      count; MF32 "in all" without the count → W LINE all; MF33 the comma back before "during a month" → W LINE off
+      never.
+  - Green where expected: MF7 at the e2e (it reads shapes, not counts); MF18, MF19 and MF22 at the unit (the e2e sees
+    them); MF31 at the e2e (it reads the count as `[\d,]+`). **KILL300** (`FUTURES_COUNT = 300` — §9's cut) is green on
+    the unit files and the e2e: the cut is one constant, and every word that shows the count follows it.
 - **Power Law chart polish** (spec `pbloc-spec-powerlaw-polish-v1`, P1–P11; every ⭐ red under its named mutation,
   every file restored and hash-checked):
   - `src/utils/__tests__/fmtTooltipUsd.test.ts` — ⭐ never "$0" for a positive price (red with `fmtUSD` for every
@@ -8145,7 +8284,10 @@ intentionally network-only** — no runtime caching; the stores carry last-known
 handled gracefully. Registration is `registerSW({ immediate: true })` in `main.tsx` (autoUpdate; the inline
 `index.html` script is gone), with `injectRegister: null` in the plugin config to avoid a double injection.
 `src/sw.ts` typechecks under a dedicated **`tsconfig.worker.json`** (WebWorker lib, no DOM; referenced from
-the root tsconfig, excluded from `tsconfig.app.json`) so `tsc -b` stays clean. **Vercel builds it via its
+the root tsconfig, excluded from `tsconfig.app.json`) so `tsc -b` stays clean. The two module workers sit in the same
+project — `src/lib/crypto/crypto.worker.ts` and `src/components/Almanac/futures.worker.ts` (Policy v2 — the lenses):
+`tsconfig.worker.json` includes them and `tsconfig.app.json` excludes them; each is a hashed chunk in the precache, which
+is **8 entries** since the futures worker (7 before). **Vercel builds it via its
 `vite build` buildCommand** (the plugin runs in `vite build`, not `tsc -b`). Note for the parked
 security-hardening batch: SW response-caching policy now lives in `src/sw.ts`.
 

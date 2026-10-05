@@ -41,6 +41,9 @@ import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
 import ControlDock, { type DockPanel } from './ControlDock';
 import { decisionDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
+import { futuresAnchor, type FuturesJob } from './futuresRun';
+import { useFutures } from './useFutures';
+import { futuresCardLine } from './futuresView';
 import { SliderInput } from '../ui/SliderInput';
 import { downloadBlob } from '../../lib/backup/downloadFile';
 import {
@@ -472,6 +475,14 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   const pathColor = resolvedKind === null ? STITCHED_COLOR : metaOf(resolvedKind).color;
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
+
+  // The futures (spec pbloc-spec-policy-v2-lenses-v1): this face's own engine inputs run over the price futures, in a
+  // worker — the Support policy card's last line. The futures stand in for the price path, so neither the path nor
+  // the stress lens enters; the anchor sits on its 1% grid, so a live quote moves them only at a grid line.
+  const futuresJob = useMemo((): FuturesJob => ({
+    inputs: engineInputs, anchorPrice: futuresAnchor(anchorPrice), startISO: startDate.toISOString().slice(0, 10), months,
+  }), [engineInputs, anchorPrice, startDate, months]);
+  const futures = useFutures(futuresJob);
   const baseRowCount = baseSim.rows.length;
   const [selectedMonth, setSelectedMonth] = useState(DEFAULT_INSPECT_MONTH);
   // ⚠ CLAMP AT RENDER TIME (the crash fix) — `rows[selectedMonth]` must never appear.
@@ -882,6 +893,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
       <SupportPolicyCard
         sim={sim} monthIdx={monthIdx} raw={policyRaw} settings={policySettings}
         onChange={setPolicy} onReset={resetPolicy} mode="cycle" expenses={s.expenses}
+        futuresLine={futuresCardLine(futures.summary)} futuresRunning={futures.running}
       />
 
       {dirty && (

@@ -41,6 +41,13 @@ import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable'
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { strategyDockTabs, monthReadout, stressPct, type LensView } from './controlDockView';
 import { useStressLens } from './useStressLens';
+import { futuresAnchor, type FuturesJob } from './futuresRun';
+import { useFutures } from './useFutures';
+import {
+  futuresCardLine, futuresReadout, futuresTitle, FUTURES_RUNNING, FUTURES_TIP, FUTURES_TIP_LABEL,
+} from './futuresView';
+import FuturesCard from './FuturesCard';
+import { FUTURES_COUNT } from '../../simulation/pricePaths';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
@@ -287,6 +294,14 @@ export default function UnifiedFace() {
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
   const baseRowCount = baseSim.rows.length;
+
+  // The futures (spec pbloc-spec-policy-v2-lenses-v1): the same engine inputs as the run above, over the price futures,
+  // in a worker — the readout under the tiles and the Support policy card's last line. The futures stand in for the
+  // path, so the stress lens plays no part; the anchor sits on its 1% grid, so a live quote moves them only at a line.
+  const futuresJob = useMemo((): FuturesJob => ({
+    inputs: engineInputs, anchorPrice: futuresAnchor(anchorPrice), startISO: startDate.toISOString().slice(0, 10), months,
+  }), [engineInputs, anchorPrice, startDate, months]);
+  const futures = useFutures(futuresJob);
 
   const [selectedMonth, setSelectedMonth] = useState(Math.min(DEFAULT_INSPECT_MONTH, baseRowCount - 1));
   // ⚠ `lensView` is the Position / Flywheel switch; `lens` (above) is the price stress (F18). The view resets nothing.
@@ -703,6 +718,7 @@ export default function UnifiedFace() {
       <SupportPolicyCard
         sim={sim} monthIdx={monthIdx} raw={policyRaw} settings={policySettings}
         onChange={setPolicy} onReset={resetPolicy} mode={mode} expenses={s.expenses}
+        futuresLine={futuresCardLine(futures.summary)} futuresRunning={futures.running}
       />
 
       {/* C1 + C2 + the cycle-mode unfunded gap — the constraint notices, one definition (modeConstraints). */}
@@ -758,6 +774,14 @@ export default function UnifiedFace() {
           </div>
         ))}
       </div>
+
+      {/* The futures (R3): this horizon across the futures — under the tiles and above both lenses, so Position and
+          Flywheel both show it. Its title carries the CURRENT horizon; the figures under it may be a run behind. */}
+      <FuturesCard
+        title={futuresTitle(FUTURES_COUNT, months)}
+        readout={futures.summary === null ? null : futuresReadout(futures.summary)}
+        running={futures.running} runningText={FUTURES_RUNNING} tip={FUTURES_TIP} tipLabel={FUTURES_TIP_LABEL}
+      />
 
       {/* 5 · THE TWO VIEWS — picked by the dock's Lens (D8). Both read the same `sim`. */}
       {lensView === 'position' ? (

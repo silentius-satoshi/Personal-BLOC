@@ -37,6 +37,17 @@ export interface SupportPolicyCardProps {
   mode: CyclingMode;
   /** The face's effective bills. */
   expenses: number;
+  /** The futures' line (futuresCardLine) — the face's own words; absent where a face runs no futures. Shown when the
+   *  policy is on, off or not run, never for another strategy (R2). */
+  futuresLine?: string;
+  /** A newer futures run is on its way: the line dims. */
+  futuresRunning?: boolean;
+}
+
+/** The futures' line — what the settings buy and what they risk, read across the futures. The card's last reading. */
+function FuturesLine({ text, running }: { text: string | undefined; running: boolean | undefined }) {
+  if (text === undefined) return null;
+  return <p className={`${styles.futures} ${running ? styles.futuresStale : ''}`} aria-busy={running === true}>{text}</p>;
 }
 
 const TONE_CLASS: Record<PolicyTone, string> = {
@@ -175,7 +186,7 @@ export function SupportPolicyControls({
 }
 
 export default function SupportPolicyCard({
-  sim, monthIdx, raw, settings, onChange, onReset, mode, expenses,
+  sim, monthIdx, raw, settings, onChange, onReset, mode, expenses, futuresLine, futuresRunning,
 }: SupportPolicyCardProps) {
   const label = (
     <span className={styles.label}>
@@ -192,6 +203,7 @@ export default function SupportPolicyCard({
       <section className={styles.card}>
         {label}
         <PolicyStateBody state={state} sim={sim} onChange={onChange} />
+        {state !== 'notCycle' && <FuturesLine text={futuresLine} running={futuresRunning} />}
       </section>
     );
   }
@@ -234,6 +246,7 @@ export default function SupportPolicyCard({
       <ul className={styles.details}>
         {details.map((line, i) => <li key={i}>{line}</li>)}
       </ul>
+      <FuturesLine text={futuresLine} running={futuresRunning} />
 
       {/* Collapsed by default on every face — a native disclosure (keyboard- and screen-reader-ready, no JS). */}
       <details className={styles.disclosure}>

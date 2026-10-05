@@ -181,3 +181,15 @@
   outline: 2px solid var(--btc);
   outline-offset: 2px;
 }
+
+/* ── The futures' line: what the settings buy and what they risk, across the futures (spec
+   pbloc-spec-policy-v2-lenses-v1) ── */
+.futures {
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line-2);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+.futuresStale { opacity: 0.55; }

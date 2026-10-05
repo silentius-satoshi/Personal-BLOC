@@ -15,5 +15,5 @@
     "noFallthroughCasesInSwitch": true,
     "noUncheckedSideEffectImports": true
   },
-  "include": ["src/sw.ts", "src/lib/crypto/crypto.worker.ts"]
+  "include": ["src/sw.ts", "src/lib/crypto/crypto.worker.ts", "src/components/Almanac/futures.worker.ts"]
 }
