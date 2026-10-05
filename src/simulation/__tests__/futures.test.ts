@@ -13,7 +13,7 @@ import { STRIKE_MARGIN_CALL_LTV } from '../emergencyModel';
 
 /**
  * The futures (spec pbloc-spec-policy-v2-lenses-v1): the belief side (pricePaths) and the engine side (monteCarlo).
- * Every assertion carries a tag, and each named mutation (MF1–MF33, the spec's §5) turns its own tag red. Round
+ * Every assertion carries a tag, and each named mutation (the spec's §5 and Run 2) turns its own tag red. Round
  * synthetic figures only.
  */
 const ROOT = process.cwd();
@@ -145,6 +145,7 @@ describe('the futures\' batch runner — the engine side of the wall', () => {
     expect(o.coldBtc, 'OUTCOME cold').toBe(r.last.coldBtc);
     expect(o.beatsNeverDraw, 'OUTCOME beats').toBe(allInEquity(r) > baselineAllInEquity(r));
     expect(o.seized, 'OUTCOME seized').toBe(false);
+    expect(o.seizedMonth, 'OUTCOME seizedMonth').toBeNull();
   });
 
   it('SEIZED — a loan Morpho takes during the month counts, even where the month-end reading rescued it (policy off)', () => {
@@ -153,25 +154,50 @@ describe('the futures\' batch runner — the engine side of the wall', () => {
     // The premise: no policy, so the month-end rescue ran — yet the engine's own test saw the loan open past 86%.
     expect([r.policyApplied, r.liqMonth, r.firstOpenPastLltvMonth], 'SEIZED premise').toEqual([false, null, 2]);
     expect(futureOutcome(BASE, GAP).seized, 'SEIZED off').toBe(true);
+    // The month is the earlier test's: the way-down test's 2 (MF7 in Run 2's form, liqMonth's alone, turns it red)
+    expect(futureOutcome(BASE, GAP).seizedMonth, 'SEIZED off: the month').toBe(2);
     // With the policy, the run itself seizes on the way down.
     const p = runCyclingSim({ ...withPolicy(BASE), pricePath: GAP });
     expect([p.policyApplied, p.liqMonth, p.seizedOnTheWayDown], 'SEIZED on: premise').toEqual([true, 2, true]);
     expect(futureOutcome(withPolicy(BASE), GAP).seized, 'SEIZED on').toBe(true);
+    expect(futureOutcome(withPolicy(BASE), GAP).seizedMonth, 'SEIZED on: the month').toBe(2);
+    // A loan that opens past 86% is seized at month 0 — the month-end reading's month; the way-down test never reads
+    // month 0 (MF47, a truthy filter, and MF53, the way-down test alone, turn this red).
+    expect(futureOutcome({ ...BASE, cbDebt: 90_000 }, FLAT).seizedMonth, 'SEIZED: month 0').toBe(0);
+    // Both tests fire, in different months: with no cold reserve the way-down test reads month 2 and the month-end
+    // reading liquidates at month 4. The seizure is the earlier (MF48, Math.max, turns this red).
+    const noCold: FuturesInputs = { ...BASE, openingColdBtc: 0 };
+    const DEEP = [100_000, 100_000, 55_000, 55_000, 20_000, 20_000, 20_000];
+    const deep = runCyclingSim({ ...noCold, pricePath: DEEP });
+    expect([deep.liqMonth, deep.firstOpenPastLltvMonth], 'SEIZED: both tests — the premise').toEqual([4, 2]);
+    expect(futureOutcome(noCold, DEEP).seizedMonth, 'SEIZED: the earlier').toBe(2);
   });
 
   it('SUMMARY — the counts and spreads are the futures\' own; countsSeizures follows the applied policy', () => {
     // MF8 (countsSeizures always true) turns COUNTS off red
     const paths = [GAP, FLAT, FLAT.map((x) => x * 1.2)];
     const each = paths.map((p) => futureOutcome(withPolicy(BASE), p));
-    const s = runFutures(withPolicy(BASE), paths);
+    const s = runFutures(withPolicy(BASE), paths, '2026-10-04');
     expect([s.count, s.months], 'SUMMARY size').toEqual([3, 6]);
     expect(s.seized, 'SUMMARY seized').toBe(each.filter((o) => o.seized).length);
     expect(s.beatsNeverDraw, 'SUMMARY beats').toBe(each.filter((o) => o.beatsNeverDraw).length);
     const ys = each.map((o) => o.yoursBtc).sort((a, b) => a - b);
     expect(s.yoursBtc, 'SUMMARY yours').toEqual({ p10: quantile(ys, 0.1), p50: quantile(ys, 0.5), p90: quantile(ys, 0.9) });
     expect(s.countsSeizures, 'COUNTS on').toBe(true);
-    expect(runFutures(BASE, paths).countsSeizures, 'COUNTS off').toBe(false);
-    expect(runFutures({ ...withPolicy(BASE), mode: 'hold' }, paths).countsSeizures, 'COUNTS hold').toBe(false);
+    expect(runFutures(BASE, paths, '2026-10-04').countsSeizures, 'COUNTS off').toBe(false);
+    expect(runFutures({ ...withPolicy(BASE), mode: 'hold' }, paths, '2026-10-04').countsSeizures, 'COUNTS hold').toBe(false);
+    // WHEN (W-3): four futures seized at months 16, 2, 13 and 12 — out of order — and one never. The first year
+    // counts month 12 but not 13 (MF34, `< 12`, and MF46, `<= 13`, turn it red); the months are sorted (MF44, no
+    // sort); half of the seizures have happened by the lower median, month 12 (MF35, the upper, 13), and with an odd
+    // count by the middle one (MF45, `floor(n / 2) - 1`).
+    const at = (m: number): number[] => Array.from({ length: 21 }, (_, i) => (i < m ? 100_000 : i === m ? 55_000 : 60_000));
+    const late = [at(16), at(2), at(13), at(12), new Array<number>(21).fill(100_000)];
+    expect(late.map((p) => futureOutcome(BASE, p).seizedMonth), 'SUMMARY: when — the premise').toEqual([16, 2, 13, 12, null]);
+    const w = runFutures(BASE, late, '2026-10-04');
+    expect([w.seized, w.seizedWithinYear, w.seizedHalfByMonth, w.startISO], 'SUMMARY: when').toEqual([4, 2, 12, '2026-10-04']);
+    const odd = runFutures(BASE, late.slice(0, 3), '2026-10-04');
+    expect([odd.seized, odd.seizedHalfByMonth], 'SUMMARY: when — odd').toEqual([3, 13]);
+    expect(runFutures(BASE, [FLAT], '2026-10-04').seizedHalfByMonth, 'SUMMARY: when — none').toBeNull();
   });
 
   it('WALL — monteCarlo imports the engine and the ownership leaf only, never a belief', () => {
@@ -212,9 +238,10 @@ describe.runIf(!!process.env.FUTURES_REPORT)('FUTURES_REPORT — the rebuilt fam
     const out = (s: string) => process.stdout.write(`${s}\n`);
     out('<!-- FUTURES_REPORT BEGIN -->');
     for (const [name, inputs] of rows) {
-      const s = runFutures(inputs, paths);
+      const s = runFutures(inputs, paths, '2026-10-04');
       out(`${name}: yours ${s.yoursBtc.p10.toFixed(2)} / ${s.yoursBtc.p50.toFixed(2)} / ${s.yoursBtc.p90.toFixed(2)} ₿ · cold p50 `
         + `${s.coldBtc.p50.toFixed(2)} ₿ · beats never-draw ${(s.beatsNeverDraw / 10).toFixed(1)}% · seized ${(s.seized / 10).toFixed(1)}%`
+        + ` · within a year ${(s.seizedWithinYear / 10).toFixed(1)}% · half of the seizures by month ${s.seizedHalfByMonth}`
         + ` · counts seizures ${s.countsSeizures}`);
     }
     out('<!-- FUTURES_REPORT END -->');

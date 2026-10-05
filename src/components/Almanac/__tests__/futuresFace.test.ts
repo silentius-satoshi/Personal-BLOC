@@ -5,7 +5,7 @@ import { futuresFor, futuresAnchor, type FuturesJob } from '../futuresRun';
 import { runFuturesJob, resetFuturesClientForTests } from '../futuresClient';
 import {
   futuresReadout, futuresCardLine, futuresTitle, shareText, rangeText, horizonText, FUTURES_RUNNING, FUTURES_DEBOUNCE_MS,
-  FUTURES_TIP,
+  FUTURES_TIP, FUTURES_TIP_LABEL, horizonWords, monthYear,
 } from '../futuresView';
 import { priceFutures, FUTURES_SEED, FUTURES_COUNT } from '../../../simulation/pricePaths';
 
@@ -43,7 +43,7 @@ describe('the crossing — futuresRun', () => {
     const paths = priceFutures({
       anchorPrice: 84_000, startDate: new Date('2026-10-04T00:00:00Z'), months: 24, count: 40, seed: FUTURES_SEED,
     }).map((f) => f.prices);
-    expect(futuresFor(JOB), 'RUN').toEqual(runFutures(INPUTS, paths));
+    expect(futuresFor(JOB), 'RUN').toEqual(runFutures(INPUTS, paths, JOB.startISO));
     expect(futuresFor({ ...JOB, count: undefined }).count, 'RUN: the faces\' count').toBe(FUTURES_COUNT);
   });
 
@@ -55,7 +55,7 @@ describe('the crossing — futuresRun', () => {
     expect(futuresFor({ ...JOB, anchorPrice: 90_000 }), 'SAME FUTURES: a new anchor, new futures')
       .toEqual(runFutures(INPUTS, priceFutures({
         anchorPrice: 90_000, startDate: new Date('2026-10-04T00:00:00Z'), months: 24, count: 40, seed: FUTURES_SEED,
-      }).map((f) => f.prices)));
+      }).map((f) => f.prices), JOB.startISO));
     // REUSE (D-2, L-I6) — a setting runs the engine on the futures already drawn; a new horizon draws once
     const draws = vi.mocked(priceFutures);
     futuresFor({ ...JOB, anchorPrice: 77_000 });
@@ -79,7 +79,7 @@ describe('the crossing — futuresRun', () => {
 const SUMMARY: FuturesSummary = {
   count: 1000, months: 240,
   yoursBtc: { p10: 3.1, p50: 3.754, p90: 4.761 }, coldBtc: { p10: 2.79, p50: 3.27, p90: 4.05 },
-  beatsNeverDraw: 990, seized: 11, countsSeizures: true,
+  beatsNeverDraw: 990, seized: 11, seizedWithinYear: 3, seizedHalfByMonth: 37, startISO: '2026-10-04', countsSeizures: true,
 };
 
 describe('the words — futuresView', () => {
@@ -94,7 +94,13 @@ describe('the words — futuresView', () => {
     expect(rangeText({ p10: 2.244, p90: 2.236 }), 'RANGE one').toBe('2.24 ₿');
     expect(rangeText({ p10: 0, p90: 0.001 }), 'RANGE none').toBe('none');
     expect([12, 18, 60, 240].map(horizonText), 'HORIZON').toEqual(['1 yr', '1.5 yr', '5 yr', '20 yr']);
-    expect(futuresTitle(1000, 60), 'TITLE').toBe('Across 1,000 futures · 5 yr');
+    expect(futuresTitle(1000, 60), 'TITLE').toBe('Across 1,000 simulations · 5 yr');
+    expect([12, 18, 60, 240].map(horizonWords), 'HORIZON words').toEqual(['the next year', 'the next 1.5 years', 'the next 5 years', 'the next 20 years']);
+    // WHEN month — month m after the start, "Nov 2029" (MF36, a month late, turns it red)
+    expect([0, 2, 3, 14, 37, 240].map((m) => monthYear('2026-10-04', m)), 'WHEN month')
+      .toEqual(['Oct 2026', 'Dec 2026', 'Jan 2027', 'Dec 2027', 'Nov 2029', 'Oct 2046']);
+    // R14 — the Price path card's four paths, by name (MF56, v1.4's phrase back, turns it red)
+    expect(FUTURES_TIP[0], 'TIP: not the four paths').toMatch(/not the four Price paths \(Support, Fair, Resistance, 4-yr cycle\)/);
     // R12 — the ⓘ names no count; the title beside it carries one. MF30 ("1,000" back in the tip) turns this red
     const tip = FUTURES_TIP.join(' ');
     expect(tip, 'TIP: no count').not.toContain('1,000');
@@ -107,7 +113,23 @@ describe('the words — futuresView', () => {
       ['You own', '3.10–4.76 ₿'], ['In your cold storage', '2.79–4.05 ₿'],
       ['Beats never borrowing', '99%'], ['Coinbase seizes', '1.1%'],
     ]);
-    expect(r.rows[0].sub, 'FOUR: the middle').toBe('in 8 of 10 futures · middle 3.75 ₿');
+    expect(r.rows[0].sub, 'FOUR: the middle').toBe('at the end, in 8 of 10 simulations · middle 3.75 ₿');
+    expect(r.rows[3].sub, 'FOUR: when').toBe('of the simulations — 0.3% within a year, half of the seizures by Nov 2029');
+    // A "none" range names no middle (O-1)
+    expect(futuresReadout({ ...SUMMARY, coldBtc: { p10: 0, p50: 0, p90: 0.004 } }).rows[1], 'FOUR: none')
+      .toEqual({ label: 'In your cold storage', value: 'none', sub: 'at the end, in 8 of 10 simulations' });
+    expect(r.rows[1].sub, 'FOUR: the cold middle').toBe('at the end, in 8 of 10 simulations · middle 3.27 ₿');
+    // The short form's other shapes: every seizure in the first year says "all" (MF40 drops it; the line and the readout
+    // share one decision, seizedShares — R16); none in it says "none" (R10; MF52 drops the clause); a year's horizon
+    // has no first-year part; none seized, the bare sub (MF50, "of the futures" there).
+    expect(futuresReadout({ ...SUMMARY, seizedWithinYear: 11 }).rows[3].sub, 'FOUR: all early')
+      .toBe('of the simulations — all within a year, half of the seizures by Nov 2029');
+    expect(futuresReadout({ ...SUMMARY, seizedWithinYear: 0 }).rows[3].sub, 'FOUR: none early')
+      .toBe('of the simulations — none within a year, half of the seizures by Nov 2029');
+    expect(futuresReadout({ ...SUMMARY, months: 12, seizedHalfByMonth: 5 }).rows[3].sub, 'FOUR: a year')
+      .toBe('of the simulations — half of the seizures by Mar 2027');
+    expect(futuresReadout({ ...SUMMARY, seized: 0, seizedWithinYear: 0, seizedHalfByMonth: null }).rows[3], 'FOUR: none seized')
+      .toEqual({ label: 'Coinbase seizes', value: 'none', sub: 'of the simulations' });
     expect(r.note, 'FOUR: no note').toBeNull();
   });
 
@@ -115,22 +137,62 @@ describe('the words — futuresView', () => {
     // MF14 (the four rows whatever the policy) turns this red
     const r = futuresReadout({ ...SUMMARY, seized: 951, countsSeizures: false });
     expect(r.rows.map((x) => [x.label, x.value, x.sub]), 'CHANCE ALONE')
-      .toEqual([['Coinbase seizes', '95%', 'of the futures, during a month']]);
-    expect(r.note, 'CHANCE ALONE: why').toMatch(/only under the support policy/);
+      .toEqual([['Coinbase seizes', '95%', 'of the simulations — 0.3% within a year, half of the seizures by Nov 2029']]);
+    expect(r.note, 'CHANCE ALONE: why').toMatch(/^Without the support policy/);
+    // R16 — where near-twins happen (the policy off, a short horizon): the value goes to one decimal with the sub's
+    // share, never "19%" over "19.0% within a year". MF58 (the value from shareText) turns only this red
+    expect(futuresReadout({ ...SUMMARY, months: 13, seized: 191, seizedWithinYear: 190, seizedHalfByMonth: 2,
+      countsSeizures: false }).rows.map((x) => [x.label, x.value, x.sub]), 'CHANCE ALONE: twin')
+      .toEqual([['Coinbase seizes', '19.1%', 'of the simulations — 19.0% within a year, half of the seizures by Dec 2026']]);
   });
 
   it('LINE — the card\'s one line: running, the reward and the risk, the chance alone, never seized', () => {
     expect(futuresCardLine(null), 'LINE running').toBe(FUTURES_RUNNING);
-    expect(futuresCardLine(SUMMARY), 'LINE').toBe('1,000 futures to 20 yr: you own 3.10–4.76 ₿ in 8 of 10; Coinbase seizes in 1.1%.');
+    // Sentences that say what they count, and when (W-3), of "simulations" (W-4)
+    expect(futuresCardLine(SUMMARY), 'LINE').toBe('Over the next 20 years, in 1,000 simulations: in 8 of 10, you end owning '
+      + '3.10–4.76 ₿; Coinbase seizes in 1.1% of them — 0.3% within the first year, half of those seizures by Nov 2029.');
     expect(futuresCardLine({ ...SUMMARY, seized: 951, countsSeizures: false }), 'LINE off')
-      .toBe('1,000 futures to 20 yr: Coinbase seizes in 95%, during a month.');
-    expect(futuresCardLine({ ...SUMMARY, seized: 0 }), 'LINE never').toMatch(/; Coinbase never seizes\.$/);
-    // W-1 — every future seized: the line names the count, never a bare "all" (MF32)
-    expect(futuresCardLine({ ...SUMMARY, seized: 1000 }), 'LINE all')
-      .toBe('1,000 futures to 20 yr: you own 3.10–4.76 ₿ in 8 of 10; Coinbase seizes in all 1,000.');
-    // W-2 — the policy off and nothing seized: no comma before "during a month" (MF33)
-    expect(futuresCardLine({ ...SUMMARY, seized: 0, countsSeizures: false }), 'LINE off never')
-      .toBe('1,000 futures to 20 yr: Coinbase never seizes during a month.');
+      .toBe('Over the next 20 years, in 1,000 simulations: Coinbase seizes in 95% of them — 0.3% within the first year, '
+        + 'half of those seizures by Nov 2029.');
+    expect(futuresCardLine({ ...SUMMARY, seized: 0, seizedWithinYear: 0, seizedHalfByMonth: null }), 'LINE never')
+      .toBe('Over the next 20 years, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in none of them.');
+    expect(futuresCardLine({ ...SUMMARY, seized: 1000, seizedWithinYear: 1000, seizedHalfByMonth: 0 }), 'LINE all')
+      .toBe('Over the next 20 years, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in all of '
+        + 'them — all within the first year, half of those seizures by Oct 2026.');
+    expect(futuresCardLine({ ...SUMMARY, seized: 0, seizedWithinYear: 0, seizedHalfByMonth: null, countsSeizures: false }),
+      'LINE off never').toBe('Over the next 20 years, in 1,000 simulations: Coinbase seizes in none of them.');
+    // Every seizure in the first year: "all", not the same share twice (MF40: the share instead → red)
+    expect(futuresCardLine({ ...SUMMARY, seized: 3, seizedWithinYear: 3, seizedHalfByMonth: 1 }), 'LINE all early')
+      .toBe('Over the next 20 years, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in 0.3% of '
+        + 'them — all within the first year, half of those seizures by Nov 2026.');
+    // A year's horizon: "within the first year" would say nothing (MF37: shown anyway → red)
+    expect(futuresCardLine({ ...SUMMARY, months: 12, seizedHalfByMonth: 5 }), 'LINE a year')
+      .toBe('Over the next year, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in 1.1% of '
+        + 'them — half of those seizures by Mar 2027.');
+    // Just past a year the first-year part shows (MF42 moves the cut past 12 months); none in it reads "none" (MF52)
+    expect(futuresCardLine({ ...SUMMARY, months: 13 }), 'LINE 13 months')
+      .toBe('Over the next 1.1 years, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in 1.1% '
+        + 'of them — 0.3% within the first year, half of those seizures by Nov 2029.');
+    // Two shares that print alike while the counts differ: BOTH to one decimal (O-3, R16) — never the same share twice
+    // ("19% … 19.0%"), nor a first year larger than the whole ("13% … 13.1%"). Where it happens: the policy off, a short
+    // horizon, as here. MF55, MF57, MF59 and MF60 turn this red
+    expect(futuresCardLine({ ...SUMMARY, months: 13, seized: 191, seizedWithinYear: 190, seizedHalfByMonth: 2,
+      countsSeizures: false }), 'LINE twin')
+      .toBe('Over the next 1.1 years, in 1,000 simulations: Coinbase seizes in 19.1% of them — 19.0% within the first '
+        + 'year, half of those seizures by Dec 2026.');
+    expect(futuresCardLine({ ...SUMMARY, seized: 194, seizedWithinYear: 185 }), 'LINE close early')
+      .toBe('Over the next 20 years, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in 19.4% '
+        + 'of them — 18.5% within the first year, half of those seizures by Nov 2029.');
+    expect(futuresCardLine({ ...SUMMARY, seizedWithinYear: 0 }), 'LINE none early')
+      .toBe('Over the next 20 years, in 1,000 simulations: in 8 of 10, you end owning 3.10–4.76 ₿; Coinbase seizes in 1.1% '
+        + 'of them — none within the first year, half of those seizures by Nov 2029.');
+    // W-4 — "simulations", never "futures", in any word the app shows (MF38: "futures" back in a word → red)
+    const shown = [...FUTURES_TIP, FUTURES_TIP_LABEL, FUTURES_RUNNING, futuresTitle(1000, 60), futuresCardLine(SUMMARY),
+      futuresCardLine({ ...SUMMARY, countsSeizures: false }),
+      ...[futuresReadout(SUMMARY), futuresReadout({ ...SUMMARY, countsSeizures: false }),
+        futuresReadout({ ...SUMMARY, seized: 0, seizedWithinYear: 0, seizedHalfByMonth: null })]
+        .flatMap((x) => [...x.rows.flatMap((row) => [row.label, row.value, row.sub]), x.note ?? ''])];
+    expect(shown.filter((t) => /\bfutures?\b/i.test(t)), 'NAME').toEqual([]);
   });
 });
 

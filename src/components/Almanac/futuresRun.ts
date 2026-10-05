@@ -17,7 +17,7 @@ export interface FuturesJob {
   inputs: FuturesInputs;
   /** Month 0 of the futures — `futuresAnchor` of the face's anchor. */
   anchorPrice: number;
-  /** Month 0's UTC date, `yyyy-mm-dd`. */
+  /** Month 0's LOCAL date, `yyyy-mm-dd` — the faces' `new Date(todayLocalISO())`, held as UTC midnight. */
   startISO: string;
   months: number;
   count?: number;
@@ -38,9 +38,9 @@ function pathsFor(job: FuturesJob): number[][] {
   return paths;
 }
 
-/** One request's futures, run and summed up. */
+/** One request's futures, run and summed up. The summary carries the job's start: the words' months count from it. */
 export function futuresFor(job: FuturesJob): FuturesSummary {
-  return runFutures(job.inputs, pathsFor(job));
+  return runFutures(job.inputs, pathsFor(job), job.startISO);
 }
 
 /**

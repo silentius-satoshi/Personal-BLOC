@@ -12,7 +12,9 @@
  *   • seized — Morpho took the Coinbase loan, either read at a month-end (`liqMonth`) or ON THE WAY DOWN
  *     (`firstOpenPastLltvMonth`, the engine's own test, computed with the policy on or off). Under the applied policy
  *     the two agree; without it the month-end reading rescues loans Morpho had already taken, and only the second test
- *     sees them.
+ *     sees them;
+ *   • when — the month of that first seizure (`seizedMonth`, the earlier of the two tests). The summary turns the
+ *     months into the words' WHEN (Run 2, W-3): how many went by month 12, and the month by which half had gone.
  *
  * ⚠ `countsSeizures` — the coin figures mean something only when the run's own model seizes on the way down, which is
  * when the support policy applied (`policyApplied`; every future shares the inputs and the path length, so it is one
@@ -28,6 +30,9 @@ export interface FutureOutcome {
   coldBtc: number;
   beatsNeverDraw: boolean;
   seized: boolean;
+  /** When Morpho first takes the loan: the earlier of `liqMonth` and `firstOpenPastLltvMonth` (Run 2, W-3); null when
+   *  neither fires. */
+  seizedMonth: number | null;
 }
 
 export interface Spread { p10: number; p50: number; p90: number }
@@ -43,6 +48,14 @@ export interface FuturesSummary {
   beatsNeverDraw: number;
   /** How many futures lose the Coinbase loan to Morpho — at a month-end or on the way down. */
   seized: number;
+  /** Of those, how many go by month 12 — within the first year, month 12 included (Run 2, W-3). */
+  seizedWithinYear: number;
+  /** The month by which half of the seizures have happened: the LOWER median of the seized futures' months — the
+   *  smallest m with at least half of them seized by m (Run 2, W-3); null when none seizes. */
+  seizedHalfByMonth: number | null;
+  /** Month 0's LOCAL date, `yyyy-mm-dd` — the faces' `new Date(todayLocalISO())`, held as UTC midnight — passed
+   *  through untouched so the words can name a month and a year. */
+  startISO: string;
   /** The support policy applied, so the run itself seizes on the way down and its coin figures can be shown. */
   countsSeizures: boolean;
 }
@@ -54,11 +67,14 @@ export type FuturesInputs = Omit<CyclingInputs, 'pricePath'>;
 export function futureOutcome(inputs: FuturesInputs, prices: number[]): FutureOutcome & { policyApplied: boolean } {
   const r = runCyclingSim({ ...inputs, pricePath: prices });
   const { last } = r;
+  const tests = [r.liqMonth, r.firstOpenPastLltvMonth].filter((m): m is number => m !== null);
+  const seizedMonth = tests.length > 0 ? Math.min(...tests) : null;
   return {
     yoursBtc: deriveOwnership(last.btcHeld, last.debt, last.price).yoursBtc,
     coldBtc: last.coldBtc,
     beatsNeverDraw: allInEquity(r) > baselineAllInEquity(r),
-    seized: r.liqMonth !== null || r.firstOpenPastLltvMonth !== null,
+    seized: seizedMonth !== null,
+    seizedMonth,
     policyApplied: r.policyApplied,
   };
 }
@@ -77,9 +93,10 @@ const spreadOf = (xs: number[]): Spread => {
 };
 
 /** The engine over every path, summed up. Each path is a plain price path as long as the run. */
-export function runFutures(inputs: FuturesInputs, paths: readonly number[][]): FuturesSummary {
+export function runFutures(inputs: FuturesInputs, paths: readonly number[][], startISO: string): FuturesSummary {
   const yours: number[] = [];
   const cold: number[] = [];
+  const seizedMonths: number[] = [];
   let beats = 0;
   let seized = 0;
   let applied = false;
@@ -89,8 +106,10 @@ export function runFutures(inputs: FuturesInputs, paths: readonly number[][]): F
     cold.push(o.coldBtc);
     if (o.beatsNeverDraw) beats += 1;
     if (o.seized) seized += 1;
+    if (o.seizedMonth !== null) seizedMonths.push(o.seizedMonth);
     if (i === 0) applied = o.policyApplied;
   }
+  seizedMonths.sort((a, b) => a - b);
   return {
     count: paths.length,
     months: paths.length > 0 ? paths[0].length - 1 : 0,
@@ -98,6 +117,9 @@ export function runFutures(inputs: FuturesInputs, paths: readonly number[][]): F
     coldBtc: spreadOf(cold),
     beatsNeverDraw: beats,
     seized,
+    seizedWithinYear: seizedMonths.filter((m) => m <= 12).length,
+    seizedHalfByMonth: seizedMonths.length > 0 ? seizedMonths[Math.ceil(seizedMonths.length / 2) - 1] : null,
+    startISO,
     countsSeizures: applied,
   };
 }

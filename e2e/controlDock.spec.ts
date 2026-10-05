@@ -49,6 +49,13 @@ const bottomOf = async (l: Locator) => { const b = (await l.boundingBox())!; ret
 async function expectPinned(
   page: Page, dock: Locator, edge: number, surface: string, opts: { end?: Locator; minScroll?: number } = {},
 ): Promise<void> {
+  // R15 (the lenses, Run 2): the Support policy card's line opens as "Running the simulations…" and grows when its
+  // first run lands — a landing between the END check's two reads moved the block under the dock. Wait for it first.
+  const line = page.locator('p[class*="futures"]');
+  if ((await line.count()) > 0) {
+    await expect(line.first(), `LANDED ${surface}`).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
+    await expect(line.first(), `LANDED ${surface}`).not.toHaveText(/^Running the /);
+  }
   expect(await dock.evaluate((el) => getComputedStyle(el).position), `STICKY ${surface}`).toBe('sticky');
   // OPAQUE — --surface, no alpha: at 0.97 the schedule's text showed through.
   expect(await dock.evaluate((el) => getComputedStyle(el).backgroundColor), `OPAQUE ${surface}`).toBe('rgb(14, 18, 25)');

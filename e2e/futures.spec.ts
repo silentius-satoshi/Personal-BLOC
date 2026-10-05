@@ -6,7 +6,8 @@ import { seedLoanAndGoto, STORE_VERSION } from './helpers';
  * all four faces, run in a worker. Every assertion carries a tag, so each named mutation fails at its own. Hermetic: the
  * round synthetic loan seed ($50,000 owed on 1 ₿ at a manual $100,000), live prices aborted, the price history stubbed.
  * The futures start today, so their figures move with the date — these tests read shapes and behaviour, never a
- * figure. The count is read as any number (`[\d,]+`), so §9's cut to 300 needs no edit here (D-3).
+ * figure. The count is read as any number (`[\d,]+`), so §9's cut to 300 needs no edit here (D-3). On screen the
+ * 1,000 are "simulations" (W-4).
  */
 const HISTORY = JSON.stringify({ values: [{ x: 1230940800, y: 0.1 }, { x: 1600000000, y: 10000 }, { x: 1780000000, y: 90000 }] });
 
@@ -29,7 +30,7 @@ async function openFace(page: Page, pill: RegExp): Promise<void> {
   await page.getByRole('button', { name: pill }).first().click();
 }
 
-const readoutOf = (page: Page): Locator => page.getByRole('region', { name: /^Across [\d,]+ futures · / });
+const readoutOf = (page: Page): Locator => page.getByRole('region', { name: /^Across [\d,]+ simulations · / });
 const lineOf = (page: Page): Locator => page.locator('p[class*="futures"]');
 const policyCardOf = (page: Page): Locator => page.locator('section:has(> p[class*="futures"])');
 
@@ -38,7 +39,7 @@ async function readRows(page: Page, tag: string): Promise<string[][]> {
   const card = readoutOf(page);
   await expect(card, `${tag}: the readout`).toBeVisible({ timeout: 15_000 });
   await expect(card, `${tag}: landed`).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
-  await expect(card.getByText('Running the futures…'), `${tag}: landed`).toHaveCount(0);
+  await expect(card.getByText('Running the simulations…'), `${tag}: landed`).toHaveCount(0);
   return card.locator('div[class*="cell"]').evaluateAll((cells) =>
     cells.map((c) => [...c.querySelectorAll('span')].map((s) => s.textContent ?? '')));
 }
@@ -47,14 +48,21 @@ async function landedLine(page: Page, tag: string): Promise<string> {
   const line = lineOf(page);
   await expect(line, `${tag}: one line`).toHaveCount(1);
   await expect(line, `${tag}: landed`).toHaveAttribute('aria-busy', 'false', { timeout: 30_000 });
-  await expect(line, `${tag}: landed`).not.toHaveText('Running the futures…');
+  await expect(line, `${tag}: landed`).not.toHaveText('Running the simulations…');
   return (await line.textContent()) ?? '';
 }
 
 const RANGE = /^(none|\d+\.\d\d ₿|\d+\.\d\d–\d+\.\d\d ₿)$/;
 const SHARE = /^(none|all|\d+(\.\d)?%)$/;
-const LINE_ON = /^[\d,]+ futures to \d+(\.\d)? yr: you own (none|\d+\.\d\d ₿|\d+\.\d\d–\d+\.\d\d ₿) in 8 of 10; Coinbase (seizes in (all [\d,]+|\d+(\.\d)?%)|never seizes)\.$/;
-const LINE_OFF = /^[\d,]+ futures to \d+(\.\d)? yr: Coinbase (seizes in (all [\d,]+|\d+(\.\d)?%), during a month|never seizes during a month)\.$/;
+// The card's line (Run 2): sentences of "simulations" (W-4), the seizures dated when some happen (W-3)
+const HEAD = String.raw`^Over the next (year|\d+(\.\d)? years), in [\d,]+ simulations:`;
+const SHARE_OR_ALL = String.raw`(none|all|\d+(\.\d)?%)`;
+const WHEN = String.raw` — (${SHARE_OR_ALL} within the first year, )?half of those seizures by [A-Z][a-z]{2} \d{4}`;
+// O-2: WHEN is required whenever some seize — the code always prints it then
+const SEIZED_PART = String.raw`Coinbase seizes in (none of them|(all|\d+(\.\d)?%) of them${WHEN})`;
+const LINE_ON = new RegExp(String.raw`${HEAD} in 8 of 10, you end owning (none|\d+\.\d\d ₿|\d+\.\d\d–\d+\.\d\d ₿); ${SEIZED_PART}\.$`);
+const LINE_OFF = new RegExp(String.raw`${HEAD} ${SEIZED_PART}\.$`);
+const SUB_SEIZED = new RegExp(String.raw`^of the simulations( — (${SHARE_OR_ALL} within a year, )?half of the seizures by [A-Z][a-z]{2} \d{4})?$`);
 
 test.describe('the futures', () => {
   test('READOUT — Strategy: four numbers under the policy, the chance alone without it; run in a worker', async ({ page }) => {
@@ -69,14 +77,15 @@ test.describe('the futures', () => {
     // WORKER — the run went off the main thread (MF18, a worker that never spawns, fails here)
     expect(page.workers().some((w) => /futures\.worker/.test(w.url())), 'WORKER').toBe(true);
 
-    // OFF — the policy off: the chance alone, counted during a month, and why (MF8, MF14 fail here)
+    // OFF — the policy off: the chance alone, counted at the first dip past the line, and why (MF8, MF14 fail here)
     const card = policyCardOf(page);
     await card.locator('summary').click();
     await card.getByRole('button', { name: 'Turn policy off' }).click();
     await expect(readoutOf(page), 'OFF: a new run').toHaveAttribute('aria-busy', 'true');
     const off = await readRows(page, 'OFF');
-    expect(off.map((r) => [r[0], r[2]]), 'OFF rows').toEqual([['Coinbase seizes', 'of the futures, during a month']]);
-    await expect(readoutOf(page).getByText(/only under the support policy/), 'OFF: why').toBeVisible();
+    expect(off.map((r) => r[0]), 'OFF rows').toEqual(['Coinbase seizes']);
+    expect(off[0][2], 'OFF rows: when').toMatch(SUB_SEIZED);
+    await expect(readoutOf(page).getByText(/^Without the support policy/), 'OFF: why').toBeVisible();
     expect(await landedLine(page, 'OFF line'), 'OFF line').toMatch(LINE_OFF);
 
     // ON again — the four numbers return

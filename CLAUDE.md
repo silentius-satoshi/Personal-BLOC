@@ -202,8 +202,12 @@ src/
                                 # (deriveOwnership of the last row, THREE args — btcHeld already holds cold), cold
                                 # (last.coldBtc), beatsNeverDraw (allInEquity > baselineAllInEquity — verdictVsNeverDraw's
                                 # `wins`, R9), seized (liqMonth OR firstOpenPastLltvMonth — at a month-end or on the way down,
-                                # R8), policyApplied; runFutures(inputs, paths) → FuturesSummary { count, months, yoursBtc /
-                                # coldBtc as p10 / p50 / p90, beatsNeverDraw / seized as counts, countsSeizures }; quantile
+                                # R8), seizedMonth (Run 2, W-3: the EARLIER of the two; null when neither), policyApplied;
+                                # runFutures(inputs, paths, startISO) → FuturesSummary { count, months, yoursBtc / coldBtc
+                                # as p10 / p50 / p90, beatsNeverDraw / seized as counts, seizedWithinYear (month 12
+                                # included), seizedHalfByMonth (the LOWER median of the seized months — the smallest m with
+                                # at least half of them seized by m; null when none), startISO (month 0's LOCAL date, passed
+                                # through for the words), countsSeizures }; quantile
                                 # (linear between the nearest ranks). ⚠ countsSeizures = the policy APPLIED: without it the
                                 # month-end reading rescues loans Morpho takes during the month (REPRO, 20 yr, policy off:
                                 # liqMonth 0.6% of the futures vs the way-down test 95.1% — F4), so the coin figures would
@@ -815,8 +819,9 @@ src/
                                 # pricePaths AND monteCarlo, and a source test (W WALL) pins that nothing else does.
                                 # FuturesJob { inputs (the face's engineInputs, no path), anchorPrice, startISO, months,
                                 # count?, seed? } — plain data, it crosses postMessage as is. futuresFor(job) = runFutures over
-                                # priceFutures. A ONE-ENTRY CACHE of the drawn futures, keyed by anchor · start · horizon ·
-                                # count · seed and NEVER by the inputs: a setting re-runs the engine on the SAME futures (L-I6;
+                                # priceFutures, with the job's startISO (Run 2). A ONE-ENTRY CACHE of the drawn futures,
+                                # keyed by anchor · start · horizon · count · seed and NEVER by the inputs: a setting re-runs
+                                # the engine on the SAME futures (L-I6;
                                 # the worker at 240 months: 128–140 ms for a setting vs 161–184 for new futures).
                                 # futuresAnchor(price) = the face's anchor on a 1% grid in log price (≤ 0.501% off; junk
                                 # passes) — R4: a live quote moves the futures only at a grid line (measured on all four faces:
@@ -836,15 +841,28 @@ src/
                                 # an identity key re-ran the futures on each one (measured: 8 runs instead of 1 over 9 live
                                 # quotes). Runs after FUTURES_DEBOUNCE_MS (300) of stillness; a stale result is dropped; the
                                 # last summary stays, dimmed, while a new run goes (R6)
-      futuresView.ts            # EVERY WORD of the futures (the faces compose none — I31): futuresReadout (the owner's four
-                                # numbers under the applied policy — You own · In your cold storage · Beats never borrowing ·
-                                # Coinbase seizes — else the chance alone and its note, R1) · futuresCardLine (the card's line;
-                                # "Coinbase seizes in all 1,000." when every future seizes — W-1; policy off and none seized,
-                                # "Coinbase never seizes during a month." with no comma — W-2) · futuresTitle ("Across 1,000
-                                # futures · 5 yr") · shareText (never "0%" / "100%" unless none / all; one decimal under 10%
-                                # and over 99% — R10) · rangeText · horizonText · FUTURES_TIP (names NO count — the title beside
-                                # it does, so §9's cut to 300 reads right everywhere — R12) · FUTURES_TIP_LABEL ("About the
-                                # futures" — D-1) · FUTURES_RUNNING · FUTURES_DEBOUNCE_MS
+      futuresView.ts            # EVERY WORD of the futures (the faces compose none — I31). On screen the 1,000 are
+                                # "simulations" (Run 2, W-4): no word built here says "future" — the code's names keep it
+                                # (L-I13). futuresReadout (the owner's four numbers under the applied policy — You own · In
+                                # your cold storage · Beats never borrowing · Coinbase seizes; the coin subs "at the end, in 8
+                                # of 10 simulations · middle x ₿", a "none" range naming no middle — O-1 — else the chance
+                                # alone and its note, R1) · futuresCardLine (the card's line, in sentences: "Over the next 5
+                                # years, in 1,000 simulations: in 8 of 10, you end owning a–b ₿; Coinbase seizes in x% of
+                                # them — y% within the first year, half of those seizures by <Mon YYYY>."; "none of them"
+                                # when none) · seizedShares (R16: the two seizure shares as printed, { total, early } — ONE
+                                # decision for the card's line, the readout's value and whenText. early is the share of ALL
+                                # the simulations seized within the first year, month 12 included: "all" when every seizure
+                                # is, decided first, so a whole year never reads "100.0%"; "none" when none is; null at a
+                                # horizon of a year or less. When the two would print alike, BOTH go to one decimal — O-3,
+                                # R16: never "19% … 19.0%", nor a first year larger than the whole) · whenText (Run 2, W-3:
+                                # seizedShares' first-year share, then the month by which half of the seizures have
+                                # happened) · horizonWords ("the next year", "the next 5 years") · monthYear (month m after
+                                # the start, "Nov 2029" — a fixed month table, never toLocaleDateString) · futuresTitle
+                                # ("Across 1,000 simulations · 5 yr") · shareText (never "0%" / "100%" unless none / all; one
+                                # decimal under 10% and over 99% — R10) · rangeText · horizonText · FUTURES_TIP (names NO
+                                # count — the title beside it does, R12 — and says the simulations are not the four Price
+                                # paths (Support, Fair, Resistance, 4-yr cycle) — R14) · FUTURES_TIP_LABEL ("About the
+                                # simulations" — D-1) · FUTURES_RUNNING ("Running the simulations…") · FUTURES_DEBOUNCE_MS
       FuturesCard.tsx           # The futures readout on the Strategy face (+ .module.css, tokens only) — LAYOUT ONLY: reads no
                                 # store or engine and writes no word (a source test scans its literals and JSX text); a
                                 # <section> named by its title, aria-busy while a run goes (the figures dim, never blank); a
@@ -3911,6 +3929,11 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
     with `futuresCardLine` — after the details list when 'on', inside the state body's section when 'off' or 'notRun',
     never for another strategy ('notCycle': the card already says the policy is for Cycle only). The 'off' line shows
     the chance of a seizure alone — the price of turning the policy off. It dims while a newer run goes (`aria-busy`).
+    **Run 2 (the owner's device check, DC1):** it reads in sentences that name what they count, calls the 1,000
+    "simulations" (W-4), and says when Coinbase seizes (W-3) — the share of ALL the simulations seized within the first
+    year, then the month by which half of the seizures have happened: "Over the next 5 years, in 1,000 simulations: in 8
+    of 10, you end owning a–b ₿; Coinbase seizes in x% of them — y% within the first year, half of those seizures by
+    <Mon YYYY>." With the policy off: "Over the next 5 years, in 1,000 simulations: Coinbase seizes in x% of them — …".
   - The zone strip: one flex cell per month (`min-width: 0`; the gaps drop to 0 past 96 months, so a 240-month horizon
     never scrolls sideways), a 2px inspected-month marker, `role="img"` named by `zoneStripLabel`, a legend of the
     zones that occur.
@@ -7314,6 +7337,13 @@ goes red.)
       the month → P-LENS F18, STRESS · MP17 Ownership's stress min 0.35 → RANGE · MP18 back on `styles.scrub` → SCRUB ·
       MP19 no Lens tab → STRATEGY-TABS, TABS · MP20 'Flywheel view' → LENS · MP21 Path before Stress → PARENT-TABS,
       TABS · MP22 the inline readout → WORDS, READOUT · MP23 the chip's 11px padding back → NO-WRAP (Strategy at 1440).
+    - R15 (the lenses, Run 2 — spec `pbloc-spec-policy-v2-lenses-v1.md` v1.5): `expectPinned` first waits for the
+      Support policy card's futures line to land — `aria-busy="false"`, not "Running the …" — tagged `LANDED <surface>`;
+      then it measures. The line grows when its first run lands, and a landing between the END check's two reads moved
+      the block under the dock. Measured with `--grep "the three bars" --repeat-each=6 --retries=0`: on an idle M1, 0 of
+      6 failed without the wait and 0 of 6 with it; under six busy loops, 4 of 12 failed without it — every one at
+      `END: under the block before it ownership computer` — and 0 of 12 with it (the reviewer's 2 cores: 2–3 of 6
+      failed without it, 12 of 12 passed with it).
   - Measured, never moved: the phone chart-zoom tests' plot centre (y ≈ 702) clears the dock's top (y 710) by ~8–9 px,
     and their box and pan drags end under the dock but complete (pointer capture). A taller dock would turn them red —
     a kill criterion, never a moved target.
@@ -7382,44 +7412,64 @@ goes red.)
     cwd pointed at the repo, port 5174 and `reuseExistingServer: false` — a long-running server can serve a stale composed
     CSS module, and the owner's 5173 is never reused. The measurement harness (production builds, the fit sweep, the
     markup check against `c8d7a5b`) lives outside the tree: inside it, `npm run lint` fails on its node globals.
-- **Policy v2 — the lenses: the futures** (spec `pbloc-spec-policy-v2-lenses-v1.md` v1.3; 33 named mutations, MF1–MF33,
-  plus KILL300 — each an exact-once edit on a sandbox copy, run on the unit files and then the e2e with `--retries=0` on a
-  fresh 5174 server, restored and md5-checked, red at its own tag):
+- **Policy v2 — the lenses: the futures** (spec `pbloc-spec-policy-v2-lenses-v1.md` v1.8 — MF1–MF60: Run 1's MF1–MF33,
+  Run 2's MF34–MF56 and R16's MF57–MF60, MF7 in Run 2's form, MF32 / MF33 retired with W-1 / W-2 and MF49 with R16 —
+  plus KILL300 and the O3-ORDER control; each an exact-once edit on a sandbox copy, run on the unit files and then the
+  e2e with `--retries=0` on a fresh 5174 server, restored and md5-checked, red at its own tag. R16's run took the e2e
+  for MF7, MF8, MF11, MF14, MF20, MF22, MF36, MF39, MF41 and KILL300):
   - `src/simulation/__tests__/futures.test.ts` (12, + the report):
     - SEEDED (DISTINCT) · PREFIX (count, months; ⭐ R13 `PREFIX: the faces' count` — `FUTURES_COUNT` is 1,000 or §9's
       300, nothing else) · ANCHOR · JUNK;
     - REGIMES and CALIBRATION (dip p50 / p10, worst) — they draw a fixed `FAMILY` of 1,000, never `FUTURES_COUNT` (D-3),
       so §9's cut moves no calibration target;
-    - WALL pricePaths · QUANTILE · OUTCOME · SEIZED (the premise: policy off, `liqMonth` null, the way-down test at
-      month 2) · SUMMARY (COUNTS on / off / hold) · WALL monteCarlo;
-    - `FUTURES_REPORT` — `describe.runIf`, skipped in the gate; F3's table:
+    - WALL pricePaths · QUANTILE · OUTCOME (⭐ Run 2 `seizedMonth`) · SEIZED (the premise: policy off, `liqMonth` null,
+      the way-down test at month 2; ⭐ Run 2 the month — `off: the month`, `on: the month`, ⭐ `month 0` (a loan opening
+      past 86% is seized at month 0, the month-end reading's), ⭐ `the earlier` (no cold reserve: the way-down test at 2,
+      the month-end reading at 4)) · SUMMARY (COUNTS on / off / hold; ⭐ Run 2 `when` — seized at months 16, 2, 13 and
+      12, out of order, and one never: 2 within the year, half by month 12; `when — odd`; `when — none`) · WALL
+      monteCarlo;
+    - `FUTURES_REPORT` — `describe.runIf`, skipped in the gate; F3's table and Run 2's two timing columns (within a year,
+      half of the seizures by month):
       `FUTURES_REPORT=1 npx vitest run src/simulation/__tests__/futures.test.ts --reporter=verbose`.
   - `src/components/Almanac/__tests__/futuresFace.test.ts` (15) — a module-level, calling-through `vi.mock` spy on
     `priceFutures`:
     - RUN · SAME FUTURES (⭐ D-2 `REUSE` — a setting draws no futures, a new horizon draws once) · ANCHOR GRID;
-    - SHARE · RANGE (HORIZON, TITLE, ⭐ R12 `TIP: no count` — the ⓘ contains neither "1,000" nor the count) · FOUR ·
-      CHANCE ALONE · LINE (running, on, off, never, ⭐ W-1 `LINE all`, ⭐ W-2 `LINE off never` — both whole lines);
+    - SHARE · RANGE (HORIZON, ⭐ Run 2 `HORIZON words`, ⭐ `WHEN month` (December rolls the year), TITLE, ⭐ R12 `TIP: no
+      count` — the ⓘ contains neither "1,000" nor the count — ⭐ R14 `TIP: not the four paths`) · FOUR (⭐ Run 2 the subs:
+      `the middle`, `the cold middle`, `when`, `all early`, `none early`, `a year`, `none seized`, O-1 `none`) · CHANCE
+      ALONE (⭐ R16 `twin`: 191 seized, 190 of them in the first year — the value "19.1%" over "19.0% within a year") ·
+      LINE (running, and whole lines: on, off, never, all, off never, ⭐ `all early`, ⭐ `a year`, ⭐ `13 months`, ⭐ R16
+      `twin` — "19.1% of them — 19.0% within the first year", ⭐ O-3 `close early` in R16's words — "19.4% of them —
+      18.5% …", ⭐ `none early`; ⭐ W-4 `NAME` — no word futuresView builds says "future");
     - LATEST ONLY (a fake worker; ⭐ D-2 `content key` and `300 ms`, read off `useFutures`' source) · FALLBACK (a failed
       reply; no worker);
     - EVERY FACE (ONE RUN, INPUTS, LINE per face) · STRATEGY (after the tiles, before the lenses; ⭐ D-1 `the tip label`)
       · WORKER (the reply; the tsconfigs; the spawn) · LAYOUT-ONLY (imports, WORDLESS, TOKENS, CLAMP) · WALL.
   - `e2e/futures.spec.ts` (5; hermetic; it reads shapes and behaviour, never a figure, and the count as `[\d,]+`):
-    READOUT (+ WORKER, OFF, ON) · LINE (all four faces; NOT-CYCLE) · SAME · FIT (the ×10 seed, full mode, 320 px) ·
-    FALLBACK.
+    READOUT (+ WORKER; OFF, with Run 2's ⭐ `OFF rows: when` and `OFF: why`; ON) · LINE (all four faces; NOT-CYCLE;
+    Run 2's sentences, the WHEN clause required whenever some seize — O-2) · SAME · FIT (the ×10 seed, full mode,
+    320 px) · FALLBACK.
   - Red first on `45c9049`'s source: both unit files fail to load (`'../pricePaths'`; `futuresRun`, by its absolute
     path under the spy); the e2e 5 of 5, at `READOUT: the readout` · `LINE cycling: one line` · `SAME first: the readout`
     · `FIT: the readout` · `FALLBACK worker: the readout`.
+  - Run 2, red first on `0228baf`'s source (its three test files): the unit files load, and 7 `it`s are red at their
+    first tag — `OUTCOME seizedMonth` · `SEIZED off: the month` · `SUMMARY: when — the premise` · `TITLE` ·
+    `FOUR: the middle` · `CHANCE ALONE` · `LINE`; soft-asserted, 31 tags are red, and RANGE stops at `HORIZON words`
+    (`0228baf` has no `horizonWords`); the e2e 5 of 5, at `READOUT: the readout` · `LINE cycling` ·
+    `SAME first: the readout` · `FIT: the readout` · `FALLBACK worker: the readout`.
+  - R16, red first (the patched test file on Run 2's futuresView): 2 `it`s red — CHANCE ALONE at `CHANCE ALONE: twin`,
+    LINE at `LINE twin`; soft-asserted, `LINE close early` too.
   - Red at (U = futures.test.ts, W = futuresFace.test.ts, E = the e2e):
     - MF1 one generator for every future → U SEEDED (DISTINCT) · REGIMES · CALIBRATION; MF2 drawn only to the horizon →
       U PREFIX months; MF3 month 0 from the curve → U ANCHOR · JUNK; MF4 no shocks, MF5 troughs higher → U CALIBRATION
       dip p50; MF6 pricePaths imports the engine → U WALL pricePaths;
-    - MF7 seized from `liqMonth` alone → U SEIZED off; MF8 `countsSeizures` always true → U COUNTS off · E READOUT (OFF
-      rows), LINE (NOT-CYCLE readout); MF9 no interpolation → U QUANTILE; MF10 monteCarlo imports a belief → U WALL
-      monteCarlo;
+    - MF7 (Run 2's form — the seizure month from `liqMonth` alone) → U SEIZED off · SUMMARY: when — the premise; MF8
+      `countsSeizures` always true → U COUNTS off · E READOUT (OFF rows), LINE (NOT-CYCLE readout); MF9 no interpolation
+      → U QUANTILE; MF10 monteCarlo imports a belief → U WALL monteCarlo;
     - MF11 the cache keyed by nothing → W SAME FUTURES (+ RUN, LATEST ONLY) · E LINE ownership (Cycling's 60-month
       futures on its 24-month face: the policy can't apply, so the line reads policy-off); MF12 no anchor grid → W ANCHOR
-      GRID; MF13 every share rounded → W SHARE · FOUR · LINE; MF14 the four rows whatever the policy → W CHANCE ALONE · E
-      READOUT (OFF rows), LINE (NOT-CYCLE readout);
+      GRID; MF13 every share rounded → W SHARE · FOUR · LINE · CHANCE ALONE (Run 2: the seizure sub carries a share);
+      MF14 the four rows whatever the policy → W CHANCE ALONE · E READOUT (OFF rows), LINE (NOT-CYCLE readout);
     - MF15 a replaced request never settles → W LATEST ONLY (timeout); MF16 a failed reply settles null → W FALLBACK
       failed reply; MF17 no worker settles null → W FALLBACK no worker · E FALLBACK; MF18 the worker never spawns → E
       READOUT (WORKER);
@@ -7430,11 +7480,32 @@ goes red.)
     - MF26 the cache keyed by the inputs too → W SAME FUTURES: REUSE; MF27 the hook keyed by the job's identity → W
       LATEST ONLY: content key; MF28 no debounce → W LATEST ONLY: 300 ms; MF29 the ⓘ label written in the face → W
       STRATEGY: the tip label; MF30 "1,000" back in the ⓘ → W TIP: no count; MF31 a count of 100 → U PREFIX: the faces'
-      count; MF32 "in all" without the count → W LINE all; MF33 the comma back before "during a month" → W LINE off
-      never.
-  - Green where expected: MF7 at the e2e (it reads shapes, not counts); MF18, MF19 and MF22 at the unit (the e2e sees
-    them); MF31 at the e2e (it reads the count as `[\d,]+`). **KILL300** (`FUTURES_COUNT = 300` — §9's cut) is green on
-    the unit files and the e2e: the cut is one constant, and every word that shows the count follows it.
+      count; MF32 and MF33 retired with W-1 and W-2 (Run 2), and MF49 with R16 (one decision now serves the line and
+      the readout, so "all" can't differ between them).
+    - Run 2 (MF37, MF40, MF42, MF52 and MF55 re-anchored in `seizedShares` since R16): MF34 the first year as `< 12` →
+      U SUMMARY: when; MF35 the upper median → U SUMMARY: when; MF36 the month label a month late → W WHEN month ·
+      FOUR: when · CHANCE ALONE · LINE; MF37 the year guard removed ("within the first year" at a year) → W FOUR: a
+      year · LINE a year; MF38 "futures" in a shown word → W NAME; MF39 the line drops WHEN → W LINE · E OFF line,
+      LINE cycling (O-2); MF40 "all" removed → W FOUR: all early · LINE all; MF41 the start not handed through → W RUN
+      · SAME FUTURES · E OFF rows: when, LINE cycling;
+    - Run 2's D-3 — each passed the prototype's whole set, unit and e2e: MF42 the year guard past 12 months → W LINE
+      13 months · CHANCE ALONE: twin; MF43 `monthYear`'s year off at December → W WHEN month · CHANCE ALONE: twin ·
+      LINE twin (the twins' Dec 2026); MF44 the months unsorted → U SUMMARY: when; MF45 the lower median as
+      `floor(n / 2) − 1` → U SUMMARY: when — odd; MF46 the first year as `<= 13` → U SUMMARY: when; MF47 a truthy filter
+      drops month 0 → U SEIZED: month 0; MF48 the later of the two tests → U SEIZED: the earlier; MF50 "of the futures"
+      in the bare seizure sub → W FOUR: none seized · NAME; MF51 the cold sub from the coins you own → W FOUR: none
+      (O-1's pin comes first in the `it`; soft-asserted, FOUR: the cold middle is red too); MF52 "none within the first
+      year" dropped → W FOUR: none early · LINE none early; MF53 the way-down test alone → U SEIZED: month 0;
+    - Run 2's options and R14: MF54 a "none" range names its middle (O-1) → W FOUR: none; MF55 O-3 and R16 off, the
+      alike pair as it prints → W CHANCE ALONE: twin · LINE twin (it was LINE close early before R16); MF56 v1.4's tip
+      phrase back (R14) → W TIP: not the four paths.
+    - R16: MF57 the total left whole (Run 2's words) → W CHANCE ALONE: twin · LINE twin; MF58 the readout's value from
+      `shareText` → W CHANCE ALONE: twin; MF59 the line's total from `shareText` → W LINE twin; MF60 the first year's
+      decimal dropped → W CHANCE ALONE: twin · LINE twin; O3-ORDER, the control (the decimal rule decided before "all")
+      → W FOUR: all early · LINE all.
+  - Green where expected: MF7 and MF36 at the e2e (it reads shapes, not figures); MF18, MF19 and MF22 at the unit (the
+    e2e sees them); MF31 at the e2e (it reads the count as `[\d,]+`). **KILL300** (`FUTURES_COUNT = 300` — §9's cut) is
+    green on the unit files and the e2e: the cut is one constant, and every word that shows the count follows it.
 - **Power Law chart polish** (spec `pbloc-spec-powerlaw-polish-v1`, P1–P11; every ⭐ red under its named mutation,
   every file restored and hash-checked):
   - `src/utils/__tests__/fmtTooltipUsd.test.ts` — ⭐ never "$0" for a positive price (red with `fmtUSD` for every
