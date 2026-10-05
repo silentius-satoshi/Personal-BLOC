@@ -113,12 +113,12 @@ describe('the words — futuresView', () => {
       ['You own', '3.10–4.76 ₿'], ['In your cold storage', '2.79–4.05 ₿'],
       ['Beats never borrowing', '99%'], ['Coinbase seizes', '1.1%'],
     ]);
-    expect(r.rows[0].sub, 'FOUR: the middle').toBe('at the end, in 8 of 10 simulations · middle 3.75 ₿');
+    expect(r.rows[0].sub, 'FOUR: the middle').toBe('where 8 of 10 simulations end · half end above 3.75\u00a0₿');
     expect(r.rows[3].sub, 'FOUR: when').toBe('of the simulations — 0.3% within a year, half of the seizures by Nov 2029');
     // A "none" range names no middle (O-1)
     expect(futuresReadout({ ...SUMMARY, coldBtc: { p10: 0, p50: 0, p90: 0.004 } }).rows[1], 'FOUR: none')
-      .toEqual({ label: 'In your cold storage', value: 'none', sub: 'at the end, in 8 of 10 simulations' });
-    expect(r.rows[1].sub, 'FOUR: the cold middle').toBe('at the end, in 8 of 10 simulations · middle 3.27 ₿');
+      .toEqual({ label: 'In your cold storage', value: 'none', sub: 'where 8 of 10 simulations end' });
+    expect(r.rows[1].sub, 'FOUR: the cold middle').toBe('where 8 of 10 simulations end · half end above 3.27\u00a0₿');
     // The short form's other shapes: every seizure in the first year says "all" (MF40 drops it; the line and the readout
     // share one decision, seizedShares — R16); none in it says "none" (R10; MF52 drops the clause); a year's horizon
     // has no first-year part; none seized, the bare sub (MF50, "of the futures" there).

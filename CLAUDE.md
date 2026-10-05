@@ -844,8 +844,9 @@ src/
       futuresView.ts            # EVERY WORD of the futures (the faces compose none — I31). On screen the 1,000 are
                                 # "simulations" (Run 2, W-4): no word built here says "future" — the code's names keep it
                                 # (L-I13). futuresReadout (the owner's four numbers under the applied policy — You own · In
-                                # your cold storage · Beats never borrowing · Coinbase seizes; the coin subs "at the end, in 8
-                                # of 10 simulations · middle x ₿", a "none" range naming no middle — O-1 — else the chance
+                                # your cold storage · Beats never borrowing · Coinbase seizes; the coin subs "where 8 of 10
+                                # simulations end · half end above x ₿" — W-5, a no-break space holding ₿ to its figure;
+                                # a "none" range names no middle — O-1 — else the chance
                                 # alone and its note, R1) · futuresCardLine (the card's line, in sentences: "Over the next 5
                                 # years, in 1,000 simulations: in 8 of 10, you end owning a–b ₿; Coinbase seizes in x% of
                                 # them — y% within the first year, half of those seizures by <Mon YYYY>."; "none of them"
@@ -7459,6 +7460,10 @@ goes red.)
     `SAME first: the readout` · `FIT: the readout` · `FALLBACK worker: the readout`.
   - R16, red first (the patched test file on Run 2's futuresView): 2 `it`s red — CHANCE ALONE at `CHANCE ALONE: twin`,
     LINE at `LINE twin`; soft-asserted, `LINE close early` too.
+  - W-5 (spec v1.10 — the coin subs read "where 8 of 10 simulations end · half end above x ₿", a no-break space
+    before ₿), red first (the new test file on the old words): FOUR at `FOUR: the middle`; soft-asserted, `FOUR: none`
+    and `FOUR: the cold middle` too. A plain space back before ₿ → `FOUR: the middle` (on phones the ₿ wrapped alone
+    in 22 of 56 measured subs without it, 0 with).
   - Red at (U = futures.test.ts, W = futuresFace.test.ts, E = the e2e):
     - MF1 one generator for every future → U SEEDED (DISTINCT) · REGIMES · CALIBRATION; MF2 drawn only to the horizon →
       U PREFIX months; MF3 month 0 from the curve → U ANCHOR · JUNK; MF4 no shocks, MF5 troughs higher → U CALIBRATION

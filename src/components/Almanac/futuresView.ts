@@ -50,7 +50,9 @@ export const FUTURES_TIP_LABEL = 'About the simulations';
 /** What the readout and the card's line say until the first run lands. */
 export const FUTURES_RUNNING = 'Running the simulations…';
 
-const fmtBtc = (x: number): string => `${x.toFixed(2)} ₿`;
+/** A coin figure in a sub: a no-break space holds the ₿ to its figure, so a wrapping sub never leaves it alone on a
+ *  line (W-5; measured on phones: alone in 22 of 56 subs with a plain space, 0 with this one). */
+const fmtBtc = (x: number): string => `${x.toFixed(2)}\u00a0₿`;
 const fmtCount = (n: number): string => n.toLocaleString('en-US');
 /** A fixed month table, never toLocaleDateString — locale abbreviations vary by runtime (fmtTurnDate's rule). */
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -148,8 +150,8 @@ export function futuresReadout(s: FuturesSummary): FuturesReadout {
   // A range that prints "none" has nothing in its middle either (p10 = p90 = 0.00 forces p50 = 0.00), so its sub
   // names no 0.00 ₿.
   const end = (x: { p10: number; p50: number; p90: number }) => (rangeText(x) === 'none'
-    ? 'at the end, in 8 of 10 simulations'
-    : `at the end, in 8 of 10 simulations · middle ${fmtBtc(x.p50)}`);
+    ? 'where 8 of 10 simulations end'
+    : `where 8 of 10 simulations end · half end above ${fmtBtc(x.p50)}`);
   return {
     rows: [
       { label: 'You own', value: rangeText(s.yoursBtc), sub: end(s.yoursBtc) },
