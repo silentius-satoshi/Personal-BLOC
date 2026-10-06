@@ -72,8 +72,8 @@ export function OnboardingModal({ onComplete }: OnboardingModalProps) {
     setAdvisorStartDate(draft.startDate);
     // Record the Strike collateral as a READING — the only thing getCurrentBtcHeld reads. A fresh install never runs
     // migrate, so without this strikeCollateralBtc keeps its slice default of 0 and the new owner starts with zero
-    // collateral (wrong available credit, wrong Custom-tier basis). setAdvisorActualBtcHeld above STAYS (Fix D's seed
-    // sentinel reads it).
+    // collateral (wrong available credit, wrong Custom-tier basis). setAdvisorActualBtcHeld above STAYS (a synced plan
+    // field kept for compatibility; Fix D's seed sentinel, which also read it, retired with the bridge at 4e).
     // ⚠ ORDER: after setAdvisorStartDate — addDayEvent buckets the reading against advisorStartDate.
     // ⚠ DATE: emitBalanceReading dates the reading TODAY, not at the strategy start. A BACKDATED start therefore
     //   records this collateral in the month containing today, and the earlier months have no row. BY DESIGN: the owner

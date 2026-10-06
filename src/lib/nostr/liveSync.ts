@@ -7,7 +7,7 @@ import { SimplePool } from 'nostr-tools/pool';
 import { useStore } from '../../store/useStore';
 import { applyRemoteEvent, type RemoteEvent } from './sync';
 import { signerOpTimeout } from './timeout';
-import { SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from './publish';
+import { RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from './publish';
 import { nostrLog } from './log';
 import { isBackupGateSatisfied } from '../backupGate';
 
@@ -32,14 +32,15 @@ export function openLiveSync(): void {
   pool = new SimplePool();
   subRelays = nostrRelays;
   // since−60s overlap is deliberate: appliers are idempotent — overlap is free, gaps are expensive.
-  // Self-echo no-ops naturally (settings echo fails the watermark; records echo merges to identity).
+  // Self-echo no-ops naturally (plan-events echo unions to identity; prefs echo fails the watermark; records echo
+  // merges to identity).
   // EOSE ignored: the batch path owns history. NOTE: subscribeMany takes a SINGLE filter at 2.23.5.
   sub = pool.subscribeMany(
     nostrRelays,
     {
       kinds:   [30078],
       authors: [nostrPubkey],
-      '#d':    [SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],
+      '#d':    [RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],
       since:   Math.floor(Date.now() / 1000) - 60,
     },
     { onevent: (event) => { void handleLiveEvent(event); } },

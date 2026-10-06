@@ -59,8 +59,7 @@ function resetStore(overrides: Record<string, unknown> = {}) {
     advisorActualBtcHeld: 0.50,       // the month-0 baseline (historical only)
     advisorActualBlocBalance: 0,
     advisorStartDate: startMonthsBack(4),
-    isAuthenticated: false,           // publishRecordsNow + syncSettingsToNostr early-return
-    settingsDirty: false,
+    isAuthenticated: false,           // publishRecordsNow early-returns
     recordsDirty: false,
     nostrSigner: null,
     nostrPubkey: '',

@@ -3,8 +3,8 @@ import { useStore } from '../useStore';
 import { buildSettingsPayload, buildViewerSnapshotPayload } from '../payloads';
 import { DEFAULT_RELAYS } from '../../lib/nostr/relays';
 
-// Option C — relay list cross-device sync. The guard tests drive the REAL store's hydrateSettings (the single apply
-// chokepoint): seed local via setNostrRelays, hydrate an incoming payload, assert the resulting nostrRelays.
+// Option C — relay list cross-device sync, on the REAL store. Phase 4e retired hydrateSettings' relay guard with
+// settings:v1: a peer's relay list now arrives only as a plan event (folded), and discovery never emits one.
 const A = 'wss://a.example';
 const B = 'wss://b.example';
 const C = 'wss://c.example';
@@ -12,7 +12,6 @@ const D = 'wss://d.example';
 
 const relays = () => useStore.getState().nostrRelays;
 const seedLocal = (list: string[]) => useStore.getState().setNostrRelays(list);
-const hydrate = (data: Record<string, unknown>) => useStore.getState().hydrateSettings(data);
 
 describe('Option C — settings payload carries nostrRelays (owner sync), viewer snapshot strips it', () => {
   it('buildSettingsPayload INCLUDES nostrRelays (syncs across the owner devices)', () => {
@@ -33,49 +32,21 @@ describe('Option C — settings payload carries nostrRelays (owner sync), viewer
   });
 });
 
-describe('Option C — hydrateSettings relay guard (replace-on-hydrate, default-looking incoming guarded)', () => {
-  it('(a) custom incoming replaces a custom local list (add + remove both propagate)', () => {
+describe('Option C on the plan channel (4e) — a peer\'s relay list arrives only through the fold', () => {
+  it('a folded nostrRelays event replaces the local list (add + remove both propagate)', () => {
     seedLocal([A, B, C]);
-    hydrate({ nostrRelays: [A, B, D] });
+    useStore.getState().applyPlanFold({ nostrRelays: [A, B, D] });
     expect(relays()).toEqual([A, B, D]);   // C removed, D added
+    // Restore defaults on a peer: a folded DEFAULT_RELAYS replaces a custom list (the retired relay guard kept it)
+    useStore.getState().applyPlanFold({ nostrRelays: [...DEFAULT_RELAYS] });
+    expect(relays(), 'RELAYS defaults').toEqual([...DEFAULT_RELAYS]);
   });
 
-  it('(b) empty incoming is guarded — a real custom local list is kept', () => {
+  it('a fold without the field leaves the local list alone (absent = not set, §6) — and a sibling field still lands', () => {
     seedLocal([A, B, C]);
-    hydrate({ nostrRelays: [] });
+    useStore.getState().applyPlanFold({ income: 7777 });
     expect(relays()).toEqual([A, B, C]);
-  });
-
-  it('(c) DEFAULT_RELAYS incoming is guarded — a real custom local list is kept', () => {
-    seedLocal([A, B, C]);
-    hydrate({ nostrRelays: [...DEFAULT_RELAYS] });
-    expect(relays()).toEqual([A, B, C]);
-  });
-
-  it('(d) custom incoming applies when local is just DEFAULT_RELAYS (not a protected custom list)', () => {
-    seedLocal([...DEFAULT_RELAYS]);
-    hydrate({ nostrRelays: [A, B, D] });
-    expect(relays()).toEqual([A, B, D]);
-  });
-
-  it('(d2) custom incoming applies when local is empty', () => {
-    seedLocal([]);
-    hydrate({ nostrRelays: [A, B, D] });
-    expect(relays()).toEqual([A, B, D]);
-  });
-
-  it('(e) order-independent: incoming = DEFAULT_RELAYS shuffled is still treated as defaults → guarded', () => {
-    seedLocal([A, B, C]);
-    hydrate({ nostrRelays: [...DEFAULT_RELAYS].reverse() });
-    expect(relays()).toEqual([A, B, C]);   // sorted-join compare sees the shuffle as defaults
-  });
-
-  it('(f) skip-FIELD not skip-all: a guarded relays field does not block other fields (income applies)', () => {
-    seedLocal([A, B, C]);
-    useStore.getState().setIncome(1234);
-    hydrate({ income: 7777, nostrRelays: [...DEFAULT_RELAYS] });
-    expect(useStore.getState().income).toBe(7777);   // income applied
-    expect(relays()).toEqual([A, B, C]);              // relays skipped (guarded)
+    expect(useStore.getState().income).toBe(7777);
   });
 });
 
@@ -84,7 +55,7 @@ describe('Option C follow-on — relay edits publish on their own', () => {
     vi.clearAllTimers();
     vi.useRealTimers();
     // restore a clean store so other suites don't see the fake auth state.
-    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', settingsDirty: false, initialSettingsPullDone: false } as never);
+    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', initialSettingsPullDone: false } as never);
   });
 
   it('setNostrRelaysAndSync sets the list AND marks planDirty (4c: emits a plan event; user-edit publish path)', () => {

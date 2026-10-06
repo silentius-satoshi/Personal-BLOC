@@ -24,17 +24,17 @@ describe('Strike minimum payment source — synced settings', () => {
     expect(payload.blocStatementMinimum).toBe(142);
   });
 
-  it('hydrateSettings applies both fields (cross-device sync)', () => {
+  it('a folded plan event applies both fields (cross-device sync — 4e: the plan channel)', () => {
     reset();
-    useStore.getState().hydrateSettings({ blocMinPaymentSource: 'income', blocStatementMinimum: 200 });
+    useStore.getState().applyPlanFold({ blocMinPaymentSource: 'income', blocStatementMinimum: 200 });
     expect(useStore.getState().blocMinPaymentSource).toBe('income');
     expect(useStore.getState().blocStatementMinimum).toBe(200);
   });
 
-  it('a remote event lacking the fields does not clobber local values (whitelist skips absent)', () => {
+  it('a remote fold lacking the fields does not clobber local values (absent = not set, §6)', () => {
     useStore.getState().setBlocMinPaymentSource('income');
     useStore.getState().setBlocStatementMinimum(90);
-    useStore.getState().hydrateSettings({ income: 5000 });   // no min-payment fields
+    useStore.getState().applyPlanFold({ income: 5000 });   // no min-payment fields
     expect(useStore.getState().blocMinPaymentSource).toBe('income');
     expect(useStore.getState().blocStatementMinimum).toBe(90);
   });

@@ -2,14 +2,13 @@ import { SimplePool } from 'nostr-tools/pool';
 import type { NostrSigner } from '@nostrify/nostrify';
 import { useStore } from '../../store/useStore';
 import { publishRecordsNowImmediate, publishPlanEventsNow } from './syncEngine';
-import { FALLBACK_RELAYS, SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from './publish';
+import { FALLBACK_RELAYS, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from './publish';
 import { withTimeout, signerOpTimeout } from './timeout';
 import { nostrLog } from './log';
 import { mergeRecords, type RecordsState } from '../../simulation/mergeRecords';
 import type { MonthlyLogEntry, DayEvent } from '../../simulation/types';
 import { unionPlanEvents, foldPlanEvents } from '../planEvents/fold';
 import type { PlanEvent } from '../planEvents/types';
-import { PLAN_EVENT_FIELDS } from '../../store/settingsFields';
 
 // Structural subset of a nostr event — satisfied by querySync results, live-sub events, and test fixtures.
 export interface RemoteEvent {
@@ -21,8 +20,8 @@ export interface RemoteEvent {
 /**
  * THE single apply path for a remote event — used by both the batch pull (fetchAndSync) and the
  * live subscription. Returns false ONLY on decrypt failure (signer-attributable); parse failures
- * are data-level skips → true. Reads the settings watermark FRESH (a live stream advances it
- * between events).
+ * are data-level skips → true. Phase 4e: settings:v1 is no longer read — a settings:v1 event that still
+ * arrives (a stale relay copy, an old client) matches no branch and changes nothing.
  */
 export async function applyRemoteEvent(
   signer: NostrSigner,
@@ -39,8 +38,8 @@ export async function applyRemoteEvent(
     const data = JSON.parse(plaintext);
     const dTag = event.tags.find(([t]) => t === 'd')?.[1];
     const remoteTs = event.created_at;
-    // ── PLAN EVENTS (v1) — BEFORE the settings branch; the source of truth for the plan partition. Union+fold
-    // is order-independent, so there is NO watermark gate (lastPlanEventsSyncAt is observability only). ──
+    // ── PLAN EVENTS (v1) — the ONLY plan channel since 4e; the source of truth for the plan partition.
+    // Union+fold is order-independent, so there is NO watermark gate (lastPlanEventsSyncAt is observability only). ──
     if (dTag === PLAN_EVENTS_DTAG && Array.isArray(data?.events)) {
       const s = useStore.getState();
       const remote = data.events as PlanEvent[];
@@ -55,38 +54,6 @@ export async function applyRemoteEvent(
         void publishPlanEventsNow();
       }
       useStore.getState().setLastPlanEventsSyncAt(remoteTs);          // observability ONLY
-    }
-    // While local settings changes are unpublished (settingsDirty), an older/foreign remote
-    // whole-object must not clobber them; syncNow pushes local first, then the watermark governs.
-    // EXCEPTION — the FIRST pull of a session (!initialSettingsPullDone, still false until fetchAndSync
-    // returns) must hydrate real remote data even if a benign post-auth setter spuriously seed-dirtied the
-    // store; there are no genuine unpublished edits yet, so the "dirty" is seed noise. Subsequent pulls
-    // (flag now true) keep the genuine edit-protection.
-    if (dTag === SETTINGS_DTAG
-        && (!useStore.getState().settingsDirty || !useStore.getState().initialSettingsPullDone)
-        && remoteTs > (useStore.getState().lastSettingsSyncAt ?? 0)) {
-      // 4c DUAL-READ STRIP: once the plan log is non-empty (a migrated device), the fold OWNS PLAN_EVENT_FIELDS
-      // and settings:v1 is bridge-echo only — strip them so a stale bridge write-through can't regress a plan
-      // field the fold already advanced. The plan-events branch above runs FIRST, so within one pull the strip
-      // sees the just-folded log. Only prefs + non-plan-event fields survive settings:v1 on a migrated device.
-      // (This is the "settings:v1 authoritative only for an empty-log device" rule, arriving structurally.)
-      //
-      // 4d: the v1 fallback (the `else` below) is retained EXACTLY ONE release — deleted at 4e with the guard
-      // class. The 4e fence precondition reads lastV1FallbackApplyAt: a device legitimately stamps ONCE while
-      // its local log is empty (its first migration/join pull; genesis then fills the log in the SAME syncNow,
-      // so it never stamps again). A stamp on an ESTABLISHED (non-empty-log) device is impossible (the strip
-      // fires) — so ANY post-soak stamp means an unmigrated/reset key is still reading v1 as authority. Fence
-      // only after a quiet week. Over-count is conservative: it DELAYS the fence, never triggers it early.
-      let incoming = data;
-      if (useStore.getState().planEvents.length > 0) {
-        incoming = { ...data };
-        for (const f of PLAN_EVENT_FIELDS) delete (incoming as Record<string, unknown>)[f];
-      } else {
-        useStore.getState().setLastV1FallbackApplyAt(Math.floor(Date.now() / 1000));   // 4d: empty-log device applied plan fields FROM settings:v1 (unix seconds — fmtTs convention)
-      }
-      useStore.getState().hydrateSettings(incoming);
-      useStore.getState().setLastSettingsSyncAt(remoteTs);
-      nostrLog('info', 'settings hydrated');
     }
     if (dTag === RECORDS_DTAG) {
       // P3 — records:v1 now carries the daily journal too. Backward-compat: a legacy bare array has no dayLog/deletions;
@@ -126,10 +93,10 @@ export async function applyRemoteEvent(
       }
       useStore.getState().setLastRecordsSyncAt(remoteTs);  // observability ONLY — no longer a gate
     }
-    // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). hydrateSettings
-    // whitelists to SETTINGS_FIELDS (⊇ PREFS_FIELDS), so only the 4 prefs keys of a prefs:v1 object land. ──
+    // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). hydratePrefs
+    // whitelists to PREFS_FIELDS, so nothing but the 4 prefs keys of a prefs:v1 object can land. ──
     if (dTag === PREFS_DTAG && remoteTs > (useStore.getState().lastPrefsSyncAt ?? 0)) {
-      useStore.getState().hydrateSettings(data);
+      useStore.getState().hydratePrefs(data);
       useStore.getState().setLastPrefsSyncAt(remoteTs);
       nostrLog('info', 'prefs hydrated');
     }
@@ -143,8 +110,6 @@ export async function applyRemoteEvent(
 export interface FetchAndSyncResult {
   ok: boolean;
   planFound: boolean;
-  sawPlanEvents: boolean;   // 4c — did the relay hold a plan-events:v1 event? (genesis runs only when this is false)
-  sawSettingsV1: boolean;   // 4c — did the relay hold a legacy settings:v1? (genesis seeds from it)
 }
 
 export async function fetchAndSync(
@@ -157,7 +122,7 @@ export async function fetchAndSync(
   const events = await pool.querySync(relays, {
     kinds:   [30078],
     authors: [pubkey],
-    '#d':    [SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],
+    '#d':    [RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],
   });
 
   pool.close(relays);
@@ -180,15 +145,13 @@ export async function fetchAndSync(
     if (!ok) { decryptFailed = true; break; }   // rest would fail identically
   }
   // reconnect-flag management lives in syncNow (sole caller).
-  // planFound reads latestByDTag, built BEFORE the decrypt loop, whose keys can only be the four owner d-tags
+  // planFound reads latestByDTag, built BEFORE the decrypt loop, whose keys can only be the three owner d-tags
   // (the query filters authors:[pubkey] + #d, and the loop above `continue`s on a missing d-tag). So it means
   // "an owner plan exists on the relays" and stays TRUE even when a decrypt failure sets ok=false — an
-  // unreachable signer must never be reported as "no plan found". 4c: it now also counts a migrated key's
-  // plan-events:v1 for free (the 4d planFound item, structural). sawPlanEvents/sawSettingsV1 drive genesis.
+  // unreachable signer must never be reported as "no plan found". 4e: a key whose relays hold ONLY a pre-4c
+  // settings:v1 now reads "no plan found" (the accepted restore residual, CLAUDE.md § Phase 4).
   return {
     ok: !decryptFailed,
-    planFound:     latestByDTag.size > 0,
-    sawPlanEvents: latestByDTag.has(PLAN_EVENTS_DTAG),
-    sawSettingsV1: latestByDTag.has(SETTINGS_DTAG),
+    planFound: latestByDTag.size > 0,
   };
 }

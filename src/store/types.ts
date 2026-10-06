@@ -108,7 +108,7 @@ export interface StoreState {
   advisorActualBlocBalance: number;   // LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
   advisorActualBlocBalanceAsOf: string | null;   // §5b — ISO date the Strike balance was last set (manual=today, reading=reading.date); the deriveReadingAnchors freshness guard
   advisorMonthStartBalance: number;   // BLOC balance at the START of the current month — projection base ONLY (deriveAdvisorStart month-1)
-  advisorActualBtcHeld:     number;   // DEPRECATED — feeds no computation (monthly btcHeld is recorded, not chained). Kept for sync compatibility + Fix D's seed sentinel (syncEngine). LEAVE IT ALONE — never zero or "tidy" it
+  advisorActualBtcHeld:     number;   // DEPRECATED — feeds no computation (monthly btcHeld is recorded, not chained). Kept for sync compatibility (Fix D's seed sentinel, its other reader, retired with the bridge at 4e). LEAVE IT ALONE — never zero or "tidy" it
   sandboxCollateralBtc:     number | null;   // Smart BLOC what-if collateral — in-memory ONLY (not persisted/synced); null = tracks current
   setSandboxCollateralBtc:  (v: number | null) => void;
   // Phase 3a — Scenario Diff/Pin: the pinned safety posture (null = nothing pinned). DEVICE-LOCAL PERSISTED
@@ -267,17 +267,18 @@ export interface StoreState {
   //   branches + the plan backup, all of which derive from that allowlist). WRITE-ONCE (a null write is
   //   the explicit identity-teardown clear). null = LEGACY (pre-R2 plan) = gate satisfied, structurally.
   // backupVerifiedAt: ms timestamp the user proved they saved the recovery key. PERSISTED **and** SYNCED
-  //   (in buildSettingsPayload + SETTINGS_FIELDS) so the attestation travels with the plan and an
-  //   imported/external peer device sees it. ⚠ It does NOT "un-gate" a gated peer: a gated device runs no
+  //   (an authed stamp is a plan event on plan-events:v1; also in buildSettingsPayload, so every plan backup
+  //   carries it) so the attestation travels with the plan and an imported/external peer device sees it. ⚠ It does NOT "un-gate" a gated peer: a gated device runs no
   //   sync at all (not even a pull), so it can never RECEIVE this field — and it needn't, because only the
   //   sole GENERATING device is ever gated, and no other device can hold 'generated' for the same key.
-  //   STRIPPED from the trusted viewer snapshot. A ONE-WAY LATCH — see hydrateSettings' skip-guard.
+  //   STRIPPED from the trusted viewer snapshot. A ONE-WAY LATCH, structurally: no path emits a null
+  //   backupVerifiedAt event (the teardown clear is RAW), so a peer can never be un-verified (Phase 4e).
   keyProvenance:      KeyProvenance | null;
   backupVerifiedAt:   number | null;
   // Multi-viewer roster (M1) — REPLACES the old single-viewer scalars (viewerNpub/viewerPubkey/viewerLabel/
   // viewerPrivacyTrusted/viewerKeyVersion). Each ViewerSlot is one provisioned viewer: derived pubkey (the
-  // NIP-44 encrypt target), display npub, owner nickname, per-viewer tier + keyVersion. SYNCED in the OWNER's
-  // settings:v1 (roster + removals propagate across the owner's devices) but STRIPPED from every viewer
+  // NIP-44 encrypt target), display npub, owner nickname, per-viewer tier + keyVersion. SYNCED as plan events on
+  // the OWNER's plan-events:v1 (roster + removals propagate across the owner's devices) but STRIPPED from every viewer
   // snapshot (a viewer must NEVER learn who else the owner shares with, their tiers, or key versions).
   // nextViewerIndex is a monotonic counter — an index is NEVER reused after removal.
   viewers:            ViewerSlot[];
@@ -358,12 +359,11 @@ export interface StoreState {
   // Nostr signer + sync state (excluded from persist — in-memory only)
   nostrSigner:         NostrSigner | null;
   setNostrSigner:      (v: NostrSigner | null) => void;
-  syncSettingsToNostr: () => void;
   nostrSyncing:        boolean;
   setNostrSyncing:     (v: boolean) => void;
-  // Transient (NOT persisted/synced) — true once this session's FIRST settings pull query has resolved.
-  // Gates the first settings publish + relaxes the first-pull hydrate guard + gates syncSettingsToNostr's
-  // dirty-trigger, so a seed-default store can never clobber real relay data on fresh-install→login.
+  // Transient (NOT persisted/synced) — true once this session's FIRST owner pull query has resolved. Gates the
+  // first plan and prefs publish, so a seed-default store can never clobber real relay data on fresh-install→login
+  // (the seed-clobber discipline outlives the guard class retired at Phase 4e; the name is historical).
   initialSettingsPullDone:    boolean;
   setInitialSettingsPullDone: (v: boolean) => void;
   // R2b-2 — did this session's FIRST owner pull find a plan on the relays? Transient (NOT persisted/synced;
@@ -386,19 +386,17 @@ export interface StoreState {
   setNostrReconnectNeeded: (v: boolean) => void;
 
   // Nostr cross-device sync (persisted)
-  lastSettingsSyncAt:    number | null;
-  setLastSettingsSyncAt: (ts: number) => void;
   lastRecordsSyncAt:     number | null;
   setLastRecordsSyncAt:  (ts: number) => void;
   recordsDirty:          boolean;
   setRecordsDirty:       (v: boolean) => void;
-  settingsDirty:         boolean;   // per-device publish state — persisted, never synced (not in SETTINGS_FIELDS/payload)
-  setSettingsDirty:      (v: boolean) => void;
   deletedMonths:         Record<number, number>;   // month → deletedAt (Unix ms); tombstones for synced deletes
   setDeletedMonths:      (v: Record<number, number>) => void;
   deletedDayEvents:      Record<string, number>;   // P3 — event id → deletedAt (Unix ms); tombstones for synced dayLog deletes (persisted-not-synced, like deletedMonths; 90-day GC in merge)
   setDeletedDayEvents:   (v: Record<string, number>) => void;
-  hydrateSettings:      (data: Record<string, unknown>) => void;
+  // Phase 4e — the two whitelist appliers that replace the retired hydrateSettings. RAW sets — no event, no dirty.
+  hydratePrefs:         (data: Record<string, unknown>) => void;   // prefs:v1 — PREFS_FIELDS only
+  applyViewerSettings:  (data: Record<string, unknown>) => void;   // a trusted viewer snapshot — VIEWER_SETTINGS_FIELDS only
   applyPlanBackup:      (backup: PlanBackup) => void;   // Plan Import/Restore — atomic replace of this device's plan
 
   // Phase 4c — plan-events channel (device-local persisted, NOT in SETTINGS_FIELDS/payload; ride ...rest).
@@ -418,10 +416,6 @@ export interface StoreState {
   emitPlanSets:            (pairs: [PlanField, unknown][]) => void;
   applyPlanFold:           (folded: Partial<PlanState>) => void;
   emitPrefs:               (patch: Partial<Pick<StoreState, PrefsField>>) => void;
-  // Phase 4d — v1-fallback telemetry (unix seconds): when an empty-log device last applied plan fields FROM
-  // settings:v1 (the migration window). Drives the 4e soak fence. Device-local persisted; NEVER synced.
-  lastV1FallbackApplyAt:    number | null;
-  setLastV1FallbackApplyAt: (ts: number) => void;
 }
 
 // zustand's own set/get handles, passed to every slice creator (so slices never import the store).

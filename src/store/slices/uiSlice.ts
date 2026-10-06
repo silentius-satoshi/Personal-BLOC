@@ -27,9 +27,9 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   setOnboardingComplete: (v) => { try { v ? localStorage.setItem(GATE_ONBOARDED_KEY, '1') : localStorage.removeItem(GATE_ONBOARDED_KEY); } catch { /* noop */ } set({ onboardingComplete: v }); },
   setBtcBuyingUnit:      (v) => get().emitPrefs({ btcBuyingUnit: v }),
   setDevMode:            (v) => set({ devMode: v }),
-  setAlmanacLiveEnabled:   (v) => set({ almanacLiveEnabled: v }),    // device-local, unsynced — no syncSettingsToNostr
-  setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no syncSettingsToNostr
-  setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no syncSettingsToNostr
+  setAlmanacLiveEnabled:   (v) => set({ almanacLiveEnabled: v }),    // device-local, unsynced — no emit
+  setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no emit
+  setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no emit
   showPlanIncomeBar: true,
   showPlanStrikeBar: true,
   showPlanCbBar:     true,
@@ -37,7 +37,7 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   // users (migrate-default only — a persisted choice is preserved, no version bump).
   simpleView: 'dashboard',
   setActiveTab: (v) => set({ activeTab: v }),
-  // Device-local display prefs — plain set, NO syncSettingsToNostr (like devMode)
+  // Device-local display prefs — plain set, NO emit (like devMode)
   setShowPlanIncomeBar: (v) => set({ showPlanIncomeBar: v }),
   setShowPlanStrikeBar: (v) => set({ showPlanStrikeBar: v }),
   setShowPlanCbBar:     (v) => set({ showPlanCbBar: v }),

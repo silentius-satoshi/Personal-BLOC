@@ -10,11 +10,10 @@ vi.hoisted(() => {
   };
 });
 
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { useStore, partializeState } from '../useStore';
-import { buildSettingsPayload } from '../payloads';
 import { foldPlanEvents } from '../../lib/planEvents/fold';
-import { synthesizeGenesisEvents, nextPlanEventTs } from '../../lib/planEvents/genesis';
-import { pickPlanFields } from '../../lib/nostr/syncNow';
 import { DEFAULT_RELAYS } from '../../lib/nostr/relays';
 
 const events = () => useStore.getState().planEvents;
@@ -93,7 +92,7 @@ describe('4c emitter audit', () => {
     expect(events()).toHaveLength(0);
   });
 
-  it('pre-auth setBackupVerifiedAt is FIELD-ONLY — NO event (rides genesis)', () => {
+  it('pre-auth setBackupVerifiedAt is FIELD-ONLY — NO event (4e: no genesis to ride; an authed re-verify heals it)', () => {
     useStore.getState().setBackupVerifiedAt(999);   // isAuthenticated false in beforeEach
     expect(useStore.getState().backupVerifiedAt).toBe(999);
     expect(events()).toHaveLength(0);
@@ -115,7 +114,7 @@ describe('4c parity — fold-present keys equal the live scalars', () => {
     return Object.keys(folded).every((k) => JSON.stringify(folded[k]) === JSON.stringify(s[k]));
   };
 
-  it('fresh-key: ONE emit → parity OK (the ~32 absent keys are ignored)', () => {
+  it('fresh-key: ONE emit → parity OK (the ~34 absent keys are ignored)', () => {
     useStore.getState().setIncome(4242);
     expect(useStore.getState().planEvents).toHaveLength(1);
     expect(foldMatchesScalars()).toBe(true);
@@ -138,54 +137,53 @@ describe('4c parity — fold-present keys equal the live scalars', () => {
   });
 });
 
-describe('4c genesis seed — pickPlanFields guards (RISK-2) + round-trip', () => {
-  it('drops a null backupVerifiedAt (never un-verify a peer)', () => {
-    useStore.setState({ backupVerifiedAt: null } as never);
-    expect('backupVerifiedAt' in pickPlanFields(useStore.getState())).toBe(false);
+// Phase 4e — the whole-object-LWW guard class (hydrateSettings' relay / roster / latch skip-guards, pickPlanFields at
+// the genesis boundary) is retired with settings:v1. These pin the guarantees it gave, as the plan channel gives them.
+describe('4e — the retired guard class\'s guarantees, on the plan channel', () => {
+  const SLICES = join(__dirname, '..', 'slices');
+  const slicesSrc = () => readdirSync(SLICES).filter((f) => f.endsWith('.ts'))
+    .map((f) => readFileSync(join(SLICES, f), 'utf8')).join('\n');
+
+  it('LATCH — no path emits a null backupVerifiedAt event: the clear is RAW, and the one emit sits after the null return', () => {
+    useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', backupVerifiedAt: 5 } as never);
+    useStore.getState().setBackupVerifiedAt(null);   // the authed teardown clear
+    expect(events().some((e) => e.field === 'backupVerifiedAt'), 'LATCH authed clear').toBe(false);
+    const src = slicesSrc();
+    const emits = src.match(/emitPlanSets\(\[\['backupVerifiedAt'/g) ?? [];
+    expect(emits.length, 'LATCH one emit site').toBe(1);
+    const body = src.slice(src.indexOf('setBackupVerifiedAt: (v, nostr) => {'));
+    expect(body.indexOf('if (v == null)'), 'LATCH null returns first').toBeLessThan(body.indexOf("emitPlanSets([['backupVerifiedAt'"));
+    expect(body.indexOf('if (v == null)'), 'LATCH null returns first').toBeGreaterThan(-1);
   });
 
-  it('keeps a real backupVerifiedAt', () => {
-    useStore.setState({ backupVerifiedAt: 777 } as never);
-    expect(pickPlanFields(useStore.getState()).backupVerifiedAt).toBe(777);
+  it('ROSTER — removing the last viewer is an explicit empty roster event (§6), and a peer folding it ends empty', () => {
+    useStore.getState().addViewerSlot({ pubkeyHex: 'aa', npub: 'npub1x', label: 'Dad', tier: 'safe', keyVersion: 1 } as never);
+    useStore.getState().removeViewerSlot(0);
+    const latest = foldPlanEvents(events()) as Record<string, unknown>;
+    expect(latest.viewers, 'ROSTER empty is an event').toEqual([]);
+    expect(useStore.getState().viewers, 'ROSTER').toEqual([]);
+    // a peer still holding the roster folds the log: the empty roster lands (the retired roster guard skipped it)
+    useStore.setState({ viewers: [{ index: 0, pubkeyHex: 'aa', npub: 'npub1x', label: 'Dad', tier: 'safe', keyVersion: 1 }], nextViewerIndex: 1 } as never);
+    useStore.getState().applyPlanFold(foldPlanEvents(events()) as never);
+    expect(useStore.getState().viewers, 'ROSTER peer').toEqual([]);
   });
 
-  it('drops empty viewers AND nextViewerIndex together', () => {
-    useStore.setState({ viewers: [], nextViewerIndex: 0 } as never);
-    const p = pickPlanFields(useStore.getState());
-    expect('viewers' in p).toBe(false);
-    expect('nextViewerIndex' in p).toBe(false);
-  });
-
-  it('keeps a populated roster', () => {
-    useStore.setState({ viewers: [{ index: 0, pubkeyHex: 'aa', npub: 'n', label: 'D', tier: 'safe', keyVersion: 1 }], nextViewerIndex: 1 } as never);
-    const p = pickPlanFields(useStore.getState());
-    expect((p.viewers as unknown[]).length).toBe(1);
-    expect(p.nextViewerIndex).toBe(1);
-  });
-
-  it('drops default-looking nostrRelays', () => {
-    useStore.setState({ nostrRelays: [...DEFAULT_RELAYS] } as never);
-    expect('nostrRelays' in pickPlanFields(useStore.getState())).toBe(false);
-  });
-
-  it('keeps a real custom relay list', () => {
-    useStore.setState({ nostrRelays: ['wss://my-custom'] } as never);
-    expect(pickPlanFields(useStore.getState()).nostrRelays).toEqual(['wss://my-custom']);
-  });
-
-  it('fold(synthesizeGenesisEvents(pickPlanFields)) ≡ pickPlanFields (the load-bearing round-trip)', () => {
-    useStore.setState({ income: 7, expenses: 8, viewers: [], nostrRelays: [...DEFAULT_RELAYS], backupVerifiedAt: null } as never);
-    const partition = pickPlanFields(useStore.getState());
-    const genesis = synthesizeGenesisEvents(partition, nextPlanEventTs(0), 'dev');
-    expect(foldPlanEvents(genesis)).toEqual(partition);
-  });
+  // SEED lives in lib/nostr/__tests__/bridgeRetired.test.ts — it needs the relay-layer mock (here, an unguarded publish would
+  // fail on the fake signer and return false anyway, so the case passed with the guard deleted).
 });
 
-describe('4d v1-fallback telemetry — store posture', () => {
-  it('defaults null, rides partialize (persisted), is NEVER in buildSettingsPayload', () => {
-    useStore.setState({ lastV1FallbackApplyAt: null } as never);
-    expect(useStore.getState().lastV1FallbackApplyAt).toBeNull();
-    expect('lastV1FallbackApplyAt' in partializeState(useStore.getState())).toBe(true);   // device-local persisted
-    expect('lastV1FallbackApplyAt' in buildSettingsPayload(useStore.getState())).toBe(false);   // never synced
+// Phase 4e — the three retired bridge keys. The store stays v21 (no bump), so migrateState never runs on an existing
+// blob: partializeState is the path that sheds them (merge spreads a pre-4e blob's copies back into memory).
+describe('4e — the retired store keys', () => {
+  it('a fresh store carries none of them', () => {
+    const s = useStore.getState() as unknown as Record<string, unknown>;
+    for (const k of ['settingsDirty', 'lastSettingsSyncAt', 'lastV1FallbackApplyAt']) expect(k in s, `RETIRED ${k}`).toBe(false);
+  });
+
+  it('partializeState drops them from a state that still carries a pre-4e blob\'s copies', () => {
+    const stale = { ...useStore.getState(), settingsDirty: true, lastSettingsSyncAt: 1_700_000_000, lastV1FallbackApplyAt: 1_700_000_001 };
+    const blob = JSON.parse(JSON.stringify(partializeState(stale as never))) as Record<string, unknown>;
+    for (const k of ['settingsDirty', 'lastSettingsSyncAt', 'lastV1FallbackApplyAt']) expect(k in blob, `STRIP ${k}`).toBe(false);
+    expect('planEvents' in blob, 'STRIP keeps the rest').toBe(true);
   });
 });

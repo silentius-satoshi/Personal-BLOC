@@ -23,7 +23,7 @@ describe('scheduleDirtyRetry', () => {
   it('dirty=true schedules and fires triggerSync at 5s then 10s', () => {
     const onTick = vi.fn();
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false, backupGateOk: true },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true, authenticated: true },
       { isVisible: () => true, onTick },
     );
 
@@ -37,14 +37,14 @@ describe('scheduleDirtyRetry', () => {
   it('flags clearing cancels the chain (cleanup clears the pending tick)', () => {
     const onTick = vi.fn();
     const cleanup = scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false, backupGateOk: true },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true, authenticated: true },
       { isVisible: () => true, onTick },
     );
 
     vi.advanceTimersByTime(5000);
     expect(onTick).toHaveBeenCalledTimes(1);
 
-    cleanup(); // models the effect teardown when recordsDirty/settingsDirty go false
+    cleanup(); // models the effect teardown when the dirty flags go false
     vi.advanceTimersByTime(60000);
     expect(onTick).toHaveBeenCalledTimes(1); // no further ticks after cleanup
   });
@@ -52,7 +52,7 @@ describe('scheduleDirtyRetry', () => {
   it('live=false never schedules', () => {
     const onTick = vi.fn();
     const cleanup = scheduleDirtyRetry(
-      { dirty: true, live: false, viewerMode: false, backupGateOk: true },
+      { dirty: true, live: false, viewerMode: false, backupGateOk: true, authenticated: true },
       { isVisible: () => true, onTick },
     );
 
@@ -64,7 +64,7 @@ describe('scheduleDirtyRetry', () => {
   it('viewerMode never schedules', () => {
     const onTick = vi.fn();
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: true, backupGateOk: true },
+      { dirty: true, live: true, viewerMode: true, backupGateOk: true, authenticated: true },
       { isVisible: () => true, onTick },
     );
 
@@ -76,7 +76,7 @@ describe('scheduleDirtyRetry', () => {
   it('backupGateOk=false never schedules', () => {
     const onTick = vi.fn();
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false, backupGateOk: false },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: false, authenticated: true },
       { isVisible: () => true, onTick },
     );
 
@@ -84,11 +84,24 @@ describe('scheduleDirtyRetry', () => {
     expect(onTick).not.toHaveBeenCalled();
   });
 
+  // Phase 4e: a locked local-key device (isAuthenticated false until the LocalUnlockGate tap) runs no chain — a tick
+  // would call syncNow → restoreSigner → Face ID with no tap. The unlock flips the flag and re-runs the effect.
+  it('authenticated=false (locked) never schedules — a retry never starts an unlock ceremony', () => {
+    const onTick = vi.fn();
+    scheduleDirtyRetry(
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true, authenticated: false },
+      { isVisible: () => true, onTick },
+    );
+
+    vi.advanceTimersByTime(60000);
+    expect(onTick, 'RETRY locked').not.toHaveBeenCalled();
+  });
+
   it('hidden ticks skip onTick but keep the chain alive at the current delay', () => {
     const onTick = vi.fn();
     let visible = false;
     scheduleDirtyRetry(
-      { dirty: true, live: true, viewerMode: false, backupGateOk: true },
+      { dirty: true, live: true, viewerMode: false, backupGateOk: true, authenticated: true },
       { isVisible: () => visible, onTick },
     );
 

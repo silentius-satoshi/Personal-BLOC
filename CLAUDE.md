@@ -561,8 +561,8 @@ src/
                                 # partializeState/migrateState from persistConfig, StoreState/ViewerSlot + sim types +
                                 # KeyProvenance). Phase 1b: the publish/orchestration layer was EXTRACTED to
                                 # syncEngine.ts + payloads.ts; the store reaches the engine via DYNAMIC import only
-                                # (kickRecordsPublish / syncSettingsToNostr's scheduleSettingsPublish tail — no static
-                                # back-edge, the syncNow precedent)
+                                # (kickRecordsPublish / the emit layer's schedulePlanPublish + schedulePrefsPublish kicks
+                                # — no static back-edge, the syncNow precedent; 4e retired scheduleSettingsPublish)
     types.ts                    # Phase 1c — the StoreState interface + ViewerSlot + local aliases (Tier/Scenario/
                                 # ActiveTab/LtvType), moved verbatim, type-only imports (no runtime edge). Adds
                                 # StoreSet/StoreGet — the zustand handles every slice creator receives (so slices type
@@ -584,13 +584,15 @@ src/
                                 # `createXSlice(set, get): XSlice` creator (mining takes _get, unused). ui · planInputs ·
                                 # mining · cbLoan (incl. Strike-API display fields) · advisorJournal (advisor+monthlyLog) ·
                                 # dayLog · identity (nostr credentials+backup-gate) · viewer (roster+viewer-side) · sync
-                                # (auth/flags/syncSettingsToNostr/hydrateSettings/applyPlanBackup + the remotePlanFoundResolved
-                                # latch). EVERY StoreState key in EXACTLY ONE slice (slices.test.ts pins disjoint+union). ⚠ NO
+                                # (auth/flags/the plan + prefs emit layer/hydratePrefs + applyViewerSettings [4e — the two RAW
+                                # appliers that replaced hydrateSettings; pinned on the REAL store by
+                                # store/__tests__/viewerSettingsApply.test.ts]/applyPlanBackup + the remotePlanFoundResolved latch). EVERY StoreState key in EXACTLY ONE slice (slices.test.ts pins disjoint+union). ⚠ NO
                                 # "useStore" substring (grep gate); the only body change is getState()→get(); the two dynamic
                                 # import paths deepened one level (../../lib/nostr/...)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
-                                # buildSettingsPayload(s) (the 37-key settings payload — single source for
-                                # publishSettingsNow + the viewer snapshot) + buildViewerSnapshotPayload(s, tier)
+                                # buildSettingsPayload(s) (the 39-key settings payload — single source for the
+                                # trusted viewer snapshot + the plan backup; 4e: no longer a relay payload of its own)
+                                # + buildViewerSnapshotPayload(s, tier)
                                 # (C-safe ratios / C-trusted full). `import type { StoreState } from './useStore'`
                                 # (type-only — no runtime edge); nothing in useStore imports payloads. Consumed by
                                 # syncEngine, exportPlan, ViewerPreview, tests
@@ -630,11 +632,17 @@ src/
                                 # is harmless (fold picks the true latest, re-compaction sweeps it)
       genesis.ts                # nextPlanEventTs(lastTs, now=Date.now()) = max(now, lastTs+1) (monotonic guard) ·
                                 # makePlanEventId(field, ts, rand=Math.random) = `${field}-${ts}-${rand4}`
-                                # (recoveryQuiz rand-injection) · synthesizeGenesisEvents(fields, baseTs, device):
-                                # one set-event per PRESENT key (absent stay absent — never invent seeds), ids
-                                # genesis-${field}-${ts}, ts STAGGERED monotonically over PLAN_EVENT_FIELDS order
-                                # (field-qualified ids + staggering = the §13 collision answer).
-                                # fold(synthesize(partition)) ≡ partition. Tested in __tests__/planEvents.test.ts
+                                # (recoveryQuiz rand-injection). Zero runtime imports. Phase 4e RETIRED
+                                # synthesizeGenesisEvents (the one-time seed of a log from a pulled settings:v1 — one
+                                # set-event per present key, ids genesis-${field}-${ts}, ts staggered) with the channel it
+                                # read; the file keeps its name so the emit layer's imports don't move, and logs migrated
+                                # at 4c still hold genesis-* ids. Tested in __tests__/planEvents.test.ts
+      coverage.ts               # Phase 4e (G2) — planLogGaps(events, live, seed): the PLAN_EVENT_FIELDS absent from
+                                # foldPlanEvents(events) whose live value differs from the seed (JSON compare). PURE.
+                                # DevPanel's "log gaps" row reads it against useStore.getInitialState() (zustand 5.0.13's
+                                # persist: the pre-hydration seed). Names only. A field held at a non-seed value the log
+                                # never carried would come back as its seed on a new device or after an escape hatch
+                                # (parity can't see it). Tested in __tests__/coverage.test.ts
     backupGate.ts               # R2a-1 — the backup-gate predicate. PURE, ZERO imports (no cycle):
                                 # isBackupGateSatisfied({keyProvenance, backupVerifiedAt}) = keyProvenance !== 'generated'
                                 # || backupVerifiedAt != null. A key this device GENERATED is the only copy until the
@@ -1329,10 +1337,14 @@ src/
                                 # + per-relay url·status·Nms lines; a ghost Refresh re-snapshots the in-place-mutated buffer;
                                 # copyDiagnostics adds lastPublish (newest report, metadata only). Phase 4a-inst adds a
                                 # size suffix to each PUBLISH ACKS row (eventBytes/plainBytes, real bytes via publish.ts's
-                                # byteLen) and a PAYLOAD SIZES block inside SYNC STATE (newest report per settings/
-                                # records/viewer channel, via SETTINGS_DTAG/RECORDS_DTAG + a viewer:v2: label-prefix
-                                # match); rows exceeding WARN_EVENT_BYTES (60,000) render amber via inline sizeStyle —
-                                # display-only, no behavior change.
+                                # byteLen) and a PAYLOAD SIZES block inside SYNC STATE (newest report per records /
+                                # plan events / prefs / viewer channel, via RECORDS_DTAG/PLAN_EVENTS_DTAG/PREFS_DTAG + a
+                                # viewer:v2: label-prefix match — 4e dropped the settings row); rows exceeding
+                                # WARN_EVENT_BYTES (60,000) render amber via inline sizeStyle — display-only, no behavior
+                                # change. PLAN EVENTS section: event count, planDirty/prefsDirty, plan/prefs sync, parity,
+                                # and (4e, G2) "log gaps" — planLogGaps(planEvents, getState(), getInitialState()):
+                                # "none" green / the names amber / "n/a (viewer)" in viewerMode. 4e removed the
+                                # "settings sync" and "v1 fallback" rows; Copy Diagnostics carries planSync.
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
                                 # ASYMMETRIC flag toggle that reloads — Enable RAW, Disable decrypts-first; dev tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
@@ -4718,7 +4730,7 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   `publishViewerSnapshotNow()` so a mode flip reaches the viewer at once.
 - **Viewer hydrate (`viewerSync.ts` `applyViewerEvent`, after the `revoked` check):** `privacyMode==='safe'`
   → `setViewerSafeSnapshot({safety, thresholds, btcPriceAtSnapshot, hasCbLoan})` + `viewerDataLoaded` +
-  `viewerLastSyncAt`, **NO hydrateSettings/records/strike**; trusted/absent → clear the safe snapshot, then
+  `viewerLastSyncAt`, **NO applyViewerSettings/records/strike** (4e; was hydrateSettings); trusted/absent → clear the safe snapshot, then
   the existing full hydrate. **`viewerSafeSnapshot: SafeSnapshot | null`** is a new transient store field
   (partialize-excluded, cleared in `clearViewerData`).
 - **Render (`ViewerHomeView.tsx`):** one `useViewerSafety(injectedSafeSnap?)` seam unifies both modes into a
@@ -5034,7 +5046,7 @@ the Bug-3 render ladder + sync banners), only the dead toggle UI is removed. **C
 - **Identity & Security page rebuilt** into grouped sections (all reusing existing handlers): **IDENTITY CARD**
   (hero `.identityCard`, `--surface-2` + orange-ring ₿: truncated npub tap-to-copy · method chip `Face ID · local
   key`/`Extension (NIP-07)`/`Remote signer (NIP-46)` · status dot `.identityDotOn` green Connected / `.identityDotWarn`
-  amber "Reconnect needed" via `nostrReconnectNeeded`) → **SYNC** ("Settings synced · {relativeSync(lastSettingsSyncAt)}"
+  amber "Reconnect needed" via `nostrReconnectNeeded`) → **SYNC** ("Plan synced · {relativeSync(lastPlanEventsSyncAt)}" — 4e; it read "Settings synced" from `lastSettingsSyncAt`, the retired channel's clock
   / "Records synced · {relativeSync(lastRecordsSyncAt)}" [relative TIME, "never" when null — `relativeSync` mirrors
   ViewerHomeView's m/h/d convention; NOT relay hosts] + Sync now) → **THIS DEVICE** (signing-method row + exactly ONE
   exit per method: local → Remove local key; nip07/46 → **Disconnect** now with a confirm "…Your plan stays on the
@@ -5103,7 +5115,7 @@ different artifact (Phase 1.5) — not this tool.
   subpage is one paragraph + an "Export plan" button (`styles.syncButton`, calls
   `downloadPlanBackup(useStore.getState())`). No confirm (read-only, harmless). Owner-only.
 - **Device-local/session fields are naturally absent** (not in `buildSettingsPayload`/the records
-  set) — `devMode`, `viewerMode`, `settingsDirty`, `initialSettingsPullDone`, nostr identity fields
+  set) — `devMode`, `viewerMode`, `planDirty`, `initialSettingsPullDone`, nostr identity fields
   never need explicit stripping.
 - **Import/restore SHIPPED** — see the next section (was deferred here).
 
@@ -5114,8 +5126,8 @@ different artifact (Phase 1.5) — not this tool.
 Loads a `PlanBackup` file back in: **pick → validate fully → summary → destructive confirm → ATOMIC
 replace → normal sync resumes.** Owner-only (mounted inside SettingsMain's `!viewerMode` tree).
 
-**Semantic — MERGE-FORWARD, not time-travel** (stated verbatim in the confirm copy): settings are
-whole-object LWW (the imported settings republish with a fresh `created_at` and win); records are
+**Semantic — MERGE-FORWARD, not time-travel** (stated verbatim in the confirm copy): the imported plan
+fields are appended as plan events with a fresh ts, so they win the fold (the prefs republish whole-object); records are
 union+tombstones (`mergeRecords`), so the next relay pull unions back any day/month events created
 *after* the backup. True point-in-time rollback is Phase 4f event-replay.
 
@@ -5123,7 +5135,8 @@ union+tombstones (`mergeRecords`), so the next relay pull unions back any day/mo
   constant, consumed by the persist `version`, `exportPlan`, `demoSeed` (`DEMO_SEED_STORE_VERSION`), and
   the validator's gate. `e2e/helpers.ts` keeps its own pinned literal (Playwright can't import `src/`).
 - **`src/store/settingsFields.ts` (NEW, zero-import):** `SETTINGS_FIELDS` lifted out of
-  `hydrateSettings`' closure (single source; `hydrateSettings` now imports it). Two derived subsets:
+  `hydrateSettings`' closure (single source; 4e retired `hydrateSettings` — its two successors whitelist subsets:
+  `hydratePrefs` PREFS_FIELDS, `applyViewerSettings` `VIEWER_SETTINGS_FIELDS`). Two derived subsets:
   **`VALIDATE_WHITELIST`** = `SETTINGS_FIELDS − {viewers, nextViewerIndex, nostrRelays}` (a file key
   outside it → reject as tampered/foreign — the transport fields must never be restored), and
   **`APPLY_FIELDS`** = that `− backupVerifiedAt`.
@@ -5156,11 +5169,12 @@ union+tombstones (`mergeRecords`), so the next relay pull unions back any day/mo
   `deletedDayEvents` — the PlanBackup record names match the store field names 1:1; per-entry `btcHeld`
   restored verbatim as historical ledger); (c) `cbCollateralBtc`/`strikeCollateralBtc` folded from the
   imported `dayLog` in the SAME commit (the `setDayLog` discipline; the §5b `deriveReadingAnchors` seam
-  is NOT run — imported settings already carry the anchor scalars+asOf); (d) `settingsDirty`/
-  `recordsDirty` + **`initialSettingsPullDone:true`** (load-bearing twice: blocks `sync.ts`'s first-pull
-  exception from hydrating remote OVER the import, and lets publish proceed). Then kicks
-  `syncSettingsToNostr()` + `publishRecordsNow()` (both gate/auth/viewer-guarded → no-op for a gated/
-  unauth/viewer key).
+  is NOT run — imported settings already carry the anchor scalars+asOf); (d) `planDirty`/
+  `recordsDirty` (+ `prefsDirty` when a pref was restored) + **`initialSettingsPullDone:true`** (lets the publishes
+  proceed at once; until 4e it also blocked `sync.ts`'s first-pull exception — Fix B, retired with `settings:v1` —
+  from hydrating remote OVER the import). Since 4c (a) appends the plan fields as plan events (one ts) in the same
+  commit. Then kicks `publishPlanEventsNow()` + the records publish (both gate/auth/viewer-guarded → no-op for a
+  gated/unauth/viewer key); restored prefs ride the next sync.
 - **`RestoreBackupFlow.tsx` (+ `.module.css`, NEW):** ceremony-style overlay (`{onClose}`, own
   `.overlay`/`.modal` z-index 99999, no portal — the `RecoveryKeyCeremony` pattern; owns the screen so
   no back-chain/edge-swipe escapes mid-restore). Steps `pick → validating → summary → applying → done
@@ -6294,14 +6308,14 @@ Closes the last split from the consolidation arc: a `balanceReading` used to upd
 never the three live **anchors** the SafetyDashboard reads (`advisorActualBlocBalance`, `cbLoanBalance`,
 `cbLiquidationPrice`). Now a reading **writes** them. This delivers the owner's ask (log real balances → gauges
 move in realtime) and restores the **R2** CB-accrual freshness. Most fragile surface — the seam is
-**local-action-only**; cross-device travel stays on the settings channel.
+**local-action-only**; cross-device travel stays on the plan channel (plan events since 4c; `settings:v1` before).
 
 - **The model (write-at-log-time, "last action wins"):** the anchors are **synced settings with 11 writers**, so
   they can't be pure derived caches like `cbCollateralBtc`. A reading writes them once, at add/update/delete time
-  (a local action), then fires `syncSettingsToNostr()` — the anchor + its `asOf` ride the **settings** channel
-  (LWW), exactly like a manual re-anchor.
+  (a local action) — since 4c through `emitPlanSets` (it fired `syncSettingsToNostr()` before) — so the anchor + its
+  `asOf` ride the **plan-events** channel as one-ts plan events, exactly like a manual re-anchor.
 - **Seam runs ONLY in `addDayEvent`/`updateDayEvent`/`deleteDayEvent`, NEVER in `setDayLog`** — a sync/merge must
-  not jolt this device's SafetyDashboard (the anchor arrives via settings LWW instead). **Distinction from
+  not jolt this device's SafetyDashboard (the anchor arrives as a plan event through the fold instead). **Distinction from
   `cbCollateralBtc`:** that continuous derive DOES run in `setDayLog` (a sum over ordered events, not a synced
   scalar); the anchor derive is local-action-only.
 - **Pure `deriveReadingAnchors(dayLog, current, removed?)`** (`logUtils.ts`, mirrors `deriveCbCollateral`) — picks
@@ -7722,6 +7736,52 @@ goes red.)
     E4 the long title back → TITLE (390) and ROW almanac 47.25 (360); E5 the full-mode hide dropped → SIDEBAR full;
     R1's probe (a 300px spacer above the chart card and the body scrolled 300 at open) → TOP (300); the title row at
     30px (Z22) → ROW almanac loading (30), the 390 test green.
+- **Phase 4e — the `settings:v1` bridge retired** (spec `bitbloc-spec-4e-bridge-stop-v1` v1.3 — § Phase 4; 25 test files,
+  3 new; the suite 2,505 → 2,494, 149 → 152 files; 32 mutations + X-PARITY-ORDER, each an exact-once edit run on its
+  unit files with `--reporter=verbose`, red at its tag, the file restored and md5-checked, the tree's digest unchanged):
+  - `src/lib/nostr/__tests__/bridgeRetired.test.ts` (5) — the RELAY layer is mocked (`nostr-tools/pool`, every relay
+    ACKs; a signer that works — G3), so a publish routed inside `publish.ts`, the bridge's own path, is seen:
+    - ⭐ RETIRED — a code-only walk of `src/` (comments stripped, `__tests__` skipped) for the channel and its machinery
+      (`settings:v1`, `SETTINGS_DTAG`, `publishSettings`, `scheduleSettingsPublish`, `syncSettingsToNostr`,
+      `[sS]ettingsDirty`, `[lL]astSettingsSyncAt`, `[lL]astV1FallbackApplyAt`, `hydrateSettings`,
+      `synthesizeGenesisEvents`, `pickPlanFields`, `sawSettingsV1`, `sawPlanEvents`); the one allowed hit is
+      `store/persistConfig.ts` (its strip);
+    - ⭐ CHAIN — on a plan publish the only non-viewer d-tag that reaches the relays is plan-events (CHAIN only the plan
+      channel); the fan-out and the revocation reach `viewerDTag(…)` of the two pubkeys and the revocation queue clears;
+      from a planted DIVERGED reading (CHAIN parity premise, G6) only a parity call inside this publish turns it OK
+      (CHAIN parity);
+    - SEED — before the first pull both publishes refuse, nothing reaches a relay, and both dirty flags stay (green on
+      the pre-4e code by design: it pins what 4c already did);
+    - ⭐ RETRY — `syncDirty`'s truth table, plus RETRY wired and RETRY waits for the unlock (source pins on the hook);
+    - ⭐ PLAN SYNCED — Settings → SYNC reads `relativeSync(lastPlanEventsSyncAt)` under "Plan synced".
+  - `src/store/__tests__/viewerSettingsApply.test.ts` (4, the REAL store) — ⭐ VIEWER plan (a trusted snapshot lands the
+    plan fields) · ⭐ VIEWER strip (never the viewer's relays, roster, gate stamp or cold stamp — "the rest still lands")
+    · ⭐ VIEWER keys (the applier's whitelist IS the trusted snapshot's key set; whitelist + strip = SETTINGS_FIELDS) ·
+    ⭐ PREFS / PREFS whitelist · ⭐ RAW (neither applier emits or dirties).
+  - `src/lib/planEvents/__tests__/coverage.test.ts` (3) — ⭐ COVERAGE (pure: a non-seed absent field is listed; seed-valued
+    and logged ones are skipped) · ⭐ COVERAGE real store (a fresh store reads none; a raw write is a gap; its emit
+    clears it) · ⭐ COVERAGE row (DevPanel's call against `getInitialState()`, and the row's label).
+  - Changed: `sync.test.ts` 26 → 19 (the pull asks for three; changes nothing + IGNORED; ROSTER pull) ·
+    `liveSync.test.ts` +1 (LIVE three) · `useNostrSync.test.ts` +1 (⭐ RETRY locked) · `planEventsCutover.test.ts` 21 → 17
+    (LATCH authed clear / one emit site / null returns first · ⭐ ROSTER, ROSTER peer · ⭐ RETIRED <key> · ⭐ STRIP <key>)
+    · `relaySync.test.ts` 11 → 6 (RELAYS defaults) · `settingsClobber.test.ts` 4 → 2 · `backupGate.test.ts` 27 → 24 ·
+    `planEvents.test.ts` 23 → 20 · `viewerRoster.test.ts` 8 → 7 · `characterization.test.ts` (the 97 persisted data
+    keys) · 12 more retargeted, same counts.
+  - Red-first (the 25 test files on the pre-4e app code): 24 red, `coverage.test.ts` can't load, 228 green — SEED, LATCH,
+    ROSTER (+ peer, + pull) and RELAYS defaults are green by design.
+  - The mutations, red at: M-CHAIN → CHAIN fan-out · M-REVOKE → CHAIN revocation · M-VIEWER → VIEWER plan, VIEWER strip:
+    the rest still lands · M-VIEWER-CALL → `viewerSync.test.ts`'s 5 trusted-path `it`s · M-PREFS → PREFS whitelist ·
+    M-STRIP-VIEWER → VIEWER strip, VIEWER keys · M-RETRY → RETRY plan · M-RETRY-WIRE → RETRY wired · M-PARTIALIZE →
+    STRIP settingsDirty · M-PULL → the pull asks for three · M-PULL-LIT → RETIRED, LIVE three · M-READ → changes nothing ·
+    M-LATCH → LATCH authed clear (+ both RAW-clear tests) · M-SEED → SEED plan · M-SEED-PREFS → SEED prefs · M-RETIRED →
+    RETIRED · M-SAW → RETIRED · M-LIVE-ASM → LIVE three (RETIRED stays green — why LIVE three exists) · M-LABEL → PLAN
+    SYNCED · M-PARITY → CHAIN parity · M-ROSTER-GUARD → ROSTER peer · M-RELAY-GUARD → RELAYS defaults · M-RAW → RAW ·
+    M-HIDDEN (a `publish.ts` helper sending an assembled `settings:v1` d-tag from the plan publish's success) → CHAIN
+    only the plan channel (RETIRED stays green — why the watch is at the relay layer) · M-READ-SWALLOW, M-READ-DIRTY →
+    IGNORED · M-SYNC-GUARD → ROSTER pull · M-RETRY-AUTH → RETRY locked · M-RETRY-AUTH-WIRE → RETRY waits for the unlock
+    · M-COVERAGE-SEED → COVERAGE, COVERAGE fresh store · M-COVERAGE-FOLD → COVERAGE, COVERAGE emitted · M-COVERAGE-ROW →
+    COVERAGE row; the check X-PARITY-ORDER (an earlier `it` reads parity, and the publish's call is dropped) → CHAIN
+    parity. An `it` stops at its first failure: M-RETRY shows RETRY plan only, M-READ the first "not called" check.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -8070,23 +8130,23 @@ goes red.)
 - `src/lib/nostr/__tests__/ncryptsec.test.ts` — R2c-7a-fix, the two layers that let the Recovery-key tab tell a malformed payload from a wrong passphrase (15 cases, real `nip49` output, `logn:1` so scrypt stays fast). **Layer 1 `isWellFormedNcryptsec`:** a real encrypt output → true; **a full handoff token (`ncryptsec + ':' + npub`) → false** (the exact input R2c-7a misreported as "Wrong passphrase" — it still prefix-matches as `encrypted`, so only the shape gate catches it); truncated / bare nsec / trailing newline / uppercase / garbage → false; **a 1-char typo PASSES** (documented hole — length + charset intact → Layer 2 owns it); `NCRYPTSEC_LENGTH === 162` pinned across `logn` 1/8/16 (a silent length change would disable the gate; `logn:20` is omitted — 2²⁰ scrypt rounds blow the 5s timeout for zero extra coverage, and `logn` is one payload byte so it cannot affect length). **Layer 2 `classifyNcryptsecError`:** `decrypt(valid, wrongPass)` → `'passphrase'`; broken checksum / wrong prefix / full token → `'malformed'`; a non-Error throw → `'malformed'` (safe default); discriminates on `'invalid tag'` specifically
 - `src/store/__tests__/backupNagDismissed.test.ts` — R2c-2 session-transient dismissal (mirrors `remotePlanFound.test.ts`): default `false`; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (persisting it would keep the nag dismissed across launches, defeating the ladder); `dismissBackupNag()` sets true. NO module latch (single writer)
 - `src/lib/__tests__/backupGate.test.ts` — R2a-1 pure predicate (6 cases): `'generated'`+null → false; `'generated'`+ts → true; `'imported'`/`'external'`/`null` → true (the last IS the legacy grandfathering); `backupVerifiedAt: 0` → true (the check is `!= null`, not truthiness)
-- `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (25 cases): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks; **R2c-6-final: writes through to standalone `personal-bloc-provenance` [stamp writes, `null` clears], and an ignored write-once conflict never touches it**); **bypass 1 — `gateHydratedIdentity` prefers the standalone provenance over the blob (⭐ escape-hatch survival: blob has NO `keyProvenance`, standalone `'generated'` → `keyProvenance:'generated'` → `isBackupGateSatisfied` FALSE, still gated; standalone wins even when the blob disagrees). Both go red if the `gateProvenance ??` line is removed (verified);** `setBackupVerifiedAt` (stamp sets field **and** `settingsDirty`; the `null` teardown clear touches neither); the hydrate ONE-WAY LATCH (incoming `null` never clobbers a latched local, and a sibling `income` STILL applies — skip-FIELD; a real ts hydrates; `null` over unlatched applies; an OMITTED field is skipped by the whitelist; later ts overwrites earlier); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (`publishSettingsNow` bails at the gate BEFORE `setNostrSyncing`/the seed-guard warn; `syncSettingsToNostr` won't dirty while gated). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
+- `src/store/__tests__/backupGate.test.ts` — R2a-1 store plumbing (24 cases since 4e): field posture (both default null; `backupVerifiedAt` IN `buildSettingsPayload`, `keyProvenance` NOT; both ride `partializeState`); `setKeyProvenance` write-once (a different non-null → ignored + warns "already set"; the SAME value → silent no-op — an establish retry must not warn; `null` clears, then a new provenance sticks; **R2c-6-final: writes through to standalone `personal-bloc-provenance` [stamp writes, `null` clears], and an ignored write-once conflict never touches it**); **bypass 1 — `gateHydratedIdentity` prefers the standalone provenance over the blob (⭐ escape-hatch survival: blob has NO `keyProvenance`, standalone `'generated'` → `keyProvenance:'generated'` → `isBackupGateSatisfied` FALSE, still gated; standalone wins even when the blob disagrees). Both go red if the `gateProvenance ??` line is removed (verified);** `setBackupVerifiedAt` (an authed stamp sets the field, emits a plan event and marks `planDirty`; a PRE-AUTH stamp — onboarding's quiz-pass, before K3 — sets the field only, nothing dirty, no event; the `null` teardown clear marks nothing dirty and emits nothing); 4e — the latch on the apply paths that remain (neither `hydratePrefs` nor `applyViewerSettings` can write it — not a null, not a stamp — while a sibling field still lands; a peer's real stamp arrives through the fold, `applyPlanFold`); gate integration (**the interim K2 bridge stamp pair → satisfied** — this fails loudly at R2c if the bridge line is removed without a ceremony replacing it; generated-unverified → gated; both-null legacy → satisfied; `gateHydratedIdentity` nulls both on the signed-out branch while non-identity data passes through, and leaves both alone when signed in); publish guards (4e: `publishPlanEventsNow` bails at the gate BEFORE `setNostrSyncing`, `planDirty` held for the ceremony; `publishPrefsNow` likewise). ⚠ Assert warn CONTENT, not call count — zustand's persist middleware warns on every `set` under node ("storage is currently unavailable")
 - `src/simulation/__tests__/gestureModel.test.ts` — Gesture & Motion System pure state machine (35 cases, node/no-DOM): slop (sub-slop stays tracking; tap→cancelled); **R2c-3 capture-on-arm contract** (DraggableSheet's y/8/24 config: tap down→up → cancelled [never armed → usePointerDrag never captures → native click survives]; 20px<24 → axisLocked; 30px≥24 → armed = the capture frame); axis-lock (x dominates → axisLocked; ratio < 1.4 → cancelled; wrong dominant axis → cancelled); **P1 arm-on-lock** (single move past slop+armThreshold → armed; single-move flick commits via velocity); arm/disarm both directions; commit-by-distance + commit-by-velocity (real timestamps) + release-below-both → cancelled; velocity 3-sample window math + 0-guards (<2 samples, Δt=0) + window bounded at 3; primaryDelta per axis; rubberBand f(0)=0/monotonic/asymptote<max/sign-preserving; terminal identity from committed & cancelled; cancel from every non-terminal phase. **P1.3 resolveScrollClaim** (7 cases): claim at scrollTop 0+down, no claim scrolled, no claim up-at-top, stays claimed once claimed even if scrollTop later >0, two-way release at dyClaim≤0, re-claim after release, + the claim-BASELINE case (claim after 180px travel → release at 20px back up from the claim point, dyClaim=−20, NOT 180 from touchstart). (DraggableSheet + usePointerDrag/haptics/useReducedMotion DOM behavior defers to the device gate.)
 - `dailyMode.test.ts` (Strategy-Month Calendar Fix block) — calendar-anniversary `bucketEventToMonth` (Jun-1 start: Jun 30=M1, **Jul 1=M2**, Aug 1=M3; Jan-31 start short-month clamp Feb 28=M2; `strategyMonthIndex` unclamped <1 pre-start / =13 at start+12mo = the completion signal) + `strikeCollateralDelta` (strike ±, ignores cb/non-collateral, honors the bucket fn — calendar vs `legacyBucketEventToMonth` place a boundary deposit in different months) + `sameRollupFields` (0≡absent; undefined-entry↔empty-fresh; differ on amount/stock/provisional). `dailyModeStore.test.ts` reconcile block: a boundary event M1→M2 empties the stale M1 daily entry + creates M2, second run idempotent, flag set; **Correction 1** — a boundary strike deposit re-rolls BOTH neighbors even when every `sameRollupFields` key matches (the collateral-delta comparison caught it); `monthBucketReconcileDone` default-false / rides partialize / absent from `buildSettingsPayload`. `collateral.test.ts` fixture re-expressed in calendar terms (`startMonthsBack(4)` → deterministic Month 5).
 - `src/simulation/__tests__/readingAnchors.test.ts` — §5b Readings-Unification pure `deriveReadingAnchors`: guard (date ≥ asOf; null asOf always applies; idempotent already-anchored → empty patch), select-by-DATE-not-ts (edited older reading with a newer ts does NOT win), delete/date-move fallback (date+value proxy re-points to the survivor; no survivor → unchanged; KNOB-SET IMMUNITY — unrelated same-day delete whose value ≠ the knob-set anchor doesn't clobber), cbLiqPrice omit/present, Strike-only reading leaves CB anchors alone. (`dailyModeStore.test.ts` §5b block: add re-anchors advisorActualBlocBalance/cbLoanBalance/cbLiquidationPrice + asOf=today; `setDayLog` merge folds cbCollateralBtc but NOT the balance anchors; delete-fallback; `advisorActualBlocBalanceAsOf` synced/default-null/stamped. `eventSheet.test.ts`: `reading.cbLiqPrice` omitted when blank/0, present when entered, never on a collateral move.)
 - `src/lib/nostr/__tests__/establishOwner.test.ts` — Phase 1.5 `establishLocalOwner` (5 cases, mocked wrapSecretKey/syncNow/NSecSigner; nip06Key NOT mocked → real derivation): PIN path persists the wrapped pair + sets nostrPubkey(from sk)/nostrSigningMethod='local'/isAuthenticated=true IN ORDER (invocationCallOrder pubkey<method<auth) + calls syncNow/markSignerFresh + zeros the payload, wrap 5th arg 'sk'; PRF path forwards the passkey label (not a pin), 5th arg 'sk'; **R2b-1 entropy path** — `generatePlanKey()` entropy wrapped with 5th arg 'nip06-entropy' + **nostrPubkey === getPublicKey(sk) DERIVED INTERNALLY (never passed in)** + the entropy buffer zeroed; **R2c-4b words-import** — `entropyFromWords(VECTOR_WORDS)` wrapped as 'nip06-entropy' and **nostrPubkey === getPublicKey(skFromWords(VECTOR_WORDS))** (⚠ wrapping entropy instead of the sk did NOT change who we signed in as) + buffer zeroed; **the asymmetry** — an nsec import (no `payloadKind`) still wraps 'sk'
-- `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/settingsDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
-- `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber fix: Fix C (`syncSettingsToNostr` does NOT dirty when `!initialSettingsPullDone`; DOES dirty once true — legitimate publishing intact) + Fix D (`publishSettingsNow` refuses a seed-identical payload pre-pull [returns false + warns + no state change]; after the pull the seed-guard does not fire). Fix B is in `sync.test.ts` (first pull with `!initialSettingsPullDone` hydrates real remote settings even when `settingsDirty` is spuriously true)
+- `src/lib/backup/__tests__/exportPlan.test.ts` — Plan Export/Backup Tool: `buildPlanBackup` excludes viewerNpub/viewerPubkey/viewerLabel/nostrRelays (sharing/transport config) while including real plan settings (income/creditLine/cbLtvTriggerPct); includes the full records set (monthlyLog/deletedMonths/dayLog/deletedDayEvents); the wrapper has format/schemaVersion/storeVersion/exportedAt/plan; device-local/session fields (devMode/viewerMode/planDirty/initialSettingsPullDone/nostrPubkey) stay naturally absent
+- `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure). **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); `deriveForMonth` folds `minPayment` into the allocation identity; narration income-vs-capitalizes; **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run)
-- `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, hydrate cross-device, and a remote event lacking them doesn't clobber (whitelist skips absent)
+- `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, a folded plan event applies both (cross-device — 4e: the plan channel), and a fold lacking them doesn't clobber (absent = not set, §6)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
 - `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids. **v20 (C-P3):** `readingComplete` false when strikeCollateral null; reading carries strikeCollateral from `s.strikeCollateral` (falls back to the `currentStrikeCollateral` arg); manual override wins; `autoStrikeCollateral` post-move total (deposit+/withdraw−/pledged-buy+/else current); pledge ON → [buy,deposit target:'strike' amount=buy,reading] shared date+ts distinct ids, pledge OFF → [buy,reading]
-- `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (hydrateSettings ignores them — absent from SETTINGS_FIELDS)
-- `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; `hydrateSettings` relay guard (custom incoming replaces; empty/DEFAULT_RELAYS incoming guarded over a custom local list; applies when local is defaults/empty; order-independent sorted compare; skip-FIELD — a guarded relays field never blocks `income`); + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `settingsDirty`; plain `setNostrRelays` sets it but leaves `settingsDirty` false — fake timers swallow the debounce)
-- `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged)
+- `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (neither `hydratePrefs` nor `applyViewerSettings` can write them — absent from SETTINGS_FIELDS)
+- `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; 4e — the `hydrateSettings` relay guard retired: a folded `nostrRelays` event replaces the local list (add + remove propagate) and ⭐ a folded `DEFAULT_RELAYS` replaces a custom one (RELAYS defaults); a fold without the field leaves the list alone while a sibling lands; + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `planDirty` — a plan event; plain `setNostrRelays` sets it RAW — fake timers swallow the debounce)
+- `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged); the plan-events and prefs publishes are blocked for a read-only viewer too (4e — they replaced the settings publish)
 - `cbMetrics.test.ts` — `cbMetrics` (ltv/liqPrice/triggerPrice/pctTo* + divide-by-zero guards), `accruedCbBalance` (null/0-day/30-day compounding), `activeLiqPrice` entered-vs-computed authority + cushion divergence, `barLevel`/`worseLevel` state selection, Strike 85% gauge, refactor-safety (cbMetrics == old inline Main/Sidebar formulas)
 - `emergencyModel.test.ts` — the Emergency Console's retained model (crash playbook Run 2): `classifyStage` (the liquidation price, the ladder band prices, a positive distance), the two last-resort walls (`wall3Sale` / `wall4External` round-trip to a target liquidation price), `CB_LADDER` pinned, and the LTV through `ltvOf` (⭐ no debt and no collateral stays 0 / normal; ⭐ zero-collateral Coinbase debt is ∞ / liquidated). Deleted in Run 2 with their tests: `firepower`, `drawToLtv`, `floorTable`, `direSwitch`, `surplus`
 - `src/simulation/__tests__/cycleModel.test.ts` — Almanac CycleClock P1 (12 cases): `epochFromHeight` epoch-5 classification + 2028 rollover (Epoch 6/1.5625, no code change); `epochProgress.fraction` 0..1 single-source (half-open — ~1 just below endBlock, 0 at rollover) + `blocksRemaining === 1_050_000 − h` exactness; `dateAtBlock` 144-blocks≈1-day; `blockAtDate(H4.date)===H4.block`; `CYCLE_TURNS` IMG_7080 premise (14 turns, anchor high @ 6 Oct 2025, first low Mon 5 Oct 2026 @ +364d, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `nextTurnAfter` selection + null past end
@@ -8101,7 +8161,7 @@ goes red.)
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
-- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased)
+- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased; 4e widened the regex to `/\bpublish\w*\(|syncEngine|schedule\w*Publish/`, so the plan and prefs publishers are covered too — F8)
 - `mergeRecords.test.ts` — per-month entries merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion. P3 dayLog block: union-by-id, higher-ts-wins (edit in place), exact-ts tie→local, tombstone-newer→suppressed, edit-after-delete→survives + stale tombstone dropped, >90d GC, idempotent
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -8119,12 +8179,12 @@ goes red.)
 - `src/lib/__tests__/recoveryGrid.test.ts` — R2b-3 capture-grid logic (pure, node, real wordlist + validateWords, 19 cases): `distributePaste` (12-exact from any focus → 'fill-from-start'; 5@focus9 → 3 tokens truncated at box 12; 5@focus0 → all 5; single/zero → []; 2@box12 → 1); `suggestWords` ('ab' → abandon/ability/able/about capped at 4; case-insensitive; custom max; 'zzz'/''→[]; a full word still returns itself); `phraseStatus` (NIP-06 vector → valid; **one word swapped to ANOTHER valid word → 'bad-checksum'** — all words valid, checksum fails; normalizes case+whitespace; any empty / <12 → incomplete); `isWord` (case/whitespace-insensitive membership)
 - `src/lib/nostr/__tests__/recoveryInput.test.ts` — R2b-2 shape classification (pure, node): `nsec1…` → `nsec` trimmed; a MALFORMED `nsec1garbage` still routes to the nsec door (nip19.decode owns the verdict); UPPERCASE `NSEC1…` → not nsec (bech32 is lowercase) → single token → unknown; exactly 12 tokens → `words`; newlines/tabs/doubled-spaces collapse to single spaces; **12 NONSENSE tokens → `words`, then `skFromWords` throws `InvalidSeedWordsError`** (the classifier/validator boundary); a real phrase round-trips classifier → skFromWords → 32-byte sk; unknown table (empty, whitespace-only, 11 tokens, 13 tokens, single word, garbage, an npub). **R2c-7a fourth kind:** `ncryptsec1…` → `encrypted` trimmed; a malformed `ncryptsec1garbage` still routes to the decrypt door (nip49.decrypt owns the verdict); UPPERCASE → unknown; **the disjointness pin** — `'ncryptsec1'.startsWith('nsec1') === false`, so no check order can confuse the two prefixes (a future prefix edit that introduces a collision fails here)
 - `src/store/__tests__/remotePlanFound.test.ts` — R2b-2 (`vi.hoisted` localStorage shim): defaults null; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (session-transient — persisting it would surface a stale `false` on the next boot before any pull ran). Set-once latch asserted as ONE lifecycle `it` (the latch is module-level and vitest isolates the registry per FILE, not per `it`): record(false) → false; record(true) → still false; setRemotePlanFound(null) [Dismiss] → null; **record(false) again → still null** (a bare `=== null` guard instead of the latch would resurrect the notice here)
-- `src/lib/nostr/__tests__/sync.test.ts` — settings watermarks + settings-dirty receive gate, records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). Seed-clobber Fix B: the FIRST pull (`!initialSettingsPullDone`) hydrates real remote settings even when `settingsDirty` is spuriously true (the fixture default is `initialSettingsPullDone: true` = established session)
+- `src/lib/nostr/__tests__/sync.test.ts` — 4e: ⭐ the pull asks for records / plan-events / prefs only (never `settings:v1`); ⭐ a stale `settings:v1` that still arrives changes nothing, on an empty-log and on a migrated device — **IGNORED**: only the records branch's five setters are called and the pull logs no "payload parse failed (skipped)" (`applyRemoteEvent` swallows a throw, so a revived branch calling a setter the mock lacks would otherwise pass); ⭐ **ROSTER pull** — an empty roster and `DEFAULT_RELAYS` reach `applyPlanFold` unfiltered; the prefs pull goes through `hydratePrefs`; records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). (4e retired the settings-watermark, settings-dirty, Fix B, DUAL-READ STRIP and 4d-stamp tests with the settings branch; the decrypt-failure and d-tag-less fixtures moved to plan-events.)
 - `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 33-key literal) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
-- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied
+- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied. 4e: the trusted path calls `applyViewerSettings` (the mock's applier — `viewerSettingsApply.test.ts` pins what it keeps on the REAL store); M-VIEWER-CALL turns its 5 trusted-path `it`s red
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
-- `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard
+- `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard; ⭐ **LIVE three** (4e — the live sub's `'#d'` is exactly records / plan-events / prefs; RETIRED's name grep can't see an assembled d-tag, this can)
 - `src/lib/nostr/__tests__/session.test.ts` — `waitForNostrExtension` (the async-injection-race fix): already-present → true immediately; injected mid-poll (fake timers) → true; absent through the timeout → false
 - `src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts` — `restoreSigner` single-flight (Bug 2): two concurrent calls share ONE ceremony (`unwrapSecretKey` invoked once) + resolve to the SAME signer (stub NSecSigner + mocked unwrapSecretKey, no real crypto); a later non-concurrent call runs the worker again (guard cleared on settle); + #5 live-method re-verify: a method flipped to 'nip46' between the entry destructure and the pre-unwrap guard (counter-backed getter on a `getState` spy) bails BEFORE `unwrapSecretKey` (no spurious passkey) and returns the current signer. **P0 pin-forwarding + the pin-aware guard** (5 cases, a deferred `unwrapSecretKey` impl holds a call genuinely in-flight; `beforeEach` re-installs the default impl since `mockClear` keeps the old one): a supplied pin reaches `unwrapSecretKey(ct, meta, '1234')`; no pin → `undefined` (the PRF path is byte-identical); ⭐ **a pin-bearing call does NOT join a pinless in-flight restore** (two workers — it would otherwise inherit the doomed promise's failure and report a wrong PIN); a pinless call DOES join a pinned one (one ceremony, same signer); two pinless PRF callers still share ONE ceremony
 
@@ -8381,8 +8441,8 @@ Build SHA in Settings — iOS home-screen PWAs are known to serve stale bundles 
 relaunch (or reinstall) the PWA until the SHA matches the latest deploy. With dev mode on, smoke-test
 reports should include the Copy Diagnostics output from the failing device.
 
-**Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS / the
-publishSettingsNow payload / the partialize exclusion destructure — so they survive reloads yet never
+**Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS /
+`buildSettingsPayload` / the partialize exclusion destructure — so they survive reloads yet never
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
 plan-card status-bar visibility, default true), `simpleView` (`'dashboard'|'monthly'|'daily'` consumer-shell view,
@@ -8392,10 +8452,11 @@ merge-default so a pin survives reload), `viewerDisplayName` (Viewer V3 — the 
 null; cleared on `resetViewerSession`), `planEvents`/`planDirty`/`lastPlanEventsSyncAt`/`prefsDirty`/
 `lastPrefsSyncAt` (Phase 4c plan-events channel — the append-only `PlanEvent[]` log + its publish-needed/watermark
 flags; default `[]`/`false`/`null`/`false`/`null`; raw setters, merge-default, NO bump; the log is the plan
-partition's source of truth, published on `plan-events:v1`, NEVER a synced setting), `lastV1FallbackApplyAt`
-(Phase 4d — v1-fallback soak telemetry, unix seconds; stamped when an EMPTY-log device applies plan fields
-from `settings:v1` [the migration window]; default null, raw setter, merge-default, NO bump; drives the 4e
-fence — see § the Phase 4 campaign), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
+partition's source of truth, published on `plan-events:v1`, NEVER a synced setting; since 4e `planDirty`/`prefsDirty`
+arm the iOS retry via `syncDirty`), `lastV1FallbackApplyAt` (Phase 4d — v1-fallback soak telemetry, unix seconds,
+stamped when an EMPTY-log device applied plan fields from `settings:v1`; **RETIRED at 4e** with the v1 fallback, and
+`settingsDirty` / `lastSettingsSyncAt` with it — `partializeState` names all three in its omit destructure so a pre-4e
+blob's copies are dropped on the first write), `keyProvenance` (R2a-1 backup gate — `'generated'|'imported'|'external'|null`,
 default null; **WRITE-ONCE** with `null` as the explicit identity-teardown clear; cleared by `disconnectNostr` +
 "Remove local key" + `gateHydratedIdentity`'s signed-out branch. R2c-6-final: **also STANDALONE-backed** in
 localStorage `personal-bloc-provenance` — seeded at module init, write-through in the setter, read authoritatively by
@@ -8654,7 +8715,7 @@ gate."* R2a-1 makes it real at the data layer. **No verification UI ships here**
 | Field | Persist | Sync | Notes |
 |---|---|---|---|
 | `keyProvenance: KeyProvenance \| null` | ✅ (rides `partializeState`'s `...rest`) | ❌ **never** | Absent from `buildSettingsPayload` — an ALLOWLIST, so it's absent from both snapshot tiers + the plan backup for free. **WRITE-ONCE.** |
-| `backupVerifiedAt: number \| null` | ✅ | ✅ (`buildSettingsPayload` + `SETTINGS_FIELDS`, 36→**37**) | The attestation travels with the plan. **ONE-WAY LATCH** on hydrate. STRIPPED from the trusted viewer snapshot (4th strip key). ⚠ It does NOT un-gate a gated peer — see below. |
+| `backupVerifiedAt: number \| null` | ✅ | ✅ — an authed stamp is a plan event (also in `buildSettingsPayload` + `SETTINGS_FIELDS`, so every plan backup carries it) | The attestation travels with the plan. **ONE-WAY LATCH** by construction (4e — see below). STRIPPED from the trusted viewer snapshot (`VIEWER_SNAPSHOT_STRIP`). ⚠ It does NOT un-gate a gated peer — see below. |
 
 - **`setKeyProvenance(p)` — write-once, `null` is an explicit CLEAR.** A *different* non-null over a non-null is
   ignored (+`console.warn`); the SAME value is a silent no-op (an establish retry must not warn). The `null`
@@ -8667,45 +8728,45 @@ gate."* R2a-1 makes it real at the data layer. **No verification UI ships here**
     the identity fields, and for the same reason: disconnect's persist-blob write isn't guaranteed to land before
     `reload()`, so a stale `'generated'` in the blob could re-gate a device that has since imported a key.
 - **`setBackupVerifiedAt(ts, nostr?)`** — stamping OPENS the gate, so it must also **wake the engine**:
-  (a) `set` the field, (b) **if authenticated**, mark `settingsDirty` **DIRECTLY** — `syncSettingsToNostr`
-  early-returns on `!initialSettingsPullDone`, which is still `false` *precisely because the gate held `syncNow`
-  off all session* — and (c) run the SAME initial-pull-then-publish sequence a fresh authentication runs:
-  `syncNow` (cf. `establishOwner.ts`). **No second wake mechanism.** ⚠ **ORDER: `set()` FIRST**, so the gate
-  reads satisfied inside `doSyncNow`'s and the publish guards' `useStore.getState()` reads. `syncNow` is
-  **dynamic-imported** (cycle-safe, mirroring `publishSettingsNow`'s `publish.ts` import) and `.catch`-logged.
-  `nostr` is optional (tests assert state without a signer; `OwnerKeySetup` relies on `establishLocalOwner`'s own
-  internal `syncNow` as the wake). `ts === null` is the teardown clear: no dirty, no wake.
-- **⚠ THE PRE-AUTH GUARD IS LOAD-BEARING (seed-clobber, Fix C).** `settingsDirty` is **persisted** (rides
-  `partializeState`'s `...rest`), and `doSyncNow` flips `initialSettingsPullDone(true)` **before** its
-  publish-if-dirty step — so **Fix D's seed-guard is structurally unreachable from inside `syncNow`**, and Fix C
-  ("nothing may dirty pre-pull") is the ONLY thing protecting the first sync. The K2 bridge calls
-  `setBackupVerifiedAt` on an **unauthenticated, untouched-SEED store**. Dirtying there would (a) publish the
-  seed as the owner's first settings event before the numbers wizard runs — breaking Phase 1.5's stated
-  invariant *"nothing publishes (not dirty; Fix D refuses seed defaults)"* — and (b) if the establish then
-  **throws** (Face ID cancelled), persist `settingsDirty: true` into a later **real** login, publishing the seed
-  payload over the owner's real relay settings under whole-object LWW. So pre-auth only the field is set; it
-  rides the wizard's first genuine settings publish (it's in `buildSettingsPayload`).
+  (a) **if authenticated**, emit the stamp as a plan event — `emitPlanSets([['backupVerifiedAt', ts]])`: the field +
+  the event + `planDirty` + the debounced kick, whose publish waits for the first pull (Fix A —
+  `initialSettingsPullDone` is still `false` *precisely because the gate held `syncNow` off all session*) — and
+  (b) run the SAME initial-pull-then-publish sequence a fresh authentication runs: `syncNow` (cf.
+  `establishOwner.ts`), whose publish step carries the event. **No second wake mechanism.** ⚠ **ORDER: the emit's
+  `set()` FIRST**, so the gate reads satisfied inside `doSyncNow`'s and the publish guards' `useStore.getState()`
+  reads. `syncNow` is **dynamic-imported** (cycle-safe) and `.catch`-logged. `nostr` is optional (tests assert
+  state without a signer; `OwnerKeySetup` relies on `establishLocalOwner`'s own internal `syncNow` as the wake).
+  `ts === null` is the teardown clear: RAW — no event, no wake.
+- **⚠ THE PRE-AUTH BRANCH IS LOAD-BEARING.** Onboarding's quiz-pass (R2c-6a, `OwnerKeySetup`) stamps on an
+  **unauthenticated** store, BEFORE K3's establish — which can still **throw** (Face ID cancelled). Its rollback
+  clears the field RAW and cannot retract an event, so an event emitted pre-auth would outlive a failed establish
+  in the persisted log. So pre-auth only the field is set. It then rides no channel until an authed re-verify
+  (F14 — until 4e a newly joined device could still get it through the `settings:v1` bridge); the cost is a peer's
+  missing "Backed up ✓" chip. (The old reason for this branch — Fix C, nothing may mark `settingsDirty` before the
+  pull, with Fix D's seed sentinel unreachable from inside `syncNow` — retired with the bridge at 4e.)
 - **Establish-failure ROLLBACK.** Every stamp lands *before* the establish (which owns the wake), and
   `setKeyProvenance` is write-once — so a throw would freeze `'generated'` for a key that never existed,
   silently rejecting the later correct `'imported'`/`'external'` stamp, and leave a false backup attestation.
   `OwnerKeySetup.handleProtect`'s catch clears **both**; `NostrAuthGate.handleLocal`'s catch clears provenance.
-- **Edits made while gated are NOT lost.** `syncSettingsToNostr` is gated → they never mark dirty, but they still
-  persist locally. On verification, `publishSettingsNow` builds the payload from **current state**, so everything
-  ships. A generated-unverified key is by definition a brand-new plan with no peer device.
+- **Edits made while gated are NOT lost.** `emitPlanSets` / `emitPrefs` are auth- and gate-UNGATED: a gated key's
+  plan edits accumulate as events in the local log (and the prefs as `prefsDirty`), while the publishes hold them.
+  On verification the plan and prefs publishes ship everything. A generated-unverified key is by definition a
+  brand-new plan with no peer device.
 - **`backupVerifiedAt` does NOT un-gate a peer.** A gated device runs **no sync at all, not even a pull**, so it
   can never *receive* the field. It needn't: only the sole **generating** device is ever gated, and no other
   device can hold `'generated'` for the same key (importing that nsec yields `'imported'`). The field is synced
   so the attestation travels with the plan and imported/external peers can see it — not as an un-gate channel.
 
-### Hydrate skip-guard — the one-way latch
+### The one-way latch — by construction since 4e
 
-`hydrateSettings`' whitelist applies any value `!== undefined`, so a `null` **hydrates**. The device that
-publishes an explicit `null` is a **new-bundle peer** that is legacy (`keyProvenance: null` → gate satisfied →
-syncs freely) or not-yet-verified; it would clobber a verified device's timestamp and **re-gate it**. A *stale
-pre-R2 bundle* omits the field entirely (`undefined` → the whitelist skips it) and is already safe. Guard: an
-incoming `null` never overwrites a non-null local value. **Third member of the whole-object-LWW skip-guard
-class** (`nostrRelays`, `viewers`, this) — the entire class is scheduled for **structural deletion at Phase 4e**,
-when settings move to plan-events and absent vs null vs set become first-class in the fold.
+Until 4e, `hydrateSettings`' whitelist applied any value `!== undefined`, so a `null` from a legacy or
+not-yet-verified peer's `settings:v1` would have un-verified a device — and a hydrate skip-guard (an incoming
+`null` never overwrote a non-null local value) held the latch: the **third member of the whole-object-LWW
+skip-guard class** (`nostrRelays`, `viewers`, this). **4e deleted the class with `hydrateSettings`**, as planned,
+because on the plan channel absent vs null vs set are first-class in the fold: the stamp flows only as plan events,
+no path emits a null one (the teardown clear is RAW; the one emit sits after the null return — LATCH,
+`planEventsCutover.test.ts`), the fold writes only fields present in the log, and neither whitelist applier can
+write it (`hydratePrefs` takes PREFS_FIELDS; `applyViewerSettings` strips it).
 
 ### Gated engine entry points (the predicate is added to the EXISTING guard, never deeper)
 
@@ -8714,12 +8775,12 @@ when settings move to plan-events and absent vs null vs set become first-class i
 
 | File | Guard |
 |---|---|
-| `useStore.ts` | `publishRecordsNowImmediate` (also the `viewerMode` backstop) |
-| `useStore.ts` | `publishSettingsNow` (bails BEFORE `setNostrSyncing` / the seed-guard) |
-| `useStore.ts` | `publishRelayListToNip65` |
-| `useStore.ts` | `publishViewerSnapshotNow` |
-| `useStore.ts` | `publishViewerRevocationNow` |
-| `useStore.ts` | `syncSettingsToNostr` (the mark-dirty trigger) |
+| `syncEngine.ts` | `publishRecordsNowImmediate` (also the `viewerMode` backstop) |
+| `syncEngine.ts` | `publishPlanEventsNow` (bails BEFORE `setNostrSyncing`; 4e — replaces the retired `publishSettingsNow`) |
+| `syncEngine.ts` | `publishPrefsNow` (4e — replaces the retired `syncSettingsToNostr` mark-dirty trigger in the count: the emit layer is ungated, so the gate sits on both publishes) |
+| `syncEngine.ts` | `publishRelayListToNip65` |
+| `syncEngine.ts` | `publishViewerSnapshotNow` |
+| `syncEngine.ts` | `publishViewerRevocationNow` |
 | `syncNow.ts` | `doSyncNow` — a gated key runs **no sync at all, not even a pull** (a pull sets `initialSettingsPullDone`, which would re-arm publishing) |
 | `liveSync.ts` | `openLiveSync` |
 | `useNostrSync.ts` | `scheduleDirtyRetry` (`args.backupGateOk`) |
@@ -9377,17 +9438,24 @@ src/
   lib/nostr/
     syncEngine.ts                   # Phase 1b — the publish/orchestration ENGINE, extracted VERBATIM (move-only, zero
                                     # behavior change) from useStore.ts. Owns: publishRecordsNow (400ms trailing debounce) ·
-                                    # publishRecordsNowImmediate · publishSettingsNow · scheduleSettingsPublish (the 2s
-                                    # settings debounce, ex-syncSettingsToNostr tail) · importRelaysFromNip65 ·
-                                    # publishRelayListToNip65 · publishViewerSnapshotNow (fan-out) · publishViewerRevocationNow,
-                                    # plus the module timers syncDebounceTimer/recordsDebounceTimer. STATICALLY imports
+                                    # publishRecordsNowImmediate · publishPlanEventsNow + schedulePlanPublish (4c, 2s) ·
+                                    # publishPrefsNow + schedulePrefsPublish (4c, 2s) · checkPlanParity / getPlanParity ·
+                                    # importRelaysFromNip65 · publishRelayListToNip65 · publishViewerSnapshotNow (fan-out) ·
+                                    # flushViewerRevocations · publishViewerRevocationNow, plus the module debounce timers.
+                                    # Phase 4e RETIRED publishSettingsNow + scheduleSettingsPublish + its timer (the
+                                    # settings:v1 bridge); the plan publish's success now chains publishViewerSnapshotNow +
+                                    # flushViewerRevocations directly, then checkPlanParity() — pinned at the relay layer by
+                                    # lib/nostr/__tests__/bridgeRetired.test.ts (RETIRED · CHAIN · SEED · RETRY · PLAN
+                                    # SYNCED). STATICALLY imports
                                     # useStore + ./publish (the store's 5 former DYNAMIC publish imports are now ordinary static
                                     # imports here) + ../../store/payloads + ./relays + ./log + ./timeout + ../backupGate.
                                     # ⚠ useStore MUST NOT statically import this (store→engine is dynamic-only; the :syncNow
                                     # precedent) — a static back-edge is an instant cycle. remotePlanFoundResolved latch does
                                     # NOT live here (stays in useStore with recordRemotePlanFound)
-    publish.ts                      # publishEncrypted (→ Promise<number>), publishSettings, publishRecords (RecordsPayload
-                                    # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar) + strikeCollateralBtc (C-P4 scalar, trusted-only).
+    publish.ts                      # publishEncrypted (→ Promise<number>), publishRecords (RecordsPayload
+                                    # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). The d-tags: RECORDS_DTAG /
+                                    # PLAN_EVENTS_DTAG / PREFS_DTAG + viewerDTag(pubkeyHex) — Phase 4e DELETED
+                                    # SETTINGS_DTAG and publishSettings (settings:v1 is retired). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar) + strikeCollateralBtc (C-P4 scalar, trusted-only).
                                     # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN
                                     # (unencrypted) kind-10002 relay list (flat r tags, no read/write markers); MUST NOT
                                     # route through publishEncrypted/signer.nip44 (10002 is public). Both share the
@@ -9564,29 +9632,33 @@ src/
     sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
                                     # fetchAndSync → { ok, planFound } (R2b-2; was a bare boolean). `ok` = decrypt health
                                     # (breaks loop on first decrypt fail). `planFound` = latestByDTag.size > 0 — computed
-                                    # BEFORE the decrypt loop from a map whose keys can only be the two owner d-tags (the
-                                    # query filters authors+#d, and the build loop `continue`s on a missing d-tag), so it
-                                    # means "an owner plan exists on the relays" and stays TRUE when ok=false. ⚠ An
-                                    # unreachable signer must NEVER be reported as "no plan found";
-                                    # settings watermark (read FRESH per event) + records MERGE (mergeRecords, 4-field:
+                                    # BEFORE the decrypt loop from a map whose keys can only be the three owner d-tags (the
+                                    # query filters authors+#d — records, plan-events, prefs since 4e — and the build loop
+                                    # `continue`s on a missing d-tag), so it means "an owner plan exists on the relays" and
+                                    # stays TRUE when ok=false. ⚠ An unreachable signer must NEVER be reported as "no plan
+                                    # found"; 4e: a key whose relays hold only a pre-4c settings:v1 reads "no plan found";
+                                    # the plan-events branch (union + fold → applyPlanFold, RAW, unfiltered) · the prefs
+                                    # branch (hydratePrefs, prefs watermark) · records MERGE (mergeRecords, 4-field:
                                     # entries+deletions+dayLog+dayLogDeletions). P3: generalized norm() canonicalizes all
                                     # four; write-back via setDayLog (folds the cbCollateralBtc derive) + setDeletedDayEvents
                                     # — actions-only (NO setState/deriveCbCollateral import); LD3 (no monthlyLog-from-dayLog);
                                     # does NOT manage the reconnect flag
     liveSync.ts                     # foreground-only live relay subscription — module singleton (openLiveSync/
                                     # closeLiveSync); transport only, every event → applyRemoteEvent; opened on
-                                    # visible, torn down on hidden, fresh since−60s each open
+                                    # visible, torn down on hidden, fresh since−60s each open; asks for the same three
+                                    # d-tags as the pull (records / plan-events / prefs — 4e dropped settings:v1)
     viewerSync.ts                   # Viewer Access Phase 2 (READ-ONLY) — the mirror of liveSync, but reads the
                                     # OWNER's snapshot (authors:[viewerWriterPubkey], #d:[viewerDTag(myPubkey)] — M2
                                     # per-viewer addressing; getViewerPubkeyHex() computes the viewer's own pubkey from
                                     # the in-memory holder) and decrypts with the VIEWER's key (NSecSigner(...)).
                                     # fetchViewerSnapshot (batch) + open/closeViewerSync (singleton live sub) →
-                                    # applyViewerEvent → read-only hydrate (hydrateSettings/setMonthlyLog/
+                                    # applyViewerEvent → read-only hydrate (applyViewerSettings — VIEWER_SETTINGS_FIELDS,
+                                    # 4e; was hydrateSettings/setMonthlyLog/
                                     # setDeletedMonths/setStrike*); NEVER publishes/dirties. P3/C-P4 (BUG3): raw-sets
                                     # cbCollateralBtc + strikeCollateralBtc from snap via ONE useStore.setState — NEVER
                                     # setCbCollateralBtc/emitBalanceReading (they'd inject a reading into the viewer's OWN dayLog);
                                     # the viewer's dayLog stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
-    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → publish-if-dirty); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run
+    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
                                     # defaults" + publish.ts FALLBACK_RELAYS + BOOTSTRAP_RELAYS all reference it — no
@@ -9692,8 +9764,8 @@ src/
                                     # nostrSigningMethod) is retained, so the NORMAL boot path repopulates: local unlock
                                     # gate → restoreSigner (3a no-op, flag off) → LocalUnlockGate.unlock → syncNow pulls
                                     # from the relay into the clean plaintext slate. Nuking the blob → boot hydrates to
-                                    # seeds → lastSettingsSyncAt defaults null → the sync-apply guard (remoteTs >
-                                    # lastSettingsSyncAt) does NOT block → relay data applies (so the bespoke in-line
+                                    # seeds with an empty plan log → the pull's union + fold applies the relay's plan (no
+                                    # watermark gate) and the records merge applies its records (so the bespoke in-line
                                     # pull — resetPlanToSeeds + dirty-clear + watermark-zero + restoreSigner +
                                     # fetchAndSync, and the 'ok'/'no-relays'/'no-auth' returns — was REMOVED; the boot
                                     # path replaces it). Still imports NO publish symbol (structural no-publish
@@ -9721,7 +9793,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   **ACK QUORUM of `min(2, pubs.length)`** confirms (pubs = the per-relay publish promises, === relays
   normally; deriving from pubs guards the URL-dedup case so quorum can't exceed the actual attempts) (was
   FIRST relay ACK — a single lying/dying relay
-  could ACK an event retrievable from NO relay, clearing `recordsDirty`/`settingsDirty` and defeating the
+  could ACK an event retrievable from NO relay, clearing a dirty flag (`recordsDirty`, `planDirty`, …) and defeating the
   dirty-gated retry; device-confirmed Jul 2026). The shared tail `publishSignedToRelays(signed, relays,
   createdAt, label)` computes the quorum + awaits the pure exported **`awaitAckQuorum(pubs, quorum,
   timeoutMs, onOutcome?)`** (resolves at `acks >= quorum`; rejects the moment the quorum is unreachable
@@ -9744,27 +9816,23 @@ vercel.json                         # Catch-all rewrite → index.html (required
   Both are computed via a `byteLen` helper (`new TextEncoder().encode(s).length`) — deliberately NOT
   `String.length` (UTF-16 code units), since NIP-44's plaintext ceiling is 65,535 real BYTES and this
   instrumentation exists to confirm that budget. Surfaced in DevPanel's PUBLISH ACKS rows (a size suffix)
-  and a new PAYLOAD SIZES block in SYNC STATE (newest report per settings/records/viewer channel).
+  and a new PAYLOAD SIZES block in SYNC STATE (newest report per records / plan events / prefs / viewer channel).
   `publishRelayListNip65` (kind-10002) shares the tail → inherits the quorum.
   **`created_at` is PER-D-TAG MONOTONIC** (module-level `lastCreatedAtByDtag`): `createdAt =
   max(floor(Date.now()/1000), last[dTag]+1)`. Second-granularity stamps would let two publishes of the
   same **replaceable** d-tag within one second TIE on `created_at` → NIP-01 tie-break (lowest id) can
   randomly keep the OLDER (incomplete) payload; the monotonic bump makes ties impossible within a session.
-  Per-tag counter → settings/records/viewer never interfere (covered for free; `publishRelayListNip65` is a
+  Per-tag counter → records/plan-events/prefs/viewer never interfere (covered for free; `publishRelayListNip65` is a
   separate kind-10002 path, untouched)
-- `publishSettingsNow()` — exported from the store; THE settings publish path (immediate, flag-managing,
-  returns boolean — mirrors `publishRecordsNow`): builds the 34-field payload from current state, dynamic
-  imports `publish.ts` (circular-dep avoidance); on success stamps `lastSettingsSyncAt` + clears
-  `settingsDirty` + `nostrReconnectNeeded`; on failure sets `nostrReconnectNeeded` (dirty stays true →
-  retried by `syncNow` exactly like records)
-- `syncSettingsToNostr()` — thin wrapper called by every synced setter: marks `settingsDirty`
-  SYNCHRONOUSLY (app close mid-debounce still retries next launch), then 2s debounce →
-  `publishSettingsNow()`. Accepted micro-race: a setter firing during an in-flight publish re-marks
-  dirty + re-schedules (~2s later); only loss window is full app close inside that ~2s
+- `publishSettingsNow()` / `syncSettingsToNostr()` — **RETIRED at 4e** with the `settings:v1` bridge (§ Phase 4).
+  The plan publishes through `publishPlanEventsNow` (plan setters emit via `emitPlanSets`, which marks `planDirty`
+  SYNCHRONOUSLY then kicks a 2s debounce — an app close mid-debounce still retries next launch), the prefs through
+  `publishPrefsNow` (`emitPrefs`). `publishPlanEventsNow`'s success chains the viewer fan-out + the revocation flush,
+  then `checkPlanParity()`
 - `publishRecordsNow()` / `publishRecordsNowImmediate()` — exported from the store; publish the v2
   `RecordsPayload` `{ entries: monthlyLog, deletions: deletedMonths, dayLog, dayLogDeletions }`.
   **`publishRecordsNow()` is now a fire-and-forget TRAILING DEBOUNCE (~400ms, module-level
-  `recordsDebounceTimer`, mirrors `syncSettingsToNostr`)** — the log mutators call it standalone (outside
+  `recordsDebounceTimer`, like the plan / prefs debounces)** — the log mutators call it standalone (outside
   syncNow), and EventSheet's flow+reading saves as two back-to-back `addDayEvent` calls, so coalescing them
   into ONE publish prevents two same-second publishes of the replaceable records d-tag (the created_at-tie
   bug; belt-and-suspenders with the monotonic `created_at`). State is snapshotted at FIRE time (getState
@@ -9792,7 +9860,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   real found list (returns `{found,count,empty}` so the UI toasts the right message; absent/empty never overwrites).
   Publish guards `isAuthenticated && nostrSigner && nostrPubkey` and calls `publishRelayListNip65` (PLAIN kind-10002)
   to `[...nostrRelays, ...DEFAULT_RELAYS]` for reach. Both are out-of-band one-offs: they toggle only `nostrSyncing`
-  (the orange dot) and DELIBERATELY do NOT touch `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded` (flipping the
+  (the orange dot) and DELIBERATELY do NOT touch the dirty flags or `nostrReconnectNeeded` (flipping the
   reconnect flag would mis-fire the ⚠ Reconnect affordance)
 - **Network feature COMPLETE** — P1 (local list add/remove/restore), P2 (NIP-65 import/publish), P3 (live status dots
   via `useRelayStatus` — owned NRelay1 probes, `idleTimeout:false`, NOT the NPool; see hooks/useRelayStatus.ts)
@@ -9804,33 +9872,31 @@ vercel.json                         # Catch-all rewrite → index.html (required
 - **All entry points call the single `syncNow(nostr)`** (lib/nostr/syncNow.ts): restore-signer-if-needed
   (NIP-46 rebuild throttled ~20s, also covers cold-mount restore) → relays-if-empty → fetch+merge →
   publish-if-dirty. Pull-merge-THEN-push — with merge-based receive this is safe and publishes the
-  merged superset. The push step covers BOTH dirty records (`publishRecordsNow`) AND dirty settings
-  (`publishSettingsNow`). **Honest result**: returns true ONLY when the pull and every attempted push
+  merged superset. The push step covers dirty records (`publishRecordsNowImmediate`), the dirty plan
+  (`publishPlanEventsNow`), dirty prefs (`publishPrefsNow`) and pending viewer revocations
+  (`flushViewerRevocations`). **Honest result**: returns true ONLY when the pull and every attempted push
   succeeded; `nostrReconnectNeeded` is cleared only on full success and set on any
   signer-attributable failure; logs `'sync ok'` only on true success,
-  `'sync incomplete (pull ok|FAILED, records ok|FAILED|skipped, settings ok|FAILED|skipped)'` otherwise
-  (`skipped` = not dirty — never reported `ok` when nothing was pushed). Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
+  `'sync incomplete (pull ok|FAILED, records ok|FAILED|skipped, plan ok|FAILED|skipped, prefs ok|FAILED|skipped, revocations ok|FAILED)'`
+  otherwise (`skipped` = not dirty — never reported `ok` when nothing was pushed). Concurrent calls are **deduped to a single in-flight run** (AppShell + SettingsMain
   double-mount races share one promise). Auto-restore reverts optimistic auth only if it failed with no signer.
-- **INVARIANT — a freshly-authenticated session must complete an initial settings PULL before it may
-  PUBLISH settings; seed/un-established state must NEVER (a) block hydration of real remote data nor
+- **INVARIANT — a freshly-authenticated session must complete an initial PULL before it may PUBLISH the
+  plan or the prefs; seed/un-established state must NEVER (a) block hydration of real remote data nor
   (b) be published over it.** (Fixes the fresh-install→login data-loss incident + closes parked backlog
   #6 — a seed-default store published defaults over the owner's real relay data.) The gate is the
-  session-transient **`initialSettingsPullDone`** (in-memory, NOT persisted — in the `partializeState`
-  exclusion, reset each boot + in `clearViewerData`; never in `SETTINGS_FIELDS`). It is set `true` in
-  `syncNow` right after `fetchAndSync` returns (the settings pull query resolved — whether it hydrated
-  real data or the relay was empty; NOT set if `fetchAndSync` threw). Four layered defenses:
-  - **Fix A (`syncNow.ts`):** the settings publish is gated `settingsDirty && initialSettingsPullDone`
-    — a fresh login can't publish settings until it has pulled first.
-  - **Fix B (`sync.ts applyRemoteEvent`):** the settings-hydrate guard is relaxed on the FIRST pull —
-    `(!settingsDirty || !initialSettingsPullDone) && remoteTs > lastSettingsSyncAt` — so real remote
-    settings hydrate even if a benign post-auth setter spuriously seed-dirtied the store (no genuine
-    unpublished edits exist yet). Subsequent pulls (flag now true) keep the genuine edit-protection.
-  - **Fix C (`syncSettingsToNostr`):** early-returns `if (!initialSettingsPullDone)` — a benign
-    post-auth setter (`setSimpleMode` etc.) firing the instant auth flips true no longer dirties the
-    seed store. This is the root fix.
-  - **Fix D (`publishSettingsNow`):** refuses (returns false + warns) when `!initialSettingsPullDone`
-    AND the payload is the untouched seed (`income===4000 && expenses===3500 && creditLine===10000 &&
-    !advisorActualBtcHeld`) — the belt-and-suspenders net. No store version bump (transient flag).
+  session-transient **`initialSettingsPullDone`** (name historical; in-memory, NOT persisted — in the
+  `partializeState` exclusion, reset each boot + in `clearViewerData`; never in `SETTINGS_FIELDS`). It is set
+  `true` in `syncNow` right after `fetchAndSync` returns (the pull query resolved — whether it applied real
+  data or the relay was empty; NOT set if `fetchAndSync` threw).
+  - **Fix A — KEPT:** `publishPlanEventsNow` and `publishPrefsNow` refuse before the pull (their own first-line
+    gate, and `syncNow`'s `planDirty && initialSettingsPullDone` / `prefsDirty && …`). On the plan channel a fresh
+    device's seed is ABSENT from its log (§6), so there is nothing seed-valued to publish anyway; the gate keeps a
+    pre-pull edit local until the pull has run (SEED, `bridgeRetired.test.ts`).
+  - **Fix B / Fix C / Fix D — RETIRED at 4e** with the `settings:v1` bridge they defended: Fix B relaxed the
+    settings hydrate on the first pull (`(!settingsDirty || !initialSettingsPullDone) && remoteTs >
+    lastSettingsSyncAt`); Fix C kept `syncSettingsToNostr` from dirtying the seed store before the pull (the
+    root fix); Fix D made `publishSettingsNow` refuse a seed-identical payload before the pull (the sentinel).
+    Not to be confused with Option C, the relay guard in the retired `hydrateSettings`.
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)
 - **Records receive is MERGE-based and unconditionally safe** (`mergeRecords`, per month): newest
@@ -9838,12 +9904,13 @@ vercel.json                         # Catch-all rewrite → index.html (required
   (`deletedMonths`) beat older entries; entry newer than tombstone survives (re-log) and drops it;
   90-day tombstone GC. After merge: apply only if merged ≠ local (applied verbatim — `btcHeld` is recorded per entry, never re-chained);
   set `recordsDirty` if relay is missing something we have. NO receive gates.
-- Settings hydrate on watermark AND `!settingsDirty` (mirrors records): `remoteTs > lastSettingsSyncAt`
-  (whole-object LWW) — while local changes are unpublished, an older/foreign remote must not clobber
-  them; `syncNow` pushes local first, then the watermark governs normally
-- Decrypt-failure surfacing: `fetchAndSync` returns false when an event fails to decrypt (signer
-  unreachable) and no longer touches the flag itself — `syncNow` (its sole caller) sets
-  `nostrReconnectNeeded` from the boolean; the flag clears only on a fully successful sync.
+- **The plan** applies by union-by-id + fold — order-independent, NO watermark gate (§ Phase 4); **the prefs**
+  (`prefs:v1`) apply whole-object via `hydratePrefs` when newer than `lastPrefsSyncAt`. The pull asks for
+  `records:v1`, `plan-events:v1` and `prefs:v1` only; a stale `settings:v1` that still arrives matches no branch
+  and changes nothing (4e)
+- Decrypt-failure surfacing: `fetchAndSync` returns `{ ok: false, planFound }` when an event fails to decrypt
+  (signer unreachable) and no longer touches the flag itself — `syncNow` (its sole caller) sets
+  `nostrReconnectNeeded` from `ok`; the flag clears only on a fully successful sync.
   Parse failures are data-level skips (logged, no effect on the result)
 - Signer-op timeouts are METHOD-AWARE via `signerOpTimeout()` (`src/lib/nostr/timeout.ts`, pure/store-free):
   nip46 20s (automated — rides out one capped relay-backoff window) / nip07 60s (human approval popup per op;
@@ -9863,15 +9930,16 @@ Foreground-only relay subscription so the other device's publishes apply in ~sec
 - **One apply path, two feeds** — every event goes through `applyRemoteEvent` (sync.ts), same as the
   batch pull; batch and live are transports only, zero new semantics.
 - **Overlap is free, gaps are expensive** — `since = now − 60s` deliberately overlaps the batch path;
-  appliers are idempotent/monotonic, and self-echo of our own publishes no-ops naturally (settings echo
-  fails the watermark, records echo merges to identity).
+  appliers are idempotent/monotonic, and self-echo of our own publishes no-ops naturally (plan-events echo
+  unions to identity, prefs echo fails the watermark, records echo merges to identity).
 - **Don't ring a dead phone** — the live handler skips decrypt attempts while `nostrReconnectNeeded` is
   set; the post-re-auth batch sync catches up.
 
 Module singleton (`openLiveSync` idempotent / `closeLiveSync`); opt-in via `useNostrSync({ live: true })`
 — ONLY AppShell mounts it live (SettingsMain stays batch-only). EOSE ignored (batch path owns history).
 NOTE: at nostr-tools 2.23.5 `SimplePool.subscribeMany(relays, filter, params)` takes a SINGLE Filter,
-not an array. D-tag constants `SETTINGS_DTAG`/`RECORDS_DTAG` are exported from publish.ts.
+not an array. It asks for the same three d-tags as the pull — `RECORDS_DTAG` / `PLAN_EVENTS_DTAG` / `PREFS_DTAG`,
+exported from publish.ts (`SETTINGS_DTAG` was deleted at 4e; LIVE three pins the filter).
 
 ---
 
@@ -9885,7 +9953,7 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 | Tab visibility | `useNostrSync` visibilitychange → visible |
 | Window focus | `useNostrSync` window `'focus'` → triggerSync — a visible desktop tab never fires visibilitychange; focus covers app/window switches |
 | Network reconnect | `useNostrSync` window `'online'` → triggerSync (+ openLiveSync when live) — catches an OS-level reconnect that fires neither visibilitychange nor focus. **DESKTOP-ONLY in practice: iOS standalone PWAs NEVER fire `online`** (`navigator.onLine` stays true through an airplane-mode cycle, device-verified Jul 2026) → the dirty-gated retry below is the iOS self-heal |
-| Dirty-gated retry | `useNostrSync` second effect (`scheduleDirtyRetry`) — while `recordsDirty`/`settingsDirty`, a self-rescheduling backoff (5s→10s→20s→40s→60s, cap 60s) re-invokes `triggerSync`. **live instance only** (AppShell's `{live:true}` mount — a bare SettingsMain mount must not double-publish) + viewerMode-off. Visible ticks call triggerSync + advance backoff; hidden ticks skip the call and hold the current delay (iOS freezes hidden timers anyway). A flag transition restarts at 5s; a successful publish clears the flags → the chain tears down. The ONLY self-heal on iOS for a publish that failed offline (see Network reconnect) |
+| Dirty-gated retry | `useNostrSync` second effect (`scheduleDirtyRetry`) — while `syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations })` (any unpublished channel or a pending viewer revocation; 4e — until then it watched `settingsDirty`, which nothing had set since 4c, so an offline plan edit had no retry, F2), a self-rescheduling backoff (5s→10s→20s→40s→60s, cap 60s) re-invokes `triggerSync`. **live instance only** (AppShell's `{live:true}` mount — a bare SettingsMain mount must not double-publish) + viewerMode-off + backup gate satisfied + **authenticated** (4e, G1: `isAuthenticated` stays false behind the LocalUnlockGate until the tap, and a tick there would reach `restoreSigner` → Face ID with no gesture, which iOS 17.4+ allows; the unlock flips it, re-arms the chain and runs `syncNow` itself). `triggerSync` itself is not gated (the focus / visibility / online handlers on a locked device are a separate queued item). Visible ticks call triggerSync + advance backoff; hidden ticks skip the call and hold the current delay (iOS freezes hidden timers anyway). A flag transition restarts at 5s; a successful publish clears the flags → the chain tears down. The ONLY self-heal on iOS for a publish that failed offline (see Network reconnect) |
 | Live subscription | `liveSync.ts` while visible — receive-only transport (no syncNow); applies the other device's publishes in ≈1s desktop / 2–3s iOS (NIP-46 decrypt) |
 | Manual button | "↻ Sync now" in Settings (via `useNostrSync().triggerSync`) |
 
@@ -9900,11 +9968,11 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | All 37 settings fields | **4c: now a one-way write-through BRIDGE** — published from current state inside `publishPlanEventsNow`'s success path (fold output ≡ current state under D2), NOT triggered by setters (nothing marks `settingsDirty` post-4c). Read-as-authority only on an empty-log device; a migrated device strips `PLAN_EVENT_FIELDS` from it. Retired at 4e |
-| `personal-bloc:plan-events:v1` | **4c** `{ events: PlanEvent[] }` — the append-only plan log, NIP-44 self-encrypted | Any plan-field setter via `emitPlanSets` (marks `planDirty`, 2s debounce → `publishPlanEventsNow` → compact → publish → bridge → parity); retried by `syncNow` while dirty. Pull = union-by-id + fold-to-state, order-independent (NO watermark) |
-| `personal-bloc:prefs:v1` | **4c** `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | The 4 prefs setters via `emitPrefs` (marks `prefsDirty`, 2s debounce → `publishPrefsNow`); tiny whole-object LWW; pull hydrates via `hydrateSettings` (whitelist → only prefs land) |
+| `personal-bloc:settings:v1` | (was: the settings fields) | **RETIRED at 4e** — nothing publishes or reads it; stale copies stay on the relays, inert (the pull and the live sub ask only for records / plan-events / prefs). It was 4c's one-way write-through BRIDGE (published from current state in `publishPlanEventsNow`'s success; read as authority only on an empty-log device) |
+| `personal-bloc:plan-events:v1` | **4c** `{ events: PlanEvent[] }` — the append-only plan log, NIP-44 self-encrypted — **the only plan channel since 4e** | Any plan-field setter via `emitPlanSets` (marks `planDirty`, 2s debounce → `publishPlanEventsNow` → compact → publish → viewer fan-out + revocation flush → parity); retried by `syncNow` and the iOS retry while dirty. Pull = union-by-id + fold-to-state, order-independent (NO watermark) |
+| `personal-bloc:prefs:v1` | **4c** `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | The 4 prefs setters via `emitPrefs` (marks `prefsDirty`, 2s debounce → `publishPrefsNow`); tiny whole-object LWW; pull applies via `hydratePrefs` (PREFS_FIELDS — only the 4 prefs can land) |
 | `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
-| `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common. Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishSettingsNow`, AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches `settingsDirty`/`recordsDirty`/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
+| `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common — the viewer applies `settings` through `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS`, 4e). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishPlanEventsNow` (4e: until then, the settings bridge's success), AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches the dirty flags/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
 ### Viewer-key derivation v1 + handoff v4 — deterministic owner-minted viewer key + combined token + rotation (store stays v19, NO bump)
 
@@ -10003,7 +10071,7 @@ EMPTY; the owner re-adds viewers fresh.
   the NIP-44 encrypt target; `tier`/`keyVersion` are per-viewer.
 - **Setters** `addViewerSlot(Omit<ViewerSlot,'index'>)` (assigns `index = nextViewerIndex`, increments),
   `updateViewerSlot(index, patch)` (merge by index), `removeViewerSlot(index)` (filter by index) — each
-  `syncSettingsToNostr()` (existing convention).
+  `syncSettingsToNostr()` (existing convention; since 4c each emits a plan event instead).
 - **Payload/strip:** `viewers` + `nextViewerIndex` join `buildSettingsPayload` + `SETTINGS_FIELDS` (count 39→**36**),
   and are STRIPPED from the trusted `buildViewerSnapshotPayload` settings (the roster invariant — a viewer never
   sees who else the owner shares with, tiers, or key versions) AND from `exportPlan.ts`'s plan backup. The safe
@@ -10014,7 +10082,9 @@ EMPTY; the owner re-adds viewers fresh.
   slot on `viewerDTag(pubkeyHex)`; `publishViewerRevocationNow(pubkeyHex)` is per-slot. (See the M2 section.)
 - **Skip-guard (`hydrateSettings`, mirrors the relay guard):** an EMPTY incoming `viewers` never clobbers a
   populated local roster — skips BOTH `viewers` + `nextViewerIndex` (so the counter can't regress); a populated
-  incoming roster hydrates. Publish-side is already covered by `initialSettingsPullDone` (Fix C/D).
+  incoming roster hydrates. Publish-side is already covered by `initialSettingsPullDone` (Fix C/D). **RETIRED at
+  4e** with `hydrateSettings`: the roster syncs only as plan events, and removing the last viewer is an explicit
+  empty-roster event (§6) that a peer folds to empty (ROSTER peer).
 - **Component slot-0 adapters (⚠ SUPERSEDED by M3 for SharingPage — the roster UI shipped):** `SharingPage`'s
   slot-0 grant card + `GenerateViewerKeyBlock` are gone (→ `ViewerRoster`, see the M3 section); `DevPanel`
   (`viewers[0]?.pubkeyHex`) + `ViewerPreview` (tier/label from `viewers[0]`) stay slot-0 reads. `clearViewerData`
@@ -10103,8 +10173,9 @@ viewer key is now **wrapped at rest** (Phase 3) — see below; the plaintext `vi
 a v17-migrant holder until the one-time wrap.
 
 **Phase 1 (writer-side):**
-- **`buildSettingsPayload(s)`** (`useStore.ts`, exported) is THE single source of the settings object — consumed
-  by BOTH `publishSettingsNow` AND the viewer snapshot. **It INCLUDES the owner's writer-side viewer config
+- **`buildSettingsPayload(s)`** (`store/payloads.ts`, exported) is THE single source of the settings object —
+  consumed by the trusted viewer snapshot AND the plan backup (until 4e also by `publishSettingsNow`, the retired
+  `settings:v1` bridge). **It INCLUDES the owner's writer-side viewer config
   `viewerNpub`/`viewerPubkey`/`viewerLabel`** (so the owner's sharing config + nickname sync across the owner's own
   devices), but **EXCLUDES the viewer-SIDE fields** (`viewerMode`/`viewerWriterPubkey`/`viewerSecretKey`/
   `viewerKeyWrapped` — device-local). **`buildViewerSnapshotPayload` then STRIPS `viewerNpub`/`viewerPubkey`/
@@ -10142,7 +10213,7 @@ a v17-migrant holder until the one-time wrap.
   the viewer's OWN d-tag; SINGLE filter at 2.23.5).
   Builds one `NSecSigner(hexToBytes(viewerSecretKey).slice())` (**`.slice()` — the writer-signer ref bug**),
   `nip44.decrypt(viewerWriterPubkey, …)` → `{ settings, records, strike }` → **read-only hydrate**
-  (`hydrateSettings`/`setMonthlyLog` (verbatim — never recomputed)/`setDeletedMonths`/`setStrike*`). NEVER sets dirty
+  (`applyViewerSettings` [`VIEWER_SETTINGS_FIELDS` — 4e; was `hydrateSettings`]/`setMonthlyLog` (verbatim — never recomputed)/`setDeletedMonths`/`setStrike*`). NEVER sets dirty
   flags, NEVER publishes. `useViewerSync` (hook) wires it on foreground; AppShell mounts it (no-op unless
   viewerMode).
 - **READ-ONLY is two layers; structural is load-bearing.** (1) **No writer publish/sync path is reachable in
@@ -10169,7 +10240,7 @@ a v17-migrant holder until the one-time wrap.
   revoked viewer correctly got "invalid MAC" — encryption held — but the OLD numbers still showed). Two parts:
   (1) **`clearViewerData()`** (store action) resets every viewer-hydrated field to its seed (financial
   `SETTINGS_FIELDS` + `monthlyLog` + `deletedMonths` + `strike*` + owner-config nulls); pure local `set`, **no
-  `syncSettingsToNostr`**. Called from **VIEWER paths only** (audited): `resetViewer` (before `setViewerMode(false)`),
+  emit** (no plan event, no publish). Called from **VIEWER paths only** (audited): `resetViewer` (before `setViewerMode(false)`),
   `applyViewerEvent` decrypt-failure, `fetchViewerSnapshot` zero-events, onboarding viewer-provision (before
   `setViewerMode(true)`) — NEVER the owner's Remove or any owner edit (it would wipe the owner's real data; it has
   **no internal `viewerMode` guard** by design, because the onboarding call precedes `setViewerMode(true)`).
@@ -10221,8 +10292,12 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 37 Synced Settings Fields
-(`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT settings:v1); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
+### All 39 Synced Settings Fields
+(`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT as plan fields); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
+**How they sync (since 4e):** the 35 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
+`hiddenTabs`, `simpleMode`, `btcBuyingUnit`) whole-object on `prefs:v1`. `SETTINGS_FIELDS` / `buildSettingsPayload`
+still list all 39: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
+`settings:v1`, the channel the list was named for, is retired.
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
 `cbAprPct`, `hasCbLoan`, `ndpLastPaidDate`,
@@ -10231,12 +10306,15 @@ a v17-migrant holder until the one-time wrap.
 `cbLtvTriggerPct`, `cbLtvTargetPct`, `cbRotateBackPct`, `cbEmergencyCeilingPct`,
 `cbLoanBalanceAsOf`, `cbLiquidationPriceAsOf`, `strikeLiquidationLtvPct`,
 `blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
+`coldStorageBtc`, `coldStorageBtcAsOf`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
 `nostrRelays`, `backupVerifiedAt`, `viewers`, `nextViewerIndex`
 (`backupVerifiedAt` (R2a-1) is synced so the backup attestation travels with the plan (an imported/external peer
 device sees it). ⚠ It does NOT un-gate a gated peer — a gated device runs no sync at all, not even a pull, and
-needn't, since only the sole GENERATING device is ever gated. It is a **ONE-WAY LATCH** on hydrate (an incoming `null` never clobbers a latched local value —
-the third member of the whole-object-LWW skip-guard class alongside `nostrRelays`/`viewers`), STRIPPED from the
+needn't, since only the sole GENERATING device is ever gated. It is a **ONE-WAY LATCH by construction** (since 4e:
+no path emits a null event — the teardown clear is RAW — and the fold writes only fields present in the log; until 4e
+a hydrate skip-guard held it, the third member of the whole-object-LWW skip-guard class alongside
+`nostrRelays`/`viewers`, all deleted at 4e), STRIPPED from the
 trusted viewer snapshot (the owner's key-custody state is not the viewer's business), and RETAINED in the plan
 backup (a restore lands on a device whose `keyProvenance` is null → satisfied → harmless). Its partner
 `keyProvenance` is device-local and NEVER synced — see § Backup Gate.
@@ -10245,23 +10323,21 @@ single-viewer scalars (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyT
 were dropped clean-cut. Each `ViewerSlot` = `{ index, pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`;
 `nextViewerIndex` is monotonic (an index is NEVER reused). Both sync across the owner's devices so the roster +
 removals propagate, but are STRIPPED from EVERY viewer snapshot (a viewer must never learn who else the owner shares
-with, their tiers, or key versions) AND from the plan backup. `hydrateSettings` GUARDS them: an EMPTY incoming
-`viewers` never clobbers a populated local roster (skips both `viewers` + `nextViewerIndex` so the counter can't
-regress — mirrors the relay guard). Per-tier snapshot: `buildViewerSnapshotPayload` reads `viewers[0]?.tier` (M1
+with, their tiers, or key versions) AND from the plan backup. Until 4e `hydrateSettings` GUARDED them (an EMPTY
+incoming `viewers` never clobbered a populated local roster); since 4e the roster syncs only as plan events —
+removing the last viewer is an explicit empty-roster event (§6), and a peer folding it ends empty. Per-tier snapshot: `buildViewerSnapshotPayload` reads `viewers[0]?.tier` (M1
 single-viewer / slot-0; M2 fans out per-viewer on their own d-tags). The two CB `asOf` markers sync so freshness travels atomically with `cbLoanBalance`/`cbLiquidationPrice`.
-`nostrRelays` (Option C) syncs across the OWNER's devices — identical-lists / replace-on-hydrate (add + remove both
-propagate). `hydrateSettings` GUARDS it: a default-looking incoming list (empty OR exactly `DEFAULT_RELAYS`,
-order-independent sorted compare) never overwrites a non-empty custom local list — skips ONLY that field, applies the
-rest (skip-FIELD, not skip-all). Tradeoff: a deliberate reset-to-defaults doesn't auto-propagate (restore per-device).
-User edits publish on their OWN via `setNostrRelaysAndSync` (the plain `setNostrRelays` stays for boot discovery) —
-and Restore-defaults DOES publish `DEFAULT_RELAYS`, so the receiver-side guard is the load-bearing protector that keeps
-that from wiping the other device's custom list (guard + trigger are complementary).
+`nostrRelays` (Option C) syncs across the OWNER's devices — identical lists (add + remove both propagate). User
+edits emit a plan event via `setNostrRelaysAndSync`; the plain `setNostrRelays` stays RAW for boot discovery, so
+discovered or default relays never become an event. Until 4e `hydrateSettings` GUARDED it (a default-looking incoming
+list — empty OR exactly `DEFAULT_RELAYS` — never overwrote a custom local list, so Restore defaults didn't propagate);
+since 4e a folded list always applies, and Restore defaults on one owner device reaches the others.
 STRIPPED from `buildViewerSnapshotPayload` (owner transport config — a viewer reads via its own relay set).
-The three skips and `pendingCollateralAdjustment` are STANDING plan-shaping/position state with a settings-like write pattern — whole-object
-LWW handles them like income or APR. `advisorChecklist` was REMOVED — per-month ritual ticking is
-multi-writer ephemeral state, incompatible with LWW settings; that's why the skips sync and the
-checklist was deleted. Old remote events missing/carrying extra fields hydrate cleanly: the
-`SETTINGS_FIELDS` whitelist skips absent fields and ignores unknown ones.)
+The three skips are STANDING plan-shaping state — plan events like income or APR (`pendingCollateralAdjustment` was
+retired at v20). `advisorChecklist` was REMOVED — per-month ritual ticking is multi-writer ephemeral state,
+incompatible with a single-writer synced field; that's why the skips sync and the checklist was deleted. The two
+appliers that remain whitelist their input: `hydratePrefs` to PREFS_FIELDS, `applyViewerSettings` to
+VIEWER_SETTINGS_FIELDS — an absent key is skipped, an unknown one ignored.)
 
 ---
 
@@ -10274,15 +10350,14 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 | `nostrSigningMethod` | `'nip07' \| 'nip46' \| 'local' \| null` | ✅ | Login path used (`'local'` = iOS Face-ID signer) |
 | `writerKeyWrapped` / `writerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Encrypted writer nsec + wrap meta — **NEVER synced** (not in SETTINGS_FIELDS) |
 | `keyProvenance` | `'generated' \| 'imported' \| 'external' \| null` | ✅ (device-local; **standalone-backed** via `GATE_PROVENANCE_KEY`) | R2a-1 backup gate. **WRITE-ONCE** (`null` = identity-teardown clear). **NEVER synced.** `null` = legacy plan = gate satisfied (structural, no migration). R2c-6-final: also written through to standalone localStorage (`personal-bloc-provenance`) + read by `gateHydratedIdentity` so it survives the escape hatch (bypass 1); wiped by `wipeLocalPlanData`. See § Backup Gate / § Remanence |
-| `backupVerifiedAt` | `number \| null` | ✅ | R2a-1 backup gate. **SYNCED** (in SETTINGS_FIELDS/payload) so verifying on one owner device un-gates the others; **ONE-WAY LATCH** on hydrate; STRIPPED from the trusted viewer snapshot. Setter marks `settingsDirty` + wakes `syncNow` |
+| `backupVerifiedAt` | `number \| null` | ✅ | R2a-1 backup gate. **SYNCED** — an authed stamp is a plan event (also in SETTINGS_FIELDS/payload, so every plan backup carries it); **ONE-WAY LATCH** by construction (no null event exists, 4e); STRIPPED from the trusted viewer snapshot. Authed, the setter emits (`planDirty`) + wakes `syncNow`; pre-auth it sets the field only |
 | `viewerKeyWrapped` / `viewerKeyWrapMeta` | `string \| null` / `WrapMeta \| null` | ✅ (device-local) | Phase 3 — wrapped-at-rest viewer nsec + wrap meta — **NEVER synced**. Unwrapped bytes live only in viewerSync's in-memory holder |
 | `viewerUnlocked` | boolean | ❌ | In-memory; true once viewerSync's key holder is populated (post-unlock/provision) — AppShell gates the ViewerUnlockGate on it |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
-| `nostrRelays` | string[] | ✅ | From NIP-65 discovery. **Option C: now SYNCED** across the owner's devices (in `SETTINGS_FIELDS`/`buildSettingsPayload`) — replace-on-hydrate, guarded so a default-looking incoming list can't clobber a real custom local one; stripped from the viewer snapshot. **User edits go through `setNostrRelaysAndSync`** (set + `syncSettingsToNostr` → marks `settingsDirty` → publishes on its own); the plain `setNostrRelays` is retained for the `syncNow` boot bootstrap (`fetchUserRelays` discovery) so fetched/default relays don't spuriously publish |
-| `lastSettingsSyncAt` | number | ✅ | Unix SECONDS (event.created_at) of last relay hydration |
+| `nostrRelays` | string[] | ✅ | From NIP-65 discovery. **Option C: SYNCED** across the owner's devices as a plan event (also in `SETTINGS_FIELDS`/`buildSettingsPayload`); a folded list always applies (4e retired the receive guard); stripped from the viewer snapshot. **User edits go through `setNostrRelaysAndSync`** (set + a plan event → `planDirty` → publishes on its own); the plain `setNostrRelays` is retained RAW for the `syncNow` boot bootstrap (`fetchUserRelays` discovery) so fetched/default relays don't spuriously publish |
 | `lastRecordsSyncAt` | number | ✅ | Unix SECONDS (event.created_at) of last records:v1 event seen — observability ONLY, not a gate |
 | `recordsDirty` | boolean | ✅ | Publish-needed marker + merge tie-breaker ONLY (NOT a receive gate); set on local edit or when the relay is behind; cleared on successful publish |
-| `settingsDirty` | boolean | ✅ | Per-device publish state — never synced (not in SETTINGS_FIELDS/payload); settings publish-needed marker AND settings receive gate; set synchronously by every synced setter; cleared on successful settings publish |
+| `planDirty` / `prefsDirty` | boolean | ✅ (device-local) | Phase 4c — the plan / prefs publish-needed markers (set by `emitPlanSets` / `emitPrefs`; cleared on a successful publish). With `recordsDirty` and a pending revocation they arm the iOS retry (`syncDirty`). `lastPlanEventsSyncAt` (unix seconds) is observability only — Settings → SYNC's "Plan synced" reads it; `lastPrefsSyncAt` (unix seconds) is also the prefs pull's watermark — a `prefs:v1` applies only when newer. ⚠ `settingsDirty` / `lastSettingsSyncAt` (and 4d's `lastV1FallbackApplyAt`) were RETIRED at 4e — `partializeState` drops a pre-4e blob's copies |
 | `deletedMonths` | Record<number, number> | ✅ | month → deletedAt (Unix ms) tombstones for synced deletes; cleared per-month on re-log; 90-day GC in merge |
 | `nostrLogin` | string | ✅ | JSON NIP-46 login (bunkerPubkey/clientNsec/relays/pubkey) — reconnect-free restore |
 | `nostrSigner` | NostrSigner | ❌ | In-memory; recreated on restore |
@@ -10292,7 +10367,7 @@ checklist was deleted. Old remote events missing/carrying extra fields hydrate c
 
 ---
 
-## Event-Sourcing Migration — Phase 4 (plan-events campaign; store unchanged, NO bump through 4c)
+## Event-Sourcing Migration — Phase 4 (plan-events campaign; store unchanged, NO bump through 4e — Phase 4 COMPLETE)
 
 Phase 4 replaces whole-object LWW settings sync with an append-only **plan event log** folded into state
 (design authority: the 4a plan-events design lock — event shape / fold / compaction / union / genesis).
@@ -10315,7 +10390,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   |---|---|---|
   | `personal-bloc:plan-events:v1` | `{ events: PlanEvent[] }` NIP-44 self-encrypted | append-only · union-by-id · fold-to-state · compaction; NO watermark gate (order-independent) |
   | `personal-bloc:prefs:v1` | `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | tiny whole-object LWW (device-taste; stale clobber cosmetic) |
-  | `personal-bloc:settings:v1` | write-through BRIDGE (fold output) | published-not-read-as-authority on a migrated device; retired at 4e |
+  | `personal-bloc:settings:v1` | write-through BRIDGE (fold output) | published-not-read-as-authority on a migrated device; **RETIRED at 4e** — nothing publishes or reads it |
   | `personal-bloc:records:v1` | unchanged | unchanged |
 
   - **Emit layer (`syncSlice.ts`):** `emitPlanSets(pairs)` — ONE atomic set of the scalar writes + appended
@@ -10327,10 +10402,11 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     definition). Clarifications: `setCbLoanBalance`/`setCbLiquidationPrice` are plan-SINGLE (their AsOf fields
     have their own setters); only `setAdvisorActualBlocBalance` is a true paired-AsOf; plain `setNostrRelays`
     stays RAW (boot discovery); `setBackupVerifiedAt` null-branch stays RAW, its pre-auth stamp is field-only
-    (NO event — rides genesis; **residual: a fresh key verified pre-auth never syncs the attestation as an
-    event — healed by any authed re-verify; gate semantics unaffected**), its authed stamp emits.
+    (NO event; **residual: a fresh key verified pre-auth never syncs the attestation as an event — healed by any
+    authed re-verify; gate semantics unaffected** — 4e widens it, F14, below), its authed stamp emits.
   - **Engine (`syncEngine.ts`):** `publishPlanEventsNow` (gate + Fix A → compact → `setPlanEvents` → publish →
-    success: THE BRIDGE `void publishSettingsNow()` [chains the viewer fan-out] + `checkPlanParity`);
+    success: THE BRIDGE `void publishSettingsNow()` [chains the viewer fan-out] + `checkPlanParity` — at 4e the
+    chains run here directly);
     `publishPrefsNow`; `schedule{Plan,Prefs}Publish` (2s debounce). **Bridge is acyclic** (`plan → settings →
     viewer`, no back-edge). **`checkPlanParity` compares FOLD-PRESENT KEYS ONLY** — absent-from-log keys are
     seed defaults, never compared (§6; the `pickPlanFields` guard fields stay absent by DESIGN), else every
@@ -10352,9 +10428,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     (planDirty + recordsDirty, NO settingsDirty; `backupVerifiedAt` stays APPLY_FIELDS-excluded).
   - **DevPanel:** a PLAN EVENTS section (event count raw/compacted, planDirty/prefsDirty, sync ages, parity)
     + `plan events`/`prefs` PAYLOAD SIZES rows. Metadata-only.
-  - ⚠ **NOTHING deleted:** `syncSettingsToNostr` (caller-less), `settingsDirty`, Fix C/D, the three
-    hydrateSettings skip-guards, `lastSettingsSyncAt` + its apply-gate all STAY as rollback insurance — retired
-    at 4e with quotes.
+  - ⚠ **NOTHING deleted at 4c:** `syncSettingsToNostr` (caller-less), `settingsDirty`, Fix C/D, the three
+    hydrateSettings skip-guards, `lastSettingsSyncAt` + its apply-gate all stayed as rollback insurance — all
+    retired at 4e (below).
 - **4d** (SHIPPED): the read path was already v2-first structurally at 4c (plan-events branch first + the
   settings:v1 strip). 4d INSTRUMENTS the v1 fallback: `lastV1FallbackApplyAt` (device-local, unix seconds) is
   stamped ONLY in the settings:v1 branch's empty-log `else` (the un-stripped apply — the genuine fallback); the
@@ -10362,8 +10438,72 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   migration/join pull; genesis then fills the log in the same syncNow), then never again (the strip fires). The
   4e soak clock STARTS at this release: fence only after `lastV1FallbackApplyAt` shows no post-migration stamps
   for ≥1 week AND parity stays OK. DevPanel PLAN EVENTS gains a `v1 fallback` row (never=green / stamped=amber);
-  the fallback + guard class are deleted together at 4e. No behavior change, no store bump.
-- **4e** (NOT built): stop the bridge → delete the guard class + the v1 fallback.
+  the fallback + guard class are deleted together at 4e (done — below). No behavior change, no store bump.
+- **4e** (SHIPPED — the bridge stops; **Phase 4 COMPLETE**; spec `bitbloc-spec-4e-bridge-stop-v1` v1.3):
+  `plan-events:v1` is the only plan channel. Nothing publishes or reads `settings:v1`; its stale copies stay on the
+  relays, inert (no tombstone). Store unchanged (v21, NO bump).
+  - **Deleted** — the 4c "NOTHING deleted" list:
+    - the bridge: `publishSettingsNow` + `scheduleSettingsPublish` + its debounce + **Fix D** (the publisher's seed
+      sentinel); `SETTINGS_DTAG` + `publishSettings`;
+    - `syncSettingsToNostr` + **Fix C** (no dirty before the pull);
+    - `settingsDirty`, `lastSettingsSyncAt`, `lastV1FallbackApplyAt` + their setters. ⚠ `partializeState` names the
+      three in its omit destructure: with no bump `migrateState` never runs, and `merge` spreads a pre-4e blob's copies
+      back into memory, so the first write after the upgrade sheds them (the one allowed hit of RETIRED's grep);
+    - `hydrateSettings` and its three skip-guards: **Option C**'s relay guard, the roster guard, the backupVerifiedAt
+      latch;
+    - `sync.ts`'s settings branch: **Fix B** (the first-pull relaxation), the DUAL-READ STRIP, the 4d stamp;
+    - genesis: `synthesizeGenesisEvents`, `pickPlanFields`, syncNow's block, `sawPlanEvents` / `sawSettingsV1`
+      (`fetchAndSync` returns `{ ok, planFound }`).
+
+    The names are apart: Fix A (no publish before the first pull) · Fix B (the first-pull hydrate relaxation) · Fix C
+    (no dirty before the pull) · Option C (the relay guard) · Fix D (the seed sentinel). Only **Fix A** remains —
+    `initialSettingsPullDone` (name historical) gates the plan and prefs publishes.
+  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (39 keys — the trusted viewer snapshot and the plan backup);
+    `checkPlanParity` (the emit layer's tripwire) + DevPanel's parity row; `nextPlanEventTs` / `makePlanEventId`
+    (`genesis.ts` keeps its name).
+  - **The bridge's two chains moved:** `publishPlanEventsNow`'s success runs `void publishViewerSnapshotNow(); void
+    flushViewerRevocations();` then `checkPlanParity()`.
+  - **Two RAW appliers replace `hydrateSettings`** (no event, no dirty): `hydratePrefs` (PREFS_FIELDS — the
+    `prefs:v1` apply) and `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS` = SETTINGS_FIELDS − `VIEWER_SNAPSHOT_STRIP`
+    [viewers, nextViewerIndex, nostrRelays, backupVerifiedAt, coldStorageBtcAsOf] = 34 keys — the trusted viewer
+    snapshot). ⚠ Never narrow the viewer's apply to the prefs (F1): every trusted viewer would show the seed, or frozen
+    figures, while the mocked viewer tests stay green — `viewerSettingsApply.test.ts` pins it on the REAL store.
+  - **The retry** (`useNostrSync`) arms on `syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations })`
+    (F2: since 4c it watched `settingsDirty`, which nothing set, so an offline plan edit had no retry), and **never on
+    a locked device** (G1): `scheduleDirtyRetry` takes `authenticated` (the hook's `isAuthenticated` — subscribed, in
+    the effect's deps), so a tick can't reach `restoreSigner` → Face ID with no tap behind the LocalUnlockGate (iOS
+    17.4+ runs WebAuthn without a gesture). `triggerSync` is NOT gated — the focus / visibility / online triggers on a
+    locked device are a separate queued item.
+  - **The latch, the roster and the relays flow only as plan events:** no path emits a null `backupVerifiedAt` (the
+    teardown clear is RAW; the one emit sits after the null return); an empty roster is an event (§6) and a peer
+    folding it ends empty; a folded `DEFAULT_RELAYS` (Restore defaults) replaces a custom list. ⚠ Never re-add a
+    skip-guard in `applyPlanFold` or in `sync.ts`'s plan branch.
+  - **Settings → SYNC reads "Plan synced"** (`lastPlanEventsSyncAt`, unix seconds). DevPanel's "settings sync" and
+    "v1 fallback" rows are gone; Copy Diagnostics carries `planSync`.
+  - **DevPanel → PLAN EVENTS → "log gaps"** (G2 — `lib/planEvents/coverage.ts` `planLogGaps(events, live, seed)`): the
+    PLAN_EVENT_FIELDS absent from the fold whose live value differs from the seed (`useStore.getInitialState()` —
+    zustand 5.0.13's persist returns the pre-hydration state). "none" in green, the names in amber, "n/a (viewer)" in
+    viewerMode; names only. Parity can't see such a field (fold-present keys only), and after 4e a new device or an
+    escape-hatch reset rebuilds the plan from the fold alone, so the field would come back as its seed. **Read it on
+    each existing owner device right after the deploy, before any new device or escape hatch** (smoke step 0).
+    Expected: none, or `backupVerifiedAt` (F14) / `nostrRelays` (discovered relays stay device-local). Any other name:
+    re-save that field once so it emits — for `nextViewerIndex`, add a viewer slot and remove it. A name a re-save
+    doesn't clear → stop (no new device, no escape hatch) until it's understood.
+  - **Residuals (accepted, documented):**
+    - restore from words: an account whose relays hold only pre-4c state (`settings:v1`, no plan events) gets its
+      records back but neither its plan nor its prefs, and if its relays hold only that one event it reads "no plan
+      found" (F6; the window: C1 2026-07-11 → 4c 2026-07-12);
+    - prefs come back only where a `prefs:v1` exists: genesis never emitted prefs, so an account migrated at 4c whose
+      prefs were never edited since gets seed prefs on a new device or after an escape hatch (G7);
+    - the pre-auth backup stamp (onboarding's quiz-pass) rides no channel until an authed re-verify, so a peer shows no
+      "Backed up ✓" chip (F14 — before 4e a joining device could still get it through `settings:v1`); a peer's gate is
+      satisfied by its provenance, so the cost is the chip;
+    - a sparse plan log (a skipped genesis — RISK-4 — or `nextViewerIndex` from the M1 07-06 → 4c 07-12 window):
+      visible as DevPanel's log gaps (above).
+  - **Tests:** `bridgeRetired.test.ts` (the relay layer mocked — G3), `viewerSettingsApply.test.ts`,
+    `coverage.test.ts`, plus LIVE three, IGNORED, ROSTER pull and RETRY locked; 32 mutations + X-PARITY-ORDER
+    (§ Test Suite). The 4a lock document is in neither the repo nor the project (F12) — this section is the
+    authority. Tag `v4e-fence` on the merge (the rollback anchor; BitBooks' PB-0 fork point when it restarts, BL7).
 
 ---
 
@@ -10401,7 +10541,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
 | The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
 | A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |
-| Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own `settingsDirty`+`syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
+| Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own plan event (`emitPlanSets` → `planDirty`; was `settingsDirty` until 4e) + `syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
 | NEVER collapse the sign-out dispatch to `external → reconnectNostr` | `reconnectNostr` retains `nostrPubkey`, and `useNostrAutoRestore` early-returns only for `'local'` and for `(nip46 && !nostrLogin)` — so a **nip07** session falls through to `setIsAuthenticated(true)` → `restoreSigner` → `NLogin.fromExtension()`, which an authorized extension answers **silently**. Sign out would reload and leave the user signed in: a control that visibly does nothing. `signOut()` therefore routes `nip07 → disconnectNostr` (the only teardown auto-restore can't undo), `nip46 → reconnectNostr`, `local → signOutLocal`. This is not "the harder action" for nip07 — **destructiveness is a property of what's at stake**, and a nip07 user has no on-device key; the cleared fields re-stamp on the next one-approval login. Pinned by `disconnect.test.ts` ("'nip07' → disconnectNostr, NOT reconnectNostr") |
 | An identity-forget must never leave the plan blob readable | Clearing identity *fields* is not forgetting an identity. AppShell's auth gates all condition on `nostrAuthEnabled` — once false, the ladder falls through to Branch J and renders **whatever is in the persist blob** to whoever opens the tab next. So `disconnectNostr` (and "Remove local key", which delegates to it) calls **`wipeLocalPlanData()` as its LAST mutation before `reload()`** — zustand's persist writes the blob synchronously on every `set()`, so a store setter placed after the wipe resurrects it. Removing `personal-bloc-onboarded` is what produces the fresh entry fork; **wiping only `personal-bloc-store` does not**, because `onboardingComplete` is standalone-seeded at module init. **Never sweep by `personal-bloc-` prefix** — `bloc-device-tag` and `bloc-nostr-log` don't carry it. Sign-out (`signOutLocal`, nip46 `reconnectNostr`) must NOT wipe: the same user returns to the same plan behind the lock. Pinned by `disconnect.test.ts` + `wipeLocalPlanData.test.ts` |
@@ -10442,8 +10582,8 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Backup gate — no migration | `keyProvenance: null` = a pre-R2 plan = **satisfied**. Grandfathering is STRUCTURAL (the persist `merge` fills the absent key from `current`). **NEVER add a `migrateState` case for `keyProvenance`/`backupVerifiedAt`** — that is the only way to break every existing owner. No store version bump; `exportPlan.ts`'s `storeVersion: 21` stays correct |
 | `setKeyProvenance` | **WRITE-ONCE**: a *different* non-null over a non-null is ignored + warns; the SAME value is a silent no-op. `null` is the explicit **identity-teardown CLEAR** (`disconnectNostr`, "Remove local key", `gateHydratedIdentity`'s signed-out branch). `reconnectNostr` + `resetAndResync` RETAIN the identity → must NOT clear. Without the clear, generate→never-verify→disconnect→import-a-different-nsec is a permanent sync lockout |
 | Provenance stamp ordering | `setKeyProvenance(...)` is stamped **BEFORE** `establishLocalOwner`/`syncNow` at every establishment call site — both call `syncNow` internally/immediately, so a stamp placed after would let a generated key's first sync publish ungated. `establishLocalOwner` is shared by the generated + imported paths and cannot distinguish them → the CALL SITES own the stamp |
-| `setBackupVerifiedAt` | `set()` the field FIRST, then wake via `syncNow` (dynamic-imported, cycle-safe) — the gate must read satisfied inside `doSyncNow`'s guards. Marks `settingsDirty` DIRECTLY (`syncSettingsToNostr` early-returns on `!initialSettingsPullDone`, still false because the gate held sync off). **No second wake mechanism.** `null` = teardown clear (no dirty, no wake) |
-| `backupVerifiedAt` hydrate | **ONE-WAY LATCH** — an incoming `null` never clobbers a non-null local (a legacy/unverified peer would otherwise re-gate a verified device). Third member of the whole-object-LWW skip-guard class (`nostrRelays`, `viewers`, this); the class is scheduled for structural deletion at Phase 4e |
+| `setBackupVerifiedAt` | Authed: the emit's `set()` lands FIRST (field + plan event + `planDirty` + the debounced kick, whose publish waits for the first pull — Fix A), then the wake via `syncNow` (dynamic-imported, cycle-safe) — the gate must read satisfied inside `doSyncNow`'s guards. Pre-auth (onboarding's quiz-pass, before K3): the field ONLY — no event, because a K3-failure rollback clears the field RAW and can't retract one. **No second wake mechanism.** `null` = teardown clear (RAW — no event, no wake) |
+| `backupVerifiedAt` latch | **ONE-WAY LATCH by construction (4e)** — no path emits a null `backupVerifiedAt` event (the teardown clear is RAW; the one emit sits after the null return), the fold writes only fields present in the log, and neither whitelist applier can write it (`hydratePrefs` takes PREFS_FIELDS; `applyViewerSettings` strips it). The whole-object-LWW skip-guard class (`nostrRelays`, `viewers`, this) was deleted at 4e with `hydrateSettings` |
 | Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green |
 | Onboarding verifies by default (R2c-6a, SUPERSEDES the retired R2c-4a bridge) | `OwnerKeySetup` K2 now stamps `backupVerifiedAt` — but gated on a **real verification** (a save + a two-word quiz = the ceremony's own semantics), NOT an ack. The stamp is pre-auth field-only (K2), before K3's `establishLocalOwner` `syncNow` wakes it ungated. The **skip** path ("I'll do this later") stamps nothing → generated-UNVERIFIED → the R2c-2/5b ladder. ⚠ The distinction the retired R2c-4a bridge got wrong: **an ack is a promise; a verification is proof.** Never gate the stamp on anything less than the save+quiz. ⚠ `handleGenerate`/`handleStartOver` must `setBackupVerifiedAt(null)` on (re)mint — the field rides partialize `...rest`, so a stale stamp from an abandoned run would falsely verify freshly-minted words. (⚠ `backupGate.test.ts` drives the setters directly, never the component — the K2 wiring is manual/tsc-covered.) |
 | Seed-phrase hygiene copy — two variants, don't cross them | **DISPLAY** (we minted the words; `OwnerKeySetup` K2 + `RecoveryKeyCeremony` explain, one identical string): *"These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job."* **CAPTURE** (the user is typing words IN; `NostrAuthGate`'s word-grid tab only, never the nsec tab): *"Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."* The capture line sits BELOW the live checksum line so it never interrupts the grid→status feedback path |
@@ -10458,7 +10598,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `deriveAdvisorStart` / `deriveCurrentPosition` | **v20 signatures:** `deriveCurrentPosition(monthlyLog, currentStrikeCollateral, baseBlocBalance)` — `btcHeld` output = the passed `currentStrikeCollateral` (= `getCurrentBtcHeld()` = reading-anchored `deriveStrikeCollateral`); `deriveAdvisorStart(monthlyLog, currentStrikeCollateral, baseBlocBalance, currentStrategyMonth, monthStartBalance)` forwards it. (Pending + baseBtcHeld params RETIRED.) Standalone — no imports from runAdvisor/runBLOC/runBlocYearOne. **`deriveAdvisorStart.startingBtcHeld ≡ deriveCurrentPosition().btcHeld ≡ getCurrentBtcHeld()`** (single definition of current position — callers pass `getCurrentBtcHeld()`). `startingBlocBalance`/`startingMonth` anchor on the last CONFIRMED entry: `e.confirmed !== false` (undefined = confirmed; only a LIVING unconfirmed daily rollup, `confirmed===false`, is excluded) so the current-month unconfirmed entry does NOT advance the projection start. No confirmed entry → empty branch returns `startingBlocBalance: monthStartBalance` + `startingMonth: currentStrategyMonth`; confirmed branch returns `last.strikeBal` / `min(last.month+1, 12)`. `blocBalance`/`lastLoggedMonth` still read from the last logged entry. |
 | `publishRecords` cadence | Immediate via `publishRecordsNow` (no debounce); NOT triggered by `setMonthlyLog` |
 | Records merge | Records receive is MERGE-based and unconditionally safe (`mergeRecords`); `recordsDirty` = publish-needed marker + merge tie-breaker ONLY (not a receive gate); `lastRecordsSyncAt` = observability only |
-| Settings LWW | Settings remain whole-object last-write-wins — last publisher wins the FULL object; only single-writer prefs belong in the payload (the checklist died for this) |
+| The plan is event-sourced; only the prefs are LWW | The plan syncs as events on `plan-events:v1` (union-by-id + fold; §6 — absent = seed, empty = an event). Only the 4 prefs (`prefs:v1`) are whole-object last-write-wins — the last publisher wins the whole object, so only single-writer device-taste belongs there (the checklist died for this) |
+| `settings:v1` is retired (4e) | Never publish or read it: no app code names it (RETIRED's code-only grep — `persistConfig.ts`'s strip of the three retired keys is the one allowed hit). A trusted viewer's snapshot applies through `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS` — never narrow it to the prefs, F1); a `prefs:v1` through `hydratePrefs` (PREFS_FIELDS). Never re-add a skip-guard in `applyPlanFold` or in `sync.ts`'s plan branch — an empty roster and `DEFAULT_RELAYS` are legitimate events (ROSTER peer / ROSTER pull / RELAYS defaults pin it) |
+| The dirty-gated retry never starts an unlock | `scheduleDirtyRetry` arms on `syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations })` AND needs `authenticated` (the hook's `isAuthenticated`, in the effect's deps). Behind the LocalUnlockGate a tick would run `syncNow` → `restoreSigner` → WebAuthn with no tap — since iOS 17.4 Safari allows that, so a Face ID sheet would rise on its own. Pinned by RETRY locked + "RETRY waits for the unlock" |
 | Nostr reliability fix | Foreground/launch NIP-46 signer rebuild (`restoreSigner`, throttled ~20s inside `syncNow`) + merge-based receive + immediate records publish + decrypt-failure `nostrReconnectNeeded`; store stays v11 (no migration — `updatedAt?` optional, `deletedMonths` defaults `{}`) |
 | Zustand v7 migration | Removes `customCollateral`; seeds `advisorActualBtcHeld` from it as fallback; adds `cbPaymentStrategy/TriggerPct/TargetPct` with defaults |
 | Zustand v8 migration | Adds `btcPriceMode: 'live' \| 'manual'` (default `'live'`); typing a BTC price flips to `'manual'`; LIVE/SYNC button restores `'live'` |
@@ -10470,7 +10612,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Zustand v17 migration | Adds Viewer Access Phase-2 fields `viewerMode` (default `?? false`), `viewerWriterPubkey`/`viewerSecretKey` (default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced** (not in `SETTINGS_FIELDS`/payload/partialize-exclusion). `viewerSecretKey` was plaintext (wrapped at rest in v18) |
 | Zustand v18 migration | Viewer Access **Phase 3** — adds `viewerKeyWrapped`/`viewerKeyWrapMeta` (wrapped-at-rest viewer key: AES-GCM ciphertext + `WrapMeta`, default `?? null`) — additive shallow-merge, no transform. **Device-local, NEVER synced.** **Back-compat: LEAVES any existing plaintext `viewerSecretKey` in place** (wrapping needs a Face ID gesture, impossible in migrate — the one-time wrap-setup screen clears it). Transient `viewerUnlocked` (not persisted). |
 | Zustand v20 migration | **Collateral-Truth Consolidation (C-P2)** — Strike collateral becomes reading-anchored. **Strips** `pendingCollateralAdjustment` (added to the destructure so it can't ride `...rest`). **Seeds** `strikeCollateralBtc` = the old-math current position from the RAW blob BEFORE stripping: `(rawLast?.btcHeld ?? advisorActualBtcHeld ?? 0) + pendingCollateralAdjustment` — CACHE-SEED ONLY (no synthetic dayLog event; clean journals). No legacy `balanceReading` carries `strikeCollateral` → `deriveStrikeCollateral` returns the fallback = seed → `getCurrentBtcHeld` is byte-identical pre/post. `advisorActualBtcHeld` STAYS (synced; historical chain + fallback). **Determinism residual:** un-converged `pending` across devices at migrate time seeds divergent caches (not synced) until the first `strikeCollateral`-bearing reading re-anchors both — self-correcting (pending is normally 0). |
-| Zustand v21 migration | **Multi-viewer M1** — the sharing roster (`viewers: ViewerSlot[]` + `nextViewerIndex`) REPLACES the 5 single-viewer scalars (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyTrusted`/`viewerKeyVersion`). **Clean-cut, NO back-compat** (the only existing viewer was a test key): the migrate destructure STRIPS the 5 old keys so a stale value can't ride `...rest`, and unconditionally seeds `viewers: []` + `nextViewerIndex: 0` (the owner re-adds viewers fresh). `ViewerSlot = { index (stable, monotonic, never reused), pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`. Setters `addViewerSlot`/`updateViewerSlot`/`removeViewerSlot` (each `syncSettingsToNostr`). Both fields in `buildSettingsPayload` + `SETTINGS_FIELDS` (count 39 → **36**); STRIPPED from the trusted viewer snapshot + the plan backup; `hydrateSettings` skip-guard (empty incoming roster never clobbers a populated local one, mirrors the relay guard). `buildViewerSnapshotPayload` tier now reads `viewers[0]?.tier` (M1 slot-0 single-viewer; M2 = per-viewer d-tag fan-out). Components (SharingPage/DevPanel/ViewerPreview) TEMPORARILY operate on `viewers[0]` until the M3 roster UI. Current store version = 21 |
+| Zustand v21 migration | **Multi-viewer M1** — the sharing roster (`viewers: ViewerSlot[]` + `nextViewerIndex`) REPLACES the 5 single-viewer scalars (`viewerNpub`/`viewerPubkey`/`viewerLabel`/`viewerPrivacyTrusted`/`viewerKeyVersion`). **Clean-cut, NO back-compat** (the only existing viewer was a test key): the migrate destructure STRIPS the 5 old keys so a stale value can't ride `...rest`, and unconditionally seeds `viewers: []` + `nextViewerIndex: 0` (the owner re-adds viewers fresh). `ViewerSlot = { index (stable, monotonic, never reused), pubkeyHex, npub, label, tier: 'safe'|'trusted', keyVersion }`. Setters `addViewerSlot`/`updateViewerSlot`/`removeViewerSlot` (each `syncSettingsToNostr`). Both fields in `buildSettingsPayload` + `SETTINGS_FIELDS` (count 39 → **36**); STRIPPED from the trusted viewer snapshot + the plan backup; `hydrateSettings` skip-guard (empty incoming roster never clobbers a populated local one, mirrors the relay guard — retired at 4e: an empty roster is a plan event). `buildViewerSnapshotPayload` tier now reads `viewers[0]?.tier` (M1 slot-0 single-viewer; M2 = per-viewer d-tag fan-out). Components (SharingPage/DevPanel/ViewerPreview) TEMPORARILY operate on `viewers[0]` until the M3 roster UI. Current store version = 21 |
 | Zustand v19 migration | **Daily Mode P2a** — backfills legacy `monthlyLog` entries with `source:'manual'`/`confirmed:true` (only where undefined); adds `dayLog` (`?? []`, LOCAL-only) + `cbLtvAction` (`?? 'paydown'`). **C2 seed:** a `hasCbLoan` user with a `cbCollateralBtc` gets ONE seeded `cbCollateralReading` into dayLog so `deriveCbCollateral` reproduces the pre-migration value; then `cbCollateralBtc = deriveCbCollateral(dayLog, persisted)`. `migrate`/`partialize` were EXTRACTED to exported `migrateState`/`partializeState` (unit-testable — the persist API is unavailable under Node) |
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |

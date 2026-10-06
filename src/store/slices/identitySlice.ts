@@ -64,33 +64,28 @@ export const createIdentitySlice = (set: StoreSet, get: StoreGet): IdentitySlice
     try { v == null ? localStorage.removeItem(GATE_PROVENANCE_KEY) : localStorage.setItem(GATE_PROVENANCE_KEY, v); } catch { /* noop */ }
     set({ keyProvenance: v });
   },
-  // Stamping verification OPENS the gate, so it must also WAKE the engine. It (a) sets the field, (b) marks
-  // settingsDirty DIRECTLY — syncSettingsToNostr early-returns on !initialSettingsPullDone, which is still
-  // false precisely because the gate held syncNow off all session — and (c) runs the SAME initial-pull-then-
-  // publish sequence a fresh authentication runs: syncNow (cf. establishOwner.ts). No second wake mechanism.
-  // ⚠ ORDER: set() FIRST, so the gate reads satisfied inside doSyncNow's guards + the publish guards.
+  // Stamping verification OPENS the gate, so it must also WAKE the engine. Authed, it (a) emits the stamp as a plan
+  // event (emitPlanSets: field + event + planDirty + the debounced kick, whose publish early-returns on
+  // !initialSettingsPullDone — still false precisely because the gate held syncNow off all session) and (b) runs the
+  // SAME initial-pull-then-publish sequence a fresh authentication runs: syncNow (cf. establishOwner.ts), whose
+  // publish step carries the event. No second wake mechanism.
+  // ⚠ ORDER: the emit's set() lands FIRST, so the gate reads satisfied inside doSyncNow's guards + the publish guards.
   // `nostr` is optional (tests assert state without a signer; OwnerKeySetup relies on establishLocalOwner's
-  // own internal syncNow as the wake). v === null is the teardown clear: no dirty, no wake.
+  // own internal syncNow as the wake). v === null is the teardown clear: no event, no wake.
   // syncNow is DYNAMIC-imported to avoid the store ↔ syncNow cycle (same as publish.ts below).
   //
-  // ⚠ THE PRE-AUTH GUARD IS LOAD-BEARING (seed-clobber, Fix C). `settingsDirty` is PERSISTED (it rides
-  // partializeState's ...rest) and doSyncNow flips initialSettingsPullDone(true) BEFORE its publish-if-dirty
-  // step — so Fix D's seed-guard is structurally unreachable from inside syncNow, and Fix C (nothing may
-  // dirty pre-pull) is the ONLY thing protecting the first sync. The K2 bridge calls this on an
-  // unauthenticated, untouched-SEED store; dirtying there would (a) publish the seed as the owner's first
-  // settings event before the numbers wizard runs, and (b) if the establish then THROWS (Face ID cancelled),
-  // leave settingsDirty:true persisted into a later real login → a seed payload published over the owner's
-  // real relay settings under whole-object LWW. So: pre-auth, only the field is set. It rides the wizard's
-  // first genuine settings publish (it's in buildSettingsPayload), exactly as Phase 1.5 documents.
+  // ⚠ THE PRE-AUTH BRANCH IS LOAD-BEARING. Onboarding's quiz-pass (R2c-6a) stamps here BEFORE the establish (K3),
+  // which can still throw (Face ID cancelled). Its rollback clears the field RAW — it cannot retract an event — so an
+  // event emitted here would outlive a failed establish in the persisted log. So: pre-auth, only the field is set.
   setBackupVerifiedAt: (v, nostr) => {
     if (v == null) { set({ backupVerifiedAt: null }); return; }   // teardown clear — RAW, NO event
     const s = get();
-    // Pre-auth K2 bridge — FIELD ONLY (rides genesis at the first authed pull). NO emit: an event here couldn't be
-    // retracted by the K3-failure rollback, and would make planEvents non-empty → genesis skipped. Residual: a fresh
-    // key verified pre-auth never syncs the attestation AS an event — healed by any authed re-verify (ceremony re-run
-    // emits). Gate semantics unaffected (only the generating device is ever gated; peers satisfy via provenance).
+    // Pre-auth (onboarding quiz-pass) — FIELD ONLY, NO event. Residual: the stamp rides no channel until an authed
+    // re-verify (a ceremony re-run) emits it, so a second owner device shows no "Backed up ✓" chip until then. (Before
+    // 4e a newly joined device could still get it through the bridge's settings:v1 when that applied on an empty log.)
+    // Gate semantics unaffected (only the generating device is ever gated; peers satisfy via provenance).
     if (!s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey) { set({ backupVerifiedAt: v }); return; }
-    get().emitPlanSets([['backupVerifiedAt', v]]);   // authed: field + plan event + planDirty + kick (4c — was set + settingsDirty)
+    get().emitPlanSets([['backupVerifiedAt', v]]);   // authed: field + plan event + planDirty + kick
     if (nostr) void import('../../lib/nostr/syncNow').then((m) => m.syncNow(nostr)).catch((e) => nostrLog('warn', 'backup-verify wake failed', e));
   },
 });

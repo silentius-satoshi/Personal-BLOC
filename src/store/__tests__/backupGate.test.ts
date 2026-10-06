@@ -16,12 +16,13 @@ import { buildSettingsPayload } from '../payloads';
 import { isBackupGateSatisfied } from '../../lib/backupGate';
 
 // R2a-1 — backup-gate store plumbing. keyProvenance is device-local-persisted-never-synced (write-once,
-// null = clear). backupVerifiedAt is persisted AND synced, a ONE-WAY LATCH on hydrate.
+// null = clear). backupVerifiedAt is persisted AND synced (an authed stamp is a plan event), and a ONE-WAY LATCH by
+// construction: no path emits a null event (Phase 4e retired the hydrate skip-guard that used to hold it).
 
 const T  = 1_700_000_000_000;
 const T2 = 1_800_000_000_000;
 
-const reset = () => useStore.setState({ keyProvenance: null, backupVerifiedAt: null, settingsDirty: false } as never);
+const reset = () => useStore.setState({ keyProvenance: null, backupVerifiedAt: null } as never);
 
 beforeEach(reset);
 afterEach(() => { reset(); vi.restoreAllMocks(); });
@@ -108,64 +109,54 @@ describe('setBackupVerifiedAt', () => {
     expect(useStore.getState().planEvents.some((e) => e.field === 'backupVerifiedAt' && e.value === T)).toBe(true);
   });
 
-  // ⚠ SEED-CLOBBER (Fix C). settingsDirty is PERSISTED, and doSyncNow flips initialSettingsPullDone(true)
-  // BEFORE its publish step — so Fix D's seed-guard can never fire there and Fix C is the only protection.
-  // A pre-auth stamp would land on an unauthenticated SEED store: dirtying there would publish seed defaults as
-  // the owner's first settings event, and — if an establish then throws — persist a dirty seed store into a later
-  // REAL login, publishing seeds over the owner's real relay settings under whole-object LWW.
-  // R2c-4a retired the K2 bridge, so nothing stamps pre-auth today — this guard is now DEFENSIVE (it keeps any
-  // future pre-auth caller from re-opening the seed-clobber hole). The ceremony stamps post-auth.
-  it('a PRE-AUTH stamp sets the field but must NOT mark settingsDirty (defensive — no caller does this now)', () => {
+  // ⚠ THE PRE-AUTH BRANCH IS LOAD-BEARING (identitySlice). Onboarding's quiz-pass (R2c-6a — OwnerKeySetup) stamps
+  // here on an unauthenticated store, BEFORE K3's establish, which can still throw (Face ID cancelled). Its rollback
+  // clears the field RAW and cannot retract an event, so an event emitted here would outlive a failed establish in
+  // the persisted log. So pre-auth only the field is set: nothing dirty, no event. (Until 4e this line also kept Fix
+  // C's rule — no settingsDirty before the first pull; both retired with the settings:v1 bridge.)
+  it('a PRE-AUTH stamp (onboarding\'s quiz-pass, before K3) sets the field but marks nothing dirty and emits nothing', () => {
     unauth();
-    useStore.setState({ settingsDirty: false } as never);
+    useStore.setState({ planDirty: false, planEvents: [] } as never);
     useStore.getState().setBackupVerifiedAt(T);
     expect(useStore.getState().backupVerifiedAt).toBe(T);   // gate opens locally
-    expect(useStore.getState().settingsDirty).toBe(false);  // …but the seed store stays clean
+    expect(useStore.getState().planDirty).toBe(false);      // …but the seed store stays clean
+    expect(useStore.getState().planEvents).toHaveLength(0);
   });
 
-  it('a pre-auth stamp still rides the next genuine settings publish (it is in buildSettingsPayload)', () => {
+  it('a pre-auth stamp rides no channel (4e retired the settings:v1 bridge) — it still travels in a plan backup', () => {
     unauth();
     useStore.getState().setBackupVerifiedAt(T);
-    expect(buildSettingsPayload(useStore.getState()).backupVerifiedAt).toBe(T);
+    expect(buildSettingsPayload(useStore.getState()).backupVerifiedAt).toBe(T);   // the export's settings partition
   });
 
-  it('the null teardown clear touches neither settingsDirty nor anything else', () => {
-    useStore.setState({ backupVerifiedAt: T, settingsDirty: false } as never);
+  it('the null teardown clear marks nothing dirty and emits nothing', () => {
+    useStore.setState({ backupVerifiedAt: T, planDirty: false, prefsDirty: false, planEvents: [] } as never);
     useStore.getState().setBackupVerifiedAt(null);
     expect(useStore.getState().backupVerifiedAt).toBeNull();
-    expect(useStore.getState().settingsDirty).toBe(false);
+    expect(useStore.getState().planDirty).toBe(false);
+    expect(useStore.getState().prefsDirty).toBe(false);
+    expect(useStore.getState().planEvents).toHaveLength(0);
   });
 });
 
-describe('hydrateSettings — backupVerifiedAt is a ONE-WAY LATCH', () => {
-  it('an incoming null does NOT clobber a latched local value — and a sibling field still applies (skip-FIELD)', () => {
+// Phase 4e — the latch on the apply paths that remain. hydrateSettings' skip-guard retired with settings:v1: no emit path
+// writes a null stamp (planEventsCutover LATCH), the two whitelist appliers can't write it at all, and a real stamp from
+// a peer arrives as a plan event through the fold.
+describe('4e — backupVerifiedAt on the remaining apply paths', () => {
+  it('neither whitelist applier can write it — not a null, not a stamp', () => {
     useStore.setState({ backupVerifiedAt: T } as never);
-    useStore.getState().hydrateSettings({ backupVerifiedAt: null, income: 1234 });
-    expect(useStore.getState().backupVerifiedAt).toBe(T);   // held
-    expect(useStore.getState().income).toBe(1234);          // skip-FIELD, not skip-all
-  });
-
-  it('a real incoming timestamp hydrates (verifying on one owner device un-gates the others)', () => {
-    useStore.setState({ backupVerifiedAt: null } as never);
-    useStore.getState().hydrateSettings({ backupVerifiedAt: T2 });
-    expect(useStore.getState().backupVerifiedAt).toBe(T2);
-  });
-
-  it('an incoming null over an unlatched local applies (nothing to protect)', () => {
-    useStore.setState({ backupVerifiedAt: null } as never);
-    useStore.getState().hydrateSettings({ backupVerifiedAt: null });
-    expect(useStore.getState().backupVerifiedAt).toBeNull();
-  });
-
-  it('a stale pre-R2 bundle OMITS the field entirely → the whitelist skips it, latch untouched', () => {
-    useStore.setState({ backupVerifiedAt: T } as never);
-    useStore.getState().hydrateSettings({ income: 4321 });   // no backupVerifiedAt key at all
+    useStore.getState().hydratePrefs({ backupVerifiedAt: null, simpleMode: true });
+    useStore.getState().applyViewerSettings({ backupVerifiedAt: null, income: 1234 });
     expect(useStore.getState().backupVerifiedAt).toBe(T);
+    useStore.getState().hydratePrefs({ backupVerifiedAt: T2 });
+    useStore.getState().applyViewerSettings({ backupVerifiedAt: T2 });
+    expect(useStore.getState().backupVerifiedAt).toBe(T);
+    expect(useStore.getState().income).toBe(1234);   // the sibling field still lands
   });
 
-  it('a later timestamp overwrites an earlier one (plain LWW within the latch)', () => {
-    useStore.setState({ backupVerifiedAt: T } as never);
-    useStore.getState().hydrateSettings({ backupVerifiedAt: T2 });
+  it('a peer\'s real stamp arrives through the fold (verifying on one owner device reaches the others)', () => {
+    useStore.setState({ backupVerifiedAt: null } as never);
+    useStore.getState().applyPlanFold({ backupVerifiedAt: T2 });
     expect(useStore.getState().backupVerifiedAt).toBe(T2);
   });
 });
@@ -224,35 +215,27 @@ describe('gate integration', () => {
 
 describe('publish guards consult the gate', () => {
   afterEach(() => {
-    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', settingsDirty: false, initialSettingsPullDone: false } as never);
+    useStore.setState({ isAuthenticated: false, nostrSigner: null, nostrPubkey: '', initialSettingsPullDone: false } as never);
   });
 
-  it('publishSettingsNow refuses a generated-but-unverified key (never reaches the seed-guard warn)', async () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
-    const { publishSettingsNow } = await import('../../lib/nostr/syncEngine');
+  it('publishPlanEventsNow refuses a generated-but-unverified key (bails at the gate, before setNostrSyncing)', async () => {
+    const { publishPlanEventsNow } = await import('../../lib/nostr/syncEngine');
     useStore.setState({
       isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk',
-      initialSettingsPullDone: true, keyProvenance: 'generated', backupVerifiedAt: null,
+      initialSettingsPullDone: true, keyProvenance: 'generated', backupVerifiedAt: null, planDirty: true,
     } as never);
-
-    expect(await publishSettingsNow()).toBe(false);
-    // bailed at the gate, before setNostrSyncing / the seed-guard warn
-    expect(warn.mock.calls.flat().join(' ')).not.toContain('refused');
+    expect(await publishPlanEventsNow()).toBe(false);
     expect(useStore.getState().nostrSyncing).toBe(false);
+    expect(useStore.getState().planDirty).toBe(true);   // the edit waits for the ceremony
   });
 
-  it('syncSettingsToNostr does not mark dirty while gated', () => {
-    vi.useFakeTimers();
+  it('publishPrefsNow refuses a generated-but-unverified key', async () => {
+    const { publishPrefsNow } = await import('../../lib/nostr/syncEngine');
     useStore.setState({
       isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk',
-      initialSettingsPullDone: true, settingsDirty: false,
-      keyProvenance: 'generated', backupVerifiedAt: null,
+      initialSettingsPullDone: true, keyProvenance: 'generated', backupVerifiedAt: null, prefsDirty: true,
     } as never);
-
-    useStore.getState().syncSettingsToNostr();
-
-    expect(useStore.getState().settingsDirty).toBe(false);
-    vi.clearAllTimers();
-    vi.useRealTimers();
+    expect(await publishPrefsNow()).toBe(false);
+    expect(useStore.getState().nostrSyncing).toBe(false);
   });
 });

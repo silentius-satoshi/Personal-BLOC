@@ -56,7 +56,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   setViewerMode:         (v) => set({ viewerMode: v }),          // viewer-side, device-local — never syncs
   setViewerWriterPubkey: (v) => set({ viewerWriterPubkey: v }),
   setViewerSecretKey:    (v) => set({ viewerSecretKey: v }),
-  setViewerDisplayName:  (v) => set({ viewerDisplayName: v }),   // device-local — no syncSettingsToNostr
+  setViewerDisplayName:  (v) => set({ viewerDisplayName: v }),   // device-local — no emit
   setViewerKeyWrapped:   (v) => set({ viewerKeyWrapped: v }),    // Phase 3 — device-local, never syncs
   setViewerKeyWrapMeta:  (v) => set({ viewerKeyWrapMeta: v }),
   setViewerUnlocked:     (v) => set({ viewerUnlocked: v }),      // transient (not persisted)
@@ -67,7 +67,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   setStoreUnlocked:      (v) => set({ storeUnlocked: v }),       // transient (not persisted)
   // Data-remanence fix: reset every viewer-hydrated financial/records/strike field to its seed so decrypted data
   // never outlives the authorizing key. Layout prefs (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit) intentionally
-  // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no syncSettingsToNostr.
+  // LEFT (not sensitive; clearing simpleMode would yank the viewer's UI). VIEWER paths ONLY — no emit.
   clearViewerData: () => set({
     income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000,
     advisorStartDate: todayLocalISO(),
@@ -80,8 +80,8 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     advisorSkipBlocDraw: false, advisorSkipCbPayment: false, advisorSkipBtcBuying: false,
     monthlyLog: [], deletedMonths: {}, dayLog: [], deletedDayEvents: {},
     coldStorageBtc: 0, coldStorageBtcAsOf: null, pinnedScenario: null, planEvents: [], planDirty: false, prefsDirty: false,
-    recordsDirty: false, settingsDirty: false, lastSettingsSyncAt: null, lastRecordsSyncAt: null,
-    lastPlanEventsSyncAt: null, lastPrefsSyncAt: null, lastV1FallbackApplyAt: null,
+    recordsDirty: false, lastRecordsSyncAt: null,
+    lastPlanEventsSyncAt: null, lastPrefsSyncAt: null,
     nostrReconnectNeeded: false,
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
     viewers: [], nextViewerIndex: 0,   // Multi-viewer roster (M1) — reset the owner-config roster to seed
@@ -92,7 +92,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   }),
 
   // Owner-recovery reset (escape hatch). Mirrors clearViewerData's financial/records/strike seed-reset but for the
-  // OWNER. Pure local set — NO syncSettingsToNostr / NO publish (resetAndResync controls when/whether the pull runs).
+  // OWNER. Pure local set — NO emit / NO publish (resetAndResync controls when/whether the pull runs).
   // Deliberately PRESERVES: writerKeyWrapped/Meta (standalone — needed to re-auth), nostr identity/relays, device
   // prefs, and the viewers roster (re-hydrate from the pull). Reachable ONLY from the escape hatch.
   resetPlanToSeeds: () => set({

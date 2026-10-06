@@ -27,7 +27,7 @@ export interface PlanEvent {
   value:  unknown;      // JSON value incl. arrays (nostrRelays, viewers)
 }
 
-// The slice of store state the plan-events channel owns (the 33 PLAN_EVENT_FIELDS). Type-only.
+// The slice of store state the plan-events channel owns (the 35 PLAN_EVENT_FIELDS). Type-only.
 export type PlanState = Pick<StoreState, PlanField>;
 
 // Re-exported so sibling planEvents modules import PlanField from './types' (one local surface).

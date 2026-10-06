@@ -52,7 +52,7 @@ import styles from './SettingsMain.module.css';
 const EMPTY_RELAYS: string[] = [];
 
 // Relative-time for the SYNC rows — mirrors ViewerHomeView's relativeAge m/h/d convention, but "never" when
-// unsynced and no "updated" prefix (the row already reads "Settings synced · …").
+// unsynced and no "updated" prefix (the row already reads "Plan synced · …").
 // ts is unix SECONDS — matches event.created_at stored by sync.ts; store units must not change (the
 // watermark gate in sync.ts compares in seconds too).
 function relativeSync(ts: number | null): string {
@@ -292,7 +292,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const localMethodLabel    = wrapScheme === 'pin' ? 'PIN · local key' : `${biometricLabel()} · local key`;
   const isAuthenticated     = useStore((s) => s.isAuthenticated);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
-  const lastSettingsSyncAt  = useStore((s) => s.lastSettingsSyncAt);
+  const lastPlanEventsSyncAt = useStore((s) => s.lastPlanEventsSyncAt);   // Phase 4e — the plan's channel (was settings:v1)
   const lastRecordsSyncAt   = useStore((s) => s.lastRecordsSyncAt);
   // Viewer/sharing config now lives in <SharingPage/> (extracted). Only npubCopied stays here (the
   // Identity page's tap-to-copy also uses it).
@@ -589,7 +589,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
 
           {/* SYNC */}
           <div className={styles.settingsGroupLabel}>SYNC</div>
-          <div className={styles.syncRow}><span className={styles.syncRowLabel}>Settings synced</span><span className={styles.syncRowValue}>{relativeSync(lastSettingsSyncAt)}</span></div>
+          <div className={styles.syncRow}><span className={styles.syncRowLabel}>Plan synced</span><span className={styles.syncRowValue}>{relativeSync(lastPlanEventsSyncAt)}</span></div>
           <div className={styles.syncRow}><span className={styles.syncRowLabel}>Records synced</span><span className={styles.syncRowValue}>{relativeSync(lastRecordsSyncAt)}</span></div>
           <button onClick={triggerSync} disabled={nostrSyncing} className={styles.syncButton}>
             {nostrSyncing ? 'Syncing…' : '↻ Sync now'}

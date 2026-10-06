@@ -18,7 +18,12 @@ import {
 // Persist partialize — exported so it's unit-testable (the persist API isn't available under Node where persistence
 // self-disables). In-memory + transient fields are omitted; everything else (incl. dayLog/cbLtvAction) persists.
 export function partializeState(state: StoreState) {
-  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, remotePlanFound, backupNagDismissed, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab, ...rest } = state;
+  const { strikeUsdBalance, strikeBtcAvailable, strikeRate, strikeApiConnected, strikeLastFetched, isAuthenticated, nostrSigner, nostrSyncing, initialSettingsPullDone, remotePlanFound, backupNagDismissed, nostrReconnectNeeded, sandboxCollateralBtc, viewerUnlocked, viewerDataLoaded, viewerLastSyncAt, viewerSafeSnapshot, viewerPreview, storeUnlocked, writerKeyWrapped, writerKeyWrapMeta, activeTab,
+    // Phase 4e: the three retired bridge keys. They are no longer in StoreState, but a v21 blob written before 4e still
+    // carries them, merge spreads them back into memory, and ...rest would write them back forever (the store stays v21,
+    // so migrateState never runs on it). Naming them here drops them on the first write after the upgrade.
+    settingsDirty: _sd, lastSettingsSyncAt: _lss, lastV1FallbackApplyAt: _lv1,
+    ...rest } = state as StoreState & { settingsDirty?: unknown; lastSettingsSyncAt?: unknown; lastV1FallbackApplyAt?: unknown };
   return rest;
 }
 

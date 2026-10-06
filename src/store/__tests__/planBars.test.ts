@@ -34,10 +34,11 @@ describe('Simple Mode plan-bar toggles — device-local display prefs', () => {
     expect(s.showPlanCbBar).toBe(false);
   });
 
-  it('are NOT synced (absent from SETTINGS_FIELDS): a remote settings payload cannot clobber them', () => {
+  it('are NOT synced (absent from SETTINGS_FIELDS): neither a viewer snapshot nor a prefs object can clobber them', () => {
     useStore.setState({ showPlanIncomeBar: false, income: 0 } as never);
-    // hydrateSettings only applies the SETTINGS_FIELDS whitelist; the toggle must be ignored.
-    useStore.getState().hydrateSettings({ showPlanIncomeBar: true, income: 1234 });
+    // 4e: both remaining whitelist appliers ignore the device-local toggle.
+    useStore.getState().hydratePrefs({ showPlanIncomeBar: true });
+    useStore.getState().applyViewerSettings({ showPlanIncomeBar: true, income: 1234 });
     expect(useStore.getState().showPlanIncomeBar).toBe(false);   // device-local — untouched
     expect(useStore.getState().income).toBe(1234);               // sanity: real synced field applied
   });

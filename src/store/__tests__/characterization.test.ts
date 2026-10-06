@@ -11,12 +11,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 // changed behavior — that is the bug, not the test.
 //
 // Two source-truth notes (deliberate, verified against HEAD):
-//   • Suite 1 asserts the JSON-SERIALIZED blob keys (91). partializeState()
+//   • Suite 1 asserts the JSON-SERIALIZED blob keys (97). partializeState()
 //     returns `...rest`, which also carries every action FUNCTION; only JSON
 //     serialization (what actually persists) drops them. Keying on the data-only
 //     blob is faithful to "persisted blob shape" AND is the right instrument —
 //     1c may reorganize the action surface without touching the blob.
-//   • buildSettingsPayload returns 37 keys (not 36 — that count was off by one).
+//   • buildSettingsPayload returns 39 keys (SETTINGS_FIELDS).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Mock localStorage BEFORE the store import (vi.hoisted runs first) — partializeState + the
@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 99 persisted data keys', () => {
+  it('blob key-set is exactly the 97 persisted data keys (4e: settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt retired)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -64,14 +64,13 @@ describe('characterization · persisted blob (partializeState)', () => {
       'coldStorageBtc', 'coldStorageBtcAsOf',
       'converterActiveField', 'converterRawValue', 'creditLine', 'dayLog', 'deletedDayEvents', 'deletedMonths',
       'devMode', 'expenseReanchorDismissedAt', 'expenses', 'hasCbLoan', 'hiddenTabs', 'income', 'inflationRate',
-      'keyProvenance', 'lastPlanEventsSyncAt', 'lastPrefsSyncAt', 'lastRecordsSyncAt', 'lastSettingsSyncAt',
-      'lastV1FallbackApplyAt',   // 4d fallback telemetry
+      'keyProvenance', 'lastPlanEventsSyncAt', 'lastPrefsSyncAt', 'lastRecordsSyncAt',
       'ltvType', 'miningInputs',
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pendingViewerRevocations', 'pinnedScenario',   // device-local revocation retry queue + scenario pin
       'planDirty', 'planEvents', 'prefsDirty',   // Phase 4c: plan-events channel (device-local persisted)
-      'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'settingsDirty', 'showMiningInLog',
+      'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'showMiningInLog',
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
       'viewerDisplayName', 'viewerKeyWrapMeta', 'viewerKeyWrapped', 'viewerMode', 'viewerSecretKey',
@@ -114,10 +113,9 @@ describe('characterization · persisted blob (partializeState)', () => {
       nostrRelays: ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'], nostrLogin: null,
        keyProvenance: null, backupVerifiedAt: null, viewers: [], nextViewerIndex: 0, pendingViewerRevocations: [], viewerMode: false,
       viewerWriterPubkey: null, viewerSecretKey: null, viewerDisplayName: null, viewerKeyWrapped: null,
-      viewerKeyWrapMeta: null, lastSettingsSyncAt: null, lastRecordsSyncAt: null, recordsDirty: false,
-      settingsDirty: false, deletedMonths: {}, deletedDayEvents: {},
+      viewerKeyWrapMeta: null, lastRecordsSyncAt: null, recordsDirty: false,
+      deletedMonths: {}, deletedDayEvents: {},
       planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
-      lastV1FallbackApplyAt: null,   // Phase 4d
       pinnedScenario: null,   // Phase 3a: device-local pin
     });
   });
@@ -141,7 +139,7 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
     ]);
   });
 
-  it('deep-equals the seed (advisorStartDate normalized → 37 entries)', () => {
+  it('deep-equals the seed (advisorStartDate normalized → 38 entries)', () => {
     const p = buildSettingsPayload(useStore.getState()) as Record<string, unknown>;
     expect(p.advisorStartDate).toMatch(ISO_DATE);
     delete p.advisorStartDate;
@@ -194,7 +192,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
     delete settings.advisorStartDate;
     expect(trusted).toEqual({
       snapshotVersion: 2, privacyMode: 'trusted',
-      // settings = the 37 minus the 4-key snapshot strip (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt) → 33.
+      // settings = the 39 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 34; 33 below, advisorStartDate normalized out.
       settings: {
         income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000, advisorActualBlocBalance: 0,
         advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,

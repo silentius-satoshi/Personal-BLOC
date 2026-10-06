@@ -63,14 +63,14 @@ describe('buildPlanBackup — plan-only scope', () => {
 
   it('excludes device-local/session fields (naturally absent — not in buildSettingsPayload/the records set)', () => {
     useStore.setState({
-      devMode: true, viewerMode: true, settingsDirty: true, initialSettingsPullDone: true, nostrPubkey: 'pk',
+      devMode: true, viewerMode: true, planDirty: true, initialSettingsPullDone: true, nostrPubkey: 'pk',
     } as never);
 
     const backup = buildPlanBackup(useStore.getState());
 
     expect('devMode' in backup.plan.settings).toBe(false);
     expect('viewerMode' in backup.plan.settings).toBe(false);
-    expect('settingsDirty' in backup.plan.settings).toBe(false);
+    expect('planDirty' in backup.plan.settings).toBe(false);
     expect('initialSettingsPullDone' in backup.plan.settings).toBe(false);
     expect('nostrPubkey' in backup.plan.settings).toBe(false);
   });

@@ -145,7 +145,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       return;
     }
     // Viewer V2 — C-SAFE mode: store only the ratio/config/at-snapshot-price block (ViewerHomeView scales it to
-    // the live price). Do NOT hydrateSettings/records/strike — none exist in a safe payload (no absolutes).
+    // the live price). Do NOT applyViewerSettings/records/strike — none exist in a safe payload (no absolutes).
     if (snap.privacyMode === 'safe') {
       s.setViewerSafeSnapshot({
         safety:             snap.safety!,
@@ -163,7 +163,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     // so a trusted→ nothing-stale mix can't linger (ViewerHomeView reads viewerSafeSnapshot to pick its mode).
     s.setViewerSafeSnapshot(null);
     const settings = snap.settings ?? {};
-    s.hydrateSettings(settings);
+    s.applyViewerSettings(settings);
     // Verbatim: the owner's rolled-up entries already carry the RECORDED btcHeld, and the viewer has no dayLog to derive
     // from. Recomputing here would overwrite recorded values with a chain off a deprecated baseline.
     s.setMonthlyLog((snap.records?.entries ?? []) as MonthlyLogEntry[]);
@@ -178,7 +178,7 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
     // balanceReading) → either would inject a spurious event into the VIEWER's own dayLog. The viewer's dayLog stays
     // []. Fallbacks keep the current values for a legacy/pre-P3 (cb) or pre-C-P4 (strike) owner snapshot.
     // + cold: the owner's LIVE cold total arrives pre-derived (the viewer has no journal). It overrides the anchor that
-    // hydrateSettings just wrote; coldStorageBtcAsOf stays null (stripped), so getCurrentColdBtc returns exactly this.
+    // applyViewerSettings just wrote; coldStorageBtcAsOf stays null (stripped), so getCurrentColdBtc returns exactly this.
     useStore.setState({
       cbCollateralBtc:     snap.cbCollateralBtc     ?? useStore.getState().cbCollateralBtc,
       strikeCollateralBtc: snap.strikeCollateralBtc ?? useStore.getState().strikeCollateralBtc,

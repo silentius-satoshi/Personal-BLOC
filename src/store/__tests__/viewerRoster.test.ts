@@ -62,29 +62,20 @@ describe('roster setters', () => {
   });
 });
 
-describe('hydrateSettings roster skip-guard (mirrors the relay guard)', () => {
-  const populated: ViewerSlot[] = [{ index: 0, pubkeyHex: 'a'.repeat(64), npub: 'npub1a', label: 'Dad', tier: 'safe', keyVersion: 1 }];
+describe('the roster on the plan channel (4e — the hydrateSettings skip-guard retired)', () => {
+  const incoming: ViewerSlot[] = [{ index: 5, pubkeyHex: 'b'.repeat(64), npub: 'npub1b', label: 'Sis', tier: 'trusted', keyVersion: 2 }];
 
-  it('an EMPTY incoming roster does NOT clobber a populated local one (viewers + nextViewerIndex held)', () => {
-    useStore.setState({ viewers: populated, nextViewerIndex: 1 } as never);
-    useStore.getState().hydrateSettings({ viewers: [], nextViewerIndex: 0, income: 1234 });
-    expect(useStore.getState().viewers).toEqual(populated);   // kept
-    expect(useStore.getState().nextViewerIndex).toBe(1);       // counter not regressed
-    expect(useStore.getState().income).toBe(1234);             // skip-FIELD, not skip-all — income still applied
-  });
-
-  it('a POPULATED incoming roster hydrates (replace-on-hydrate)', () => {
+  it('a folded roster pair applies (replace-on-fold) — viewers and nextViewerIndex together', () => {
     useStore.setState({ viewers: [], nextViewerIndex: 0 } as never);
-    const incoming: ViewerSlot[] = [{ index: 5, pubkeyHex: 'b'.repeat(64), npub: 'npub1b', label: 'Sis', tier: 'trusted', keyVersion: 2 }];
-    useStore.getState().hydrateSettings({ viewers: incoming, nextViewerIndex: 6 });
+    useStore.getState().applyPlanFold({ viewers: incoming, nextViewerIndex: 6 });
     expect(useStore.getState().viewers).toEqual(incoming);
     expect(useStore.getState().nextViewerIndex).toBe(6);
   });
 
-  it('an empty incoming roster over an EMPTY local roster applies (nothing to protect)', () => {
-    useStore.setState({ viewers: [], nextViewerIndex: 3 } as never);
-    useStore.getState().hydrateSettings({ viewers: [], nextViewerIndex: 0 });
-    expect(useStore.getState().viewers).toEqual([]);
-    expect(useStore.getState().nextViewerIndex).toBe(0);   // guard only fires when local is populated
+  it('a fold without the roster leaves a populated local roster alone (absent = not set, §6)', () => {
+    useStore.setState({ viewers: incoming, nextViewerIndex: 6 } as never);
+    useStore.getState().applyPlanFold({ income: 1234 });
+    expect(useStore.getState().viewers).toEqual(incoming);
+    expect(useStore.getState().nextViewerIndex).toBe(6);
   });
 });

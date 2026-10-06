@@ -76,7 +76,7 @@ describe('applyPlanBackup', () => {
     expect(useStore.getState().nostrRelays).toEqual(['wss://my-custom-relay']);
   });
 
-  it('sets initialSettingsPullDone true (first-pull exception can no longer clobber the import)', () => {
+  it('sets initialSettingsPullDone true (lets the publishes proceed at once)', () => {
     useStore.getState().applyPlanBackup(backup({ income: 1 }));
     expect(useStore.getState().initialSettingsPullDone).toBe(true);
   });
@@ -89,7 +89,7 @@ describe('applyPlanBackup', () => {
     expect(useStore.getState().strikeCollateralBtc).toBe(1.23);
   });
 
-  it('replaces the records wholesale + marks dirty (4c: planDirty + recordsDirty, NOT settingsDirty)', () => {
+  it('replaces the records wholesale + marks dirty (4c: planDirty + recordsDirty)', () => {
     useStore.getState().applyPlanBackup(backup({ income: 1 }));
     expect(useStore.getState().monthlyLog).toEqual([]);
     expect(useStore.getState().dayLog).toHaveLength(1);

@@ -22,7 +22,7 @@ describe('clearViewerData', () => {
       dayLog: [{ id: 'day-1', date: '2026-01-01', ts: 1, kind: 'draw', amount: 1 }],
       deletedDayEvents: { 'day-1': 2 }, coldStorageBtc: 0.4, coldStorageBtcAsOf: 1_700_000_000_000, pinnedScenario: { label: 'old', pinnedAt: 1, btcPrice: 1, inputs: {} } as never,
       planEvents: [{ id: 'plan-1', ts: 1, device: 'd', kind: 'set', field: 'income', value: 9 }],
-      planDirty: true, prefsDirty: true, recordsDirty: true, settingsDirty: true,
+      planDirty: true, prefsDirty: true, recordsDirty: true,
     } as never);
     s.setViewerDataLoaded(true);
 
@@ -43,7 +43,6 @@ describe('clearViewerData', () => {
     expect(after.planDirty).toBe(false);
     expect(after.prefsDirty).toBe(false);
     expect(after.recordsDirty).toBe(false);
-    expect(after.settingsDirty).toBe(false);
     // representative financial settings → seeds
     expect(after.income).toBe(4000);
     expect(after.expenses).toBe(3500);

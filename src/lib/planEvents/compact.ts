@@ -13,7 +13,7 @@ const byTsThenId = (a: PlanEvent, b: PlanEvent): number =>
  *
  * Merge-safety (§7): fold reads only the latest-per-field by (ts, id); superseded events are audit-only. A
  * stale device re-introducing a compacted-away event via union is harmless — fold still picks the true
- * latest, and the next compaction sweeps the re-introduced event. Bounded: ≤ ~33 field-latests + 90d of edits.
+ * latest, and the next compaction sweeps the re-introduced event. Bounded: ≤ ~35 field-latests + 90d of edits.
  */
 export function compactPlanEvents(events: PlanEvent[], now: number): PlanEvent[] {
   const sorted = [...events].sort(byTsThenId);

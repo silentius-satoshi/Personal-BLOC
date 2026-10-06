@@ -3,9 +3,10 @@ import { useStore, storeEncEnabled } from '../../store/useStore';
 import { haptics, hapticsSupport } from '../../lib/haptics';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
 import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../lib/nostr/log';
-import { getPublishReports, SETTINGS_DTAG, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from '../../lib/nostr/publish';
+import { getPublishReports, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from '../../lib/nostr/publish';
 import { foldPlanEvents } from '../../lib/planEvents/fold';
 import { compactPlanEvents } from '../../lib/planEvents/compact';
+import { planLogGaps } from '../../lib/planEvents/coverage';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
 import { isStoreUnlocked } from '../../lib/store/storeCrypto';
@@ -78,7 +79,6 @@ export function DevPanel() {
   const nostrSigningMethod   = useStore((s) => s.nostrSigningMethod);
   const nostrPubkey          = useStore((s) => s.nostrPubkey);
   const nostrRelays          = useStore((s) => s.nostrRelays);
-  const lastSettingsSyncAt   = useStore((s) => s.lastSettingsSyncAt);
   const lastRecordsSyncAt    = useStore((s) => s.lastRecordsSyncAt);
   const recordsDirty         = useStore((s) => s.recordsDirty);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
@@ -94,7 +94,6 @@ export function DevPanel() {
   const prefsDirty           = useStore((s) => s.prefsDirty);
   const lastPlanEventsSyncAt = useStore((s) => s.lastPlanEventsSyncAt);
   const lastPrefsSyncAt      = useStore((s) => s.lastPrefsSyncAt);
-  const lastV1FallbackApplyAt = useStore((s) => s.lastV1FallbackApplyAt);   // Phase 4d — v1-fallback soak telemetry
   // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
   // they must NOT enter syncState / Copy Diagnostics (paste-safe rule).
   const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
@@ -231,9 +230,8 @@ export function DevPanel() {
     method:        nostrSigningMethod ?? '—',
     pubkey:        nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—',
     relays:        nostrRelays,
-    settingsSync:  fmtTs(lastSettingsSyncAt),
+    planSync:      fmtTs(lastPlanEventsSyncAt),   // Phase 4e — Copy Diagnostics only (was settingsSync, settings:v1); the panel shows it under PLAN EVENTS
     recordsSync:   fmtTs(lastRecordsSyncAt),
-    v1FallbackAt:  fmtTs(lastV1FallbackApplyAt),   // 4d — soak telemetry (timestamp string, metadata-safe)
     recordsDirty,
     reconnectNeeded: nostrReconnectNeeded,
     syncing:       nostrSyncing,
@@ -397,7 +395,6 @@ export function DevPanel() {
   const newestViewerSnapshot = () =>
     [...getPublishReports()].reverse().find((r) => r.label.startsWith('personal-bloc:viewer:v2:'));
   const payloadRows: [string, ReturnType<typeof newestByLabel>][] = [
-    ['settings',        newestByLabel(SETTINGS_DTAG)],
     ['records',         newestByLabel(RECORDS_DTAG)],
     ['plan events',     newestByLabel(PLAN_EVENTS_DTAG)],
     ['prefs',           newestByLabel(PREFS_DTAG)],
@@ -411,6 +408,10 @@ export function DevPanel() {
     const full = useStore.getState() as unknown as Record<string, unknown>;
     return Object.keys(folded).filter((k) => JSON.stringify(folded[k]) !== JSON.stringify(full[k]));
   })();
+  // Phase 4e — coverage: plan fields held here at a non-seed value that the log never carried (a new device or an
+  // escape-hatch reset would show their seed). Names only; the seed is the store's pre-hydration initial state. A viewer
+  // holds the owner's figures with no log of its own, so the row doesn't apply there.
+  const planLogGapList = viewerMode ? [] : planLogGaps(planEvents, useStore.getState() as unknown as Record<string, unknown>, useStore.getInitialState() as unknown as Record<string, unknown>);
 
   return (
     <div className={styles.panel}>
@@ -422,7 +423,6 @@ export function DevPanel() {
           <span className={styles.val}>
             {nostrRelays.length ? nostrRelays.map((r) => <div key={r}>{r}</div>) : '—'}
           </span>
-          <span className={styles.key}>settings sync</span><span className={styles.val}>{syncState.settingsSync}</span>
           <span className={styles.key}>records sync</span><span className={styles.val}>{syncState.recordsSync}</span>
           <span className={styles.key}>recordsDirty</span><span className={styles.val}>{String(recordsDirty)}</span>
           <span className={styles.key}>reconnectNeeded</span><span className={styles.val}>{String(nostrReconnectNeeded)}</span>
@@ -456,13 +456,13 @@ export function DevPanel() {
           <span className={styles.key}>prefsDirty</span><span className={styles.val}>{String(prefsDirty)}</span>
           <span className={styles.key}>plan sync</span><span className={styles.val}>{fmtTs(lastPlanEventsSyncAt)}</span>
           <span className={styles.key}>prefs sync</span><span className={styles.val}>{fmtTs(lastPrefsSyncAt)}</span>
-          <span className={styles.key}>v1 fallback</span>
-          <span className={styles.val} style={{ color: lastV1FallbackApplyAt ? 'var(--orange)' : 'var(--green)' }}>
-            {lastV1FallbackApplyAt ? fmtTs(lastV1FallbackApplyAt) : 'never'}
-          </span>
           <span className={styles.key}>parity</span>
           <span className={styles.val} style={{ color: planParityDiverged.length ? 'var(--red)' : 'var(--green)' }}>
             {planParityDiverged.length ? `DIVERGED: ${planParityDiverged.join(', ')}` : 'OK'}
+          </span>
+          <span className={styles.key}>log gaps</span>
+          <span className={styles.val} style={{ color: viewerMode ? undefined : planLogGapList.length ? 'var(--amber)' : 'var(--green)' }}>
+            {viewerMode ? 'n/a (viewer)' : planLogGapList.length ? planLogGapList.join(', ') : 'none'}
           </span>
         </div>
       </Section>

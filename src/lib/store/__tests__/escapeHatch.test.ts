@@ -94,7 +94,9 @@ describe('resetAndResync (reload-based teardown)', () => {
 
   it('THE STRUCTURAL GUARANTEE — the module references NO publish symbol (a push is impossible by construction)', () => {
     const src = readFileSync(new URL('../escapeHatch.ts', import.meta.url), 'utf8');
-    expect(src).not.toMatch(/publishSettingsNow|publishRecordsNow/);
+    // 4e: every publisher — the plan and prefs channels included (the old regex named only the retired settings
+    // publisher and the records one, so it never covered the plan channel 4c made the main one).
+    expect(src).not.toMatch(/\bpublish\w*\(|syncEngine|schedule\w*Publish/);
   });
 });
 

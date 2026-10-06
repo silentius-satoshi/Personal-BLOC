@@ -3,8 +3,9 @@ import type { ViewerSnapshot } from '../lib/nostr/publish';   // type-only
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety } from '../simulation/safetyView';
 import { deriveCbCollateral, deriveStrikeCollateral, deriveColdStorage } from '../simulation/logUtils';
 
-// THE settings payload — single source built from current state, consumed by BOTH publishSettingsNow AND the
-// viewer snapshot so the two can never drift. The owner's viewer roster (viewers/nextViewerIndex) IS carried
+// THE settings payload — single source built from current state, consumed by the trusted viewer snapshot (below) and
+// the plan backup (exportPlan) so the two can never drift. Phase 4e: no longer a relay payload of its own (settings:v1
+// is retired). The owner's viewer roster (viewers/nextViewerIndex) IS carried
 // here (syncs across the owner's devices) but is STRIPPED from the viewer snapshot below.
 export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
   return {
@@ -46,11 +47,11 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
-    nostrRelays:              s.nostrRelays,   // C: relay list syncs across the owner's devices (guarded on hydrate; stripped from the viewer snapshot)
-    // Backup gate (R2a-1) — verifying on ONE owner device un-gates the owner's others. One-way latch (guarded on
-    // hydrate); STRIPPED from the trusted viewer snapshot below. keyProvenance is device-local → NOT here.
+    nostrRelays:              s.nostrRelays,   // C: relay list — syncs across the owner's devices as a plan event; stripped from the viewer snapshot
+    // Backup gate (R2a-1) — the key-custody stamp. A one-way latch by construction (no path emits a null event);
+    // STRIPPED from the trusted viewer snapshot below. keyProvenance is device-local → NOT here.
     backupVerifiedAt:         s.backupVerifiedAt,
-    // Multi-viewer roster (M1) — synced in the OWNER's settings:v1 only; STRIPPED from every viewer snapshot below.
+    // Multi-viewer roster (M1) — synced as the OWNER's plan events only; STRIPPED from every viewer snapshot below.
     viewers:                  s.viewers,
     nextViewerIndex:          s.nextViewerIndex,
   };

@@ -45,7 +45,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     strikeCollateralBtc: 0.7,             // C-P4 sentinel — same raw-set/fallback/revoked semantics
     coldStorageBtc: 0.9,                  // cold sentinel — the owner's derived live total arrives the same way
     dayLog:              [],
-    hydrateSettings:     vi.fn(),
+    applyViewerSettings:     vi.fn(),
     setMonthlyLog:       vi.fn(),
     setDeletedMonths:    vi.fn(),
     setStrikeUsdBalance: vi.fn(),
@@ -113,7 +113,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
   });
 
   // ── Viewer V2 — mode-aware hydrate ──────────────────────────────────────────────────────────────
-  it('C-safe snapshot stores the safe block and does NOT hydrateSettings/records/strike', async () => {
+  it('C-safe snapshot stores the safe block and does NOT applyViewerSettings/records/strike', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
       snapshotVersion: 2, privacyMode: 'safe', asOf: 1, hasCbLoan: true,
       btcPriceAtSnapshot: 100_000,
@@ -126,7 +126,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.setViewerSafeSnapshot).toHaveBeenCalledWith(
       expect.objectContaining({ hasCbLoan: true, btcPriceAtSnapshot: 100_000 }),
     );
-    expect(mockState.hydrateSettings).not.toHaveBeenCalled();   // no absolutes to hydrate in safe mode
+    expect(mockState.applyViewerSettings).not.toHaveBeenCalled();   // no absolutes to hydrate in safe mode
     expect(mockState.setMonthlyLog).not.toHaveBeenCalled();
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
     expect(mockState.clearViewerData).not.toHaveBeenCalled();
@@ -158,7 +158,7 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     await fetchViewerSnapshot();
 
     expect(mockState.setViewerSafeSnapshot).toHaveBeenCalledWith(null);
-    expect(mockState.hydrateSettings).toHaveBeenCalled();
+    expect(mockState.applyViewerSettings).toHaveBeenCalled();
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
   });
 
@@ -187,8 +187,8 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     }));
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    expect(mockState.hydrateSettings).toHaveBeenCalledTimes(1);
-    expect(mockState.hydrateSettings).toHaveBeenCalledWith(expect.objectContaining({ income: 5000 }));
+    expect(mockState.applyViewerSettings).toHaveBeenCalledTimes(1);
+    expect(mockState.applyViewerSettings).toHaveBeenCalledWith(expect.objectContaining({ income: 5000 }));
     closeViewerSync();
   });
 });

@@ -16,7 +16,7 @@ describe('viewer snapshot builders', () => {
     useStore.setState({ viewers: [], nextViewerIndex: 0 } as never);
   });
 
-  it("buildSettingsPayload INCLUDES the owner's viewer roster (synced in the owner's own settings:v1)", () => {
+  it("buildSettingsPayload INCLUDES the owner's viewer roster (the plan backup carries it; the roster itself syncs as plan events)", () => {
     useStore.getState().addViewerSlot({ pubkeyHex: 'a'.repeat(64), npub: 'npub1exampleviewer', label: "Dad's iPhone", tier: 'safe', keyVersion: 1 });
     const payload = buildSettingsPayload(useStore.getState());
     expect('viewers' in payload).toBe(true);

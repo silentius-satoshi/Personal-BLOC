@@ -52,7 +52,7 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   setCbLoanBalance:    (v) => get().emitPlanSets([['cbLoanBalance', v], ['cbLoanBalanceAsOf', todayLocalISO()]]),
   setCbCollateralBtc:  (v) => {
     // Daily Mode P2a Seam 2: emit a cbCollateralReading (clock-only — feeds the derived cache via deriveCbCollateral)
-    // instead of syncing the field. NO syncSettingsToNostr — cross-device sync rides the RECORDS event now (P3): the
+    // instead of syncing the field. NO plan event — cross-device sync rides the RECORDS event now (P3): the
     // cbCollateralReading is part of dayLog, and addDayEvent (Change 3) publishes records. addDayEvent's clock refresh
     // sets cbCollateralBtc to v (latest-ts event); set explicitly too.
     const id = globalThis.crypto?.randomUUID?.() ?? `cbcoll-${Date.now()}-${Math.random().toString(36).slice(2)}`;

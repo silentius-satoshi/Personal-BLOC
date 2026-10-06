@@ -8,7 +8,7 @@ import type { DayEvent, MonthlyLogEntry } from '../../simulation/types';
 
 // Real store. advisorStartDate = today → events dated today bucket to strategy month 1 = the CURRENT month (so
 // upsertLogEntry graduates pending, exercising the C1 collateral seam). isAuthenticated:false → publishRecordsNow /
-// syncSettingsToNostr early-return (no async / timers).
+// publish early-return (no async / timers).
 // TODAY must match the store's advisorStartDate default (todayLocalISO()) — use the same helper, not a UTC-derived
 // date, so the two stay the same calendar day regardless of the test runner's timezone/time-of-day.
 const TODAY = todayLocalISO();

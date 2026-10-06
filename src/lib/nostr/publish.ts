@@ -6,7 +6,7 @@ import { withTimeout } from './timeout';
 import { nostrLog, redactSensitive } from './log';
 import { DEFAULT_RELAYS } from './relays';
 
-export const SETTINGS_DTAG = 'personal-bloc:settings:v1';
+// Phase 4e: 'personal-bloc:settings:v1' is retired — nothing publishes or reads it (stale copies on relays are inert).
 export const RECORDS_DTAG  = 'personal-bloc:records:v1';
 // Phase 4c — the event-sourced plan channel + the tiny whole-object prefs channel. The lastCreatedAtByDtag
 // monotonic clock (below) keys dynamically, so each new d-tag gets its own per-session counter for free.
@@ -23,7 +23,7 @@ export const FALLBACK_RELAYS = DEFAULT_RELAYS;   // unified single source (see r
 // Per-d-tag monotonic created_at clock. publishEncrypted stamps created_at at SECOND granularity, so two
 // publishes of the same replaceable d-tag within one second would tie → NIP-01 tie-break (lowest id) can
 // randomly keep the OLDER payload. Guaranteeing strict per-d-tag ordering makes ties impossible within a
-// session (covers settings/records/viewer — each d-tag has its own counter, so they never interfere).
+// session (covers records/plan-events/prefs/viewer — each d-tag has its own counter, so they never interfere).
 const lastCreatedAtByDtag: Record<string, number> = {};
 
 export async function publishEncrypted(
@@ -168,16 +168,6 @@ export async function publishRelayListNip65(
     tags:       relays.map((url) => ['r', url]),   // flat — no read/write markers
   }), opTimeoutMs, 'signEvent');
   return publishSignedToRelays(signed, publishTo, createdAt, 'kind:10002');
-}
-
-export async function publishSettings(
-  signer:   NostrSigner,
-  pubkey:   string,
-  relays:   string[],
-  settings: Record<string, unknown>,
-  opTimeoutMs?: number,
-): Promise<number> {
-  return publishEncrypted(signer, pubkey, SETTINGS_DTAG, settings, relays, opTimeoutMs);
 }
 
 // Records payload schema v2 — same d-tag; the replaceable event's next publish supersedes old payloads.

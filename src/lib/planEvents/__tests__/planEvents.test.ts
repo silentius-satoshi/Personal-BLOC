@@ -1,9 +1,10 @@
 import { describe, it, expect } from 'vitest';
-// Phase 4b — plan-events pure core. Node; no store import. Fold/union/compaction/genesis + the field partition.
+// Phase 4b — plan-events pure core. Node; no store import. Fold/union/compaction/the id-ts helpers + the field partition.
+// Phase 4e retired genesis synthesis (it seeded a log from a pulled settings:v1, a channel nothing reads now).
 import { foldPlanEvents, unionPlanEvents } from '../fold';
 import { compactPlanEvents } from '../compact';
-import { nextPlanEventTs, makePlanEventId, synthesizeGenesisEvents } from '../genesis';
-import type { PlanEvent, PlanField, PlanState } from '../types';
+import { nextPlanEventTs, makePlanEventId } from '../genesis';
+import type { PlanEvent, PlanField } from '../types';
 import { SETTINGS_FIELDS, PREFS_FIELDS, PLAN_EVENT_FIELDS } from '../../../store/settingsFields';
 
 const DAY = 24 * 60 * 60 * 1000;
@@ -130,30 +131,7 @@ describe('compactPlanEvents', () => {
   });
 });
 
-describe('genesis', () => {
-  it('fold(synthesizeGenesisEvents(partition)) ≡ partition (load-bearing round-trip)', () => {
-    const partition: Partial<PlanState> = {
-      income: 5000, hasCbLoan: true, viewers: [], blocStatementMinimum: null,
-    };
-    expect(foldPlanEvents(synthesizeGenesisEvents(partition, 1000, 'dev'))).toEqual(partition);
-  });
-
-  it('emits present keys only — an absent partition key produces no event', () => {
-    const events = synthesizeGenesisEvents({ income: 100 }, 1000, 'dev');
-    expect(events.map((e) => e.field)).toEqual(['income']);
-  });
-
-  it('produces unique, monotonically-staggered ids and ts', () => {
-    const partition: Partial<PlanState> = { income: 1, expenses: 2, blocApr: 3 };
-    const events = synthesizeGenesisEvents(partition, 500, 'dev');
-    const tss = events.map((e) => e.ts);
-    const ids = events.map((e) => e.id);
-    expect(new Set(ids).size).toBe(events.length);
-    expect(new Set(tss).size).toBe(events.length);
-    for (let i = 1; i < tss.length; i++) expect(tss[i]).toBeGreaterThan(tss[i - 1]);
-    expect(ids.every((id) => id.startsWith('genesis-'))).toBe(true);
-  });
-
+describe('id / ts helpers', () => {
   it('nextPlanEventTs is monotonic under a frozen clock', () => {
     const FROZEN = 5000;
     expect(nextPlanEventTs(0, FROZEN)).toBe(FROZEN);          // now dominates

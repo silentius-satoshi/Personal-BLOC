@@ -6,21 +6,25 @@ import { useStore } from '../store/useStore';
 import { isBackupGateSatisfied } from '../lib/backupGate';
 
 // iOS standalone PWAs never fire window online/offline (navigator.onLine stays true through an
-// airplane-mode cycle), so an offline publish leaves recordsDirty/settingsDirty set with nothing
-// retrying. This dirty-gated backoff re-invokes triggerSync until the flags clear (successful publish).
+// airplane-mode cycle), so an offline publish leaves a dirty flag set with nothing retrying. This
+// dirty-gated backoff re-invokes triggerSync until the flags clear (successful publish). Phase 4e: the flags
+// are recordsDirty, planDirty and prefsDirty (plan and prefs edits set those since 4c — settingsDirty, which the
+// retry watched until 4e, had not been set by any edit since 4c, so an offline plan edit had no retry).
 export const RETRY_DELAYS_MS = [5000, 10000, 20000, 40000, 60000] as const; // cap 60s
 
 /**
  * Self-rescheduling retry chain. Returns a cleanup that cancels the pending tick.
- * No-op (cleanup is a no-op) unless dirty && live && !viewerMode && backupGateOk.
+ * No-op (cleanup is a no-op) unless dirty && live && !viewerMode && backupGateOk && authenticated. Phase 4e: a
+ * locked local-key device (LocalUnlockGate up, isAuthenticated false) runs no chain — a tick would reach
+ * restoreSigner → Face ID with no tap, and since 4e a plan or prefs edit arms the chain too.
  * Visible ticks call onTick() and advance the backoff; hidden ticks skip the call and
  * keep the chain alive at the current delay (iOS freezes timers when hidden anyway).
  */
 export function scheduleDirtyRetry(
-  args: { dirty: boolean; live: boolean; viewerMode: boolean; backupGateOk: boolean },
+  args: { dirty: boolean; live: boolean; viewerMode: boolean; backupGateOk: boolean; authenticated: boolean },
   deps: { isVisible: () => boolean; onTick: () => void },
 ): () => void {
-  if (!args.dirty || !args.live || args.viewerMode || !args.backupGateOk) return () => {};
+  if (!args.dirty || !args.live || args.viewerMode || !args.backupGateOk || !args.authenticated) return () => {};
   let idx = 0;
   let timer: ReturnType<typeof setTimeout>;
   const schedule = () => {
@@ -36,14 +40,22 @@ export function scheduleDirtyRetry(
   return () => clearTimeout(timer);
 }
 
+/** Phase 4e — what arms the retry: any unpublished channel (records, plan, prefs) or a pending revocation. Pure, so the
+ *  predicate the hook arms with is pinned by a test, not left to a dependency list. */
+export function syncDirty(f: { recordsDirty: boolean; planDirty: boolean; prefsDirty: boolean; pendingRevocations: number }): boolean {
+  return f.recordsDirty || f.planDirty || f.prefsDirty || f.pendingRevocations > 0;
+}
+
 export function useNostrSync(opts?: { live?: boolean }) {
   const { nostr } = useNostr();
   const viewerMode = useStore((s) => s.viewerMode);   // viewer installs run NO writer sync (read-only)
   const live = (opts?.live ?? false) && !viewerMode;
   const nostrPubkey = useStore((s) => s.nostrPubkey);   // login/disconnect cycles the live sub
   const recordsDirty = useStore((s) => s.recordsDirty);
-  const settingsDirty = useStore((s) => s.settingsDirty);
+  const planDirty = useStore((s) => s.planDirty);
+  const prefsDirty = useStore((s) => s.prefsDirty);
   const pendingViewerRevocations = useStore((s) => s.pendingViewerRevocations);
+  const isAuthenticated = useStore((s) => s.isAuthenticated);   // 4e: the retry waits for the unlock (see scheduleDirtyRetry)
   // Backup gate — subscribed (not read via getState) so a verification flip RE-RUNS both effects below,
   // attaching the listeners + opening the live sub. Without the subscription the engine would stay asleep.
   const keyProvenance = useStore((s) => s.keyProvenance);
@@ -99,10 +111,10 @@ export function useNostrSync(opts?: { live?: boolean }) {
   useEffect(
     () =>
       scheduleDirtyRetry(
-        { dirty: recordsDirty || settingsDirty || pendingViewerRevocations.length > 0, live, viewerMode, backupGateOk },
+        { dirty: syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations: pendingViewerRevocations.length }), live, viewerMode, backupGateOk, authenticated: isAuthenticated },
         { isVisible: () => document.visibilityState === 'visible', onTick: triggerSync },
       ),
-    [recordsDirty, settingsDirty, pendingViewerRevocations.length, live, viewerMode, backupGateOk, triggerSync],
+    [recordsDirty, planDirty, prefsDirty, pendingViewerRevocations.length, live, viewerMode, backupGateOk, isAuthenticated, triggerSync],
   );
 
   return { triggerSync };

@@ -8,8 +8,8 @@ import { clearStoreEncryptionState } from './storeCrypto';
  * key via clearStoreEncryptionState), then reload. escapeHatch retains the identity (nostrPubkey/nostrSigningMethod),
  * so the normal boot path repopulates: local unlock gate → restoreSigner (3a is a no-op now, flag off) →
  * LocalUnlockGate.unlock → syncNow pulls from the relay into the clean plaintext slate. Nuking the blob → boot
- * hydrates to seeds → lastSettingsSyncAt defaults null → the sync-apply guard (remoteTs > lastSettingsSyncAt) does NOT
- * block → relay data applies.
+ * hydrates to seeds with an empty plan log → the pull's union+fold applies the relay's plan (no watermark gate), and
+ * the records merge applies the relay's records.
  *
  * It NEVER publishes — this module imports no publish function (the safety guarantee is structural, not just a missing
  * call), and the post-reload boot sync is dirty-gated, so a freshly-pulled clean state can't be pushed over real relay

@@ -9,6 +9,14 @@ as Phase 3. Phases: 0 Ground Truth → 1 Monolith Cleave → 2 Crypto Worker →
 Plan Core → 5 Viewer Availability → 6 Mission Features → 7 Sweep. NOTE: the baseline header below is stale
 (v15/v18-era) — full index rebuild is scheduled as Phase 7.
 
+**Phase 4 COMPLETE at 4e** (`bitbloc-spec-4e-bridge-stop-v1` v1.3, built on branch `phase-4e`): the one-way v1
+bridge is stopped — `plan-events:v1` is the only plan channel; the whole-object-LWW guard class and the v1 fallback
+are deleted; store unchanged (v21). Tag **`v4e-fence`** on the merge (the rollback anchor; BitBooks' PB-0 fork point
+when it restarts, BL7). CLAUDE.md § Event-Sourcing Migration — Phase 4 records it. ⚠ F12: the three docs named
+above (`master-roadmap-v1`, `phase-0-ground-truth-spec-v1`, `phase-4a-plan-events-design-lock-spec-v1`) are in
+neither the repo nor the project — CLAUDE.md § Phase 4 is the authority for the plan-events design; recovering them
+is the owner's item.
+
 **Current shipped baseline: store **v18** · 220/220 tests · HEAD `6673a2b` (branch `main`). Viewer-access arc (Phases 1–3) COMPLETE.**
 **Last rebuilt:** after the **security arc** (writer local-nsec signer → owner-pubkey gate → NIP-98 proxy auth) + the position-box relayout arc. Historical record of what shipped. **The security arc is now CONFIRMED on-device (iOS Face-ID local signer, owner-gate, NIP-98 all verified Jun 18).** The OPEN tail's live queue is now just the position-box eyeball + the queued viewer-access spec.
 

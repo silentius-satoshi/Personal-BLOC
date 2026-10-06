@@ -45,7 +45,7 @@ function resetStore(overrides: Record<string, unknown> = {}) {
     hasCbLoan: false,
     monthBucketReconcileDone: false,
     isAuthenticated: false, nostrSigner: null, nostrPubkey: '',
-    settingsDirty: false, recordsDirty: false,
+    recordsDirty: false,
     ...overrides,
   } as never);
 }

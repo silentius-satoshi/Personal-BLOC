@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { useStore } from '../useStore';
-import { publishRecordsNowImmediate, publishSettingsNow } from '../../lib/nostr/syncEngine';
+import { publishRecordsNowImmediate, publishPlanEventsNow, publishPrefsNow } from '../../lib/nostr/syncEngine';
 
 const realSetNostrSyncing = useStore.getState().setNostrSyncing;
 
@@ -14,7 +14,7 @@ describe('publishRecordsNowImmediate — viewerMode gate', () => {
     vi.restoreAllMocks();
     useStore.setState({
       isAuthenticated: false, nostrSigner: null, nostrPubkey: '', viewerMode: false,
-      settingsDirty: false, initialSettingsPullDone: false,
+      initialSettingsPullDone: false,
       setNostrSyncing: realSetNostrSyncing,
     } as never);
   });
@@ -47,7 +47,7 @@ describe('publishRecordsNowImmediate — viewerMode gate', () => {
     expect(result).toBe(false);
   });
 
-  it('settings publishing is also blocked for a read-only viewer', async () => {
+  it('plan-events and prefs publishing are also blocked for a read-only viewer (4e: the plan channel replaces settings:v1)', async () => {
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     vi.spyOn(console, 'error').mockImplementation(() => {});
     useStore.setState({ isAuthenticated: true, nostrSigner: {} as never, nostrPubkey: 'pk', viewerMode: true } as never);
@@ -55,7 +55,9 @@ describe('publishRecordsNowImmediate — viewerMode gate', () => {
     const syncSpy = vi.fn();
     useStore.setState({ setNostrSyncing: syncSpy } as never);
 
-    expect(await publishSettingsNow()).toBe(false);
+    useStore.setState({ initialSettingsPullDone: true, keyProvenance: 'imported' } as never);   // past every other gate
+    expect(await publishPlanEventsNow()).toBe(false);
+    expect(await publishPrefsNow()).toBe(false);
     expect(syncSpy).not.toHaveBeenCalled();
   });
 });

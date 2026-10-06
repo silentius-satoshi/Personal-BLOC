@@ -1,12 +1,11 @@
-// syncSlice (Phase 1c) — session/auth + sync flags + syncSettingsToNostr + hydrateSettings + applyPlanBackup. The
-// remotePlanFoundResolved latch moves here (its only consumer). getState()→get(); the two dynamic import paths deepened.
-import type { StoreState, StoreSet, StoreGet, ViewerSlot } from '../types';
+// syncSlice (Phase 1c) — session/auth + sync flags + the plan/prefs emit layer + the two whitelist appliers +
+// applyPlanBackup. The remotePlanFoundResolved latch lives here (its only consumer). Phase 4e retired the settings:v1
+// bridge's half of this slice (its publisher, dirty flag, sync clock, fallback stamp and hydrateSettings' guard class).
+import type { StoreState, StoreSet, StoreGet } from '../types';
 import type { DayEvent, MonthlyLogEntry } from '../../simulation/types';
 import type { PlanEvent, PlanField } from '../../lib/planEvents/types';
 import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
-import { isBackupGateSatisfied } from '../../lib/backupGate';
-import { DEFAULT_RELAYS } from '../../lib/nostr/relays';
-import { SETTINGS_FIELDS, APPLY_FIELDS, PLAN_EVENT_FIELDS } from '../settingsFields';
+import { APPLY_FIELDS, PLAN_EVENT_FIELDS, PREFS_FIELDS, VIEWER_SETTINGS_FIELDS } from '../settingsFields';
 import { nextPlanEventTs, makePlanEventId } from '../../lib/planEvents/genesis';
 import { getDeviceTag } from '../../lib/nostr/deviceTag';
 import { kickRecordsPublish } from '../bootstrap';
@@ -21,15 +20,14 @@ const maxPlanTs = (evs: PlanEvent[]) => evs.reduce((m, e) => (e.ts > m ? e.ts : 
 let remotePlanFoundResolved = false;
 
 type SyncSlice = Pick<StoreState,
-  | 'isAuthenticated' | 'setIsAuthenticated' | 'nostrSigner' | 'setNostrSigner' | 'syncSettingsToNostr' | 'nostrSyncing'
+  | 'isAuthenticated' | 'setIsAuthenticated' | 'nostrSigner' | 'setNostrSigner' | 'nostrSyncing'
   | 'setNostrSyncing' | 'initialSettingsPullDone' | 'setInitialSettingsPullDone' | 'remotePlanFound' | 'setRemotePlanFound'
   | 'recordRemotePlanFound' | 'backupNagDismissed' | 'dismissBackupNag' | 'nostrReconnectNeeded' | 'setNostrReconnectNeeded'
-  | 'lastSettingsSyncAt' | 'setLastSettingsSyncAt' | 'lastRecordsSyncAt' | 'setLastRecordsSyncAt' | 'recordsDirty'
-  | 'setRecordsDirty' | 'settingsDirty' | 'setSettingsDirty' | 'deletedMonths' | 'setDeletedMonths' | 'deletedDayEvents'
-  | 'setDeletedDayEvents' | 'hydrateSettings' | 'applyPlanBackup'
+  | 'lastRecordsSyncAt' | 'setLastRecordsSyncAt' | 'recordsDirty'
+  | 'setRecordsDirty' | 'deletedMonths' | 'setDeletedMonths' | 'deletedDayEvents'
+  | 'setDeletedDayEvents' | 'hydratePrefs' | 'applyViewerSettings' | 'applyPlanBackup'
   | 'planEvents' | 'setPlanEvents' | 'planDirty' | 'setPlanDirty' | 'lastPlanEventsSyncAt' | 'setLastPlanEventsSyncAt'
   | 'prefsDirty' | 'setPrefsDirty' | 'lastPrefsSyncAt' | 'setLastPrefsSyncAt' | 'emitPlanSets' | 'applyPlanFold' | 'emitPrefs'
-  | 'lastV1FallbackApplyAt' | 'setLastV1FallbackApplyAt'
 >;
 
 export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
@@ -38,21 +36,6 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
 
   nostrSigner:    null,
   setNostrSigner: (v) => set({ nostrSigner: v }),
-
-  // Mark-dirty + debounce wrapper around publishSettingsNow. Dirty is set SYNCHRONOUSLY so an app
-  // close mid-debounce still retries next launch (syncNow publishes-if-dirty). Accepted micro-race:
-  // a setter firing DURING an in-flight publish re-marks dirty and re-schedules, so its change
-  // publishes ~2s later; the only loss window is the app fully closing inside that ~2s — negligible.
-  // ⚠ 4c: CALLER-LESS. Every plan-field setter now emits a PlanEvent (emitPlanSets) instead of calling
-  // this. It stays defined as live rollback insurance for the settings:v1 bridge — retired at 4e with
-  // the rest of the guard class (settingsDirty, Fix C/D, the hydrateSettings skip-guards, lastSettingsSyncAt).
-  syncSettingsToNostr: () => {
-    const s = get();
-    if (s.viewerMode || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;   // viewer installs are read-only; pre-login edits must NOT mark dirty
-    if (!s.initialSettingsPullDone) return;   // don't dirty/publish before the first pull establishes a baseline (prevents a benign post-auth setter dirtying the seed store → seed-clobber)
-    set({ settingsDirty: true });
-    void import('../../lib/nostr/syncEngine').then((m) => m.scheduleSettingsPublish());
-  },
 
   nostrSyncing:    false,
   setNostrSyncing: (v) => set({ nostrSyncing: v }),
@@ -72,14 +55,10 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   nostrReconnectNeeded:    false,
   setNostrReconnectNeeded: (v) => set({ nostrReconnectNeeded: v }),
 
-  lastSettingsSyncAt: null,
-  setLastSettingsSyncAt: (ts) => set({ lastSettingsSyncAt: ts }),
   lastRecordsSyncAt: null,
   setLastRecordsSyncAt: (ts) => set({ lastRecordsSyncAt: ts }),
   recordsDirty: false,
   setRecordsDirty: (v) => set({ recordsDirty: v }),
-  settingsDirty: false,
-  setSettingsDirty: (v) => set({ settingsDirty: v }),
   deletedMonths: {},
   setDeletedMonths: (v) => set({ deletedMonths: v }),
   deletedDayEvents: {},
@@ -96,12 +75,10 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   setPrefsDirty: (v) => set({ prefsDirty: v }),
   lastPrefsSyncAt: null,
   setLastPrefsSyncAt: (ts) => set({ lastPrefsSyncAt: ts }),
-  lastV1FallbackApplyAt: null,   // Phase 4d — v1-fallback telemetry (see types.ts)
-  setLastV1FallbackApplyAt: (ts) => set({ lastV1FallbackApplyAt: ts }),
 
   // THE emit action — the sole writer of plan fields. ONE atomic set: the scalar field writes (parity with
   // the fold) + the appended events (all sharing ONE ts, so an AsOf pair can never tear) + planDirty. Then a
-  // dynamic-import kick of the 2s debounce (the scheduleSettingsPublish tail idiom). Auth-UNGATED: a pre-auth
+  // dynamic-import kick of the 2s debounce. Auth-UNGATED: a pre-auth
   // edit is legitimate local intent that just accumulates events; publishing is fully gated in the engine
   // (publishPlanEventsNow requires auth + backup gate + initialSettingsPullDone), so §6's structural
   // no-seed-clobber holds without a guard here.
@@ -126,56 +103,28 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
     void import('../../lib/nostr/syncEngine').then((m) => m.schedulePrefsPublish());
   },
 
-  hydrateSettings: (data) => {
-    // SETTINGS_FIELDS lifted to src/store/settingsFields.ts (single source — shared with Plan Import/Restore's validator)
-    const update: Partial<StoreState> = {};
-    for (const field of SETTINGS_FIELDS) {
-      if (field in data && data[field] !== undefined) {
-        (update as Record<string, unknown>)[field] = data[field];
-      }
+  // Phase 4e — the retired hydrateSettings (SETTINGS_FIELDS whitelist + the whole-object-LWW skip-guards for relays,
+  // the roster and the backupVerifiedAt latch) splits into two narrower appliers. The guards retire with the channel
+  // they defended: on the plan channel absent-vs-empty-vs-set is first-class in the fold, the teardown clear of
+  // backupVerifiedAt is RAW (no null event exists), and a seed device publishes nothing before its first pull.
+  //
+  // hydratePrefs — the prefs:v1 apply. PREFS_FIELDS only: a foreign key in a prefs object can never land a plan scalar
+  // without its event (which would read as parity DIVERGED).
+  hydratePrefs: (data) => {
+    const update: Record<string, unknown> = {};
+    for (const field of PREFS_FIELDS) {
+      if (field in data && data[field] !== undefined) update[field] = data[field];
     }
-    // C guard: a default-looking incoming relay list must never clobber a real local one. Skip ONLY the nostrRelays
-    // field (the rest of `update` applies — skip-FIELD, not skip-all). Empty OR exactly-DEFAULT_RELAYS incoming + a
-    // non-empty custom local list → drop the incoming relays; a genuine custom incoming list passes through. (The
-    // creator closure is `(set) => …` with no `get`, so read local via get() — safe at call time.)
-    if ('nostrRelays' in update) {
-      const incoming = update.nostrRelays as string[] | undefined;
-      const local = get().nostrRelays;
-      const sortedJoin = (a: string[]) => [...a].sort().join(',');
-      const isEmpty = !Array.isArray(incoming) || incoming.length === 0;
-      const isJustDefaults = Array.isArray(incoming) && incoming.length === DEFAULT_RELAYS.length
-        && sortedJoin(incoming) === sortedJoin(DEFAULT_RELAYS);
-      const localIsRealCustom = local.length > 0
-        && !(local.length === DEFAULT_RELAYS.length && sortedJoin(local) === sortedJoin(DEFAULT_RELAYS));
-      if ((isEmpty || isJustDefaults) && localIsRealCustom) {
-        delete (update as Record<string, unknown>).nostrRelays;   // keep the local list
-      }
+    set(update as Partial<StoreState>);
+  },
+  // applyViewerSettings — a TRUSTED viewer snapshot's settings. VIEWER_SETTINGS_FIELDS only (SETTINGS_FIELDS minus the
+  // five the owner strips), so a snapshot can never write the viewer's own relays, roster or gate stamp.
+  applyViewerSettings: (data) => {
+    const update: Record<string, unknown> = {};
+    for (const field of VIEWER_SETTINGS_FIELDS) {
+      if (field in data && data[field] !== undefined) update[field] = data[field];
     }
-    // Roster guard (M1, mirrors the relay guard): an EMPTY incoming viewers roster (a fresh/un-established session)
-    // must never clobber a populated local roster. Skip the roster FIELDS (viewers + nextViewerIndex together, so
-    // the monotonic counter never regresses); a genuinely populated incoming roster still hydrates.
-    if ('viewers' in update) {
-      const incoming = update.viewers as ViewerSlot[] | undefined;
-      const localRoster = get().viewers;
-      const incomingEmpty = !Array.isArray(incoming) || incoming.length === 0;
-      if (incomingEmpty && localRoster.length > 0) {
-        delete (update as Record<string, unknown>).viewers;
-        delete (update as Record<string, unknown>).nextViewerIndex;
-      }
-    }
-    // Verification is a ONE-WAY LATCH: an incoming null must never un-verify a device that already latched.
-    // Who publishes an explicit null: a NEW-BUNDLE peer that is legacy (provenance null) or not-yet-verified —
-    // a stale pre-R2 bundle omits the field entirely (undefined → whitelist skips it) and is already safe.
-    // Third member of the whole-object-LWW skip-guard class (nostrRelays, viewers, this) — the entire class is
-    // scheduled for structural deletion at Phase 4e when settings move to plan-events (absent vs null vs set
-    // become first-class in the fold).
-    if ('backupVerifiedAt' in update) {
-      const incoming = update.backupVerifiedAt as number | null | undefined;
-      if (incoming == null && get().backupVerifiedAt != null) {
-        delete (update as Record<string, unknown>).backupVerifiedAt;
-      }
-    }
-    set(update);
+    set(update as Partial<StoreState>);
   },
 
   // Plan Import/Restore — ATOMIC replace of this device's plan with a validated backup. ONE set(), four things:
@@ -191,9 +140,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   //  (c) the cbCollateralBtc/strikeCollateralBtc derived caches folded in the SAME commit (the setDayLog discipline —
   //      dayLog ⇒ caches stays structural). The §5b deriveReadingAnchors seam is NOT run: the imported settings already
   //      carry the anchor scalars + asOf, and setting settings directly (not via addDayEvent) can't fire it anyway.
-  //  (d) planDirty + recordsDirty (+ prefsDirty when a prefs field was restored) + initialSettingsPullDone TRUE — the
-  //      last is load-bearing twice: it stops sync.ts's first-pull exception from hydrating remote OVER the imported
-  //      plan, and lets publish proceed. NO settingsDirty (the plan channel + its bridge own settings:v1 now).
+  //  (d) planDirty + recordsDirty (+ prefsDirty when a prefs field was restored) + initialSettingsPullDone TRUE — it
+  //      lets the publishes proceed at once (Phase 4e retired the settings:v1 first-pull exception it also blocked).
   // The caller (validatePlanBackup) has fully validated `backup` before this runs.
   applyPlanBackup: (backup) => {
     const r = backup.plan.records;
@@ -226,8 +174,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
       initialSettingsPullDone: true,
     };
     set(update);   // ONE atomic commit — no intermediate render between the old and new plan
-    // Normal sync resumes: publish the imported plan promptly (the bridge write-throughs settings:v1 + chains the
-    // viewer fan-out). Both guarded → no-op for a gated/unauth/viewer key.
+    // Normal sync resumes: publish the imported plan promptly (the plan publish chains the viewer fan-out). Both
+    // guarded → no-op for a gated/unauth/viewer key.
     void import('../../lib/nostr/syncEngine').then((m) => m.publishPlanEventsNow());
     kickRecordsPublish();
   },

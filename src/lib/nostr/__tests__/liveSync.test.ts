@@ -43,6 +43,12 @@ describe('liveSync singleton', () => {
     expect(mockPool.subscribeMany).toHaveBeenCalledTimes(2);
   });
 
+  it('LIVE three — the live sub asks for records, plan-events and prefs only (never settings:v1)', () => {
+    openLiveSync();
+    const dTags = [...mockPool.subscribeMany.mock.calls[0][1]['#d']].sort();
+    expect(dTags, 'LIVE three').toEqual(['personal-bloc:plan-events:v1', 'personal-bloc:prefs:v1', 'personal-bloc:records:v1']);
+  });
+
   it('no pubkey → no subscription', () => {
     mockStoreState.nostrPubkey = '';
     openLiveSync();
