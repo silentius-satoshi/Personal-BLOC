@@ -46,6 +46,7 @@ import { STRIKE_MAX_DRAW_LTV } from '../../simulation/strikeCredit';
 import { fmtUSD, todayLocalISO, toLocalISO } from '../../utils/format';
 import { coldMovesSinceAnchor } from '../../simulation/logUtils';
 import styles from './SettingsMain.module.css';
+import YourPlanSection from './YourPlanSection';
 
 // Stable empty-array identity so useRelayStatus opens NO probe sockets unless the Network subpage is actually visible
 // (passing a fresh [] each render would re-key the effect; this keeps the join('') dep stable).
@@ -129,12 +130,13 @@ function SortableTabRow({ tab, isVisible, isLastVisible, isToolTab, isMoveable, 
 }
 
 // Phase 1 navigation shell: the long scroll becomes a section menu (rows) that drills into subpages.
-type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'network' | 'about' | 'backup';
+type SettingsPage = 'menu' | 'identity' | 'sharing' | 'strike' | 'plan' | 'cbloan' | 'display' | 'tabs' | 'network' | 'about' | 'backup';
 
 const SUBPAGE_TITLES: Record<Exclude<SettingsPage, 'menu'>, string> = {
   identity: 'Identity & Security',
   sharing:  'Sharing',
   strike:   'Strike Strategy',
+  plan:     'Your plan',
   cbloan:   'Coinbase Loan',
   display:  'Display',
   tabs:     'Tabs',
@@ -486,6 +488,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             {!viewerMode && <SettingsRow icon="💾" title="Backup" subtitle="Download a copy of your plan" onClick={() => setSettingsPage('backup')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="👁" title="Sharing" subtitle="Give someone read-only viewer access" onClick={() => setSettingsPage('sharing')} styles={styles} />}
             {!viewerMode && <SettingsRow icon="⚡" title="Strike Strategy" subtitle="Budget, BLOC, collateral, start date" onClick={() => setSettingsPage('strike')} styles={styles} />}
+            {!viewerMode && <SettingsRow icon="🧭" title="Your plan" subtitle="The support policy's limits and zones" onClick={() => setSettingsPage('plan')} styles={styles} />}
             {!viewerMode && (
               <div
                 className={`${styles.settingsRow} ${!hasCbLoan ? styles.settingsRowDisabled : ''}`}
@@ -692,6 +695,9 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
         {backupGated ? <BackupGateInterstitial onBack={() => setSettingsPage('menu')} /> : <SharingPage />}
       </div>
       )}
+
+      {/* The plan of record (Run 1, D2) — the one place the owner edits the saved plan; owner-only, like every plan edit here. */}
+      {settingsPage === 'plan' && !viewerMode && <YourPlanSection styles={styles} />}
 
       {settingsPage === 'strike' && !viewerMode && (
       <div className={styles.section}>

@@ -11,6 +11,7 @@ import type { PlanBackup } from '../lib/backup/exportPlan';
 import type { NostrSigner } from '@nostrify/nostrify';
 import type { PlanEvent, PlanState } from '../lib/planEvents/types';
 import type { PlanField, PrefsField } from './settingsFields';
+import type { PlanPolicySettings } from '../lib/planPolicy';
 
 // Multi-viewer roster (M1) — one provisioned viewer. `index` is stable + monotonic (never reused after
 // removal); `pubkeyHex` is the derived viewer pubkey the snapshot encrypts to; `tier`/`keyVersion` are
@@ -212,6 +213,21 @@ export interface StoreState {
   setAdvisorSkipBlocDraw:  (v: boolean) => void;
   setAdvisorSkipCbPayment: (v: boolean) => void;
   setAdvisorSkipBtcBuying: (v: boolean) => void;
+
+  // The plan of record (Run 1, D1) — the owner's SAVED support policy: six synced plan fields (lib/planPolicy; C1
+  // defaults; absent from the log = the default). Edited ONLY in Settings' "Your plan" (D2) — every face's controls stay
+  // a what-if over it. No off switch (policy-off is a face what-if).
+  policyCbStopAtSupportPct:     number;
+  policyStrikeStopAtSupportPct: number;
+  policyAccumulateBelow:        number;
+  policyPayDownAbove:           number;
+  policyBearBufferMonths:       number;
+  policyCashReserveMonths:      number;
+  /** Clamped into the sliders' ranges; one plan event per changed field; an unchanged value (or `enabled`) emits nothing. */
+  setPlanPolicy:   (patch: Partial<PlanPolicySettings>) => void;
+  /** "Back to the defaults (C1)" — all six as explicit events, one ts (an explicit default is an event, so a reset beats an
+   *  older edit from another device; an absence beats nothing). */
+  resetPlanPolicy: () => void;
 
   // Converter tab state
   converterActiveField: 'sats' | 'btc' | 'usd';

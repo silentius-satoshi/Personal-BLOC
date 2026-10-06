@@ -9,6 +9,7 @@ import { ltvOf } from '../../simulation/ltv';
 import { SUPPORT_EPS } from '../../simulation/supportPolicy';
 import type { DayEvent } from '../../simulation/types';
 import { DEFAULT_SUPPORT_POLICY_SETTINGS, shownUsd, fmtPolicyPct } from '../Almanac/supportPolicyView';
+import { clampPlanPolicy } from '../../lib/planPolicy';
 import { fmtTurnDate } from '../Almanac/cyclingFaceView';
 import { fmtColdBtc } from '../../lib/ledgerCsv';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
@@ -108,20 +109,26 @@ export interface LivePlaybookFigures {
   creditLine: number;
   coldBtc: number;             // getCurrentColdBtc()
   cbLtvTargetPct: number;
+  /** The plan of record's Coinbase limit at support (the store's `policyCbStopAtSupportPct`, C1 45%) — the console and
+   *  THIS MONTH's crash line run the owner's saved plan, never the defaults (Run 1). */
+  planCbStopAtSupportPct: number;
   dayLog: readonly DayEvent[];
   todayISO: string;            // todayLocalISO()
 }
 
-/** The Coinbase stop at support for a live target — the one clamp (`effectivePolicyStops`) on the policy's defaults. */
-function cbStopAtSupportFor(targetPct: number): number {
-  const D = DEFAULT_SUPPORT_POLICY_SETTINGS;
-  return effectivePolicyStops(D.cbStopAtSupportPct, D.strikeStopAtSupportPct, targetPct, 0).cbStop;
+/** The Coinbase stop at support for a live target — the one clamp (`effectivePolicyStops`) on the plan's Coinbase limit,
+ *  read through the plan's own clamp first, as every face reads it (the plan of record; the Strike half of the pair
+ *  never reaches `cbStop`). */
+function cbStopAtSupportFor(targetPct: number, planCbStopPct: number): number {
+  return effectivePolicyStops(
+    clampPlanPolicy('cbStopAtSupportPct', planCbStopPct), DEFAULT_SUPPORT_POLICY_SETTINGS.strikeStopAtSupportPct, targetPct, 0,
+  ).cbStop;
 }
 
-/** The liquidation depth for a live target (≈ 0.52× support at the default 45% stop, from a 45% target up; 0.47× at a
- *  40% target): the playbook tops up first from here up to support. */
-export function playbookDepthFor(targetPct: number): number {
-  return ceilingLiquidationMultiple(cbStopAtSupportFor(targetPct), CB_LLTV);
+/** The liquidation depth for a live target and the plan's Coinbase limit (≈ 0.52× support at the C1 45% limit, from a
+ *  45% target up; 0.47× at a 40% target): the playbook tops up first from here up to support. */
+export function playbookDepthFor(targetPct: number, planCbStopPct: number): number {
+  return ceilingLiquidationMultiple(cbStopAtSupportFor(targetPct, planCbStopPct), CB_LLTV);
 }
 
 /**
@@ -129,8 +136,8 @@ export function playbookDepthFor(targetPct: number): number {
  * through it; never copy it. The live figures pass through untouched, with:
  *  - cold under a satoshi (or not finite) → 0: netted cold moves leave ~1e-17 of residue, and without this the playbook
  *    would "move 0.00000000 ₿";
- *  - the Coinbase stop AT SUPPORT through `effectivePolicyStops` on the support policy's DEFAULTS — the one stop clamp,
- *    never a copy of it here. The console has no policy settings; persisting them is its own spec;
+ *  - the Coinbase stop AT SUPPORT through `effectivePolicyStops` on the plan of record's Coinbase limit — the one stop
+ *    clamp, never a copy of it here (Run 1: the saved plan, no longer the defaults);
  *  - the lender facts (Morpho's 86% and Strike's three lines) and Strike's 60-day hold.
  */
 export function playbookInputFromLive(live: LivePlaybookFigures): CrashPlaybookInput {
@@ -144,7 +151,7 @@ export function playbookInputFromLive(live: LivePlaybookFigures): CrashPlaybookI
     strikeCreditLine: live.creditLine,
     coldBtc: Number.isFinite(live.coldBtc) && live.coldBtc >= SAT_BTC ? live.coldBtc : 0,
     targetCbLtvPct: live.cbLtvTargetPct,
-    cbStopAtSupport: cbStopAtSupportFor(live.cbLtvTargetPct),
+    cbStopAtSupport: cbStopAtSupportFor(live.cbLtvTargetPct, live.planCbStopAtSupportPct),
     lltv: CB_LLTV,
     maxDrawLtv: STRIKE_MAX_DRAW_LTV,
     marginLtv: STRIKE_MARGIN_CALL_LTV,

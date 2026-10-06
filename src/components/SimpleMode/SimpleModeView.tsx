@@ -80,6 +80,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
+  const planCbStopAtSupportPct = useStore((s) => s.policyCbStopAtSupportPct);   // the plan of record's Coinbase limit (Run 1)
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const emitBalanceReading          = useStore((s) => s.emitBalanceReading);   // §5b — Quick-Setup save emits a journaled Strike reading
@@ -250,7 +251,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const playbookInput = playbookInputFromLive({
     price: btcPrice, support: plBandsAt(new Date(today)).floor, cbDebt: effectiveCbBalance, cbCollateralBtc,
     strikeBalance: advisorActualBlocBalance, strikeCollateralBtc: currentBtcHeld, creditLine, coldBtc,
-    cbLtvTargetPct, dayLog, todayISO: today,
+    cbLtvTargetPct, planCbStopAtSupportPct, dayLog, todayISO: today,
   });
   const playbookLine = cbTriggered ? monthPlaybookLine(crashPlaybook(playbookInput), playbookInput) : null;
   // Box 3 reads the engine row, which books the projection's debt shift in a month it pays Coinbase down.
@@ -448,6 +449,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
             cbLtvTargetPct={cbLtvTargetPct}
             cbRotateBackPct={cbRotateBackPct}
             blocMinPaymentSource={blocMinPaymentSource}
+            planCbStopAtSupportPct={planCbStopAtSupportPct}
           />
         </div>
       )}

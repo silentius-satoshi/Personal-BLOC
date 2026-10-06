@@ -7,6 +7,7 @@ import type { DayEvent } from '../simulation/types';
 import { deriveCbCollateral, deriveStrikeCollateral } from '../simulation/logUtils';
 import { todayLocalISO } from '../utils/format';
 import { CURRENT_STORE_VERSION } from '../lib/storeVersion';
+import { PLAN_POLICY_DEFAULTS } from '../lib/planPolicy';
 import { encryptedStorage } from '../lib/store/storeCrypto';
 import {
   storeEncEnabled, gateHydratedIdentity,
@@ -89,6 +90,14 @@ export function migrateState(persistedState: any): any {
     blocMinPaymentSource:  persistedState.blocMinPaymentSource ?? 'roll',
     blocStatementMinimum:  persistedState.blocStatementMinimum ?? null,
     blocMinPaymentDueDay:  persistedState.blocMinPaymentDueDay ?? 15,
+    // The plan of record (Run 1) — additive defaults for symmetry; no bump runs this (the persist merge keeps a new
+    // key's default on its own).
+    policyCbStopAtSupportPct:     persistedState.policyCbStopAtSupportPct     ?? PLAN_POLICY_DEFAULTS.cbStopAtSupportPct,
+    policyStrikeStopAtSupportPct: persistedState.policyStrikeStopAtSupportPct ?? PLAN_POLICY_DEFAULTS.strikeStopAtSupportPct,
+    policyAccumulateBelow:        persistedState.policyAccumulateBelow        ?? PLAN_POLICY_DEFAULTS.accumulateBelow,
+    policyPayDownAbove:           persistedState.policyPayDownAbove           ?? PLAN_POLICY_DEFAULTS.payDownAbove,
+    policyBearBufferMonths:       persistedState.policyBearBufferMonths       ?? PLAN_POLICY_DEFAULTS.bearBufferMonths,
+    policyCashReserveMonths:      persistedState.policyCashReserveMonths      ?? PLAN_POLICY_DEFAULTS.cashReserveMonths,
     btcPriceMode:         persistedState.btcPriceMode     ?? 'live',
     lastRecordsSyncAt:    persistedState.lastRecordsSyncAt  ?? null,
     nostrLogin:           persistedState.nostrLogin         ?? null,

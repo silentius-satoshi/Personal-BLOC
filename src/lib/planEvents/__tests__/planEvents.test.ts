@@ -149,7 +149,7 @@ describe('field partition', () => {
   it('PLAN_EVENT_FIELDS ∪ PREFS_FIELDS set-equals SETTINGS_FIELDS', () => {
     expect(new Set([...PLAN_EVENT_FIELDS, ...PREFS_FIELDS])).toEqual(new Set(SETTINGS_FIELDS));
     expect(PLAN_EVENT_FIELDS.length + PREFS_FIELDS.length).toBe(SETTINGS_FIELDS.length);
-    expect(PLAN_EVENT_FIELDS.length).toBe(35);   // +coldStorageBtc, +coldStorageBtcAsOf (the cold anchor's epoch-ms stamp)
+    expect(PLAN_EVENT_FIELDS.length).toBe(41);   // +the plan of record's six policy settings (Run 1; 35 before)
     expect(PREFS_FIELDS.length).toBe(4);
   });
 

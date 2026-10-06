@@ -7,6 +7,7 @@ import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { cbSeizurePrice } from '../../simulation/cbMetrics';
 import { fmtUSD, DUST_USD, shownUsd } from '../../utils/format';
+import { PLAN_POLICY_DEFAULTS, PLAN_POLICY_RANGES } from '../../lib/planPolicy';
 
 /**
  * Support-anchored policy — the faces' pure display math (Run 2a, extended for the faces in Run 2b). No React, no
@@ -16,8 +17,10 @@ import { fmtUSD, DUST_USD, shownUsd } from '../../utils/format';
  * Imports: the engine's types and `effectivePolicyStops` (the ONE stop clamp), the policy leaf's `PolicyState` and
  * breaker constants (so the broken sentence cannot drift from the rule), the lender FACTS the readouts quote
  * (`STRIKE_CURE_LTV` — the 65% a sale restores; `STRIKE_MARGIN_CALL_LTV`, `STRIKE_MAX_DRAW_LTV`, `CB_LLTV`), Coinbase's
- * per-row seizure price (`cbSeizurePrice`, cbMetrics — the card's cliff line, Run B) and, from utils/format, `fmtUSD`
- * and the dust floor (`DUST_USD` / `shownUsd`, re-exported for the faces). ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
+ * per-row seizure price (`cbSeizurePrice`, cbMetrics — the card's cliff line, Run B), from utils/format, `fmtUSD`
+ * and the dust floor (`DUST_USD` / `shownUsd`, re-exported for the faces), and, from `lib/planPolicy` (the plan of
+ * record's one source), the C1 defaults and the sliders' ranges (`PLAN_POLICY_DEFAULTS` / `PLAN_POLICY_RANGES`,
+ * re-exported below as `DEFAULT_SUPPORT_POLICY_SETTINGS` / `SUPPORT_POLICY_RANGES`). ⚠ It must never import `cyclingFaceView` — that module imports this one (`strikeCallSentence`).
  * 🔴 Must never be imported by anything in the risk core (the cyclingFaceView discipline).
  *
  * Every sentence must be TRUE of the run it describes. Where the spec's wording would be false for a case it did not
@@ -37,30 +40,20 @@ export interface SupportPolicySettings {
 }
 
 /** The locked defaults — Policy v2's C1 (BL6): ON, Coinbase 45% and Strike 50% at support, zones 2.0× / 3.0×, 12 months
- *  of borrowing room kept, no cash reserve (a session setting — no store field). The 45% limit puts Morpho's line 47.7%
- *  below support. ⚠ The engine fixtures (`policyFor` in the tests) keep the pre-v2 60 · 1.5 / 2.0 · 12. */
+ *  of borrowing room kept, no cash reserve. The 45% limit puts Morpho's line 47.7% below support. The six numbers are the
+ *  plan of record's defaults (`lib/planPolicy` — the ONE source); `enabled` is a face what-if only (no off switch in the
+ *  plan, D1). ⚠ The engine fixtures (`policyFor` in the tests) keep the pre-v2 60 · 1.5 / 2.0 · 12. */
 export const DEFAULT_SUPPORT_POLICY_SETTINGS: Readonly<SupportPolicySettings> = Object.freeze({
   enabled: true,
-  cbStopAtSupportPct: 45,
-  strikeStopAtSupportPct: 50,
-  accumulateBelow: 2.0,
-  payDownAbove: 3.0,
-  bearBufferMonths: 12,
-  cashReserveMonths: 0,
+  ...PLAN_POLICY_DEFAULTS,
 });
 
 /** The hard breaker's re-arm — the owner's pick from Run 1.1's re-arm table: after a break, N CONSECUTIVE month-ends
  *  at or above support re-arm it. `undefined` = latched for the run. A constant, never a face control. */
 export const DEFAULT_BREAKER_REARM_MONTHS: number | undefined = 6;
 
-export const SUPPORT_POLICY_RANGES = {
-  cbStopAtSupportPct:     { min: 40,  max: 70,  step: 1 },
-  strikeStopAtSupportPct: { min: 30,  max: 60,  step: 1 },
-  accumulateBelow:        { min: 1.0, max: 2.5, step: 0.05 },
-  payDownAbove:           { min: 1.5, max: 5.0, step: 0.05 },
-  bearBufferMonths:       { min: 0,   max: 48,  step: 1 },
-  cashReserveMonths:      { min: 0,   max: 12,  step: 1 },
-} as const;
+/** The sliders' ranges — `lib/planPolicy`'s, the plan's clamp on write too. */
+export const SUPPORT_POLICY_RANGES = PLAN_POLICY_RANGES;
 
 /** `payDownAbove` sits at least this far above `accumulateBelow`, so the hold band never vanishes (the engine needs
  *  accumulateBelow < payDownAbove, strictly). */

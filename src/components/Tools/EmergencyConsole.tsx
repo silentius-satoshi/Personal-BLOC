@@ -69,6 +69,7 @@ export function EmergencyConsole() {
   const cbCollateralBtc = useStore((s) => s.cbCollateralBtc);
   const cbLtvTargetPct  = useStore((s) => s.cbLtvTargetPct);    // the line the playbook restores
   const cbLtvTriggerPct = useStore((s) => s.cbLtvTriggerPct);   // the line it fires at — between the two, the plan waits
+  const planCbStopAtSupportPct = useStore((s) => s.policyCbStopAtSupportPct);   // the plan of record's Coinbase limit (Run 1)
   const livePrice       = useStore((s) => s.btcPrice);
   const btcPriceMode    = useStore((s) => s.btcPriceMode);
   const btcPriceUpdatedAt = useStore((s) => s.btcPriceUpdatedAt);
@@ -107,7 +108,7 @@ export function EmergencyConsole() {
   const input = playbookInputFromLive({
     price, support, cbDebt, cbCollateralBtc,
     strikeBalance: advisorActualBlocBalance, strikeCollateralBtc: currentBtcHeld, creditLine, coldBtc,
-    cbLtvTargetPct, dayLog, todayISO: today,
+    cbLtvTargetPct, planCbStopAtSupportPct, dayLog, todayISO: today,
   });
   const card = waitingCard(input, cbLtvTriggerPct) ?? playbookCard(crashPlaybook(input), input, hold);
 

@@ -590,7 +590,7 @@ src/
                                 # "useStore" substring (grep gate); the only body change is getState()→get(); the two dynamic
                                 # import paths deepened one level (../../lib/nostr/...)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
-                                # buildSettingsPayload(s) (the 39-key settings payload — single source for the
+                                # buildSettingsPayload(s) (the 45-key settings payload — single source for the
                                 # trusted viewer snapshot + the plan backup; 4e: no longer a relay payload of its own)
                                 # + buildViewerSnapshotPayload(s, tier)
                                 # (C-safe ratios / C-trusted full). `import type { StoreState } from './useStore'`
@@ -650,6 +650,16 @@ src/
                                 # by construction (the user holds the key elsewhere); null = LEGACY (pre-R2 plan), satisfied
                                 # STRUCTURALLY via the persist merge — deliberately NO migration. Consulted at exactly the
                                 # layer isAuthenticated is (11 guard sites); NEVER on viewer paths. See § Backup Gate
+    planPolicy.ts               # The plan of record (Run 1) — the support policy's settings as the owner's SAVED plan:
+                                # the ONE source, PURE, ZERO imports (the backupGate.ts precedent — the store and the
+                                # faces both read it; PLAN FIELDS pins it). PLAN_POLICY_DEFAULTS (C1, frozen) ·
+                                # PLAN_POLICY_RANGES (the sliders' ranges) · PLAN_POLICY_FIELD (each setting's store key:
+                                # policyCbStopAtSupportPct, policyStrikeStopAtSupportPct, policyAccumulateBelow,
+                                # policyPayDownAbove, policyBearBufferMonths, policyCashReserveMonths) · PLAN_POLICY_KEYS ·
+                                # PLAN_POLICY_SEED (the six store keys at C1, for the seed resets) · clampPlanPolicy(k, v)
+                                # (a finite number into its range; anything else → the default) · planPolicyOf(state)
+                                # (the six, read THROUGH the clamp — a restore writes what no setter wrote). No off
+                                # switch: there is no seventh field. See § The plan of record (Run 1)
     recoveryGrid.ts             # R2b-3 — PURE logic for WordGrid's input mode (12-box capture). Imports wordlist
                                 # (@scure/bip39/wordlists/english.js) + validateWords (nostr-tools/nip06) + RECOVERY_WORD_COUNT.
                                 # distributePaste(tokens,focusedIndex) → 'fill-from-start' (12 exact) | [] (0/1 token →
@@ -880,7 +890,10 @@ src/
                                 # sweep: 0 of 96, the tightest 7.7 px); a 14 px floor ran 3 of 96 past their cells (F7)
       supportPolicyView.ts      # Support policy — pure display math: settings, defaults, ranges and the clamp
                                 # (payDownPushed) — the defaults are Policy v2's C1 (45 · 2.0 / 3.0 · 12), the ranges
-                                # D2's (buy zone to 2.5×, pay down to 5.0×, room to 48 months); ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading →
+                                # D2's (buy zone to 2.5×, pay down to 5.0×, room to 48 months). Since the plan of record
+                                # (Run 1) both are RE-EXPORTED from lib/planPolicy, the one source:
+                                # DEFAULT_SUPPORT_POLICY_SETTINGS = { enabled: true, ...PLAN_POLICY_DEFAULTS } and
+                                # SUPPORT_POLICY_RANGES = PLAN_POLICY_RANGES (the same object); ZONE_LABEL / ZONE_LETTER / ZONE_COLOR; policyReading →
                                 # policyHeadline / policyDetails / neverDrawsNote; policyPauseReason; policyUnpaidNote;
                                 # policyAlert; policyStopSentence; billsRemainderTail; DUST_USD / shownUsd (the ONE
                                 # dust floor — defined in utils/format since W1, re-exported here); drawPauseClause; zoneStrip / zoneStripLabel; policyLimitPct; coldShown;
@@ -893,6 +906,17 @@ src/
                                 # Sticky controls: `PolicyCardState` / `policyCardState(mode, enabled, applied)` — the
                                 # card's four states (notCycle · off · notRun · on), ONE branch that the card and the
                                 # control dock's Policy panel both read, so the two can never disagree
+      planClamp.ts              # The plan of record (Run 1) — the plan's ONE clamp: PLAN_CB_LTV_CAP_PCT (70, the
+                                # Coinbase defense line), PLAN_STRIKE_CAP_PCT / PLAN_STRIKE_CAP_EFF (the Strike cap's
+                                # defaults) and PLAN_CLAMP. The Decision face's CAP_PCT / STRIKE_CAP_PCT / STRIKE_CAP_EFF
+                                # are these names (the aliases stay — decisionWiring's ENGINE_CONTEXT pin), and Settings'
+                                # "Your plan" reads the plan's effective stops through PLAN_CLAMP. A parent face's own cap
+                                # slider stays a what-if on that face
+      usePlanPolicy.ts          # The plan of record (Run 1) — the READ-ONLY hook: useStore(useShallow((st) =>
+                                # planPolicyOf(st))). ⚠ useShallow keeps the object's identity until a setting changes —
+                                # the faces memoise on it; without it the hook returns a fresh object on every read and
+                                # the page never renders (MR25). Every face builds policyRaw = { ...DEFAULT_SUPPORT_POLICY_
+                                # SETTINGS, ...plan, ...overlay.supportPolicy } from it; Settings' "Your plan" reads it too
       SupportPolicyCard.tsx     # Run 2b — THE support policy card, shared by the Cycling, Ownership, Strategy and Decision
                                 # faces (+ .module.css, tokens only). Props {sim, monthIdx, raw, settings, onChange, onReset,
                                 # mode, expenses} — renders only what the face hands it (no belief, no store; a
@@ -900,10 +924,15 @@ src/
                                 # (+ Turn on) / ignored (policyIgnoredNote) / on (headline, zone strip, details, a
                                 # collapsed <details> Settings disclosure with six SliderInputs; no re-arm control).
                                 # Sticky controls: ONE settings block — `SupportPolicySliders` (the six sliders, their
-                                # clauses, Turn policy off / Reset to defaults; `layout: 'stack' | 'grid'`), rendered by the
-                                # card's disclosure and by `SupportPolicyControls`, the control dock's Policy panel (the
-                                # card's no-reading states, else the sliders in a grid). The card's markup is unchanged
-                                # on all four faces (measured: outerHTML byte-identical to HEAD's, every state)
+                                # clauses, Turn policy off (faces only) / Back to your plan; `layout: 'stack' | 'grid'`),
+                                # rendered by the card's disclosure and by `SupportPolicyControls`, the control dock's
+                                # Policy panel (the card's no-reading states, else the sliders in a grid). The card's
+                                # markup was unchanged on all four faces by sticky controls (measured: outerHTML
+                                # byte-identical to that run's HEAD, every state); the plan of record (Run 1) later
+                                # renamed the reset button. Since the plan of record the sliders take two props whose
+                                # defaults are the faces' words — `resetLabel = 'Back to your plan'` (the face drops its
+                                # what-if) and `offSwitch = true`; Settings' "Your plan" passes "Back to the defaults (C1)"
+                                # and `offSwitch={false}` (the saved plan has no off switch)
                                 # Policy v2 — the lenses: two optional props, futuresLine / futuresRunning — the futures' line
                                 # (FuturesLine) after the details list ('on') and inside the state body's section ('off' /
                                 # 'notRun'), never for another strategy ('notCycle', R2); `.futures` / `.futuresStale`
@@ -976,9 +1005,11 @@ src/
                                 # power law, cycle model, store or React (a layering test). strikeHoldFrom (Strike's
                                 # 60-day hold, from LOGGED target:'strike' deposits; yyyy-mm-dd dates only) ·
                                 # playbookInputFromLive (the one live CrashPlaybookInput builder: cold under a satoshi →
-                                # 0; the stop at support through effectivePolicyStops on the support policy's DEFAULTS;
-                                # the lender constants; the hold) · playbookDepthFor (the liquidation depth for a live
-                                # target — it shares the builder's ONE stop call) · fmtStepBtc / fmtStepUsd (FLOORED to
+                                # 0; the stop at support through effectivePolicyStops on the plan's Coinbase limit — the
+                                # REQUIRED LivePlaybookFigures.planCbStopAtSupportPct, read through its clamp
+                                # (clampPlanPolicy) — plan of record, Run 1; the lender constants; the hold) ·
+                                # playbookDepthFor(target, planStop) (the liquidation depth for a live target and the
+                                # plan's limit — it shares the builder's ONE stop call) · fmtStepBtc / fmtStepUsd (FLOORED to
                                 # their printed precision) · fmtMultiplePair (widens 2 → 6 dp until k and the depth
                                 # differ) · waitingCard (target < LTV < trigger, under 86% → the plan waits) ·
                                 # playbookCard (the card's shapes) · monthPlaybookLine (the THIS MONTH line — compact,
@@ -1174,7 +1205,8 @@ src/
     Settings/
       SettingsMain.tsx          # PHASE 1 NAVIGATION SHELL — an iOS-style section MENU (rows) that drills into
                                 # dedicated SUBPAGES, driven by a LOCAL `settingsPage` state (NOT the store/activeTab):
-                                # 'menu' | 'identity' | 'sharing' | 'strike' | 'cbloan' | 'display' | 'tabs' | 'about'.
+                                # 'menu' | 'identity' | 'sharing' | 'strike' | 'plan' | 'cbloan' | 'display' | 'tabs' |
+                                # 'network' | 'about' | 'backup'.
                                 # Menu view = header (when !hideHeader → ← Back to app) + the section rows (SettingsRow
                                 # helper: glyph icon + title + subtitle + chevron). Subpage view = a .subHeader (← Settings
                                 # → menu + SUBPAGE_TITLES[page]) then that section's content. Split A (controls moved
@@ -1186,7 +1218,9 @@ src/
                                 # strike = BUDGET + STRIKE BLOC
                                 # inputs (+ a READ-ONLY "Strike API · Connected/Not connected" status row at the top of
                                 # STRIKE BLOC, mirroring the derived strikeApiConnected — no connect/key UI; the Strike
-                                # key is server-side + NIP-98-signed); cbloan = COINBASE LOAN details (P2b: when
+                                # key is server-side + NIP-98-signed); plan = "Your plan" (the plan of record, Run 1 —
+                                # the 🧭 row between Strike Strategy and Coinbase Loan; the page is YourPlanSection, the
+                                # ONLY place the owner edits the saved support policy); cbloan = COINBASE LOAN details (P2b: when
                                 # cbPaymentStrategy === 'ltvTriggered', an ACTION AT TRIGGER sub-toggle — Paydown | Add
                                 # collateral — wires cbLtvAction; sub-toggle first, then the three threshold NumberInputs;
                                 # middle label flexes ('Pay down to LTV' / 'Reduce to LTV'); a fieldHint warns
@@ -1200,7 +1234,7 @@ src/
                                 # the local list only on a real found list) + Publish-to-Nostr (publishRelayListToNip65,
                                 # no confirm) are LIVE; relaySyncBusy 'idle'|'import'|'publish' disables both + busy
                                 # labels, relaySyncMsg in a .fieldHint); about = build-tap row + DevPanel.
-                                # GATING PRESERVED: identity/sharing/strike/cbloan/tabs rows stay !viewerMode (display/about
+                                # GATING PRESERVED: identity/sharing/strike/plan/cbloan/tabs rows stay !viewerMode (display/about
                                 # always) — viewer visibility is unchanged from before (the zero-risk reading of the spec's
                                 # "always" table). The ONE behavioral change: the `hasCbLoan` toggle moved OUT of the subpage
                                 # ONTO a persistent Coinbase Loan menu row — off → row dimmed (.settingsRowDisabled), no
@@ -1222,6 +1256,13 @@ src/
                                 # + Access Phase 2: .identityCard hero (--surface-2 + orange ring) /.identityRing/
                                 # .identityNpub(+Text/CopyHint)/.identityMeta/.identityChip/.identityStatus/
                                 # .identityDotOn(green)/.identityDotWarn(amber) + .syncRow/.syncRowLabel/.syncRowValue
+      YourPlanSection.tsx       # The plan of record (Run 1) — Settings → "Your plan", the ONE place the owner edits the
+                                # saved support policy (D2). SupportPolicySliders over the saved plan (usePlanPolicy):
+                                # onChange={setPlanPolicy} onReset={resetPlanPolicy}, resetLabel="Back to the defaults
+                                # (C1)", offSwitch={false}, readouts through effectivePolicySettings(raw, PLAN_CLAMP).
+                                # Styles come from SettingsMain's module (a `styles` prop — no CSS of its own). ⚠
+                                # Owner-only: emitPlanSets has no viewer guard, so SettingsMain mounts it (and its row)
+                                # behind !viewerMode — SETTINGS pins both, and that no other file names the setters
       RevealRecoveryKey.tsx     # Access Phase 2 → R2c-1 — lost-my-backup escape hatch, VIEW-ONLY (+ .module.css).
                                 # Rendered ONLY in the identity subpage for a 'local' signer (leaving the page unmounts →
                                 # discards the material). Tap → PRF Face ID / PIN field → **unwrapRecoveryPayload** (EVERY
@@ -1531,8 +1572,10 @@ src/
                                 # colors never drift; only the layout wrappers are new. Crash playbook Run 3: the
                                 # ltvTriggered CB column header is CB_PAYDOWN_LABEL ("CB paydown (if you shift debt)"),
                                 # and the legend's CB entry names the crash playbook's band ("between D× and 1× support
-                                # the crash playbook tops up first when it can"), D = playbookDepthFor(cbLtvTargetPct)
-                                # — never a literal
+                                # the crash playbook tops up first when it can"), D = playbookDepthFor(cbLtvTargetPct,
+                                # planCbStopAtSupportPct) — never a literal. planCbStopAtSupportPct (the plan of
+                                # record's Coinbase limit, Run 1) is a REQUIRED prop from both parents (SimpleModeView,
+                                # AdvisorMain)
       AdvisorSidebar.tsx        # BTC LIVE badge, YOUR PROGRESS (start date, BLOC balance,
                                 # BTC held), read-only summaries, priority rules
       AdvisorSidebar.module.css
@@ -1979,6 +2022,22 @@ advisorSkipBtcBuying:     boolean;  // default false (persisted + synced)
 monthlyLog:               MonthlyLogEntry[];  // default []
 showMiningInLog:          boolean;            // default false
 ```
+
+### The plan of record (Run 1) — the support policy's saved settings (`planInputsSlice`)
+```typescript
+policyCbStopAtSupportPct:     number;   // default 45 (C1) — Coinbase limit at support, % (range 40–70)
+policyStrikeStopAtSupportPct: number;   // default 50 — Strike limit at support, % (30–60)
+policyAccumulateBelow:        number;   // default 2.0 — buy with the line up to this × support (1.0–2.5)
+policyPayDownAbove:           number;   // default 3.0 — pay down above this × support (1.5–5.0)
+policyBearBufferMonths:       number;   // default 12 — borrowing room kept, months (0–48)
+policyCashReserveMonths:      number;   // default 0 — cash reserve, months (0–12)
+setPlanPolicy:   (patch: Partial<PlanPolicySettings>) => void;   // clamp each value; drop unchanged ones and `enabled`; ONE emitPlanSets (one ts)
+resetPlanPolicy: () => void;   // "Back to the defaults (C1)" — all six as explicit events, one ts
+```
+All six are SYNCED plan fields (`SETTINGS_FIELDS`, plan events on `plan-events:v1`), in the plan backup and EXPOSED to a
+trusted viewer (D9). No off switch. Absent from the log = C1. Every reader goes through `planPolicyOf` /
+`clampPlanPolicy` (`lib/planPolicy`). Settings' "Your plan" is the only place the owner edits them — see § The plan of
+record (Run 1).
 
 ---
 
@@ -3809,9 +3868,12 @@ this section), each its own build.
   answers are pinned, not only compared with the run (F10: a shared function can't catch its own drift).
 - **C1 — the faces' defaults** (`DEFAULT_SUPPORT_POLICY_SETTINGS`): Coinbase 45% at support (Morpho's line 47.7% below
   it), Strike 50%, buy to 2.0×, pay down above 3.0×, 12 months of room kept (the owner's pick, D1), no cash reserve.
+  Since the plan of record (Run 1) the six numbers live in `lib/planPolicy` (`PLAN_POLICY_DEFAULTS`), and
+  `DEFAULT_SUPPORT_POLICY_SETTINGS = { enabled: true, ...PLAN_POLICY_DEFAULTS }`; they are the saved plan's defaults.
   - **D2** widens the sliders: the buy zone to 2.5×, pay down to 5.0×, the room to 48 months.
-  - **D3:** the Emergency Console and the Monthly Playbook follow the 45% stop — the depth is 0.45 ÷ 0.86 ≈ 0.52× support
-    (0.47× at a 40% target).
+  - **D3:** the Emergency Console and the Monthly Playbook follow the plan's Coinbase limit — 45% at C1
+    (`policyCbStopAtSupportPct`, since the plan of record's Run 1; before it, the policy's default stop). The depth is
+    0.45 ÷ 0.86 ≈ 0.52× support at C1 (0.47× at a 40% target).
   - ⚠ **The engine fixtures keep the pre-v2 policy:** `policyFor(support)` is 60 · 1.5 / 2.0 · 12 — every gate and pin
     was measured on it — and the faces' policy is `policyFor(support, V2_DEFAULTS)`. supportPolicyView.test reads its
     fixture runs with `FIXTURE_SETTINGS` (F6), never the defaults.
@@ -3902,8 +3964,10 @@ Spec: `pbloc-spec-support-policy-faces-v1.md` (through v1.3). ⚠ **2a and 2b me
 moves the verdict to the all-in basis before any copy says so (v1.1 #4).
 - **ON by default on all three engine faces** (`DEFAULT_SUPPORT_POLICY_SETTINGS`, frozen, decision 1): Coinbase 45% /
   Strike 50% at support, zones 2.0× / 3.0×, 12 months of room kept, a cash reserve of 0 months — Policy v2's C1 (before it,
-  60 · 1.5 / 2.0 · 12, which the engine fixtures' `policyFor` keeps). Every setting is a
-  SESSION overlay key (`Overlay.supportPolicy`) — no store field; "Reset to live" clears it. **Re-arm 6**
+  60 · 1.5 / 2.0 · 12, which the engine fixtures' `policyFor` keeps). Since the plan of record (Run 1), every face's
+  setting is a SESSION what-if over the owner's SAVED plan (`Overlay.supportPolicy`, patched over `usePlanPolicy()`); no
+  face writes the plan — Settings' "Your plan" is its only editor. The sliders' "Back to your plan" drops the what-if;
+  "Reset to live" clears the whole overlay. **Re-arm 6**
   (`DEFAULT_BREAKER_REARM_MONTHS`, the owner's pick from Run 1.1's table): a constant, never a control; `undefined`
   would latch. **Cycle mode only** — in any other mode the engine gets no policy and the face reads as before.
 - **`effectivePolicySettings`** clamps into `SUPPORT_POLICY_RANGES` (junk → the default), pushes `payDownAbove` to ≥
@@ -3919,8 +3983,10 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
 - **`futuresRun.ts` is the faces' ONLY §2 crossing for the futures** (Policy v2 — the lenses), as `supportPolicyInputs`
   is for the support path: `pricePaths` (a belief leaf beside `cyclePath`) draws them, `monteCarlo` (the engine side)
   runs them, and only `futuresRun` imports both.
-- 🔴 **The wiring, identical on the three faces — memoised on STABLE identities.** `policyRaw` (defaults ⊕ the
-  overlay key) → `policySettings` → `supportPath` (`buildSupportPath(startDate, months)`) → `supportPolicy`, each a
+- 🔴 **The wiring, identical on the three faces — memoised on STABLE identities.** `policyRaw` (defaults ⊕ the saved
+  plan ⊕ the overlay key — `{ ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...plan, ...overlay.supportPolicy }`, deps
+  `[plan, overlay.supportPolicy]`, since the plan of record's Run 1; `plan` keeps its identity through `useShallow`) →
+  `policySettings` → `supportPath` (`buildSupportPath(startDate, months)`) → `supportPolicy`, each a
   `useMemo`. `supportPolicy` goes into BOTH `engineInputs` and the lens-reset deps. ⚠ An object built during render
   has a new identity every render: `engineInputs` would rebuild, both engine runs re-run, and the lens reset fire on
   every render, so an engaged stress dies at once (the `useStressLens` bug class).
@@ -3936,8 +4002,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   - **ignored** → `policyIgnoredNote(sim.policyIgnoredReason)` + Turn policy off. Reachable: a dashboard Strike
     liquidation LTV at or under the 70% margin call is `'strikeLadder'`;
   - on → the headline in its tone, the zone strip, the details, and a native `<details>` **Settings** disclosure,
-    **collapsed by default**: six unchanged `SliderInput`s (value + a quiet clause line), Turn policy off, Reset to
-    defaults. No re-arm control.
+    **collapsed by default**: six unchanged `SliderInput`s (value + a quiet clause line), Turn policy off, Back to your
+    plan (the plan of record, Run 1 — it drops the face's what-if; it read "Reset to defaults" before). No re-arm control.
   - **The futures' line** (Policy v2 — the lenses, R2): the optional `futuresLine` / `futuresRunning` props end the card
     with `futuresCardLine` — after the details list when 'on', inside the state body's section when 'off' or 'notRun',
     never for another strategy ('notCycle': the card already says the policy is for Cycle only). The 'off' line shows
@@ -4168,6 +4234,47 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
   `playbookNote(`, no `'Coinbase defense line' : 'LTV stop defense'` or `applied ? 'defense line' : 'stop'` ternary
   survives, and the old note is gated `{!applied && defenseActive && (`). Each proven red by a temporary edit.
 
+#### The plan of record (Run 1 — the support policy's saved settings; store unchanged, NO bump)
+
+Spec: `pbloc-spec-plan-of-record-v1.md` (v1.1 — §4.1, §4.2, §12; the owner's calls are BL9: P1 — Runs 1–4 on one
+branch, merged once — and D0–D9 all A). Run 1 makes the support policy's six settings the owner's SAVED plan; Runs 2–4
+move the main screens (THIS MONTH, the Playbook, Daily, the Advisor, Safety) onto it.
+- **Six synced plan fields** (D1): `policyCbStopAtSupportPct`, `policyStrikeStopAtSupportPct`, `policyAccumulateBelow`,
+  `policyPayDownAbove`, `policyBearBufferMonths`, `policyCashReserveMonths` — the C1 defaults (BL6: 45 · 50 · 2.0 / 3.0 ·
+  12 · 0), plan events on `plan-events:v1`, in `SETTINGS_FIELDS` (39 → 45), the plan backup and the trusted viewer
+  snapshot (D9 — a conscious EXPOSE; `VIEWER_SETTINGS_FIELDS` 34 → 40; a safe snapshot carries none). **No off switch**
+  (policy-off stays a face what-if — there is no seventh field) and **no store version bump** (the persist merge keeps
+  a new key's default; a bump would make every plan backup unrestorable). Absent from the log = C1.
+- **One source — `lib/planPolicy.ts`** (zero imports, PLAN FIELDS pins it): the defaults, the ranges, the field map,
+  the seed, `clampPlanPolicy` and `planPolicyOf`. `supportPolicyView` re-exports the defaults (adding `enabled: true`)
+  and the ranges (the same object).
+- **One editor — Settings' "Your plan"** (D2; `YourPlanSection.tsx`, owner-only, the 🧭 row between Strike Strategy and
+  Coinbase Loan). `setPlanPolicy(patch)` clamps each value, drops the unchanged ones and `enabled`, and emits the rest
+  in ONE `emitPlanSets` (one ts). `resetPlanPolicy()` — "Back to the defaults (C1)" — emits all six, one ts: an explicit
+  default is an event, so a reset beats an older edit from another device, where "only the changed fields" would let
+  it survive. No other file outside the store names the setters, and none names `emitPlanSets` (SETTINGS — the only
+  editor). The other writers only replay or reset: the fold, the backup restore, the viewer's apply, the two seed
+  resets and the persist merge.
+- **The faces' what-ifs:** every face builds `policyRaw = { ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...plan,
+  ...overlay.supportPolicy }` from `usePlanPolicy()` (read-only; `useShallow`); "Back to your plan" drops the face's
+  what-if, and no face writes the plan (FACES, I20).
+- **One clamp — `planClamp.ts`** (70 and the Strike cap's defaults): the Decision face's constants and Settings' "Your
+  plan" read it; Run 2's main screens will. A parent face's own cap slider stays a what-if on that face.
+- **The Coinbase limit on the crash day:** the Emergency Console, THIS MONTH's crash line and the Outlook's legend read
+  `policyCbStopAtSupportPct` (`LivePlaybookFigures.planCbStopAtSupportPct`, required; the Outlook's prop from both its
+  parents). At C1 nothing moves — measured: 17 of 18 main screens and faces byte-identical; Settings gains its row,
+  and an open policy card's reset reads "Back to your plan".
+- **Read through the clamp** (invariant 11): `planPolicyOf` and the console clamp the saved values, so a junk value
+  reads C1 and an out-of-range one its edge, everywhere at once — a restored backup is checked for its keys, never its
+  values (`validatePlanBackup.ts`).
+- **Mixed versions are safe:** compaction and the fold are field-agnostic (`compact.ts`, `fold.ts`), so an older build
+  on another device keeps and republishes the six's events; its `set(folded)` writes the unknown keys harmlessly.
+- ⚠ **Per-notch plan events:** each notch a "Your plan" slider crosses is one plan event — like Living's income and
+  expense sliders, which have 1,000 notches — and compaction keeps superseded events for 90 days inside the ONE plan
+  payload. The plan log's size limit (past 40,960 B of plain JSON, NIP-44 padding sends the event at about 66 KB, over a
+  64 KiB relay limit; DevPanel's 60,000 B amber shows only past that step) is queue item 5a, its own fix on `main`.
+- Tests: § Test Suite → "The plan of record (Run 1)".
+
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
 An ELEVENTH face **Strategy** (`◈ Strategy`, `src/components/Almanac/UnifiedFace.tsx` + `.module.css`) —
@@ -4348,7 +4455,10 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
 - **Face-local defaults** mirror Cycling: Coinbase defense line 70 · the shared Strike-cap defaults · cold sweep 30 on
   (used only with the policy off) · cadence 1 · on the line (revert preset 48) · horizon 60 · path Support · inspect
   month **1** (so a stress starts now) · the literal `'cycle'`. The defense line, Strike cap, sweep and cadence have
-  NO control here — module constants, outside every dependency list. READ-ONLY: zero store writes; "Reset to live".
+  NO control here — module constants, outside every dependency list. Since the plan of record (Run 1) the defense line
+  and the Strike cap are `planClamp.ts`'s (`CAP_PCT = PLAN_CB_LTV_CAP_PCT`, `STRIKE_CAP_PCT` / `STRIKE_CAP_EFF` likewise —
+  the aliases stay for the ENGINE_CONTEXT pin); Settings' "Your plan" reads the same clamp. The policy's settings start
+  from the owner's saved plan (`usePlanPolicy`). READ-ONLY: zero store writes; "Reset to live".
 - **The wiring guard — `decisionWiring.test.ts`** (source-reading; every check proven red): the **PREFIX rule** — every
   `runCyclingSim(` starts `runCyclingSim({ ...engineInputs,` (⚠ NOT `supportPolicyWiring`'s exact regex, which a
   selector call fails); `evaluatePaths(engineInputs,`; `pathNote` gets `worstBy: crown.worstBy` (W1); the four
@@ -5209,8 +5319,9 @@ happen on the lenders' screens and are logged through the Daily flows. Monthly C
     `strikeBal` — that lags a knob re-anchor, and the playbook decides Strike's releases (the 40% rule), so a stale
     balance could name a release Strike refuses. Collateral `getCurrentBtcHeld()`; cold `getCurrentColdBtc()`, under a
     satoshi → 0;
-  - the Coinbase stop at support through `effectivePolicyStops` on the support policy's DEFAULTS (the console has no
-    policy settings; persisting them is its own spec);
+  - the Coinbase stop at support through `effectivePolicyStops` on the plan of record's Coinbase limit
+    (`policyCbStopAtSupportPct`, 45% at C1 — the owner's saved plan since Run 1), read through its clamp
+    (`clampPlanPolicy`), as every face reads it;
   - Strike's 60-day hold from `strikeHoldFrom(dayLog, today)` — logged `target:'strike'` deposits only (a collateral
     increase entered only as a reading is invisible). With no deposit in the window the app assumes the line is more
     than 60 days old, and the card says so;
@@ -5260,7 +5371,8 @@ still models the debt shift.
   - the ACCRUED Coinbase debt (`effectiveCbBalance`);
   - the LIVE Strike balance (`advisorActualBlocBalance`, never the start-of-month projection base);
   - `getCurrentBtcHeld()` and `getCurrentColdBtc()`;
-  - the target, the dayLog (Strike's 60-day hold) and today.
+  - the target, the plan's Coinbase limit (`policyCbStopAtSupportPct` — the plan of record, Run 1), the dayLog
+    (Strike's 60-day hold) and today.
 
   Support is `plBandsAt(today).floor` — the view keeps the power-law crossing. When the console is not simulating, the
   console and the box name the same amounts.
@@ -5295,8 +5407,10 @@ still models the debt shift.
   - `monthlyPlaybookWiring.test.ts` fails if any of the four says "CB paydown" or "pay down CB", comments included.
   - ⚠ JSX drops the whitespace at a line break next to an expression, so each label expression keeps its neighbouring
     text on its line. The same test pins the spacing.
-- **The legend's depth is computed:** `playbookDepthFor(cbLtvTargetPct)` — the builder's stop at support ÷ 86%, through
-  the ONE `effectivePolicyStops` call (≈ 0.52× at the default 45% stop — a 45% target and up — and 0.47× at 40%). The
+- **The legend's depth is computed:** `playbookDepthFor(cbLtvTargetPct, planCbStopAtSupportPct)` — the builder's stop at
+  support ÷ 86%, through the ONE `effectivePolicyStops` call, on the plan's Coinbase limit (a required prop from both of
+  the Outlook's parents, since the plan of record's Run 1; ≈ 0.52× at the C1 45% limit — a 45% target and up — and
+  0.47× at 40%). The
   legend reads "between D× and
   1× support the crash playbook tops up first when it can". Never a literal.
 - **Deleted:** `cbPaydownToTarget` and `cbPaydownAffordable` — the Playbook's last naive `creditLine − drawn` reader.
@@ -7782,6 +7896,33 @@ goes red.)
     · M-COVERAGE-SEED → COVERAGE, COVERAGE fresh store · M-COVERAGE-FOLD → COVERAGE, COVERAGE emitted · M-COVERAGE-ROW →
     COVERAGE row; the check X-PARITY-ORDER (an earlier `it` reads parity, and the publish's call is dropped) → CHAIN
     parity. An `it` stops at its first failure: M-RETRY shows RETRY plan only, M-READ the first "not called" check.
+- **The plan of record (Run 1 — the support policy's saved settings)** (spec `pbloc-spec-plan-of-record-v1` v1.1 — § The
+  plan of record (Run 1); 1 new unit file, 1 new e2e, 5 changed; the suite 2,494 → 2,509, 152 → 153 files; e2e 68 → 69;
+  49 mutations, each an exact-once edit run on its unit files with `--reporter=verbose` (the e2e too for nine), red at
+  its tag, the file restored and md5-checked, the tree's digest unchanged):
+  - `src/store/__tests__/planPolicy.test.ts` (14, the REAL store) — ⭐ PLAN FIELDS (synced, in the backup, never prefs;
+    C1 the one default; the ranges one object; six keys — no off switch; the slices' initial state is C1, read from
+    `getInitialState()`; `lib/planPolicy.ts` has zero imports) · ⭐ EMIT · ⭐ CLAMP · ⭐ QUIET (an unchanged value or
+    `enabled` emits nothing) · ⭐ RESET (all six, one ts, folds to C1) · ⭐ READ (the reader clamps: junk reads C1, out of
+    range the edge) · ⭐ FOLD · ⭐ BACKUP (the six export; a pre-Run-1 backup validates and restores, leaving them be) ·
+    ⭐ VIEWER (a trusted viewer receives and applies the six raw; a safe snapshot carries none) · ⭐ SEED (both seed
+    resets) · ⭐ FACES START FROM THE PLAN (the four faces' order and deps; no face writes the plan; the hook only reads) ·
+    ⭐ SETTINGS (owner-only page and row; writes through the store; its C1 label, no off switch; one clamp; the faces'
+    label; THE ONLY EDITOR — a comment-stripped walk of `src/` outside the store and the tests, more than 100 files:
+    only `YourPlanSection.tsx` names the setters, and no file names `emitPlanSets`) · ⭐ ONE CLAMP (70) · ⭐ CONSOLE (the
+    console, THIS MONTH's crash line, the Outlook and both its parents pass the plan's limit).
+  - `src/components/Tools/__tests__/crashPlaybookView.test.ts` — ⭐ PLAN STOP (0.45 at C1; 0.55 when the plan says 55;
+    the depth follows; junk reads 0.45; 99 reads the 70% edge); the depth loop runs four plan limits {40, 45, 55, 70}.
+  - `e2e/planOfRecord.spec.ts` (1, hermetic) — Settings → "Your plan" opens at C1 with no off switch; one notch saves
+    46%; the Decision face's card opens on it; its what-if moves to 47% and "Back to your plan" returns 46%; Settings
+    still holds 46%; "Back to the defaults (C1)" returns 45%. Every step carries a tag (PLAN row … PLAN C1 again).
+  - Changed: `planEvents.test.ts` (`PLAN_EVENT_FIELDS` 35 → 41) · `characterization.test.ts` (blob 97 → 103; payload 39 →
+    45 keys, 38 → 44 entries; C-trusted +6, with the D9 note) · `viewerSnapshot.test.ts` (the trusted key set 34 → 40) ·
+    `planEventsCutover.test.ts` (a title).
+  - Red-first (the new and moved tests on `bd9c31a`'s code): 8 red, and `planPolicy.test.ts` can't load; with the two
+    pure modules added, 12 of 14 red — READ and FOLD green by construction; the e2e red at "PLAN row".
+  - The mutations (spec Appendix P, MR1–MR49) are red at their tags. MR24 (the hook overrides the limit) and MR25 (the
+    hook drops `useShallow`) are green at the unit by design — the e2e catches them (PLAN saved; Your plan opens).
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -7813,7 +7954,7 @@ goes red.)
 - **Crash playbook (Run 2 — the Emergency Console)** (every ⭐ proven red by a temporary edit; round synthetic figures):
   - `src/components/Tools/__tests__/crashPlaybookView.test.ts`:
     - the builder: ⭐ pass-through + the four lender constants; ⭐ the stop at support through `effectivePolicyStops`
-      (on Policy v2's defaults: target 70 → 0.45, 40 → 0.40, every target 40–85 equal to the helper), with a source guard — the module calls
+      (on the plan's limit — C1 in LIVE since the plan of record's Run 1: target 70 → 0.45, 40 → 0.40, every target 40–85 equal to the helper), with a source guard — the module calls
       `effectivePolicyStops(` and holds no inline min (the values alone can't tell the one clamp from a copy);
       ⭐ cold under a satoshi (or junk) → 0;
     - ⭐ Strike's 60-day hold on both sides (60 days back → in hold through the deposit + 60 days; 61 → free); the
@@ -7850,8 +7991,8 @@ goes red.)
       - the gaps: Strike over 40%, a $0.30 line, nothing movable, the exact-86% tie;
       - at or above support.
     - `playbookDepthFor`:
-      - ⭐ it equals the builder's stop at support ÷ 86% for every target 40–85 (`'0.52'` at 65, `'0.47'` at 40; a
-        literal → red);
+      - ⭐ it equals the builder's stop at support ÷ 86% for every target 40–85 × plan limits {40, 45, 55, 70} (the plan
+        of record, Run 1; `'0.52'` at 65 and `'0.47'` at 40 on the C1 45% limit; a literal → red);
       - ⭐ the module calls `effectivePolicyStops(` exactly once. A second inlined call → red, while the Run 2 presence
         guard stays green.
     - The sweep gains a 72% Coinbase LTV (a waiting card clearly inside the band) and the line:
@@ -8180,7 +8321,7 @@ goes red.)
 - `src/lib/nostr/__tests__/recoveryInput.test.ts` — R2b-2 shape classification (pure, node): `nsec1…` → `nsec` trimmed; a MALFORMED `nsec1garbage` still routes to the nsec door (nip19.decode owns the verdict); UPPERCASE `NSEC1…` → not nsec (bech32 is lowercase) → single token → unknown; exactly 12 tokens → `words`; newlines/tabs/doubled-spaces collapse to single spaces; **12 NONSENSE tokens → `words`, then `skFromWords` throws `InvalidSeedWordsError`** (the classifier/validator boundary); a real phrase round-trips classifier → skFromWords → 32-byte sk; unknown table (empty, whitespace-only, 11 tokens, 13 tokens, single word, garbage, an npub). **R2c-7a fourth kind:** `ncryptsec1…` → `encrypted` trimmed; a malformed `ncryptsec1garbage` still routes to the decrypt door (nip49.decrypt owns the verdict); UPPERCASE → unknown; **the disjointness pin** — `'ncryptsec1'.startsWith('nsec1') === false`, so no check order can confuse the two prefixes (a future prefix edit that introduces a collision fails here)
 - `src/store/__tests__/remotePlanFound.test.ts` — R2b-2 (`vi.hoisted` localStorage shim): defaults null; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (session-transient — persisting it would surface a stale `false` on the next boot before any pull ran). Set-once latch asserted as ONE lifecycle `it` (the latch is module-level and vitest isolates the registry per FILE, not per `it`): record(false) → false; record(true) → still false; setRemotePlanFound(null) [Dismiss] → null; **record(false) again → still null** (a bare `=== null` guard instead of the latch would resurrect the notice here)
 - `src/lib/nostr/__tests__/sync.test.ts` — 4e: ⭐ the pull asks for records / plan-events / prefs only (never `settings:v1`); ⭐ a stale `settings:v1` that still arrives changes nothing, on an empty-log and on a migrated device — **IGNORED**: only the records branch's five setters are called and the pull logs no "payload parse failed (skipped)" (`applyRemoteEvent` swallows a throw, so a revived branch calling a setter the mock lacks would otherwise pass); ⭐ **ROSTER pull** — an empty roster and `DEFAULT_RELAYS` reach `applyPlanFold` unfiltered; the prefs pull goes through `hydratePrefs`; records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). (4e retired the settings-watermark, settings-dirty, Fix B, DUAL-READ STRIP and 4d-stamp tests with the settings branch; the decrypt-failure and d-tag-less fixtures moved to plan-events.)
-- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 33-key literal) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
+- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 40-key literal — 34 before the plan of record's Run 1 EXPOSED its six policy settings, D9) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
 - `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied. 4e: the trusted path calls `applyViewerSettings` (the mock's applier — `viewerSettingsApply.test.ts` pins what it keeps on the REAL store); M-VIEWER-CALL turns its 5 trusted-path `it`s red
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
@@ -10292,11 +10433,11 @@ a v17-migrant holder until the one-time wrap.
   `runViewerProbe` viewer-side decrypt still reads plaintext `viewerSecretKey`, so for a wrapped viewer it reports
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
-### All 39 Synced Settings Fields
+### All 45 Synced Settings Fields
 (`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT as plan fields); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
-**How they sync (since 4e):** the 35 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
+**How they sync (since 4e):** the 41 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
 `hiddenTabs`, `simpleMode`, `btcBuyingUnit`) whole-object on `prefs:v1`. `SETTINGS_FIELDS` / `buildSettingsPayload`
-still list all 39: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
+still list all 45: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
 `settings:v1`, the channel the list was named for, is retired.
 `income`, `expenses`, `blocApr`, `creditLine`, `advisorStartDate`,
 `advisorActualBlocBalance`, `advisorActualBlocBalanceAsOf`, `advisorMonthStartBalance`, `advisorActualBtcHeld`, `cbLoanBalance`,
@@ -10308,6 +10449,8 @@ still list all 39: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) a
 `blocMinPaymentSource`, `blocStatementMinimum`, `blocMinPaymentDueDay`,
 `coldStorageBtc`, `coldStorageBtcAsOf`,
 `advisorSkipBlocDraw`, `advisorSkipCbPayment`, `advisorSkipBtcBuying`,
+`policyCbStopAtSupportPct`, `policyStrikeStopAtSupportPct`, `policyAccumulateBelow`, `policyPayDownAbove`,
+`policyBearBufferMonths`, `policyCashReserveMonths`,
 `nostrRelays`, `backupVerifiedAt`, `viewers`, `nextViewerIndex`
 (`backupVerifiedAt` (R2a-1) is synced so the backup attestation travels with the plan (an imported/external peer
 device sees it). ⚠ It does NOT un-gate a gated peer — a gated device runs no sync at all, not even a pull, and
@@ -10458,14 +10601,16 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     The names are apart: Fix A (no publish before the first pull) · Fix B (the first-pull hydrate relaxation) · Fix C
     (no dirty before the pull) · Option C (the relay guard) · Fix D (the seed sentinel). Only **Fix A** remains —
     `initialSettingsPullDone` (name historical) gates the plan and prefs publishes.
-  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (39 keys — the trusted viewer snapshot and the plan backup);
+  - **Kept:** `buildSettingsPayload` / `SETTINGS_FIELDS` (45 keys since the plan of record's Run 1 added six plan fields
+    on `plan-events:v1` with no bump — the trusted viewer snapshot and the plan backup);
     `checkPlanParity` (the emit layer's tripwire) + DevPanel's parity row; `nextPlanEventTs` / `makePlanEventId`
     (`genesis.ts` keeps its name).
   - **The bridge's two chains moved:** `publishPlanEventsNow`'s success runs `void publishViewerSnapshotNow(); void
     flushViewerRevocations();` then `checkPlanParity()`.
   - **Two RAW appliers replace `hydrateSettings`** (no event, no dirty): `hydratePrefs` (PREFS_FIELDS — the
     `prefs:v1` apply) and `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS` = SETTINGS_FIELDS − `VIEWER_SNAPSHOT_STRIP`
-    [viewers, nextViewerIndex, nostrRelays, backupVerifiedAt, coldStorageBtcAsOf] = 34 keys — the trusted viewer
+    [viewers, nextViewerIndex, nostrRelays, backupVerifiedAt, coldStorageBtcAsOf] = 40 keys (34 at 4e; the plan of
+    record's six joined — a conscious EXPOSE, D9) — the trusted viewer
     snapshot). ⚠ Never narrow the viewer's apply to the prefs (F1): every trusted viewer would show the seed, or frozen
     figures, while the mocked viewer tests stay green — `viewerSettingsApply.test.ts` pins it on the REAL store.
   - **The retry** (`useNostrSync`) arms on `syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations })`
@@ -10513,6 +10658,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 |---|---|
 | An exact (deep-equal) golden may depend only on `+ − × ÷` | Store any input built with `Math.pow`/`log`/`exp`/`**` (a power-law or cycle price path) IN the golden and feed it back — never recompute it at test time. ECMAScript leaves those functions implementation-approximated, and `Math.pow`'s last bit differs between Node 22 (CI) and Node 26 on about 1 input in 10: the support-policy G1 golden passed locally and failed CI for that alone. The engine is pure `+ − × ÷` (IEEE-exact on every runtime; a G1 test walks `cyclingSim.ts`'s imports and fails on any approximated Math), which is what lets a stored input reproduce bit for bit. A value that must be recomputed gets a tolerance (`toBeCloseTo`, or a relative 1e-12) |
 | Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. A price-relative revert of the ceilings is caught by the ceiling-at-support tests; G2 catches a full reversion (the OFF-like behavior that pulls cold above support on the P2 family) |
+| The support policy's settings are the owner's SAVED plan, edited only in Settings' "Your plan" (the plan of record, Run 1) | Six synced plan fields (`lib/planPolicy` — the one source; C1 defaults; no off switch; no store bump). Settings' "Your plan" is the only place the owner edits them; a face's control is a what-if over the plan and never writes it; every reader — the faces, Settings, the Emergency Console, THIS MONTH's crash line, the Outlook — reads them through the clamp (`planPolicyOf` / `clampPlanPolicy`). Pinned by `planPolicy.test.ts` (FACES, SETTINGS — the only editor, CONSOLE, READ) and `decisionWiring` I20. |
 | Under the support policy, Morpho's seizure on the way down comes FIRST in the month, right after the interest | The carried loan at or past 86% at this month's price is seized at `cbLiquidationPrice` before any monthly action, repaid in full; the month runs on the survivor. Month 0 and the policy-off engine keep the month-end reading. Never move it later in the month (a rescue would then outrun a seizure the price already crossed), and never let it fire without the policy (the policy-off engine is the G1 golden). The kill criterion (I1, `seizeOnTheWayDown.test.ts`): a run it doesn't fire on equals its month-end reading; one it fires on at L is identical through L − 1 |
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
 | Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter — the engine's `btcHeld` already holds it | The three engine faces read `getCurrentColdBtc()` into `openingColdBtc`; `openingBtc = strike + CB + cold` feeds every "from X ₿", the seed row and "Opening position" — leaving the reserve out reads an unspent reserve as bitcoin gained. A 4th `deriveOwnership` argument would count the pool twice (`yoursShare` is clamped, so the wrong answer still looks plausible). Both pinned by `coldWiring.test.ts` (the deriveOwnership check walks the whole `src/components/Almanac/` directory) |

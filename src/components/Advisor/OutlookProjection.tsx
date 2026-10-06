@@ -40,6 +40,8 @@ interface OutlookProjectionProps {
   cbLtvTargetPct:      number;
   cbRotateBackPct:     number;
   blocMinPaymentSource: 'income' | 'roll';
+  /** The plan of record's Coinbase limit at support (Run 1) — the crash note's depth reads the saved plan. */
+  planCbStopAtSupportPct: number;
 }
 
 function tierBadgeClass(tier: AdvisorTier): string {
@@ -51,7 +53,7 @@ export function OutlookProjection({
   btcPrice, income, expenses, blocApr, creditLine,
   hasCbLoan, cbLoanBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
   cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-  blocMinPaymentSource,
+  blocMinPaymentSource, planCbStopAtSupportPct,
 }: OutlookProjectionProps) {
   const [growthScenario, setGrowthScenario] = useState<GrowthScenario>('flat');
 
@@ -307,7 +309,7 @@ export function OutlookProjection({
             <span className={styles.legendItem}>
               <span className={styles.triggerCell}>$0</span>
               <span className={styles.legendLabel}>
-                {CB_PAYDOWN_LABEL} — the projection shifts debt to Strike; between {playbookDepthFor(cbLtvTargetPct).toFixed(2)}× and
+                {CB_PAYDOWN_LABEL} — the projection shifts debt to Strike; between {playbookDepthFor(cbLtvTargetPct, planCbStopAtSupportPct).toFixed(2)}× and
                 1× support the crash playbook tops up first when it can
               </span>
             </span>

@@ -114,7 +114,7 @@ describe('4c parity — fold-present keys equal the live scalars', () => {
     return Object.keys(folded).every((k) => JSON.stringify(folded[k]) === JSON.stringify(s[k]));
   };
 
-  it('fresh-key: ONE emit → parity OK (the ~34 absent keys are ignored)', () => {
+  it('fresh-key: ONE emit → parity OK (the ~40 absent keys are ignored)', () => {
     useStore.getState().setIncome(4242);
     expect(useStore.getState().planEvents).toHaveLength(1);
     expect(foldMatchesScalars()).toBe(true);

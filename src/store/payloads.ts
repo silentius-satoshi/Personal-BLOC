@@ -47,6 +47,14 @@ export function buildSettingsPayload(s: StoreState): Record<string, unknown> {
     advisorSkipBlocDraw:      s.advisorSkipBlocDraw,
     advisorSkipCbPayment:     s.advisorSkipCbPayment,
     advisorSkipBtcBuying:     s.advisorSkipBtcBuying,
+    // The plan of record (Run 1, D1) — the owner's saved support policy. In the backup; EXPOSED to a trusted viewer
+    // (D9), so a viewer's faces start from the owner's plan.
+    policyCbStopAtSupportPct:     s.policyCbStopAtSupportPct,
+    policyStrikeStopAtSupportPct: s.policyStrikeStopAtSupportPct,
+    policyAccumulateBelow:        s.policyAccumulateBelow,
+    policyPayDownAbove:           s.policyPayDownAbove,
+    policyBearBufferMonths:       s.policyBearBufferMonths,
+    policyCashReserveMonths:      s.policyCashReserveMonths,
     nostrRelays:              s.nostrRelays,   // C: relay list — syncs across the owner's devices as a plan event; stripped from the viewer snapshot
     // Backup gate (R2a-1) — the key-custody stamp. A one-way latch by construction (no path emits a null event);
     // STRIPPED from the trusted viewer snapshot below. keyProvenance is device-local → NOT here.

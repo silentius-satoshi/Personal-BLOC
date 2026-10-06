@@ -11,12 +11,12 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 // changed behavior — that is the bug, not the test.
 //
 // Two source-truth notes (deliberate, verified against HEAD):
-//   • Suite 1 asserts the JSON-SERIALIZED blob keys (97). partializeState()
+//   • Suite 1 asserts the JSON-SERIALIZED blob keys (103). partializeState()
 //     returns `...rest`, which also carries every action FUNCTION; only JSON
 //     serialization (what actually persists) drops them. Keying on the data-only
 //     blob is faithful to "persisted blob shape" AND is the right instrument —
 //     1c may reorganize the action surface without touching the blob.
-//   • buildSettingsPayload returns 39 keys (SETTINGS_FIELDS).
+//   • buildSettingsPayload returns 45 keys (SETTINGS_FIELDS).
 // ─────────────────────────────────────────────────────────────────────────────
 
 // Mock localStorage BEFORE the store import (vi.hoisted runs first) — partializeState + the
@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 97 persisted data keys (4e: settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt retired)', () => {
+  it('blob key-set is exactly the 103 persisted data keys (+6, the plan of record; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -69,7 +69,10 @@ describe('characterization · persisted blob (partializeState)', () => {
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pendingViewerRevocations', 'pinnedScenario',   // device-local revocation retry queue + scenario pin
-      'planDirty', 'planEvents', 'prefsDirty',   // Phase 4c: plan-events channel (device-local persisted)
+      'planDirty', 'planEvents',   // Phase 4c: plan-events channel (device-local persisted)
+      'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',   // the plan of record (Run 1)
+      'policyPayDownAbove', 'policyStrikeStopAtSupportPct',
+      'prefsDirty',
       'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'showMiningInLog',
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
@@ -117,13 +120,15 @@ describe('characterization · persisted blob (partializeState)', () => {
       deletedMonths: {}, deletedDayEvents: {},
       planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
       pinnedScenario: null,   // Phase 3a: device-local pin
+      policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // the plan of record — C1
+      policyBearBufferMonths: 12, policyCashReserveMonths: 0,
     });
   });
 });
 
 // ── Suite 2 — settings payload (buildSettingsPayload) ────────────────────────
 describe('characterization · settings payload (buildSettingsPayload)', () => {
-  it('is exactly 39 keys', () => {
+  it('is exactly 45 keys (+6, the plan of record)', () => {
     const p = buildSettingsPayload(useStore.getState());
     expect(Object.keys(p).sort()).toEqual([
       'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -134,12 +139,14 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
       'cbMonthlyPayment', 'cbPaymentStrategy', 'cbRotateBackPct', 'coldStorageBtc', 'coldStorageBtcAsOf',
       'creditLine', 'expenses',
       'hasCbLoan',
-      'hiddenTabs', 'income', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrRelays', 'simpleMode',
+      'hiddenTabs', 'income', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrRelays',
+      'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',
+      'policyPayDownAbove', 'policyStrikeStopAtSupportPct', 'simpleMode',
       'strikeLiquidationLtvPct', 'tabOrder', 'viewers',
     ]);
   });
 
-  it('deep-equals the seed (advisorStartDate normalized → 38 entries)', () => {
+  it('deep-equals the seed (advisorStartDate normalized → 44 entries)', () => {
     const p = buildSettingsPayload(useStore.getState()) as Record<string, unknown>;
     expect(p.advisorStartDate).toMatch(ISO_DATE);
     delete p.advisorStartDate;
@@ -156,6 +163,8 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
       blocMinPaymentDueDay: 15, advisorSkipBlocDraw: false, advisorSkipCbPayment: false,
       advisorSkipBtcBuying: false, nostrRelays: ['wss://relay.damus.io', 'wss://relay.primal.net', 'wss://nos.lol'],
       backupVerifiedAt: null, viewers: [], nextViewerIndex: 0,
+      policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,
+      policyBearBufferMonths: 12, policyCashReserveMonths: 0,
     });
   });
 });
@@ -165,6 +174,8 @@ describe('characterization · settings payload (buildSettingsPayload)', () => {
 // migration touches the OWNER settings channel only; viewers receive an object over snapshot d-tags and
 // must never learn the log exists. ANY diff to these literals means the campaign reached viewers (it must
 // not) — treat a change here as a red flag to investigate, not a fixture to update.
+// The plan of record (Run 1, D9) is the one CONSCIOUS change since: a trusted viewer receives the owner's six policy
+// settings (EXPOSE — viewerSnapshot.test pins the key set), so the viewer's faces start from the owner's plan.
 describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () => {
   it('C-safe: full shape (asOf normalized)', () => {
     const safe = buildViewerSnapshotPayload(useStore.getState(), 'safe') as Record<string, unknown>;
@@ -192,7 +203,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
     delete settings.advisorStartDate;
     expect(trusted).toEqual({
       snapshotVersion: 2, privacyMode: 'trusted',
-      // settings = the 39 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 34; 33 below, advisorStartDate normalized out.
+      // settings = the 45 minus VIEWER_SNAPSHOT_STRIP's 5 keys (viewers/nextViewerIndex/nostrRelays/backupVerifiedAt/coldStorageBtcAsOf) → 40; 39 below, advisorStartDate normalized out.
       settings: {
         income: 4000, expenses: 3500, blocApr: 13, creditLine: 10000, advisorActualBlocBalance: 0,
         advisorActualBlocBalanceAsOf: null, advisorMonthStartBalance: 0, advisorActualBtcHeld: 0,
@@ -204,6 +215,8 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
         strikeLiquidationLtvPct: 85, blocMinPaymentSource: 'roll', blocStatementMinimum: null,
         blocMinPaymentDueDay: 15, advisorSkipBlocDraw: false, advisorSkipCbPayment: false,
         advisorSkipBtcBuying: false,
+        policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // D9 EXPOSE
+        policyBearBufferMonths: 12, policyCashReserveMonths: 0,
       },
       records: { entries: [], deletions: {} },
       strike: { usd: null, btcAvail: null, rate: null },

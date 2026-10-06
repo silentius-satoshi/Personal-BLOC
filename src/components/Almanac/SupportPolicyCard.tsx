@@ -15,7 +15,9 @@ import styles from './SupportPolicyCard.module.css';
  *
  * Presentation only. Every sentence and number comes from `supportPolicyView` (pure, tested); the card decides only
  * what renders where. It reads the DISPLAYED run (`sim`), so the stress lens moves it with the rest of the face. The
- * settings are the face's session overlay — the card writes nothing but `onChange` / `onReset`.
+ * settings are the face's session overlay over the owner's saved plan (the plan of record, D2) — the card writes nothing
+ * but `onChange` / `onReset`, and "Back to your plan" drops the what-if. Settings' "Your plan" renders the same sliders
+ * over the saved plan itself (its own reset label, and no off switch — D1).
  *
  * ⚠ No re-arm control: the breaker's re-arm is a constant (decision 4) — the breaker line says what it does.
  * ONE settings block (sticky controls): the card's disclosure and the control dock's Policy panel both render
@@ -32,7 +34,7 @@ export interface SupportPolicyCardProps {
   /** What the run uses (clamped, pushed, the effective stops). */
   settings: EffectivePolicySettings;
   onChange: (patch: Partial<SupportPolicySettings>) => void;
-  /** Back to DEFAULT_SUPPORT_POLICY_SETTINGS. */
+  /** Back to the owner's saved plan (the face drops its what-if). */
   onReset: () => void;
   mode: CyclingMode;
   /** The face's effective bills. */
@@ -97,11 +99,15 @@ export interface SupportPolicySlidersProps {
   expenses: number;
   /** 'stack' — the card's disclosure; 'grid' — the control dock's panel (one column on a phone, three on a computer). */
   layout?: 'stack' | 'grid';
+  /** The reset button's words: a face's what-if goes "Back to your plan"; Settings' saved plan goes back to C1. */
+  resetLabel?: string;
+  /** "Turn policy off" — a face what-if only; the saved plan has no off switch (D1). */
+  offSwitch?: boolean;
 }
 
-/** The six settings, their clauses, and Turn policy off / Reset to defaults. */
+/** The six settings, their clauses, and Turn policy off / Back to your plan. */
 export function SupportPolicySliders({
-  raw, settings, onChange, onReset, expenses, layout = 'stack',
+  raw, settings, onChange, onReset, expenses, layout = 'stack', resetLabel = 'Back to your plan', offSwitch = true,
 }: SupportPolicySlidersProps) {
   const r = settingReadouts(settings, expenses);
   const R = SUPPORT_POLICY_RANGES;
@@ -165,8 +171,8 @@ export function SupportPolicySliders({
         {r.cashReserve.clause && <p className={styles.readout}>{r.cashReserve.clause}</p>}
       </div>
       <div className={styles.btnRow}>
-        <button type="button" className={styles.btn} onClick={() => onChange({ enabled: false })}>Turn policy off</button>
-        <button type="button" className={styles.btn} onClick={onReset}>Reset to defaults</button>
+        {offSwitch && <button type="button" className={styles.btn} onClick={() => onChange({ enabled: false })}>Turn policy off</button>}
+        <button type="button" className={styles.btn} onClick={onReset}>{resetLabel}</button>
       </div>
     </div>
   );

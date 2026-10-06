@@ -1,5 +1,7 @@
 // planInputsSlice (Phase 1c) — shared/Smart-BLOC/Living inputs + the Smart BLOC what-if sandbox collateral.
 import type { StoreState, StoreSet, StoreGet } from '../types';
+import type { PlanField } from '../settingsFields';
+import { PLAN_POLICY_DEFAULTS, PLAN_POLICY_FIELD, PLAN_POLICY_KEYS, clampPlanPolicy } from '../../lib/planPolicy';
 
 type PlanInputsSlice = Pick<StoreState,
   | 'income' | 'expenses' | 'btcPrice' | 'btcPriceMode' | 'btcPriceUpdatedAt' | 'blocApr' | 'activeTier' | 'scenario'
@@ -9,6 +11,8 @@ type PlanInputsSlice = Pick<StoreState,
   | 'setExpenses' | 'setBtcPrice' | 'setBtcPriceMode' | 'setBlocApr' | 'setActiveTier' | 'setScenario' | 'setScrubMonth'
   | 'setCreditLine' | 'setBtcHoldings' | 'setAnnualBtcGrowth' | 'setBearMarket' | 'setBearPeriodYears'
   | 'setAnnualDecline' | 'setInflationRate' | 'setLtvType' | 'setTimeHorizonYears'
+  | 'policyCbStopAtSupportPct' | 'policyStrikeStopAtSupportPct' | 'policyAccumulateBelow' | 'policyPayDownAbove'
+  | 'policyBearBufferMonths' | 'policyCashReserveMonths' | 'setPlanPolicy' | 'resetPlanPolicy'
 >;
 
 export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsSlice => ({
@@ -53,4 +57,24 @@ export const createPlanInputsSlice = (set: StoreSet, get: StoreGet): PlanInputsS
   setInflationRate: (v) => set({ inflationRate: v }),
   setLtvType: (v) => set({ ltvType: v }),
   setTimeHorizonYears: (v) => set({ timeHorizonYears: v }),
+
+  // The plan of record (Run 1, D1) — the owner's saved support policy, C1 by default. Plan events like any plan field:
+  // Settings' "Your plan" is the only editor (D2); a face's sliders are a what-if over it and never write here.
+  policyCbStopAtSupportPct:     PLAN_POLICY_DEFAULTS.cbStopAtSupportPct,
+  policyStrikeStopAtSupportPct: PLAN_POLICY_DEFAULTS.strikeStopAtSupportPct,
+  policyAccumulateBelow:        PLAN_POLICY_DEFAULTS.accumulateBelow,
+  policyPayDownAbove:           PLAN_POLICY_DEFAULTS.payDownAbove,
+  policyBearBufferMonths:       PLAN_POLICY_DEFAULTS.bearBufferMonths,
+  policyCashReserveMonths:      PLAN_POLICY_DEFAULTS.cashReserveMonths,
+  setPlanPolicy: (patch) => {
+    const cur = get() as unknown as Record<string, unknown>;
+    const pairs: [PlanField, unknown][] = [];
+    for (const k of PLAN_POLICY_KEYS) {
+      if (!(k in patch)) continue;
+      const v = clampPlanPolicy(k, patch[k]);
+      if (cur[PLAN_POLICY_FIELD[k]] !== v) pairs.push([PLAN_POLICY_FIELD[k], v]);
+    }
+    if (pairs.length > 0) get().emitPlanSets(pairs);   // one ts for the whole patch
+  },
+  resetPlanPolicy: () => get().emitPlanSets(PLAN_POLICY_KEYS.map((k) => [PLAN_POLICY_FIELD[k], PLAN_POLICY_DEFAULTS[k]])),
 });

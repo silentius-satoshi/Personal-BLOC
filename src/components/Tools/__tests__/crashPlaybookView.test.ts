@@ -20,11 +20,13 @@ import type { DayEvent } from '../../../simulation/types';
  * Playbook's THIS MONTH line both build through. Round synthetic figures only — this repo is public.
  *
  * LIVE = crashPlaybook.test's BASE as live figures: price $80k at support $100k (k = 0.8), Coinbase $60k on 1 ₿ (75%),
- * Strike $8k on 1 ₿ (10%), a $40k line, no cold, target 70, an empty dayLog, today 2026-10-15.
+ * Strike $8k on 1 ₿ (10%), a $40k line, no cold, target 70, the plan's C1 Coinbase limit (45%), an empty dayLog, today
+ * 2026-10-15.
  */
 const LIVE: LivePlaybookFigures = {
   price: 80_000, support: 100_000, cbDebt: 60_000, cbCollateralBtc: 1, strikeBalance: 8_000, strikeCollateralBtc: 1,
-  creditLine: 40_000, coldBtc: 0, cbLtvTargetPct: 70, dayLog: [], todayISO: '2026-10-15',
+  creditLine: 40_000, coldBtc: 0, cbLtvTargetPct: 70, planCbStopAtSupportPct: DEFAULT_SUPPORT_POLICY_SETTINGS.cbStopAtSupportPct,
+  dayLog: [], todayISO: '2026-10-15',
 };
 
 /** A dated collateral move — `move('2026-09-01')` is a Strike deposit on that day. */
@@ -65,7 +67,7 @@ describe('playbookInputFromLive — the one live builder', () => {
     });
   });
 
-  it('⭐ the stop at support goes through effectivePolicyStops on the policy defaults — never an inline copy', () => {
+  it('⭐ the stop at support goes through effectivePolicyStops on the plan\'s limit (C1 in LIVE) — never an inline copy', () => {
     expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 70 }).cbStopAtSupport).toBe(0.45);
     expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 40 }).cbStopAtSupport).toBe(0.4);   // held to the target
     const D = DEFAULT_SUPPORT_POLICY_SETTINGS;
@@ -93,11 +95,26 @@ describe('playbookInputFromLive — the one live builder', () => {
 describe('playbookDepthFor — the liquidation depth for a live target', () => {
   it("⭐ is the builder's stop at support over 86%, for every target — never a literal", () => {
     for (let t = 40; t <= 85; t++) {
-      expect(playbookDepthFor(t), `target ${t}`)
-        .toBe(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: t }).cbStopAtSupport / CB_LLTV);
+      for (const stop of [40, 45, 55, 70]) {
+        expect(playbookDepthFor(t, stop), `target ${t} · plan stop ${stop}`)
+          .toBe(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: t, planCbStopAtSupportPct: stop }).cbStopAtSupport / CB_LLTV);
+      }
     }
-    expect(playbookDepthFor(65).toFixed(2)).toBe('0.52');
-    expect(playbookDepthFor(40).toFixed(2)).toBe('0.47');   // the depth moves with a target under the 45% stop
+    expect(playbookDepthFor(65, 45).toFixed(2)).toBe('0.52');
+    expect(playbookDepthFor(40, 45).toFixed(2)).toBe('0.47');   // the depth moves with a target under the 45% stop
+  });
+
+  it("⭐ PLAN STOP — the console runs the owner's saved Coinbase limit, never the defaults (plan of record, Run 1)", () => {
+    // At C1 nothing moves: the plan's 45% is the old default stop.
+    expect(playbookInputFromLive(LIVE).cbStopAtSupport, 'PLAN STOP C1').toBe(0.45);
+    // Edit the plan's stop and the console follows (target 70 sits above both, so the stop is the plan's own).
+    expect(playbookInputFromLive({ ...LIVE, planCbStopAtSupportPct: 55 }).cbStopAtSupport, 'PLAN STOP edited').toBe(0.55);
+    expect(playbookDepthFor(70, 55), 'PLAN STOP depth').toBeGreaterThan(playbookDepthFor(70, 45));
+    // Read through the plan's clamp, as the faces read it: junk reads C1; out of range reads the edge (target 85 sits
+    // above the 70% edge, so the edge shows).
+    expect(playbookInputFromLive({ ...LIVE, planCbStopAtSupportPct: Number.NaN }).cbStopAtSupport, 'PLAN STOP junk').toBe(0.45);
+    expect(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: 85, planCbStopAtSupportPct: 99 }).cbStopAtSupport, 'PLAN STOP edge')
+      .toBe(0.7);
   });
 
   it('⭐ the builder and the depth share ONE stop call — the module calls the clamp exactly once', () => {

@@ -5,7 +5,7 @@ import {
   ComposedChart, Area, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, ReferenceLine, Customized,
 } from 'recharts';
 import { useStore } from '../../store/useStore';
-import { runCyclingSim, effectiveStrikeCapPct } from '../../simulation/cyclingSim';
+import { runCyclingSim } from '../../simulation/cyclingSim';
 import { plBandsAt, plConvergencePath, addMonths, PL_BAND_LABEL, PL_ON_THE_LINE } from '../../simulation/powerLaw';
 import { cycleConvergencePath, upcomingCycleTurns, type PathKind } from '../../simulation/cyclePath';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
@@ -18,8 +18,8 @@ import { usePowerLawData } from '../../hooks/usePowerLawData';
 import { strikeHoldFrom } from '../Tools/crashPlaybookView';
 import {
   applyPathStress, clampMonth, verdictVsNeverDraw, verdictBasisClause, nextTurnsText, isBelowSupport, fmtTurnDate,
-  DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON,
 } from './cyclingFaceView';
+import { PLAN_CB_LTV_CAP_PCT, PLAN_STRIKE_CAP_PCT, PLAN_STRIKE_CAP_EFF } from './planClamp';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, DEFAULT_BREAKER_REARM_MONTHS, effectivePolicySettings, policyCardState,
   shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
@@ -38,6 +38,7 @@ import {
   type DecisionPath, type LineAction, type MoveTone,
 } from './decisionView';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import { usePlanPolicy } from './usePlanPolicy';
 import ControlDock, { type DockPanel } from './ControlDock';
 import { decisionDockTabs, monthReadout, stressPct } from './controlDockView';
 import { useStressLens } from './useStressLens';
@@ -78,9 +79,9 @@ import styles from './DecisionFace.module.css';
 // Face-local defaults mirror the Cycling face — the loop this face schedules. Only the Strike-cap defaults are
 // shared definitions. The Coinbase defense line, the Strike cap, the cold sweep and the cadence have no control
 // here: they are constants, so they sit outside every dependency list.
-const CAP_PCT = 70;
-const STRIKE_CAP_PCT = DEFAULT_STRIKE_CAP_ON ? DEFAULT_STRIKE_CAP_PCT : 0;
-const STRIKE_CAP_EFF = effectiveStrikeCapPct(STRIKE_CAP_PCT, STRIKE_MARGIN_CALL_LTV);
+const CAP_PCT = PLAN_CB_LTV_CAP_PCT;           // the plan of record's one clamp (planClamp.ts) — 70
+const STRIKE_CAP_PCT = PLAN_STRIKE_CAP_PCT;
+const STRIKE_CAP_EFF = PLAN_STRIKE_CAP_EFF;
 /** The five engine constants the run and its policy check share (Policy v2, Run B — B4): ONE object, spread by
  *  `engineInputs` and handed to `seedsFromMove`, so the seeding gate asks the run's own question with the run's own
  *  inputs. A module constant — outside every dependency list. */
@@ -164,7 +165,7 @@ interface Overlay {
   months?: number;
   /** The run's line (D11) — a what-if, never the store's. */
   creditLine?: number;
-  /** The support policy's settings, patched over DEFAULT_SUPPORT_POLICY_SETTINGS. */
+  /** The support policy's settings, patched over the owner's saved plan (usePlanPolicy). */
   supportPolicy?: Partial<SupportPolicySettings>;
 }
 
@@ -350,9 +351,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
 
   // ── The support policy — every object memoised on STABLE identities (an object built during render would rebuild
   // `engineInputs` every render and the lens reset below would kill an engaged stress).
+  const plan = usePlanPolicy();   // the owner's saved plan (the plan of record, D1) — the face's what-if starts from it
   const policyRaw = useMemo(
-    () => ({ ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...overlay.supportPolicy }),
-    [overlay.supportPolicy],
+    () => ({ ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...plan, ...overlay.supportPolicy }),
+    [plan, overlay.supportPolicy],
   );
   const policySettings = useMemo(
     () => effectivePolicySettings(policyRaw, { cbLtvCapPct: CAP_PCT, strikeCapEffPct: STRIKE_CAP_EFF }),

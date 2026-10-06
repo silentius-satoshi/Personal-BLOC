@@ -105,7 +105,11 @@ describe('viewer snapshot builders', () => {
       'cbLoanBalance', 'cbLoanBalanceAsOf', 'cbLtvTargetPct', 'cbLtvTriggerPct', 'cbMonthlyPayment',
       'cbPaymentStrategy', 'cbRotateBackPct', 'coldStorageBtc', 'creditLine', 'expenses', 'hasCbLoan',
       'hiddenTabs',
-      'income', 'ndpLastPaidDate', 'simpleMode', 'strikeLiquidationLtvPct', 'tabOrder',
+      'income', 'ndpLastPaidDate',
+      // The plan of record (Run 1, D9) — a CONSCIOUS EXPOSE: a trusted viewer's faces start from the owner's plan.
+      'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',
+      'policyPayDownAbove', 'policyStrikeStopAtSupportPct',
+      'simpleMode', 'strikeLiquidationLtvPct', 'tabOrder',
     ]);
     useStore.setState({ backupVerifiedAt: null } as never);
   });

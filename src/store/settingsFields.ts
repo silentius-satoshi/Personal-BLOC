@@ -21,6 +21,10 @@ export const SETTINGS_FIELDS = [
   'coldStorageBtc',   // a real owner-entered balance, so it syncs like any other plan setting
   'coldStorageBtcAsOf',   // epoch ms the cold anchor was entered — travels atomically with it (paired emit)
   'advisorSkipBlocDraw', 'advisorSkipCbPayment', 'advisorSkipBtcBuying',
+  // The plan of record (Run 1, D1) — the owner's SAVED support policy (lib/planPolicy). No off switch: policy-off is a
+  // face what-if only. Plan events like any plan field; in the backup; EXPOSED to a trusted viewer (D9).
+  'policyCbStopAtSupportPct', 'policyStrikeStopAtSupportPct', 'policyAccumulateBelow', 'policyPayDownAbove',
+  'policyBearBufferMonths', 'policyCashReserveMonths',
   'nostrRelays',                       // C: synced relay list (transport — a plan event only on a user edit)
   'backupVerifiedAt',                  // Backup gate (R2a-1) — synced; a one-way latch (no null event exists)
   'viewers', 'nextViewerIndex',        // Multi-viewer roster (M1) — synced as plan events
@@ -49,7 +53,7 @@ export const APPLY_FIELDS: ReadonlySet<string> = new Set(
 // ── Phase 4b — plan-events partition ─────────────────────────────────────────────────────────────────
 // Splits SETTINGS_FIELDS into the event-sourced PLAN partition and the whole-object-LWW PREFS partition.
 // PREFS = device-taste cosmetics (D1): a stale clobber is harmless + self-corrects, so they stay LWW on
-// prefs:v1 rather than becoming a plan event log. PLAN = everything else (35 fields). backupVerifiedAt is a
+// prefs:v1 rather than becoming a plan event log. PLAN = everything else (41 fields — the plan of record added 6). backupVerifiedAt is a
 // PLAN field (R2a-1; it joined SETTINGS_FIELDS after the 4a design lock was written — Exclude keeps it in).
 export const PREFS_FIELDS = ['tabOrder', 'hiddenTabs', 'simpleMode', 'btcBuyingUnit'] as const;
 
@@ -57,7 +61,7 @@ type SettingsField = (typeof SETTINGS_FIELDS)[number];
 export type PrefsField = (typeof PREFS_FIELDS)[number];
 export type PlanField = Exclude<SettingsField, PrefsField>;
 
-// A type-guard predicate so .filter() narrows to readonly PlanField[] (NOT string[] / the wide 39-union) —
+// A type-guard predicate so .filter() narrows to readonly PlanField[] (NOT string[] / the wide 45-union) —
 // the correct realization of the lock's `(typeof PLAN_EVENT_FIELDS)[number]`; a naive filter widens the type.
 export const PLAN_EVENT_FIELDS = SETTINGS_FIELDS.filter(
   (f): f is PlanField => !(PREFS_FIELDS as readonly string[]).includes(f),

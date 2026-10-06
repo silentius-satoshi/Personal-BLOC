@@ -40,6 +40,7 @@ import {
 } from './supportPolicyView';
 import { buildSupportPath, supportPolicyFor } from './supportPolicyInputs';
 import SupportPolicyCard, { SupportPolicyControls } from './SupportPolicyCard';
+import { usePlanPolicy } from './usePlanPolicy';
 import ControlDock, { type DockPanel } from './ControlDock';
 import MilestoneSwitchTable, { type MilestoneRow } from './MilestoneSwitchTable';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -141,7 +142,7 @@ interface Overlay {
   strikeAprPct?: number;
   cbAprPct?: number;
   mode?: CyclingMode;
-  /** The support policy's settings, patched over DEFAULT_SUPPORT_POLICY_SETTINGS ("Reset to live" clears it). */
+  /** The support policy's settings, patched over the owner's saved plan (usePlanPolicy) ("Reset to live" clears it). */
   supportPolicy?: Partial<SupportPolicySettings>;
 }
 
@@ -264,9 +265,10 @@ export default function OwnershipFace() {
   // ── The support policy — every object memoised on STABLE identities. One built during render would get a new
   // identity every render: `engineInputs` would rebuild, both engine calls re-run, and the lens reset below would fire
   // on every render, killing an engaged stress (the bug class useStressLens exists for). Only a policy edit moves them.
+  const plan = usePlanPolicy();   // the owner's saved plan (the plan of record, D1) — the face's what-if starts from it
   const policyRaw = useMemo(
-    () => ({ ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...overlay.supportPolicy }),
-    [overlay.supportPolicy],
+    () => ({ ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...plan, ...overlay.supportPolicy }),
+    [plan, overlay.supportPolicy],
   );
   const policySettings = useMemo(
     () => effectivePolicySettings(policyRaw, { cbLtvCapPct: capPct, strikeCapEffPct: strikeCapEff }),

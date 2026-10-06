@@ -88,6 +88,7 @@ export function AdvisorMain() {
   const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
+  const planCbStopAtSupportPct = useStore((s) => s.policyCbStopAtSupportPct);   // the plan of record's Coinbase limit (Run 1)
   const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
   const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
@@ -482,6 +483,7 @@ export function AdvisorMain() {
             cbLtvTargetPct={cbLtvTargetPct}
             cbRotateBackPct={cbRotateBackPct}
             blocMinPaymentSource={blocMinPaymentSource}
+            planCbStopAtSupportPct={planCbStopAtSupportPct}
           />
         </>
       )}
