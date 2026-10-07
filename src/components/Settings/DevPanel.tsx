@@ -6,6 +6,7 @@ import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../l
 import { getPublishReports, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from '../../lib/nostr/publish';
 import { foldPlanEvents } from '../../lib/planEvents/fold';
 import { compactPlanEvents } from '../../lib/planEvents/compact';
+import { payloadSizeLevel } from '../../lib/nostr/payloadSize';
 import { planLogGaps } from '../../lib/planEvents/coverage';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
@@ -71,9 +72,15 @@ const fmtPriceAge = (ts: number | null, now: number) => {
   return secs > 5 * 60 ? `⚠ stale ${age}` : age;
 };
 
-// Phase 4a-inst — soft relay payload-size budget. Display-only tint, no behavior change.
-const WARN_EVENT_BYTES = 60_000; // conservative relay event budget
-const sizeStyle = (bytes: number) => (bytes > WARN_EVENT_BYTES ? { color: 'var(--orange)' } : undefined);
+// Phase 4a-inst — soft relay payload-size budget. Display-only tint, no behavior change. 5a: judged by the PLAIN size
+// (payloadSize.ts) — amber from the plan log's 32 KiB budget, red past NIP-44's 40,960 B step, where the event goes out
+// over a 64 KiB relay limit. The wire size alone jumped across its old 60,000 B line only AT that step.
+const SIZE_COLOR = { ok: undefined, near: 'var(--orange)', over: 'var(--red)' } as const;
+const sizeStyle = (size: { eventBytes?: number; plainBytes?: number }) => {
+  const color = SIZE_COLOR[payloadSizeLevel(size)];
+  return color ? { color } : undefined;
+};
+const utf8Bytes = (s: string): number => new TextEncoder().encode(s).length;
 
 export function DevPanel() {
   const nostrSigningMethod   = useStore((s) => s.nostrSigningMethod);
@@ -402,7 +409,10 @@ export function DevPanel() {
   ];
   // Phase 4c — live parity: fold-present keys vs live scalars (pure — no log/mutate; the engine's checkPlanParity
   // is the publish-time telemetry). Absent-from-log keys are seed defaults, never compared (§6).
-  const compactedPlanCount = compactPlanEvents(planEvents, now).length;
+  const compactedPlan = compactPlanEvents(planEvents, now);
+  const compactedPlanCount = compactedPlan.length;
+  // 5a — the plan payload's plain size as the next publish would send it (the compacted log), live — no publish needed.
+  const planLogPlainBytes = utf8Bytes(JSON.stringify({ events: compactedPlan }));
   const planParityDiverged = (() => {
     const folded = foldPlanEvents(planEvents) as Record<string, unknown>;
     const full = useStore.getState() as unknown as Record<string, unknown>;
@@ -438,7 +448,7 @@ export function DevPanel() {
           {payloadRows.map(([channel, r]) => (
             <Fragment key={channel}>
               <span className={styles.key}>{channel} size</span>
-              <span className={styles.val} style={r?.eventBytes != null ? sizeStyle(r.eventBytes) : undefined}>
+              <span className={styles.val} style={r?.eventBytes != null ? sizeStyle(r) : undefined}>
                 {r?.eventBytes != null
                   ? `${r.eventBytes} B wire${r.plainBytes != null ? ` · ${r.plainBytes} B plain` : ''}`
                   : 'no publish yet'}
@@ -452,6 +462,8 @@ export function DevPanel() {
         <div className={styles.grid}>
           <span className={styles.key}>events raw/compacted</span>
           <span className={styles.val}>{planEvents.length} / {compactedPlanCount}</span>
+          <span className={styles.key}>log size</span>
+          <span className={styles.val} style={sizeStyle({ plainBytes: planLogPlainBytes })}>{planLogPlainBytes} B plain</span>
           <span className={styles.key}>planDirty</span><span className={styles.val}>{String(planDirty)}</span>
           <span className={styles.key}>prefsDirty</span><span className={styles.val}>{String(prefsDirty)}</span>
           <span className={styles.key}>plan sync</span><span className={styles.val}>{fmtTs(lastPlanEventsSyncAt)}</span>
@@ -483,7 +495,7 @@ export function DevPanel() {
                 {r.outcome} · {Math.max(0, Math.round(now / 1000 - r.createdAt))}s ago
               </span>
               {r.eventBytes != null && (
-                <span className={styles.val} style={{ gridColumn: '1 / -1', ...sizeStyle(r.eventBytes) }}>
+                <span className={styles.val} style={{ gridColumn: '1 / -1', ...sizeStyle(r) }}>
                   {r.eventBytes} B wire{r.plainBytes ? ` / ${r.plainBytes} B plain` : ''}
                 </span>
               )}

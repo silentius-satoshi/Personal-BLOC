@@ -626,10 +626,16 @@ src/
                                 # (append-only ids are unique → a dup is an identical echo; DELIBERATELY unlike
                                 # mergeRecords' higher-ts-wins, which exists because dayLog edits in place — plan
                                 # events are never edited). Pure, deterministic (ts,id) output
-      compact.ts                # compactPlanEvents(events, now): keep latest-per-field FOREVER + superseded <90d
-                                # (90*24*60*60*1000, the mergeRecords TTL mirror), drop older. Merge-safe (§7):
-                                # fold(compact(e,now)) ≡ fold(e); a stale device re-unioning a compacted-away event
-                                # is harmless (fold picks the true latest, re-compaction sweeps it)
+      compact.ts                # compactPlanEvents(events, now): keep latest-per-field FOREVER; keep a superseded event
+                                # only while it is <90d old (90*24*60*60*1000, the mergeRecords TTL mirror) AND its field's
+                                # NEXT event, in (ts,id) order, follows more than BURST_WINDOW_MS (10 s) later — 5a's burst
+                                # rule: a drag keeps its last notch, a same-ts tie keeps the (ts,id) winner, and it never
+                                # reads `device`. Then 5a's budget: the history is trimmed OLDEST FIRST until the payload
+                                # {"events":[…]} (the log + 11 bytes) fits PLAN_LOG_BUDGET_BYTES (32,768 — a full NIP-44
+                                # padding step under 40,960); a latest is never trimmed. Merge-safe (§7): every rule drops
+                                # only superseded events, so fold(compact(e,now)) ≡ fold(e); idempotent; a stale device
+                                # re-unioning a compacted-away event is harmless (fold picks the true latest, re-compaction
+                                # sweeps it). Tested in __tests__/planLogSize.test.ts (FOLD-SAFE, CONVERGE)
       genesis.ts                # nextPlanEventTs(lastTs, now=Date.now()) = max(now, lastTs+1) (monotonic guard) ·
                                 # makePlanEventId(field, ts, rand=Math.random) = `${field}-${ts}-${rand4}`
                                 # (recoveryQuiz rand-injection). Zero runtime imports. Phase 4e RETIRED
@@ -1339,9 +1345,15 @@ src/
                                 # size suffix to each PUBLISH ACKS row (eventBytes/plainBytes, real bytes via publish.ts's
                                 # byteLen) and a PAYLOAD SIZES block inside SYNC STATE (newest report per records /
                                 # plan events / prefs / viewer channel, via RECORDS_DTAG/PLAN_EVENTS_DTAG/PREFS_DTAG + a
-                                # viewer:v2: label-prefix match — 4e dropped the settings row); rows exceeding
-                                # WARN_EVENT_BYTES (60,000) render amber via inline sizeStyle — display-only, no behavior
-                                # change. PLAN EVENTS section: event count, planDirty/prefsDirty, plan/prefs sync, parity,
+                                # viewer:v2: label-prefix match — 4e dropped the settings row). 5a: every size display (the
+                                # PAYLOAD SIZES rows + each PUBLISH ACKS row) is tinted by sizeStyle(report) →
+                                # payloadSizeLevel (lib/nostr/payloadSize.ts) on the PLAIN bytes: --orange past 32,768 B
+                                # (the plan log's budget), --red past 40,960 B (NIP-44's padding step — past it the event
+                                # goes out ~66 KB, over a 64 KiB relay limit); a report with no plain size (the public
+                                # kind-10002 list) keeps the 60,000 B wire budget (WARN_EVENT_BYTES is gone) — display-only,
+                                # no behavior change. PLAN EVENTS section: event count ("events raw/compacted"), 5a's "log
+                                # size" (the plain bytes of { events: compacted } — what the next publish would send, live,
+                                # same tint), planDirty/prefsDirty, plan/prefs sync, parity,
                                 # and (4e, G2) "log gaps" — planLogGaps(planEvents, getState(), getInitialState()):
                                 # "none" green / the names amber / "n/a (viewer)" in viewerMode. 4e removed the
                                 # "settings sync" and "v1 fallback" rows; Copy Diagnostics carries planSync.
@@ -7736,6 +7748,46 @@ goes red.)
     E4 the long title back → TITLE (390) and ROW almanac 47.25 (360); E5 the full-mode hide dropped → SIDEBAR full;
     R1's probe (a 300px spacer above the chart card and the body scrolled 300 at open) → TOP (300); the title row at
     30px (Z22) → ROW almanac loading (30), the 390 test green.
+- **5a — the plan log's size** (spec `pbloc-spec-plan-log-size-v1` v1.1 — § Phase 4 → 5a; 4 new test files, no existing
+  test changed; the suite 2,494 → 2,516, 152 → 155 files; e2e 66 → 67; 19 mutations, MB1–MB19, each an exact-once edit run
+  on its test files with `--reporter=verbose` — the e2e too for MB1, MB10, MB11 — red at its tag, the file restored from a
+  saved copy and sha-checked, the tree's digest unchanged):
+  - `src/lib/planEvents/__tests__/planLogSize.test.ts` (13, pure) — ⭐ BURST (a 173-notch drag → its last notch; the edits
+    before and after stay) · ⭐ BURST edge (exactly the window is a burst, +1 ms two edits) · ⭐ BURST per field · ⭐ BURST
+    device-blind · ⭐ BURST pairs · ⭐ BURST ties · 90 DAYS · ⭐ BUDGET (the payload fits, oldest first, every latest kept, no
+    tighter than needed) · ⭐ BUDGET latest-only · BUDGET untouched (+ premise) · ⭐ BUDGET wrapper (250 edits padded to
+    32,760 B as a bare log — 32,771 B as the payload — lose exactly their oldest edit: the deterministic catch for MB19) ·
+    ⭐ FOLD-SAFE (1,500 seeded logs against an independent oracle — the fold, every latest, idempotence, only the rules, the
+    budget, oldest first; non-vacuous) · ⭐ CONVERGE (200 seeded three-device histories: no step moves a fold; they settle
+    within 6 rounds on one log). Both sweeps carry an explicit 60 s timeout, as cyclingSim's sweeps do: a few seconds
+    alone, they ran past vitest's 5 s default in a loaded full suite (FOLD-SAFE 18.5 s, CONVERGE 8–9 s, on the build's Mac).
+  - `src/store/__tests__/planLogEmit.test.ts` (6, the REAL store, fake timers) — ⭐ EMIT drag (173 notches → ONE income event,
+    the last value, in the fold and the scalar) · ⭐ EMIT pause (a 5-second rest is one burst) · ⭐ EMIT history (15 s apart →
+    two; the ts advances) · ⭐ EMIT pairs · ⭐ EMIT other fields · ⭐ PUBLISH (a log from an older build — a 78,730 B payload —
+    goes out inside the budget, the fold unchanged, the oldest history trimmed; the stub signer has no nip44, so the
+    publish compacts, persists, then fails network-free).
+  - `src/lib/nostr/__tests__/payloadSize.test.ts` (3) — ⭐ PADDING (nostr-tools' own NIP-44: 40,960 → 40,960, 40,961 →
+    49,152; the budget pads to itself) · ⭐ TINT · ⭐ DEVPANEL (source-reading).
+  - `e2e/planLogSize.spec.ts` (1) — DRAG: a 1-second drag of Living's Monthly Income slider leaves one income event in the
+    persisted log, at the slider's value, under 2,000 B (INCOME slider · DRAG moved the slider · DRAG one event · DRAG the
+    slider's value · DRAG log size).
+  - Red-first (a plain export of bd9c31a outside the repo, never `-t`): A, the tests alone — 17 red, 2 green (90 DAYS, EMIT
+    history), `payloadSize.test.ts` can't load; B, + the two constants on main's rules and `payloadSize.ts` — 16 red, 6
+    green (90 DAYS, BUDGET untouched, CONVERGE, EMIT history, PADDING, TINT), BUDGET wrapper red at "fits" (32,771), PUBLISH
+    at "inside the budget" (78,730); the e2e on main's code red at DRAG one event (61).
+  - The mutations, red at: MB1 (the burst rule off) → every BURST, FOLD-SAFE only the rules, EMIT drag / pause / pairs /
+    other fields, PUBLISH the drag, e2e DRAG one event (61) · MB2 (`>=`) → BURST edge W, FOLD-SAFE only the rules · MB3 (the
+    walk forward) → 16: `planEvents.test`'s 3 compaction tests and all 13 here · MB4 (keyed by device too) → BURST
+    device-blind, FOLD-SAFE only the rules · MB5 (no 90 days) → 2 `planEvents.test` compaction tests, 90 DAYS, FOLD-SAFE only
+    the rules · MB6 (no budget) → BUDGET fits (70,512), BUDGET latest-only, BUDGET wrapper fits (32,771), FOLD-SAFE budget,
+    PUBLISH inside the budget (60,608) · MB7 (newest first) → BUDGET trimmed some, BUDGET wrapper trims the oldest, FOLD-SAFE
+    oldest first, PUBLISH oldest first · MB8 (a latest trimmable) → BUDGET latest-only · MB9 (no commas) → BUDGET fits
+    (33,268), BUDGET wrapper fits (32,771), FOLD-SAFE idempotent, PUBLISH inside the budget (33,347) · MB10 (the emit appends
+    raw) → EMIT drag, pause, pairs, other fields, e2e (61) · MB11 (compact before appending) → the same EMITs (2 events), e2e
+    (2) · MB12 (the publish sends raw) → PUBLISH inside the budget (78,730) · MB13 → TINT near · MB14 (step 49,152) →
+    PADDING at the step · MB15 → DEVPANEL tint · MB16 → DEVPANEL log size · MB17 (1 s) → EMIT pause, BURST device-blind ·
+    MB18 (60 s) → EMIT history, BUDGET wrapper trims the oldest (its edits are a minute apart — one burst) · MB19 (no
+    wrapper — the prototype's first version) → BUDGET wrapper fits (32,771), FOLD-SAFE budget (#160).
 - **Phase 4e — the `settings:v1` bridge retired** (spec `bitbloc-spec-4e-bridge-stop-v1` v1.3 — § Phase 4; 25 test files,
   3 new; the suite 2,505 → 2,494, 149 → 152 files; 32 mutations + X-PARITY-ORDER, each an exact-once edit run on its
   unit files with `--reporter=verbose`, red at its tag, the file restored and md5-checked, the tree's digest unchanged):
@@ -9467,6 +9519,14 @@ src/
                                     # Phase 4a-inst: PublishReport += eventBytes/plainBytes (real byte lengths via a
                                     # TextEncoder byteLen helper, NOT String.length — additive-only, no publish/quorum
                                     # logic change)
+    payloadSize.ts                  # 5a — PURE (imports only PLAN_LOG_BUDGET_BYTES from ../planEvents/compact): a relay
+                                    # payload judged where NIP-44's padding steps sit. PLAIN_STEP_BYTES 40,960 (the largest
+                                    # plain JSON whose padded event stays under 64 KiB; 40,961 B pads to 49,152 → ~66 KB on
+                                    # the wire) · WIRE_WARN_BYTES 60,000 (the old wire budget, for a report with no plain size —
+                                    # the public kind-10002 list) · payloadSizeLevel({ eventBytes?, plainBytes? }) → 'over'
+                                    # past the step / 'near' past the plan log's 32,768 B budget / 'ok' (takes a PublishReport
+                                    # as is). Read by DevPanel's size rows. Pinned by __tests__/payloadSize.test.ts (PADDING —
+                                    # the step, against nostr-tools' own NIP-44 · TINT · DEVPANEL)
     keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
                                     # PBKDF2→HKDF→AES-GCM via WebCrypto; wrap/unwrap/probe; key in MEMORY only,
                                     # never persisted). Shared infra: writer local-key now, viewer key later.
@@ -10403,7 +10463,9 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     have their own setters); only `setAdvisorActualBlocBalance` is a true paired-AsOf; plain `setNostrRelays`
     stays RAW (boot discovery); `setBackupVerifiedAt` null-branch stays RAW, its pre-auth stamp is field-only
     (NO event; **residual: a fresh key verified pre-auth never syncs the attestation as an event — healed by any
-    authed re-verify; gate semantics unaffected** — 4e widens it, F14, below), its authed stamp emits.
+    authed re-verify; gate semantics unaffected** — 4e widens it, F14, below), its authed stamp emits. **5a:** the
+    set stores `compactPlanEvents([...log, ...newEvents], Date.now())` — the log is compacted as it grows, so a drag
+    leaves one event per field on every device (5a, below).
   - **Engine (`syncEngine.ts`):** `publishPlanEventsNow` (gate + Fix A → compact → `setPlanEvents` → publish →
     success: THE BRIDGE `void publishSettingsNow()` [chains the viewer fan-out] + `checkPlanParity` — at 4e the
     chains run here directly);
@@ -10504,6 +10566,35 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     `coverage.test.ts`, plus LIVE three, IGNORED, ROSTER pull and RETRY locked; 32 mutations + X-PARITY-ORDER
     (§ Test Suite). The 4a lock document is in neither the repo nor the project (F12) — this section is the
     authority. Tag `v4e-fence` on the merge (the rollback anchor; BitBooks' PB-0 fork point when it restarts, BL7).
+- **5a — the plan log's size** (spec `pbloc-spec-plan-log-size-v1` v1.1, BL10 — option A of the plan-of-record spec's R5;
+  store unchanged, NO bump). The problem: every slider notch was a plan event and compaction kept superseded events 90
+  days, so two 3-second drags (45,188 B) pushed the ONE plan event past NIP-44's 40,960 B padding step — out at ~66 KB,
+  over a 64 KiB relay limit, failing every retry until the history aged out.
+  - **The burst rule** (`compact.ts`, `BURST_WINDOW_MS` 10,000): a superseded event whose field's NEXT event, in (ts, id)
+    order, follows within 10 s is a burst's middle and is dropped (exactly 10 s is a burst, 10,001 ms two edits). A drag
+    keeps its last value; a 5-second rest is still one burst; a same-ts tie keeps the (ts, id) winner; an AsOf pair keeps
+    one event per field at one ts. ⚠ Device-blind: `device` is never a merge input.
+  - **The budget** (`PLAN_LOG_BUDGET_BYTES` 32,768): after the burst and 90-day rules the history is trimmed OLDEST FIRST
+    until the payload `{"events":[…]}` (the log + 11 bytes) fits — a full padding step under 40,960 B, so the plan goes
+    out near 44 KB at most. A latest is never trimmed; if the latests alone are over (hundreds of viewers), every latest
+    stays and all the history goes.
+  - **The emit compacts** (`syncSlice.ts`): `emitPlanSets` stores `compactPlanEvents([...log, ...newEvents], Date.now())`
+    in its one atomic set — a drag never grows the stored log, on every device, including one that never publishes. The
+    max-ts event is a latest, so the next emit's ts still advances. The pull (union) and the restore (`applyPlanBackup`)
+    are unchanged; the next emit or publish compacts.
+  - **DevPanel:** sizes are judged by the plain bytes (`lib/nostr/payloadSize.ts` — `--orange` past 32,768 B plain,
+    `--red` past 40,960 B; the 60,000 B wire budget only without a plain size); PLAN EVENTS gains a live "log size" row.
+  - **Mixed versions:** a device on an older build keeps bursts and can republish them (the pull's repair) until it loads
+    the new build — it can only do what it did before; an updated device's next emit or publish compacts. No step moves a
+    fold.
+  - **5b — the records payload (logged, not fixed):** `records:v1` is one NIP-44 event too, with no compaction (day events
+    are the journal); at a log a day it reaches the 40,960 B step in ~3–4 months. DevPanel's "records size" row turns
+    `--orange` past 32,768 B plain and `--red` past 40,960 B — the owner's reading sets 5b's urgency. NIP-44's 65,535 B
+    plaintext cap: nostr-tools 2.23.5 extends past it (a 6-byte length prefix) and the local key's `NSecSigner` encrypts
+    through it, but a browser extension or a remote signer, or another device's decrypt, may cap at 65,535 B — 5b's spec
+    measures that before it counts on more.
+  - **Tests:** `planLogSize.test.ts` (13), `planLogEmit.test.ts` (6), `payloadSize.test.ts` (3), the DRAG e2e; 19
+    mutations (§ Test Suite → 5a).
 
 ---
 
@@ -10584,6 +10675,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Provenance stamp ordering | `setKeyProvenance(...)` is stamped **BEFORE** `establishLocalOwner`/`syncNow` at every establishment call site — both call `syncNow` internally/immediately, so a stamp placed after would let a generated key's first sync publish ungated. `establishLocalOwner` is shared by the generated + imported paths and cannot distinguish them → the CALL SITES own the stamp |
 | `setBackupVerifiedAt` | Authed: the emit's `set()` lands FIRST (field + plan event + `planDirty` + the debounced kick, whose publish waits for the first pull — Fix A), then the wake via `syncNow` (dynamic-imported, cycle-safe) — the gate must read satisfied inside `doSyncNow`'s guards. Pre-auth (onboarding's quiz-pass, before K3): the field ONLY — no event, because a K3-failure rollback clears the field RAW and can't retract one. **No second wake mechanism.** `null` = teardown clear (RAW — no event, no wake) |
 | `backupVerifiedAt` latch | **ONE-WAY LATCH by construction (4e)** — no path emits a null `backupVerifiedAt` event (the teardown clear is RAW; the one emit sits after the null return), the fold writes only fields present in the log, and neither whitelist applier can write it (`hydratePrefs` takes PREFS_FIELDS; `applyViewerSettings` strips it). The whole-object-LWW skip-guard class (`nostrRelays`, `viewers`, this) was deleted at 4e with `hydrateSettings` |
+| The plan log stays inside one publishable event | Compaction keeps the latest event per field FOREVER; a burst (the same field set again within 10 s — `BURST_WINDOW_MS`) keeps only its last event; the history is trimmed OLDEST FIRST until the payload `{"events":[…]}` fits 32 KiB (`PLAN_LOG_BUDGET_BYTES`, a full NIP-44 padding step under 40,960 B — past it the event goes out over a 64 KiB relay limit); the emit compacts (`emitPlanSets`), so the stored log stays small on every device. Never drop a latest (the fold reads only the latest per field), and never key compaction on `device` (diagnostics only, never a merge input). Pinned by `planLogSize.test` (FOLD-SAFE, CONVERGE), `planLogEmit.test` and the DRAG e2e |
 | Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green |
 | Onboarding verifies by default (R2c-6a, SUPERSEDES the retired R2c-4a bridge) | `OwnerKeySetup` K2 now stamps `backupVerifiedAt` — but gated on a **real verification** (a save + a two-word quiz = the ceremony's own semantics), NOT an ack. The stamp is pre-auth field-only (K2), before K3's `establishLocalOwner` `syncNow` wakes it ungated. The **skip** path ("I'll do this later") stamps nothing → generated-UNVERIFIED → the R2c-2/5b ladder. ⚠ The distinction the retired R2c-4a bridge got wrong: **an ack is a promise; a verification is proof.** Never gate the stamp on anything less than the save+quiz. ⚠ `handleGenerate`/`handleStartOver` must `setBackupVerifiedAt(null)` on (re)mint — the field rides partialize `...rest`, so a stale stamp from an abandoned run would falsely verify freshly-minted words. (⚠ `backupGate.test.ts` drives the setters directly, never the component — the K2 wiring is manual/tsc-covered.) |
 | Seed-phrase hygiene copy — two variants, don't cross them | **DISPLAY** (we minted the words; `OwnerKeySetup` K2 + `RecoveryKeyCeremony` explain, one identical string): *"These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job."* **CAPTURE** (the user is typing words IN; `NostrAuthGate`'s word-grid tab only, never the nsec tab): *"Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."* The capture line sits BELOW the live checksum line so it never interrupts the grid→status feedback path |
