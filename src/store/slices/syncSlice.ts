@@ -7,6 +7,7 @@ import type { PlanEvent, PlanField } from '../../lib/planEvents/types';
 import { deriveCbCollateral, deriveStrikeCollateral } from '../../simulation/logUtils';
 import { APPLY_FIELDS, PLAN_EVENT_FIELDS, PREFS_FIELDS, VIEWER_SETTINGS_FIELDS } from '../settingsFields';
 import { nextPlanEventTs, makePlanEventId } from '../../lib/planEvents/genesis';
+import { compactPlanEvents } from '../../lib/planEvents/compact';
 import { getDeviceTag } from '../../lib/nostr/deviceTag';
 import { kickRecordsPublish } from '../bootstrap';
 
@@ -82,6 +83,9 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   // edit is legitimate local intent that just accumulates events; publishing is fully gated in the engine
   // (publishPlanEventsNow requires auth + backup gate + initialSettingsPullDone), so §6's structural
   // no-seed-clobber holds without a guard here.
+  // 5a — the log is compacted as it grows, so a slider drag leaves one event per field (the burst rule) and the
+  // history stays inside the budget on every device, even one that never publishes. The new events are the latest
+  // for their fields, so compaction keeps them; it never moves the max ts, so the next emit's ts still advances.
   emitPlanSets: (pairs) => {
     const cur = get();
     const ts = nextPlanEventTs(maxPlanTs(cur.planEvents));
@@ -92,7 +96,7 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
       fieldWrites[field] = value;
       newEvents.push({ id: makePlanEventId(field, ts), ts, device, kind: 'set', field, value });
     }
-    set({ ...fieldWrites, planEvents: [...cur.planEvents, ...newEvents], planDirty: true });
+    set({ ...fieldWrites, planEvents: compactPlanEvents([...cur.planEvents, ...newEvents], Date.now()), planDirty: true });
     void import('../../lib/nostr/syncEngine').then((m) => m.schedulePlanPublish());
   },
   // Pull-side derived-scalar apply — raw set, NO event, NO dirty (the fold result lands in state).

@@ -17,6 +17,8 @@ above (`master-roadmap-v1`, `phase-0-ground-truth-spec-v1`, `phase-4a-plan-event
 neither the repo nor the project — CLAUDE.md § Phase 4 is the authority for the plan-events design; recovering them
 is the owner's item.
 
+**5a — the plan log's size** (`pbloc-spec-plan-log-size-v1` v1.1, built on branch `plan-log-size`): compaction bounds the plan log — a burst of one field's edits keeps its last event, the history is trimmed oldest first to 32 KiB, and the emit compacts — so the one plan event stays publishable; CLAUDE.md § Phase 4 → 5a records it.
+
 **Current shipped baseline: store **v18** · 220/220 tests · HEAD `6673a2b` (branch `main`). Viewer-access arc (Phases 1–3) COMPLETE.**
 **Last rebuilt:** after the **security arc** (writer local-nsec signer → owner-pubkey gate → NIP-98 proxy auth) + the position-box relayout arc. Historical record of what shipped. **The security arc is now CONFIRMED on-device (iOS Face-ID local signer, owner-gate, NIP-98 all verified Jun 18).** The OPEN tail's live queue is now just the position-box eyeball + the queued viewer-access spec.
 
