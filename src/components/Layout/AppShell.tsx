@@ -33,6 +33,7 @@ import { useBtcPrice }            from '../../hooks/useBtcPrice';
 import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
+import { useSyncBlocked, TOO_LARGE_COPY } from '../../hooks/useSyncBlocked';
 import { useViewerSync }          from '../../hooks/useViewerSync';
 import { useMonthBucketReconcile } from '../../hooks/useMonthBucketReconcile';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
@@ -200,6 +201,7 @@ export function AppShell() {
   const nostrSigner       = useStore((s) => s.nostrSigner);
   const nostrSyncing      = useStore((s) => s.nostrSyncing);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
+  const syncBlocked          = useSyncBlocked();   // 5b — channels the size guard refused (never a signer problem)
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
   const [unlockEscape, setUnlockEscape] = useState(false);
 
@@ -466,6 +468,18 @@ export function AppShell() {
           <span className={styles.nostrSyncingDot} />
           Syncing…
         </div>
+      )}
+
+      {/* 5b — a payload too large to sync: not a signer problem, so not "Reconnect". Opens Settings, which says what
+          and what it means. Hidden while Reconnect or the syncing dot holds the corner. */}
+      {nostrAuthEnabled && syncBlocked.length > 0 && !nostrReconnectNeeded && !nostrSyncing && (
+        <button
+          className={styles.nostrReconnect}
+          title={syncBlocked.map((c) => TOO_LARGE_COPY[c]).join(' ')}
+          onClick={() => { if (activeTab !== 'settings') goSettings(); }}
+        >
+          ⚠ Too large to sync
+        </button>
       )}
 
       {nostrAuthEnabled && nostrReconnectNeeded && (

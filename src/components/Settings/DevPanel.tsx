@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useState, useSyncExternalStore, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useState, useSyncExternalStore, type ReactNode } from 'react';
 import { useStore, storeEncEnabled } from '../../store/useStore';
 import { haptics, hapticsSupport } from '../../lib/haptics';
 import { withTimeout, signerOpTimeout } from '../../lib/nostr/timeout';
@@ -6,7 +6,11 @@ import { nostrLog, getNostrLog, clearNostrLog, subscribeNostrLog } from '../../l
 import { getPublishReports, RECORDS_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG } from '../../lib/nostr/publish';
 import { foldPlanEvents } from '../../lib/planEvents/fold';
 import { compactPlanEvents } from '../../lib/planEvents/compact';
-import { payloadSizeLevel } from '../../lib/nostr/payloadSize';
+import { payloadSizeLevel, PLAIN_STEP_BYTES } from '../../lib/nostr/payloadSize';
+import { journalSizes, JOURNAL_V2_PREFIX, JOURNAL_MANIFEST_DTAG } from '../../lib/nostr/journalPages';
+import { peekJournalKnown } from '../../lib/nostr/journalState';
+import { getBlockedDTags } from '../../lib/nostr/syncGuard';
+import { fetchRelayInfo, probeRelaySizes, type RelayInfo, type ProbeResult } from '../../lib/nostr/relayLimits';
 import { planLogGaps } from '../../lib/planEvents/coverage';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
 import { blobIsPlaintext, migrateEncryptedToPlaintext } from '../../lib/store/storeMigration';
@@ -94,6 +98,11 @@ export function DevPanel() {
   const btcPrice             = useStore((s) => s.btcPrice);
   const btcPriceUpdatedAt    = useStore((s) => s.btcPriceUpdatedAt);
   const monthlyLogCount      = useStore((s) => s.monthlyLog.length);
+  // 5b — the journal's four collections (references), for its v2 sizes below. Sizes and month keys only, never content.
+  const monthlyLog           = useStore((s) => s.monthlyLog);
+  const deletedMonths        = useStore((s) => s.deletedMonths);
+  const dayLog               = useStore((s) => s.dayLog);
+  const deletedDayEvents     = useStore((s) => s.deletedDayEvents);
   const tombstoneCount       = useStore((s) => Object.keys(s.deletedMonths).length);
   // Phase 4c — plan-events channel diagnostics (metadata only — counts/flags/ages, never field values)
   const planEvents           = useStore((s) => s.planEvents);
@@ -133,6 +142,9 @@ export function DevPanel() {
     updateResult: string;
   } | null>(null);
   const [swLoading, setSwLoading] = useState(false);
+  // 5b — RELAY LIMITS: each relay's NIP-11 frame cap, and what it did with the probe's three events
+  const [relayProbe, setRelayProbe] = useState<{ info: RelayInfo[]; results: ProbeResult[] } | null>(null);
+  const [relayProbing, setRelayProbing] = useState(false);
 
   // 5s tick so the btc-price age below climbs visibly — a frozen price (dead poll) shows the age growing
   // past 60s/2m, which is the whole point of the diagnostic (a render-only age could look static).
@@ -233,6 +245,16 @@ export function DevPanel() {
     }
   };
 
+  // 5b — the journal as v2 lays it out now (synchronous: sizes only), and what the last pull found on the relays.
+  const journal = useMemo(
+    () => journalSizes({ entries: monthlyLog, deletions: deletedMonths, dayLog, dayLogDeletions: deletedDayEvents }),
+    [monthlyLog, deletedMonths, dayLog, deletedDayEvents],
+  );
+  const journalKnownNow = peekJournalKnown();
+  const journalCheck = journalKnownNow.check;
+  const journalCarried = [...journalKnownNow.unreadable.keys()];
+  const tooLarge = [...getBlockedDTags()].map(([d, bytes]) => `${d.replace('personal-bloc:', '')} ${bytes} B`);
+
   const syncState = {
     method:        nostrSigningMethod ?? '—',
     pubkey:        nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—',
@@ -244,8 +266,30 @@ export function DevPanel() {
     syncing:       nostrSyncing,
     logEntries:    monthlyLogCount,
     tombstones:    tombstoneCount,
+    journal: {   // 5b — sizes, counts and month keys only
+      pages: journal.pages, largestPageBytes: journal.largestBytes, manifestBytes: journal.manifestBytes,
+      v1: journal.v1Bytes <= PLAIN_STEP_BYTES ? 'full' : 'stub',
+      check: journalCheck ? { full: journalCheck.full, listed: journalCheck.listed, fetched: journalCheck.fetched, missing: journalCheck.missing, manifest: journalCheck.manifest, v1: journalCheck.v1 } : null,
+      carried: journalCarried,
+      tooLarge,
+    },
     device:        getDeviceLabel(),
     build:         __BUILD_SHA__,
+  };
+
+  // 5b — RELAY LIMITS probe (see relayLimits.ts): read-only NIP-11, then three throwaway events from a one-time key.
+  const runRelayProbe = async () => {
+    setRelayProbing(true);
+    try {
+      const relays = [...nostrRelays];
+      const [info, results] = await Promise.all([Promise.all(relays.map((r) => fetchRelayInfo(r))), probeRelaySizes(relays)]);
+      setRelayProbe({ info, results });
+      nostrLog('info', `relay limits probe: ${results.map((r) => `${r.url.replace(/^wss?:\/\//, '')} ${r.plainBytes} ${r.status}`).join(', ')}`);
+    } catch (e) {
+      nostrLog('warn', `relay limits probe failed: ${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setRelayProbing(false);
+    }
   };
 
   const runProbe = async () => {
@@ -401,8 +445,12 @@ export function DevPanel() {
     [...getPublishReports()].reverse().find((r) => r.label === label);
   const newestViewerSnapshot = () =>
     [...getPublishReports()].reverse().find((r) => r.label.startsWith('personal-bloc:viewer:v2:'));
+  const newestJournalPage = () =>
+    [...getPublishReports()].reverse().find((r) => r.label.startsWith(JOURNAL_V2_PREFIX) && r.label !== JOURNAL_MANIFEST_DTAG);
   const payloadRows: [string, ReturnType<typeof newestByLabel>][] = [
-    ['records',         newestByLabel(RECORDS_DTAG)],
+    ['records v1',      newestByLabel(RECORDS_DTAG)],   // 5b — the v1 bridge: the whole journal while it fits, else the stub
+    ['journal page',    newestJournalPage()],
+    ['journal manifest', newestByLabel(JOURNAL_MANIFEST_DTAG)],
     ['plan events',     newestByLabel(PLAN_EVENTS_DTAG)],
     ['prefs',           newestByLabel(PREFS_DTAG)],
     ['viewer snapshot', newestViewerSnapshot()],
@@ -476,6 +524,58 @@ export function DevPanel() {
           <span className={styles.val} style={{ color: viewerMode ? undefined : planLogGapList.length ? 'var(--amber)' : 'var(--green)' }}>
             {viewerMode ? 'n/a (viewer)' : planLogGapList.length ? planLogGapList.join(', ') : 'none'}
           </span>
+        </div>
+      </Section>
+
+      <Section title="JOURNAL">
+        <div className={styles.grid}>
+          <span className={styles.key}>pages</span><span className={styles.val}>{journal.pages}</span>
+          <span className={styles.key}>largest page</span>
+          <span className={styles.val} style={sizeStyle({ plainBytes: journal.largestBytes })}>
+            {journal.largestBytes} B plain{journal.largestKey ? ` · ${journal.largestKey}` : ''}
+          </span>
+          <span className={styles.key}>manifest</span>
+          <span className={styles.val} style={sizeStyle({ plainBytes: journal.manifestBytes })}>{journal.manifestBytes} B plain</span>
+          <span className={styles.key}>v1 bridge</span>
+          <span className={styles.val}>
+            {journal.v1Bytes <= PLAIN_STEP_BYTES ? `whole journal · ${journal.v1Bytes} B plain` : `stub · journal ${journal.v1Bytes} B plain, past the step`}
+          </span>
+          <span className={styles.key}>relay check</span>
+          <span className={styles.val} style={{ color: journalCheck?.missing.length ? 'var(--amber)' : undefined }}>
+            {journalCheck
+              ? `${journalCheck.full ? 'full' : 'changed pages'} · ${journalCheck.listed} listed · ${journalCheck.fetched} fetched · missing ${journalCheck.missing.length ? journalCheck.missing.join(', ') : 'none'} · ${Math.max(0, Math.round((now - journalCheck.at) / 1000))}s ago`
+              : 'no pull yet'}
+          </span>
+          <span className={styles.key}>carried</span><span className={styles.val}>{journalCarried.length ? journalCarried.join(', ') : 'none'}</span>
+          <span className={styles.key}>too large</span>
+          <span className={styles.val} style={{ color: tooLarge.length ? 'var(--red)' : 'var(--green)' }}>{tooLarge.length ? tooLarge.join(', ') : 'none'}</span>
+        </div>
+      </Section>
+
+      <Section
+        title="RELAY LIMITS"
+        action={<button className={styles.btnGhost} onClick={runRelayProbe} disabled={relayProbing || !nostrRelays.length}>{relayProbing ? 'Probing…' : 'Probe'}</button>}
+      >
+        <div className={styles.grid}>
+          {!relayProbe && (
+            <span className={styles.val} style={{ gridColumn: '1 / -1' }}>
+              Probe asks each relay for its advertised frame limit (NIP-11), then sends three throwaway events from a one-time
+              key — the size of 1 KB, 40,960 B and 40,961 B of plain JSON — and shows what each relay did.
+            </span>
+          )}
+          {relayProbe?.info.map((i) => (
+            <Fragment key={i.url}>
+              <span className={styles.key}>{i.url.replace(/^wss?:\/\//, '')}</span>
+              <span className={styles.val}>
+                {i.error ? `NIP-11: ${i.error}` : `frame ≤ ${i.maxMessageLength ?? '?'} B · ${(i.software ?? '?').split('/').pop()} ${i.version ?? ''}`}
+                {relayProbe.results.filter((r) => r.url === i.url).map((r) => (
+                  <div key={r.plainBytes} style={{ color: r.status === 'ack' ? 'var(--green)' : 'var(--red)' }}>
+                    {r.plainBytes} B plain ({r.eventBytes} B event) · {r.status}{r.message ? ` · ${r.message}` : ''}
+                  </div>
+                ))}
+              </span>
+            </Fragment>
+          ))}
         </div>
       </Section>
 

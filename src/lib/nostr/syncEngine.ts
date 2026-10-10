@@ -6,7 +6,7 @@
 // publish is the only plan channel, and it now chains the viewer fan-out + the revocation retry itself.
 import { useStore } from '../../store/useStore';
 import { buildViewerSnapshotPayload } from '../../store/payloads';
-import { publishRecords, publishRelayListNip65, publishViewerSnapshot, publishEncrypted, PLAN_EVENTS_DTAG, PREFS_DTAG, type ViewerSnapshot } from './publish';
+import { publishRecords, publishRelayListNip65, publishViewerSnapshot, publishEncrypted, PLAN_EVENTS_DTAG, PREFS_DTAG, RECORDS_DTAG, type ViewerSnapshot } from './publish';
 import { importNip65RelayList, DEFAULT_RELAYS } from './relays';
 import { foldPlanEvents } from '../planEvents/fold';
 import { compactPlanEvents } from '../planEvents/compact';
@@ -14,6 +14,15 @@ import { PREFS_FIELDS } from '../../store/settingsFields';
 import { nostrLog } from './log';
 import { signerOpTimeout } from './timeout';
 import { isBackupGateSatisfied } from '../backupGate';
+import { PayloadTooLargeError, pruneBlocked, channelOf } from './syncGuard';
+import { PLAIN_STEP_BYTES } from './payloadSize';
+import {
+  buildJournal, pagesToPublish, relayListing, manifestOf, fingerprint, normRecords, pageDTag, pageItemCount, utf8Bytes,
+  v1Payload, v1BridgeTarget, V1_STUB, JOURNAL_MANIFEST_DTAG,
+} from './journalPages';
+import { journalKnown, inJournalLane, type JournalKnown } from './journalState';
+import type { NostrSigner } from '@nostrify/nostrify';
+import type { RecordsState } from '../../simulation/mergeRecords';
 
 let recordsDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 let planDebounceTimer: ReturnType<typeof setTimeout> | null = null;    // Phase 4c — plan-events channel debounce
@@ -42,33 +51,143 @@ export function publishRecordsNow(): void {
   recordsDebounceTimer = setTimeout(() => { void publishRecordsNowImmediate(); }, 400);
 }
 
-export async function publishRecordsNowImmediate(): Promise<boolean> {
+// 5b — why each channel's last publish returned false: 'size' — the guard refused a payload past NIP-44's 40,960 B step,
+// and the same payload would be refused again, so Reconnect can't help (the app names what is too large instead) — or
+// 'failed' (a gate, the signer, the relays). Cleared at the start of every attempt; syncNow reads it.
+type PublishChannel = 'records' | 'plan' | 'prefs';
+const lastRefusal: Partial<Record<PublishChannel, 'size' | 'failed'>> = {};
+export function refusedForSize(channel: PublishChannel): boolean { return lastRefusal[channel] === 'size'; }
+
+// 5b — the journal publishes in the journal lane (journalState.ts): never interleaved with a pull or another publish.
+export function publishRecordsNowImmediate(): Promise<boolean> {
   if (recordsDebounceTimer) { clearTimeout(recordsDebounceTimer); recordsDebounceTimer = null; }   // an immediate publish supersedes any pending debounce — avoids a redundant signer op (NIP-46 round-trip)
+  return inJournalLane(publishRecordsOnce);
+}
+
+async function publishRecordsOnce(): Promise<boolean> {
+  delete lastRefusal.records;
   const state = useStore.getState();
-  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;   // publish didn't happen (incl. read-only viewer — relay-side backstop; and an unbacked-up generated key)
+  if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) {   // publish didn't happen (incl. read-only viewer — relay-side backstop; and an unbacked-up generated key)
+    lastRefusal.records = 'failed';
+    return false;
+  }
   useStore.getState().setNostrSyncing(true);
+  const signer = state.nostrSigner;
+  const pubkey = state.nostrPubkey;
+  const relays = state.nostrRelays.length ? state.nostrRelays : undefined;
+  const timeout = signerOpTimeout(state.nostrSigningMethod);
+  const journal: RecordsState = { entries: state.monthlyLog, deletions: state.deletedMonths, dayLog: state.dayLog, dayLogDeletions: state.deletedDayEvents };
+  const known = journalKnown(pubkey);
   try {
-    const createdAt = await publishRecords(
-      state.nostrSigner,
-      state.nostrPubkey,
-      { entries: state.monthlyLog, deletions: state.deletedMonths, dayLog: state.dayLog, dayLogDeletions: state.deletedDayEvents },
-      state.nostrRelays.length ? state.nostrRelays : undefined,
-      signerOpTimeout(state.nostrSigningMethod),
-    );
-    useStore.getState().setLastRecordsSyncAt(createdAt);
-    useStore.getState().setRecordsDirty(false);
-    useStore.getState().setNostrReconnectNeeded(false);
-      nostrLog('info', 'records published');
+    if (!state.initialSettingsPullDone || !known.pulled) {
+      // Before this session's journal pull: records:v1 only, as before 5b — a merging reader loses nothing from it. The
+      // pages and the manifest wait for the pull (the manifest lists every page the relays hold, so it needs their
+      // listing first), and recordsDirty STAYS SET so the publish after the pull writes them. A journal too large for
+      // records:v1 waits for the pull too.
+      const payload = v1Payload(journal);
+      if (utf8Bytes(JSON.stringify(payload)) > PLAIN_STEP_BYTES) { lastRefusal.records = 'failed'; return false; }
+      const createdAt = await publishRecords(signer, pubkey, payload, relays, timeout, known.seenAt + 1);
+      known.seenAt = Math.max(known.seenAt, createdAt);
+      useStore.getState().setLastRecordsSyncAt(createdAt);
+      useStore.getState().setNostrReconnectNeeded(false);
+      nostrLog('info', 'records published (records:v1 — before the journal pull)');
+      known.v1 = await fingerprint(normRecords(journal));   // the bridge's content, as a pull would fingerprint it
       void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
       void flushViewerRevocations();     // durable owner-side revocations share the normal retry path
+      return true;
+    }
+    const r = await publishJournal(signer, pubkey, journal, relays, timeout, known);
+    if (r.lastAt) useStore.getState().setLastRecordsSyncAt(r.lastAt);
+    // Clear recordsDirty only if what was published is still the journal: a write made while the pages went out keeps
+    // it set (the store replaces a collection on every write, so "unchanged" is a reference test). A size refusal clears
+    // it too: the same page would be refused again — the next change, or the next pull's repair, tries again.
+    const after = useStore.getState();
+    if (after.monthlyLog === journal.entries && after.deletedMonths === journal.deletions && after.dayLog === journal.dayLog
+      && after.deletedDayEvents === journal.dayLogDeletions) useStore.getState().setRecordsDirty(false);
+    useStore.getState().setNostrReconnectNeeded(false);
+    void publishViewerSnapshotNow();   // fire-and-forget; never affects the owner's own sync result
+    void flushViewerRevocations();     // durable owner-side revocations share the normal retry path
+    if (r.refused.length) {
+      lastRefusal.records = 'size';
+      nostrLog('warn', `journal too large to sync: ${r.refused.join(', ')} (past ${PLAIN_STEP_BYTES} B plain) — the rest published`);
+      return false;
+    }
+    nostrLog('info', `journal published (${r.pages} page${r.pages === 1 ? '' : 's'}${r.manifest ? ', manifest' : ''}${r.v1 ? `, records:v1 ${r.v1}` : ''})`);
     return true;
   } catch (e) {
     nostrLog('error', 'records publish failed', e);
+    lastRefusal.records = 'failed';
     useStore.getState().setNostrReconnectNeeded(true);   // dirty stays true
     return false;
   } finally {
     useStore.getState().setNostrSyncing(false);
   }
+}
+
+interface JournalPublishResult { pages: number; manifest: boolean; v1: 'full' | 'stub' | null; refused: string[]; lastAt: number }
+
+/**
+ * 5b — publish the journal as v2: the pages that differ from the copies the relays hold, ONE AT A TIME, then — only if
+ * every page attempt ended (published, or refused for its size) — the manifest, if it changed; then the records:v1
+ * bridge, best-effort. A relay or signer failure throws out of the loop before the manifest, so the manifest (the
+ * commit marker) never lists a page the relays don't hold. The manifest lists the relays' copies, not this device's:
+ * a refused page keeps the copy the relays already have, and a listed page this device couldn't read stays listed.
+ * Every event goes out newer than every journal event this device has seen (known.seenAt): a relay keeps the newer of
+ * two copies by created_at, so a device whose clock is behind would otherwise publish into the void.
+ */
+async function publishJournal(
+  signer: NostrSigner, pubkey: string, journal: RecordsState, relays: string[] | undefined, timeout: number, known: JournalKnown,
+): Promise<JournalPublishResult> {
+  const built = await buildJournal(journal);
+  const live = new Set([...built.pages.map((p) => pageDTag(p.page.key)), JOURNAL_MANIFEST_DTAG, RECORDS_DTAG]);
+  pruneBlocked((dTag) => channelOf(dTag) !== 'journal' || live.has(dTag));   // a refused page whose month emptied stops warning
+  const refused: string[] = [];
+  let pages = 0;
+  let lastAt = 0;
+  for (const p of pagesToPublish(built, known.pages)) {
+    try {
+      lastAt = await publishEncrypted(signer, pubkey, pageDTag(p.page.key), p.page, relays, timeout, known.seenAt + 1);
+      known.seenAt = Math.max(known.seenAt, lastAt);
+      known.pages.set(p.page.key, { n: pageItemCount(p.page), h: p.h });
+      known.unreadable.delete(p.page.key);
+      pages++;
+    } catch (e) {
+      if (!(e instanceof PayloadTooLargeError)) throw e;
+      refused.push(p.page.key);
+    }
+  }
+  const manifest = manifestOf(relayListing(built, known.pages, known.unreadable), journal);
+  const manifestH = await fingerprint(manifest);
+  let manifestOut = false;
+  if (manifestH !== known.manifestH) {
+    try {
+      lastAt = await publishEncrypted(signer, pubkey, JOURNAL_MANIFEST_DTAG, manifest, relays, timeout, known.seenAt + 1);   // newer than its pages
+      known.seenAt = Math.max(known.seenAt, lastAt);
+      known.manifestH = manifestH;
+      manifestOut = true;
+    } catch (e) {
+      if (!(e instanceof PayloadTooLargeError)) throw e;
+      refused.push('manifest');
+    }
+  }
+  // The records:v1 bridge — a pre-5b app reads only records:v1. The whole journal while it fits under the step; past
+  // it, the stub. Best-effort: its failure never fails the journal's publish — the next pull finds it behind and repairs.
+  let v1: JournalPublishResult['v1'] = null;
+  try {
+    const target = await v1BridgeTarget(journal, PLAIN_STEP_BYTES);
+    if (target !== known.v1) {
+      const at = target === 'stub'
+        ? await publishEncrypted(signer, pubkey, RECORDS_DTAG, V1_STUB, relays, timeout, known.seenAt + 1)
+        : await publishRecords(signer, pubkey, v1Payload(journal), relays, timeout, known.seenAt + 1);
+      known.seenAt = Math.max(known.seenAt, at);
+      lastAt = Math.max(lastAt, at);
+      known.v1 = target;
+      v1 = target === 'stub' ? 'stub' : 'full';
+    }
+  } catch (e) {
+    nostrLog('warn', 'records:v1 bridge publish failed (best-effort)', e);
+  }
+  return { pages, manifest: manifestOut, v1, refused, lastAt };
 }
 
 // Phase 4c — publish the append-only plan-events log (compacted) to plan-events:v1. Gate mirrors
@@ -77,6 +196,7 @@ export async function publishRecordsNowImmediate(): Promise<boolean> {
 // Phase 4e: success chains the viewer fan-out + the revocation retry DIRECTLY (both rode the retired
 // settings:v1 bridge until 4e). Fire-and-forget — neither affects the plan result.
 export async function publishPlanEventsNow(): Promise<boolean> {
+  delete lastRefusal.plan;
   const state = useStore.getState();
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;
   if (!state.initialSettingsPullDone) return false;   // never publish before the baseline pull (mirrors Fix A)
@@ -103,6 +223,12 @@ export async function publishPlanEventsNow(): Promise<boolean> {
     return true;
   } catch (e) {
     nostrLog('error', 'plan events publish failed', e);
+    if (e instanceof PayloadTooLargeError) {   // 5b — not a signer problem: no Reconnect, no retry of the same payload
+      lastRefusal.plan = 'size';
+      useStore.getState().setPlanDirty(false);   // the next plan change, or the next pull's repair, tries again
+      return false;
+    }
+    lastRefusal.plan = 'failed';
     useStore.getState().setNostrReconnectNeeded(true);   // planDirty stays true → retried by syncNow
     return false;
   } finally {
@@ -114,6 +240,7 @@ export async function publishPlanEventsNow(): Promise<boolean> {
 // LWW: a seed-default publish before the first pull would clobber the real prefs → gate on initialSettingsPullDone
 // (Fix A). NIP-44 self-encrypted.
 export async function publishPrefsNow(): Promise<boolean> {
+  delete lastRefusal.prefs;
   const state = useStore.getState();
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;
   if (!state.initialSettingsPullDone) return false;
@@ -137,6 +264,12 @@ export async function publishPrefsNow(): Promise<boolean> {
     return true;
   } catch (e) {
     nostrLog('error', 'prefs publish failed', e);
+    if (e instanceof PayloadTooLargeError) {   // 5b — as the plan's
+      lastRefusal.prefs = 'size';
+      useStore.getState().setPrefsDirty(false);
+      return false;
+    }
+    lastRefusal.prefs = 'failed';
     useStore.getState().setNostrReconnectNeeded(true);
     return false;
   } finally {

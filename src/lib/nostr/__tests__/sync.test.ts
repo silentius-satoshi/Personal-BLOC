@@ -97,14 +97,15 @@ describe('fetchAndSync', () => {
 
   // Phase 4e — settings:v1 is retired: the pull no longer asks for it, and a copy that still arrives (a stale relay, a
   // pre-4e client, the live sub's overlap) matches no branch — no plan scalar, no pref, no stamp moves.
-  it('4e: the pull asks for records, plan-events and prefs only — never settings:v1', async () => {
+  // 5b — the journal's manifest joins the pull (its pages are fetched by a second query, only when the manifest lists any).
+  it('4e/5b: the pull asks for records, the journal manifest, plan-events and prefs only — never settings:v1', async () => {
     resetStore();
     mockPool.querySync.mockResolvedValue([]);
     const { fetchAndSync } = await import('../sync');
     await fetchAndSync(makeSigner(), 'pk', ['wss://r']);
     expect(mockPool.querySync).toHaveBeenCalledOnce();
     expect([...mockPool.querySync.mock.calls[0][1]['#d']].sort()).toEqual(
-      ['personal-bloc:plan-events:v1', 'personal-bloc:prefs:v1', 'personal-bloc:records:v1']);
+      ['personal-bloc:plan-events:v1', 'personal-bloc:prefs:v1', 'personal-bloc:records:v1', 'personal-bloc:records:v2:manifest']);
   });
 
   it('4e: a settings:v1 event that still arrives changes nothing — on an empty-log device and on a migrated one', async () => {

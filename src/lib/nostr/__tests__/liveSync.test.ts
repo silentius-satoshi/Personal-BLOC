@@ -43,10 +43,11 @@ describe('liveSync singleton', () => {
     expect(mockPool.subscribeMany).toHaveBeenCalledTimes(2);
   });
 
-  it('LIVE three — the live sub asks for records, plan-events and prefs only (never settings:v1)', () => {
+  // 5b — + the journal's manifest; the pages are never subscribed (the manifest's arrival schedules the journal pull).
+  it('LIVE four — the live sub asks for records, the journal manifest, plan-events and prefs only (never settings:v1)', () => {
     openLiveSync();
     const dTags = [...mockPool.subscribeMany.mock.calls[0][1]['#d']].sort();
-    expect(dTags, 'LIVE three').toEqual(['personal-bloc:plan-events:v1', 'personal-bloc:prefs:v1', 'personal-bloc:records:v1']);
+    expect(dTags, 'LIVE four').toEqual(['personal-bloc:plan-events:v1', 'personal-bloc:prefs:v1', 'personal-bloc:records:v1', 'personal-bloc:records:v2:manifest']);
   });
 
   it('no pubkey → no subscription', () => {

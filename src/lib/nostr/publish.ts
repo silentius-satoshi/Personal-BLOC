@@ -5,6 +5,7 @@ import type { ViewerSafeSafety } from '../../simulation/safetyView'; // type-onl
 import { withTimeout } from './timeout';
 import { nostrLog, redactSensitive } from './log';
 import { DEFAULT_RELAYS } from './relays';
+import { guardPayload } from './syncGuard';
 
 // Phase 4e: 'personal-bloc:settings:v1' is retired — nothing publishes or reads it (stale copies on relays are inert).
 export const RECORDS_DTAG  = 'personal-bloc:records:v1';
@@ -25,6 +26,10 @@ export const FALLBACK_RELAYS = DEFAULT_RELAYS;   // unified single source (see r
 // randomly keep the OLDER payload. Guaranteeing strict per-d-tag ordering makes ties impossible within a
 // session (covers records/plan-events/prefs/viewer — each d-tag has its own counter, so they never interfere).
 const lastCreatedAtByDtag: Record<string, number> = {};
+// 5b — the id of the last event this device signed per d-tag, so the live sub can skip its own echo (a journal pull
+// costs a relay query and a decrypt per page). A different device's event never has this id.
+const lastEventIdByDtag: Record<string, string> = {};
+export const ownLatestEventId = (dTag: string): string | undefined => lastEventIdByDtag[dTag];
 
 export async function publishEncrypted(
   signer:  NostrSigner,
@@ -33,11 +38,13 @@ export async function publishEncrypted(
   data:    unknown,
   relays:  string[] = FALLBACK_RELAYS,
   opTimeoutMs: number = 20000,
+  minCreatedAt: number = 0,   // 5b — a floor: newer than every copy of this d-tag the caller has seen (a slow clock still lands)
 ): Promise<number> {
   const plaintext  = JSON.stringify(data);
+  guardPayload(dTag, byteLen(plaintext));   // 5b — past NIP-44's 40,960 B step, refuse before any encrypt or sign
   if (!signer.nip44) throw new Error('signer missing NIP-44 support');
   const ciphertext = await withTimeout(signer.nip44.encrypt(pubkey, plaintext), opTimeoutMs, 'nip44 encrypt');
-  const createdAt  = Math.max(Math.floor(Date.now() / 1000), (lastCreatedAtByDtag[dTag] ?? 0) + 1);   // per-d-tag monotonic — no same-second replaceable ties
+  const createdAt  = Math.max(Math.floor(Date.now() / 1000), (lastCreatedAtByDtag[dTag] ?? 0) + 1, minCreatedAt);   // per-d-tag monotonic — no same-second replaceable ties
   lastCreatedAtByDtag[dTag] = createdAt;
 
   const signed = await withTimeout(signer.signEvent({
@@ -46,11 +53,12 @@ export async function publishEncrypted(
     tags:       [['d', dTag]],
     content:    ciphertext,
   }), opTimeoutMs, 'signEvent');
+  if (typeof signed.id === 'string') lastEventIdByDtag[dTag] = signed.id;
 
   return publishSignedToRelays(signed, relays, createdAt, dTag, byteLen(plaintext));
 }
 
-// Per-relay publish instrumentation (last 10 attempts) — DevPanel "PUBLISH ACKS". Metadata only
+// Per-relay publish instrumentation (the last 30 attempts) — DevPanel "PUBLISH ACKS". Metadata only
 // (relay URLs, latencies, statuses, d-tag/kind label) — never amounts, safe for Copy Diagnostics.
 export interface PublishReport {
   label:       string;            // dTag or 'kind:10002'
@@ -62,7 +70,10 @@ export interface PublishReport {
   plainBytes?: number;            // real byte length of the pre-encryption JSON, when applicable (Phase 4a-inst)
 }
 const publishReports: PublishReport[] = [];
-function pushReport(r: PublishReport): void { publishReports.push(r); if (publishReports.length > 10) publishReports.shift(); }
+// 5b: 30, not 10 — one journal publish can write several pages, a manifest and the v1 bridge, and would otherwise push
+// the plan's and prefs' newest reports out of DevPanel's view.
+const PUBLISH_REPORTS_KEPT = 30;
+function pushReport(r: PublishReport): void { publishReports.push(r); if (publishReports.length > PUBLISH_REPORTS_KEPT) publishReports.shift(); }
 export function getPublishReports(): readonly PublishReport[] { return publishReports; }
 
 // nostr-tools 2.23.5 footgun: SimplePool.publish RESOLVES a connection failure as the string
@@ -187,8 +198,9 @@ export async function publishRecords(
   payload: RecordsPayload,
   relays?: string[],
   opTimeoutMs?: number,
+  minCreatedAt?: number,   // 5b — see publishEncrypted
 ): Promise<number> {
-  return publishEncrypted(signer, pubkey, RECORDS_DTAG, payload, relays, opTimeoutMs);
+  return publishEncrypted(signer, pubkey, RECORDS_DTAG, payload, relays, opTimeoutMs, minCreatedAt);
 }
 
 // Viewer access — ONE combined snapshot sealed to a configured viewer's pubkey (Option B: includes live
