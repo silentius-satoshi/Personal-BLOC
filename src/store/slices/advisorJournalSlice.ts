@@ -3,6 +3,7 @@ import type { StoreState, StoreSet, StoreGet } from '../types';
 import { upsertEntry, deriveStrikeCollateral, deriveColdStorage, bucketEventToMonth, rollupMonth, priorStocksForMonth, strikeCollateralDelta, sameRollupFields, legacyBucketEventToMonth } from '../../simulation/logUtils';
 import { todayLocalISO } from '../../utils/format';
 import { nostrLog } from '../../lib/nostr/log';
+import { refuseWithoutPlan } from '../../lib/nostr/planLoad';
 import { kickRecordsPublish } from '../bootstrap';
 import { isMonthlyMeaningful, rerollMonth } from '../dailyRouting';
 
@@ -17,7 +18,7 @@ type AdvisorJournalSlice = Pick<StoreState,
 >;
 
 export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): AdvisorJournalSlice => ({
-  monthBucketReconcileDone: false,   // rides ...rest (persisted, not synced); false → the one-shot reconcile runs once
+  monthBucketReconcileDone: false,   // rides ...rest (persisted, not synced); settled at hydration (5c: hydrateDeviceFlags — true unless a journal was stored here)
   advisorStartDate:         todayLocalISO(),
   advisorActualBlocBalance: 0,
   advisorActualBlocBalanceAsOf: null,   // §5b — never anchored yet (null → the reading guard always applies first time)
@@ -54,6 +55,10 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
   setAdvisorSkipBtcBuying: (v) => get().emitPlanSets([['advisorSkipBtcBuying', v]]),
   setMonthlyLog:  (entries) => set({ monthlyLog: entries }),
   upsertLogEntry: (entry) => {
+    // 5c — no monthly-log write before this device holds the plan: the month numbers come from the plan's start date.
+    // Every monthly write funnels here or through deleteLogEntry (confirmMonth, unconfirmMonth, rerollMonth, manual logs,
+    // the collateral correction); the journal pull's raw setters don't, so a pull still lands.
+    if (refuseWithoutPlan(get(), 'monthly log write')) return;
     // M2 guard (centralized — all Monthly UI write paths funnel here): a daily-owned month must not be clobbered by a
     // non-daily (manual/monthly) write. The daily routing stamps source:'daily' (passes); confirmMonth preserves it
     // (passes); legacy/manual months (source undefined) are unaffected.
@@ -79,6 +84,7 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
     kickRecordsPublish();
   },
   deleteLogEntry: (month) => {
+    if (refuseWithoutPlan(get(), 'monthly log write')) return;   // 5c
     set((state) => {
       // Collateral-Truth v20 — restore-on-delete retired (no pending). Surviving entries keep their RECORDED btcHeld
       // (there is no chain to re-derive); current Strike collateral is reading-anchored, unaffected.
@@ -116,6 +122,9 @@ export const createAdvisorJournalSlice = (set: StoreSet, get: StoreGet): Advisor
   // finds no diffs). Only CHANGED months publish (via rerollMonth→upsertLogEntry); rerollMonth's reopen-on-edit
   // correctly reopens a changed confirmed month.
   reconcileMonthBuckets: () => {
+    // 5c — never against the seed plan (its start date is today): the incident's exact path. Returns WITHOUT setting the
+    // flag, so the hook runs it once the plan has loaded.
+    if (refuseWithoutPlan(get(), 'month-bucket reconcile')) return;
     const start = get().advisorStartDate;
     for (let m = 1; m <= 12; m++) {
       const s = get();

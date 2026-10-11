@@ -34,6 +34,7 @@ import { useStrikeData }          from '../../hooks/useStrikeData';
 import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
 import { useSyncBlocked, TOO_LARGE_COPY } from '../../hooks/useSyncBlocked';
+import { usePlanMissing, usePlanNotLoadedWhy, PLAN_NOT_LOADED_BODY } from '../../hooks/usePlanLoad';
 import { useViewerSync }          from '../../hooks/useViewerSync';
 import { useMonthBucketReconcile } from '../../hooks/useMonthBucketReconcile';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
@@ -202,6 +203,8 @@ export function AppShell() {
   const nostrSyncing      = useStore((s) => s.nostrSyncing);
   const nostrReconnectNeeded = useStore((s) => s.nostrReconnectNeeded);
   const syncBlocked          = useSyncBlocked();   // 5b — channels the size guard refused (never a signer problem)
+  const planMissingHere      = usePlanMissing();   // 5c — this device hasn't loaded the plan: its writes and publishes wait
+  const planWhy              = usePlanNotLoadedWhy();   // null until a pull has settled why (or the key waits on its backup)
   const setIsAuthenticated = useStore((s) => s.setIsAuthenticated);
   const [unlockEscape, setUnlockEscape] = useState(false);
 
@@ -479,6 +482,19 @@ export function AppShell() {
           onClick={() => { if (activeTab !== 'settings') goSettings(); }}
         >
           ⚠ Too large to sync
+        </button>
+      )}
+
+      {/* 5c — the plan hasn't loaded on this device: its journal and plan writes wait (the store refuses them). Not a
+          signer problem, so not "Reconnect" — it opens Settings, which says why. Hidden while another notice holds the
+          corner, and until a pull has settled why. */}
+      {nostrAuthEnabled && planMissingHere && planWhy && syncBlocked.length === 0 && !nostrReconnectNeeded && !nostrSyncing && (
+        <button
+          className={styles.nostrReconnect}
+          title={`${planWhy} ${PLAN_NOT_LOADED_BODY}`}
+          onClick={() => { if (activeTab !== 'settings') goSettings(); }}
+        >
+          ⚠ Plan not loaded
         </button>
       )}
 

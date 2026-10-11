@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { monthDateRange, weekDates, buildDayCells, readingTargetDate,
-  buildDayActivity, buildMonthRollup, groupEventsByDay } from '../calendarModel';
+  buildDayActivity, buildMonthRollup, groupEventsByDay, formatMoves } from '../calendarModel';
 import { bucketEventToMonth } from '../../../simulation/logUtils';
 import type { DayEvent } from '../../../simulation/types';
 
@@ -114,25 +114,27 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
   const reading:   DayEvent = { id: 'g', date: '2025-01-06', ts: 7, kind: 'balanceReading', reading: { strikeBal: 5000, strikeLtv: 0.12 } };
   const LOG = [drawA, buyA, paydownA, strikeDep, strikeWd, cbDep, reading];
 
-  it('buildDayActivity filters by date, sums streams, netBtc, isEmpty', () => {
+  it('buildDayActivity filters by date, sums streams, moves, isEmpty', () => {
     const day = buildDayActivity(LOG, '2025-01-05');
     expect(day.events.map((e) => e.id)).toEqual(['a', 'b']);   // asc by ts, only that date
     expect(day.streams).toEqual({ draw: 1000, paydown: 0, buyBtc: 0.01, minPayment: 0, cbDraw: 0, cbFee: 0, cbPaydown: 0 });
-    expect(day.netBtc).toBeCloseTo(0.01, 8);
+    expect(day.moves).toEqual({ strike: 0, cb: 0, cold: 0 });   // a buy is not a move
     expect(day.isEmpty).toBe(false);
     expect(buildDayActivity(LOG, '2025-01-30').isEmpty).toBe(true);
   });
 
-  it('buildDayActivity netBtc includes strike moves, excludes CB', () => {
-    expect(buildDayActivity(LOG, '2025-01-07').netBtc).toBeCloseTo(0.2, 8);    // strike deposit
-    expect(buildDayActivity(LOG, '2025-01-08').netBtc).toBeCloseTo(-0.05, 8);  // strike withdraw
-    expect(buildDayActivity(LOG, '2025-01-09').netBtc).toBeCloseTo(0, 8);      // CB deposit ignored
+  it('buildDayActivity moves: per place, signed — a Coinbase deposit is a Coinbase move (5c)', () => {
+    expect(buildDayActivity(LOG, '2025-01-07').moves).toEqual({ strike: 0.2, cb: 0, cold: 0 });     // strike deposit
+    expect(buildDayActivity(LOG, '2025-01-08').moves).toEqual({ strike: -0.05, cb: 0, cold: 0 });   // strike withdraw
+    expect(buildDayActivity(LOG, '2025-01-09').moves).toEqual({ strike: 0, cb: 0.1, cold: 0 });     // CB deposit
   });
 
   it('buildMonthRollup totals + entryCount (distinct dates)', () => {
     const m = buildMonthRollup(LOG, '2025-01-01', 1);
     expect(m.streams).toEqual({ draw: 1000, paydown: 500, buyBtc: 0.01, minPayment: 0, cbDraw: 0, cbFee: 0, cbPaydown: 0 });
-    expect(m.netBtc).toBeCloseTo(0.01 + 0.2 - 0.05, 8);   // CB deposit excluded
+    expect(m.moves.strike).toBeCloseTo(0.2 - 0.05, 8);
+    expect(m.moves.cb).toBeCloseTo(0.1, 8);
+    expect(m.moves.cold).toBe(0);
     expect(m.entryCount).toBe(5);   // 05,06,07,08,09
     expect(m.month).toBe(1);
   });
@@ -140,20 +142,58 @@ describe('buildDayActivity / buildMonthRollup / groupEventsByDay (P4c-1b)', () =
   it('buildMonthRollup reproduces the old inline agg exactly', () => {
     const month = 1, start = '2025-01-01';
     // old DailyModeView agg over selectMonthEvents-equivalent
-    let totalDraw = 0, totalPaydown = 0, totalBuyBtc = 0, netBtc = 0;
+    let totalDraw = 0, totalPaydown = 0, totalBuyBtc = 0;   // 5c — the old netBtc retired with the headline it fed
     for (const ev of LOG.filter((e) => bucketEventToMonth(e.date, start) === month)) {
       if      (ev.kind === 'draw')    totalDraw += ev.amount;
       else if (ev.kind === 'paydown') totalPaydown += ev.amount;
-      else if (ev.kind === 'buy')   { totalBuyBtc += ev.amount; netBtc += ev.amount; }
-      else if (ev.kind === 'deposit'  && ev.target === 'strike') netBtc += ev.amount;
-      else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
+      else if (ev.kind === 'buy')     totalBuyBtc += ev.amount;
     }
     const m = buildMonthRollup(LOG, start, month);
     // Whole-object, not field-by-field: a per-field .toBe would keep passing on a wrong total once draw is split by venue.
     expect(m.streams).toEqual({
       draw: totalDraw, paydown: totalPaydown, buyBtc: totalBuyBtc, minPayment: 0, cbDraw: 0, cbFee: 0, cbPaydown: 0,
     });
-    expect(m.netBtc).toBeCloseTo(netBtc, 8);
+  });
+
+  // 5c rider (spec `pbloc-spec-plan-load-guard-v1`) — the owner's September: more bought than planned, and collateral
+  // moved from Strike to Coinbase. Round synthetic figures. The card used to print buys + Strike moves (−0.0100 ₿) over
+  // "no Bitcoin bought yet"; the stored month (rollupMonth) always said 0.04 bought.
+  it('⭐ HEADLINE — buys and a Strike → Coinbase move: bought 0.04; the move shows on both places', () => {
+    const START5 = '2026-06-01';   // Month 4 = September
+    const pledgedBuy: DayEvent = { id: 's1', date: '2026-09-05', ts: 10, kind: 'buy', amount: 0.02, usd: 2000 };
+    const pledgeDep:  DayEvent = { id: 's2', date: '2026-09-05', ts: 10, kind: 'deposit', amount: 0.02, target: 'strike' };
+    const plainBuy:   DayEvent = { id: 's3', date: '2026-09-20', ts: 20, kind: 'buy', amount: 0.02, usd: 2000 };
+    const offStrike:  DayEvent = { id: 's4', date: '2026-09-25', ts: 30, kind: 'withdraw', amount: 0.05, target: 'strike' };
+    const ontoCb:     DayEvent = { id: 's5', date: '2026-09-25', ts: 31, kind: 'deposit', amount: 0.05, target: 'cb' };
+    const m = buildMonthRollup([pledgedBuy, pledgeDep, plainBuy, offStrike, ontoCb], START5, 4);
+    expect(m.streams.buyBtc).toBeCloseTo(0.04, 10);
+    expect(m.moves.strike).toBeCloseTo(-0.05, 10);   // the pledged buy's deposit is the buy's, not a move
+    expect(m.moves.cb).toBeCloseTo(0.05, 10);
+    expect(m.moves.cold).toBe(0);
+    expect(formatMoves(m.moves)).toBe('Strike −0.0500 ₿ · Coinbase +0.0500 ₿');
+  });
+
+  it('⭐ PLEDGE — only the buy\'s own same-ts deposit is consumed; a standalone Strike deposit is a move', () => {
+    const buy:  DayEvent = { id: 'p1', date: '2025-01-05', ts: 50, kind: 'buy', amount: 0.03, usd: 3000 };
+    const dep:  DayEvent = { id: 'p2', date: '2025-01-05', ts: 50, kind: 'deposit', amount: 0.03, target: 'strike' };
+    const own:  DayEvent = { id: 'p3', date: '2025-01-05', ts: 51, kind: 'deposit', amount: 0.03, target: 'strike' };   // from cold, say
+    const cold: DayEvent = { id: 'p4', date: '2025-01-05', ts: 51, kind: 'withdraw', amount: 0.03, target: 'cold' };
+    expect(buildDayActivity([buy, dep], '2025-01-05').moves).toEqual({ strike: 0, cb: 0, cold: 0 });
+    const day = buildDayActivity([buy, dep, own, cold], '2025-01-05');
+    expect(day.streams.buyBtc).toBeCloseTo(0.03, 10);
+    expect(day.moves).toEqual({ strike: 0.03, cb: 0, cold: -0.03 });
+    expect(formatMoves(day.moves)).toBe('Strike +0.0300 ₿ · Cold −0.0300 ₿');
+  });
+
+  it('formatMoves: null with no move (or float dust); fixed order Strike · Coinbase · Cold', () => {
+    expect(formatMoves({ strike: 0, cb: 0, cold: 0 })).toBeNull();
+    expect(formatMoves({ strike: 0.1 + 0.2 - 0.3, cb: -1e-12, cold: 0 })).toBeNull();
+    expect(formatMoves({ strike: 0, cb: -0.25, cold: 0.25 })).toBe('Coinbase −0.2500 ₿ · Cold +0.2500 ₿');
+  });
+
+  it('formatMoves: a move too small for four places shows in full (eight), never as 0.0000', () => {
+    expect(formatMoves({ strike: -0.00001, cb: 0.00001, cold: 0 })).toBe('Strike −0.00001000 ₿ · Coinbase +0.00001000 ₿');
+    expect(formatMoves({ strike: 0.00005, cb: 0, cold: 0 })).toBe('Strike +0.0001 ₿');   // the edge rounds up, as the headline does
   });
 
   it('⭐ buildMonthRollup counts STRIKE flows only — a Coinbase borrow/paydown gets its own streams (the sign-off leak)', () => {

@@ -13,9 +13,10 @@ import { PLAIN_STEP_BYTES } from './payloadSize';
 import {
   JOURNAL_MANIFEST_DTAG, JOURNAL_V2_PREFIX, pageDTag, buildJournal, pagesToFetch, pagesToPublish, relayListing,
   manifestOf, fingerprint, normRecords, parseV1Records, parseManifest, parsePage, isV1Stub, pageAsRecords,
-  manifestAsRecords, unionParts, v1BridgeTarget, pageItemCount, type JournalManifest, type JournalPage, type BuiltJournal,
+  manifestAsRecords, unionParts, v1BridgeTarget, pageItemCount, utf8Bytes, type JournalManifest, type JournalPage, type BuiltJournal,
 } from './journalPages';
 import { journalKnown, inJournalLane, type JournalKnown } from './journalState';
+import { recordPlanPull, errorName } from './planLoad';
 
 // Structural subset of a nostr event — satisfied by querySync results, live-sub events, and test fixtures.
 export interface RemoteEvent {
@@ -45,6 +46,10 @@ function latestByDTag<E extends RemoteEvent>(events: E[]): Map<string, E> {
  * true. Phase 4e: settings:v1 is no longer read — a settings:v1 event that still arrives (a stale relay copy, an old
  * client) matches no branch and changes nothing. 5b: the journal (records:v1 and the v2 manifest + pages) is read as one
  * unit by pullJournal, never event by event — a records:v1 event that reaches here also matches no branch.
+ * 5c (spec `pbloc-spec-plan-load-guard-v1`): a plan event's outcome is recorded (planLoad.recordPlanPull) — applied, or
+ * unreadable and why — and an applied plan sets planLoaded. A failure is never swallowed silently again, but its log
+ * carries the error's NAME and the payload's size only: a JSON.parse message can quote the payload. A plan past NIP-44's
+ * padding step (a build before 5a and 5b sent it) is republished trimmed, so every signer and relay can take it.
  */
 export async function applyRemoteEvent(
   signer: NostrSigner,
@@ -52,18 +57,36 @@ export async function applyRemoteEvent(
   event: RemoteEvent,
   opTimeoutMs: number,
 ): Promise<boolean> {
+  const dTag = dTagOf(event);
+  const isPlan = dTag === PLAN_EVENTS_DTAG;
   let plaintext: string;
   try {
     if (!signer.nip44) throw new Error('signer missing NIP-44 support');
     plaintext = await withTimeout(signer.nip44.decrypt(pubkey, event.content), opTimeoutMs, 'nip44 decrypt');
-  } catch (e) { nostrLog('warn', 'decrypt failed — signer unreachable', e); return false; }
+  } catch (e) {
+    nostrLog('warn', 'decrypt failed — signer unreachable', e);
+    if (isPlan) recordPlanPull({ status: 'unreadable', at: Date.now(), reason: 'decrypt' });
+    return false;
+  }
+  const plainBytes = typeof plaintext === 'string' ? utf8Bytes(plaintext) : 0;   // an extension can hand back a non-string
+  let data: any;   // foreign JSON — each branch below checks its shape
   try {
-    const data = JSON.parse(plaintext);
-    const dTag = event.tags.find(([t]) => t === 'd')?.[1];
-    const remoteTs = event.created_at;
-    // ── PLAN EVENTS (v1) — the ONLY plan channel since 4e; the source of truth for the plan partition.
-    // Union+fold is order-independent, so there is NO watermark gate (lastPlanEventsSyncAt is observability only). ──
-    if (dTag === PLAN_EVENTS_DTAG && Array.isArray(data?.events)) {
+    data = JSON.parse(plaintext);
+  } catch (e) {
+    nostrLog('warn', `${isPlan ? 'plan' : dTag === PREFS_DTAG ? 'prefs' : 'payload'} unreadable — not JSON (skipped)`, { error: errorName(e), plainBytes });
+    if (isPlan) recordPlanPull({ status: 'unreadable', at: Date.now(), reason: 'parse', plainBytes });
+    return true;
+  }
+  const remoteTs = event.created_at;
+  // ── PLAN EVENTS (v1) — the ONLY plan channel since 4e; the source of truth for the plan partition.
+  // Union+fold is order-independent, so there is NO watermark gate (lastPlanEventsSyncAt is observability only). ──
+  if (isPlan) {
+    if (!Array.isArray(data?.events)) {
+      nostrLog('warn', 'plan unreadable — not a plan log (skipped)', { plainBytes });
+      recordPlanPull({ status: 'unreadable', at: Date.now(), reason: 'shape', plainBytes });
+      return true;
+    }
+    try {
       const s = useStore.getState();
       const remote = data.events as PlanEvent[];
       const merged = unionPlanEvents(s.planEvents, remote);
@@ -72,20 +95,35 @@ export async function applyRemoteEvent(
         useStore.getState().setPlanEvents(merged);                     // log first
         useStore.getState().applyPlanFold(foldPlanEvents(merged));     // then derived scalars (raw — no event, no dirty)
       }
-      if (idKey(merged) !== idKey(remote)) {                          // relay behind → repair (mirrors the records pattern below)
+      useStore.getState().setLastPlanEventsSyncAt(remoteTs);          // observability ONLY
+      useStore.getState().setPlanLoaded(true);                        // 5c — this device now holds the plan
+      recordPlanPull({ status: 'applied', at: Date.now(), plainBytes });
+      // Relay behind → repair (mirrors the records pattern). 5c: also when the relays' copy is past NIP-44's padding step —
+      // only a build before 5a/5b sends one, and a signer that caps NIP-44 at 65,535 B, or a relay at 64 KiB, can't take
+      // it. The publish compacts the log (5a) and 5b's guard checks the size it sends.
+      const oversized = plainBytes > PLAIN_STEP_BYTES;
+      if (oversized) nostrLog('info', `the relays' plan is ${plainBytes} B plain, past the ${PLAIN_STEP_BYTES} B step — republishing it trimmed`);
+      if (idKey(merged) !== idKey(remote) || oversized) {
         useStore.getState().setPlanDirty(true);
         void publishPlanEventsNow();
       }
-      useStore.getState().setLastPlanEventsSyncAt(remoteTs);          // observability ONLY
+    } catch (e) {
+      nostrLog('warn', 'plan unreadable — applying it failed (skipped)', { error: errorName(e), plainBytes });
+      recordPlanPull({ status: 'unreadable', at: Date.now(), reason: 'apply', plainBytes });
     }
-    // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). hydratePrefs
-    // whitelists to PREFS_FIELDS, so nothing but the 4 prefs keys of a prefs:v1 object can land. ──
-    if (dTag === PREFS_DTAG && remoteTs > (useStore.getState().lastPrefsSyncAt ?? 0)) {
+    return true;
+  }
+  // ── PREFS (v1) — tiny whole-object LWW (tabOrder/hiddenTabs/simpleMode/btcBuyingUnit). hydratePrefs
+  // whitelists to PREFS_FIELDS, so nothing but the 4 prefs keys of a prefs:v1 object can land. ──
+  if (dTag === PREFS_DTAG && remoteTs > (useStore.getState().lastPrefsSyncAt ?? 0)) {
+    try {
       useStore.getState().hydratePrefs(data);
       useStore.getState().setLastPrefsSyncAt(remoteTs);
       nostrLog('info', 'prefs hydrated');
+    } catch (e) {
+      nostrLog('warn', 'prefs unreadable (skipped)', { error: errorName(e), plainBytes });   // corrupt/foreign payload
     }
-  } catch { nostrLog('warn', 'payload parse failed (skipped)'); }   // corrupt/foreign payload
+  }
   return true;
 }
 
@@ -109,6 +147,10 @@ export async function fetchAndSync(
     authors: [pubkey],
     '#d':    [RECORDS_DTAG, JOURNAL_MANIFEST_DTAG, PLAN_EVENTS_DTAG, PREFS_DTAG],   // 5b: + the journal's manifest
   });
+  // 5c — did any relay answer? A relay that failed to connect is dropped from the pool's map, so a connected entry is
+  // one the query reached. Nothing back from relays that couldn't be reached is 'unreachable', not 'none' — and even a
+  // 'none' only waits for the owner to say the key is new: a relay can answer and still not hold (or show) the plan.
+  const answered = [...pool.listConnectionStatus().values()].some(Boolean);
 
   pool.close(relays);
 
@@ -116,10 +158,35 @@ export async function fetchAndSync(
   const opTimeoutMs = signerOpTimeout(useStore.getState().nostrSigningMethod);
 
   let decryptFailed = false;
+  let planAttempted = false;
   for (const [dTag, event] of latest) {
     if (dTag === RECORDS_DTAG || dTag === JOURNAL_MANIFEST_DTAG) continue;   // 5b — the journal is read below, as one unit
+    if (dTag === PLAN_EVENTS_DTAG) planAttempted = true;
     const ok = await applyRemoteEvent(signer, pubkey, event, opTimeoutMs);
     if (!ok) { decryptFailed = true; break; }   // rest would fail identically
+  }
+  // 5c — settle the plan's status for this pull (applyRemoteEvent recorded it when it reached the plan). No plan event:
+  //  - no relay answered → unknown ('unreachable');
+  //  - a journal came back without a plan (its plan lives elsewhere, or only on an old device) → 'absent': the journal is
+  //    what a seed plan would damage, so this device keeps waiting;
+  //  - nothing of this key's at all → 'none'. A new key looks like that, and so do relays that return nothing for a key
+  //    that has a plan (slow, refusing the query, or not the ones that hold it) — so the device doesn't decide: its owner
+  //    does ("Start a new plan", usePlanLoad.startNewPlanHere). Until then it keeps waiting.
+  if (!latest.has(PLAN_EVENTS_DTAG)) {
+    if (!answered) {
+      recordPlanPull({ status: 'unreachable', at: Date.now() });
+    } else if (latest.has(RECORDS_DTAG) || latest.has(JOURNAL_MANIFEST_DTAG)) {
+      recordPlanPull({ status: 'unreadable', at: Date.now(), reason: 'absent' });
+      // A device that holds the plan puts it back (the relays dropped it, or never had it) — even an empty log, the plan
+      // of a key whose owner never changed a setting — and syncNow's publish sends it after this pull. The plan log
+      // unions, so a stale copy can't cost a newer device anything.
+      const s = useStore.getState();
+      if (s.planLoaded) s.setPlanDirty(true);
+    } else {
+      recordPlanPull({ status: 'none', at: Date.now() });
+    }
+  } else if (!planAttempted) {
+    recordPlanPull({ status: 'unreadable', at: Date.now(), reason: 'not-reached' });   // a decrypt failure stopped the loop first
   }
   if (!decryptFailed) {
     const journal = await pullJournal(signer, pubkey, relays, { v1: latest.get(RECORDS_DTAG), manifest: latest.get(JOURNAL_MANIFEST_DTAG) }, opTimeoutMs);

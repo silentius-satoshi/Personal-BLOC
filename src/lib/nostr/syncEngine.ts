@@ -21,6 +21,7 @@ import {
   v1Payload, v1BridgeTarget, V1_STUB, JOURNAL_MANIFEST_DTAG,
 } from './journalPages';
 import { journalKnown, inJournalLane, type JournalKnown } from './journalState';
+import { planMissing } from './planLoad';
 import type { NostrSigner } from '@nostrify/nostrify';
 import type { RecordsState } from '../../simulation/mergeRecords';
 
@@ -53,10 +54,13 @@ export function publishRecordsNow(): void {
 
 // 5b — why each channel's last publish returned false: 'size' — the guard refused a payload past NIP-44's 40,960 B step,
 // and the same payload would be refused again, so Reconnect can't help (the app names what is too large instead) — or
-// 'failed' (a gate, the signer, the relays). Cleared at the start of every attempt; syncNow reads it.
+// 'failed' (a gate, the signer, the relays). 5c adds 'held' — this device hasn't loaded the plan (planLoad.planMissing),
+// so it publishes no plan, journal or viewer snapshot; not a signer problem either. Cleared at the start of every
+// attempt; syncNow reads it.
 type PublishChannel = 'records' | 'plan' | 'prefs';
-const lastRefusal: Partial<Record<PublishChannel, 'size' | 'failed'>> = {};
+const lastRefusal: Partial<Record<PublishChannel, 'size' | 'failed' | 'held'>> = {};
 export function refusedForSize(channel: PublishChannel): boolean { return lastRefusal[channel] === 'size'; }
+export function heldWithoutPlan(channel: PublishChannel): boolean { return lastRefusal[channel] === 'held'; }
 
 // 5b — the journal publishes in the journal lane (journalState.ts): never interleaved with a pull or another publish.
 export function publishRecordsNowImmediate(): Promise<boolean> {
@@ -69,6 +73,13 @@ async function publishRecordsOnce(): Promise<boolean> {
   const state = useStore.getState();
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) {   // publish didn't happen (incl. read-only viewer — relay-side backstop; and an unbacked-up generated key)
     lastRefusal.records = 'failed';
+    return false;
+  }
+  // 5c — a device without the plan sends no journal: what it holds came from the relays, or was written against a seed
+  // plan before 5c. recordsDirty stays set, so the publish after the plan loads sends it.
+  if (planMissing(state)) {
+    lastRefusal.records = 'held';
+    nostrLog('info', 'journal publish held — this device hasn\'t loaded the plan');
     return false;
   }
   useStore.getState().setNostrSyncing(true);
@@ -200,6 +211,14 @@ export async function publishPlanEventsNow(): Promise<boolean> {
   const state = useStore.getState();
   if (!state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || state.viewerMode || !isBackupGateSatisfied(state)) return false;
   if (!state.initialSettingsPullDone) return false;   // never publish before the baseline pull (mirrors Fix A)
+  // 5c — a device that hasn't loaded the plan never publishes one: its log isn't the owner's plan, and as the newest
+  // replaceable event it would stand in for the relays' plan. planDirty stays set; what it holds goes out, unioned with
+  // the relays' plan, once that loads.
+  if (planMissing(state)) {
+    lastRefusal.plan = 'held';
+    nostrLog('info', 'plan publish held — this device hasn\'t loaded the plan');
+    return false;
+  }
   if (planDebounceTimer) { clearTimeout(planDebounceTimer); planDebounceTimer = null; }
   useStore.getState().setNostrSyncing(true);
   try {
@@ -319,6 +338,9 @@ export async function importRelaysFromNip65(): Promise<{ found: boolean; count: 
 export async function publishRelayListToNip65(): Promise<boolean> {
   const state = useStore.getState();
   if (state.viewerMode || !state.isAuthenticated || !state.nostrSigner || !state.nostrPubkey || !isBackupGateSatisfied(state)) return false;
+  // 5c — this device's relay list isn't the plan's until the plan loads (a seed default, or an edit kept here to find it);
+  // published as the key's public list, it would send every new device to the wrong relays.
+  if (planMissing(state)) { nostrLog('info', 'relay list publish held — this device hasn\'t loaded the plan'); return false; }
   useStore.getState().setNostrSyncing(true);
   try {
     await publishRelayListNip65(
@@ -345,6 +367,7 @@ export async function publishRelayListToNip65(): Promise<boolean> {
 export async function publishViewerSnapshotNow(): Promise<void> {
   const s = useStore.getState();
   if (s.viewerMode || !s.viewers.length || !s.isAuthenticated || !s.nostrSigner || !s.nostrPubkey || !isBackupGateSatisfied(s)) return;
+  if (planMissing(s)) return;   // 5c — never a snapshot of the seed plan (a roster added here, before the plan loaded)
   const signer = s.nostrSigner;
   const relays = s.nostrRelays.length ? s.nostrRelays : undefined;
   const timeout = signerOpTimeout(s.nostrSigningMethod);

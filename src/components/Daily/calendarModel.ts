@@ -97,9 +97,12 @@ export function buildDayCells(dayLog: DayEvent[], dates: string[]): DayCell[] {
 }
 
 // ─── P4c-1b — activity builders (the calendar drives the activity card) ───
-// These reproduce DailyModeView's prior inline agg EXACTLY (draw/paydown sums, buyBtc sum,
-// netBtc = buys + strike deposits − strike withdrawals; CB-target moves are journal-only → excluded
-// from netBtc). Pure — no store/UI/price dependency.
+// draw/paydown sums and the buyBtc sum, as DailyModeView's inline agg had them. 5c (spec
+// `pbloc-spec-plan-load-guard-v1`, the rider): the card's headline is what was BOUGHT (buyBtc), and moves between the
+// owner's own places get their own line (`moves`). It used to be netBtc = buys + Strike deposits − Strike withdrawals,
+// with Coinbase and cold moves left out — a definition from before collateral could move to Coinbase or cold: a Strike →
+// Coinbase move read as coins leaving, and a month that bought more than planned showed a negative headline over
+// "no Bitcoin bought yet". Pure — no store/UI/price dependency.
 // ⚠ draw/paydown are STRIKE-ONLY (flowVenue). A Coinbase borrow is a refinance, not an expense — and these streams
 // feed the ReviewSheet's "Expenses actually paid" PREFILL, which confirmMonth writes to expensesActual. Counting a CB
 // draw here would put it straight past the rollup guard at sign-off. CB flows get their own display-only streams.
@@ -109,9 +112,13 @@ export interface StreamAgg {
   cbDraw: number; cbFee: number; cbPaydown: number;                    // Coinbase borrow (cash) / its fee / paydown — journal-only, display
 }
 
+/** BTC moved into (+) or out of (−) each of the owner's places by collateral moves. A pledged buy's paired Strike
+ *  deposit is part of the buy, not a move. A move between two places shows on both, once each way. */
+export interface VenueMoves { strike: number; cb: number; cold: number }
+
 export interface DayActivity {
   date:    string;
-  netBtc:  number;
+  moves:   VenueMoves;
   streams: StreamAgg;
   events:  DayEvent[];
   isEmpty: boolean;
@@ -119,15 +126,16 @@ export interface DayActivity {
 
 export interface MonthRollup {
   month:      number;
-  netBtc:     number;
+  moves:      VenueMoves;
   streams:    StreamAgg;
   entryCount: number;     // distinct dates with at least one event
   events:     DayEvent[];
 }
 
 // Shared aggregation — the single source for both day + month totals.
-function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: number } {
-  let draw = 0, paydown = 0, buyBtc = 0, minPayment = 0, netBtc = 0, cbDraw = 0, cbFee = 0, cbPaydown = 0;
+function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; moves: VenueMoves } {
+  let draw = 0, paydown = 0, buyBtc = 0, minPayment = 0, cbDraw = 0, cbFee = 0, cbPaydown = 0;
+  const moves: VenueMoves = { strike: 0, cb: 0, cold: 0 };
   // A pledged buy emits both the acquisition and a same-ts Strike deposit. The deposit changes venue,
   // not the owner's total BTC, so consume one matching buy before counting standalone collateral moves.
   const pairedBuys = new Map<string, number>();
@@ -147,23 +155,39 @@ function aggregateEvents(events: DayEvent[]): { streams: StreamAgg; netBtc: numb
       else cbPaydown += ev.amount;
     }
     else if (ev.kind === 'minPayment') minPayment += ev.amount;   // USD; balance-neutral — display/prefill only
-    else if (ev.kind === 'buy')   { buyBtc += ev.amount; netBtc += ev.amount; }
-    else if (ev.kind === 'deposit'  && ev.target === 'strike') {
+    else if (ev.kind === 'buy')   buyBtc += ev.amount;
+    else if (ev.kind === 'deposit') {
       const key = `${ev.date}|${ev.ts}|${ev.amount}`;
-      const paired = pairedBuys.get(key) ?? 0;
+      const paired = ev.target === 'strike' ? (pairedBuys.get(key) ?? 0) : 0;
       if (paired > 0) pairedBuys.set(key, paired - 1);
-      else netBtc += ev.amount;
+      else moves[ev.target] += ev.amount;
     }
-    else if (ev.kind === 'withdraw' && ev.target === 'strike') netBtc -= ev.amount;
+    else if (ev.kind === 'withdraw') moves[ev.target] -= ev.amount;
   }
-  return { streams: { draw, paydown, buyBtc, minPayment, cbDraw, cbFee, cbPaydown }, netBtc };
+  return { streams: { draw, paydown, buyBtc, minPayment, cbDraw, cbFee, cbPaydown }, moves };
 }
 
-/** All events on a single ISO date (asc by ts) + that day's stream totals / netBtc. */
+const MOVE_LABEL: Record<keyof VenueMoves, string> = { strike: 'Strike', cb: 'Coinbase', cold: 'Cold' };
+const MOVE_DUST_BTC = 5e-9;   // half a sat: float noise from a move and its way back, never a real amount
+const MOVE_FINE_BTC = 5e-5;   // below this, four places would print 0.0000 — a real move of a few thousand sats shows in full
+
+/** "Strike −0.0500 ₿ · Coinbase +0.0500 ₿" — the places whose balance a move changed, in a fixed order; null when none.
+ *  Four places, as the card's headline; eight (sats) for a move too small to show in four. */
+export function formatMoves(moves: VenueMoves): string | null {
+  const parts = (Object.keys(MOVE_LABEL) as (keyof VenueMoves)[])
+    .filter((k) => Math.abs(moves[k]) > MOVE_DUST_BTC)
+    .map((k) => {
+      const abs = Math.abs(moves[k]);
+      return `${MOVE_LABEL[k]} ${moves[k] > 0 ? '+' : '−'}${abs.toFixed(abs < MOVE_FINE_BTC ? 8 : 4)} ₿`;
+    });
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/** All events on a single ISO date (asc by ts) + that day's stream totals and moves. */
 export function buildDayActivity(dayLog: DayEvent[], date: string): DayActivity {
   const events = dayLog.filter((e) => e.date === date).sort((a, b) => a.ts - b.ts);
-  const { streams, netBtc } = aggregateEvents(events);
-  return { date, netBtc, streams, events, isEmpty: events.length === 0 };
+  const { streams, moves } = aggregateEvents(events);
+  return { date, moves, streams, events, isEmpty: events.length === 0 };
 }
 
 /**
@@ -175,9 +199,9 @@ export function buildMonthRollup(dayLog: DayEvent[], advisorStartDate: string, m
   const events = dayLog
     .filter((e) => bucketEventToMonth(e.date, advisorStartDate) === month)
     .sort((a, b) => a.ts - b.ts);
-  const { streams, netBtc } = aggregateEvents(events);
+  const { streams, moves } = aggregateEvents(events);
   const entryCount = new Set(events.map((e) => e.date)).size;
-  return { month, netBtc, streams, entryCount, events };
+  return { month, moves, streams, entryCount, events };
 }
 
 /** Group events by date (each group asc by ts), groups sorted DESC by date (newest first). */

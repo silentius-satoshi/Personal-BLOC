@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 // changed behavior — that is the bug, not the test.
 //
 // Two source-truth notes (deliberate, verified against HEAD):
-//   • Suite 1 asserts the JSON-SERIALIZED blob keys (97). partializeState()
+//   • Suite 1 asserts the JSON-SERIALIZED blob keys (98). partializeState()
 //     returns `...rest`, which also carries every action FUNCTION; only JSON
 //     serialization (what actually persists) drops them. Keying on the data-only
 //     blob is faithful to "persisted blob shape" AND is the right instrument —
@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 97 persisted data keys (4e: settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt retired)', () => {
+  it('blob key-set is exactly the 98 persisted data keys (4e: settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt retired; 5c: + planLoaded)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -69,7 +69,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pendingViewerRevocations', 'pinnedScenario',   // device-local revocation retry queue + scenario pin
-      'planDirty', 'planEvents', 'prefsDirty',   // Phase 4c: plan-events channel (device-local persisted)
+      'planDirty', 'planEvents', 'planLoaded', 'prefsDirty',   // Phase 4c: plan-events channel (device-local persisted); 5c: planLoaded
       'previousTab', 'recordsDirty', 'scenario', 'scrubMonth', 'showMiningInLog',
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
@@ -116,6 +116,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       viewerKeyWrapMeta: null, lastRecordsSyncAt: null, recordsDirty: false,
       deletedMonths: {}, deletedDayEvents: {},
       planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
+      planLoaded: false,   // 5c — a fresh store holds no plan yet
       pinnedScenario: null,   // Phase 3a: device-local pin
     });
   });

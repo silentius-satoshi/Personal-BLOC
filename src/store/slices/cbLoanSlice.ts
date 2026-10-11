@@ -2,6 +2,7 @@
 import type { StoreState, StoreSet, StoreGet } from '../types';
 import { todayLocalISO } from '../../utils/format';
 import { CB_APR_SEED_PCT } from '../../simulation/runCoinbaseLoan';
+import { refuseWithoutPlan } from '../../lib/nostr/planLoad';
 
 type CbLoanSlice = Pick<StoreState,
   | 'hasCbLoan' | 'setHasCbLoan' | 'cbLoanBalance' | 'cbCollateralBtc' | 'strikeCollateralBtc' | 'cbAprPct'
@@ -51,6 +52,7 @@ export const createCbLoanSlice = (set: StoreSet, get: StoreGet): CbLoanSlice => 
   blocMinPaymentDueDay:  15,
   setCbLoanBalance:    (v) => get().emitPlanSets([['cbLoanBalance', v], ['cbLoanBalanceAsOf', todayLocalISO()]]),
   setCbCollateralBtc:  (v) => {
+    if (refuseWithoutPlan(get(), 'collateral reading')) return;   // 5c — its reading is a journal write; no cache change without it
     // Daily Mode P2a Seam 2: emit a cbCollateralReading (clock-only — feeds the derived cache via deriveCbCollateral)
     // instead of syncing the field. NO plan event — cross-device sync rides the RECORDS event now (P3): the
     // cbCollateralReading is part of dayLog, and addDayEvent (Change 3) publishes records. addDayEvent's clock refresh

@@ -8,6 +8,7 @@ const { mockStoreState, mockPool, mockPublishRecordsImmediate, mockPublishPlanEv
     querySync: vi.fn(),
     publish:   vi.fn(),
     close:     vi.fn(),
+    listConnectionStatus: vi.fn(() => new Map([['wss://relay.example', true]])),   // 5c — a relay answered
   },
   mockPublishRecordsImmediate: vi.fn(),   // sync.ts's repair-on-detect fires this (1b: now a named import from syncEngine)
   mockPublishPlanEvents:       vi.fn().mockResolvedValue(true),   // 4c: plan-events repair-on-detect
@@ -47,6 +48,7 @@ function resetStore(overrides: Partial<Record<string, any>> = {}) {
     setPlanDirty:            vi.fn(),
     applyPlanFold:           vi.fn(),
     setLastPlanEventsSyncAt: vi.fn(),
+    setPlanLoaded:           vi.fn(),   // 5c — an applied plan sets it
     setLastPrefsSyncAt:      vi.fn(),
     hydratePrefs:            vi.fn(),   // 4e — the prefs:v1 apply (the retired hydrateSettings' narrow successor)
     setMonthlyLog:           vi.fn(),
@@ -130,8 +132,9 @@ describe('fetchAndSync', () => {
       const touched = Object.entries(mockStoreState)
         .filter(([, v]) => typeof v === 'function' && (v as { mock?: { calls: unknown[] } }).mock?.calls.length)
         .map(([k]) => k).sort();
+      // 5c: a journal and no plan-events event → 'absent' — the device keeps waiting, so setPlanLoaded is not called either.
       expect(touched, 'IGNORED').toEqual(['setDayLog', 'setDeletedDayEvents', 'setDeletedMonths', 'setLastRecordsSyncAt', 'setMonthlyLog']);
-      expect(getNostrLog().map((e) => e.msg), 'IGNORED').not.toContain('payload parse failed (skipped)');
+      expect(getNostrLog().map((e) => e.msg).filter((msg) => /unreadable|parse failed/.test(msg)), 'IGNORED').toEqual([]);   // 5c's words, and 5b's journal parse
     }
   });
 

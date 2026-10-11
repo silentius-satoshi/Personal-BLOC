@@ -8,7 +8,7 @@ import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
 import { Calendar } from './Calendar';
-import { buildDayActivity, buildMonthRollup, readingTargetDate } from './calendarModel';
+import { buildDayActivity, buildMonthRollup, readingTargetDate, formatMoves } from './calendarModel';
 import { EventSheet, isEditableKind } from './EventSheet';
 import { MonthEventsModal } from './MonthEventsModal';
 import { Snackbar } from '../ui/Snackbar';
@@ -17,6 +17,7 @@ import type { SheetType } from './eventSheetModel';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
+import { usePlanMissing } from '../../hooks/usePlanLoad';
 import { fmtUSD, todayLocalISO, toLocalISO, fmtLtvPct } from '../../utils/format';
 import { CB_PAYDOWN_LABEL } from '../Tools/crashPlaybookView';
 import type { DayEvent } from '../../simulation/types';
@@ -128,6 +129,9 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const needsConfirm  = viewedEntry ? viewedEntry.confirmed === false : false;
   const isProvisional = viewedEntry?.provisional === true;
   const needsReview   = needsConfirm;
+  // 5c — no sign-off on a device that hasn't loaded the plan: its month numbers come from the plan's start date, and the
+  // sign-off's settings side effects (below) are plan writes. The store refuses the write too; this hides the way in.
+  const writesPaused  = usePlanMissing();
 
   const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
     () => deriveAdvisorStart(monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance),
@@ -211,7 +215,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const view    = isMonth ? monthRollup : dayActivity;
 
   const today        = todayLocalISO();
-  const netUsd       = view.netBtc * btcPrice;
+  const boughtUsd    = view.streams.buyBtc * btcPrice;   // 5c rider — the headline is what was bought
   const plannedDraw  = plan?.blocDraw ?? 0;
   const plannedPay   = plan?.paydown ?? 0;
   const plannedBuy   = plan?.btcBought ?? 0;
@@ -222,7 +226,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const actTitle   = isMonth ? getMonthLabel(advisorStartDate, safeViewedMonth)
     : (selectedDay === today ? 'Today' : fmtDay(selectedDay));
   const actWhen    = isMonth ? `Month ${safeViewedMonth} · month-to-date` : fmtDay(selectedDay);
-  const actUsdText = view.netBtc > 0 ? `+${fmtUSD(netUsd)} stacked`
+  const actMoves   = formatMoves(view.moves);
+  const actUsdText = view.streams.buyBtc > 0 ? `+${fmtUSD(boughtUsd)} stacked`
     : isMonth
       ? (monthRollup.events.length > 0 ? 'no Bitcoin bought yet' : 'no activity yet this month')
       : (dayActivity.events.length > 0 ? 'no Bitcoin bought this day' : 'nothing logged this day');
@@ -313,7 +318,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
 
           {/* P4c-3b — reconcile banner: Month scope, owner-only, when the VIEWED month is unconfirmed.
               Copy differs for a provisional month (needs a reading) vs a clean unconfirmed one. */}
-          {isMonth && !viewerMode && needsReview && (
+          {isMonth && !viewerMode && needsReview && !writesPaused && (
             <div className={styles.reconcileBanner}>
               <div className={styles.reconcileText}>
                 <span className={styles.reconcileTitle}>
@@ -329,14 +334,16 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             </div>
           )}
 
-          {/* Activity aggregate — net BTC + draw/paydown/buy streams (scope-driven: day or month rollup) */}
+          {/* Activity aggregate — bought BTC (5c: was net), the moves, and the draw/paydown/buy streams (scope-driven: day or month rollup) */}
           <div className={styles.card}>
             <div className={styles.actHead}>
               <span className={styles.actTitle}>{actTitle}</span>
               <span className={styles.actWhen}>{actWhen}</span>
             </div>
-            <div className={styles.actBig}>{view.netBtc >= 0 ? '+' : ''}{view.netBtc.toFixed(4)} ₿</div>
+            <div className={styles.actBig}>+{view.streams.buyBtc.toFixed(4)} ₿</div>
             <div className={styles.actUsd}>{actUsdText}</div>
+            {/* 5c rider — moves between the owner's own places: never part of the headline, never hidden either */}
+            {actMoves && <div className={styles.actMoves} data-testid="activity-moves">Moved: {actMoves}</div>}
             <div className={styles.streams}>
               <div className={styles.stream}>
                 <span className={styles.streamLabel}>Draw</span>

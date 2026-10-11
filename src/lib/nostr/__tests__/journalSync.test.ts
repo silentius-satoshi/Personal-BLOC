@@ -54,6 +54,7 @@ function makePool() {
       });
     },
     subscribeMany: (_urls: string[], _filter: unknown, h: { onevent: (ev: Ev) => void }) => { w.live = h.onevent; return { close: () => {} }; },
+    listConnectionStatus: () => new Map([...w.relays.keys()].map((u) => [u, true] as [string, boolean])),   // 5c — every relay answers
     close: () => {},
   };
 }
@@ -74,6 +75,7 @@ function makeState(): any {
     ['setMonthlyLog', 'monthlyLog'], ['setDeletedMonths', 'deletedMonths'], ['setDayLog', 'dayLog'], ['setDeletedDayEvents', 'deletedDayEvents'],
     ['setRecordsDirty', 'recordsDirty'], ['setLastRecordsSyncAt', 'lastRecordsSyncAt'], ['setNostrReconnectNeeded', 'nostrReconnectNeeded'],
     ['setNostrSyncing', 'nostrSyncing'], ['setInitialSettingsPullDone', 'initialSettingsPullDone'], ['setPlanDirty', 'planDirty'], ['setPrefsDirty', 'prefsDirty'],
+    ['setPlanLoaded', 'planLoaded'],   // 5c
   ]) st[setter] = (v: unknown) => { st[field] = v; };
   return st;
 }

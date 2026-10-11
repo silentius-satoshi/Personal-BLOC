@@ -10,6 +10,8 @@ import { payloadSizeLevel, PLAIN_STEP_BYTES } from '../../lib/nostr/payloadSize'
 import { journalSizes, JOURNAL_V2_PREFIX, JOURNAL_MANIFEST_DTAG } from '../../lib/nostr/journalPages';
 import { peekJournalKnown } from '../../lib/nostr/journalState';
 import { getBlockedDTags } from '../../lib/nostr/syncGuard';
+import { usePlanMissing, usePlanPull } from '../../hooks/usePlanLoad';
+import type { PlanPull } from '../../lib/nostr/planLoad';
 import { fetchRelayInfo, probeRelaySizes, type RelayInfo, type ProbeResult } from '../../lib/nostr/relayLimits';
 import { planLogGaps } from '../../lib/planEvents/coverage';
 import { getDeviceLabel } from '../../lib/nostr/deviceTag';
@@ -21,6 +23,10 @@ import styles from './DevPanel.module.css';
 // never balances, amounts, incomes, expenses, or monthlyLog entry contents.
 
 const fmtTs = (ts: number | null) => (ts ? new Date(ts * 1000).toLocaleString() : 'never');   // unix SECONDS
+// 5c — the last plan pull's outcome, as DevPanel shows it: status · why · the plain size · when (ms clock).
+const fmtPlanPull = (p: PlanPull) => p.status === 'pending' ? 'pending — no pull has settled it'
+  : [p.status, p.status === 'unreadable' ? p.reason : null, 'plainBytes' in p && p.plainBytes != null ? `${p.plainBytes} B plain` : null,
+     new Date(p.at).toLocaleTimeString()].filter(Boolean).join(' · ');
 
 // Collapsible section wrapper — session-only open state (no persistence). Returns a FRAGMENT so the
 // header + body stay flex siblings of .panel and the existing gap/margin layout is unchanged when open.
@@ -110,6 +116,9 @@ export function DevPanel() {
   const prefsDirty           = useStore((s) => s.prefsDirty);
   const lastPlanEventsSyncAt = useStore((s) => s.lastPlanEventsSyncAt);
   const lastPrefsSyncAt      = useStore((s) => s.lastPrefsSyncAt);
+  const planLoaded           = useStore((s) => s.planLoaded);   // 5c
+  const planMissingHere      = usePlanMissing();               // 5c — writes and publishes held
+  const planPull             = usePlanPull();                  // 5c — the last plan pull's outcome
   // COLLATERAL figures: position amounts allowed ON-DEVICE only (the panel) —
   // they must NOT enter syncState / Copy Diagnostics (paste-safe rule).
   const baselineBtc          = useStore((s) => s.advisorActualBtcHeld);
@@ -260,6 +269,7 @@ export function DevPanel() {
     pubkey:        nostrPubkey ? `${nostrPubkey.slice(0, 8)}…${nostrPubkey.slice(-8)}` : '—',
     relays:        nostrRelays,
     planSync:      fmtTs(lastPlanEventsSyncAt),   // Phase 4e — Copy Diagnostics only (was settingsSync, settings:v1); the panel shows it under PLAN EVENTS
+    planLoad:      { last: planPull.status === 'pending' ? 'pending' : fmtPlanPull(planPull), planLoaded, writesHeld: planMissingHere },   // 5c — status, sizes, flags only
     recordsSync:   fmtTs(lastRecordsSyncAt),
     recordsDirty,
     reconnectNeeded: nostrReconnectNeeded,
@@ -515,6 +525,14 @@ export function DevPanel() {
           <span className={styles.key}>planDirty</span><span className={styles.val}>{String(planDirty)}</span>
           <span className={styles.key}>prefsDirty</span><span className={styles.val}>{String(prefsDirty)}</span>
           <span className={styles.key}>plan sync</span><span className={styles.val}>{fmtTs(lastPlanEventsSyncAt)}</span>
+          <span className={styles.key}>plan pull</span>
+          <span className={styles.val} style={{ color: planPull.status === 'unreadable' || planPull.status === 'unreachable' ? 'var(--amber)' : undefined }}>
+            {fmtPlanPull(planPull)}
+          </span>
+          <span className={styles.key}>plan here</span>
+          <span className={styles.val} style={{ color: planMissingHere ? 'var(--amber)' : 'var(--green)' }}>
+            {planMissingHere ? 'not loaded — writes held' : planLoaded ? 'loaded' : 'own copy (not signed in, or a viewer)'}
+          </span>
           <span className={styles.key}>prefs sync</span><span className={styles.val}>{fmtTs(lastPrefsSyncAt)}</span>
           <span className={styles.key}>parity</span>
           <span className={styles.val} style={{ color: planParityDiverged.length ? 'var(--red)' : 'var(--green)' }}>

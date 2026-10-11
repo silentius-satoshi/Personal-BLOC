@@ -96,6 +96,7 @@ function makePool(w: World) {
       else if (d === RECORDS && JSON.parse(ev.content).movedTo) bump(w, 'stubWrites');
       return Promise.resolve('');
     }),
+    listConnectionStatus: () => new Map([...w.relays.keys()].map((u) => [u, true] as [string, boolean])),   // 5c — every relay answers
     close: () => {},
   };
 }
@@ -116,7 +117,7 @@ function makeState(w: World): any {
     ['setMonthlyLog', 'monthlyLog'], ['setDeletedMonths', 'deletedMonths'], ['setDayLog', 'dayLog'], ['setDeletedDayEvents', 'deletedDayEvents'],
     ['setRecordsDirty', 'recordsDirty'], ['setLastRecordsSyncAt', 'lastRecordsSyncAt'], ['setNostrReconnectNeeded', 'nostrReconnectNeeded'],
     ['setNostrSyncing', 'nostrSyncing'], ['setInitialSettingsPullDone', 'initialSettingsPullDone'], ['setPlanDirty', 'planDirty'],
-    ['setPrefsDirty', 'prefsDirty'],
+    ['setPrefsDirty', 'prefsDirty'], ['setPlanLoaded', 'planLoaded'],   // 5c
   ];
   for (const [setter, field] of setters) st[setter] = (v: unknown) => { st[field] = v; };
   return st;
