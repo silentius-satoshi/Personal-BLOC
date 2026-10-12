@@ -10,7 +10,7 @@ export interface RecordsState {
 
 const TOMBSTONE_TTL_MS = 90 * 24 * 60 * 60 * 1000;   // 90 days
 
-const entryTs = (e: MonthlyLogEntry): number => e.updatedAt ?? e.loggedAt ?? 0;
+export const entryTs = (e: MonthlyLogEntry): number => e.updatedAt ?? e.loggedAt ?? 0;   // 5b: exported for unionParts
 
 /**
  * Deterministic merge of two records states across BOTH collections. Months: union by month; the newer

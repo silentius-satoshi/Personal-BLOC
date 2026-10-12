@@ -425,6 +425,14 @@ export interface StoreState {
   setPlanDirty:            (v: boolean) => void;
   lastPlanEventsSyncAt:    number | null;
   setLastPlanEventsSyncAt: (ts: number) => void;
+  // 5c — does this device hold the owner's plan? DEVICE-LOCAL PERSISTED (rides ...rest), NEVER synced. Set once this
+  // device applied the relays' plan, a backup was restored here, it minted the key (setKeyProvenance('generated')), or
+  // its owner chose "Start a new plan" after a pull found nothing (usePlanLoad.startNewPlanHere) — never inferred from
+  // an empty pull. Cleared by a fresh store (Disconnect, the escape hatch), clearViewerData / resetPlanToSeeds, and a
+  // rolled-back key stamp. A blob from before 5c derives it at hydration (hydrateDeviceFlags). While a signed-in owner
+  // device lacks it, planMissing (lib/nostr/planLoad) refuses every plan-dependent write and publish, plan edits included.
+  planLoaded:              boolean;
+  setPlanLoaded:           (v: boolean) => void;
   prefsDirty:              boolean;
   setPrefsDirty:           (v: boolean) => void;
   lastPrefsSyncAt:         number | null;

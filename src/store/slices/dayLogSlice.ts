@@ -7,6 +7,7 @@ import { accruedCbBalance, cbMetrics } from '../../simulation/cbMetrics';
 import { todayLocalISO } from '../../utils/format';
 import { kickRecordsPublish } from '../bootstrap';
 import { refreshCbCollateralCache, refreshStrikeCollateralCache, refreshBalanceAnchors, readingCtx, monthOf, rerollMonth } from '../dailyRouting';
+import { refuseWithoutPlan } from '../../lib/nostr/planLoad';
 
 type DayLogSlice = Pick<StoreState,
   | 'dayLog' | 'cbLtvAction' | 'addDayEvent' | 'updateDayEvent' | 'deleteDayEvent' | 'undoDayEventDeletion'
@@ -23,6 +24,7 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
   // recordsDirty is set BEFORE publishing so a failed immediate publish is retried by syncNow (mirrors upsertLogEntry).
   // Monthly-meaningful events publish twice (here + via rerollMonth→upsertLogEntry) — harmless (replaceable + idempotent merge).
   addDayEvent: (event) => {
+    if (refuseWithoutPlan(get(), 'day event write')) return;   // 5c — every dayLog mutator: no journal write before the plan
     set((s) => ({ dayLog: [...s.dayLog, event], recordsDirty: true }));
     refreshCbCollateralCache(set, get);
     refreshStrikeCollateralCache(set, get);   // Collateral-Truth v20 — reading-anchored Strike collateral cache
@@ -32,6 +34,7 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
     kickRecordsPublish();
   },
   updateDayEvent: (event) => {
+    if (refuseWithoutPlan(get(), 'day event write')) return;   // 5c
     // ts is the MERGE VERSION CLOCK — every edit must bump it or the edit ties with (and loses to) the
     // stale copy on other devices; date carries occurrence.
     const bumped = { ...event, ts: Date.now() };
@@ -47,6 +50,7 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
     kickRecordsPublish();
   },
   deleteDayEvent: (id) => {
+    if (refuseWithoutPlan(get(), 'day event write')) return;   // 5c
     const before = get().dayLog.find((e) => e.id === id);
     if (!before) return;
     set((s) => ({ dayLog: s.dayLog.filter((e) => e.id !== id), deletedDayEvents: { ...s.deletedDayEvents, [id]: Date.now() }, recordsDirty: true }));
@@ -63,6 +67,7 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
   // bumped-ts restore beats any tombstone already published within the 5s window on every device). Mirrors the
   // add/delete mutators' cache/reroll/publish tail.
   undoDayEventDeletion: (event) => {
+    if (refuseWithoutPlan(get(), 'day event write')) return;   // 5c
     const restored = { ...event, ts: Date.now() };
     set((s) => {
       const rest = { ...s.deletedDayEvents };

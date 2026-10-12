@@ -91,6 +91,9 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     viewerLastSyncAt: null,
     viewerSafeSnapshot: null,   // Viewer V2 — drop the C-safe snapshot too (data-remanence)
     initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
+    // 5c — the plan and the journal are seeds again, in place: this store holds no owner plan (an owner who comes back on
+    // this device waits for it), and holds no journal from before the bucketing fix (nothing to re-bucket).
+    planLoaded: false, monthBucketReconcileDone: true,
   }),
 
   // Owner-recovery reset (escape hatch). Mirrors clearViewerData's financial/records/strike seed-reset but for the
@@ -111,5 +114,6 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     coldStorageBtc: 0, coldStorageBtcAsOf: null,   // was omitted — the recovery reset used to leave the cold balance behind
     ...PLAN_POLICY_SEED,   // the plan of record's six settings — back to C1 with the rest of the plan
     strikeUsdBalance: null, strikeBtcAvailable: null, strikeRate: null,
+    planLoaded: false,   // 5c — the plan is seeds again: this store holds no owner plan until one loads
   }),
 });

@@ -2,7 +2,7 @@ import { restoreSigner, type NostrParam } from './session';
 import { fetchAndSync } from './sync';
 import { nostrLog } from './log';
 import { useStore } from '../../store/useStore';
-import { publishRecordsNowImmediate, publishPlanEventsNow, publishPrefsNow, flushViewerRevocations } from './syncEngine';
+import { publishRecordsNowImmediate, publishPlanEventsNow, publishPrefsNow, flushViewerRevocations, refusedForSize, heldWithoutPlan } from './syncEngine';
 import { isBackupGateSatisfied } from '../backupGate';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
@@ -41,14 +41,23 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
     useStore.getState().setInitialSettingsPullDone(true);
     let recOk = true, planOk = true, prefsOk = true;
     let recLabel = 'skipped', planLabel = 'skipped', prefsLabel = 'skipped';   // not dirty → no push attempted
-    if (useStore.getState().recordsDirty)  { recOk = await publishRecordsNowImmediate();  recLabel = recOk ? 'ok' : 'FAILED'; }
-    if (useStore.getState().planDirty && useStore.getState().initialSettingsPullDone) { planOk = await publishPlanEventsNow(); planLabel = planOk ? 'ok' : 'FAILED'; }
-    if (useStore.getState().prefsDirty && useStore.getState().initialSettingsPullDone) { prefsOk = await publishPrefsNow(); prefsLabel = prefsOk ? 'ok' : 'FAILED'; }
+    // 5b — a channel refused for its size ('TOO LARGE') is not a signer problem: Reconnect can't fix it, so it doesn't
+    // raise Reconnect; the app names what is too large instead (syncGuard). 5c — nor is a publish HELD because this device
+    // hasn't loaded the plan (planLoad): the app says so in plain words instead.
+    const label = (ok: boolean, ch: 'records' | 'plan' | 'prefs') => (ok ? 'ok' : refusedForSize(ch) ? 'TOO LARGE' : heldWithoutPlan(ch) ? 'HELD' : 'FAILED');
+    if (useStore.getState().recordsDirty)  { recOk = await publishRecordsNowImmediate();  recLabel = label(recOk, 'records'); }
+    if (useStore.getState().planDirty && useStore.getState().initialSettingsPullDone) { planOk = await publishPlanEventsNow(); planLabel = label(planOk, 'plan'); }
+    if (useStore.getState().prefsDirty && useStore.getState().initialSettingsPullDone) { prefsOk = await publishPrefsNow(); prefsLabel = label(prefsOk, 'prefs'); }
     const revOk = await flushViewerRevocations();
     const ok = pullOk && recOk && planOk && prefsOk && revOk;
+    const signerOk = pullOk && revOk && [recLabel, planLabel, prefsLabel].every((l) => l !== 'FAILED');
     if (ok) {
       useStore.getState().setNostrReconnectNeeded(false);
       nostrLog('info', 'sync ok');
+    } else if (signerOk) {
+      useStore.getState().setNostrReconnectNeeded(false);
+      const why = [recLabel, planLabel, prefsLabel].includes('HELD') ? 'held until the plan loads here' : 'too large to sync';
+      nostrLog('warn', `sync incomplete (records ${recLabel}, plan ${planLabel}, prefs ${prefsLabel}) — ${why}, not a signer problem`);
     } else {
       useStore.getState().setNostrReconnectNeeded(true);
       nostrLog('warn', `sync incomplete (pull ${pullOk ? 'ok' : 'FAILED'}, records ${recLabel}, plan ${planLabel}, prefs ${prefsLabel}, revocations ${revOk ? 'ok' : 'FAILED'}) — signer unreachable?`);

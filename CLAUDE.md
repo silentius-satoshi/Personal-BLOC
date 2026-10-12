@@ -494,6 +494,18 @@ src/
                                 # keyed on the STABLE urls.join(',') (no re-subscribe thrash); functional setState
                                 # early-returns on no-change. Probes ONLY the urls passed in (SettingsMain gates on
                                 # settingsPage==='network' ? nostrRelays : EMPTY_RELAYS — no sockets unless viewing it)
+    usePlanLoad.ts              # 5c — the plan-load state for the screens: usePlanMissing (lib/nostr/planLoad's
+                                # planMissing over the store) · usePlanPull (the last plan pull, useSyncExternalStore) ·
+                                # planNotLoadedWhy / usePlanNotLoadedWhy (the reason in plain words; null until a pull
+                                # has settled one, or the key waits on its backup) · startNewPlanHere (after a pull that
+                                # found nothing, the owner's "Start a new plan" — confirmed, the one way a device ends the
+                                # wait without the plan) · the copy (PLAN_NOT_LOADED_TITLE / _BODY, NO_PLAN_BODY,
+                                # START_NEW_PLAN_LABEL / _CONFIRM, LOGGING_PAUSED). Read by AppShell's "⚠ Plan not
+                                # loaded" pill (→ Settings), Settings' PlanNotLoadedNotice, EventSheet (the note; Save
+                                # and Delete off), DailyModeView (no sign-off banner) and NoPlanNotice
+    useSyncBlocked.ts           # 5b — the sync channels whose latest payload the size guard refused (syncGuard), via
+                                # useSyncExternalStore; CHANNEL_LABEL + TOO_LARGE_COPY, the plain words. Read by AppShell's
+                                # "⚠ Too large to sync" pill and Settings' SyncTooLargeNotice
     usePointerDrag.ts           # Gesture & Motion System P0 — the single gesture PRIMITIVE. A THIN React adapter over
                                 # the pure src/lib/gestureModel.ts state machine, Pointer Events only (touch/mouse/pen).
                                 # usePointerDrag(config & {onMove?,onArm?,onDisarm?,onEnd,enabled?}) → {onPointerDown}.
@@ -1398,6 +1410,17 @@ src/
                                 # and (4e, G2) "log gaps" — planLogGaps(planEvents, getState(), getInitialState()):
                                 # "none" green / the names amber / "n/a (viewer)" in viewerMode. 4e removed the
                                 # "settings sync" and "v1 fallback" rows; Copy Diagnostics carries planSync.
+                                # 5b: JOURNAL (pages · the largest page · the manifest · the v1 bridge, whole or stub ·
+                                # the last pull's relay check — full or changed pages, listed, fetched, missing · carried ·
+                                # too large; sizes and month keys only) · RELAY LIMITS → Probe (relayLimits.ts: each
+                                # relay's NIP-11 frame cap, then three throwaway events from a one-time key — 1 KB, 40,960 B
+                                # and 40,961 B plain as NIP-44 sends them — and each relay's OK or refusal). The size rows:
+                                # "records v1" (was "records"), "journal page", "journal manifest". Copy Diagnostics += journal
+                                # 5c: PLAN EVENTS += "plan pull" (the last plan pull: applied / none / unreachable /
+                                # unreadable · why · plain size · time; amber when unreadable or unreachable) and "plan
+                                # here" ("loaded" / "not loaded — writes held", amber / "own copy (not signed in, or a
+                                # viewer)"). Copy Diagnostics += planLoad { last, planLoaded, writesHeld } — statuses,
+                                # sizes and flags only
                                 # AT-REST ENCRYPTION (3a.5: flag/blob-state/key-in-memory/GATE_* readout + an
                                 # ASYMMETRIC flag toggle that reloads — Enable RAW, Disable decrypts-first; dev tooling).
                                 # Copy Diagnostics + log ring stay METADATA-ONLY (pendingNonZero boolean,
@@ -1417,6 +1440,12 @@ src/
                                 # Safari — a Safari-tab probe can't see the installed container at all; DevPanel
                                 # (devMode-gated) is reachable from WITHIN the running PWA container itself
       DevPanel.module.css
+      SyncTooLargeNotice.tsx    # 5b — Settings › SYNC: what the size guard refused, in plain words (useSyncBlocked);
+                                # renders nothing while everything fits
+      PlanNotLoadedNotice.tsx   # 5c — Settings › SYNC: the plan hasn't loaded on this device — why, and that nothing is
+                                # lost or overwritten meanwhile (usePlanLoad); after a pull that found nothing at all, the
+                                # two readings and "Start a new plan". Renders nothing once the plan is loaded, or before
+                                # a pull has settled why
 
     Summary/
       SummaryBar.tsx            # Smart BLOC summary (local sign-preserving fmtUSD)
@@ -2006,7 +2035,7 @@ miningInputs: {
 ### CB Loan Tab
 ```typescript
 cbLoanBalance:       number;                       // default 60000
-cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides records:v1). setCbCollateralBtc emits a cbCollateralReading
+cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). setCbCollateralBtc emits a cbCollateralReading
 strikeCollateralBtc: number;                       // default 0 (v20 Collateral-Truth) — derived cache (deriveStrikeCollateral over dayLog); reading-anchored current Strike collateral (= getCurrentBtcHeld). NOT synced (rides partialize ...rest); converges cross-device via the dayLog on records:v1. Refreshed in the 3 dayLog mutators + setDayLog + onRehydrate
 cbAprPct:            number;                       // default 4.77
 cbMonthlyPayment:    number;                       // default 0
@@ -2542,9 +2571,11 @@ events grouped by day (each editable via the P4b-2 sheet; the modal closes when 
   distinct dates; filters via `bucketEventToMonth`), `groupEventsByDay(events)` (group by date, groups DESC,
   per-group ts ASC). The shared `aggregateEvents` REPRODUCES DailyModeView's prior inline agg EXACTLY
   (draw/paydown sums, buyBtc sum, netBtc = buys + strike deposits − strike withdrawals; CB-target moves
-  journal-only/excluded) — guarded by a buildMonthRollup-equals-old-agg test. Suite 398 → 403.
+  journal-only/excluded) — guarded by a buildMonthRollup-equals-old-agg test. Suite 398 → 403. **5c (the rider)
+  retired `netBtc`:** `aggregateEvents` returns `moves` (`VenueMoves` { strike, cb, cold }) beside the streams, and the
+  card's headline is `streams.buyBtc` (§ Phase 4 → 5c).
 - **`DailyModeView`** — the inline `agg`/`monthEvents` memos are replaced by `dayActivity`/`monthRollup`
-  memos + `const view = isMonth ? monthRollup : dayActivity`; the activity card reads `view.netBtc/streams`,
+  memos + `const view = isMonth ? monthRollup : dayActivity`; the activity card reads `view.netBtc/streams` (5c: `streams.buyBtc` + `moves`),
   the log section branches on `scope`. Month scope renders read-only summary rows (Drawn/Bought/Paydown/
   Interest) + the `.entriesBtn` "from N entries" → `setMonthModalOpen(true)`. (FAB targets the selected day
   as of P4c-2.) The Calendar component, its pips, and the date math are UNCHANGED.
@@ -5012,8 +5043,10 @@ render ladder (that ladder refactor is deferred Phase 3):
   (it now lives behind Advanced sign-in in NostrAuthGate).** Card 1 (accented `--btc`, `onStartNew`) =
   **"Get started"** / "Free, on this device — we'll create a key for you" → OwnerKeySetup, then the
   numbers wizard. Card 2 (`onLogIn`) = **"I have a plan or a key"** / "Sign in with your Recovery Key,
-  extension, or signer — we'll load your plan, or start fresh on your key" (the second clause is the
-  honest promise the `remotePlanFound` notice keeps). Card 3 (`onConnectShared`) unchanged.
+  extension, or signer — we'll load your plan; if your key has none yet, you can start one" (5c: it used to promise
+  "or start fresh on your key", which primes the wrong tap on a device whose plan hasn't loaded; a key whose relays
+  hold nothing is started by its owner, "Start a new plan"; pinned in `noPlanNotice.test`). Card 3 (`onConnectShared`)
+  unchanged.
 - **`src/components/Auth/ViewerLoginFlow.tsx`** (+ `.module.css`) — the viewer-login flow EXTRACTED
   VERBATIM from OnboardingModal (byte-identical crypto/key sequence: `wrapSecretKey` →
   `setUnwrappedViewerKey` → `clearViewerData` → `setViewerWriterPubkey` → `setViewerMode(true)`).
@@ -6531,10 +6564,15 @@ Review/sign-off). One implementation now, in `logUtils.ts`:
   `sameRollupFields` (rollup-owned-keys comparator, 0≡absent). Diff-guarded ⇒ **idempotent** (a re-run
   finds no diffs) and only CHANGED months publish. **Device-local flag `monthBucketReconcileDone`**
   (default false; rides `partializeState`'s `...rest`, ABSENT from `SETTINGS_FIELDS`/payload; migrate
-  default `?? false`; no version bump). Invoked once via **`useMonthBucketReconcile`** (AppShell, beside
+  default `?? false`; no version bump; **5c:** settled `true` at every hydration of a store that holds no journal —
+  `hydrateDeviceFlags` — and by `clearViewerData`, so a journal that arrives by sync is never re-rolled). Invoked once
+  via **`useMonthBucketReconcile`** (AppShell, beside
   `useNostrAutoRestore`) — subscribes `done` + `hasData` so it fires after hydration (incl. the encrypted
   async-rehydrate path). **⚠ NEVER in viewerMode** (a viewer's `monthlyLog` comes from the owner's
-  snapshot with an empty local `dayLog` → reconciling would delete every daily month). Cross-device:
+  snapshot with an empty local `dayLog` → reconciling would delete every daily month). **⚠ NEVER before the plan
+  loads (5c)** — against a seed plan (its start date today) it deleted months 2–4 and rewrote month 1 (5b's spec
+  §16): `reconcileMonthBuckets` refuses (`refuseWithoutPlan`, the flag left unset) and the hook waits on
+  `planMissing`. Cross-device:
   each device reconciles once against its own store; records LWW converges (a device that pulls another's
   reconciled month merges it, then its own reconcile no-ops).
 - **REOPEN PRINCIPLE (state once, inherited by future rollup-touching fixes):** *a sign-off attests
@@ -7902,6 +7940,87 @@ goes red.)
     PADDING at the step · MB15 → DEVPANEL tint · MB16 → DEVPANEL log size · MB17 (1 s) → EMIT pause, BURST device-blind ·
     MB18 (60 s) → EMIT history, BUDGET wrapper trims the oldest (its edits are a minute apart — one burst) · MB19 (no
     wrapper — the prototype's first version) → BUDGET wrapper fits (32,771), FOLD-SAFE budget (#160).
+- **5b — the journal's size** (spec `pbloc-spec-journal-pages-v1` v1.1 — § Phase 4 → 5b; 5 new test files, 2 changed
+  assertions; the suite 2,516 → 2,555, 155 → 160 files; e2e unchanged; 26 mutations, MS1–MS26, each an exact-once edit run
+  against the five 5b files plus `sync.test` and `liveSync.test` with `--reporter=verbose`, red at its tag, the file
+  restored and md5-checked, the tree's digest unchanged):
+  - `src/lib/nostr/__tests__/journalPages.test.ts` (17, pure) — LAYOUT · ⭐ DETERMINISTIC · ⭐ DETERMINISTIC TIES · ⭐ SPLIT ·
+    ⭐ SPLIT tight · COMMAS (300 items of 327 B: 99 a page, never the 100th) · OVERSIZE · ⭐ CANONICAL · BUILD · SIZES · V1 ·
+    MANIFEST and PAGE · ⭐ UNION · ⭐ UNION ≡ FOLD · AGED (2,000 random sets of parts; a tombstone past the TTL keeps an older
+    copy deleted, as one merge did before 5b) · ⭐ FETCH · PUBLISH · ⭐ LISTING · ⭐ TARGET.
+  - `src/lib/nostr/__tests__/journalSync.test.ts` (17; one device, the real modules over mocked relays and store) — ⭐ LAZY ·
+    ⭐ MIGRATE · ORDER · ⭐ FULL · PARTIAL · ⭐ MISSING-HELD · RETRY · REPUBLISH · ⭐ CARRY · ⭐ TORN · RESUME · ⭐ GUARD ·
+    NO-RECONNECT · WARN · PRUNE · ⭐ STUB · FULL AGAIN · ⭐ PRE-PULL · PRE-PULL-DIRTY · PRE-PULL-TOO-LARGE ·
+    ⭐ WRITE-DURING-PUBLISH · DIRTY-KEPT · ⭐ SKEW · FLOOR · ⭐ WRITE-DURING-PULL · MID-PULL · ⭐ DECRYPT · TOMBSTONES ·
+    ⭐ LIVE · ECHO-SKIP · LIVE-PULL · ⭐ RECONNECT · SIZE-NOT-SIGNER.
+  - `src/lib/nostr/__tests__/journalSweep.test.ts` (1) — ⭐ SWEEP, the kill criterion: per seed, 2–4 devices on one key,
+    each on its own module instances, some on the pre-5b app; clocks up to 10 s off; two relays, one always a stock strfry
+    (an event past 65,536 B, measured as NIP-44 would send it, is refused); 120 random steps (writes, bursts, re-dated
+    edits, deletes, re-logs, syncs, live pulls, a write during a pull, injected relay failures, dropped pages,
+    relaunches, updates). After every step, on every device: no id or month twice, nothing lost without a newer
+    tombstone, nothing deleted back. At the end every device holds exactly the oracle's journal, and a new device
+    signed in gets all of it from the relays. Non-vacuous: 17 counters must be above zero. 40 seeds in the suite;
+    `SWEEP_FROM` / `SWEEP_SEEDS` (the first and the LAST seed) and `SWEEP_TOTALS` for longer runs — 1–250 and 251–500
+    passed in 79 s each on the build's Mac, their totals equal to the spec's (the test's timeout is 600 s).
+  - `src/lib/nostr/__tests__/relayLimits.test.ts` (3) — ⭐ NIP44-LEN (against nostr-tools' real NIP-44: 40,960 → 54,704,
+    40,961 → 65,628) · ⭐ PROBE · NIP-11.
+  - `src/components/Settings/__tests__/syncTooLargeNotice.test.tsx` (1; `renderToStaticMarkup`, no DOM) — ⭐ WARN.
+  - Changed: `sync.test.ts` — "4e/5b: the pull asks for records, the journal manifest, plan-events and prefs only";
+    `liveSync.test.ts` — "LIVE four".
+  - Red-first (a plain export of a494e97 outside the repo; the new modules and tests on main's sync code): 20 red, 42
+    green of 62 — all 17 of `journalSync`, the sweep (`pullJournalNow is not a function`), LIVE four and the pull's d-tag
+    pin.
+  - The sweep found two defects in the prototype's first versions: a write made while a pull waited for pages was lost
+    (WRITE-DURING-PULL; MS1 puts it back) and a device whose clock ran behind never converged (SKEW, seed 420; MS24).
+  - The mutations, red at: MS1 (merge the journal read before the fetch) → SWEEP at the step (seed 1 step 53, "month 10
+    LOST on d3"), MID-PULL · MS2 (the manifest without its tombstones) → BUILD, SWEEP (seed 1 doesn't converge) · MS3
+    (fetch only the months held) → FETCH, CARRY, WRITE-DURING-PULL, DECRYPT, SWEEP (seed 1) · MS4 (no full check) → FULL,
+    RETRY, SWEEP (seed 2: a new device can't get the whole journal) · MS5 (no carry) → CARRY, SWEEP non-vacuity (carried)
+    · MS6 (the manifest, every page from this device, goes out before the pages) → ORDER, TORN, STUB, PRE-PULL, SKEW,
+    SWEEP non-vacuity (tornRuns) · MS7 (this device's listing) → CARRY, GUARD · MS8 (every page failure a size refusal) →
+    TORN, RECONNECT, SWEEP non-vacuity (tornRuns) · MS9 (the guard off) → GUARD (41,098 B reached the signer), RECONNECT,
+    WARN · MS10 (no prune) → PRUNE · MS11 (no stub) → TARGET, STUB, SWEEP non-vacuity (stubWrites) · MS12 (records:v1 alone
+    always behind) → LAZY, ORDER, PRE-PULL, `sync.test` IGNORED and "identical" · MS13 (the pre-pull publish clears dirty)
+    → PRE-PULL-DIRTY, SWEEP non-vacuity (v1Refused — a reshuffled history) · MS14 (dirty cleared after every publish) →
+    DIRTY-KEPT · MS15 (no echo skip) → ECHO-SKIP · MS16 (a size refusal a failure in syncNow) → SIZE-NOT-SIGNER · MS17 (no
+    retry) → RETRY · MS18 (plain JSON.stringify) → CANONICAL · MS19 (the pull ignores records:v1) → ORDER, six `sync.test`
+    records cases · MS20 (no commas) → COMMAS (100 a page) · MS21 (an endless budget) → COMMAS (300 on one page),
+    OVERSIZE (a crash), SWEEP (seed 1) · MS22 (a missing page kept as held) → REPUBLISH, CARRY, SWEEP (seed 2) · MS23
+    (NIP-44's chunk at a quarter) → NIP44-LEN (32,769 B), PROBE · MS24 (no floor) → SKEW FLOOR · MS25 (the union's tie
+    to the later part) → UNION ≡ FOLD (parts #7) · MS26 (the union applies its own tombstones) → UNION, AGED.
+- **5c — the plan-load guard** (spec `pbloc-spec-plan-load-guard-v1` v1.1 — § Phase 4 → 5c; 5 new test files, 6 changed;
+  the suite 2,555 → 2,610, 160 → 165 files; a new e2e spec, 4 tests; 65 mutations, MC1–MC65, each an exact-once edit
+  run against the new unit files plus `calendarModel.test` and `sync.test` (MC64–MC65 with `escapeHatch.test` too) —
+  and, for the screens, the e2e spec — red at its tag, the file restored and md5-checked, the tree's digest unchanged):
+  - `src/store/__tests__/planLoadGuard.test.ts` (26, the REAL store) — planMissing (who waits — whatever the key; who
+    never does) · ⭐ MINT (a minted key holds its plan; a rolled-back stamp takes it back) · ⭐ GUARD (day events; the
+    monthly log — a manual log, a delete, a sign-off, a reopen; ⭐ PLAN EDITS — the setup modal's four fields, a viewer
+    added, the Coinbase collateral; ⭐ RELAYS — kept local; ⭐ LATCH — the key-custody stamp goes through; non-vacuity
+    twice) · ⭐ INCIDENT (5b's §16 on the real store: planless, the reconcile changes nothing and its flag waits; the
+    premise; once the plan loads, a no-op and the sign-offs stand) · ⭐ HYDRATE (a fresh store; no blob — the escape
+    hatch on a minted key; a blob from before 5c — a plan log and a plan sync time, or a minted key; a blob that
+    carries the flag; the reconcile flag; ⭐ MERGE — the persist merge's wiring; ⭐ VIEWER CLEAR; a restored backup) ·
+    ⭐ HELD (the plan and the journal at the gate, dirty kept; non-vacuity; the public relay list; the viewer fan-out)
+    · ⭐ START (only after a confirm, only on 'none', only while waiting).
+  - `src/lib/nostr/__tests__/planLoadPull.test.ts` (15; the store, the pool and the engine mocked) — ⭐ STATUS (applied ·
+    decrypt · parse — the log names the error and the size, never the payload · shape · apply · prefs untouched) ·
+    ⭐ TRIM (past the step, republished even when nothing is missing; within it, not) · ⭐ PULL (none — and still
+    waiting · absent · ⭐ PUT BACK · put back empty · unreachable · not-reached · applied).
+  - `src/lib/nostr/__tests__/syncNowHeld.test.ts` (1) — both channels HELD, no Reconnect, the log says why.
+  - `src/components/Settings/__tests__/planNotLoadedNotice.test.tsx` (4; `renderToStaticMarkup`) — ⭐ NOTICE · ⭐ NONE
+    (the two readings, "Start a new plan") · nothing unsettled or loaded · every reason's words, a backup-gated key's
+    included.
+  - `src/components/Entry/__tests__/noPlanNotice.test.tsx` (5; the store and the hooks mocked) — ⭐ NO-PLAN ('none' and
+    waiting: no "starting fresh", "Start a new plan"; the entry fork's sign-in card promises no fresh start either) ·
+    ⭐ NO-PLAN unreachable · loaded · unsettled · as before 5c.
+  - `e2e/planLoadGuard.spec.ts` (4) — ⭐ PAUSED (the note, Save off, no sign-off banner) · ⭐ LOADED (non-vacuity) ·
+    ⭐ HEADLINE (bought 0.04, moved 0.05 Strike → Coinbase: "+0.0400 ₿", "+$4,000 stacked", "Moved: Strike −0.0500 ₿ ·
+    Coinbase +0.0500 ₿", in Week and in Month) · ⭐ REVIEW (the review sheet's "Moved" row; no "Net collateral").
+  - Changed: `calendarModel.test.ts` (25 → 29: `netBtc` → `moves`; ⭐ HEADLINE, ⭐ PLEDGE, `formatMoves` twice) ·
+    `sync.test.ts` (a relay answers; IGNORED's log check is now no "unreadable" or "parse failed" line — 5c retired
+    "payload parse failed (skipped)" from the apply) · `journalSync.test.ts` / `journalSweep.test.ts` (the pools answer;
+    `setPlanLoaded`) · `characterization.test.ts` (98 persisted keys, 104 with the plan of record; `planLoaded: false`).
+  - Red-first and the mutations: the spec's §6.3 and Appendix P.
 - **Phase 4e — the `settings:v1` bridge retired** (spec `bitbloc-spec-4e-bridge-stop-v1` v1.3 — § Phase 4; 25 test files,
   3 new; the suite 2,505 → 2,494, 149 → 152 files; 32 mutations + X-PARITY-ORDER, each an exact-once edit run on its
   unit files with `--reporter=verbose`, red at its tag, the file restored and md5-checked, the tree's digest unchanged):
@@ -8354,7 +8473,7 @@ goes red.)
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
-- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased; 4e widened the regex to `/\bpublish\w*\(|syncEngine|schedule\w*Publish/`, so the plan and prefs publishers are covered too — F8)
+- `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED; 5c: the case marks its signed-in store loaded first — a store without the plan refuses the setters, and the case then proved nothing about income, expenses, credit line and cold; MC64); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased; 4e widened the regex to `/\bpublish\w*\(|syncEngine|schedule\w*Publish/`, so the plan and prefs publishers are covered too — F8)
 - `mergeRecords.test.ts` — per-month entries merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion. P3 dayLog block: union-by-id, higher-ts-wins (edit in place), exact-ts tie→local, tombstone-newer→suppressed, edit-after-delete→survives + stale tombstone dropped, >90d GC, idempotent
 - `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
@@ -8372,12 +8491,12 @@ goes red.)
 - `src/lib/__tests__/recoveryGrid.test.ts` — R2b-3 capture-grid logic (pure, node, real wordlist + validateWords, 19 cases): `distributePaste` (12-exact from any focus → 'fill-from-start'; 5@focus9 → 3 tokens truncated at box 12; 5@focus0 → all 5; single/zero → []; 2@box12 → 1); `suggestWords` ('ab' → abandon/ability/able/about capped at 4; case-insensitive; custom max; 'zzz'/''→[]; a full word still returns itself); `phraseStatus` (NIP-06 vector → valid; **one word swapped to ANOTHER valid word → 'bad-checksum'** — all words valid, checksum fails; normalizes case+whitespace; any empty / <12 → incomplete); `isWord` (case/whitespace-insensitive membership)
 - `src/lib/nostr/__tests__/recoveryInput.test.ts` — R2b-2 shape classification (pure, node): `nsec1…` → `nsec` trimmed; a MALFORMED `nsec1garbage` still routes to the nsec door (nip19.decode owns the verdict); UPPERCASE `NSEC1…` → not nsec (bech32 is lowercase) → single token → unknown; exactly 12 tokens → `words`; newlines/tabs/doubled-spaces collapse to single spaces; **12 NONSENSE tokens → `words`, then `skFromWords` throws `InvalidSeedWordsError`** (the classifier/validator boundary); a real phrase round-trips classifier → skFromWords → 32-byte sk; unknown table (empty, whitespace-only, 11 tokens, 13 tokens, single word, garbage, an npub). **R2c-7a fourth kind:** `ncryptsec1…` → `encrypted` trimmed; a malformed `ncryptsec1garbage` still routes to the decrypt door (nip49.decrypt owns the verdict); UPPERCASE → unknown; **the disjointness pin** — `'ncryptsec1'.startsWith('nsec1') === false`, so no check order can confuse the two prefixes (a future prefix edit that introduces a collision fails here)
 - `src/store/__tests__/remotePlanFound.test.ts` — R2b-2 (`vi.hoisted` localStorage shim): defaults null; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (session-transient — persisting it would surface a stale `false` on the next boot before any pull ran). Set-once latch asserted as ONE lifecycle `it` (the latch is module-level and vitest isolates the registry per FILE, not per `it`): record(false) → false; record(true) → still false; setRemotePlanFound(null) [Dismiss] → null; **record(false) again → still null** (a bare `=== null` guard instead of the latch would resurrect the notice here)
-- `src/lib/nostr/__tests__/sync.test.ts` — 4e: ⭐ the pull asks for records / plan-events / prefs only (never `settings:v1`); ⭐ a stale `settings:v1` that still arrives changes nothing, on an empty-log and on a migrated device — **IGNORED**: only the records branch's five setters are called and the pull logs no "payload parse failed (skipped)" (`applyRemoteEvent` swallows a throw, so a revived branch calling a setter the mock lacks would otherwise pass); ⭐ **ROSTER pull** — an empty roster and `DEFAULT_RELAYS` reach `applyPlanFold` unfiltered; the prefs pull goes through `hydratePrefs`; records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). (4e retired the settings-watermark, settings-dirty, Fix B, DUAL-READ STRIP and 4d-stamp tests with the settings branch; the decrypt-failure and d-tag-less fixtures moved to plan-events.)
+- `src/lib/nostr/__tests__/sync.test.ts` — 4e: ⭐ the pull asks for records, the journal manifest, plan-events and prefs only (never `settings:v1`); ⭐ a stale `settings:v1` that still arrives changes nothing, on an empty-log and on a migrated device — **IGNORED**: only the records branch's five setters are called and the pull logs no "payload parse failed (skipped)" (`applyRemoteEvent` swallows a throw, so a revived branch calling a setter the mock lacks would otherwise pass); ⭐ **ROSTER pull** — an empty roster and `DEFAULT_RELAYS` reach `applyPlanFold` unfiltered; the prefs pull goes through `hydratePrefs`; records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). (4e retired the settings-watermark, settings-dirty, Fix B, DUAL-READ STRIP and 4d-stamp tests with the settings branch; the decrypt-failure and d-tag-less fixtures moved to plan-events.)
 - `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 40-key literal — 34 before the plan of record's Run 1 EXPOSED its six policy settings, D9) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
 - `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied. 4e: the trusted path calls `applyViewerSettings` (the mock's applier — `viewerSettingsApply.test.ts` pins what it keeps on the REAL store); M-VIEWER-CALL turns its 5 trusted-path `it`s red
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
-- `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard; ⭐ **LIVE three** (4e — the live sub's `'#d'` is exactly records / plan-events / prefs; RETIRED's name grep can't see an assembled d-tag, this can)
+- `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard; ⭐ **LIVE four** (4e/5b — the live sub's `'#d'` is exactly records / the journal manifest / plan-events / prefs; RETIRED's name grep can't see an assembled d-tag, this can)
 - `src/lib/nostr/__tests__/session.test.ts` — `waitForNostrExtension` (the async-injection-race fix): already-present → true immediately; injected mid-poll (fake timers) → true; absent through the timeout → false
 - `src/lib/nostr/__tests__/restoreSignerSingleFlight.test.ts` — `restoreSigner` single-flight (Bug 2): two concurrent calls share ONE ceremony (`unwrapSecretKey` invoked once) + resolve to the SAME signer (stub NSecSigner + mocked unwrapSecretKey, no real crypto); a later non-concurrent call runs the worker again (guard cleared on settle); + #5 live-method re-verify: a method flipped to 'nip46' between the entry destructure and the pre-unwrap guard (counter-backed getter on a `getState` spy) bails BEFORE `unwrapSecretKey` (no spurious passkey) and returns the current signer. **P0 pin-forwarding + the pin-aware guard** (5 cases, a deferred `unwrapSecretKey` impl holds a call genuinely in-flight; `beforeEach` re-installs the default impl since `mockClear` keeps the old one): a supplied pin reaches `unwrapSecretKey(ct, meta, '1234')`; no pin → `undefined` (the PRF path is byte-identical); ⭐ **a pin-bearing call does NOT join a pinless in-flight restore** (two workers — it would otherwise inherit the doomed promise's failure and report a wrong PIN); a pinless call DOES join a pinned one (one ceremony, same signer); two pinless PRF callers still share ONE ceremony
 
@@ -8771,8 +8890,10 @@ instead of bare console.warn, and log messages never include amounts.
 
 Sign in with a key that has nothing published under it and the app used to render a **seed-default dashboard
 with no explanation** — the user could not tell "my plan failed to load" from "this key has no plan yet." The
-entry fork now *promises* "we'll load your plan, or start fresh on your key"; this is the code that keeps the
-second half of that promise honest.
+entry fork promised "we'll load your plan, or start fresh on your key"; this is the code that kept the second half
+of that promise honest. **5c:** the card now says "we'll load your plan; if your key has none yet, you can start
+one" — an empty answer is also what relays that don't show the plan give, so the owner starts a new plan by hand
+("Start a new plan"), never the device.
 
 - **`fetchAndSync` → `{ ok, planFound }`** (was a bare boolean; its 3 test assertions + `syncNow.ts` updated).
   `planFound = latestByDTag.size > 0`, computed **before** the decrypt loop from a map whose keys can only be the
@@ -8800,7 +8921,13 @@ second half of that promise honest.
   the notice would be noise — and it's gated out of syncNow anyway, so the field stays `null` for it). Copy:
   *"No plan found on this key — starting fresh. Your first edits will create it."* Visual language clones
   `SimpleModeView`'s `.reanchorBanner` (the app's only other dismissible banner); a text **Dismiss**, not a ✕
-  (no ✕-dismiss precedent exists).
+  (no ✕-dismiss precedent exists). **5c:** only while the last plan pull is `'none'` (a relay answered with nothing)
+  AND the device waits for its plan — not on `'unreachable'`, not once a plan is loaded. It no longer says "starting
+  fresh": an empty answer is also what relays that don't show the plan give, so it offers "Start a new plan"
+  (`startNewPlanHere`, confirmed) and says not to if a plan was expected. The `'generated'` clause stays as it was:
+  a key minted on the device holds its plan, and a store rebuilt around one (or an owner → viewer → owner device) that
+  reaches `'none'` once its key is verified gets Start from Settings and the pill. Under 5c the nag's exclusivity
+  would also hold with its exact complement (`!isBackupGateSatisfied`) — logged, not changed in a safety release.
 - **⚠ OWNER-ONLY BY CONSTRUCTION.** `ViewerHomeView` gains `notice?: ReactNode`, rendered `{ownerNav && notice}`
   after `</header>`. `AppShell`'s `simpleView === 'dashboard'` arm of `renderOwnerJournal()` is the **only** call
   site that passes it, and it sits after gates D/E/F (`isAuthenticated && isOwner` guaranteed). The real viewer,
@@ -8945,6 +9072,10 @@ gate."* R2a-1 makes it real at the data layer. **No verification UI ships here**
   plan edits accumulate as events in the local log (and the prefs as `prefsDirty`), while the publishes hold them.
   On verification the plan and prefs publishes ship everything. A generated-unverified key is by definition a
   brand-new plan with no peer device.
+  5c: that holds on the device that minted the key (the stamp sets `planLoaded`). On 5c, a store rebuilt around it —
+  the escape hatch keeps the provenance, not the store — refuses plan edits (all but this stamp) until its plan loads.
+  A store an older build rebuilt that way counts as holding its plan at the update: the derive can't tell it from the
+  minting device (spec §7.4).
 - **`backupVerifiedAt` does NOT un-gate a peer.** A gated device runs **no sync at all, not even a pull**, so it
   can never *receive* the field. It needn't: only the sole **generating** device is ever gated, and no other
   device can hold `'generated'` for the same key (importing that nsec yields `'imported'`). The field is synced
@@ -9645,6 +9776,19 @@ src/
                                     # ⚠ useStore MUST NOT statically import this (store→engine is dynamic-only; the :syncNow
                                     # precedent) — a static back-edge is an instant cycle. remotePlanFoundResolved latch does
                                     # NOT live here (stays in useStore with recordRemotePlanFound)
+                                    # 5b: publishRecordsNowImmediate runs in the journal lane (journalState) — before the
+                                    # session's journal pull, records:v1 only (recordsDirty stays); after it, publishJournal:
+                                    # the changed pages one at a time, then the manifest (the relays' copies + carried
+                                    # listings), then the records:v1 bridge (whole while ≤ 40,960 B plain, else the stub;
+                                    # best-effort) — every one newer than every journal event the device has seen
+                                    # (known.seenAt + 1: a device whose clock runs behind still lands). recordsDirty clears
+                                    # only if the journal is unchanged (reference test). refusedForSize(channel): a
+                                    # PayloadTooLargeError clears the channel's dirty flag and never raises Reconnect
+                                    # 5c: while planLoad.planMissing — a signed-in owner device that hasn't loaded the
+                                    # plan — publishPlanEventsNow and publishRecordsOnce return false with lastRefusal
+                                    # 'held' (heldWithoutPlan(channel)) before setNostrSyncing, the dirty flags kept (the
+                                    # sync after the plan loads sends them); publishViewerSnapshotNow returns; and
+                                    # publishRelayListToNip65 holds (this device's list isn't the plan's yet)
     publish.ts                      # publishEncrypted (→ Promise<number>), publishRecords (RecordsPayload
                                     # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). The d-tags: RECORDS_DTAG /
                                     # PLAN_EVENTS_DTAG / PREFS_DTAG + viewerDTag(pubkeyHex) — Phase 4e DELETED
@@ -9656,10 +9800,14 @@ src/
                                     # exported awaitAckQuorum, was first-ack; gains a `label` param + records a PublishReport;
                                     # 12s-timeout, pool close after allSettled) — extracted from publishEncrypted, whose
                                     # signature is unchanged. Exports awaitAckQuorum + PublishReport + getPublishReports (ring
-                                    # buffer, last 10) for DevPanel PUBLISH ACKS + Copy Diagnostics (metadata only).
+                                    # buffer, last 30 — 5b: one journal publish can be several) for DevPanel PUBLISH ACKS + Copy Diagnostics (metadata only).
                                     # Phase 4a-inst: PublishReport += eventBytes/plainBytes (real byte lengths via a
                                     # TextEncoder byteLen helper, NOT String.length — additive-only, no publish/quorum
                                     # logic change)
+                                    # 5b: publishEncrypted calls guardPayload(dTag, plainBytes) first — past 40,960 B plain
+                                    # it throws PayloadTooLargeError before any encrypt or sign; an optional minCreatedAt
+                                    # floor (publishRecords passes it through). ownLatestEventId(dTag): the id this device
+                                    # last signed per d-tag (the live sub skips its own echo)
     payloadSize.ts                  # 5a — PURE (imports only PLAN_LOG_BUDGET_BYTES from ../planEvents/compact): a relay
                                     # payload judged where NIP-44's padding steps sit. PLAIN_STEP_BYTES 40,960 (the largest
                                     # plain JSON whose padded event stays under 64 KiB; 40,961 B pads to 49,152 → ~66 KB on
@@ -9668,6 +9816,39 @@ src/
                                     # past the step / 'near' past the plan log's 32,768 B budget / 'ok' (takes a PublishReport
                                     # as is). Read by DevPanel's size rows. Pinned by __tests__/payloadSize.test.ts (PADDING —
                                     # the step, against nostr-tools' own NIP-44 · TINT · DEVPANEL)
+    journalPages.ts                 # 5b — PURE (+ WebCrypto SHA-256): the journal's v2 layout. One page per calendar month
+                                    # (records:v2:<YYYY-MM>, '.2'… past JOURNAL_PAGE_BUDGET_BYTES 32,768; 'undated' for a
+                                    # date that isn't YYYY-MM or YYYY-MM-…), items in a fixed order; the manifest (records:v2:manifest — every
+                                    # page's {n, h} + the tombstones); fingerprint = 16 hex of SHA-256 over canonicalJson;
+                                    # the readers (parseV1Records — every v1 form, parseManifest, parsePage); unionParts
+                                    # (the relays' parts as ONE state, tombstones not applied: the pull's single merge
+                                    # applies them and the TTL once, as before 5b);
+                                    # pagesToFetch / pagesToPublish / relayListing; the records:v1 bridge (V1_STUB,
+                                    # v1BridgeTarget); journalSizes (DevPanel). Pinned by __tests__/journalPages.test.ts
+    journalState.ts                 # 5b — store-free session state: what this device knows the relays hold (page
+                                    # listings, the manifest's fingerprint, unreadable listings, the bridge, seenAt — the
+                                    # newest created_at seen, the publishes' floor), keyed by pubkey, never persisted; the
+                                    # last relay check (DevPanel); inJournalLane — every journal pull and publish runs in
+                                    # one lane; journalIdle (tests)
+    syncGuard.ts                    # 5b — store-free: guardPayload (refuse past PLAIN_STEP_BYTES, record the d-tag; a
+                                    # payload that fits clears it) · PayloadTooLargeError · channelOf · the blocked-channel
+                                    # registry (getBlockedChannels — stable for useSyncExternalStore, subscribeBlocked,
+                                    # pruneBlocked, getBlockedDTags)
+    planLoad.ts                     # 5c — store-free. THE RULE: a signed-in owner device writes nothing that depends on
+                                    # the plan — no day event, no monthly-log write, no plan edit, no plan, journal, viewer
+                                    # or relay-list publish — until it holds the plan: it applied the relays' plan, a
+                                    # backup was restored on it, it minted the key, or its owner chose "Start a new plan"
+                                    # after a pull found nothing. Never inferred from an empty pull. planMissing(s) =
+                                    # nostrAuthEnabled && !viewerMode && !planLoaded; refuseWithoutPlan(s, what) — the store
+                                    # guard ("<what> refused — this device hasn't loaded the plan", metadata only); the
+                                    # last plan pull (PlanPull: pending · applied · none · unreachable · unreadable — decrypt
+                                    # / parse / shape / apply / not-reached / absent), session state with listeners
+                                    # (usePlanPull); errorName — a log names an error, never quotes its message (a
+                                    # JSON.parse message can quote the payload). Pinned by store/__tests__/
+                                    # planLoadGuard.test.ts and __tests__/planLoadPull.test.ts
+    relayLimits.ts                  # 5b — the DevPanel probe: nip44PaddedLen / nip44PayloadLen (pinned against nostr-tools'
+                                    # NIP-44), fetchRelayInfo (NIP-11), probeRelaySizes (a one-time key, the probe d-tag,
+                                    # three sizes, every relay's answer). Pinned by __tests__/relayLimits.test.ts
     keyVault.ts                     # identity-agnostic encrypted-key vault (PRF/Face-ID primary, PIN fallback;
                                     # PBKDF2→HKDF→AES-GCM via WebCrypto; wrap/unwrap/probe; key in MEMORY only,
                                     # never persisted). Shared infra: writer local-key now, viewer key later.
@@ -9830,24 +10011,37 @@ src/
                                     # imports a key); the inverse default IS the R2c-7a bug. ⚠ NEVER render e.message:
                                     # bech32 echoes the ENTIRE ncryptsec into it (and 'Unknown letter' the offending
                                     # char) — same leak class as entropyFromWords
-    sync.ts                         # applyRemoteEvent — THE single apply path for a remote event (both transports);
+    sync.ts                         # applyRemoteEvent — THE single apply path for a remote plan or prefs event (both transports);
                                     # fetchAndSync → { ok, planFound } (R2b-2; was a bare boolean). `ok` = decrypt health
                                     # (breaks loop on first decrypt fail). `planFound` = latestByDTag.size > 0 — computed
-                                    # BEFORE the decrypt loop from a map whose keys can only be the three owner d-tags (the
-                                    # query filters authors+#d — records, plan-events, prefs since 4e — and the build loop
+                                    # BEFORE the decrypt loop from a map whose keys can only be the four owner d-tags (5b: + the manifest) (the
+                                    # query filters authors+#d — records, plan-events, prefs since 4e, the v2 manifest since 5b — and the build loop
                                     # `continue`s on a missing d-tag), so it means "an owner plan exists on the relays" and
                                     # stays TRUE when ok=false. ⚠ An unreachable signer must NEVER be reported as "no plan
                                     # found"; 4e: a key whose relays hold only a pre-4c settings:v1 reads "no plan found";
                                     # the plan-events branch (union + fold → applyPlanFold, RAW, unfiltered) · the prefs
-                                    # branch (hydratePrefs, prefs watermark) · records MERGE (mergeRecords, 4-field:
-                                    # entries+deletions+dayLog+dayLogDeletions). P3: generalized norm() canonicalizes all
-                                    # four; write-back via setDayLog (folds the cbCollateralBtc derive) + setDeletedDayEvents
-                                    # — actions-only (NO setState/deriveCbCollateral import); LD3 (no monthlyLog-from-dayLog);
-                                    # does NOT manage the reconnect flag
+                                    # branch (hydratePrefs, prefs watermark). 5b: the journal is read as ONE unit by
+                                    # pullJournal (records:v1 + the v2 manifest → the changed pages, every page on the
+                                    # session's first pull, one retry → mergeRecords into the journal as it is NOW → the known
+                                    # state → behind? dirty + repair; lazy migration with no manifest); pullJournalNow +
+                                    # scheduleJournalPull (1.5 s) for the live sub. Does NOT manage the reconnect flag
+                                    # 5c: applyRemoteEvent records the plan's outcome (planLoad.recordPlanPull) — applied
+                                    # (+ setPlanLoaded(true)), or unreadable and why: decrypt (still returns false — a
+                                    # signer failure; the loop breaks, Reconnect as before), parse (not JSON), shape (no
+                                    # events array), apply (the union or the fold threw). Those logs carry errorName +
+                                    # plainBytes, never the payload ("payload parse failed (skipped)" is retired here). An
+                                    # applied plan past PLAIN_STEP_BYTES (only a build before 5a sends one) → planDirty +
+                                    # publishPlanEventsNow: republished trimmed. fetchAndSync settles the rest when no plan
+                                    # event came back: no relay answered (pool.listConnectionStatus — a relay that failed to
+                                    # connect leaves the map) → unreachable; a journal (records:v1 or the manifest) →
+                                    # unreadable · absent (the device waits; one that holds the plan sets planDirty — it
+                                    # puts the plan back, an empty log included); nothing of this key's → none, and the
+                                    # device still waits — its owner decides ("Start a new plan"). A plan event the loop
+                                    # never reached (a decrypt failure on prefs first) → unreadable · not-reached
     liveSync.ts                     # foreground-only live relay subscription — module singleton (openLiveSync/
-                                    # closeLiveSync); transport only, every event → applyRemoteEvent; opened on
-                                    # visible, torn down on hidden, fresh since−60s each open; asks for the same three
-                                    # d-tags as the pull (records / plan-events / prefs — 4e dropped settings:v1)
+                                    # closeLiveSync); transport only — plan and prefs events → applyRemoteEvent; a journal
+                                    # event (records:v1 or the v2 manifest, 5b) → scheduleJournalPull, its own echo skipped by
+                                    # id; opened on visible, torn down on hidden, fresh since−60s each open; four d-tags
     viewerSync.ts                   # Viewer Access Phase 2 (READ-ONLY) — the mirror of liveSync, but reads the
                                     # OWNER's snapshot (authors:[viewerWriterPubkey], #d:[viewerDTag(myPubkey)] — M2
                                     # per-viewer addressing; getViewerPubkeyHex() computes the viewer's own pubkey from
@@ -9859,7 +10053,7 @@ src/
                                     # cbCollateralBtc + strikeCollateralBtc from snap via ONE useStore.setState — NEVER
                                     # setCbCollateralBtc/emitBalanceReading (they'd inject a reading into the viewer's OWN dayLog);
                                     # the viewer's dayLog stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
-    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push
+    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push. 5b: a channel refused for its size (`refusedForSize`) doesn't raise Reconnect. 5c: nor does a publish HELD because this device hasn't loaded the plan (`heldWithoutPlan`) — the log says "held until the plan loads here, not a signer problem".
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
                                     # defaults" + publish.ts FALLBACK_RELAYS + BOOTSTRAP_RELAYS all reference it — no
@@ -10008,7 +10202,7 @@ vercel.json                         # Catch-all rewrite → index.html (required
   counts only a genuine relay OK frame; the normalized rejection flows into `onOutcome`/the PUBLISH ACKS
   panel as a reject row. Genuine relay rejections (inside `r.publish`) already rethrow. Other relays
   continue in the background; pool closes after ALL settle; the watermark isn't stamped for a lost event. Per attempt it records a **`PublishReport`** into a module-level ring
-  buffer (last 10, `getPublishReports()` — `{label (dTag/kind), createdAt, startedAt, perRelay:[{url,
+  buffer (last 30 — 5b: one journal publish can be several, `getPublishReports()` — `{label (dTag/kind), createdAt, startedAt, perRelay:[{url,
   status:ack|reject|pending, ms?, err?}], outcome:ok|fail}`; metadata only — no amounts, safe for Copy
   Diagnostics), filled via `onOutcome`, and `nostrLog('warn', …)` when the quorum is met but a relay
   rejected (names the relay). **Phase 4a-inst** adds two optional fields — `eventBytes` (real byte length
@@ -10100,15 +10294,19 @@ vercel.json                         # Catch-all rewrite → index.html (required
     Not to be confused with Option C, the relay guard in the retired `hydrateSettings`.
 - Deduplicates relay events: takes highest `created_at` per d-tag before
   decrypting (prevents stale relay copies from overwriting fresh data)
-- **Records receive is MERGE-based and unconditionally safe** (`mergeRecords`, per month): newest
-  `updatedAt` (fallback `loggedAt`) wins; exact tie → local iff `recordsDirty`; tombstoned deletes
-  (`deletedMonths`) beat older entries; entry newer than tombstone survives (re-log) and drops it;
-  90-day tombstone GC. After merge: apply only if merged ≠ local (applied verbatim — `btcHeld` is recorded per entry, never re-chained);
-  set `recordsDirty` if relay is missing something we have. NO receive gates.
+- **The journal is read as ONE unit** (5b, `pullJournal`): `records:v1` and the v2 manifest, then the pages whose
+  fingerprint differs (every listed page on the session's first pull — the full check). The parts become ONE state
+  (`unionParts`: each id's newest copy, each tombstone at its newest, none applied) and merge ONCE through
+  `mergeRecords`, as `records:v1` did, into the journal as it is NOW (read again after the fetch; no await before the
+  apply): per month, the newest `updatedAt` (fallback `loggedAt`) wins, an exact tie → local iff
+  `recordsDirty`; per day event (by id), the higher `ts` wins, an exact tie → local; a tombstone strictly newer than the
+  surviving copy deletes it, and a copy at or after its tombstone survives (re-log, edit-after-delete) and drops it;
+  90-day tombstone GC. Applied verbatim (`btcHeld` is recorded per entry, never re-chained). If the next publish would
+  write anything, `recordsDirty` + the repair. With no journal on the relays, nothing merges. NO receive gates.
 - **The plan** applies by union-by-id + fold — order-independent, NO watermark gate (§ Phase 4); **the prefs**
   (`prefs:v1`) apply whole-object via `hydratePrefs` when newer than `lastPrefsSyncAt`. The pull asks for
-  `records:v1`, `plan-events:v1` and `prefs:v1` only; a stale `settings:v1` that still arrives matches no branch
-  and changes nothing (4e)
+  `records:v1`, `records:v2:manifest`, `plan-events:v1` and `prefs:v1` (the pages by a second query); a stale
+  `settings:v1` that still arrives matches no branch and changes nothing (4e)
 - Decrypt-failure surfacing: `fetchAndSync` returns `{ ok: false, planFound }` when an event fails to decrypt
   (signer unreachable) and no longer touches the flag itself — `syncNow` (its sole caller) sets
   `nostrReconnectNeeded` from `ok`; the flag clears only on a fully successful sync.
@@ -10129,18 +10327,20 @@ Foreground-only relay subscription so the other device's publishes apply in ~sec
 - **Durable state, ephemeral connections** — the sub is disposable: created on foreground, torn down on
   hidden, recreated with a fresh `since` every time. No keepalives, no reconnect state machines.
 - **One apply path, two feeds** — every event goes through `applyRemoteEvent` (sync.ts), same as the
-  batch pull; batch and live are transports only, zero new semantics.
+  batch pull; batch and live are transports only, zero new semantics. 5b: a journal event (`records:v1` or the
+  manifest) schedules the journal pull instead (debounced 1.5 s; the device's own echo skipped by id).
 - **Overlap is free, gaps are expensive** — `since = now − 60s` deliberately overlaps the batch path;
   appliers are idempotent/monotonic, and self-echo of our own publishes no-ops naturally (plan-events echo
-  unions to identity, prefs echo fails the watermark, records echo merges to identity).
+  unions to identity, prefs echo fails the watermark, the journal's echo is skipped by id).
 - **Don't ring a dead phone** — the live handler skips decrypt attempts while `nostrReconnectNeeded` is
   set; the post-re-auth batch sync catches up.
 
 Module singleton (`openLiveSync` idempotent / `closeLiveSync`); opt-in via `useNostrSync({ live: true })`
 — ONLY AppShell mounts it live (SettingsMain stays batch-only). EOSE ignored (batch path owns history).
 NOTE: at nostr-tools 2.23.5 `SimplePool.subscribeMany(relays, filter, params)` takes a SINGLE Filter,
-not an array. It asks for the same three d-tags as the pull — `RECORDS_DTAG` / `PLAN_EVENTS_DTAG` / `PREFS_DTAG`,
-exported from publish.ts (`SETTINGS_DTAG` was deleted at 4e; LIVE three pins the filter).
+not an array. It asks for the same four d-tags as the pull — `RECORDS_DTAG` / `JOURNAL_MANIFEST_DTAG` /
+`PLAN_EVENTS_DTAG` / `PREFS_DTAG`, exported from publish.ts and journalPages.ts (`SETTINGS_DTAG` was deleted at 4e;
+LIVE four pins the filter).
 
 ---
 
@@ -10155,7 +10355,7 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 | Window focus | `useNostrSync` window `'focus'` → triggerSync — a visible desktop tab never fires visibilitychange; focus covers app/window switches |
 | Network reconnect | `useNostrSync` window `'online'` → triggerSync (+ openLiveSync when live) — catches an OS-level reconnect that fires neither visibilitychange nor focus. **DESKTOP-ONLY in practice: iOS standalone PWAs NEVER fire `online`** (`navigator.onLine` stays true through an airplane-mode cycle, device-verified Jul 2026) → the dirty-gated retry below is the iOS self-heal |
 | Dirty-gated retry | `useNostrSync` second effect (`scheduleDirtyRetry`) — while `syncDirty({ recordsDirty, planDirty, prefsDirty, pendingRevocations })` (any unpublished channel or a pending viewer revocation; 4e — until then it watched `settingsDirty`, which nothing had set since 4c, so an offline plan edit had no retry, F2), a self-rescheduling backoff (5s→10s→20s→40s→60s, cap 60s) re-invokes `triggerSync`. **live instance only** (AppShell's `{live:true}` mount — a bare SettingsMain mount must not double-publish) + viewerMode-off + backup gate satisfied + **authenticated** (4e, G1: `isAuthenticated` stays false behind the LocalUnlockGate until the tap, and a tick there would reach `restoreSigner` → Face ID with no gesture, which iOS 17.4+ allows; the unlock flips it, re-arms the chain and runs `syncNow` itself). `triggerSync` itself is not gated (the focus / visibility / online handlers on a locked device are a separate queued item). Visible ticks call triggerSync + advance backoff; hidden ticks skip the call and hold the current delay (iOS freezes hidden timers anyway). A flag transition restarts at 5s; a successful publish clears the flags → the chain tears down. The ONLY self-heal on iOS for a publish that failed offline (see Network reconnect) |
-| Live subscription | `liveSync.ts` while visible — receive-only transport (no syncNow); applies the other device's publishes in ≈1s desktop / 2–3s iOS (NIP-46 decrypt) |
+| Live subscription | `liveSync.ts` while visible — receive-only transport (no syncNow); applies the other device's publishes in ≈1s desktop / 2–3s iOS (NIP-46 decrypt); 5b: a journal change lands after a 1.5 s debounce and a pull of the changed pages |
 | Manual button | "↻ Sync now" in Settings (via `useNostrSync().triggerSync`) |
 
 - Reconnect affordance is **two-stage**: first tap retries (`triggerSync`); only if the retry still
@@ -10169,10 +10369,12 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 
 | d-tag | Contents | Trigger |
 |---|---|---|
-| `personal-bloc:settings:v1` | (was: the settings fields) | **RETIRED at 4e** — nothing publishes or reads it; stale copies stay on the relays, inert (the pull and the live sub ask only for records / plan-events / prefs). It was 4c's one-way write-through BRIDGE (published from current state in `publishPlanEventsNow`'s success; read as authority only on an empty-log device) |
+| `personal-bloc:settings:v1` | (was: the settings fields) | **RETIRED at 4e** — nothing publishes or reads it; stale copies stay on the relays, inert (the pull and the live sub ask only for records / the journal manifest / plan-events / prefs). It was 4c's one-way write-through BRIDGE (published from current state in `publishPlanEventsNow`'s success; read as authority only on an empty-log device) |
 | `personal-bloc:plan-events:v1` | **4c** `{ events: PlanEvent[] }` — the append-only plan log, NIP-44 self-encrypted — **the only plan channel since 4e** | Any plan-field setter via `emitPlanSets` (marks `planDirty`, 2s debounce → `publishPlanEventsNow` → compact → publish → viewer fan-out + revocation flush → parity); retried by `syncNow` and the iOS retry while dirty. Pull = union-by-id + fold-to-state, order-independent (NO watermark) |
 | `personal-bloc:prefs:v1` | **4c** `{ tabOrder, hiddenTabs, simpleMode, btcBuyingUnit }` | The 4 prefs setters via `emitPrefs` (marks `prefsDirty`, 2s debounce → `publishPrefsNow`); tiny whole-object LWW; pull applies via `hydratePrefs` (PREFS_FIELDS — only the 4 prefs can land) |
-| `personal-bloc:records:v1` | Payload schema v2 `{ entries, deletions, dayLog, dayLogDeletions }` (legacy bare array + pre-P3 dayLog-less object readable — readers default `[]`/`{}`); entries carry `updatedAt?` (merge falls back to `loggedAt`); per-month entries merge + **P3 dayLog union-by-id + tombstones**, 90-day GC | Immediately after every upsert/delete AND every dayLog mutator (no debounce) via `publishRecordsNow` |
+| `personal-bloc:records:v1` | **5b: the bridge.** `{ entries, deletions, dayLog, dayLogDeletions }` — the whole journal while its JSON is ≤ 40,960 B; past it the stub `{ …empty, movedTo: 'personal-bloc:records:v2:manifest' }`, written once (a frozen copy would bring back a deleted entry once its tombstone aged out). Every pull still reads it (a pre-5b app writes only this); legacy forms readable | After the v2 publish, best-effort; before the session's journal pull, alone (recordsDirty stays) |
+| `personal-bloc:records:v2:<YYYY-MM>[.N]` | **5b — a page:** `{ v: 2, key, entries, dayLog }` — the month's items, ≤ 32,768 B plain (`.2`… past it; `undated` for a date that isn't `YYYY-MM` or `YYYY-MM-…`) | `publishJournal`: only the pages whose fingerprint differs from the relays' copy, one at a time |
+| `personal-bloc:records:v2:manifest` | **5b — the manifest:** `{ v: 2, pages: { key: { n, h } }, deletions, dayLogDeletions }` — every page the relays hold (+ carried listings) and the tombstones; the commit marker and the completeness oracle | After the pages, if it changed |
 | `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common — the viewer applies `settings` through `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS`, 4e). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishPlanEventsNow` (4e: until then, the settings bridge's success), AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches the dirty flags/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
 ### Viewer-key derivation v1 + handoff v4 — deterministic owner-minted viewer key + combined token + rotation (store stays v19, NO bump)
@@ -10494,7 +10696,7 @@ a v17-migrant holder until the one-time wrap.
   "no viewer key" rather than decrypting — event-presence query unaffected; decrypt-verify covers migrant + owner.)
 
 ### All 45 Synced Settings Fields
-(`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the **records:v1** channel (NOT as plan fields); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
+(`cbCollateralBtc` AND `strikeCollateralBtc` are LOCAL derived caches, NOT synced settings scalars — Daily Mode P3 / Collateral-Truth v20 CONVERGE them cross-device by carrying `dayLog`/`dayLogDeletions` on the journal channels (5b: monthly pages + manifest, records:v1 the bridge) (NOT as plan fields); each device re-derives them from the merged `dayLog`. `pendingCollateralAdjustment` was RETIRED at v20 — dropped from this list.)
 **How they sync (since 4e):** the 41 PLAN_EVENT_FIELDS as plan events on `plan-events:v1`, the 4 prefs (`tabOrder`,
 `hiddenTabs`, `simpleMode`, `btcBuyingUnit`) whole-object on `prefs:v1`. `SETTINGS_FIELDS` / `buildSettingsPayload`
 still list all 45: the trusted viewer snapshot (minus `VIEWER_SNAPSHOT_STRIP`) and the plan backup read them.
@@ -10558,9 +10760,10 @@ VIEWER_SETTINGS_FIELDS — an absent key is skipped, an unknown one ignored.)
 | `viewerUnlocked` | boolean | ❌ | In-memory; true once viewerSync's key holder is populated (post-unlock/provision) — AppShell gates the ViewerUnlockGate on it |
 | `nostrBunkerUri` | string | ✅ | NIP-46 reconnect |
 | `nostrRelays` | string[] | ✅ | From NIP-65 discovery. **Option C: SYNCED** across the owner's devices as a plan event (also in `SETTINGS_FIELDS`/`buildSettingsPayload`); a folded list always applies (4e retired the receive guard); stripped from the viewer snapshot. **User edits go through `setNostrRelaysAndSync`** (set + a plan event → `planDirty` → publishes on its own); the plain `setNostrRelays` is retained RAW for the `syncNow` boot bootstrap (`fetchUserRelays` discovery) so fetched/default relays don't spuriously publish |
-| `lastRecordsSyncAt` | number | ✅ | Unix SECONDS (event.created_at) of last records:v1 event seen — observability ONLY, not a gate |
+| `lastRecordsSyncAt` | number | ✅ | Unix SECONDS (event.created_at) of the newest `records:v1` / v2 manifest seen (5b) — or of this device's last journal publish — observability ONLY, not a gate |
 | `recordsDirty` | boolean | ✅ | Publish-needed marker + merge tie-breaker ONLY (NOT a receive gate); set on local edit or when the relay is behind; cleared on successful publish |
 | `planDirty` / `prefsDirty` | boolean | ✅ (device-local) | Phase 4c — the plan / prefs publish-needed markers (set by `emitPlanSets` / `emitPrefs`; cleared on a successful publish). With `recordsDirty` and a pending revocation they arm the iOS retry (`syncDirty`). `lastPlanEventsSyncAt` (unix seconds) is observability only — Settings → SYNC's "Plan synced" reads it; `lastPrefsSyncAt` (unix seconds) is also the prefs pull's watermark — a `prefs:v1` applies only when newer. ⚠ `settingsDirty` / `lastSettingsSyncAt` (and 4d's `lastV1FallbackApplyAt`) were RETIRED at 4e — `partializeState` drops a pre-4e blob's copies |
+| `planLoaded` | boolean | ✅ (device-local) | 5c — does this device hold the owner's plan? Set when it applies the relays' plan (an empty log included), by `applyPlanBackup`, when it mints the key (`setKeyProvenance('generated')`), and by the owner's "Start a new plan" after a pull found nothing (`startNewPlanHere`) — **never inferred from an empty pull**. Cleared by a fresh store (Disconnect, the escape hatch), `clearViewerData` / `resetPlanToSeeds`, and the key stamp's `null` clear (a failed mint or import, Disconnect). A blob from before 5c derives it at hydration — a plan log and a plan sync time, or a minted key (`hydrateDeviceFlags`); with no blob nothing is derived. **NEVER synced.** While a signed-in owner device lacks it, `planMissing` (`lib/nostr/planLoad`) refuses every journal write and plan edit (but the `backupVerifiedAt` stamp), keeps relay edits local, and holds the plan, journal, viewer and relay-list publishes |
 | `deletedMonths` | Record<number, number> | ✅ | month → deletedAt (Unix ms) tombstones for synced deletes; cleared per-month on re-log; 90-day GC in merge |
 | `nostrLogin` | string | ✅ | JSON NIP-46 login (bunkerPubkey/clientNsec/relays/pubkey) — reconnect-free restore |
 | `nostrSigner` | NostrSigner | ❌ | In-memory; recreated on restore |
@@ -10732,14 +10935,102 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   - **Mixed versions:** a device on an older build keeps bursts and can republish them (the pull's repair) until it loads
     the new build — it can only do what it did before; an updated device's next emit or publish compacts. No step moves a
     fold.
-  - **5b — the records payload (logged, not fixed):** `records:v1` is one NIP-44 event too, with no compaction (day events
-    are the journal); at a log a day it reaches the 40,960 B step in ~3–4 months. DevPanel's "records size" row turns
-    `--orange` past 32,768 B plain and `--red` past 40,960 B — the owner's reading sets 5b's urgency. NIP-44's 65,535 B
-    plaintext cap: nostr-tools 2.23.5 extends past it (a 6-byte length prefix) and the local key's `NSecSigner` encrypts
-    through it, but a browser extension or a remote signer, or another device's decrypt, may cap at 65,535 B — 5b's spec
-    measures that before it counts on more.
+  - **5b** — fixed: the journal syncs as monthly pages (§ Phase 4 → 5b).
   - **Tests:** `planLogSize.test.ts` (13), `planLogEmit.test.ts` (6), `payloadSize.test.ts` (3), the DRAG e2e; 19
     mutations (§ Test Suite → 5a).
+- **5b — the journal's size** (spec `pbloc-spec-journal-pages-v1` v1.1, BL11 — option A; store unchanged, NO bump). The
+  problem: `records:v1` sent the whole journal as ONE NIP-44 event, and the journal only grows — past 40,960 B of plain
+  JSON the event goes out at ~66 KB, which a stock strfry relay (every default relay runs strfry) refuses; the owner's
+  journal read 30,896 B on 2026-10-07, about 25 days of headroom at a log a day.
+  - **Pages** (`journalPages.ts`): one replaceable event per calendar month, `records:v2:<YYYY-MM>` (`.2`, `.3` … past
+    32,768 B plain — greedy, the commas counted; `undated` for a date that isn't `YYYY-MM` or `YYYY-MM-…`), its items in
+    a fixed order. The **manifest** (`records:v2:manifest`) lists every page — its item count and a fingerprint (16 hex
+    of SHA-256 over its canonical JSON) — and carries both tombstone maps: the completeness oracle and the commit marker.
+  - **The publish** (`publishRecordsNowImmediate`, in ONE lane with the pull — `journalState.ts`): before the session's
+    journal pull, `records:v1` only, and `recordsDirty` stays set; after it, `publishJournal` — the pages whose
+    fingerprint differs from the relays' copy, one at a time (a relay or signer failure stops the run before the
+    manifest: Reconnect, dirty kept), then the manifest if it changed (the relays' copies, plus every listed page this
+    device couldn't read — never drop what you never saw), then the bridge. Every journal event goes out newer than
+    every journal event the device has seen (`minCreatedAt` = `known.seenAt + 1`), so a device whose clock runs behind
+    still lands. `recordsDirty` clears only if the four collections are still the published references.
+  - **The pull** (`pullJournal`): `fetchAndSync` asks for four d-tags; `records:v1` and the manifest skip
+    `applyRemoteEvent` and are read as ONE unit — then the listed pages whose fingerprint differs (every listed page on
+    the session's first pull: the full check), one query and ONE retry. The parts become one state (`unionParts` —
+    tombstones not applied) and merge ONCE through `mergeRecords`, unchanged, into the journal as it is NOW (read again
+    after the fetch; no await before the apply). A listed page the relays didn't return is republished from this
+    device's copy, or carried in its manifests. If the next publish would write anything: `recordsDirty` + the repair,
+    queued behind the pull. With no manifest (a pre-5b journal), v2 is first written when `records:v1` no longer
+    carries this device's journal, or at the next journal write — a pull alone never writes a dozen pages.
+  - **The bridge:** `records:v1` carries the whole journal while its JSON is ≤ 40,960 B, else the stub
+    `{ …empty, movedTo }`, written once (a frozen copy would bring back a deleted entry once its tombstone aged out).
+    Every pull still reads it: a pre-5b app writes only there. Retiring it is a later item (4e's pattern).
+  - **Live:** the sub gains the manifest's d-tag (pages aren't subscribed); a journal event schedules one journal pull,
+    debounced 1.5 s; this device's own echo is skipped by id (`ownLatestEventId`).
+  - **The guard** (`syncGuard.ts`): `publishEncrypted` refuses a payload past 40,960 B plain before it encrypts or
+    signs (`PayloadTooLargeError`), on every channel. It is not a signer problem: no Reconnect (`refusedForSize`,
+    syncNow's "TOO LARGE"), the channel's dirty flag clears, and the app says it in plain words — "⚠ Too large to sync"
+    (AppShell) and Settings › SYNC's notice (`useSyncBlocked`, `SyncTooLargeNotice`).
+  - **DevPanel:** JOURNAL (pages · the largest page · the manifest · the v1 bridge · the last relay check · carried ·
+    too large), RELAY LIMITS → Probe (`relayLimits.ts`), the size rows "records v1" / "journal page" / "journal
+    manifest", Copy Diagnostics += `journal`; PUBLISH ACKS keeps 30.
+  - **Mixed versions:** the pre-5b app reads and writes `records:v1` — the whole journal while it fits; past the step it
+    reads the stub (merges nothing, keeps its own) and a stock relay refuses its own publish, as before. Its first pull
+    on the new build is a full check.
+  - **Residuals:** a page another device publishes just before this device's manifest stays unlisted until that device
+    syncs again; a page every relay drops comes back at the next session of a device that holds it. Neither loses
+    anything. The relays now see which months have entries and each month's size.
+  - **Tests:** `journalPages.test.ts` (17), `journalSync.test.ts` (17), `journalSweep.test.ts` (⭐ SWEEP — the kill
+    criterion), `relayLimits.test.ts` (3), `syncTooLargeNotice.test.tsx` (1), and the two d-tag pins; 26 mutations
+    (§ Test Suite → 5b).
+- **5c — the plan-load guard** (spec `pbloc-spec-plan-load-guard-v1` v1.1, BL12; store unchanged, NO bump — `planLoaded`
+  is a new device-local field, derived for an older blob at hydration). The incident (5b's spec §16): a plan event sent
+  by a build older than 5a was past NIP-44 v2's 65,535 B cap, so the computer's signer (Alby) couldn't decrypt it; the
+  early failures were logged only as "payload parse failed (skipped)", the later ones as decrypt errors; the device kept
+  its seed plan (its start date today), and its one-shot month reconcile deleted months 2–4 and rewrote month 1 — and
+  the sync carried that to the phone.
+  - **THE RULE** (`planLoad.ts`): a signed-in owner device writes nothing that depends on the plan until it holds the
+    plan. `planLoaded` (device-local, persisted, never synced) is set when the device applies the relays' plan, by a
+    restored backup, when it mints the key, or by its owner's "Start a new plan" after a pull found no plan and no
+    journal — **never inferred from a pull**: relays that return nothing (slow, refusing the query, or not the ones
+    that hold the plan) look exactly like a new key. A store saved before 5c derives it once, from its history. A device
+    not signed in and a viewer never wait; signing in later unions a signed-out device's own work with the key's plan,
+    as before 5c.
+  - **Refused in the store** (`refuseWithoutPlan`, logged): the four day-event mutators, `upsertLogEntry` and
+    `deleteLogEntry` (every monthly write funnels through them — a sign-off, a reopen, a re-roll, a manual log, the
+    collateral correction), `reconcileMonthBuckets` (its flag left unset, so it runs once the plan loads),
+    `setCbCollateralBtc`, and every plan edit (`emitPlanSets` — but the `backupVerifiedAt` stamp, which opens the gate a
+    generated key's pull waits on). Several editors save fields nobody touched (a form prefilled from the seed, a whole
+    roster or relay list), and an edit over the seed is the newest event for its field, so it would win over the plan
+    once that loads. A relay edit stays local (no event) so the device can look elsewhere for its plan. The journal
+    pull's raw setters aren't guarded — a pull still lands.
+  - **Held at the publish** (`syncEngine`): the plan, the journal, the viewer fan-out and the NIP-65 relay list —
+    `lastRefusal` `'held'`, syncNow's "HELD", no Reconnect.
+  - **The store resets hold no plan:** `clearViewerData` and `resetPlanToSeeds` clear `planLoaded` (an owner who comes
+    back to a device it used as a viewer waits for the plan); the key stamp's `null` clear — a failed mint or import,
+    and Disconnect — clears it too, so the next key doesn't look as if it held a plan.
+  - **The one-shot reconcile is a migration now:** `hydrateDeviceFlags` settles its flag at every hydration of a store
+    that holds no journal (a new device or browser, a preview origin, a wiped store), so only a journal stored on a
+    device before the bucketing fix (33f9ca0) is re-rolled — never one that arrives by sync.
+  - **Loud:** the plan's outcome is recorded (`PlanPull`); "⚠ Plan not loaded" (AppShell, → Settings) and Settings ›
+    SYNC's notice say why in plain words; after a pull that found nothing, both readings and "Start a new plan" (a
+    confirm first; `NoPlanNotice` offers it on the dashboard too); the EventSheet says "Logging is paused until your
+    plan loads on this device." with Save and Delete off; the Ledger hides the sign-off banner; DevPanel "plan pull" /
+    "plan here"; Copy Diagnostics `planLoad`. The apply's logs name the error and the plain size, never the payload.
+    The entry fork's sign-in card no longer promises a fresh start (`ChoosePathView`).
+  - **Trimmed republish:** a device that applies a plan past 40,960 B plain republishes it (5a compacts it), so a signer
+    that caps NIP-44 at 65,535 B, or a 64 KiB relay, can take it.
+  - **The rider — the activity card's headline is what was bought:** `aggregateEvents` returns `moves` (`VenueMoves`:
+    Strike, Coinbase, cold; a pledged buy's paired Strike deposit isn't a move) instead of `netBtc`; the card reads
+    `+buyBtc ₿` and "+$X stacked" (keyed on buys), with "Moved: …" on its own line (eight places for a move too small
+    for four); the review sheet's "Net collateral" row is a "Moved" row, shown only when something moved. Display only.
+  - **Residuals:** a device from before 5c that synced a plan once, or minted its key, derives "loaded" — so does a
+    store the escape hatch rebuilt around a minted key on an older build (spec §7.4); the planless screens' other
+    editors stay visible while the store refuses them; an owner can still choose "Start a new plan" wrongly (warned
+    twice); a put-back replaces a plan only a relay that didn't answer held; work done signed out unions into a key's
+    plan at sign-in, as before 5c.
+  - **Tests:** `planLoadGuard.test.ts` (26), `planLoadPull.test.ts` (15), `syncNowHeld.test.ts` (1),
+    `planNotLoadedNotice.test.tsx` (4), `noPlanNotice.test.tsx` (5), `calendarModel.test.ts` (+4), the e2e
+    `planLoadGuard.spec.ts` (4); 65 mutations (§ Test Suite → 5c).
 
 ---
 
@@ -10822,6 +11113,8 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `setBackupVerifiedAt` | Authed: the emit's `set()` lands FIRST (field + plan event + `planDirty` + the debounced kick, whose publish waits for the first pull — Fix A), then the wake via `syncNow` (dynamic-imported, cycle-safe) — the gate must read satisfied inside `doSyncNow`'s guards. Pre-auth (onboarding's quiz-pass, before K3): the field ONLY — no event, because a K3-failure rollback clears the field RAW and can't retract one. **No second wake mechanism.** `null` = teardown clear (RAW — no event, no wake) |
 | `backupVerifiedAt` latch | **ONE-WAY LATCH by construction (4e)** — no path emits a null `backupVerifiedAt` event (the teardown clear is RAW; the one emit sits after the null return), the fold writes only fields present in the log, and neither whitelist applier can write it (`hydratePrefs` takes PREFS_FIELDS; `applyViewerSettings` strips it). The whole-object-LWW skip-guard class (`nostrRelays`, `viewers`, this) was deleted at 4e with `hydrateSettings` |
 | The plan log stays inside one publishable event | Compaction keeps the latest event per field FOREVER; a burst (the same field set again within 10 s — `BURST_WINDOW_MS`) keeps only its last event; the history is trimmed OLDEST FIRST until the payload `{"events":[…]}` fits 32 KiB (`PLAN_LOG_BUDGET_BYTES`, a full NIP-44 padding step under 40,960 B — past it the event goes out over a 64 KiB relay limit); the emit compacts (`emitPlanSets`), so the stored log stays small on every device. Never drop a latest (the fold reads only the latest per field), and never key compaction on `device` (diagnostics only, never a merge input). Pinned by `planLogSize.test` (FOLD-SAFE, CONVERGE), `planLogEmit.test` and the DRAG e2e |
+| The journal syncs as pages, and nothing is published past NIP-44's step | Every journal event stays within one padding step of 40,960 B: a page ≤ 32,768 B plain, the manifest and the bridge checked by the guard (`publishEncrypted` refuses past 40,960 B before encrypting — never raise Reconnect for it). The manifest goes out AFTER the pages and lists only the copies the relays hold, plus every listed page this device couldn't read (never drop what you never saw). Every journal event goes out newer than every journal event the device has seen (the `minCreatedAt` floor — never publish a replaceable journal event dated by the local clock alone). A pull merges the relays' parts ONCE, into the journal as it is AFTER the fetch (never merge a pre-await copy; never apply or GC a tombstone before that merge). Every pull reads `records:v1`; past the step it carries the stub, never a frozen copy. Pinned by `journalSweep.test` (the kill criterion), `journalSync.test`, `journalPages.test` |
+| No plan-dependent write before the plan loads (5c) | A signed-in owner device writes no day event, no monthly-log entry and no plan edit, runs no month reconcile, and publishes no plan, journal, viewer snapshot or relay list until `planLoaded` — set only by an applied relay plan, a restored backup, minting the key, or the owner's confirmed "Start a new plan" after a pull found nothing (`planLoad.planMissing`: refused in the store, held at the publish). **Never set `planLoaded` from a pull** that found nothing — the owner decides — never sync it, never route a journal write or a plan edit around the day-event mutators, `upsertLogEntry` / `deleteLogEntry` or `emitPlanSets`, and clear it with any in-place reset of the plan. A failed plan load is recorded and said in plain words — never swallowed, and logged by the error's name and the payload's size, never its contents |
 | Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green |
 | Onboarding verifies by default (R2c-6a, SUPERSEDES the retired R2c-4a bridge) | `OwnerKeySetup` K2 now stamps `backupVerifiedAt` — but gated on a **real verification** (a save + a two-word quiz = the ceremony's own semantics), NOT an ack. The stamp is pre-auth field-only (K2), before K3's `establishLocalOwner` `syncNow` wakes it ungated. The **skip** path ("I'll do this later") stamps nothing → generated-UNVERIFIED → the R2c-2/5b ladder. ⚠ The distinction the retired R2c-4a bridge got wrong: **an ack is a promise; a verification is proof.** Never gate the stamp on anything less than the save+quiz. ⚠ `handleGenerate`/`handleStartOver` must `setBackupVerifiedAt(null)` on (re)mint — the field rides partialize `...rest`, so a stale stamp from an abandoned run would falsely verify freshly-minted words. (⚠ `backupGate.test.ts` drives the setters directly, never the component — the K2 wiring is manual/tsc-covered.) |
 | Seed-phrase hygiene copy — two variants, don't cross them | **DISPLAY** (we minted the words; `OwnerKeySetup` K2 + `RecoveryKeyCeremony` explain, one identical string): *"These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job."* **CAPTURE** (the user is typing words IN; `NostrAuthGate`'s word-grid tab only, never the nsec tab): *"Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."* The capture line sits BELOW the live checksum line so it never interrupts the grid→status feedback path |

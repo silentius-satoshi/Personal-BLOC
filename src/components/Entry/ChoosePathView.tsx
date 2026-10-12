@@ -32,7 +32,7 @@ export function ChoosePathView({ onStartNew, onLogIn, onConnectShared }: ChooseP
         </button>
         <button className={styles.path} onClick={onLogIn}>
           <span className={styles.pathTitle}>I have a plan or a key</span>
-          <span className={styles.pathSub}>Sign in with your Recovery Key, extension, or signer — we'll load your plan, or start fresh on your key</span>
+          <span className={styles.pathSub}>Sign in with your Recovery Key, extension, or signer — we'll load your plan; if your key has none yet, you can start one</span>
         </button>
         <button className={styles.path} onClick={onConnectShared}>
           <span className={styles.pathTitle}>Connect to a shared plan</span>

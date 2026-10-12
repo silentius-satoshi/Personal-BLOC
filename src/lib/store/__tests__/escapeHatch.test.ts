@@ -39,6 +39,9 @@ beforeEach(() => {
 
 describe('resetPlanToSeeds', () => {
   it('resets plan/records/strike to seeds but PRESERVES identity + writer credential', () => {
+    // 5c: the beforeEach signs this store in, and a signed-in store makes no plan edit until it holds the plan. Mark it
+    // loaded, or the setters below are refused, the fields stay at their seeds, and the reset proves nothing about them.
+    useStore.setState({ planLoaded: true });
     const s = useStore.getState();
     s.setIncome(9999); s.setExpenses(8888); s.setCreditLine(50000);
     s.setMonthlyLog([{ month: 1, btcBought: 0.5, blocDraw: 1000, loggedAt: 1 } as any]);

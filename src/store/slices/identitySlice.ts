@@ -3,6 +3,7 @@
 import type { StoreState, StoreSet, StoreGet } from '../types';
 import { DEFAULT_RELAYS } from '../../lib/nostr/relays';
 import { nostrLog } from '../../lib/nostr/log';
+import { planMissing } from '../../lib/nostr/planLoad';
 import {
   GATE_AUTH_KEY, GATE_PUBKEY_KEY, GATE_METHOD_KEY, GATE_PROVENANCE_KEY, WK_WRAPPED_KEY, WK_META_KEY,
   seedNostrAuthEnabled, seedNostrPubkey, seedNostrSigningMethod, seedKeyProvenance, seedWriterKeyWrapped, seedWriterKeyWrapMeta,
@@ -41,7 +42,13 @@ export const createIdentitySlice = (set: StoreSet, get: StoreGet): IdentitySlice
   setNostrSigningMethod: (v) => { try { v == null ? localStorage.removeItem(GATE_METHOD_KEY) : localStorage.setItem(GATE_METHOD_KEY, v); } catch { /* noop */ } set({ nostrSigningMethod: v }); },
   setNostrBunkerUri:     (v) => set({ nostrBunkerUri: v }),
   setNostrRelays:        (v) => set({ nostrRelays: v }),                                                  // bootstrap/internal: NO publish (syncNow's fetchUserRelays discovery uses this)
-  setNostrRelaysAndSync: (v) => get().emitPlanSets([['nostrRelays', v]]),  // 4c: user edit → plan event → publish on its own (plain setNostrRelays above stays RAW — boot/NIP-65 discovery must NEVER emit)
+  setNostrRelaysAndSync: (v) => {   // 4c: user edit → plan event → publish on its own (plain setNostrRelays above stays RAW — boot/NIP-65 discovery must NEVER emit)
+    // 5c — before this device holds the plan, a relay edit is transport only: it changes where this device looks, so a
+    // plan kept on another relay can load, without an event that would replace the plan's own relay list (one built
+    // on the seed's defaults, the newest for its field). Once the plan loads, its list applies as always.
+    if (planMissing(get())) { set({ nostrRelays: v }); nostrLog('info', 'relay edit kept on this device — the plan hasn\'t loaded here'); return; }
+    get().emitPlanSets([['nostrRelays', v]]);
+  },
   setNostrLogin:         (v) => set({ nostrLogin: v }),
   // Write through to the standalone localStorage keys (persisted OUTSIDE the encrypted blob — see WK_*_KEY).
   setWriterKeyWrapped:   (v) => { try { v == null ? localStorage.removeItem(WK_WRAPPED_KEY) : localStorage.setItem(WK_WRAPPED_KEY, v); } catch { /* noop */ } set({ writerKeyWrapped: v }); },
@@ -62,7 +69,11 @@ export const createIdentitySlice = (set: StoreSet, get: StoreGet): IdentitySlice
     // the escape hatch. AFTER the write-once guard so an ignored write never touches storage. The null clear-branch
     // (disconnectNostr / "Remove local key") removeItem's it — provenance dies with the identity.
     try { v == null ? localStorage.removeItem(GATE_PROVENANCE_KEY) : localStorage.setItem(GATE_PROVENANCE_KEY, v); } catch { /* noop */ }
-    set({ keyProvenance: v });
+    // 5c — a key minted on this device starts a new plan here: this store's plan IS the plan (planLoad's RULE). Only on
+    // the stamp itself — a store rebuilt later around the same key (the escape hatch) holds no plan until it loads one.
+    // The clear takes it back: a mint whose establish failed (the rollback) must not leave the next key, imported or
+    // signed in by an extension, looking as if it held a plan.
+    set(v === 'generated' ? { keyProvenance: v, planLoaded: true } : v === null ? { keyProvenance: v, planLoaded: false } : { keyProvenance: v });
   },
   // Stamping verification OPENS the gate, so it must also WAKE the engine. Authed, it (a) emits the stamp as a plan
   // event (emitPlanSets: field + event + planDirty + the debounced kick, whose publish early-returns on

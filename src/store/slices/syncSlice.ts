@@ -9,6 +9,7 @@ import { APPLY_FIELDS, PLAN_EVENT_FIELDS, PREFS_FIELDS, VIEWER_SETTINGS_FIELDS }
 import { nextPlanEventTs, makePlanEventId } from '../../lib/planEvents/genesis';
 import { compactPlanEvents } from '../../lib/planEvents/compact';
 import { getDeviceTag } from '../../lib/nostr/deviceTag';
+import { refuseWithoutPlan } from '../../lib/nostr/planLoad';
 import { kickRecordsPublish } from '../bootstrap';
 
 // Phase 4c — the highest ts in the plan log (0 when empty). emitPlanSets/applyPlanBackup stamp
@@ -28,7 +29,7 @@ type SyncSlice = Pick<StoreState,
   | 'setRecordsDirty' | 'deletedMonths' | 'setDeletedMonths' | 'deletedDayEvents'
   | 'setDeletedDayEvents' | 'hydratePrefs' | 'applyViewerSettings' | 'applyPlanBackup'
   | 'planEvents' | 'setPlanEvents' | 'planDirty' | 'setPlanDirty' | 'lastPlanEventsSyncAt' | 'setLastPlanEventsSyncAt'
-  | 'prefsDirty' | 'setPrefsDirty' | 'lastPrefsSyncAt' | 'setLastPrefsSyncAt' | 'emitPlanSets' | 'applyPlanFold' | 'emitPrefs'
+  | 'planLoaded' | 'setPlanLoaded' | 'prefsDirty' | 'setPrefsDirty' | 'lastPrefsSyncAt' | 'setLastPrefsSyncAt' | 'emitPlanSets' | 'applyPlanFold' | 'emitPrefs'
 >;
 
 export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
@@ -72,6 +73,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   setPlanDirty: (v) => set({ planDirty: v }),
   lastPlanEventsSyncAt: null,
   setLastPlanEventsSyncAt: (ts) => set({ lastPlanEventsSyncAt: ts }),
+  planLoaded: false,   // 5c — a fresh store holds no plan yet (see StoreState.planLoaded)
+  setPlanLoaded: (v) => set({ planLoaded: v }),
   prefsDirty: false,
   setPrefsDirty: (v) => set({ prefsDirty: v }),
   lastPrefsSyncAt: null,
@@ -82,11 +85,18 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   // dynamic-import kick of the 2s debounce. Auth-UNGATED: a pre-auth
   // edit is legitimate local intent that just accumulates events; publishing is fully gated in the engine
   // (publishPlanEventsNow requires auth + backup gate + initialSettingsPullDone), so §6's structural
-  // no-seed-clobber holds without a guard here.
+  // no-seed-clobber holds without an auth guard here. 5c: a signed-in device whose plan didn't load is the exception
+  // — its first pull completed without the plan — so the plan-load guard below refuses its edits.
   // 5a — the log is compacted as it grows, so a slider drag leaves one event per field (the burst rule) and the
   // history stays inside the budget on every device, even one that never publishes. The new events are the latest
   // for their fields, so compaction keeps them; it never moves the max ts, so the next emit's ts still advances.
   emitPlanSets: (pairs) => {
+    // 5c — no plan edit before this device holds the plan (planLoad's RULE). An edit made over the seed plan is the newest
+    // event for its field, so once the relays' plan loads it would win over it — and several editors save fields the
+    // person never touched (a form prefilled from the seed, a whole roster or relay list built on the seed's). The one
+    // exception is the key-custody stamp: it attests the key, not the plan, it is a one-way latch (any stamp reads the
+    // same), and the backup gate it opens is what lets a generated key's device pull its plan at all.
+    if (!pairs.every(([field]) => field === 'backupVerifiedAt') && refuseWithoutPlan(get(), 'plan edit')) return;
     const cur = get();
     const ts = nextPlanEventTs(maxPlanTs(cur.planEvents));
     const device = getDeviceTag();
@@ -145,7 +155,8 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
   //      dayLog ⇒ caches stays structural). The §5b deriveReadingAnchors seam is NOT run: the imported settings already
   //      carry the anchor scalars + asOf, and setting settings directly (not via addDayEvent) can't fire it anyway.
   //  (d) planDirty + recordsDirty (+ prefsDirty when a prefs field was restored) + initialSettingsPullDone TRUE — it
-  //      lets the publishes proceed at once (Phase 4e retired the settings:v1 first-pull exception it also blocked).
+  //      lets the publishes proceed at once (Phase 4e retired the settings:v1 first-pull exception it also blocked) —
+  //      and planLoaded TRUE (5c): the restored plan is this device's plan, even where the relays' plan couldn't load.
   // The caller (validatePlanBackup) has fully validated `backup` before this runs.
   applyPlanBackup: (backup) => {
     const r = backup.plan.records;
@@ -176,6 +187,7 @@ export const createSyncSlice = (set: StoreSet, get: StoreGet): SyncSlice => ({
       ...(anyPref ? { prefsDirty: true } : {}),
       recordsDirty: true,
       initialSettingsPullDone: true,
+      planLoaded: true,   // 5c — a restored backup is this device's plan: it may write and publish (planMissing)
     };
     set(update);   // ONE atomic commit — no intermediate render between the old and new plan
     // Normal sync resumes: publish the imported plan promptly (the plan publish chains the viewer fan-out). Both

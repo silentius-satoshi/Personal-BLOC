@@ -28,6 +28,31 @@ export function partializeState(state: StoreState) {
   return rest;
 }
 
+// 5c (spec `pbloc-spec-plan-load-guard-v1`) — two device-local flags settled at EVERY hydration (the persist merge
+// below; migrate runs only on a version bump). Exported so it's unit-testable. `persisted` is what storage held —
+// undefined when it holds nothing: a fresh install, a store the escape hatch removed, and an encrypted store's locked
+// first pass (its unlock hydrates again, with the blob).
+//  - planLoaded: with no stored blob there is nothing to derive from, so it stays what this session holds — false on a
+//    fresh load, including after the escape hatch, which keeps a generated key's provenance but not the store (planLoad's
+//    RULE: the plan lives in the store, not the key). A blob from before 5c has no key; it held the plan iff it synced
+//    one — a plan log AND a plan sync time (set when a relays' plan applied or this device's own published; a log of
+//    local edits that never met the relays has no time) — or this device minted the key (its store is the plan's
+//    origin; some never-verified ones never synced at all).
+//  - monthBucketReconcileDone: the one-shot bucket reconcile exists for a journal stored on this device under the
+//    bucketing before 2026-07-02 (33f9ca0). A store that hydrates with NO journal has none — a new device or browser,
+//    a preview link, a store wiped by Disconnect or the escape hatch — so its flag is settled here, and a journal that
+//    arrives later by sync (written by post-fix code, already bucketed) is never re-rolled on this device. The incident's
+//    computer and every fresh preview origin since July ran the reconcile on a journal they had just pulled.
+export function hydrateDeviceFlags(merged: StoreState, persisted: unknown): StoreState {
+  const out = { ...merged };
+  const blob = persisted != null && typeof persisted === 'object' ? (persisted as Record<string, unknown>) : null;
+  if (blob && typeof blob.planLoaded !== 'boolean') {
+    out.planLoaded = (out.planEvents.length > 0 && out.lastPlanEventsSyncAt != null) || out.keyProvenance === 'generated';
+  }
+  if (!out.monthBucketReconcileDone && out.dayLog.length === 0 && out.monthlyLog.length === 0) out.monthBucketReconcileDone = true;
+  return out;
+}
+
 // Persist migrate — exported so it's unit-testable (same reason as partializeState).
 export function migrateState(persistedState: any): any {
   // v20 (Collateral-Truth): strip pendingCollateralAdjustment so it can't ride ...rest; seed strikeCollateralBtc.
@@ -171,7 +196,8 @@ export const persistOptions: PersistOptions<StoreState, ReturnType<typeof partia
         const gatePubkey     = (() => { try { return localStorage.getItem(GATE_PUBKEY_KEY); } catch { return null; } })();
         const gateMethod     = (() => { try { return localStorage.getItem(GATE_METHOD_KEY); } catch { return null; } })();
         const gateProvenance = (() => { try { return localStorage.getItem(GATE_PROVENANCE_KEY); } catch { return null; } })();
-        return { ...current, ...gateHydratedIdentity(persisted, gatePubkey, gateMethod, gateProvenance) } as typeof current;
+        // 5c — then settle planLoaded and the one-shot reconcile flag (hydrateDeviceFlags).
+        return hydrateDeviceFlags({ ...current, ...gateHydratedIdentity(persisted, gatePubkey, gateMethod, gateProvenance) } as typeof current, persisted);
       },
       migrate: migrateState,
       onRehydrateStorage: () => (state) => {

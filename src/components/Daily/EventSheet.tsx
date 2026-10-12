@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { DraggableSheet } from '../ui/DraggableSheet';
 import { useStore } from '../../store/useStore';
+import { usePlanMissing, LOGGING_PAUSED } from '../../hooks/usePlanLoad';
 import { bucketEventToMonth, flowVenue, unreconciledCbFlows } from '../../simulation/logUtils';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
@@ -58,6 +59,7 @@ const TYPE_PILLS: { type: SheetType; label: string; incomeOnly?: boolean }[] = [
  * (two addDayEvent calls, same date/ts) — see buildEventsFromSheet.
  */
 export function EventSheet({ open, onClose, editEvent, targetDate, initialType }: EventSheetProps) {
+  const writesPaused       = usePlanMissing();   // 5c — no journal write until this device has loaded the plan (the store refuses it too)
   const hasCbLoan          = useStore((s) => s.hasCbLoan);
   const strikeBtcAvailable = useStore((s) => s.strikeBtcAvailable);
   const btcPrice           = useStore((s) => s.btcPrice);
@@ -774,11 +776,14 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             </div>
           </div>
         ) : (
-          <div className={styles.actions}>
-            <button className={styles.cancelBtn} onClick={handleClose}>Cancel</button>
-            {isEdit && <button className={styles.deleteBtn} onClick={() => setConfirmDelete(true)}>Delete</button>}
-            <button className={styles.saveBtn} onClick={handleSave} disabled={!canSave}>Save</button>
-          </div>
+          <>
+            {writesPaused && <div className={styles.warnNote} role="status">{LOGGING_PAUSED}</div>}
+            <div className={styles.actions}>
+              <button className={styles.cancelBtn} onClick={handleClose}>Cancel</button>
+              {isEdit && <button className={styles.deleteBtn} onClick={() => setConfirmDelete(true)} disabled={writesPaused}>Delete</button>}
+              <button className={styles.saveBtn} onClick={handleSave} disabled={!canSave || writesPaused}>Save</button>
+            </div>
+          </>
         )}
 
     </DraggableSheet>

@@ -29,6 +29,8 @@ import { isBackupGateSatisfied } from '../../lib/backupGate';
 import { downloadPlanBackup } from '../../lib/backup/exportPlan';
 import { RestoreBackupFlow } from './RestoreBackupFlow';
 import { useNostrSync } from '../../hooks/useNostrSync';
+import { SyncTooLargeNotice } from './SyncTooLargeNotice';
+import { PlanNotLoadedNotice } from './PlanNotLoadedNotice';
 import { useNostr } from '@nostrify/react';
 import { resetAndResync, resetAndResyncConfirmMessage } from '../../lib/store/escapeHatch';
 import { migrateEncryptedToPlaintext, blobIsPlaintext } from '../../lib/store/storeMigration';
@@ -594,6 +596,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           <div className={styles.settingsGroupLabel}>SYNC</div>
           <div className={styles.syncRow}><span className={styles.syncRowLabel}>Plan synced</span><span className={styles.syncRowValue}>{relativeSync(lastPlanEventsSyncAt)}</span></div>
           <div className={styles.syncRow}><span className={styles.syncRowLabel}>Records synced</span><span className={styles.syncRowValue}>{relativeSync(lastRecordsSyncAt)}</span></div>
+          <SyncTooLargeNotice />
+          <PlanNotLoadedNotice />
           <button onClick={triggerSync} disabled={nostrSyncing} className={styles.syncButton}>
             {nostrSyncing ? 'Syncing…' : '↻ Sync now'}
           </button>

@@ -11,7 +11,7 @@ import { describe, it, expect, afterEach, vi } from 'vitest';
 // changed behavior — that is the bug, not the test.
 //
 // Two source-truth notes (deliberate, verified against HEAD):
-//   • Suite 1 asserts the JSON-SERIALIZED blob keys (103). partializeState()
+//   • Suite 1 asserts the JSON-SERIALIZED blob keys (104). partializeState()
 //     returns `...rest`, which also carries every action FUNCTION; only JSON
 //     serialization (what actually persists) drops them. Keying on the data-only
 //     blob is faithful to "persisted blob shape" AND is the right instrument —
@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 103 persisted data keys (+6, the plan of record; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
+  it('blob key-set is exactly the 104 persisted data keys (+6, the plan of record; +1, 5c\'s planLoaded; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -69,7 +69,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pendingViewerRevocations', 'pinnedScenario',   // device-local revocation retry queue + scenario pin
-      'planDirty', 'planEvents',   // Phase 4c: plan-events channel (device-local persisted)
+      'planDirty', 'planEvents', 'planLoaded',   // Phase 4c: plan-events channel (device-local persisted); 5c: planLoaded
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',   // the plan of record (Run 1)
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct',
       'prefsDirty',
@@ -119,6 +119,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       viewerKeyWrapMeta: null, lastRecordsSyncAt: null, recordsDirty: false,
       deletedMonths: {}, deletedDayEvents: {},
       planEvents: [], planDirty: false, lastPlanEventsSyncAt: null, prefsDirty: false, lastPrefsSyncAt: null,   // Phase 4c
+      planLoaded: false,   // 5c — a fresh store holds no plan yet
       pinnedScenario: null,   // Phase 3a: device-local pin
       policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // the plan of record — C1
       policyBearBufferMonths: 12, policyCashReserveMonths: 0,

@@ -10,7 +10,7 @@
 import { useState, useEffect } from 'react';
 import { DraggableSheet } from '../ui/DraggableSheet';
 import { fmtUSD } from '../../utils/format';
-import type { MonthRollup } from './calendarModel';
+import { formatMoves, type MonthRollup } from './calendarModel';
 import styles from './ReviewSheet.module.css';
 
 export interface ConfirmExtras {
@@ -68,6 +68,8 @@ export function ReviewSheet({
 
   if (!open) return null;
 
+  const moves = formatMoves(rollup.moves);
+
   const dirty = touched;
 
   const buildExtras = (): ConfirmExtras => ({
@@ -96,12 +98,14 @@ export function ReviewSheet({
             <span className={styles.sumLabel}>BLOC paydown</span>
             <span className={styles.sumVal}>{fmtUSD(rollup.streams.paydown)}</span>
           </div>
-          <div className={styles.sumRow}>
-            <span className={styles.sumLabel}>Net collateral</span>
-            <span className={`${styles.sumVal} ${styles.sumValBtc}`}>
-              {rollup.netBtc >= 0 ? '+' : ''}₿{rollup.netBtc.toFixed(4)}
-            </span>
-          </div>
+          {/* 5c rider — was "Net collateral" (buys + Strike deposits − Strike withdrawals): a Strike → Coinbase move read as
+              coins leaving. The moves now show as moves, and only when there are any. */}
+          {moves && (
+            <div className={styles.sumRow}>
+              <span className={styles.sumLabel}>Moved</span>
+              <span className={`${styles.sumVal} ${styles.sumValBtc}`}>{moves}</span>
+            </div>
+          )}
           <div className={styles.entriesNote}>
             from {rollup.entryCount} day {rollup.entryCount === 1 ? 'entry' : 'entries'}
           </div>
