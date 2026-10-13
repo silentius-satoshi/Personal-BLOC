@@ -24,6 +24,16 @@ import { join } from 'node:path';
 const ALMANAC = join(process.cwd(), 'src/components/Almanac');
 const read = (file: string): string => readFileSync(join(ALMANAC, file), 'utf8');
 const SRC = read('DecisionFace.tsx');
+/** Run 2 — the plan of record's ONE builder: the face's two memo bodies and its engine constants moved here, shared with
+ *  THIS MONTH (invariant 2). The pins below read both files. */
+const RUN = read('planRun.ts');
+/** The body of `export function <name>(` up to the next top-level `}`. */
+function fnBody(src: string, name: string): string {
+  const at = src.indexOf(`export function ${name}(`);
+  if (at < 0) return '';
+  const end = src.indexOf('\n}\n', at);
+  return end < 0 ? '' : src.slice(at, end + 2);
+}
 
 /** The text of the first `useMemo(...)` whose declaration starts with `const <name> = useMemo(`, up to its deps. */
 function memoBody(src: string, name: string): string {
@@ -87,9 +97,11 @@ describe('⭐ the support policy — memoised, and its line never stressed', () 
   });
 
   it("⭐ the literal 'cycle' — no mode of its own — and the shared card is rendered", () => {
-    // Run B (B4): the literal lives in ENGINE_CONTEXT, which engineInputs spreads (and the seeding gate reads).
-    expect(SRC).toMatch(/const ENGINE_CONTEXT = \{\s*mode: 'cycle' as const,/);
-    expect(memoBody(SRC, 'engineInputs')).toMatch(/\.\.\.ENGINE_CONTEXT,/);
+    // Run B (B4) → Run 2: the literal lives in PLAN_ENGINE_CONTEXT (planRun.ts), which engineInputsOf spreads (and the
+    // seeding gate reads); the face's engineInputs memo is that builder's call.
+    expect(RUN).toMatch(/export const PLAN_ENGINE_CONTEXT = \{\s*mode: 'cycle' as const,/);
+    expect(fnBody(RUN, 'engineInputsOf')).toMatch(/\.\.\.PLAN_ENGINE_CONTEXT,/);
+    expect(memoBody(SRC, 'engineInputs')).toMatch(/useMemo\(\(\) => engineInputsOf\(\{/);
     expect(SRC).toMatch(/<SupportPolicyCard\b/);
   });
 });
@@ -103,7 +115,10 @@ describe('⭐ THE MOVE — the held anchor, today\'s support, one input object (
     expect(body).toMatch(/\bsupport: supportPath\[0\],/);
     expect(body).toMatch(/\bbroken: breakerSeed\?\.state\.broken \?\? false,/);
     expect(body).toMatch(/\binHold: hold\.inHold,/);
-    expect(body).toMatch(/\bcreditLine: runLine,/);
+    // Run 2 — the face hands the plan of record's builder its facts; the builder names the line `creditLine`.
+    expect(body).toMatch(/useMemo\(\(\): PlacementInput => placementInputOf\(\{/);
+    expect(body).toMatch(/\n\s*runLine,\n/);
+    expect(fnBody(RUN, 'placementInputOf')).toMatch(/\bcreditLine: f\.runLine,/);
     expect(SRC).toMatch(/const placement = useMemo\(\(\) => placementPlan\(placementInput\), \[placementInput\]\);/);
   });
 
@@ -134,26 +149,33 @@ describe('⭐ the run starts from THE MOVE only when it is made (D10, v1.6)', ()
   });
 
   it.each([
-    ['strikeCollateralBtc', 'strikeCollateralBtc', 's.strikeCollateralBtc'],
-    ['cbCollateralBtc', 'cbCollateralBtc', 's.cbCollateralBtc'],
-    ['openingColdBtc', 'coldBtc', 's.openingColdBtc'],
-  ])('⭐ %s — the move when seeded, the store\'s own balance otherwise', (field, opening, store) => {
-    const re = new RegExp(`\\b${field}: seedFromMove \\? placement\\.opening\\.${opening} : ${store.replace('.', '\\.')},`);
-    expect(body, `${field} in engineInputs`).toMatch(re);
+    ['strikeCollateralBtc', 'strikeCollateralBtc', 'strikeCollateralBtc', 's.strikeCollateralBtc'],
+    ['cbCollateralBtc', 'cbCollateralBtc', 'cbCollateralBtc', 's.cbCollateralBtc'],
+    ['openingColdBtc', 'coldBtc', 'coldBtc', 's.openingColdBtc'],
+  ])('⭐ %s — the move when seeded, the store\'s own balance otherwise', (field, opening, fact, store) => {
+    // Run 2 — the ternary lives in the plan of record's builder; the face hands it the store's balance as a fact.
+    const re = new RegExp(`\\b${field}: f\\.seedFromMove \\? f\\.placement\\.opening\\.${opening} : f\\.${fact},`);
+    expect(fnBody(RUN, 'engineInputsOf'), `${field} in engineInputsOf`).toMatch(re);
+    expect(body, `${fact} in the face's facts`).toMatch(new RegExp(`\\b${fact}: ${store.replace('.', '\\.')},`));
+    expect(body).toMatch(/\n\s*seedFromMove,\n\s*placement,\n/);
   });
 });
 
 describe('⭐ B4 (Run B) — ONE engine context: the seeding gate asks the run\'s own question', () => {
-  it('⭐ ENGINE_CONTEXT holds exactly the five; engineInputs spreads it and declares none of them; the gate reads it', () => {
-    expect(SRC).toMatch(new RegExp('const ENGINE_CONTEXT = \\{\\s*mode: \'cycle\' as const,\\s*cbLtvCapPct: CAP_PCT,'
-      + '\\s*strikeLtvCapPct: STRIKE_CAP_PCT,\\s*strikeMarginLtv: STRIKE_MARGIN_CALL_LTV,'
-      + '\\s*strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,\\s*\\} as const;'));
+  it('⭐ PLAN_ENGINE_CONTEXT holds exactly the five; engineInputsOf spreads it and declares none of them; the gate reads it', () => {
+    // Run 2 — moved from the face's module constant to the plan of record's builder (planRun.ts), shared with THIS MONTH.
+    expect(RUN).toMatch(new RegExp('export const PLAN_ENGINE_CONTEXT = \\{\\s*mode: \'cycle\' as const, cbLtvCapPct: PLAN_CB_LTV_CAP_PCT,'
+      + ' strikeLtvCapPct: PLAN_STRIKE_CAP_PCT,\\s*strikeMarginLtv: STRIKE_MARGIN_CALL_LTV, strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,'
+      + '\\s*\\} as const;'));
+    const builder = fnBody(RUN, 'engineInputsOf');
+    expect(builder, 'engineInputsOf').not.toBe('');
+    expect(builder).toMatch(/\.\.\.PLAN_ENGINE_CONTEXT,/);
+    expect(builder).not.toMatch(/\b(?:mode|cbLtvCapPct|strikeLtvCapPct|strikeMarginLtv|strikeMaxDrawLtv):/);
     const body = memoBody(SRC, 'engineInputs');
     expect(body, 'the engineInputs memo').not.toBe('');
-    expect(body).toMatch(/\.\.\.ENGINE_CONTEXT,/);
     expect(body).not.toMatch(/\b(?:mode|cbLtvCapPct|strikeLtvCapPct|strikeMarginLtv|strikeMaxDrawLtv):/);
     expect(SRC).toMatch(
-      /const seedFromMove = seedsFromMove\(placement\.seeded, \{ \.\.\.ENGINE_CONTEXT, supportPolicy, pricePath: paths\[0\], expenses: s\.expenses \}\);/,
+      /const seedFromMove = seedsFromMove\(placement\.seeded, \{ \.\.\.PLAN_ENGINE_CONTEXT, supportPolicy, pricePath: paths\[0\], expenses: s\.expenses \}\);/,
     );
   });
 });
@@ -162,11 +184,16 @@ describe('⭐ the policy\'s memory is rebuilt from prices and logged deposits (D
   const body = memoBody(SRC, 'engineInputs');
 
   it('⭐ the hold, the breaker seed and the hold months reach the engine', () => {
-    expect(SRC).toMatch(/const hold = useMemo\(\(\) => strikeHoldFrom\(s\.dayLog, todayISO\), \[s\.dayLog, todayISO\]\);/);
+    // Run 2 (D9): the hold through its one rule, from its one fact — the journal's, or a trusted viewer's copy.
+    expect(SRC).toMatch(/const hold = useMemo\(\(\) => strikeHoldAt\(s\.strikeDepositISO, todayISO\), \[s\.strikeDepositISO, todayISO\]\);/);
+    expect(SRC).toMatch(/strikeDepositISO: strikeDepositOf\(st\),/);
     expect(SRC).toMatch(/breakerFromHistory\(historical, startDate, DEFAULT_BREAKER_REARM_MONTHS \?\? null\)/);
     expect(SRC).toMatch(/holdMonthsFrom\(hold\.throughISO, startDate\)/);
     expect(body).toMatch(/\bopeningBreaker: breakerSeed\?\.state,/);
-    expect(body).toMatch(/\bopeningStrikeHoldMonths: holdMonths,/);
+    // Run 2 — the face hands the builder `holdMonths`; the builder names it for the engine.
+    expect(body).toMatch(/\n\s*holdMonths,\n/);
+    expect(fnBody(RUN, 'engineInputsOf')).toMatch(/\bopeningStrikeHoldMonths: f\.holdMonths,/);
+    expect(fnBody(RUN, 'engineInputsOf')).toMatch(/\bopeningBreaker: f\.openingBreaker,/);
   });
 
   it('⭐ ONE frozen today feeds the start date, the hold and the seed', () => {

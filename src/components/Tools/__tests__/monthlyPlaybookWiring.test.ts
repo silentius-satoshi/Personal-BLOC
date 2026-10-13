@@ -21,6 +21,7 @@ const SIMPLE = 'src/components/SimpleMode/SimpleModeView.tsx';
 const OUTLOOK = 'src/components/Advisor/OutlookProjection.tsx';
 const ADVISOR = 'src/components/Advisor/AdvisorMain.tsx';
 const DAILY = 'src/components/Daily/DailyModeView.tsx';
+const CARD = 'src/components/SimpleMode/PlanMonthCard.tsx';
 
 describe("the projection's Coinbase paydown — one label", () => {
   it('⭐ the label says the projection shifts debt', () => {
@@ -28,10 +29,18 @@ describe("the projection's Coinbase paydown — one label", () => {
     expect(IF_YOU_SHIFT_DEBT).toBe('if you shift debt');
   });
 
-  it('⭐ the four sites render the label and say neither bare wording — comments included', () => {
-    for (const f of [SIMPLE, OUTLOOK, ADVISOR, DAILY]) {
+  it('⭐ the two Advisor sites render the label and say neither bare wording — comments included', () => {
+    // Run 2 — THIS MONTH and Daily's card run the plan of record: the projection's paydown is not on them any more (the
+    // plan's own defense rows name their move), so the label lives where runAdvisor still renders — until Run 3.
+    for (const f of [OUTLOOK, ADVISOR]) {
       const src = read(f);
       expect(src, f).toContain('CB_PAYDOWN_LABEL');
+      expect(src, f).not.toMatch(/CB paydown/i);
+      expect(src, f).not.toMatch(/pay down CB/i);
+    }
+    for (const f of [SIMPLE, DAILY, CARD]) {
+      const src = read(f);
+      expect(src, f).not.toContain('CB_PAYDOWN_LABEL');
       expect(src, f).not.toMatch(/CB paydown/i);
       expect(src, f).not.toMatch(/pay down CB/i);
     }
@@ -41,15 +50,12 @@ describe("the projection's Coinbase paydown — one label", () => {
     const outlook = read('src/components/Advisor/OutlookProjection.tsx');
     expect(outlook).toMatch(/\{CB_PAYDOWN_LABEL\} —/);
     expect(outlook).toMatch(/between(?: |\{' '\}\s*)\{playbookDepthFor\(/);
-    for (const f of ['src/components/SimpleMode/SimpleModeView.tsx', 'src/components/Advisor/AdvisorMain.tsx']) {
-      expect(read(f), f).toMatch(/alert — \{CB_PAYDOWN_LABEL\}/);
-    }
-    expect(read('src/components/SimpleMode/SimpleModeView.tsx')).toMatch(/> \(\{IF_YOU_SHIFT_DEBT\}\)</);
+    expect(read(ADVISOR), ADVISOR).toMatch(/alert — \{CB_PAYDOWN_LABEL\}/);
   });
 });
 
 describe('SimpleModeView — the THIS MONTH crash line', () => {
-  it("⭐ builds through the console's builder, on the live figures, and Box 3 says when it includes the shift", () => {
+  it("⭐ builds through the console's builder, on the live figures, and the card says the console is the authority", () => {
     const src = read(SIMPLE);
     for (const call of ['playbookInputFromLive(', 'crashPlaybook(', 'monthPlaybookLine(', 'plBandsAt(']) {
       expect(src, call).toContain(call);
@@ -59,7 +65,12 @@ describe('SimpleModeView — the THIS MONTH crash line', () => {
     expect(src).toMatch(/strikeBalance: advisorActualBlocBalance\b/);
     expect(src).toMatch(/strikeCollateralBtc: currentBtcHeld\b/);
     expect(src).toMatch(/cbDebt: effectiveCbBalance\b/);
-    expect(src).toMatch(/AFTER THIS MONTH[\s\S]{0,240}IF_YOU_SHIFT_DEBT/);
+    // Run 2 (D13) — the line reaches the plan's card, whose status leads with the console and whose to-do rows are the
+    // monthly model's estimates (crashNote) — Box 3 and its "(if you shift debt)" retired with the boxes.
+    expect(src).toMatch(/crashLine=\{playbookLine\}/);
+    const card = read(CARD);
+    expect(card).toMatch(/\{PLAN_CRASH_TITLE\}/);
+    expect(card).toMatch(/\{crash && <p className=\{styles\.pmFoot\}>\{crashNote\(true\)\}<\/p>\}/);
     // The old paydown figure and its naive creditLine − drawn affordability are gone. A regex, not the names spelled
     // out, so the gate's repo-wide grep for the deleted names stays empty.
     expect(src).not.toMatch(/cbPaydown(?:ToTarget|Affordable)/);

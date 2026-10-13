@@ -64,7 +64,7 @@ export function supportPolicyFor(
 // (`nextRearmableBreakerState`), never a second copy of it.
 //
 // ⚠ This module does NOT import `Tools/crashPlaybookView` (R4). `holdMonthsFrom` takes the `throughISO` that
-// `strikeHoldFrom` already computed; the face calls that helper itself.
+// `strikeHoldAt` already computed — the face and `usePlanMonth` read it from `strikeDepositOf` (D9).
 
 /** The support line at each of `dates` — `plFloor`, the same belief `buildSupportPath` reads, so the chart's
  *  history half and the engine's forward path are one line. Bit-aligned with `buildSupportPath` by construction. */

@@ -9,17 +9,18 @@ import { runCyclingSim } from '../../simulation/cyclingSim';
 import { plBandsAt, plConvergencePath, addMonths, PL_BAND_LABEL, PL_ON_THE_LINE } from '../../simulation/powerLaw';
 import { cycleConvergencePath, upcomingCycleTurns, type PathKind } from '../../simulation/cyclePath';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
-import { STRIKE_MAX_DRAW_LTV, STRIKE_LINE_MIN_USD, STRIKE_LINE_MAX_USD } from '../../simulation/strikeCredit';
-import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
-import { deriveCbCollateral } from '../../simulation/logUtils';
+import { STRIKE_LINE_MIN_USD, STRIKE_LINE_MAX_USD } from '../../simulation/strikeCredit';
 import { placementPlan, suggestedLineUsd, type PlacementInput } from '../../simulation/placement';
+import {
+  PLAN_ENGINE_CONTEXT, placementInputOf, engineInputsOf, planCbCollateralOf, planCbLoanBalanceOf,
+} from './planRun';
 import { evaluatePaths, worstCasePath, sameSeries } from '../../simulation/planSearch';
 import { usePowerLawData } from '../../hooks/usePowerLawData';
-import { strikeHoldFrom } from '../Tools/crashPlaybookView';
+import { strikeHoldAt, strikeDepositOf } from '../Tools/crashPlaybookView';
 import {
   applyPathStress, clampMonth, verdictVsNeverDraw, verdictBasisClause, nextTurnsText, isBelowSupport, fmtTurnDate,
 } from './cyclingFaceView';
-import { PLAN_CB_LTV_CAP_PCT, PLAN_STRIKE_CAP_PCT, PLAN_STRIKE_CAP_EFF } from './planClamp';
+import { PLAN_CLAMP } from './planClamp';
 import {
   DEFAULT_SUPPORT_POLICY_SETTINGS, DEFAULT_BREAKER_REARM_MONTHS, effectivePolicySettings, policyCardState,
   shownBtc, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, type SupportPolicySettings,
@@ -79,18 +80,8 @@ import styles from './DecisionFace.module.css';
 // Face-local defaults mirror the Cycling face — the loop this face schedules. Only the Strike-cap defaults are
 // shared definitions. The Coinbase defense line, the Strike cap, the cold sweep and the cadence have no control
 // here: they are constants, so they sit outside every dependency list.
-const CAP_PCT = PLAN_CB_LTV_CAP_PCT;           // the plan of record's one clamp (planClamp.ts) — 70
-const STRIKE_CAP_PCT = PLAN_STRIKE_CAP_PCT;
-const STRIKE_CAP_EFF = PLAN_STRIKE_CAP_EFF;
-/** The five engine constants the run and its policy check share (Policy v2, Run B — B4): ONE object, spread by
- *  `engineInputs` and handed to `seedsFromMove`, so the seeding gate asks the run's own question with the run's own
- *  inputs. A module constant — outside every dependency list. */
-const ENGINE_CONTEXT = {
-  mode: 'cycle' as const, cbLtvCapPct: CAP_PCT, strikeLtvCapPct: STRIKE_CAP_PCT,
-  strikeMarginLtv: STRIKE_MARGIN_CALL_LTV, strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,
-} as const;
-const COLD_BUFFER_PCT = 30;   // used only if the owner turns the policy off
-const CYCLE_MONTHS = 1;
+// The engine's constants — the Coinbase defense line, the Strike cap, the cold sweep and the cadence — are the plan of
+// record's (`planRun.ts`: PLAN_ENGINE_CONTEXT and the two builders), shared with THIS MONTH (Run 2, invariant 2).
 const DEFAULT_CONVERGE_MONTHS = PL_ON_THE_LINE;
 const REVERT_PRESET_MONTHS = 48;   // what the chip restores — distinct from the default, or the toggle is a no-op
 const DEFAULT_HORIZON_MONTHS = 60;
@@ -320,13 +311,15 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     strikeLiquidationLtvPct: st.strikeLiquidationLtvPct,
     strikeCollateralBtc: st.getCurrentBtcHeld(),   // reading-anchored, Strike-only (v20)
     strikeBalance: st.advisorActualBlocBalance,
-    // Derived INSIDE the selector so the value stays a primitive (the parents' precedent).
-    cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    // Derived INSIDE the selector so the value stays a primitive (the parents' precedent). D-R2-4: the owner's only with
+    // the Coinbase loan switched on — never the seed's figures.
+    cbCollateralBtc: planCbCollateralOf(st),
     // The owner's REAL cold reserve (real-cold spec v1). A primitive.
     openingColdBtc: st.getCurrentColdBtc(),
-    cbLoanBalance: st.cbLoanBalance,
+    cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
-    dayLog: st.dayLog,   // Strike's 60-day hold, from logged deposits
+    strikeDepositISO: strikeDepositOf(st),   // Strike's 60-day hold's one fact — the journal's, or a viewer's copy (D9)
+    strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
     viewerMode: st.viewerMode,   // the dock's Line is locked for a viewer, as the card's SliderInput is (R1)
   })));
 
@@ -357,7 +350,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     [plan, overlay.supportPolicy],
   );
   const policySettings = useMemo(
-    () => effectivePolicySettings(policyRaw, { cbLtvCapPct: CAP_PCT, strikeCapEffPct: STRIKE_CAP_EFF }),
+    () => effectivePolicySettings(policyRaw, PLAN_CLAMP),
     [policyRaw],
   );
   // 🔴 Built ONLY through buildSupportPath and NEVER stressed or phase-shifted: the lens moves the price, not the line.
@@ -375,7 +368,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   const { lens, setLens, anchorPrice, priceHeld, livePrice, drift } = useStressLens(s.btcPrice, s.btcPriceMode);
 
   // ── The policy's memory (D14): Strike's hold from logged deposits, the breaker from month-end prices.
-  const hold = useMemo(() => strikeHoldFrom(s.dayLog, todayISO), [s.dayLog, todayISO]);
+  const hold = useMemo(() => strikeHoldAt(s.strikeDepositISO, todayISO), [s.strikeDepositISO, todayISO]);
   const { historical, loading: historyLoading } = usePowerLawData();
   const breakerSeed = useMemo(
     () => breakerFromHistory(historical, startDate, DEFAULT_BREAKER_REARM_MONTHS ?? null),
@@ -392,8 +385,8 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
 
   // ── THE MOVE (B1): ONE input object feeds both the plan and the card, so the card can never price its cliff
   // against a different number than the move it shows.
-  const placementInput = useMemo((): PlacementInput => ({
-    creditLine: runLine,
+  const placementInput = useMemo((): PlacementInput => placementInputOf({
+    runLine,
     strikeBalance: s.strikeBalance,
     strikeCollateralBtc: s.strikeCollateralBtc,
     cbDebt,
@@ -401,12 +394,8 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     coldBtc: s.openingColdBtc,
     price: anchorPrice,
     support: supportPath[0],
-    skStop: policySettings.skStopEffPct / 100,
-    cbStop: policySettings.cbStopEffPct / 100,
-    cbDefenseLtv: CAP_PCT / 100,
-    bufferUsd: policySettings.bearBufferMonths * s.expenses,
-    accumulateBelow: policySettings.accumulateBelow,
-    payDownAbove: policySettings.payDownAbove,
+    policySettings,
+    expenses: s.expenses,
     inHold: hold.inHold,
     broken: breakerSeed?.state.broken ?? false,
   }), [
@@ -425,7 +414,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   // D10 / v1.6, B4 — the run starts from the move only when it is MADE, and only when the engine will APPLY the policy
   // (its own answer, asked with its own inputs): off or ignored, the card names no move. Every path is months + 1 long
   // — the support path's length — so paths[0] stands for any of them.
-  const seedFromMove = seedsFromMove(placement.seeded, { ...ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses: s.expenses });
+  const seedFromMove = seedsFromMove(placement.seeded, { ...PLAN_ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses: s.expenses });
   const stitched = useMemo(() => worstCasePath(paths), [paths]);
   // D3 / D4 — bit for bit, or it is a second future worth offering.
   const stitchedIsSupport = useMemo(() => sameSeries(stitched, paths[0]), [stitched, paths]);
@@ -437,28 +426,28 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   }, [overlay.path, stitchedIsSupport]);
 
   // ONE engine-inputs memo for the base run, the stress run and the crown. `defendCbLtv` is automatic.
-  const engineInputs = useMemo(() => ({
-    ...ENGINE_CONTEXT,
-    startYear: startDate.getUTCFullYear(),
-    strikeCollateralBtc: seedFromMove ? placement.opening.strikeCollateralBtc : s.strikeCollateralBtc,
+  const engineInputs = useMemo(() => engineInputsOf({
+    startDate,
+    seedFromMove,
+    placement,
+    strikeCollateralBtc: s.strikeCollateralBtc,
     strikeBalance: s.strikeBalance,
-    strikeCreditLine: runLine,
-    cbCollateralBtc: seedFromMove ? placement.opening.cbCollateralBtc : s.cbCollateralBtc,
+    runLine,
+    cbCollateralBtc: s.cbCollateralBtc,
     cbDebt,
-    openingColdBtc: seedFromMove ? placement.opening.coldBtc : s.openingColdBtc,
+    coldBtc: s.openingColdBtc,
     income: s.income,
     expenses: s.expenses,
-    strikeAprPct: s.blocApr,
+    blocApr: s.blocApr,
     cbAprPct: s.cbAprPct,
-    cycleMonths: CYCLE_MONTHS,
-    coldStoreBufferPct: COLD_BUFFER_PCT,
-    defendCbLtv: true,
     supportPolicy,
     openingBreaker: breakerSeed?.state,
-    openingStrikeHoldMonths: holdMonths,
+    holdMonths,
+    strikeMinFromIncome: s.strikeMinFromIncome,
   }), [
     startDate, seedFromMove, placement, s.strikeCollateralBtc, s.strikeBalance, runLine, s.cbCollateralBtc, cbDebt,
     s.openingColdBtc, s.income, s.expenses, s.blocApr, s.cbAprPct, supportPolicy, breakerSeed, holdMonths,
+    s.strikeMinFromIncome,
   ]);
 
   // The crown reads the SAME inputs as the displayed run (D8). No cycle: `engineInputs` never reads the path.
@@ -502,7 +491,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   useEffect(() => { setLens(1); }, [
     monthIdx, pricePath, cbDebt, seedFromMove, placement, s.strikeCollateralBtc, s.strikeBalance, runLine,
     s.cbCollateralBtc, s.openingColdBtc, s.income, s.expenses, s.blocApr, s.cbAprPct, supportPolicy, breakerSeed,
-    holdMonths,
+    holdMonths, s.strikeMinFromIncome,
   ]);
 
   const selRow = sim.rows[monthIdx] ?? sim.last;
@@ -514,7 +503,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
 
   // ── THE MOVE's copy — every line from moveCard (I31). Price, support, debt and stop come from placementInput (B1).
   const breakerRead = useMemo(() => breakerReading(breakerSeed, historyLoading), [breakerSeed, historyLoading]);
+  // §4.7 — a what-if that changes THE MOVE (the policy's settings or the line) flips the card's first line.
+  const moveWhatIf = overlay.supportPolicy !== undefined || overlay.creditLine !== undefined;
   const move = useMemo(() => moveCard({
+    whatIf: moveWhatIf,
     policyApplied: sim.policyApplied,
     policyEnabled: policySettings.enabled,
     policyIgnoredReason: sim.policyIgnoredReason,
@@ -539,6 +531,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   }), [
     sim.policyApplied, policySettings, sim.policyIgnoredReason, placement, hold, breakerRead, runLine, s.creditLine,
     suggested, s.expenses, placementInput, s.cbLtvTriggerPct, s.cbLtvTargetPct, s.hasCbLoan, s.cbPaymentStrategy,
+    moveWhatIf,
   ]);
   const onLineAction = (a: LineAction) => {
     if (a.kind === 'tryLine') set('creditLine', a.lineUsd);

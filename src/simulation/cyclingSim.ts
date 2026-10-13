@@ -192,6 +192,14 @@ export interface CyclingInputs {
    * Strike moves create. ⚠ Not test-only, same as `openingBreaker`. Absent or junk ⇒ 0.
    */
   openingStrikeHoldMonths?: number;
+  /**
+   * How Strike's monthly minimum (the month's interest) is paid — the owner's `blocMinPaymentSource`. Absent or false
+   * (Strike's default, "roll"): the interest capitalises onto the balance. TRUE ("pay from income"): income pays it —
+   * after the bills, before anything buys or repays — and only an unpaid remainder capitalises (the Advisor's rule).
+   * The never-draw baseline pays its own Strike interest by the same rule, so the verdict compares like with like.
+   * ⚠ Not test-only: the main screens and every face pass the owner's setting. Absent ⇒ byte-identical to before.
+   */
+  strikeMinFromIncome?: boolean;
 
   /** price[m] for m = 0..N. The view builds it (plConvergencePath); the engine never derives a price. */
   pricePath: number[];
@@ -351,6 +359,12 @@ export interface CyclingRow {
   debt: number;                  // cbDebt + strikeBalance
 
   strikeDrawn: number;           // actually drawn this month (credit-line constrained)
+  /** Strike interest charged this month (Strike's minimum). Rolled in, it all capitalises onto `strikeBalance`; paid
+   *  from income, only `strikeInterestUsd − strikeMinPaidUsd` does. Σ over the run equals `totalStrikeInterest`. */
+  strikeInterestUsd: number;
+  /** The part of `strikeInterestUsd` income paid this month (`strikeMinFromIncome`); the rest capitalised. 0 when the
+   *  minimum rolls in. */
+  strikeMinPaidUsd: number;
   strikeShortfall: number;       // the part of `expenses` income had to cover instead
   /**
    * DOLLARS that bought bitcoin this month. ⚠ The view CANNOT derive this from a cbColl delta any more —
@@ -754,8 +768,10 @@ export function supportPolicyResolution(i: PolicyRunContext): Pick<CyclingResult
 
 
 /** A seeded opening breaker, or null when absent/JUNK — junk reads as absent, so a malformed seed can never change
- *  a run. Valid: finite integer counts ≥ 0, a boolean `broken`, and `brokenMonth` null or a finite integer. */
-function validOpeningBreaker(b: RearmableBreakerState | undefined): RearmableBreakerState | null {
+ *  a run. Valid: finite integer counts ≥ 0, a boolean `broken`, and `brokenMonth` null or a finite integer.
+ *  EXPORTED (Run 2): the main screens' device-local breaker cache is read through this same rule (planRun's
+ *  `planBreakerCacheOf`), so a cache the run would discard can never steer THE MOVE either. */
+export function validOpeningBreaker(b: RearmableBreakerState | undefined): RearmableBreakerState | null {
   if (b === null || typeof b !== 'object') return null;
   const okCount = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 0;
   if (!okCount(b.monthsBelow) || !okCount(b.monthsAtOrAbove) || typeof b.broken !== 'boolean') return null;
@@ -876,6 +892,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   const topUpFirst = policy !== null && inputs.topUpBeforeShift !== false;
   const anyDepth = policy !== null && inputs.topUpFirstAnyDepth === true;
   const strikeFirstAfterLiq = policy !== null && inputs.strikeFirstAfterLiquidation !== false;
+  // Strike's minimum: rolled into the line (absent / false) or paid from income (the owner's setting) — every mode.
+  const minFromIncome = inputs.strikeMinFromIncome === true;
   // Policy v2 — Morpho seizes on the way down: ADOPTED, default ON under the policy (`false` = the month-end reading,
   // TEST-ONLY). Policy-only like the rest, so the policy-off engine never reaches it.
   const seizeOnWay = policy !== null && inputs.seizeOnTheWayDown !== false;
@@ -960,6 +978,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
     let sweptToColdBtc = 0;
     let refinancedUsd = 0;
     let refinancedFeeUsd = 0;
+    let strikeInterestUsd = 0;
+    let strikeMinPaidUsd = 0;
     let strikeKeepBtc: number | null = null;
 
     // ── POLICY STATE (step 2) ── month 0 is the opening: its zone is reported, no action is taken, and it never
@@ -1067,12 +1087,18 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
 
           strikeBal += strikeDrawn;
           const si = strikeBal * smr;
-          strikeBal += si;
           totalStrikeInterest += si;
+          strikeInterestUsd += si;
+          // Strike's minimum: income pays it AFTER the bill's unfunded part and BEFORE the buy when the owner pays it
+          // from income; otherwise it all capitalises (minPaid 0 ⇒ byte-identical).
+          const afterBills = Math.max(0, inc - strikeShortfall);
+          const minPaid = minFromIncome ? Math.min(si, afterBills) : 0;
+          strikeBal += si - minPaid;
+          strikeMinPaidUsd += minPaid;
 
           // ⭐ THE FLYWHEEL: the line paid the bill, so ALL of income buys bitcoin — less only the part
-          // of the bill the line could not fund. Not the surplus.
-          btcBoughtUsd = Math.max(0, inc - strikeShortfall);
+          // of the bill the line could not fund (and the minimum, when income pays it). Not the surplus.
+          btcBoughtUsd = afterBills - minPaid;
           // The line ran dry AND income can't meet the rest of the bill: nothing pays the difference.
           unfundedUsd = Math.max(0, strikeShortfall - inc);
           // Policy: the cash reserve pays what income and the line could not (it is never refilled).
@@ -1086,8 +1112,8 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
           // ── NOT DRAWING, under the policy (step 4) ──
           if (stopMonth === null && liqMonth === null) stopMonth = m;
           const si = strikeBal * smr;
-          strikeBal += si;
           totalStrikeInterest += si;
+          strikeInterestUsd += si;
           // Bills: income → cash → unfunded.
           unfundedUsd = Math.max(0, expenses - inc);
           if (unfundedUsd > 0) {
@@ -1096,6 +1122,11 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
             unfundedUsd -= cashToBillsUsd;
           }
           let surplus = Math.max(0, inc - expenses);
+          // Strike's minimum, from what the bills left (paid from income) — before the restore, the pay-down or a buy.
+          const minPaid = minFromIncome ? Math.min(si, surplus) : 0;
+          strikeBal += si - minPaid;
+          strikeMinPaidUsd += minPaid;
+          surplus -= minPaid;
           // a) RESTORE (any zone): a leg over its ceiling AT SUPPORT is repaid first, by exactly its excess —
           //    Coinbase before Strike, because Coinbase liquidates instantly and Strike has a cure window.
           //    ⚠ EXCEPT after a Coinbase liquidation, in EVERY zone (`strikeFirstAfterLiquidation`, default on): that
@@ -1152,10 +1183,15 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         } else {
           if (stopMonth === null && liqMonth === null) stopMonth = m;
           const si = strikeBal * smr;
-          strikeBal += si;
           totalStrikeInterest += si;
-          // Not drawing: income pays the bill itself, so only the surplus is left to buy.
-          btcBoughtUsd = Math.max(0, inc - expenses);
+          strikeInterestUsd += si;
+          // Not drawing: income pays the bill itself, so only the surplus is left to buy (less the minimum, when
+          // income pays it).
+          const afterBills = Math.max(0, inc - expenses);
+          const minPaid = minFromIncome ? Math.min(si, afterBills) : 0;
+          strikeBal += si - minPaid;
+          strikeMinPaidUsd += minPaid;
+          btcBoughtUsd = afterBills - minPaid;
           // Bills above income with the draw halted: nothing pays the difference.
           unfundedUsd = Math.max(0, expenses - inc);
           if (price > 0) cbColl += btcBoughtUsd / price;
@@ -1482,10 +1518,14 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
         // Non-cycle modes: no draw, no refinance. Both legs accrue at their own rates; the surplus
         // (never the deficit — see C1) retires the named leg(s) first, then buys into the Coinbase pool.
         const si = strikeBal * smr;
-        strikeBal += si;
         totalStrikeInterest += si;
+        strikeInterestUsd += si;
 
         let cash = Math.max(0, inc - expenses);
+        const minPaid = minFromIncome ? Math.min(si, cash) : 0;
+        strikeBal += si - minPaid;
+        strikeMinPaidUsd += minPaid;
+        cash -= minPaid;
         // Only the surplus is ever funded here too, so a deficit goes unpaid (C1's deficitMode notice).
         unfundedUsd = Math.max(0, expenses - inc);
         if (mode === 'clearStrike' || mode === 'clearBoth') {
@@ -1567,7 +1607,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
       yearLabel: (startYear + m / 12).toFixed(1),
       price,
       cbDebt, strikeBalance: strikeBal, debt: cbDebt + strikeBal,
-      strikeDrawn, strikeShortfall, btcBoughtUsd, unfundedUsd,
+      strikeDrawn, strikeShortfall, btcBoughtUsd, unfundedUsd, strikeInterestUsd, strikeMinPaidUsd,
       defenseDrawnUsd, cbLtvPreDefense, defenseShortfallUsd, defended: defenseDrawnUsd > 0,
       strikeToCbBtc, sweptToColdBtc, refinancedUsd, refinancedFeeUsd, strikeKeepBtc,
       topUpBtc, topUpFromColdBtc, topUpFromStrikeBtc, coldRetrievedBtc,
@@ -1609,7 +1649,7 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   }
 
   // ── "Never draw" baseline, on the SAME price path (or the verdict compares two different worlds) ──
-  // Each leg accrues at its OWN rate; only the surplus buys BTC.
+  // Each leg accrues at its OWN rate; only the surplus buys BTC (less Strike's minimum when income pays it).
   let baseCbDebt = inputs.cbDebt;
   let baseStrikeBal = inputs.strikeBalance;
   // Compare against the untouched opening position. `strikeColl` may have been reduced by the optional
@@ -1622,10 +1662,22 @@ export function runCyclingSim(inputs: CyclingInputs): CyclingResult {
   let baselineUnfundedUsd = 0;
   for (let m = 1; m <= months; m++) {
     baseCbDebt *= 1 + cmr;
-    baseStrikeBal *= 1 + smr;
     // The same income path as the strategy (absent ⇒ the constant surplus, byte-identical).
     const monthSurplus = incomePath === undefined ? surplus : Math.max(0, incomeAt(m) - expenses);
-    if (pricePath[m] > 0) baseBtc += monthSurplus / pricePath[m];
+    // Strike's minimum under the SAME rule as the run (`strikeMinFromIncome`): the never-draw world still owes Strike
+    // its interest. Paid from income, it comes out of the surplus first and only an unpaid part capitalises; rolled in
+    // (absent ⇒ byte-identical), it all capitalises and the whole surplus buys. Otherwise the verdict compares two
+    // financing rules: an income-mode run that never acts would differ from the never-draw world it IS.
+    let baseBuyUsd = monthSurplus;
+    if (minFromIncome) {
+      const si = baseStrikeBal * smr;
+      const paid = Math.min(si, monthSurplus);
+      baseStrikeBal += si - paid;
+      baseBuyUsd -= paid;
+    } else {
+      baseStrikeBal *= 1 + smr;
+    }
+    if (pricePath[m] > 0) baseBtc += baseBuyUsd / pricePath[m];
     // The baseline's own gap: the part of the bill its income can't cover, with nothing else to pay it.
     baselineUnfundedUsd += Math.max(0, expenses - incomeAt(m));
   }

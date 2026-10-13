@@ -34,7 +34,7 @@ export type ActionKind =
   | 'draw' | 'buy' | 'refinance' | 'strikeToCoinbase' | 'strikeToCold' | 'coinbaseToCold'
   | 'coldToCoinbase' | 'strikeReleaseToCoinbase' | 'debtShift' | 'defenseShort'
   | 'coldToStrike' | 'cashCure' | 'coldCure' | 'strikeSale'
-  | 'cashToBills' | 'repayStrike' | 'repayCoinbase' | 'unpaid' | 'liquidation';
+  | 'cashToBills' | 'payMinimum' | 'repayStrike' | 'repayCoinbase' | 'unpaid' | 'liquidation';
 
 export interface Action { kind: ActionKind; usd: number | null; btc: number | null; text: string }
 
@@ -77,6 +77,10 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   },
   { kind: 'unpaid', field: 'unfundedUsd', unit: 'usd', text: (r) => `${fmtUSD(r.unfundedUsd)} of bills go unpaid.` },
   {
+    kind: 'payMinimum', field: 'strikeMinPaidUsd', unit: 'usd',
+    text: (r) => `Pay Strike's minimum, ${fmtUSD(r.strikeMinPaidUsd)}, from income.`,
+  },
+  {
     kind: 'repayStrike', field: 'strikeRepaidUsd', unit: 'usd',
     text: (r) => `Repay ${fmtUSD(r.strikeRepaidUsd)} of Strike from spare income.`,
   },
@@ -86,8 +90,11 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   },
   {
     kind: 'buy', field: 'btcBoughtUsd', unit: 'usd',
-    text: (r) => `Buy ${fmtUSD(r.btcBoughtUsd)} of bitcoin (≈ ${fmtBtc3(r.price > 0 ? r.btcBoughtUsd / r.price : 0)} ₿) `
-      + 'and pledge it to Coinbase.',
+    // fmtBtc3 is never called below the dust floor: a buy under it has no "≈ 0.000 ₿" (Run 2 — THIS MONTH prints this).
+    text: (r) => {
+      const btc = r.price > 0 ? r.btcBoughtUsd / r.price : 0;
+      return `Buy ${fmtUSD(r.btcBoughtUsd)} of bitcoin${shownBtc(btc) ? ` (≈ ${fmtBtc3(btc)} ₿)` : ''} and pledge it to Coinbase.`;
+    },
   },
   {
     kind: 'strikeToCoinbase', field: 'strikeToCbBtc', unit: 'btc',
@@ -96,8 +103,9 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   },
   {
     kind: 'refinance', field: 'refinancedUsd', unit: 'usd',
-    text: (r) => `Move ${fmtUSD(r.refinancedUsd)} of Strike debt to Coinbase `
-      + `(Coinbase's fee: ${fmtUSD(r.refinancedFeeUsd)}).`,
+    // A fee under the dust floor is not named — the schedule never prints "$0" (Run 2 — THIS MONTH prints this).
+    text: (r) => `Move ${fmtUSD(r.refinancedUsd)} of Strike debt to Coinbase`
+      + `${shownUsd(r.refinancedFeeUsd) ? ` (Coinbase's fee: ${fmtUSD(r.refinancedFeeUsd)})` : ''}.`,
   },
   {
     kind: 'coldToCoinbase', field: 'topUpFromColdBtc', unit: 'btc',
@@ -327,9 +335,11 @@ export const PATH_INVARIANT_LINE =
 export const BREAKER_LOADING_LINE =
   "Loading price history — until it arrives, this run assumes the model isn't treated as broken.";
 
-export const PLAN_OF_RECORD_LINE =
-  'Your Monthly Playbook is your plan of record — it runs your Coinbase strategy. This card shows what the support '
-  + 'policy would do this month.';
+/** §4.7 (Run 2) — the card IS the plan of record's move: THIS MONTH and Daily show the same one. */
+export const PLAN_OF_RECORD_LINE = "This is your plan of record's move this month — the support policy, with your settings.";
+/** §4.7 — with a what-if on the move (the policy's settings or the line), the card shows the what-if's move instead. */
+export const PLAN_WHAT_IF_LINE = 'A what-if — your plan is unchanged.';
+export const planOfRecordLine = (whatIf: boolean): string => (whatIf ? PLAN_WHAT_IF_LINE : PLAN_OF_RECORD_LINE);
 
 /** What the breaker fold found — `null` when the price history did not load. */
 export interface BreakerReading {
@@ -343,11 +353,14 @@ export interface BreakerReading {
 }
 
 export interface MoveCardContext {
+  /** §4.7 — a what-if engaged on the move (the policy's settings or the line): the first line says so. */
+  whatIf: boolean;
   policyApplied: boolean;
   policyEnabled: boolean;
   policyIgnoredReason: PolicyIgnoredReason | null;
   plan: PlacementPlan;
-  /** Strike's 60-day hold, from the owner's LOGGED deposits (the face calls `strikeHoldFrom`). */
+  /** Strike's 60-day hold: the face reads `strikeDepositOf` → `strikeHoldAt` (the owner's LOGGED deposits, or a
+   *  trusted viewer's snapshot date). */
   holdThroughISO: string | null;
   holdDepositISO: string | null;
   /** `'loading'` while the history fetch is in flight; `null` once it settled with nothing usable. */
@@ -379,7 +392,7 @@ const line = (key: string, tone: MoveTone, text: string): MoveLine => ({ key, to
  * nothing. A line only appears when it is TRUE of its inputs, and no figure under its dust floor is ever named.
  */
 export function moveCard(ctx: MoveCardContext): MoveCardCopy {
-  const lines: MoveLine[] = [line('planOfRecord', 'plain', PLAN_OF_RECORD_LINE)];
+  const lines: MoveLine[] = [line('planOfRecord', 'plain', planOfRecordLine(ctx.whatIf))];
   const { plan } = ctx;
 
   if (!ctx.policyApplied) {

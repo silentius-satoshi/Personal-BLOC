@@ -102,11 +102,6 @@
   gap: 14px;
 }
 
-.cardTier1 { border-color: rgba(232,90,79,0.4); }
-.cardTier2 { border-color: rgba(232,131,106,0.4); }
-.cardTier3 { border-color: rgba(232,168,74,0.3); }
-.cardTier4 { border-color: var(--border); }
-
 .cardDone {
   align-items: center;
   text-align: center;
@@ -1129,3 +1124,60 @@
   background: rgba(232,168,74,0.10);
   border: 1px solid rgba(232,168,74,0.35);
 }
+
+/* The plan of record (Run 2) — the one-time note */
+.planNote {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid var(--line);
+  background: transparent;
+  border-radius: 12px;
+  padding: 9px 12px;
+}
+.planNoteText { flex: 1; font-size: 11.5px; line-height: 1.5; color: var(--text-muted); }
+.planNoteClose { background: none; border: none; color: var(--text-muted, var(--text-secondary)); font-size: 14px; cursor: pointer; padding: 0 2px; }
+
+/* ── The plan of record's month (Run 2): status · to do · after. One column, rows, no boxes
+   inside the card; colour only means status (green within, amber over, red crash); the coral accent marks today. ── */
+.pm { margin-top: 16px; }
+.pmStatus { border-left: 2px solid var(--line); padding: 1px 0 1px 12px; }
+.pmStatus_good  { border-left-color: var(--green); }
+.pmStatus_warn  { border-left-color: var(--amber); }
+.pmStatus_bad   { border-left-color: var(--red); }
+.pmStatusTitle { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.45; color: var(--text-primary); }
+.pmStatus_good .pmStatusTitle { color: var(--green); }
+.pmStatus_warn .pmStatusTitle { color: var(--amber); }
+.pmStatus_bad  .pmStatusTitle { color: var(--red); }
+.pmStatusBody { margin: 4px 0 0; font-size: 12px; line-height: 1.55; color: var(--text-secondary); }
+.pmFix { margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--text-secondary); }
+.pmFix > summary, .pmWhy > summary { cursor: pointer; list-style: none; color: var(--text-muted); font-size: 11.5px; width: fit-content; }
+.pmFix > summary::-webkit-details-marker, .pmWhy > summary::-webkit-details-marker { display: none; }
+.pmFix > summary::after, .pmWhy > summary::after { content: ' ›'; }
+.pmFix[open] > summary::after, .pmWhy[open] > summary::after { content: ' ‹'; }
+.pmFix > summary:focus-visible, .pmWhy > summary:focus-visible { outline: 1px solid var(--border-focus); outline-offset: 3px; border-radius: 3px; }
+.pmFix > p { margin: 6px 0 0; }
+.pmHead { margin: 20px 0 4px; font-size: 11.5px; color: var(--text-muted); }
+.pmList { list-style: none; margin: 0; padding: 0; }
+.pmRow { display: grid; grid-template-columns: 8px 1fr auto; align-items: center; column-gap: 11px; padding: 7px 0; }
+.pmDot { width: 8px; height: 8px; border-radius: 50%; border: 1px solid transparent; box-sizing: border-box; }
+.pmLabel { font-size: 13px; line-height: 1.4; color: var(--text-primary); }
+.pmNote { margin-left: 8px; font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+.pmAmt { font-size: 13px; color: var(--text-primary); text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pmMuted .pmLabel, .pmMuted .pmAmt { color: var(--text-muted); }
+.pmFoot { margin: 6px 0 0 18px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+.pmAfter { margin: 0; }
+.pmAfterRow { display: grid; grid-template-columns: 96px 1fr; column-gap: 10px; padding: 6px 0; font-size: 12.5px; line-height: 1.4; }
+.pmAfterRow > dt { color: var(--text-muted); }
+.pmAfterRow > dd { margin: 0; color: var(--text-primary); font-variant-numeric: tabular-nums; }
+.pmMeter { margin: 2px 0 6px 106px; }
+.pmMeterTrack { position: relative; height: 4px; border-radius: 2px; background: var(--surface-3); }
+.pmMeterFill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 2px; }
+.pmMeterTick { position: absolute; top: -3px; width: 1px; height: 10px; background: var(--text-secondary); }
+.pmMeterTickSeize { background: var(--red); }
+.pmMeterLabels { position: relative; height: 14px; margin-top: 5px; font-size: 10px; color: var(--text-muted); }
+.pmMeterLabels > span { position: absolute; top: 0; transform: translateX(-50%); white-space: nowrap; }
+.pmMeterLabels > .pmMeterLabelEnd { left: auto; right: 0; transform: none; }
+.pmWhy { margin-top: 14px; font-size: 11.5px; color: var(--text-muted); }
+.pmWhy > p { margin: 8px 0 0; line-height: 1.55; }
+.signoffSub { display: block; margin-top: 4px; font-size: 11px; font-weight: 400; color: var(--text-muted); }

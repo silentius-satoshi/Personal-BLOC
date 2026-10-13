@@ -335,7 +335,10 @@ describe('only OutlookProjection may hand runAdvisor a pricePath', () => {
     const callers = tsxFiles(dir).filter((f) => /\brunAdvisor\(/.test(readFileSync(f, 'utf8')));
     // The Almanac faces name a local `pricePath` for cyclingSim — that is not runAdvisor, so filter to callers.
     const offenders = callers.filter((f) => !f.endsWith('OutlookProjection.tsx') && /\bpricePath\b/.test(readFileSync(f, 'utf8')));
-    expect(callers.length).toBeGreaterThanOrEqual(4);
+    // Run 2 (the plan of record): Daily's plan card and THIS MONTH run the plan; Simple Mode keeps runAdvisor only for
+    // the log overlay's planned rows. Run 3 retires the Advisor tab's, the overlay's and the Outlook's.
+    expect(callers.map((f) => f.split(/[\\/]/).pop()).sort())
+      .toEqual(['AdvisorMain.tsx', 'OutlookProjection.tsx', 'SimpleModeView.tsx']);
     expect(offenders).toEqual([]);
     expect(readFileSync(join(dir, 'Advisor', 'OutlookProjection.tsx'), 'utf8')).toMatch(/pricePath: cyclePricePath/);
   });

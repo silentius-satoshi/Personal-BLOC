@@ -126,12 +126,13 @@ describe('viewer snapshot builders', () => {
     useStore.setState({ keyProvenance: null } as never);
   });
 
-  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4) + coldStorageBtc', () => {
+  it('C-trusted has the Option-B shape: version/mode/asOf + settings + records + strike + cbCollateralBtc (P3) + strikeCollateralBtc (C-P4) + coldStorageBtc + strikeLastDepositISO (Run 2)', () => {
     const snap = buildViewerSnapshotPayload(useStore.getState(), 'trusted');
     // coldStorageBtc is a conscious EXPOSE — the pre-derived LIVE cold total (anchor + journal). The viewer's dayLog
     // is [], so without it a viewer-side derive returns the bare anchor. Same pattern as strikeCollateralBtc (C-P4).
     expect(Object.keys(snap).sort()).toEqual(
-      ['asOf', 'cbCollateralBtc', 'coldStorageBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc'],
+      ['asOf', 'cbCollateralBtc', 'coldStorageBtc', 'privacyMode', 'records', 'settings', 'snapshotVersion', 'strike', 'strikeCollateralBtc',
+        'strikeLastDepositISO'],   // Run 2 (D9) — the latest logged Strike deposit date: the viewer reads the 60-day hold from it
     );
     expect(snap.records).toHaveProperty('entries');
     expect(snap.records).toHaveProperty('deletions');

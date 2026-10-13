@@ -312,6 +312,19 @@ src/
                                 # (restore + pay-down per leg); result firstUnheldMonth (the playbook ran and CB
                                 # still ended over its line). ⚠ It runs the SAME sequence as crashPlaybook() inline
                                 # (it adds the Strike cap's reserve and guard) — a parity test pins the two
+                                # PLAN OF RECORD (Run 2): `strikeMinFromIncome?: boolean` — Strike's minimum as the
+                                # owner pays it (`blocMinPaymentSource === 'income'`). Absent/false ("roll") ⇒ the
+                                # interest capitalises, byte-identical; TRUE ⇒ income pays it after the bills and
+                                # before any buy or repay, and only an unpaid part capitalises (the Advisor's rule),
+                                # in every mode. ⚠ A REAL input, never test-only: the main screens and every face
+                                # pass the owner's setting. The never-draw baseline pays its own Strike interest by
+                                # the SAME rule (Δ11 — from the surplus first), so the verdict compares like with like
+                                # and a "hold" run equals never-draw in both modes. Row `strikeInterestUsd` = the
+                                # month's Strike interest (Strike's minimum; Σ = totalStrikeInterest — rolled in, all
+                                # of it capitalises; paid from income, only strikeInterestUsd − strikeMinPaidUsd does)
+                                # and `strikeMinPaidUsd` (the part income paid; 0 when it rolls). `validOpeningBreaker`
+                                # is EXPORTED: the main screens' breaker cache is read through it (planRun's
+                                # planBreakerCacheOf), so a cache the run would discard never steers THE MOVE
     supportPolicy.ts            # SUPPORT-ANCHORED POLICY leaf — imports only the zero-import ./ltv (support
                                 # arrives as a plain number; the §2 wall holds). policyZone (k = price ÷ support →
                                 # paused/accumulate/hold/payDown, junk → 'paused'), ceilingHeadroomUsd (room at
@@ -421,7 +434,7 @@ src/
     strikeCredit.ts             # + STRIKE_CURE_LTV (0.65 — a call must be cured back to it) and STRIKE_RETRIEVE_MAX_LTV
                                 # (0.40 — collateral leaves Strike only at or below it); the support policy's
                                 # inputs, passed in by the view — the engine imports neither.
-                                # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by SimpleModeView headline + SafetyDashboard Strike bar). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 4 runAdvisor call sites (AdvisorMain/OutlookProjection/DailyModeView/SimpleModeView) pass it instead of a bare 0.15
+                                # STRIKE_MAX_DRAW_LTV (0.50), strikeAvailableCredit = min(line, collateral×50%) − drawn, computeStrikeLtv(bloc, btcHeld, price) (shared by the SafetyDashboard Strike bar via safetyView, LiqSimulator and emitBalanceReading — SimpleModeView no longer reads it since the plan of record's Run 2). ALSO the SINGLE definition of BLOC_OPERATING_CEILING (0.15) — the advisor's steady-state Strike ceiling; the 3 runAdvisor call sites (AdvisorMain/OutlookProjection/SimpleModeView's log overlay — Daily's went with Run 2) pass it instead of a bare 0.15
     emergencyModel.ts           # The Emergency Console's retained pure model (crash playbook Run 2) — clock-free, plain numbers (the VIEW pre-accrues cbDebt via accruedCbBalance). Holds ONLY the stage ladder (CB_LADDER 69/72/75/81, liq = CB_LLTV 0.86; classifyStage → stage / cbLtv / liqPrice / distancePct / bandPrices), STRIKE_MARGIN_CALL_LTV 0.70 (the engine's inputs, the faces and the crash playbook import it from here) and the two last-resort walls (wall3Sale · wall4External). EmergencyState = { cbDebt, cbCollateralBtc, price } — the Strike position lives in CrashPlaybookInput; the crash-day answer is crashPlaybook, via components/Tools/crashPlaybookView. Deleted in Run 2: the Phase-1 buy-and-pledge functions (firepower, drawToLtv, floorTable, direSwitch, surplus). Imports CB_LLTV (runCoinbaseLoan) + the zero-import ltvOf (./ltv); NO cycle/power-law imports (§7 hard wall). classifyStage's LTV goes through ltvOf — so Coinbase debt with ZERO collateral reads cbLtv ∞ / stage 'liquidated' (was a flattering 0 / 'normal'); no-debt-no-collateral stays 0 / 'normal'; EmergencyConsole renders it via fmtLtvPct. ⚠ NAMED FOLLOW-UP (not fixed here): runAdvisor (4 copies) + AdvisorMain (1) still open-code `x > 0 ? a/b : 0`; and the zero-collateral CB reading is still incoherent elsewhere on this model — distancePct = 1 (reads "100% above liquidation"), liqPrice and every bandPrice = $0
     safetyView.ts               # PURE single-source of the 3 safety dimensions for BOTH the owner's
                                 # SafetyDashboard AND the viewer home (dedup DONE — SafetyDashboard's inline
@@ -462,7 +475,11 @@ src/
                                 # (runAdvisor's getCurrentStrategyMonth/isStrategyComplete now delegate here) + rollupMonth (DayEvent[] →
                                 # { entry: Partial<MonthlyLogEntry>, collateralDelta }) + deriveCbCollateral (P2a:
                                 # latest cbCollateral-bearing event by ts across balanceReading + cbCollateralReading,
-                                # fallback to the cache — never undefined)
+                                # fallback to the cache — never undefined) + latestStrikeDepositISO (the plan of
+                                # record's Run 2, D9): the latest LOGGED target:'strike' deposit's date, any age (or
+                                # null) — Strike's 60-day hold's ONE fact. The hold only ever depends on the latest
+                                # deposit, so this date is all a trusted viewer (no journal) needs: the trusted
+                                # snapshot carries it pre-derived as `strikeLastDepositISO`
     mergeRecords.ts             # PURE records merge (RecordsState = entries+deletions+dayLog+dayLogDeletions, mergeRecords).
                                 # Per-month entries: newest updatedAt/loggedAt wins, tombstones, 90-day GC. P3: dayLog
                                 # union-by-id (higher ts wins, exact tie→local) + dayLogDeletions tombstone suppression
@@ -601,13 +618,18 @@ src/
                                 # store/__tests__/viewerSettingsApply.test.ts]/applyPlanBackup + the remotePlanFoundResolved latch). EVERY StoreState key in EXACTLY ONE slice (slices.test.ts pins disjoint+union). ⚠ NO
                                 # "useStore" substring (grep gate); the only body change is getState()→get(); the two dynamic
                                 # import paths deepened one level (../../lib/nostr/...)
+                                # The plan of record (Run 2): ui += planNoteDismissed + planBreakerCache (with plain-`set`
+                                # setters); viewer += viewerStrikeDepositISO (raw-set by viewerSync's trusted apply, reset
+                                # by clearViewerData) — the three device-local keys (§ Zustand Store Shape)
     payloads.ts                 # Phase 1b — the two PURE snapshot builders, moved verbatim out of useStore:
                                 # buildSettingsPayload(s) (the 45-key settings payload — single source for the
                                 # trusted viewer snapshot + the plan backup; 4e: no longer a relay payload of its own)
                                 # + buildViewerSnapshotPayload(s, tier)
                                 # (C-safe ratios / C-trusted full). `import type { StoreState } from './useStore'`
                                 # (type-only — no runtime edge); nothing in useStore imports payloads. Consumed by
-                                # syncEngine, exportPlan, ViewerPreview, tests
+                                # syncEngine, exportPlan, ViewerPreview, tests. The plan of record (Run 2, D9): the
+                                # C-trusted branch adds a top-level `strikeLastDepositISO` (latestStrikeDepositISO over
+                                # the owner's dayLog — Strike's hold's one fact); the C-safe branch never carries it
 
   lib/
     demo/
@@ -782,7 +804,13 @@ src/
                                 # it, not the 60-row schedule). See § Decision face (Run B) and § Chart zoom.
                                 # Policy v2 Run B (B4): ENGINE_CONTEXT — the five engine constants (mode, the two caps,
                                 # the Strike margin and draw lines), ONE object that `engineInputs` spreads and the
-                                # seeding gate hands to `seedsFromMove`.
+                                # seeding gate hands to `seedsFromMove`. ⚠ Since the plan of record's Run 2 it is
+                                # planRun.ts's PLAN_ENGINE_CONTEXT, and the face builds THE MOVE's input and its engine
+                                # inputs through planRun's two builders (placementInputOf / engineInputsOf) — the ones
+                                # THIS MONTH runs (invariant 2). Coinbase comes through planCbCollateralOf /
+                                # planCbLoanBalanceOf (D-R2-4: none with the loan switched off), the minimum as
+                                # strikeMinFromIncome (D-R2-7), Strike's hold through strikeDepositOf → strikeHoldAt
+                                # (D9), and `moveWhatIf` (a policy or line what-if) switches the card's first line.
                                 # Sticky controls (Run 1): the face's LAST child is <ControlDock> — the month and the
                                 # stress live only there, and Path / Line / Policy are remote controls for the cards (the
                                 # same overlay). The Inspect-month / Price-stress card is gone; its three notes read under
@@ -822,6 +850,12 @@ src/
                                 # (B3: the price alert at the owner's trigger, or "at or past your t% trigger"; never on
                                 # a sliver — R11) · seedsFromMove(seeded, PolicyRunContext) (B4 — the face's seeding
                                 # gate; asks supportPolicyResolution)
+                                # The plan of record (Run 2, §4.7): PLAN_OF_RECORD_LINE ("This is your plan of record's
+                                # move this month — the support policy, with your settings.") / PLAN_WHAT_IF_LINE ("A
+                                # what-if — your plan is unchanged.") / planOfRecordLine(whatIf) — MoveCardContext gains
+                                # `whatIf`. ACTION_FIELDS gains `payMinimum` (strikeMinPaidUsd → "Pay Strike's minimum,
+                                # $X, from income."); the buy sentence drops its "(≈ … ₿)" under the dust floor and the
+                                # refinance never names a "$0" fee — THIS MONTH prints these sentences too
       decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
                                 # EXACT: history's last point IS forward's first; the support line spans both
                                 # halves — history via supportAtDates, forward via the engine's own path; history
@@ -849,7 +883,8 @@ src/
                                 # and only within 7 days of it, junk CARRIES the state, and no usable month ⇒ null
                                 # so the card SAYS the history didn't load · holdMonthsFrom(throughISO, startDate)
                                 # → Strike's hold in engine months. ⚠ R4 — this module does NOT import
-                                # Tools/crashPlaybookView: it takes the throughISO strikeHoldFrom already computed.
+                                # Tools/crashPlaybookView: it takes the throughISO strikeHoldAt already computed (the
+                                # face and usePlanMonth read the date through strikeDepositOf — Run 2, D9).
                                 # History is typed structurally (HistoryPoint), so the §2 crossing imports no hook
       futuresRun.ts             # Policy v2 — the lenses: 🔴 THE §2 CROSSING for the futures, and the only one — it imports
                                 # pricePaths AND monteCarlo, and a source test (W WALL) pins that nothing else does.
@@ -926,15 +961,71 @@ src/
                                 # control dock's Policy panel both read, so the two can never disagree
       planClamp.ts              # The plan of record (Run 1) — the plan's ONE clamp: PLAN_CB_LTV_CAP_PCT (70, the
                                 # Coinbase defense line), PLAN_STRIKE_CAP_PCT / PLAN_STRIKE_CAP_EFF (the Strike cap's
-                                # defaults) and PLAN_CLAMP. The Decision face's CAP_PCT / STRIKE_CAP_PCT / STRIKE_CAP_EFF
-                                # are these names (the aliases stay — decisionWiring's ENGINE_CONTEXT pin), and Settings'
-                                # "Your plan" reads the plan's effective stops through PLAN_CLAMP. A parent face's own cap
-                                # slider stays a what-if on that face
+                                # defaults) and PLAN_CLAMP. Since the plan of record's Run 2 the Decision face's aliases
+                                # are gone: planRun.ts's PLAN_ENGINE_CONTEXT and its two builders read these names, so the
+                                # face and THIS MONTH / Daily (planMonthRun) share one clamp, and Settings' "Your plan"
+                                # reads the plan's effective stops through PLAN_CLAMP. A parent face's own cap slider
+                                # stays a what-if on that face
       usePlanPolicy.ts          # The plan of record (Run 1) — the READ-ONLY hook: useStore(useShallow((st) =>
                                 # planPolicyOf(st))). ⚠ useShallow keeps the object's identity until a setting changes —
                                 # the faces memoise on it; without it the hook returns a fresh object on every read and
                                 # the page never renders (MR25). Every face builds policyRaw = { ...DEFAULT_SUPPORT_POLICY_
-                                # SETTINGS, ...plan, ...overlay.supportPolicy } from it; Settings' "Your plan" reads it too
+                                # SETTINGS, ...plan, ...overlay.supportPolicy } from it; Settings' "Your plan" reads it too,
+                                # and so does usePlanMonth (Run 2 — THIS MONTH and Daily run the saved plan, no what-if)
+      planRun.ts                # The plan of record (Run 2) — the ONE input builder, PURE (no store, no React, no clock:
+                                # today, the price and the policy's memory arrive as values). PLAN_ENGINE_CONTEXT (the five
+                                # engine constants — was the Decision face's ENGINE_CONTEXT) + PLAN_COLD_BUFFER_PCT 30 /
+                                # PLAN_CYCLE_MONTHS 1 / PLAN_RUN_MONTHS 12 · placementInputOf / engineInputsOf — THE MOVE's
+                                # input and the engine's inputs; the Decision face and planMonthRun build through BOTH, so
+                                # the face and THIS MONTH can't disagree (one copy, not two compared — invariant 2) ·
+                                # planCbCollateralOf / planCbLoanBalanceOf (D-R2-4 — Coinbase as every plan screen reads it:
+                                # the owner's only with the loan switched on; off, none — never the seed's $60,000 on
+                                # 1.48 ₿; the ONLY deriveCbCollateral caller under Almanac / SimpleMode / Daily — GATE) ·
+                                # planMonthRun(facts) → THE MOVE at today's price and S₀, then months 0..12 on a FLAT path
+                                # at today's price (D4), from the saved plan — no what-if · planBreakerCacheOf (Δ6 — the
+                                # device's breaker cache read through the engine's own validOpeningBreaker and dated
+                                # yyyy-mm-dd: the stored object itself, or null) · cbOverLimitAtMonthEnd — THE one "over
+                                # Coinbase's limit at month-end" rule (the engine's headroom at that month's support, past
+                                # the dust floor; the switch month, later months' status, the track and the after box read
+                                # it — month 1's status reads TODAY's fact, so its status and band can differ) ·
+                                # firstMonthUnderLimit (§4.5 — the switch month's time)
+      planMonthView.ts          # The plan of record's month AS WORDS (Run 2 — §4.3, §4.5, §4.7). PURE: every sentence THIS
+                                # MONTH and Daily's plan card show is built here (I31 — the cards compose none). STATUS —
+                                # planStatus: within the limits (one green line), or over with today's fact, the time back
+                                # (firstMonthUnderLimit) and the catch-up "To be within it today" as arithmetic on the
+                                # run's numbers, never "should"; Δ9's three over-limit bodies (repays it / "No spare income
+                                # repays it this month" / "Back within your plan's limit this month."); a refused policy
+                                # reads the Decision card's own policyIgnoredNote (Δ8); past the liquidation line or
+                                # liquidated, red. TO DO — planMonthActions: THE MOVE's legs "today" first, then EXACTLY
+                                # the Decision face's schedule rows for that month (planSchedule's kinds; one WORDS Record
+                                # per ActionKind, so a new kind can't reach a screen without words); muted "—" anchors for
+                                # no buy / no draw. VENUE — Strike white, Coinbase blue, cold storage orange (the faces'
+                                # own tokens; venueSegments / venuesOf / planRowDot — one venue fills the dot, two split
+                                # it). AFTER — planAfter: both loans at month-end, Coinbase at THE ROW'S support with a
+                                # meter (limit and seizure ticks, read aloud by planMeterAria), the cliff cbSeizurePrice
+                                # with fmtBelowPct; no meter and no over-the-limit tone under a refused policy. monthTrack
+                                # — the scrubber's year (past months faint, green within, amber over until the cure, red
+                                # from a liquidation, never green under a refused policy). A past month from the Ledger
+                                # (loggedMonthRows / loggedMonthAfter / loggedMonthStatus — the plan keeps no history,
+                                # D14). The breaker offline — planBreakerSource (today's fold → this device's cache →
+                                # loading / none) and planBreakerLine (with a cache: nothing while the fetch runs, its date
+                                # once the fetch failed, Δ12; with none: the loading line, then "didn't load"). The foot — fmtDayOrdinal,
+                                # planMinimumOwed / planMinimumLine /
+                                # planInterestRollsLine, planNdpLine, planLedgerParts (the Ledger so far, both loans'
+                                # paydowns), planLedgerTargets (Daily's bars in the Ledger's own streams, Δ4),
+                                # planNextMonthLine, planSavingsLine, planPriceLine, planSignoffLine / planSignoffSub. The
+                                # note — planSwitchNote (D8). "Why this plan?" — planMonthSummary (the Decision face's own
+                                # sentences). PLAN_CRASH_TITLE (D13). Never "should", "need to" or "safe", never "$0",
+                                # "₿0.000" or "0.000 ₿" (WORDS sweeps every sentence over 600 runs × 12 months)
+      usePlanMonth.ts           # The plan of record's month for the main screens (Run 2): gathers the store's live
+                                # position (Coinbase through planCbCollateralOf / planCbLoanBalanceOf), the saved plan
+                                # (usePlanPolicy), today's price, the minimum's source and the policy's memory — Strike's
+                                # hold from strikeDepositOf → strikeHoldAt (D9); the breaker from month-end prices, else
+                                # this device's cache (planBreakerCacheOf) — and runs planMonthRun. "Today" per render (Δ3
+                                # — todayLocalISO(), never frozen at mount: an installed PWA resumes without remounting;
+                                # the Coinbase accrual re-keys on it, so a screen left open re-plans once a day). The ONLY
+                                # write is the breaker cache — a fresh fold, in an effect (device-local public price
+                                # data); the plan is read-only. Read by PlanMonthCard (THIS MONTH) and Daily's plan card
       SupportPolicyCard.tsx     # Run 2b — THE support policy card, shared by the Cycling, Ownership, Strategy and Decision
                                 # faces (+ .module.css, tokens only). Props {sim, monthIdx, raw, settings, onChange, onReset,
                                 # mode, expenses} — renders only what the face hands it (no belief, no store; a
@@ -1020,12 +1111,22 @@ src/
       EmergencyConsole.module.css
       crashPlaybookView.ts      # crash playbook Runs 2–3 — the ONE live front-end of crashPlaybook: the console and the
                                 # Monthly Playbook's THIS MONTH line both build through it — never copy it. PURE: no
-                                # power law, cycle model, store or React (a layering test). strikeHoldFrom (Strike's
-                                # 60-day hold, from LOGGED target:'strike' deposits; yyyy-mm-dd dates only) ·
+                                # power law, cycle model, store or React (a layering test). Strike's 60-day hold (the plan
+                                # of record's Run 2, D9 — invariant 8, one rule): strikeHoldAt(depositISO, todayISO) — THE
+                                # rule (in hold iff that date is at most 60 days before today; yyyy-mm-dd only) ·
+                                # strikeDepositOf(st) — its ONE fact on this device: the owner's journal
+                                # (latestStrikeDepositISO), or a trusted viewer's viewerStrikeDepositISO (the snapshot's
+                                # copy — a viewer has no journal). Every hold reader (the Decision face and
+                                # the Emergency Console, which a viewer reaches; usePlanMonth, THIS MONTH's crash line) reads the hold through
+                                # these two · strikeHoldFrom (the hold straight from a journal — strikeHoldAt over
+                                # latestStrikeDepositISO; no screen calls it) · isCrashDay (D13 — the crash day THIS MONTH
+                                # and Daily read: the console's own gate, hasCbLoan && ltvTriggered && Coinbase at or past
+                                # its trigger at today's price) ·
                                 # playbookInputFromLive (the one live CrashPlaybookInput builder: cold under a satoshi →
                                 # 0; the stop at support through effectivePolicyStops on the plan's Coinbase limit — the
                                 # REQUIRED LivePlaybookFigures.planCbStopAtSupportPct, read through its clamp
-                                # (clampPlanPolicy) — plan of record, Run 1; the lender constants; the hold) ·
+                                # (clampPlanPolicy) — plan of record, Run 1; the lender constants; the hold, from
+                                # LivePlaybookFigures.strikeDepositISO — strikeDepositOf(store), Run 2) ·
                                 # playbookDepthFor(target, planStop) (the liquidation depth for a live target and the
                                 # plan's limit — it shares the builder's ONE stop call) · fmtStepBtc / fmtStepUsd (FLOORED to
                                 # their printed precision) · fmtMultiplePair (widens 2 → 6 dp until k and the depth
@@ -1033,7 +1134,8 @@ src/
                                 # playbookCard (the card's shapes) · monthPlaybookLine (the THIS MONTH line — compact,
                                 # with the card's listed steps, gap and outcome through one private reading:
                                 # listSteps / gapKind / outcomeKind) · CB_PAYDOWN_LABEL / IF_YOU_SHIFT_DEBT (the one
-                                # label for the projection's Coinbase paydown). ⚠ No inline min in the file, and exactly
+                                # label for the projection's Coinbase paydown — two sites since Run 2: OutlookProjection
+                                # and AdvisorMain). ⚠ No inline min in the file, and exactly
                                 # one effectivePolicyStops call (source guards). Pinned by
                                 # __tests__/crashPlaybookView.test.ts + __tests__/emergencyConsoleWiring.test.ts +
                                 # __tests__/monthlyPlaybookWiring.test.ts
@@ -1243,8 +1345,9 @@ src/
                                 # collateral — wires cbLtvAction; sub-toggle first, then the three threshold NumberInputs;
                                 # middle label flexes ('Pay down to LTV' / 'Reduce to LTV'); a fieldHint warns
                                 # add-collateral shapes logging/guidance only — Outlook projection still models paydown);
-                                # display = Simple Mode toggle + plan-bar toggles +
-                                # mining-in-log; tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
+                                # display = Simple Mode toggle + mining-in-log (the plan-bar toggles left with the plan
+                                # of record's Run 2 — the card has no Strike or Coinbase bar; showPlan*Bar stay in the
+                                # store, inert); tabs = TAB VISIBILITY & ORDER + DnD; network = RELAY LIST mgmt (P1:
                                 # view/add/remove/restore the local nostrRelays via addRelay+normalizeRelayUrl; P3 (DONE):
                                 # each row's dot is a LIVE connection status (green/amber/red) via useRelayStatus. P2 (DONE):
                                 # the SYNC group's Import-from-Nostr
@@ -1638,16 +1741,23 @@ src/
 
     Daily/
       DailyModeView.tsx         # Daily Mode P4a — READ-ONLY day-level consumer view, presentation aligned to
-                                # mode-toggle-preview.html's visible Daily panel. Same data as SimpleModeView (header +
-                                # <SafetyDashboard/> VERBATIM + position trio CURRENT|THIS MONTH(proj)|AFTER, same
-                                # deriveAdvisorStart→runAdvisor→computeStrikeLtv/strikeAvailableCredit cluster, advisorSkip*
-                                # treated false — P4a has no Pay/Skip). RESTYLED to the preview: .appbar header (gradient
-                                # brand badge + boxed .iconBtn); .posrow/.posbox divided trio (mono nums, --btc accent);
-                                # a TWO-PART ACTIVITY card — (a) AGGREGATE .act-*/.streams: net BTC + Draw/Paydown/Buy bars
-                                # whose width = actual/plan (READ-ONLY rollup of this month's dayLog via a local agg over
-                                # selectMonthEvents; NO writes/new reads) + interest foot, (b) per-event .log-row LOG
-                                # (describeDayEvent label/detail + a component-local eventTone(kind)→dot/ring + amt color);
-                                # and a .pbcard terminal/playbook PLAN REFERENCE (deriveForMonth + composeMonthSummary).
+                                # mode-toggle-preview.html's visible Daily panel: header + <SafetyDashboard/> VERBATIM +
+                                # the compact trio (Strike collateral · balance · avail credit via strikeAvailableCredit).
+                                # RESTYLED to the preview: .appbar header (boxed .iconBtn); a TWO-PART ACTIVITY card —
+                                # (a) AGGREGATE .act-*/.streams: what was bought (5c) + Draw/Paydown/Buy bars whose width =
+                                # actual/plan (a READ-ONLY rollup of the month's dayLog) + the interest foot, (b) per-event
+                                # .log-row LOG (describeDayEvent label/detail + a component-local eventTone(kind)→dot/ring
+                                # + amt color); and a .pbcard PLAN card. ⚠ Since the plan of record's Run 2 the planned
+                                # side is the PLAN's month 1 — usePlanMonth, the run THIS MONTH reads (no runAdvisor,
+                                # deriveForMonth or composeMonthSummary here). The .pbcard shows planStatus's title (or
+                                # PLAN_CRASH_TITLE on a crash day — isCrashDay, the console's gate), the month's rows
+                                # (planMonthActions: venue dots + VenueText), Strike's minimum (income: planMinimumLine +
+                                # its chip; roll: a "Strike interest" row) and "Why this plan?" (planMonthSummary). The
+                                # bars' targets are planLedgerTargets(row 1) — drawn: the bills' draw + a defense's draw;
+                                # paid: spare income's repayments + a refinance's payment to Strike + a defense's payment
+                                # to Coinbase + the margin cure — against the Ledger's paydowns on BOTH loans (Δ4).
+                                # "Interest capitalized" is the plan's interest less the minimum income paid, shown only
+                                # past the dust floor and only for the current month (Δ5).
                                 # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
                                 # act-when + pb-sub). P4b-1: a Daily-only orange .fab (bottom-right, --btc gradient, hidden
                                 # when viewerMode) → opens <EventSheet/> for ADD (setEditEvent(undefined)). P4b-2: each
@@ -1756,6 +1866,23 @@ src/
                                 # flow+reading share date+ts; usd=amount*price for buy; **LTV percent ÷100 → fraction**).
                                 # Tested in __tests__/eventSheet.test.ts
     SimpleMode/
+      PlanMonthCard.tsx         # The plan of record's Monthly Playbook (Run 2, D-R2-2 + D-R2-8) — THIS MONTH's card: one
+                                # card, one month, each fact once. The scrubber picks the month (this month and the rest
+                                # of the strategy year from the plan's run — the card's month k is the run's month
+                                # k − currentMonth + 1 — a past month from the Ledger, D14); the track is monthTrack. Then
+                                # the status (planStatus with its "To be within it today" catch-up, or on a crash day the
+                                # console's line under PLAN_CRASH_TITLE), the breaker line, the to-do rows (planMonthActions
+                                # — THE MOVE's legs "today", then the Decision face's schedule rows, with venue dots and
+                                # VenueText), the minimum's foot (income: planMinimumLine + its PAID / DUE / MISSED chip;
+                                # roll: planInterestRollsLine) and the NDP line, the after box (planAfter, with the meter),
+                                # the sign-off pointer or the Ledger strip (planSignoffLine / planLedgerParts), the savings
+                                # line, "Why this plan?" (planMonthSummary) and "Next month" (planNextMonthLine, hidden in
+                                # month 12). Reads usePlanMonth (the one run); every sentence from planMonthView (or
+                                # decisionView, crashPlaybookView, supportPolicyView) — the card composes none (I31, planRunWiring reads
+                                # its syntax tree). The one-time note (D8 —
+                                # planSwitchNote, dismissed per device by planNoteDismissed; never to a viewer). One status
+                                # colour per card — no Advisor tier border (Δ10). Exports VenueText (Daily reuses it).
+                                # Styles come from SimpleModeView.module.css
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
                                 # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
                                 # (green/red), auto padded Y-domain (intraday visible), graceful loading/
@@ -1769,13 +1896,12 @@ src/
                                 # cbLiqFrac = the effective liquidation LTV from the AUTHORITATIVE cbLiquidationPrice
                                 # (accruedBalance/(collateral×activeLiqPrice)), falling back to CB_LLTV when no price
                                 # is set — so editing the CB liquidation price MOVES the bar fill + trigger marker +
-                                # 0.93 level band consistently, not just the cushion subtext. The playbook COINBASE bar
-                                # mirrors this (cbLiquidationPrice>0 ? cbLoanBalance/(collateral×price) : CB_LLTV, raw
-                                # basis). bare
+                                # 0.93 level band consistently, not just the cushion subtext. (The old Monthly Playbook
+                                # card's COINBASE bar that mirrored this left with the plan of record's Run 2.) bare
                                 # 75%/86% marker TICKS — trigger/liq prices + "Coinbase"/"~est." source moved to a
                                 # .priceNote subtext, no label collision; cushion = LTV-POINT GAPS "X% to trigger ·
                                 # Y% to liquidation" (ltvGapToTrigger = trigger% − cbLtv; ltvGapToLiq = cbLiqFrac −
-                                # cbLtv, the authoritative-liq-price LTV; matches the playbook "CB runway" — the price
+                                # cbLtv, the authoritative-liq-price LTV — the price
                                 # view stays in the priceNote/liq-price field; the old ↓price-drop pct() was removed),
                                 # Safe/Fair/
                                 # Poor badge, no-grace note in amber/red) → Strike bar (body tap flips capacity-used
@@ -1812,136 +1938,31 @@ src/
                                 # CB bar gates on it: !hasCbLoan → CB-setup prompt in the CB slot, Strike bar +
                                 # Strike-only state line still render. Evergreen (past month 12). All CB math via
                                 # cbMetrics — same numbers as the CB Loan tab
-      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag); mounts <SafetyDashboard/>
-                                # at top. handleApply re-anchors store cbLoanBalance by the month's CB paydown
-                                # (ltvTriggered → cbPaydownDraw, monthly → cbPayment) + stamps cbLoanBalanceAsOf
-                                # today (liq price NOT auto-updated — manual oracle re-entry). single-commit model:
-                                # "Log this month & continue" → ConfirmLogSheet portal (inline component:
-                                # summary + editable BTC-bought (seeds to the
-                                # plan's projected buy, or 0 if Buy row skipped; user overrides with the
-                                # actual; shows "Skipped" read-only when skipped) + editable BLOC draw +
-                                # editable CB payment (both authoritative over the projection — "Skipped"
-                                # read-only when skipped) + editable "Interest /mo" (REPLACED the old
-                                # "Expenses this month" field — BLOC draw already = expenses, so logged
-                                # expensesActual is auto-set to the draw; Settings `expenses` assumption
-                                # untouched) + optional NDP toggle row when ndp.status !== 'ok' (relabeled
-                                # "made this year"; checking it reveals an editable NDP-amount $ input,
-                                # records the actual NDP paid as MonthlyLogEntry.ndpPaid + stamps
-                                # ndpLastPaidDate — does NOT reduce the balance)
-                                # → handleApply(confirmedBtcBought) writes the confirmed
-                                # bought value to MonthlyLogEntry.btcBought (not the hardwired projection).
-                                # The EDITED BLOC draw (effectiveDrawAmount via customBlocDraw) AND EDITED
-                                # interest (effectiveInterest via customInterest) recompute the
-                                # logged Strike balance/LTV (loggedStrikeBal/loggedStrikeLtv — substitute the
-                                # edited draw/interest for the projected currentRow values); the EDITED CB payment
-                                # (effectiveCbPayment via customCbPayment, seeded per-mode: ltvTriggered →
-                                # cbPaydownDraw, monthly → cbPayment) drives the CB-balance re-anchor (un-edited
-                                # = today's projected behavior; all customs reset to null on apply). CB row is
-                                # labeled per mode ("CB payment" monthly / "CB paydown" ltvTriggered) and, in
-                                # ltvTriggered mode, HIDDEN until currentRow.cbLtvTriggered fires (showCbRow).
-                                # Plan card = "Monthly Playbook" (polished toward Smart BLOC's restraint):
-                                # a TWO-LINE header — top "Monthly Playbook · Month X of 12 · [de-boxed state badge]"
-                                # (.planTitleSep ghost dot before "Month"), second
-                                # line (.scrubMeta, above the scrubber) the paydownBadge readout — see "Paydown badge" (LTV +
-                                # four-state flag, amber only when the LTV is still above the ceiling) left + "BTC $price" right;
-                                # a month SCRUBBER (1–12, selectedMonth,
-                                # snaps to currentMonth via effect; replaced the removed MonthlyLogSection
-                                # carousel) with a TWO-TONE fill (muted paydown share / green rest, keyed to
-                                # the --paydownPct = barPaydownPct CSS var) + month-tick markers
-                                # (M1·M3·M6·M9·M12, replaced the "drag to scrub" caption); TWO stacked status
-                                # bars (Strike / CB — toggle-gated by showPlanStrikeBar/showPlanCbBar). On the CURRENT
-                                # month each bar's value shows a current→eom TRANSITION "A% → B% LTV" (.planBarFrom/
-                                # .planBarArrow ghost; Strike's eom number stays orange on hasPaydown); projected/logged
-                                # months show the single eom value. The
-                                # INCOME ALLOCATION bar was REMOVED (redundant — the two-tone scrubber already
-                                # encodes the per-month paydown/buy split; allocation-complete ✓ is always true
-                                # in projected months + still surfaces in the confirm sheet) along with its dead
-                                # Settings toggle (the showPlanIncomeBar store field is kept, vestigial/device-
-                                # local). A colored-dot action layout borrowing the Smart BLOC playbook
-                                # structure on the REALITY engine: Buy Bitcoin (now with % allocation +
-                                # "(after paydown)/(100% of income)" subtext) → a conditional LoC Paydown
-                                # row (orange, % + $, no pill; rowPaydownUsd = isCurrent ? expectedPaydown :
-                                # selectedPlan.paydown — appears only in months where paydown fires) → a
-                                # "Line of Credit (funds your lifestyle)" separator → Monthly Draw / Interest
-                                # (+ a Pay-Coinbase row in monthly CB
-                                # mode). Each allocation row's % sits ABOVE the amount (right-aligned
-                                # .dotRightInner/.dotPct — Buy Bitcoin/LoC Paydown only), the Interest
-                                # amount is red, and the rows are dialed back to Smart BLOC's restraint
-                                # (8px dots, --text-secondary labels, lighter dividers, weight-600 amounts).
-                                # A demoted
-                                # "this month also" strip (CB alert / capped / rotation /
-                                # fiat-gap / NDP), and a plain-English summary paragraph. PROJECTION-VS-
-                                # REALITY SPLIT (simpleModePlan.ts): isCurrent (selectedMonth === currentMonth)
-                                # → operate console (Pay/Skip pills + Log active; SKIP-ADJUSTED reality — bars
-                                # read allocatedFromIncome/eomLtv + a skip-aware EoM CB LTV, summary branches
-                                # on advisorSkip*); other months → read-only preview of the UNSKIPPED
-                                # deriveForMonth projection (logged → actuals + "✎ Edit this month" overlay;
-                                # "← back to current month"). Log button gated isCurrent && !strategyDone;
-                                # a logged current month shows a ✓ note + "✎ Edit this month" (opens the overlay
-                                # for currentMonth) + Undo (deleteLogEntry). MonthlyLogSection kept for the
-                                # Advisor tab. The POSITION block is THREE CARDED BOXES in a row — CURRENT STRIKE
-                                # BLOC | THIS MONTH | AFTER THIS MONTH (now → action → projected; .positionRow is a
-                                # 1fr/1fr/1fr grid that stacks to 1col ≤760px; the outer .card wrapper was dropped to
-                                # avoid card-in-card). Split from the old lopsided 2-box layout — the left box used to
-                                # cram CURRENT + the embedded AFTER projection + Avail, wrapping "credit line used · LTV"
-                                # onto two lines, while THIS MONTH sat ~85% empty; three full-width-each boxes fix both.
-                                # Box1 CURRENT + Box3 AFTER show the SAME three lines in the same order for line-for-line
-                                # comparison (asset → debt → avail, NO inline labels — titles carry the meaning, fixes
-                                # ⅓-width wrapping): "₿ held ($usd)" / "$balance (Z% LTV)" / "Avail: $A". The ₿ amount
-                                # is ORANGE (.btcAmt) and the ($usd) paren is a smaller ghost SUBTEXT (.parenSub, 11px)
-                                # — not same size/color as the ₿. The debt-line "(Z% LTV)" paren is ALSO .parenSub ghost
-                                # subtext (AFTER keeps the orange Z number on hasPaydown — orange overrides the ghost).
-                                # CURRENT Z =
-                                # currentBlocLtv via computeStrikeLtv (matches the dashboard Strike bar); AFTER Z = eomLtv
-                                # (orange span when hasPaydown). usd = ₿ × live btcPrice. PER-BOX AVAIL CORRECTNESS:
-                                # CURRENT uses currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, price,
-                                # advisorActualBlocBalance) (current basis); AFTER uses availCredit (eom basis) — fixed a
-                                # latent mislabel where the eom Avail was shown as current. (The AFTER collateral-limited
-                                # binding hint was REMOVED — de-noised.) Box2 THIS MONTH is a two-line
-                                # action card "Buy: ₿ +X" (₿-only) / "Draw: $Y" (both labeled — bare values would be
-                                # ambiguous), "(proj)" consolidated to the box title; NDP badge below (gated ndp.status
-                                # !== 'ok'). THIS MONTH's "Draw" shows the REMAINING draw (remainingDraw =
-                                # max(0, expectedBlocDraw − (advisorActualBlocBalance − slmBlocBal)) = full plan minus
-                                # what's already drawn live this month), so mid-month it counts down to 0 as you draw;
-                                # AFTER (eomBlocBalance) + the ConfirmLogSheet draw + loggedStrikeBal keep the FULL-month
-                                # draw on slmBlocBal (= advisorMonthStartBalance, the start-of-month base) → true
-                                # end-of-month. AFTER was promoted from the embedded .eomProjection sub-section (retired;
-                                # .eom*/.usedLabel CSS removed) to a peer box. So
-                                # editing Amount Drawn / BTC collateral in
-                                # Settings moves it cleanly. STRIKE was de-noised: the "fully backed above $X"
-                                # binding line was removed (only the amber "collateral-limited (50% LTV)" branch
-                                # remains, shown at the 50% ceiling). The ltvTriggered CB indicator was RELOCATED from
-                                # the CURRENT STRIKE BLOC box (category error — a CB metric in the Strike box) into
-                                # THIS MONTH (Box 2), after the NDP badge behind a .positionDivider, and REFRAMED by
-                                # band to match the engine: below the 75% trigger → neutral "CB runway: Z% / before
-                                # 75% trigger" (Z = cbLtvTriggerPct − currentCbLtv×100, the LTV gap to the trigger as a
-                                # PERCENTAGE; the cbRunwayToTrigger dollar derivation still gates the block's >0
-                                # visibility but the displayed value is the % gap); at/above trigger → the crash
-                                # playbook's line (crash playbook Run 3: monthPlaybookLine over crashPlaybook(
-                                # playbookInputFromLive(...)) — the Emergency Console's builder on the live position —
-                                # listing the order, the past-liquidation / gap notes, EVERY listed step and the held /
-                                # short / doom outcome; the block's gate is cbTriggered ? playbookLine !== null :
-                                # cbRunwayToTrigger > 0). cbTriggered reuses currentCbLtv; the old cbPaydownToTarget /
-                                # cbPaydownAffordable ("CB paydown: $X", green/red by a naive creditLine − drawn) are
-                                # deleted, as were the older cbPaydownBuffer/cbBufferAffordable + the 65%-keyed
-                                # CURRENT-box line. Box 3's title reads "AFTER THIS MONTH (if you shift debt)" in a month
-                                # the projection pays Coinbase down (afterIncludesShift: currentRow.cbPaydownDraw > 0),
-                                # and the THIS MONTH ALSO strip's CB alert reads CB_PAYDOWN_LABEL — see § The Monthly
-                                # Playbook's crash line. The NDP badge moved to
-                                # the THIS MONTH box. In the
-                                # dot-rows the Pay/Skip pills sit BEFORE the amount so the amount anchors right
-                                # across current/projected/logged months. The Strike LTV line AND the whole CB LOAN column were
-                                # REMOVED (both LTVs now read from the SafetyDashboard bars above — de-duped;
-                                # currentStrikeLtv/cbStatus/classifyLtv dropped as orphaned). No checklist
-                                # (removed; see Synced Settings).
-                                # Quick Setup modal ALWAYS reachable ("⚙ Edit your numbers" once
-                                # established, first-run copy while isDefaultSetup). This Month / Outlook
-                                # segmented control (gated !strategyDone): This Month = console + a
-                                # next-month preview line (advisorRows month currentMonth+1, hidden at Mo 12);
-                                # Outlook = shared <OutlookProjection> (same props/numbers as the Advisor
-                                # tab) + an Outlook re-anchor nudge (§9): when the trailing 3-entry avg of
-                                # expensesActual drifts >5% from the `expenses` assumption, a dismissible
-                                # banner offers Update (setExpenses(round(avg))) / Dismiss (persists the avg
+      SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag): header + HeaderNavCluster,
+                                # BackupNagCard, ViewToggle, <SafetyDashboard/>, then a This Month / Outlook segmented
+                                # control (gated !strategyDone). ⚠ REWRITTEN by the plan of record's Run 2 — THIS MONTH
+                                # runs the plan: the This Month segment is the NDP urgency card (soon / overdue) and
+                                # <PlanMonthCard/> (above), handed `crashLine` and `ndpActionActive`. The crash line: on a
+                                # crash day (isCrashDay — the Emergency Console's own gate: hasCbLoan, ltvTriggered,
+                                # Coinbase at or past its trigger at today's price) the card's status is PLAN_CRASH_TITLE
+                                # with monthPlaybookLine(crashPlaybook(playbookInputFromLive(…))) — the console's builder
+                                # on the live position, Strike's hold through strikeDepositOf (D9); crashNote(true) foots the rows.
+                                # `ndpActionActive` = roll mode && the NDP not ok (the annual clause only while minimums
+                                # roll). runAdvisor runs ONLY for MonthlyLogOverlay's planned rows, and only while the
+                                # overlay is open (Run 3 retires it). Gone with Run 2: the old card (the paydownBadge
+                                # header, the two-tone scrubber, the Strike / CB status bars, the coloured-dot allocation
+                                # rows, the "this month also" strip, the summary paragraph); the three position boxes
+                                # (CURRENT / THIS MONTH / AFTER — and with them "CB runway", Box 3's "(if you shift debt)"
+                                # suffix and the remaining-draw countdown); the misordered-thresholds notice; the inline
+                                # statement-minimum editor (the figure lives in Settings → Strike Strategy); the savings
+                                # line's local sum (planSavingsLine now); and the Advisor tier border on THIS MONTH (Δ10
+                                # — the Advisor tab keeps its tiers). (ConfirmLogSheet / handleApply / the Pay/Skip pills
+                                # went earlier, with Logging Consolidation §3.) The Quick Setup modal is ALWAYS reachable
+                                # ("⚙ Edit your numbers" once established, first-run copy while isDefaultSetup; Save →
+                                # the four setters + ONE emitBalanceReading). Outlook = the shared <OutlookProjection>
+                                # (same props/numbers as the Advisor tab) + an Outlook re-anchor nudge (§9): when the
+                                # trailing 3-entry avg of expensesActual drifts >5% from the `expenses` assumption, a
+                                # dismissible banner offers Update (setExpenses(round(avg))) / Dismiss (persists the avg
                                 # to device-local expenseReanchorDismissedAt; resurfaces only when drift
                                 # moves >5% past it). computeExpenseReanchor (logUtils, pure) is the predicate.
 
@@ -2035,7 +2056,7 @@ miningInputs: {
 ### CB Loan Tab
 ```typescript
 cbLoanBalance:       number;                       // default 60000
-cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). setCbCollateralBtc emits a cbCollateralReading
+cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). setCbCollateralBtc emits a cbCollateralReading. ⚠ Every plan reader (the four faces' selectors, and usePlanMonth for THIS MONTH's and Daily's plan cards) reads it — and cbLoanBalance — only through planRun's planCbCollateralOf / planCbLoanBalanceOf (the plan of record's Run 2, D-R2-4): 0 with hasCbLoan off, so a fresh install's seed $60,000 on 1.48 ₿ never reaches a plan. The crash gate (isCrashDay, the Emergency Console), Simple Mode's Outlook and THIS MONTH's log overlay (runAdvisor, until Run 3) still read the store figures, behind hasCbLoan
 strikeCollateralBtc: number;                       // default 0 (v20 Collateral-Truth) — derived cache (deriveStrikeCollateral over dayLog); reading-anchored current Strike collateral (= getCurrentBtcHeld). NOT synced (rides partialize ...rest); converges cross-device via the dayLog on records:v1. Refreshed in the 3 dayLog mutators + setDayLog + onRehydrate
 cbAprPct:            number;                       // default 4.77
 cbMonthlyPayment:    number;                       // default 0
@@ -2053,8 +2074,8 @@ strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liq
 ### Advisor Tab
 ```typescript
 advisorStartDate:         string;   // ISO date, default today
-advisorActualBlocBalance: number;   // default 0 — LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
-advisorMonthStartBalance: number;   // default 0 — BLOC balance at the START of the current month; projection base ONLY (deriveAdvisorStart month-1). SYNCED. Distinct from advisorActualBlocBalance (live drawn) so mid-month the AFTER box stacks the full draw on the start base, not on the live balance
+advisorActualBlocBalance: number;   // default 0 — LIVE drawn BLOC balance right now (the plan of record's Strike balance — THIS MONTH, Daily, the faces — Advisor, SafetyDashboard, NDP)
+advisorMonthStartBalance: number;   // default 0 — BLOC balance at the START of the current month; projection base ONLY (deriveAdvisorStart month-1 — the Advisor tab, the Outlook and THIS MONTH's log overlay). SYNCED. Distinct from advisorActualBlocBalance (live drawn). (The Simple Mode AFTER box that stacked the full draw on it went with the plan of record's Run 2.)
 advisorActualBtcHeld:     number;   // default 0 — DEPRECATED (spec v3): feeds no computation (monthly btcHeld is recorded, not chained); kept for sync compat + Fix D's seed sentinel — LEAVE IT ALONE, never zero it. (v20: pendingCollateralAdjustment RETIRED — Strike collateral is reading-anchored)
 sandboxCollateralBtc:     number | null;  // default null — Smart BLOC what-if collateral; IN-MEMORY only (partialize-excluded, never synced); null = tracks current
 advisorSkipBlocDraw:      boolean;  // default false (persisted + synced)
@@ -2079,6 +2100,21 @@ All six are SYNCED plan fields (`SETTINGS_FIELDS`, plan events on `plan-events:v
 trusted viewer (D9). No off switch. Absent from the log = C1. Every reader goes through `planPolicyOf` /
 `clampPlanPolicy` (`lib/planPolicy`). Settings' "Your plan" is the only place the owner edits them — see § The plan of
 record (Run 1).
+
+### The plan of record (Run 2) — three device-local keys (`uiSlice`, `viewerSlice`)
+```typescript
+planNoteDismissed:      boolean;   // default false — the one-time note (D8), dismissed on THIS device
+setPlanNoteDismissed:   (v: boolean) => void;   // plain set — no emit, no dirty channel
+planBreakerCache:       { state: RearmableBreakerState; lastMonthEndISO: string } | null;   // default null — the breaker as last folded from month-end prices on THIS device (§4.3, invariant 10): THIS MONTH reads it offline; public price data only
+setPlanBreakerCache:    (v: … | null) => void;   // plain set — usePlanMonth's ONE write, a fresh fold, in an effect
+viewerStrikeDepositISO: string | null;   // default null — a TRUSTED viewer's copy of the owner's latest Strike deposit date (D9; the snapshot's strikeLastDepositISO, raw-set by viewerSync); null on an owner device; reset by clearViewerData
+```
+All three persist via `partializeState`'s `...rest` and are NEVER synced: not in `SETTINGS_FIELDS`, `PREFS_FIELDS`,
+`VIEWER_SETTINGS_FIELDS` or the plan backup, and no settings or prefs apply writes them — the one outside writer is
+viewerSync's trusted apply, which raw-sets `viewerStrikeDepositISO` from the snapshot. No store version bump — the
+persist merge fills the defaults, and a demo or e2e blob without them shows the note. The cache is read only through
+planRun's `planBreakerCacheOf` (the engine's own `validOpeningBreaker`, dated `yyyy-mm-dd`): a damaged cache reads as
+none, and the next fresh fold rewrites it. See § The plan of record (Run 2).
 
 ---
 
@@ -2423,7 +2459,9 @@ calendar / scrubbing / reconcile / dry-powder readout (P4c).
   `describeDayEvent`, both PURE in `dailyView.ts`), empty state "No activity logged this month." A read-only PLAN
   REFERENCE reuses `deriveForMonth` + `composeMonthSummary` (CB row reflects the engine: ltvTriggered shows
   `cbPaydownDraw` under `CB_PAYDOWN_LABEL` — "CB paydown (if you shift debt)", crash playbook Run 3 — monthly shows
-  `plan.cbPayment`). Month indicator only — no scrubber.
+  `plan.cbPayment`). Month indicator only — no scrubber. ⚠ Run 2 (the plan of record): the plan reference reads the
+  PLAN's month 1 (`usePlanMonth`, the run THIS MONTH reads) — no `deriveForMonth`, `composeMonthSummary` or `runAdvisor`
+  on Daily, and no `CB_PAYDOWN_LABEL` row; see the DailyModeView file entry and § The plan of record (Run 2).
 - **Daily | Monthly toggle** — a segmented control (`<ViewToggle>` from `src/components/Layout/ViewToggle.tsx`;
   `.viewToggle*` in `ViewToggle.module.css`) bound to `simpleView`; rendered INSIDE each JOURNAL view (DailyModeView +
   SimpleModeView) immediately after its header and before `<SafetyDashboard>` (header → toggle → SafetyDashboard),
@@ -2467,7 +2505,7 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
   boxes were replaced with a single `.trioCard` containing three divided `.trioCell` cells — **Strike BLOC
   collateral** / **Strike BLOC balance** / **Avail credit** — all present-tense live values (collateral →
   balance → available, natural lending progression). Monthly view's projection trio (`SimpleModeView`) is
-  unchanged. Projection vars (`eomBtcHeld`, `eomBlocBalance`, `eomLtv`, `availCredit`, `hasPaydown`,
+  unchanged (⚠ Run 2 (the plan of record): the trio is gone — THIS MONTH is one card, `PlanMonthCard`). Projection vars (`eomBtcHeld`, `eomBlocBalance`, `eomLtv`, `availCredit`, `hasPaydown`,
   `projBtcBought`, `projBlocDraw`, `currentBlocLtv`, `expectedPaydown`) were removed from
   `DailyModeView.tsx`; `computeStrikeLtv` import dropped; `currentAvail` stays (trio Cell 3).
 
@@ -2703,7 +2741,8 @@ unreachable for reconcile. A `viewedMonth` state (`DailyModeView`, default + res
 rollup", reconcile banner (+ its `viewedEntry` lookup), `MonthEventsModal`, and `ReviewSheet`/`confirmMonth`
 all key off `safeViewedMonth`; Monthly = the PLANNER → the **PLAN reference card + the advisor projection
 (`deriveAdvisorStart`/`advisorRows`/`currentRow`/`summaryText`) stay `currentMonth`** (the plan is about now,
-not the viewed past month). The ‹ › nav lives in the `Calendar` title row (new optional props
+not the viewed past month). ⚠ Run 2 (the plan of record): the reference card is the plan's month 1 (`usePlanMonth`)
+— still the current month — and Daily's "Interest capitalized" shows only for it. The ‹ › nav lives in the `Calendar` title row (new optional props
 `onPrevMonth`/`onNextMonth`/`canPrevMonth`/`canNextMonth` → `.calNav`/`.calNavBtn`/`.calNavLabel`; the title
 owns the label, no duplicate) — the Calendar **date math is unchanged** (it receives `safeViewedMonth` through
 its existing `currentMonth` prop). Buttons disable at the bounds (‹ at Month 1, › at the current month).
@@ -3197,8 +3236,10 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   entered liq price, a TODAY anchor that says nothing about a position five years out. The trigger boundary
   is still the owner's own setting.
 - Connectors: `getCurrentBtcHeld()` (verified Strike-only) · `advisorActualBlocBalance` · `creditLine` ·
-  `cbCollateralBtc` · `accruedCbBalance(...)` (the accrual boundary, as `EmergencyConsole` crosses it) ·
-  `income`/`expenses`/`blocApr`/`cbAprPct`/`btcPrice` · `STRIKE_MAX_DRAW_LTV` · `STRIKE_MARGIN_CALL_LTV`.
+  Coinbase's collateral and balance through planRun's `planCbCollateralOf` / `planCbLoanBalanceOf` (the plan of record's
+  Run 2, D-R2-4 — none with the loan switched off) · `accruedCbBalance(...)` (the accrual boundary, as
+  `EmergencyConsole` crosses it) · `income`/`expenses`/`blocApr`/`cbAprPct`/`btcPrice` · the minimum's source as
+  `strikeMinFromIncome` (Run 2, D-R2-7) · `STRIKE_MAX_DRAW_LTV` · `STRIKE_MARGIN_CALL_LTV`.
   The prototype's direct CoinGecko `fetch` is GONE — no new external host. ⚠ **AMENDED:** the Almanac's
   only *background* network call remains the consented `useChainTip`. Both cycling faces now also carry
   **`useMorphoRateOnDemand`** — same-origin `/api/morpho-rate`, **never on mount and never on a timer**,
@@ -3748,8 +3789,10 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
      what Coinbase can take back at the next refinance, so its unused line stays the reservoir the debt-shift defense
      draws on below support. (Pinned by the conduit clause: an accumulate row's month-end Strike balance is at most
      one month's interest on a bill.)
-  4. **not drawing:** Strike interest; bills income → cash → unfunded; restore (Coinbase first — except after a
-     liquidation, see Restore above); payDown/broken → pay down; the rest buys;
+  4. **not drawing:** Strike interest; bills income → cash → unfunded; Strike's minimum from what the bills left when
+     the owner pays it from income (`strikeMinFromIncome`, the plan of record's Run 2 — an unpaid part capitalises);
+     restore (Coinbase first — except after a liquidation, see Restore above); payDown/broken → pay down; the rest
+     buys. (In a drawing month income pays the minimum after the bill's unfunded part and before the buy.)
   5. **migration** (the RATCHET FIX): keep `strikeKeepCollateralBtc(line, bal, strikeStop, S)` =
      `max(line, bal) / (strikeStop × S)` — the FULL line at support, not today's
      balance at today's price (the old `keepForMargin` ran while the balance was $0). Strike's retrieval rules:
@@ -3805,7 +3848,12 @@ sit exactly at its stop when price is AT support, and that ceiling does not move
   - `strikeKeepBtc` — step 5's keep when that gated block evaluated it and it is finite, else `null`. Policy-only.
   - `openingBreaker?` / `openingStrikeHoldMonths?` — **THE POLICY'S MEMORY, seeded from PRICES** (D14). Absent or
     JUNK ⇒ byte-identical (`validOpeningBreaker` / `validHold`; junk reads as absent). ⚠ **NOT test-only** — the
-    Decision face sets them, so they must never join the forbidden-input grep.
+    Decision face and THIS MONTH / Daily (`planMonthRun`, Run 2) set them, so they must never join the forbidden-input
+    grep; nor may `strikeMinFromIncome` (Run 2 — the owner's minimum, a real input on every face and main screen).
+  - **The main screens' memory (Run 2):** the breaker as folded today, else THIS device's cache of the last fold
+    (`planBreakerCache`, read through `validOpeningBreaker` — planRun's `planBreakerCacheOf`; offline-first, §4.3);
+    Strike's hold from its ONE fact, `strikeDepositOf` (the owner's journal, or a trusted viewer's snapshot date —
+    D9) through `strikeHoldAt`.
   - result `openingBroken` — the run OPENED broken. ⚠ `modelBrokenMonth` stays the first IN-RUN trip, so a seeded
     break has `openingBroken: true` and `brokenMonth: null`; every copy reader must test BOTH, through the ONE
     `hadBreak` predicate in `supportPolicyView.ts` (`policyHeadline` AND `policyDetails`).
@@ -3979,7 +4027,8 @@ seizure price, `cbSeizurePrice`. The counts below are the report's PV2-3 / PV2-4
     more puts it at or under the cliff.
   - **R11:** no alert on a sliver of a loan — none when the cliff is 99.5% or more below today.
 - **B4 — the Decision face's seeding gate asks the run's own question.** `seedsFromMove(seeded, ctx)` =
-  `seeded && supportPolicyResolution(ctx).policyApplied` (decisionView). DecisionFace's `ENGINE_CONTEXT` — the mode, the
+  `seeded && supportPolicyResolution(ctx).policyApplied` (decisionView). DecisionFace's `ENGINE_CONTEXT` (since the plan
+  of record's Run 2, `PLAN_ENGINE_CONTEXT` in planRun.ts — THIS MONTH's run passes the same gate) — the mode, the
   two caps, the Strike margin and draw lines — is ONE object that `engineInputs` spreads and the gate reads, together
   with `supportPolicy`, `paths[0]` (every path is the support path's length) and the bills. It closes the residual § Decision
   face named: at a Strike liquidation LTV at or under its 70% call (`'strikeLadder'`) the engine ignores the policy, yet the
@@ -4155,8 +4204,12 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
       month." (both 2b.3). ⚠ The debt-repaid shape is reached with the policy ON, the default: on P2 at $0 of bills,
       the first pay-down months send all the spare income to debt.
   - ⚠ **`cashFlowAtMonth.incomeCoveredUsd` is what the paycheck actually PAID** — `min(max(0, income),
-    strikeShortfall)`, ≤ income — so `buys + incomeCovered === income` in every drawing month (v1.3 #15).
-    `drawingCashFlowNote` names the cause and the remainder:
+    strikeShortfall)`, ≤ income — so `buys + incomeCovered === income` in every drawing month (v1.3 #15) — less
+    Strike's minimum when income pays it (the plan of record's Run 2, D-R2-7: `buys + incomeCovered + strikeMinPaidUsd
+    === income`). Then the sentence drops "all" (the paycheck less the minimum buys, not all of it), the "left over" it
+    compares with is net of the minimum, and `minimumPaidNote(row)` — "Your paycheck paid Strike's $M minimum first." —
+    ends every month's sentence on Cycling, Ownership and Strategy (null under 50¢, or when the minimum rolls in; with
+    it rolled in, the default, every shape is byte-identical). `drawingCashFlowNote` names the cause and the remainder:
     - full draw → today's sentence; with nothing bought → "The line pays your $D of bills. No bitcoin bought this
       month." + the debt sentence (the strong span empty), never "all $0/mo buys bitcoin — not just the $0 left over";
     - ⚠ the closing "— not just the $S left over" clause (BOTH bought arms) is DROPPED when the surplus is under the
@@ -4281,7 +4334,8 @@ moves the verdict to the all-in basis before any copy says so (v1.1 #4).
 
 Spec: `pbloc-spec-plan-of-record-v1.md` (v1.1 — §4.1, §4.2, §12; the owner's calls are BL9: P1 — Runs 1–4 on one
 branch, merged once — and D0–D9 all A). Run 1 makes the support policy's six settings the owner's SAVED plan; Runs 2–4
-move the main screens (THIS MONTH, the Playbook, Daily, the Advisor, Safety) onto it.
+move the main screens (THIS MONTH, the Playbook, Daily, the Advisor, Safety) onto it. ⚠ Run 2 is built — THIS MONTH and
+Daily run the plan (§ The plan of record (Run 2), below).
 - **Six synced plan fields** (D1): `policyCbStopAtSupportPct`, `policyStrikeStopAtSupportPct`, `policyAccumulateBelow`,
   `policyPayDownAbove`, `policyBearBufferMonths`, `policyCashReserveMonths` — the C1 defaults (BL6: 45 · 50 · 2.0 / 3.0 ·
   12 · 0), plan events on `plan-events:v1`, in `SETTINGS_FIELDS` (39 → 45), the plan backup and the trusted viewer
@@ -4301,8 +4355,9 @@ move the main screens (THIS MONTH, the Playbook, Daily, the Advisor, Safety) ont
 - **The faces' what-ifs:** every face builds `policyRaw = { ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...plan,
   ...overlay.supportPolicy }` from `usePlanPolicy()` (read-only; `useShallow`); "Back to your plan" drops the face's
   what-if, and no face writes the plan (FACES, I20).
-- **One clamp — `planClamp.ts`** (70 and the Strike cap's defaults): the Decision face's constants and Settings' "Your
-  plan" read it; Run 2's main screens will. A parent face's own cap slider stays a what-if on that face.
+- **One clamp — `planClamp.ts`** (70 and the Strike cap's defaults): planRun's `PLAN_ENGINE_CONTEXT` and builders (the
+  Decision face, and since Run 2 THIS MONTH and Daily) and Settings' "Your plan" read it. A parent face's own cap
+  slider stays a what-if on that face.
 - **The Coinbase limit on the crash day:** the Emergency Console, THIS MONTH's crash line and the Outlook's legend read
   `policyCbStopAtSupportPct` (`LivePlaybookFigures.planCbStopAtSupportPct`, required; the Outlook's prop from both its
   parents). At C1 nothing moves — measured: 17 of 18 main screens and faces byte-identical; Settings gains its row,
@@ -4315,8 +4370,118 @@ move the main screens (THIS MONTH, the Playbook, Daily, the Advisor, Safety) ont
 - ⚠ **Per-notch plan events:** each notch a "Your plan" slider crosses is one plan event — like Living's income and
   expense sliders, which have 1,000 notches — and compaction keeps superseded events for 90 days inside the ONE plan
   payload. The plan log's size limit (past 40,960 B of plain JSON, NIP-44 padding sends the event at about 66 KB, over a
-  64 KiB relay limit; DevPanel's 60,000 B amber shows only past that step) is queue item 5a, its own fix on `main`.
+  64 KiB relay limit) was queue item 5a — shipped on `main` and taken in (§ Phase 4 → 5a): a drag is one event, and the
+  history is trimmed to 32 KiB.
 - Tests: § Test Suite → "The plan of record (Run 1)".
+
+#### The plan of record (Run 2 — THIS MONTH and Daily run the plan; store unchanged, NO bump)
+
+Spec: `pbloc-spec-plan-of-record-v1.md` (v1.7.2 — §4.3, §4.5, §4.7, §13; the owner's calls are BL16 — D-R2-1…8 and the
+venue colours — and BL17, Δ9–Δ12). THIS MONTH's Monthly Playbook card and Daily's plan card run the plan of record: THE
+MOVE plus a flat run at today's price, built through the Decision card's own builders. `runAdvisor` leaves both screens;
+THIS MONTH's log overlay keeps it until Run 3.
+- **ONE builder — `planRun.ts`** (invariant 2). `placementInputOf` / `engineInputsOf` build THE MOVE's input and the
+  engine's inputs for the Decision face AND `planMonthRun`, so the face and the card can't disagree: one copy, not two
+  compared. THIS MONTH = THE MOVE at today's price and S₀, then months 0..12 on a FLAT path at today's price (D4), from
+  the saved plan with no what-if, seeded as the face seeds (from the move only when it is made — D10). The card's month k
+  (this month or later) is the run's month k − currentMonth + 1; a past month reads the Ledger (D-R2-3 — the plan keeps no
+  history, D14).
+  - **What MOVE proves, and what kill criterion 2 rests on.** MOVE's 96 engine cells price S₀ on a 12- and a 60-month
+    support path and find it the same, so they prove only that the horizon can't change the move. That the face and the
+    hook gather the same facts rests on ONE (one builder) and the wiring's ONE (Δ7: each of THE MOVE's 15 facts —
+    `strikeDepositOf(st)` and the minimum's source among them — is read by the same expression in the Decision face's
+    selector and the hook's). Kill criterion 2 itself was measured on screen (spec §13.6, four households).
+- **The hook — `usePlanMonth`.** The store's live position, the saved plan, today's price and the policy's memory, run
+  through `planMonthRun`. Today per render (Δ3): an installed PWA resumes without remounting, and the start date, S₀, the
+  hold, the breaker fold and the Coinbase accrual all key on it, so a screen left open re-plans once a day. (The
+  Decision face freezes its own today, for the stress lens.)
+  - **The breaker, offline (§4.3, invariant 10, D-R2-6).** Today's fold when the price history arrived; else THIS
+    device's cache of the last fold (`planBreakerCache` — written only from a fresh fold, in an effect: the hook's one
+    write); else loading or none. The cache is read through the engine's own rule (`planBreakerCacheOf` →
+    `validOpeningBreaker`, dated `yyyy-mm-dd` — Δ6), so a cache the run would discard can never steer THE MOVE. The cached
+    line — "Price history hasn't loaded — the breaker as of …, this device's last reading." — shows only once the fetch
+    has FAILED (Δ12: `'cached'` carries `settled`; while the history is still loading the cache runs the month with no
+    line, so the card doesn't jump on every open). With neither, the card says the month assumes the model isn't
+    treated as broken — never silent. Daily's plan card runs the same fold, cache or assumption with no breaker line, by
+    design (spec Appendix W §0 item 12).
+  - **The offline split (invariant 2's exception).** With no fresh history THIS MONTH runs on the cached breaker, while
+    the Decision face assumes "not broken" (it never reads the cache). So a cached BROKEN breaker makes THIS MONTH's move
+    inert while the face names one. Recorded, not fixed: the face reading the cache is a Run 3/4 option.
+- **D-R2-4 — the Coinbase switch.** Every plan reader (the four faces, THIS MONTH, Daily) reads Coinbase's collateral
+  and balance only through `planCbCollateralOf` / `planCbLoanBalanceOf`. With the loan switched off the plan starts with
+  no Coinbase loan — never the fresh install's seed $60,000 on 1.48 ₿. The crash gate (`isCrashDay`, the Emergency
+  Console), Simple Mode's Outlook and THIS MONTH's log overlay (`runAdvisor`, until Run 3) keep the store's figures,
+  behind the loan switch. ⚠ The support policy is the cycle by construction: with the
+  loan off the plan still pledges its buys to Coinbase, and the after box shows a Coinbase leg the owner doesn't have
+  (plans without Coinbase are the deferred "non-cycle modes under the policy").
+- **D-R2-7 — Strike's minimum, as the owner pays it** (`blocMinPaymentSource`): `strikeMinFromIncome` on every run, the
+  faces' and the main screens'. Income pays the minimum after the bills and before the buy, the restore or the pay-down;
+  only an unpaid part capitalises. **The baseline (Δ11):** the never-draw comparison pays its own Strike interest by the
+  same rule, so the verdict compares like with like. Measured before the fix, over 900 income-mode face runs it
+  understated the plan in every run where income paid a minimum (300) and flipped 45 verdicts; after it, a "hold" run
+  equals never-draw in all 27 cells, in both modes. Roll mode (the default) is byte-identical.
+- **The cards (D-R2-2, D-R2-8).** `PlanMonthCard` is one card, one month, each fact once: the status, "To do this month"
+  and "After this month" (both loans, Coinbase at the month's own support on a meter). Behind a tap sit "To be within it
+  today" (the catch-up) and "Why this plan?". The scrubber's track is the year. One status colour per card — no Advisor
+  tier border (Δ10; the Advisor tab keeps its tiers). **Daily's plan card** reads the same month 1: the status (or the
+  crash title), the rows, the minimum and "Why this plan?". Its bars compare the Ledger with the plan in the Ledger's own
+  streams (`planLedgerTargets`, Δ4), and "Interest capitalized" is the interest less the minimum paid, for the current
+  month only (Δ5). On a crash day (D13 — `isCrashDay`, still `ltvTriggered` until Run 4, D3) THIS MONTH's status is the
+  Emergency Console's line — `PLAN_CRASH_TITLE` over `monthPlaybookLine`'s items — with `crashNote(true)` as a foot
+  under the rows; Daily's status is the title alone.
+- **The status (§4.5).** Month 1 reads TODAY's fact — THE MOVE's `cbOverCeilingUsd` at S₀ — with the time back
+  (`firstMonthUnderLimit`) and the catch-up as arithmetic on the run's numbers ("Your limit: 45% of what Coinbase's
+  collateral is worth at support ($X per ₿ today)."). Later months read their own month-end through ONE rule,
+  `cbOverLimitAtMonthEnd` (the engine's headroom at that month's support, past the dust floor); the switch month, the
+  track and the after box read it too, so month 1's status and its band can differ.
+  - **The three over-limit bodies (Δ9)**, by the run's own figures: Coinbase repaid → "Spare income repays it before the
+    plan borrows again"; still over at month-end with nothing repaid → "No spare income repays it this month"; back
+    within at month-end → "Back within your plan's limit this month."
+  - **The refused policy (Δ8)** — the engine ignores the policy (`policyIgnoredReason`; e.g. a Strike liquidation LTV at
+    or under its 70% call). Short of a liquidation, every month's status is the Decision card's own `policyIgnoredNote`,
+    the track is never green, the after box has no meter and no over-the-limit tone (`planAfter` takes
+    `policyApplied`), and the Why drops its limit sentence.
+  - After a liquidation every later month reads "Coinbase has been liquidated — borrowing has ended", in red (N8), and
+    never promises a recovery.
+- **The words (§4.7, I31).** Every sentence either card shows comes from `planMonthView` (or decisionView,
+  crashPlaybookView, supportPolicyView); the cards compose none. planRunWiring's I31 reads both cards' syntax trees: every
+  text of three or more words is one of eleven listed labels. Facts, never "should", "need to" or "safe"; never "$0",
+  "₿0.000" or "0.000 ₿" (WORDS). The Decision card's first line reads "This is your plan of record's move this month —
+  the support policy, with your settings.", and with a what-if on the move (the policy or the line), "A what-if — your
+  plan is unchanged." **The one-time note** (D8, `planSwitchNote`) is dismissed once per device (`planNoteDismissed`) and
+  never shown to a viewer. **The venue colours** (the owner's add-on): Strike white, Coinbase blue, cold storage orange —
+  the faces' own tokens — on each row's dot and its venue words; two venues split the dot; a warning shows in the note
+  and the amount, so a dot never hides it.
+- **The hold's one date (D9, invariant 8).** Strike's 60-day hold reads ONE fact — the latest logged Strike deposit's
+  date (`latestStrikeDepositISO`) — through ONE rule (`strikeHoldAt`). `strikeDepositOf` picks the fact on this device:
+  the owner's journal, or a trusted viewer's `viewerStrikeDepositISO` (the trusted snapshot's `strikeLastDepositISO`,
+  raw-set by viewerSync; the safe snapshot never carries it). Every hold reader — the Decision face and
+  the Emergency Console (a viewer reaches both), `usePlanMonth` and THIS MONTH's crash line — reads it this way (HOLD: over 4,000 journals × 9 days
+  the split rule equals the rule as it stood at `3580f92`). A viewer never sees THIS MONTH or Daily — it has its own
+  home — so the Almanac's face and console are where D9's date matters.
+- **Not in Run 2** (spec §13.11):
+  - The crash gate stays `ltvTriggered` until Run 4 (D3).
+  - Run 3: THIS MONTH's log overlay keeps `runAdvisor`, as do the Advisor tab's plan rows and the Outlook's link; the
+    `simpleModePlan` helpers Run 2 left with no screen go with them (`deriveForMonth`, `composeMonthSummary`,
+    `isOperatingMonth`, `displaySettledLtv`, `isLtvFigureStressed`).
+  - Run 4: Safety's at-support line and the safe snapshot's two ratios.
+  - The statement minimum's inline editor left THIS MONTH; the figure is entered in Settings → Strike Strategy.
+  - The engine's month-0 seizure leaves an unsecured Coinbase balance (the engine's model, unchanged — Policy v2's
+    seizure on the way down repays the loan in full): the after box says "no collateral", and the status names what
+    survives.
+  - The monthly release: the run releases Strike's surplus collateral at each month-end ("Strike → Coinbase ·
+    month-end", or "small, can wait" under `MOVE_THRESHOLD_BTC`, 0.01 ₿). In life a release is a request Strike
+    honours after its 60-day hold, and the run models the hold only from logged deposits (D14).
+  - A finished strategy year: the card stays on month 12 with today's run, with no sign-off pointer and no
+    next-month line.
+  - Logged (v1.7): the Decision face reading the breaker cache (the offline split); a trusted→safe downgrade keeps the
+    trusted figures on the viewer's device (from before Run 2 — `viewerSync`'s safe branch clears nothing, and
+    `viewerStrikeDepositISO` joins them); the price history is fetched on every visit to THIS MONTH or Daily (a Run 3
+    option: one fetch per session); ~60 unused SimpleModeView CSS rules (Run 3's sweep); Daily's month rollup lists
+    Strike's paydowns but not Coinbase's, though the bars count both.
+  - Queued: Daily's paydown sheet's "the 1th"; Daily's progress bars' "$0 / $0" (from before Run 2); the faces' empty
+    state's other zero figures.
+- Tests: § Test Suite → "The plan of record (Run 2)".
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -4396,16 +4561,21 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   "more than 99%" (`fmtBelowPct`, F11). Right after it comes the price alert at the owner's trigger, or "Coinbase is at
   or past your t% trigger at today's price — work from the Emergency Console" (§ Policy v2 → Run B).
 - **The seeding rule (D10, v1.6 — amended in Run B and in Policy v2 Run B).**
-  `seedFromMove = seedsFromMove(placement.seeded, { ...ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses })`
+  `seedFromMove = seedsFromMove(placement.seeded, { ...PLAN_ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses })`
   — the move is worth making AND the engine will APPLY the policy (`supportPolicyResolution`, the run's own answer with
-  the run's own inputs). The three collateral balances in `engineInputs` are `seedFromMove ? placement.opening.X : s.X`.
+  the run's own inputs). The three collateral balances in `engineInputs` are `seedFromMove ? placement.opening.X : s.X`
+  — since the plan of record's Run 2 that ternary lives in planRun's `engineInputsOf`, which the face and THIS MONTH both
+  call.
   ⚠ **Run B amendment:** with the policy OFF the card names no move, so the run starts from the store's own balances,
   the schedule's Today row lists nothing (`planSchedule` gates it on `sim.policyApplied`), and `coinbaseLoanLine` never
   says "today". **The residual is CLOSED (Policy v2 Run B, B4):** with the policy ON but IGNORED by the engine (reachable
   only through `'strikeLadder'` — Strike's liquidation LTV at or under its 70% call) the run used to be seeded from a move
-  the card never named. `ENGINE_CONTEXT` is the face's ONE copy of the five engine constants, spread by `engineInputs`.
+  the card never named. `ENGINE_CONTEXT` was the face's ONE copy of the five engine constants, spread by `engineInputs`;
+  since Run 2 it is `PLAN_ENGINE_CONTEXT` in planRun.ts, spread by `engineInputsOf` — still ONE copy, shared with THIS
+  MONTH.
 - **The policy's memory (D14).** One frozen `todayISO` feeds the start date, the hold and the seed. `hold =
-  strikeHoldFrom(s.dayLog, todayISO)` → `holdMonthsFrom` → `openingStrikeHoldMonths`; `breakerSeed =
+  strikeHoldAt(s.strikeDepositISO, todayISO)` — the hold's one fact through its one rule (Run 2, D9: `strikeDepositOf`,
+  the journal or a trusted viewer's snapshot date) → `holdMonthsFrom` → `openingStrikeHoldMonths`; `breakerSeed =
   breakerFromHistory(usePowerLawData().historical, startDate, DEFAULT_BREAKER_REARM_MONTHS ?? null)` →
   `openingBreaker: breakerSeed?.state` (undefined reads as absent — `validOpeningBreaker`). The breaker line has FOUR
   readings: a seed (dated through the last month-end, via `fmtTurnDate` — never ICU's "Sept"), **`'loading'`** while
@@ -4490,26 +4660,33 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   a CSS module loads app-wide and an ungated `@media print` would take over every page's printing (G7). 🔴 **C1:** the
   class clears on `afterprint`, the next `pointerdown`, `keydown` or window `focus`, and on unmount — NEVER
   synchronously after `window.print()` (Safari and mobile browsers return from it at once, before layout).
-- **D15 / D16.** The card is "The support policy's move this month" and ALWAYS opens with the plan-of-record line
-  (the Monthly Playbook runs the owner's Coinbase strategy; this card shows what the support policy would do) — never
-  "THE ANSWER" (I28 greps the four files). Moves under 0.01 ₿ wait for next month's re-plan and the run is not seeded.
+- **D15 / D16.** The card is "The support policy's move this month" and ALWAYS opens with the plan-of-record line —
+  never "THE ANSWER" (I28 greps the four files). Moves under 0.01 ₿ wait for next month's re-plan and the run is not
+  seeded. ⚠ Since the plan of record's Run 2 (§4.7) that line reads "This is your plan of record's move this month — the
+  support policy, with your settings." (THIS MONTH and Daily show the same move), and "A what-if — your plan is
+  unchanged." while a what-if changes the move (`moveWhatIf`: the policy's settings or the line); it used to say the
+  Monthly Playbook ran the owner's Coinbase strategy.
 - **Copy discipline (I31, Run B).** The face composes NO sentence: every one lives in `decisionView.ts` (see its
   file-list entry). The face holds labels and readouts only; `decisionWiring` scans its string literals and JSX text.
 - **Face-local defaults** mirror Cycling: Coinbase defense line 70 · the shared Strike-cap defaults · cold sweep 30 on
   (used only with the policy off) · cadence 1 · on the line (revert preset 48) · horizon 60 · path Support · inspect
   month **1** (so a stress starts now) · the literal `'cycle'`. The defense line, Strike cap, sweep and cadence have
   NO control here — module constants, outside every dependency list. Since the plan of record (Run 1) the defense line
-  and the Strike cap are `planClamp.ts`'s (`CAP_PCT = PLAN_CB_LTV_CAP_PCT`, `STRIKE_CAP_PCT` / `STRIKE_CAP_EFF` likewise —
-  the aliases stay for the ENGINE_CONTEXT pin); Settings' "Your plan" reads the same clamp. The policy's settings start
-  from the owner's saved plan (`usePlanPolicy`). READ-ONLY: zero store writes; "Reset to live".
+  and the Strike cap are `planClamp.ts`'s; since Run 2 the face's aliases (`CAP_PCT` / `STRIKE_CAP_PCT` /
+  `STRIKE_CAP_EFF`) are gone — planRun's `PLAN_ENGINE_CONTEXT` and builders read `PLAN_CB_LTV_CAP_PCT` /
+  `PLAN_STRIKE_CAP_PCT`, the cold sweep and the cadence are `PLAN_COLD_BUFFER_PCT` / `PLAN_CYCLE_MONTHS`, and the face
+  clamps through `PLAN_CLAMP`; Settings' "Your plan" reads the same clamp. The policy's settings start from the owner's
+  saved plan (`usePlanPolicy`). READ-ONLY: zero store writes; "Reset to live".
 - **The wiring guard — `decisionWiring.test.ts`** (source-reading; every check proven red): the **PREFIX rule** — every
   `runCyclingSim(` starts `runCyclingSim({ ...engineInputs,` (⚠ NOT `supportPolicyWiring`'s exact regex, which a
   selector call fails); `evaluatePaths(engineInputs,`; `pathNote` gets `worstBy: crown.worstBy` (W1); the four
   policy memos and `buildSupportPath(startDate, months)`,
   never stressed; `placementInput` priced at `anchorPrice` / `supportPath[0]` with the seed's `broken`, and reading no
   path, choice or stress; B1's card context; the seeding rule and its policy gate (Policy v2 Run B: through
-  `seedsFromMove`, never `placement.seeded && supportPolicy !== undefined`; `ENGINE_CONTEXT` holds exactly the five
-  constants, which `engineInputs` spreads and never re-declares); the memory reaching the engine;
+  `seedsFromMove`, never `placement.seeded && supportPolicy !== undefined`; since Run 2 `PLAN_ENGINE_CONTEXT` in
+  planRun.ts holds exactly the five constants, which `engineInputsOf` spreads and never re-declares, and the face's two
+  memos are `placementInputOf(…)` / `engineInputsOf(…)` calls — the pins read both files); the memory reaching the
+  engine (the hold through `strikeHoldAt(s.strikeDepositISO, …)`, Run 2);
   `supportAtDates` passed as a FUNCTION; `useId`; the legend note reads `pathOnSupport(displayedPath, supportPath,
   months)`, never `pricePath`; C2's row shape; C1's listeners and the no-synchronous-clear rule; no buffer / stop /
   mode control; I19; I20; the hub (I21); I28; I31 (its non-vacuity anchor is the JSX text 'Moves' since D2 moved the
@@ -5367,9 +5544,11 @@ happen on the lenders' screens and are logged through the Daily flows. Monthly C
   - the Coinbase stop at support through `effectivePolicyStops` on the plan of record's Coinbase limit
     (`policyCbStopAtSupportPct`, 45% at C1 — the owner's saved plan since Run 1), read through its clamp
     (`clampPlanPolicy`), as every face reads it;
-  - Strike's 60-day hold from `strikeHoldFrom(dayLog, today)` — logged `target:'strike'` deposits only (a collateral
-    increase entered only as a reading is invisible). With no deposit in the window the app assumes the line is more
-    than 60 days old, and the card says so;
+  - Strike's 60-day hold from its one fact through its one rule — `strikeHoldAt(strikeDepositOf(store), today)` (the
+    plan of record's Run 2, D9: the owner's latest logged `target:'strike'` deposit, or a trusted viewer's snapshot date,
+    so a viewer's console holds exactly when the owner's does) — logged deposits only (a collateral increase entered
+    only as a reading is invisible). With no deposit in the window the app assumes the line is more than 60 days old,
+    and the card says so;
   - the EFFECTIVE price (simulated while simulating); support = `plBandsAt(today).floor` — the component keeps the
     power-law crossing, and both the model and the view module stay belief-free.
 - **The card (`playbookCard`):** a neutral order badge · the depth sentence (top up first between the liquidation depth
@@ -5408,6 +5587,13 @@ builder, as the Emergency Console — and every place the projection's Coinbase 
 shift debt)". Spec: `pbloc-spec-crash-playbook-run3-v1.md` (Run 3 of 3). The projection (`runAdvisor`) is unchanged: it
 still models the debt shift.
 
+⚠ **Run 2 (the plan of record):** the line now sits in THIS MONTH's card STATUS on a crash day — `PLAN_CRASH_TITLE`
+("Crash day — work from the Emergency Console") over the line's items, then `crashNote(true)` (PlanMonthCard; Daily's
+plan card shows the title) — gated by `isCrashDay`, the console's own gate. Box 2, "CB runway" and Box 3's "(if you
+shift debt)" suffix went with the three boxes, and the label is at two sites. The bullets below keep Run 3's record:
+their "box" is now the card's status, which is full width, so the compact shapes' 70px reason is Run 3's; the inputs,
+the one reading and the compact shapes themselves are current.
+
 - **Where and when:** Box 2 (THIS MONTH) of `SimpleModeView`, `ltvTriggered` mode only. The gate is
   `cbTriggered ? playbookLine !== null : cbRunwayToTrigger > 0`. `cbTriggered` (Coinbase at or over its trigger) and the
   "CB runway" branch below the trigger are unchanged.
@@ -5416,8 +5602,8 @@ still models the debt shift.
   - the ACCRUED Coinbase debt (`effectiveCbBalance`);
   - the LIVE Strike balance (`advisorActualBlocBalance`, never the start-of-month projection base);
   - `getCurrentBtcHeld()` and `getCurrentColdBtc()`;
-  - the target, the plan's Coinbase limit (`policyCbStopAtSupportPct` — the plan of record, Run 1), the dayLog
-    (Strike's 60-day hold) and today.
+  - the target, the plan's Coinbase limit (`policyCbStopAtSupportPct` — the plan of record, Run 1), Strike's 60-day
+    hold's one fact (`strikeDepositOf` — Run 2, D9; it was the dayLog) and today.
 
   Support is `plBandsAt(today).floor` — the view keeps the power-law crossing. When the console is not simulating, the
   console and the box name the same amounts.
@@ -5444,12 +5630,11 @@ still models the debt shift.
   MONTH (if you shift debt)". Beside a Box 2 that may say "move cold / release Strike collateral", an unlabelled Box 3
   would contradict it.
 - **One label:** `CB_PAYDOWN_LABEL` = "CB paydown (if you shift debt)"; `IF_YOU_SHIFT_DEBT` is its suffix.
-  - It appears at four sites:
+  - It appears at two sites since the plan of record's Run 2 (Daily's plan reference and the THIS MONTH ALSO strip went
+    with it):
     - OutlookProjection's `ltvTriggered` header and legend;
-    - AdvisorMain's CB LTV alert;
-    - DailyModeView's plan reference;
-    - the THIS MONTH ALSO strip.
-  - `monthlyPlaybookWiring.test.ts` fails if any of the four says "CB paydown" or "pay down CB", comments included.
+    - AdvisorMain's CB LTV alert.
+  - `monthlyPlaybookWiring.test.ts` fails if either says "CB paydown" or "pay down CB", comments included.
   - ⚠ JSX drops the whitespace at a line break next to an expression, so each label expression keeps its neighbouring
     text on its line. The same test pins the spacing.
 - **The legend's depth is computed:** `playbookDepthFor(cbLtvTargetPct, planCbStopAtSupportPct)` — the builder's stop at
@@ -5736,8 +5921,10 @@ Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth
 prices indexed by MONTHS ELAPSED from `startingMonth`. A finite, positive entry REPLACES the CAGR for that month;
 anything else (short, hole, NaN, 0, negative) falls through to it. Rows now carry `btcPrice` — additive, since rows
 are computed per render and never persisted.
-- ⚠ **Only `OutlookProjection` passes a path.** The operating plan (`AdvisorMain` / Simple / Daily) stays flat, and
-  a grep guard in `advisorPricePath.test.ts` enforces it.
+- ⚠ **Only `OutlookProjection` passes a path.** The operating plan (`AdvisorMain`, and Simple's log overlay) stays
+  flat, and a grep guard in `advisorPricePath.test.ts` enforces it. Since the plan of record's Run 2, Daily and THIS
+  MONTH's card no longer run the Advisor at all — they run the plan (`usePlanMonth`); SimpleModeView calls `runAdvisor`
+  only for the log overlay's planned rows, and the guard's list of callers is three.
 - Its fifth scenario, **4-yr cycle**, builds `cycleConvergencePath(btcPrice, startDate, 12, PL_ON_THE_LINE)` in the
   VIEW. That is the §2 crossing: `runAdvisor` never imports `cyclePath`.
 - The 12-month horizon makes it a SEGMENT whose leg depends on the date. From Sep 2026 it is the rise out of the
@@ -6075,7 +6262,9 @@ anchor. The `DayEvent` deposit/withdraw `target` widened to `'strike' | 'cb' | '
   - The Daily trio card gains a quiet cold footer row — shown when the total is > 0 or any cold move exists, and
     NOT a 4th cell.
   - Settings shows "Anchored <date> · N journal moves since", or "Not dated yet".
-  - The Monthly Playbook is unchanged (it is a Strike plan).
+  - The Monthly Playbook is unchanged (it is a Strike plan). ⚠ Run 2 (the plan of record): THIS MONTH's card now runs the
+    plan, which starts from the real cold reserve (`usePlanMonth` reads `getCurrentColdBtc()`), and its catch-up offers
+    "Move ₿X from cold storage to Coinbase" when the reserve covers it.
 - `resetPlanToSeeds` now resets `coldStorageBtc` and its stamp; it used to leave the cold balance behind.
 
 **Real cold in the projections (real-cold spec v1 / v1.1 — store unchanged, NO bump; engine logic untouched).** The
@@ -6087,6 +6276,9 @@ itself: `btcHeld`/`coldBtc` +C, `collateralValue`/`equity` +C × price, the verd
   in the `engineInputs` body and deps AND the lens-reset deps — a cold move logged on the Daily view clears a stress.
 - **Every opening figure includes the reserve:** `openingBtc = strike + CB + cold` feeds "from X ₿", the seed row
   (`seedLine`: `· X ₿ (C ₿ in cold storage) against $Y` when a reserve shows) and Ownership's "Opening position".
+  `seedLine`'s empty position (the plan of record's Run 2 — D-R2-4 lets a fresh install with the loan switched off
+  reach it): "Seeded from your live plan · nothing held or owed yet", and "… nothing owed" / "nothing held, $Y owed"
+  when only one side is empty — never "0.0000 ₿ against $0".
 - **The cold card:** § Support policy — Faces (Run 2) → "Cold card with the owner's reserve".
 - ⚠ **Under the support policy the emergency Coinbase top-up IS doom-gated** (the doom gate, adopted 2026-09-27 —
   § LTV defense → "The cold rules below support"): in a month Coinbase cannot survive, the reserve stays out of it. On
@@ -6332,6 +6524,11 @@ Both surfaces that show a bare figure now use them:
 - the AFTER THIS MONTH box (`eomLtv` via `displaySettledLtv`, `eomStressed = isLtvFigureStressed(eomLtv)`);
 - the plan bar (the projected `barStrikeLtv` via `displaySettledLtv`, coloured by `barStressed`).
 
+⚠ **Run 2 (the plan of record):** Simple Mode's badge, AFTER box and plan bar are gone — THIS MONTH's card runs the
+plan (§ The plan of record (Run 2)). `paydownReadout` / `paydownBadge`'s only app caller is now the Smart BLOC tab's
+Playbook (`MonthlyPlaybook.tsx`), and `displaySettledLtv` / `isLtvFigureStressed` have no screen left: they wait for
+Run 3, with `deriveForMonth` / `composeMonthSummary` / `isOperatingMonth`.
+
 Only the header keeps `badge.tone`, because its two halves are labelled.
 
 The old `eomStressed = eomState === 'partial' || eomState === 'undefended'` was an `===` consumer that the new member
@@ -6354,7 +6551,9 @@ and the NDP clause is re-scoped to roll-mode only.
   user-entered statement figure; `null` → the computed one-month-interest estimate `balance × APR/12`; reset to
   `null` at month-confirm). Both in `buildSettingsPayload` + `SETTINGS_FIELDS` + defensive `migrateState`
   defaults; **no store version bump** (initial-state default + custom shallow merge, `simpleView` precedent). Ride
-  into the plan backup + trusted snapshot automatically; the safe snapshot (ratios-only) is untouched.
+  into the plan backup + trusted snapshot automatically; the safe snapshot (ratios-only) is untouched. ⚠ Run 2 (the
+  plan of record): on THIS MONTH and Daily the owed figure is the statement's, else the PLAN's month-1 interest
+  (`planMinimumOwed` — what Strike bills); with nothing owed there is no minimum line, so never a "MISSED".
 - **Engine (`runAdvisor.ts`):** optional input `blocMinPaymentSource?` (defaults `'roll'` inside → every existing
   call site is byte-identical unless it threads the real value). After `blocInterest = blocBalance ×
   blocMonthlyRate` in BOTH branches: `roll` capitalizes (`blocBalance += blocInterest`, unchanged); `income` pays
@@ -6367,9 +6566,10 @@ and the NDP clause is re-scoped to roll-mode only.
   `allocatedFromIncome = paydown + btcBoughtUsd + cbPayment + minPayment` still equals income;
   `composeMonthSummary` emits **"Pay/Paid the $X Strike minimum from income."** when `minPayment > 0`, else the
   existing **"Interest of $X capitalizes onto the balance."** (roll).
-- **Threading:** the store `blocMinPaymentSource` is passed into `runAdvisor` at ALL app call sites
-  (SimpleModeView, DailyModeView, AdvisorMain, and via a new prop into OutlookProjection) so projections show the
-  income-mode tradeoff (lower balance/LTV, less BTC) honestly.
+- **Threading:** the store `blocMinPaymentSource` is passed into `runAdvisor` at ALL app call sites so projections
+  show the income-mode tradeoff (lower balance/LTV, less BTC) honestly — since the plan of record's Run 2 that is three
+  (AdvisorMain, OutlookProjection via its prop, SimpleModeView's log overlay; Daily no longer runs the Advisor), and the
+  plan reads the same setting as `strikeMinFromIncome` on every face and on THIS MONTH / Daily.
 - **Simple Mode UI (`SimpleModeView.tsx`):** income mode adds a FROM MONTHLY INCOME allocation row "Strike minimum
   · due the 15th" (amount = `blocStatementMinimum ?? estimate` + a `statement`/`est.` chip; tap the amount →
   inline field → `setBlocStatementMinimum`; no Skip pill — contractual). Roll mode keeps the Interest-capitalizes
@@ -6379,10 +6579,15 @@ and the NDP clause is re-scoped to roll-mode only.
   `strikeMinPaid` + `strikeMinSource` to the entry, and in income mode resets `blocStatementMinimum` to null +
   stamps `ndpLastPaidDate` (an external minimum IS a non-draw payment). Box 2 "THIS MONTH" Draw line now anchors on
   the MONTH's total (`effectiveDrawAmount`) with `($X left)` as the countdown parenthetical (was a bare "Draw: $0"
-  once the month's draws were logged), plus a `Min:` line in both modes.
+  once the month's draws were logged), plus a `Min:` line in both modes. ⚠ Run 2 (the plan of record): THIS MONTH's
+  card replaced this UI — the minimum's foot is `planMinimumLine` + its PAID / DUE / MISSED chip (income mode) or
+  `planInterestRollsLine` (roll mode), the due day is an ordinal ("the 1st", `fmtDayOrdinal`), and there is no inline
+  statement editor on THIS MONTH (the figure is entered in Settings → Strike Strategy).
 - **NDP re-scope:** `ndpActionActive` (SimpleModeView) is gated on `blocMinPaymentSource === 'roll'` — the annual
   NDP surfaces (`showNdpRow`, the "NDP paid $X" summary, the status pill/badge) only exist while minimums roll.
-  `getNdpStatus`'s signature/estimate (one month's interest) is unchanged.
+  `getNdpStatus`'s signature/estimate (one month's interest) is unchanged. ⚠ Run 2 (the plan of record): on THIS MONTH
+  the NDP surface is the card's `planNdpLine` ("1 day", never "1 days"), roll mode only, plus the NDP urgency card
+  above it, which reads `ndp.status` in either mode.
 - **`MonthlyLogEntry` += `strikeMinPaid?` / `strikeMinSource?`** (optional additive, legacy-tolerant next to
   `ndpPaid?`).
 
@@ -6394,13 +6599,16 @@ guard (`cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct`) leads BOTH the forw
 reverse-rotation `else if` — mis-ordered config suspends rotation for the month (no churn) while draw/interest/BTC
 still run. Simple Mode's plan card surfaces an amber `.misorderNotice` "⚠ CB thresholds mis-ordered — rotation
 advice suspended; fix in Settings → Coinbase Loan." when the persisted config violates ordering (covers
-legacy/synced-in bad values).
+legacy/synced-in bad values). ⚠ Run 2 (the plan of record): that notice went with the old card — THIS MONTH runs the
+plan, which reads no rotation thresholds; the Advisor's guard and Settings' ordering warning are unchanged.
 
 ## Cumulative savings-need line (Simple Mode Corrections C)
 
 `SimpleModeView` computes `savingsNeed = Σ (max(0, fiatGap) + max(0, blocMinShortfall))` over the remaining
 projection rows (`month ≥ currentMonth`) and renders a `.savingsNeed` line "Needs ~$X from savings over the next N
 months" when `> $0` (N = remaining months with a gap) — muted normally, `.savingsNeedAlert` amber when `≥ 1× income`.
+⚠ Run 2 (the plan of record): the line is `planSavingsLine` on THIS MONTH's card now — the bills nothing in the plan
+pays (the run's `unfundedUsd`) over the strategy year's months left, same words, muted.
 
 ---
 
@@ -6410,7 +6618,9 @@ Retires the **second writer** of monthly actuals. Before: the Daily view (**Ledg
 roll up) AND the Monthly view's `ConfirmLogSheet` (**Playbook** — a parallel skip-adjusted derivation) both
 wrote the same entry → "the amounts don't match." Now the **Ledger is the sole writer of actuals** and the
 **Sign-off** (ReviewSheet) is the sole monthly confirmation; the Playbook renders its current month exactly
-like any projected month (figures from the engine via `deriveForMonth`).
+like any projected month (figures from the engine via `deriveForMonth`). ⚠ Run 2 (the plan of record): the
+Playbook's figures now come from the plan's run (`usePlanMonth` — PlanMonthCard and Daily's plan card), not
+`deriveForMonth`; the Ledger is still the only writer of actuals.
 
 - **§1 Vocabulary + Invariant 1:** Ledger = Daily, Playbook = Monthly, Sign-off = ReviewSheet flow. **The
   Ledger is the only writer of ACTUALS** (`dayLog` events + the sign-off's entry fields); the Playbook never
@@ -6433,7 +6643,10 @@ like any projected month (figures from the engine via `deriveForMonth`).
   `blocMinPaymentSource`) — a one-field reading-free sheet (prefill `blocStatementMinimum ?? estimate`); the
   Paydown sheet shows a `Minimum · due the Nth · $X · STATUS` context line. Settings → Strike Strategy → a
   **MINIMUM PAYMENT** group (Source pills + This month's amount + Due day). Status chips (PAID/DUE/MISSED/ROLLS)
-  on the Daily plan card + the Playbook Box 2 Min line. `MonthlyLogSection`/`Overlay` show `strikeMinPaid`;
+  on the Daily plan card + the Playbook Box 2 Min line. ⚠ Run 2 (the plan of record): the chip now follows the plan
+  cards' minimum line — Daily's plan card and THIS MONTH's card foot (the current month) — in income mode only, and only
+  with something owed (never a "MISSED" with nothing owed); roll mode shows the interest that rolls instead of a ROLLS
+  chip, and Box 2 is gone. `MonthlyLogSection`/`Overlay` show `strikeMinPaid`;
   **`AdvisorSidebar`'s ANNUAL NON-DRAW PAYMENT card gates on `blocMinPaymentSource === 'roll'`** (an income
   minimum IS a monthly non-draw payment → the annual clause is gone).
 - **§3 The Playbook goes pure (`SimpleModeView`):** RETIRED — `ConfirmLogSheet`, `handleApply`, the Pay/Skip
@@ -6443,7 +6656,9 @@ like any projected month (figures from the engine via `deriveForMonth`).
   row's eom. A **sign-off pointer** ("Month N awaits sign-off in the Ledger →" → `setSimpleView('daily')`; shown
   when `currentEntry?.confirmed === false` or no entry) replaces the Log button; a read-only **MTD strip**
   ("Ledger: $X drawn · ₿Y bought · $Z paid ›" from `buildMonthRollup`) deep-links to the Ledger. Box 2/3 gain
-  **paren symmetry** (plan headline + ledger progress: "Draw: $3,750 ($1,200 left)"). `composeMonthSummary`'s
+  **paren symmetry** (plan headline + ledger progress: "Draw: $3,750 ($1,200 left)"). ⚠ Run 2 (the plan of record): the boxes are gone; the
+  sign-off pointer and the Ledger strip live on in PlanMonthCard, their words from `planSignoffLine` / `planSignoffSub`
+  / `planLedgerParts` (only what was logged, both loans' paydowns — never "$0 drawn"). `composeMonthSummary`'s
   skip args (`skipDraw/skipBtc/skipCb/unallocated` + `isCurrent`) are RETIRED from `MonthSummaryArgs`; the
   current voice = the imperative plan voice. **`advisorSkip*` stay DORMANT** in store + payload (sync compat;
   no consumers).
@@ -6962,10 +7177,12 @@ view; (13) the chart box doesn't jump when the history loads.
 
 🔴 **`income − expenses` IS THE BASELINE, NOT THE STRATEGY.** The Cycling Cash-flow card read
 "Surplus $X/mo buys bitcoin" with X = `income − expenses`. While the flywheel is DRAWING that is wrong by
-the entire expense figure — the credit line pays the bill, so the WHOLE income buys. On a budget whose
+the entire expense figure — the credit line pays the bill, so the WHOLE income buys (less Strike's minimum when income
+pays it — the plan of record's Run 2, `strikeMinPaidUsd`). On a budget whose
 surplus is a quarter of income, the copy understates the flywheel by **4x**. `income −
 expenses` is the never-draw baseline the strategy is *measured against*. ⚠ The old copy was right in ONE
-state — once the cap stops the draw, income pays the bill itself and only the surplus buys — which is why
+state — once the cap stops the draw, income pays the bill itself and only the surplus buys (again less Strike's
+minimum when income pays it) — which is why
 the fix is STATE-DEPENDENT (`cashFlowAtMonth`, keyed to the SCRUBBED month) rather than a swap: scrub past
 the cap and the sentence changes.
 
@@ -7269,9 +7486,10 @@ goes red.)
     seeded with the breaker folded over the realized month-ends, reproduce the continuous run to 1e-9 ₿ on P6, both
     false-recovery paths and a stressed P2. ⭐ NON-VACUITY: unseeded, the $50k false recovery re-borrows, is
     liquidated, and ends behind. Adds `falseRecoveryPath` to `supportPolicyPaths.ts`.
-  - `decisionView.test.ts` — ⭐ **I13** the completeness sweep (12,215 runs / ~490k rows: `a5Cases()` both arms ×
-    four owner fixtures, both grids off and on, the synthetic grid, and the three `callRun` fixtures — the ONLY
-    source of a cash cure, a cold cure and a Strike sale; every kind reached). ⚠ Collect mismatches, don't `expect`
+  - `decisionView.test.ts` — ⭐ **I13** the completeness sweep (12,245 runs / ~490k rows: `a5Cases()` (15) both arms ×
+    five owner fixtures, both grids off and on, the synthetic grid, and the three `callRun` fixtures — the ONLY
+    source of a cash cure, a cold cure and a Strike sale; every kind reached). The plan of record's Run 2 added the fifth
+    fixture, `strikeMinFromIncome: true` — the ONLY source of a `payMinimum` action (12,215 runs before). ⚠ Collect mismatches, don't `expect`
     in the innermost loop (8M assertions is 110s of suite time; one assertion at the end is 3s), and reuse the
     schedule's own actions rather than re-deriving them. I14 (no `$0`, no `0.000 ₿`), ⭐ I31 (`moveCard`'s every
     line by example, plus a sweep of placement states × the breaker's four readings × with and without a loan),
@@ -8019,7 +8237,8 @@ goes red.)
   - Changed: `calendarModel.test.ts` (25 → 29: `netBtc` → `moves`; ⭐ HEADLINE, ⭐ PLEDGE, `formatMoves` twice) ·
     `sync.test.ts` (a relay answers; IGNORED's log check is now no "unreadable" or "parse failed" line — 5c retired
     "payload parse failed (skipped)" from the apply) · `journalSync.test.ts` / `journalSweep.test.ts` (the pools answer;
-    `setPlanLoaded`) · `characterization.test.ts` (98 persisted keys, 104 with the plan of record; `planLoaded: false`).
+    `setPlanLoaded`) · `characterization.test.ts` (98 persisted keys, 104 with the plan of record's Run 1, 107 with its
+    Run 2; `planLoaded: false`).
   - Red-first and the mutations: the spec's §6.3 and Appendix P.
 - **Phase 4e — the `settings:v1` bridge retired** (spec `bitbloc-spec-4e-bridge-stop-v1` v1.3 — § Phase 4; 25 test files,
   3 new; the suite 2,505 → 2,494, 149 → 152 files; 32 mutations + X-PARITY-ORDER, each an exact-once edit run on its
@@ -8094,6 +8313,63 @@ goes red.)
     pure modules added, 12 of 14 red — READ and FOLD green by construction; the e2e red at "PLAN row".
   - The mutations (spec Appendix P, MR1–MR49) are red at their tags. MR24 (the hook overrides the limit) and MR25 (the
     hook drops `useShallow`) are green at the unit by design — the e2e catches them (PLAN saved; Your plan opens).
+- **The plan of record (Run 2 — THIS MONTH and Daily)** (spec `pbloc-spec-plan-of-record-v1` v1.7.2 — § The plan of
+  record (Run 2); 6 new test files, 13 changed; the suite 2,625 → 2,703 (+6 skipped), 166 → 172 files (171 / 1); e2e
+  72 → 73 (+2 skipped); 104 mutations — M01–M100 unit, E1–E4 through the e2e — applied from the review's
+  `pbloc-por-run2-mutations-v1.7.1.json`, each an exact-once edit run on its test files, restored and md5-checked, and
+  red at its tag by an ASSERTION (M64 at its untagged test). A "Test timed out" never counts as a red):
+  - `planRun.test.ts` (12) — ⭐ ONE (the run's placement input and engine inputs are the builders' own, at today's price
+    and S₀) · ⭐ MOVE (the horizon can't change the move: S₀ is the same on 12 and 60 months, over 96 cells) · ⭐ GATE
+    (off, the seed's $60,000 on 1.48 ₿ never reaches a plan) · ⭐ SWITCH (the over household is back in month 8; never
+    month 0; one rule with the status — dust) · ⭐ INT (Σ `strikeInterestUsd` is the total, both modes) · ⭐ MIN (false ≡
+    absent; income pays the minimum before the buy; only an unpaid part capitalises; the drawing-month identity).
+  - `planMonthView.test.ts` (31) — ⭐ WORDS (every sentence the two cards print, the meter's spoken one included, over 600
+    runs × 12 months — three incomes, the last also with a 3-month cash reserve, five prices, five Coinbase legs,
+    three Strike legs, both minimum modes; over
+    40,000 strings asserted: never "should", "need to" or "safe", never "$0", "₿0.000" or "0.000 ₿") · NOTE · ⭐ STATUS
+    (today's fact, the time and the catch-up; later months; N8 after a liquidation, swept; invariant 4 — no new
+    Coinbase borrowing in a month over the limit, over 1,000 such months; Δ9's three bodies against the run; Δ8's
+    refused policy) · ⭐ ROWS (the kinds are `planSchedule`'s for every month, 13 reached; muted anchors; "today";
+    unpaid) · ⭐ VENUE · ⭐ AFTER (the row's support; the engine's verdict; the meter read aloud; the cliff is
+    `cbSeizurePrice`; never "₿0.000 held") · ⭐ TRACK · ⭐ FOOT (ordinals, the minimum, the NDP, the Ledger, next month,
+    the savings count, the price line; `planLedgerTargets` against the month's to-do rows — Δ4) · ⭐ BREAKER (fresh,
+    cached, loading, none; Δ6, Δ12) · LOGGED · CRASH.
+  - `planRunWiring.test.ts` (17) — ⭐ ONE (the face and the hook build through planRun; no main screen calls
+    `runCyclingSim(` or `placementPlan(`; Δ7's 15 facts read by the same expression in both selectors; Δ3's today per
+    render and the accrual's key) · ⭐ GATE · ⭐ MIN · ⭐ CARD (the hook on both screens; `runAdvisor` only for the overlay;
+    no figure formatted in the card; no dead toggle; next month hidden at month 12; Δ4, Δ5, Δ8, Δ10) · ⭐ I31 (every text
+    of three or more words on either plan card, read off its syntax tree, is one of eleven listed labels) · NOTE ·
+    ⭐ CACHE (one write, fresh only, in an effect; read through `planBreakerCacheOf`) · ⭐ HOLD · WHATIF · CRASH.
+  - `planRunStore.test.ts` (6) — ⭐ DEVICE (the three keys' defaults from `getInitialState()`; the setters write and emit
+    nothing; never synced; persisted; `clearViewerData` clears the viewer's date) · ⭐ HOLD (the trusted snapshot's date;
+    never in the safe one).
+  - `strikeHoldRule.test.ts` (3) — ⭐ HOLD (invariant 8: over 4,000 journals × 9 days, `strikeHoldFrom` and
+    `strikeHoldAt(latestStrikeDepositISO(…))` both equal `3580f92`'s rule, frozen in the test; the device's fact; the
+    edges — day 60, day 61, a future deposit, junk, null).
+  - `strikeMinimum.test.ts` (3) — ⭐ INT, ⭐ MIN at the engine's other sites (the policy-off cycle, hold, clearStrike,
+    clearBoth), and Δ11's baseline: a "hold" run equals never-draw in both modes.
+  - Changed: viewerSync (+2, HOLD), cyclingFaceView (+4: MIN ×3, GATE), decisionView (the sweep's fifth fixture —
+    12,245 runs; `payMinimum`; the first line), decisionWiring (the pins read planRun.ts), crashPlaybookView (the
+    fixture carries the hold's fact), emergencyConsoleWiring, monthlyPlaybookWiring (two label sites; the card's crash
+    status), resetMirror (the builder call), ownershipFaceView (two fixture fields), advisorPricePath (three
+    `runAdvisor` callers), characterization (107 persisted keys), planPolicy (ONE CLAMP, CONSOLE), viewerSnapshot
+    (`strikeLastDepositISO`); the e2e `planOfRecord.spec.ts` ("Run 2": DAILY status · DAILY row · MONTH status … ·
+    CATCH-UP · WHY · NOTE shows … stays dismissed) and `navigation.spec.ts` (the Decision smoke's first line).
+  - ⚠ **Why five sweeps carry 60 s** (spec v1.7.1, §13.13): WORDS, STATUS (invariant 4), ROWS and AFTER (at support) in
+    `planMonthView.test.ts`, and HOLD in `strikeHoldRule.test.ts`, end `}, 60_000);` with a one-line reason. On Node 26,
+    `Number.prototype.toLocaleString` — what `fmtUSD` calls for every dollar figure — is about 40× slower than on Node 22
+    (27 µs a call against 0.7), and WORDS makes over 400,000 `expect` calls (419,287 over 147,763 sentences). Without the
+    timeouts WORDS (9–10 s alone on Node 26, ~20 s in a loaded full suite) and ROWS (~6 s loaded) ran past vitest's 5 s
+    default. HOLD (about 1 s on both Nodes) carries 60 s as headroom for a loaded suite. Measured in the build's two
+    full runs on Node 26.11.1: WORDS 20.4 / 20.2 s, ROWS 6.0 / 6.1 s.
+  - Red-first (the new and moved tests on `3580f92`'s code, in a plain export outside the repo): six files can't load
+    (planRun, planMonthView, strikeMinimum and decisionWiring — no planRun.ts; planRunWiring — no usePlanMonth.ts;
+    crashPlaybookView — "dayLog is not iterable"); 24 tests red (planRunStore 4, strikeHoldRule 3, characterization 3,
+    cyclingFaceView 4, viewerSync 2, planPolicy 2, monthlyPlaybookWiring 2, and viewerSnapshot, decisionView,
+    advisorPricePath and emergencyConsoleWiring 1 each); resetMirror and ownershipFaceView green by construction; the
+    e2e red at "DAILY status", and the Decision smoke at `navigation.spec.ts:301` (Run 2 flips the card's first line,
+    `PLAN_OF_RECORD_LINE`). Of the 24, 19 fail by an AssertionError and 5 by a TypeError, each calling a function Run 2 adds.
+  - The mutations (spec Appendix P2, M01–M100 and E1–E4) are red at their tags by an assertion.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -8173,11 +8449,15 @@ goes red.)
       - no NaN / Infinity / undefined / "$0" / "₿0.00000".
   - `monthlyPlaybookWiring.test.ts` (new, source-reading):
     - ⭐ the one label;
-    - ⭐ the four label sites render `CB_PAYDOWN_LABEL` and say neither "CB paydown" nor "pay down CB", comments included;
+    - ⭐ the four label sites render `CB_PAYDOWN_LABEL` and say neither "CB paydown" nor "pay down CB", comments included
+      (two sites since the plan of record's Run 2 — "the two Advisor sites", OutlookProjection and AdvisorMain; the test
+      also fails if SimpleModeView, DailyModeView or PlanMonthCard names the label, or either bare wording, again);
     - ⭐ the space beside every label expression is kept. JSX drops whitespace at a line break, so "between" ⏎
       `{playbookDepthFor(…)}` renders "between0.70×";
     - ⭐ SimpleModeView builds through `playbookInputFromLive` / `crashPlaybook` / `monthPlaybookLine` / `plBandsAt` on the
-      live figures (`strikeBalance: advisorActualBlocBalance`), suffixes Box 3, and holds neither deleted name;
+      live figures (`strikeBalance: advisorActualBlocBalance`) and holds neither deleted name; since Run 2 it hands the
+      line to the card (`crashLine={playbookLine}`), whose status shows `{PLAN_CRASH_TITLE}`, with `crashNote(true)` as a
+      foot under the rows (Box 3's suffix retired with the boxes);
     - ⭐ OutlookProjection computes the legend's depth — no typed depth multiple anywhere in its source (`0.70×` before
       Policy v2, `0.52×` since).
 - **Policy v2 — Run A (the model)** (every ⭐ red under a named mutation, every file restored and md5-checked):
@@ -8238,7 +8518,8 @@ goes red.)
     - ⭐ B4: `seedsFromMove` agrees with the run at a Strike liquidation LTV of 1 / 50 / 70 / 0 / 71 / 85% (red with
       HEAD's rule).
   - `decisionWiring.test.ts` — ⭐ ONE `ENGINE_CONTEXT` (red re-declaring `cbLtvCapPct` in `engineInputs`). The
-    literal-'cycle' and gate checks moved to `ENGINE_CONTEXT` / `seedsFromMove`.
+    literal-'cycle' and gate checks moved to `ENGINE_CONTEXT` / `seedsFromMove`. (Since the plan of record's Run 2 these
+    pins read planRun.ts too: `PLAN_ENGINE_CONTEXT`, spread by `engineInputsOf`, which declares none of the five.)
   - `supportPolicyWiring.test.ts`:
     - ⭐ each face's "Coinbase seizes" series in the Decision chart's style, and Cycling's `hasCliff` gate (R10; red
       restoring `strokeWidth={2}`, or dropping the gate);
@@ -8398,7 +8679,8 @@ goes red.)
   - rising vs falling diverge (monthly strategy — ltvTriggered can tie at target);
   - ⭐ the NAMED month-1-step trap at fixed UTC dates: the sign flips with the anchor, m≥1 sits ON the curve,
     mid-2029 is not monotone, and the step lifts month-1 CB LTV;
-  - a grep guard that only OutlookProjection hands runAdvisor a pricePath.
+  - a grep guard that only OutlookProjection hands runAdvisor a pricePath — its list of callers is three since the plan
+    of record's Run 2 (AdvisorMain, OutlookProjection, SimpleModeView's log overlay; Daily no longer runs the Advisor).
 - `src/components/Advisor/__tests__/outlookView.test.ts` — (7) the subtitle Record (fourYear ≠ the old bull
   fall-through), the signed/computed `lineStep`, and `footerCbLtv` = the last row's own cbLtv
 - `src/simulation/__tests__/coldStorage.test.ts` — `deriveColdStorage` (8):
@@ -8432,8 +8714,11 @@ goes red.)
   starts); the drawdown gap (Support `=== 0`, cycle ≈ −52%); and an engine run on a synthetic position that
   liquidates inside the 2029→30 descent while the same position on Support never does
 - `src/components/Almanac/__tests__/resetMirror.test.ts` — grep-style guard: each face's lens-reset dep array ⊇
-  its `engineInputs` deps minus `startDate` (6 — Cycling, Ownership and UnifiedFace). Proven red on
-  `coldBufferPct` before that fix, and again on `strikeCapPct` across all three faces before this one
+  its `engineInputs` deps minus `startDate` (16 — four faces, Cycling, Ownership, Unified and Decision, four each). Proven red on
+  `coldBufferPct` before that fix, and again on `strikeCapPct` across all three faces before this one. Since the plan of
+  record's Run 2 its regexes accept the Decision face's builder call (`engineInputsOf({ … })`) as well as the parents'
+  object literal, and the cold check accepts the face's fact `coldBtc: s.openingColdBtc` (the seeding ternary moved into
+  `engineInputsOf`, pinned by decisionWiring)
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
 - `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
@@ -8469,7 +8754,7 @@ goes red.)
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`
 - `src/store/__tests__/collateral.test.ts` — **v20 reading-anchored Strike collateral** on the REAL store: a `balanceReading.strikeCollateral` anchors `getCurrentBtcHeld`; a post-anchor `deposit target:'strike'` adds once; **SEMANTIC SHIFT** — a bare deposit with no reading does NOT move current; `target:'cb'` never touches Strike; latest reading re-anchors; Strike LTV tracks `getCurrentBtcHeld` (not the frozen baseline); baseline stability (`advisorActualBtcHeld` never moves); `setDayLog` folds the strike derive; sandbox isolation; delete keeps the surviving months' RECORDED `btcHeld` verbatim + tombstone; ⭐ upsert never rewrites another month's `btcHeld` (spec v3). `src/simulation/__tests__/strikeCollateral.test.ts` — pure `deriveStrikeCollateral` (anchor by date/ts, post-anchor sum, atomic same-ts flow+reading NOT double-counted, backfill excluded, buys/cb ignored, withdraw sign, no-anchor→fallback)
-- `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix
+- `src/store/__tests__/clearViewerData.test.ts` — `clearViewerData()` resets viewer-hydrated fields (monthlyLog→[], deletedMonths→{}, strike*→null, financial SETTINGS_FIELDS→seeds, viewerDataLoaded→false) — the data-remanence fix. Since the plan of record's Run 2 it also resets `viewerStrikeDepositISO` → null (pinned by `planRunStore.test.ts`'s DEVICE)
 - `src/lib/store/__tests__/storeCrypto.test.ts` — Phase B encrypted persist adapter (PIN path, in-memory localStorage shim): setItem writes a {ct,iv} envelope (NOT plaintext) + getItem decrypts it; LOCKED (no key) → getItem null + setItem writes NOTHING; plaintext (non-envelope) passthrough; wrong key → getItem null (no throw)
 - `src/lib/store/__tests__/storeMigration.test.ts` — Phase C migration (PIN path, localStorage shim, `decryptBlob` vi.mock for the fault path): plaintext→encrypted round-trips to the EXACT original + idempotent; **VERIFY-BEFORE-DELETE — a forced verify mismatch returns false AND the plaintext SURVIVES** (the critical encryption-arc test); no-key → false untouched; encrypted→plaintext restores exactly; decrypt failure → false, envelope intact
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
@@ -8492,8 +8777,8 @@ goes red.)
 - `src/lib/nostr/__tests__/recoveryInput.test.ts` — R2b-2 shape classification (pure, node): `nsec1…` → `nsec` trimmed; a MALFORMED `nsec1garbage` still routes to the nsec door (nip19.decode owns the verdict); UPPERCASE `NSEC1…` → not nsec (bech32 is lowercase) → single token → unknown; exactly 12 tokens → `words`; newlines/tabs/doubled-spaces collapse to single spaces; **12 NONSENSE tokens → `words`, then `skFromWords` throws `InvalidSeedWordsError`** (the classifier/validator boundary); a real phrase round-trips classifier → skFromWords → 32-byte sk; unknown table (empty, whitespace-only, 11 tokens, 13 tokens, single word, garbage, an npub). **R2c-7a fourth kind:** `ncryptsec1…` → `encrypted` trimmed; a malformed `ncryptsec1garbage` still routes to the decrypt door (nip49.decrypt owns the verdict); UPPERCASE → unknown; **the disjointness pin** — `'ncryptsec1'.startsWith('nsec1') === false`, so no check order can confuse the two prefixes (a future prefix edit that introduces a collision fails here)
 - `src/store/__tests__/remotePlanFound.test.ts` — R2b-2 (`vi.hoisted` localStorage shim): defaults null; absent from `buildSettingsPayload`; **EXCLUDED from `partializeState`** (session-transient — persisting it would surface a stale `false` on the next boot before any pull ran). Set-once latch asserted as ONE lifecycle `it` (the latch is module-level and vitest isolates the registry per FILE, not per `it`): record(false) → false; record(true) → still false; setRemotePlanFound(null) [Dismiss] → null; **record(false) again → still null** (a bare `=== null` guard instead of the latch would resurrect the notice here)
 - `src/lib/nostr/__tests__/sync.test.ts` — 4e: ⭐ the pull asks for records, the journal manifest, plan-events and prefs only (never `settings:v1`); ⭐ a stale `settings:v1` that still arrives changes nothing, on an empty-log and on a migrated device — **IGNORED**: only the records branch's five setters are called and the pull logs no "payload parse failed (skipped)" (`applyRemoteEvent` swallows a throw, so a revived branch calling a setter the mock lacks would otherwise pass); ⭐ **ROSTER pull** — an empty roster and `DEFAULT_RELAYS` reach `applyPlanFold` unfiltered; the prefs pull goes through `hydratePrefs`; records merge-apply (legacy array + v2 payload), relay-behind dirty flag, **fetchAndSync `{ok, planFound}`** (R2b-2: decrypt failure + events present → `{ok:false, planFound:true}` — an unreachable signer must never claim "no plan found"; empty relay → `{ok:true, planFound:false}`; a d-tag-less event doesn't count as a plan), publishEncrypted first-ACK. P3: a records payload carrying dayLog/dayLogDeletions → setDayLog/setDeletedDayEvents called with the merged values; a legacy payload without dayLog hydrates safely (defaults []/{}, no throw). (4e retired the settings-watermark, settings-dirty, Fix B, DUAL-READ STRIP and 4d-stamp tests with the settings branch; the decrypt-failure and d-tag-less fixtures moved to plan-events.)
-- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 40-key literal — 34 before the plan of record's Run 1 EXPOSED its six policy settings, D9) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local
-- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied. 4e: the trusted path calls `applyViewerSettings` (the mock's applier — `viewerSettingsApply.test.ts` pins what it keeps on the REAL store); M-VIEWER-CALL turns its 5 trusted-path `it`s red
+- `src/store/__tests__/viewerSnapshot.test.ts` — viewer snapshot builders. **⚠ Carries the EXHAUSTIVE trusted-settings key-set assertion (`Object.keys(snap.settings).sort()` vs a 40-key literal — 34 before the plan of record's Run 1 EXPOSED its six policy settings, D9) — brittle BY DESIGN.** The sibling deep-equal test is only DIFFERENTIAL (it derives its expectation from `buildSettingsPayload`), so a newly-synced field would leak into every trusted viewer's snapshot and still pass; the exhaustive set is the backstop. Adding a synced setting must be a conscious decision to EXPOSE (add the key here) or to STRIP (add it to `buildViewerSnapshotPayload`'s destructure) — never paste the key in to make the test green. Also: R2a-1 `backupVerifiedAt` is the 4th stripped key; `keyProvenance` is device-local (absent from the payload and BOTH tiers). Plus: owner viewer-config (viewerNpub/Pubkey/Label) IN buildSettingsPayload but STRIPPED from snapshot.settings (+nostrRelays); the Option-B shape (settings+records+strike+**cbCollateralBtc** P3 + **strikeCollateralBtc** C-P4); **P3 BUG2** — snap.cbCollateralBtc === deriveCbCollateral(dayLog,cache) (newest reading, not the cache); **C-P4** — snap.strikeCollateralBtc === deriveStrikeCollateral(dayLog,cache) (the reading, not the cache) + the SAFE payload's Object.keys excludes BOTH scalars; snap.records has entries+deletions but NOT dayLog; viewer-side fields device-local. The plan of record's Run 2 (D9): the C-trusted top-level key set gains `strikeLastDepositISO` (exhaustive; the latest logged Strike deposit date — the viewer reads the 60-day hold from it); the safe snapshot never carries it
+- `src/lib/nostr/__tests__/viewerSync.test.ts` — P3/C-P4 viewer hydrate (mocked SimplePool + NSecSigner decrypt + store getState/setState): **BUG3** — a snapshot raw-sets cbCollateralBtc + strikeCollateralBtc (C-P4) AND leaves dayLog empty + NEVER calls setCbCollateralBtc (no spurious reading injected into the viewer's journal); a pre-P3/pre-C-P4 snapshot without the scalars keeps the existing values (?? fallback); a revoked snapshot → clearViewerData, neither scalar applied. 4e: the trusted path calls `applyViewerSettings` (the mock's applier — `viewerSettingsApply.test.ts` pins what it keeps on the REAL store); M-VIEWER-CALL turns its 5 trusted-path `it`s red. The plan of record's Run 2 (D9): ⭐ HOLD — a trusted snapshot raw-sets `viewerStrikeDepositISO` from `strikeLastDepositISO` (no journal event on the viewer), and a pre-Run-2 snapshot with none reads null, never a stale date
 - `src/lib/nostr/__tests__/log.test.ts` — nostrLog ring: 50-cap, newest-last, clear
 - `src/lib/nostr/__tests__/deviceTag.test.ts` — stable persisted tag, 'anon' fallback, platform label prefix
 - `src/lib/nostr/__tests__/liveSync.test.ts` — singleton: double open → one sub, close+reopen, no-pubkey guard; ⭐ **LIVE four** (4e/5b — the live sub's `'#d'` is exactly records / the journal manifest / plan-events / prefs; RETIRED's name grep can't see an assembled d-tag, this can)
@@ -8757,7 +9042,10 @@ reports should include the Copy Diagnostics output from the failing device.
 `buildSettingsPayload` / the partialize exclusion destructure — so they survive reloads yet never
 publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
-plan-card status-bar visibility, default true), `simpleView` (`'dashboard'|'monthly'|'daily'` consumer-shell view,
+plan-card status-bar visibility, default true — VESTIGIAL: `showPlanIncomeBar` since its bar was removed before Run 2,
+the other two since the plan of record's Run 2: the card has no bars and Settings no toggles; the fields stay, inert), `planNoteDismissed` / `planBreakerCache` / `viewerStrikeDepositISO`
+(the plan of record's Run 2 — the one-time note's dismissal, THIS device's breaker cache, and a trusted viewer's copy of
+the owner's latest Strike deposit date; plain-`set` setters, no sync, no bump — § Zustand Store Shape), `simpleView` (`'dashboard'|'monthly'|'daily'` consumer-shell view,
 default `'dashboard'` — Owner IA dashboard-first; migrate-default only), `pinnedScenario` (Phase 3a Scenario
 Diff/Pin — the pinned safety posture `PinnedScenario | null`, default null; plain-`set` setter, no sync;
 merge-default so a pin survives reload), `viewerDisplayName` (Viewer V3 — the viewer's greeting name, default
@@ -9792,7 +10080,7 @@ src/
     publish.ts                      # publishEncrypted (→ Promise<number>), publishRecords (RecordsPayload
                                     # v2 — P3 += dayLog + dayLogDeletions, REQUIRED). The d-tags: RECORDS_DTAG /
                                     # PLAN_EVENTS_DTAG / PREFS_DTAG + viewerDTag(pubkeyHex) — Phase 4e DELETED
-                                    # SETTINGS_DTAG and publishSettings (settings:v1 is retired). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar) + strikeCollateralBtc (C-P4 scalar, trusted-only).
+                                    # SETTINGS_DTAG and publishSettings (settings:v1 is retired). ViewerSnapshot += optional cbCollateralBtc (P3 BUG2 scalar) + strikeCollateralBtc (C-P4 scalar, trusted-only) + coldStorageBtc (the cold ledger's derived total, trusted-only) + strikeLastDepositISO (the plan of record's Run 2, D9 — the latest logged Strike deposit date, trusted-only).
                                     # P2: publishRelayListNip65(signer,_pubkey,relays,publishTo?,opTimeoutMs?) — a PLAIN
                                     # (unencrypted) kind-10002 relay list (flat r tags, no read/write markers); MUST NOT
                                     # route through publishEncrypted/signer.nip44 (10002 is public). Both share the
@@ -10050,7 +10338,9 @@ src/
                                     # applyViewerEvent → read-only hydrate (applyViewerSettings — VIEWER_SETTINGS_FIELDS,
                                     # 4e; was hydrateSettings/setMonthlyLog/
                                     # setDeletedMonths/setStrike*); NEVER publishes/dirties. P3/C-P4 (BUG3): raw-sets
-                                    # cbCollateralBtc + strikeCollateralBtc from snap via ONE useStore.setState — NEVER
+                                    # cbCollateralBtc + strikeCollateralBtc (+ the cold total, and — the plan of record's
+                                    # Run 2, D9 — viewerStrikeDepositISO = snap.strikeLastDepositISO ?? null, so a
+                                    # pre-Run-2 snapshot reads no hold) from snap via ONE useStore.setState — NEVER
                                     # setCbCollateralBtc/emitBalanceReading (they'd inject a reading into the viewer's OWN dayLog);
                                     # the viewer's dayLog stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
     syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push. 5b: a channel refused for its size (`refusedForSize`) doesn't raise Reconnect. 5c: nor does a publish HELD because this device hasn't loaded the plan (`heldWithoutPlan`) — the log says "held until the plan loads here, not a signer problem".
@@ -10375,7 +10665,7 @@ Seven entry points — all funnel into `syncNow()` — plus a receive-only live 
 | `personal-bloc:records:v1` | **5b: the bridge.** `{ entries, deletions, dayLog, dayLogDeletions }` — the whole journal while its JSON is ≤ 40,960 B; past it the stub `{ …empty, movedTo: 'personal-bloc:records:v2:manifest' }`, written once (a frozen copy would bring back a deleted entry once its tombstone aged out). Every pull still reads it (a pre-5b app writes only this); legacy forms readable | After the v2 publish, best-effort; before the session's journal pull, alone (recordsDirty stays) |
 | `personal-bloc:records:v2:<YYYY-MM>[.N]` | **5b — a page:** `{ v: 2, key, entries, dayLog }` — the month's items, ≤ 32,768 B plain (`.2`… past it; `undated` for a date that isn't `YYYY-MM` or `YYYY-MM-…`) | `publishJournal`: only the pages whose fingerprint differs from the relays' copy, one at a time |
 | `personal-bloc:records:v2:manifest` | **5b — the manifest:** `{ v: 2, pages: { key: { n, h } }, deletions, dayLogDeletions }` — every page the relays hold (+ carried listings) and the tombstones; the commit marker and the completeness oracle | After the pages, if it changed |
-| `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc }` + common — the viewer applies `settings` through `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS`, 4e). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishPlanEventsNow` (4e: until then, the settings bridge's success), AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches the dirty flags/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
+| `personal-bloc:viewer:v2:<pubkeyHex>` | **Viewer Access — MODE-SHAPED (Viewer V2) + PER-VIEWER (M2).** `ViewerSnapshot` NIP-44-encrypted to EACH roster viewer's pubkey (`slot.pubkeyHex`), addressed to that viewer's own d-tag `viewerDTag(pubkeyHex)` = `personal-bloc:viewer:v2:<pubkeyHex>` — one live event per viewer (kind-30078 is per-author-per-d-tag, so a shared d-tag would overwrite). **CLEAN-CUT: the old `personal-bloc:viewer:v1` d-tag is deleted** (owner rotates + re-provisions after deploy). Default **C-safe**: `{ snapshotVersion:2, privacyMode:'safe', asOf, hasCbLoan, btcPriceAtSnapshot, thresholds, safety }` — health ratios/config/public price only, NO absolutes by construction. **C-trusted** (per-slot `tier:'trusted'`): the full `{ settings, records:{entries,deletions}, strike:{usd,btcAvail,rate}, cbCollateralBtc, strikeCollateralBtc, coldStorageBtc, strikeLastDepositISO }` + common (`strikeLastDepositISO` — the plan of record's Run 2, D9: the latest logged Strike deposit date, the viewer's 60-day hold) — the viewer applies `settings` through `applyViewerSettings` (`VIEWER_SETTINGS_FIELDS`, 4e). Pre-V2 (no `privacyMode`) reads as trusted | Fire-and-forget `void publishViewerSnapshotNow()` (M2 FAN-OUT: one publish per roster slot, `Promise.allSettled` isolation, payload built once per tier) in the success path of BOTH `publishRecordsNow` + `publishPlanEventsNow` (4e: until then, the settings bridge's success), AND on a tier toggle / adding a viewer; gated on the roster being non-empty; **log-only** on failure — NEVER touches the dirty flags/`nostrReconnectNeeded`/`nostrSyncing`. **Revoke** (`publishViewerRevocationNow(pubkeyHex)`, PER-SLOT) publishes THAT viewer's d-tag with an empty payload + `revoked: true` (tombstone) → the viewer wipes + exits (checked before the mode branch; replaceable, supersedes the old snapshot) |
 
 ### Viewer-key derivation v1 + handoff v4 — deterministic owner-minted viewer key + combined token + rotation (store stays v19, NO bump)
 
@@ -10642,7 +10932,8 @@ a v17-migrant holder until the one-time wrap.
   lives in the persisted Zustand store; clearing the viewer *key* alone left it rendering after revoke/reset (a
   revoked viewer correctly got "invalid MAC" — encryption held — but the OLD numbers still showed). Two parts:
   (1) **`clearViewerData()`** (store action) resets every viewer-hydrated field to its seed (financial
-  `SETTINGS_FIELDS` + `monthlyLog` + `deletedMonths` + `strike*` + owner-config nulls); pure local `set`, **no
+  `SETTINGS_FIELDS` + `monthlyLog` + `deletedMonths` + `strike*` + owner-config nulls, and — the plan of record's Run 2 —
+  `viewerStrikeDepositISO` → null, so the owner's Strike deposit date leaves with the rest); pure local `set`, **no
   emit** (no plan event, no publish). Called from **VIEWER paths only** (audited): `resetViewer` (before `setViewerMode(false)`),
   `applyViewerEvent` decrypt-failure, `fetchViewerSnapshot` zero-events, onboarding viewer-provision (before
   `setViewerMode(true)`) — NEVER the owner's Remove or any owner edit (it would wipe the owner's real data; it has
@@ -11040,7 +11331,8 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 |---|---|
 | An exact (deep-equal) golden may depend only on `+ − × ÷` | Store any input built with `Math.pow`/`log`/`exp`/`**` (a power-law or cycle price path) IN the golden and feed it back — never recompute it at test time. ECMAScript leaves those functions implementation-approximated, and `Math.pow`'s last bit differs between Node 22 (CI) and Node 26 on about 1 input in 10: the support-policy G1 golden passed locally and failed CI for that alone. The engine is pure `+ − × ÷` (IEEE-exact on every runtime; a G1 test walks `cyclingSim.ts`'s imports and fails on any approximated Math), which is what lets a stored input reproduce bit for bit. A value that must be recomputed gets a tolerance (`toBeCloseTo`, or a relative 1e-12) |
 | Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. A price-relative revert of the ceilings is caught by the ceiling-at-support tests; G2 catches a full reversion (the OFF-like behavior that pulls cold above support on the P2 family) |
-| The support policy's settings are the owner's SAVED plan, edited only in Settings' "Your plan" (the plan of record, Run 1) | Six synced plan fields (`lib/planPolicy` — the one source; C1 defaults; no off switch; no store bump). Settings' "Your plan" is the only place the owner edits them; a face's control is a what-if over the plan and never writes it; every reader — the faces, Settings, the Emergency Console, THIS MONTH's crash line, the Outlook — reads them through the clamp (`planPolicyOf` / `clampPlanPolicy`). Pinned by `planPolicy.test.ts` (FACES, SETTINGS — the only editor, CONSOLE, READ) and `decisionWiring` I20. |
+| The support policy's settings are the owner's SAVED plan, edited only in Settings' "Your plan" (the plan of record, Run 1) | Six synced plan fields (`lib/planPolicy` — the one source; C1 defaults; no off switch; no store bump). Settings' "Your plan" is the only place the owner edits them; a face's control is a what-if over the plan and never writes it; every reader — the faces, Settings, `usePlanMonth` (THIS MONTH and Daily, Run 2), the Emergency Console, THIS MONTH's crash line, the Outlook — reads them through the clamp (`planPolicyOf` / `clampPlanPolicy`). Pinned by `planPolicy.test.ts` (FACES, SETTINGS — the only editor, CONSOLE, READ) and `decisionWiring` I20. |
+| THIS MONTH, Daily and THE MOVE come from ONE builder (the plan of record, Run 2) | THIS MONTH, Daily and THE MOVE come from ONE builder (`planRun`): no main screen calls `runCyclingSim` or `placementPlan` itself (THIS MONTH's log overlay keeps `runAdvisor` until Run 3); every plan reader — the four faces and `usePlanMonth` — reads Coinbase only through `planCbCollateralOf` / `planCbLoanBalanceOf` (the crash gate keeps the Emergency Console's live inputs, behind the loan switch); every hold reader a viewer can reach reads Strike's hold only through `strikeDepositOf` → `strikeHoldAt`; and the two plan cards compose no sentence — every one comes from `planMonthView` (I31). Pinned by `planRunWiring.test.ts` (ONE, GATE, HOLD, CARD, I31) and `planRun.test.ts` (ONE, GATE). |
 | Under the support policy, Morpho's seizure on the way down comes FIRST in the month, right after the interest | The carried loan at or past 86% at this month's price is seized at `cbLiquidationPrice` before any monthly action, repaid in full; the month runs on the survivor. Month 0 and the policy-off engine keep the month-end reading. Never move it later in the month (a rescue would then outrun a seizure the price already crossed), and never let it fire without the policy (the policy-off engine is the G1 golden). The kill criterion (I1, `seizeOnTheWayDown.test.ts`): a run it doesn't fire on equals its month-end reading; one it fires on at L is identical through L − 1 |
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
 | Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter — the engine's `btcHeld` already holds it | The three engine faces read `getCurrentColdBtc()` into `openingColdBtc`; `openingBtc = strike + CB + cold` feeds every "from X ₿", the seed row and "Opening position" — leaving the reserve out reads an unspent reserve as bitcoin gained. A 4th `deriveOwnership` argument would count the pool twice (`yoursShare` is clamped, so the wrong answer still looks plausible). Both pinned by `coldWiring.test.ts` (the deriveOwnership check walks the whole `src/components/Almanac/` directory) |
@@ -11048,8 +11340,8 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `incomePath`, `modelStrikeLiquidation`, `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules`, `topUpBeforeShift`, `topUpFirstAnyDepth` and `seizeOnTheWayDown` are test-only | No component may pass any of them — the survival-guard grep test in `cyclingSim.test.ts` covers all eight. `seizeOnTheWayDown` (Policy v2) is ADOPTED and default ON under the policy; `false` is the month-end reading, kept only so the tests and the report can measure the rule. `incomePath` exists for the income-shock measurement (P7); `modelStrikeLiquidation: false` restores the HEAD flag-only Strike call for the M1 comparison. `doomGateCbTopUp`, `strikeFirstAfterLiquidation`, `strikeReleaseRules` and `topUpBeforeShift` are ADOPTED and default ON under the policy (the `cbSurvivalGuard` pattern — absent means enabled; never "fix" a default to off): `false` exists only so the report and the tests can run the earlier order. `topUpFirstAnyDepth` defaults OFF (measured and rejected — the depth gate). All five are policy-only by construction. None may reach a face. (`coldBeforeShift` is deleted — C is retired.) |
 | Under the policy, every Strike → Coinbase collateral move by a defense obeys Strike's release rules | Every Strike leg of a Coinbase top-up takes at most `strikeReleasableBtc` — ≤ 40% LTV before, strictly < 50% after, never within 60 days of a deposit — and every doom question counts only that figure. One definition (cbDefense), measured on the current state (`releasableNow`). The old margin × 0.95 bound modelled a move Strike would never allow; the policy-OFF arm still uses it (a named follow-up). Collateral leaving Strike starts no hold. Pinned by the three release-rule fixtures and the release-aware doom fixture in `cyclingSimPolicy.test.ts` |
 | The keeps have ONE definition each | `strikeKeepCollateralBtc` (step 5) and `cbKeepCollateralBtc` (step 9), in `supportPolicy.ts`. The engine and THE MOVE call the SAME functions — THE MOVE is never a second placement rule. A source test pins both call sites and fails if either expression is inlined again; an equivalence sweep over 20,000 random positions pins month 1 ≡ `placementPlan(...).after`. ⚠ Both use only `Math.max` and `/`: `cyclingSim.ts`'s import graph is walked for `Math.pow`/`**`, which would break the G1 golden's exactness |
-| A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't | The real balances carry every past decision; the BREAKER does not. So the run is seeded with `breakerFromHistory` (folded over real month-end closes vs support, through the engine's own `nextRearmableBreakerState` — never a second trip rule) and with Strike's hold from LOGGED deposits (`holdMonthsFrom`). **Never from a decision log.** When the price history does not load, `breakerFromHistory` returns `null` and the card SAYS the run assumes "not broken" — it never assumes it silently. ⚠ `openingBreaker` / `openingStrikeHoldMonths` are REAL inputs, not test-only: they must never join the forbidden-input grep. ⚠ A seeded break leaves `brokenMonth` null, so every copy reader goes through `hadBreak`, never `brokenMonth !== null` |
-| The Decision face seeds its run from THE MOVE only when the move is MADE | `engineInputs` start from `placement.opening` only when `seedFromMove = seedsFromMove(placement.seeded, { ...ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses })` — a move worth making AND a policy the engine will APPLY (`supportPolicyResolution`, Policy v2 Run B's B4) — and from the store's own balances otherwise (v1.6, amended in Run B: with the policy off, or ignored, the card names no move). `ENGINE_CONTEXT` is the face's ONE copy of the five engine constants; `engineInputs` spreads it and never re-declares them. `placement.seeded` is false in every inert state, `'unavailable'` included, where `opening` carries placeholder zeros. ONE placement-input object (priced at the held anchor and `supportPath[0]`, with `broken` from the same `breakerSeed` the run's `openingBreaker` gets) feeds both the plan and the card (B1). Pinned by `decisionWiring.test.ts` and `resetMirror.test.ts`'s widened cold regex |
+| A run shown as THIS MONTH'S MOVE carries the policy's memory, or says it can't | The real balances carry every past decision; the BREAKER does not. So the run is seeded with `breakerFromHistory` (folded over real month-end closes vs support, through the engine's own `nextRearmableBreakerState` — never a second trip rule) and with Strike's hold from LOGGED deposits (`holdMonthsFrom` — since the plan of record's Run 2 from the hold's one fact, `strikeDepositOf` → `strikeHoldAt`, so a trusted viewer's run holds as the owner's does). **Never from a decision log.** When the price history does not load, `breakerFromHistory` returns `null` and the card SAYS the run assumes "not broken" — it never assumes it silently. On the main screens (THIS MONTH, Daily — `usePlanMonth`, Run 2) the memory is offline-first: today's fold, else THIS device's cache of the last fold (read through `validOpeningBreaker`), else the "not broken" assumption. THIS MONTH's card says which — the cache's date only once the fetch has failed, else the same "assumes" line — never silent; Daily's plan card runs the same month with no breaker line, by design (spec Appendix W §0 item 12). ⚠ `openingBreaker` / `openingStrikeHoldMonths` (and Run 2's `strikeMinFromIncome`) are REAL inputs, not test-only: they must never join the forbidden-input grep. ⚠ A seeded break leaves `brokenMonth` null, so every copy reader goes through `hadBreak`, never `brokenMonth !== null` |
+| The Decision face seeds its run from THE MOVE only when the move is MADE | `engineInputs` start from `placement.opening` only when `seedFromMove = seedsFromMove(placement.seeded, { ...PLAN_ENGINE_CONTEXT, supportPolicy, pricePath: paths[0], expenses })` — a move worth making AND a policy the engine will APPLY (`supportPolicyResolution`, Policy v2 Run B's B4) — and from the store's own balances otherwise (v1.6, amended in Run B: with the policy off, or ignored, the card names no move). `PLAN_ENGINE_CONTEXT` (planRun.ts, since the plan of record's Run 2 — it was the face's `ENGINE_CONTEXT`) is the ONE copy of the five engine constants; `engineInputsOf` spreads it and never re-declares them, and THIS MONTH's `planMonthRun` seeds by the same rule. `placement.seeded` is false in every inert state, `'unavailable'` included, where `opening` carries placeholder zeros. ONE placement-input object (priced at the held anchor and `supportPath[0]`, with `broken` from the same `breakerSeed` the run's `openingBreaker` gets) feeds both the plan and the card (B1). Pinned by `decisionWiring.test.ts` and `resetMirror.test.ts`'s widened cold regex |
 | The Decision face's Print never clears its body class synchronously | Print sets `body.decision-print`, then calls `window.print()`; the class clears on `afterprint`, the next `pointerdown`, `keydown` or window `focus`, and on unmount. Safari and mobile browsers return from `print()` at once, before the page is laid out for print, so a synchronous clear prints the whole app. Every print rule in `DecisionFace.module.css` is gated on that class (a CSS module loads app-wide, so an ungated `@media print` would take over printing everywhere). Pinned by `decisionWiring.test.ts` (C1) |
 | Chart zoom changes the VIEW only | Zoom state reaches the axes' `domain` / `ticks`, the Tooltip's `active` (with `isAnimationActive={false}` and `wrapperStyle={{ transitionProperty: 'none' }}` beside it), each series' `activeDot`, and the overlay — never a series' data, a domain-as-data or an engine input. On Decision, `buildChartSeries`, `chartDomain`, `xExtent` and `engineInputs` stay the full view; on PowerLaw, `chartData`. A narrowed axis needs `allowDataOverflow` (recharts widens it back to the data otherwise). Pinned by `chartZoomWiring.test.ts` (VIEW ONLY + the per-adopter recipe) |
 | A zoom gesture's quiet outlives the gesture (Z17) | `quiet` is set at a drag's arm and a pinch's start; `endDrag` / `endPinch` never clear it. It wakes only on the first `touchmove` of a touch that started ALONE (a second finger clears `wake`) or on a `mousemove` (incl. a tap's compat mousemove) — never mid-gesture, and NEVER at touchstart: recharts still holds the old finger's place until the tap's mousemove, so a touchstart wake flashes the old tooltip. recharts draws its active dots off its own `isTooltipActive`, never the Tooltip's `active`, so every series needs `activeDot={!zoom.quiet}`. Never hide quiet by REMOVING the Tooltip: recharts then drops its move handlers and misses the wake event itself. Pinned by `chartZoomWiring.test.ts` and the Z17 e2e |
@@ -11060,14 +11352,14 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console and the Monthly Playbook's THIS MONTH line both build through it; never copy it. The card (`playbookCard`) and the line (`monthPlaybookLine`) read one private reading, so they never disagree on a step, a gap or an outcome |
 | The console's doom warning keys off the after-state (≥ 86%), never `result.doomed` | `doomed` is read at the open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read. Pinned both ways in `crashPlaybookView.test.ts`: keying the warning off `result.doomed` turns the doomed-but-saved ⭐ and the exact-86% ⭐ red |
 | Every crash-day step amount is floored to its printed precision | A binding Strike release is 0.5999999996 ₿: rounded to 5 dp it prints `0.60000` — exactly the 50% Strike refuses — and a line-capped shift of $3,487.50 must print `$3,487`, never a draw over the line. `fmtStepBtc` (5 dp, then 8 dp, none under a satoshi) and `fmtStepUsd` (whole dollars, none under $1), with a float guard (`0.3 − 0.25` still prints `0.05000`). Pinned by the short fixture (rounding prints `0.60000` → red) and the formatter ⭐s |
-| The projection's Coinbase paydown is always labelled `CB_PAYDOWN_LABEL` | `runAdvisor` models only the debt shift — a Strike draw that pays Coinbase down — while the crash playbook may top up first, so a bare "CB paydown" reads as the plan. `CB_PAYDOWN_LABEL` ("CB paydown (if you shift debt)", crashPlaybookView) is the one label, at four sites: OutlookProjection's `ltvTriggered` header and legend, AdvisorMain's CB LTV alert, DailyModeView's plan reference, and SimpleModeView's THIS MONTH ALSO strip. Box 3's title adds `IF_YOU_SHIFT_DEBT` in a month the projection shifts. `monthlyPlaybookWiring.test.ts` fails if any of the four says "CB paydown" or "pay down CB" — comments included — and pins the JSX spacing beside each label (a line break next to an expression drops the space). The other "CB paydown" wordings name different things and stay: the CB Loan tab's Emergency Protocol, the Advisor sidebar's tier rules, LiqSimulator's monthly mode, and the journal's CB paydown event |
+| The projection's Coinbase paydown is always labelled `CB_PAYDOWN_LABEL` | `runAdvisor` models only the debt shift — a Strike draw that pays Coinbase down — while the crash playbook may top up first, so a bare "CB paydown" reads as the plan. `CB_PAYDOWN_LABEL` ("CB paydown (if you shift debt)", crashPlaybookView) is the one label, at two sites since the plan of record's Run 2 (where `runAdvisor` still renders): OutlookProjection's `ltvTriggered` header and legend, and AdvisorMain's CB LTV alert. THIS MONTH and Daily run the plan, whose own defense rows name their move, so the label (and Box 3's `IF_YOU_SHIFT_DEBT` suffix) left them. `monthlyPlaybookWiring.test.ts` fails if either site says "CB paydown" or "pay down CB" — comments included — or if SimpleModeView, DailyModeView or PlanMonthCard names the label again, and pins the JSX spacing beside each label (a line break next to an expression drops the space). The other "CB paydown" wordings name different things and stay: the CB Loan tab's Emergency Protocol, the Advisor sidebar's tier rules, LiqSimulator's monthly mode, and the journal's CB paydown event |
 | The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted) | `verdictVsNeverDraw` compares `allInEquity` (equity − unpaid bills − reserve cash spent on bills and cures) with `baselineAllInEquity` (baseline equity − its own unpaid bills). Equity alone counts an unpaid bill as free and outside cash as a gain. The Net-equity tile's VALUE stays raw |
 | Policy objects on a face are memoised on stable identities, or the lens reset fires every render | `policyRaw` / `policySettings` / `supportPath` / `supportPolicy` are each a `useMemo`, and `supportPolicy` sits in BOTH `engineInputs` and the lens-reset deps. An object built during render has a new identity every render: `engineInputs` rebuilds, both engine runs re-run, and the lens-reset effect fires on every render, so an engaged price stress dies at once — the `useStressLens` bug class. Pinned by `supportPolicyWiring.test.ts` + `resetMirror.test.ts` |
 | The stop clamp has one definition, `effectivePolicyStops` | The engine's `resolveSupportPolicy` and the faces' `effectivePolicySettings` both call it; a source test fails on any `Math.min(` left in `resolveSupportPolicy`, so the readout can never describe a different run |
 | A face builds `supportPath` only through `buildSupportPath` and never stresses or phase-shifts it | `supportPolicyInputs.ts` is the only component module that turns the power law into a support path; the view modules import no belief (a layering test). The stress lens moves the price, not the line |
 | The Strike cap never outranks Coinbase survival, and never yields when the yield cannot save Coinbase this month | Priority: **Coinbase survival > Strike cap > Coinbase cap** — Morpho liquidates instantly at 86%, Strike gives 72 hours to cure. So the Strike reserve may claim only the cold Coinbase does not need to sit `CB_SURVIVAL_BUFFER` inside its liquidation, and the floor stands only while cold alone can keep Coinbase alive. ⚠ The guard runs ONLY in a month the CB top-up actually runs (`defenseShortfallUsd > 0`), or a face claims "Strike gave way" in a month nothing was handed over. ⚠ And it stands DOWN when `cbDoomedThisMonth` — feeding reserved cold into the pool Morpho is about to seize costs Strike its cap for nothing. Its risk math lives in `cbDefense.ts` as leaves (`cbSurvivalCollateralBtc`, `cbDoomedThisMonth`), never open-coded in the engine; `CB_SURVIVAL_BUFFER` is its OWN constant, not a second use of `TOPUP_MARGIN_BUFFER`. Pinned by three labelled grids (5,760 / 360 / 2,806) whose counts must not drift, and by fixtures B/C/D |
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
-| The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
+| The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). (Its two surfaces, Simple's AFTER box and plan bar, are gone since the plan of record's Run 2; the helpers wait for Run 3.) The header's LTV and paydown must come from `paydownReadout` (since Run 2, only the Smart BLOC tab's Playbook) — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
 | A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own plan event (`emitPlanSets` → `planDirty`; was `settingsDirty` until 4e) + `syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
@@ -11115,7 +11407,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | The plan log stays inside one publishable event | Compaction keeps the latest event per field FOREVER; a burst (the same field set again within 10 s — `BURST_WINDOW_MS`) keeps only its last event; the history is trimmed OLDEST FIRST until the payload `{"events":[…]}` fits 32 KiB (`PLAN_LOG_BUDGET_BYTES`, a full NIP-44 padding step under 40,960 B — past it the event goes out over a 64 KiB relay limit); the emit compacts (`emitPlanSets`), so the stored log stays small on every device. Never drop a latest (the fold reads only the latest per field), and never key compaction on `device` (diagnostics only, never a merge input). Pinned by `planLogSize.test` (FOLD-SAFE, CONVERGE), `planLogEmit.test` and the DRAG e2e |
 | The journal syncs as pages, and nothing is published past NIP-44's step | Every journal event stays within one padding step of 40,960 B: a page ≤ 32,768 B plain, the manifest and the bridge checked by the guard (`publishEncrypted` refuses past 40,960 B before encrypting — never raise Reconnect for it). The manifest goes out AFTER the pages and lists only the copies the relays hold, plus every listed page this device couldn't read (never drop what you never saw). Every journal event goes out newer than every journal event the device has seen (the `minCreatedAt` floor — never publish a replaceable journal event dated by the local clock alone). A pull merges the relays' parts ONCE, into the journal as it is AFTER the fetch (never merge a pre-await copy; never apply or GC a tombstone before that merge). Every pull reads `records:v1`; past the step it carries the stub, never a frozen copy. Pinned by `journalSweep.test` (the kill criterion), `journalSync.test`, `journalPages.test` |
 | No plan-dependent write before the plan loads (5c) | A signed-in owner device writes no day event, no monthly-log entry and no plan edit, runs no month reconcile, and publishes no plan, journal, viewer snapshot or relay list until `planLoaded` — set only by an applied relay plan, a restored backup, minting the key, or the owner's confirmed "Start a new plan" after a pull found nothing (`planLoad.planMissing`: refused in the store, held at the publish). **Never set `planLoaded` from a pull** that found nothing — the owner decides — never sync it, never route a journal write or a plan edit around the day-event mutators, `upsertLogEntry` / `deleteLogEntry` or `emitPlanSets`, and clear it with any in-place reset of the plan. A failed plan load is recorded and said in plain words — never swallowed, and logged by the error's name and the payload's size, never its contents |
-| Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green |
+| Trusted-snapshot key set | `viewerSnapshot.test.ts` carries an EXHAUSTIVE `Object.keys(snap.settings).sort()` assertion — brittle BY DESIGN. The sibling deep-equal is only DIFFERENTIAL, so a newly-synced field would leak to every trusted viewer and still pass. Adding a synced setting = a conscious choice to EXPOSE (add the key to the literal) or STRIP (add it to `buildViewerSnapshotPayload`'s destructure). Never paste a key in to make the test green. The trusted snapshot's TOP-LEVEL key set is exhaustive too (`strikeLastDepositISO` joined it in the plan of record's Run 2 — a conscious expose of one date, D9); the safe snapshot never carries it |
 | Onboarding verifies by default (R2c-6a, SUPERSEDES the retired R2c-4a bridge) | `OwnerKeySetup` K2 now stamps `backupVerifiedAt` — but gated on a **real verification** (a save + a two-word quiz = the ceremony's own semantics), NOT an ack. The stamp is pre-auth field-only (K2), before K3's `establishLocalOwner` `syncNow` wakes it ungated. The **skip** path ("I'll do this later") stamps nothing → generated-UNVERIFIED → the R2c-2/5b ladder. ⚠ The distinction the retired R2c-4a bridge got wrong: **an ack is a promise; a verification is proof.** Never gate the stamp on anything less than the save+quiz. ⚠ `handleGenerate`/`handleStartOver` must `setBackupVerifiedAt(null)` on (re)mint — the field rides partialize `...rest`, so a stale stamp from an abandoned run would falsely verify freshly-minted words. (⚠ `backupGate.test.ts` drives the setters directly, never the component — the K2 wiring is manual/tsc-covered.) |
 | Seed-phrase hygiene copy — two variants, don't cross them | **DISPLAY** (we minted the words; `OwnerKeySetup` K2 + `RecoveryKeyCeremony` explain, one identical string): *"These words were generated fresh for this plan. Never use them as a Bitcoin wallet — same format, different job."* **CAPTURE** (the user is typing words IN; `NostrAuthGate`'s word-grid tab only, never the nsec tab): *"Never type your Bitcoin wallet's seed phrase here — a plan uses its own words."* The capture line sits BELOW the live checksum line so it never interrupts the grid→status feedback path |
 | `SummaryBar fmtUSD` | Local sign-preserving — NEVER replace with shared version |
@@ -11148,7 +11440,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Zustand v14 migration | Adds `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode plan-card bar toggles, default `?? true`); additive shallow-merge, no transform. Device-local (NOT synced). (Intervening v12/v13 bumps preceded this.) |
 | Zustand v12 migration | Adds `cbRotateBackPct` (default 55, reverse-rotation gate) — additive optional-default (`?? 55`), `...rest` carries everything else; in `SETTINGS_FIELDS`/settings payload (synced like trigger/target) |
 | Zustand v13 migration | Adds `cbLoanBalanceAsOf`/`cbLiquidationPriceAsOf` (ISO date, default null) + `strikeLiquidationLtvPct` (default 85) — additive shallow-merge defaults (`?? null` / `?? 85`), no transform; all three SYNCED (in `SETTINGS_FIELDS`/payload — the `asOf` markers must travel atomically with their already-synced values). Current store version = 13 |
-| `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income. The Simple Mode CURRENT-month display (`SimpleModeView` `expectedBlocDraw`/`expectedBtcBuying`, gated on `isLtvTriggered`) mirrors this — full expense draw + income-funded BTC buying, NO tier gating (tier halving/zeroing stays for `monthly` mode only); projected months already read the engine |
+| `ltvTriggered` mode | Suspends CB priority rules (tier halve/stop draw); trigger IS the safety mechanism; `cbPaydownDraw` added to `blocBalance`; no CB payment from income. (The Simple Mode CURRENT-month display that mirrored this is gone — its `expectedBlocDraw`/`expectedBtcBuying` with Logging Consolidation §3, the display itself with the plan of record's Run 2: THIS MONTH runs the plan, and on THIS MONTH and Daily `ltvTriggered` gates only the crash day, `isCrashDay`, until Run 4) |
 | `ltvTriggered` band | Three-threshold band: `cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct` (defaults 55/65/75). Forward rescue (Strike→CB) at/above trigger pays CB down to target; reverse rotation (CB draw→repay Strike) at/below rotate-back fills CB UP TO target; the neutral zone between rotate-back and trigger fires nothing. Reverse rotation is debt-neutral at the instant it fires and capped at `min(Strike balance, CB headroom-to-target)`. The 10-point default buffers prevent month-to-month oscillation. HISTORICAL FIX (v12): the reverse branch was previously mis-keyed to `cbLtvTargetPct` (collapsed the neutral zone → every-month rotation under growth); v12 added the proper `cbRotateBackPct` gate. Projection renders reverse rotation as green `↩` (`.rotateCell`), distinct from amber forward paydown and EXCLUDED from the Option-A trigger row-wash |
 | `MonthlyLogOverlay` | React portal to `document.body` — same pattern as ToolsDropdown; centered modal (`.overlay` dim backdrop + `.modalCard`), header/arrows/dots inside the card; `initialMonth` 0-indexed; `openInEditMode` opens a logged month in the edit form |
 | `strikeLtv` storage | Decimal (0.1483); multiply ×100 for display, divide ÷100 on save |

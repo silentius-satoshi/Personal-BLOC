@@ -17,7 +17,6 @@ import { STRIKE_MAX_DRAW_LTV, strikeAvailableCredit } from '../../simulation/str
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR, CREDIT_WARN_USED, CREDIT_ACT_USED } from '../../simulation/safetyView';
 import { deriveOwnership } from '../../simulation/ownership';
-import { deriveCbCollateral } from '../../simulation/logUtils';
 import {
   applyPathStress, debtSplit, clampMonth, holdingsSplit,
   fmtLtvPct, refinanceFeeFraction, refinanceBreakEvenMonths, rateStopNote, cashFlowAtMonth,
@@ -25,7 +24,7 @@ import {
   cbZoneLevel, strikeLiqLtvOf, strikeZoneLevel, isBelowSupport, fixedMilestoneMonths,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
-  noBillsNote, OPENING_CASH_FLOW_NOTE, seedLine,
+  noBillsNote, OPENING_CASH_FLOW_NOTE, seedLine, minimumPaidNote,
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, openPastLltvNote,
   msYearLabel, MS_TABLE_OWNERSHIP, MS_VIEWS_OWNERSHIP,
 } from './cyclingFaceView';
@@ -53,6 +52,7 @@ import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
 import styles from './OwnershipFace.module.css';
 
 /**
@@ -228,10 +228,11 @@ export default function OwnershipFace() {
     strikeCollateralBtc: st.getCurrentBtcHeld(),   // reading-anchored, Strike-only (v20)
     strikeBalance: st.advisorActualBlocBalance,
     // Derive INSIDE the selector (C6 precedent) so the value stays a primitive — neither dep array changes.
-    cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    cbCollateralBtc: planCbCollateralOf(st),   // D-R2-4 — the owner's only with the Coinbase loan switched on
     // The owner's REAL cold reserve — it seeds the engine's cold pool (real-cold spec v1). A primitive, like the legs.
     openingColdBtc: st.getCurrentColdBtc(),
-    cbLoanBalance: st.cbLoanBalance,
+    cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
+    strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
 
@@ -328,10 +329,11 @@ export default function OwnershipFace() {
     defendCbLtv: true,
     mode,
     supportPolicy,
+    strikeMinFromIncome: s.strikeMinFromIncome,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy,
+    supportPolicy, s.strikeMinFromIncome,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -384,6 +386,8 @@ export default function OwnershipFace() {
   const openPastNote = openPastLltvNote(sim);
   // A month the policy did not borrow in, and why (null in a drawing month, month 0, or with no bills).
   const pauseReason = applied ? policyPauseReason(selRow, policySettings, expenses) : null;
+  // D-R2-7 — when income paid Strike's minimum, the month's sentence says so (the buy is net of it).
+  const minNote = minimumPaidNote(selRow);
   // The first month the defense could not hold the line — unheldMonth (cyclingFaceView), the one definition: policy
   // off, the top-up's exhaustion once a top-up fired, else the shift's; policy on, the crash playbook's own measure.
   const unhedgedMonth = unheldMonth(sim, applied);
@@ -414,7 +418,7 @@ export default function OwnershipFace() {
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy,
+    supportPolicy, s.strikeMinFromIncome,
   ]);
 
   // ── the ownership wrapper — ownershipHero (ownershipFaceView), the one definition ──
@@ -1002,6 +1006,7 @@ export default function OwnershipFace() {
                     : 'No bitcoin bought this month.'}</>
                 );
               })()}
+              {minNote !== null && ` ${minNote}`}
             </div>
 
             <span className={styles.cardLabel}>Price path</span>

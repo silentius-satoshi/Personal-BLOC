@@ -61,6 +61,7 @@ const BREAKERS: [string, BreakerReading | 'loading' | null][] = [
 ];
 
 const CTX: MoveCardContext = {
+  whatIf: false,
   policyApplied: true, policyEnabled: true, policyIgnoredReason: null,
   plan: place(), holdThroughISO: null, holdDepositISO: null,
   breaker: BREAKERS[0][1], rearmRule: 6,
@@ -75,7 +76,7 @@ const keyed = (o: Partial<MoveCardContext>, key: string) => card(o).lines.find((
 
 /** Every kind a ROW can produce, in the engine's month order. `strikeToCold` is today-only (the plan, not a row). */
 const ENGINE_KINDS: ActionKind[] = [
-  'draw', 'cashToBills', 'unpaid', 'repayStrike', 'repayCoinbase', 'buy', 'strikeToCoinbase', 'refinance',
+  'draw', 'cashToBills', 'unpaid', 'payMinimum', 'repayStrike', 'repayCoinbase', 'buy', 'strikeToCoinbase', 'refinance',
   'coldToCoinbase', 'strikeReleaseToCoinbase', 'debtShift', 'coldToStrike', 'defenseShort', 'cashCure',
   'coldCure', 'strikeSale', 'coinbaseToCold', 'liquidation',
 ];
@@ -86,6 +87,8 @@ describe('⭐ I13 — every ACTION_FIELDS entry that fires appears in the schedu
     {}, { strikeCollateralBtc: 2 },
     { strikeCollateralBtc: 2, cbDebt: 0, cbCollateralBtc: 0 },
     { strikeCollateralBtc: 2, cbDebt: 50_000, cbCollateralBtc: 1 },
+    // Run 2 (D-R2-7) — the owner pays Strike's minimum from income: the ONLY source of a payMinimum action.
+    { strikeCollateralBtc: 2, strikeMinFromIncome: true },
   ];
   for (const c of a5Cases()) for (const over of OWNER_FIXTURES) {
     runs.push(() => runCyclingSim({ ...c.on, ...over }), () => runCyclingSim({ ...c.off, ...over }));
@@ -1010,7 +1013,7 @@ describe('⭐ Run B — the Decision face seeds its run only when the engine app
     const settings = effectivePolicySettings(DEFAULT_SUPPORT_POLICY_SETTINGS, {
       cbLtvCapPct: 70, strikeCapEffPct: effectiveStrikeCapPct(DEFAULT_STRIKE_CAP_PCT, STRIKE_MARGIN_CALL_LTV),
     });
-    // The Decision face's five engine constants (DecisionFace's ENGINE_CONTEXT — decisionWiring pins the literal).
+    // The Decision face's five engine constants (planRun.ts's PLAN_ENGINE_CONTEXT — decisionWiring pins the literal).
     const FACE = {
       mode: 'cycle' as const, cbLtvCapPct: 70, strikeLtvCapPct: DEFAULT_STRIKE_CAP_PCT,
       strikeMarginLtv: STRIKE_MARGIN_CALL_LTV, strikeMaxDrawLtv: STRIKE_MAX_DRAW_LTV,

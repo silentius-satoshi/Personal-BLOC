@@ -183,6 +183,8 @@ async function applyViewerEvent(event: RemoteEvent): Promise<void> {
       cbCollateralBtc:     snap.cbCollateralBtc     ?? useStore.getState().cbCollateralBtc,
       strikeCollateralBtc: snap.strikeCollateralBtc ?? useStore.getState().strikeCollateralBtc,
       coldStorageBtc:      snap.coldStorageBtc      ?? useStore.getState().coldStorageBtc,
+      // Run 2 (D9) — the owner's latest Strike deposit date (the hold's one fact). A pre-Run-2 owner snapshot has none.
+      viewerStrikeDepositISO: snap.strikeLastDepositISO ?? null,
     });
     s.setViewerDataLoaded(true);   // a VALID decrypt populated the store — the viewer render may now show
     s.setViewerLastSyncAt(Date.now());   // freshness clock for the viewer home pill (Viewer Revamp V1)

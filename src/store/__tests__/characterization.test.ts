@@ -50,7 +50,7 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;   // advisorStartDate = todayLocalISO() 
 
 // ── Suite 1 — persisted blob shape ───────────────────────────────────────────
 describe('characterization · persisted blob (partializeState)', () => {
-  it('blob key-set is exactly the 104 persisted data keys (+6, the plan of record; +1, 5c\'s planLoaded; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
+  it('blob key-set is exactly the 107 persisted data keys (+6, the plan of record; +1, 5c\'s planLoaded; +3, Run 2\'s device-local planBreakerCache, planNoteDismissed, viewerStrikeDepositISO; 4e retired settingsDirty, lastSettingsSyncAt, lastV1FallbackApplyAt)', () => {
     const blob = JSON.parse(JSON.stringify(partializeState(useStore.getState())));
     expect(Object.keys(blob).sort()).toEqual([
       'activeTier', 'advisorActualBlocBalance', 'advisorActualBlocBalanceAsOf', 'advisorActualBtcHeld',
@@ -69,7 +69,9 @@ describe('characterization · persisted blob (partializeState)', () => {
       'monthBucketReconcileDone', 'monthlyLog', 'ndpLastPaidDate', 'nextViewerIndex', 'nostrAuthEnabled',
       'nostrBunkerUri', 'nostrLogin', 'nostrPubkey', 'nostrRelays', 'nostrSigningMethod', 'onboardingComplete',
       'pendingViewerRevocations', 'pinnedScenario',   // device-local revocation retry queue + scenario pin
+      'planBreakerCache',   // Run 2 (§4.3): the breaker's offline cache — device-local, never synced
       'planDirty', 'planEvents', 'planLoaded',   // Phase 4c: plan-events channel (device-local persisted); 5c: planLoaded
+      'planNoteDismissed',   // Run 2 (D8): the one-time note — device-local, never synced
       'policyAccumulateBelow', 'policyBearBufferMonths', 'policyCashReserveMonths', 'policyCbStopAtSupportPct',   // the plan of record (Run 1)
       'policyPayDownAbove', 'policyStrikeStopAtSupportPct',
       'prefsDirty',
@@ -77,6 +79,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       'showPlanCbBar', 'showPlanIncomeBar', 'showPlanStrikeBar', 'simpleMode', 'simpleView',
       'strikeCollateralBtc', 'strikeLiquidationLtvPct', 'tabOrder', 'timeHorizonYears', 'toolTabs',
       'viewerDisplayName', 'viewerKeyWrapMeta', 'viewerKeyWrapped', 'viewerMode', 'viewerSecretKey',
+      'viewerStrikeDepositISO',   // Run 2 (D9): a trusted viewer's copy of the owner's latest Strike deposit date
       'viewerWriterPubkey', 'viewers',
     ]);
   });
@@ -123,6 +126,7 @@ describe('characterization · persisted blob (partializeState)', () => {
       pinnedScenario: null,   // Phase 3a: device-local pin
       policyCbStopAtSupportPct: 45, policyStrikeStopAtSupportPct: 50, policyAccumulateBelow: 2, policyPayDownAbove: 3,   // the plan of record — C1
       policyBearBufferMonths: 12, policyCashReserveMonths: 0,
+      planNoteDismissed: false, planBreakerCache: null, viewerStrikeDepositISO: null,   // Run 2 — device-local, never synced
     });
   });
 });
@@ -223,6 +227,7 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
       strike: { usd: null, btcAvail: null, rate: null },
       cbCollateralBtc: 1.48, strikeCollateralBtc: 0,
       coldStorageBtc: 0,   // the pre-derived LIVE cold total (settings.coldStorageBtcAsOf is stripped — see payloads)
+      strikeLastDepositISO: null,   // Run 2 (D9) — the hold's one fact, pre-derived (the seed has no deposit)
     });
   });
 });

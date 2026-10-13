@@ -99,6 +99,26 @@ describe('viewerSync — applyViewerEvent (P3 scalar)', () => {
     expect(mockState.setViewerDataLoaded).toHaveBeenCalledWith(true);
   });
 
+  it('⭐ HOLD — Run 2 (D9): a trusted snapshot raw-sets the owner\'s latest Strike deposit date (the hold\'s one fact)', async () => {
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({
+      settings: {}, records: { entries: [], deletions: {} }, strike: null, strikeLastDepositISO: '2026-09-01',
+    }));
+
+    await fetchViewerSnapshot();
+
+    expect(mockState.viewerStrikeDepositISO, 'HOLD raw-set').toBe('2026-09-01');
+    expect(mockState.dayLog, 'HOLD no journal event on the viewer').toEqual([]);
+  });
+
+  it('⭐ HOLD — a pre-Run-2 owner snapshot carries no date: the viewer reads no hold (null), never a stale one', async () => {
+    resetStore({ viewerStrikeDepositISO: '2020-01-01' });
+    decryptImpl.fn.mockResolvedValue(JSON.stringify({ settings: {}, records: { entries: [], deletions: {} }, strike: null }));
+
+    await fetchViewerSnapshot();
+
+    expect(mockState.viewerStrikeDepositISO, 'HOLD pre-Run-2').toBeNull();
+  });
+
   it('a revoked snapshot wipes via clearViewerData and does NOT apply either scalar', async () => {
     decryptImpl.fn.mockResolvedValue(JSON.stringify({
       revoked: true, settings: {}, records: { entries: [], deletions: {} }, strike: null, cbCollateralBtc: 9.99, strikeCollateralBtc: 8.88,

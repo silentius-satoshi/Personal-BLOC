@@ -211,15 +211,20 @@ describe('the plan of record — the wiring', () => {
 
   it('⭐ ONE CLAMP — the Decision face runs on the plan\'s clamp', () => {
     const src = SRC('components/Almanac/DecisionFace.tsx');
-    expect(src, 'ONE CLAMP').toMatch(/const CAP_PCT = PLAN_CB_LTV_CAP_PCT;/);
-    expect(src, 'ONE CLAMP').toMatch(/const STRIKE_CAP_EFF = PLAN_STRIKE_CAP_EFF;/);
+    // Run 2 — the face's engine constants are the plan of record's (planRun.ts), shared with THIS MONTH (invariant 2).
+    expect(src, 'ONE CLAMP').toMatch(/effectivePolicySettings\(policyRaw, PLAN_CLAMP\)/);
+    expect(src, 'ONE CLAMP').toMatch(/seedsFromMove\(placement\.seeded, \{ \.\.\.PLAN_ENGINE_CONTEXT, /);
+    const run = SRC('components/Almanac/planRun.ts');
+    expect(run, 'ONE CLAMP').toMatch(/cbLtvCapPct: PLAN_CB_LTV_CAP_PCT, strikeLtvCapPct: PLAN_STRIKE_CAP_PCT,/);
+    expect(run, 'ONE CLAMP').toMatch(/effectivePolicySettings\(raw, PLAN_CLAMP\)/);
     expect(PLAN_CLAMP.cbLtvCapPct, 'ONE CLAMP 70 — the Decision face\'s Coinbase cap, unchanged').toBe(70);
   });
 
   it('⭐ CONSOLE — every live crash-playbook build passes the plan\'s Coinbase limit', () => {
     for (const f of ['components/Tools/EmergencyConsole.tsx', 'components/SimpleMode/SimpleModeView.tsx']) {
       expect(SRC(f), `CONSOLE ${f}`).toMatch(/planCbStopAtSupportPct = useStore\(\(s\) => s\.policyCbStopAtSupportPct\)/);
-      expect(SRC(f), `CONSOLE ${f}`).toMatch(/cbLtvTargetPct, planCbStopAtSupportPct, dayLog/);
+      // Run 2 (D9): the hold arrives as its one fact (`strikeDepositOf`), no longer as the journal.
+      expect(SRC(f), `CONSOLE ${f}`).toMatch(/cbLtvTargetPct, planCbStopAtSupportPct, strikeDepositISO: strikeDeposit,/);
     }
     expect(SRC('components/Advisor/OutlookProjection.tsx'), 'CONSOLE Outlook')
       .toMatch(/playbookDepthFor\(cbLtvTargetPct, planCbStopAtSupportPct\)/);

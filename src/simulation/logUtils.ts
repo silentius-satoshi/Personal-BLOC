@@ -495,3 +495,23 @@ export function deriveReadingAnchors(
 
   return patch;
 }
+
+/**
+ * Run 2 (D9) — the ONE fact the hold reads: the latest LOGGED Strike deposit's date, any age (or null). The hold only
+ * ever depends on the latest deposit — every earlier one is older — so this date is all a trusted viewer, who has no
+ * journal, needs to read the owner's hold: it arrives pre-derived in the trusted snapshot.
+ */
+export function latestStrikeDepositISO(dayLog: readonly DayEvent[]): string | null {
+  let latestISO: string | null = null;
+  let latestMs = Number.NEGATIVE_INFINITY;
+  for (const ev of dayLog) {
+    if (ev.kind !== 'deposit' || ev.target !== 'strike' || !/^\d{4}-\d{2}-\d{2}$/.test(ev.date)) continue;
+    const t = Date.parse(ev.date);
+    if (!Number.isFinite(t)) continue;
+    if (t > latestMs) {
+      latestMs = t;
+      latestISO = ev.date;
+    }
+  }
+  return latestISO;
+}

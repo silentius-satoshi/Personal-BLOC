@@ -372,10 +372,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const showMiningInLog             = useStore((s) => s.showMiningInLog);
   const setShowMiningInLog          = useStore((s) => s.setShowMiningInLog);
-  const showPlanStrikeBar           = useStore((s) => s.showPlanStrikeBar);
-  const setShowPlanStrikeBar        = useStore((s) => s.setShowPlanStrikeBar);
-  const showPlanCbBar               = useStore((s) => s.showPlanCbBar);
-  const setShowPlanCbBar            = useStore((s) => s.setShowPlanCbBar);
   const almanacLiveEnabled          = useStore((s) => s.almanacLiveEnabled);
   const setAlmanacLiveEnabled       = useStore((s) => s.setAlmanacLiveEnabled);
   const setAlmanacLiveConsented     = useStore((s) => s.setAlmanacLiveConsented);
@@ -854,24 +850,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           </div>
         )}
 
-        <div className={styles.setupGroup}>
-          <div className={styles.setupGroupLabel}>MONTHLY PLAN</div>
-          <div className={styles.cbLoanToggleRow}>
-            <div className={styles.cbLoanToggleLabel}>
-              <span className={styles.cbLoanToggleTitle}>Show Strike BLOC bar</span>
-              <span className={styles.cbLoanToggleDesc}>In the monthly plan card</span>
-            </div>
-            <Toggle value={showPlanStrikeBar} onChange={setShowPlanStrikeBar} />
-          </div>
-          <div className={styles.cbLoanToggleRow}>
-            <div className={styles.cbLoanToggleLabel}>
-              <span className={styles.cbLoanToggleTitle}>Show Coinbase loan bar</span>
-              <span className={styles.cbLoanToggleDesc}>In the monthly plan card</span>
-            </div>
-            <Toggle value={showPlanCbBar} onChange={setShowPlanCbBar} />
-          </div>
-        </div>
-
+        {/* The plan of record (Run 2): the Monthly Playbook card has no Strike or Coinbase bar, so their two toggles left
+            with them. The store keeps showPlan*Bar, inert (device-local display prefs; never synced). */}
         <div className={styles.setupGroup}>
           <div className={styles.setupGroupLabel}>ALMANAC</div>
           <div className={styles.cbLoanToggleRow}>

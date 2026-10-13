@@ -18,8 +18,10 @@ import { join } from 'node:path';
  */
 // DecisionFace (Run B) is the fourth engine face — its reset must mirror its engine inputs like the other three.
 const FACES = ['CyclingFace.tsx', 'OwnershipFace.tsx', 'UnifiedFace.tsx', 'DecisionFace.tsx'] as const;
-const ENGINE_DEPS = /const engineInputs = useMemo\(\(\) => \(\{[\s\S]*?\}\), \[([\s\S]*?)\]\);/;
-const ENGINE_BODY = /const engineInputs = useMemo\(\(\) => \(\{([\s\S]*?)\}\), \[/;
+// Run 2 — the Decision face builds its inputs through the plan of record's builder (`engineInputsOf({ … })`, planRun.ts),
+// so the memo body is that call's facts object; the parents still write the object literal (`({ … })`).
+const ENGINE_DEPS = /const engineInputs = useMemo\(\(\) => (?:engineInputsOf)?\(\{[\s\S]*?\}\), \[([\s\S]*?)\]\);/;
+const ENGINE_BODY = /const engineInputs = useMemo\(\(\) => (?:engineInputsOf)?\(\{([\s\S]*?)\}\), \[/;
 const RESET_DEPS = /useEffect\(\(\) => \{ setLens\(1\); \}, \[([\s\S]*?)\]\);/;
 const LEGITIMATE_OMISSIONS = new Set(['startDate']);
 
@@ -66,8 +68,10 @@ describe.each(FACES)('%s — the lens reset mirrors the engine inputs', (face) =
     // The regex accepts the bare form OR a ternary whose ELSE-branch is the store's reserve — an inverted ternary, or
     // a seed with no store fallback, still fails it (both proven red). The full seeding rule is pinned in
     // decisionWiring.test.ts.
+    // Run 2 — the Decision face hands the builder its facts (`coldBtc: s.openingColdBtc`); the seeding ternary moved into
+    // `engineInputsOf`, pinned in decisionWiring.test.ts.
     expect(src.match(ENGINE_BODY)?.[1] ?? '', `${face}: engineInputs body`)
-      .toMatch(/\bopeningColdBtc: (?:[^,\n]*? : )?s\.openingColdBtc\b/);
+      .toMatch(/\b(?:openingColdBtc|coldBtc): (?:[^,\n]*? : )?s\.openingColdBtc\b/);
     expect(engineDeps, `${face}: engineInputs deps`).toContain('s.openingColdBtc');
     expect(resetDeps, `${face}: lens-reset deps`).toContain('s.openingColdBtc');
   });

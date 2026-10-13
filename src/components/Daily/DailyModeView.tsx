@@ -1,9 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
-import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
-import { deriveAdvisorStart, bucketEventToMonth } from '../../simulation/logUtils';
-import { strikeAvailableCredit, BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { deriveForMonth, composeMonthSummary, minPaymentStatus } from '../../simulation/simpleModePlan';
+import { getCurrentStrategyMonth, getNdpStatus } from '../../simulation/runAdvisor';
+import { usePlanMonth } from '../Almanac/usePlanMonth';
+import {
+  planMonthSummary, planMonthActions, planStatus, planRowDot, planRowNoteColor, planRowAmountColor, planMinimumOwed,
+  planMinimumLine, planInterestRollsNote, planLedgerTargets, VENUE_COLOR, PLAN_CRASH_TITLE,
+} from '../Almanac/planMonthView';
+import { VenueText } from '../SimpleMode/PlanMonthCard';
+import { bucketEventToMonth } from '../../simulation/logUtils';
+import { strikeAvailableCredit } from '../../simulation/strikeCredit';
+import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { SafetyDashboard } from '../SimpleMode/SafetyDashboard';
 import { describeDayEvent } from './dailyView';
@@ -18,8 +24,8 @@ import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
 import { usePlanMissing } from '../../hooks/usePlanLoad';
-import { fmtUSD, todayLocalISO, toLocalISO, fmtLtvPct } from '../../utils/format';
-import { CB_PAYDOWN_LABEL } from '../Tools/crashPlaybookView';
+import { fmtUSD, todayLocalISO, toLocalISO, fmtLtvPct, shownUsd } from '../../utils/format';
+import { isCrashDay } from '../Tools/crashPlaybookView';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
 
@@ -73,8 +79,6 @@ const clampPct = (a: number, b: number) => (b > 0 ? Math.max(0, Math.min(100, (a
  * card [aggregate streams + per-event log], terminal playbook plan card). No event sheets / writes / calendar.
  */
 export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSimpleView }: DailyModeViewProps) {
-  const income     = useStore((s) => s.income);
-  const expenses   = useStore((s) => s.expenses);
   const btcPrice   = useStore((s) => s.btcPrice);
   const blocApr    = useStore((s) => s.blocApr);
   const creditLine = useStore((s) => s.creditLine);
@@ -84,16 +88,12 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
-  const cbMonthlyPayment  = useStore((s) => s.cbMonthlyPayment);
   const cbPaymentStrategy = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct   = useStore((s) => s.cbLtvTriggerPct);
-  const cbLtvTargetPct    = useStore((s) => s.cbLtvTargetPct);
-  const cbRotateBackPct   = useStore((s) => s.cbRotateBackPct);
   const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
   const effectiveCbBalance = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
-  const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
   const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
@@ -133,59 +133,29 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   // sign-off's settings side effects (below) are plan writes. The store refuses the write too; this hides the way in.
   const writesPaused  = usePlanMissing();
 
-  const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance),
-    [monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance],
-  );
-
-  const advisorRows = useMemo(
-    () => runAdvisor({
-      btcPrice, income, expenses,
-      blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
-       cbBalance:         effectiveCbBalance,
-      cbCollateralBtc:   hasCbLoan ? cbCollateralBtc  : 1,
-      cbAprPct:          hasCbLoan ? cbAprPct         : 0,
-      cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment : 0,
-      cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
-      cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-      startingBlocBalance: slmBlocBal,
-      startingBtcHeld:     slmBtcHeld,
-      startingMonth:       slmStartMonth,
-      btcGrowthRate: 0,
-      blocMinPaymentSource,
-    }).rows,
-    [btcPrice, income, expenses, blocApr, creditLine,
-      cbLoanBalance, cbLoanBalanceAsOf, effectiveCbBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment,
-     cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-     slmBlocBal, slmBtcHeld, slmStartMonth, hasCbLoan, blocMinPaymentSource],
-  );
-
-  const currentRow = advisorRows.find((r) => r.month === currentMonth) ?? null;
-
-  // Position — CURRENT (live) vs AFTER (projected). P4a is read-only and exposes no Pay/Skip, so the
-  // AFTER projection uses the unskipped plan (skip flags treated as false).
+  // Position — the live Strike reading (the trio).
   const currentAvail = strikeAvailableCredit(creditLine, currentBtcHeld, btcPrice, advisorActualBlocBalance);
 
-  // Plan reference (read-only) — the unskipped projection + plain-English narration for this month.
-  const plan = currentRow ? deriveForMonth(currentRow, income, hasCbLoan, cbPaymentStrategy) : null;
-  // CB reference reflects the engine: ltvTriggered draws cbPaydownDraw (0 unless triggered); monthly pays plan.cbPayment.
-  const cbRefAmount = !hasCbLoan ? 0
-    : cbPaymentStrategy === 'ltvTriggered' ? (currentRow?.cbPaydownDraw ?? 0)
-    : (plan?.cbPayment ?? 0);
-  const cbRefLabel  = cbPaymentStrategy === 'ltvTriggered' ? CB_PAYDOWN_LABEL : 'CB payment';
-  const summaryText = currentRow && plan ? composeMonthSummary({
-    month: currentMonth, isLogged: false, hasCbLoan,
-    cbLtv: plan.cbLtv, triggerPct: cbLtvTriggerPct,
-    draw: plan.blocDraw, btcBoughtUsd: plan.btcBoughtUsd, cbPayment: plan.cbPayment,
-    rotationFired: !!currentRow.strikeRepayFired, rotationAmount: currentRow.strikeRepayDraw ?? 0,
-    interest: plan.blocInterest,
-    minPayment: plan.minPayment,
-  }) : '';
+  // The plan of record (Run 2): Daily's planned figures are the plan's month 1 — the same run THIS MONTH reads.
+  const pm = usePlanMonth();
+  const pr1 = pm.run.sim.rows[1] ?? pm.run.sim.last;
+  const pmRows = planMonthActions(pm.run.sim, pm.run.placement, 1);
+  // D13 — a crash day outranks the month's status, as on THIS MONTH (the console's gate and inputs).
+  const crashDay = isCrashDay({
+    hasCbLoan, ltvTriggered: cbPaymentStrategy === 'ltvTriggered', cbDebt: effectiveCbBalance, cbCollateralBtc,
+    price: btcPrice, triggerPct: cbLtvTriggerPct,
+  });
+  const pmStatus = crashDay
+    ? { tone: 'bad' as const, title: PLAN_CRASH_TITLE }
+    : planStatus(pm.run.sim, pm.run.placement, 1, {
+      monthsBackUnder: pm.monthsBackUnder, cbStop: pm.run.placementInput.cbStop,
+      support0: pm.run.supportPath[0], coldBtc: pm.coldBtc,
+    });
 
   // §2b — the current month's Strike minimum: owed figure + status chip for the plan reference card.
   const isIncomeSource = blocMinPaymentSource === 'income';
-  const strikeMinEstimate = Math.round(advisorActualBlocBalance * (blocApr / 100 / 12));
-  const strikeMinOwed = blocStatementMinimum ?? strikeMinEstimate;
+  const strikeMinOwed = planMinimumOwed(blocStatementMinimum, pr1.strikeInterestUsd);   // the plan's month-1 interest
+  const minLine = planMinimumLine(strikeMinOwed, blocMinPaymentDueDay);
   const minPaidCurrentMonth = dayLog
     .filter((e) => e.kind === 'minPayment' && bucketEventToMonth(e.date, advisorStartDate) === currentMonth)
     .reduce((sum, e) => sum + (e as Extract<DayEvent, { kind: 'minPayment' }>).amount, 0);
@@ -216,12 +186,20 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
 
   const today        = todayLocalISO();
   const boughtUsd    = view.streams.buyBtc * btcPrice;   // 5c rider — the headline is what was bought
-  const plannedDraw  = plan?.blocDraw ?? 0;
-  const plannedPay   = plan?.paydown ?? 0;
-  const plannedBuy   = plan?.btcBought ?? 0;
+  // The bars compare the Ledger with the plan's month 1 in the Ledger's own streams (planLedgerTargets): a paydown on
+  // either loan counts, as the plan's does.
+  const target       = planLedgerTargets(pr1);
+  const plannedDraw  = target.draw;
+  const plannedPay   = target.paid;
+  const plannedBuy   = target.buyBtc;
+  const paidSoFar    = view.streams.paydown + view.streams.cbPaydown;
   const drawFill     = clampPct(view.streams.draw, plannedDraw);
-  const payFill      = clampPct(view.streams.paydown, plannedPay);
+  const payFill      = clampPct(paidSoFar, plannedPay);
   const buyFill      = clampPct(view.streams.buyBtc, plannedBuy);
+  // What capitalises this month: all of Strike's interest rolled in; only the unpaid part when income pays the minimum.
+  // The plan's current month — never shown against a past month's rollup.
+  const capitalized  = pr1.strikeInterestUsd - pr1.strikeMinPaidUsd;
+  const showCapitalized = safeViewedMonth === currentMonth && shownUsd(capitalized);
 
   const actTitle   = isMonth ? getMonthLabel(advisorStartDate, safeViewedMonth)
     : (selectedDay === today ? 'Today' : fmtDay(selectedDay));
@@ -353,7 +331,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
               <div className={styles.stream}>
                 <span className={styles.streamLabel}>Paydown</span>
                 <span className={`${styles.streamVal} ${plannedPay > 0 ? '' : styles.streamValMuted}`}>
-                  {plannedPay > 0 ? `${fmtUSD(view.streams.paydown)} / ${fmtUSD(plannedPay)}` : '—'}
+                  {plannedPay > 0 ? `${fmtUSD(paidSoFar)} / ${fmtUSD(plannedPay)}` : '—'}
                 </span>
                 <div className={styles.track}><div className={`${styles.fill} ${styles.fillPaydn}`} style={{ width: `${payFill}%` }} /></div>
               </div>
@@ -363,7 +341,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                 <div className={styles.track}><div className={`${styles.fill} ${styles.fillBuy}`} style={{ width: `${buyFill}%` }} /></div>
               </div>
             </div>
-            {isMonth && <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSD(plan?.blocInterest ?? 0)}</b></div>}
+            {isMonth && showCapitalized && <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSD(capitalized)}</b></div>}
           </div>
 
           {/* Log section — Week: editable per-event log; Month: read-only summed rollup + "from N entries" */}
@@ -400,11 +378,13 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                       <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSD(monthRollup.streams.paydown)}</span>
                     </div>
                   )}
-                  <div className={styles.logRow}>
-                    <span className={styles.logTime}>sum</span>
-                    <span className={styles.logType}><span className={`${styles.dot} ${styles.dotR}`} />Interest capitalized</span>
-                    <span className={`${styles.logAmt} ${styles.amtCost}`}>{fmtUSD(plan?.blocInterest ?? 0)}</span>
-                  </div>
+                  {showCapitalized && (
+                    <div className={styles.logRow}>
+                      <span className={styles.logTime}>sum</span>
+                      <span className={styles.logType}><span className={`${styles.dot} ${styles.dotR}`} />Interest capitalized</span>
+                      <span className={`${styles.logAmt} ${styles.amtCost}`}>{fmtUSD(capitalized)}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -457,52 +437,43 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
           {/* Plan reference — terminal/playbook treatment of what the plan expects this month (read-only) */}
           <div className={styles.pbcard}>
             <div className={styles.pbHead}>This month's plan <span className={styles.pbRef}>· reference</span></div>
-            {plan ? (
-              <>
-                <div className={styles.pbSub}>
-                  <span>Month {currentMonth} of 12 · <span className={styles.pbLtv}>LTV {fmtLtvPct(plan.blocLtv, 1)}</span></span>
-                  <span>BTC {fmtUSD(btcPrice)}</span>
-                </div>
-                <div className={styles.pbRow}>
-                  <span className={`${styles.dot} ${styles.dotY}`} />
-                  <span><span className={styles.pbLab}>Draw</span> <span className={styles.pbNote}>(expenses)</span></span>
-                  <span className={styles.pbAmt}>{fmtUSD(plan.blocDraw)}</span>
-                </div>
-                <div className={styles.pbRow}>
-                  <span className={`${styles.dot} ${styles.dotO}`} />
-                  <span><span className={styles.pbLab}>Buy Bitcoin</span></span>
-                  <span className={styles.pbAmt}>{fmtUSD(plan.btcBoughtUsd)}</span>
-                </div>
-                {hasCbLoan && cbRefAmount > 0 && (
-                  <div className={styles.pbRow}>
-                    <span className={`${styles.dot} ${styles.dotR}`} />
-                    <span><span className={styles.pbLab}>{cbRefLabel}</span></span>
-                    <span className={styles.pbAmt}>{fmtUSD(cbRefAmount)}</span>
-                  </div>
-                )}
-                {plan.paydown > 0 && (
-                  <div className={styles.pbRow}>
-                    <span className={`${styles.dot} ${styles.dotG}`} />
-                    <span><span className={styles.pbLab}>LoC Paydown</span></span>
-                    <span className={styles.pbAmt}>{fmtUSD(plan.paydown)}</span>
-                  </div>
-                )}
-                {/* §2b — Strike minimum line + status chip (income: PAID/DUE/MISSED; roll: capitalize · Nth) */}
-                <div className={styles.pbRow}>
-                  <span className={`${styles.dot} ${styles.dotR}`} />
+            <div className={styles.pbSub}>
+              <span>Month {currentMonth} of 12 · <span className={styles.pbLtv}>LTV {fmtLtvPct(pr1.strikeLtv, 1)}</span></span>
+              <span>BTC {fmtUSD(btcPrice)}</span>
+            </div>
+            {/* The month's one status — the same builder as THIS MONTH (title only; the catch-up lives there). */}
+            {pmStatus.title && <p className={`${styles.pbStatus} ${styles[`pbStatus_${pmStatus.tone}`]}`}>{pmStatus.title}</p>}
+            {/* The plan of record's month 1 — THIS MONTH's own rows (the Decision face's schedule, one table). */}
+            {pmRows.map((a) => {
+              const d = planRowDot(a);
+              return (
+                <div key={a.key} className={styles.pbRow} style={a.muted ? { opacity: 0.55 } : undefined}>
+                  <span className={styles.dot} style={{ background: d.background, border: d.ring ? `1px solid ${d.ring}` : undefined }} />
                   <span>
-                    <span className={styles.pbLab}>Strike minimum</span>{' '}
-                    {isIncomeSource
-                      ? <span className={`${styles.minChip} ${styles[`minChip_${curMinStatus}`]}`}>{curMinStatus}</span>
-                      : <span className={styles.pbNote}>· {blocMinPaymentDueDay}th</span>}
+                    <span className={styles.pbLab}>{a.muted ? a.label : <VenueText text={a.label} />}</span>
+                    {a.note && <span className={styles.pbNote} style={{ color: planRowNoteColor(a) }}> {a.note}</span>}
                   </span>
-                  <span className={styles.pbAmt}>{fmtUSD(isIncomeSource ? strikeMinOwed : (plan.blocInterest))}</span>
+                  <span className={styles.pbAmt} style={{ color: planRowAmountColor(a) }}>{a.amount}</span>
                 </div>
-                {summaryText && <div className={styles.pbNotebox}>{summaryText}</div>}
-              </>
-            ) : (
-              <div className={styles.empty}>{isStrategyComplete(advisorStartDate) ? 'Strategy complete — no plan for this month.' : 'No plan for this month.'}</div>
-            )}
+              );
+            })}
+            {/* §2b — Strike's minimum: rolled in (a Strike row) or paid from income (the row above; its status here). */}
+            {isIncomeSource ? (minLine && (
+              <p className={styles.pbFoot}>
+                {minLine}{' '}
+                <span className={`${styles.minChip} ${styles[`minChip_${curMinStatus}`]}`}>{curMinStatus}</span>
+              </p>
+            )) : (shownUsd(pr1.strikeInterestUsd) && (
+              <div className={styles.pbRow}>
+                <span className={styles.dot} style={{ background: VENUE_COLOR.strike }} />
+                <span><span className={styles.pbLab}><VenueText text="Strike interest" /></span><span className={styles.pbNote}> {planInterestRollsNote(blocMinPaymentDueDay)}</span></span>
+                <span className={styles.pbAmt}>{fmtUSD(pr1.strikeInterestUsd)}</span>
+              </div>
+            ))}
+            <details className={styles.pbWhy}>
+              <summary>Why this plan?</summary>
+              <div className={styles.pbNotebox}>{planMonthSummary(pm.run.sim, pm.run.placement, 1, pm.run.supportPath[1] ?? pm.run.supportPath[0])}</div>
+            </details>
           </div>
 
         </div>

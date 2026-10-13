@@ -8,6 +8,7 @@ type ViewerSlice = Pick<StoreState,
   | 'viewers' | 'nextViewerIndex' | 'pendingViewerRevocations' | 'viewerMode' | 'viewerWriterPubkey' | 'viewerSecretKey' | 'viewerDisplayName'
   | 'viewerKeyWrapped' | 'viewerKeyWrapMeta' | 'viewerUnlocked' | 'viewerDataLoaded' | 'viewerLastSyncAt'
   | 'viewerSafeSnapshot' | 'viewerPreview' | 'storeUnlocked' | 'addViewerSlot' | 'updateViewerSlot' | 'removeViewerSlot'
+  | 'viewerStrikeDepositISO'
   | 'setViewerMode' | 'setViewerWriterPubkey' | 'setViewerSecretKey' | 'setViewerDisplayName' | 'setViewerKeyWrapped'
   | 'setViewerKeyWrapMeta' | 'setViewerUnlocked' | 'setViewerDataLoaded' | 'setViewerLastSyncAt' | 'setViewerSafeSnapshot'
   | 'queueViewerRevocation' | 'clearViewerRevocation'
@@ -28,6 +29,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
   viewerDataLoaded:    false,
   viewerLastSyncAt:    null,
   viewerSafeSnapshot:  null,
+  viewerStrikeDepositISO: null,   // Run 2 (D9) — raw-set by the trusted apply; never on an owner device
   viewerPreview:       false,
   storeUnlocked:       false,
   // Multi-viewer roster (M1) — a whole-array plan field (4c: op-events are the documented D2 multi-writer upgrade
@@ -90,6 +92,7 @@ export const createViewerSlice = (set: StoreSet, get: StoreGet): ViewerSlice => 
     viewerDataLoaded: false,
     viewerLastSyncAt: null,
     viewerSafeSnapshot: null,   // Viewer V2 — drop the C-safe snapshot too (data-remanence)
+    viewerStrikeDepositISO: null,   // Run 2 (D9) — the owner's Strike deposit date leaves with the rest
     initialSettingsPullDone: false,   // re-arm the seed-clobber guard after resetting to seed defaults
     // 5c — the plan and the journal are seeds again, in place: this store holds no owner plan (an owner who comes back on
     // this device waits for it), and holds no journal from before the bucketing fix (nothing to re-bucket).

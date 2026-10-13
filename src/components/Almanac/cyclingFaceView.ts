@@ -208,7 +208,8 @@ export interface CashFlowAtMonth {
   lineFundedUsd: number;
   /** Bill dollars the PAYCHECK actually paid because the line could not — capped at income (C1). When the shortfall
    *  is bigger than the paycheck, the rest went to the cash reserve or unpaid (`billsRemainderTail`), so
-   *  `buysUsd + incomeCoveredUsd === income` in every drawing month. 0 when fully funded. */
+   *  `buysUsd + incomeCoveredUsd === income` in every drawing month — less Strike's minimum when income pays it (the
+   *  owner's setting, `strikeMinFromIncome`, Run 2: the row's `strikeMinPaidUsd`). 0 when fully funded. */
   incomeCoveredUsd: number;
   /** True when `buysUsd` exceeds the surplus — i.e. the line is doing the work. */
   leveraged: boolean;
@@ -252,9 +253,13 @@ export const cashFlowText = (c: CashFlowCopy): string => c.before + c.strong + c
  * over"; where the paycheck paid none of the shortfall the cause says it "covers none of the rest" instead of "$0".
  * ⚠ Nor is a $0 SURPLUS: on a deficit budget (bills above the paycheck) the closing "— not just the $X left over"
  * clause is dropped entirely, since every other guard here is on `bought` rather than on the surplus.
+ * Run 2 (D-R2-7) — when income paid Strike's minimum (the owner's setting), the buy is the paycheck LESS the minimum, so
+ * the sentence drops "all" and the "left over" it compares with is net of the minimum; `minimumPaidNote` names it. With
+ * the minimum rolled in (the default) every shape is byte-identical.
  */
 export function drawingCashFlowNote(
-  row: Pick<CyclingRow, 'btcBoughtUsd' | 'strikeDrawn' | 'strikeShortfall' | 'cashToBillsUsd' | 'unfundedUsd'>,
+  row: Pick<CyclingRow, 'btcBoughtUsd' | 'strikeDrawn' | 'strikeShortfall' | 'cashToBillsUsd' | 'unfundedUsd'>
+    & Partial<Pick<CyclingRow, 'strikeMinPaidUsd'>>,
   income: number,
   expenses: number,
   strikeAprPct: number,
@@ -267,8 +272,10 @@ export function drawingCashFlowNote(
   // The closing clause carries the sentence's full stop, so a deficit budget drops the whole clause rather than
   // naming "the $0 left over". `shownUsd` is the exact gate: fmtUSD rounds, so the smallest surplus that passes
   // (50¢) renders as $1 — nothing that survives it can print $0.
-  const surplus = Math.max(0, income - expenses);
+  const minPaid = row.strikeMinPaidUsd ?? 0;
+  const surplus = Math.max(0, income - expenses - minPaid);
   const leftOver = shownUsd(surplus) ? ` — not just the ${fmtUSD(surplus)} left over.` : '.';
+  const all = shownUsd(minPaid) ? '' : 'all ';
   const debt = ` Those bills become ${strikeAprPct}% debt until they move to Coinbase.`;
   if (!shownUsd(row.strikeDrawn)) {
     const pays = tail !== '' ? 'pays what it can' : 'pays the bills';
@@ -282,7 +289,7 @@ export function drawingCashFlowNote(
   if (!shownUsd(row.strikeShortfall)) {
     const full = `The line pays your ${fmtUSD(cf.lineFundedUsd)} of bills`;
     return bought
-      ? { before: `${full}, so all `, strong: buys, after: `${leftOver}${debt}` }
+      ? { before: `${full}, so ${all}`, strong: buys, after: `${leftOver}${debt}` }
       : { before: `${full}. No bitcoin bought this month.${debt}`, strong: '', after: '' };
   }
   // What the paycheck paid of the shortfall — named only when it is worth a dollar, never "$0".
@@ -296,8 +303,18 @@ export function drawingCashFlowNote(
       : ' Your paycheck covers none of the rest.';
   const head = `The line pays ${fmtUSD(cf.lineFundedUsd)} of your bills`;
   return bought
-    ? { before: `${head}, so all `, strong: buys, after: `${leftOver}${cause}${tail}${debt}` }
+    ? { before: `${head}, so ${all}`, strong: buys, after: `${leftOver}${cause}${tail}${debt}` }
     : { before: `${head}.${cause}${tail} No bitcoin bought this month.${debt}`, strong: '', after: '' };
+}
+
+/**
+ * Run 2 (D-R2-7) — Strike's minimum, when the owner pays it from income: every month's cash-flow sentence on the
+ * Cycling, Ownership and Strategy faces ends with it, so the bitcoin figure beside it adds up (the paycheck paid the
+ * minimum before anything bought). Null when the minimum rolls into the line (the default) or rounds to nothing.
+ */
+export function minimumPaidNote(row: Partial<Pick<CyclingRow, 'strikeMinPaidUsd'>>): string | null {
+  const paid = row.strikeMinPaidUsd ?? 0;
+  return shownUsd(paid) ? `Your paycheck paid Strike's ${fmtUSD(paid)} minimum first.` : null;
 }
 
 /** Month 0 is the opening — the engine takes no action there, so no draw, stop or pause sentence is true of it. */
@@ -486,6 +503,12 @@ export function coldMovesSentence(firstColdLabel: string | null, reserve: boolea
  */
 export function seedLine(openingBtc: number, openingColdBtc: number, openingDebt: number): string {
   const cold = shownBtc(openingColdBtc) ? ` (${openingColdBtc.toFixed(4)} ₿ in cold storage)` : '';
+  // Run 2 (D-R2-4): with the Coinbase loan switched off the plan starts with none, so a fresh install can open with no
+  // coins and no debt — never "0.0000 ₿ against $0". Both shown: the row as it always read.
+  const held = shownBtc(openingBtc), owed = shownUsd(openingDebt);
+  if (!held && !owed) return 'Seeded from your live plan · nothing held or owed yet';
+  if (!owed) return `Seeded from your live plan · ${openingBtc.toFixed(4)} ₿${cold}, nothing owed`;
+  if (!held) return `Seeded from your live plan · nothing held, ${fmtUSD(openingDebt)} owed`;
   return `Seeded from your live plan · ${openingBtc.toFixed(4)} ₿${cold} against ${fmtUSD(openingDebt)}`;
 }
 

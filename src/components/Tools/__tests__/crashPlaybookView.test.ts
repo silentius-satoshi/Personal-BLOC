@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  strikeHoldFrom, playbookInputFromLive, fmtStepBtc, fmtStepUsd, fmtMultiplePair, waitingCard, playbookCard,
+  strikeHoldFrom, strikeHoldAt, playbookInputFromLive, fmtStepBtc, fmtStepUsd, fmtMultiplePair, waitingCard, playbookCard,
   monthPlaybookLine, playbookDepthFor,
   STRIKE_HOLD_DAYS, SAT_BTC, type LivePlaybookFigures, type PlaybookCard, type MonthPlaybookLine,
 } from '../crashPlaybookView';
@@ -14,20 +14,29 @@ import { STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '../../../simulatio
 import { STRIKE_MARGIN_CALL_LTV } from '../../../simulation/emergencyModel';
 import { DEFAULT_SUPPORT_POLICY_SETTINGS } from '../../Almanac/supportPolicyView';
 import type { DayEvent } from '../../../simulation/types';
+import { latestStrikeDepositISO } from '../../../simulation/logUtils';
 
 /**
  * The crash playbook, live (crash playbook Runs 2 and 3) — the one front-end the Emergency Console and the Monthly
  * Playbook's THIS MONTH line both build through. Round synthetic figures only — this repo is public.
  *
  * LIVE = crashPlaybook.test's BASE as live figures: price $80k at support $100k (k = 0.8), Coinbase $60k on 1 ₿ (75%),
- * Strike $8k on 1 ₿ (10%), a $40k line, no cold, target 70, the plan's C1 Coinbase limit (45%), an empty dayLog, today
- * 2026-10-15.
+ * Strike $8k on 1 ₿ (10%), a $40k line, no cold, target 70, the plan's C1 Coinbase limit (45%), no logged Strike
+ * deposit (the hold's one fact, Run 2 — D9), today 2026-10-15.
  */
 const LIVE: LivePlaybookFigures = {
   price: 80_000, support: 100_000, cbDebt: 60_000, cbCollateralBtc: 1, strikeBalance: 8_000, strikeCollateralBtc: 1,
   creditLine: 40_000, coldBtc: 0, cbLtvTargetPct: 70, planCbStopAtSupportPct: DEFAULT_SUPPORT_POLICY_SETTINGS.cbStopAtSupportPct,
-  dayLog: [], todayISO: '2026-10-15',
+  strikeDepositISO: null, todayISO: '2026-10-15',
 };
+
+/** The live figures, with a JOURNAL standing in for the hold's one fact — what `strikeDepositOf` reads on the owner's
+ *  device (`latestStrikeDepositISO`). */
+type Over = Partial<LivePlaybookFigures> & { dayLog?: DayEvent[] };
+function liveOf(over: Over = {}): LivePlaybookFigures {
+  const { dayLog, ...rest } = over;
+  return { ...LIVE, ...rest, ...(dayLog !== undefined ? { strikeDepositISO: latestStrikeDepositISO(dayLog) } : {}) };
+}
 
 /** A dated collateral move — `move('2026-09-01')` is a Strike deposit on that day. */
 const move = (
@@ -35,10 +44,10 @@ const move = (
 ): DayEvent => ({ id: `${kind}-${target}-${date}`, date, ts: Date.parse(date) || 0, kind, amount: 0.1, target });
 
 /** The console's composition: live figures → input, hold, result, card — and the Monthly Playbook's THIS MONTH line. */
-function run(over: Partial<LivePlaybookFigures> = {}) {
-  const live = { ...LIVE, ...over };
+function run(over: Over = {}) {
+  const live = liveOf(over);
   const input = playbookInputFromLive(live);
-  const hold = strikeHoldFrom(live.dayLog, live.todayISO);
+  const hold = strikeHoldAt(live.strikeDepositISO, live.todayISO);
   const result = crashPlaybook(input);
   return { input, hold, result, card: playbookCard(result, input, hold), line: monthPlaybookLine(result, input) };
 }
@@ -156,7 +165,7 @@ describe("strikeHoldFrom — Strike's 60-day hold", () => {
       [], [move('2026-08-16')], [move('2026-08-15')], [move('2026-10-01', 'cb')], [move('2026-11-01')],
     ];
     for (const dayLog of logs) {
-      expect(playbookInputFromLive({ ...LIVE, dayLog }).strikeInHold)
+      expect(playbookInputFromLive(liveOf({ dayLog })).strikeInHold)
         .toBe(strikeHoldFrom(dayLog, LIVE.todayISO).inHold);
     }
   });
@@ -430,7 +439,7 @@ const LINE_HELD = { kind: 'held', text: 'Coinbase back to 70%' } as const;
 const LINE_DOOM = { kind: 'doom', text: "Can't clear 86% — see Emergency" } as const;
 
 // [case, override of LIVE, the expected line]
-const LINE_CASES: [string, Partial<LivePlaybookFigures>, MonthPlaybookLine | null][] = [
+const LINE_CASES: [string, Over, MonthPlaybookLine | null][] = [
   ['none', { cbDebt: 50_000 }, null],
   ['junk support', { support: 0 }, null],
   ['junk price', { price: NaN }, null],
@@ -471,7 +480,7 @@ describe('monthPlaybookLine — the THIS MONTH line, one exact object per shape'
   }
 
   it('the ⭐ premises — the playbook lists three steps, and the doomed fixture is doomed at the open', () => {
-    const over = (name: string): Partial<LivePlaybookFigures> => {
+    const over = (name: string): Over => {
       const row = LINE_CASES.find(([n]) => n === name);
       if (!row) throw new Error(`no LINE_CASES row named ${name}`);
       return row[1];
@@ -507,11 +516,11 @@ describe('⭐ the sweep — the spec grid, every card clean', () => {
         if (strikeBalance > line) continue;   // not a live state
         const live: LivePlaybookFigures = {
           ...LIVE, price, cbDebt: cbLtv * cbColl * price, cbCollateralBtc: cbColl, strikeBalance,
-          strikeCollateralBtc: skColl, creditLine: line, coldBtc: cold, dayLog: inHold ? [move('2026-10-05')] : [],
+          strikeCollateralBtc: skColl, creditLine: line, coldBtc: cold, strikeDepositISO: inHold ? '2026-10-05' : null,
         };
         const input = playbookInputFromLive(live);
         const result = crashPlaybook(input);
-        const card = playbookCard(result, input, strikeHoldFrom(live.dayLog, live.todayISO));
+        const card = playbookCard(result, input, strikeHoldAt(live.strikeDepositISO, live.todayISO));
         cases.push({ live, input, result, card, line: monthPlaybookLine(result, input), waiting: waitingCard(input, 75) });
       }
   const at = (c: Case): string => JSON.stringify(c.live);

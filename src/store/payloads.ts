@@ -1,7 +1,7 @@
 import type { StoreState } from './useStore';                 // type-only — no runtime edge
 import type { ViewerSnapshot } from '../lib/nostr/publish';   // type-only
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety } from '../simulation/safetyView';
-import { deriveCbCollateral, deriveStrikeCollateral, deriveColdStorage } from '../simulation/logUtils';
+import { deriveCbCollateral, deriveStrikeCollateral, deriveColdStorage, latestStrikeDepositISO } from '../simulation/logUtils';
 
 // THE settings payload — single source built from current state, consumed by the trusted viewer snapshot (below) and
 // the plan backup (exportPlan) so the two can never drift. Phase 4e: no longer a relay payload of its own (settings:v1
@@ -106,5 +106,8 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
     // The LIVE cold total (anchor + cold journal moves). The viewer's dayLog is [], so a viewer-side derive would return
     // the bare anchor and disagree with the journal — it must arrive pre-derived. Viewer raw-sets it. SAFE must NOT carry it.
     coldStorageBtc: deriveColdStorage(s.dayLog, s.coldStorageBtc, s.coldStorageBtcAsOf),
+    // Run 2 (D9) — Strike's 60-day hold reads ONE fact, the latest logged Strike deposit's date; the viewer has no journal,
+    // so it arrives pre-derived (the viewer raw-sets it and reads the hold through the same rule). SAFE must NOT carry it.
+    strikeLastDepositISO: latestStrikeDepositISO(s.dayLog),
   };
 }

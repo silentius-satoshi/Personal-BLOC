@@ -12,6 +12,7 @@ import type { NostrSigner } from '@nostrify/nostrify';
 import type { PlanEvent, PlanState } from '../lib/planEvents/types';
 import type { PlanField, PrefsField } from './settingsFields';
 import type { PlanPolicySettings } from '../lib/planPolicy';
+import type { RearmableBreakerState } from '../simulation/supportPolicy';
 
 // Multi-viewer roster (M1) — one provisioned viewer. `index` is stable + monotonic (never reused after
 // removal); `pubkeyHex` is the derived viewer pubkey the snapshot encrypts to; `tier`/`keyVersion` are
@@ -96,6 +97,16 @@ export interface StoreState {
   almanacLiveConsented:  boolean;   // persisted, DEVICE-LOCAL — never synced (one-time consent for the explorer fetch)
   expenseReanchorDismissedAt: number;   // avg dismissed against (0 = not dismissed); persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
   setExpenseReanchorDismissedAt: (v: number) => void;
+  /** Run 2 (D8) — the plan of record's one-time note, dismissed on THIS device. Persisted, DEVICE-LOCAL, NEVER synced. */
+  planNoteDismissed: boolean;
+  setPlanNoteDismissed: (v: boolean) => void;
+  /** Run 2 (§4.3, invariant 10) — the breaker as last folded from month-end prices on THIS device, so THIS MONTH reads it
+   *  offline ("breaker as of …"). Public price data only. Persisted, DEVICE-LOCAL, NEVER synced. */
+  planBreakerCache: { state: RearmableBreakerState; lastMonthEndISO: string } | null;
+  setPlanBreakerCache: (v: { state: RearmableBreakerState; lastMonthEndISO: string } | null) => void;
+  /** Run 2 (D9) — a TRUSTED viewer's copy of the owner's latest Strike deposit date (the viewer has no journal), so its
+   *  month 1 reads the same 60-day hold. Raw-set by the trusted apply; null on an owner device; reset by clearViewerData. */
+  viewerStrikeDepositISO: string | null;
   monthBucketReconcileDone: boolean;   // one-shot calendar-bucket reconcile ran; persisted, DEVICE-LOCAL, NEVER synced (mirrors devMode)
   setSimpleMode:         (v: boolean) => void;
   setOnboardingComplete: (v: boolean) => void;

@@ -13,7 +13,7 @@ import {
 import {
   playbookInputFromLive,
   playbookCard,
-  strikeHoldFrom,
+  strikeHoldAt, strikeDepositOf,
   waitingCard,
   type PlaybookCard,
 } from './crashPlaybookView';
@@ -77,7 +77,8 @@ export function EmergencyConsole() {
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const coldBtc         = useStore((s) => s.getCurrentColdBtc());   // the live cold total
   const creditLine      = useStore((s) => s.creditLine);
-  const dayLog          = useStore((s) => s.dayLog);   // Strike's 60-day hold reads the logged Strike deposits
+  // Strike's 60-day hold — its one fact, the latest logged Strike deposit (D9: a trusted viewer's copy from the snapshot).
+  const strikeDeposit   = useStore((s) => strikeDepositOf(s));
 
   const [openWall, setOpenWall]     = useState<number | null>(null);
   const [saleTargetLiq, setSaleTargetLiq] = useState(35_000);
@@ -104,11 +105,11 @@ export function EmergencyConsole() {
   // The crash playbook on the live position: between the target and the trigger the plan waits; otherwise
   // crashPlaybook's answer, restoring the target.
   const today = todayLocalISO();
-  const hold = strikeHoldFrom(dayLog, today);
+  const hold = strikeHoldAt(strikeDeposit, today);
   const input = playbookInputFromLive({
     price, support, cbDebt, cbCollateralBtc,
     strikeBalance: advisorActualBlocBalance, strikeCollateralBtc: currentBtcHeld, creditLine, coldBtc,
-    cbLtvTargetPct, planCbStopAtSupportPct, dayLog, todayISO: today,
+    cbLtvTargetPct, planCbStopAtSupportPct, strikeDepositISO: strikeDeposit, todayISO: today,
   });
   const card = waitingCard(input, cbLtvTriggerPct) ?? playbookCard(crashPlaybook(input), input, hold);
 

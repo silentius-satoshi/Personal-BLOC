@@ -298,7 +298,7 @@ test.describe('Decision face — the smoke', () => {
     await page.getByRole('button', { name: /◆ Decision/ }).click();
     const move = page.getByRole('region', { name: MOVE_TITLE });
     await expect(move).toBeVisible({ timeout: 8000 });
-    await expect(move.getByText(/Your Monthly Playbook is your plan of record/)).toBeVisible();
+    await expect(move.getByText(/This is your plan of record's move this month/)).toBeVisible();
     await expect(page.locator('.recharts-wrapper').first()).toBeVisible();
     // The defaults (Support, on the line): after today the path IS the support line — the legend says so.
     await expect(page.getByText(ON_SUPPORT)).toBeVisible();

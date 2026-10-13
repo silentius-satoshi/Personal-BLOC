@@ -312,3 +312,17 @@
 /* P4c-2 — a future-day selection disables logging (can't log ahead of today). */
 .fab:disabled { opacity: 0.4; cursor: not-allowed; }
 .fab:disabled:hover { transform: none; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45), 0 0 0 1px rgba(247, 147, 26, 0.25); }
+/* The plan of record (Run 2): the month's one status line + the why behind a tap. */
+.pbStatus { margin: 0 0 6px; padding: 1px 0 1px 10px; border-left: 2px solid var(--line); font-size: 12.5px; font-weight: 600; line-height: 1.45; }
+.pbStatus_good  { border-left-color: var(--green); color: var(--green); }
+.pbStatus_warn  { border-left-color: var(--amber); color: var(--amber); }
+.pbStatus_bad   { border-left-color: var(--red);   color: var(--red); }
+.pbStatus_plain { color: var(--text-secondary); }
+.pbWhy { margin-top: 10px; }
+.pbWhy > summary { cursor: pointer; list-style: none; width: fit-content; font-size: 11.5px; color: var(--text-muted); }
+.pbWhy > summary::-webkit-details-marker { display: none; }
+.pbWhy > summary::after { content: ' ›'; }
+.pbWhy[open] > summary::after { content: ' ‹'; }
+.pbWhy > summary:focus-visible { outline: 1px solid var(--border-focus); outline-offset: 3px; border-radius: 3px; }
+.pbWhy > .pbNotebox { margin-top: 8px; }
+.pbFoot { margin: 6px 0 0 17px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }

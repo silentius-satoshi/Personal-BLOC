@@ -16,7 +16,6 @@ import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { STRIKE_MAX_DRAW_LTV, STRIKE_CURE_LTV } from '../../simulation/strikeCredit';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { LEVEL_COLOR } from '../../simulation/safetyView';
-import { deriveCbCollateral } from '../../simulation/logUtils';
 import {
   applyPathStress, btcGained, clampMonth, fmtLtvPct, cashFlowAtMonth,
   refinanceFeeFraction, refinanceBreakEvenMonths, mergeMilestoneRows, fmtTurnDate, fmtPhaseShift, nextTurnsText,
@@ -24,7 +23,7 @@ import {
   verdictVsNeverDraw, verdictBasisClause, coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
-  drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote,
+  drawingCashFlowNote, stoppedCashFlowNote, noDrawCashFlowNote, noBillsNote, liquidatedCashFlowNote, minimumPaidNote,
   OPENING_CASH_FLOW_NOTE, coldMovesSentence, seedLine, defendedFromSub, collateralMovedFlag, openPastLltvNote,
   msYearLabel, MS_TABLE, MS_VIEWS_STRATEGY,
 } from './cyclingFaceView';
@@ -52,6 +51,7 @@ import { FUTURES_COUNT } from '../../simulation/pricePaths';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
 import styles from './UnifiedFace.module.css';
 
 /**
@@ -197,10 +197,11 @@ export default function UnifiedFace() {
     strikeCollateralBtc: st.getCurrentBtcHeld(),   // reading-anchored, Strike-only (v20)
     strikeBalance: st.advisorActualBlocBalance,
     // Derived INSIDE the selector so the value stays a primitive (the parents' precedent).
-    cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    cbCollateralBtc: planCbCollateralOf(st),   // D-R2-4 — the owner's only with the Coinbase loan switched on
     // The owner's REAL cold reserve — it seeds the engine's cold pool (real-cold spec v1). A primitive (the parents').
     openingColdBtc: st.getCurrentColdBtc(),
-    cbLoanBalance: st.cbLoanBalance,
+    cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
+    strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
 
@@ -288,10 +289,11 @@ export default function UnifiedFace() {
     defendCbLtv: true,
     mode,
     supportPolicy,
+    strikeMinFromIncome: s.strikeMinFromIncome,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy,
+    supportPolicy, s.strikeMinFromIncome,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -329,7 +331,7 @@ export default function UnifiedFace() {
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     s.income, s.expenses, s.blocApr, s.cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct, mode,
-    supportPolicy,
+    supportPolicy, s.strikeMinFromIncome,
   ]);
 
   const { rows, last, liqMonth } = sim;
@@ -377,6 +379,8 @@ export default function UnifiedFace() {
   const feeFraction = refinanceFeeFraction(sim.totalCbFees, sim.totalRefinancedUsd);
   const feeBreakEvenMonths = refinanceBreakEvenMonths(feeFraction, s.blocApr, s.cbAprPct);
   const cf = cashFlowAtMonth(selRow, s.income, s.expenses, mode === 'cycle');
+  // D-R2-7 — when income paid Strike's minimum, the month's sentence says so (the buy is net of it).
+  const minNote = minimumPaidNote(selRow);
 
   const bands = plBandsAt(startDate);
   const horizonTurns = useMemo(
@@ -944,6 +948,7 @@ export default function UnifiedFace() {
                 const c = noDrawCashFlowNote(selRow);
                 return <>{c.before}{c.strong !== '' && <strong>{c.strong}</strong>}{c.after}</>;
               })()}
+              {minNote !== null && ` ${minNote}`}
             </p>
             {mode === 'cycle' && sim.cbFeeCount > 0 && (
               <p className={styles.noteQuiet}>

@@ -9,7 +9,7 @@ import {
   strikeCapReadout, STRIKE_CAP_TIP, creditExhaustedNote,
   verdictBasisClause, drawingCashFlowNote, cashFlowText, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
   stoppedCashFlowNote, noDrawCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
-  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
+  playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote, minimumPaidNote,
   type StrikeCapReading,
 } from '../cyclingFaceView';
 import { billsRemainderTail, shownUsd } from '../supportPolicyView';
@@ -42,6 +42,8 @@ const mkRow = (o: Partial<CyclingRow> = {}): CyclingRow => ({
   strikeShortfall: 0,
   btcBoughtUsd: 0,
   unfundedUsd: 0,
+  strikeInterestUsd: 0,
+  strikeMinPaidUsd: 0,
   defenseDrawnUsd: 0,
   cbLtvPreDefense: null,
   defenseShortfallUsd: 0,
@@ -376,6 +378,11 @@ describe('seedLine — every opening figure includes the reserve, and says how m
   });
   it('a reserve under the display floor gets no parenthetical', () => {
     expect(seedLine(2.0004, 0.0004, 60_000)).toBe(`Seeded from your live plan · 2.0004 ₿ against ${fmtUSD(60_000)}`);
+  });
+  it('⭐ GATE — Run 2 (D-R2-4): no loan and no coins reads as such — never "0.0000 ₿ against $0"', () => {
+    expect(seedLine(0, 0, 0), 'GATE nothing').toBe('Seeded from your live plan · nothing held or owed yet');
+    expect(seedLine(2, 0.5, 0.3), 'GATE nothing owed').toBe('Seeded from your live plan · 2.0000 ₿ (0.5000 ₿ in cold storage), nothing owed');
+    expect(seedLine(0.0001, 0, 60_000), 'GATE nothing held').toBe(`Seeded from your live plan · nothing held, ${fmtUSD(60_000)} owed`);
   });
 });
 
@@ -1013,6 +1020,41 @@ describe('the opening and the post-liquidation sentences', () => {
   it('⭐ the ONE dust floor: a 30¢ gap after a liquidation reads as paid in full (2b.3)', () => {
     expect(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 0.3 })))
       .toBe(liquidatedCashFlowNote(mkRow({ btcBoughtUsd: 0, unfundedUsd: 0 })));
+  });
+});
+
+describe('⭐ MIN — Run 2 (D-R2-7): the faces name Strike\'s minimum when income pays it', () => {
+  it('⭐ MIN — minimumPaidNote: the minimum when it is worth a dollar, else nothing (never "$0")', () => {
+    expect(minimumPaidNote({ strikeMinPaidUsd: 216.67 })).toBe("Your paycheck paid Strike's $217 minimum first.");
+    expect(minimumPaidNote({ strikeMinPaidUsd: 0.3 }), 'MIN under the floor').toBeNull();
+    expect(minimumPaidNote({ strikeMinPaidUsd: 0 }), 'MIN rolled in').toBeNull();
+    expect(minimumPaidNote({}), 'MIN absent').toBeNull();
+  });
+  it('⭐ MIN — the drawing sentence drops "all" and compares with what the bills AND the minimum leave', () => {
+    const paid = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 7_783, strikeMinPaidUsd: 217 });
+    expect(cashFlowText(drawingCashFlowNote(paid, 8_000, 6_000, 13, true))).toBe(
+      'The line pays your $6,000 of bills, so $7,783/mo buys bitcoin — not just the $1,783 left over. '
+      + 'Those bills become 13% debt until they move to Coinbase.');
+    const rolled = mkRow({ strikeDrawn: 6_000, strikeShortfall: 0, btcBoughtUsd: 8_000, strikeMinPaidUsd: 0 });
+    expect(cashFlowText(drawingCashFlowNote(rolled, 8_000, 6_000, 13, true)), 'MIN rolled in: unchanged').toBe(
+      'The line pays your $6,000 of bills, so all $8,000/mo buys bitcoin — not just the $2,000 left over. '
+      + 'Those bills become 13% debt until they move to Coinbase.');
+  });
+  it('⭐ MIN — over the engine in income mode: every drawing month adds up, and none says "all" beside a minimum', () => {
+    let reached = 0;
+    for (const income of [4_000, 6_000, 8_000]) {
+      const r = runCyclingSim({ ...p9.on, income, strikeMinFromIncome: true });
+      for (const x of r.rows) {
+        const cf = cashFlowAtMonth(x, income, 6_000, true);
+        if (x.m === 0 || cf.mode !== 'drawing') continue;
+        expect(cf.buysUsd + cf.incomeCoveredUsd + x.strikeMinPaidUsd, 'MIN adds up').toBeCloseTo(income, 6);
+        if (x.strikeMinPaidUsd >= 0.5) {
+          reached += 1;
+          expect(cashFlowText(drawingCashFlowNote(x, income, 6_000, 13, true)), 'MIN no "all"').not.toMatch(/so all /);
+        }
+      }
+    }
+    expect(reached, 'MIN the sweep reaches drawing months that pay a minimum').toBeGreaterThan(5);
   });
 });
 

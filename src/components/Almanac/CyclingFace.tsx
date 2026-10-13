@@ -22,7 +22,7 @@ import {
   coldSurvivePrice, surviveFairMultiple,
   strikeCapReading, strikeCapNote, strikeCapReadout, STRIKE_CAP_TIP,
   DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON, STRIKE_CAP_RANGE,
-  creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE,
+  creditExhaustedNote, drawingCashFlowNote, noBillsNote, liquidatedCashFlowNote, OPENING_CASH_FLOW_NOTE, minimumPaidNote,
   stoppedCashFlowNote, coldOriginsParts, coldMovesSentence, seedLine, sweepOffReserveNote,
   playbookNote, defendedFromSub, collateralMovedFlag, unheldMonth, chartCliffUsd, openPastLltvNote,
   msYearLabel, MS_TABLE, MS_VIEWS_CYCLING,
@@ -44,11 +44,11 @@ import { useStressLens } from './useStressLens';
 import { futuresAnchor, type FuturesJob } from './futuresRun';
 import { useFutures } from './useFutures';
 import { futuresCardLine } from './futuresView';
-import { deriveCbCollateral } from '../../simulation/logUtils';
 import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import { useMorphoRateOnDemand, CB_REALIZED_NET_APR } from '../../hooks/useMorphoRate';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { planCbCollateralOf, planCbLoanBalanceOf } from './planRun';
 import styles from './CyclingFace.module.css';
 
 /**
@@ -211,11 +211,12 @@ export default function CyclingFace() {
     strikeBalance: st.advisorActualBlocBalance,
     // Derive INSIDE the selector so the value stays a primitive — `useShallow` keeps comparing numbers
     // and neither dep array below changes. Mirrors :101's Strike leg: both legs read through their derive.
-    cbCollateralBtc: deriveCbCollateral(st.dayLog, st.cbCollateralBtc),
+    cbCollateralBtc: planCbCollateralOf(st),   // D-R2-4 — the owner's only with the Coinbase loan switched on
     // The owner's REAL cold reserve (anchor + journal) — it seeds the engine's cold pool, so a defense can spend coins
     // that exist, not only the ones this run swept (real-cold spec v1). A primitive, like the two legs above.
     openingColdBtc: st.getCurrentColdBtc(),
-    cbLoanBalance: st.cbLoanBalance,
+    cbLoanBalance: planCbLoanBalanceOf(st),   // D-R2-4 — 0 with the Coinbase loan switched off
+    strikeMinFromIncome: st.blocMinPaymentSource === 'income',   // D-R2-7 — the owner's minimum, as every run reads it
     cbLoanBalanceAsOf: st.cbLoanBalanceAsOf,
   })));
 
@@ -330,10 +331,11 @@ export default function CyclingFace() {
     coldStoreBufferPct: coldBufferPct,
     defendCbLtv: true,
     supportPolicy,
+    strikeMinFromIncome: s.strikeMinFromIncome,
   }), [
     startDate, s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     cbDebt, income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct,
-    supportPolicy,
+    supportPolicy, s.strikeMinFromIncome,
   ]);
 
   const baseSim = useMemo(() => runCyclingSim({ ...engineInputs, pricePath }), [engineInputs, pricePath]);
@@ -436,7 +438,7 @@ export default function CyclingFace() {
     pricePath, cbDebt,
     s.strikeCollateralBtc, s.strikeBalance, s.creditLine, s.cbCollateralBtc, s.openingColdBtc,
     income, expenses, strikeAprPct, cbAprPct, cycleMonths, capPct, strikeCapPct, coldBufferPct,
-    supportPolicy,
+    supportPolicy, s.strikeMinFromIncome,
   ]);
 
   const bands = plBandsAt(startDate);
@@ -1070,7 +1072,10 @@ export default function CyclingFace() {
               const note = stoppedCashFlowNote(selRow, capPct);
               return <>{month}{note.before}{note.strong !== '' && <strong>{note.strong}</strong>}{note.after}</>;
             })();
-            return <p className={styles.noteQuiet}>{copy}</p>;
+            // D-R2-7 — when income paid Strike's minimum, the month's sentence says so (the buy is net of it).
+            const minNote = minimumPaidNote(selRow);
+            return <p className={styles.noteQuiet}>{copy}{minNote !== null && ` ${minNote}`}
+            </p>;
           })()}
         </section>
         <section className={styles.card}>

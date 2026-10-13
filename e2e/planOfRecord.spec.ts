@@ -83,3 +83,52 @@ test.describe('the plan of record — Run 1', () => {
     await expect(slider(page, COINBASE).value, 'PLAN C1 again').toHaveText('45%');
   });
 });
+
+/**
+ * Run 2 (spec v1.6 §13): THIS MONTH and Daily are the plan of record's month (D-R2-2, D-R2-8). The loan seed — $50,000
+ * on 1 ₿ at a manual $100,000, nothing on Strike, the store's $4,000 income and $3,500 bills — on a FIXED day, so
+ * today's support is the same every run: 45% of 1 ₿ at $64,700 is $29,115, and Coinbase is $20,885 over it.
+ */
+test.describe('the plan of record — Run 2', () => {
+  const OVER = "Coinbase is $20,885 over your plan's limit";
+
+  test('MONTH — THIS MONTH and Daily read one month: the status, the to-do, the catch-up, the why, the note', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic(page);
+    await seedLoanAndGoto(page);
+
+    // DAILY — the plan reference card carries the month's one status (the same builder as THIS MONTH)
+    const daily = page.locator('[class*="pbcard"]');
+    await expect(daily.getByText(OVER), 'DAILY status').toBeVisible();
+    await expect(daily.locator('[class*="pbRow"]', { hasText: 'Repay Coinbase' }), 'DAILY row').toContainText('$500');
+
+    // MONTH — THIS MONTH: the status, then "To do this month" with the repayment first and the buy shown paused
+    await page.getByRole('tab', { name: 'Monthly' }).click();
+    await expect(page.getByText(OVER), 'MONTH status').toBeVisible();
+    await expect(page.getByText(/^Spare income repays it before the plan borrows again — not back within it in the next 12 months at today's price\.$/),
+      'MONTH status body').toBeVisible();
+    await expect(page.getByText('To do this month', { exact: true }), 'MONTH to-do').toBeVisible();
+    const rows = page.locator('ul[class*="pmList"] > li');
+    await expect(rows.nth(0), 'MONTH first row').toContainText('Repay Coinbase');
+    await expect(rows.nth(0), 'MONTH its amount').toContainText('$500');
+    await expect(rows.filter({ hasText: 'Buy bitcoin' }), 'MONTH buy paused').toContainText('—');
+
+    // CATCH-UP — behind a tap, as facts (D6)
+    await page.getByText('To be within it today', { exact: true }).click();
+    await expect(page.getByText('Add ₿0.717 of collateral to Coinbase, or repay $20,885.', { exact: true }), 'CATCH-UP').toBeVisible();
+
+    // WHY — behind a tap: the Decision face's own sentence for the month
+    await page.getByText('Why this plan?', { exact: true }).click();
+    await expect(page.getByText(/This month the plan would: Repay \$500 of Coinbase from spare income\./), 'WHY').toBeVisible();
+
+    // NOTE — once per device: dismissed, it stays dismissed after a reload
+    const note = page.locator('[class*="_planNote_"]');
+    await expect(note, 'NOTE shows').toContainText('New: your plan follows the support policy.');
+    await note.getByRole('button', { name: 'Dismiss' }).click();
+    await expect(note, 'NOTE dismissed').toHaveCount(0);
+    await page.reload();
+    await expect(page.getByText(OVER), 'NOTE reload — the month again').toBeVisible({ timeout: 15_000 });
+    await expect(page.locator('[class*="_planNote_"]'), 'NOTE stays dismissed').toHaveCount(0);
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+});

@@ -1,0 +1,303 @@
+import { describe, it, expect } from 'vitest';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
+import { join, relative } from 'node:path';
+import * as ts from 'typescript';
+
+/**
+ * ⚠ STRUCTURAL GUARD — how the plan of record reaches the main screens (Run 2, spec pbloc-spec-plan-of-record-v1 §13).
+ * The repo has no render harness, so — like decisionWiring and resetMirror — these rules are read off the source:
+ *
+ *  - ONE — THIS MONTH and Daily build the month through `planMonthRun`; the Decision face through the same two
+ *    builders (`placementInputOf`, `engineInputsOf`); no main screen runs the engine or the placement itself;
+ *  - GATE (D-R2-4) — every plan reader takes Coinbase through `planCbCollateralOf` / `planCbLoanBalanceOf`;
+ *  - MIN (D-R2-7) — every plan reader passes the owner's minimum source to the engine;
+ *  - CARD — the two main screens read `usePlanMonth`, never `runAdvisor` (THIS MONTH's log overlay keeps it until Run 3),
+ *    and the card formats no dollar or bitcoin figure of its own;
+ *  - I31 — the two plan cards compose no sentence: every one lives in `planMonthView`; their own texts are a listed
+ *    set of labels (headings, buttons) and readouts, read off the syntax tree;
+ *  - NOTE (D8), CACHE (§4.3), HOLD (D9), WHATIF (§4.7) and CRASH (D13).
+ *
+ * Each check was proven red by a temporary edit to the real file before it landed (spec §13.8, Appendix P2).
+ */
+const SRC = join(process.cwd(), 'src');
+const read = (rel: string): string => readFileSync(join(SRC, rel), 'utf8');
+const FACE = read('components/Almanac/DecisionFace.tsx');
+const PARENTS: Record<string, string> = {
+  cycling: read('components/Almanac/CyclingFace.tsx'),
+  ownership: read('components/Almanac/OwnershipFace.tsx'),
+  unified: read('components/Almanac/UnifiedFace.tsx'),
+};
+const HOOK = read('components/Almanac/usePlanMonth.ts');
+const CARD = read('components/SimpleMode/PlanMonthCard.tsx');
+const SIMPLE = read('components/SimpleMode/SimpleModeView.tsx');
+const DAILY = read('components/Daily/DailyModeView.tsx');
+const PLAYBOOK = read('components/Tools/crashPlaybookView.ts');
+const CONSOLE = read('components/Tools/EmergencyConsole.tsx');
+/** The five plan readers (D-R2-4): the four faces and the main screens' hook. */
+const READERS: Record<string, string> = { decision: FACE, ...PARENTS, hook: HOOK };
+
+/** The text of the first `const <name> = useMemo(` up to its dependency list's close. */
+function memoBody(src: string, name: string): string {
+  const at = src.indexOf(`const ${name} = useMemo(`);
+  if (at < 0) return '';
+  const end = src.indexOf(']);', at);
+  return end < 0 ? '' : src.slice(at, end + 3);
+}
+/** The store selector — `useStore(useShallow((st) => ({` up to its close. */
+function selectorBody(src: string): string {
+  const at = src.indexOf('useStore(useShallow((st) => ({');
+  if (at < 0) return '';
+  const end = src.indexOf('})));', at);
+  return end < 0 ? '' : src.slice(at, end + 5);
+}
+/** The dependency list of a memo body (after its last `}), [` or `, [`). */
+const depsOf = (memo: string): string => memo.slice(memo.lastIndexOf('['));
+/** Every .ts/.tsx under src, outside tests. */
+function sources(dir = SRC): string[] {
+  const out: string[] = [];
+  for (const name of readdirSync(dir)) {
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) { if (name !== '__tests__' && name !== '__probe__') out.push(...sources(p)); }
+    else if (/\.(ts|tsx)$/.test(name) && !/\.test\./.test(name)) out.push(p);
+  }
+  return out;
+}
+
+describe('⭐ ONE — invariant 2: one builder for THIS MONTH, Daily and the Decision face', () => {
+  it('⭐ ONE — the face builds THE MOVE\'s input and the engine\'s inputs through planRun\'s builders', () => {
+    expect(memoBody(FACE, 'placementInput'), 'ONE placement').toContain('placementInputOf({');
+    expect(memoBody(FACE, 'engineInputs'), 'ONE engine').toContain('engineInputsOf({');
+    expect(FACE, 'ONE imports').toMatch(/import \{[^}]*\bplacementInputOf\b[^}]*\bengineInputsOf\b[^}]*\} from '\.\/planRun'/);
+    // ONE set of facts: one builder proves nothing if the face and the hook feed it different store fields. Each of THE
+    // MOVE's facts is read by the same expression in both selectors (the face's key for the cold reserve differs).
+    const FACTS: [face: string, hook: string, expr: string][] = [
+      ['btcPrice', 'btcPrice', 'st.btcPrice'], ['income', 'income', 'st.income'], ['expenses', 'expenses', 'st.expenses'],
+      ['blocApr', 'blocApr', 'st.blocApr'], ['cbAprPct', 'cbAprPct', 'st.cbAprPct'], ['creditLine', 'creditLine', 'st.creditLine'],
+      ['strikeLiquidationLtvPct', 'strikeLiquidationLtvPct', 'st.strikeLiquidationLtvPct'],
+      ['strikeCollateralBtc', 'strikeCollateralBtc', 'st.getCurrentBtcHeld()'],
+      ['strikeBalance', 'strikeBalance', 'st.advisorActualBlocBalance'],
+      ['cbCollateralBtc', 'cbCollateralBtc', 'planCbCollateralOf(st)'],
+      ['openingColdBtc', 'coldBtc', 'st.getCurrentColdBtc()'],
+      ['cbLoanBalance', 'cbLoanBalance', 'planCbLoanBalanceOf(st)'],
+      ['cbLoanBalanceAsOf', 'cbLoanBalanceAsOf', 'st.cbLoanBalanceAsOf'],
+      ['strikeDepositISO', 'strikeDepositISO', 'strikeDepositOf(st)'],
+      ['strikeMinFromIncome', 'strikeMinFromIncome', "st.blocMinPaymentSource === 'income'"],
+    ];
+    for (const [face, hook, expr] of FACTS) {
+      expect(selectorBody(FACE), `ONE same facts — the face's ${face}`).toContain(`${face}: ${expr},`);
+      expect(selectorBody(HOOK), `ONE same facts — the hook's ${hook}`).toContain(`${hook}: ${expr},`);
+    }
+  });
+  it('⭐ ONE — the hook builds the month through planMonthRun; no main screen runs the engine or the placement itself', () => {
+    expect(memoBody(HOOK, 'run'), 'ONE hook').toContain('planMonthRun({');
+    for (const [name, src] of Object.entries({ hook: HOOK, card: CARD, simple: SIMPLE, daily: DAILY })) {
+      expect(src, `ONE ${name} — no engine call`).not.toMatch(/\brunCyclingSim\(/);
+      expect(src, `ONE ${name} — no placement call`).not.toMatch(/\bplacementPlan\(/);
+    }
+    // Today per render, not frozen at mount (an installed PWA resumes without remounting): the start date, S₀, the hold,
+    // the breaker fold and the Coinbase accrual all key on it. The face keeps its own freeze (the stress lens).
+    expect(HOOK, 'ONE today per render').toMatch(/const todayISO = todayLocalISO\(\);/);
+    expect(HOOK, 'ONE today never frozen').not.toMatch(/useMemo\(\(\) => todayLocalISO\(\), \[\]\)/);
+    // The accrual memo's OWN dependency list (it closes with "],\n  );", so memoBody — which stops at the next "]);" —
+    // would read the run memo's list instead, and that one names todayISO anyway).
+    expect(HOOK, 'ONE today per render — the accrual re-keys on it')
+      .toMatch(/const cbDebt = useMemo\(\s*\(\) => accruedCbBalance\([^)]*\),\s*\[[^\]]*\btodayISO\b[^\]]*\],?\s*\);/);
+  });
+});
+
+describe('⭐ GATE — D-R2-4: every plan reader takes Coinbase through the switch', () => {
+  it('⭐ GATE — the five selectors read planCbCollateralOf / planCbLoanBalanceOf; none derives the collateral itself', () => {
+    for (const [name, src] of Object.entries(READERS)) {
+      const sel = selectorBody(src);
+      expect(sel, `GATE ${name} selector`).not.toBe('');
+      expect(sel, `GATE ${name} collateral`).toMatch(/cbCollateralBtc: planCbCollateralOf\(st\)/);
+      expect(sel, `GATE ${name} balance`).toMatch(/cbLoanBalance: planCbLoanBalanceOf\(st\)/);
+      expect(sel, `GATE ${name} no raw balance`).not.toMatch(/st\.cbLoanBalance\b/);
+      expect(src, `GATE ${name} no direct derive`).not.toMatch(/\bderiveCbCollateral\(/);
+    }
+  });
+  it('⭐ GATE — in the Almanac and on the main screens, only planRun derives Coinbase\'s collateral', () => {
+    const callers = sources().filter((p) => /\bderiveCbCollateral\(/.test(readFileSync(p, 'utf8')))
+      .map((p) => relative(SRC, p).replace(/\\/g, '/'))
+      .filter((p) => /^components\/(Almanac|SimpleMode|Daily)\//.test(p));
+    expect(callers, 'GATE one deriver').toEqual(['components/Almanac/planRun.ts']);
+  });
+});
+
+describe('⭐ MIN — D-R2-7: the owner\'s minimum source reaches every run', () => {
+  it('⭐ MIN — the five selectors read it; every engine-inputs memo passes it and depends on it', () => {
+    for (const [name, src] of Object.entries(READERS)) {
+      expect(selectorBody(src), `MIN ${name} selector`).toMatch(/strikeMinFromIncome: st\.blocMinPaymentSource === 'income'/);
+    }
+    for (const [name, src] of Object.entries({ decision: FACE, ...PARENTS })) {
+      const memo = memoBody(src, 'engineInputs');
+      expect(memo, `MIN ${name} passes it`).toMatch(/strikeMinFromIncome: s\.strikeMinFromIncome/);
+      expect(depsOf(memo), `MIN ${name} depends on it`).toMatch(/s\.strikeMinFromIncome/);
+    }
+    // The three parent faces' month sentence names the minimum income paid (the buy beside it is net of it).
+    for (const [name, src] of Object.entries(PARENTS)) {
+      expect(src, `MIN ${name} reads it`).toMatch(/const minNote = minimumPaidNote\(selRow\);/);
+      expect(src, `MIN ${name} prints it`).toMatch(/\{minNote !== null && ` \$\{minNote\}`\}/);
+    }
+    const run = memoBody(HOOK, 'run');
+    expect(run, 'MIN hook passes it').toMatch(/strikeMinFromIncome: s\.strikeMinFromIncome/);
+    expect(depsOf(run), 'MIN hook depends on the selector').toMatch(/\bs\b/);
+  });
+});
+
+describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the Advisor', () => {
+  it('⭐ CARD — THIS MONTH\'s card and Daily read usePlanMonth', () => {
+    expect(CARD, 'CARD hook').toMatch(/const pm = usePlanMonth\(\);/);
+    expect(DAILY, 'CARD Daily hook').toMatch(/const pm = usePlanMonth\(\);/);
+    expect(SIMPLE, 'CARD THIS MONTH renders the card').toMatch(/<PlanMonthCard\b/);
+  });
+  it('⭐ CARD — no runAdvisor on Daily or in the card; THIS MONTH keeps it only for the log overlay (Run 3 retires it)', () => {
+    expect(CARD).not.toMatch(/\brunAdvisor\(/);
+    expect(DAILY).not.toMatch(/\brunAdvisor\(/);
+    const calls = SIMPLE.match(/\brunAdvisor\(/g) ?? [];
+    expect(calls.length, 'CARD one call').toBe(1);
+    expect(SIMPLE, 'CARD only while the overlay is open').toMatch(/logOverlayOpen \? runAdvisor\(/);
+  });
+  it('⭐ CARD — the old card\'s Strike and Coinbase bars left Settings with it: no toggle that controls nothing', () => {
+    const settings = read('components/Settings/SettingsMain.tsx');
+    expect(settings, 'CARD no bar toggles').not.toMatch(/showPlanStrikeBar|showPlanCbBar|Show Strike BLOC bar|Show Coinbase loan bar/);
+  });
+  it('⭐ CARD — the next-month line hides in the strategy year\'s last month and once it is done (as before Run 2)', () => {
+    expect(CARD).toMatch(/\{!strategyDone && currentMonth < 12 && nextLine && /);
+  });
+  it('⭐ CARD — the card formats no dollar or bitcoin figure itself: planMonthView does', () => {
+    expect(CARD, 'CARD no fmtUSD').not.toMatch(/\bfmtUSD\b/);
+    expect(CARD, 'CARD no toFixed').not.toMatch(/\.toFixed\(/);
+    // One status colour per card: the Advisor's tier border (today's Coinbase LTV) is gone from THIS MONTH.
+    expect(CARD, 'CARD no tier border').not.toMatch(/tierClass/);
+    expect(SIMPLE, 'CARD no tier border').not.toMatch(/\bgetTier\(|cardTier/);
+    // The after box knows when the engine refused the policy (no meter, no limit tone).
+    expect(CARD, 'CARD the after box reads the run\'s verdict').toMatch(/planAfter\(row, supportAt\(runMonth\), cbStop, pm\.run\.sim\.policyApplied\)/);
+    // Daily's bars: the plan's month 1 in the Ledger's own streams; a paydown on either loan counts, as the plan's does.
+    expect(DAILY, 'CARD Daily targets').toMatch(/const target\s+= planLedgerTargets\(pr1\);/);
+    expect(DAILY, 'CARD Daily targets — all three bars')
+      .toMatch(/const plannedDraw\s+= target\.draw;\s+const plannedPay\s+= target\.paid;\s+const plannedBuy\s+= target\.buyBtc;/);
+    expect(DAILY, 'CARD Daily paydown, both loans').toMatch(/const paidSoFar\s+= view\.streams\.paydown \+ view\.streams\.cbPaydown;/);
+    expect(DAILY, 'CARD Daily paydown bar').toMatch(/const payFill\s+= clampPct\(paidSoFar, plannedPay\);/);
+    expect(DAILY, 'CARD Daily paydown label').toMatch(/\$\{fmtUSD\(paidSoFar\)\} \/ \$\{fmtUSD\(plannedPay\)\}/);
+    // Rolled in, all of Strike's interest capitalises; paid from income, only the unpaid part — never a past month's.
+    expect(DAILY, 'CARD Daily interest capitalized').toMatch(/const capitalized\s+= pr1\.strikeInterestUsd - pr1\.strikeMinPaidUsd;/);
+    expect(DAILY, 'CARD Daily interest capitalized — this month, past the floor')
+      .toMatch(/const showCapitalized = safeViewedMonth === currentMonth && shownUsd\(capitalized\);/);
+    expect((DAILY.match(/\{fmtUSD\(capitalized\)\}/g) ?? []).length, 'CARD Daily interest capitalized — both sites').toBe(2);
+    expect(DAILY, 'CARD Daily interest capitalized — no whole-interest figure').not.toMatch(/fmtUSD\(pr1\.strikeInterestUsd\)\}<\/b>/);
+  });
+});
+
+describe('⭐ I31 — the two plan cards compose no sentence: every one lives in planMonthView', () => {
+  /** Every text a TSX source composes, read off its syntax tree (so comments never reach it): each JSX element's own
+   *  text, with every {expression} as "X"; every string and template literal, each ${…} as "X"; imports skipped. With
+   *  `within`, only inside the first JSX element whose opening tag matches it. */
+  function textsOf(src: string, within?: RegExp): string[] {
+    const sf = ts.createSourceFile('card.tsx', src, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+    let root: ts.Node | null = sf;
+    if (within) {
+      root = null;
+      const find = (n: ts.Node): void => {
+        if (root !== null) return;
+        if (ts.isJsxElement(n) && within.test(n.openingElement.getText(sf))) root = n;
+        else ts.forEachChild(n, find);
+      };
+      find(sf);
+    }
+    const out: string[] = [];
+    const visit = (n: ts.Node): void => {
+      if (ts.isImportDeclaration(n)) return;
+      if (ts.isJsxElement(n) || ts.isJsxFragment(n)) {
+        let own = '';
+        for (const c of n.children) {
+          if (ts.isJsxText(c)) own += c.text;
+          else if (ts.isJsxExpression(c)) own += c.expression ? ' X ' : '';
+          else own += ' | ';
+        }
+        out.push(...own.split(' | '));
+      }
+      if (ts.isStringLiteral(n) || ts.isNoSubstitutionTemplateLiteral(n)) out.push(n.text);
+      if (ts.isTemplateExpression(n)) out.push(n.head.text + n.templateSpans.map((sp) => ` X ${sp.literal.text}`).join(''));
+      ts.forEachChild(n, visit);
+    };
+    if (root !== null) visit(root);
+    return out.map((s) => s.replace(/\s+/g, ' ').trim()).filter((s) => s !== '');
+  }
+  /** Words: runs of two or more letters (the "X" stand-ins never count). */
+  const wordCount = (s: string): number => (s.match(/[A-Za-z]{2,}/g) ?? []).length;
+  /** The cards' own labels — headings, buttons and an aria name. Any other text of three or more words is a sentence,
+   *  and lives in planMonthView. */
+  const LABELS = [
+    'To be within it today', 'Scrub through months', 'What month X recorded', 'To do this month', 'The plan for month X',
+    'After this month', 'At month-end', '✎ View / edit this month', '← Back to current month', 'Why this plan?',
+    "This month's plan",
+  ];
+  const CARD_TEXTS = textsOf(CARD);
+  const DAILY_TEXTS = textsOf(DAILY, /className=\{styles\.pbcard\}/);
+  it('the extraction is real (non-vacuous): both cards are read, and every listed label is still on one', () => {
+    expect(CARD_TEXTS.length, 'I31 the card').toBeGreaterThan(50);
+    expect(DAILY_TEXTS.length, 'I31 Daily\'s plan card').toBeGreaterThan(10);
+    const all = new Set([...CARD_TEXTS, ...DAILY_TEXTS]);
+    expect(LABELS.filter((l) => !all.has(l)), 'I31 a listed label left the cards').toEqual([]);
+  });
+  it('⭐ I31 — every text of three or more words on either plan card is one of its listed labels', () => {
+    expect([...CARD_TEXTS, ...DAILY_TEXTS].filter((s) => wordCount(s) >= 3 && !LABELS.includes(s)), 'I31').toEqual([]);
+  });
+});
+
+describe('⭐ NOTE · CACHE · HOLD · WHATIF · CRASH', () => {
+  it('⭐ NOTE — D8: the one-time note is dismissed through the device-local setter, and never shown to a viewer', () => {
+    expect(CARD).toMatch(/const noteDismissed = useStore\(\(s\) => s\.planNoteDismissed\);/);
+    expect(CARD).toMatch(/const setNoteDismissed = useStore\(\(s\) => s\.setPlanNoteDismissed\);/);
+    expect(CARD).toMatch(/\{!noteDismissed && !viewerMode && \(/);
+    expect(CARD).toMatch(/onClick=\{\(\) => setNoteDismissed\(true\)\}/);
+  });
+  it('⭐ CACHE — §4.3: the breaker cache is written once, from a fresh fold only, in an effect', () => {
+    const writes = HOOK.match(/\bsetBreakerCache\(/g) ?? [];
+    expect(writes.length, 'CACHE one write').toBe(1);
+    expect(HOOK, 'CACHE fresh only, in an effect').toMatch(
+      /useEffect\(\(\) => \{\s*if \(fresh !== null && !sameSeed\(fresh, breakerCache\)\) setBreakerCache\(/);
+    const writers = sources().filter((p) => /\bsetPlanBreakerCache\b/.test(readFileSync(p, 'utf8')))
+      .map((p) => relative(SRC, p).replace(/\\/g, '/'));
+    expect(writers.sort(), 'CACHE no other writer').toEqual(['components/Almanac/usePlanMonth.ts', 'store/slices/uiSlice.ts', 'store/types.ts']);
+    // …and read through the engine's own rule: a damaged cache is none (it never steers THE MOVE).
+    expect(selectorBody(HOOK), 'CACHE validated').toMatch(/breakerCache: planBreakerCacheOf\(st\.planBreakerCache\),/);
+    const readers = sources().filter((p) => /\bst\.planBreakerCache\b|\bs\.planBreakerCache\b/.test(readFileSync(p, 'utf8')))
+      .map((p) => relative(SRC, p).replace(/\\/g, '/'));
+    expect(readers, 'CACHE validated — the only reader').toEqual(['components/Almanac/usePlanMonth.ts']);
+  });
+  it('⭐ HOLD — D9: every hold reader a viewer can reach reads the ONE fact through the ONE rule', () => {
+    // A viewer never sees THIS MONTH or Daily (AppShell routes it to its own home), but it opens the Almanac: the Decision
+    // face and the Emergency Console must hold exactly when the owner's do.
+    expect(PLAYBOOK, 'HOLD the fact').toMatch(
+      /return st\.viewerMode \? st\.viewerStrikeDepositISO : latestStrikeDepositISO\(st\.dayLog\);/);
+    expect(PLAYBOOK, 'HOLD one rule').toMatch(
+      /export function strikeHoldFrom\([^)]*\): StrikeHold \{\s*return strikeHoldAt\(latestStrikeDepositISO\(dayLog\), todayISO\);\s*\}/);
+    expect(PLAYBOOK, 'HOLD the live builder').toMatch(/strikeInHold: strikeHoldAt\(live\.strikeDepositISO, live\.todayISO\)\.inHold,/);
+    expect(HOOK, 'HOLD hook').toMatch(/strikeDepositISO: strikeDepositOf\(st\),/);
+    expect(HOOK, 'HOLD hook rule').toMatch(/strikeHoldAt\(s\.strikeDepositISO, todayISO\)/);
+    expect(FACE, 'HOLD face').toMatch(/strikeDepositISO: strikeDepositOf\(st\),/);
+    expect(FACE, 'HOLD face rule').toMatch(/strikeHoldAt\(s\.strikeDepositISO, todayISO\)/);
+    expect(CONSOLE, 'HOLD console').toMatch(/const strikeDeposit\s+= useStore\(\(s\) => strikeDepositOf\(s\)\);/);
+    expect(CONSOLE, 'HOLD console rule').toMatch(/const hold = strikeHoldAt\(strikeDeposit, today\);/);
+    expect(CONSOLE, 'HOLD console input').toMatch(/strikeDepositISO: strikeDeposit,/);
+    expect(SIMPLE, 'HOLD crash line').toMatch(/const strikeDeposit\s+= useStore\(\(s\) => strikeDepositOf\(s\)\);/);
+    expect(SIMPLE, 'HOLD crash line input').toMatch(/strikeDepositISO: strikeDeposit,/);
+    // No screen reads the hold straight off a journal (a viewer's is empty).
+    const direct = sources().filter((p) => /\bstrikeHoldFrom\(/.test(readFileSync(p, 'utf8')))
+      .map((p) => relative(SRC, p).replace(/\\/g, '/'));
+    expect(direct, 'HOLD no screen reads a journal directly').toEqual(['components/Tools/crashPlaybookView.ts']);
+  });
+  it('⭐ WHATIF — §4.7: a what-if on the policy or the line flips THE MOVE\'s first line', () => {
+    expect(FACE).toMatch(/const moveWhatIf = overlay\.supportPolicy !== undefined \|\| overlay\.creditLine !== undefined;/);
+    const move = memoBody(FACE, 'move');
+    expect(move, 'WHATIF passed').toMatch(/whatIf: moveWhatIf,/);
+    expect(depsOf(move), 'WHATIF a dependency').toMatch(/\bmoveWhatIf\b/);
+  });
+  it('⭐ CRASH — D13: both main screens gate the crash title on the console\'s own rule', () => {
+    expect(SIMPLE, 'CRASH THIS MONTH').toMatch(/= isCrashDay\(\{/);
+    expect(DAILY, 'CRASH Daily').toMatch(/const crashDay = isCrashDay\(\{/);
+    expect(DAILY, 'CRASH Daily title').toMatch(/crashDay\s*\?\s*\{ tone: 'bad' as const, title: PLAN_CRASH_TITLE \}/);
+  });
+});

@@ -5,6 +5,7 @@ import { GATE_ONBOARDED_KEY, seedOnboardingComplete } from '../bootstrap';
 type UiSlice = Pick<StoreState,
   | 'activeTab' | 'simpleMode' | 'onboardingComplete' | 'btcBuyingUnit' | 'devMode' | 'almanacLiveEnabled'
   | 'almanacLiveConsented' | 'expenseReanchorDismissedAt' | 'setExpenseReanchorDismissedAt' | 'setSimpleMode'
+  | 'planNoteDismissed' | 'setPlanNoteDismissed' | 'planBreakerCache' | 'setPlanBreakerCache'
   | 'setOnboardingComplete' | 'setBtcBuyingUnit' | 'setDevMode' | 'setAlmanacLiveEnabled' | 'setAlmanacLiveConsented'
   | 'showPlanIncomeBar' | 'showPlanStrikeBar' | 'showPlanCbBar' | 'simpleView' | 'setActiveTab'
   | 'setShowPlanIncomeBar' | 'setShowPlanStrikeBar' | 'setShowPlanCbBar' | 'setSimpleView' | 'converterActiveField'
@@ -21,6 +22,8 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   almanacLiveEnabled:   false,
   almanacLiveConsented: false,
   expenseReanchorDismissedAt: 0,
+  planNoteDismissed: false,   // Run 2 (D8) — device-local, unsynced
+  planBreakerCache:  null,    // Run 2 (§4.3) — device-local, unsynced; public price data only
   setSimpleMode:         (v) => get().emitPrefs({ simpleMode: v }),   // 4c: prefs channel (was syncSettingsToNostr)
   // 3a.4: write through to the standalone GATE_* key (outside the encrypted blob) so the unlock gate can bootstrap
   // on an encrypted cold start. Mirrors setWriterKeyWrapped.
@@ -30,6 +33,8 @@ export const createUiSlice = (set: StoreSet, get: StoreGet): UiSlice => ({
   setAlmanacLiveEnabled:   (v) => set({ almanacLiveEnabled: v }),    // device-local, unsynced — no emit
   setAlmanacLiveConsented: (v) => set({ almanacLiveConsented: v }),  // device-local, unsynced — no emit
   setExpenseReanchorDismissedAt: (v) => set({ expenseReanchorDismissedAt: v }),   // device-local, unsynced — no emit
+  setPlanNoteDismissed:  (v) => set({ planNoteDismissed: v }),    // device-local, unsynced — no emit
+  setPlanBreakerCache:   (v) => set({ planBreakerCache: v }),     // device-local, unsynced — no emit
   showPlanIncomeBar: true,
   showPlanStrikeBar: true,
   showPlanCbBar:     true,

@@ -8,6 +8,7 @@ import { cbMetrics } from '../../simulation/cbMetrics';
 import { ltvOf } from '../../simulation/ltv';
 import { SUPPORT_EPS } from '../../simulation/supportPolicy';
 import type { DayEvent } from '../../simulation/types';
+import { latestStrikeDepositISO } from '../../simulation/logUtils';
 import { DEFAULT_SUPPORT_POLICY_SETTINGS, shownUsd, fmtPolicyPct } from '../Almanac/supportPolicyView';
 import { clampPlanPolicy } from '../../lib/planPolicy';
 import { fmtTurnDate } from '../Almanac/cyclingFaceView';
@@ -23,7 +24,10 @@ import { fmtUSD, fmtLtvPct } from '../../utils/format';
  * (a layering test pins it) — support arrives as a number, and the component keeps the power-law crossing.
  *
  *   CB_PAYDOWN_LABEL        the one label for the projection's Coinbase paydown (IF_YOU_SHIFT_DEBT is its suffix)
- *   strikeHoldFrom          Strike's 60-day hold, read from the Strike deposits you LOGGED
+ *   strikeHoldAt            Strike's 60-day hold from its one fact, the latest logged Strike deposit's date
+ *   strikeDepositOf         that fact on this device: the owner's journal, or a trusted viewer's copy (D9)
+ *   strikeHoldFrom          the hold read straight from a journal (strikeHoldAt over latestStrikeDepositISO)
+ *   isCrashDay              D13 — the crash day THIS MONTH and Daily read (the console's own gate)
  *   playbookInputFromLive   the one builder of a live CrashPlaybookInput
  *   playbookDepthFor        the liquidation depth for a live target — where top-up-first begins
  *   fmtStepBtc / fmtStepUsd step amounts, FLOORED to their printed precision
@@ -62,6 +66,18 @@ const DAY_MS = 86_400_000;
 /** The dayLog's date convention. Anything else is junk — V8 would read '2026-9-30' as LOCAL time, not UTC midnight. */
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+// ── the crash day (D13) ─────────────────────────────────────────────────────────────────────────────────────────
+
+/** D13 — a crash day: Coinbase at or past its trigger at today's price, under the LTV-triggered strategy (the console's
+ *  own gate; D3 moves it to `hasCbLoan` together with the console's). The ONE rule THIS MONTH and Daily read. */
+export function isCrashDay(f: {
+  hasCbLoan: boolean; ltvTriggered: boolean; cbDebt: number; cbCollateralBtc: number; price: number; triggerPct: number;
+}): boolean {
+  if (!f.hasCbLoan || !f.ltvTriggered) return false;
+  const value = f.cbCollateralBtc * f.price;
+  return value > 0 && f.cbDebt / value >= f.triggerPct / 100;
+}
+
 // ── Strike's 60-day hold ─────────────────────────────────────────────────────────────────────────────────────────
 
 export interface StrikeHold { inHold: boolean; depositISO: string | null; throughISO: string | null }
@@ -74,26 +90,32 @@ export interface StrikeHold { inHold: boolean; depositISO: string | null; throug
  * ⚠ The app sees only the deposits you LOGGED — a collateral increase entered only as a balance reading is invisible.
  */
 export function strikeHoldFrom(dayLog: readonly DayEvent[], todayISO: string): StrikeHold {
+  return strikeHoldAt(latestStrikeDepositISO(dayLog), todayISO);
+}
+
+/**
+ * D9 — the hold's ONE fact on this device: the owner's latest LOGGED Strike deposit — read from the journal on the
+ * owner's device, and from the trusted snapshot on a viewer, which has no journal (`viewerStrikeDepositISO`). Every
+ * reader of Strike's hold — THIS MONTH and Daily, the Decision face, the Emergency Console and THIS MONTH's crash line —
+ * selects it here and reads the hold through `strikeHoldAt`, so a viewer's screens hold exactly when the owner's do.
+ */
+export function strikeDepositOf(st: {
+  viewerMode: boolean; viewerStrikeDepositISO: string | null; dayLog: readonly DayEvent[];
+}): string | null {
+  return st.viewerMode ? st.viewerStrikeDepositISO : latestStrikeDepositISO(st.dayLog);
+}
+
+/** The hold from that one date (`strikeHoldFrom`'s rule): in hold iff it is at most 60 days before `todayISO`. */
+export function strikeHoldAt(depositISO: string | null, todayISO: string): StrikeHold {
   const free: StrikeHold = { inHold: false, depositISO: null, throughISO: null };
-  if (!ISO_DATE.test(todayISO)) return free;
+  if (depositISO === null || !ISO_DATE.test(todayISO) || !ISO_DATE.test(depositISO)) return free;
   const today = Date.parse(todayISO);
-  if (!Number.isFinite(today)) return free;
-  let latestISO: string | null = null;
-  let latestMs = Number.NEGATIVE_INFINITY;
-  for (const ev of dayLog) {
-    if (ev.kind !== 'deposit' || ev.target !== 'strike' || !ISO_DATE.test(ev.date)) continue;
-    const t = Date.parse(ev.date);
-    if (!Number.isFinite(t) || (today - t) / DAY_MS > STRIKE_HOLD_DAYS) continue;
-    if (t > latestMs) {
-      latestMs = t;
-      latestISO = ev.date;
-    }
-  }
-  if (latestISO === null) return free;
+  const t = Date.parse(depositISO);
+  if (!Number.isFinite(today) || !Number.isFinite(t) || (today - t) / DAY_MS > STRIKE_HOLD_DAYS) return free;
   return {
     inHold: true,
-    depositISO: latestISO,
-    throughISO: new Date(latestMs + STRIKE_HOLD_DAYS * DAY_MS).toISOString().slice(0, 10),
+    depositISO,
+    throughISO: new Date(t + STRIKE_HOLD_DAYS * DAY_MS).toISOString().slice(0, 10),
   };
 }
 
@@ -112,7 +134,8 @@ export interface LivePlaybookFigures {
   /** The plan of record's Coinbase limit at support (the store's `policyCbStopAtSupportPct`, C1 45%) — the console and
    *  THIS MONTH's crash line run the owner's saved plan, never the defaults (Run 1). */
   planCbStopAtSupportPct: number;
-  dayLog: readonly DayEvent[];
+  /** Strike's 60-day hold's one fact — `strikeDepositOf(store)` (the journal's latest Strike deposit; a viewer's copy). */
+  strikeDepositISO: string | null;
   todayISO: string;            // todayLocalISO()
 }
 
@@ -156,7 +179,7 @@ export function playbookInputFromLive(live: LivePlaybookFigures): CrashPlaybookI
     maxDrawLtv: STRIKE_MAX_DRAW_LTV,
     marginLtv: STRIKE_MARGIN_CALL_LTV,
     retrieveMaxLtv: STRIKE_RETRIEVE_MAX_LTV,
-    strikeInHold: strikeHoldFrom(live.dayLog, live.todayISO).inHold,
+    strikeInHold: strikeHoldAt(live.strikeDepositISO, live.todayISO).inHold,
   };
 }
 
