@@ -13,7 +13,9 @@ function fmtTime(t: number, range: ChartRange): string {
     : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-export function PriceChart() {
+/** `money` prints the price and its tooltip: whole by default (the Dashboard, the trusted viewer's home); the Safety
+ *  card on THIS MONTH and Daily passes `fmtUSDCents` (Run 2.1, BL19). */
+export function PriceChart({ money = fmtUSD }: { money?: (n: number) => string } = {}) {
   const [range, setRange] = useState<ChartRange>('1D');
   const { candles, loading, error } = useBtcHistory(range);
 
@@ -30,7 +32,7 @@ export function PriceChart() {
         <div className={styles.readout}>
           {hasData ? (
             <>
-              <span className={styles.price}>{fmtUSD(last)}</span>
+              <span className={styles.price}>{money(last)}</span>
               <span className={styles.change} style={{ color }}>
                 {up ? '+' : ''}{changePct.toFixed(2)}% ({range})
               </span>
@@ -72,7 +74,7 @@ export function PriceChart() {
                   fontSize: '11px',
                 }}
                 labelFormatter={(t: number) => fmtTime(t, range)}
-                formatter={(value: number) => [fmtUSD(value), 'BTC']}
+                formatter={(value: number) => [money(value), 'BTC']}
               />
               <Area
                 type="monotone"

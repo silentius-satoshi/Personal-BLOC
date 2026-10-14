@@ -8,7 +8,7 @@ import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
-import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { fmtUSDCents, fmtLtvPct } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
 
 function daysSince(asOf: string | null): number | null {
@@ -57,7 +57,7 @@ export function SafetyDashboard() {
   const [draftLiqLtv, setDraftLiqLtv]       = useState(strikeLiquidationLtvPct);
 
   // ── Price chart slot — BTC candles (1H/1D/1W), top of the dashboard ──
-  const priceSlot = <PriceChart />;
+  const priceSlot = <PriceChart money={fmtUSDCents} />;   // to the cent on THIS MONTH and Daily (BL19)
 
   // ── Safety math — single source of truth (deriveSafetyView, shared with the viewer home) ──────
   // selectSafetyViewInputs is the ONE store→inputs mapping (no drift). useShallow re-renders only when
@@ -188,9 +188,9 @@ export function SafetyDashboard() {
         </div>
         <div className={styles.cushionRow}>
           {strikeView === 'capacity' ? (
-            <span className={styles.cushion}>{fmtUSD(advisorActualBlocBalance)} of {fmtUSD(cap.limit)} · {fmtUSD(cap.available)} available</span>
+            <span className={styles.cushion}>{fmtUSDCents(advisorActualBlocBalance)} of {fmtUSDCents(cap.limit)} · {fmtUSDCents(cap.available)} available</span>
           ) : (
-            <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} · {fmtUSD(strikeDropUsd)} above liq ~{fmtUSD(strikeLiqPrice)} · {(strikeDropPct * 100).toFixed(0)}% drop away · {fmtUSD(advisorActualBlocBalance)} balance</span>
+            <span className={styles.cushion}>₿{currentBtcHeld.toFixed(5)} · {fmtUSDCents(strikeDropUsd)} above liq ~{fmtUSDCents(strikeLiqPrice)} · {(strikeDropPct * 100).toFixed(0)}% drop away · {fmtUSDCents(advisorActualBlocBalance)} balance</span>
           )}
           <span className={styles.flipHint}>
             {strikeEditing ? 'editing…' : strikeView === 'capacity' ? '⇄ liquidation' : '⇄ capacity'}
@@ -247,7 +247,7 @@ export function SafetyDashboard() {
         </div>
 
         <div className={styles.cushionRow}>
-          <span className={styles.cushion}>{fmtUSD(liqDropUsd)} above liq ~{fmtUSD(cbLiqPrice)} · {(liqDropPct * 100).toFixed(0)}% drop away · {fmtUSD(accruedBalance)} balance</span>
+          <span className={styles.cushion}>{fmtUSDCents(liqDropUsd)} above liq ~{fmtUSDCents(cbLiqPrice)} · {(liqDropPct * 100).toFixed(0)}% drop away · {fmtUSDCents(accruedBalance)} balance</span>
         </div>
         {neverAnchored && (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
@@ -269,17 +269,17 @@ export function SafetyDashboard() {
             {activeLiqPrice > 0 && (
               <div className={styles.cbDistance} style={{ borderColor: cbFillColor }}>
                 <div className={styles.cbDistanceMain} style={{ color: cbFillColor }}>
-                  {fmtUSD(liqDropUsd)} <span className={styles.cbDistanceSub}>above liquidation</span>
+                  {fmtUSDCents(liqDropUsd)} <span className={styles.cbDistanceSub}>above liquidation</span>
                 </div>
                 <div className={styles.cbDistanceNote}>
-                  a <b>{(liqDropPct * 100).toFixed(0)}% drop</b> away from {fmtUSD(activeLiqPrice)} liquidation price
+                  a <b>{(liqDropPct * 100).toFixed(0)}% drop</b> away from {fmtUSDCents(activeLiqPrice)} liquidation price
                 </div>
               </div>
             )}
             <div className={styles.cbDetail}>
               <div className={styles.cbDetailRow}>
                 <span className={styles.cbDetailLabel}>CB loan balance</span>
-                <span className={styles.cbDetailVal}>{fmtUSD(accruedBalance)}</span>
+                <span className={styles.cbDetailVal}>{fmtUSDCents(accruedBalance)}</span>
               </div>
               <div className={styles.cbDetailRow}>
                 <span className={styles.cbDetailLabel}>Warn · liquidate</span>

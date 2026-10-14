@@ -4,7 +4,8 @@ import { getCurrentStrategyMonth, getNdpStatus } from '../../simulation/runAdvis
 import { usePlanMonth } from '../Almanac/usePlanMonth';
 import {
   planMonthSummary, planMonthActions, planStatus, planRowDot, planRowNoteColor, planRowAmountColor, planMinimumOwed,
-  planMinimumLine, planInterestRollsNote, planLedgerTargets, VENUE_COLOR, PLAN_CRASH_TITLE,
+  planMinimumLine, planInterestRollsNote, planLedgerTargets, planBars, planBarsCaption, planNdpEstimateUsd, planNdpBalance, VENUE_COLOR,
+  PLAN_CRASH_TITLE,
 } from '../Almanac/planMonthView';
 import { VenueText } from '../SimpleMode/PlanMonthCard';
 import { bucketEventToMonth } from '../../simulation/logUtils';
@@ -24,7 +25,7 @@ import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
 import { usePlanMissing } from '../../hooks/usePlanLoad';
-import { fmtUSD, todayLocalISO, toLocalISO, fmtLtvPct, shownUsd } from '../../utils/format';
+import { fmtUSDCents, todayLocalISO, toLocalISO, fmtLtvPct, shownUsd } from '../../utils/format';
 import { isCrashDay } from '../Tools/crashPlaybookView';
 import type { DayEvent } from '../../simulation/types';
 import styles from './DailyModeView.module.css';
@@ -70,7 +71,6 @@ function eventTone(kind: DayEvent['kind']): { dot: string; ring: boolean; amt: s
   }
 }
 
-const clampPct = (a: number, b: number) => (b > 0 ? Math.max(0, Math.min(100, (a / b) * 100)) : a > 0 ? 100 : 0);
 
 /**
  * Daily Mode P4a — READ-ONLY day-level view. Mirrors SimpleModeView's data (SafetyDashboard + position
@@ -155,6 +155,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   // §2b — the current month's Strike minimum: owed figure + status chip for the plan reference card.
   const isIncomeSource = blocMinPaymentSource === 'income';
   const strikeMinOwed = planMinimumOwed(blocStatementMinimum, pr1.strikeInterestUsd);   // the plan's month-1 interest
+  const ndpBalance    = planNdpBalance(advisorActualBlocBalance, creditLine);   // THIS MONTH's NDP card reads the same
   const minLine = planMinimumLine(strikeMinOwed, blocMinPaymentDueDay);
   const minPaidCurrentMonth = dayLog
     .filter((e) => e.kind === 'minPayment' && bucketEventToMonth(e.date, advisorStartDate) === currentMonth)
@@ -181,21 +182,23 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   // ── Activity — scope-driven (P4c-1b). Week → the selected day; Month → the VIEWED month's rollup. ──
   const dayActivity = useMemo(() => buildDayActivity(dayLog, selectedDay), [dayLog, selectedDay]);
   const monthRollup = useMemo(() => buildMonthRollup(dayLog, advisorStartDate, safeViewedMonth), [dayLog, advisorStartDate, safeViewedMonth]);
+  // Run 2.1 (F13) — the bars read the month so far in BOTH scopes: the plan is monthly, so a day against the month's
+  // target read "$0" most days. Week's bars are the CURRENT month's; Month's, the viewed month's.
+  const currentRollup = useMemo(() => buildMonthRollup(dayLog, advisorStartDate, currentMonth), [dayLog, advisorStartDate, currentMonth]);
   const isMonth = scope === 'month';
   const view    = isMonth ? monthRollup : dayActivity;
 
   const today        = todayLocalISO();
   const boughtUsd    = view.streams.buyBtc * btcPrice;   // 5c rider — the headline is what was bought
   // The bars compare the Ledger with the plan's month 1 in the Ledger's own streams (planLedgerTargets): a paydown on
-  // either loan counts, as the plan's does.
+  // either loan counts, as the plan's does. A past month has no target — the plan keeps none for a month gone (D14).
   const target       = planLedgerTargets(pr1);
-  const plannedDraw  = target.draw;
-  const plannedPay   = target.paid;
-  const plannedBuy   = target.buyBtc;
-  const paidSoFar    = view.streams.paydown + view.streams.cbPaydown;
-  const drawFill     = clampPct(view.streams.draw, plannedDraw);
-  const payFill      = clampPct(paidSoFar, plannedPay);
-  const buyFill      = clampPct(view.streams.buyBtc, plannedBuy);
+  const barRollup    = isMonth ? monthRollup : currentRollup;
+  const barTarget    = isMonth && safeViewedMonth !== currentMonth ? null : target;
+  const bars         = planBars({
+    draw: barRollup.streams.draw, paid: barRollup.streams.paydown + barRollup.streams.cbPaydown, buyBtc: barRollup.streams.buyBtc,
+  }, barTarget);
+  const FILL: Record<'draw' | 'paid' | 'buy', string> = { draw: styles.fillDraw, paid: styles.fillPaydn, buy: styles.fillBuy };
   // What capitalises this month: all of Strike's interest rolled in; only the unpaid part when income pays the minimum.
   // The plan's current month — never shown against a past month's rollup.
   const capitalized  = pr1.strikeInterestUsd - pr1.strikeMinPaidUsd;
@@ -205,7 +208,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
     : (selectedDay === today ? 'Today' : fmtDay(selectedDay));
   const actWhen    = isMonth ? `Month ${safeViewedMonth} · month-to-date` : fmtDay(selectedDay);
   const actMoves   = formatMoves(view.moves);
-  const actUsdText = view.streams.buyBtc > 0 ? `+${fmtUSD(boughtUsd)} stacked`
+  const actUsdText = view.streams.buyBtc > 0 ? `+${fmtUSDCents(boughtUsd)} stacked`
     : isMonth
       ? (monthRollup.events.length > 0 ? 'no Bitcoin bought yet' : 'no activity yet this month')
       : (dayActivity.events.length > 0 ? 'no Bitcoin bought this day' : 'nothing logged this day');
@@ -250,11 +253,11 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                 <span className={styles.trioLab}>Strike BLOC collateral</span>
               </div>
               <div className={styles.trioCell}>
-                <span className={styles.trioNum}>{fmtUSD(advisorActualBlocBalance)}</span>
+                <span className={styles.trioNum}>{fmtUSDCents(advisorActualBlocBalance)}</span>
                 <span className={styles.trioLab}>Strike BLOC balance</span>
               </div>
               <div className={styles.trioCell}>
-                <span className={styles.trioNum}>{fmtUSD(currentAvail.available)}</span>
+                <span className={styles.trioNum}>{fmtUSDCents(currentAvail.available)}</span>
                 <span className={styles.trioLab}>Avail credit</span>
               </div>
             </div>
@@ -322,26 +325,18 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             <div className={styles.actUsd}>{actUsdText}</div>
             {/* 5c rider — moves between the owner's own places: never part of the headline, never hidden either */}
             {actMoves && <div className={styles.actMoves} data-testid="activity-moves">Moved: {actMoves}</div>}
+            {/* Run 2.1 (F13) — Week's head is the day; its bars are the month so far, so they say so. */}
+            {!isMonth && <div className={styles.streamsCaption}>{planBarsCaption(currentMonth)}</div>}
             <div className={styles.streams}>
-              <div className={styles.stream}>
-                <span className={styles.streamLabel}>Draw</span>
-                <span className={styles.streamVal}>{fmtUSD(view.streams.draw)} / {fmtUSD(plannedDraw)}</span>
-                <div className={styles.track}><div className={`${styles.fill} ${styles.fillDraw}`} style={{ width: `${drawFill}%` }} /></div>
-              </div>
-              <div className={styles.stream}>
-                <span className={styles.streamLabel}>Paydown</span>
-                <span className={`${styles.streamVal} ${plannedPay > 0 ? '' : styles.streamValMuted}`}>
-                  {plannedPay > 0 ? `${fmtUSD(paidSoFar)} / ${fmtUSD(plannedPay)}` : '—'}
-                </span>
-                <div className={styles.track}><div className={`${styles.fill} ${styles.fillPaydn}`} style={{ width: `${payFill}%` }} /></div>
-              </div>
-              <div className={styles.stream}>
-                <span className={styles.streamLabel}>Buy ₿</span>
-                <span className={styles.streamVal}>₿{view.streams.buyBtc.toFixed(4)} / {plannedBuy.toFixed(4)}</span>
-                <div className={styles.track}><div className={`${styles.fill} ${styles.fillBuy}`} style={{ width: `${buyFill}%` }} /></div>
-              </div>
+              {bars.map((b) => (
+                <div key={b.key} className={styles.stream}>
+                  <span className={styles.streamLabel}>{b.label}</span>
+                  <span className={`${styles.streamVal} ${b.muted ? styles.streamValMuted : ''}`}>{b.value}</span>
+                  <div className={styles.track}><div className={`${styles.fill} ${FILL[b.key]}`} style={{ width: `${b.fillPct}%` }} /></div>
+                </div>
+              ))}
             </div>
-            {isMonth && showCapitalized && <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSD(capitalized)}</b></div>}
+            {isMonth && showCapitalized && <div className={styles.actFoot}>Interest capitalized this month <b>{fmtUSDCents(capitalized)}</b></div>}
           </div>
 
           {/* Log section — Week: editable per-event log; Month: read-only summed rollup + "from N entries" */}
@@ -364,7 +359,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                   <div className={styles.logRow}>
                     <span className={styles.logTime}>sum</span>
                     <span className={styles.logType}><span className={`${styles.dot} ${styles.dotN}`} />Drawn (expenses)</span>
-                    <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSD(monthRollup.streams.draw)}</span>
+                    <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSDCents(monthRollup.streams.draw)}</span>
                   </div>
                   <div className={styles.logRow}>
                     <span className={styles.logTime}>sum</span>
@@ -375,14 +370,14 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
                     <div className={styles.logRow}>
                       <span className={styles.logTime}>sum</span>
                       <span className={styles.logType}><span className={`${styles.dot} ${styles.dotG}`} />BLOC paydown</span>
-                      <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSD(monthRollup.streams.paydown)}</span>
+                      <span className={`${styles.logAmt} ${styles.amtNeu}`}>{fmtUSDCents(monthRollup.streams.paydown)}</span>
                     </div>
                   )}
                   {showCapitalized && (
                     <div className={styles.logRow}>
                       <span className={styles.logTime}>sum</span>
                       <span className={styles.logType}><span className={`${styles.dot} ${styles.dotR}`} />Interest capitalized</span>
-                      <span className={`${styles.logAmt} ${styles.amtCost}`}>{fmtUSD(capitalized)}</span>
+                      <span className={`${styles.logAmt} ${styles.amtCost}`}>{fmtUSDCents(capitalized)}</span>
                     </div>
                   )}
                 </div>
@@ -439,7 +434,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             <div className={styles.pbHead}>This month's plan <span className={styles.pbRef}>· reference</span></div>
             <div className={styles.pbSub}>
               <span>Month {currentMonth} of 12 · <span className={styles.pbLtv}>LTV {fmtLtvPct(pr1.strikeLtv, 1)}</span></span>
-              <span>BTC {fmtUSD(btcPrice)}</span>
+              <span>BTC {fmtUSDCents(btcPrice)}</span>
             </div>
             {/* The month's one status — the same builder as THIS MONTH (title only; the catch-up lives there). */}
             {pmStatus.title && <p className={`${styles.pbStatus} ${styles[`pbStatus_${pmStatus.tone}`]}`}>{pmStatus.title}</p>}
@@ -467,7 +462,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
               <div className={styles.pbRow}>
                 <span className={styles.dot} style={{ background: VENUE_COLOR.strike }} />
                 <span><span className={styles.pbLab}><VenueText text="Strike interest" /></span><span className={styles.pbNote}> {planInterestRollsNote(blocMinPaymentDueDay)}</span></span>
-                <span className={styles.pbAmt}>{fmtUSD(pr1.strikeInterestUsd)}</span>
+                <span className={styles.pbAmt}>{fmtUSDCents(pr1.strikeInterestUsd)}</span>
               </div>
             ))}
             <details className={styles.pbWhy}>
@@ -535,8 +530,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
             source={blocMinPaymentSource}
             strikeMinPrefill={monthRollup.streams.minPayment > 0 ? monthRollup.streams.minPayment : strikeMinOwed}
             statementIsSet={monthRollup.streams.minPayment > 0 || blocStatementMinimum != null}
-            ndpActive={blocMinPaymentSource === 'roll' && getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15, blocApr).status !== 'ok'}
-            ndpPrefill={getNdpStatus(ndpLastPaidDate, advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15, blocApr).estimatedAmount}
+            ndpActive={blocMinPaymentSource === 'roll' && getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr).status !== 'ok'}
+            ndpPrefill={planNdpEstimateUsd(ndpBalance, blocApr)}
             onClose={() => setReviewOpen(false)}
             onConfirm={(extras) => {
               confirmMonth(safeViewedMonth, extras);

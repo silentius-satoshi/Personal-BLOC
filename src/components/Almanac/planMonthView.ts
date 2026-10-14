@@ -4,7 +4,7 @@ import { MOVE_THRESHOLD_BTC } from '../../simulation/placement';
 import { cbSeizurePrice } from '../../simulation/cbMetrics';
 import { CB_LLTV } from '../../simulation/runCoinbaseLoan';
 import { fmtBelowPct, shownBtc, shownUsd, policyIgnoredNote } from './supportPolicyView';
-import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { fmtUSDCents, fmtLtvPct, toCents } from '../../utils/format';
 import { planSchedule, type Action, type ActionKind } from './decisionView';
 import { fmtTurnDate } from './cyclingFaceView';
 import type { BreakerSeed } from './supportPolicyInputs';
@@ -58,12 +58,19 @@ interface RowWords {
   note?: (a: Action, r: CyclingRow) => string | null;
   amount: (a: Action, r: CyclingRow) => string;
 }
-const usdOf = (a: Action): string => fmtUSD(a.usd ?? 0);
+/** A to-do amount, to the cent — like every dollar figure on THIS MONTH and Daily (Run 2.1, BL19). */
+const usdOf = (a: Action): string => fmtUSDCents(a.usd ?? 0);
+/** Run 2.1, R2-a — the run is flat at today's price (D4), so a later month's buy is its dollars at today's price. */
+export const PLAN_AT_TODAYS_PRICE = "at today's price";
+/** A buy's dollars; in a month after this one, with the price the ₿ is reckoned at (the run's month m > 1). */
+const buyNote = (usd: number, m: number): string =>
+  (m > 1 ? `${fmtUSDCents(usd)} · ${PLAN_AT_TODAYS_PRICE}` : fmtUSDCents(usd));
 const btcOf = (a: Action): string => `₿${btc3(a.btc ?? 0)}`;
 const monthEnd = (a: Action): string => ((a.btc ?? 0) < MOVE_THRESHOLD_BTC ? 'small, can wait' : 'month-end');
 
 /** The words for every action kind — a `Record`, so a kind added to the Decision face's ONE table cannot reach the
- *  main screens without its words (the compiler forces it). Amounts are the action's own (`Action.usd` / `.btc`).
+ *  main screens without its words (the compiler forces it). Amounts are the action's own (`Action.usd` / `.btc`);
+ *  dollars to the cent (Run 2.1).
  *  Coins read "A → B" with a ₿ amount; debt says "debt" with a $ amount. A row's venues come from its label. */
 const WORDS: Record<ActionKind, RowWords> = {
   draw:                    { label: 'Draw on Strike', tone: 'plain', note: () => 'for bills', amount: usdOf },
@@ -73,14 +80,14 @@ const WORDS: Record<ActionKind, RowWords> = {
   repayStrike:             { label: 'Repay Strike', tone: 'plain', note: () => 'spare income', amount: usdOf },
   repayCoinbase:           { label: 'Repay Coinbase', tone: 'plain', note: () => 'spare income', amount: usdOf },
   buy: {
-    label: 'Buy bitcoin', tone: 'good', note: (a) => fmtUSD(a.usd ?? 0),
+    label: 'Buy bitcoin', tone: 'good', note: (a, r) => buyNote(a.usd ?? 0, r.m),
     amount: (a, r) => buyBtc(r.price > 0 ? (a.usd ?? 0) / r.price : 0),
   },
   strikeToCoinbase:        { label: 'Strike → Coinbase', tone: 'plain', note: monthEnd, amount: btcOf },
   strikeToCold:            { label: 'Strike → cold storage', tone: 'plain', amount: btcOf },
   refinance: {
     label: 'Strike debt → Coinbase', tone: 'plain',
-    note: (_a, r) => (shownUsd(r.refinancedFeeUsd) ? `fee ${fmtUSD(r.refinancedFeeUsd)}` : null), amount: usdOf,
+    note: (_a, r) => (shownUsd(r.refinancedFeeUsd) ? `fee ${fmtUSDCents(r.refinancedFeeUsd)}` : null), amount: usdOf,
   },
   coldToCoinbase:          { label: 'Cold storage → Coinbase', tone: 'warn', note: () => 'defends it', amount: btcOf },
   strikeReleaseToCoinbase: { label: 'Strike → Coinbase', tone: 'warn', note: () => 'defends it', amount: btcOf },
@@ -116,12 +123,15 @@ const TONE_FILL: Record<PlanTone, string> = { plain: 'var(--text-muted)', good: 
 
 /** A row's dot, as a CSS background: its venue's colour; two venues split it down the middle, in the label's order
  *  (Strike → Coinbase: white | blue); a row naming no venue keeps its tone's colour (the buy green). A muted "—" anchor
- *  is a ring. Both screens (THIS MONTH, Daily) draw it from here. */
+ *  is a ring. Both screens (THIS MONTH, Daily) draw it from here.
+ *  ⚠ Run 2.1 (F8) — the split ends `border-box`. Set as the `background` shorthand, the gradient otherwise starts inside
+ *  the dot's border (THIS MONTH's `.pmDot` has a 1px transparent one) and repeats under it: a 1px sliver of the other
+ *  colour at each edge. A class rule can't fix it — the inline shorthand resets `background-origin` (measured). */
 export function planRowDot(r: PlanRow): { background: string; ring: string | null } {
   if (r.muted) return { background: 'transparent', ring: 'var(--text-muted)' };
   const [a, b] = r.venues;
   if (a !== undefined && b !== undefined && a !== b) {
-    return { background: `linear-gradient(90deg, ${VENUE_COLOR[a]} 0 50%, ${VENUE_COLOR[b]} 50% 100%)`, ring: null };
+    return { background: `linear-gradient(90deg, ${VENUE_COLOR[a]} 0 50%, ${VENUE_COLOR[b]} 50% 100%) border-box`, ring: null };
   }
   return { background: a !== undefined ? VENUE_COLOR[a] : TONE_FILL[r.tone], ring: null };
 }
@@ -228,7 +238,7 @@ export function planStatus(sim: CyclingResult, plan: PlacementPlan, m: number, f
   if (row.postLiquidation) {
     return {
       tone: 'bad', title: 'Coinbase has been liquidated — borrowing has ended',
-      body: shownUsd(row.cbDebt) ? `${fmtUSD(row.cbDebt)} of Coinbase debt survives it.` : null, fixes: [],
+      body: shownUsd(row.cbDebt) ? `${fmtUSDCents(row.cbDebt)} of Coinbase debt survives it.` : null, fixes: [],
     };
   }
   // The engine refused the policy (a Strike liquidation LTV at or under its 70% call — the Safety dashboard allows
@@ -245,27 +255,27 @@ export function planStatus(sim: CyclingResult, plan: PlacementPlan, m: number, f
     const fixes: string[] = [];
     if (Number.isFinite(A)) {
       fixes.push(f.coldBtc >= A
-        ? `Move ₿${btc3(A)} from cold storage to Coinbase, or repay ${fmtUSD(X)}.`
-        : `Add ₿${btc3(A)} of collateral to Coinbase, or repay ${fmtUSD(X)}.`);
+        ? `Move ₿${btc3(A)} from cold storage to Coinbase, or repay ${fmtUSDCents(X)}.`
+        : `Add ₿${btc3(A)} of collateral to Coinbase, or repay ${fmtUSDCents(X)}.`);
     }
-    fixes.push(`Your limit: ${pct}% of what Coinbase's collateral is worth at support (${fmtUSD(f.support0)} per ₿ today).`);
+    fixes.push(`Your limit: ${pct}% of what Coinbase's collateral is worth at support (${fmtUSDCents(f.support0)} per ₿ today).`);
     // Month 1's run: spare income repays it; or there is none to spare; or — over today by less than the month's rise in
     // support — the run is back within it at month-end without a repayment (the band reads that month-end).
     const body = shownUsd(row.cbRepaidUsd) ? `${SPARE_REPAYS} — ${when}.`
       : overAtMonthEnd(row) ? `${NO_SPARE} — ${when}.`
         : `${BACK_WITHIN}.`;
-    return { tone: 'warn', title: `Coinbase is ${fmtUSD(X)} over your plan's limit`, body, fixes };
+    return { tone: 'warn', title: `Coinbase is ${fmtUSDCents(X)} over your plan's limit`, body, fixes };
   }
   if (m > 1 && overAtMonthEnd(row)) {
     return {
       tone: 'warn',
-      title: `Still ${fmtUSD(-(row.cbCeilingHeadroomUsd ?? 0))} over your plan's limit at month-end`,
+      title: `Still ${fmtUSDCents(-(row.cbCeilingHeadroomUsd ?? 0))} over your plan's limit at month-end`,
       body: shownUsd(row.cbRepaidUsd) ? `${SPARE_REPAYS}.` : `${NO_SPARE}.`,
       fixes: [],
     };
   }
   if (shownUsd(row.unfundedUsd)) {
-    return { tone: 'warn', title: `Bills ${fmtUSD(row.unfundedUsd)} short this month`, body: 'Income, the line and the cash reserve fall short at today\'s price.', fixes: [] };
+    return { tone: 'warn', title: `Bills ${fmtUSDCents(row.unfundedUsd)} short this month`, body: 'Income, the line and the cash reserve fall short at today\'s price.', fixes: [] };
   }
   const prev = sim.rows.find((r) => r.m === m - 1);
   if (m > 1 && prev && overAtMonthEnd(prev)) {
@@ -308,7 +318,7 @@ export function planAfter(
   rows.push({
     key: 'strike', label: 'Strike', tone: 'plain', venue: 'strike',
     value: shownUsd(row.strikeBalance)
-      ? `${fmtUSD(row.strikeBalance)} · ${fmtLtvPct(row.strikeLtv)} LTV`
+      ? `${fmtUSDCents(row.strikeBalance)} · ${fmtLtvPct(row.strikeLtv)} LTV`
       : heldOrNothing(row.strikeCollateralBtc),
   });
   let meter: PlanMeter | null = null;
@@ -319,8 +329,8 @@ export function planAfter(
     rows.push({
       key: 'cb', label: 'Coinbase', tone: over ? 'warn' : 'plain', venue: 'coinbase',
       value: !shownUsd(row.cbDebt) ? heldOrNothing(row.cbCollateralBtc)
-        : Number.isFinite(atSupport) ? `${fmtUSD(row.cbDebt)} · ${fmtLtvPct(atSupport)} at support`
-          : `${fmtUSD(row.cbDebt)} · no collateral`,
+        : Number.isFinite(atSupport) ? `${fmtUSDCents(row.cbDebt)} · ${fmtLtvPct(atSupport)} at support`
+          : `${fmtUSDCents(row.cbDebt)} · no collateral`,
     });
     if (policyApplied && Number.isFinite(atSupport)) meter = { atSupport, limit: cbStop, seize: CB_LLTV, over };
     // THE one per-row seizure rule (`cbSeizurePrice` — the Decision face's cliff and its ranking read it): none on a
@@ -329,7 +339,7 @@ export function planAfter(
     if (liq !== null && row.price > 0 && liq < row.price) {
       rows.push({
         key: 'seize', label: 'Seizes at', tone: 'plain', venue: null,
-        value: `${fmtUSD(liq)} · ${fmtBelowPct(1 - liq / row.price)} below today`,
+        value: `${fmtUSDCents(liq)} · ${fmtBelowPct(1 - liq / row.price)} below today`,
       });
     }
   }
@@ -367,26 +377,27 @@ const logged = (key: string, label: string, amount: string, tone: PlanTone = 'pl
   key, kind: null, tone, venues: venuesOf(label), label, note: null, amount, muted: false,
 });
 
-/** A logged month's rows — what was recorded, in the past tense. Never "$0": an amount under its floor is left out. */
+/** A logged month's rows — what was recorded, in the past tense; payments to the cent (Run 2.1). Never "$0": an amount
+ *  under its floor is left out. */
 export function loggedMonthRows(e: MonthlyLogEntry): PlanRow[] {
   const out: PlanRow[] = [];
-  if (shownUsd(e.expensesActual)) out.push(logged('drew', 'Drew on Strike', fmtUSD(e.expensesActual)));
+  if (shownUsd(e.expensesActual)) out.push(logged('drew', 'Drew on Strike', fmtUSDCents(e.expensesActual)));
   if (shownBtc(e.btcBought)) out.push(logged('bought', 'Bought bitcoin', `₿${btc4(e.btcBought)}`, 'good'));
-  if (shownUsd(e.paydown)) out.push(logged('paid', 'Paid down Strike', fmtUSD(e.paydown)));
-  if (shownUsd(e.strikeMinPaid ?? 0)) out.push(logged('min', "Paid Strike's minimum", fmtUSD(e.strikeMinPaid ?? 0)));
-  if (shownUsd(e.ndpPaid ?? 0)) out.push(logged('ndp', "Paid Strike's yearly payment", fmtUSD(e.ndpPaid ?? 0)));
+  if (shownUsd(e.paydown)) out.push(logged('paid', 'Paid down Strike', fmtUSDCents(e.paydown)));
+  if (shownUsd(e.strikeMinPaid ?? 0)) out.push(logged('min', "Paid Strike's minimum", fmtUSDCents(e.strikeMinPaid ?? 0)));
+  if (shownUsd(e.ndpPaid ?? 0)) out.push(logged('ndp', "Paid Strike's yearly payment", fmtUSDCents(e.ndpPaid ?? 0)));
   return out;
 }
 
 /** A logged month's end: the balances and LTVs the Ledger recorded (at that month's price). */
 export function loggedMonthAfter(e: MonthlyLogEntry): PlanAfterRow[] {
   const out: PlanAfterRow[] = [
-    { key: 'strike', label: 'Strike', tone: 'plain', venue: 'strike', value: `${fmtUSD(e.strikeBal)} · ${fmtLtvPct(e.strikeLtv)} LTV` },
+    { key: 'strike', label: 'Strike', tone: 'plain', venue: 'strike', value: `${fmtUSDCents(e.strikeBal)} · ${fmtLtvPct(e.strikeLtv)} LTV` },
   ];
   if (e.cbBal !== undefined) {
     out.push({
       key: 'cb', label: 'Coinbase', tone: 'plain', venue: 'coinbase',
-      value: `${fmtUSD(e.cbBal)}${e.cbLtv !== undefined ? ` · ${fmtLtvPct(e.cbLtv)} LTV` : ''}`,
+      value: `${fmtUSDCents(e.cbBal)}${e.cbLtv !== undefined ? ` · ${fmtLtvPct(e.cbLtv)} LTV` : ''}`,
     });
   }
   return out;
@@ -471,7 +482,7 @@ export function planMinimumLine(owed: number, dueDay: number): string | null {
 
 /** The minimum, roll mode: the interest that rolls into the line (null when there is none to roll). */
 export function planInterestRollsLine(interestUsd: number, dueDay: number): string | null {
-  return shownUsd(interestUsd) ? `Strike's interest, ${fmtUSD(interestUsd)}, rolls into the line on the ${fmtDayOrdinal(dueDay)}.` : null;
+  return shownUsd(interestUsd) ? `Strike's interest, ${fmtUSDCents(interestUsd)}, rolls into the line on the ${fmtDayOrdinal(dueDay)}.` : null;
 }
 /** Daily's row note for the same fact. */
 export function planInterestRollsNote(dueDay: number): string {
@@ -493,9 +504,9 @@ export function planNdpLine(ndp: Pick<NdpInfo, 'status' | 'daysRemaining'>): str
 export function planLedgerParts(streams: { draw: number; buyBtc: number; paydown: number; cbPaydown: number }): string | null {
   const paid = streams.paydown + streams.cbPaydown;
   const parts = [
-    shownUsd(streams.draw) ? `${fmtUSD(streams.draw)} drawn` : null,
+    shownUsd(streams.draw) ? `${fmtUSDCents(streams.draw)} drawn` : null,
     shownBtc(streams.buyBtc) ? `₿${btc3(streams.buyBtc)} bought` : null,
-    shownUsd(paid) ? `${fmtUSD(paid)} paid` : null,
+    shownUsd(paid) ? `${fmtUSDCents(paid)} paid` : null,
   ].filter((x): x is string => x !== null);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
@@ -512,21 +523,84 @@ export function planLedgerTargets(r: CyclingRow): { draw: number; paid: number; 
   };
 }
 
+/** One of Daily's progress bars, as words and a fill. */
+export interface PlanBar {
+  key: 'draw' | 'paid' | 'buy';
+  label: string;
+  /** "logged / planned"; the logged figure alone where the plan sets no target; "—" with neither. */
+  value: string;
+  /** 0–100 — 0 where there is no target: a bar can't fill toward nothing. */
+  fillPct: number;
+  /** No target this month (a past month, or a stream the plan doesn't plan): the value shows muted. */
+  muted: boolean;
+}
+
+/** A buy's target only counts once it shows at 4 dp (`buyBtc`'s floor). */
+const BAR_BTC_FLOOR = 0.00005;
+
+/**
+ * Daily's progress bars (Run 2.1, F13) — the month so far against the plan's month, in BOTH scopes: the plan is
+ * monthly, so a day's slice against a month's target read "$0" most days. `logged` is the month's rollup — the current
+ * month's in Week, the viewed month's in Month; `target` is `planLedgerTargets(pr1)`, or null for a past month (the
+ * plan is rebuilt each month and keeps no target for one gone, D14). A stream with no target shows what was logged and
+ * no fill — never "$0 / $0", never a full bar against nothing. To the cent (BL19).
+ */
+export function planBars(
+  logged: { draw: number; paid: number; buyBtc: number },
+  target: { draw: number; paid: number; buyBtc: number } | null,
+): PlanBar[] {
+  const fill = (a: number, b: number): number => Math.max(0, Math.min(100, (a / b) * 100));
+  const usd = (key: 'draw' | 'paid', label: string, a: number, b: number | null): PlanBar => {
+    if (b !== null && shownUsd(b)) {
+      return { key, label, value: `${fmtUSDCents(a)} / ${fmtUSDCents(b)}`, fillPct: fill(a, b), muted: false };
+    }
+    return { key, label, value: shownUsd(a) ? fmtUSDCents(a) : '—', fillPct: 0, muted: true };
+  };
+  const tb = target === null ? null : target.buyBtc;
+  const buy: PlanBar = tb !== null && tb >= BAR_BTC_FLOOR
+    ? { key: 'buy', label: 'Buy ₿', value: `₿${btc4(logged.buyBtc)} / ${btc4(tb)}`, fillPct: fill(logged.buyBtc, tb), muted: false }
+    : { key: 'buy', label: 'Buy ₿', value: logged.buyBtc >= BAR_BTC_FLOOR ? `₿${btc4(logged.buyBtc)}` : '—', fillPct: 0, muted: true };
+  return [
+    usd('draw', 'Draw', logged.draw, target === null ? null : target.draw),
+    usd('paid', 'Paydown', logged.paid, target === null ? null : target.paid),
+    buy,
+  ];
+}
+
+/** Week's caption over the bars — they read the month so far, while the card's head is the day (Run 2.1, F13). */
+export function planBarsCaption(month: number): string {
+  return `Month ${month} so far`;
+}
+
+/** THIS MONTH's and Daily's NDP estimate — a month of interest on the Strike balance — kept to the cent (BL19). The
+ *  engine's `getNdpStatus` rounds it to a whole dollar for full mode; the NDP card and the month review's seed read this,
+ *  so they never print or store a rounded "$217.00". */
+export function planNdpEstimateUsd(balance: number, aprPct: number): number {
+  return toCents(balance * (aprPct / 100 / 12));
+}
+
+/** The balance the NDP is estimated on — the Strike balance read, else 15% of the line. ONE place, so THIS MONTH's card,
+ *  Daily's NDP check and the month review's NDP seed can never estimate on different balances. */
+export function planNdpBalance(actualBalance: number, creditLine: number): number {
+  return actualBalance > 0 ? actualBalance : creditLine * 0.15;
+}
+
 /** The scrubber's price line: today's price, and where it sits against the month's support (the run is flat at today's
  *  price, so a later month reads the same price against that month's support). */
 export function planPriceLine(price: number, support: number): string {
-  return support > 0 && price > 0 ? `BTC ${fmtUSD(price)} · ${(price / support).toFixed(2)}× support` : `BTC ${fmtUSD(price)}`;
+  return support > 0 && price > 0 ? `BTC ${fmtUSDCents(price)} · ${(price / support).toFixed(2)}× support` : `BTC ${fmtUSDCents(price)}`;
 }
 
-/** "Next month" — the plan's next month at a glance: what it draws, buys and repays (null when it does none of them). */
+/** "Next month" — the plan's next month at a glance: what it draws, buys and repays (null when it does none of them);
+ *  payments to the cent, and the buy at today's price (Run 2.1). */
 export function planNextMonthLine(sim: CyclingResult): string | null {
   const next = sim.rows.find((r) => r.m === 2);
   if (!next) return null;
   const parts = [
-    shownUsd(next.strikeDrawn) ? `draw ${fmtUSD(next.strikeDrawn)}` : null,
-    shownUsd(next.btcBoughtUsd) ? `buy ${buyBtc(next.price > 0 ? next.btcBoughtUsd / next.price : 0)}` : null,
-    shownUsd(next.cbRepaidUsd) ? `repay Coinbase ${fmtUSD(next.cbRepaidUsd)}` : null,
-    shownUsd(next.strikeRepaidUsd) ? `repay Strike ${fmtUSD(next.strikeRepaidUsd)}` : null,
+    shownUsd(next.strikeDrawn) ? `draw ${fmtUSDCents(next.strikeDrawn)}` : null,
+    shownUsd(next.btcBoughtUsd) ? `buy ${buyBtc(next.price > 0 ? next.btcBoughtUsd / next.price : 0)} ${PLAN_AT_TODAYS_PRICE}` : null,
+    shownUsd(next.cbRepaidUsd) ? `repay Coinbase ${fmtUSDCents(next.cbRepaidUsd)}` : null,
+    shownUsd(next.strikeRepaidUsd) ? `repay Strike ${fmtUSDCents(next.strikeRepaidUsd)}` : null,
   ].filter((x): x is string => x !== null);
   return parts.length > 0 ? `Next month: ${parts.join(' · ')}` : null;
 }
@@ -536,7 +610,7 @@ export function planSavingsLine(sim: CyclingResult, monthsLeft: number): string 
   const months = sim.rows.filter((r) => r.m >= 1 && r.m <= monthsLeft && shownUsd(r.unfundedUsd));
   const need = months.reduce((sum, r) => sum + r.unfundedUsd, 0);
   if (!shownUsd(need)) return null;
-  return `Needs ~${fmtUSD(need)} from savings over the next ${months.length} month${months.length === 1 ? '' : 's'}`;
+  return `Needs ~${fmtUSDCents(need)} from savings over the next ${months.length} month${months.length === 1 ? '' : 's'}`;
 }
 
 // ── the words around the card ─────────────────────────────────────────────────────────────────────────────────
@@ -552,7 +626,7 @@ export function planSwitchNote(cbStop: number): string {
  *  the limits are measured at today's price, as the status says). */
 export function planMonthSummary(sim: CyclingResult, plan: PlacementPlan, m: number, supportAtRow: number): string {
   const row = sim.rows.find((r) => r.m === m);
-  const sched = planSchedule(sim, plan).find((r) => r.m === m);
+  const sched = planSchedule(sim, plan, fmtUSDCents).find((r) => r.m === m);   // the face's words, to the cent (BL19)
   if (!row || !sched) return '';
   const r = supportAtRow > 0 ? row.price / supportAtRow : NaN;
   const zone = Number.isFinite(r) ? `Price is ${r.toFixed(2)}× support. ` : '';

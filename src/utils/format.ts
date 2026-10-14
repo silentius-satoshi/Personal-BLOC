@@ -3,6 +3,25 @@ import type { MiningCurrency } from '../simulation/types';
 export const fmtUSD = (n: number): string =>
   '$' + Math.round(Math.abs(n)).toLocaleString();
 
+/** ONE formatter, built once: `toLocaleString` with options builds a new one on every call, and the plan card's sweep
+ *  formats about 150,000 sentences (plan of record §13.13). */
+const USD_CENTS = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+/**
+ * Dollars to the cent — EVERY dollar figure on THIS MONTH, Daily and Daily's sheets prints through it (plan of record,
+ * Run 2.1 — BL19, the owner's call: "i need the cents"): payments, balances, limits, prices and estimates alike. The
+ * Almanac faces and full mode keep `fmtUSD`'s whole dollars for now. Like `fmtUSD`, the sign is the caller's words,
+ * never a "−".
+ */
+export const fmtUSDCents = (n: number): string => '$' + USD_CENTS.format(Math.abs(n));
+
+/**
+ * A dollar VALUE kept to the cent — for a figure that seeds what gets stored (the month review's sign-off fields, the
+ * Log sheet's minimum estimate), so it never stores a rounded whole dollar (BL19). `Number.EPSILON` keeps a float
+ * like 1.005 from rounding down; non-finite in → 0 out (a seed is never NaN).
+ */
+export const toCents = (n: number): number => (Number.isFinite(n) ? Math.round((n + Number.EPSILON) * 100) / 100 : 0);
+
 /**
  * THE chart-tooltip price — the Decision and Power Law tooltips both print through it (P1). `fmtUSD` rounds to whole
  * dollars, so a real sub-50¢ price read "$0". Whole dollars from $1; below that, two significant digits (never

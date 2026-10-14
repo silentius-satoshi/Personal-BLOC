@@ -753,6 +753,15 @@ src/
                                 # to whole dollars, so a real sub-50¢ price read "$0". Whole dollars from $1; two
                                 # significant digits below (never exponent notation); "under $0.01" below a cent (the
                                 # power-law bands near GENESIS reach ~1e-12); "—" for ≤ 0 / not finite
+                                # + fmtUSDCents — dollars to the cent (the plan of record's Run 2.1, BL19): EVERY dollar
+                                # figure THIS MONTH, Daily and Daily's sheets print goes through it, through ONE cached
+                                # Intl.NumberFormat (never toLocaleString with options — it builds a formatter per call);
+                                # no sign, like fmtUSD. The Almanac faces, full mode, the Dashboard and the Outlook
+                                # segment's own content keep their own formatters — fmtUSD's whole dollars among them
+                                # (§ Critical Constraints). + toCents — a dollar VALUE kept to the cent, for a figure that
+                                # seeds what gets stored (the month review's sign-off seeds, the Log sheet's minimum
+                                # estimate, the NDP estimate); Number.EPSILON keeps 1.005 from rounding down; non-finite
+                                # → 0
 
   components/
     Layout/
@@ -855,7 +864,11 @@ src/
                                 # what-if — your plan is unchanged.") / planOfRecordLine(whatIf) — MoveCardContext gains
                                 # `whatIf`. ACTION_FIELDS gains `payMinimum` (strikeMinPaidUsd → "Pay Strike's minimum,
                                 # $X, from income."); the buy sentence drops its "(≈ … ₿)" under the dust floor and the
-                                # refinance never names a "$0" fee — THIS MONTH prints these sentences too
+                                # refinance never names a "$0" fee — THIS MONTH prints these sentences too, to the cent.
+                                # Run 2.1 (BL19): `UsdFmt` — ACTION_FIELDS' texts, rowActions and planSchedule take a
+                                # dollar formatter, whole (fmtUSD) by default: the face passes none and stays whole;
+                                # planMonthSummary passes fmtUSDCents, so "Why this plan?" reads the face's own words to the
+                                # cent. The words never change, only how their dollars print
       decisionChartView.ts      # Decision face (Run A) — the chart series, pure. buildChartSeries (the seam is
                                 # EXACT: history's last point IS forward's first; the support line spans both
                                 # halves — history via supportAtDates, forward via the engine's own path; history
@@ -1001,9 +1014,12 @@ src/
                                 # per ActionKind, so a new kind can't reach a screen without words); muted "—" anchors for
                                 # no buy / no draw. VENUE — Strike white, Coinbase blue, cold storage orange (the faces'
                                 # own tokens; venueSegments / venuesOf / planRowDot — one venue fills the dot, two split
-                                # it). AFTER — planAfter: both loans at month-end, Coinbase at THE ROW'S support with a
-                                # meter (limit and seizure ticks, read aloud by planMeterAria), the cliff cbSeizurePrice
-                                # with fmtBelowPct; no meter and no over-the-limit tone under a refused policy. monthTrack
+                                # it; Run 2.1, F8: the split ends `border-box`, or the inline `background` shorthand starts
+                                # the gradient inside THIS MONTH's `.pmDot` 1px border and repeats it under the border — a
+                                # class rule can't fix it, the shorthand resets the origin). AFTER — planAfter: both loans
+                                # at month-end, Coinbase at THE ROW'S support with a meter (limit and seizure ticks, read
+                                # aloud by planMeterAria), the cliff cbSeizurePrice with fmtBelowPct; no meter and no
+                                # over-the-limit tone under a refused policy. monthTrack
                                 # — the scrubber's year (past months faint, green within, amber over until the cure, red
                                 # from a liquidation, never green under a refused policy). A past month from the Ledger
                                 # (loggedMonthRows / loggedMonthAfter / loggedMonthStatus — the plan keeps no history,
@@ -1012,11 +1028,23 @@ src/
                                 # once the fetch failed, Δ12; with none: the loading line, then "didn't load"). The foot — fmtDayOrdinal,
                                 # planMinimumOwed / planMinimumLine /
                                 # planInterestRollsLine, planNdpLine, planLedgerParts (the Ledger so far, both loans'
-                                # paydowns), planLedgerTargets (Daily's bars in the Ledger's own streams, Δ4),
+                                # paydowns), planLedgerTargets (the bars' target, in the Ledger's own streams, Δ4),
                                 # planNextMonthLine, planSavingsLine, planPriceLine, planSignoffLine / planSignoffSub. The
                                 # note — planSwitchNote (D8). "Why this plan?" — planMonthSummary (the Decision face's own
                                 # sentences). PLAN_CRASH_TITLE (D13). Never "should", "need to" or "safe", never "$0",
-                                # "₿0.000" or "0.000 ₿" (WORDS sweeps every sentence over 600 runs × 12 months)
+                                # "₿0.000" or "0.000 ₿" (WORDS sweeps every sentence over 600 runs × 12 months; since Run
+                                # 2.1 its zero rule also reads "$0.00", and a zero before a "," or a ".").
+                                # Run 2.1 (BL18 / BL19): EVERY figure to the cent through fmtUSDCents — it no longer imports
+                                # fmtUSD; a buy after this month reads "$X.XX · at today's price" (PLAN_AT_TODAYS_PRICE,
+                                # R2-a — the run is flat at today's price, D4); next month's line ends its buy with the
+                                # same words ("buy ₿0.0050 at today's price"). planBars /
+                                # planBarsCaption (F13 — Daily's bars: the month so far against the plan's month, in Week
+                                # and Month; a stream with no target — a past month, or one the plan doesn't plan — shows
+                                # what was logged, muted, with no fill, or "—": never "$0 / $0"; Week's "Month N so far").
+                                # ⚠ This planBars is planMonthView's — the store's planBars.test.ts is the showPlan*Bar
+                                # toggles. planNdpEstimateUsd / planNdpBalance — THIS MONTH's NDP card and the month
+                                # review's NDP seed, to the cent, on ONE balance (the Strike balance read, else 15% of the
+                                # line); the engine's getNdpStatus rounds its estimate to a whole dollar, for full mode
       usePlanMonth.ts           # The plan of record's month for the main screens (Run 2): gathers the store's live
                                 # position (Coinbase through planCbCollateralOf / planCbLoanBalanceOf), the saved plan
                                 # (usePlanPolicy), today's price, the minimum's source and the policy's memory — Strike's
@@ -1129,7 +1157,10 @@ src/
                                 # LivePlaybookFigures.strikeDepositISO — strikeDepositOf(store), Run 2) ·
                                 # playbookDepthFor(target, planStop) (the liquidation depth for a live target and the
                                 # plan's limit — it shares the builder's ONE stop call) · fmtStepBtc / fmtStepUsd (FLOORED to
-                                # their printed precision) · fmtMultiplePair (widens 2 → 6 dp until k and the depth
+                                # their printed precision) · fmtStepUsdCents (the plan of record's Run 2.1, BL19 — THIS
+                                # MONTH's line: floored to the cent, and still no step under $1; the console's card keeps
+                                # fmtStepUsd's whole dollars — listSteps(result, stepUsd) takes the step formatter, whole
+                                # by default) · fmtMultiplePair (widens 2 → 6 dp until k and the depth
                                 # differ) · waitingCard (target < LTV < trigger, under 86% → the plan waits) ·
                                 # playbookCard (the card's shapes) · monthPlaybookLine (the THIS MONTH line — compact,
                                 # with the card's listed steps, gap and outcome through one private reading:
@@ -1736,7 +1767,10 @@ src/
                                 # The inner month card sits FLUSH on the .modalCard surface (.card chrome
                                 # stripped — transparent/no-border/no-radius; the shell is the only card,
                                 # one inset via .cardScroll padding) — no card-in-card. Edit .formGrid is
-                                # SINGLE-COLUMN (1fr) so long decimals fit; .viewGrid is a label/value column
+                                # SINGLE-COLUMN (1fr) so long decimals fit; .viewGrid is a label/value column.
+                                # Run 2.1 (BL19): a `money` prop for its rows' dollars, whole (fmtUSD) by default — full
+                                # mode's Advisor passes none; THIS MONTH (SimpleModeView) passes fmtUSDCents. The edit
+                                # form still shows a value as stored (unrounded)
       MonthlyLogOverlay.module.css
 
     Daily/
@@ -1757,7 +1791,14 @@ src/
                                 # paid: spare income's repayments + a refinance's payment to Strike + a defense's payment
                                 # to Coinbase + the margin cure — against the Ledger's paydowns on BOTH loans (Δ4).
                                 # "Interest capitalized" is the plan's interest less the minimum income paid, shown only
-                                # past the dust floor and only for the current month (Δ5).
+                                # past the dust floor and only for the current month (Δ5). ⚠ Run 2.1 (F13): the bars come
+                                # from planMonthView's planBars — the month so far in BOTH scopes: Week reads
+                                # `currentRollup` (the CURRENT month's rollup, under planBarsCaption's "Month N so far"),
+                                # Month the viewed month's; a past month gets no target (D14) and no fill; `clampPct` is
+                                # gone. The day's own head and log are unchanged. Every dollar figure to the cent
+                                # (fmtUSDCents, BL19 — it no longer imports fmtUSD); the month review's NDP seed is
+                                # planNdpEstimateUsd on planNdpBalance — the balance THIS MONTH's NDP card and Daily's NDP
+                                # check read too.
                                 # Empty → dashed .empty. The standalone month indicator was dropped (month context lives in
                                 # act-when + pb-sub). P4b-1: a Daily-only orange .fab (bottom-right, --btc gradient, hidden
                                 # when viewerMode) → opens <EventSheet/> for ADD (setEditEvent(undefined)). P4b-2: each
@@ -1770,7 +1811,9 @@ src/
       dailyView.ts              # PURE display helpers (no store/UI/price dep): selectMonthEvents(dayLog, month,
                                 # advisorStartDate) (bucketEventToMonth filter + asc-by-ts sort) + describeDayEvent(ev)
                                 # → {icon,label,detail} for all 7 DayEvent kinds (buy shows usd when present; deposit/
-                                # withdraw carry target; balanceReading summarizes Strike + CB). Tested in __tests__/dailyView.test.ts
+                                # withdraw carry target; balanceReading summarizes Strike + CB). Since the plan of record's
+                                # Run 2.1 every amount prints to the cent (fmtUSDCents) — Daily's log and MonthEventsModal
+                                # both print through it. Tested in __tests__/dailyView.test.ts
       calendarModel.ts          # Daily Mode P4c-1a — PURE calendar date model (no store/UI/price dep; imports only the pure
                                 # bucketEventToMonth + DayEvent type, mirroring dailyView.ts). monthDateRange(advisorStartDate,
                                 # month) = ascending ISO dates that bucket to that STRATEGY month (via the fixed
@@ -1852,7 +1895,12 @@ src/
                                 # past Set balance's label reads "Balances on that day · required to log" (the "optional"
                                 # note is hidden for it). RESIDUALS (pre-existing): editing a reading with no strikeCollateral
                                 # seeds today's figure (`?? currentBtcHeld`) and stamps it on save; CB collateral is
-                                # latest-by-TS, so a past reading's typed CB collateral becomes the current one
+                                # latest-by-TS, so a past reading's typed CB collateral becomes the current one.
+                                # The plan of record's Run 2.1 (BL19): every readout to the cent (fmtUSDCents) — a Coinbase
+                                # borrow's origination fee, Strike's minimum, the dry-powder estimate, the last liquidation
+                                # price; the minimum's estimate is `toCents` (balance × APR ÷ 12), so a minimum logged from
+                                # it stores cents. δ5 (the owner's call): the paydown line's due day prints through
+                                # planMonthView's fmtDayOrdinal — "Minimum · due the 1st · $X.XX", never "the 1th"
       eventSheetModel.ts        # PURE builders for EventSheet (no React/store; named eventSheetModel to avoid the macOS
                                 # case-collision with EventSheet.tsx): SheetType/SheetState (v20 += strikeCollateral:number|null
                                 # + pledgeToStrike:boolean) + readingComplete(s,hasCbLoan,requireStrikeCollateral=true) (Save
@@ -1864,7 +1912,17 @@ src/
                                 # v20 buy pledge → [buy,deposit target:'strike' amount=buy,reading]; reading.strikeCollateral =
                                 # s.strikeCollateral ?? currentStrikeCollateral, BTC no conversion; fresh id per event;
                                 # flow+reading share date+ts; usd=amount*price for buy; **LTV percent ÷100 → fraction**).
+                                # + staleCbBalanceNote (the stale Coinbase-balance warning: the borrow, its fee, the paydown
+                                # and the suggested balance — to the cent since Run 2.1; tested in cbDebtSheet.test.ts).
                                 # Tested in __tests__/eventSheet.test.ts
+      ReviewSheet.tsx           # The month review — Daily's sign-off (Logging Consolidation §2): the month's rolled-up
+                                # totals ("Drawn (expenses)", "BLOC paydown"), a note when the month also has a Coinbase
+                                # borrow or paydown (journal-only, so outside the totals), and the SIGN-OFF DETAILS —
+                                # expenses actually paid, Strike's minimum (income mode), the NDP (roll mode) →
+                                # confirmMonth(month, extras). The plan of record's Run 2.1 (BL19): every figure to the
+                                # cent; the three fields are seeded with toCents (the NDP's from planNdpEstimateUsd), so a
+                                # sign-off stores cents unless the owner edits them. They are number inputs: they show
+                                # the raw value ("1234.5" is $1,234.50)
     SimpleMode/
       PlanMonthCard.tsx         # The plan of record's Monthly Playbook (Run 2, D-R2-2 + D-R2-8) — THIS MONTH's card: one
                                 # card, one month, each fact once. The scrubber picks the month (this month and the rest
@@ -1882,12 +1940,17 @@ src/
                                 # its syntax tree). The one-time note (D8 —
                                 # planSwitchNote, dismissed per device by planNoteDismissed; never to a viewer). One status
                                 # colour per card — no Advisor tier border (Δ10). Exports VenueText (Daily reuses it).
-                                # Styles come from SimpleModeView.module.css
+                                # Every dollar figure prints to the cent — through planMonthView, and the crash line's
+                                # shift through crashPlaybookView's fmtStepUsdCents (Run 2.1, BL19 — the file itself is
+                                # unchanged). Styles come from SimpleModeView.module.css
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
                                 # not candlesticks), 1H/1D/1W pills (default 1D), header price + range %Δ
                                 # (green/red), auto padded Y-domain (intraday visible), graceful loading/
-                                # "price history unavailable" states. Owns its own range state + useBtcHistory
-                                # (no props). Data ephemeral (never stored). PriceChart.module.css alongside
+                                # "price history unavailable" states. Owns its own range state + useBtcHistory. One prop
+                                # since the plan of record's Run 2.1 (BL19): `money`, for the price and its tooltip, whole
+                                # (fmtUSD) by default — ViewerHomeView (the Dashboard, every viewer's home, ViewerPreview)
+                                # passes none; the Safety card passes fmtUSDCents. Data ephemeral (never stored).
+                                # PriceChart.module.css alongside
       SafetyDashboard.tsx       # Top-of-SimpleMode safety read (reads store directly, recomputes on price tick):
                                 # the Safe/Watch/Act .stateLine VERDICT is the FIRST child — a prominent 15px/700
                                 # headline at the very top (moved up from the buried last child; render-position +
@@ -1937,7 +2000,11 @@ src/
                                 # DECOUPLED from hasCbLoan — only the
                                 # CB bar gates on it: !hasCbLoan → CB-setup prompt in the CB slot, Strike bar +
                                 # Strike-only state line still render. Evergreen (past month 12). All CB math via
-                                # cbMetrics — same numbers as the CB Loan tab
+                                # cbMetrics — same numbers as the CB Loan tab. The plan of record's Run 2.1 (BL19): every
+                                # dollar figure to the cent (fmtUSDCents — the Strike line and its limit, the distances to
+                                # liquidation, the liquidation prices, the Coinbase balance), and its chart through
+                                # `money={fmtUSDCents}` — on THIS MONTH (above the This Month / Outlook switch, so in both
+                                # segments) and on Daily
       SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag): header + HeaderNavCluster,
                                 # BackupNagCard, ViewToggle, <SafetyDashboard/>, then a This Month / Outlook segmented
                                 # control (gated !strategyDone). ⚠ REWRITTEN by the plan of record's Run 2 — THIS MONTH
@@ -1965,6 +2032,11 @@ src/
                                 # dismissible banner offers Update (setExpenses(round(avg))) / Dismiss (persists the avg
                                 # to device-local expenseReanchorDismissedAt; resurfaces only when drift
                                 # moves >5% past it). computeExpenseReanchor (logUtils, pure) is the predicate.
+                                # The plan of record's Run 2.1 (BL19): the NDP card's estimate to the cent —
+                                # planNdpEstimateUsd on planNdpBalance (getNdpStatus' own estimate is a whole dollar, for
+                                # full mode); the month log gets `money={fmtUSDCents}`. The Outlook segment's own content
+                                # (its re-anchor banner, OutlookProjection) stays whole; the Safety card above the switch
+                                # prints cents in both segments
 
 api/
   btc-history.js               # Vercel serverless proxy for Blockchain.com (CORS workaround)
@@ -2602,6 +2674,9 @@ selected) → that day's big-number/streams/foot + the EDITABLE per-event log (P
 Month scope → a READ-ONLY summed rollup (month totals + fill vs the monthly plan) + a tappable "from N day
 entries" line. **D4:** the Month-scope "from N entries" → `MonthEventsModal` listing the month's individual
 events grouped by day (each editable via the P4b-2 sheet; the modal closes when an event opens to edit).
+⚠ The plan of record's Run 2.1 (F13): the bars no longer read the day — Week's bars read the CURRENT month so far,
+under "Month N so far", and Month's the viewed month's, with no target for a past month (planMonthView's `planBars`).
+The day's own head and log are unchanged.
 
 - **`calendarModel.ts`** gains pure builders (+ types `StreamAgg`/`DayActivity`/`MonthRollup`):
   `buildDayActivity(dayLog, date)` (a single date's events + stream sums + netBtc),
@@ -4425,8 +4500,9 @@ THIS MONTH's log overlay keeps it until Run 3.
   today" (the catch-up) and "Why this plan?". The scrubber's track is the year. One status colour per card — no Advisor
   tier border (Δ10; the Advisor tab keeps its tiers). **Daily's plan card** reads the same month 1: the status (or the
   crash title), the rows, the minimum and "Why this plan?". Its bars compare the Ledger with the plan in the Ledger's own
-  streams (`planLedgerTargets`, Δ4), and "Interest capitalized" is the interest less the minimum paid, for the current
-  month only (Δ5). On a crash day (D13 — `isCrashDay`, still `ltvTriggered` until Run 4, D3) THIS MONTH's status is the
+  streams (`planLedgerTargets`, Δ4) — since Run 2.1 the month so far in Week and in Month, with no target for a past
+  month (F13, below) — and "Interest capitalized" is the interest less the minimum paid, for the current month only
+  (Δ5). On a crash day (D13 — `isCrashDay`, still `ltvTriggered` until Run 4, D3) THIS MONTH's status is the
   Emergency Console's line — `PLAN_CRASH_TITLE` over `monthPlaybookLine`'s items — with `crashNote(true)` as a foot
   under the rows; Daily's status is the title alone.
 - **The status (§4.5).** Month 1 reads TODAY's fact — THE MOVE's `cbOverCeilingUsd` at S₀ — with the time back
@@ -4450,8 +4526,8 @@ THIS MONTH's log overlay keeps it until Run 3.
   the support policy, with your settings.", and with a what-if on the move (the policy or the line), "A what-if — your
   plan is unchanged." **The one-time note** (D8, `planSwitchNote`) is dismissed once per device (`planNoteDismissed`) and
   never shown to a viewer. **The venue colours** (the owner's add-on): Strike white, Coinbase blue, cold storage orange —
-  the faces' own tokens — on each row's dot and its venue words; two venues split the dot; a warning shows in the note
-  and the amount, so a dot never hides it.
+  the faces' own tokens — on each row's dot and its venue words; two venues split the dot (to its border's edge —
+  `border-box`, Run 2.1, F8); a warning shows in the note and the amount, so a dot never hides it.
 - **The hold's one date (D9, invariant 8).** Strike's 60-day hold reads ONE fact — the latest logged Strike deposit's
   date (`latestStrikeDepositISO`) — through ONE rule (`strikeHoldAt`). `strikeDepositOf` picks the fact on this device:
   the owner's journal, or a trusted viewer's `viewerStrikeDepositISO` (the trusted snapshot's `strikeLastDepositISO`,
@@ -4479,9 +4555,59 @@ THIS MONTH's log overlay keeps it until Run 3.
     `viewerStrikeDepositISO` joins them); the price history is fetched on every visit to THIS MONTH or Daily (a Run 3
     option: one fetch per session); ~60 unused SimpleModeView CSS rules (Run 3's sweep); Daily's month rollup lists
     Strike's paydowns but not Coinbase's, though the bars count both.
-  - Queued: Daily's paydown sheet's "the 1th"; Daily's progress bars' "$0 / $0" (from before Run 2); the faces' empty
-    state's other zero figures.
+  - Queued: the faces' empty state's other zero figures.
 - Tests: § Test Suite → "The plan of record (Run 2)".
+
+#### The plan of record (Run 2.1 — the device check's fixes; store unchanged, NO bump)
+
+Spec: `pbloc-spec-plan-of-record-v1.md` (v1.12 — §14; the owner's calls are BL18 — F8, F13, R2-a, R3-B — and BL19, with
+"the 1th" folded in on 2026-10-14). Run 2.1 changes how figures print, which month Daily's bars read, and that new
+sign-offs and logged minimums keep their cents — never a number the plan computes, and never a record already stored.
+- **Every dollar figure THIS MONTH, Daily and Daily's sheets print shows its cents (BL19)**, through `fmtUSDCents` (one
+  cached `Intl.NumberFormat`):
+  - the Safety card and its price chart;
+  - THIS MONTH's NDP card, plan card (planMonthView), crash line (`fmtStepUsdCents`, floored) and the month log it opens;
+  - Daily's trio, "+$X stacked", bars, plan card, "Interest capitalized", month rollup and day log;
+  - the Log sheet, the stale-balance note, the month review and the month's events list (MonthEventsModal, through
+    `describeDayEvent`).
+- **Whole dollars stay** on the Almanac faces (the Decision face among them) and in full mode (the Advisor, its month log
+  and its NDP) — the owner's call — and, on Simple mode outside THIS MONTH and Daily, on the Dashboard (gauges and chart)
+  and the Outlook segment's own content (its re-anchor banner, `OutlookProjection`). The Safety card sits above the This
+  Month / Outlook switch, so it prints cents in both segments. So the Decision face says "Repay $500 of Coinbase…" and
+  THIS MONTH's "Why this plan?" says "Repay $500.00 of Coinbase…" — the same words, through one builder (I31).
+- **The shared builders take a formatter, whole by default:** decisionView's `UsdFmt` (`ACTION_FIELDS`' texts,
+  `rowActions`, `planSchedule`), crashPlaybookView's `listSteps(result, stepUsd)`, and the `money` props of
+  MonthlyLogOverlay and PriceChart. THIS MONTH and Daily pass cents; nothing else does.
+- **Stored to the cent:** the month review's three sign-off seeds (`toCents`; the NDP's from `planNdpEstimateUsd` on
+  `planNdpBalance` — the engine's `getNdpStatus` rounds its estimate to a whole dollar, for full mode) and the Log
+  sheet's minimum estimate (`toCents`). A month signed off after Run 2.1 stores cents unless the owner edits the seed.
+  Nothing already stored is rewritten — no migration, no re-roll.
+  - ⚠ `toCents` (binary: (x + ε) × 100, `Math.round`) and the screen (`Intl.NumberFormat`) can round a half cent a cent
+    apart — 2.135 is kept as 2.13 and shown "$2.14". The Log sheet's estimate and the NDP estimate are kept to the cent
+    before they're shown, so their figure is what's stored; the review's minimum field (income mode) can start a cent off
+    the to-do's "Pay Strike's minimum" in a rare month (C12, logged).
+- **F13 — Daily's bars read the month so far** (planMonthView's `planBars`): Week reads the CURRENT month's rollup, under
+  "Month N so far"; Month reads the viewed month's. A past month gets no target (D14 — the plan keeps none for a month
+  gone) and no fill; a stream with no target shows what was logged, muted, or "—" — never "$0 / $0", and never a full
+  bar against nothing.
+- **R2-a — a later month's buy is at today's price:** after this month a buy's note reads "$X.XX · at today's price"
+  (`PLAN_AT_TODAYS_PRICE` — the run is flat at today's price, D4); next month's line ends its buy with the same words:
+  "buy ₿0.0050 at today's price".
+- **F8 — the split dot** ends its gradient `border-box`, so it covers THIS MONTH's `.pmDot` 1px border (a class rule
+  can't: the inline shorthand resets the origin). Daily's dot has no border.
+- **"the 1th" (δ5, the owner's call):** the Log sheet's due day prints through `fmtDayOrdinal` — "due the 1st".
+- **Not in Run 2.1** (spec §14.12):
+  - The whole-dollar screens above stay whole; a later pass is the owner's call.
+  - The month log's edit form shows a value as stored, unrounded (older than Run 2.1).
+  - A buy under half a cent reads "+$0.00 stacked" — queued with the faces' zero-state pass (C11).
+  - The half-cent rounding above (C12).
+  - 5d may change a buy's "~$X" once the buy's dollars are typed (BL13).
+  - F14, the iPhone's offline white screen, stays parked (BL18).
+  - `fmtUSD`'s slowness on Node 26 (`toLocaleString`, in the backlog) is unchanged; `fmtUSDCents` avoids it by
+    construction.
+  - 5e builds on `main`, where `PriceChart.tsx:90` holds (:92 on this branch); once the branches meet, its counting
+    price prints through the chart's `money` prop (A5).
+- Tests: § Test Suite → "The plan of record (Run 2.1)".
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -5611,7 +5737,9 @@ the one reading and the compact shapes themselves are current.
   `monthPlaybookLine`, so the box and the console can't disagree on a step, a gap or an outcome.
   - `playbookCard`'s output is byte-identical to Run 2's: deep-equal before and after the refactor across the sweep
     grid × four targets.
-  - Amounts are the console's floored `fmtStepBtc` / `fmtStepUsd`.
+  - Amounts are the console's floored `fmtStepBtc` / `fmtStepUsd`. Since the plan of record's Run 2.1 (BL19) the line's
+    shift prints to the cent, floored (`fmtStepUsdCents` — "$3,487.50" where the console says "$3,487"); the card stays
+    whole.
   - Doom reads the after-state, never `result.doomed`.
 - **The compact shapes:** a LIST, one line per item, because the box is a third of the row (about 70px of text on a
   phone):
@@ -6587,7 +6715,9 @@ and the NDP clause is re-scoped to roll-mode only.
   NDP surfaces (`showNdpRow`, the "NDP paid $X" summary, the status pill/badge) only exist while minimums roll.
   `getNdpStatus`'s signature/estimate (one month's interest) is unchanged. ⚠ Run 2 (the plan of record): on THIS MONTH
   the NDP surface is the card's `planNdpLine` ("1 day", never "1 days"), roll mode only, plus the NDP urgency card
-  above it, which reads `ndp.status` in either mode.
+  above it, which reads `ndp.status` in either mode. ⚠ Run 2.1 (BL19): the urgency card's estimate and the month review's
+  NDP seed are computed to the cent — `planNdpEstimateUsd` on `planNdpBalance` (the Strike balance read, else 15% of the
+  line); `getNdpStatus`'s own estimate stays a whole dollar, read only by full mode's AdvisorSidebar.
 - **`MonthlyLogEntry` += `strikeMinPaid?` / `strikeMinSource?`** (optional additive, legacy-tolerant next to
   `ndpPaid?`).
 
@@ -6630,7 +6760,9 @@ Playbook's figures now come from the plan's run (`usePlanMonth` — PlanMonthCar
   single `upsertLogEntry` (spread preserves `source:'daily'` → M2 guard passes; zero-arg callers unchanged).
   `ReviewSheet` gains a **SIGN-OFF DETAILS** group (Expenses actually paid; income-mode Strike-minimum-paid
   with the statement/est chip prefilled `rollup.streams.minPayment ?? blocStatementMinimum ?? estimate`;
-  roll-mode NDP row). The **btcBought override retired** (fix a wrong buy by editing the event). Side-effects
+  roll-mode NDP row). ⚠ Since the plan of record's Run 2.1 the three seeds are kept to the cent (`toCents`; the NDP's
+  from `planNdpEstimateUsd`), so a sign-off stores cents unless edited. The **btcBought override retired** (fix a wrong
+  buy by editing the event). Side-effects
   in `DailyModeView`'s confirm handler (mirror the corrections build): income → `setBlocStatementMinimum(null)`
   + stamp `ndpLastPaidDate`; roll → stamp when an NDP was recorded.
 - **§2b The minimum payment, first-class:** a new `DayEvent` kind **`minPayment` `{ amount /* USD */ }`**
@@ -6821,7 +6953,17 @@ function fmtUSD(n) { return (n < 0 ? '-' : '') + '$' + Math.round(Math.abs(n)).t
 
 // Chart Y-axis — abbreviated (exact causes label overlap)
 (v) => v >= 1e6 ? '$' + (v/1e6).toFixed(1) + 'M' : v >= 1000 ? '$' + Math.round(v/1000) + 'k' : '$' + v
+
+// THIS MONTH, Daily and Daily's sheets — to the cent, through ONE cached formatter (the plan of record's Run 2.1, BL19)
+const USD_CENTS = new Intl.NumberFormat(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+export const fmtUSDCents = (n) => '$' + USD_CENTS.format(Math.abs(n));
+
+// A dollar VALUE kept to the cent — for a figure that seeds what gets stored (sign-off seeds, the minimum's estimate)
+export const toCents = (n) => (Number.isFinite(n) ? Math.round((n + Number.EPSILON) * 100) / 100 : 0);
 ```
+
+Which screen prints through which formatter: § Critical Constraints ("THIS MONTH, Daily and Daily's sheets print dollars
+to the cent").
 
 ---
 
@@ -8370,6 +8512,70 @@ goes red.)
     e2e red at "DAILY status", and the Decision smoke at `navigation.spec.ts:301` (Run 2 flips the card's first line,
     `PLAN_OF_RECORD_LINE`). Of the 24, 19 fail by an AssertionError and 5 by a TypeError, each calling a function Run 2 adds.
   - The mutations (spec Appendix P2, M01–M100 and E1–E4) are red at their tags by an assertion.
+- **The plan of record (Run 2.1 — the device check's fixes)** (spec `pbloc-spec-plan-of-record-v1` v1.12 — § The plan of
+  record (Run 2.1); 5 unit files and 2 e2e specs changed, no new file; the suite 2,703 → 2,714 (+6 skipped), 172 files
+  (171 / 1); e2e 73 → 75 (+2 skipped); 60 unit mutations and 8 through the e2e, each an exact-once edit from
+  `pbloc-por-run21-mutations-v1.12.json`, red at its tag (the 60 unit ones by an AssertionError), restored and
+  md5-checked):
+  - `planMonthView.test.ts`, the block "⭐ RUN 2.1" (+7):
+    - ⭐ CENTS the formatter — two decimals, grouped, no sign; `fmtUSD` stays whole (the faces and full mode); `toCents`
+      keeps a stored value to the cent (1.005 → 1.01);
+    - ⭐ every to-do amount and every buy's dollars to the cent, over 600 runs × 4 months (60 s): CENTS a to-do amount ·
+      a buy's dollars · the refinance fee · TODAY'S PRICE a later month's buy · TODAY'S PRICE never this month's;
+    - ⭐ CENTS every figure on the card, over 600 runs × 12 months (60 s): the status, its catch-up, the after box, the
+      price line, the savings need and "Why this plan?";
+    - ⭐ CENTS the NDP estimate to the cent · the engine keeps its whole dollar (full mode) · the NDP balance: the
+      reading, else 15% of the line;
+    - ⭐ CENTS "Why this plan?": the face stays whole; the cards' words to the cent; the same words;
+    - ⭐ DOT the split covers the border; one venue is its colour; a "—" is a ring;
+    - ⭐ BARS against the plan · nothing logged yet · over the target · a past month · no target, no fill · never
+      "$0 / $0" · Week's caption.
+  - ⭐ WORDS' zero rule (δ1) is `/(?<![\d.,])\$0(?:\.00)?(?!\d|[.,]\d)/` — a zero, whole or ".00", not followed by a digit,
+    or by a "." or "," and a digit — with a nine-string self-check ("WORDS the zero rule sees $0.00"). The old rule
+    couldn't see "$0.00" (MC59 — the after box's zero Strike balance) or a zero before a sentence's own comma or full stop
+    (MC60 — "Strike's interest, $0.00, rolls…").
+  - Moved pins, same file: the status, its catch-up and the limit line; the later status; a liquidated month's body; the
+    after box; the savings need; the price line; the interest; the Ledger so far; a logged payment and month-end; next
+    month (cents, and the label); the tiny buy (month 2, so labelled); ROWS through `fmtUSDCents`; VENUE `border-box`.
+  - `planRunWiring.test.ts`:
+    - CARD — BARS (Week reads the current month; the month so far in both scopes; a past month has no target; one
+      builder; Week's caption; no bar composed in the screen); CARD Daily paydown, both loans; the interest sites to the
+      cent;
+    - ⭐ CENTS — Daily's other figures: the month rollup; the borrow sheet's fee; the paydown sheet's minimum — its cents,
+      whatever the ordinal (δ2) — and, apart, ORDINAL the paydown sheet's due day (δ5); the minimum's estimate kept to
+      the cent; the sheet's estimate and price; the month review's totals and its Coinbase note; the sign-off seeds kept
+      to the cent; no seed rounds to a dollar;
+    - ⭐ CENTS — no whole-dollar figure on THIS MONTH or Daily: no `fmtUSD(` or `toLocaleString(` in DailyModeView,
+      PlanMonthCard, SafetyDashboard, PriceChart, dailyView, EventSheet, eventSheetModel, ReviewSheet, planMonthView or
+      MonthEventsModal (δ3, last); THIS MONTH's NDP card and its estimate, one NDP balance on both screens, the review's
+      NDP seed; the Safety card's price chart; the price chart and the month log whole by default; only the Outlook's
+      re-anchor stays whole on Simple mode's own lines.
+  - `crashPlaybookView.test.ts`: ⭐ `fmtStepUsdCents` — a step to the cent, floored (a capped shift never prints over the
+    line), none under $1; the line's five shift pins move to cents; the sweep's parity test reads the line's shift whole
+    (`wholeOf`) against the card's.
+  - `dailyView.test.ts` and `cbDebtSheet.test.ts`: the day log's amounts, a reading's balances, the Coinbase and Strike
+    rows and the stale-balance note to the cent (+1 test: a paydown, and the suggested balance).
+  - e2e, `planOfRecord.spec.ts` — "the plan of record — Run 2.1" (+2):
+    - E BARS caption · week · month · no caption in Month;
+    - E CENTS Daily row · no whole dollars on Daily · the price · THIS MONTH row and amount · the status to the cent · no
+      whole dollars on THIS MONTH. Each scan reads the screen's text — a whole figure before a comma or a full stop
+      counts — and needs more than five figures to the cent;
+    - E TODAY'S PRICE this month: dollars to the cent · this month: no label · E month 2 · E TODAY'S PRICE a later
+      month.
+  - Moved e2e pins: Run 2's MONTH test (the status, the to-do, the catch-up, "Why this plan?") and planLoadGuard's
+    "+$4,000.00 stacked", now tagged "E HEADLINE stacked, to the cent" (δ6).
+  - Sweep times (Node 26.11.1, the file alone): WORDS 6.4 s, the to-do CENTS sweep 0.8 s, the card's 0.5 s; in a loaded
+    full suite 14.3 s, 1.6 s and 1.1 s — all inside their 60 s.
+  - Red-first (a plain export of `520c233` with only the 7 test and e2e files): 37 red — 27 by an AssertionError, 10 by a
+    TypeError (`fmtUSDCents` 7 times; `planBars`, `fmtStepUsdCents` and `planNdpEstimateUsd` once each) — 2,677 passed,
+    every file loading; the full e2e (`--retries=0`) 4 red, 71 passed, 2 skipped: the two new tests at "E BARS caption"
+    and "E TODAY'S PRICE this month: dollars to the cent", Run 2's MONTH test at "DAILY status", HEADLINE at "E HEADLINE
+    stacked, to the cent".
+  - The mutations (spec §14.9): MC1–MC60, every one red at its tag by an AssertionError. 21 don't pass tsc and none needs
+    to — vitest never type-checks: eleven name a formatter their file doesn't import (MC20, MC21, MC24–MC28, MC32, MC33,
+    MC48, MC57), ten leave a name unused (MC15, MC17, MC35, MC49–MC51, MC53, MC55, MC56, MC58). Through the e2e
+    (`-g "Run 2.1"`, `--retries=0`, the unmutated control first): MC1 → E CENTS Daily row; MC3 → E TODAY'S PRICE a later
+    month; MC10, MC41, MC42 → E CENTS no whole dollars on Daily; MC15, MC23 → E BARS week; MC17 → E BARS caption.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -8738,7 +8944,7 @@ goes red.)
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
 - `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure). **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); `deriveForMonth` folds `minPayment` into the allocation identity; narration income-vs-capitalizes; **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run)
 - `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, a folded plan event applies both (cross-device — 4e: the plan channel), and a fold lacking them doesn't clobber (absent = not set, §6)
-- `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
+- `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD — to the cent since the plan of record's Run 2.1, as are a buy's "~$X", a minimum and a reading's balances; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
 - `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids. **v20 (C-P3):** `readingComplete` false when strikeCollateral null; reading carries strikeCollateral from `s.strikeCollateral` (falls back to the `currentStrikeCollateral` arg); manual override wins; `autoStrikeCollateral` post-move total (deposit+/withdraw−/pledged-buy+/else current); pledge ON → [buy,deposit target:'strike' amount=buy,reading] shared date+ts distinct ids, pledge OFF → [buy,reading]
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (neither `hydratePrefs` nor `applyViewerSettings` can write them — absent from SETTINGS_FIELDS)
@@ -11333,6 +11539,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | Every support-policy stress figure is support(t), never `price × (1 − buffer)` | The draw's ceilings, the refinance cap, the migration's keep and the sweep's keep are all measured AT SUPPORT (`supportPolicy.supportPath`), so a ceiling never loosens as the price rises. The only today's-price terms are the DEFENSE line (`cap × cbColl × price − cbDebt`, a floor under the ceiling) and Strike's own capacity/retrieval rules (lender facts). `supportPath` is built by the view and NEVER stressed or phase-shifted — the stress lens moves the price, not the line. A price-relative revert of the ceilings is caught by the ceiling-at-support tests; G2 catches a full reversion (the OFF-like behavior that pulls cold above support on the P2 family) |
 | The support policy's settings are the owner's SAVED plan, edited only in Settings' "Your plan" (the plan of record, Run 1) | Six synced plan fields (`lib/planPolicy` — the one source; C1 defaults; no off switch; no store bump). Settings' "Your plan" is the only place the owner edits them; a face's control is a what-if over the plan and never writes it; every reader — the faces, Settings, `usePlanMonth` (THIS MONTH and Daily, Run 2), the Emergency Console, THIS MONTH's crash line, the Outlook — reads them through the clamp (`planPolicyOf` / `clampPlanPolicy`). Pinned by `planPolicy.test.ts` (FACES, SETTINGS — the only editor, CONSOLE, READ) and `decisionWiring` I20. |
 | THIS MONTH, Daily and THE MOVE come from ONE builder (the plan of record, Run 2) | THIS MONTH, Daily and THE MOVE come from ONE builder (`planRun`): no main screen calls `runCyclingSim` or `placementPlan` itself (THIS MONTH's log overlay keeps `runAdvisor` until Run 3); every plan reader — the four faces and `usePlanMonth` — reads Coinbase only through `planCbCollateralOf` / `planCbLoanBalanceOf` (the crash gate keeps the Emergency Console's live inputs, behind the loan switch); every hold reader a viewer can reach reads Strike's hold only through `strikeDepositOf` → `strikeHoldAt`; and the two plan cards compose no sentence — every one comes from `planMonthView` (I31). Pinned by `planRunWiring.test.ts` (ONE, GATE, HOLD, CARD, I31) and `planRun.test.ts` (ONE, GATE). |
+| THIS MONTH, Daily and Daily's sheets print dollars to the cent (the plan of record, Run 2.1 — BL19) | THIS MONTH, Daily and Daily's sheets print dollars to the cent, through `fmtUSDCents` (a crash step through the floored `fmtStepUsdCents`). The Almanac faces, full mode, the Dashboard and the Outlook segment's own content keep their own formatters — among them `fmtUSD`'s whole dollars, the console's floored `fmtStepUsd` and the charts' `fmtTooltipUsd`. The Safety card sits above the This Month / Outlook switch and prints cents in both. A shared builder takes a formatter, whole by default — never a second copy of its words. Pinned by planRunWiring's "no whole-dollar figure" test and the e2e's page scans. |
 | Under the support policy, Morpho's seizure on the way down comes FIRST in the month, right after the interest | The carried loan at or past 86% at this month's price is seized at `cbLiquidationPrice` before any monthly action, repaid in full; the month runs on the survivor. Month 0 and the policy-off engine keep the month-end reading. Never move it later in the month (a rescue would then outrun a seizure the price already crossed), and never let it fire without the policy (the policy-off engine is the G1 golden). The kill criterion (I1, `seizeOnTheWayDown.test.ts`): a run it doesn't fire on equals its month-end reading; one it fires on at L is identical through L − 1 |
 | Cold is never retrieved at or above support for a position that opens inside both ceilings | Gate G2 (`coldRetrievedAboveSupportBtc === 0`, plus a per-row check on every A5 path). It is SCOPED: an opening over a ceiling can legitimately pull cold at support — the field counts it, a test pins that, and Run 2's card must say so in the alarm style. Never widen the gate by dropping the scope, and never narrow it by dropping paths |
 | Every opening figure on a face includes the cold reserve, and no Almanac face passes `deriveOwnership`'s cold parameter — the engine's `btcHeld` already holds it | The three engine faces read `getCurrentColdBtc()` into `openingColdBtc`; `openingBtc = strike + CB + cold` feeds every "from X ₿", the seed row and "Opening position" — leaving the reserve out reads an unspent reserve as bitcoin gained. A 4th `deriveOwnership` argument would count the pool twice (`yoursShare` is clamped, so the wrong answer still looks plausible). Both pinned by `coldWiring.test.ts` (the deriveOwnership check walks the whole `src/components/Almanac/` directory) |
@@ -11351,7 +11558,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | THE MOVE's copy lives in `moveCard`, and the cliff is `cbMetrics().liqPrice` | Every line THE MOVE shows is built as DATA by `moveCard` (`decisionView.ts`), in §7's order, each with a tone — the face renders them and composes nothing, because a sentence written in JSX is a sentence no test can reach. The Coinbase seizure price is `cbMetrics(...).liqPrice` wherever it prints (`moveCard`), draws (`cliffPath`) or ranks (the Worst (modeled) cushion) — the same formula the Safety Dashboard and the CB Loan tab already use, never a second one. Per projected row it is ALWAYS `cbSeizurePrice` (cbMetrics), the one rule the cliff and the ranking share (W1; a source guard fails if either computes its own) — and, since Policy v2 Run B, the support policy card's cliff line and the three parent faces' charts (`chartCliffUsd`; `chartOwnershipRows` has no formula of its own). It is null under the dust floor for the debt AND for the price (R9). No cliff sentence prints "0%" or "100% below": both go through `fmtBelowPct` (F11) |
 | `crashPlaybook` is the one crash-day answer. The engine's month equals it with the Strike cap off (the parity test) — never fork it | `runCyclingSim` runs the playbook inline (it adds the Strike cap's reserve and survival guard); `crashPlaybook` (the Run 2 / Run 3 surfaces' answer) runs the same sequence with the engine's exact arithmetic. A parity test pins them equal, bit for bit, with the Strike cap off. A change to one side fails it — change both, or neither. After a top-up-first step, a shift under `SHIFT_DUST_USD` is dust on BOTH sides. `playbookInputFromLive` (crashPlaybookView) is the one builder of a live `CrashPlaybookInput` — the console and the Monthly Playbook's THIS MONTH line both build through it; never copy it. The card (`playbookCard`) and the line (`monthPlaybookLine`) read one private reading, so they never disagree on a step, a gap or an outcome |
 | The console's doom warning keys off the after-state (≥ 86%), never `result.doomed` | `doomed` is read at the open, from collateral alone (`possible < need`). So a doomed-at-open run can still be brought under 86% by the debt shift (held or short, never doom), and an exact tie — e.g. zero needed at an exact-86% open with nothing movable — is not doomed, yet ends AT 86% (doom, under whichever badge its order gives). The after-state is the only honest read. Pinned both ways in `crashPlaybookView.test.ts`: keying the warning off `result.doomed` turns the doomed-but-saved ⭐ and the exact-86% ⭐ red |
-| Every crash-day step amount is floored to its printed precision | A binding Strike release is 0.5999999996 ₿: rounded to 5 dp it prints `0.60000` — exactly the 50% Strike refuses — and a line-capped shift of $3,487.50 must print `$3,487`, never a draw over the line. `fmtStepBtc` (5 dp, then 8 dp, none under a satoshi) and `fmtStepUsd` (whole dollars, none under $1), with a float guard (`0.3 − 0.25` still prints `0.05000`). Pinned by the short fixture (rounding prints `0.60000` → red) and the formatter ⭐s |
+| Every crash-day step amount is floored to its printed precision | A binding Strike release is 0.5999999996 ₿: rounded to 5 dp it prints `0.60000` — exactly the 50% Strike refuses — and a line-capped shift of $3,487.50 must print `$3,487` on the console (`$3,487.50` on THIS MONTH), never a draw over the line. `fmtStepBtc` (5 dp, then 8 dp, none under a satoshi), `fmtStepUsd` (whole dollars, none under $1 — the console's card) and `fmtStepUsdCents` (to the cent, none under $1 — THIS MONTH's line, the plan of record's Run 2.1), with a float guard (`0.3 − 0.25` still prints `0.05000`). Pinned by the short fixture (rounding prints `0.60000` → red), the formatter ⭐s and the cents step's ⭐ (rounding to the cent instead of flooring → red) |
 | The projection's Coinbase paydown is always labelled `CB_PAYDOWN_LABEL` | `runAdvisor` models only the debt shift — a Strike draw that pays Coinbase down — while the crash playbook may top up first, so a bare "CB paydown" reads as the plan. `CB_PAYDOWN_LABEL` ("CB paydown (if you shift debt)", crashPlaybookView) is the one label, at two sites since the plan of record's Run 2 (where `runAdvisor` still renders): OutlookProjection's `ltvTriggered` header and legend, and AdvisorMain's CB LTV alert. THIS MONTH and Daily run the plan, whose own defense rows name their move, so the label (and Box 3's `IF_YOU_SHIFT_DEBT` suffix) left them. `monthlyPlaybookWiring.test.ts` fails if either site says "CB paydown" or "pay down CB" — comments included — or if SimpleModeView, DailyModeView or PlanMonthCard names the label again, and pins the JSX spacing beside each label (a line break next to an expression drops the space). The other "CB paydown" wordings name different things and stay: the CB Loan tab's Emergency Protocol, the Advisor sidebar's tier rules, LiqSimulator's monthly mode, and the journal's CB paydown event |
 | The verdict compares all-in equity on both sides (unpaid bills and reserve cash counted) | `verdictVsNeverDraw` compares `allInEquity` (equity − unpaid bills − reserve cash spent on bills and cures) with `baselineAllInEquity` (baseline equity − its own unpaid bills). Equity alone counts an unpaid bill as free and outside cash as a gain. The Net-equity tile's VALUE stays raw |
 | Policy objects on a face are memoised on stable identities, or the lens reset fires every render | `policyRaw` / `policySettings` / `supportPath` / `supportPolicy` are each a `useMemo`, and `supportPolicy` sits in BOTH `engineInputs` and the lens-reset deps. An object built during render has a new identity every render: `engineInputs` rebuilds, both engine runs re-run, and the lens-reset effect fires on every render, so an engaged price stress dies at once — the `useStressLens` bug class. Pinned by `supportPolicyWiring.test.ts` + `resetMirror.test.ts` |

@@ -1,8 +1,8 @@
 // Pure display helpers for the Daily Mode view (P4a, read-only). Standalone — NO store/UI/price
 // dependency (the only imports are the pure bucketEventToMonth helper, the DayEvent type, and the
-// pure fmtUSD formatter). Any USD-from-spot-price estimate stays in the component.
+// pure fmtUSDCents formatter). Any USD-from-spot-price estimate stays in the component.
 import { bucketEventToMonth, flowVenue } from '../../simulation/logUtils';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSDCents } from '../../utils/format';
 import type { DayEvent } from '../../simulation/types';
 
 /**
@@ -35,26 +35,28 @@ const TARGET_LABEL: Record<'strike' | 'cb' | 'cold', string> = { strike: 'Strike
  *  - flows: draw / buy (shows usd when present) / paydown
  *  - collateral moves: deposit / withdraw (with target)
  *  - readings: balanceReading (Strike always, CB when present) / cbCollateralReading
+ * Every dollar figure shows its cents (plan of record Run 2.1, BL19): a draw, a borrow and its fee, a paydown, Strike's
+ * minimum, a reading's balances and a buy's "~$X".
  */
 export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
   switch (ev.kind) {
     case 'draw':
-      // Venue-first, like "Deposit to Coinbase". A Strike row stays byte-identical (pinned).
+      // Venue-first, like "Deposit to Coinbase". A Strike row keeps its label (pinned); since Run 2.1 its amount shows cents.
       if (flowVenue(ev) === 'cb') {
-        return { icon: '↓', label: 'Coinbase borrow', detail: ev.fee && ev.fee > 0 ? `${fmtUSD(ev.amount)} · fee ${fmtUSD(ev.fee)}` : fmtUSD(ev.amount) };
+        return { icon: '↓', label: 'Coinbase borrow', detail: ev.fee && ev.fee > 0 ? `${fmtUSDCents(ev.amount)} · fee ${fmtUSDCents(ev.fee)}` : fmtUSDCents(ev.amount) };
       }
-      return { icon: '↓', label: 'Credit-line draw', detail: fmtUSD(ev.amount) };
+      return { icon: '↓', label: 'Credit-line draw', detail: fmtUSDCents(ev.amount) };
     case 'buy':
       return {
         icon: '₿',
         label: 'Bought Bitcoin',
-        detail: ev.usd !== undefined ? `${btc(ev.amount)} (~${fmtUSD(ev.usd)})` : btc(ev.amount),
+        detail: ev.usd !== undefined ? `${btc(ev.amount)} (~${fmtUSDCents(ev.usd)})` : btc(ev.amount),
       };
     case 'paydown':
-      if (flowVenue(ev) === 'cb') return { icon: '↘', label: 'Coinbase paydown', detail: fmtUSD(ev.amount) };
-      return { icon: '↘', label: 'BLOC paydown', detail: fmtUSD(ev.amount) };
+      if (flowVenue(ev) === 'cb') return { icon: '↘', label: 'Coinbase paydown', detail: fmtUSDCents(ev.amount) };
+      return { icon: '↘', label: 'BLOC paydown', detail: fmtUSDCents(ev.amount) };
     case 'minPayment':
-      return { icon: '◇', label: 'Strike minimum', detail: fmtUSD(ev.amount) };
+      return { icon: '◇', label: 'Strike minimum', detail: fmtUSDCents(ev.amount) };
     case 'deposit':
       return { icon: '+', label: `Deposit to ${TARGET_LABEL[ev.target]}`, detail: btc(ev.amount) };
     case 'withdraw':
@@ -63,9 +65,9 @@ export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
       return { icon: '◈', label: 'CB collateral reading', detail: btc(ev.cbCollateral) };
     case 'balanceReading': {
       const r = ev.reading;
-      let detail = `Strike ${fmtUSD(r.strikeBal)} (${pct(r.strikeLtv)} LTV)`;
+      let detail = `Strike ${fmtUSDCents(r.strikeBal)} (${pct(r.strikeLtv)} LTV)`;
       if (r.cbBal !== undefined) {
-        detail += ` · CB ${fmtUSD(r.cbBal)}${r.cbLtv !== undefined ? ` (${pct(r.cbLtv)} LTV)` : ''}`;
+        detail += ` · CB ${fmtUSDCents(r.cbBal)}${r.cbLtv !== undefined ? ` (${pct(r.cbLtv)} LTV)` : ''}`;
       }
       return { icon: '◉', label: 'Balance reading', detail };
     }

@@ -26,6 +26,8 @@ interface MonthlyLogOverlayProps {
   collateralBtc:  number;
   openInEditMode?: boolean;        // open a logged month straight in the edit form (default: view-first)
   onClose:        () => void;
+  /** How its dollars print: whole in full mode (the default); THIS MONTH passes `fmtUSDCents` (Run 2.1, BL19). */
+  money?:         (n: number) => string;
 }
 
 interface OverlayForm {
@@ -93,7 +95,7 @@ function FormField({ label, value, onChange, step = 'any', prefix, suffix, input
   );
 }
 
-export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInEditMode, onClose }: MonthlyLogOverlayProps) {
+export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInEditMode, onClose, money = fmtUSD }: MonthlyLogOverlayProps) {
   const monthlyLog      = useStore((s) => s.monthlyLog);
   const upsertLogEntry  = useStore((s) => s.upsertLogEntry);
   const advisorStartDate = useStore((s) => s.advisorStartDate);
@@ -326,13 +328,13 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
               {(logged.collateralAdjustment ?? 0) !== 0 && (
                 <ViewRow label="ADJ" value={`${logged.collateralAdjustment! > 0 ? '+' : ''}${logged.collateralAdjustment!.toFixed(5)} ₿`} />
               )}
-              <ViewRow label="Income → BTC"   value={fmtUSD(logged.income)} />
-              <ViewRow label="BLOC Paydown"   value={fmtUSD(logged.paydown)} />
-              <ViewRow label="Strike Balance" value={fmtUSD(logged.strikeBal)} />
+              <ViewRow label="Income → BTC"   value={money(logged.income)} />
+              <ViewRow label="BLOC Paydown"   value={money(logged.paydown)} />
+              <ViewRow label="Strike Balance" value={money(logged.strikeBal)} />
               <ViewRow label="Strike LTV"     value={`${fmtLtvPct(logged.strikeLtv, 2)}`} />
               {/* RECORDED Strike collateral — "—" when the month never recorded it. */}
               <ViewRow label="Strike collateral" value={logged.btcHeld != null ? `${logged.btcHeld.toFixed(5)} ₿` : '—'} />
-              {hasCbLoan && logged.cbBal != null && <ViewRow label="CB Balance" value={fmtUSD(logged.cbBal)} />}
+              {hasCbLoan && logged.cbBal != null && <ViewRow label="CB Balance" value={money(logged.cbBal)} />}
               {hasCbLoan && logged.cbLtv != null && <ViewRow label="CB LTV"     value={`${fmtLtvPct(logged.cbLtv, 1)}`} />}
               {showMiningInLog && logged.miningSats != null && <ViewRow label="Mining Sats" value={logged.miningSats.toLocaleString()} />}
             </div>
@@ -390,8 +392,8 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
         {row ? (
           <div className={styles.viewGrid}>
             <ViewRow label="BTC Bought"     value={`+${row.btcBought.toFixed(5)} ₿`} proj />
-            <ViewRow label="Income → BTC"   value={fmtUSD(row.incomeToBtc)} proj />
-            <ViewRow label="Strike Balance" value={fmtUSD(row.blocBalance)} proj />
+            <ViewRow label="Income → BTC"   value={money(row.incomeToBtc)} proj />
+            <ViewRow label="Strike Balance" value={money(row.blocBalance)} proj />
             {hasCbLoan && <ViewRow label="CB LTV" value={`${fmtLtvPct(row.cbLtv, 1)}`} proj />}
           </div>
         ) : (

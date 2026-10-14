@@ -2,7 +2,8 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
-  strikeHoldFrom, strikeHoldAt, playbookInputFromLive, fmtStepBtc, fmtStepUsd, fmtMultiplePair, waitingCard, playbookCard,
+  strikeHoldFrom, strikeHoldAt, playbookInputFromLive, fmtStepBtc, fmtStepUsd, fmtStepUsdCents, fmtMultiplePair, waitingCard,
+  playbookCard,
   monthPlaybookLine, playbookDepthFor,
   STRIKE_HOLD_DAYS, SAT_BTC, type LivePlaybookFigures, type PlaybookCard, type MonthPlaybookLine,
 } from '../crashPlaybookView';
@@ -194,6 +195,14 @@ describe('the step formatters', () => {
     expect(fmtStepUsd(0.3)).toBeNull();
     expect(fmtStepUsd(0.9999)).toBeNull();
     expect(fmtStepUsd(NaN)).toBeNull();
+  });
+
+  it('⭐ fmtStepUsdCents floors to the cent (THIS MONTH, BL19); under $1 is still not a step', () => {
+    expect(fmtStepUsdCents(3487.5), 'CENTS a step to the cent').toBe('$3,487.50');
+    expect(fmtStepUsdCents(10_000.555), 'CENTS floored, never rounded up — a capped shift never prints over the line').toBe('$10,000.55');
+    expect(fmtStepUsdCents(19_000)).toBe('$19,000.00');
+    expect(fmtStepUsdCents(1)).toBe('$1.00');
+    expect([fmtStepUsdCents(0.3), fmtStepUsdCents(0.9999), fmtStepUsdCents(NaN)], 'CENTS under $1, no step — the card\'s rule').toEqual([null, null, null]);
   });
 
   it('⭐ fmtMultiplePair widens until the two differ', () => {
@@ -451,16 +460,16 @@ const LINE_CASES: [string, Over, MonthPlaybookLine | null][] = [
   ['⭐ three listed steps',
     { price: 50_000, cbDebt: 127_500, cbCollateralBtc: 3, strikeBalance: 0, creditLine: 10_000, coldBtc: 0.1 },
     { order: LINE_SHIFT, pastLiquidation: null, gap: null,
-      steps: ['Shift $10,000 to Strike', 'Move ₿0.10000 from cold', 'Release ₿0.25714 from Strike'], outcome: LINE_HELD }],
+      steps: ['Shift $10,000.00 to Strike', 'Move ₿0.10000 from cold', 'Release ₿0.25714 from Strike'], outcome: LINE_HELD }],
   ['⭐ doomed at the open, saved by the shift', { cbDebt: 75_000, dayLog: [move('2026-09-01')] },
-    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $19,000 to Strike'], outcome: LINE_HELD }],
+    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $19,000.00 to Strike'], outcome: LINE_HELD }],
   ['the doom outcome', { cbDebt: 75_000, strikeBalance: 36_000, coldBtc: 0.02 },
-    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $4,000 to Strike'], outcome: LINE_DOOM }],
+    { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: null, steps: ['Shift $4,000.00 to Strike'], outcome: LINE_DOOM }],
   ['⭐ short', { cbDebt: 204_000, cbCollateralBtc: 3, strikeBalance: 16_000 },
     { order: LINE_TOP, pastLiquidation: null, gap: null, steps: ['Release ₿0.59999 from Strike'],
       outcome: { kind: 'short', text: 'Still ₿0.04286 short of 70%' } }],
   ['gap: Strike over 40%', { strikeBalance: 36_000 },
-    { order: LINE_TOP, pastLiquidation: null, gap: 'Nothing to top up with', steps: ['Shift $4,000 to Strike'],
+    { order: LINE_TOP, pastLiquidation: null, gap: 'Nothing to top up with', steps: ['Shift $4,000.00 to Strike'],
       outcome: LINE_HELD }],
   ['gap: a $0.30 line', { price: 50_000, cbDebt: 50_000, creditLine: 8_000.30, coldBtc: 0.5 },
     { order: LINE_SHIFT, pastLiquidation: LINE_PAST, gap: 'No room on the Strike line',
@@ -471,7 +480,7 @@ const LINE_CASES: [string, Over, MonthPlaybookLine | null][] = [
   ['gap: the exact-86% tie', { cbDebt: 68_800, strikeBalance: 40_000 },
     { order: LINE_TOP, pastLiquidation: LINE_PAST, gap: 'No step available', steps: [], outcome: LINE_DOOM }],
   ['at or above support', { price: 110_000, cbDebt: 80_000 },
-    { order: LINE_SHIFT, pastLiquidation: null, gap: null, steps: ['Shift $3,000 to Strike'], outcome: LINE_HELD }],
+    { order: LINE_SHIFT, pastLiquidation: null, gap: null, steps: ['Shift $3,000.00 to Strike'], outcome: LINE_HELD }],
 ];
 
 describe('monthPlaybookLine — the THIS MONTH line, one exact object per shape', () => {
@@ -539,9 +548,15 @@ describe('⭐ the sweep — the spec grid, every card clean', () => {
   const lineTexts = (l: MonthPlaybookLine): string[] =>
     [l.order, l.pastLiquidation, l.gap, ...l.steps, l.outcome.text].filter((x): x is string => typeof x === 'string');
 
-  it("⭐ the THIS MONTH line lists exactly the card's steps — same count, same order, same printed amount", () => {
-    for (const c of cases) expect((c.line?.steps ?? []).map(amount), at(c)).toEqual(c.card.steps.map(amount));
+  // The line prints a shift to the cent and the card in whole dollars (BL19); both floor, so the line's dollars are the
+  // card's with their cents dropped.
+  const wholeOf = (s: string): string | undefined => (s.startsWith('Shift ') ? amount(s)?.replace(/\.\d{2}$/, '') : amount(s));
+  it("⭐ the THIS MONTH line lists exactly the card's steps — same count, same order, the same amount (the line's to the cent)", () => {
+    for (const c of cases) expect((c.line?.steps ?? []).map(wholeOf), at(c)).toEqual(c.card.steps.map(amount));
     expect(cases.some((c) => c.line?.steps.length === 3)).toBe(true);   // non-vacuous: a line lists three steps
+    const shifts = cases.flatMap((c) => (c.line?.steps ?? []).filter((x) => x.startsWith('Shift ')));
+    expect(shifts.length, 'CENTS premise: the sweep lists shifts').toBeGreaterThan(0);
+    for (const x of shifts) expect(x, 'CENTS the line\'s shift to the cent').toMatch(/^Shift \$\d{1,3}(?:,\d{3})*\.\d{2} to Strike$/);
   });
 
   it('the line is null iff the order is none, and agrees with the card on the outcome, the gap and past 86%', () => {

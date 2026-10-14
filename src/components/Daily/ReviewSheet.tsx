@@ -9,7 +9,7 @@
 // closed) and hands them back via onConfirm(extras); the host owns confirmMonth + the side-effects.
 import { useState, useEffect } from 'react';
 import { DraggableSheet } from '../ui/DraggableSheet';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSDCents, toCents } from '../../utils/format';
 import { formatMoves, type MonthRollup } from './calendarModel';
 import styles from './ReviewSheet.module.css';
 
@@ -37,12 +37,13 @@ interface ReviewSheetProps {
 }
 
 // The month's Coinbase borrow/paydown — journal-only, so NOT in the totals above. Null when there are none.
+// To the cent, like the totals (plan of record Run 2.1, BL19).
 function cbFlowsNote(rollup: MonthRollup): string | null {
   const { cbDraw, cbFee, cbPaydown } = rollup.streams;
   if (!(cbDraw > 0) && !(cbPaydown > 0)) return null;
   const parts: string[] = [];
-  if (cbDraw > 0) parts.push(`a Coinbase borrow of ${fmtUSD(cbDraw)}${cbFee > 0 ? ` (+${fmtUSD(cbFee)} fee)` : ''}`);
-  if (cbPaydown > 0) parts.push(`a Coinbase paydown of ${fmtUSD(cbPaydown)}`);
+  if (cbDraw > 0) parts.push(`a Coinbase borrow of ${fmtUSDCents(cbDraw)}${cbFee > 0 ? ` (+${fmtUSDCents(cbFee)} fee)` : ''}`);
+  if (cbPaydown > 0) parts.push(`a Coinbase paydown of ${fmtUSDCents(cbPaydown)}`);
   return `This month also has ${parts.join(' and ')} — not counted above.`
     + (cbPaydown > 0 ? ' If a Strike draw paid it down, that draw is inside "Drawn" — take it out of Expenses actually paid.' : '')
     + (cbDraw > 0 ? ' A Strike paydown funded by the borrow counts as BLOC paydown.' : '');
@@ -54,11 +55,12 @@ export function ReviewSheet({
   onClose, onConfirm, onAddReading,
 }: ReviewSheetProps) {
   const isIncome = source === 'income';
-  // Drafts seed fresh on each open (the sheet unmounts when closed → useState initializers re-run).
-  const [expenses, setExpenses]     = useState(Math.round(rollup.streams.draw));
-  const [strikeMin, setStrikeMin]   = useState(Math.round(strikeMinPrefill));
+  // Drafts seed fresh on each open (the sheet unmounts when closed → useState initializers re-run). Seeded to the cent:
+  // what a sign-off stores unless edited is never a rounded dollar (plan of record Run 2.1, BL19).
+  const [expenses, setExpenses]     = useState(toCents(rollup.streams.draw));
+  const [strikeMin, setStrikeMin]   = useState(toCents(strikeMinPrefill));
   const [ndpChecked, setNdpChecked] = useState(false);
-  const [ndpPaid, setNdpPaid]       = useState(Math.round(ndpPrefill));
+  const [ndpPaid, setNdpPaid]       = useState(toCents(ndpPrefill));
 
   // P1 DraggableSheet dirty-guard — a `touched` flag flipped only by real user input (DraggableSheet's
   // onChangeCapture). Reset on each open (robust whether the sheet mounts fresh or stays mounted). A pristine
@@ -88,7 +90,7 @@ export function ReviewSheet({
         <div className={styles.summary}>
           <div className={styles.sumRow}>
             <span className={styles.sumLabel}>Drawn (expenses)</span>
-            <span className={styles.sumVal}>{fmtUSD(rollup.streams.draw)}</span>
+            <span className={styles.sumVal}>{fmtUSDCents(rollup.streams.draw)}</span>
           </div>
           <div className={styles.sumRow}>
             <span className={styles.sumLabel}>Bought bitcoin</span>
@@ -96,7 +98,7 @@ export function ReviewSheet({
           </div>
           <div className={styles.sumRow}>
             <span className={styles.sumLabel}>BLOC paydown</span>
-            <span className={styles.sumVal}>{fmtUSD(rollup.streams.paydown)}</span>
+            <span className={styles.sumVal}>{fmtUSDCents(rollup.streams.paydown)}</span>
           </div>
           {/* 5c rider — was "Net collateral" (buys + Strike deposits − Strike withdrawals): a Strike → Coinbase move read as
               coins leaving. The moves now show as moves, and only when there are any. */}

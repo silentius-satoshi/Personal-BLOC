@@ -56,6 +56,11 @@ const CRASH_KINDS: ReadonlySet<ActionKind> = new Set<ActionKind>([
 /** BTC to 3 dp — the schedule's and the card's one ₿ format. Never called below `DISPLAY_DUST_BTC`. */
 export const fmtBtc3 = (n: number): string => n.toFixed(3);
 
+/** A dollar formatter. The face prints whole dollars (`fmtUSD`, the default everywhere here); THIS MONTH and Daily
+ *  pass `fmtUSDCents` through `planSchedule`, so "Why this plan?" reads the face's own words to the cent (Run 2.1,
+ *  BL19). The words never change — only how their dollars print. */
+export type UsdFmt = (n: number) => string;
+
 /**
  * THE ONE field → action table, in the engine's own month order. Every row field that is an owner ACTION, an unpaid
  * bill or an event is here; the completeness sweep enumerates this list, so a field added to `CyclingRow` without a
@@ -66,34 +71,34 @@ interface ActionField {
   /** The row field this reads. `null` for the liquidation event, which is a month, not an amount. */
   field: keyof CyclingRow | null;
   unit: 'usd' | 'btc';
-  text: (row: CyclingRow) => string;
+  text: (row: CyclingRow, usd?: UsdFmt) => string;
 }
 
 export const ACTION_FIELDS: readonly ActionField[] = [
-  { kind: 'draw', field: 'strikeDrawn', unit: 'usd', text: (r) => `Draw ${fmtUSD(r.strikeDrawn)} on Strike for bills.` },
+  { kind: 'draw', field: 'strikeDrawn', unit: 'usd', text: (r, usd = fmtUSD) => `Draw ${usd(r.strikeDrawn)} on Strike for bills.` },
   {
     kind: 'cashToBills', field: 'cashToBillsUsd', unit: 'usd',
-    text: (r) => `Pay ${fmtUSD(r.cashToBillsUsd)} of bills from your cash reserve.`,
+    text: (r, usd = fmtUSD) => `Pay ${usd(r.cashToBillsUsd)} of bills from your cash reserve.`,
   },
-  { kind: 'unpaid', field: 'unfundedUsd', unit: 'usd', text: (r) => `${fmtUSD(r.unfundedUsd)} of bills go unpaid.` },
+  { kind: 'unpaid', field: 'unfundedUsd', unit: 'usd', text: (r, usd = fmtUSD) => `${usd(r.unfundedUsd)} of bills go unpaid.` },
   {
     kind: 'payMinimum', field: 'strikeMinPaidUsd', unit: 'usd',
-    text: (r) => `Pay Strike's minimum, ${fmtUSD(r.strikeMinPaidUsd)}, from income.`,
+    text: (r, usd = fmtUSD) => `Pay Strike's minimum, ${usd(r.strikeMinPaidUsd)}, from income.`,
   },
   {
     kind: 'repayStrike', field: 'strikeRepaidUsd', unit: 'usd',
-    text: (r) => `Repay ${fmtUSD(r.strikeRepaidUsd)} of Strike from spare income.`,
+    text: (r, usd = fmtUSD) => `Repay ${usd(r.strikeRepaidUsd)} of Strike from spare income.`,
   },
   {
     kind: 'repayCoinbase', field: 'cbRepaidUsd', unit: 'usd',
-    text: (r) => `Repay ${fmtUSD(r.cbRepaidUsd)} of Coinbase from spare income.`,
+    text: (r, usd = fmtUSD) => `Repay ${usd(r.cbRepaidUsd)} of Coinbase from spare income.`,
   },
   {
     kind: 'buy', field: 'btcBoughtUsd', unit: 'usd',
     // fmtBtc3 is never called below the dust floor: a buy under it has no "≈ 0.000 ₿" (Run 2 — THIS MONTH prints this).
-    text: (r) => {
+    text: (r, usd = fmtUSD) => {
       const btc = r.price > 0 ? r.btcBoughtUsd / r.price : 0;
-      return `Buy ${fmtUSD(r.btcBoughtUsd)} of bitcoin${shownBtc(btc) ? ` (≈ ${fmtBtc3(btc)} ₿)` : ''} and pledge it to Coinbase.`;
+      return `Buy ${usd(r.btcBoughtUsd)} of bitcoin${shownBtc(btc) ? ` (≈ ${fmtBtc3(btc)} ₿)` : ''} and pledge it to Coinbase.`;
     },
   },
   {
@@ -104,8 +109,8 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   {
     kind: 'refinance', field: 'refinancedUsd', unit: 'usd',
     // A fee under the dust floor is not named — the schedule never prints "$0" (Run 2 — THIS MONTH prints this).
-    text: (r) => `Move ${fmtUSD(r.refinancedUsd)} of Strike debt to Coinbase`
-      + `${shownUsd(r.refinancedFeeUsd) ? ` (Coinbase's fee: ${fmtUSD(r.refinancedFeeUsd)})` : ''}.`,
+    text: (r, usd = fmtUSD) => `Move ${usd(r.refinancedUsd)} of Strike debt to Coinbase`
+      + `${shownUsd(r.refinancedFeeUsd) ? ` (Coinbase's fee: ${usd(r.refinancedFeeUsd)})` : ''}.`,
   },
   {
     kind: 'coldToCoinbase', field: 'topUpFromColdBtc', unit: 'btc',
@@ -117,7 +122,7 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   },
   {
     kind: 'debtShift', field: 'defenseDrawnUsd', unit: 'usd',
-    text: (r) => `Draw ${fmtUSD(r.defenseDrawnUsd)} on Strike and pay Coinbase down with it.`,
+    text: (r, usd = fmtUSD) => `Draw ${usd(r.defenseDrawnUsd)} on Strike and pay Coinbase down with it.`,
   },
   {
     kind: 'coldToStrike', field: 'strikeTopUpBtc', unit: 'btc',
@@ -125,11 +130,11 @@ export const ACTION_FIELDS: readonly ActionField[] = [
   },
   {
     kind: 'defenseShort', field: 'defenseShortfallUsd', unit: 'usd',
-    text: (r) => `The defense falls ${fmtUSD(r.defenseShortfallUsd)} short — Coinbase stays over its defense line.`,
+    text: (r, usd = fmtUSD) => `The defense falls ${usd(r.defenseShortfallUsd)} short — Coinbase stays over its defense line.`,
   },
   {
     kind: 'cashCure', field: 'cashToCureUsd', unit: 'usd',
-    text: (r) => `Pay ${fmtUSD(r.cashToCureUsd)} from your cash reserve to cure Strike's margin call.`,
+    text: (r, usd = fmtUSD) => `Pay ${usd(r.cashToCureUsd)} from your cash reserve to cure Strike's margin call.`,
   },
   {
     kind: 'coldCure', field: 'strikeCureColdBtc', unit: 'btc',
@@ -162,7 +167,9 @@ export const MONTH_END_SEIZURE: SeizureRead = { onTheWayDown: false, priceUsd: n
  *  schedule never prints "$0" or "0.000 ₿". The liquidation is listed where it happened: LAST at a month-end seizure
  *  (after the month acted), FIRST on the way down (before it did — the actions after it are the survivor's), naming
  *  the price only above the dust floor. */
-export function rowActions(row: CyclingRow, liqMonth: number | null, seizure: SeizureRead = MONTH_END_SEIZURE): Action[] {
+export function rowActions(
+  row: CyclingRow, liqMonth: number | null, seizure: SeizureRead = MONTH_END_SEIZURE, usd: UsdFmt = fmtUSD,
+): Action[] {
   const out: Action[] = [];
   for (const f of ACTION_FIELDS) {
     if (f.field === null) {
@@ -170,16 +177,16 @@ export function rowActions(row: CyclingRow, liqMonth: number | null, seizure: Se
       if (seizure.onTheWayDown) {
         // The liquidation is ACTION_FIELDS' last entry, so every other action is already in `out`.
         const p = seizure.priceUsd;
-        const at = p !== null && shownUsd(p) ? `, at ${fmtUSD(p)}` : '';
+        const at = p !== null && shownUsd(p) ? `, at ${usd(p)}` : '';
         out.unshift({ kind: f.kind, usd: null, btc: null, text: `Coinbase liquidates the loan on the way down${at}.` });
       } else {
-        out.push({ kind: f.kind, usd: null, btc: null, text: f.text(row) });
+        out.push({ kind: f.kind, usd: null, btc: null, text: f.text(row, usd) });
       }
       continue;
     }
     const v = amountOf(row, f);
     if (f.unit === 'usd' ? !shownUsd(v) : !shownBtc(v)) continue;
-    out.push({ kind: f.kind, usd: f.unit === 'usd' ? v : null, btc: f.unit === 'btc' ? v : null, text: f.text(row) });
+    out.push({ kind: f.kind, usd: f.unit === 'usd' ? v : null, btc: f.unit === 'btc' ? v : null, text: f.text(row, usd) });
   }
   return out;
 }
@@ -216,7 +223,7 @@ export function todayActions(plan: PlacementPlan): Action[] {
   return out;
 }
 
-export function planSchedule(sim: CyclingResult, plan: PlacementPlan): ScheduleRow[] {
+export function planSchedule(sim: CyclingResult, plan: PlacementPlan, usd: UsdFmt = fmtUSD): ScheduleRow[] {
   // ⚠ Today's move is the POLICY's: when the run did not apply it (off, or ignored), THE MOVE card names no move,
   // so neither does the Today row — and it shows no keep, as the policy-absent rows below it don't.
   const rows: ScheduleRow[] = [{
@@ -229,7 +236,7 @@ export function planSchedule(sim: CyclingResult, plan: PlacementPlan): ScheduleR
   }];
   for (const row of sim.rows) {
     if (row.m === 0) continue;
-    const actions = rowActions(row, sim.liqMonth, { onTheWayDown: sim.seizedOnTheWayDown, priceUsd: sim.seizurePriceUsd });
+    const actions = rowActions(row, sim.liqMonth, { onTheWayDown: sim.seizedOnTheWayDown, priceUsd: sim.seizurePriceUsd }, usd);
     rows.push({
       m: row.m,
       label: `Month ${row.m}`,

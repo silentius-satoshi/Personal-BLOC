@@ -5,13 +5,16 @@ import {
   planRowAmountColor, planBreakerSource, planBreakerLine, loggedMonthRows, loggedMonthAfter, loggedMonthStatus,
   venueSegments, venuesOf, VENUE_COLOR, PLAN_ROW_LABELS, PLAN_CRASH_TITLE, fmtDayOrdinal, planMinimumOwed,
   planMinimumLine, planInterestRollsLine, planInterestRollsNote, planNdpLine, planLedgerParts, planLedgerTargets,
-  planNextMonthLine, planSavingsLine, planPriceLine, planMeterAria, planSignoffLine, planSignoffSub, type PlanRow,
+  planNextMonthLine, planSavingsLine, planPriceLine, planMeterAria, planSignoffLine, planSignoffSub, planBars, planNdpEstimateUsd,
+  planNdpBalance,
+  planBarsCaption, PLAN_AT_TODAYS_PRICE, type PlanRow,
 } from '../planMonthView';
 import { planSchedule, todayActions, ACTION_FIELDS, type ActionKind } from '../decisionView';
 import { cbSeizurePrice } from '../../../simulation/cbMetrics';
+import { getNdpStatus } from '../../../simulation/runAdvisor';
 import { CB_LLTV } from '../../../simulation/runCoinbaseLoan';
 import { PLAN_POLICY_DEFAULTS, PLAN_POLICY_RANGES } from '../../../lib/planPolicy';
-import { fmtUSD, shownUsd as shownUsdOf } from '../../../utils/format';
+import { fmtUSD, fmtUSDCents, toCents, shownUsd as shownUsdOf } from '../../../utils/format';
 import { fmtBelowPct, policyIgnoredNote } from '../supportPolicyView';
 import type { CyclingRow } from '../../../simulation/cyclingSim';
 import type { MonthlyLogEntry } from '../../../simulation/types';
@@ -58,7 +61,9 @@ for (const [income, cashReserveMonths] of [[6_000, 0], [4_100, 0], [2_500, 0], [
 const RUNS = SWEEP.map((f) => ({ f, run: planMonthRun(f) }));
 
 const BANNED = /\b(?:should|need to|needs to|safe|safely|safer)\b/i;
-const NO_ZERO_USD = /(?<![\d.,])\$0(?![\d.,])/;
+/** A zero dollar figure: "$0", and since Run 2.1 (BL19) "$0.00" — also before a sentence's own "." or "," (δ1, the
+ *  plan review). Never a real figure: "$0.50", "$0.01", "$10.00". The e2e page scan uses the same lookahead. */
+const NO_ZERO_USD = /(?<![\d.,])\$0(?:\.00)?(?!\d|[.,]\d)/;
 /** A zero either way round: "₿0.000" (THIS MONTH's own) and "0.000 ₿" (the Decision face's sentences, which "Why this
  *  plan?" prints). */
 const NO_ZERO_BTC = /₿0\.0+(?![\d1-9])|(?<![\d.])0\.0+ ₿/;
@@ -88,6 +93,9 @@ function wordsOf(f: PlanMonthFacts, run: ReturnType<typeof planMonthRun>): strin
 
 describe('⭐ WORDS — invariant 5 and the not-advice line: facts, never "should", never a zero', () => {
   it('⭐ WORDS — every sentence THIS MONTH and Daily print, over the sweep, every month of every run', () => {
+    const zero = ['$0', '$0.00', 'repay $0.', 'repay $0.00.', '$0.00, rolls', '$0.50', '$0.01', '$10.00', 'repay $20,885.10.'];
+    expect(zero.map((x) => NO_ZERO_USD.test(x)), 'WORDS the zero rule sees $0.00')
+      .toEqual([true, true, true, true, true, false, false, false, false]);
     let n = 0;
     for (const { f, run } of RUNS) {
       for (const t of wordsOf(f, run)) {
@@ -114,7 +122,7 @@ describe('⭐ WORDS — invariant 5 and the not-advice line: facts, never "shoul
       .toBe("Move $14,000 of Strike debt to Coinbase (Coinbase's fee: $280).");
     const sim = { ...run.sim, rows: run.sim.rows.map((r) => (r.m === 2 ? { ...r, btcBoughtUsd: 3, price: 100_000 } : r)) };
     const tiny = planMonthActions(sim, run.placement, 2).find((r) => r.kind === 'buy');
-    expect([tiny?.note, tiny?.amount], 'WORDS THIS MONTH buy, tiny').toEqual(['$3', 'under ₿0.0001']);
+    expect([tiny?.note, tiny?.amount], 'WORDS THIS MONTH buy, tiny').toEqual(["$3.00 · at today's price", 'under ₿0.0001']);
   });
   it('⭐ WORDS — the one-time note, the crash title and the breaker lines', () => {
     for (const pct of [PLAN_POLICY_RANGES.cbStopAtSupportPct.min, 45, PLAN_POLICY_RANGES.cbStopAtSupportPct.max]) {
@@ -159,13 +167,13 @@ describe('⭐ STATUS — §4.5 / D6: one line per month, the switch month\'s fac
     const st = planStatus(run.sim, run.placement, 1, sf);
     const X = run.placement.cbOverCeilingUsd;
     expect(st.tone, 'STATUS amber, never red (D7)').toBe('warn');
-    expect(st.title).toBe(`Coinbase is ${fmtUSD(X)} over your plan's limit`);
+    expect(st.title).toBe(`Coinbase is ${fmtUSDCents(X)} over your plan's limit`);
     expect(st.body).toBe("Spare income repays it before the plan borrows again — back within it in about 8 months at today's price.");
     const A = X / (sf.cbStop * sf.support0);
-    expect(st.fixes[0], 'STATUS catch-up (cold short of A)').toBe(`Add ₿${A.toFixed(3)} of collateral to Coinbase, or repay ${fmtUSD(X)}.`);
-    expect(st.fixes[1], 'STATUS the limit, with the support price per ₿').toBe(`Your limit: 45% of what Coinbase's collateral is worth at support (${fmtUSD(sf.support0)} per ₿ today).`);
+    expect(st.fixes[0], 'STATUS catch-up (cold short of A)').toBe(`Add ₿${A.toFixed(3)} of collateral to Coinbase, or repay ${fmtUSDCents(X)}.`);
+    expect(st.fixes[1], 'STATUS the limit, with the support price per ₿').toBe(`Your limit: 45% of what Coinbase's collateral is worth at support (${fmtUSDCents(sf.support0)} per ₿ today).`);
     const rich = planStatus(run.sim, run.placement, 1, { ...sf, coldBtc: 5 });
-    expect(rich.fixes[0], 'STATUS catch-up (cold covers A)').toBe(`Move ₿${A.toFixed(3)} from cold storage to Coinbase, or repay ${fmtUSD(X)}.`);
+    expect(rich.fixes[0], 'STATUS catch-up (cold covers A)').toBe(`Move ₿${A.toFixed(3)} from cold storage to Coinbase, or repay ${fmtUSDCents(X)}.`);
     const never = planStatus(run.sim, run.placement, 1, { ...sf, monthsBackUnder: null });
     expect(never.body).toContain('not back within it in the next 12 months');
     // No spare income: bills above income ($2,500 against $4,000), so nothing repays Coinbase — the card never says it does.
@@ -190,7 +198,7 @@ describe('⭐ STATUS — §4.5 / D6: one line per month, the switch month\'s fac
     expect(back, 'STATUS the run cures').toBeGreaterThan(2);
     const still = planStatus(run.sim, run.placement, 2, sf);
     expect(still.tone).toBe('warn');
-    expect(still.title).toBe(`Still ${fmtUSD(-(run.sim.rows[2].cbCeilingHeadroomUsd ?? 0))} over your plan's limit at month-end`);
+    expect(still.title).toBe(`Still ${fmtUSDCents(-(run.sim.rows[2].cbCeilingHeadroomUsd ?? 0))} over your plan's limit at month-end`);
     expect(planStatus(run.sim, run.placement, back, sf).title, 'STATUS cure month').toBe("Back within your plan's limit this month");
     expect(planStatus(run.sim, run.placement, back + 1, sf).title).toBe("Within your plan's limits");
   });
@@ -205,7 +213,7 @@ describe('⭐ STATUS — §4.5 / D6: one line per month, the switch month\'s fac
     const later = planStatus(c.sim, c.placement, 2, cf);
     expect(later.tone).toBe('bad');
     expect(later.title).toBe('Coinbase has been liquidated — borrowing has ended');
-    expect(later.body).toBe(`${fmtUSD(c.sim.rows[2].cbDebt)} of Coinbase debt survives it.`);
+    expect(later.body).toBe(`${fmtUSDCents(c.sim.rows[2].cbDebt)} of Coinbase debt survives it.`);
   });
   it('⭐ STATUS — over the sweep: every month after a liquidation reads it, in red, and none promises a recovery', () => {
     let post = 0;
@@ -302,7 +310,7 @@ describe('⭐ ROWS — D-R2-1: the month\'s to-do rows ARE the Decision face\'s 
     const run = planMonthRun(OVER);
     const rows = planMonthActions(run.sim, run.placement, 1);
     expect(rows.map((r) => [r.label, r.amount, r.muted])).toEqual([
-      ['Repay Coinbase', fmtUSD(run.sim.rows[1].cbRepaidUsd), false],
+      ['Repay Coinbase', fmtUSDCents(run.sim.rows[1].cbRepaidUsd), false],
       ['Buy bitcoin', '—', true],
       ['Draw on Strike', '—', true],
     ]);
@@ -312,7 +320,7 @@ describe('⭐ ROWS — D-R2-1: the month\'s to-do rows ARE the Decision face\'s 
     const r1 = run.sim.rows[1];
     expect(r1.unfundedUsd, 'ROWS premise: bills go unpaid').toBeGreaterThan(0.5);
     const row = planMonthActions(run.sim, run.placement, 1).find((r) => r.kind === 'unpaid');
-    expect([row?.label, row?.note, row?.amount, row?.tone]).toEqual(['Bills go unpaid', null, fmtUSD(r1.unfundedUsd), 'warn']);
+    expect([row?.label, row?.note, row?.amount, row?.tone]).toEqual(['Bills go unpaid', null, fmtUSDCents(r1.unfundedUsd), 'warn']);
   });
   it('⭐ ROWS — today\'s legs say "today", never "can wait" (N5)', () => {
     const run = planMonthRun(HEALTHY);
@@ -345,7 +353,7 @@ describe('⭐ VENUE — the owner\'s venue colours: Strike white, Coinbase blue,
     expect(planRowDot(row('Repay Coinbase')).background).toBe(VENUE_COLOR.coinbase);
     expect(planRowDot(row('Draw on Strike')).background).toBe(VENUE_COLOR.strike);
     expect(planRowDot(row('Strike → Coinbase')).background)
-      .toBe(`linear-gradient(90deg, ${VENUE_COLOR.strike} 0 50%, ${VENUE_COLOR.coinbase} 50% 100%)`);
+      .toBe(`linear-gradient(90deg, ${VENUE_COLOR.strike} 0 50%, ${VENUE_COLOR.coinbase} 50% 100%) border-box`);
     expect(planRowDot(row('Buy bitcoin', { tone: 'good' })).background).toBe('var(--green)');
     expect(planRowDot(row('Buy bitcoin', { muted: true }))).toEqual({ background: 'transparent', ring: 'var(--text-muted)' });
     const seg = venueSegments('Cold storage → Coinbase');
@@ -382,14 +390,14 @@ describe('⭐ AFTER — box 3: both loans at month-end, Coinbase at the month\'s
         } else {
           // A liquidation at the opening leaves debt and no collateral: nothing to meter, and the words say so.
           expect(a.meter, 'AFTER no collateral, no meter').toBeNull();
-          expect(cb.value, 'AFTER no collateral').toBe(`${fmtUSD(r.cbDebt)} · no collateral`);
+          expect(cb.value, 'AFTER no collateral').toBe(`${fmtUSDCents(r.cbDebt)} · no collateral`);
           unmetered += 1;
         }
         const seize = a.rows.find((x) => x.key === 'seize');
         const liq = cbSeizurePrice(r);
         expect(seize !== undefined, 'AFTER the cliff is the face\'s one rule').toBe(liq !== null && liq < r.price);
         if (seize && liq !== null) {
-          expect(seize.value, 'AFTER cliff').toBe(`${fmtUSD(liq)} · ${fmtBelowPct(1 - liq / r.price)} below today`);
+          expect(seize.value, 'AFTER cliff').toBe(`${fmtUSDCents(liq)} · ${fmtBelowPct(1 - liq / r.price)} below today`);
           cliffs += 1;
         }
       }
@@ -459,7 +467,7 @@ describe('⭐ FOOT — the minimum, the Ledger and the year, as words (never "$0
     expect(planMinimumOwed(null, 216.67), 'FOOT else the interest Strike bills').toBe(216.67);
     expect(planMinimumLine(216.67, 1)).toBe("Strike's minimum is due the 1st");
     expect(planMinimumLine(0.3, 15), 'FOOT nothing owed').toBeNull();
-    expect(planInterestRollsLine(216.67, 22)).toBe("Strike's interest, $217, rolls into the line on the 22nd.");
+    expect(planInterestRollsLine(216.67, 22), 'CENTS the interest').toBe("Strike's interest, $216.67, rolls into the line on the 22nd.");
     expect(planInterestRollsLine(0.3, 15), 'FOOT nothing to roll').toBeNull();
     expect(planInterestRollsNote(3)).toBe('rolls in the 3rd');
   });
@@ -472,10 +480,10 @@ describe('⭐ FOOT — the minimum, the Ledger and the year, as words (never "$0
   });
   it('⭐ FOOT — the Ledger so far names only what was logged', () => {
     expect(planLedgerParts({ draw: 0, buyBtc: 0, paydown: 0, cbPaydown: 0 }), 'FOOT nothing logged').toBeNull();
-    expect(planLedgerParts({ draw: 4_000, buyBtc: 0.0002, paydown: 0, cbPaydown: 0 })).toBe('$4,000 drawn');
-    expect(planLedgerParts({ draw: 4_000, buyBtc: 0.02, paydown: 500, cbPaydown: 0 })).toBe('$4,000 drawn · ₿0.020 bought · $500 paid');
-    expect(planLedgerParts({ draw: 0, buyBtc: 0, paydown: 200, cbPaydown: 300 }), 'FOOT paid on both loans').toBe('$500 paid');
-    expect(planLedgerParts({ draw: 0, buyBtc: 0, paydown: 0, cbPaydown: 300 }), 'FOOT a Coinbase paydown alone').toBe('$300 paid');
+    expect(planLedgerParts({ draw: 4_000, buyBtc: 0.0002, paydown: 0, cbPaydown: 0 }), 'CENTS the Ledger so far').toBe('$4,000.00 drawn');
+    expect(planLedgerParts({ draw: 4_000, buyBtc: 0.02, paydown: 500, cbPaydown: 0 })).toBe('$4,000.00 drawn · ₿0.020 bought · $500.00 paid');
+    expect(planLedgerParts({ draw: 0, buyBtc: 0, paydown: 200.25, cbPaydown: 300 }), 'FOOT paid on both loans').toBe('$500.25 paid');
+    expect(planLedgerParts({ draw: 0, buyBtc: 0, paydown: 0, cbPaydown: 300 }), 'FOOT a Coinbase paydown alone').toBe('$300.00 paid');
     // Daily's bars: the plan's month 1 in the Ledger's own streams. Written out per to-do kind — what the owner logs as a
     // Strike draw (the bills', a defense's) and as a paydown on either loan (spare income's, a refinance's payment to
     // Strike, a defense's to Coinbase, the reserve's margin cure).
@@ -504,10 +512,10 @@ describe('⭐ FOOT — the minimum, the Ledger and the year, as words (never "$0
     // The rule, written out: the run's month 2 — draw, buy, repay Coinbase, repay Strike — each only above the floor.
     const nextOf = (r: CyclingRow): string | null => {
       const parts = [
-        r.strikeDrawn >= 0.5 ? `draw ${fmtUSD(r.strikeDrawn)}` : null,
-        r.btcBoughtUsd >= 0.5 ? `buy ₿${(r.btcBoughtUsd / r.price).toFixed(4)}` : null,
-        r.cbRepaidUsd >= 0.5 ? `repay Coinbase ${fmtUSD(r.cbRepaidUsd)}` : null,
-        r.strikeRepaidUsd >= 0.5 ? `repay Strike ${fmtUSD(r.strikeRepaidUsd)}` : null,
+        r.strikeDrawn >= 0.5 ? `draw ${fmtUSDCents(r.strikeDrawn)}` : null,
+        r.btcBoughtUsd >= 0.5 ? `buy ₿${(r.btcBoughtUsd / r.price).toFixed(4)} at today's price` : null,
+        r.cbRepaidUsd >= 0.5 ? `repay Coinbase ${fmtUSDCents(r.cbRepaidUsd)}` : null,
+        r.strikeRepaidUsd >= 0.5 ? `repay Strike ${fmtUSDCents(r.strikeRepaidUsd)}` : null,
       ].filter((p) => p !== null);
       return parts.length > 0 ? `Next month: ${parts.join(' · ')}` : null;
     };
@@ -521,15 +529,15 @@ describe('⭐ FOOT — the minimum, the Ledger and the year, as words (never "$0
     expect(planSavingsLine(run.sim, 12), 'FOOT healthy: bills all paid').toBeNull();
     // N counts the months with a gap, within the months left — not the months left.
     const gaps = { ...run.sim, rows: run.sim.rows.map((r) => ({ ...r, unfundedUsd: r.m === 2 ? 100 : r.m === 5 ? 50 : 0 })) };
-    expect(planSavingsLine(gaps, 12), 'FOOT two gaps').toBe('Needs ~$150 from savings over the next 2 months');
-    expect(planSavingsLine(gaps, 4), 'FOOT one gap left').toBe('Needs ~$100 from savings over the next 1 month');
+    expect(planSavingsLine(gaps, 12), 'FOOT two gaps').toBe('Needs ~$150.00 from savings over the next 2 months');
+    expect(planSavingsLine(gaps, 4), 'FOOT one gap left').toBe('Needs ~$100.00 from savings over the next 1 month');
     const short = planMonthRun(facts({ income: 2_500, price: 55_000 }));
     const unpaid = short.sim.rows.filter((r) => r.m >= 1 && r.m <= 12 && r.unfundedUsd >= 0.5);
     expect(unpaid.length, 'FOOT premise: bills go unpaid').toBeGreaterThan(0);
-    expect(planSavingsLine(short.sim, 12)).toBe(`Needs ~${fmtUSD(unpaid.reduce((a, r) => a + r.unfundedUsd, 0))} from savings `
+    expect(planSavingsLine(short.sim, 12)).toBe(`Needs ~${fmtUSDCents(unpaid.reduce((a, r) => a + r.unfundedUsd, 0))} from savings `
       + `over the next ${unpaid.length} month${unpaid.length === 1 ? '' : 's'}`);
-    expect(planPriceLine(100_000, 66_519)).toBe('BTC $100,000 · 1.50× support');
-    expect(planPriceLine(100_000, 0)).toBe('BTC $100,000');
+    expect(planPriceLine(100_000, 66_519), 'CENTS the price line').toBe('BTC $100,000.00 · 1.50× support');
+    expect(planPriceLine(100_000, 0)).toBe('BTC $100,000.00');
   });
 });
 
@@ -570,9 +578,13 @@ describe('⭐ LOGGED — a past month shows what the Ledger recorded', () => {
     loggedAt: 1, expensesActual: 4_000, ...over,
   });
   it('⭐ LOGGED — past-tense rows, no zero, and the month-end the Ledger kept', () => {
-    expect(loggedMonthRows(entry()).map((r) => [r.label, r.amount])).toEqual([['Drew on Strike', '$4,000'], ['Bought bitcoin', '₿0.0500']]);
+    expect(loggedMonthRows(entry()).map((r) => [r.label, r.amount]), 'CENTS a logged payment')
+      .toEqual([['Drew on Strike', '$4,000.00'], ['Bought bitcoin', '₿0.0500']]);
+    expect(loggedMonthRows(entry({ expensesActual: 0, btcBought: 0, paydown: 250.5, strikeMinPaid: 216.67, ndpPaid: 1_000 }))
+      .map((r) => r.amount), 'CENTS every logged payment').toEqual(['$250.50', '$216.67', '$1,000.00']);
     expect(loggedMonthRows(entry({ expensesActual: 0, btcBought: 0 }))).toEqual([]);
-    expect(loggedMonthAfter(entry({ cbBal: 30_000, cbLtv: 0.3 })).map((r) => r.value)).toEqual(['$12,000 · 12.0% LTV', '$30,000 · 30.0% LTV']);
+    expect(loggedMonthAfter(entry({ cbBal: 30_000, cbLtv: 0.3 })).map((r) => r.value), 'CENTS a logged month-end')
+      .toEqual(['$12,000.00 · 12.0% LTV', '$30,000.00 · 30.0% LTV']);
   });
   it('⭐ LOGGED — logged, awaiting sign-off, or nothing logged', () => {
     expect(loggedMonthStatus(entry(), 2).title).toBe('Month 2 is logged');
@@ -589,5 +601,150 @@ describe('⭐ CRASH — D13: on a crash day the plan\'s month is the monthly mod
     expect(defense, 'CRASH a defense row').toBeDefined();
     expect(defense?.venues, 'CRASH it names Coinbase').toContain('coinbase');
     expect(defense?.tone).toBe('warn');
+  });
+});
+
+/**
+ * Run 2.1 (spec v1.11, §14) — the device check's fixes: every dollar figure to the cent (BL19), a later month's buy says it is
+ * at today's price (R2-a), the split dot covers its border (F8), and Daily's bars read the month so far (F13).
+ */
+describe('⭐ RUN 2.1 — every figure to the cent, the buy at today\'s price, the split dot, Daily\'s bars', () => {
+  // The contract, written out — the action kinds whose amount is dollars (the rest are ₿, or none).
+  const USD_KINDS: ActionKind[] = [
+    'draw', 'cashToBills', 'unpaid', 'payMinimum', 'repayStrike', 'repayCoinbase', 'refinance', 'debtShift', 'defenseShort',
+    'cashCure',
+  ];
+  const CENTS = /^\$\d{1,3}(?:,\d{3})*\.\d{2}$/;
+  /** Every dollar figure in a text — with or without cents. */
+  const DOLLARS = /\$\d{1,3}(?:,\d{3})*(?:\.\d+)?/g;
+
+  it('⭐ CENTS — the formatter: two decimals, grouped, no sign (the words carry it); fmtUSD unchanged', () => {
+    expect(fmtUSDCents(0), 'CENTS the formatter').toBe('$0.00');
+    expect(fmtUSDCents(0.5)).toBe('$0.50');
+    expect(fmtUSDCents(216.666)).toBe('$216.67');
+    expect(fmtUSDCents(1_234.5)).toBe('$1,234.50');
+    expect(fmtUSDCents(-12.3), 'CENTS no sign').toBe('$12.30');
+    expect(fmtUSDCents(1_000_000)).toBe('$1,000,000.00');
+    expect(fmtUSD(1_234.5), 'CENTS fmtUSD stays whole (the faces and full mode)').toBe('$1,235');
+    // A VALUE kept to the cent — what a sign-off or a logged minimum stores is never a rounded dollar (BL19).
+    expect([toCents(216.6666), toCents(0.1 + 0.2), toCents(1.005), toCents(1_234.5), toCents(NaN)], 'CENTS a stored value to the cent')
+      .toEqual([216.67, 0.3, 1.01, 1_234.5, 0]);
+  });
+
+  it('⭐ CENTS — every to-do amount in dollars and every buy\'s dollars, to the cent; a later month\'s buy at today\'s price', () => {
+    let buys = 0;
+    let later = 0;
+    const kinds = new Set<ActionKind>();
+    for (const { run } of RUNS) {
+      for (let m = 1; m <= 4; m++) {
+        for (const row of planMonthActions(run.sim, run.placement, m)) {
+          if (row.kind === null) continue;
+          if (USD_KINDS.includes(row.kind)) {
+            kinds.add(row.kind);
+            expect(row.amount, `CENTS a to-do amount (${row.kind})`).toMatch(CENTS);
+          }
+          if (row.kind === 'refinance' && row.note !== null && row.note !== 'today') {
+            expect(row.note, 'CENTS the refinance fee').toMatch(/^fee \$\d{1,3}(?:,\d{3})*\.\d{2}$/);
+          }
+          if (row.kind === 'buy') {
+            buys += 1;
+            const [dollars, ...rest] = (row.note ?? '').split(' · ');
+            expect(dollars, "CENTS a buy's dollars").toMatch(CENTS);
+            if (m > 1) {
+              later += 1;
+              expect(rest, "TODAY'S PRICE a later month's buy").toEqual([PLAN_AT_TODAYS_PRICE]);
+            } else {
+              expect(rest, "TODAY'S PRICE never this month's").toEqual([]);
+            }
+          }
+        }
+      }
+    }
+    expect([buys > 500, later > 300], 'CENTS the sweep reaches buys in this month and later ones').toEqual([true, true]);
+    expect([...kinds].sort(), 'CENTS the sweep reaches the dollar kinds').toEqual(expect.arrayContaining([
+      'cashToBills', 'debtShift', 'draw', 'payMinimum', 'refinance', 'repayCoinbase', 'repayStrike', 'unpaid',
+    ]));
+  }, 60_000);   // 600 runs × 4 months: room for Node 26 in a loaded full suite
+
+  it('⭐ CENTS — every dollar figure the card prints, to the cent: the status, its catch-up, the after box, the price, the savings need, "Why this plan?"', () => {
+    let dollars = 0;
+    let why = 0;
+    for (const { f, run } of RUNS) {
+      const sf = {
+        monthsBackUnder: firstMonthUnderLimit(run.sim), cbStop: run.placementInput.cbStop,
+        support0: run.supportPath[0], coldBtc: f.coldBtc,
+      };
+      for (const r of run.sim.rows) {
+        if (r.m === 0) continue;
+        const st = planStatus(run.sim, run.placement, r.m, sf);
+        const after = planAfter(r, run.supportPath[r.m], sf.cbStop, run.sim.policyApplied);
+        const summary = planMonthSummary(run.sim, run.placement, r.m, run.supportPath[r.m]);
+        for (const t of [st.title, st.body ?? '', ...st.fixes, ...after.rows.map((x) => x.value), planPriceLine(f.price, run.supportPath[r.m]), summary]) {
+          for (const fig of t.match(DOLLARS) ?? []) {
+            dollars += 1;
+            expect(fig, 'CENTS every figure on the card').toMatch(CENTS);
+          }
+        }
+        if ((summary.match(DOLLARS) ?? []).length > 0) why += 1;
+      }
+      for (const fig of (planSavingsLine(run.sim, 12) ?? '').match(DOLLARS) ?? []) expect(fig, 'CENTS the savings need').toMatch(CENTS);
+    }
+    expect([dollars > 10_000, why > 1_000], 'CENTS the sweep reads dollar figures, "Why this plan?" among them').toEqual([true, true]);
+  }, 60_000);   // a sweep of all 600 runs: room for Node 26 in a loaded full suite
+
+  it('⭐ CENTS — the NDP estimate to the cent on THIS MONTH and Daily; the engine\'s own stays a whole dollar (full mode)', () => {
+    // $26,000 at 10%: a month of interest is $216.666… — the card prints "~$216.67" and the review seeds 216.67.
+    expect(planNdpEstimateUsd(26_000, 10), 'CENTS the NDP estimate to the cent').toBe(216.67);
+    expect(fmtUSDCents(planNdpEstimateUsd(26_000, 10))).toBe('$216.67');
+    expect(getNdpStatus(null, 26_000, 10).estimatedAmount, 'CENTS the engine keeps its whole dollar (full mode)').toBe(217);
+    // The balance it is estimated on: the Strike balance read, else 15% of the line — one helper for every reader.
+    expect([planNdpBalance(26_000, 50_000), planNdpBalance(0, 50_000)], 'CENTS the NDP balance: the reading, else 15% of the line')
+      .toEqual([26_000, 7_500]);
+  });
+
+  it('⭐ CENTS — "Why this plan?" is the face\'s own words to the cent; the face itself keeps whole dollars', () => {
+    const over = planMonthRun(OVER);
+    const face = planSchedule(over.sim, over.placement).find((x) => x.m === 1)?.actions.map((a) => a.text).join(' ') ?? '';
+    const cards = planSchedule(over.sim, over.placement, fmtUSDCents).find((x) => x.m === 1)?.actions.map((a) => a.text).join(' ') ?? '';
+    expect((face.match(DOLLARS) ?? []).length, 'CENTS premise: the month has dollar actions').toBeGreaterThan(0);
+    expect((face.match(DOLLARS) ?? []).every((x) => !CENTS.test(x)), 'CENTS the face stays whole').toBe(true);
+    expect((cards.match(DOLLARS) ?? []).every((x) => CENTS.test(x)), 'CENTS the cards\' words to the cent').toBe(true);
+    expect(cards.replace(DOLLARS, '$X'), 'CENTS the same words').toBe(face.replace(DOLLARS, '$X'));
+    expect(planMonthSummary(over.sim, over.placement, 1, over.supportPath[1]), 'CENTS "Why this plan?" reads the cards\' words').toContain(cards);
+  });
+
+  it('⭐ DOT — a split dot covers its border (the shorthand\'s own box); one venue is its colour; a "—" a ring', () => {
+    const row = (label: string, over: Partial<PlanRow> = {}): PlanRow => ({
+      key: 'k', kind: null, tone: 'plain', venues: venuesOf(label), label, note: null, amount: '$1.00', muted: false, ...over,
+    });
+    for (const label of ['Strike → Coinbase', 'Cold storage → Coinbase', 'Pay Coinbase from Strike']) {
+      expect(planRowDot(row(label)).background, `DOT the split covers the border (${label})`).toMatch(/^linear-gradient\(90deg, .+\) border-box$/);
+    }
+    expect(planRowDot(row('Repay Coinbase')).background, 'DOT one venue').toBe(VENUE_COLOR.coinbase);
+    expect(planRowDot(row('Buy bitcoin', { muted: true })), 'DOT a ring').toEqual({ background: 'transparent', ring: 'var(--text-muted)' });
+  });
+
+  it('⭐ BARS — the month so far against the plan\'s month; no target, no fill; never "$0 / $0"', () => {
+    const target = { draw: 3_500, paid: 500, buyBtc: 0.005 };
+    expect(planBars({ draw: 1_200, paid: 200, buyBtc: 0.001 }, target), 'BARS against the plan').toEqual([
+      { key: 'draw', label: 'Draw', value: '$1,200.00 / $3,500.00', fillPct: (1_200 / 3_500) * 100, muted: false },
+      { key: 'paid', label: 'Paydown', value: '$200.00 / $500.00', fillPct: 40, muted: false },
+      { key: 'buy', label: 'Buy ₿', value: '₿0.0010 / 0.0050', fillPct: 20, muted: false },
+    ]);
+    expect(planBars({ draw: 0, paid: 0, buyBtc: 0 }, target).map((b) => [b.value, b.fillPct]), 'BARS nothing logged yet')
+      .toEqual([['$0.00 / $3,500.00', 0], ['$0.00 / $500.00', 0], ['₿0.0000 / 0.0050', 0]]);
+    expect(planBars({ draw: 9_000, paid: 0, buyBtc: 0 }, target)[0].fillPct, 'BARS over the target: a full bar').toBe(100);
+    // A past month: the plan keeps no target for a month gone (D14) — what was logged, muted, no fill.
+    expect(planBars({ draw: 1_200, paid: 300, buyBtc: 0.002 }, null), 'BARS a past month').toEqual([
+      { key: 'draw', label: 'Draw', value: '$1,200.00', fillPct: 0, muted: true },
+      { key: 'paid', label: 'Paydown', value: '$300.00', fillPct: 0, muted: true },
+      { key: 'buy', label: 'Buy ₿', value: '₿0.0020', fillPct: 0, muted: true },
+    ]);
+    // A stream the plan doesn't plan this month: a repayment logged anyway shows, with no full bar against nothing.
+    const none = { draw: 0, paid: 0, buyBtc: 0 };
+    expect(planBars({ draw: 0, paid: 300, buyBtc: 0 }, none).map((b) => [b.value, b.fillPct, b.muted]), 'BARS no target, no fill')
+      .toEqual([['—', 0, true], ['$300.00', 0, true], ['—', 0, true]]);
+    expect(planBars({ draw: 0.2, paid: 0, buyBtc: 0.00001 }, none).map((b) => b.value), 'BARS never "$0 / $0"').toEqual(['—', '—', '—']);
+    expect(planBarsCaption(3), 'BARS Week\'s caption').toBe('Month 3 so far');
   });
 });

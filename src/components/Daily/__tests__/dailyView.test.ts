@@ -28,19 +28,20 @@ describe('describeDayEvent', () => {
   it('draw → USD detail', () => {
     const d = describeDayEvent({ id: '1', date: START, ts: 1, kind: 'draw', amount: 1200 });
     expect(d.label).toBe('Credit-line draw');
-    expect(d.detail).toBe('$1,200');
+    expect(d.detail, 'CENTS a logged draw').toBe('$1,200.00');
   });
 
   it('buy → BTC + usd estimate when present, BTC-only when absent', () => {
     const withUsd = describeDayEvent({ id: '2', date: START, ts: 1, kind: 'buy', amount: 0.0125, usd: 1000 });
     expect(withUsd.label).toBe('Bought Bitcoin');
-    expect(withUsd.detail).toBe('₿ 0.0125 (~$1,000)');
+    expect(withUsd.detail, 'CENTS a buy\'s estimate').toBe('₿ 0.0125 (~$1,000.00)');
     const noUsd = describeDayEvent({ id: '3', date: START, ts: 1, kind: 'buy', amount: 0.0125 });
     expect(noUsd.detail).toBe('₿ 0.0125');
   });
 
   it('paydown → USD detail', () => {
-    expect(describeDayEvent({ id: '4', date: START, ts: 1, kind: 'paydown', amount: 500 }).detail).toBe('$500');
+    expect(describeDayEvent({ id: '4', date: START, ts: 1, kind: 'paydown', amount: 500 }).detail, 'CENTS a logged paydown').toBe('$500.00');
+    expect(describeDayEvent({ id: '4m', date: START, ts: 1, kind: 'minPayment', amount: 216.67 }).detail, 'CENTS a logged minimum').toBe('$216.67');
   });
 
   it('deposit / withdraw → labels carry the target', () => {
@@ -62,12 +63,12 @@ describe('describeDayEvent', () => {
       reading: { strikeBal: 5000, strikeLtv: 0.15 },
     });
     expect(strikeOnly.label).toBe('Balance reading');
-    expect(strikeOnly.detail).toBe('Strike $5,000 (15.0% LTV)');
+    expect(strikeOnly.detail, 'CENTS a reading').toBe('Strike $5,000.00 (15.0% LTV)');
 
     const withCb = describeDayEvent({
       id: '9', date: START, ts: 1, kind: 'balanceReading',
       reading: { strikeBal: 5000, strikeLtv: 0.15, cbBal: 60000, cbLtv: 0.72 },
     });
-    expect(withCb.detail).toBe('Strike $5,000 (15.0% LTV) · CB $60,000 (72.0% LTV)');
+    expect(withCb.detail).toBe('Strike $5,000.00 (15.0% LTV) · CB $60,000.00 (72.0% LTV)');
   });
 });

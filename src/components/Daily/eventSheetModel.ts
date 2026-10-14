@@ -4,19 +4,20 @@
 import type { DayEvent } from '../../simulation/types';
 import { flowVenue, type UnreconciledCbFlows } from '../../simulation/logUtils';
 import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
-import { fmtUSD } from '../../utils/format';
+import { fmtUSDCents } from '../../utils/format';
 
 /**
  * The stale-Coinbase-balance warning shown under the reading's "Coinbase loan balance" field (pure copy over
  * unreconciledCbFlows). Null when no CB flow has been logged since the last CB-bearing reading. The suggested figure is
  * a HINT in copy — never a prefill, never an anchor — and it excludes interest, which is why it says "before interest".
+ * Every figure to the cent (plan of record Run 2.1, BL19) — the borrow, its fee, the paydown and the hint.
  */
 export function staleCbBalanceNote(u: UnreconciledCbFlows): string | null {
   if (u.events.length === 0) return null;
   const parts: string[] = [];
-  if (u.drawn > 0) parts.push(`a ${fmtUSD(u.drawn)} Coinbase borrow${u.fees > 0 ? ` (+${fmtUSD(u.fees)} fee)` : ''}`);
-  if (u.paid > 0) parts.push(`a ${fmtUSD(u.paid)} Coinbase paydown`);
-  const suggest = u.suggestedCbBal !== null ? ` — about ${fmtUSD(u.suggestedCbBal)} before interest` : '';
+  if (u.drawn > 0) parts.push(`a ${fmtUSDCents(u.drawn)} Coinbase borrow${u.fees > 0 ? ` (+${fmtUSDCents(u.fees)} fee)` : ''}`);
+  if (u.paid > 0) parts.push(`a ${fmtUSDCents(u.paid)} Coinbase paydown`);
+  const suggest = u.suggestedCbBal !== null ? ` — about ${fmtUSDCents(u.suggestedCbBal)} before interest` : '';
   return `You logged ${parts.join(' and ')} since your last Coinbase reading. Update this to what Coinbase shows now${suggest}.`;
 }
 

@@ -92,28 +92,36 @@ describe('staleCbBalanceNote — the stale Coinbase-balance warning', () => {
     expect(staleCbBalanceNote(unreconciledCbFlows([r]))).toBeNull();
   });
 
-  it('names the borrow, its fee, and the suggested balance (before interest)', () => {
+  it('names the borrow, its fee, and the suggested balance (before interest); since Run 2.1 every figure shows cents', () => {
     const note = staleCbBalanceNote(unreconciledCbFlows([
       r, { id: 'c', date: '2026-06-10', ts: 2, kind: 'draw', amount: 10000, target: 'cb', fee: 200 },
     ]));
-    expect(note).toContain('$10,000 Coinbase borrow');
-    expect(note).toContain('(+$200 fee)');
-    expect(note).toContain('about $70,200 before interest');
+    expect(note, 'CENTS the stale-balance note: the borrow').toContain('a $10,000.00 Coinbase borrow');
+    expect(note, 'CENTS the stale-balance note: the fee').toContain('(+$200.00 fee)');
+    expect(note, 'CENTS the suggested balance').toContain('about $70,200.00 before interest');
+  });
+
+  it('⭐ CENTS — a paydown to the cent, and the suggested balance, an estimate, too', () => {
+    const note = staleCbBalanceNote(unreconciledCbFlows([
+      r, { id: 'p', date: '2026-06-12', ts: 3, kind: 'paydown', amount: 250.5, target: 'cb' },
+    ]));
+    expect(note, 'CENTS the stale-balance note: the paydown').toContain('a $250.50 Coinbase paydown');
+    expect(note, 'CENTS the suggested balance').toContain('about $59,749.50 before interest');
   });
 });
 
 describe('log-row labels', () => {
   it('Coinbase rows read venue-first, the borrow with its fee', () => {
     expect(describeDayEvent({ id: 'c', date: TODAY, ts: 1, kind: 'draw', amount: 5000, target: 'cb', fee: 100 }))
-      .toEqual({ icon: '↓', label: 'Coinbase borrow', detail: '$5,000 · fee $100' });
+      .toEqual({ icon: '↓', label: 'Coinbase borrow', detail: '$5,000.00 · fee $100.00' });
     expect(describeDayEvent({ id: 'p', date: TODAY, ts: 1, kind: 'paydown', amount: 2000, target: 'cb' }))
-      .toEqual({ icon: '↘', label: 'Coinbase paydown', detail: '$2,000' });
+      .toEqual({ icon: '↘', label: 'Coinbase paydown', detail: '$2,000.00' });
   });
 
-  it('a Strike row is byte-identical to before', () => {
+  it('a Strike row keeps its label; since Run 2.1 its amount shows cents', () => {
     expect(describeDayEvent({ id: 's', date: TODAY, ts: 1, kind: 'draw', amount: 1200 }))
-      .toEqual({ icon: '↓', label: 'Credit-line draw', detail: '$1,200' });
+      .toEqual({ icon: '↓', label: 'Credit-line draw', detail: '$1,200.00' });
     expect(describeDayEvent({ id: 'q', date: TODAY, ts: 1, kind: 'paydown', amount: 500 }))
-      .toEqual({ icon: '↘', label: 'BLOC paydown', detail: '$500' });
+      .toEqual({ icon: '↘', label: 'BLOC paydown', detail: '$500.00' });
   });
 });

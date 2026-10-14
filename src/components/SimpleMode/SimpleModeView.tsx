@@ -4,7 +4,8 @@ import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getNdpStatus }
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
 import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSD, fmtUSDCents, shownUsd, todayLocalISO } from '../../utils/format';
+import { planNdpBalance, planNdpEstimateUsd } from '../Almanac/planMonthView';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
@@ -142,11 +143,10 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
       cbMonthlyPayment, cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct, slmBlocBal, slmBtcHeld,
       slmStartMonth, hasCbLoan, blocMinPaymentSource],
   );
-  const ndp         = getNdpStatus(
-    ndpLastPaidDate,
-    advisorActualBlocBalance > 0 ? advisorActualBlocBalance : creditLine * 0.15,
-    blocApr,
-  );
+  const ndpBalance  = planNdpBalance(advisorActualBlocBalance, creditLine);
+  const ndp         = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
+  // The card's estimate, to the cent (BL19) — the engine's own estimate is a whole dollar, for full mode.
+  const ndpEstimate = planNdpEstimateUsd(ndpBalance, blocApr);
   const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(monthlyLog, expenses, expenseReanchorDismissedAt);
 
   // D13 — a crash day (Coinbase at or past the trigger at today's price): the card's status carries the Emergency
@@ -292,9 +292,9 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                   ? 'NDP overdue — pay Strike immediately'
                   : `NDP due in ${ndp.daysRemaining} days`}
               </span>
-              {ndp.estimatedAmount > 0 && (
+              {shownUsd(ndpEstimate) && (
                 <span className={styles.ndpUrgentSub}>
-                  ~{fmtUSD(ndp.estimatedAmount)} minimum to keep your line active
+                  ~{fmtUSDCents(ndpEstimate)} minimum to keep your line active
                 </span>
               )}
             </div>
@@ -360,6 +360,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
         collateralBtc={collateralBtc}
         openInEditMode
         onClose={() => setLogOverlayOpen(false)}
+        money={fmtUSDCents}
       />
     )}
     </>

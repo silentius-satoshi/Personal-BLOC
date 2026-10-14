@@ -5,7 +5,7 @@ import { usePlanMissing, LOGGING_PAUSED } from '../../hooks/usePlanLoad';
 import { bucketEventToMonth, flowVenue, unreconciledCbFlows } from '../../simulation/logUtils';
 import { accruedCbBalance } from '../../simulation/cbMetrics';
 import { cbBorrowFee } from '../../simulation/runCoinbaseLoan';
-import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { fmtUSDCents, toCents, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
@@ -13,6 +13,7 @@ import {
   type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
+import { fmtDayOrdinal } from '../Almanac/planMonthView';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
 import type { DayEvent, DayEventKind } from '../../simulation/types';
 import styles from './EventSheet.module.css';
@@ -88,7 +89,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   // `isPast` below (which is declared after the early return).
   const pastAdd = !isEdit && (targetDate ?? todayLocalISO()) < todayLocalISO();
   const isIncomeSource = blocMinPaymentSource === 'income';
-  const strikeMinEstimate = Math.round(advisorActualBlocBalance * (blocApr / 100 / 12));   // one month's interest
+  // One month's interest, kept to the cent: it seeds the minimum's amount, so a logged minimum never stores a rounded
+  // dollar (plan of record Run 2.1, BL19).
+  const strikeMinEstimate = toCents(advisorActualBlocBalance * (blocApr / 100 / 12));
   const strikeMinOwed = blocStatementMinimum ?? strikeMinEstimate;
 
   const [type, setType]                     = useState<SheetType>('draw');
@@ -530,7 +533,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           <div className={styles.section}>
             {type === 'draw' && amountValid && (
               <div className={styles.readout}>
-                Origination fee {fmtUSD(cbFeePreview)} ({cbFeePctLabel}) — capitalised into your Coinbase balance.
+                Origination fee {fmtUSDCents(cbFeePreview)} ({cbFeePctLabel}) — capitalised into your Coinbase balance.
               </div>
             )}
             <div className={styles.note}>
@@ -545,7 +548,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
         {/* §2b — paydown-sheet context line: the Strike minimum status (income mode) — never on a Coinbase paydown */}
         {type === 'paydown' && isIncomeSource && effectiveDebtTarget === 'strike' && (
           <div className={styles.readout}>
-            Minimum · due the {blocMinPaymentDueDay}th · {fmtUSD(strikeMinOwed)}
+            Minimum · due the {fmtDayOrdinal(blocMinPaymentDueDay)} · {fmtUSDCents(strikeMinOwed)}
             <span className={styles.note}> · {minStatus}</span>
           </div>
         )}
@@ -611,7 +614,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
               <>
                 <div className={styles.readout}>
                   {strikeBtcAvailable != null
-                    ? `${strikeBtcAvailable.toFixed(3)} ₿ dry powder available (~${fmtUSD(strikeBtcAvailable * btcPrice)})`
+                    ? `${strikeBtcAvailable.toFixed(3)} ₿ dry powder available (~${fmtUSDCents(strikeBtcAvailable * btcPrice)})`
                     : '— dry powder · connect Strike for context'}
                 </div>
                 <div className={styles.note}>
@@ -757,7 +760,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
                     onChange={setCbLiqPriceReading}
                     min={0}
                     prefix="$"
-                    subtext={cbLiquidationPrice > 0 ? `last: ${fmtUSD(cbLiquidationPrice)} — leave blank to keep it` : 'leave blank to keep the current value'}
+                    subtext={cbLiquidationPrice > 0 ? `last: ${fmtUSDCents(cbLiquidationPrice)} — leave blank to keep it` : 'leave blank to keep the current value'}
                   />
                 )}
               </>

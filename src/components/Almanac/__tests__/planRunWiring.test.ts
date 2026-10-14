@@ -31,6 +31,16 @@ const HOOK = read('components/Almanac/usePlanMonth.ts');
 const CARD = read('components/SimpleMode/PlanMonthCard.tsx');
 const SIMPLE = read('components/SimpleMode/SimpleModeView.tsx');
 const DAILY = read('components/Daily/DailyModeView.tsx');
+const EVENT_SHEET = read('components/Daily/EventSheet.tsx');
+const REVIEW = read('components/Daily/ReviewSheet.tsx');
+const SAFETY = read('components/SimpleMode/SafetyDashboard.tsx');
+const PRICE_CHART = read('components/SimpleMode/PriceChart.tsx');
+const DAY_VIEW = read('components/Daily/dailyView.ts');
+const SHEET_MODEL = read('components/Daily/eventSheetModel.ts');
+const PLAN_VIEW = read('components/Almanac/planMonthView.ts');
+const OVERLAY = read('components/Advisor/MonthlyLogOverlay.tsx');
+const VIEWER_HOME = read('components/Viewer/ViewerHomeView.tsx');
+const MONTH_EVENTS = read('components/Daily/MonthEventsModal.tsx');
 const PLAYBOOK = read('components/Tools/crashPlaybookView.ts');
 const CONSOLE = read('components/Tools/EmergencyConsole.tsx');
 /** The five plan readers (D-R2-4): the four faces and the main screens' hook. */
@@ -173,19 +183,80 @@ describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the 
     expect(SIMPLE, 'CARD no tier border').not.toMatch(/\bgetTier\(|cardTier/);
     // The after box knows when the engine refused the policy (no meter, no limit tone).
     expect(CARD, 'CARD the after box reads the run\'s verdict').toMatch(/planAfter\(row, supportAt\(runMonth\), cbStop, pm\.run\.sim\.policyApplied\)/);
-    // Daily's bars: the plan's month 1 in the Ledger's own streams; a paydown on either loan counts, as the plan's does.
+    // Daily's bars (Run 2.1, F13): the plan's month 1 in the Ledger's own streams, against the month SO FAR in both
+    // scopes — Week reads the current month's rollup, Month the viewed month's, and a past month has no target (D14).
+    // A paydown on either loan counts, as the plan's does. The bars' words are planMonthView's (planBars).
     expect(DAILY, 'CARD Daily targets').toMatch(/const target\s+= planLedgerTargets\(pr1\);/);
-    expect(DAILY, 'CARD Daily targets — all three bars')
-      .toMatch(/const plannedDraw\s+= target\.draw;\s+const plannedPay\s+= target\.paid;\s+const plannedBuy\s+= target\.buyBtc;/);
-    expect(DAILY, 'CARD Daily paydown, both loans').toMatch(/const paidSoFar\s+= view\.streams\.paydown \+ view\.streams\.cbPaydown;/);
-    expect(DAILY, 'CARD Daily paydown bar').toMatch(/const payFill\s+= clampPct\(paidSoFar, plannedPay\);/);
-    expect(DAILY, 'CARD Daily paydown label').toMatch(/\$\{fmtUSD\(paidSoFar\)\} \/ \$\{fmtUSD\(plannedPay\)\}/);
+    expect(DAILY, 'BARS Week reads the current month')
+      .toMatch(/const currentRollup = useMemo\(\(\) => buildMonthRollup\(dayLog, advisorStartDate, currentMonth\), \[dayLog, advisorStartDate, currentMonth\]\);/);
+    expect(DAILY, 'BARS the month so far in both scopes').toMatch(/const barRollup\s+= isMonth \? monthRollup : currentRollup;/);
+    expect(DAILY, 'BARS a past month has no target').toMatch(/const barTarget\s+= isMonth && safeViewedMonth !== currentMonth \? null : target;/);
+    expect(DAILY, 'CARD Daily paydown, both loans').toMatch(/paid: barRollup\.streams\.paydown \+ barRollup\.streams\.cbPaydown,/);
+    expect(DAILY, 'BARS one builder').toMatch(/const bars\s+= planBars\(\{[\s\S]*?\}, barTarget\);/);
+    expect(DAILY, "BARS Week's caption")
+      .toMatch(/\{!isMonth && <div className=\{styles\.streamsCaption\}>\{planBarsCaption\(currentMonth\)\}<\/div>\}/);
+    expect(DAILY, 'BARS no bar composed in the screen').not.toMatch(/clampPct|plannedDraw|plannedPay|plannedBuy/);
     // Rolled in, all of Strike's interest capitalises; paid from income, only the unpaid part — never a past month's.
     expect(DAILY, 'CARD Daily interest capitalized').toMatch(/const capitalized\s+= pr1\.strikeInterestUsd - pr1\.strikeMinPaidUsd;/);
     expect(DAILY, 'CARD Daily interest capitalized — this month, past the floor')
       .toMatch(/const showCapitalized = safeViewedMonth === currentMonth && shownUsd\(capitalized\);/);
-    expect((DAILY.match(/\{fmtUSD\(capitalized\)\}/g) ?? []).length, 'CARD Daily interest capitalized — both sites').toBe(2);
+    expect((DAILY.match(/\{fmtUSDCents\(capitalized\)\}/g) ?? []).length, 'CENTS Daily interest capitalized — both sites').toBe(2);
+    expect(DAILY, "CENTS Daily's interest row").toMatch(/\{fmtUSDCents\(pr1\.strikeInterestUsd\)\}/);
     expect(DAILY, 'CARD Daily interest capitalized — no whole-interest figure').not.toMatch(/fmtUSD\(pr1\.strikeInterestUsd\)\}<\/b>/);
+  });
+
+  it('⭐ CENTS — Daily\'s other figures (Run 2.1, BL19): the month rollup, the sheets\' fee, minimum, estimate and price, the month review, its seeds', () => {
+    expect(DAILY, "CENTS Daily's month rollup — draws").toMatch(/\{fmtUSDCents\(monthRollup\.streams\.draw\)\}/);
+    expect(DAILY, "CENTS Daily's month rollup — paydowns").toMatch(/\{fmtUSDCents\(monthRollup\.streams\.paydown\)\}/);
+    expect(EVENT_SHEET, "CENTS the borrow sheet's fee").toMatch(/Origination fee \{fmtUSDCents\(cbFeePreview\)\}/);
+    expect(EVENT_SHEET, "CENTS the paydown sheet's minimum").toMatch(/Minimum · due the .+? · \{fmtUSDCents\(strikeMinOwed\)\}/);
+    // The owner's call at the plan review: "the 1th" is fixed here — the due day prints through the plan cards' fmtDayOrdinal.
+    expect(EVENT_SHEET, "ORDINAL the paydown sheet's due day").toMatch(/Minimum · due the \{fmtDayOrdinal\(blocMinPaymentDueDay\)\} · /);
+    expect(EVENT_SHEET, "CENTS the minimum's estimate kept to the cent (it seeds a stored amount)")
+      .toMatch(/const strikeMinEstimate = toCents\(advisorActualBlocBalance \* \(blocApr \/ 100 \/ 12\)\);/);
+    expect(EVENT_SHEET, "CENTS the sheet's estimate").toMatch(/\(~\$\{fmtUSDCents\(strikeBtcAvailable \* btcPrice\)\}\)/);
+    expect(EVENT_SHEET, "CENTS the sheet's price").toMatch(/last: \$\{fmtUSDCents\(cbLiquidationPrice\)\}/);
+    expect(REVIEW, "CENTS the month review's totals — drawn").toMatch(/\{fmtUSDCents\(rollup\.streams\.draw\)\}/);
+    expect(REVIEW, "CENTS the month review's totals — paydown").toMatch(/\{fmtUSDCents\(rollup\.streams\.paydown\)\}/);
+    expect(REVIEW, "CENTS the month review's Coinbase note — the borrow and its fee")
+      .toMatch(/a Coinbase borrow of \$\{fmtUSDCents\(cbDraw\)\}\$\{cbFee > 0 \? ` \(\+\$\{fmtUSDCents\(cbFee\)\} fee\)` : ''\}/);
+    expect(REVIEW, "CENTS the month review's Coinbase note — the paydown").toMatch(/a Coinbase paydown of \$\{fmtUSDCents\(cbPaydown\)\}/);
+    expect(REVIEW, 'CENTS the month review formats no payment whole').not.toMatch(/\bfmtUSD\(/);
+    // The sign-off seeds are kept to the cent: what a sign-off stores unless edited is never a rounded dollar (BL19).
+    expect(REVIEW, 'CENTS the sign-off seeds kept to the cent (a stored default)')
+      .toMatch(/useState\(toCents\(rollup\.streams\.draw\)\);[\s\S]*?useState\(toCents\(strikeMinPrefill\)\);[\s\S]*?useState\(toCents\(ndpPrefill\)\);/);
+    expect(REVIEW, 'CENTS no seed rounds to a dollar').not.toMatch(/Math\.round\(/);
+  });
+
+  it('⭐ CENTS — no whole-dollar figure on THIS MONTH or Daily (BL19): every screen, card and sheet prints through fmtUSDCents', () => {
+    const SCREENS: Record<string, string> = {
+      DailyModeView: DAILY, PlanMonthCard: CARD, SafetyDashboard: SAFETY, PriceChart: PRICE_CHART, dailyView: DAY_VIEW,
+      EventSheet: EVENT_SHEET, eventSheetModel: SHEET_MODEL, ReviewSheet: REVIEW, planMonthView: PLAN_VIEW,
+      MonthEventsModal: MONTH_EVENTS,
+    };
+    for (const [name, src] of Object.entries(SCREENS)) {
+      expect(src, `CENTS no whole-dollar formatter in ${name}`).not.toMatch(/\bfmtUSD\(|toLocaleString\(/);
+    }
+    // Simple mode: THIS MONTH's NDP card and the month log it opens print cents; only the Outlook's re-anchor line —
+    // not THIS MONTH — keeps whole dollars.
+    expect(SIMPLE, "CENTS THIS MONTH's NDP card").toMatch(/~\{fmtUSDCents\(ndpEstimate\)\} minimum to keep your line active/);
+    expect(SIMPLE, "CENTS THIS MONTH's NDP estimate to the cent").toMatch(/const ndpEstimate = planNdpEstimateUsd\(ndpBalance, blocApr\);/);
+    expect(SIMPLE, "CENTS THIS MONTH's NDP balance, the one helper").toMatch(/const ndpBalance\s+= planNdpBalance\(advisorActualBlocBalance, creditLine\);/);
+    expect(DAILY, "CENTS Daily's NDP balance, the same helper").toMatch(/const ndpBalance\s+= planNdpBalance\(advisorActualBlocBalance, creditLine\);/);
+    expect(SIMPLE, "CENTS THIS MONTH reads no whole-dollar NDP estimate").not.toMatch(/\.estimatedAmount/);
+    expect(DAILY, "CENTS the review's NDP seed to the cent").toMatch(/ndpPrefill=\{planNdpEstimateUsd\(ndpBalance, blocApr\)\}/);
+    expect(DAILY, "CENTS Daily's NDP check on the same balance").toMatch(/getNdpStatus\(ndpLastPaidDate, ndpBalance, blocApr\)\.status/);
+    expect(DAILY, "CENTS Daily reads no whole-dollar NDP estimate").not.toMatch(/\.estimatedAmount/);
+    // The price chart: whole by default — the Dashboard and the trusted viewer's home — and to the cent in the Safety card.
+    expect(SAFETY, "CENTS the Safety card's price chart").toMatch(/<PriceChart money=\{fmtUSDCents\} \/>/);
+    expect(PRICE_CHART, 'CENTS the price chart, whole by default (the Dashboard)').toMatch(/\{ money = fmtUSD \}/);
+    expect(VIEWER_HOME, "CENTS the Dashboard's chart stays whole").toMatch(/<PriceChart \/>/);
+    expect(SIMPLE, 'CENTS the month log opened from THIS MONTH').toMatch(/money=\{fmtUSDCents\}/);
+    const whole = SIMPLE.split('\n').filter((l) => /\bfmtUSD\(/.test(l));
+    expect(whole.length > 0 && whole.every((l) => l.includes('Your last 3 months averaged')), "CENTS only the Outlook's re-anchor stays whole").toBe(true);
+    // The month log overlay: whole in full mode (its default), cents when THIS MONTH passes them.
+    expect(OVERLAY, 'CENTS the month log prints through its money prop').toMatch(/money = fmtUSD \}: MonthlyLogOverlayProps\)/);
+    expect(OVERLAY, 'CENTS the month log has no fixed whole-dollar value').not.toMatch(/value=\{fmtUSD\(/);
   });
 });
 

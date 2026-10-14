@@ -13,7 +13,7 @@ import { DEFAULT_SUPPORT_POLICY_SETTINGS, shownUsd, fmtPolicyPct } from '../Alma
 import { clampPlanPolicy } from '../../lib/planPolicy';
 import { fmtTurnDate } from '../Almanac/cyclingFaceView';
 import { fmtColdBtc } from '../../lib/ledgerCsv';
-import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { fmtUSD, fmtUSDCents, fmtLtvPct } from '../../utils/format';
 
 /**
  * THE CRASH PLAYBOOK, LIVE — the one front-end that runs `crashPlaybook` on the owner's real position (crash playbook
@@ -205,6 +205,14 @@ export function fmtStepUsd(usd: number): string | null {
   return whole >= 1 ? fmtUSD(whole) : null;
 }
 
+/** THIS MONTH's crash line prints a step to the cent (plan of record Run 2.1, BL19): FLOORED to the cent (the same
+ *  guard), and still under $1 → null, so the line lists exactly the card's steps. The Emergency Console keeps
+ *  `fmtStepUsd`'s whole dollars. */
+export function fmtStepUsdCents(usd: number): string | null {
+  if (!Number.isFinite(usd) || Math.floor(usd + FLOOR_GUARD) < 1) return null;
+  return fmtUSDCents(Math.floor(usd * 100 + FLOOR_GUARD) / 100);
+}
+
 /** The support multiple and the liquidation depth, printed to the fewest decimals (2 → 6) that tell them apart — at a
  *  round 0.52× support both read "0.52" at 2 dp. Still equal at 6 dp → `equal: true`, and the copy says "at" / "just
  *  below". */
@@ -271,11 +279,12 @@ const GAP_NO_TOP_UP =
 /** A step as LISTED: its amount already floored to its printed precision (fmtStepBtc / fmtStepUsd). */
 interface ListedStep { kind: CrashPlaybookStep['kind']; amount: string }
 
-/** The steps as LISTED — floored to their printed precision; a step that floors to nothing is not listed. */
-function listSteps(result: CrashPlaybookResult): ListedStep[] {
+/** The steps as LISTED — floored to their printed precision; a step that floors to nothing is not listed. The
+ *  dollars print whole on the card and to the cent on THIS MONTH (`stepUsd`); both list the same steps. */
+function listSteps(result: CrashPlaybookResult, stepUsd: (usd: number) => string | null = fmtStepUsd): ListedStep[] {
   const listed: ListedStep[] = [];
   for (const step of result.steps) {
-    const amount = step.kind === 'shiftToStrike' ? fmtStepUsd(step.usd) : fmtStepBtc(step.btc);
+    const amount = step.kind === 'shiftToStrike' ? stepUsd(step.usd) : fmtStepBtc(step.btc);
     if (amount !== null) listed.push({ kind: step.kind, amount });
   }
   return listed;
@@ -441,7 +450,7 @@ export function monthPlaybookLine(result: CrashPlaybookResult, input: CrashPlayb
   const t = fmtPolicyPct(input.targetCbLtvPct);
   const L = pct(input.lltv);
   const open = ltvOf(input.cbDebt, input.cbCollateralBtc, input.price);
-  const listed = listSteps(result);
+  const listed = listSteps(result, fmtStepUsdCents);   // to the cent on THIS MONTH (BL19)
   const gk = gapKind(result, listed, input.lltv);
   const kind = outcomeKind(result, input.lltv);
   return {

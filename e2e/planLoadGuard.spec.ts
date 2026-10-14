@@ -113,7 +113,7 @@ test.describe('5c rider — the activity card', () => {
     for (const scope of ['Week', 'Month']) {
       await page.getByRole('tab', { name: scope, exact: true }).click();
       await expect(page.locator('[class*="actBig"]')).toHaveText('+0.0400 ₿');
-      await expect(page.locator('[class*="actUsd"]')).toHaveText('+$4,000 stacked');
+      await expect(page.locator('[class*="actUsd"]'), 'E HEADLINE stacked, to the cent').toHaveText('+$4,000.00 stacked');
       await expect(page.getByTestId('activity-moves')).toHaveText('Moved: Strike −0.0500 ₿ · Coinbase +0.0500 ₿');
       await expect(page.getByText(/no Bitcoin bought/)).toHaveCount(0);
     }

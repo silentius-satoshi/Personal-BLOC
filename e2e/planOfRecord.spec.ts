@@ -1,5 +1,5 @@
 import { test, expect, type Locator, type Page } from '@playwright/test';
-import { seedLoanAndGoto } from './helpers';
+import { seedLoanAndGoto, seedAndGoto, STORE_VERSION } from './helpers';
 
 /**
  * The plan of record, Run 1 (spec pbloc-spec-plan-of-record-v1 v1.0): Settings' "Your plan" saves the support policy;
@@ -87,10 +87,11 @@ test.describe('the plan of record — Run 1', () => {
 /**
  * Run 2 (spec v1.6 §13): THIS MONTH and Daily are the plan of record's month (D-R2-2, D-R2-8). The loan seed — $50,000
  * on 1 ₿ at a manual $100,000, nothing on Strike, the store's $4,000 income and $3,500 bills — on a FIXED day, so
- * today's support is the same every run: 45% of 1 ₿ at $64,700 is $29,115, and Coinbase is $20,885 over it.
+ * today's support is the same every run: 45% of 1 ₿ at about $64,700 is about $29,115, and Coinbase is $20,885.10 over
+ * it — to the cent since Run 2.1 (BL19).
  */
 test.describe('the plan of record — Run 2', () => {
-  const OVER = "Coinbase is $20,885 over your plan's limit";
+  const OVER = "Coinbase is $20,885.10 over your plan's limit";
 
   test('MONTH — THIS MONTH and Daily read one month: the status, the to-do, the catch-up, the why, the note', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
@@ -100,7 +101,7 @@ test.describe('the plan of record — Run 2', () => {
     // DAILY — the plan reference card carries the month's one status (the same builder as THIS MONTH)
     const daily = page.locator('[class*="pbcard"]');
     await expect(daily.getByText(OVER), 'DAILY status').toBeVisible();
-    await expect(daily.locator('[class*="pbRow"]', { hasText: 'Repay Coinbase' }), 'DAILY row').toContainText('$500');
+    await expect(daily.locator('[class*="pbRow"]', { hasText: 'Repay Coinbase' }), 'DAILY row').toContainText('$500.00');
 
     // MONTH — THIS MONTH: the status, then "To do this month" with the repayment first and the buy shown paused
     await page.getByRole('tab', { name: 'Monthly' }).click();
@@ -110,16 +111,16 @@ test.describe('the plan of record — Run 2', () => {
     await expect(page.getByText('To do this month', { exact: true }), 'MONTH to-do').toBeVisible();
     const rows = page.locator('ul[class*="pmList"] > li');
     await expect(rows.nth(0), 'MONTH first row').toContainText('Repay Coinbase');
-    await expect(rows.nth(0), 'MONTH its amount').toContainText('$500');
+    await expect(rows.nth(0), 'MONTH its amount').toContainText('$500.00');
     await expect(rows.filter({ hasText: 'Buy bitcoin' }), 'MONTH buy paused').toContainText('—');
 
     // CATCH-UP — behind a tap, as facts (D6)
     await page.getByText('To be within it today', { exact: true }).click();
-    await expect(page.getByText('Add ₿0.717 of collateral to Coinbase, or repay $20,885.', { exact: true }), 'CATCH-UP').toBeVisible();
+    await expect(page.getByText('Add ₿0.717 of collateral to Coinbase, or repay $20,885.10.', { exact: true }), 'CATCH-UP').toBeVisible();
 
     // WHY — behind a tap: the Decision face's own sentence for the month
     await page.getByText('Why this plan?', { exact: true }).click();
-    await expect(page.getByText(/This month the plan would: Repay \$500 of Coinbase from spare income\./), 'WHY').toBeVisible();
+    await expect(page.getByText(/This month the plan would: Repay \$500\.00 of Coinbase from spare income\./), 'WHY').toBeVisible();
 
     // NOTE — once per device: dismissed, it stays dismissed after a reload
     const note = page.locator('[class*="_planNote_"]');
@@ -129,6 +130,90 @@ test.describe('the plan of record — Run 2', () => {
     await page.reload();
     await expect(page.getByText(OVER), 'NOTE reload — the month again').toBeVisible({ timeout: 15_000 });
     await expect(page.locator('[class*="_planNote_"]'), 'NOTE stays dismissed').toHaveCount(0);
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+});
+
+/**
+ * Run 2.1 (spec v1.11 §14): every dollar figure shows its cents (BL19); Daily's bars read the month so far in both
+ * scopes; a later month's buy says it is at today's price. The loan seed plus ONE Coinbase paydown logged earlier this
+ * month, on a fixed day — round synthetic figures.
+ */
+/** The page's dollar figures: those WITHOUT their cents ("$500", "$217," or "$20,885." — a chart's "$95k" is no figure),
+ *  and how many have them. A closed <details> isn't rendered, so its text isn't read: the unit sweeps cover those. */
+async function dollarFigures(page: Page): Promise<{ whole: string[]; cents: number }> {
+  const text = await page.locator('#root').innerText();
+  return {
+    whole: text.match(/\$\d{1,3}(?:,\d{3})*(?!\d|[.,]\d|k|M)/g) ?? [],
+    cents: (text.match(/\$\d{1,3}(?:,\d{3})*\.\d{2}(?!\d)/g) ?? []).length,
+  };
+}
+
+test.describe('the plan of record — Run 2.1', () => {
+  const WITH_PAYDOWN = `
+    window.__APP_BOOTED = true;
+    localStorage.setItem('personal-bloc-store', JSON.stringify({
+      state: {
+        onboardingComplete: true, simpleMode: true, simpleView: 'daily', advisorStartDate: '2026-10-01',
+        hasCbLoan: true, cbLoanBalance: 50000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1,
+        btcPriceMode: 'manual', btcPrice: 100000,
+        dayLog: [{ id: 'e2e-cb-pay', date: '2026-10-05', ts: 1791200000000, kind: 'paydown', amount: 200, target: 'cb' }],
+      },
+      version: ${STORE_VERSION},
+    }));
+    localStorage.setItem('personal-bloc-onboarded', '1');`;
+
+  test('RUN 2.1 — every figure to the cent (BL19); Daily\'s bars read the month so far, in Week and in Month', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic(page);
+    await page.addInitScript(WITH_PAYDOWN);
+    await page.goto('/');
+    await expect(page.getByLabel('Log an event'), 'on Daily').toBeVisible({ timeout: 15_000 });
+
+    // BARS — Week, today selected: nothing logged today, yet the bars read the month so far, and say so
+    const paydown = page.locator('[class*="_stream_"]', { hasText: 'Paydown' });
+    await expect(page.getByText('Month 1 so far', { exact: true }), 'E BARS caption').toBeVisible();
+    await expect(paydown.locator('[class*="_streamVal_"]'), 'E BARS week').toHaveText('$200.00 / $500.00');
+
+    // CENTS — Daily's plan card: the to-do amount to the cent
+    const daily = page.locator('[class*="pbcard"]');
+    await expect(daily.locator('[class*="pbRow"]', { hasText: 'Repay Coinbase' }), 'E CENTS Daily row').toContainText('$500.00');
+    // CENTS — no whole-dollar figure anywhere on Daily: the trio, the price, the Safety card, the log (BL19)
+    const onDaily = await dollarFigures(page);
+    expect(onDaily.whole, 'E CENTS no whole dollars on Daily').toEqual([]);
+    expect(onDaily.cents, 'E CENTS premise: Daily shows dollar figures').toBeGreaterThan(5);
+    await expect(page.getByText('BTC $100,000.00', { exact: true }), 'E CENTS the price').toBeVisible();
+
+    // BARS — Month: the same month so far, no caption (the head already says month-to-date)
+    await page.getByRole('tab', { name: 'Month', exact: true }).click();
+    await expect(paydown.locator('[class*="_streamVal_"]'), 'E BARS month').toHaveText('$200.00 / $500.00');
+    await expect(page.getByText('Month 1 so far', { exact: true }), 'E BARS no caption in Month').toHaveCount(0);
+
+    // CENTS — THIS MONTH: the to-do and the status, to the cent (BL19)
+    await page.getByRole('tab', { name: 'Monthly' }).click();
+    const rows = page.locator('ul[class*="pmList"] > li');
+    await expect(rows.nth(0), 'E CENTS THIS MONTH row').toContainText('Repay Coinbase');
+    await expect(rows.nth(0), 'E CENTS THIS MONTH amount').toContainText('$500.00');
+    await expect(page.getByText(/^Coinbase is \$\d{1,3}(?:,\d{3})*\.\d{2} over your plan's limit$/), 'E CENTS the status to the cent').toBeVisible();
+    const onMonth = await dollarFigures(page);
+    expect(onMonth.whole, 'E CENTS no whole dollars on THIS MONTH').toEqual([]);
+    expect(onMonth.cents, 'E CENTS premise: THIS MONTH shows dollar figures').toBeGreaterThan(5);
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test("RUN 2.1 — a later month's buy is its dollars at today's price; this month's is not labelled", async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic(page);
+    await seedAndGoto(page);
+    await page.getByRole('tab', { name: 'Monthly' }).click();
+    const buy = page.locator('ul[class*="pmList"] > li', { hasText: 'Buy bitcoin' });
+    await expect(buy, "E TODAY'S PRICE this month: dollars to the cent").toContainText(/\$\d{1,3}(?:,\d{3})*\.\d{2}/);
+    await expect(buy, "E TODAY'S PRICE this month: no label").not.toContainText("at today's price");
+    const scrub = page.getByLabel('Scrub through months');
+    await scrub.focus();
+    await scrub.press('ArrowRight');
+    await expect(page.getByText('The plan for month 2', { exact: true }), 'E month 2').toBeVisible();
+    await expect(buy, "E TODAY'S PRICE a later month").toContainText("· at today's price");
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 });
