@@ -31,10 +31,10 @@ describe('describeDayEvent', () => {
     expect(d.detail).toBe('$1,200');
   });
 
-  it('buy → BTC + usd estimate when present, BTC-only when absent', () => {
+  it('ROW buy dollars: BTC · what was spent when present (no "~" — typed since 5d), BTC-only when absent', () => {
     const withUsd = describeDayEvent({ id: '2', date: START, ts: 1, kind: 'buy', amount: 0.0125, usd: 1000 });
     expect(withUsd.label).toBe('Bought Bitcoin');
-    expect(withUsd.detail).toBe('₿ 0.0125 (~$1,000)');
+    expect(withUsd.detail).toBe('₿ 0.0125 · $1,000');
     const noUsd = describeDayEvent({ id: '3', date: START, ts: 1, kind: 'buy', amount: 0.0125 });
     expect(noUsd.detail).toBe('₿ 0.0125');
   });

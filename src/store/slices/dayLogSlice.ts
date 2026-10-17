@@ -6,7 +6,7 @@ import { computeStrikeLtv } from '../../simulation/strikeCredit';
 import { accruedCbBalance, cbMetrics } from '../../simulation/cbMetrics';
 import { todayLocalISO } from '../../utils/format';
 import { kickRecordsPublish } from '../bootstrap';
-import { refreshCbCollateralCache, refreshStrikeCollateralCache, refreshBalanceAnchors, readingCtx, monthOf, rerollMonth } from '../dailyRouting';
+import { refreshCbCollateralCache, refreshStrikeCollateralCache, refreshBalanceAnchors, readingCtx, monthOf, rerollMonth, buyDollarsOnlyEdit, monthEntryCurrent } from '../dailyRouting';
 import { refuseWithoutPlan } from '../../lib/nostr/planLoad';
 
 type DayLogSlice = Pick<StoreState,
@@ -39,14 +39,24 @@ export const createDayLogSlice = (set: StoreSet, get: StoreGet): DayLogSlice => 
     // stale copy on other devices; date carries occurrence.
     const bumped = { ...event, ts: Date.now() };
     const before = get().dayLog.find((e) => e.id === event.id);
+    // 5d — decided BEFORE the write: a dollars-only buy edit (buyDollarsOnlyEdit) on a month whose stored entry is current
+    // (monthEntryCurrent) gets Income → BTC alone; any other edit, the full re-roll.
+    const mBefore = monthOf(get, before);
+    const dollarsRule = buyDollarsOnlyEdit(before, bumped);
+    const dollarsOnly = dollarsRule && mBefore !== null && monthEntryCurrent(get, mBefore);
     set((s) => ({ dayLog: s.dayLog.map((e) => (e.id === event.id ? bumped : e)), recordsDirty: true }));
     refreshCbCollateralCache(set, get);
     refreshStrikeCollateralCache(set, get);   // Collateral-Truth v20 — reading-anchored Strike collateral cache
-    refreshBalanceAnchors(set, get, readingCtx(before));   // §5b — editing a reading re-anchors; a moved/changed source falls back via the ctx proxy
+    // §5b — editing a reading re-anchors; a moved/changed source falls back via the ctx proxy. 5d: never on a dollars-only
+    // buy edit, its month's entry current or not — a buy feeds no reading, so the call could only re-assert a reading over
+    // an anchor out of step with it (a balance typed in Settings or the Advisor on the day of a reading, or a plan edit
+    // pulled without its reading): a safety figure moved by typing a buy's dollars (BL13's kill criterion). The next
+    // other journal action re-anchors.
+    if (!dollarsRule) refreshBalanceAnchors(set, get, readingCtx(before));
     const months = new Set<number>();
     const mb = monthOf(get, before); if (mb !== null) months.add(mb);   // re-roll the OLD month (date may have crossed a boundary)
     const ma = monthOf(get, bumped); if (ma !== null) months.add(ma);   // and the NEW month
-    for (const m of months) rerollMonth(get, m);
+    for (const m of months) rerollMonth(get, m, { dollarsOnly });   // 5d
     kickRecordsPublish();
   },
   deleteDayEvent: (id) => {

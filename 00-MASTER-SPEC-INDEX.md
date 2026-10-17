@@ -23,6 +23,8 @@ is the owner's item.
 
 **5c — the plan-load guard** (`pbloc-spec-plan-load-guard-v1`): a signed-in owner device writes nothing that depends on the plan — no day event, no monthly-log entry, no plan edit, no month reconcile, no plan, journal, viewer or relay-list publish — until it holds the plan, never infers that it does from an empty pull, and says so in plain words; the one-shot month reconcile becomes a migration; an oversized plan is republished trimmed; and the Ledger's headline counts what was bought; CLAUDE.md § Phase 4 → 5c records it.
 
+**5d — a buy's dollars** (`pbloc-spec-buy-dollars-v1`): the buy sheet's "Dollars spent (incl. fee)", saved as typed and never re-priced; a dollars-only edit rewrites Income → BTC alone and keeps a signed month signed; CLAUDE.md § Phase 4 → 5d records it.
+
 **Current shipped baseline: store **v18** · 220/220 tests · HEAD `6673a2b` (branch `main`). Viewer-access arc (Phases 1–3) COMPLETE.**
 **Last rebuilt:** after the **security arc** (writer local-nsec signer → owner-pubkey gate → NIP-98 proxy auth) + the position-box relayout arc. Historical record of what shipped. **The security arc is now CONFIRMED on-device (iOS Face-ID local signer, owner-gate, NIP-98 all verified Jun 18).** The OPEN tail's live queue is now just the position-box eyeball + the queued viewer-access spec.
 

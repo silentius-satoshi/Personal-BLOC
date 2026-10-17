@@ -18,7 +18,7 @@ const ids = () => { let n = 0; return () => `id-${n++}`; };
 const FULL: SheetState = {
   type: 'draw', amount: 1000, collateralDir: 'deposit', collateralTarget: 'strike', debtTarget: 'strike',
   strikeBal: 5000, strikeLtv: 11.2, strikeCollateral: 0.5, pledgeToStrike: false,
-  cbBal: 60000, cbLtv: 50, cbCollateral: 1.5, cbLiqPriceReading: null,
+  cbBal: 60000, cbLtv: 50, cbCollateral: 1.5, cbLiqPriceReading: null, buyUsd: null,
 };
 const build = (s: Partial<SheetState>, hasCbLoan = true, cbBalance = CB_BAL) =>
   buildEventsFromSheet({ ...FULL, ...s }, hasCbLoan, PRICE, TODAY, TS, ids(), CUR, cbBalance);

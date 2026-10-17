@@ -32,7 +32,7 @@ const TARGET_LABEL: Record<'strike' | 'cb' | 'cold', string> = { strike: 'Strike
 
 /**
  * Map a DayEvent to a read-only display descriptor (icon · label · detail). PURE — covers all 7 kinds:
- *  - flows: draw / buy (shows usd when present) / paydown
+ *  - flows: draw / buy (shows its dollars when present — what was spent, typed since 5d, so no "~") / paydown
  *  - collateral moves: deposit / withdraw (with target)
  *  - readings: balanceReading (Strike always, CB when present) / cbCollateralReading
  */
@@ -48,7 +48,7 @@ export function describeDayEvent(ev: DayEvent): DayEventDescriptor {
       return {
         icon: '₿',
         label: 'Bought Bitcoin',
-        detail: ev.usd !== undefined ? `${btc(ev.amount)} (~${fmtUSD(ev.usd)})` : btc(ev.amount),
+        detail: ev.usd !== undefined ? `${btc(ev.amount)} · ${fmtUSD(ev.usd)}` : btc(ev.amount),
       };
     case 'paydown':
       if (flowVenue(ev) === 'cb') return { icon: '↘', label: 'Coinbase paydown', detail: fmtUSD(ev.amount) };

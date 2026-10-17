@@ -588,6 +588,11 @@ src/
                                 # Anchors/readingCtx/isMonthlyMeaningful/rerollMonth/monthOf). Store-touching ones take
                                 # leading set/get params (getState()→get(), setState()→set()); pure ones verbatim. ⚠ NO
                                 # "useStore" substring anywhere (the grep gate); called from dayLog+monthlyLog slice actions
+                                # 5d: buyDollarsOnlyEdit(before, after) (both buys, the same id, date and BTC) · monthEntryCurrent(get,
+                                # month) — the lag check: no event of the month newer than the entry's last save, and BTC bought the
+                                # events' (it can't see a deletion of anything but a buy, an entry-only change such as an un-sign, or an
+                                # event other than a buy older than the save — spec §7) · rerollMonth(get, month, { dollarsOnly }), whose
+                                # dollars-only path writes only Income → BTC onto the stored entry — its sign-off and every other figure stay
     persistConfig.ts            # Phase 1c — partializeState + migrateState (verbatim) + the persist OPTIONS as an exported
                                 # `persistOptions` (annotated PersistOptions<StoreState, ReturnType<typeof partializeState>>
                                 # so its standalone merge/onRehydrate callbacks keep param types). Imports bootstrap +
@@ -1648,6 +1653,11 @@ src/
                                 # note; target:'strike' shows "Strike held after: …" (feeds the C1 collateralDelta seam).
                                 # D3 Set balance = reading-only (no amount → one balanceReading). Save (--btc orange) gated
                                 # on readingComplete + (setBalance || amount>0); soft amber >100% LTV hint (non-blocking).
+                                # 5d: a buy adds "Dollars spent (incl. fee)" under "Bitcoin bought" — $0.00 until a BTC amount is typed,
+                                # then buyUsdGuess, following the BTC until the owner changes the figure (typed only when it differs from
+                                # what the field shows: a blur re-emits it); the edit shows the stored dollars and keeps them
+                                # (rebuildEditedBuy — never re-priced; a figure logged before 5d is stored to the cent); Save needs
+                                # dollars above zero; the implied price under the field ("≈ $102,880 per ₿ · today $100,000").
                                 # ALL NumberInputs pass min={0} (NumberInput only clamps negatives when min is given) +
                                 # value={x ?? 0} with null-tracked state for the gate. Save → buildEventsFromSheet →
                                 # events.forEach(addDayEvent) (LD6 atomic flow+reading = TWO addDayEvent calls, same date/ts).
@@ -1663,13 +1673,13 @@ src/
                                 # P4b-2 EDIT + DELETE (the same shell): an optional editEvent?: DayEvent prop flips the
                                 # sheet into type-LOCKED edit mode (Option A — one DayEvent per log row; a flow and its
                                 # reading are independent rows). isEdit hides the type-pills + the Strike|CB toggle (target
-                                # locked) and shows ONLY that kind's fields: draw/paydown/buy → amount; deposit → amount
+                                # locked) and shows ONLY that kind's fields: draw/paydown/buy → amount (a buy: + its dollars, 5d); deposit → amount
                                 # (+ liq-price when target:'cb'); balanceReading → the reading section (CB block gated on
                                 # the ORIGINAL reading's cbBal!=null via showCbReading, NOT current hasCbLoan). The reading
                                 # section renders ONLY in add mode OR for a balanceReading edit — a flow edit never shows
                                 # it (no LD6 re-enforcement). Title "Edit event"; month via bucketEventToMonth(editEvent.date).
                                 # canSave branches by kind (reading→readingComplete(state,showCbReading); cb-deposit→
-                                # amount>0 && liq>0; else amount>0). The open useEffect keys on [open, editEvent?.id] and
+                                # amount>0 && liq>0; else amount>0; a buy: + its dollars, 5d). The open useEffect keys on [open, editEvent?.id] and
                                 # seeds fields from editEvent (LTV ×100 for display). handleSave reconstructs ONE event
                                 # preserving id/date/ts → updateDayEvent (LTV ÷100 on reading edits; cb-deposit edit also
                                 # re-anchors cbLiquidationPrice/AsOf) — NO buildEventsFromSheet, no second event. Delete
@@ -1710,7 +1720,11 @@ src/
                                 # currentStrikeCollateral) → DayEvent[] ([reading] | [flow,reading] | [deposit,reading];
                                 # v20 buy pledge → [buy,deposit target:'strike' amount=buy,reading]; reading.strikeCollateral =
                                 # s.strikeCollateral ?? currentStrikeCollateral, BTC no conversion; fresh id per event;
-                                # flow+reading share date+ts; usd=amount*price for buy; **LTV percent ÷100 → fraction**).
+                                # flow+reading share date+ts; the buy's usd = the typed buyUsd, else buyUsdGuess, to the cent (5d);
+                                # **LTV percent ÷100 → fraction**). 5d: SheetState.buyUsd ("Dollars spent (incl. fee)" as typed; null → the
+                                # guess) + roundUsdCents (one rounding for the typed figure and the guess) + buyUsdGuess (the BTC at today's
+                                # price, to the cent) + impliedBtcPrice (dollars ÷ BTC — a readout, never stored) + rebuildEditedBuy (the
+                                # edit's rebuild: id/date/ts kept, the dollars as given, to the cent — never re-priced).
                                 # Tested in __tests__/eventSheet.test.ts
     SimpleMode/
       PriceChart.tsx            # BTC price chart atop the Safety Dashboard — recharts AreaChart (line/area,
@@ -2259,6 +2273,10 @@ via dayLog records sync in P3).
   `confirmed: existing.confirmed===true ? false : (existing.confirmed ?? false)` (reopen-on-edit, LD4). The new-month seed carries
   NO `btcHeld` (spec v3 — recorded only from a reading; there is no recompute to overwrite a placeholder). **Emptied-daily-month cleanup:** if no Route-2 events
   remain in the month and the entry is `source:'daily'`, `deleteLogEntry(month)` instead of a stale placeholder.
+  **5d:** with `dollarsOnly` (a dollars-only buy edit on a current entry) the month gets only its Income → BTC
+  rewritten — its `confirmed` and every other figure stay; every other edit, and an entry the lag check sees lagging,
+  re-rolls and reopens (LD4). Every dollars-only edit — its entry current or not — skips `refreshBalanceAnchors` (a
+  buy feeds no reading); every other edit still runs it.
 - **Seam 1 (collateral)** — after the upsert (which graduated any prior pending into this month's `collateralAdjustment`),
   and ONLY when `collateralDelta !== 0`: `adjustCurrentCollateral(getCurrentBtcHeld() − thisMonth's existingAdj +
   collateralDelta)`. Subtracting `existingAdj` (the just-graduated amount) before adding the WHOLE-month net
@@ -2607,7 +2625,8 @@ the existing entry + `confirmed:true` and **preserves `provisional`**; a real `b
 - **Orthogonal-flags model:** confirming does NOT clear provisional; a reading does. So a provisional month can
   be confirmed-as-provisional (honest sign-off when the past reading is unavailable) and later upgraded by
   adding a reading. Editing a confirmed month flips `confirmed→false` (LD4 reopen-on-edit, already built) → the
-  banner reappears. Correct, left as-is. **The reading half is now true:** `rollupMonth`'s reading branch emits
+  banner reappears — except a dollars-only buy edit (5d), which rewrites Income → BTC alone. Correct, left as-is.
+  **The reading half is now true:** `rollupMonth`'s reading branch emits
   `provisional: false` explicitly, so a reading clears a stored `true` on the next re-roll. ⚠ **`sameRollupFields`
   deliberately does NOT compare `provisional`** — it is a data-quality label, not a figure a sign-off attests, and
   comparing it made a joining device's one-shot reconcile re-roll (and un-sign) every month whose flag differed
@@ -6461,11 +6480,13 @@ Review/sign-off). One implementation now, in `logUtils.ts`:
   `planMissing`. Cross-device:
   each device reconciles once against its own store; records LWW converges (a device that pulls another's
   reconciled month merges it, then its own reconcile no-ops).
-- **REOPEN PRINCIPLE (state once, inherited by future rollup-touching fixes):** *a sign-off attests
-  specific figures; any operation that changes a confirmed month's rolled figures reopens it.*
-  `rerollMonth` flips `confirmed→false` on re-roll — the diff-guard makes this correct (unchanged months
+- **REOPEN PRINCIPLE (state once, inherited by future rollup-touching fixes):** *a sign-off attests the figures its
+  review shows and records; any operation that changes one of them reopens the month. A buy's dollars aren't one of
+  them: a dollars-only buy edit on a current entry rewrites Income → BTC alone and keeps the sign-off (5d) — the
+  pledged pair's display glitch aside, which can change the review's "Moved" row.*
+  `rerollMonth`'s full path flips `confirmed→false` — the diff-guard makes this correct (unchanged months
   are skipped → `confirmed` preserved; a changed month's stale sign-off reopens, surfacing via the
-  existing reconcile banner / "awaits sign-off" pointer). The owner has no confirmed months yet.
+  existing reconcile banner / "awaits sign-off" pointer).
 
 - **Start-balance carry at sign-off (`DailyModeView` `onConfirm`):** the signed month's ENDING Strike
   balance becomes the next month's projection base — `setAdvisorMonthStartBalance(e.strikeBal)` after
@@ -7874,6 +7895,30 @@ goes red.)
     OVERSIZE (a crash), SWEEP (seed 1) · MS22 (a missing page kept as held) → REPUBLISH, CARRY, SWEEP (seed 2) · MS23
     (NIP-44's chunk at a quarter) → NIP44-LEN (32,769 B), PROBE · MS24 (no floor) → SKEW FLOOR · MS25 (the union's tie
     to the later part) → UNION ≡ FOLD (parts #7) · MS26 (the union applies its own tombstones) → UNION, AGED.
+- **5d — a buy's dollars** (spec `pbloc-spec-buy-dollars-v1` v1.1 — § Phase 4 → 5d; 1 new unit file, 5 changed — four
+  sheet fixtures gain `buyUsd: null`, three of them nothing else; the suite 2,610 → 2,638, 165 → 166 files; a new e2e
+  spec, 3 tests; 33 mutations, MD1–MD33, each an exact-once edit run against its unit files and, where marked, the e2e
+  spec (`--retries=0`), red at its tag, the file restored and md5-checked):
+  - `src/store/__tests__/buyDollarsStore.test.ts` (21, the REAL store) — ⭐ SIGNOFF (dollars-only keeps · figures kept
+    — a sign-off's own $2,500 for $3,000 drawn, a $210 minimum for $200, an NDP · btc reopens · date reopens · unsigned
+    stays unsigned · legacy · manual month · lagging entry — a newer event · — BTC bought · — the balances stay · rule)
+    · ⭐ ANCHOR other edits (a reading edited $5,000 → $5,500 moves the balance) · ⭐ KILL2 nothing else moves ×9 (the
+    whole store before and after, a deep copy: an unsigned month; a signed month; a pledged buy with a Coinbase loan and
+    a cold move; a buy with no dollars yet; a sign-off's own figures; the review's rounded seeds; a hand-entered Strike
+    collateral; balances typed in Settings on the day of a reading; two signed months).
+  - `src/components/Daily/__tests__/eventSheet.test.ts` — the 5d block (7): ⭐ DOLLARS typed · guess · cents · pledge ·
+    edit kept · old figure · implied; `FULL` gains `buyUsd: null`.
+  - `src/components/Daily/__tests__/dailyView.test.ts` — ⭐ ROW buy dollars ("₿ 0.0125 · $1,000"; was "(~$1,000)").
+  - Fixtures only (`buyUsd: null` in each `SheetState`): `eventSheetCold.test.ts`, `cbDebtSheet.test.ts`,
+    `dailyModeStore.test.ts`.
+  - `e2e/buyDollars.spec.ts` (3; a manual $100,000 price, so the guess is exact) — ⭐ E DOLLARS add (E DOLLARS tap
+    premise — $0.00 before any bitcoin · — no hint before a guess · E DOLLARS tap — the guess still comes · E DOLLARS
+    gate — premise · — no dollars, no save · — dollars typed, save on) · ⭐ E DOLLARS edit (E DOLLARS edit gate — no
+    dollars, no save · — dollars back, save on) · ⭐ E SIGNOFF (premise — the seeded sign-off · premise — the dollars
+    field · figures kept · re-rolled).
+  - Red-first (a plain export of `a68c494` with only the 7 test and e2e files): vitest 21 red (16 by an AssertionError, 5
+    by a TypeError), 2,617 passed, 6 skipped, every file loading; the full e2e (`--retries=0`) 3 red, 71 passed, 2
+    skipped. The mutations: the spec's §6.3 and Appendix P.
 - **5c — the plan-load guard** (spec `pbloc-spec-plan-load-guard-v1` v1.1 — § Phase 4 → 5c; 5 new test files, 6 changed;
   the suite 2,555 → 2,610, 160 → 165 files; a new e2e spec, 4 tests; 65 mutations, MC1–MC65, each an exact-once edit
   run against the new unit files plus `calendarModel.test` and `sync.test` (MC64–MC65 with `escapeHatch.test` too) —
@@ -8314,7 +8359,7 @@ goes red.)
 - `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, a folded plan event applies both (cross-device — 4e: the plan channel), and a fold lacking them doesn't clobber (absent = not set, §6)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
-- `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price,reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids. **v20 (C-P3):** `readingComplete` false when strikeCollateral null; reading carries strikeCollateral from `s.strikeCollateral` (falls back to the `currentStrikeCollateral` arg); manual override wins; `autoStrikeCollateral` post-move total (deposit+/withdraw−/pledged-buy+/else current); pledge ON → [buy,deposit target:'strike' amount=buy,reading] shared date+ts distinct ids, pledge OFF → [buy,reading]
+- `src/components/Daily/__tests__/eventSheet.test.ts` — Daily Mode P4b-1 pure helpers (import `../eventSheetModel`): `readingComplete` gate matrix (Strike-only when !hasCbLoan; +CB fields iff hasCbLoan) + `buildEventsFromSheet` per type (setBalance→[reading]; draw/paydown→[flow,reading] USD; buy→[buy usd=amount*price (untyped dollars → the guess),reading] BTC; collateral→[deposit target,reading], target strike+cb, defaults strike when !hasCbLoan), reading carries price, **LTV percent ÷100 → fraction (11.2→0.112)**, CB reading fields present iff hasCbLoan, flow+reading share ts with distinct ids. **v20 (C-P3):** `readingComplete` false when strikeCollateral null; reading carries strikeCollateral from `s.strikeCollateral` (falls back to the `currentStrikeCollateral` arg); manual override wins; `autoStrikeCollateral` post-move total (deposit+/withdraw−/pledged-buy+/else current); pledge ON → [buy,deposit target:'strike' amount=buy,reading] shared date+ts distinct ids, pledge OFF → [buy,reading]. **5d:** ⭐ DOLLARS typed · guess · cents · pledge · edit kept · old figure · implied
 - `src/store/__tests__/planBars.test.ts` — `showPlan*Bar` default true, setters, device-local (neither `hydratePrefs` nor `applyViewerSettings` can write them — absent from SETTINGS_FIELDS)
 - `src/store/__tests__/relaySync.test.ts` — Option C: `buildSettingsPayload` INCLUDES `nostrRelays` + `buildViewerSnapshotPayload` settings STRIPS it; 4e — the `hydrateSettings` relay guard retired: a folded `nostrRelays` event replaces the local list (add + remove propagate) and ⭐ a folded `DEFAULT_RELAYS` replaces a custom one (RELAYS defaults); a fold without the field leaves the list alone while a sibling lands; + the publish-trigger follow-on (`setNostrRelaysAndSync` sets the list AND marks `planDirty` — a plan event; plain `setNostrRelays` sets it RAW — fake timers swallow the debounce)
 - `src/store/__tests__/viewerPublishGate.test.ts` — `publishRecordsNow` viewerMode backstop: with full publish creds + `viewerMode:true` → returns false at the gate (`setNostrSyncing` never called); with `viewerMode:false` → passes the gate (`setNostrSyncing(true)` called) and only then fails at the stub-signer publish step (owner baseline unchanged); the plan-events and prefs publishes are blocked for a read-only viewer too (4e — they replaced the settings publish)
@@ -10886,6 +10931,32 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
   - **Tests:** `planLoadGuard.test.ts` (26), `planLoadPull.test.ts` (15), `syncNowHeld.test.ts` (1),
     `planNotLoadedNotice.test.tsx` (4), `noPlanNotice.test.tsx` (5), `calendarModel.test.ts` (+4), the e2e
     `planLoadGuard.spec.ts` (4); 65 mutations (§ Test Suite → 5c).
+- **5d — a buy's dollars** (spec `pbloc-spec-buy-dollars-v1` v1.1, BL13 option B; store unchanged, NO bump). The
+  problem: the app priced a buy itself — its BTC × the app's price when it was logged, and again at every edit — and the
+  owner often logs a buy days after making it, so a month's Income → BTC was off by the price move in between; and an
+  edit re-priced it, and reopened the month if signed.
+  - **The field:** "Dollars spent (incl. fee)" under "Bitcoin bought" — $0.00 until a BTC amount is typed, then the
+    app's guess (`buyUsdGuess`: the BTC at today's price, to the cent, with "at today's price — change it to what you
+    paid"), following the BTC until the owner changes the figure; saved as typed, to the cent; Save needs dollars above
+    zero. A past-dated add gets the same guess (the device keeps no historical price).
+  - **No re-pricing:** an edit shows the stored dollars and keeps them (`rebuildEditedBuy`); a BTC correction leaves them
+    as they are (D2-A). A figure logged before 5d is stored to the cent at its first save.
+  - **The dollars-only path (D1-A):** an edit that changes only a buy's dollars (`buyDollarsOnlyEdit` — the same id, date
+    and BTC) on a current entry (`monthEntryCurrent`) writes Income → BTC alone (`rerollMonth`'s `dollarsOnly`), keeping
+    the month's sign-off and every figure it recorded. Never the full re-roll there: its spread rewrites a signed month's
+    own figures (expenses actually paid, the minimum, a hand-entered collateral) while the month stays signed. Only on a
+    current entry: a partial pull can leave an entry lagging its events, and then the edit takes the full path and
+    reopens (LD4). The lag check can't see a deletion of a non-buy, an entry-only change such as an un-sign, or an event
+    other than a buy older than the entry's last save (spec §7) — the month's next other edit puts it right. No
+    dollars-only edit re-anchors the balances (a buy feeds no reading); every other edit still does.
+  - **Display (D3-A):** the implied price under the field ("≈ $102,880 per ₿ · today $100,000"); Daily's log row reads
+    "₿ 0.012 · $1,235", without the "~".
+  - **What doesn't change:** no stored field, no store bump, no sync change; the backup; every engine and safety figure;
+    "+$X stacked" (today's value of the month's buys, by design).
+  - **The pledged pair (older than 5d, spec §12):** editing a pledged buy bumps its ts, so its Strike deposit shows as a
+    "Strike +X ₿" move in Daily's activity line and the review's "Moved" row; Strike collateral doesn't move.
+  - **Tests:** `buyDollarsStore.test.ts` (21), `eventSheet.test.ts` (+7), `dailyView.test.ts` (the row), the e2e
+    `buyDollars.spec.ts` (3); 33 mutations (§ Test Suite → 5d).
 
 ---
 
@@ -10923,6 +10994,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
 | A draw/paydown with no `target` is STRIKE | Read the venue only through `flowVenue(ev)`, never bare `ev.target`. The `'strike'` default is the migration — every stored draw/paydown predates the field; any other default empties `expensesActual` across the whole plan. Pinned by a test that goes red if the default flips |
 | The paydown badge has FIVE states, and three earn a colour | `classifyPaydownState` → quiet / defended / partial / undefended / noCollateral (checked FIRST — peak ∞; it describes the DRAW, never the month's end, and shows the peak only when projected). A paydown is plan mechanics (muted), never "triggered" and never orange; amber is ONLY for partial (paid, still above the ceiling), undefended (above it, no income to pay) and noCollateral. Never collapse partial into defended. A bare LTV figure (the AFTER box, the plan bar) is coloured by THAT figure via `isLtvFigureStressed`, made true by `displaySettledLtv` — never by a plan state, and never through an `===` comparison against state names (a new member slips past it). The header's LTV and paydown must come from `paydownReadout` — never pair a ledger LTV with a plan paydown — and the current month in progress keeps the PLANNED paydown |
 | A Coinbase borrow/paydown is journal-only at EVERY dayLog reader | `rollupMonth` (the corruption guard — it receives the FULL dayLog), `isMonthlyMeaningful` (create/flip/reopen), `aggregateEvents` (it prefills the sign-off's `expensesActual`), the edit rebuild (`rebuildEditedFlow`), and the labels. A new consumer of draw/paydown must do the same. Never replace the rollup skip with "the filter upstream handles it" — `isMonthlyMeaningful` only gates whether a month re-rolls |
+| A buy's dollars are the owner's | Typed or accepted on the sheet, stored to the cent, never re-priced by an edit. A dollars-only buy edit on a current entry writes only Income → BTC, never the full re-roll, so a signed month keeps its sign-off and every figure it recorded (`buyDollarsOnlyEdit`, `monthEntryCurrent`, `rerollMonth`'s `dollarsOnly`); an entry the lag check sees lagging, and every other edit, still re-roll and reopen (LD4). No dollars-only edit re-anchors the balances, on a current entry or a lagging one, and every other edit still does. A buy's dollars and a month's Income → BTC reach no engine, safety figure or sign-off. Pinned by `buyDollarsStore.test` (SIGNOFF, KILL2), `eventSheet.test` (DOLLARS) and `e2e/buyDollars.spec` |
 | Backup ceremony stamps once, self-waking | `RecoveryKeyCeremony` stamps verification via `setBackupVerifiedAt(Date.now(), nostr)` and **nothing else** — the setter's own plan event (`emitPlanSets` → `planDirty`; was `settingsDirty` until 4e) + `syncNow` wake un-gates sync. **Never add a second dirty/publish** at the call site. The ceremony is the ONLY verified stamp; `OwnerKeySetup`'s pre-auth stamp is the interim bridge (retired in R2c-2) |
 | Every masked field goes through `ui/PassphraseInput` | Never hand-roll an `<input type="password">`. The shared widget bakes in the four iOS suppressions (an autocapitalized passphrase never decrypts) and the `onPointerDown`+`preventDefault` focus guard (an onClick-only toggle blurs the field and collapses the iOS keyboard mid-entry). A `grep -rn 'type="password"' src` must return ONLY `AppUnlockGate.tsx` + `StoreMigrationGate.tsx` — both unrendered, retained as the Option-3a rebuild basis. PINs use it too, passing `inputMode="numeric"` so the keypad survives reveal |
 | NEVER collapse the sign-out dispatch to `external → reconnectNostr` | `reconnectNostr` retains `nostrPubkey`, and `useNostrAutoRestore` early-returns only for `'local'` and for `(nip46 && !nostrLogin)` — so a **nip07** session falls through to `setIsAuthenticated(true)` → `restoreSigner` → `NLogin.fromExtension()`, which an authorized extension answers **silently**. Sign out would reload and leave the user signed in: a control that visibly does nothing. `signOut()` therefore routes `nip07 → disconnectNostr` (the only teardown auto-restore can't undo), `nip46 → reconnectNostr`, `local → signOutLocal`. This is not "the harder action" for nip07 — **destructiveness is a property of what's at stake**, and a nip07 user has no on-device key; the cleared fields re-stamp on the next one-approval login. Pinned by `disconnect.test.ts` ("'nip07' → disconnectNostr, NOT reconnectNostr") |

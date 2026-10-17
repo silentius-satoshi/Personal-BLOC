@@ -15,7 +15,7 @@ const ids = () => { let n = 0; return () => `id-${n++}`; };
 const FULL: SheetState = {
   type: 'collateral', amount: 0.1, collateralDir: 'deposit', collateralTarget: 'cold', debtTarget: 'strike',
   strikeBal: 5000, strikeLtv: 11.2, strikeCollateral: 0.5, pledgeToStrike: false,
-  cbBal: 60000, cbLtv: 50, cbCollateral: 1.5, cbLiqPriceReading: null,
+  cbBal: 60000, cbLtv: 50, cbCollateral: 1.5, cbLiqPriceReading: null, buyUsd: null,
 };
 
 describe('cold collateral moves — buildEventsFromSheet', () => {
