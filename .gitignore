@@ -9,8 +9,10 @@ dist-ssr/
 *.log
 npm-debug.log*
 .vercel
-.claude/settings.local.json
-.claude/
+# Claude Code: .claude/ stays local, except the shared rules (BL21)
+!/.claude/
+**/.claude/*
+!/.claude/rules/
 
 # Playwright e2e
 /test-results/

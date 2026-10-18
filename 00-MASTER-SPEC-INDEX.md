@@ -25,6 +25,8 @@ is the owner's item.
 
 **5d — a buy's dollars** (`pbloc-spec-buy-dollars-v1`): the buy sheet's "Dollars spent (incl. fee)", saved as typed and never re-priced; a dollars-only edit rewrites Income → BTC alone and keeps a signed month signed; CLAUDE.md § Phase 4 → 5d records it.
 
+**The CLAUDE.md split** (`pbloc-spec-claude-md-split-v1`, BL21): CLAUDE.md now holds only the overview, the tech stack, how the instructions are organized, the gate, the working rules and a map. The Critical Constraints moved, split by area, to `.claude/rules/` — each file loads when a session works on a file it covers, `general.md` always — and every reference section moved, word for word, to `docs/claude/`. Here and in the specs, "CLAUDE.md § X" means § X in the doc the map names.
+
 **Current shipped baseline: store **v18** · 220/220 tests · HEAD `6673a2b` (branch `main`). Viewer-access arc (Phases 1–3) COMPLETE.**
 **Last rebuilt:** after the **security arc** (writer local-nsec signer → owner-pubkey gate → NIP-98 proxy auth) + the position-box relayout arc. Historical record of what shipped. **The security arc is now CONFIRMED on-device (iOS Face-ID local signer, owner-gate, NIP-98 all verified Jun 18).** The OPEN tail's live queue is now just the position-box eyeball + the queued viewer-access spec.
 
