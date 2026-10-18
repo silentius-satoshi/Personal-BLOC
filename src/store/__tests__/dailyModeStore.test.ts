@@ -560,7 +560,7 @@ describe('a past-dated reading never states Strike collateral', () => {
   const sheet: SheetState = {
     type: 'setBalance', amount: null, collateralDir: 'deposit', collateralTarget: 'strike', debtTarget: 'strike',
     strikeBal: 3000, strikeLtv: 10, strikeCollateral: null, pledgeToStrike: false,
-    cbBal: null, cbLtv: null, cbCollateral: null, cbLiqPriceReading: null,
+    cbBal: null, cbLtv: null, cbCollateral: null, cbLiqPriceReading: null, buyUsd: null,
   };
 
   it('⭐ current collateral is untouched and the past month records no btcHeld', () => {

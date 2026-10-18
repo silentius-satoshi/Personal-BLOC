@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, type SheetState } from '../eventSheetModel';
+import { readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, roundUsdCents, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy, type SheetState } from '../eventSheetModel';
+import type { DayEvent } from '../../../simulation/types';
 
 const TODAY = '2026-06-28';
 const TS = 1_700_000_000_000;
@@ -27,6 +28,7 @@ const FULL: SheetState = {
   cbLtv: 50,
   cbCollateral: 1.5,
   cbLiqPriceReading: null,   // §5b — default no liq on the reading (omitted from the event)
+  buyUsd: null,              // 5d — untyped → the app's guess
 };
 
 describe('readingComplete', () => {
@@ -107,7 +109,7 @@ describe('buildEventsFromSheet — flow types (LD6 atomic flow + reading)', () =
     expect(out[0]).toMatchObject({ kind: 'paydown', amount: 500 });
   });
 
-  it('buy → [buy with usd = amount*price, balanceReading], amount in BTC', () => {
+  it('buy → [buy with usd = amount*price, balanceReading], amount in BTC (untyped dollars → the guess)', () => {
     const out = buildEventsFromSheet({ ...FULL, type: 'buy', amount: 0.05 }, false, PRICE, TODAY, TS, idFactory(), CUR, 0);
     expect(out.map((e) => e.kind)).toEqual(['buy', 'balanceReading']);
     expect(out[0]).toMatchObject({ kind: 'buy', amount: 0.05, usd: 0.05 * PRICE });
@@ -239,5 +241,60 @@ describe('readingCollateralPolicy — past-dated adds never state Strike collate
     const out = buildEventsFromSheet({ ...FULL, type: 'setBalance', amount: null, strikeCollateral: null }, false, PRICE, TODAY, TS, idFactory(), null, 0);
     expect('strikeCollateral' in readingOf(out)).toBe(false);
     expect(readingOf(out).strikeBal).toBe(5000);
+  });
+});
+
+// 5d (BL13) — a buy's dollars: "Dollars spent (incl. fee)", prefilled with the app's guess, saved as typed, kept on edit.
+describe('5d — a buy\'s dollars (BL13)', () => {
+  const buyOf = (evs: DayEvent[]) => evs.find((e) => e.kind === 'buy') as Extract<DayEvent, { kind: 'buy' }>;
+
+  it('DOLLARS typed: the buy stores what was typed, to the cent — not the BTC at today\'s price', () => {
+    const out = buildEventsFromSheet({ ...FULL, type: 'buy', amount: 0.012, buyUsd: 1234.567 }, false, PRICE, TODAY, TS, idFactory(), CUR, 0);
+    expect(buyOf(out).usd).toBe(1234.57);
+    expect(buyOf(out).usd).not.toBe(0.012 * PRICE);   // premise: the typed figure differs from the guess
+    expect(out.map((e) => e.kind)).toEqual(['buy', 'balanceReading']);   // still the flow + its reading (LD6)
+  });
+
+  it('DOLLARS guess: untyped (null), zero or not a number → the BTC at today\'s price, to the cent', () => {
+    for (const buyUsd of [null, 0, Number.NaN]) {
+      const out = buildEventsFromSheet({ ...FULL, type: 'buy', amount: 0.012, buyUsd }, false, 61_234.5, TODAY, TS, idFactory(), CUR, 0);
+      expect(buyOf(out).usd).toBe(734.81);   // 0.012 × 61,234.50 = 734.814 → 734.81
+    }
+  });
+
+  it('DOLLARS cents: one rounding for the typed figure and the guess', () => {
+    expect(roundUsdCents(734.814)).toBe(734.81);
+    expect(roundUsdCents(1234.565 + 1e-9)).toBe(1234.57);
+    expect(roundUsdCents(1000)).toBe(1000);
+    expect(roundUsdCents(Number.NaN)).toBe(0);
+    expect(buyUsdGuess(0.012, 61_234.5)).toBe(734.81);
+    expect(buyUsdGuess(0.05, PRICE)).toBe(5000);
+  });
+
+  it('DOLLARS pledge: a pledged buy carries the typed dollars; its Strike deposit carries none', () => {
+    const out = buildEventsFromSheet({ ...FULL, type: 'buy', amount: 0.05, pledgeToStrike: true, buyUsd: 4100 }, false, PRICE, TODAY, TS, idFactory(), CUR, 0);
+    expect(out.map((e) => e.kind)).toEqual(['buy', 'deposit', 'balanceReading']);
+    expect(buyOf(out).usd).toBe(4100);
+    expect('usd' in out[1]).toBe(false);
+  });
+
+  it('DOLLARS edit kept: an edited buy keeps its id, date, ts and the dollars given — never re-priced', () => {
+    const ev: Extract<DayEvent, { kind: 'buy' }> = { id: 'b1', date: '2026-06-02', ts: 7, kind: 'buy', amount: 0.01, usd: 650 };
+    expect(rebuildEditedBuy(ev, 0.012, 650)).toEqual({ id: 'b1', date: '2026-06-02', ts: 7, kind: 'buy', amount: 0.012, usd: 650 });
+    expect(rebuildEditedBuy(ev, 0.01, 655.555)).toEqual({ id: 'b1', date: '2026-06-02', ts: 7, kind: 'buy', amount: 0.01, usd: 655.56 });
+  });
+
+  it('DOLLARS old figure: a buy logged before 5d (its dollars unrounded) is stored to the cent at its first save', () => {
+    const old: Extract<DayEvent, { kind: 'buy' }> = { id: 'b0', date: '2026-06-02', ts: 7, kind: 'buy', amount: 0.012, usd: 0.012 * 61_234.5 };
+    expect(old.usd).not.toBe(734.81);                              // premise: `main` stored the guess unrounded (734.814)
+    expect(rebuildEditedBuy(old, 0.012, old.usd!)).toMatchObject({ usd: 734.81 });   // re-saved unchanged → to the cent
+  });
+
+  it('DOLLARS implied: the price per ₿ the dollars imply; null until both are positive', () => {
+    expect(impliedBtcPrice(650, 0.01)).toBeCloseTo(65_000);
+    expect(impliedBtcPrice(null, 0.01)).toBeNull();
+    expect(impliedBtcPrice(650, null)).toBeNull();
+    expect(impliedBtcPrice(0, 0.01)).toBeNull();
+    expect(impliedBtcPrice(650, 0)).toBeNull();
   });
 });

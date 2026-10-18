@@ -75,11 +75,40 @@ export function isMonthlyMeaningful(ev: DayEvent): boolean {
   return true;
 }
 
+// 5d (BL13) — an edit that can change only a buy's DOLLARS: both events are buys with the same id, date and BTC (a re-save
+// with nothing changed counts too). The month's review shows the buy's bitcoin ("Bought bitcoin +₿X"), never its dollars:
+// they feed only Income → BTC (the Ledger, the month log, the CSV). So rerollMonth's `dollarsOnly` path writes Income →
+// BTC alone and keeps the sign-off — correcting a buy logged days late costs no re-sign, and a re-sign would re-stamp its
+// settings side effects with the re-sign day. Every other edit re-rolls the month and reopens it (LD4), as before.
+export function buyDollarsOnlyEdit(before: DayEvent | undefined, after: DayEvent): boolean {
+  return before !== undefined && before.kind === 'buy' && after.kind === 'buy' && before.id === after.id
+    && before.date === after.date && before.amount === after.amount;
+}
+
+// 5d — the dollars-only path writes onto the month's stored entry as it stands, so that entry must be CURRENT: it has
+// absorbed every monthly-meaningful event of its month. A pull applies events and entries raw (sync.ts — no re-roll),
+// so a device can hold an event without its month's re-rolled entry. Two signs of a lag, either one enough: an event in
+// the month newer than the entry's last save (updatedAt, else loggedAt — the merge's own fallback); or BTC bought that
+// isn't the events' (no sign-off records its own, and a dollars-only edit can't change it). A month that isn't
+// daily-owned, or isn't logged, isn't current either. Not current → the full path, as before 5d: rebuilt, and reopened.
+export function monthEntryCurrent(get: StoreGet, month: number): boolean {
+  const s = get();
+  const start = s.advisorStartDate;
+  const entry = s.monthlyLog.find((e) => e.month === month);
+  if (!entry || entry.source !== 'daily') return false;
+  const savedAt = entry.updatedAt ?? entry.loggedAt;
+  const inMonth = s.dayLog.filter((e) => isMonthlyMeaningful(e) && bucketEventToMonth(e.date, start) === month);
+  if (inMonth.some((e) => e.ts > savedAt)) return false;
+  const { entry: fresh } = rollupMonth(s.dayLog, month, start);
+  return Math.abs((entry.btcBought ?? 0) - (fresh.btcBought ?? 0)) <= 1e-9;
+}
+
 // Re-roll ONE strategy month from the current dayLog → Partial→Full bridge → upsertLogEntry → Seam 1 collateral.
 // Only monthly-meaningful events decide whether the month exists (cbCollateralReading, target:'cb'/'cold' moves and
 // target:'cb' draw/paydown are journal-only — never create/flip). The rollup itself reads the full dayLog and skips
-// the journal-only kinds on its own.
-export function rerollMonth(get: StoreGet, month: number): void {
+// the journal-only kinds on its own. `dollarsOnly` (5d) — set by updateDayEvent only for a dollars-only buy edit
+// (buyDollarsOnlyEdit) on a month whose stored entry is current (monthEntryCurrent) — writes only Income → BTC onto it.
+export function rerollMonth(get: StoreGet, month: number, opts?: { dollarsOnly?: boolean }): void {
   const s = get();
   const start = s.advisorStartDate;
   const monthlyEvents = s.dayLog.filter((e) => isMonthlyMeaningful(e) && bucketEventToMonth(e.date, start) === month);
@@ -95,6 +124,15 @@ export function rerollMonth(get: StoreGet, month: number): void {
   const priorStocks = priorStocksForMonth(s.dayLog, start, month);
 
   const { entry: rollupEntry } = rollupMonth(s.dayLog, month, start, priorStocks);   // collateralDelta retired (v20) — Strike collateral is reading-anchored, not chained from rollup
+
+  // 5d (D1) — a dollars-only buy edit on a current entry can move Income → BTC alone, so only Income → BTC is written: the
+  // month's sign-off, and every figure the sign-off recorded (expenses actually paid, the minimum, the NDP, a hand-entered
+  // collateral), stay as they are. ⚠ Never the full spread here: it would overwrite those with the rollup's (the review
+  // rounds its seeds, and the owner may change them) while the month stayed signed — figures nobody signed.
+  if (opts?.dollarsOnly && existing) {
+    get().upsertLogEntry({ ...existing, income: rollupEntry.income ?? existing.income });
+    return;
+  }
 
   // Partial→Full bridge: spread the rollup onto the EXISTING month (preserve miningSats/ndpPaid/loggedAt/btcHeld), or
   // onto a full numeric seed for a NEW month (NEVER onto {} — would leave required fields undefined). ⚠ The seed carries

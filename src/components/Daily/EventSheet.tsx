@@ -9,7 +9,7 @@ import { fmtUSDCents, toCents, todayLocalISO } from '../../utils/format';
 import { NumberInput } from '../ui/NumberInput';
 import {
   readingComplete, buildEventsFromSheet, autoStrikeCollateral, readingCollateralPolicy, COLLATERAL_TARGET_RULES, collateralAvailableFor,
-  totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote,
+  totalHoldingsAfter, DEBT_TARGET_RULES, rebuildEditedFlow, staleCbBalanceNote, buyUsdGuess, impliedBtcPrice, rebuildEditedBuy,
   type SheetType, type SheetState, type CollateralTarget, type DebtTarget,
 } from './eventSheetModel';
 import { minPaymentStatus } from '../../simulation/simpleModePlan';
@@ -104,6 +104,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   const [strikeCollateral, setStrikeCollateral]       = useState<number | null>(null);   // v20 — reading-anchored Strike collateral
   const [strikeCollateralTouched, setStrikeCollTouched] = useState(false);                // manual edit stops the auto-track
   const [pledgeToStrike, setPledgeToStrike] = useState(false);                            // buy-only — emit a paired strike deposit
+  const [buyUsd, setBuyUsd]                 = useState<number | null>(null);              // 5d — buy-only: "Dollars spent (incl. fee)"
+  const [buyUsdTouched, setBuyUsdTouched]   = useState(false);                            // 5d — typed (or stored) → the guess stops tracking
   const [cbBal, setCbBal]                   = useState<number | null>(null);
   const [cbLtv, setCbLtv]                   = useState<number | null>(null);
   const [cbCollateral, setCbCollateral]     = useState<number | null>(null);
@@ -133,6 +135,10 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
         case 'buy':
           setType('buy');
           setAmount(editEvent.amount);
+          // 5d — the stored dollars are the owner's: shown as stored, never re-priced. A buy with none (older data) starts
+          // from the guess, like a new one.
+          setBuyUsd(editEvent.usd ?? null);
+          setBuyUsdTouched(editEvent.usd !== undefined);
           break;
         case 'deposit':
           setType('collateral');
@@ -169,6 +175,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setCollTarget('strike');
     setDebtTarget('strike');
     setPledgeToStrike(false);
+    setBuyUsd(null);               // 5d — the track effect below prefills the guess once a BTC amount is typed
+    setBuyUsdTouched(false);
     setStrikeCollTouched(false);   // v20 — the track effect sets strikeCollateral from getCurrentBtcHeld ± move
 
     // P4c-2 — recompute past-ness here (effectiveDate/isPast are declared after this effect closes).
@@ -229,6 +237,13 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setStrikeCollateral(autoStrikeCollateral(currentBtcHeld, { type, collateralDir, effectiveTarget, amount, pledgeToStrike }));
   }, [open, pastAdd, type, effectiveTarget, collateralDir, amount, pledgeToStrike, strikeCollateralTouched, currentBtcHeld]);
 
+  // 5d (BL13) — the dollars field PREFILLS with the app's guess (the BTC at today's price) and follows the BTC amount
+  // until the owner types a figure of their own; from then on it is theirs. Above the early return (Rules of Hooks).
+  useEffect(() => {
+    if (!open || type !== 'buy' || buyUsdTouched) return;
+    setBuyUsd(amount !== null && amount > 0 ? buyUsdGuess(amount, btcPrice) : null);
+  }, [open, type, amount, btcPrice, buyUsdTouched]);
+
   if (!open) return null;
 
   const today = todayLocalISO();
@@ -241,10 +256,13 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     ? bucketEventToMonth(editEvent.date, advisorStartDate)
     : bucketEventToMonth(effectiveDate, advisorStartDate);
 
-  const state: SheetState = { type, amount, collateralDir, collateralTarget, debtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading };
+  const state: SheetState = { type, amount, collateralDir, collateralTarget, debtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading, buyUsd };
 
   const showAmount = type !== 'setBalance';
   const amountValid = amount !== null && amount > 0;
+  // 5d — a buy saves only with its dollars: what was spent, fee included, above zero.
+  const buyUsdValid = buyUsd !== null && Number.isFinite(buyUsd) && buyUsd > 0;
+  const buyImplied = type === 'buy' ? impliedBtcPrice(buyUsd, amount) : null;
 
   // Draw/paydown venue. EDIT mode reads it off the event (the toggle is locked, and a Coinbase borrow must stay one even
   // if the loan has since been switched off); ADD mode collapses 'cb' to Strike without a loan — the opposite of cold.
@@ -283,7 +301,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     else if (editEvent.kind === 'deposit' || editEvent.kind === 'withdraw')
                                                    // only a CB move needs a liq price (was `target === 'strike' || …` → a cold edit could never save)
                                                    canSave = amountValid && (!COLLATERAL_TARGET_RULES[editEvent.target].needsLiqPrice || cbLiqOk) && !withdrawTooLarge;
-    else                                          canSave = amountValid;   // draw / paydown / buy
+    else if (editEvent.kind === 'buy')            canSave = amountValid && buyUsdValid;   // 5d — the dollars too
+    else                                          canSave = amountValid;   // draw / paydown
   } else if (type === 'minPayment') {
     // §2b — reading-free one-field sheet; just needs a positive amount.
     canSave = amountValid;
@@ -297,6 +316,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
      canSave = readingOk
        && (!showAmount || amountValid)
        && (!cbCollateralNeedsLiq || cbLiqOk)
+       && (type !== 'buy' || buyUsdValid)   // 5d — a buy needs its dollars
        && !withdrawTooLarge;
   }
 
@@ -333,6 +353,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
   function pickType(t: SheetType) {
     setType(t);
     setAmount(t === 'minPayment' ? strikeMinOwed : null);   // minPayment prefills the owed figure; else clear (USD vs BTC unit changes)
+    setBuyUsd(null);            // 5d — a new type starts with no dollars of its own; a buy re-prefills from its BTC
+    setBuyUsdTouched(false);
   }
 
   function reset() {
@@ -346,6 +368,8 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     setStrikeCollateral(null);
     setStrikeCollTouched(false);
     setPledgeToStrike(false);
+    setBuyUsd(null);
+    setBuyUsdTouched(false);
     setCbBal(null);
     setCbLtv(null);
     setCbCollateral(null);
@@ -373,7 +397,9 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
           updated = { id, date, ts, kind: 'minPayment', amount: amount ?? 0 };
           break;
         case 'buy':
-          updated = { id, date, ts, kind: 'buy', amount: amount ?? 0, usd: (amount ?? 0) * btcPrice };
+          // 5d (BL13) — the dollars as the field holds them: the stored figure unless the owner changed it. The old line
+          // re-priced every edit at today's price (`usd: amount * btcPrice`), overwriting what was paid.
+          updated = rebuildEditedBuy(editEvent, amount ?? 0, buyUsd ?? buyUsdGuess(amount ?? 0, btcPrice));
           break;
         case 'deposit':
           updated = { id, date, ts, kind: 'deposit', amount: amount ?? 0, target: editEvent.target };
@@ -406,7 +432,7 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
     }
 
     const events = buildEventsFromSheet(
-      { type, amount, collateralDir, collateralTarget: effectiveTarget, debtTarget: effectiveDebtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading },
+      { type, amount, collateralDir, collateralTarget: effectiveTarget, debtTarget: effectiveDebtTarget, strikeBal, strikeLtv, strikeCollateral, pledgeToStrike, cbBal, cbLtv, cbCollateral, cbLiqPriceReading, buyUsd },
       hasCbLoan, btcPrice, effectiveDate, Date.now(), newId, collPolicy.fallback, currentCbBalance,
     );
     // P4c-2 — a past-dated flow with the reading skipped writes ONLY the flow (no false balanceReading);
@@ -526,6 +552,28 @@ export function EventSheet({ open, onClose, editEvent, targetDate, initialType }
             prefix={amountPrefix}
             decimals={amountDecimals}
           />
+        )}
+
+        {/* 5d (BL13) — a buy's dollars: what was spent, fee included. Prefilled with the guess (the BTC at today's price),
+            saved as typed, and kept when the buy is edited. The implied price per ₿ makes a slipped digit visible. */}
+        {type === 'buy' && (
+          <div className={styles.section} data-testid="buy-dollars">
+            <NumberInput
+              label="Dollars spent (incl. fee)"
+              value={buyUsd ?? 0}
+              onChange={(v) => { if (v !== (buyUsd ?? 0)) { setBuyUsd(v); setBuyUsdTouched(true); } }}   // vs what it SHOWS: a stray blur re-emits it
+              min={0}
+              step={0.01}
+              prefix="$"
+              decimals={2}
+              subtext={buyUsdTouched || buyUsd === null ? undefined : "at today's price — change it to what you paid"}
+            />
+            {buyImplied !== null && (
+              <div className={styles.readout} data-testid="buy-implied-price">
+                ≈ {fmtUSDCents(buyImplied)} per ₿ · today {fmtUSDCents(btcPrice)}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Coinbase borrow/paydown — journal-only. The fee has no other home, so it is shown BEFORE save. */}

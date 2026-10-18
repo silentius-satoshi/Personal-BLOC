@@ -110,6 +110,39 @@ export interface SheetState {
   cbLtv: number | null;               // PERCENT
   cbCollateral: number | null;        // BTC
   cbLiqPriceReading: number | null;   // §5b — optional CB liq price on a reading-bearing NON-collateral event; null = leave the anchor untouched (distinct from the collateral-move liq field)
+  buyUsd: number | null;              // 5d (BL13) — buy-only: "Dollars spent (incl. fee)" as typed; null → the app's guess (buyUsdGuess)
+}
+
+/**
+ * 5d (BL13) — a buy's dollars are stored to the cent: what the field shows is what is saved. One definition for the
+ * typed figure and the guess, so the two can never round differently.
+ */
+export function roundUsdCents(n: number): number {
+  return Number.isFinite(n) ? Math.round(n * 100) / 100 : 0;
+}
+
+/**
+ * 5d (BL13) — the app's guess for a buy's dollars: its BTC at today's price, to the cent. It only PREFILLS the field;
+ * the owner types what was actually paid (a buy is often logged days after it was made, at another price).
+ */
+export function buyUsdGuess(amount: number, btcPrice: number): number {
+  return roundUsdCents(amount * btcPrice);
+}
+
+/** 5d — the price per ₿ a buy's dollars imply (dollars ÷ BTC); null until both are positive. A readout, never stored. */
+export function impliedBtcPrice(usd: number | null, amount: number | null): number | null {
+  if (usd === null || amount === null || !(usd > 0) || !(amount > 0)) return null;
+  return usd / amount;
+}
+
+/**
+ * 5d (BL13) — EDIT-mode rebuild of a buy: the dollars are the owner's, kept as typed. The old inline rebuild re-priced
+ * every edit at today's price (`usd: amount * btcPrice`), so correcting a buy's BTC — or merely re-saving it — rewrote
+ * what was paid. Preserves id/date/ts/kind (updateDayEvent bumps ts).
+ */
+export function rebuildEditedBuy(ev: Extract<DayEvent, { kind: 'buy' }>, amount: number, usd: number): DayEvent {
+  const { id, date, ts } = ev;
+  return { id, date, ts, kind: 'buy', amount, usd: roundUsdCents(usd) };
 }
 
 /**
@@ -163,7 +196,7 @@ export function autoStrikeCollateral(
  *  - draw/paydown → [{kind}, balanceReading]            (amount = USD) — Strike
  *                   [{kind, target:'cb'[, fee]}]          — Coinbase: written ALONE; a borrow carries its computed
  *                                                          origination fee. target:'cb' collapses to Strike without a loan.
- *  - buy          → [{buy, usd: amount*price}, reading]  (amount = BTC)
+ *  - buy          → [{buy, usd}, reading]  (amount = BTC; usd = the typed dollars, else the guess — to the cent, 5d)
  *  - collateral   → [{deposit|withdraw, target}, balanceReading]  (amount = BTC magnitude, positive; kind by
  *                   collateralDir — the store signs withdraw negative in collateralDelta; target='strike' when !hasCbLoan)
  * LTV is stored as a FRACTION (e.g. 0.112) — the user-entered PERCENT is divided by 100 here.
@@ -226,7 +259,9 @@ export function buildEventsFromSheet(
       // minimum doesn't move the position, so LD6 doesn't apply.
       return [{ id: idFn(), date: today, ts, kind: 'minPayment', amount }];
     case 'buy': {
-      const buyEvent: DayEvent = { id: idFn(), date: today, ts, kind: 'buy', amount, usd: amount * btcPrice };
+      // 5d (BL13) — the dollars as typed ("Dollars spent (incl. fee)"); untyped → the app's guess. Both to the cent.
+      const usd = s.buyUsd !== null && Number.isFinite(s.buyUsd) && s.buyUsd > 0 ? roundUsdCents(s.buyUsd) : buyUsdGuess(amount, btcPrice);
+      const buyEvent: DayEvent = { id: idFn(), date: today, ts, kind: 'buy', amount, usd };
       // v20 pledge — ON emits a paired deposit target:'strike' (the buy's BTC pledged as collateral). Three events,
       // shared date+ts, independent ids; the reading states the post-move total (currentStrikeCollateral + amount).
       if (s.pledgeToStrike) {
