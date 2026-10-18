@@ -7,6 +7,8 @@ paths:
   - "src/lib/backup/**"
   - "src/lib/demo/**"
   - "src/utils/**"
+  - "src/lib/nostr/**"
+  - "src/hooks/**"
 ---
 
 # Rules — the journal: Daily, the month log, sign-offs and dollars

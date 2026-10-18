@@ -20,6 +20,9 @@ paths:
   - "src/store/**"
   - "src/pages/RemoteLoginSuccessPage.tsx"
   - "src/providers/**"
+  - "src/components/Daily/DailyModeView.tsx"
+  - "src/components/SimpleMode/SimpleModeView.tsx"
+  - "src/lib/planEvents/**"
 ---
 
 # Rules — keys, sign-in and sign-out, recovery and the backup ceremony
