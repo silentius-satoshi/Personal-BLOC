@@ -54,9 +54,10 @@ export interface AdvisorInputs {
   /**
    * Absolute USD prices indexed by MONTHS ELAPSED from `startingMonth` (pricePath[0] is the starting month).
    * When a month's entry is present, finite and > 0 it REPLACES the btcGrowthRate compounding; otherwise the
-   * CAGR is used for that month. Only OutlookProjection passes this — the operating plan is deliberately flat.
+   * CAGR is used for that month. No screen passes it: the Outlook did, until the plan of record's Run 3 took runAdvisor
+   * off every screen (it stays one release as the comparison engine, then goes).
    * ⚠ A cycle path's month 0→1 is a DISCONTINUITY (the "month-1 step" trap): path[0] is the live price and
-   * path[1..] sits on the modelled curve. It is the model's claim, not a bug — see OutlookProjection.
+   * path[1..] sits on the modelled curve. It is the model's claim, not a bug (the Almanac faces print it signed).
    */
   pricePath?: number[];
 }

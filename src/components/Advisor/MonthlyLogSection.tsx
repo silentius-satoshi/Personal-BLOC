@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
-import type { runAdvisor } from '../../simulation/runAdvisor';
 import type { MonthlyLogEntry } from '../../simulation/types';
+import type { PlanLogRow } from '../Almanac/planMonthView';
 import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
 import { strikeColFragment, collateralCorrection, correctionDurability, parseCollateralInput, DURABILITY_HINT } from './monthlyLogForm';
 import styles from './MonthlyLogSection.module.css';
@@ -16,10 +16,9 @@ const ltvFieldValue = (ltv: number, decimals = 2): string =>
   Number.isFinite(ltv) ? (ltv * 100).toFixed(decimals) : '0';
 
 
-type AdvisorMonthRow = ReturnType<typeof runAdvisor>['rows'][number];
-
 interface MonthlyLogSectionProps {
-  months:          AdvisorMonthRow[];
+  /** The plan of record's planned figures per strategy month (`planLogRows`, Run 3) — none for a past month. */
+  months:          PlanLogRow[];
   onOpenOverlay?:  (initialMonth: number) => void;
   allowInlineLog?: boolean;   // default true; Simple Mode passes false
 }
@@ -86,7 +85,6 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   const monthlyLog      = useStore((s) => s.monthlyLog);
   const advisorStartDate = useStore((s) => s.advisorStartDate);
   const hasCbLoan       = useStore((s) => s.hasCbLoan);
-  const income          = useStore((s) => s.income);
   const expenses        = useStore((s) => s.expenses);
   const showMiningInLog = useStore((s) => s.showMiningInLog);
   const upsertLogEntry  = useStore((s) => s.upsertLogEntry);
@@ -124,12 +122,13 @@ export function MonthlyLogSection({ months, allowInlineLog = true }: MonthlyLogS
   const showCollateralForm = collateralEditing && isDaily && durability !== null && durability !== 'stated';
   const parsedCol = parseCollateralInput(form.strikeCol);
 
-  const buildFormFromRow = (row: AdvisorMonthRow): InlineForm => {
-    const paydown = Math.max(0, income - (hasCbLoan ? row.cbPayment : 0) - row.incomeToBtc);
+  // A plan month's figures as the form's start — the plan's own Strike paydown (`planStrikePaidUsd`), no longer the
+  // Advisor's income residual (Run 3).
+  const buildFormFromRow = (row: PlanLogRow): InlineForm => {
     return {
       btcBought:    row.btcBought.toFixed(8),
       income:       String(Math.round(row.incomeToBtc)),
-      paydown:      String(Math.round(paydown)),
+      paydown:      String(Math.round(row.paydown)),
       strikeBal:    String(Math.round(row.blocBalance)),
       strikeLtvPct: ltvFieldValue(row.blocLtv),
       cbBal:        hasCbLoan ? String(Math.round(row.cbBalance)) : '0',

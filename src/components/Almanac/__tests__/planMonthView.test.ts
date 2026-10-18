@@ -8,6 +8,7 @@ import {
   planNextMonthLine, planSavingsLine, planPriceLine, planMeterAria, planSignoffLine, planSignoffSub, planBars, planNdpEstimateUsd,
   planNdpBalance,
   planBarsCaption, PLAN_AT_TODAYS_PRICE, type PlanRow,
+  planLogRows, planStrikePaidUsd, planReanchorLine, PLAN_PATHS_LINK,
 } from '../planMonthView';
 import { planSchedule, todayActions, ACTION_FIELDS, type ActionKind } from '../decisionView';
 import { cbSeizurePrice } from '../../../simulation/cbMetrics';
@@ -746,5 +747,60 @@ describe('⭐ RUN 2.1 — every figure to the cent, the buy at today\'s price, t
       .toEqual([['—', 0, true], ['$300.00', 0, true], ['—', 0, true]]);
     expect(planBars({ draw: 0.2, paid: 0, buyBtc: 0.00001 }, none).map((b) => b.value), 'BARS never "$0 / $0"').toEqual(['—', '—', '—']);
     expect(planBarsCaption(3), 'BARS Week\'s caption').toBe('Month 3 so far');
+  });
+});
+
+describe('⭐ LOG — Run 3: the month log\'s planned figures are the plan\'s run', () => {
+  const MONTHS = [1, 4, 12];
+
+  it('⭐ LOG — strategy month k is the run\'s month k − current + 1, from the current month to 12; never a past month', () => {
+    let rowsSeen = 0;
+    for (const { run } of RUNS) {
+      for (const cm of MONTHS) {
+        const rows = planLogRows(run.sim, cm);
+        expect(rows.map((r) => r.month), `LOG months from ${cm}`).toEqual(Array.from({ length: 12 - cm + 1 }, (_, i) => cm + i));
+        for (const lr of rows) {
+          const r = run.sim.rows.find((x) => x.m === lr.month - cm + 1)!;
+          expect(lr, 'LOG the run\'s own month-end figures').toEqual({
+            month: lr.month, btcBought: r.price > 0 ? r.btcBoughtUsd / r.price : 0, incomeToBtc: r.btcBoughtUsd,
+            paydown: planStrikePaidUsd(r), blocBalance: r.strikeBalance, blocLtv: r.strikeLtv, cbBalance: r.cbDebt, cbLtv: r.cbLtv,
+          });
+          rowsSeen++;
+        }
+      }
+    }
+    expect(rowsSeen, 'LOG non-vacuous').toBeGreaterThan(10_000);
+    // The current month IS the card's month 1 — the run's first month, never its opening (month 0).
+    const over = planMonthRun(OVER);
+    const r1 = over.sim.rows.find((r) => r.m === 1)!;
+    expect(planLogRows(over.sim, 4)[0], 'LOG this month = the card\'s month 1').toMatchObject({ month: 4, incomeToBtc: r1.btcBoughtUsd, blocBalance: r1.strikeBalance });
+  });
+
+  it('⭐ LOG PAID — the Strike paydown is the Ledger\'s: with Coinbase\'s, it is Daily\'s "paid" target, every month', () => {
+    // The sweep never calls a margin; this household starts past Strike's call and the cash reserve cures it (month 1).
+    const CURE = planMonthRun(facts({
+      plan: { ...PLAN_POLICY_DEFAULTS, cashReserveMonths: 3 }, price: 70_000, strikeBalance: 30_000, strikeCollateralBtc: 0.5,
+      creditLine: 40_000, coldBtc: 0, cbDebt: 0, cbCollateralBtc: 0,
+    }));
+    let refi = 0; let cure = 0; let spare = 0;
+    for (const { run } of [...RUNS, { run: CURE }]) {
+      for (const r of run.sim.rows) {
+        if (r.m === 0) continue;
+        expect(planStrikePaidUsd(r) + r.cbRepaidUsd + r.defenseDrawnUsd, 'LOG PAID = Daily\'s target')
+          .toBeCloseTo(planLedgerTargets(r).paid, 6);
+        if (r.refinancedUsd > 0) refi++;
+        if (r.cashToCureUsd > 0) cure++;
+        if (r.strikeRepaidUsd > 0) spare++;
+      }
+    }
+    // Each of the three terms is reached, so dropping any one turns this red.
+    expect([refi > 0, cure > 0, spare > 0], 'LOG PAID non-vacuous: a refinance, a cash cure and spare income').toEqual([true, true, true]);
+  });
+
+  it('⭐ PATHS and the expenses prompt — facts, to the cent (BL19), never "should"', () => {
+    expect(PLAN_PATHS_LINK, 'PATHS names the face').toBe("Your plan on other price paths — the Almanac's Decision face");
+    expect(planReanchorLine(3_812.4666, 4_000), 'REANCHOR cents')
+      .toBe('Your last 3 months averaged $3,812.47 vs your $4,000.00 assumption — update?');
+    for (const w of [PLAN_PATHS_LINK, planReanchorLine(3_812.4666, 4_000)]) expect(w, 'WORDS banned').not.toMatch(BANNED);
   });
 });

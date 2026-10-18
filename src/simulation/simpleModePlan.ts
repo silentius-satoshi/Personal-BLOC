@@ -1,64 +1,9 @@
-// Pure helpers for the Simple Mode "Monthly Playbook" plan card.
-// Standalone — NO store/UI imports (type-only import of AdvisorMonthRow). The scrubber feeds these:
-// deriveForMonth = the UNSKIPPED forward projection for a given month (drives non-current rows/bars/
-// summary); isOperatingMonth = the operate/preview predicate; composeMonthSummary = the plain-English
-// narration (skip-aware on the current month, plan voice for future, past-tense for logged).
-// The current-month SKIP-ADJUSTED reality is NOT computed here — it stays in SimpleModeView (reusing
-// the existing allocatedFromIncome / eomLtv derivations). See spec v2 "projection-vs-reality split".
-import type { AdvisorMonthRow } from './runAdvisor';
-
-const usd = (n: number) => '$' + Math.round(Math.abs(n)).toLocaleString();
-
-export interface MonthPlan {
-  blocDraw:            number;
-  fiatGap:             number;
-  btcBoughtUsd:        number;   // income → BTC, in USD (= row.incomeToBtc)
-  btcBought:           number;   // income → BTC, in BTC
-  cbPayment:           number;   // monthly CB payment (0 in ltvTriggered / !hasCbLoan)
-  paydown:             number;   // income → BLOC paydown
-  minPayment:          number;   // income → BLOC minimum (interest) payment (= row.blocMinPayment; 0 in roll mode)
-  blocInterest:        number;   // monthly BLOC interest (capitalizes in roll mode; paid in income mode)
-  blocLtv:             number;   // projected EoM Strike LTV (decimal) — SETTLED: after the paydown and the buy
-  blocLtvPeak:         number;   // projected in-month HIGH (post-draw, pre-paydown, pre-buy) — what the paydown answers
-  cbLtv:               number;   // projected EoM CB LTV (decimal; 0 if !hasCbLoan)
-  allocatedFromIncome: number;   // paydown + btcBoughtUsd + cbPayment + minPayment (= income for a clean projection)
-  isFullyAllocated:    boolean;
-}
-
-/**
- * Unskipped forward projection for a single advisor-row month. The advisor fully allocates income
- * (paydown + BTC + CB = income), so a projection is always fully allocated — uncommitted current-month
- * skips never reach here (they only color the current-month card in SimpleModeView).
- */
-export function deriveForMonth(
-  row: AdvisorMonthRow,
-  income: number,
-  hasCbLoan: boolean,
-  cbPaymentStrategy: 'monthly' | 'ltvTriggered',
-): MonthPlan {
-  const cbPayment    = hasCbLoan && cbPaymentStrategy === 'monthly' ? row.cbPayment : 0;
-  const btcBoughtUsd = row.incomeToBtc;
-  const minPayment   = row.blocMinPayment;
-  // The engine's own ceiling-defense figure. It used to be RECONSTRUCTED as an income residual, which agrees in every
-  // reachable configuration but would invent a paydown if a row carrying cbPayment > 0 ever met hasCbLoan:false.
-  const paydown      = row.blocPaydown;
-  const allocatedFromIncome = paydown + btcBoughtUsd + cbPayment + minPayment;
-  return {
-    blocDraw:     row.blocDraw,
-    fiatGap:      row.fiatGap,
-    btcBoughtUsd,
-    btcBought:    row.btcBought,
-    cbPayment,
-    paydown,
-    minPayment,
-    blocInterest: row.blocInterest,
-    blocLtv:      row.blocLtv,
-    blocLtvPeak:  row.blocLtvPeak,
-    cbLtv:        hasCbLoan ? row.cbLtv : 0,
-    allocatedFromIncome,
-    isFullyAllocated: income > 0 && Math.abs(income - allocatedFromIncome) < 1,
-  };
-}
+// Pure helpers the plan screens and Smart BLOC's Playbook share — standalone, NO store/UI imports.
+//  - the paydown badge (classifyPaydownState / paydownReadout) — Smart BLOC's Playbook (components/Playbook);
+//  - Strike's minimum payment status (minPaymentStatus) — THIS MONTH's card, Daily and its sheets.
+// The old Monthly Playbook card's helpers (deriveForMonth, composeMonthSummary, isOperatingMonth, displaySettledLtv,
+// isLtvFigureStressed) left with the Advisor's rows: since the plan of record's Run 2 no screen called them, and Run 3
+// deleted them (spec pbloc-spec-plan-of-record-v1 §13.11, §15).
 
 // ── The paydown badge (numbers only — the copy lives in components/Playbook/playbookView.ts) ──────────────────
 
@@ -86,22 +31,6 @@ export function classifyPaydownState(peak: number, paydown: number, settled: num
   return peak > ceiling + CEILING_EPS ? 'undefended' : 'quiet';
 }
 
-/**
- * The settled end-of-month LTV, made TRUE for display. runAdvisor's settled blocLtv is 0 at zero collateral — pinned on
- * purpose (paydownPeak.test), because LTVSafetyChart/crashLTV need a finite number. Reads AdvisorMonthRow's blocBalance
- * and btcHeld — ⚠ NOT MonthlyLogEntry.btcHeld (the Ledger's recorded field; a different type on a different object).
- * Stuck (debt remains, no collateral) → ∞. Paid off (balance 0) → 0, which is TRUE. Collateralised → blocLtv.
- */
-export function displaySettledLtv(row: Pick<AdvisorMonthRow, 'blocBalance' | 'btcHeld' | 'blocLtv'>): number {
-  return row.blocBalance > 0 && !(row.btcHeld > 0) ? Infinity : row.blocLtv;
-}
-
-/** Is this one LTV figure, judged on its own, a problem? ∞ is. The figure rule: a bare LTV figure is coloured by THAT
- *  figure — never by a plan state the figure didn't come from. */
-export function isLtvFigureStressed(ltv: number, ceiling: number): boolean {
-  return ltv > ceiling + CEILING_EPS;
-}
-
 export interface PaydownReadout {
   mode:        'actual' | 'inProgress' | 'projected' | 'none';
   ltv:         number;               // actual/inProgress: the ledger LTV; projected: the plan's settled EoM LTV
@@ -124,7 +53,7 @@ export interface PaydownReadout {
  * defect: deleting a month's last Strike paydown leaves entry.paydown at its old value.
  */
 export function paydownReadout(
-  plan:      Pick<MonthPlan, 'paydown' | 'blocLtv' | 'blocLtvPeak'> | null,
+  plan:      { paydown: number; blocLtv: number; blocLtvPeak: number } | null,
   logged:    { paydown: number; strikeLtv: number } | null,
   isCurrent: boolean,
   ceiling:   number,
@@ -140,68 +69,6 @@ export function paydownReadout(
     return { mode: 'projected', ltv: plan.blocLtv, peakLtv: plan.blocLtvPeak, paydown: plan.paydown, paydownDone: 0, state: planState };
   }
   return { mode: 'none', ltv: 0, peakLtv: 0, paydown: 0, paydownDone: 0, state: null };
-}
-
-/** The operate/preview mode-switch predicate: live controls only on the current month. */
-export function isOperatingMonth(selectedMonth: number, currentMonth: number): boolean {
-  return selectedMonth === currentMonth;
-}
-
-export interface MonthSummaryArgs {
-  month:         number;
-  isLogged:      boolean;
-  hasCbLoan:     boolean;
-  cbLtv:         number;    // decimal — actual (logged) or projected
-  triggerPct:    number;    // e.g. 75
-  draw:          number;    // USD drawn from the credit line for expenses
-  btcBoughtUsd:  number;    // USD into BTC
-  cbPayment:     number;    // USD paid to CB (monthly)
-  rotationFired: boolean;   // Strike→CB reverse rotation fired this month
-  rotationAmount: number;   // USD rotated
-  interest:      number;    // monthly BLOC interest (USD)
-  minPayment:    number;    // BLOC minimum paid from income (USD); >0 → income source, 0 → roll (capitalizes)
-}
-
-/**
- * Plain-English narration of the selected month. Voice depends on state:
- *  - logged  → past-tense actuals
- *  - otherwise (current + future) → plan voice (what the projection says to do — the current month is
- *    now rendered identically to any projected month; the Ledger owns actuals, so no skip-adjusted voice).
- * Only applicable clauses are included (no CB clause when !hasCbLoan; rotation vs paydown per fired).
- */
-export function composeMonthSummary(a: MonthSummaryArgs): string {
-  const parts: string[] = [];
-  const ltvPct = Math.round(a.cbLtv * 100);
-
-  if (a.hasCbLoan) {
-    const near = a.cbLtv * 100 >= a.triggerPct - 5;
-    const verb = a.isLogged ? 'was' : 'is';
-    parts.push(`Month ${a.month}: CB LTV ${verb} ${ltvPct}% — ${near ? 'approaching' : 'below'} your ${a.triggerPct}% trigger.`);
-  } else {
-    parts.push(`Month ${a.month}:`);
-  }
-
-  if (a.isLogged) {
-    if (a.draw > 0)                    parts.push(`You drew ${usd(a.draw)} for expenses.`);
-    if (a.btcBoughtUsd > 0)            parts.push(`Bought ${usd(a.btcBoughtUsd)} of Bitcoin.`);
-    if (a.hasCbLoan && a.cbPayment > 0) parts.push(`Paid ${usd(a.cbPayment)} to your Coinbase loan.`);
-  } else {
-    if (a.draw > 0)         parts.push(`Draw ${usd(a.draw)} from your credit line for expenses.`);
-    if (a.btcBoughtUsd > 0) parts.push(`Buy ${usd(a.btcBoughtUsd)} of Bitcoin.`);
-    if (a.hasCbLoan) {
-      if (a.rotationFired && a.rotationAmount > 0) parts.push(`Rotate ${usd(a.rotationAmount)} to the cheaper CB loan.`);
-      else if (a.cbPayment > 0)                    parts.push(`Pay ${usd(a.cbPayment)} to your Coinbase loan.`);
-    }
-  }
-
-  if (a.minPayment > 0) {
-    // Income source: the monthly minimum (interest) is paid from income rather than capitalizing.
-    const verb = a.isLogged ? 'Paid the' : 'Pay the';
-    parts.push(`${verb} ${usd(a.minPayment)} Strike minimum from income.`);
-  } else if (a.interest > 0) {
-    parts.push(`Interest of ${usd(a.interest)} capitalizes onto the balance.`);
-  }
-  return parts.join(' ');
 }
 
 // ── Strike minimum payment lifecycle (Logging Consolidation §2b) ───────────────────────────────

@@ -53,9 +53,13 @@ import styles from './AlmanacView.module.css';
  * faces under one hub is navigation only — it crosses neither wall.
  */
 type Face = 'halving' | 'cycle' | 'mining' | 'powerlaw' | 'sats' | 'defense' | 'ledger' | 'scenario' | 'cycling' | 'ownership' | 'unified' | 'decision';
+/** A face the hub can be opened on — Run 3: the plan's "other price paths" link opens the Decision face. */
+export type AlmanacFace = Face;
 
-export default function AlmanacView() {
-  const [face, setFace] = useState<Face>('halving');
+/** `initialFace` is read at mount only (the hub mounts each time it is opened); absent → the default, Halving. A gated
+ *  face falls back by the effects below, as when its gate closes. */
+export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace } = {}) {
+  const [face, setFace] = useState<Face>(initialFace ?? 'halving');
   const [consentOpen, setConsentOpen] = useState(false);
 
   const tip = useChainTip();

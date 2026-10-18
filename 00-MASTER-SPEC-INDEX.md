@@ -201,7 +201,8 @@ Chronological (oldest → newest). All committed to `main`, all at store v14.
 - **`simpleModePlan.ts`** (`deriveForMonth` / `isOperatingMonth` / `composeMonthSummary`): the
   projection-vs-reality split. Current month = skip-adjusted reality; other months = clean projection;
   logged = actuals. **`deriveForMonth.paydown`** is the income→BLOC paydown the playbook's LoC Paydown
-  row renders (current month uses `expectedPaydown`).
+  row renders (current month uses `expectedPaydown`). (On `plan-of-record`: the plan of record's Run 3 deleted the
+  three — no screen had called them since its Run 2.)
 - **`runAdvisor` defends the 15% BLOC ceiling with up to 100% of income** (`min(income, balance − target)`,
   `blocLtvCeiling = 0.15`) — matches `runBLOC.ts`. (The old 30%-of-income cap was the source of the
   Simple-Mode-vs-Smart-BLOC divergence.)

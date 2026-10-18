@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import {
   strikeHoldFrom, strikeHoldAt, playbookInputFromLive, fmtStepBtc, fmtStepUsd, fmtStepUsdCents, fmtMultiplePair, waitingCard,
   playbookCard,
-  monthPlaybookLine, playbookDepthFor,
+  monthPlaybookLine,
   STRIKE_HOLD_DAYS, SAT_BTC, type LivePlaybookFigures, type PlaybookCard, type MonthPlaybookLine,
 } from '../crashPlaybookView';
 import { crashPlaybook, type CrashPlaybookInput, type CrashPlaybookResult } from '../../../simulation/crashPlaybook';
@@ -100,26 +100,15 @@ describe('playbookInputFromLive — the one live builder', () => {
   });
 });
 
-// ── the liquidation depth for a live target (crash playbook Run 3 — the Outlook legend's band edge) ───────────────
+// ── the live builder's Coinbase stop at support (crash playbook Run 3; the plan of record, Run 1). The Outlook legend's
+// depth helper left with the Outlook (plan of record, Run 3). ─────────────────────────────────────────────────────
 
-describe('playbookDepthFor — the liquidation depth for a live target', () => {
-  it("⭐ is the builder's stop at support over 86%, for every target — never a literal", () => {
-    for (let t = 40; t <= 85; t++) {
-      for (const stop of [40, 45, 55, 70]) {
-        expect(playbookDepthFor(t, stop), `target ${t} · plan stop ${stop}`)
-          .toBe(playbookInputFromLive({ ...LIVE, cbLtvTargetPct: t, planCbStopAtSupportPct: stop }).cbStopAtSupport / CB_LLTV);
-      }
-    }
-    expect(playbookDepthFor(65, 45).toFixed(2)).toBe('0.52');
-    expect(playbookDepthFor(40, 45).toFixed(2)).toBe('0.47');   // the depth moves with a target under the 45% stop
-  });
-
+describe("the live builder's Coinbase stop at support", () => {
   it("⭐ PLAN STOP — the console runs the owner's saved Coinbase limit, never the defaults (plan of record, Run 1)", () => {
     // At C1 nothing moves: the plan's 45% is the old default stop.
     expect(playbookInputFromLive(LIVE).cbStopAtSupport, 'PLAN STOP C1').toBe(0.45);
     // Edit the plan's stop and the console follows (target 70 sits above both, so the stop is the plan's own).
     expect(playbookInputFromLive({ ...LIVE, planCbStopAtSupportPct: 55 }).cbStopAtSupport, 'PLAN STOP edited').toBe(0.55);
-    expect(playbookDepthFor(70, 55), 'PLAN STOP depth').toBeGreaterThan(playbookDepthFor(70, 45));
     // Read through the plan's clamp, as the faces read it: junk reads C1; out of range reads the edge (target 85 sits
     // above the 70% edge, so the edge shows).
     expect(playbookInputFromLive({ ...LIVE, planCbStopAtSupportPct: Number.NaN }).cbStopAtSupport, 'PLAN STOP junk').toBe(0.45);
@@ -127,10 +116,10 @@ describe('playbookDepthFor — the liquidation depth for a live target', () => {
       .toBe(0.7);
   });
 
-  it('⭐ the builder and the depth share ONE stop call — the module calls the clamp exactly once', () => {
+  it('⭐ the module calls the stop clamp exactly once — the builder, never a copy of it', () => {
     // The values cannot tell one shared call from two copies of it — the source can.
     const src = readFileSync(join(process.cwd(), 'src/components/Tools/crashPlaybookView.ts'), 'utf8');
-    expect((src.match(/effectivePolicyStops\(/g) ?? []).length).toBe(1);
+    expect((src.match(/effectivePolicyStops\(/g) ?? []).length, 'ONE STOP the clamp called once').toBe(1);
   });
 });
 

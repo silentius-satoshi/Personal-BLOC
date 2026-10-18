@@ -32,7 +32,7 @@ export function plCeiling(date: Date): number {
 // ── Band bundle + convergence price path (Almanac Cycling face) ───────────────────────────────────
 // 🔴 §2 ISOLATION WALL: this module still imports NOTHING. The Cycling face's VIEW imports these and
 // hands the resulting plain `number[]` to cyclingSim.ts, which has never heard of the power law —
-// the same sanctioned crossing OutlookProjection/MonthBreakdown already use for their growth rate.
+// the same sanctioned crossing MonthBreakdown uses for its growth rate (the Outlook did, until the plan of record's Run 3).
 
 export type PlBand = 'floor' | 'fair' | 'ceiling';
 

@@ -1153,9 +1153,11 @@ goes red.)
     ⭐ SETTINGS (owner-only page and row; writes through the store; its C1 label, no off switch; one clamp; the faces'
     label; THE ONLY EDITOR — a comment-stripped walk of `src/` outside the store and the tests, more than 100 files:
     only `YourPlanSection.tsx` names the setters, and no file names `emitPlanSets`) · ⭐ ONE CLAMP (70) · ⭐ CONSOLE (the
-    console, THIS MONTH's crash line, the Outlook and both its parents pass the plan's limit).
+    console, THIS MONTH's crash line, the Outlook and both its parents pass the plan's limit — since Run 3 the console and
+    the card's inputs hook, `usePlanCardInputs`; the Outlook left with runAdvisor).
   - `src/components/Tools/__tests__/crashPlaybookView.test.ts` — ⭐ PLAN STOP (0.45 at C1; 0.55 when the plan says 55;
     the depth follows; junk reads 0.45; 99 reads the 70% edge); the depth loop runs four plan limits {40, 45, 55, 70}.
+    (Run 3 deleted `playbookDepthFor` with the Outlook: the depth's line and the depth loop went; PLAN STOP stays.)
   - `e2e/planOfRecord.spec.ts` (1, hermetic) — Settings → "Your plan" opens at C1 with no off switch; one notch saves
     46%; the Decision face's card opens on it; its what-if moves to 47% and "Back to your plan" returns 46%; Settings
     still holds 46%; "Back to the defaults (C1)" returns 45%. Every step carries a tag (PLAN row … PLAN C1 again).
@@ -1189,7 +1191,8 @@ goes red.)
     cached, loading, none; Δ6, Δ12) · LOGGED · CRASH.
   - `planRunWiring.test.ts` (17) — ⭐ ONE (the face and the hook build through planRun; no main screen calls
     `runCyclingSim(` or `placementPlan(`; Δ7's 15 facts read by the same expression in both selectors; Δ3's today per
-    render and the accrual's key) · ⭐ GATE · ⭐ MIN · ⭐ CARD (the hook on both screens; `runAdvisor` only for the overlay;
+    render and the accrual's key) · ⭐ GATE · ⭐ MIN · ⭐ CARD (the hook on both screens; `runAdvisor` only for the overlay
+    — none at all since Run 3;
     no figure formatted in the card; no dead toggle; next month hidden at month 12; Δ4, Δ5, Δ8, Δ10) · ⭐ I31 (every text
     of three or more words on either plan card, read off its syntax tree, is one of eleven listed labels) · NOTE ·
     ⭐ CACHE (one write, fresh only, in an effect; read through `planBreakerCacheOf`) · ⭐ HOLD · WHATIF · CRASH.
@@ -1205,7 +1208,8 @@ goes red.)
     12,245 runs; `payMinimum`; the first line), decisionWiring (the pins read planRun.ts), crashPlaybookView (the
     fixture carries the hold's fact), emergencyConsoleWiring, monthlyPlaybookWiring (two label sites; the card's crash
     status), resetMirror (the builder call), ownershipFaceView (two fixture fields), advisorPricePath (three
-    `runAdvisor` callers), characterization (107 persisted keys), planPolicy (ONE CLAMP, CONSOLE), viewerSnapshot
+    `runAdvisor` callers — none since Run 3, invariant 3), characterization (107 persisted keys), planPolicy (ONE CLAMP,
+    CONSOLE), viewerSnapshot
     (`strikeLastDepositISO`); the e2e `planOfRecord.spec.ts` ("Run 2": DAILY status · DAILY row · MONTH status … ·
     CATCH-UP · WHY · NOTE shows … stays dismissed) and `navigation.spec.ts` (the Decision smoke's first line).
   - ⚠ **Why five sweeps carry 60 s** (spec v1.7.1, §13.13): WORDS, STATUS (invariant 4), ROWS and AFTER (at support) in
@@ -1260,7 +1264,8 @@ goes red.)
       PlanMonthCard, SafetyDashboard, PriceChart, dailyView, EventSheet, eventSheetModel, ReviewSheet, planMonthView or
       MonthEventsModal (δ3, last); THIS MONTH's NDP card and its estimate, one NDP balance on both screens, the review's
       NDP seed; the Safety card's price chart; the price chart and the month log whole by default; only the Outlook's
-      re-anchor stays whole on Simple mode's own lines.
+      re-anchor stays whole on Simple mode's own lines (Run 3 moved it onto THIS MONTH, to the cent — Simple mode has no
+      whole-dollar figure left).
   - `crashPlaybookView.test.ts`: ⭐ `fmtStepUsdCents` — a step to the cent, floored (a capped shift never prints over the
     line), none under $1; the line's five shift pins move to cents; the sweep's parity test reads the line's shift whole
     (`wholeOf`) against the card's.
@@ -1287,6 +1292,55 @@ goes red.)
     MC48, MC57), ten leave a name unused (MC15, MC17, MC35, MC49–MC51, MC53, MC55, MC56, MC58). Through the e2e
     (`-g "Run 2.1"`, `--retries=0`, the unmutated control first): MC1 → E CENTS Daily row; MC3 → E TODAY'S PRICE a later
     month; MC10, MC41, MC42 → E CENTS no whole dollars on Daily; MC15, MC23 → E BARS week; MC17 → E BARS caption.
+- **The plan of record (Run 3 — the year)** (spec `pbloc-spec-plan-of-record-v1` v1.16 — § The plan of record (Run 3);
+  one new unit file, `planYearWiring.test.ts`, and one deleted, `outlookView.test.ts`; the suite 2,742 → 2,727 (+6
+  skipped), 173 files (172 / 1) — 41 test names gone and 26 new, at least 8 of the 41 renamed or re-homed; e2e 78 → 81
+  (+2 skipped); 47 unit mutations and 5 through the e2e, each an exact-once edit from
+  `pbloc-por-run3-mutations-v1.16.json`, red at its tag by an assertion, restored and md5-checked):
+  - `planYearWiring.test.ts` (12, new; read off the source — no render harness):
+    - ⭐ YEAR — the Advisor tab's one run (`usePlanCardInputs`, once); THIS MONTH's card with its crash line, NDP and
+      Ledger; the Ledger from full mode; no plan rows, Pay / Skip, runAdvisor month or projection; the sidebar's
+      projection line gone;
+    - ⭐ INPUTS — the NDP as THIS MONTH read it; the annual clause in roll mode only; the accrued Coinbase balance
+      behind the loan switch; the crash gate on it; THIS MONTH takes them and computes no second NDP;
+    - ⭐ LOG — both screens hand the log and the overlay their run's rows (`planLogRows`); both take `PlanLogRow`s, no
+      Advisor row and no income residual, and start their forms from the plan's paydown and month-end LTVs;
+    - ⭐ PATHS — no switch; THIS MONTH's link; the Advisor tab's, while the Almanac tab can open; the link's face;
+      `goAlmanac` unchanged (no face, no argument — the nav passes it as `onClick`); the effect that forgets the face;
+      both modes pass the face; the hub reads it at mount; the expenses prompt owner-only;
+    - ⭐ INV6 — no component reads `advisorSkip*`, `cbRotateBackPct` or `advisorMonthStartBalance` (a sweep of more
+      than 100 component files); one writer left, the sign-off's carry; their keys stay in `SETTINGS_FIELDS` and
+      `VALIDATE_WHITELIST`, so an older backup restores; no Rotate-back input; the order check without it; no
+      month-start field in Settings or Quick Setup; no "Outlook" in Settings.
+  - `planMonthView.test.ts`, "⭐ LOG — Run 3" (+3): ⭐ LOG strategy month k is the run's month k − current + 1, over every
+    run × current month {1, 4, 12} — more than 10,000 rows, each the run's own figures — and this month is the card's
+    month 1; ⭐ LOG PAID — the Strike paydown plus Coinbase's is Daily's "paid" target every month, with a refinance, a
+    cash cure (a household past Strike's call) and spare income each reached; ⭐ PATHS and REANCHOR — the link's words,
+    the prompt to the cent, no banned word.
+  - Rewritten for the new source: `planRunWiring` (CARD — the card takes its screen's run and runs nothing itself; no
+    `runAdvisor` on any plan screen; HOLD, CRASH and the NDP's CENTS pins read the hook; THIS MONTH has no whole-dollar
+    formatter); `monthlyPlaybookWiring` (3 — no plan screen says "CB paydown"; the crash line builds in the hook, its
+    builder's first line pinned whole; both screens call the hook once and build no line); `advisorPricePath` (⭐
+    invariant 3 — more than 200 source files, and only `runAdvisor.ts`'s definition says `runAdvisor(`); `planPolicy`
+    (CONSOLE — the console and the hook); `crashPlaybookView` (PLAN STOP and the one stop call, re-homed).
+  - Deleted with their code: `outlookView.test.ts` (7); `playbookDepthFor`'s three (two re-homed); the Outlook label's
+    and legend's (rewritten, 5 → 3); the `simpleModePlan` helpers' 16 (runAdvisor's own two — a monthly Coinbase payment
+    lowers the row's LTV and is reserved once — re-homed) and `deriveForMonth`'s two in paydownState;
+    `displaySettledLtv` / `isLtvFigureStressed`' (paydownState 3, paydownPeak 2; the stuck case keeps its engine
+    assertion).
+  - e2e, `planOfRecord.spec.ts` — "the plan of record — Run 3" (+3): YEAR (the Advisor tab: the card's status, its
+    to-do to the cent, no Skip, Pay or projection; LOG the plan's buy, paused; PATHS the Decision face; full mode's
+    Tools menu opens the default face once the hub is left) · PATHS (THIS MONTH: no Outlook switch; the link; ← Back;
+    the nav's button opens the default face — checked by its own words, "Next halving") · REANCHOR (the prompt to the
+    cent; Update; the field to the cent).
+  - Red-first (`dcd6cb5`'s app code with the new tests): 25 red — 23 by an AssertionError, 2 by a TypeError
+    (`planLogRows`, `planStrikePaidUsd`); `planYearWiring` and `planRunWiring` load only once `usePlanCardInputs.ts`
+    exists, so an empty one stood in. Green by design: INV6's keys, ONE's absences, the re-homed crash pins. The e2e: 3
+    red, at "YEAR the card's status", "PATHS no Outlook switch" and "REANCHOR on THIS MONTH, to the cent".
+  - The mutations (spec §15.7): Y01–Y47, every one red at its tag by an assertion. Through the e2e (`-g "Run 3"`,
+    `--retries=0`; the unmutated tree passes): Y23 → REANCHOR saved to the cent; Y24 → PATHS the Decision face; Y31 →
+    PATHS the default face; Y32 → PATHS forgotten on leaving (YEAR) and PATHS the default face; Y35 → PATHS the
+    Decision face (both).
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -1354,7 +1408,8 @@ goes red.)
       - ⭐ short — `₿0.59999`; `fmtColdBtc` prints `₿0.60000` → red;
       - the gaps: Strike over 40%, a $0.30 line, nothing movable, the exact-86% tie;
       - at or above support.
-    - `playbookDepthFor`:
+    - `playbookDepthFor` (deleted in the plan of record's Run 3 with the Outlook legend, its only screen; the
+      one-call guard stays, under "the live builder's Coinbase stop at support"):
       - ⭐ it equals the builder's stop at support ÷ 86% for every target 40–85 × plan limits {40, 45, 55, 70} (the plan
         of record, Run 1; `'0.52'` at 65 and `'0.47'` at 40 on the C1 45% limit; a literal → red);
       - ⭐ the module calls `effectivePolicyStops(` exactly once. A second inlined call → red, while the Run 2 presence
@@ -1377,6 +1432,10 @@ goes red.)
       foot under the rows (Box 3's suffix retired with the boxes);
     - ⭐ OutlookProjection computes the legend's depth — no typed depth multiple anywhere in its source (`0.70×` before
       Policy v2, `0.52×` since).
+    - The plan of record's Run 3 rewrote the file: the label and the Outlook left (runAdvisor is on no screen), so it
+      pins that no plan screen says "CB paydown" or "pay down CB", comments included, and that the card's crash line
+      builds in `usePlanCardInputs` — which THIS MONTH and the Advisor tab each call once — with neither screen building
+      it itself.
 - **Policy v2 — Run A (the model)** (every ⭐ red under a named mutation, every file restored and md5-checked):
   - `seizeOnTheWayDown.test.ts` (new) — ONE streaming pass over the kill sweep's grids (a5 with its cash-6 twin, the
     cold rows × seeds 0 / 0.5, the double drops, face-world, synthetic both arms, reach) at the fixtures' policy and at
@@ -1543,6 +1602,7 @@ goes red.)
     - `paydownReadout`: ⭐ the ledger wins on a closed month, ⭐ the in-progress month keeps the plan;
     - ⭐ `deriveForMonth` paydown = `blocPaydown` with the allocation summing to income (sweep);
     - ⭐ the decoupled case.
+    - (Both left with `deriveForMonth` in the plan of record's Run 3 — no screen had called it since Run 2.)
   - `src/components/Playbook/__tests__/playbookView.test.ts`:
     - badge text and tone for every state;
     - no state says "triggered";
@@ -1560,6 +1620,9 @@ goes red.)
       - `displaySettledLtv` is the identity when there is collateral.
     - `paydownPeak.test.ts`: ⭐ the figure rule is equivalent to `state ∈ {partial, undefended}` on every sweep row — this
       BLOCKED the `:213` deletion until it passed.
+    - The plan of record's Run 3 deleted `displaySettledLtv` and `isLtvFigureStressed` (no screen since Run 2) with their
+      table, identity and figure-rule tests; A2 and the stuck case keep their engine assertions (the state, the balance,
+      the engine's own 0).
     - `playbookView.test.ts`:
       - ⭐ a projected `LTV ∞ · drawn with no collateral behind it` (dropping the substitution → red);
       - ⭐ in progress keeps the LEDGER figure + `now · plan:` (substituting in progress → red);
@@ -1596,10 +1659,12 @@ goes red.)
   - rising vs falling diverge (monthly strategy — ltvTriggered can tie at target);
   - ⭐ the NAMED month-1-step trap at fixed UTC dates: the sign flips with the anchor, m≥1 sits ON the curve,
     mid-2029 is not monotone, and the step lifts month-1 CB LTV;
-  - a grep guard that only OutlookProjection hands runAdvisor a pricePath — its list of callers is three since the plan
-    of record's Run 2 (AdvisorMain, OutlookProjection, SimpleModeView's log overlay; Daily no longer runs the Advisor).
-- `src/components/Advisor/__tests__/outlookView.test.ts` — (7) the subtitle Record (fourYear ≠ the old bull
-  fall-through), the signed/computed `lineStep`, and `footerCbLtv` = the last row's own cbLtv
+  - ⭐ invariant 3 (the plan of record's Run 3; it replaced the grep guard that only OutlookProjection hands runAdvisor a
+    pricePath): every non-test .ts/.tsx under `src/` — more than 200 files, a non-vacuity floor — is read, and only
+    `runAdvisor.ts`'s own definition contains `runAdvisor(`; no screen calls the engine, which stays one release as the
+    comparison engine.
+- `src/components/Advisor/__tests__/outlookView.test.ts` — DELETED in the plan of record's Run 3 with `outlookView.ts` and
+  the Outlook (it held 7: the subtitle Record, the signed `lineStep`, `footerCbLtv`)
 - `src/simulation/__tests__/coldStorage.test.ts` — `deriveColdStorage` (8):
   - no cold events → the anchor exactly;
   - the (date, ts) boundary — the rev-1 date-only rule would lose a move logged after re-typing the total;
@@ -1653,7 +1718,7 @@ goes red.)
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
-- `simpleModePlan.test.ts` — `deriveForMonth` (unskipped projection; monthly vs ltvTriggered CB; !hasCbLoan zeros CB; distinct rows → distinct values), `isOperatingMonth`, `composeMonthSummary` (clause inclusion + skip branches + past-tense logged), projection-vs-reality guarantee (deriveForMonth is skip-param-free; monthly CB payment drops row LTV below the start-of-month figure). **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); `deriveForMonth` folds `minPayment` into the allocation identity; narration income-vs-capitalizes; **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run)
+- `simpleModePlan.test.ts` — `minPaymentStatus` (§2b: roll → ROLLS; income PAID / DUE / MISSED) and runAdvisor's own behaviour (the comparison engine, kept one release): **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run); a monthly CB payment lowers the row's LTV below the start-of-month figure and is reserved from income once. The plan of record's Run 3 deleted `deriveForMonth`, `isOperatingMonth` and `composeMonthSummary` (no screen since Run 2) with their tests
 - `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, a folded plan event applies both (cross-device — 4e: the plan channel), and a fold lacking them doesn't clobber (absent = not set, §6)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD — to the cent since the plan of record's Run 2.1, as are a buy's dollars, a minimum and a reading's balances; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)

@@ -11,8 +11,9 @@ import * as ts from 'typescript';
  *    builders (`placementInputOf`, `engineInputsOf`); no main screen runs the engine or the placement itself;
  *  - GATE (D-R2-4) — every plan reader takes Coinbase through `planCbCollateralOf` / `planCbLoanBalanceOf`;
  *  - MIN (D-R2-7) — every plan reader passes the owner's minimum source to the engine;
- *  - CARD — the two main screens read `usePlanMonth`, never `runAdvisor` (THIS MONTH's log overlay keeps it until Run 3),
- *    and the card formats no dollar or bitcoin figure of its own;
+ *  - CARD — the main screens read the plan through `usePlanMonth`, never `runAdvisor` (Run 3: THIS MONTH and the Advisor
+ *    tab through the card's inputs hook, one run each, shared with the month log), and the card formats no dollar or
+ *    bitcoin figure of its own;
  *  - I31 — the two plan cards compose no sentence: every one lives in `planMonthView`; their own texts are a listed
  *    set of labels (headings, buttons) and readouts, read off the syntax tree;
  *  - NOTE (D8), CACHE (§4.3), HOLD (D9), WHATIF (§4.7) and CRASH (D13).
@@ -30,6 +31,9 @@ const PARENTS: Record<string, string> = {
 const HOOK = read('components/Almanac/usePlanMonth.ts');
 const CARD = read('components/SimpleMode/PlanMonthCard.tsx');
 const SIMPLE = read('components/SimpleMode/SimpleModeView.tsx');
+/** Run 3 — the card's inputs (the run, the crash line, the NDP), gathered once per screen; and the Advisor tab. */
+const INPUTS = read('components/SimpleMode/usePlanCardInputs.ts');
+const ADVISOR = read('components/Advisor/AdvisorMain.tsx');
 const DAILY = read('components/Daily/DailyModeView.tsx');
 const EVENT_SHEET = read('components/Daily/EventSheet.tsx');
 const REVIEW = read('components/Daily/ReviewSheet.tsx');
@@ -100,7 +104,7 @@ describe('⭐ ONE — invariant 2: one builder for THIS MONTH, Daily and the Dec
   });
   it('⭐ ONE — the hook builds the month through planMonthRun; no main screen runs the engine or the placement itself', () => {
     expect(memoBody(HOOK, 'run'), 'ONE hook').toContain('planMonthRun({');
-    for (const [name, src] of Object.entries({ hook: HOOK, card: CARD, simple: SIMPLE, daily: DAILY })) {
+    for (const [name, src] of Object.entries({ hook: HOOK, card: CARD, simple: SIMPLE, daily: DAILY, inputs: INPUTS, advisor: ADVISOR })) {
       expect(src, `ONE ${name} — no engine call`).not.toMatch(/\brunCyclingSim\(/);
       expect(src, `ONE ${name} — no placement call`).not.toMatch(/\bplacementPlan\(/);
     }
@@ -156,17 +160,20 @@ describe('⭐ MIN — D-R2-7: the owner\'s minimum source reaches every run', ()
 });
 
 describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the Advisor', () => {
-  it('⭐ CARD — THIS MONTH\'s card and Daily read usePlanMonth', () => {
-    expect(CARD, 'CARD hook').toMatch(/const pm = usePlanMonth\(\);/);
+  it('⭐ CARD — the card\'s screens and Daily read usePlanMonth: the card takes its screen\'s one run (Run 3)', () => {
+    expect(INPUTS, 'CARD hook').toMatch(/const pm = usePlanMonth\(\);/);
     expect(DAILY, 'CARD Daily hook').toMatch(/const pm = usePlanMonth\(\);/);
-    expect(SIMPLE, 'CARD THIS MONTH renders the card').toMatch(/<PlanMonthCard\b/);
+    expect(CARD, 'CARD the run is a prop').toMatch(/\bpm: PlanMonth;/);
+    expect(CARD, 'CARD runs nothing itself').not.toMatch(/\busePlanMonth\(/);
+    for (const [name, src] of Object.entries({ simple: SIMPLE, advisor: ADVISOR })) {
+      expect(src, `CARD ${name} renders the card`).toMatch(/<PlanMonthCard\b/);
+      expect(src, `CARD ${name} hands it its one run`).toMatch(/\bpm=\{pm\}/);
+    }
   });
-  it('⭐ CARD — no runAdvisor on Daily or in the card; THIS MONTH keeps it only for the log overlay (Run 3 retires it)', () => {
-    expect(CARD).not.toMatch(/\brunAdvisor\(/);
-    expect(DAILY).not.toMatch(/\brunAdvisor\(/);
-    const calls = SIMPLE.match(/\brunAdvisor\(/g) ?? [];
-    expect(calls.length, 'CARD one call').toBe(1);
-    expect(SIMPLE, 'CARD only while the overlay is open').toMatch(/logOverlayOpen \? runAdvisor\(/);
+  it('⭐ CARD — no runAdvisor on any plan screen (Run 3: the overlay\'s planned rows read the plan too)', () => {
+    for (const [name, src] of Object.entries({ card: CARD, daily: DAILY, simple: SIMPLE, advisor: ADVISOR, inputs: INPUTS, overlay: OVERLAY })) {
+      expect(src, `CARD ${name}`).not.toMatch(/\brunAdvisor\(/);
+    }
   });
   it('⭐ CARD — the old card\'s Strike and Coinbase bars left Settings with it: no toggle that controls nothing', () => {
     const settings = read('components/Settings/SettingsMain.tsx');
@@ -181,6 +188,7 @@ describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the 
     // One status colour per card: the Advisor's tier border (today's Coinbase LTV) is gone from THIS MONTH.
     expect(CARD, 'CARD no tier border').not.toMatch(/tierClass/);
     expect(SIMPLE, 'CARD no tier border').not.toMatch(/\bgetTier\(|cardTier/);
+    expect(ADVISOR, 'CARD no tier border on the Advisor tab either (Run 3)').not.toMatch(/cardTier/);
     // The after box knows when the engine refused the policy (no meter, no limit tone).
     expect(CARD, 'CARD the after box reads the run\'s verdict').toMatch(/planAfter\(row, supportAt\(runMonth\), cbStop, pm\.run\.sim\.policyApplied\)/);
     // Daily's bars (Run 2.1, F13): the plan's month 1 in the Ledger's own streams, against the month SO FAR in both
@@ -237,13 +245,14 @@ describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the 
     for (const [name, src] of Object.entries(SCREENS)) {
       expect(src, `CENTS no whole-dollar formatter in ${name}`).not.toMatch(/\bfmtUSD\(|toLocaleString\(/);
     }
-    // Simple mode: THIS MONTH's NDP card and the month log it opens print cents; only the Outlook's re-anchor line —
-    // not THIS MONTH — keeps whole dollars.
+    // Simple mode: THIS MONTH's NDP card and the month log it opens print cents; the NDP's figures are gathered in the
+    // card's inputs hook (Run 3).
     expect(SIMPLE, "CENTS THIS MONTH's NDP card").toMatch(/~\{fmtUSDCents\(ndpEstimate\)\} minimum to keep your line active/);
-    expect(SIMPLE, "CENTS THIS MONTH's NDP estimate to the cent").toMatch(/const ndpEstimate = planNdpEstimateUsd\(ndpBalance, blocApr\);/);
-    expect(SIMPLE, "CENTS THIS MONTH's NDP balance, the one helper").toMatch(/const ndpBalance\s+= planNdpBalance\(advisorActualBlocBalance, creditLine\);/);
+    expect(INPUTS, "CENTS THIS MONTH's NDP estimate to the cent").toMatch(/const ndpEstimate = planNdpEstimateUsd\(ndpBalance, blocApr\);/);
+    expect(INPUTS, "CENTS THIS MONTH's NDP balance, the one helper").toMatch(/const ndpBalance\s+= planNdpBalance\(advisorActualBlocBalance, creditLine\);/);
     expect(DAILY, "CENTS Daily's NDP balance, the same helper").toMatch(/const ndpBalance\s+= planNdpBalance\(advisorActualBlocBalance, creditLine\);/);
     expect(SIMPLE, "CENTS THIS MONTH reads no whole-dollar NDP estimate").not.toMatch(/\.estimatedAmount/);
+    expect(INPUTS, "CENTS the card's inputs read no whole-dollar NDP estimate").not.toMatch(/\.estimatedAmount/);
     expect(DAILY, "CENTS the review's NDP seed to the cent").toMatch(/ndpPrefill=\{planNdpEstimateUsd\(ndpBalance, blocApr\)\}/);
     expect(DAILY, "CENTS Daily's NDP check on the same balance").toMatch(/getNdpStatus\(ndpLastPaidDate, ndpBalance, blocApr\)\.status/);
     expect(DAILY, "CENTS Daily reads no whole-dollar NDP estimate").not.toMatch(/\.estimatedAmount/);
@@ -252,8 +261,11 @@ describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the 
     expect(PRICE_CHART, 'CENTS the price chart, whole by default (the Dashboard)').toMatch(/\{ money = fmtUSD \}/);
     expect(VIEWER_HOME, "CENTS the Dashboard's chart stays whole").toMatch(/<PriceChart \/>/);
     expect(SIMPLE, 'CENTS the month log opened from THIS MONTH').toMatch(/money=\{fmtUSDCents\}/);
-    const whole = SIMPLE.split('\n').filter((l) => /\bfmtUSD\(/.test(l));
-    expect(whole.length > 0 && whole.every((l) => l.includes('Your last 3 months averaged')), "CENTS only the Outlook's re-anchor stays whole").toBe(true);
+    // Run 3 — the expenses prompt moved onto THIS MONTH with the Outlook gone: its words are planMonthView's, to the
+    // cent, and its Update stores the average to the cent. THIS MONTH has no whole-dollar figure left.
+    expect(SIMPLE, 'CENTS no whole-dollar formatter on THIS MONTH').not.toMatch(/\bfmtUSD\(|toLocaleString\(/);
+    expect(SIMPLE, 'CENTS the expenses prompt').toMatch(/\{planReanchorLine\(reanchorAvg, expenses\)\}/);
+    expect(SIMPLE, 'CENTS its Update to the cent').toMatch(/onClick=\{\(\) => setExpenses\(toCents\(reanchorAvg\)\)\}/);
     // The month log overlay: whole in full mode (its default), cents when THIS MONTH passes them.
     expect(OVERLAY, 'CENTS the month log prints through its money prop').toMatch(/money = fmtUSD \}: MonthlyLogOverlayProps\)/);
     expect(OVERLAY, 'CENTS the month log has no fixed whole-dollar value').not.toMatch(/value=\{fmtUSD\(/);
@@ -353,8 +365,8 @@ describe('⭐ NOTE · CACHE · HOLD · WHATIF · CRASH', () => {
     expect(CONSOLE, 'HOLD console').toMatch(/const strikeDeposit\s+= useStore\(\(s\) => strikeDepositOf\(s\)\);/);
     expect(CONSOLE, 'HOLD console rule').toMatch(/const hold = strikeHoldAt\(strikeDeposit, today\);/);
     expect(CONSOLE, 'HOLD console input').toMatch(/strikeDepositISO: strikeDeposit,/);
-    expect(SIMPLE, 'HOLD crash line').toMatch(/const strikeDeposit\s+= useStore\(\(s\) => strikeDepositOf\(s\)\);/);
-    expect(SIMPLE, 'HOLD crash line input').toMatch(/strikeDepositISO: strikeDeposit,/);
+    expect(INPUTS, 'HOLD crash line').toMatch(/const strikeDeposit\s+= useStore\(\(s\) => strikeDepositOf\(s\)\);/);
+    expect(INPUTS, 'HOLD crash line input').toMatch(/strikeDepositISO: strikeDeposit,/);
     // No screen reads the hold straight off a journal (a viewer's is empty).
     const direct = sources().filter((p) => /\bstrikeHoldFrom\(/.test(readFileSync(p, 'utf8')))
       .map((p) => relative(SRC, p).replace(/\\/g, '/'));
@@ -367,7 +379,7 @@ describe('⭐ NOTE · CACHE · HOLD · WHATIF · CRASH', () => {
     expect(depsOf(move), 'WHATIF a dependency').toMatch(/\bmoveWhatIf\b/);
   });
   it('⭐ CRASH — D13: both main screens gate the crash title on the console\'s own rule', () => {
-    expect(SIMPLE, 'CRASH THIS MONTH').toMatch(/= isCrashDay\(\{/);
+    expect(INPUTS, 'CRASH THIS MONTH and the Advisor tab').toMatch(/= isCrashDay\(\{/);
     expect(DAILY, 'CRASH Daily').toMatch(/const crashDay = isCrashDay\(\{/);
     expect(DAILY, 'CRASH Daily title').toMatch(/crashDay\s*\?\s*\{ tone: 'bad' as const, title: PLAN_CRASH_TITLE \}/);
   });

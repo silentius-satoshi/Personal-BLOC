@@ -210,11 +210,12 @@ A presentation-only pass over the read-only Daily surfaces (no data-logic change
 - **Position trio reverted to Monthly format** (cross-view consistency): uppercase labels (CURRENT STRIKE BLOC /
   THIS MONTH / AFTER THIS MONTH), parenthetical USD and LTV amounts on the same line, default UI font (13px), `--orange`
   BTC color — exactly matching SimpleModeView's `.positionRow/.positionCol/.positionStat/.btcAmt/.parenSub` classes
-  (replicated into DailyModeView.module.css). The **outer cube containers** use Daily-restyle classes `.posrow` (grid
+  (replicated into DailyModeView.module.css; SimpleModeView's copies left in the plan of record's Run 3 CSS sweep — the
+  Monthly trio had gone in Run 2 — and Daily's stay). The **outer cube containers** use Daily-restyle classes `.posrow` (grid
   wrapper) and `.posbox` (`--surface` bg, `--line` border, 14px radius) — distinct from the content classes
   `.positionTitle/.positionStat/.btcAmt/.parenSub` which stay Monthly-format inside the boxes. The preview-style
   `.posrow/.posbox/.postitle/.posval/.posvalBtc/.possub` block is gone; the new `.posrow/.posbox` are the cube shells only.
-  **The trio stays 3-across on mobile in both Monthly and Daily** — the `@media (max-width: 760px) { grid-template-columns: 1fr }` collapse was removed from `DailyModeView.module.css` (both `.posrow` and `.positionRow`) and `SimpleModeView.module.css` (`.positionRow`). On mobile (≤760px), `.parenSub` parenthetical amounts stack below the highlighted amount (`display: block` override in both files) so the narrow 3-across cubes stay readable; wider screens keep the inline layout.
+  **The trio stays 3-across on mobile in both Monthly and Daily** — the `@media (max-width: 760px) { grid-template-columns: 1fr }` collapse was removed from `DailyModeView.module.css` (both `.posrow` and `.positionRow`) and `SimpleModeView.module.css` (`.positionRow`). On mobile (≤760px), `.parenSub` parenthetical amounts stack below the highlighted amount (`display: block` override in both files — since the plan of record's Run 3, in DailyModeView.module.css only) so the narrow 3-across cubes stay readable; wider screens keep the inline layout.
 - **Header parity (polish pass):** Daily `.brandMark` now matches Monthly's plain ₿ (`font-size:18px; color:var(--orange)`, no gradient badge); Daily `.brandName` bumped to 16px/700 to match Monthly. Monthly's `.settingsBtn`/`.modeToggleBtn` restyled to match Daily's boxed `.iconBtn` (34×34, border 1px `var(--line)`, bg `var(--surface)`, `var(--text-muted)` → hover `var(--text-primary)`); `.headerRight` gap bumped 4px → 8px. Daily trio gap equalized: `.cards` `margin-top:13px`→`0` + `gap:13px`→`16px` (SafetyDashboard's own `margin-bottom:16px` is the sole above-gap → both sides 16px).
 - **`dailyView.ts` UNCHANGED** — `describeDayEvent` keeps its `{icon,label,detail}` shape (the log-row uses label/
   detail; dot/tone mapping lives in the component); `dailyView.test.ts` unaffected. Still read-only (FAB/add-sheet P4b,
@@ -464,7 +465,8 @@ rollup", reconcile banner (+ its `viewedEntry` lookup), `MonthEventsModal`, and 
 all key off `safeViewedMonth`; Monthly = the PLANNER → the **PLAN reference card + the advisor projection
 (`deriveAdvisorStart`/`advisorRows`/`currentRow`/`summaryText`) stay `currentMonth`** (the plan is about now,
 not the viewed past month). ⚠ Run 2 (the plan of record): the reference card is the plan's month 1 (`usePlanMonth`)
-— still the current month — and Daily's "Interest capitalized" shows only for it. The ‹ › nav lives in the `Calendar` title row (new optional props
+— still the current month — and Daily's "Interest capitalized" shows only for it; the advisor projection left Daily
+in the same run (no `runAdvisor` there since). The ‹ › nav lives in the `Calendar` title row (new optional props
 `onPrevMonth`/`onNextMonth`/`canPrevMonth`/`canNextMonth` → `.calNav`/`.calNavBtn`/`.calNavLabel`; the title
 owns the label, no duplicate) — the Calendar **date math is unchanged** (it receives `safeViewedMonth` through
 its existing `currentMonth` prop). Buttons disable at the bounds (‹ at Month 1, › at the current month).
@@ -573,7 +575,7 @@ component). No JSX, no logic, no other CSS changed.
 ### Monthly view spacing + card-radius polish (CSS-only — matches preview + Daily fix)
 
 `SimpleModeView.module.css` — four values only: `.segmentControl margin-bottom` 4px→13px (fixes the
-"This Month / Outlook" toggle cramped against the trio); `.cards gap` 12px→13px; `.card` and
+"This Month / Outlook" toggle cramped against the trio — the toggle and its rules left in the plan of record's Run 3); `.cards gap` 12px→13px; `.card` and
 `.positionCol border-radius` →20px (matches the preview's `.card` and Daily's `.trioCard`). Orange
 toggle style (`.segmentBtn`/`.segmentBtnActive`) unchanged; modal (`.modalCard`) and confirm-sheet
 (`.confirmSheet`) radii unchanged. No JSX, no logic, no other CSS changed.

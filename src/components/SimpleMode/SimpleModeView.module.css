@@ -36,60 +36,6 @@
   color: var(--text-primary);
 }
 
-.headerRight { display: flex; align-items: center; gap: 8px; }
-
-.settingsBtn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: 15px;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  transition: color 0.12s;
-}
-
-.settingsBtn:hover { color: var(--text-primary); }
-
-.modeToggleBtn {
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--surface);
-  color: var(--text-muted);
-  font-size: 15px;
-  cursor: pointer;
-  display: grid;
-  place-items: center;
-  transition: color 0.12s;
-}
-
-.modeToggleBtn:hover { color: var(--text-primary); }
-
-.progressRow {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  padding: 4px 0 16px;
-  flex-wrap: wrap;
-}
-
-.progressDot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dotDone     { background: var(--green); opacity: 0.5; }
-.dotCurrent  { background: var(--orange); }
-.dotFuture   { background: var(--border); }
-
-.progressLabel {
-  font-size: 11px;
-  color: var(--text-ghost);
-  margin-left: 6px;
-  white-space: nowrap;
-}
-
 .cards { display: flex; flex-direction: column; gap: 13px; flex: 1; }
 
 .card {
@@ -102,66 +48,11 @@
   gap: 14px;
 }
 
-.cardDone {
-  align-items: center;
-  text-align: center;
-  border-color: rgba(78,203,130,0.3);
-  background: rgba(78,203,130,0.04);
-}
-
-/* Position card */
-.positionRow { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.positionCol {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 20px;
-  padding: 14px 16px;
-}
-
-.positionTitle {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  color: var(--text-ghost);
-  text-transform: uppercase;
-}
-
-.positionStat { font-size: 13px; color: var(--text-secondary); }
 .positionStatHint { font-size: 11px; color: var(--text-ghost); }
-.positionDivider { height: 1px; background: var(--border); margin: 6px 0 2px; align-self: stretch; }
-.btcAmt { color: var(--orange); }
-.parenSub { font-size: 11px; color: var(--text-ghost); }
-@media (max-width: 760px) { .parenSub { display: block; } }
-.planBarFrom  { color: var(--text-ghost); }
-.planBarArrow { color: var(--text-ghost); }
+
 .planTitleSep { color: var(--text-ghost); font-weight: 400; }
 
-/* Change 2 — THIS MONTH column stat colours */
-.statGreen { color: var(--green); font-weight: 600; }
-.statAmber { color: var(--amber); font-weight: 600; }
-.statMuted { color: var(--text-faint); }
-.projSuffix { font-size: 10px; color: var(--text-ghost); font-weight: 400; }
-
-.ndpBadge { font-size: 10px; font-weight: 600; margin-top: 2px; }
-.ndp_never    { color: var(--text-faint); }
-.ndp_ok       { color: var(--green); }
-.ndp_upcoming { color: var(--amber); }
-.ndp_soon     { color: var(--orange); }
-.ndp_overdue  { color: var(--red); }
-
-.cbBadge { font-size: 10px; font-weight: 700; margin-top: 4px; }
-.cb_safe       { color: var(--green); }
-.cb_watch      { color: var(--amber); }
-.cb_warning    { color: var(--orange); }
-.cb_emergency  { color: var(--orange); font-weight: 700; }
-.cb_critical   { color: var(--red); }
-.cb_liquidated { color: var(--red); font-weight: 700; }
-
 /* Plan card */
-.planTitleRow { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 
 .planTitle {
   font-size: 16px;
@@ -169,161 +60,6 @@
   color: var(--text-primary);
   margin: 0;
 }
-
-.planSubtitle {
-  font-size: 12px;
-  color: var(--text-ghost);
-  margin-top: 3px;
-}
-
-.tierBadge {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 3px 8px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-}
-
-.tierBadgeFull {
-  font-size: 10px;
-  font-weight: 700;
-  padding: 4px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  border: none;
-  font-family: inherit;
-  white-space: nowrap;
-  flex-shrink: 0;
-}
-
-.tier1 { background: rgba(232,90,79,0.15);   color: var(--red); }
-.tier2 { background: rgba(232,131,106,0.15); color: var(--orange); }
-.tier3 { background: rgba(232,168,74,0.15);  color: var(--amber); }
-.tier4 { background: rgba(78,203,130,0.12);  color: var(--green); }
-
-.planSection  { display: flex; flex-direction: column; gap: 0; }
-
-.sectionLabelRow { display: flex; align-items: center; justify-content: space-between; margin-bottom: 4px; }
-.sectionLabel {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.10em;
-  text-transform: uppercase;
-  color: var(--text-faint);
-}
-.sectionIncome { font-size: 11px; color: var(--text-ghost); }
-
-/* Action rows */
-.actionRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 9px 0;
-  border-top: 1px solid rgba(255,255,255,0.05);
-}
-.actionIcon { width: 20px; text-align: center; flex-shrink: 0; font-size: 14px; color: var(--text-ghost); }
-.actionLabelGroup { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.actionLabel { font-size: 14px; color: var(--text-primary); }
-.actionSub { font-size: 11px; color: var(--text-ghost); }
-.actionAmount { font-size: 15px; font-weight: 700; color: var(--orange); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-.skippedText { font-size: 12px; font-weight: 500; color: var(--text-faint); font-family: inherit; }
-
-/* Pay / Skip pill buttons */
-.paySkipGroup { display: flex; gap: 4px; flex-shrink: 0; }
-.actionPill {
-  font-size: 11px;
-  font-weight: 600;
-  padding: 3px 10px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: none;
-  color: var(--text-ghost);
-  cursor: pointer;
-  font-family: inherit;
-  transition: background 0.12s, color 0.12s, border-color 0.12s;
-}
-.actionPill:hover { border-color: var(--text-secondary); color: var(--text-secondary); }
-.pillPay { background: rgba(78,203,130,0.12); border-color: rgba(78,203,130,0.35); color: var(--green); }
-.pillSkipActive { background: rgba(232,131,106,0.10); border-color: rgba(232,131,106,0.3); color: var(--orange); }
-
-/* Income allocated banner */
-.incomeAllocBanner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 11px 14px;
-  border-radius: 8px;
-  border: 1px solid;
-}
-.allocGreen { background: rgba(78,203,130,0.07); border-color: rgba(78,203,130,0.2); }
-.allocAmber { background: rgba(232,168,74,0.07); border-color: rgba(232,168,74,0.2); }
-.allocLabel { font-size: 13px; color: var(--text-ghost); }
-.allocValue { font-size: 13px; font-weight: 700; }
-.allocValueGreen { color: var(--green); }
-.allocValueAmber { color: var(--amber); }
-
-/* Checklist items */
-.checkItem {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px;
-  border-radius: 8px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.checkItem:hover { background: rgba(255,255,255,0.04); }
-
-.checkItemDone {
-  background: rgba(78,203,130,0.06);
-  border-color: rgba(78,203,130,0.15);
-}
-
-.checkItemDone .checkLabel  { color: var(--text-faint); text-decoration: line-through; }
-.checkItemDone .checkAmount { color: var(--text-faint); }
-
-.checkbox {
-  accent-color: var(--green);
-  width: 18px;
-  height: 18px;
-  flex-shrink: 0;
-  cursor: pointer;
-}
-
-.checkLabel  { flex: 1; font-size: 14px; color: var(--text-primary); }
-.checkAmount { font-size: 14px; font-weight: 700; color: var(--orange); white-space: nowrap; }
-
-/* Change 3 — editable check amount */
-.editableCheckAmount {
-  border-bottom: 1px dashed var(--text-faint);
-  cursor: pointer;
-  transition: border-color 0.12s, color 0.12s;
-}
-.editableCheckAmount:hover {
-  border-bottom-color: var(--orange);
-  color: var(--orange);
-}
-.amountInput {
-  background: var(--bg-base);
-  border: 1px solid var(--orange);
-  border-radius: 4px;
-  color: var(--text-primary);
-  font-size: 12px;
-  font-weight: 700;
-  outline: none;
-  padding: 2px 6px;
-  width: 72px;
-  text-align: right;
-}
-
-/* Done card */
-.doneIcon  { font-size: 40px; color: var(--green); }
-.doneTitle { font-size: 20px; font-weight: 700; color: var(--green); margin: 0; }
-.doneSub   { font-size: 13px; color: var(--text-ghost); margin: 0; }
 
 /* Full App link */
 .fullAppLink {
@@ -341,27 +77,6 @@
 
 .fullAppLink:hover { color: var(--text-ghost); }
 
-.undoBtn {
-  background: none;
-  border: none;
-  color: var(--text-faint);
-  cursor: pointer;
-  font-size: 11px;
-  font-family: inherit;
-  padding: 4px 0;
-  transition: color 0.12s;
-}
-.undoBtn:hover { color: var(--text-ghost); }
-
-/* Feature 2 — tier tip */
-.tierTip {
-  font-size: 11px;
-  color: var(--text-ghost);
-  font-style: italic;
-  margin: -8px 0 0;
-  line-height: 1.4;
-}
-
 /* Feature 3 — NDP urgency card */
 .ndpUrgentCard    { display: flex; align-items: flex-start; gap: 10px; border-radius: 10px; padding: 12px 14px; border: 1px solid; }
 .ndpUrgentSoon    { background: rgba(232,131,106,0.08); border-color: rgba(232,131,106,0.3); }
@@ -370,56 +85,6 @@
 .ndpUrgentText    { display: flex; flex-direction: column; gap: 2px; }
 .ndpUrgentTitle   { font-size: 13px; font-weight: 600; color: var(--text-primary); }
 .ndpUrgentSub     { font-size: 11px; color: var(--text-ghost); }
-
-/* Feature 4 + Change 1 — balance edit, dotted underline on amount span only */
-.balanceEditBtn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  cursor: pointer;
-  font-size: 13px;
-  padding: 0;
-  text-align: left;
-  font-family: inherit;
-  display: inline;
-}
-
-.editableAmount {
-  border-bottom: 1px dashed var(--text-faint);
-  transition: border-color 0.12s, color 0.12s;
-}
-
-.balanceEditBtn:hover .editableAmount {
-  border-bottom-color: var(--orange);
-  color: var(--orange);
-}
-
-.balanceInput {
-  background: var(--bg-base);
-  border: 1px solid var(--orange);
-  border-radius: 6px;
-  color: var(--text-primary);
-  font-size: 13px;
-  font-weight: 600;
-  outline: none;
-  padding: 3px 8px;
-  width: 100%;
-  font-family: inherit;
-}
-
-/* Change 3 — projected tag */
-.projectedTag {
-  font-size: 9px;
-  color: var(--text-faint);
-  font-style: italic;
-  font-weight: 400;
-  margin-left: 4px;
-}
-
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
 
 /* Change 1 (iter 2) — setup prompt + modal */
 .setupPrompt {
@@ -526,104 +191,7 @@
 }
 .modalSave:hover { opacity: 0.9; }
 
-/* Apply button + confirmation */
-.applyBtn {
-  background: rgba(78,203,130,0.10);
-  border: 1px solid rgba(78,203,130,0.25);
-  border-radius: 8px;
-  color: var(--green);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  padding: 8px 14px;
-  text-align: center;
-  width: 100%;
-  transition: background 0.12s;
-}
-.applyBtn:hover { background: rgba(78,203,130,0.15); }
-
-.applyConfirm {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--green);
-  text-align: center;
-  margin: 0;
-  animation: fadeIn 0.3s ease;
-}
-
-/* BTC/sats buying input */
-.btcBuyingInput {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  align-items: flex-start;
-}
-
-.btcUnitToggle {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  overflow: hidden;
-}
-
-.unitBtn {
-  padding: 2px 10px;
-  font-size: 11px;
-  background: transparent;
-  color: var(--text-secondary);
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-family: inherit;
-}
-
-.unitBtnActive {
-  background: var(--orange);
-  color: #000;
-}
-
-.btcAmountInput {
-  width: 140px;
-  font-size: 13px;
-  font-variant-numeric: tabular-nums;
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 4px 8px;
-  color: var(--text-primary);
-  font-family: inherit;
-  outline: none;
-}
-
-.btcAmountInput:focus { border-color: var(--orange); }
-
-/* This Month / Outlook segmented control */
-.segmentControl {
-  display: flex;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  overflow: hidden;
-  margin-bottom: 13px;
-}
-
-.segmentBtn {
-  flex: 1;
-  padding: 8px 0;
-  font-size: 13px;
-  font-weight: 600;
-  background: transparent;
-  color: var(--text-secondary);
-  border: none;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-  font-family: inherit;
-}
-
-.segmentBtnActive {
-  background: var(--orange);
-  color: #000;
-}
-
+/* The card's next-month line */
 .nextMonthPreview {
   font-size: 12px;
   color: var(--text-ghost);
@@ -631,7 +199,18 @@
   margin: 0;
 }
 
-/* Outlook re-anchor nudge (§9) — assumption hygiene, non-alarming */
+/* Run 3 — the Outlook's place: the plan on the price paths, in the Almanac's Decision face (the card's Ledger strip's
+   look). The full-mode Advisor tab has its own copy (AdvisorMain.module.css). */
+.pathsLink {
+  width: 100%; padding: 10px 12px;
+  border: 1px solid var(--line); border-radius: 10px; background: var(--surface);
+  color: var(--text-muted); font-size: 12px; font-family: 'IBM Plex Mono', monospace;
+  text-align: left; cursor: pointer; transition: color 0.12s, border-color 0.12s;
+}
+.pathsLink:hover { color: var(--text-primary); border-color: var(--line-2); }
+
+/* The expenses re-anchor nudge (§9) — on THIS MONTH since Run 3 (the Outlook's until then); assumption hygiene,
+   non-alarming */
 .reanchorBanner {
   display: flex;
   align-items: center;
@@ -675,223 +254,6 @@
   color: var(--amber);
 }
 
-.btcBuyingUsdRef {
-  font-size: 11px;
-  color: var(--text-ghost);
-}
-
-.ndpRowOverdue {
-  border-left: 2px solid var(--orange);
-  background: color-mix(in srgb, var(--orange) 6%, transparent);
-}
-
-.ndpRowSoon {
-  border-left: 2px solid var(--orange);
-  background: color-mix(in srgb, var(--orange) 4%, transparent);
-}
-
-.ndpRowUpcoming {
-  border-left: 2px solid var(--text-ghost);
-}
-
-.ndpStatusLine {
-  display: block;
-  font-size: 11px;
-  color: var(--text-ghost);
-  margin-top: 2px;
-}
-
-/* Projected label (ghost suffix on position stats) */
-.projectedLabel { font-size: 11px; color: var(--text-ghost); font-weight: 400; }
-
-/* Standalone NDP status card */
-.ndpStatusCard {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  border: 1px solid;
-}
-.ndpStatusOverdue  { background: rgba(232,90,79,0.08);   border-color: rgba(232,90,79,0.35); }
-.ndpStatusSoon     { background: rgba(232,131,106,0.07); border-color: rgba(232,131,106,0.3); }
-.ndpStatusUpcoming { background: rgba(255,255,255,0.03); border-color: var(--border); }
-.ndpStatusIcon     { font-size: 16px; flex-shrink: 0; }
-
-/* Log this month — outlined orange CTA (legacy, kept for reference) */
-.logThisMonthOutlineBtn {
-  width: 100%;
-  padding: 13px;
-  border-radius: 8px;
-  background: none;
-  border: 1px solid var(--orange);
-  color: var(--orange);
-  font-size: 14px;
-  font-weight: 600;
-  font-family: 'IBM Plex Mono', monospace;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.logThisMonthOutlineBtn:hover { background: rgba(232,131,106,0.06); }
-
-/* Log this month & continue — primary green CTA */
-.logThisMonthBtn {
-  width: 100%;
-  padding: 13px;
-  border-radius: 8px;
-  background: rgba(78,203,130,0.12);
-  border: 1px solid var(--green);
-  color: var(--green);
-  font-size: 14px;
-  font-weight: 700;
-  font-family: 'IBM Plex Mono', monospace;
-  cursor: pointer;
-  transition: background 0.15s;
-}
-.logThisMonthBtn:hover { background: rgba(78,203,130,0.20); }
-
-/* Confirm log sheet — portal overlay */
-.confirmOverlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.65);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 9000;
-  padding: 16px;
-}
-
-.confirmSheet {
-  background: var(--bg-card);
-  border: 1px solid var(--border);
-  border-radius: 14px;
-  width: 100%;
-  max-width: 420px;
-  display: flex;
-  flex-direction: column;
-  gap: 0;
-  overflow: hidden;
-}
-
-.confirmHeader {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 16px 18px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.confirmTitle {
-  font-size: 15px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.confirmSub {
-  font-size: 12px;
-  color: var(--text-ghost);
-}
-
-.confirmRows {
-  display: flex;
-  flex-direction: column;
-  padding: 12px 18px;
-  gap: 2px;
-}
-
-.confirmRow {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 0;
-  font-size: 13px;
-  color: var(--text-secondary);
-  border-bottom: 1px solid rgba(255,255,255,0.04);
-}
-.confirmRow:last-child { border-bottom: none; }
-
-.confirmRowExpenses {
-  background: rgba(232,131,106,0.05);
-  border-radius: 6px;
-  padding: 8px 10px;
-  margin: 4px -10px;
-}
-
-.confirmExpensesField {
-  display: flex;
-  align-items: center;
-  background: var(--bg-base);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  padding: 0 8px;
-  height: 32px;
-  gap: 4px;
-  transition: border-color 0.12s;
-}
-.confirmExpensesField:focus-within { border-color: var(--orange); }
-
-.confirmExpensesPrefix {
-  font-size: 13px;
-  color: var(--text-ghost);
-  flex-shrink: 0;
-}
-
-.confirmExpensesInput {
-  width: 80px;
-  background: none;
-  border: none;
-  color: var(--text-primary);
-  font-size: 13px;
-  outline: none;
-  text-align: right;
-}
-
-.confirmRowAlloc {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--green);
-  justify-content: center;
-  border-bottom: none;
-}
-
-.confirmActions {
-  display: flex;
-  gap: 8px;
-  padding: 14px 18px 16px;
-  border-top: 1px solid var(--border);
-}
-
-.confirmCancelBtn {
-  flex: 1;
-  padding: 11px;
-  border-radius: 8px;
-  background: none;
-  border: 1px solid var(--border);
-  color: var(--text-ghost);
-  font-size: 13px;
-  font-weight: 600;
-  font-family: inherit;
-  cursor: pointer;
-  transition: border-color 0.12s;
-}
-.confirmCancelBtn:hover { border-color: var(--text-secondary); }
-
-.confirmPrimaryBtn {
-  flex: 2;
-  padding: 11px;
-  border-radius: 8px;
-  background: var(--orange);
-  border: none;
-  color: #000;
-  font-size: 13px;
-  font-weight: 700;
-  font-family: inherit;
-  cursor: pointer;
-  transition: opacity 0.15s;
-}
-.confirmPrimaryBtn:hover { opacity: 0.88; }
-
 /* ── Monthly Playbook plan card (scrubber + bars + dot-rows + summary) ───────────────────── */
 
 /* Scrubber header */
@@ -910,10 +272,7 @@
 .scrubBadgeLogged    { color: var(--text-ghost); }
 .scrubBadgeProjected { color: var(--amber); }
 .scrubLtv { font-size: 12px; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-/* A routine paydown is plan mechanics, not an alarm — muted. Amber only when the LTV is still above the ceiling. */
-.scrubPaydownFlag { color: var(--text-muted); }
-.scrubPaydownFlagWarn { color: var(--amber); }
-.scrubPrice { margin-left: auto; font-size: 12px; color: var(--text-muted); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
+
 .scrubSlider {
   width: 100%;
   height: 6px;
@@ -946,84 +305,6 @@
 .scrubMonthLabels { display: flex; justify-content: space-between; padding: 0 2px; }
 .scrubMonthTick { font-size: 8px; color: var(--text-ghost); letter-spacing: 0.5px; }
 
-/* Stacked status bars */
-.planBars { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
-.planBar { display: flex; flex-direction: column; gap: 4px; }
-.planBarHead { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
-.planBarLabel { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
-.planBarVal { font-size: 11px; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; }
-.planBarTrack {
-  position: relative;
-  height: 6px;
-  background: rgba(255,255,255,0.06);
-  border-radius: 3px;
-  overflow: hidden;
-}
-.planBarFill { position: absolute; top: 0; left: 0; height: 100%; border-radius: 3px; transition: width 0.3s, background 0.3s; }
-.planBarMarker {
-  position: absolute;
-  top: -2px;
-  width: 2px;
-  height: 10px;
-  background: var(--text-ghost);
-  transform: translateX(-50%);
-}
-
-/* Three core dot-rows */
-.dotRows { display: flex; flex-direction: column; margin-top: 14px; }
-.dotRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px 0;
-  border-top: 1px solid rgba(255,255,255,0.03);
-}
-.dotRow:first-child { border-top: none; }
-.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-.dotGreen { background: var(--green); }
-.dotAmber { background: var(--amber); }
-.dotRed   { background: var(--red); }
-.dotBlue  { background: var(--orange); }
-.dotOrange { background: var(--orange); }
-.dotMuted  { background: var(--text-muted); }   /* LoC Paydown — plan mechanics, not an alarm */
-.dotLabelGroup { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-.dotLabel { font-size: 13px; color: var(--text-secondary); }
-.dotSub { font-size: 11px; color: var(--text-ghost); }
-.dotRightInner { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; }
-.dotPct { font-size: 11px; color: var(--text-muted); }
-.dotAmount { font-size: 15px; font-weight: 600; color: var(--text-primary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-.separator { margin: 4px 0; padding-top: 6px; border-top: 1px solid var(--border); }
-.separatorLabel { font-size: 8px; letter-spacing: 1.5px; text-transform: uppercase; color: var(--text-ghost); }
-
-/* Demoted "this month also" strip */
-.alsoStrip {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  margin-top: 12px;
-  padding: 10px;
-  background: rgba(255,255,255,0.03);
-  border-radius: 8px;
-}
-.alsoLabel { font-size: 9px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-faint); }
-.alsoRow { display: flex; align-items: center; gap: 8px; }
-.alsoIcon { width: 16px; text-align: center; flex-shrink: 0; font-size: 12px; }
-.alsoText { font-size: 12px; color: var(--text-secondary); flex: 1; min-width: 0; }
-.alsoAmt { font-size: 13px; font-weight: 600; color: var(--text-secondary); font-family: 'IBM Plex Mono', monospace; white-space: nowrap; }
-
-/* Logged completion note (current month) */
-.loggedNote {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  margin-top: 14px;
-  padding: 12px;
-  background: rgba(78,203,130,0.08);
-  border-radius: 8px;
-}
-.loggedNoteIcon { font-size: 16px; color: var(--green); flex-shrink: 0; }
-.loggedNoteText { font-size: 13px; color: var(--text-primary); flex: 1; min-width: 0; }
-
 /* Preview affordances (non-current months) */
 .previewActions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
 .previewEditBtn, .backToCurrentBtn {
@@ -1041,32 +322,6 @@
   transition: border-color 0.15s, color 0.15s;
 }
 .previewEditBtn:hover, .backToCurrentBtn:hover { border-color: var(--orange); color: var(--orange); }
-
-/* Summary paragraph */
-.planSummary {
-  margin: 14px 0 0;
-  padding: 10px 12px;
-  background: rgba(255,255,255,0.03);
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--text-secondary);
-}
-
-/* Simple Mode Corrections — Strike minimum chip, statement-entry button, threshold + savings notices */
-.chip {
-  display: inline-block;
-  margin-left: 6px;
-  padding: 1px 6px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  vertical-align: middle;
-  text-transform: uppercase;
-}
-.chipStatement { background: rgba(78,203,130,0.16); color: var(--green); }
-.chipEst       { background: rgba(255,255,255,0.08); color: var(--text-muted); }
 
 /* §2b — Strike minimum status chip (income mode) */
 .minChip { display: inline-block; margin-left: 6px; padding: 1px 6px; border-radius: 6px; font-size: 9.5px; font-weight: 700; letter-spacing: 0.04em; vertical-align: middle; }
@@ -1090,26 +345,7 @@
   text-align: left; cursor: pointer; transition: opacity 0.12s;
 }
 .signoffPointer:hover { opacity: 0.88; }
-.minAmountBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 2px;
-  background: none;
-  border: none;
-  padding: 0;
-  cursor: pointer;
-}
-.minAmountBtn:disabled { cursor: default; }
-.misorderNotice {
-  margin: 14px 0 0;
-  padding: 9px 12px;
-  background: rgba(232,168,74,0.10);
-  border: 1px solid rgba(232,168,74,0.35);
-  border-radius: 8px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--amber);
-}
+
 .savingsNeed {
   margin: 10px 0 0;
   padding: 8px 12px;
@@ -1118,11 +354,6 @@
   line-height: 1.45;
   color: var(--text-muted);
   background: rgba(255,255,255,0.03);
-}
-.savingsNeedAlert {
-  color: var(--amber);
-  background: rgba(232,168,74,0.10);
-  border: 1px solid rgba(232,168,74,0.35);
 }
 
 /* The plan of record (Run 2) — the one-time note */

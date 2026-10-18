@@ -542,6 +542,8 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
               // Carry: the signed month's ENDING Strike balance is the NEXT month's start base — ONLY when the month
               // just signed is immediately before the active month (a past-month sign-off via the ‹›nav must not
               // clobber the current base). Narrowed to a number: a provisional month may leave strikeBal absent.
+              // Inert since the plan of record's Run 3: nothing reads the base — the Advisor's projection, which started
+              // from it, left every screen. The field stays until its key leaves (invariant 6).
               if (safeViewedMonth === currentMonth - 1) {
                 const e = useStore.getState().monthlyLog.find((m) => m.month === safeViewedMonth);
                 if (e && typeof e.strikeBal === 'number') setAdvisorMonthStartBalance(e.strikeBal);

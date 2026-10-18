@@ -1,7 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { runAdvisor, type AdvisorInputs } from '../runAdvisor';
 import { runBLOC } from '../runBLOC';
-import { classifyPaydownState, isLtvFigureStressed, displaySettledLtv } from '../simpleModePlan';
 
 // ⚠ SYNTHETIC round figures — this repo is public; never a real position.
 const CEILING = 0.15;
@@ -68,25 +67,8 @@ describe('runAdvisor — blocLtvPeak across a parameter sweep', () => {
   });
 });
 
-describe('the figure rule ≡ the old AFTER-box colour on every collateralised row', () => {
-  // ⚠ BLOCKS deleting SimpleModeView's `eomStressed = eomState === 'partial' || eomState === 'undefended'`. The argument
-  // for the replacement (partial settles above by definition; undefended ⇒ no income budget ⇒ no buy ⇒ settled = peak;
-  // defended/quiet settle at or below) is exactly the shape of a claim that has been wrong before — so it is RUN here,
-  // over the same sweep whose non-vacuity check (above) proves it reaches paid, partial and undefended months.
-  const rows = advisorRows();
-
-  it('⭐ isLtvFigureStressed(settled) === state ∈ {partial, undefended}, on every row', () => {
-    const mismatches = rows.filter(({ row }) =>
-      isLtvFigureStressed(row.blocLtv, CEILING) !==
-      ['partial', 'undefended'].includes(classifyPaydownState(row.blocLtvPeak, row.blocPaydown, row.blocLtv, CEILING)));
-    expect(rows.length).toBeGreaterThan(1000);
-    expect(mismatches.map(({ inp, row }) => `${inp.startingBtcHeld}/${inp.income}/${inp.expenses} m${row.month}`)).toEqual([]);
-  });
-
-  it('displaySettledLtv is the identity on every collateralised row (it only changes the zero-collateral case)', () => {
-    expect(rows.filter(({ row }) => displaySettledLtv(row) !== row.blocLtv)).toEqual([]);
-  });
-});
+// The figure rule's helpers (isLtvFigureStressed, displaySettledLtv) left with the old card's last caller (plan of
+// record, Run 3).
 
 describe('runBLOC — ltvPeak across a parameter sweep', () => {
   const rows: { income: number; m: ReturnType<typeof runBLOC>[number] }[] = [];

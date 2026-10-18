@@ -523,6 +523,55 @@ export function planLedgerTargets(r: CyclingRow): { draw: number; paid: number; 
   };
 }
 
+// ── the month log's planned figures (Run 3) ─────────────────────────────────────────────────────────────────────
+
+/** The month's payments to Strike, as the Ledger logs them (a Strike paydown): spare income's, a refinance's (borrowed on
+ *  Coinbase) and the cash reserve's margin cure. With Coinbase's — spare income's and a defense's — it is Daily's "paid"
+ *  target (`planLedgerTargets`). Strike's minimum is not in it: the Ledger logs that as its own event. */
+export function planStrikePaidUsd(r: CyclingRow): number {
+  return r.strikeRepaidUsd + r.refinancedUsd + r.cashToCureUsd;
+}
+
+/** A strategy month's planned figures in the month log (Run 3): the "(proj)" values of the full-mode log and the month
+ *  overlay, and the figures their forms start from — the plan of record's own run (D4: flat at today's price), never the
+ *  Advisor's. Every figure is the run's month-end, at the run's price. */
+export interface PlanLogRow {
+  /** The strategy month, 1–12. */
+  month: number;
+  /** ₿ the month buys, at today's price. */
+  btcBought: number;
+  /** $ into bitcoin. */
+  incomeToBtc: number;
+  /** $ paid to Strike — `planStrikePaidUsd`, the Ledger's Strike paydown. */
+  paydown: number;
+  blocBalance: number;
+  blocLtv: number;
+  cbBalance: number;
+  cbLtv: number;
+}
+
+/** The month log's planned rows. Strategy month k is the run's month k − currentMonth + 1 — one run for the month and
+ *  the year, as THIS MONTH's card reads it — from the current month to 12. A past month has none: the plan is rebuilt
+ *  each month and keeps no history (D14). */
+export function planLogRows(sim: CyclingResult, currentMonth: number): PlanLogRow[] {
+  const out: PlanLogRow[] = [];
+  for (let k = Math.max(1, currentMonth); k <= 12; k++) {
+    const r = sim.rows.find((x) => x.m === k - currentMonth + 1);
+    if (!r) continue;
+    out.push({
+      month: k,
+      btcBought: r.price > 0 ? r.btcBoughtUsd / r.price : 0,
+      incomeToBtc: r.btcBoughtUsd,
+      paydown: planStrikePaidUsd(r),
+      blocBalance: r.strikeBalance,
+      blocLtv: r.strikeLtv,
+      cbBalance: r.cbDebt,
+      cbLtv: r.cbLtv,
+    });
+  }
+  return out;
+}
+
 /** One of Daily's progress bars, as words and a fill. */
 export interface PlanBar {
   key: 'draw' | 'paid' | 'buy';
@@ -614,6 +663,16 @@ export function planSavingsLine(sim: CyclingResult, monthsLeft: number): string 
 }
 
 // ── the words around the card ─────────────────────────────────────────────────────────────────────────────────
+
+/** Where the year beyond today's price lives (Run 3, D5): THIS MONTH and the Advisor tab link to the Decision face, which
+ *  runs this plan through the same engine on the price paths — the Outlook's place, not a second projection. */
+export const PLAN_PATHS_LINK = "Your plan on other price paths — the Almanac's Decision face";
+
+/** THIS MONTH's expenses prompt (on the Outlook until Run 3): the last three logged months' average against the plan's
+ *  assumption — to the cent, like every figure on THIS MONTH (BL19); its Update stores the average to the cent. */
+export function planReanchorLine(avg: number, expenses: number): string {
+  return `Your last 3 months averaged ${fmtUSDCents(avg)} vs your ${fmtUSDCents(expenses)} assumption — update?`;
+}
 
 /** D8 — the one-time note, once per device (dismissed is device-local). */
 export function planSwitchNote(cbStop: number): string {

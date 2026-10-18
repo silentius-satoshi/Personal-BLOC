@@ -57,7 +57,7 @@ import { HeaderNavCluster }  from './HeaderNavCluster';
 import { DemoBanner }        from './DemoBanner';
 import { EdgeBackGesture }   from '../ui/EdgeBackGesture';
 import { CbDefenseTool }    from '../Tools/CbDefenseTool';
-import AlmanacView          from '../Almanac/AlmanacView';
+import AlmanacView, { type AlmanacFace } from '../Almanac/AlmanacView';
 import { reconnectNostr }   from '../../lib/nostr/disconnect';
 import styles from './AppShell.module.css';
 
@@ -290,7 +290,17 @@ export function AppShell() {
   }, [hiddenTabs, activeTab]);
 
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
+  // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the
+  // default (Halving) every other way in. Session-only. goAlmanac sets no face and takes no argument: the nav passes it
+  // as onClick, so a click event must never become a face.
+  const [almanacFace, setAlmanacFace] = useState<AlmanacFace | undefined>(undefined);
   const goAlmanac  = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); };
+  const goPlanPaths = () => { setAlmanacFace('decision'); setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('almanac'); };
+  // Leaving the Almanac forgets the face asked for — the one mechanism, so the nav's button, full mode's Tools menu and
+  // a tab (which open the hub directly) all open the default face.
+  useEffect(() => { if (activeTab !== 'almanac') setAlmanacFace(undefined); }, [activeTab]);
+  // Full mode: the link shows only while the Almanac tab can open (a hidden tab bounces to the first visible one).
+  const planPathsInFullMode = hiddenTabs.includes('almanac') ? null : goPlanPaths;
 
   // P3.1 nested settings back-chain: SettingsMain reports its one-level-back handler here (null on the list).
   // The Branch-H edge gesture chains subpage→list first, else exits Settings — mirroring the visible ← Back.
@@ -324,7 +334,7 @@ export function AppShell() {
     ) : simpleView === 'daily' ? (
       <DailyModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} simpleView={simpleView} setSimpleView={setSimpleView} />
     ) : (
-      <SimpleModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} simpleView={simpleView} setSimpleView={setSimpleView} />
+      <SimpleModeView onOpenSettings={goSettings} onOpenAlmanac={goAlmanac} onOpenPlanPaths={goPlanPaths} simpleView={simpleView} setSimpleView={setSimpleView} />
     );
 
   // The surface an edge-back reveals: owner → the journal (Branch J); viewer → the read-only home (Branch G).
@@ -393,7 +403,7 @@ export function AppShell() {
               <button className={styles.simpleModeBackBtn} onClick={() => setActiveTab(previousTab)}>← Back</button>
               <span className={styles.simpleModeSettingsTitle}>Almanac</span>
             </div>
-            <AlmanacView />
+            <AlmanacView initialFace={almanacFace} />
           </div>
         </EdgeBackGesture>
       ) : simpleMode && activeTab !== 'settings' ? (
@@ -454,13 +464,13 @@ export function AppShell() {
           <main className={styles.main}>
             {activeTab === 'settings'   ? <SettingsMain />      :
              activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
-             activeTab === 'advisor'    ? <AdvisorMain />       :
+             activeTab === 'advisor'    ? <AdvisorMain onOpenLedger={() => { setSimpleMode(true); setSimpleView('daily'); }} onOpenPlanPaths={planPathsInFullMode} /> :
              activeTab === 'living'     ? <LivingOnBitcoin />   :
              activeTab === 'powerlaw'   ? <PowerLawFace />      :
              activeTab === 'converter'  ? <ConverterMain />     :
              activeTab === 'mining'     ? <MiningMain />        :
              activeTab === 'liqsim'     ? <CbDefenseTool />     :
-             activeTab === 'almanac'    ? <AlmanacView />      :
+             activeTab === 'almanac'    ? <AlmanacView initialFace={almanacFace} /> :
                                           <SmartBlocMain />}
           </main>
         </div>

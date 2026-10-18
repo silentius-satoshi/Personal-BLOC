@@ -65,7 +65,7 @@ miningInputs: {
 ### CB Loan Tab
 ```typescript
 cbLoanBalance:       number;                       // default 60000
-cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). setCbCollateralBtc emits a cbCollateralReading. ⚠ Every plan reader (the four faces' selectors, and usePlanMonth for THIS MONTH's and Daily's plan cards) reads it — and cbLoanBalance — only through planRun's planCbCollateralOf / planCbLoanBalanceOf (the plan of record's Run 2, D-R2-4): 0 with hasCbLoan off, so a fresh install's seed $60,000 on 1.48 ₿ never reaches a plan. The crash gate (isCrashDay, the Emergency Console), Simple Mode's Outlook and THIS MONTH's log overlay (runAdvisor, until Run 3) still read the store figures, behind hasCbLoan
+cbCollateralBtc:     number;                       // default 1.48 — derived cache (deriveCbCollateral over dayLog); NOT a synced scalar, but P3 CONVERGES it cross-device via the synced dayLog (rides the journal sync — 5b: monthly pages, and records:v1 while it fits). setCbCollateralBtc emits a cbCollateralReading. ⚠ Every plan reader (the four faces' selectors, and usePlanMonth for THIS MONTH's and Daily's plan cards) reads it — and cbLoanBalance — only through planRun's planCbCollateralOf / planCbLoanBalanceOf (the plan of record's Run 2, D-R2-4): 0 with hasCbLoan off, so a fresh install's seed $60,000 on 1.48 ₿ never reaches a plan. The crash gate (isCrashDay — the Emergency Console and the plan card's crash line, usePlanCardInputs) still reads the store figures, behind hasCbLoan (so did runAdvisor's three screen callers — the Advisor tab, Simple Mode's Outlook and THIS MONTH's log overlay — until the plan of record's Run 3 took runAdvisor off every screen)
 strikeCollateralBtc: number;                       // default 0 (v20 Collateral-Truth) — derived cache (deriveStrikeCollateral over dayLog); reading-anchored current Strike collateral (= getCurrentBtcHeld). NOT synced (rides partialize ...rest); converges cross-device via the dayLog on records:v1. Refreshed in the 3 dayLog mutators + setDayLog + onRehydrate
 cbAprPct:            number;                       // default 4.77
 cbMonthlyPayment:    number;                       // default 0
@@ -73,7 +73,7 @@ cbLiquidationPrice:  number;                       // default 0 (0 = not set; gu
 cbPaymentStrategy:   'monthly' | 'ltvTriggered';  // default 'monthly'
 cbLtvTriggerPct:     number;                       // default 75 (percent, e.g. 75 = 75%)
 cbLtvTargetPct:      number;                       // default 65 (percent, pay down to this LTV)
-cbRotateBackPct:     number;                       // default 55 (percent, reverse-rotation gate; synced in SETTINGS_FIELDS/payload like trigger/target)
+cbRotateBackPct:     number;                       // default 55 (percent, reverse-rotation gate; synced in SETTINGS_FIELDS/payload like trigger/target). INERT since the plan of record's Run 3: no screen runs runAdvisor, and Settings no longer edits it (invariant 6 — the key stays)
 cbEmergencyCeilingPct: number;                     // retained for sync compatibility — no UI consumer since the crash playbook (Run 2); default 30, clamped 20–50 in the setter; synced
 cbLoanBalanceAsOf:      string | null;             // v13 — ISO date cbLoanBalance was last re-anchored (interest accrues daily from here); synced
 cbLiquidationPriceAsOf: string | null;             // v13 — ISO date cbLiquidationPrice was last re-entered (drifts up with interest); synced
@@ -84,12 +84,12 @@ strikeLiquidationLtvPct: number;                   // v13 — Strike partial-liq
 ```typescript
 advisorStartDate:         string;   // ISO date, default today
 advisorActualBlocBalance: number;   // default 0 — LIVE drawn BLOC balance right now (the plan of record's Strike balance — THIS MONTH, Daily, the faces — Advisor, SafetyDashboard, NDP)
-advisorMonthStartBalance: number;   // default 0 — BLOC balance at the START of the current month; projection base ONLY (deriveAdvisorStart month-1 — the Advisor tab, the Outlook and THIS MONTH's log overlay). SYNCED. Distinct from advisorActualBlocBalance (live drawn). (The Simple Mode AFTER box that stacked the full draw on it went with the plan of record's Run 2.)
+advisorMonthStartBalance: number;   // default 0 — BLOC balance at the START of the current month; projection base ONLY (deriveAdvisorStart month-1 — the Advisor tab, the Outlook and THIS MONTH's log overlay until the plan of record's Run 3; INERT since: no screen runs the projection, Settings and Quick Setup no longer edit it, the month review's sign-off still carries it). SYNCED. Distinct from advisorActualBlocBalance (live drawn). (The Simple Mode AFTER box that stacked the full draw on it went with the plan of record's Run 2.)
 advisorActualBtcHeld:     number;   // default 0 — DEPRECATED (spec v3): feeds no computation (monthly btcHeld is recorded, not chained); kept for sync compat + Fix D's seed sentinel — LEAVE IT ALONE, never zero it. (v20: pendingCollateralAdjustment RETIRED — Strike collateral is reading-anchored)
 sandboxCollateralBtc:     number | null;  // default null — Smart BLOC what-if collateral; IN-MEMORY only (partialize-excluded, never synced); null = tracks current
-advisorSkipBlocDraw:      boolean;  // default false (persisted + synced)
-advisorSkipCbPayment:     boolean;  // default false (persisted + synced)
-advisorSkipBtcBuying:     boolean;  // default false (persisted + synced)
+advisorSkipBlocDraw:      boolean;  // default false (persisted + synced) — INERT since the plan of record's Run 3 (the Pay / Skip toggles left the Advisor tab)
+advisorSkipCbPayment:     boolean;  // default false (persisted + synced) — INERT since Run 3
+advisorSkipBtcBuying:     boolean;  // default false (persisted + synced) — INERT since Run 3
 monthlyLog:               MonthlyLogEntry[];  // default []
 showMiningInLog:          boolean;            // default false
 ```
@@ -157,7 +157,8 @@ and the v20 back-solve drove the baseline negative on a real install.
 
 - **Which `btcHeld`:** five data fields share the name, and ONLY `MonthlyLogEntry.btcHeld` changed. These are
   untouched:
-  - `AdvisorMonthRow.btcHeld` (simulated; the paydown badge's `displaySettledLtv` reads it);
+  - `AdvisorMonthRow.btcHeld` (simulated; the paydown badge's `displaySettledLtv` read it until the plan of record's
+    Run 3 deleted it);
   - `CyclingRow.btcHeld` (all three pools);
   - `deriveCurrentPosition().btcHeld`;
   - `StrategyMonthData.btcHeld`.

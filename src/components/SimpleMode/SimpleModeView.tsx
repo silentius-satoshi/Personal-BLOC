@@ -1,28 +1,24 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
-import { runAdvisor, getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
-import { getCollateralForTier } from '../../simulation/runBlocYearOne';
-import { deriveAdvisorStart, computeExpenseReanchor } from '../../simulation/logUtils';
-import { BLOC_OPERATING_CEILING } from '../../simulation/strikeCredit';
-import { fmtUSD, fmtUSDCents, shownUsd, todayLocalISO } from '../../utils/format';
-import { planNdpBalance, planNdpEstimateUsd } from '../Almanac/planMonthView';
+import { getCurrentStrategyMonth, isStrategyComplete } from '../../simulation/runAdvisor';
+import { computeExpenseReanchor } from '../../simulation/logUtils';
+import { fmtUSDCents, shownUsd, toCents } from '../../utils/format';
+import { planLogRows, planReanchorLine, PLAN_PATHS_LINK } from '../Almanac/planMonthView';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
-import { OutlookProjection } from '../Advisor/OutlookProjection';
 import { SafetyDashboard } from './SafetyDashboard';
 import { ViewToggle } from '../Layout/ViewToggle';
 import { HeaderNavCluster } from '../Layout/HeaderNavCluster';
 import { BackupNagCard } from '../Entry/BackupNagCard';
-import { accruedCbBalance } from '../../simulation/cbMetrics';
-import { plBandsAt } from '../../simulation/powerLaw';
-import { crashPlaybook } from '../../simulation/crashPlaybook';
-import { playbookInputFromLive, monthPlaybookLine, isCrashDay, strikeDepositOf } from '../Tools/crashPlaybookView';
 import { PlanMonthCard } from './PlanMonthCard';
+import { usePlanCardInputs } from './usePlanCardInputs';
 import styles from './SimpleModeView.module.css';
 
 
 interface SimpleModeViewProps {
   onOpenSettings: () => void;
   onOpenAlmanac:  () => void;
+  /** Run 3 — the Outlook's place: the Almanac, opened on the Decision face. */
+  onOpenPlanPaths: () => void;
   simpleView: 'dashboard' | 'monthly' | 'daily';
   setSimpleView: (v: 'dashboard' | 'monthly' | 'daily') => void;
 }
@@ -51,40 +47,19 @@ function ModalField({ label, prefix, value, onChange, step = 1, hint }: {
   );
 }
 
-export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSimpleView }: SimpleModeViewProps) {
+export function SimpleModeView({ onOpenSettings, onOpenAlmanac, onOpenPlanPaths, simpleView, setSimpleView }: SimpleModeViewProps) {
   const income    = useStore((s) => s.income);
   const expenses  = useStore((s) => s.expenses);
-  const btcPrice  = useStore((s) => s.btcPrice);
-  const blocApr   = useStore((s) => s.blocApr);
   const creditLine = useStore((s) => s.creditLine);
-
-  const cbLoanBalance      = useStore((s) => s.cbLoanBalance);
-  const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
-  const cbAprPct            = useStore((s) => s.cbAprPct);
-  const cbCollateralBtc    = useStore((s) => s.cbCollateralBtc);
-  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
-  const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
-  const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
-  const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
-  const cbRotateBackPct    = useStore((s) => s.cbRotateBackPct);
-  const planCbStopAtSupportPct = useStore((s) => s.policyCbStopAtSupportPct);   // the plan of record's Coinbase limit (Run 1)
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const emitBalanceReading          = useStore((s) => s.emitBalanceReading);   // §5b — Quick-Setup save emits a journaled Strike reading
-  const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
-  const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const advisorStartDate            = useStore((s) => s.advisorStartDate);
-  const ndpLastPaidDate             = useStore((s) => s.ndpLastPaidDate);
-  const strikeDeposit               = useStore((s) => strikeDepositOf(s));   // Strike's 60-day hold's one fact (D9)
-  const coldBtc                     = useStore((s) => s.getCurrentColdBtc());   // the live cold total — the crash playbook's first source
 
-  // §3 — advisorSkip* are DORMANT (retained in the store/payload for sync compat; no consumers).
+  // §3 — advisorSkip* are DORMANT (retained in the store/payload for sync compat; no consumers since Run 3 — the
+  // Advisor tab's Pay / Skip toggles retired with its plan rows).
   const viewerMode           = useStore((s) => s.viewerMode);   // read-only viewer → hide/disable mutation controls
-  const hasCbLoan            = useStore((s) => s.hasCbLoan);
-  const effectiveCbBalance   = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
-
-  const blocMinPaymentSource    = useStore((s) => s.blocMinPaymentSource);
 
   const setSimpleMode = useStore((s) => s.setSimpleMode);
 
@@ -94,7 +69,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const setExpenseReanchorDismissedAt = useStore((s) => s.setExpenseReanchorDismissedAt);
   const setCreditLine = useStore((s) => s.setCreditLine);
 
-  const activeTier       = useStore((s) => s.activeTier);
   const monthlyLog       = useStore((s) => s.monthlyLog);
 
   // Change 1 (iter 2) — setup modal
@@ -102,76 +76,26 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
   const [modalDraft, setModalDraft] = useState({
     income, expenses, creditLine,
     blocBalance: advisorActualBlocBalance,
-    monthStartBalance: advisorMonthStartBalance,
     btcHeld: currentBtcHeld,
   });
 
   // Monthly log overlay
   const [logOverlayOpen, setLogOverlayOpen]               = useState(false);
   const [logOverlayInitialMonth, setLogOverlayInitialMonth] = useState(0);
-  // This Month (operating console) / Outlook (shared scenario projection)
-  const [simpleSegment, setSimpleSegment] = useState<'thisMonth' | 'outlook'>('thisMonth');
 
   const currentMonth    = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone    = isStrategyComplete(advisorStartDate);
-  const collateralBtc   = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
 
-  const { startingBlocBalance: slmBlocBal, startingBtcHeld: slmBtcHeld, startingMonth: slmStartMonth } = useMemo(
-    () => deriveAdvisorStart(monthlyLog, currentBtcHeld, advisorActualBlocBalance, currentMonth, advisorMonthStartBalance),
-    [monthlyLog, currentBtcHeld, advisorActualBlocBalance, advisorStartDate, currentMonth, advisorMonthStartBalance],
-  );
-
-  // The Advisor's rows feed ONLY the log overlay's planned rows now (the full-mode Advisor tab's component): the card
-  // runs the plan of record (Run 2). Run 3 retires them with the Advisor tab. Computed only while the overlay is open.
-  const overlayRows = useMemo(
-    () => (logOverlayOpen ? runAdvisor({
-      btcPrice, income, expenses,
-      blocApr, creditLine, blocLtvCeiling: BLOC_OPERATING_CEILING,
-      cbBalance:         effectiveCbBalance,
-      cbCollateralBtc:   hasCbLoan ? cbCollateralBtc  : 1,
-      cbAprPct:          hasCbLoan ? cbAprPct         : 0,
-      cbMonthlyPayment:  hasCbLoan ? cbMonthlyPayment  : 0,
-      cbPaymentStrategy: hasCbLoan ? cbPaymentStrategy : 'monthly',
-      cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct,
-      startingBlocBalance: slmBlocBal,
-      startingBtcHeld:     slmBtcHeld,
-      startingMonth:       slmStartMonth,
-      btcGrowthRate: 0,
-      blocMinPaymentSource,
-    }).rows : []),
-    [logOverlayOpen, btcPrice, income, expenses, blocApr, creditLine, effectiveCbBalance, cbCollateralBtc, cbAprPct,
-      cbMonthlyPayment, cbPaymentStrategy, cbLtvTriggerPct, cbLtvTargetPct, cbRotateBackPct, slmBlocBal, slmBtcHeld,
-      slmStartMonth, hasCbLoan, blocMinPaymentSource],
-  );
-  const ndpBalance  = planNdpBalance(advisorActualBlocBalance, creditLine);
-  const ndp         = getNdpStatus(ndpLastPaidDate, ndpBalance, blocApr);
-  // The card's estimate, to the cent (BL19) — the engine's own estimate is a whole dollar, for full mode.
-  const ndpEstimate = planNdpEstimateUsd(ndpBalance, blocApr);
+  // Run 3 — this screen's ONE run of the plan of record: the card, and the log overlay's planned rows (the Advisor's
+  // rows left every screen with the Outlook).
+  const { pm, crashLine, ndp, ndpEstimate, ndpActionActive } = usePlanCardInputs();
+  const overlayRows = useMemo(() => planLogRows(pm.run.sim, currentMonth), [pm.run.sim, currentMonth]);
   const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(monthlyLog, expenses, expenseReanchorDismissedAt);
-
-  // D13 — a crash day (Coinbase at or past the trigger at today's price): the card's status carries the Emergency
-  // Console's own line, built through crashPlaybookView's one builder (the console's inputs).
-  const cbTriggered = isCrashDay({
-    hasCbLoan, ltvTriggered: cbPaymentStrategy === 'ltvTriggered', cbDebt: effectiveCbBalance, cbCollateralBtc,
-    price: btcPrice, triggerPct: cbLtvTriggerPct,
-  });
-  const today = todayLocalISO();
-  const playbookInput = playbookInputFromLive({
-    price: btcPrice, support: plBandsAt(new Date(today)).floor, cbDebt: effectiveCbBalance, cbCollateralBtc,
-    strikeBalance: advisorActualBlocBalance, strikeCollateralBtc: currentBtcHeld, creditLine, coldBtc,
-    cbLtvTargetPct, planCbStopAtSupportPct, strikeDepositISO: strikeDeposit, todayISO: today,
-  });
-  const playbookLine = cbTriggered ? monthPlaybookLine(crashPlaybook(playbookInput), playbookInput) : null;
-
-  // NDP re-scope (Simple Mode Corrections A): the annual non-draw payment only applies while minimums
-  // are ROLLED into the line. In income mode every month's external minimum IS a non-draw payment, so
-  // the annual clause disappears entirely.
-  const ndpActionActive = blocMinPaymentSource === 'roll' && ndp.status !== 'ok';
 
   const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
 
   const openSetupModal = () => {
-    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, monthStartBalance: advisorMonthStartBalance, btcHeld: currentBtcHeld });
+    setModalDraft({ income, expenses, creditLine, blocBalance: advisorActualBlocBalance, btcHeld: currentBtcHeld });
     setShowSetupModal(true);
   };
 
@@ -179,7 +103,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
     setIncome(modalDraft.income);
     setExpenses(modalDraft.expenses);
     setCreditLine(modalDraft.creditLine);
-    setAdvisorMonthStartBalance(modalDraft.monthStartBalance);
     // §5b — emit a journaled Strike reading (the seam re-anchors advisorActualBlocBalance + asOf=today); Strike-only
     // (no CB re-base). v20 — when "BTC held" (collateral) changed too, MERGE strikeCollateral into the SAME emission
     // (the LTV is then computed from the new collateral) rather than emitting twice.
@@ -219,65 +142,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
 
       <SafetyDashboard />
 
-
-      {!strategyDone && (
-        <div className={styles.segmentControl}>
-          <button
-            className={`${styles.segmentBtn} ${simpleSegment === 'thisMonth' ? styles.segmentBtnActive : ''}`}
-            onClick={() => setSimpleSegment('thisMonth')}
-          >This Month</button>
-          <button
-            className={`${styles.segmentBtn} ${simpleSegment === 'outlook' ? styles.segmentBtnActive : ''}`}
-            onClick={() => setSimpleSegment('outlook')}
-          >Outlook</button>
-        </div>
-      )}
-
-      {!strategyDone && simpleSegment === 'outlook' && (
-        <div className={styles.cards}>
-          {showReanchor && (
-            <div className={styles.reanchorBanner}>
-              <span className={styles.reanchorText}>
-                Your last 3 months averaged {fmtUSD(Math.round(reanchorAvg))} vs your {fmtUSD(expenses)} assumption — update?
-              </span>
-              <div className={styles.reanchorBtns}>
-                <button
-                  className={`${styles.reanchorBtn} ${styles.reanchorBtnPrimary}`}
-                  onClick={() => setExpenses(Math.round(reanchorAvg))}
-                >Update</button>
-                <button
-                  className={styles.reanchorBtn}
-                  onClick={() => setExpenseReanchorDismissedAt(Math.round(reanchorAvg))}
-                >Dismiss</button>
-              </div>
-            </div>
-          )}
-          <OutlookProjection
-            startingBlocBalance={slmBlocBal}
-            startingBtcHeld={slmBtcHeld}
-            startingMonth={slmStartMonth}
-            currentMonth={currentMonth}
-            btcPrice={btcPrice}
-            income={income}
-            expenses={expenses}
-            blocApr={blocApr}
-            creditLine={creditLine}
-            hasCbLoan={hasCbLoan}
-             cbLoanBalance={effectiveCbBalance}
-            cbCollateralBtc={cbCollateralBtc}
-            cbAprPct={cbAprPct}
-            cbMonthlyPayment={cbMonthlyPayment}
-            cbPaymentStrategy={cbPaymentStrategy}
-            cbLtvTriggerPct={cbLtvTriggerPct}
-            cbLtvTargetPct={cbLtvTargetPct}
-            cbRotateBackPct={cbRotateBackPct}
-            blocMinPaymentSource={blocMinPaymentSource}
-            planCbStopAtSupportPct={planCbStopAtSupportPct}
-          />
-        </div>
-      )}
-
-      {(strategyDone || simpleSegment === 'thisMonth') && (
       <div className={styles.cards}>
 
         {/* Feature 3 — NDP urgency card */}
@@ -303,14 +167,36 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
 
         {/* The plan of record's Monthly Playbook (Run 2): one card, one month, each fact once. */}
         <PlanMonthCard
+          pm={pm}
           currentMonth={currentMonth}
           strategyDone={strategyDone}
-          crashLine={playbookLine}
+          crashLine={crashLine}
           ndp={ndp}
           ndpActionActive={ndpActionActive}
           onOpenLedger={() => setSimpleView('daily')}
           onEditMonth={(m) => { setLogOverlayInitialMonth(m - 1); setLogOverlayOpen(true); }}
         />
+
+        {/* Run 3 — the Outlook's place: the plan on the price paths, in the Almanac's Decision face (one engine). */}
+        <button className={styles.pathsLink} onClick={onOpenPlanPaths}>{PLAN_PATHS_LINK} →</button>
+
+        {/* The expenses prompt (on the Outlook until Run 3) — to the cent, like THIS MONTH (BL19); owner-only: Update
+            writes the plan. */}
+        {showReanchor && !viewerMode && (
+          <div className={styles.reanchorBanner}>
+            <span className={styles.reanchorText}>{planReanchorLine(reanchorAvg, expenses)}</span>
+            <div className={styles.reanchorBtns}>
+              <button
+                className={`${styles.reanchorBtn} ${styles.reanchorBtnPrimary}`}
+                onClick={() => setExpenses(toCents(reanchorAvg))}
+              >Update</button>
+              <button
+                className={styles.reanchorBtn}
+                onClick={() => setExpenseReanchorDismissedAt(Math.round(reanchorAvg))}
+              >Dismiss</button>
+            </div>
+          </div>
+        )}
 
         {/* Change 1 (iter 2) — setup prompt + modal (always reachable; first-run copy when defaults).
             Hidden for read-only viewers — they cannot edit the owner's numbers. */}
@@ -330,8 +216,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
                     <ModalField label="Monthly expenses" prefix="$" value={modalDraft.expenses}    onChange={(v) => setModalDraft(d => ({ ...d, expenses: v }))} />
                     <ModalField label="Credit line"      prefix="$" value={modalDraft.creditLine}  onChange={(v) => setModalDraft(d => ({ ...d, creditLine: v }))} />
                     <ModalField label="Amount Drawn"      prefix="$" value={modalDraft.blocBalance} onChange={(v) => setModalDraft(d => ({ ...d, blocBalance: v }))} />
-                    <ModalField label="Balance at start of this month" prefix="$" value={modalDraft.monthStartBalance} onChange={(v) => setModalDraft(d => ({ ...d, monthStartBalance: v }))}
-                      hint="What you owed on Strike at the start of the current month — the base for this month's projection." />
                     <ModalField label="BTC held"         prefix="₿" value={modalDraft.btcHeld}     onChange={(v) => setModalDraft(d => ({ ...d, btcHeld: v }))} step={0.001} />
                   </div>
                   <div className={styles.modalActions}>
@@ -344,7 +228,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
         </>
 
       </div>
-      )}
 
       <button className={styles.fullAppLink} onClick={() => setSimpleMode(false)}>
         Full App →
@@ -357,7 +240,6 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, simpleView, setS
       <MonthlyLogOverlay
         initialMonth={logOverlayInitialMonth}
         months={overlayRows}
-        collateralBtc={collateralBtc}
         openInEditMode
         onClose={() => setLogOverlayOpen(false)}
         money={fmtUSDCents}

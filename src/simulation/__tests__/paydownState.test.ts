@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { classifyPaydownState, paydownReadout, deriveForMonth, displaySettledLtv, isLtvFigureStressed } from '../simpleModePlan';
+import { classifyPaydownState, paydownReadout } from '../simpleModePlan';
 import { runAdvisor, type AdvisorInputs } from '../runAdvisor';
 
 // ⚠ SYNTHETIC round figures — this repo is public; never a real position.
@@ -78,39 +78,7 @@ describe('paydownReadout — one source for the header', () => {
   });
 });
 
-describe('deriveForMonth reads the engine\'s paydown', () => {
-  it('⭐ paydown === row.blocPaydown and the allocation still sums to income, across a sweep', () => {
-    const bad: string[] = [];
-    for (const hasCbLoan of [false, true])
-    for (const cbPaymentStrategy of ['monthly', 'ltvTriggered'] as const)
-    for (const blocMinPaymentSource of ['roll', 'income'] as const)
-    for (const income of [500, 6000])
-    for (const expenses of [1000, 8000])
-    for (const startingBlocBalance of [0, 15000, 60000])
-    for (const btcGrowthRate of [-0.5, 0.5]) {
-      // Mirror the app's coupling: no CB loan ⇒ no CB balance/collateral/payment reaches the engine.
-      const inp: AdvisorInputs = {
-        ...BASE, cbPaymentStrategy, blocMinPaymentSource, income, expenses, startingBlocBalance, btcGrowthRate,
-        cbBalance: hasCbLoan ? 30000 : 0, cbCollateralBtc: hasCbLoan ? 1 : 0, cbMonthlyPayment: hasCbLoan ? 500 : 0,
-      };
-      for (const row of runAdvisor(inp).rows) {
-        const p = deriveForMonth(row, income, hasCbLoan, cbPaymentStrategy);
-        if (p.paydown !== row.blocPaydown || Math.abs(p.allocatedFromIncome - income) >= 1 || !p.isFullyAllocated) {
-          bad.push(`${hasCbLoan}/${cbPaymentStrategy}/${blocMinPaymentSource}/${income}/${expenses}/${startingBlocBalance} m${row.month}`);
-        }
-      }
-    }
-    expect(bad).toEqual([]);
-  });
-
-  it('⭐ the decoupled case: a row carrying a CB payment met with hasCbLoan:false must not INVENT a paydown', () => {
-    // Unreachable through the app today (hasCbLoan gates every CB input), and this test exists to keep it harmless.
-    // It is the ONLY test that can tell the old income-residual from the engine's figure: restore the residual and it
-    // reports 6000 − 1000 = 5000 of paydown the engine never made → red.
-    const row = { ...runAdvisor(BASE).rows[0], cbPayment: 2000, blocPaydown: 0, incomeToBtc: 1000, blocMinPayment: 0 };
-    expect(deriveForMonth(row, 6000, false, 'monthly').paydown).toBe(0);
-  });
-});
+// deriveForMonth, displaySettledLtv and isLtvFigureStressed left with the Advisor's rows (plan of record, Run 3).
 
 describe('noCollateral — the fifth state (the draw landed with nothing behind it)', () => {
   // A2 fixture — month 1 of a fresh install (synthetic): $100k BTC, 13% APR, roll, balance $0, Strike collateral 0,
@@ -129,34 +97,18 @@ describe('noCollateral — the fifth state (the draw landed with nothing behind 
     expect(stateOfRow(rows[0])).toBe('noCollateral');
     expect(rows[0].blocPaydown).toBeCloseTo(4043.33, 1);
     expect(rows[0].btcHeld).toBeCloseTo(0.0196, 3);
-    expect(displaySettledLtv(rows[0])).toBe(0);   // paid off — 0 is TRUE here, not the "0 reads as safe" lie
     expect(stateOfRow(rows[1])).toBe('defended');
     expect(rows[1].blocBalance).toBeCloseTo(293.5, 0);
   });
 
-  it('⭐ the stuck case through the engine: debt remains with no collateral → displaySettledLtv is ∞', () => {
-    // Mutation: make displaySettledLtv return row.blocLtv → the pre-existing 0 → red.
+  it('⭐ the stuck case through the engine: debt remains with no collateral → noCollateral', () => {
     const row = runAdvisor({ ...FRESH, startingBlocBalance: 20000 }).rows[0];
     expect(stateOfRow(row)).toBe('noCollateral');
     expect(row.blocBalance).toBeGreaterThan(0);
     expect(row.blocLtv).toBe(0);                    // the engine value stays put (DO NOT TOUCH)
-    expect(displaySettledLtv(row)).toBe(Infinity);  // the display value tells the truth
   });
 
   it('peak === 0 stays quiet — no debt and no collateral is not the alarm', () => {
     expect(classifyPaydownState(0, 0, 0, C)).toBe('quiet');
-  });
-
-  it('isLtvFigureStressed — one figure on its own merits; the ceiling itself is not a breach', () => {
-    expect(isLtvFigureStressed(Infinity, C)).toBe(true);
-    expect(isLtvFigureStressed(0.30, C)).toBe(true);
-    expect(isLtvFigureStressed(0.15, C)).toBe(false);
-    expect(isLtvFigureStressed(0.128, C)).toBe(false);
-    expect(isLtvFigureStressed(0, C)).toBe(false);
-  });
-
-  it('displaySettledLtv on a collateralised row is just blocLtv', () => {
-    const row = runAdvisor(BASE).rows[0];
-    expect(displaySettledLtv(row)).toBe(row.blocLtv);
   });
 });

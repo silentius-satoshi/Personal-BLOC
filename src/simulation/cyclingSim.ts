@@ -31,7 +31,7 @@ import {
  * 🔴 §2 ISOLATION WALL — this module imports NOTHING from powerLaw/cycleModel. The price path arrives as a
  * plain `number[]` and the three lender ratios (`strikeMaxDrawLtv`, `strikeMarginLtv`) arrive as plain
  * numbers, so the engine is a leaf: clock-free, power-law-free, store-free, fixture-testable. The VIEW does
- * the labelled crossing (the OutlookProjection/MonthBreakdown precedent). The support path is a plain
+ * the labelled crossing (the MonthBreakdown precedent). The support path is a plain
  * `number[]` too — `./supportPolicy` is a leaf that imports only `./ltv`.
  *
  * ⚠ THE STRIKE LEG HAS ITS OWN LTV CAP (opt-in `strikeLtvCapPct`): cold → Strike, with a reservation that

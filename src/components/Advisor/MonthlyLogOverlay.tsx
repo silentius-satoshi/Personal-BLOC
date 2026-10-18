@@ -2,9 +2,9 @@ import { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth } from '../../simulation/runAdvisor';
-import type { runAdvisor } from '../../simulation/runAdvisor';
 import { fmtUSD, toLocalISO, fmtLtvPct } from '../../utils/format';
 import type { MonthlyLogEntry } from '../../simulation/types';
+import type { PlanLogRow } from '../Almanac/planMonthView';
 import { SwipeStrip } from '../ui/SwipeStrip';
 import { strikeColFragment, collateralCorrection, correctionDurability, parseCollateralInput, DURABILITY_HINT } from './monthlyLogForm';
 import styles from './MonthlyLogOverlay.module.css';
@@ -18,12 +18,10 @@ const ltvFieldNumber = (ltv: number): number =>
   Number.isFinite(ltv) ? parseFloat((ltv * 100).toFixed(4)) : 0;
 
 
-type AdvisorMonthRow = ReturnType<typeof runAdvisor>['rows'][number];
-
 interface MonthlyLogOverlayProps {
   initialMonth:   number;          // 0-indexed (0–11)
-  months:         AdvisorMonthRow[];
-  collateralBtc:  number;
+  /** The plan of record's planned figures per strategy month (`planLogRows`, Run 3) — none for a past month. */
+  months:         PlanLogRow[];
   openInEditMode?: boolean;        // open a logged month straight in the edit form (default: view-first)
   onClose:        () => void;
   /** How its dollars print: whole in full mode (the default); THIS MONTH passes `fmtUSDCents` (Run 2.1, BL19). */
@@ -95,14 +93,12 @@ function FormField({ label, value, onChange, step = 'any', prefix, suffix, input
   );
 }
 
-export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInEditMode, onClose, money = fmtUSD }: MonthlyLogOverlayProps) {
+export function MonthlyLogOverlay({ initialMonth, months, openInEditMode, onClose, money = fmtUSD }: MonthlyLogOverlayProps) {
   const monthlyLog      = useStore((s) => s.monthlyLog);
   const upsertLogEntry  = useStore((s) => s.upsertLogEntry);
   const advisorStartDate = useStore((s) => s.advisorStartDate);
   const hasCbLoan       = useStore((s) => s.hasCbLoan);
   const showMiningInLog = useStore((s) => s.showMiningInLog);
-  const btcPrice        = useStore((s) => s.btcPrice);
-  const income          = useStore((s) => s.income);
   const expenses        = useStore((s) => s.expenses);
   // Daily-month collateral correction. ⚠ Each selector on its OWN unconditional line — never combined with ||/&&
   // (a short-circuited hook changes the hook count → React #311).
@@ -138,18 +134,16 @@ export function MonthlyLogOverlay({ initialMonth, months, collateralBtc, openInE
         strikeCol:    entry.btcHeld != null ? fmt(entry.btcHeld) : '',
       });
     } else if (row && monthNum === currentMonth) {
-      const ltvPct = collateralBtc > 0 && btcPrice > 0
-        ? parseFloat(((row.blocBalance / (collateralBtc * btcPrice)) * 100).toFixed(4))
-        : 0;
-      const paydownComputed = Math.max(0, income - (row.cbPayment ?? 0) - row.incomeToBtc);
+      // The plan's month as the form's start (Run 3): its own Strike paydown and its own month-end LTVs — a non-finite
+      // LTV (debt with no collateral) degrades to 0, as a logged one does.
       setForm({
         btcBought:    fmt(row.btcBought),
         income:       fmt(row.incomeToBtc),
-        paydown:      fmt(paydownComputed),
+        paydown:      fmt(row.paydown),
         strikeBal:    fmt(row.blocBalance),
-        strikeLtvPct: fmt(ltvPct),
+        strikeLtvPct: fmt(ltvFieldNumber(row.blocLtv)),
         cbBal:        '0',
-        cbLtvPct:     fmt(parseFloat(((row.cbLtv ?? 0) * 100).toFixed(4))),
+        cbLtvPct:     fmt(ltvFieldNumber(row.cbLtv)),
         miningSats:   '0',
         strikeCol:    '',   // a projection is not a record — the owner states collateral, or it stays unrecorded
       });

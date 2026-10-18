@@ -76,10 +76,10 @@ export function deriveCurrentPosition(
 }
 
 /**
- * Forward-expenditure re-anchor nudge (Simple Mode Outlook, spec §9). Compares the trailing 3-entry
- * average of expensesActual against the static `expenses` assumption. Fires at >5% drift; once
- * dismissed at avg=D, stays hidden until the average moves >5% (of the assumption) past D.
- * Pure — needs 3 logged entries to average (fewer → no nudge).
+ * Forward-expenditure re-anchor nudge (spec §9) — on THIS MONTH since the plan of record's Run 3 (the Simple Mode
+ * Outlook's until then). Compares the trailing 3-entry average of expensesActual against the static `expenses`
+ * assumption. Fires at >5% drift; once dismissed at avg=D, stays hidden until the average moves >5% (of the
+ * assumption) past D. Pure — needs 3 logged entries to average (fewer → no nudge).
  */
 export function computeExpenseReanchor(
   monthlyLog: MonthlyLogEntry[],

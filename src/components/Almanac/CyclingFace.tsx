@@ -57,7 +57,7 @@ import styles from './CyclingFace.module.css';
  *
  * 🔴 THE §2 CROSSING LIVES HERE, deliberately and visibly: this view imports the power law and the 4-yr
  * cycle path (BELIEFS) AND the risk constants (FACTS), builds a plain `number[]` price path, and hands it
- * to an engine that has never heard of either. The same shape OutlookProjection/MonthBreakdown already use.
+ * to an engine that has never heard of either. The same shape MonthBreakdown uses (and the Outlook did, until Run 3).
  *
  * READ-ONLY: zero store writes — not even a pin. Every control is seeded from the live plan and
  * overridden only in session-local state, so nothing here can touch the owner's numbers.

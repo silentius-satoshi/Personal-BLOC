@@ -322,24 +322,24 @@ describe('the 4-yr cycle path at a 12-month horizon — the month-1 step', () =>
   });
 });
 
-describe('only OutlookProjection may hand runAdvisor a pricePath', () => {
-  function tsxFiles(dir: string): string[] {
+describe('⭐ invariant 3 — no screen calls runAdvisor (plan of record, Run 3)', () => {
+  /** Every .ts/.tsx under src, outside tests. */
+  function sources(dir: string): string[] {
     return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
       const p = join(dir, e.name);
-      return e.isDirectory() ? tsxFiles(p) : e.name.endsWith('.tsx') ? [p] : [];
+      if (e.isDirectory()) return e.name === '__tests__' || e.name === '__probe__' ? [] : sources(p);
+      return /\.(ts|tsx)$/.test(e.name) && !/\.test\./.test(e.name) ? [p] : [];
     });
   }
 
-  it('⭐ no other runAdvisor caller passes one — the operating plan (Advisor/Simple/Daily) stays flat', () => {
-    const dir = fileURLToPath(new URL('../../components', import.meta.url));
-    const callers = tsxFiles(dir).filter((f) => /\brunAdvisor\(/.test(readFileSync(f, 'utf8')));
-    // The Almanac faces name a local `pricePath` for cyclingSim — that is not runAdvisor, so filter to callers.
-    const offenders = callers.filter((f) => !f.endsWith('OutlookProjection.tsx') && /\bpricePath\b/.test(readFileSync(f, 'utf8')));
-    // Run 2 (the plan of record): Daily's plan card and THIS MONTH run the plan; Simple Mode keeps runAdvisor only for
-    // the log overlay's planned rows. Run 3 retires the Advisor tab's, the overlay's and the Outlook's.
-    expect(callers.map((f) => f.split(/[\\/]/).pop()).sort())
-      .toEqual(['AdvisorMain.tsx', 'OutlookProjection.tsx', 'SimpleModeView.tsx']);
-    expect(offenders).toEqual([]);
-    expect(readFileSync(join(dir, 'Advisor', 'OutlookProjection.tsx'), 'utf8')).toMatch(/pricePath: cyclePricePath/);
+  it('⭐ the engine is called nowhere outside its tests — it stays one release as the comparison engine (D5), then goes', () => {
+    const src = fileURLToPath(new URL('../..', import.meta.url));
+    const files = sources(src);
+    // Non-vacuous: the sweep reads the whole tree, and it sees the engine's own definition.
+    expect(files.length, 'INV3 the sweep reads src').toBeGreaterThan(200);
+    const hits = files.filter((f) => /\brunAdvisor\(/.test(readFileSync(f, 'utf8'))).map((f) => f.split(/[\\/]/).pop());
+    expect(hits, 'INV3 only its definition').toEqual(['runAdvisor.ts']);
+    expect(readFileSync(join(src, 'simulation', 'runAdvisor.ts'), 'utf8'), 'INV3 the definition')
+      .toMatch(/export function runAdvisor\(inputs: AdvisorInputs\): AdvisorResult \{/);
   });
 });

@@ -221,17 +221,12 @@ describe('the plan of record — the wiring', () => {
   });
 
   it('⭐ CONSOLE — every live crash-playbook build passes the plan\'s Coinbase limit', () => {
-    for (const f of ['components/Tools/EmergencyConsole.tsx', 'components/SimpleMode/SimpleModeView.tsx']) {
+    // Run 3: the plan card's crash line builds in its inputs hook (THIS MONTH and the Advisor tab both call it); the
+    // Outlook, whose legend read the limit too, left with runAdvisor.
+    for (const f of ['components/Tools/EmergencyConsole.tsx', 'components/SimpleMode/usePlanCardInputs.ts']) {
       expect(SRC(f), `CONSOLE ${f}`).toMatch(/planCbStopAtSupportPct = useStore\(\(s\) => s\.policyCbStopAtSupportPct\)/);
       // Run 2 (D9): the hold arrives as its one fact (`strikeDepositOf`), no longer as the journal.
       expect(SRC(f), `CONSOLE ${f}`).toMatch(/cbLtvTargetPct, planCbStopAtSupportPct, strikeDepositISO: strikeDeposit,/);
-    }
-    expect(SRC('components/Advisor/OutlookProjection.tsx'), 'CONSOLE Outlook')
-      .toMatch(/playbookDepthFor\(cbLtvTargetPct, planCbStopAtSupportPct\)/);
-    // …and both of the Outlook's parents hand it the plan's limit, never a literal.
-    for (const f of ['components/SimpleMode/SimpleModeView.tsx', 'components/Advisor/AdvisorMain.tsx']) {
-      expect(SRC(f), `CONSOLE Outlook's parent ${f}`).toMatch(/planCbStopAtSupportPct = useStore\(\(s\) => s\.policyCbStopAtSupportPct\)/);
-      expect(SRC(f), `CONSOLE Outlook's parent ${f}`).toMatch(/planCbStopAtSupportPct=\{planCbStopAtSupportPct\}/);
     }
   });
 });

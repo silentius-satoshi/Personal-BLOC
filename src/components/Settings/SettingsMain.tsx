@@ -314,8 +314,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
 
   const advisorActualBlocBalance    = useStore((s) => s.advisorActualBlocBalance);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
-  const advisorMonthStartBalance    = useStore((s) => s.advisorMonthStartBalance);
-  const setAdvisorMonthStartBalance = useStore((s) => s.setAdvisorMonthStartBalance);
   const currentBtcHeld              = useStore((s) => s.getCurrentBtcHeld());
   // ⚠ The cold field shows the LIVE total (anchor + journal moves), never the raw anchor. NumberInput commits on every
   // blur with no equality check, so a field bound to the anchor would re-stamp it on a mere focus-and-leave and silently
@@ -384,7 +382,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const cbPaymentStrategy     = useStore((s) => s.cbPaymentStrategy);     const setCbPaymentStrategy     = useStore((s) => s.setCbPaymentStrategy);
   const cbLtvTriggerPct       = useStore((s) => s.cbLtvTriggerPct);       const setCbLtvTriggerPct       = useStore((s) => s.setCbLtvTriggerPct);
   const cbLtvTargetPct        = useStore((s) => s.cbLtvTargetPct);        const setCbLtvTargetPct        = useStore((s) => s.setCbLtvTargetPct);
-  const cbRotateBackPct       = useStore((s) => s.cbRotateBackPct);       const setCbRotateBackPct       = useStore((s) => s.setCbRotateBackPct);
   const cbLtvAction           = useStore((s) => s.cbLtvAction);           const setCbLtvAction           = useStore((s) => s.setCbLtvAction);
 
   const visibleCount = ALL_TABS.filter((t) => !hiddenTabs.includes(t.key)).length;
@@ -818,11 +815,6 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
             <span className={styles.fieldHint}>Current outstanding BLOC draw balance.</span>
           </div>
           <div className={styles.setupFieldGroup}>
-            <NumberInput label="Balance at start of this month" value={advisorMonthStartBalance} onChange={setAdvisorMonthStartBalance} prefix="$" min={0} step={100} />
-            <span className={styles.fieldHint}>What you owed on Strike at the start of the current month — the base for this month's projection.</span>
-            <span className={styles.fieldHint}>Auto-carried from each month's sign-off — edit only to correct the current month's starting balance.</span>
-          </div>
-          <div className={styles.setupFieldGroup}>
             <span className={styles.setupFieldLabel}>Strategy start date</span>
             <input
               type="date"
@@ -940,7 +932,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                       >Add collateral</button>
                     </div>
                     {cbLtvAction === 'addCollateral' && (
-                      <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now — the Outlook projection still models paydown.</span>
+                      <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now.</span>
                     )}
                   </div>
                   <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} max={85} step={1} />
@@ -952,11 +944,10 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                     max={85}
                     step={1}
                   />
-                  <NumberInput label="Rotate-back LTV"  value={cbRotateBackPct} onChange={setCbRotateBackPct} min={0} max={85} step={1} />
-                  <span className={styles.fieldHint}>When CB LTV falls below this, shift expensive Strike debt back to the cheaper CB loan.</span>
-                  {!(cbRotateBackPct < cbLtvTargetPct && cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
+                  {/* Run 3 — the rotate-back level left with its last reader (the Advisor's refill, off every screen). */}
+                  {!(cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
                     <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
-                      Thresholds must satisfy rotate-back &lt; target &lt; trigger &lt; 86% (Morpho liquidation).
+                      Thresholds must satisfy target &lt; trigger &lt; 86% (Morpho liquidation).
                     </span>
                   )}
                 </>

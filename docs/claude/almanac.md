@@ -345,7 +345,7 @@ agreement with `cbMetrics` at t=0 plus the invariants in `cyclingSim.test.ts`.
   throughout.
 - **⚠ THE §2 CROSSING LIVES IN THE VIEW, deliberately** — it imports the power law (a BELIEF) AND the risk
   constants (FACTS), builds a plain `number[]`, and hands it to an engine that has heard of neither. Exactly
-  the `OutlookProjection`/`MonthBreakdown` shape. Neither wall moves.
+  the `MonthBreakdown` shape (the Outlook's too, until the plan of record's Run 3). Neither wall moves.
 - **⚠ THE CAP DEFAULTS TO A FACE-LOCAL 70%, NOT `cbLtvTriggerPct`.** Still face-local, and still not the
   owner's trigger — that is the PAYDOWN threshold, a different action from stopping the draw, and it stays
   one tap away as a labelled preset chip. **It was 50** (chosen when the seed's opening CB LTV was 50.58%,
@@ -1504,7 +1504,8 @@ Daily run the plan (§ The plan of record (Run 2), below).
   slider stays a what-if on that face.
 - **The Coinbase limit on the crash day:** the Emergency Console, THIS MONTH's crash line and the Outlook's legend read
   `policyCbStopAtSupportPct` (`LivePlaybookFigures.planCbStopAtSupportPct`, required; the Outlook's prop from both its
-  parents). At C1 nothing moves — measured: 17 of 18 main screens and faces byte-identical; Settings gains its row,
+  parents). (Run 3: the console and the plan card's crash line, built in `usePlanCardInputs`; the Outlook is gone.)
+  At C1 nothing moves — measured: 17 of 18 main screens and faces byte-identical; Settings gains its row,
   and an open policy card's reset reads "Back to your plan".
 - **Read through the clamp** (invariant 11): `planPolicyOf` and the console clamp the saved values, so a junk value
   reads C1 and an out-of-range one its edge, everywhere at once — a restored backup is checked for its keys, never its
@@ -1523,7 +1524,7 @@ Daily run the plan (§ The plan of record (Run 2), below).
 Spec: `pbloc-spec-plan-of-record-v1.md` (v1.7.2 — §4.3, §4.5, §4.7, §13; the owner's calls are BL16 — D-R2-1…8 and the
 venue colours — and BL17, Δ9–Δ12). THIS MONTH's Monthly Playbook card and Daily's plan card run the plan of record: THE
 MOVE plus a flat run at today's price, built through the Decision card's own builders. `runAdvisor` leaves both screens;
-THIS MONTH's log overlay keeps it until Run 3.
+THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of record (Run 3)).
 - **ONE builder — `planRun.ts`** (invariant 2). `placementInputOf` / `engineInputsOf` build THE MOVE's input and the
   engine's inputs for the Decision face AND `planMonthRun`, so the face and the card can't disagree: one copy, not two
   compared. THIS MONTH = THE MOVE at today's price and S₀, then months 0..12 on a FLAT path at today's price (D4), from
@@ -1550,12 +1551,12 @@ THIS MONTH's log overlay keeps it until Run 3.
     design (spec Appendix W §0 item 12).
   - **The offline split (invariant 2's exception).** With no fresh history THIS MONTH runs on the cached breaker, while
     the Decision face assumes "not broken" (it never reads the cache). So a cached BROKEN breaker makes THIS MONTH's move
-    inert while the face names one. Recorded, not fixed: the face reading the cache is a Run 3/4 option.
+    inert while the face names one. Recorded, not fixed: the face reading the cache is a Run 4 option (Run 3 left it).
 - **D-R2-4 — the Coinbase switch.** Every plan reader (the four faces, THIS MONTH, Daily) reads Coinbase's collateral
   and balance only through `planCbCollateralOf` / `planCbLoanBalanceOf`. With the loan switched off the plan starts with
   no Coinbase loan — never the fresh install's seed $60,000 on 1.48 ₿. The crash gate (`isCrashDay`, the Emergency
-  Console), Simple Mode's Outlook and THIS MONTH's log overlay (`runAdvisor`, until Run 3) keep the store's figures,
-  behind the loan switch. ⚠ The support policy is the cycle by construction: with the
+  Console) keeps the store's figures, behind the loan switch (so did Simple Mode's Outlook and THIS MONTH's log
+  overlay, `runAdvisor`, until Run 3 removed both). ⚠ The support policy is the cycle by construction: with the
   loan off the plan still pledges its buys to Coinbase, and the after box shows a Coinbase leg the owner doesn't have
   (plans without Coinbase are the deferred "non-cycle modes under the policy").
 - **D-R2-7 — Strike's minimum, as the owner pays it** (`blocMinPaymentSource`): `strikeMinFromIncome` on every run, the
@@ -1608,7 +1609,7 @@ THIS MONTH's log overlay keeps it until Run 3.
   - The crash gate stays `ltvTriggered` until Run 4 (D3).
   - Run 3: THIS MONTH's log overlay keeps `runAdvisor`, as do the Advisor tab's plan rows and the Outlook's link; the
     `simpleModePlan` helpers Run 2 left with no screen go with them (`deriveForMonth`, `composeMonthSummary`,
-    `isOperatingMonth`, `displaySettledLtv`, `isLtvFigureStressed`).
+    `isOperatingMonth`, `displaySettledLtv`, `isLtvFigureStressed`). Done — § The plan of record (Run 3).
   - Run 4: Safety's at-support line and the safe snapshot's two ratios.
   - The statement minimum's inline editor left THIS MONTH; the figure is entered in Settings → Strike Strategy.
   - The engine's month-0 seizure leaves an unsecured Coinbase balance (the engine's model, unchanged — Policy v2's
@@ -1622,7 +1623,7 @@ THIS MONTH's log overlay keeps it until Run 3.
   - Logged (v1.7): the Decision face reading the breaker cache (the offline split); a trusted→safe downgrade keeps the
     trusted figures on the viewer's device (from before Run 2 — `viewerSync`'s safe branch clears nothing, and
     `viewerStrikeDepositISO` joins them); the price history is fetched on every visit to THIS MONTH or Daily (a Run 3
-    option: one fetch per session); ~60 unused SimpleModeView CSS rules (Run 3's sweep); Daily's month rollup lists
+    option: one fetch per session — 5e's F12 since); ~60 unused SimpleModeView CSS rules (swept in Run 3); Daily's month rollup lists
     Strike's paydowns but not Coinbase's, though the bars count both.
   - Queued: the faces' empty state's other zero figures.
 - Tests: § Test Suite → "The plan of record (Run 2)".
@@ -1642,7 +1643,9 @@ sign-offs and logged minimums keep their cents — never a number the plan compu
 - **Whole dollars stay** on the Almanac faces (the Decision face among them) and in full mode (the Advisor, its month log
   and its NDP) — the owner's call — and, on Simple mode outside THIS MONTH and Daily, on the Dashboard (gauges and chart)
   and the Outlook segment's own content (its re-anchor banner, `OutlookProjection`). The Safety card sits above the This
-  Month / Outlook switch, so it prints cents in both segments. So the Decision face says "Repay $500 of Coinbase…" and
+  Month / Outlook switch, so it prints cents in both segments. (Run 3: the Outlook and its switch are gone, the re-anchor
+  banner is on THIS MONTH to the cent, and the Advisor tab shows THIS MONTH's card — to the cent — above its whole-dollar
+  month log.) So the Decision face says "Repay $500 of Coinbase…" and
   THIS MONTH's "Why this plan?" says "Repay $500.00 of Coinbase…" — the same words, through one builder (I31).
 - **The shared builders take a formatter, whole by default:** decisionView's `UsdFmt` (`ACTION_FIELDS`' texts,
   `rowActions`, `planSchedule`), crashPlaybookView's `listSteps(result, stepUsd)`, and the `money` props of
@@ -1677,6 +1680,60 @@ sign-offs and logged minimums keep their cents — never a number the plan compu
   - 5e builds on `main`, where `PriceChart.tsx:90` holds (:92 on this branch); once the branches meet, its counting
     price prints through the chart's `money` prop (A5).
 - Tests: § Test Suite → "The plan of record (Run 2.1)".
+
+#### The plan of record (Run 3 — the year: the Advisor tab and the Outlook; store unchanged, NO bump)
+
+Spec: `pbloc-spec-plan-of-record-v1.md` (v1.16 — §4.4, §15; the owner's calls are BL25). `runAdvisor` leaves every
+screen (invariant 3): the full-mode Advisor tab shows THIS MONTH's card, the month log plans the plan's month, and the
+Outlook became a link to the Decision face.
+- **The Advisor tab (D5)** — `AdvisorMain`: the progress bar and the position cards, then `<PlanMonthCard>` — THIS
+  MONTH's own card on the tab's one run, its words to the cent (the card is THIS MONTH's own; the tab's other figures
+  stay whole) — then the month log and the link. The Advisor's plan rows, their Pay / Skip toggles (`advisorSkip*` —
+  read nowhere now; the policy has no skip) and the projection table are gone. The card's Ledger pointer opens Simple
+  mode's Daily view (`onOpenLedger`).
+- **One run per screen — `usePlanCardInputs`.** THIS MONTH and the Advisor tab each call it once: `usePlanMonth`'s run
+  (shared with the screen's month log and overlay — one run, so one fetch of the plan's price history, `usePowerLawData`,
+  per screen), the crash line through the
+  console's builder on the live figures (D13) and the NDP. `PlanMonthCard` takes the run as a prop (`pm`) and runs
+  nothing itself.
+- **The month log's planned figures** — `planLogRows(sim, currentMonth)`: strategy month k is the run's month
+  k − currentMonth + 1, from the current month to 12; a past month has none (D14). Its Strike paydown is
+  `planStrikePaidUsd` — spare income's repayment, a refinance's payment and the cash reserve's cure: the Ledger's
+  Strike paydown (with Coinbase's — spare income's and a defense's — it is Daily's "paid" target; a test sums both over
+  every month of the sweep). Never the Advisor's income residual. The overlay's form starts from the run's own
+  month-end LTVs (`ltvFieldNumber`: ∞ → 0); its tier-collateral prop is gone.
+- **The Outlook became a link (D5)** — "Your plan on other price paths — the Almanac's Decision face →"
+  (`PLAN_PATHS_LINK`), under THIS MONTH's card and on the Advisor tab, opens the Almanac on the Decision face
+  (`AppShell.goPlanPaths` → `<AlmanacView initialFace>`): the plan's own face, open without a Coinbase loan — the
+  plan of record's move, then the plan it starts, on the price path the owner picks (one of six; the support floor by
+  default). D5 had named the Strategy face, which a Coinbase loan gates — the owner's call, BL25. Every other way in — the nav's Almanac button, full mode's Tools menu
+  — still opens the default face:
+  leaving the hub forgets the face asked for (one effect on the tab), and `goAlmanac` sets none — it takes no argument
+  (HeaderNavCluster passes it as `onClick`, so a click event must never become a face).
+  Full mode shows the link only while the Almanac tab isn't hidden (a hidden tab bounces). Simple mode's This Month /
+  Outlook switch is gone. Deleted with the Outlook: `OutlookProjection`, `outlookView` and its test, and the
+  projection's `CB_PAYDOWN_LABEL` / `IF_YOU_SHIFT_DEBT` and the legend's `playbookDepthFor`.
+- **The expenses prompt moved onto THIS MONTH**, under the card and the link, to the cent (`planReanchorLine`); Update
+  stores the average to the cent (`setExpenses(toCents(avg))`); owner-only (its Update writes the plan). THIS MONTH has
+  no whole-dollar figure left.
+- **Inert, never removed (invariant 6):** `advisorSkip*`; `cbRotateBackPct` (Settings' Rotate-back LTV input left with
+  its last reader — the order hint checks target < trigger < 86%); `advisorMonthStartBalance` (the projection's base —
+  "Balance at start of this month" left Settings and Quick Setup; the month review's sign-off still carries it, which
+  nothing reads). Their keys stay in `SETTINGS_FIELDS`, the payload and the backup whitelist, so an older backup
+  restores (a test pins both halves). The Advisor sidebar's "projecting from Mo N" line left with the projection.
+- **Deleted:** the five `simpleModePlan` helpers Run 2 left with no screen — `deriveForMonth`, `composeMonthSummary`,
+  `isOperatingMonth`, `displaySettledLtv`, `isLtvFigureStressed` — with their tests; and the dead CSS: a selector that
+  names a class no importer applies can never match, so SimpleModeView.module.css lost 164 classes' rules and
+  AdvisorMain.module.css 70; every surviving rule keeps its selectors and declarations (a script compares them,
+  comments and whitespace aside), and the one rule left that named no dead class — `@keyframes fadeIn` — went with
+  its only user.
+- **`runAdvisor` stays one release as the comparison engine** — its tests, `deriveAdvisorStart` and its helpers stay;
+  no screen calls it (a sweep of every non-test source file pins it).
+- **Not in Run 3:** the crash gate stays `ltvTriggered` (Run 4, D3); the sidebar's PRIORITY RULES, InputsPanel's
+  "Recommended min" and the CB Loan tab's rows (Run 4); `cbMonthlyPayment` and `cbPaymentStrategy` keep their readers
+  (the CB Loan tab, the gates); Daily's breaker marker and the Decision face reading the breaker cache (Run 4 options);
+  one price-history fetch per screen visit (5e, F12).
+- Tests: § Test Suite → "The plan of record (Run 3)".
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 

@@ -5,7 +5,7 @@ import { minPaymentStatus } from '../../simulation/simpleModePlan';
 import type { NdpInfo } from '../../simulation/runAdvisor';
 import { todayLocalISO } from '../../utils/format';
 import type { MonthPlaybookLine } from '../Tools/crashPlaybookView';
-import { usePlanMonth } from '../Almanac/usePlanMonth';
+import type { PlanMonth } from '../Almanac/usePlanMonth';
 import { crashNote } from '../Almanac/decisionView';
 import {
   planMonthActions, planStatus, planAfter, monthTrack, planMonthSummary, planSwitchNote, planRowDot, planRowNoteColor,
@@ -19,6 +19,8 @@ import styles from './SimpleModeView.module.css';
 const OUTCOME_COLOR = { held: 'var(--green)', short: 'var(--amber)', doom: 'var(--red)' } as const;
 
 export interface PlanMonthCardProps {
+  /** The plan of record's run — the host's ONE run (`usePlanCardInputs`), shared with its month log (Run 3). */
+  pm: PlanMonth;
   /** The strategy year's month (1–12) — what the Ledger signs off (D-R2-3). */
   currentMonth: number;
   strategyDone: boolean;
@@ -116,12 +118,12 @@ function After({ head, rows, meter }: { head: string; rows: PlanAfterRow[]; mete
 /**
  * The plan of record's Monthly Playbook (Run 2, D-R2-2 + D-R2-8): one card, one month, each fact once. The scrubber
  * picks the month — this month and the rest of the strategy year from the plan's run (D4 + D-R2-3), a past month from
- * the Ledger. Every word comes from `planMonthView` (I31); this component composes none.
+ * the Ledger. Every word comes from `planMonthView` (I31); this component composes none. Run 3: THIS MONTH and the
+ * full-mode Advisor tab both show it, each passing its own one run (`usePlanCardInputs`).
  */
 export function PlanMonthCard({
-  currentMonth, strategyDone, crashLine, ndp, ndpActionActive, onOpenLedger, onEditMonth,
+  pm, currentMonth, strategyDone, crashLine, ndp, ndpActionActive, onOpenLedger, onEditMonth,
 }: PlanMonthCardProps) {
-  const pm = usePlanMonth();
   const monthlyLog = useStore((s) => s.monthlyLog);
   const viewerMode = useStore((s) => s.viewerMode);
   const dayLog = useStore((s) => s.dayLog);

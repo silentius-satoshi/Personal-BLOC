@@ -76,6 +76,11 @@ shift debt)" suffix went with the three boxes, and the label is at two sites. Th
 their "box" is now the card's status, which is full width, so the compact shapes' 70px reason is Run 3's; the inputs,
 the one reading and the compact shapes themselves are current.
 
+⚠ **The plan of record's Run 3:** the projection left every screen, and with it the label and the legend — the two sites
+below (the Outlook, the Advisor tab's CB LTV alert), `CB_PAYDOWN_LABEL`, `IF_YOU_SHIFT_DEBT` and `playbookDepthFor` are
+deleted. The card's crash line builds in `usePlanCardInputs` (THIS MONTH and the Advisor tab each call it once), and
+`monthlyPlaybookWiring.test.ts` now pins that no plan screen says "CB paydown".
+
 - **Where and when:** Box 2 (THIS MONTH) of `SimpleModeView`, `ltvTriggered` mode only. The gate is
   `cbTriggered ? playbookLine !== null : cbRunwayToTrigger > 0`. `cbTriggered` (Coinbase at or over its trigger) and the
   "CB runway" branch below the trigger are unchanged.

@@ -253,7 +253,7 @@ reports should include the Copy Diagnostics output from the failing device.
 
 **Device-local persisted-but-unsynced fields** (persist via `...rest`, NOT in SETTINGS_FIELDS /
 `buildSettingsPayload` / the partialize exclusion destructure — so they survive reloads yet never
-publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the Outlook re-anchor
+publish or clobber across devices): `devMode`, `expenseReanchorDismissedAt` (the expenses re-anchor — the Outlook's until the plan of record's Run 3, THIS MONTH's since —
 dismissal watermark, spec §9), `showPlanIncomeBar`/`showPlanStrikeBar`/`showPlanCbBar` (Simple Mode
 plan-card status-bar visibility, default true — VESTIGIAL: `showPlanIncomeBar` since its bar was removed before Run 2,
 the other two since the plan of record's Run 2: the card has no bars and Settings no toggles; the fields stay, inert), `planNoteDismissed` / `planBreakerCache` / `viewerStrikeDepositISO`

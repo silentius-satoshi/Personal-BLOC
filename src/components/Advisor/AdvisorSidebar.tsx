@@ -4,7 +4,6 @@ import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
-import { deriveCurrentPosition } from '../../simulation/logUtils';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './AdvisorSidebar.module.css';
 
@@ -38,7 +37,6 @@ export function AdvisorSidebar() {
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
   const emitBalanceReading       = useStore((s) => s.emitBalanceReading);
-  const monthlyLog               = useStore((s) => s.monthlyLog);
   const setAdvisorStartDate         = useStore((s) => s.setAdvisorStartDate);
   const setAdvisorActualBlocBalance = useStore((s) => s.setAdvisorActualBlocBalance);
   const ndpLastPaidDate    = useStore((s) => s.ndpLastPaidDate);
@@ -115,22 +113,10 @@ export function AdvisorSidebar() {
           min={0}
           step={100}
         />
-        <p className={styles.hint}>
-          {monthlyLog.length > 0 ? 'Starting BLOC balance (before log)' : 'Check your Strike app'}
-        </p>
+        {/* Run 3 — the plan of record starts from this balance; the Advisor's projection, which started from the log's last
+            month, left with runAdvisor, and its start line with it. */}
+        <p className={styles.hint}>Check your Strike app</p>
       </div>
-
-      {monthlyLog.length > 0 && (() => {
-        const { lastLoggedMonth } = deriveCurrentPosition(monthlyLog, currentBtcHeld, advisorActualBlocBalance);
-        const projFrom = Math.min((lastLoggedMonth ?? 0) + 1, 12);
-        return (
-          <div className={styles.section}>
-            <p className={styles.hint} style={{ fontStyle: 'normal' }}>
-              From log: Mo {lastLoggedMonth} logged → projecting from Mo {projFrom}
-            </p>
-          </div>
-        );
-      })()}
 
       <div
         className={styles.section}

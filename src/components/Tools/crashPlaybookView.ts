@@ -23,13 +23,11 @@ import { fmtUSD, fmtUSDCents, fmtLtvPct } from '../../utils/format';
  * Pure: plain numbers in, plain strings out. It imports nothing from the power law, the cycle model, the store or React
  * (a layering test pins it) — support arrives as a number, and the component keeps the power-law crossing.
  *
- *   CB_PAYDOWN_LABEL        the one label for the projection's Coinbase paydown (IF_YOU_SHIFT_DEBT is its suffix)
  *   strikeHoldAt            Strike's 60-day hold from its one fact, the latest logged Strike deposit's date
  *   strikeDepositOf         that fact on this device: the owner's journal, or a trusted viewer's copy (D9)
  *   strikeHoldFrom          the hold read straight from a journal (strikeHoldAt over latestStrikeDepositISO)
  *   isCrashDay              D13 — the crash day THIS MONTH and Daily read (the console's own gate)
  *   playbookInputFromLive   the one builder of a live CrashPlaybookInput
- *   playbookDepthFor        the liquidation depth for a live target — where top-up-first begins
  *   fmtStepBtc / fmtStepUsd step amounts, FLOORED to their printed precision
  *   fmtMultiplePair         the support multiple and the liquidation depth, widened until they differ
  *   waitingCard             Coinbase between its target and its trigger — the plan waits
@@ -55,12 +53,6 @@ import { fmtUSD, fmtUSDCents, fmtLtvPct } from '../../utils/format';
 export const STRIKE_HOLD_DAYS = 60;
 /** One satoshi. A BTC figure under it is float residue, never a step. */
 export const SAT_BTC = 1e-8;
-
-/** The projection's Coinbase paydown is the debt shift — a Strike draw that pays Coinbase down. On a crash day the
- *  playbook may top up first instead, so every place the projection's paydown appears says so. ONE label; never a bare
- *  "CB paydown". */
-export const IF_YOU_SHIFT_DEBT = 'if you shift debt';
-export const CB_PAYDOWN_LABEL = `CB paydown (${IF_YOU_SHIFT_DEBT})`;
 
 const DAY_MS = 86_400_000;
 /** The dayLog's date convention. Anything else is junk — V8 would read '2026-9-30' as LOCAL time, not UTC midnight. */
@@ -146,12 +138,6 @@ function cbStopAtSupportFor(targetPct: number, planCbStopPct: number): number {
   return effectivePolicyStops(
     clampPlanPolicy('cbStopAtSupportPct', planCbStopPct), DEFAULT_SUPPORT_POLICY_SETTINGS.strikeStopAtSupportPct, targetPct, 0,
   ).cbStop;
-}
-
-/** The liquidation depth for a live target and the plan's Coinbase limit (≈ 0.52× support at the C1 45% limit, from a
- *  45% target up; 0.47× at a 40% target): the playbook tops up first from here up to support. */
-export function playbookDepthFor(targetPct: number, planCbStopPct: number): number {
-  return ceilingLiquidationMultiple(cbStopAtSupportFor(targetPct, planCbStopPct), CB_LLTV);
 }
 
 /**

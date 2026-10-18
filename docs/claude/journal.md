@@ -103,7 +103,8 @@ The Playbook badge used to read "LTV 12.8% — paydown triggered". Three defects
 - `MonthData.ltvPeak` is **required**, because `runBLOC` is its only builder. `runSTS` etc. use their own types.
 
 **`deriveForMonth` reads `row.blocPaydown`.** It used to reconstruct an income residual, which agreed in every reachable
-configuration but would invent a paydown if a CB-paying row met `hasCbLoan:false`.
+configuration but would invent a paydown if a CB-paying row met `hasCbLoan:false`. (Deleted in the plan of record's
+Run 3 — no screen had called it since its Run 2.)
 
 🔴 **FIVE states** (`classifyPaydownState(peak, paydown, settled, ceiling)`, simpleModePlan — `noCollateral` added by
 paydown-badge-followup spec v2):
@@ -156,8 +157,8 @@ Both surfaces that show a bare figure now use them:
 
 ⚠ **Run 2 (the plan of record):** Simple Mode's badge, AFTER box and plan bar are gone — THIS MONTH's card runs the
 plan (§ The plan of record (Run 2)). `paydownReadout` / `paydownBadge`'s only app caller is now the Smart BLOC tab's
-Playbook (`MonthlyPlaybook.tsx`), and `displaySettledLtv` / `isLtvFigureStressed` have no screen left: they wait for
-Run 3, with `deriveForMonth` / `composeMonthSummary` / `isOperatingMonth`.
+Playbook (`MonthlyPlaybook.tsx`), and `displaySettledLtv` / `isLtvFigureStressed` had no screen left: Run 3 deleted
+them, with `deriveForMonth` / `composeMonthSummary` / `isOperatingMonth`.
 
 Only the header keeps `badge.tone`, because its two halves are labelled.
 
@@ -195,11 +196,12 @@ and the NDP clause is re-scoped to roll-mode only.
 - **`simpleModePlan.ts`:** `MonthPlan.minPayment` (= `row.blocMinPayment`); `deriveForMonth` subtracts it so
   `allocatedFromIncome = paydown + btcBoughtUsd + cbPayment + minPayment` still equals income;
   `composeMonthSummary` emits **"Pay/Paid the $X Strike minimum from income."** when `minPayment > 0`, else the
-  existing **"Interest of $X capitalizes onto the balance."** (roll).
+  existing **"Interest of $X capitalizes onto the balance."** (roll). (Both deleted in the plan of record's Run 3.)
 - **Threading:** the store `blocMinPaymentSource` is passed into `runAdvisor` at ALL app call sites so projections
-  show the income-mode tradeoff (lower balance/LTV, less BTC) honestly — since the plan of record's Run 2 that is three
-  (AdvisorMain, OutlookProjection via its prop, SimpleModeView's log overlay; Daily no longer runs the Advisor), and the
-  plan reads the same setting as `strikeMinFromIncome` on every face and on THIS MONTH / Daily.
+  show the income-mode tradeoff (lower balance/LTV, less BTC) honestly — since the plan of record's Run 2 that was three
+  (AdvisorMain, OutlookProjection via its prop, SimpleModeView's log overlay; Daily no longer runs the Advisor), and none
+  since Run 3; the plan reads the same setting as `strikeMinFromIncome` on every face, on THIS MONTH / Daily and on the
+  Advisor tab.
 - **Simple Mode UI (`SimpleModeView.tsx`):** income mode adds a FROM MONTHLY INCOME allocation row "Strike minimum
   · due the 15th" (amount = `blocStatementMinimum ?? estimate` + a `statement`/`est.` chip; tap the amount →
   inline field → `setBlocStatementMinimum`; no Skip pill — contractual). Roll mode keeps the Interest-capitalizes
@@ -226,7 +228,8 @@ and the NDP clause is re-scoped to roll-mode only.
 ## Threshold validation (Simple Mode Corrections B)
 
 The three CB threshold `NumberInput`s (SettingsMain cbloan subpage) gain `max={85}` bounds; the ordering warning
-extends to `rotate-back < target < trigger < 86% (Morpho liquidation)`. In `runAdvisor` a `thresholdsOrdered`
+extends to `rotate-back < target < trigger < 86% (Morpho liquidation)` (the plan of record's Run 3: `target < trigger <
+86%` — the Rotate-back input left with runAdvisor's last screen). In `runAdvisor` a `thresholdsOrdered`
 guard (`cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct`) leads BOTH the forward-paydown `if` and the
 reverse-rotation `else if` — mis-ordered config suspends rotation for the month (no churn) while draw/interest/BTC
 still run. Simple Mode's plan card surfaces an amber `.misorderNotice` "⚠ CB thresholds mis-ordered — rotation
@@ -294,8 +297,8 @@ Playbook's figures now come from the plan's run (`usePlanMonth` — PlanMonthCar
   sign-off pointer and the Ledger strip live on in PlanMonthCard, their words from `planSignoffLine` / `planSignoffSub`
   / `planLedgerParts` (only what was logged, both loans' paydowns — never "$0 drawn"). `composeMonthSummary`'s
   skip args (`skipDraw/skipBtc/skipCb/unallocated` + `isCurrent`) are RETIRED from `MonthSummaryArgs`; the
-  current voice = the imperative plan voice. **`advisorSkip*` stay DORMANT** in store + payload (sync compat;
-  no consumers).
+  current voice = the imperative plan voice. (The plan of record's Run 3 deleted both.) **`advisorSkip*` stay DORMANT** in store + payload (sync compat;
+  no consumers — none at all since the plan of record's Run 3 retired the Advisor tab's Pay / Skip).
 - **§4 Advisor surfaces = history, not writers:** `MonthlyLogSection` inline-log/Edit gates to legacy
   `source !== 'daily'`; a daily month is a VIEWER ("Edit the day's events in the Ledger" hint) and its
   Unlog/Undo becomes **Reopen → `unconfirmMonth(month)`** (flip `confirmed→false`, entry + rollup preserved —
@@ -443,6 +446,9 @@ Review/sign-off). One implementation now, in `logUtils.ts`:
   clock later rolls — rare (the banner flow signs after month end, hitting the gate); the Settings field
   stays editable (its second hint is the correction path). SettingsMain "Balance at start of this month"
   gained a second `fieldHint`: "Auto-carried from each month's sign-off — edit only to correct…".
+  ⚠ The plan of record's Run 3: nothing reads the base — the projection that started from it left with `runAdvisor`
+  — and the Settings field, its hints and Quick Setup's field are gone. The carry still writes the field, which stays
+  inert until its key leaves (invariant 6).
 
 ---
 

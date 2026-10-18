@@ -189,7 +189,9 @@ Per-month price: `btcPrice × Math.pow(1 + btcGrowthRate, (month - startingMonth
 
 **Living projection:** `getCurrentStrategyMonth(startDate)`, `isStrategyComplete(startDate)` exported from `runAdvisor.ts` — both now delegate to `logUtils`'s calendar-anniversary `bucketEventToMonth`/`strategyMonthIndex` of `todayLocalISO()` (no duplicate 30.4375 clock; see the Strategy-Month Calendar Fix section). Month N = `[start+(N−1) calendar months, +N months)`; the bucket clamps 1..12, the unclamped index >12 signals completion.
 
-**Skip overrides:** `advisorSkipBlocDraw/CbPayment/BtcBuying` in store. `overriddenPlan` memo in `AdvisorMain.tsx` applies overrides to current month display only. BLOC paydown is mandatory (LTV-triggered, no skip).
+⚠ **The plan of record's Run 3: no screen calls `runAdvisor`** (invariant 3) — the Advisor tab shows THIS MONTH's card, the month log reads the plan (`planLogRows`), and the Outlook (`OutlookProjection`, `outlookView`) is deleted. This section is the engine's record: it stays one release as the comparison engine, with its tests, then goes. The screens it names below are history.
+
+**Skip overrides:** `advisorSkipBlocDraw/CbPayment/BtcBuying` in store. `overriddenPlan` memo in `AdvisorMain.tsx` applies overrides to current month display only. BLOC paydown is mandatory (LTV-triggered, no skip). (Retired in Run 3 with the Advisor tab's plan rows: the three fields are inert — invariant 6.)
 
 **Income constraint:** `blocPaydown + cbPayment + btcIncome = income` always.
 
@@ -204,7 +206,8 @@ are computed per render and never persisted.
 - ⚠ **Only `OutlookProjection` passes a path.** The operating plan (`AdvisorMain`, and Simple's log overlay) stays
   flat, and a grep guard in `advisorPricePath.test.ts` enforces it. Since the plan of record's Run 2, Daily and THIS
   MONTH's card no longer run the Advisor at all — they run the plan (`usePlanMonth`); SimpleModeView calls `runAdvisor`
-  only for the log overlay's planned rows, and the guard's list of callers is three.
+  only for the log overlay's planned rows, and the guard's list of callers is three. Since Run 3 there is no caller at
+  all: invariant 3's sweep in the same file replaced the guard.
 - Its fifth scenario, **4-yr cycle**, builds `cycleConvergencePath(btcPrice, startDate, 12, PL_ON_THE_LINE)` in the
   VIEW. That is the §2 crossing: `runAdvisor` never imports `cyclePath`.
 - The 12-month horizon makes it a SEGMENT whose leg depends on the date. From Sep 2026 it is the rise out of the
@@ -221,7 +224,7 @@ copy. The rules:
 
 The step is the model's claim — it can fire the ltvTriggered paydown in month 1 on its own. Do not smooth it.
 
-The pure seams live in `src/components/Advisor/outlookView.ts`:
+The pure seams lived in `src/components/Advisor/outlookView.ts` (deleted in the plan of record's Run 3 with the Outlook):
 - `scenarioSubtitle` — a Record; the old ternary fell through to "+80%/yr bull";
 - `lineStep`;
 - `footerCbLtv`.

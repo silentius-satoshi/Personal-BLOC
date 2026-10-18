@@ -4,7 +4,7 @@ import { computeStrikeLtv } from '../../simulation/strikeCredit';
 /**
  * LiqSimulator's four LTVs — extracted PURE so they can be pinned by a test. There is no render harness in
  * this repo (zero `.test.tsx`), so a figure computed inline in a component is a figure nothing can pin; the
- * `*View.ts` / `*Model.ts` convention (playbookView, outlookView, eventSheetModel, …) exists for exactly this.
+ * `*View.ts` / `*Model.ts` convention (playbookView, planMonthView, eventSheetModel, …) exists for exactly this.
  *
  * 🔴 EVERY LTV HERE ROUTES THROUGH A SHARED DEFINITION — `cbMetrics` for the Coinbase leg, `computeStrikeLtv`
  * for the Strike leg — never a local `value > 0 ? debt / value : 0`. That local fallback is what shipped, and
