@@ -183,12 +183,19 @@ export interface PlanMonthRun {
   sim: CyclingResult;
 }
 
+/** The saved plan as every plan reader runs it: C1 under it, range-clamped, its stops held to the plan's defense lines
+ *  (`PLAN_CLAMP`). ONE rule — the run below and the Advisor tab's sidebar (Run 4) read it; Safety's limit at support,
+ *  `planCbLimitOf` (lib/planPolicy — the store can't import a component), is pinned equal to it. */
+export function planPolicySettingsOf(plan: PlanPolicySettings): EffectivePolicySettings {
+  const raw: SupportPolicySettings = { ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...plan };
+  return effectivePolicySettings(raw, PLAN_CLAMP);
+}
+
 /** The plan of record, run: THE MOVE at today's price and support, then months 0..12 on a flat path at today's price
  *  (D4), from the saved plan — no what-if. The Decision face builds the same objects through the same two builders. */
 export function planMonthRun(f: PlanMonthFacts): PlanMonthRun {
   const startDate = new Date(f.todayISO);
-  const raw: SupportPolicySettings = { ...DEFAULT_SUPPORT_POLICY_SETTINGS, ...f.plan };
-  const policySettings = effectivePolicySettings(raw, PLAN_CLAMP);
+  const policySettings = planPolicySettingsOf(f.plan);
   const supportPath = buildSupportPath(startDate, PLAN_RUN_MONTHS);
   const supportPolicy = supportPolicyFor(policySettings, supportPath, f.expenses, f.strikeLiquidationLtvPct, 'cycle');
   const holdMonths = holdMonthsFrom(f.hold.throughISO, startDate);

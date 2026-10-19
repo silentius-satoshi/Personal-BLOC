@@ -198,6 +198,7 @@ Chronological (oldest → newest). All committed to `main`, all at store v14.
 - **`cbMetrics` / `accruedCbBalance` / `computeStrikeLtv`** are the shared single-source helpers — CB
   LTV / liq-price / Strike LTV route through them so dashboard / CB tab / Liq Sim / headline can't
   disagree.
+  (On `plan-of-record`: the plan of record's Run 4 deleted the Liq Sim, which had no other screen — spec v1.20 §16.)
 - **`simpleModePlan.ts`** (`deriveForMonth` / `isOperatingMonth` / `composeMonthSummary`): the
   projection-vs-reality split. Current month = skip-adjusted reality; other months = clean projection;
   logged = actuals. **`deriveForMonth.paydown`** is the income→BLOC paydown the playbook's LoC Paydown

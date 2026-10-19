@@ -668,10 +668,27 @@ export function planSavingsLine(sim: CyclingResult, monthsLeft: number): string 
  *  runs this plan through the same engine on the price paths — the Outlook's place, not a second projection. */
 export const PLAN_PATHS_LINK = "Your plan on other price paths — the Almanac's Decision face";
 
-/** THIS MONTH's expenses prompt (on the Outlook until Run 3): the last three logged months' average against the plan's
- *  assumption — to the cent, like every figure on THIS MONTH (BL19); its Update stores the average to the cent. */
-export function planReanchorLine(avg: number, expenses: number): string {
-  return `Your last 3 months averaged ${fmtUSDCents(avg)} vs your ${fmtUSDCents(expenses)} assumption — update?`;
+/** THIS MONTH's expenses prompt (on the Outlook until Run 3) — its words BL26's: the subject named, and buttons that say
+ *  what they do. The last three logged months before this one (`computeExpenseReanchor`) against the plan's monthly
+ *  expenses, to the cent like every figure on THIS MONTH (BL19). ONE figure for the average: `toCents(avg)` is what the
+ *  line prints, what Update's button names and what Update stores. */
+export interface PlanReanchorWords { line: string; update: string; keep: string }
+export function planReanchorWords(avg: number, expenses: number): PlanReanchorWords {
+  const a = fmtUSDCents(toCents(avg));
+  const e = fmtUSDCents(expenses);
+  return {
+    line: `Monthly expenses: your last 3 logged months averaged ${a}; your plan uses ${e}.`,
+    update: `Update plan to ${a}`,
+    keep: `Keep ${e}`,
+  };
+}
+
+/** Run 4 (D-R4-1) — this month's move happens (`seeded`) and leaves Coinbase within its limit at support (the placement's
+ *  own over-limit fact on the opening, past the dust floor). Safety's at-support line reads the position as it stands, so
+ *  when it reads "over" and this holds, the move is the fix — it tops Coinbase up from Strike (the sweep in
+ *  safetyAtSupport.test pins that this is the only way the two differ) — and the line says so. */
+export function planMoveBringsCbWithin(plan: PlacementPlan): boolean {
+  return plan.seeded && !shownUsd(plan.cbOverCeilingUsd);
 }
 
 /** D8 — the one-time note, once per device (dismissed is device-local). */

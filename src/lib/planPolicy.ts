@@ -65,6 +65,18 @@ export function clampPlanPolicy(k: PlanPolicyKey, v: unknown): number {
   return typeof v === 'number' && Number.isFinite(v) ? Math.min(r.max, Math.max(r.min, v)) : PLAN_POLICY_DEFAULTS[k];
 }
 
+/** The plan's Coinbase defense line (planClamp's `PLAN_CB_LTV_CAP_PCT` — ONE constant): the plan holds its Coinbase limit
+ *  at support to it. The setting's range tops out at it, so today it never binds. */
+export const PLAN_CB_DEFENSE_PCT = 70;
+
+/** The plan's Coinbase limit at support as the plan runs it, a fraction: the setting through the clamp, held to the
+ *  defense line — what `effectivePolicySettings(…, PLAN_CLAMP).cbStopEffPct / 100` gives THIS MONTH (a test pins the
+ *  two equal over the whole range). The plan of record's Run 4: Safety's at-support reading and the safe viewer's
+ *  snapshot read it from store-shaped state, outside the faces. */
+export function planCbLimitOf(s: Readonly<Record<PlanPolicyField, unknown>>): number {
+  return Math.min(clampPlanPolicy('cbStopAtSupportPct', s.policyCbStopAtSupportPct), PLAN_CB_DEFENSE_PCT) / 100;
+}
+
 /** The plan's six settings, read from store-shaped state THROUGH the clamp — so every reader (the faces, Settings, the
  *  console) sees the same in-range plan. The write clamps already; this covers what no setter wrote: a backup restore
  *  (its validator checks keys, never values). */

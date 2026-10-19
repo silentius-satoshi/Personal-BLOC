@@ -1,15 +1,23 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
 import { CB_LLTV, CB_WARN_LTV, CB_PLATFORM_FEE_PCT, cbNetApr } from '../../simulation/runCoinbaseLoan';
-import { worseLevel, type SafetyLevel } from '../../simulation/cbMetrics';
-import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
+import {
+  deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR, ownerAtSupportLine, ownerSafetyVerdict,
+} from '../../simulation/safetyView';
+import { supportToday } from '../../simulation/powerLaw';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { useMorphoRate } from '../../hooks/useMorphoRate';
 import { PriceChart } from './PriceChart';
 import { NumberInput } from '../ui/NumberInput';
-import { fmtUSDCents, fmtLtvPct } from '../../utils/format';
+import { fmtUSDCents, fmtLtvPct, todayLocalISO } from '../../utils/format';
 import styles from './SafetyDashboard.module.css';
+
+interface SafetyDashboardProps {
+  /** Run 4 (D-R4-1) — the screen's own plan run: this month's move brings Coinbase within its limit at support
+   *  (`planMoveBringsCbWithin`). THIS MONTH and Daily pass it; the line says so. */
+  moveBringsCbWithin?: boolean;
+}
 
 function daysSince(asOf: string | null): number | null {
   if (!asOf) return null;
@@ -23,7 +31,7 @@ function freshnessLabel(kind: 'balance' | 'liq price', asOf: string | null): { t
   return { text: `${kind} as of ${d} day${d === 1 ? '' : 's'} ago`, stale: d > 30 };
 }
 
-export function SafetyDashboard() {
+export function SafetyDashboard({ moveBringsCbWithin = false }: SafetyDashboardProps = {}) {
   const btcPrice               = useStore((s) => s.btcPrice);
   const hasCbLoan              = useStore((s) => s.hasCbLoan);
   const setHasCbLoan           = useStore((s) => s.setHasCbLoan);
@@ -61,14 +69,19 @@ export function SafetyDashboard() {
 
   // ── Safety math — single source of truth (deriveSafetyView, shared with the viewer home) ──────
   // selectSafetyViewInputs is the ONE store→inputs mapping (no drift). useShallow re-renders only when
-  // one of the 12 mapped values changes (incl. getCurrentBtcHeld() + cbCollateralBtc) → value-identical
+  // one of the 14 mapped values changes (incl. getCurrentBtcHeld() + cbCollateralBtc, and since the plan of record's
+  // Run 4 the plan's Coinbase limit at support) → value-identical
   // reactivity, incl. recompute-on-price-tick, without listing every field a second time here.
-  const view = deriveSafetyView(useStore(useShallow(selectSafetyViewInputs)));
+  // D7 (Run 4) — today's support, keyed on the day (an open screen re-reads it at midnight); the at-support reading runs on
+  // the same inputs as the bar.
+  const todayISO = todayLocalISO();
+  const support = useMemo(() => supportToday(todayISO), [todayISO]);
+  const view = deriveSafetyView({ ...useStore(useShallow(selectSafetyViewInputs)), supportToday: support });
   // creditLevel is intentionally NOT destructured — the owner's capacity bar is ALWAYS green (the
   // viewer colors it via creditLevel; wiring it up here is the single most likely future regression).
   const {
     capacityUsed, strikeLtv, strikeLevel,
-    cbLtv, cbLevel, accruedBalance, cbLiqPrice, cbLiqFrac,
+    cbLtv, cbLevel, accruedBalance, cbLiqPrice, cbLiqFrac, cbAtSupport,
   } = view;
   const activeLiqPrice = cbLiqPrice; // alias → downstream JSX names unchanged
 
@@ -97,13 +110,9 @@ export function SafetyDashboard() {
 
   // ── State line — CREDIT-EXCLUDED (unlike deriveViewerOverall, which folds creditLevel). The owner
   // state = the nearer of the two bars actually shown (Strike, +CB when present); capacity is
-  // always-green so it never drives. Strike-only when no CB loan. ──
-  const state: SafetyLevel = hasCbLoan ? worseLevel(cbLevel, strikeLevel) : strikeLevel;
-  const stateCopy = state === 'safe'
-    ? 'Safe — nothing to do today'
-    : state === 'watch'
-      ? 'Watch — your CB cushion is tightening'
-      : 'Act — pay down or add collateral now';
+  // always-green so it never drives. Strike-only when no CB loan. D7 (Run 4): and Coinbase at support against the plan's
+  // limit — the worse reading wins, amber at most. ONE pure rule: ownerSafetyVerdict. ──
+  const { state, copy: stateCopy } = ownerSafetyVerdict(view, hasCbLoan);
 
   const balFresh = freshnessLabel('balance', cbLoanBalanceAsOf);
   const liqFresh = freshnessLabel('liq price', cbLiquidationPriceAsOf);
@@ -249,6 +258,12 @@ export function SafetyDashboard() {
         <div className={styles.cushionRow}>
           <span className={styles.cushion}>{fmtUSDCents(liqDropUsd)} above liq ~{fmtUSDCents(cbLiqPrice)} · {(liqDropPct * 100).toFixed(0)}% drop away · {fmtUSDCents(accruedBalance)} balance</span>
         </div>
+        {/* D7 (Run 4) — Coinbase at today's support against the plan's limit: amber when over, never red. */}
+        {cbAtSupport && (
+          <p className={styles.atSupport} style={{ color: cbAtSupport.over ? LEVEL_COLOR.watch : undefined }}>
+            {ownerAtSupportLine(cbAtSupport, moveBringsCbWithin)}
+          </p>
+        )}
         {neverAnchored && (
           <p className={styles.anchorNudge}>Tap to anchor your Coinbase balance &amp; liquidation price for accurate cushion.</p>
         )}

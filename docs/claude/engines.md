@@ -15,6 +15,11 @@ type CbLtvStatus = 'safe'|'watch'|'warning'|'emergency'|'critical'|'liquidated';
 
 Morpho/Coinbase: 86% LLTV instant liquidation, no grace period, 4.38% penalty.
 
+⚠ **The plan of record's Run 4:** no screen calls `runCoinbaseLoan()` or `classifyLtv()` — the CB Loan tab's 12-month
+projection (it read the retired `cbMonthlyPayment`) is gone, and the tab colours today's LTV by Safety's level. Both
+stay (`aprAnchors.test.ts` still runs `runCoinbaseLoan`, which calls `classifyLtv`). The tab's alert table (`isBreach`)
+has two rows: the owner's trigger and 86% (§ The plan of record (Run 4)).
+
 ### Platform fee — `CB_PLATFORM_FEE_PCT` / `cbNetApr` 🔴 THE APR IS NOT MORPHO'S APR
 
 ```typescript

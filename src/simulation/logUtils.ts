@@ -80,13 +80,24 @@ export function deriveCurrentPosition(
  * Outlook's until then). Compares the trailing 3-entry average of expensesActual against the static `expenses`
  * assumption. Fires at >5% drift; once dismissed at avg=D, stays hidden until the average moves >5% (of the
  * assumption) past D. Pure — needs 3 logged entries to average (fewer → no nudge).
+ *
+ * Run 4 (F-R4-1) — which months count:
+ *  - only months BEFORE `beforeMonth`: THIS MONTH passes the strategy month in progress — 12 once the year is complete:
+ *    `bucketEventToMonth` clamps, so month 12 keeps every later draw and never finishes.
+ *    Daily's journal rolls each draw into its month's entry as it happens (`rollupMonth`), so the month in progress holds
+ *    part of its bills — averaged in, it pulled the figure down mid-month, and Update would have written that partial
+ *    average into the plan. The default (no bound) keeps every month, as the rule stood;
+ *  - only months that record expenses (> 0): a Daily month starts its entry at 0 (`dailyRouting`) and stays there when
+ *    nothing was drawn on Strike, and three of them averaged $0 — "averaged $0.00", an Update that writes $0, and a Keep
+ *    that stores 0, which reads as never pressed.
  */
 export function computeExpenseReanchor(
   monthlyLog: MonthlyLogEntry[],
   expenses: number,
   dismissedAt: number,
+  beforeMonth = Number.POSITIVE_INFINITY,
 ): { show: boolean; avg: number } {
-  const recent = [...monthlyLog].sort((a, b) => b.month - a.month).slice(0, 3);
+  const recent = monthlyLog.filter((e) => e.month < beforeMonth && e.expensesActual > 0).sort((a, b) => b.month - a.month).slice(0, 3);
   if (recent.length < 3) return { show: false, avg: 0 };
   const avg   = recent.reduce((s, e) => s + (e.expensesActual ?? 0), 0) / recent.length;
   const drift = expenses > 0 ? Math.abs(avg - expenses) / expenses : 0;

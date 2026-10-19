@@ -1,5 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { usePageVisibility } from './usePageVisibility';
+import { HISTORY_TIMEOUT_MS, withTimeLimit } from '../utils/timeLimit';
 
 export type ChartRange = '1H' | '1D' | '1W';
 
@@ -39,25 +40,35 @@ export function useBtcHistory(range: ChartRange): { candles: Candle[]; loading: 
   const [candles, setCandles] = useState<Candle[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState(false);
+  // The range whose candles are on screen (null: none yet, or the page was hidden). A refresh that fails keeps them while
+  // the page stays in view; a first load that fails says so.
+  const shownRange = useRef<ChartRange | null>(null);
 
   useEffect(() => {
     if (!isVisible) return;
     let cancelled = false;
+    const outer = new AbortController();   // the unmount (or a range change) aborts the request in flight
     const { granularity, count } = RANGE_CFG[range];
 
     async function fetchCandles() {
       setLoading(true);
       try {
-        const res = await fetch(`/api/btc-candles?granularity=${granularity}`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const raw = await res.json() as number[][];
+        // BL23 — the request and its body inside the time limit, so a stalled request ends as failed.
+        const raw = await withTimeLimit(HISTORY_TIMEOUT_MS, async (signal) => {
+          const res = await fetch(`/api/btc-candles?granularity=${granularity}`, { signal });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          return await res.json() as number[][];
+        }, outer.signal);
         const parsed = parseCandles(raw, count);
         if (!cancelled) {
           setCandles(parsed);
           setError(parsed.length === 0);
+          shownRange.current = parsed.length > 0 ? range : null;
         }
       } catch {
-        if (!cancelled) {
+        // BL23 — a refresh that fails (past the time limit too) keeps the chart already drawn for this range: before the
+        // limit, a stalled refresh kept it by never ending, and the limit must not blank it. A first load that fails says so.
+        if (!cancelled && shownRange.current !== range) {
           setCandles([]);
           setError(true);
         }
@@ -68,7 +79,9 @@ export function useBtcHistory(range: ChartRange): { candles: Candle[]; loading: 
 
     void fetchCandles();
     const id = setInterval(() => void fetchCandles(), REFRESH_MS);   // slow refresh, not a tight poll
-    return () => { cancelled = true; clearInterval(id); };
+    // A page back in view (or a new range) starts again: the candles on screen may be hours old, so its first refresh is a
+    // first load — and a failed one says so.
+    return () => { cancelled = true; clearInterval(id); outer.abort(); shownRange.current = null; };
   }, [range, isVisible]);
 
   return { candles, loading, error };

@@ -5,7 +5,8 @@
 ## Coinbase borrow & paydown events (journal-only; store unchanged, NO bump)
 
 The daily journal can now record a **Coinbase borrow** (the hinge of the flywheel: Strike draw → Coinbase borrow → Strike
-paydown) and a **Coinbase paydown** (the `ltvTriggered` policy action).
+paydown) and a **Coinbase paydown** (the `ltvTriggered` policy action — since the plan of record's Run 4, the Emergency Console's
+for any Coinbase loan).
 - **Shape:** `draw`/`paydown` gain `target?: 'strike' | 'cb'` and `fee?: number`. `fee` is the origination fee from
   `cbBorrowFee`; it is USD, capitalised, and only present on a CB draw.
 - **Journal-only:** a CB flow is recorded, dated, fee-bearing and visible in the journal, but it **never enters a monthly

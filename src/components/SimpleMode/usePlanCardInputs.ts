@@ -40,7 +40,6 @@ export function usePlanCardInputs(): PlanCardInputs {
   const cbLoanBalanceAsOf  = useStore((s) => s.cbLoanBalanceAsOf);
   const cbAprPct           = useStore((s) => s.cbAprPct);
   const cbCollateralBtc    = useStore((s) => s.cbCollateralBtc);
-  const cbPaymentStrategy  = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
   const cbLtvTargetPct     = useStore((s) => s.cbLtvTargetPct);
   const planCbStopAtSupportPct = useStore((s) => s.policyCbStopAtSupportPct);   // the plan of record's Coinbase limit (Run 1)
@@ -61,7 +60,7 @@ export function usePlanCardInputs(): PlanCardInputs {
   // D13 — a crash day (Coinbase at or past the trigger at today's price): the card's status carries the Emergency
   // Console's own line, built through crashPlaybookView's one builder (the console's inputs).
   const cbTriggered = isCrashDay({
-    hasCbLoan, ltvTriggered: cbPaymentStrategy === 'ltvTriggered', cbDebt: effectiveCbBalance, cbCollateralBtc,
+    hasCbLoan, cbDebt: effectiveCbBalance, cbCollateralBtc,
     price: btcPrice, triggerPct: cbLtvTriggerPct,
   });
   const today = todayLocalISO();

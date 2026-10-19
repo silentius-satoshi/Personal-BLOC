@@ -112,7 +112,12 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
     thresholds:{strikeLiqLtv, cbLtvTriggerPct, cbLiqFrac}, safety: ViewerSafeSafety }` — **NO
     settings/records/strike/cbCollateralBtc exist in it by construction** (the privacy audit is
     `Object.keys`). Every leaf is a health RATIO, a level string, or public price — no absolute is
-    recoverable (2 unknowns, 1 equation).
+    recoverable (2 unknowns, 1 equation). (The plan of record's Run 4, D9: `thresholds` gains `cbLimitAtSupport` — the
+    plan's Coinbase limit at support — and `safety` gains `cbLtvAtSupport`, Coinbase's LTV at the snapshot day's
+    support or null, and `cbAtSupportLevel`, the owner's verdict on it; no new top-level key. Together the two Coinbase
+    ratios give price ÷ support, never the debt or the collateral — `safetyAtSupport.test.ts`, VIEWER — except one bit:
+    the verdict, and whether a ratio is sealed at all, follow the 50¢ dust floor, so within 50¢ of the limit, or on a
+    debt under 50¢, they say which side of 50¢ the position is — spec v1.20 §16.3.)
   - **C-trusted (opt-in):** today's full `{settings, records, strike, cbCollateralBtc}` + the common
     `{snapshotVersion:2, privacyMode:'trusted', asOf}`.
   - **`privacyMode` absent (pre-V2 event) → treated trusted** (compat).
@@ -125,7 +130,8 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   `capacityUsed` unchanged (price-free); `crashLtv' = strikeLtv'×5`; re-`barLevel`s from the payload
   thresholds; `overall'`; `strikeDropPct = 1 − strikeLtv'/liqLtv`. **`livePrice` absent → factor 1 → the
   at-snapshot levels are the offline fallback.** (CB accrual drift between publishes is negligible for a
-  gauge.)
+  gauge.) (Run 4, D9: `cbLtvAtSupport` passes unscaled — it is the snapshot day's reading — and `cbAtSupportLevel`
+  folds into `overall'`; with no ratio it reads `'safe'`.)
 - **Owner control — the C-safe/C-trusted tier.** ⚠ **SUPERSEDED at Multi-viewer M1:** the global
   `viewerPrivacyTrusted` boolean is GONE — the tier is now **per-viewer** (`ViewerSlot.tier: 'safe'|'trusted'`,
   default `'safe'`, part of the synced `viewers` roster). `buildViewerSnapshotPayload(s, tier)` branches on the
@@ -146,7 +152,11 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   card gates on the seam's `hasCbLoan` (safe mode's store `hasCbLoan` is a seed default — comes from the
   snapshot). The hook's PURE core is **`computeViewerSafety(safeSnap, livePrice, inputs)`** (safetyView.ts,
   node-tested); the hook is just the three unconditional store reads + `injectedSafeSnap !== undefined ?
-  injectedSafeSnap : storeSnap` pick.
+  injectedSafeSnap : storeSnap` pick. (Run 4, D7 / D9: the hook adds today's support to the trusted inputs —
+  `supportToday(todayLocalISO())`, the clock read kept out of the pure core — and `computeViewerSafety` returns
+  `cbAtSupport`: live, with the support price, on the trusted path; the snapshot's ratio, with no price, on the safe
+  path; null with none. The CB card's sub-line — here and on the owner's Dashboard — adds `cbAtSupportLine`: whole
+  dollars on the trusted path, no price on the safe one, nothing from an older snapshot.)
 - **Owner "Preview as viewer" (`viewerPreview`, transient/NEVER persisted — partialize-stripped, so the app
   can't boot into preview):** the trigger sets `viewerPreview`; AppShell's owner simple-mode branch (J) renders
   `<ViewerPreview/>` instead of the Dashboard/Daily/Monthly fork. **Owner IA — the trigger RELOCATED** from the

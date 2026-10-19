@@ -70,7 +70,7 @@
 [data-active-tab="settings"] .sidebar { display: none; }
 [data-active-tab="settings"] .main    { grid-column: 1 / -1; }
 
-/* Liq Sim: no sidebar — main fills full width */
+/* The Emergency Console (the `liqsim` tab) and the Almanac: no sidebar — main fills full width */
 [data-active-tab="liqsim"]   .sidebar { display: none; }
 [data-active-tab="liqsim"]   .main    { grid-column: 1 / -1; }
 [data-active-tab="almanac"]  .sidebar { display: none; }

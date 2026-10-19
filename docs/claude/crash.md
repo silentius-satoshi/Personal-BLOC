@@ -2,21 +2,27 @@
 
 <!-- Moved word for word from CLAUDE.md (BL21). This is the only copy: edit it here. -->
 
-## Emergency Console (crash playbook Run 2 — the crash-day page for `ltvTriggered`; store unchanged)
+## Emergency Console (crash playbook Run 2 — the crash-day page for `ltvTriggered`; for any Coinbase loan since the plan of record's Run 4; store unchanged)
 
 The console runs `crashPlaybook` — the one crash-day answer the engine also runs — on the live position and the owner's
 real cold. Spec: `pbloc-spec-crash-playbook-run2-v1.md` (Run 2 of 3). **READ-ONLY** — no dayLog writes; real moves
-happen on the lenders' screens and are logged through the Daily flows. Monthly CB mode keeps `LiqSimulator`, unchanged.
+happen on the lenders' screens and are logged through the Daily flows. Monthly CB mode keeps `LiqSimulator`, unchanged
+(the plan of record's Run 4 deleted it: the console runs with any Coinbase loan — the gate below).
 
 - **Mode gate (unchanged):** `CbDefenseTool` renders `cbPaymentStrategy === 'ltvTriggered' ? <EmergencyConsole/> :
   <LiqSimulator/>` for both the `liqsim` tab and the Almanac's defense face. Tab KEY stays `'liqsim'` (no
   tabOrder/hiddenTabs migration, still `hasCbLoan`-gated); the tab LABEL swaps to `Emergency`/`Emerg` by mode via
   `withEmergencyLabel` (label-only).
+  ⚠ **The plan of record's Run 4 (D3):** the gate is the Coinbase loan — `CbDefenseTool` renders
+  `hasCbLoan ? <EmergencyConsole/> : null`. `LiqSimulator` (with its CSS, `liqSimulatorView` and its test) is deleted;
+  it had no other screen. The label is always `Emergency`/`Emerg` (`ALL_TABS_META`; `withEmergencyLabel` is gone, the
+  key stays `'liqsim'`), and the defense face is always labelled `🚨 Emergency`.
 - **The gate — the playbook runs at the TRIGGER and restores the TARGET (A0).** The Advisor's `cbLtvTriggered` and
-  SimpleModeView's `cbTriggered` both fire at `>= cbLtvTriggerPct`; a target gate would tell the owner to draw on Strike
-  on an ordinary 68% day. `waitingCard(input, cbLtvTriggerPct)`: target < LTV < trigger (and under 86%) → "No action …
-  where your plan waits"; otherwise null and the playbook runs — at or under the target it reads "nothing to do", at or
-  over the trigger (or past 86%) it acts.
+  SimpleModeView's `cbTriggered` both fired at `>= cbLtvTriggerPct` (crash playbook Run 2; today the crash day,
+  `isCrashDay`, does — the plan of record's Run 4); a target gate would tell the owner to draw on Strike on an ordinary 68% day.
+  `waitingCard(input, cbLtvTriggerPct)`: target < LTV < trigger (and under 86%) → "No action … where your plan waits";
+  otherwise null and the playbook runs — at or under the target it reads "nothing to do", at or over the trigger (or
+  past 86%) it acts.
 - **Inputs — `playbookInputFromLive` (crashPlaybookView), the one live builder:**
   - the Coinbase debt ALREADY accrued (`accruedCbBalance` — the accrual boundary stays in the component);
   - the Strike balance is the LIVE `advisorActualBlocBalance` (A1), never `deriveCurrentPosition`'s last logged
@@ -71,7 +77,8 @@ still models the debt shift.
 
 ⚠ **Run 2 (the plan of record):** the line now sits in THIS MONTH's card STATUS on a crash day — `PLAN_CRASH_TITLE`
 ("Crash day — work from the Emergency Console") over the line's items, then `crashNote(true)` (PlanMonthCard; Daily's
-plan card shows the title) — gated by `isCrashDay`, the console's own gate. Box 2, "CB runway" and Box 3's "(if you
+plan card shows the title) — gated by `isCrashDay`, the console's own gate (since the plan of record's Run 4 the
+Coinbase loan alone; the `ltvTriggered` mode too until then). Box 2, "CB runway" and Box 3's "(if you
 shift debt)" suffix went with the three boxes, and the label is at two sites. The bullets below keep Run 3's record:
 their "box" is now the card's status, which is full width, so the compact shapes' 70px reason is Run 3's; the inputs,
 the one reading and the compact shapes themselves are current.

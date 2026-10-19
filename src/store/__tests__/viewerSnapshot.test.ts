@@ -59,9 +59,13 @@ describe('viewer snapshot builders', () => {
     for (const k of ['capacityUsed', 'strikeLtv', 'crashLtv', 'cbLtv', 'cbLiqFrac'] as const) {
       expect(typeof safety[k]).toBe('number');
     }
-    for (const k of ['creditLevel', 'strikeLevel', 'cbLevel', 'overall'] as const) {
+    for (const k of ['creditLevel', 'strikeLevel', 'cbLevel', 'cbAtSupportLevel', 'overall'] as const) {
       expect(LEVELS).toContain(safety[k]);
     }
+    // Run 4 (D9) — Coinbase's LTV at support: a ratio, or null with no reading (here: the seed's $60,000 on 1.48 ₿ — a ratio is sealed).
+    expect(safety.cbLtvAtSupport === null || typeof safety.cbLtvAtSupport === 'number', 'D9 a ratio or none').toBe(true);
+    expect(Object.keys(snap.thresholds!).sort(), 'D9 the limit rides the thresholds')
+      .toEqual(['cbLimitAtSupport', 'cbLiqFrac', 'cbLtvTriggerPct', 'strikeLiqLtv']);
     // ⚠ the privacy correction — the two $ absolutes from SafetyView must NOT ride the safe block
     expect('accruedBalance' in safety).toBe(false);
     expect('cbLiqPrice' in safety).toBe(false);

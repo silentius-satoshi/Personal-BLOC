@@ -134,7 +134,7 @@ describe('deriveSafetyView — CB display intermediates (accruedBalance / cbLiqP
 });
 
 describe('selectSafetyViewInputs — the single store→inputs mapping', () => {
-  it('maps the 12 store fields (getCurrentBtcHeld invoked)', () => {
+  it('maps the 12 store fields (getCurrentBtcHeld invoked) and the plan\'s Coinbase limit at support (Run 4, D7)', () => {
     const fake = {
       advisorActualBlocBalance: 5_000,
       creditLine: 10_000,
@@ -149,6 +149,7 @@ describe('selectSafetyViewInputs — the single store→inputs mapping', () => {
       cbLtvTriggerPct: 75,
       cbLiquidationPrice: 42_000,
       cbLiquidationPriceAsOf: null,
+      policyCbStopAtSupportPct: 50,   // the plan's Coinbase limit — read through its clamp
     } as unknown as StoreState;
     expect(selectSafetyViewInputs(fake)).toEqual({
       advisorActualBlocBalance: 5_000,
@@ -164,6 +165,7 @@ describe('selectSafetyViewInputs — the single store→inputs mapping', () => {
       cbLtvTriggerPct: 75,
       cbLiquidationPrice: 42_000,
       cbLiquidationPriceAsOf: null,
+      cbLimitAtSupport: 0.5,
     });
   });
 });

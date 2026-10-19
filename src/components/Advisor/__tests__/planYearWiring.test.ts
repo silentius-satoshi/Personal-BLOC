@@ -65,7 +65,8 @@ describe('⭐ INPUTS — the card\'s inputs, gathered once per screen', () => {
     expect(INPUTS, 'INPUTS the annual clause, roll mode only').toMatch(/const ndpActionActive = blocMinPaymentSource === 'roll' && ndp\.status !== 'ok';/);
     expect(INPUTS, 'INPUTS the accrued balance, behind the loan switch')
       .toMatch(/const effectiveCbBalance\s+= hasCbLoan \? accruedCbBalance\(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf\) : 0;/);
-    expect(INPUTS, 'INPUTS the crash gate').toMatch(/hasCbLoan, ltvTriggered: cbPaymentStrategy === 'ltvTriggered', cbDebt: effectiveCbBalance, cbCollateralBtc,/);
+    // Run 4 (D3): the crash gate is the Coinbase loan's — the console's own — no longer the LTV-triggered strategy.
+    expect(INPUTS, 'INPUTS the crash gate').toMatch(/= isCrashDay\(\{\s*hasCbLoan, cbDebt: effectiveCbBalance, cbCollateralBtc,/);
     // THIS MONTH's NDP card reads the hook's figures — it computes none itself.
     expect(SIMPLE, 'INPUTS THIS MONTH takes them').toMatch(/const \{ pm, crashLine, ndp, ndpEstimate, ndpActionActive \} = usePlanCardInputs\(\);/);
     expect(SIMPLE, 'INPUTS no second NDP').not.toMatch(/getNdpStatus\(|planNdpBalance\(|planNdpEstimateUsd\(/);

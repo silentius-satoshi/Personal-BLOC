@@ -1,6 +1,9 @@
 import type { StoreState } from './useStore';                 // type-only — no runtime edge
 import type { ViewerSnapshot } from '../lib/nostr/publish';   // type-only
 import { deriveSafetyView, selectSafetyViewInputs, buildSafeSafety } from '../simulation/safetyView';
+import { supportToday } from '../simulation/powerLaw';
+import { planCbLimitOf } from '../lib/planPolicy';
+import { todayLocalISO } from '../utils/format';
 import { deriveCbCollateral, deriveStrikeCollateral, deriveColdStorage, latestStrikeDepositISO } from '../simulation/logUtils';
 
 // THE settings payload — single source built from current state, consumed by the trusted viewer snapshot (below) and
@@ -73,7 +76,9 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
   if (tier !== 'trusted') {   // M2: tier is an explicit param (the slot-0 read moved into the fan-out loop) — built once per tier.
     // C-SAFE — the owner runs the dashboard's EXACT inputs (deriveSafetyView ∘ selectSafetyViewInputs), then
     // ships only the ratio/level block (buildSafeSafety drops the two $ absolutes) + config ratios + price.
-    const view = deriveSafetyView(selectSafetyViewInputs(s));
+    // D9 (the plan of record's Run 4): + Coinbase's LTV at today's support and the plan's limit — two ratios (and the
+    // verdict the owner's screen reached on them), never the support price's partner absolutes.
+    const view = deriveSafetyView({ ...selectSafetyViewInputs(s), supportToday: supportToday(todayLocalISO()) });
     return {
       snapshotVersion: 2,
       privacyMode: 'safe',
@@ -84,6 +89,7 @@ export function buildViewerSnapshotPayload(s: StoreState, tier: 'safe' | 'truste
         strikeLiqLtv:    s.strikeLiquidationLtvPct / 100,
         cbLtvTriggerPct: s.cbLtvTriggerPct,
         cbLiqFrac:       view.cbLiqFrac,
+        cbLimitAtSupport: planCbLimitOf(s),
       },
       safety: buildSafeSafety(view, s.hasCbLoan),
     };

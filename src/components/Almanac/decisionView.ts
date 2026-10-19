@@ -12,7 +12,7 @@ import { STRIKE_CURE_LTV, STRIKE_MAX_DRAW_LTV, STRIKE_RETRIEVE_MAX_LTV } from '.
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import type { PathKind } from '../../simulation/cyclePath';
 import type { WorstBy } from '../../simulation/planSearch';
-import { STRIKE_HOLD_DAYS } from '../Tools/crashPlaybookView';
+import { STRIKE_HOLD_DAYS, atTriggerLine } from '../Tools/crashPlaybookView';
 import { DISPLAY_DUST_BTC, fmtBelowPct, policyIgnoredNote, shownBtc, shownUsd } from './supportPolicyView';
 import { fmtTurnDate, type NeverDrawVerdict } from './cyclingFaceView';
 import type { BreakerSeed } from './supportPolicyInputs';
@@ -304,14 +304,17 @@ export function scheduleToText(
 }
 
 /**
- * D13 — a crash month points to the Emergency Console; it never restates it. `consoleRuns` is
- * `hasCbLoan && cbPaymentStrategy === 'ltvTriggered'` — the console only runs then, and only then does the face
- * add a tap-through to it.
+ * D13 — a crash month points to the Emergency Console; it never restates it. `consoleRuns` is `hasCbLoan` (D3, the plan
+ * of record's Run 4 — it was the LTV-triggered strategy until that retired): the console only runs then, and only then
+ * does the face add a tap-through to it.
  */
 export function crashNote(consoleRuns: boolean): string {
   const head = "A crash month — these are the monthly model's estimates; on the day, work from the Emergency Console";
-  return consoleRuns ? `${head}.` : `${head} (it runs when your Coinbase strategy is LTV-triggered).`;
+  return consoleRuns ? `${head}.` : `${head} ${CONSOLE_GATE}.`;
 }
+
+/** Where the console is when it isn't running — its one gate, the Coinbase loan's switch (D3, Run 4). */
+const CONSOLE_GATE = '(it runs once your Coinbase loan is switched on)';
 
 /** The crash row's tap-through, named for its month (C2: it sits on a row of its own, beneath the row button). */
 export const consoleLinkLabel = (m: number): string => `Open the Emergency Console for month ${m}`;
@@ -387,8 +390,8 @@ export interface MoveCardContext {
   cbLtvTriggerPct: number;
   cbLtvTargetPct: number;
   hasCbLoan: boolean;
-  /** The Coinbase strategy is LTV-triggered, so the Emergency Console runs. */
-  ltvTriggered: boolean;
+  /** A Coinbase loan is switched on, so the Emergency Console runs (D3, Run 4 — the LTV-triggered strategy until then). */
+  consoleRuns: boolean;
 }
 
 const pctInt = (x: number): string => `${Math.round(x * 100)}%`;
@@ -569,17 +572,15 @@ function alertLine(ctx: MoveCardContext, m: { liqPrice: number; triggerPrice: nu
       `Set a price alert at ${fmtUSD(T)} in your exchange app — Coinbase reaches your ${t}% trigger there.${consoleTail(ctx)}`);
   }
   if (T >= ctx.price) {
-    return line('alert', 'warn',
-      `Coinbase is at or past your ${t}% trigger at today's price — work from the Emergency Console`
-      + `${ctx.ltvTriggered ? '' : ' (it runs when your Coinbase strategy is LTV-triggered)'}.`);
+    return line('alert', 'warn', atTriggerLine(t, ctx.consoleRuns));
   }
   return null;
 }
 
 function consoleTail(ctx: MoveCardContext): string {
-  return ctx.ltvTriggered
+  return ctx.consoleRuns
     ? ' On the day, work from the Emergency Console.'
-    : ' On the day, work from the Emergency Console (it runs when your Coinbase strategy is LTV-triggered).';
+    : ` On the day, work from the Emergency Console ${CONSOLE_GATE}.`;
 }
 
 /** Strike's excess exists but its own rules block the release — say WHICH rule. */
@@ -613,10 +614,19 @@ function breakerLine(ctx: MoveCardContext): MoveLine {
     : line('breaker', 'plain', head);
 }
 
+/** The suggested line, in words — ONE copy: THE MOVE's line and (the plan of record's Run 4) the Smart BLOC tab's
+ *  recommendations, where the year-one model's "Recommended min" stood. `covers` — the owner's line is already at or
+ *  above it ("Suggested" would then read as advice to lower the line). */
+export function suggestedLineWords(
+  ownerLineUsd: number, suggestedUsd: number, hasLoan: boolean, triggerPct: number, targetPct: number,
+): { covers: boolean; text: string } {
+  const paydown = hasLoan ? ` and one Coinbase paydown (${Math.round(triggerPct)}% → ${Math.round(targetPct)}%)` : '';
+  return ownerLineUsd >= suggestedUsd
+    ? { covers: true, text: `Your ${fmtUSD(ownerLineUsd)} line already covers ${LINE_MONTHS_WORD} months of bills${paydown}.` }
+    : { covers: false, text: `A ${fmtUSD(suggestedUsd)} line would cover ${LINE_MONTHS_WORD} months of bills${paydown}, with 25% spare.` };
+}
+
 function lineLines(ctx: MoveCardContext, hasLoan: boolean): MoveLine[] {
-  const paydown = hasLoan
-    ? ` and one Coinbase paydown (${Math.round(ctx.cbLtvTriggerPct)}% → ${Math.round(ctx.cbLtvTargetPct)}%)`
-    : '';
   const whatIf = Math.abs(ctx.runLineUsd - ctx.ownerLineUsd) >= 1;
   if (whatIf) {
     const out: MoveLine[] = [{
@@ -629,12 +639,11 @@ function lineLines(ctx: MoveCardContext, hasLoan: boolean): MoveLine[] {
     }
     return out;
   }
-  return ctx.ownerLineUsd >= ctx.suggestedLineUsd
-    ? [line('line', 'good',
-      `Your ${fmtUSD(ctx.ownerLineUsd)} line already covers ${LINE_MONTHS_WORD} months of bills${paydown}.`)]
+  const w = suggestedLineWords(ctx.ownerLineUsd, ctx.suggestedLineUsd, hasLoan, ctx.cbLtvTriggerPct, ctx.cbLtvTargetPct);
+  return w.covers
+    ? [line('line', 'good', w.text)]
     : [{
-      ...line('line', 'plain',
-        `A ${fmtUSD(ctx.suggestedLineUsd)} line would cover ${LINE_MONTHS_WORD} months of bills${paydown}, with 25% spare.`),
+      ...line('line', 'plain', w.text),
       action: { kind: 'tryLine', label: `Try ${fmtUSD(ctx.suggestedLineUsd)}`, lineUsd: ctx.suggestedLineUsd },
     }];
 }

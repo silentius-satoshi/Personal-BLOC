@@ -5,6 +5,9 @@ import { NumberInput } from '../ui/NumberInput';
 import { getCollateralForTier } from '../../simulation/runBlocYearOne';
 import { getCurrentStrategyMonth, isStrategyComplete, getNdpStatus } from '../../simulation/runAdvisor';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
+import { usePlanPolicy } from '../Almanac/usePlanPolicy';
+import { planPolicySettingsOf } from '../Almanac/planRun';
+import { planRuleRows } from '../Almanac/supportPolicyView';
 import styles from './AdvisorSidebar.module.css';
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
@@ -30,7 +33,6 @@ export function AdvisorSidebar() {
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
-  const cbMonthlyPayment  = useStore((s) => s.cbMonthlyPayment);
   const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);   // §2b — NDP only applies while rolling
 
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
@@ -42,6 +44,8 @@ export function AdvisorSidebar() {
   const ndpLastPaidDate    = useStore((s) => s.ndpLastPaidDate);
   const setNdpLastPaidDate = useStore((s) => s.setNdpLastPaidDate);
   const hasCbLoan     = useStore((s) => s.hasCbLoan);
+  // Run 4 — the plan's rules, as the plan runs them (where the Advisor's typed PRIORITY RULES stood).
+  const planRules = planRuleRows(planPolicySettingsOf(usePlanPolicy()), expenses);
 
   const collateralBtc = getCollateralForTier(activeTier, expenses, btcPrice, currentBtcHeld);
   // Reality edit — commit on blur only (draft keeps the reading from churning while typing). v20: editing emits a
@@ -215,34 +219,14 @@ export function AdvisorSidebar() {
           <SummaryRow label="Loan balance" value={fmtUSD(cbLoanBalance)} />
           <SummaryRow label="Collateral"   value={`${cbCollateralBtc} BTC`} />
           <SummaryRow label="APR"          value={`${cbAprPct}%`} />
-          <SummaryRow label="Min. payment" value={cbMonthlyPayment > 0 ? fmtUSD(cbMonthlyPayment) : 'Interest-only'} />
         </>
       )}
 
-      {hasCbLoan && (
-        <>
-          <div className={styles.divider} />
-          <div className={styles.sectionLabel}>PRIORITY RULES</div>
-          <div className={styles.ruleList}>
-            <div className={styles.ruleRow}>
-              <span className={styles.ruleDot} style={{ background: 'var(--green)' }} />
-              <span className={styles.ruleText}>CB &lt; 55% — Normal strategy</span>
-            </div>
-            <div className={styles.ruleRow}>
-              <span className={styles.ruleDot} style={{ background: 'var(--amber)' }} />
-              <span className={styles.ruleText}>CB 55–65% — +25% to CB paydown</span>
-            </div>
-            <div className={styles.ruleRow}>
-              <span className={styles.ruleDot} style={{ background: 'var(--orange)' }} />
-              <span className={styles.ruleText}>CB 65–70% — Halve BLOC draw</span>
-            </div>
-            <div className={styles.ruleRow}>
-              <span className={styles.ruleDot} style={{ background: 'var(--red)' }} />
-              <span className={styles.ruleText}>CB ≥ 70% — Stop BLOC, all income to CB</span>
-            </div>
-          </div>
-        </>
-      )}
+      {/* Run 4 — the plan's rules as data: the support policy's six settings as the plan runs them (edited in Settings →
+          Your plan). The Advisor's typed PRIORITY RULES (55 / 65 / 70) left with runAdvisor's last screen. */}
+      <div className={styles.divider} />
+      <div className={styles.sectionLabel}>YOUR PLAN</div>
+      {planRules.map((r) => <SummaryRow key={r.key} label={r.label} value={r.value} />)}
 
       <div className={styles.divider} />
       <p className={styles.editHint}>

@@ -239,6 +239,14 @@
   color: var(--text-muted);
 }
 
+/* D7 (the plan of record's Run 4) — Coinbase at today's support against the plan's limit, under the cushion row; amber
+   (inline) when over. */
+.atSupport {
+  margin: 4px 0 0;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 /* Threshold prices + source, moved off the bar markers (Fix 2) */
 .priceNote {
   margin: 0;

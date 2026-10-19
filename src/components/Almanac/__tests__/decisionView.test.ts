@@ -67,7 +67,7 @@ const CTX: MoveCardContext = {
   breaker: BREAKERS[0][1], rearmRule: 6,
   runLineUsd: 40_000, ownerLineUsd: 40_000, suggestedLineUsd: 20_000,
   expenses: 6_000, bearBufferMonths: 12, cbStop: 0.60, support: 100_000, price: 100_000,
-  cbDebt: 60_000, cbLtvTriggerPct: 75, cbLtvTargetPct: 65, hasCbLoan: true, ltvTriggered: true,
+  cbDebt: 60_000, cbLtvTriggerPct: 75, cbLtvTargetPct: 65, hasCbLoan: true, consoleRuns: true,
 };
 const card = (o: Partial<MoveCardContext> = {}) => moveCard({ ...CTX, ...o });
 const keyed = (o: Partial<MoveCardContext>, key: string) => card(o).lines.find((l) => l.key === key);
@@ -331,10 +331,11 @@ describe('⭐ I31 — moveCard, every line true of its inputs', () => {
     expect(past.text).toContain('Emergency Console');
   });
 
-  it('the console pointer names the gate when the strategy is not LTV-triggered', () => {
+  it('the console pointer names its gate when the console is not running — the Coinbase loan (D3, Run 4)', () => {
     const p = place({ cbDebt: CB_LLTV * 2 * 100_000 });
-    expect(keyed({ plan: p, ltvTriggered: false }, 'state')!.text)
-      .toContain('it runs when your Coinbase strategy is LTV-triggered');
+    expect(keyed({ plan: p, consoleRuns: false }, 'state')!.text)
+      .toContain('(it runs once your Coinbase loan is switched on)');
+    expect(keyed({ plan: p, consoleRuns: false }, 'state')!.text, 'no strategy named').not.toMatch(/strategy|LTV-triggered/);
   });
 
   it('⭐ the Strike leg: moves / hold / ltv — each with its own reason', () => {
@@ -720,7 +721,7 @@ describe('⭐ D13 — the crash note, one sentence for the screen and the printo
       .toBe("A crash month — these are the monthly model's estimates; on the day, work from the Emergency Console.");
     expect(crashNote(false))
       .toBe("A crash month — these are the monthly model's estimates; on the day, work from the Emergency Console "
-        + '(it runs when your Coinbase strategy is LTV-triggered).');
+        + '(it runs once your Coinbase loan is switched on).');
   });
 
   it('⭐ scheduleToText prints crashNote — the old "work from the Emergency Console on the day" line is gone', () => {
@@ -944,7 +945,7 @@ describe('⭐ Run B — THE MOVE\'s cliff: F11, the dust floor, and the price al
   /** The trigger price THE MOVE reads — `cbMetrics` at the owner's trigger, on the opening. */
   const trigger = (p: PlacementPlan, debt: number): number => cbMetrics(debt, p.opening.cbCollateralBtc, 100_000, 75).triggerPrice;
   const TAIL = ' On the day, work from the Emergency Console.';
-  const TAIL_MONTHLY = ' On the day, work from the Emergency Console (it runs when your Coinbase strategy is LTV-triggered).';
+  const TAIL_NO_LOAN = ' On the day, work from the Emergency Console (it runs once your Coinbase loan is switched on).';
 
   it('⭐ the alert — the trigger price between the cliff and today, right after the cliff line; none without a cliff or a valid trigger', () => {
     const p = place();
@@ -958,8 +959,8 @@ describe('⭐ Run B — THE MOVE\'s cliff: F11, the dust floor, and the price al
       key: 'alert', tone: 'plain',
       text: `Set a price alert at ${fmtUSD(t)} in your exchange app — Coinbase reaches your 75% trigger there.${TAIL}`,
     });
-    expect(keyed({ plan: p, ltvTriggered: false }, 'alert')!.text)
-      .toBe(`Set a price alert at ${fmtUSD(t)} in your exchange app — Coinbase reaches your 75% trigger there.${TAIL_MONTHLY}`);
+    expect(keyed({ plan: p, consoleRuns: false }, 'alert')!.text)
+      .toBe(`Set a price alert at ${fmtUSD(t)} in your exchange app — Coinbase reaches your 75% trigger there.${TAIL_NO_LOAN}`);
     // No cliff, no alert: no loan, the policy off, past liquidation.
     expect(keyed({ hasCbLoan: false, cbDebt: 0, plan: place({ cbDebt: 0, cbCollateralBtc: 0 }) }, 'alert')).toBeUndefined();
     expect(keyed({ policyApplied: false, policyEnabled: false }, 'alert')).toBeUndefined();
@@ -975,9 +976,9 @@ describe('⭐ Run B — THE MOVE\'s cliff: F11, the dust floor, and the price al
     expect(keyed({ plan: p, cbDebt: 160_000 }, 'alert')).toEqual({
       key: 'alert', tone: 'warn', text: "Coinbase is at or past your 75% trigger at today's price — work from the Emergency Console.",
     });
-    expect(keyed({ plan: p, cbDebt: 160_000, ltvTriggered: false }, 'alert')!.text).toBe(
+    expect(keyed({ plan: p, cbDebt: 160_000, consoleRuns: false }, 'alert')!.text).toBe(
       "Coinbase is at or past your 75% trigger at today's price — work from the Emergency Console "
-      + '(it runs when your Coinbase strategy is LTV-triggered).',
+      + '(it runs once your Coinbase loan is switched on).',
     );
     const at = place({ strikeCollateralBtc: 0.01, cbDebt: 150_000, cbCollateralBtc: 2 });
     expect(trigger(at, 150_000)).toBe(100_000);                                               // premise: exactly at it

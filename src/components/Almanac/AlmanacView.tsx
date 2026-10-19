@@ -29,11 +29,11 @@ import styles from './AlmanacView.module.css';
  * 280px/1fr shell grid, with `.facePanel` pinning the panel to the left column regardless of each face's own
  * mobile DOM order), the Power Law face (`PowerLawFace` — rendered BARE, in the four faces' one column; the
  * full-mode Power Law tab mounts the same component — spec pbloc-spec-powerlaw-face-v1), and the gated `defense`
- * face (embeds the shared `CbDefenseTool` — the same Emergency/Liq-Sim mode gate used by the `liqsim` tab
+ * face (embeds the shared `CbDefenseTool` — the same Emergency Console gate used by the `liqsim` tab
  * in AppShell — hidden entirely when `!hasCbLoan`), plus the own-container Ledger / Scenario / Cycling /
  * Ownership / Strategy / Decision faces (Cycling and Strategy `hasCbLoan`-gated; Strategy is one engine run read
  * through both the Ownership and the Cycling lens). Every embedded tool brings its OWN width — the hub adds none
- * of its own (§8 toolContainer adoption is now CLOSED: EmergencyConsole/LiqSimulator, Mining/Converter, and
+ * of its own (§8 toolContainer adoption is now CLOSED: EmergencyConsole, Mining/Converter, and
  * AlmanacView's own `.container` all compose from the same `toolShell.module.css`; the faces, Power Law's
  * included, compose CyclingFace's 960px `.face`). Holds the local face state (DEFAULT halving, §14.3 — nothing
  * persisted, nothing synced). P3: the single useChainTip lives HERE and feeds the SAME height/mode to the
@@ -68,7 +68,6 @@ export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace
   const setAlmanacLiveEnabled = useStore((s) => s.setAlmanacLiveEnabled);
   const setAlmanacLiveConsented = useStore((s) => s.setAlmanacLiveConsented);
   const hasCbLoan = useStore((s) => s.hasCbLoan);
-  const cbPaymentStrategy = useStore((s) => s.cbPaymentStrategy);
   const monthlyLog = useStore((s) => s.monthlyLog);
   const ledgerAvailable = ledgerFaceAvailable(monthlyLog);
 
@@ -112,7 +111,7 @@ export default function AlmanacView({ initialFace }: { initialFace?: AlmanacFace
     { key: 'mining',   label: '⛏ Mining' },
     { key: 'powerlaw', label: '₿ Power Law' },
     { key: 'sats',     label: '丰 Sats' },
-    ...(hasCbLoan ? [{ key: 'defense' as Face, label: cbPaymentStrategy === 'ltvTriggered' ? '🚨 Emergency' : 'Liq Sim' }] : []),
+    ...(hasCbLoan ? [{ key: 'defense' as Face, label: '🚨 Emergency' }] : []),
     ...(ledgerAvailable ? [{ key: 'ledger' as Face, label: '▤ Ledger' }] : []),
     { key: 'scenario' as Face, label: '⚖ Scenario' },   // Phase 3b — ungated
     // ⚠ Appended LAST, and gated — `halving` must stay first: it is the default face.

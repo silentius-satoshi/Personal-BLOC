@@ -15,12 +15,10 @@ export function CoinbaseLoanSidebar() {
   const cbAprPct         = useStore((s) => s.cbAprPct);
   const cbLtvTriggerPct  = useStore((s) => s.cbLtvTriggerPct);
   const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
-  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
   const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
   const setCbLoanBalance    = useStore((s) => s.setCbLoanBalance);
   const setCbCollateralBtc  = useStore((s) => s.setCbCollateralBtc);
   const setCbAprPct         = useStore((s) => s.setCbAprPct);
-  const setCbMonthlyPayment   = useStore((s) => s.setCbMonthlyPayment);
   const setCbLiquidationPrice = useStore((s) => s.setCbLiquidationPrice);
 
   const { livePrice, lastUpdated, isStale } = useBtcPrice();
@@ -133,18 +131,6 @@ export function CoinbaseLoanSidebar() {
           step={0.01}
         />
         <p className={styles.hint}>Variable — Morpho market rate</p>
-      </div>
-
-      <div className={styles.section}>
-        <span className={styles.label}>MONTHLY PAYMENT</span>
-        <NumberInput
-          value={cbMonthlyPayment}
-          onChange={setCbMonthlyPayment}
-          prefix="$"
-          min={0}
-          step={100}
-        />
-        <p className={styles.hint}>0 = interest-only (no paydown)</p>
       </div>
 
       <div className={styles.divider} />

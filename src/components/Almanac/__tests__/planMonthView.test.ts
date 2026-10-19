@@ -8,7 +8,7 @@ import {
   planNextMonthLine, planSavingsLine, planPriceLine, planMeterAria, planSignoffLine, planSignoffSub, planBars, planNdpEstimateUsd,
   planNdpBalance,
   planBarsCaption, PLAN_AT_TODAYS_PRICE, type PlanRow,
-  planLogRows, planStrikePaidUsd, planReanchorLine, PLAN_PATHS_LINK,
+  planLogRows, planStrikePaidUsd, planReanchorWords, PLAN_PATHS_LINK,
 } from '../planMonthView';
 import { planSchedule, todayActions, ACTION_FIELDS, type ActionKind } from '../decisionView';
 import { cbSeizurePrice } from '../../../simulation/cbMetrics';
@@ -799,8 +799,26 @@ describe('⭐ LOG — Run 3: the month log\'s planned figures are the plan\'s ru
 
   it('⭐ PATHS and the expenses prompt — facts, to the cent (BL19), never "should"', () => {
     expect(PLAN_PATHS_LINK, 'PATHS names the face').toBe("Your plan on other price paths — the Almanac's Decision face");
-    expect(planReanchorLine(3_812.4666, 4_000), 'REANCHOR cents')
-      .toBe('Your last 3 months averaged $3,812.47 vs your $4,000.00 assumption — update?');
-    for (const w of [PLAN_PATHS_LINK, planReanchorLine(3_812.4666, 4_000)]) expect(w, 'WORDS banned').not.toMatch(BANNED);
+    // BL26 — the subject named, and buttons that say what they do; to the cent.
+    const rw = planReanchorWords(3_812.4666, 4_000);
+    expect(rw.line, 'REANCHOR words').toBe('Monthly expenses: your last 3 logged months averaged $3,812.47; your plan uses $4,000.00.');
+    expect(rw.update, 'REANCHOR Update names the figure it writes').toBe('Update plan to $3,812.47');
+    expect(rw.keep, "REANCHOR Keep names the plan's figure").toBe('Keep $4,000.00');
+    for (const w of [PLAN_PATHS_LINK, rw.line, rw.update, rw.keep]) expect(w, 'WORDS banned').not.toMatch(BANNED);
+  });
+
+  it('⭐ REANCHOR — one figure: the line, the Update button and what Update stores agree to the cent', () => {
+    // Update stores toCents(avg) (SimpleModeView); the line and the button print the same figure. A sweep across the
+    // half-cent edges, where a formatter and a rounder can part ways.
+    let n = 0;
+    for (let c = 0; c < 2_000; c++) {
+      const avg = 3_000 + c * 0.005 + (c % 7) * 1e-9;
+      const rw = planReanchorWords(avg, 3_500);
+      const shown = fmtUSDCents(toCents(avg));
+      expect(rw.update, 'REANCHOR one figure').toBe(`Update plan to ${shown}`);
+      expect(rw.line, 'REANCHOR one figure').toContain(`averaged ${shown};`);
+      n++;
+    }
+    expect(n, 'REANCHOR the sweep ran').toBe(2_000);
   });
 });

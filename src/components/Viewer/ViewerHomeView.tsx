@@ -1,9 +1,13 @@
 import type { ReactNode } from 'react';
 import { useStore } from '../../store/useStore';
 import { useShallow } from 'zustand/react/shallow';
-import { selectSafetyViewInputs, computeViewerSafety, type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult } from '../../simulation/safetyView';
+import {
+  selectSafetyViewInputs, computeViewerSafety, cbAtSupportLine,
+  type SafetyLevel, type SafeSnapshot, type ViewerSafetyResult,
+} from '../../simulation/safetyView';
+import { supportToday } from '../../simulation/powerLaw';
 import { deriveCbCollateral } from '../../simulation/logUtils';
-import { fmtUSD, relativeAge } from '../../utils/format';
+import { fmtUSD, relativeAge, todayLocalISO } from '../../utils/format';
 import { PriceChart } from '../SimpleMode/PriceChart';
 import { RadialGauge } from './RadialGauge';
 import { VenueBar } from './VenueBar';
@@ -97,7 +101,8 @@ export function useViewerSafety(injectedSafeSnap?: SafeSnapshot | null): ViewerS
   const livePrice = useStore((s) => s.btcPrice);                    // live via AppShell's useBtcPrice()
   const inputs    = useStore(useShallow(selectSafetyViewInputs));   // trusted path (subscribed either way; harmless in safe mode)
   const safeSnap  = injectedSafeSnap !== undefined ? injectedSafeSnap : storeSnap;
-  return computeViewerSafety(safeSnap, livePrice, inputs);
+  // D7 (Run 4) — the trusted path reads Coinbase at today's support; the clock read stays here, out of the pure core.
+  return computeViewerSafety(safeSnap, livePrice, { ...inputs, supportToday: supportToday(todayLocalISO()) });
 }
 
 export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, ownerNav, notice }: ViewerHomeViewProps) {
@@ -126,8 +131,11 @@ export function ViewerHomeView({ onOpenSettings, previewSafeSnap, preview, owner
                       : CREDIT_SUB[s.creditLevel];
   const strikeSubLine = f ? `Liq at ~${fmtUSD(f.strike.liqPrice)}\n${fmtUSD(f.strike.balance)} balance`
                           : strikeSubSafe(s.strikeLevel, s.strikeDropPct);
-  const cbSub = f ? `Liq at ~${fmtUSD(f.cb.liqPrice)}\n${fmtUSD(f.cb.balance)} balance`
-                  : CB_SUB[s.cbLevel];
+  // D7 / D9 (Run 4) — Coinbase at support against the plan's limit, under the gauge: with the price on the trusted path,
+  // without it on the safe one (the snapshot carries ratios only).
+  const cbAtSupportSub = s.cbAtSupport ? `\n${cbAtSupportLine(s.cbAtSupport)}` : '';
+  const cbSub = (f ? `Liq at ~${fmtUSD(f.cb.liqPrice)}\n${fmtUSD(f.cb.balance)} balance`
+                   : CB_SUB[s.cbLevel]) + cbAtSupportSub;
 
   return (
     <div className={styles.root}>

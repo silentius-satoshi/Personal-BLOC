@@ -225,7 +225,7 @@ export interface ViewerSnapshot {
   // SAFE branch (nothing absolute — ratios/config/public price)
   hasCbLoan?: boolean;
   btcPriceAtSnapshot?: number;           // public market data
-  thresholds?: { strikeLiqLtv: number; cbLtvTriggerPct: number; cbLiqFrac: number };
+  thresholds?: { strikeLiqLtv: number; cbLtvTriggerPct: number; cbLiqFrac: number; cbLimitAtSupport?: number };   // + the plan's Coinbase limit at support (Run 4, D9)
   safety?: ViewerSafeSafety;
   // TRUSTED branch (today's payload — now optional)
   settings?: Record<string, unknown>;

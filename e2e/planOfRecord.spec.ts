@@ -299,19 +299,156 @@ test.describe('the plan of record — Run 3', () => {
   test('REANCHOR — the expenses prompt sits on THIS MONTH, to the cent; its Update saves the average to the cent', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
     await hermetic(page);
-    // Three logged months whose bills average $3,812.47 against the store's $3,500.00 — 9% off, past the 5% nudge.
+    // Three logged months whose bills average $3,812.47 against the store's $3,500.00 — 9% off, past the 5% nudge. Month 4
+    // is the month in progress (October, from a July start), $500 drawn so far: it stays out of the average (F-R4-1) — in
+    // it would read $2,712.47.
     const month = (m: number, iso: string, spent: number): string =>
       `{ month: ${m}, date: '${iso}', btcBought: 0, income: 0, paydown: 0, strikeBal: 0, strikeLtv: 0, loggedAt: 1780000000000, expensesActual: ${spent} }`;
     await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'monthly', advisorStartDate: '2026-07-01', monthBucketReconcileDone: true,
-      monthlyLog: [${month(1, '2026-07-01', 3800)}, ${month(2, '2026-08-01', 3812.4)}, ${month(3, '2026-09-01', 3825)}]`));
+      monthlyLog: [${month(1, '2026-07-01', 3800)}, ${month(2, '2026-08-01', 3812.4)}, ${month(3, '2026-09-01', 3825)}, ${month(4, '2026-10-01', 500)}]`));
     await page.goto('/');
-    const prompt = page.getByText('Your last 3 months averaged $3,812.47 vs your $3,500.00 assumption — update?', { exact: true });
+    // BL26 — the subject named; the buttons say what they do.
+    const prompt = page.getByText('Monthly expenses: your last 3 logged months averaged $3,812.47; your plan uses $3,500.00.', { exact: true });
     await expect(prompt, 'REANCHOR on THIS MONTH, to the cent').toBeVisible({ timeout: 15_000 });
-    await page.getByRole('button', { name: 'Update', exact: true }).click();
+    await expect(page.getByRole('button', { name: 'Keep $3,500.00', exact: true }), 'REANCHOR Keep names the plan\'s figure').toBeVisible();
+    await page.getByRole('button', { name: 'Update plan to $3,812.47', exact: true }).click();
     await expect(prompt, 'REANCHOR gone once the assumption matches').toHaveCount(0);
     await page.getByRole('button', { name: /Edit your numbers/ }).click();
     const expensesField = page.locator('[class*="modalFieldGroup"]', { hasText: 'Monthly expenses' }).locator('input');
     await expect(expensesField, 'REANCHOR saved to the cent').toHaveValue('3812.47');
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+});
+
+// ── The plan of record, Run 4 — Safety and the edges (spec pbloc-spec-plan-of-record-v1 §16). Every assertion has a tag.
+test.describe('the plan of record — Run 4', () => {
+  const seedOf = (state: string): string => `
+    window.__APP_BOOTED = true;
+    localStorage.setItem('personal-bloc-store', JSON.stringify({
+      state: { onboardingComplete: true, btcPriceMode: 'manual', btcPrice: 100000, ${state} },
+      version: ${STORE_VERSION},
+    }));
+    localStorage.setItem('personal-bloc-onboarded', '1');`;
+
+  test('STALL — a price history that never answers ends as failed: THIS MONTH names its cached breaker, the chart stops loading', async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await page.route(/api\.coinbase\.com\/v2\/prices/, (r) => r.abort());
+    // Both histories hold the request open and never answer — a VPN tunnel left up with no network under it.
+    await page.route(/blockchain\.info/, () => { /* never answers */ });
+    await page.route(/\/api\/btc-candles/, () => { /* never answers */ });
+    await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'monthly', advisorStartDate: '2026-10-01',
+      planBreakerCache: { state: { monthsBelow: 0, monthsAtOrAbove: 0, broken: false, brokenMonth: null }, lastMonthEndISO: '2026-09-30' }`));
+    await page.goto('/');
+    const line = page.getByText(/^Price history hasn't loaded — the breaker as of .+, this device's last reading\.$/);
+    await expect(page.getByText("Your plan on other price paths — the Almanac's Decision face →"), 'STALL on THIS MONTH').toBeVisible({ timeout: 15_000 });
+    // While the request is open the cache runs the month with no line (v1.7's Δ12), and the chart is loading …
+    await expect(line, 'STALL no line while the request is open').toHaveCount(0);
+    await expect(page.getByText('loading…', { exact: true }), 'STALL the chart loading').toBeVisible();
+    // … and once the 15 s limit has passed, both requests have failed: the line shows, and the chart says so.
+    await expect(line, 'STALL the line past the limit').toBeVisible({ timeout: 25_000 });
+    await expect(page.getByText('price history unavailable', { exact: true }), 'STALL the chart past the limit').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  // The round synthetic loan: $50,000 on 1 ₿ at a manual $100,000, no as-of date (nothing accrues). On 2026-10-12 support is
+  // $64,699.79, so Coinbase is at 77.3% of its collateral's value at support — over the plan's 45% — while today's bar
+  // (50%, under the 75% trigger) is green.
+  const LOAN = "hasCbLoan: true, cbLoanBalance: 50000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1";
+  const hermetic4 = async (page: Page): Promise<void> => {
+    await page.route(/api\.coinbase\.com\/v2\/prices/, (r) => r.abort());
+    await page.route(/blockchain\.info/, (r) => r.fulfill({ contentType: 'application/json', body: HISTORY }));
+  };
+  const AT_SUPPORT = "At support ($64,699.79): Coinbase 77.3% of its collateral's value — the plan's limit is 45%";
+
+  test('SAFETY — the Safety card reads Coinbase at support: the line under the bar, amber over the limit, and the verdict', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'monthly', advisorStartDate: '2026-10-01', ${LOAN}`));
+    await page.goto('/');
+    const line = page.getByText(AT_SUPPORT, { exact: true });
+    await expect(line, 'SAFETY the line on THIS MONTH').toBeVisible({ timeout: 15_000 });
+    await expect(line, 'SAFETY amber over the limit').toHaveAttribute('style', /var\(--amber\)/);
+    // Today's bar is green; the verdict takes the worse reading and says which.
+    await expect(page.getByText('50.0% LTV', { exact: true }), 'SAFETY premise: today\'s bar').toBeVisible();
+    await expect(page.getByText("Watch — Coinbase is over the plan's limit at support", { exact: true }), 'SAFETY the verdict').toBeVisible();
+    // THIS MONTH's card agrees: the same over-the-limit fact, after the month's move (nothing moves here).
+    await expect(page.getByText("Coinbase is $20,885.10 over your plan's limit"), 'SAFETY the card agrees').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('SAFETY — within the limit at support: the line, no tone, and today\'s verdict', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'daily', advisorStartDate: '2026-10-01',
+      hasCbLoan: true, cbLoanBalance: 20000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1`));
+    await page.goto('/');
+    const line = page.getByText("At support ($64,699.79): Coinbase 30.9% of its collateral's value — the plan's limit is 45%", { exact: true });
+    await expect(line, 'SAFETY the line on Daily').toBeVisible({ timeout: 15_000 });
+    await expect(line, 'SAFETY no tone within').not.toHaveAttribute('style', /var\(--amber\)/);
+    await expect(page.getByText('Safe — nothing to do today', { exact: true }), 'SAFETY today\'s verdict').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('SAFETY — when this month\'s move tops Coinbase up from Strike, the line says the move brings it within', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    // 2 ₿ on Strike with nothing drawn and no logged deposit (no hold): this month's move sends what the line doesn't need
+    // at support to Coinbase — enough to bring it within.
+    await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'monthly', advisorStartDate: '2026-10-01', ${LOAN}, strikeCollateralBtc: 2`));
+    await page.goto('/');
+    const line = page.getByText(`${AT_SUPPORT} — this month's move brings it within`, { exact: true });
+    await expect(line, 'MOVE the line names the move').toBeVisible({ timeout: 15_000 });
+    await expect(line, 'MOVE still amber: the position as it stands').toHaveAttribute('style', /var\(--amber\)/);
+    // The card reads after the move: within — and its to-do is the move.
+    await expect(page.getByText("Within your plan's limits", { exact: true }), 'MOVE the card, after the move').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('VIEWER — the owner\'s Dashboard (the trusted path) reads Coinbase at support under its gauge, in whole dollars', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'dashboard', advisorStartDate: '2026-10-01', ${LOAN}`));
+    await page.goto('/');
+    await expect(page.getByText("At support ($64,700): Coinbase 77.3% of its collateral's value — the plan's limit is 45%"), 'VIEWER the Dashboard')
+      .toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText('Worth keeping an eye', { exact: true }), 'VIEWER the overall folds it').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('CONSOLE — with a Coinbase loan the Emergency Console runs, whatever the old strategy (it never was LTV-triggered here)', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    await page.addInitScript(seedOf(`simpleMode: false, activeTab: 'liqsim', advisorStartDate: '2026-10-01', ${LOAN}`));
+    await page.goto('/');
+    await expect(page.getByText('50.0% CB LTV', { exact: true }), 'CONSOLE the console\'s stage').toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('button', { name: 'Simulate' }), 'CONSOLE its simulate').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('NO LOAN — with the Coinbase loan switched off, the Emergency tab gives way to the first tab, never an empty page', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    await page.addInitScript(seedOf(`simpleMode: false, activeTab: 'liqsim', advisorStartDate: '2026-10-01', hasCbLoan: false`));
+    await page.goto('/');
+    await expect(page.locator('[data-active-tab="living"]'), 'NO LOAN the first tab').toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole('heading', { name: 'Living on Bitcoin' }), 'NO LOAN its page').toBeVisible();
+    await expect(page.getByText('Something crashed')).toHaveCount(0);
+  });
+
+  test('CBTAB — the CB Loan tab: its crash day is the console\'s, at the trigger, one tap away; no projection', async ({ page }) => {
+    await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
+    await hermetic4(page);
+    await page.addInitScript(seedOf(`simpleMode: false, activeTab: 'coinbase', advisorStartDate: '2026-10-01', ${LOAN}`));
+    await page.goto('/');
+    await expect(page.getByRole('heading', { name: 'On a crash day' }), 'CBTAB the card').toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("At your 75% trigger — BTC at $66,667 today — work from the Emergency Console: it names the day's moves "
+      + 'from your live position and your cold storage.', { exact: true }), 'CBTAB the words').toBeVisible();
+    await expect(page.getByText(/Emergency Protocol/), 'CBTAB no protocol').toHaveCount(0);
+    await expect(page.getByText('12-Month Projection', { exact: true }), 'CBTAB no projection').toHaveCount(0);
+    await expect(page.getByText('Your trigger', { exact: true }), 'CBTAB the alert row').toBeVisible();
+    await page.getByRole('button', { name: 'Open the Emergency Console →' }).click();
+    await expect(page.getByText('50.0% CB LTV', { exact: true }), 'CBTAB the link opens the console').toBeVisible();
     await expect(page.getByText('Something crashed')).toHaveCount(0);
   });
 });

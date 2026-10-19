@@ -26,7 +26,7 @@ import { fmtUSD, fmtUSDCents, fmtLtvPct } from '../../utils/format';
  *   strikeHoldAt            Strike's 60-day hold from its one fact, the latest logged Strike deposit's date
  *   strikeDepositOf         that fact on this device: the owner's journal, or a trusted viewer's copy (D9)
  *   strikeHoldFrom          the hold read straight from a journal (strikeHoldAt over latestStrikeDepositISO)
- *   isCrashDay              D13 — the crash day THIS MONTH and Daily read (the console's own gate)
+ *   isCrashDay              D13 — the crash day THIS MONTH and Daily read (the console's own gate: the Coinbase loan)
  *   playbookInputFromLive   the one builder of a live CrashPlaybookInput
  *   fmtStepBtc / fmtStepUsd step amounts, FLOORED to their printed precision
  *   fmtMultiplePair         the support multiple and the liquidation depth, widened until they differ
@@ -60,14 +60,37 @@ const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
 // ── the crash day (D13) ─────────────────────────────────────────────────────────────────────────────────────────
 
-/** D13 — a crash day: Coinbase at or past its trigger at today's price, under the LTV-triggered strategy (the console's
- *  own gate; D3 moves it to `hasCbLoan` together with the console's). The ONE rule THIS MONTH and Daily read. */
+/** D13 — a crash day: Coinbase at or past its trigger at today's price, with a Coinbase loan switched on — the console's
+ *  own gate (D3, the plan of record's Run 4: the loan, no longer the LTV-triggered strategy). The ONE rule THIS MONTH and
+ *  Daily read. */
 export function isCrashDay(f: {
-  hasCbLoan: boolean; ltvTriggered: boolean; cbDebt: number; cbCollateralBtc: number; price: number; triggerPct: number;
+  hasCbLoan: boolean; cbDebt: number; cbCollateralBtc: number; price: number; triggerPct: number;
 }): boolean {
-  if (!f.hasCbLoan || !f.ltvTriggered) return false;
+  if (!f.hasCbLoan) return false;
   const value = f.cbCollateralBtc * f.price;
   return value > 0 && f.cbDebt / value >= f.triggerPct / 100;
+}
+
+// ── the console's words where another screen points to it (the plan of record's Run 4) ───────────────────────────
+
+/** The tap-through to the console, wherever a screen offers one. */
+export const CONSOLE_LINK = 'Open the Emergency Console';
+
+/** At or past the trigger today — the Decision face's alert and the CB Loan tab's banner, one sentence. `consoleRuns`
+ *  false names its gate, the Coinbase loan's switch (D3, Run 4). */
+export function atTriggerLine(triggerPct: number, consoleRuns: boolean): string {
+  return `Coinbase is at or past your ${triggerPct}% trigger at today's price — work from the Emergency Console`
+    + `${consoleRuns ? '' : ' (it runs once your Coinbase loan is switched on)'}.`;
+}
+
+/** The CB Loan tab's crash day — the console's, never a fourth answer: where it starts (the owner's trigger, at the price
+ *  it fires today) and who answers it. Replaced the tab's typed "Emergency Protocol" (income to Coinbase at 70%, back to
+ *  Smart BLOC under 60%). No price when there is none to show — a paid-off loan, no collateral, or a figure under the 50¢
+ *  dust floor (`shownUsd`): "BTC at $0 today" is not a price. */
+export function cbTabCrashDayLine(triggerPct: number, triggerPriceUsd: number): string {
+  const at = shownUsd(triggerPriceUsd) ? ` — BTC at ${fmtUSD(triggerPriceUsd)} today —` : ',';
+  return `At your ${triggerPct}% trigger${at} work from the Emergency Console: `
+    + 'it names the day\'s moves from your live position and your cold storage.';
 }
 
 // ── Strike's 60-day hold ─────────────────────────────────────────────────────────────────────────────────────────
@@ -239,8 +262,8 @@ const usdAside = (printedBtc: string, price: number): string => {
 const pct = (fraction: number): number => Math.round(fraction * 100);
 
 /**
- * The plan WAITS between the target and the trigger (A0): in `ltvTriggered` mode the defense fires at the trigger (the
- * Advisor's cbLtvTriggered and Simple Mode's cbTriggered both read `>= cbLtvTriggerPct`) and restores the target. A
+ * The plan WAITS between the target and the trigger (A0): the defense fires at the trigger (THIS MONTH's and Daily's
+ * crash day, `isCrashDay`, read `>= cbLtvTriggerPct`; so did the Advisor's cbLtvTriggered) and restores the target. A
  * card only when target < LTV < trigger and LTV < the liquidation line; otherwise null, and the playbook runs — at or
  * under the target it reads "nothing to do", at or over the trigger (or past 86%) it acts.
  */

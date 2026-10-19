@@ -264,8 +264,8 @@ export interface SuggestedLineInput {
  * A Strike line big enough to cover two months of bills OR one Coinbase paydown (trigger → target), whichever is
  * larger, with a quarter spare — rounded up to $500 and clamped to what Strike actually lends.
  *
- * ⚠ It is the "suggested line", never a "recommended minimum": `InputsPanel`'s recommendation is a DIFFERENT
- * strategy's figure (the year-one BLOC model's peak balance × 1.10). The two are not unified.
+ * ⚠ It is the "suggested line", never a "recommended minimum". Since the plan of record's Run 4 it is also the Smart
+ * BLOC tab's recommendation (`InputsPanel`, on the plan's own Coinbase leg); the year-one model's "Recommended min" is gone.
  * ⚠ It never becomes the run's line on its own (decision 4) — the face offers it as a what-if.
  */
 export function suggestedLineUsd(input: SuggestedLineInput): number {

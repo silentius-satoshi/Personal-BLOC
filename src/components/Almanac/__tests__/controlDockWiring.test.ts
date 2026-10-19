@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join } from 'node:path';
+import { PLAN_RULE_LABEL } from '../supportPolicyView';
 
 /**
  * ⚠ STRUCTURAL GUARD — sticky controls (spec `pbloc-spec-sticky-controls-v1.md` v1.1). The repo has no render harness, so
@@ -328,17 +329,19 @@ describe('⭐ the parents — Cycling, Ownership, Strategy (Run 2)', () => {
 });
 
 describe('⭐ ONE support-policy settings block — the card and the dock can never offer different controls', () => {
-  const LABELS = [
-    'Coinbase limit at support', 'Strike limit at support', 'Buy with the line up to', 'Pay down above',
-    'Borrowing room kept', 'Cash reserve',
-  ];
-
   it('⭐ SIX-ONCE — each of the six sliders is written once in the app, in SupportPolicyCard.tsx', () => {
-    // mutation: give the dock its own copy of a slider → red
+    // mutation: give the dock its own copy of a slider → red. Run 4: the six labels are ONE constant (PLAN_RULE_LABEL —
+    // the Advisor tab's sidebar names the plan's rules with them), so no component types a slider's label.
     const all = files(join(ROOT, 'src/components'), '.tsx').map((f) => strip(readFileSync(f, 'utf8'))).join('\n');
-    for (const l of LABELS) {
-      expect(count(all, `label="${l}"`), l).toBe(1);
-      expect(CARD, l).toContain(`label="${l}"`);
+    expect(PLAN_RULE_LABEL, 'SIX-ONCE the six words').toEqual({
+      cbStopAtSupportPct: 'Coinbase limit at support', strikeStopAtSupportPct: 'Strike limit at support',
+      accumulateBelow: 'Buy with the line up to', payDownAbove: 'Pay down above',
+      bearBufferMonths: 'Borrowing room kept', cashReserveMonths: 'Cash reserve',
+    });
+    for (const [k, l] of Object.entries(PLAN_RULE_LABEL)) {
+      expect(count(all, `label="${l}"`), `${l}: no typed copy`).toBe(0);
+      expect(count(all, `label={PLAN_RULE_LABEL.${k}}`), `${l}: one slider`).toBe(1);
+      expect(CARD, l).toContain(`label={PLAN_RULE_LABEL.${k}}`);
     }
   });
 

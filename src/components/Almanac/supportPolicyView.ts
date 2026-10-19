@@ -789,6 +789,32 @@ export interface SettingReadout {
   clause: string;
 }
 
+/** The plan's six settings by name — the sliders' labels, ONE copy: Settings' "Your plan", every face's policy card and
+ *  (the plan of record's Run 4) the Advisor tab's sidebar read them. */
+export const PLAN_RULE_LABEL = {
+  cbStopAtSupportPct: 'Coinbase limit at support',
+  strikeStopAtSupportPct: 'Strike limit at support',
+  accumulateBelow: 'Buy with the line up to',
+  payDownAbove: 'Pay down above',
+  bearBufferMonths: 'Borrowing room kept',
+  cashReserveMonths: 'Cash reserve',
+} as const;
+
+/** Run 4 — the plan's rules as data, where the Advisor's typed PRIORITY RULES (55 / 65 / 70) stood: each setting's
+ *  label and its value as the plan runs it — a limit held to its defense line shows the line it is held to. */
+export function planRuleRows(s: EffectivePolicySettings, expenses: number): { key: string; label: string; value: string }[] {
+  const r = settingReadouts(s, expenses);
+  const held = (eff: number, asked: string, clamped: boolean): string => (clamped ? `${fmtPolicyPct(eff)}%` : asked);
+  return [
+    { key: 'cbStop', label: PLAN_RULE_LABEL.cbStopAtSupportPct, value: held(s.cbStopEffPct, r.cbStop.value, s.cbClamped) },
+    { key: 'skStop', label: PLAN_RULE_LABEL.strikeStopAtSupportPct, value: held(s.skStopEffPct, r.skStop.value, s.skClamped) },
+    { key: 'accumulateBelow', label: PLAN_RULE_LABEL.accumulateBelow, value: r.accumulateBelow.value },
+    { key: 'payDownAbove', label: PLAN_RULE_LABEL.payDownAbove, value: r.payDownAbove.value },
+    { key: 'bearBuffer', label: PLAN_RULE_LABEL.bearBufferMonths, value: r.bearBuffer.value },
+    { key: 'cashReserve', label: PLAN_RULE_LABEL.cashReserveMonths, value: r.cashReserve.value },
+  ];
+}
+
 /**
  * The six settings' readouts. The stops name the EFFECTIVE stop — the one the run uses (v1.2 #13) — and how far below
  * support it liquidates (Coinbase, `1 − stop/0.86`) or is called (Strike, `1 − stop/0.70`); a clamped stop says it

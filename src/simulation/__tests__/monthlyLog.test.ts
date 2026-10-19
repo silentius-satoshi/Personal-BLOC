@@ -208,6 +208,43 @@ describe('computeExpenseReanchor (spec §9)', () => {
     expect(computeExpenseReanchor(log, 3500, 0).avg).toBeCloseTo(4000);   // months 4,3,2 — not month 1
   });
 
+  it('⭐ F-R4-1 — the month in progress stays out of the average; a bound of 13 counts all twelve', () => {
+    // Months 1–3 are done at $4,000; month 4 is in progress, $500 drawn so far (Daily rolls each draw in as it happens).
+    const log = [
+      makeEntry(1, { expensesActual: 4000 }),
+      makeEntry(2, { expensesActual: 4000 }),
+      makeEntry(3, { expensesActual: 4000 }),
+      makeEntry(4, { expensesActual: 500 }),
+    ];
+    const r = computeExpenseReanchor(log, 3500, 0, 4);
+    expect(r.avg, 'F-R4-1 months 1–3 only').toBeCloseTo(4000);
+    expect(r.show, 'F-R4-1 the prompt').toBe(true);
+    // Without the bound — the rule as it stood — month 4 pulls the average to $2,833.33.
+    expect(computeExpenseReanchor(log, 3500, 0).avg, 'F-R4-1 premise: the partial month counted before').toBeCloseTo(8500 / 3);
+    // At a $4,000 plan the done months match it — no prompt — while the partial month would have raised one.
+    expect(computeExpenseReanchor(log, 4000, 0, 4).show, 'F-R4-1 no false prompt mid-month').toBe(false);
+    expect(computeExpenseReanchor(log, 4000, 0).show, 'F-R4-1 premise: the false prompt').toBe(true);
+    // A bound of 13 counts every month before it, month 4 too. (THIS MONTH passes 12 once the year is done: month 12
+    // keeps every later draw, so it never finishes.)
+    expect(computeExpenseReanchor(log, 3500, 0, 13).avg, 'F-R4-1 the year done').toBeCloseTo(8500 / 3);
+    // Fewer than three months before this one → no prompt.
+    expect(computeExpenseReanchor(log, 3500, 0, 3).show, 'F-R4-1 two months only').toBe(false);
+  });
+
+  it('⭐ F-R4-1 — a month that records no expenses stays out: never "averaged $0.00"', () => {
+    // Daily starts a month's entry at 0 and leaves it there when nothing is drawn on Strike.
+    const zeros = [makeEntry(1, { expensesActual: 0 }), makeEntry(2, { expensesActual: 0 }), makeEntry(3, { expensesActual: 0 })];
+    expect(computeExpenseReanchor(zeros, 3500, 0, 4).show, 'F-R4-1 three empty months — no prompt').toBe(false);
+    const mixed = [
+      makeEntry(1, { expensesActual: 3600 }),
+      makeEntry(2, { expensesActual: 4100 }),
+      makeEntry(3, { expensesActual: 0 }),
+      makeEntry(4, { expensesActual: 4100 }),
+    ];
+    // Months 4, 2 and 1 — month 3 recorded nothing.
+    expect(computeExpenseReanchor(mixed, 3500, 0, 5).avg, 'F-R4-1 the empty month skipped').toBeCloseTo((3600 + 4100 + 4100) / 3);
+  });
+
   it('dismissal durability: hidden at the dismissed avg, resurfaces when avg moves >5% past it', () => {
     const log = threeAt(4000, 4000, 4000);   // avg 4000, drifts from 3500
     expect(computeExpenseReanchor(log, 3500, 4000).show).toBe(false);     // dismissed at 4000 → hidden

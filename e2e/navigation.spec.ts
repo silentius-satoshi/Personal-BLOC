@@ -832,8 +832,9 @@ test.describe('Policy v2 Run B — the cliff on screen', () => {
     await expect(move).toBeVisible({ timeout: 8000 });
     const cliff = move.getByText('Coinbase seizes this loan at $58,140 — 42% below today.', { exact: true });
     await expect(cliff, 'MOVE-CLIFF').toBeVisible();
+    // D3 (the plan of record's Run 4): with a Coinbase loan the console runs — the alert names no strategy.
     const alert = move.getByText('Set a price alert at $66,667 in your exchange app — Coinbase reaches your 75% trigger '
-      + 'there. On the day, work from the Emergency Console (it runs when your Coinbase strategy is LTV-triggered).', { exact: true });
+      + 'there. On the day, work from the Emergency Console.', { exact: true });
     await expect(alert, 'MOVE-ALERT').toBeVisible();
     const card = page.getByText(CLIFF);
     await expect(card, 'CARD-CLIFF').toHaveCount(1);

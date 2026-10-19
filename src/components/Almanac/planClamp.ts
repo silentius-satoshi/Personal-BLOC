@@ -1,6 +1,7 @@
 import { effectiveStrikeCapPct } from '../../simulation/cyclingSim';
 import { STRIKE_MARGIN_CALL_LTV } from '../../simulation/emergencyModel';
 import { DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON } from './cyclingFaceView';
+import { PLAN_CB_DEFENSE_PCT } from '../../lib/planPolicy';
 
 /**
  * The plan of record's ONE clamp (spec §4.2) — the Decision face's engine context: Coinbase defended at 70%, Strike's
@@ -8,7 +9,7 @@ import { DEFAULT_STRIKE_CAP_PCT, DEFAULT_STRIKE_CAP_ON } from './cyclingFaceView
  * (Run 1), and so do THIS MONTH and Daily (`planMonthRun`, Run 2). A parent face's own cap slider stays a what-if on that
  * face.
  */
-export const PLAN_CB_LTV_CAP_PCT = 70;
+export const PLAN_CB_LTV_CAP_PCT = PLAN_CB_DEFENSE_PCT;   // ONE constant — Safety's at-support limit reads it too (Run 4)
 export const PLAN_STRIKE_CAP_PCT = DEFAULT_STRIKE_CAP_ON ? DEFAULT_STRIKE_CAP_PCT : 0;
 export const PLAN_STRIKE_CAP_EFF = effectiveStrikeCapPct(PLAN_STRIKE_CAP_PCT, STRIKE_MARGIN_CALL_LTV);
 export const PLAN_CLAMP: Readonly<{ cbLtvCapPct: number; strikeCapEffPct: number }> = Object.freeze({

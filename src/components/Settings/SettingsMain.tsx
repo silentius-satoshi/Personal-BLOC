@@ -75,7 +75,7 @@ const ALL_TABS = [
   { key: 'converter', label: 'Sats'                },
   { key: 'mining',    label: 'Miners'              },
   { key: 'coinbase',  label: 'CB Loan'             },
-  { key: 'liqsim',   label: 'Liq Sim'             },
+  { key: 'liqsim',   label: 'Emergency'           },
   { key: 'advisor',   label: 'Advisor'             },
 ] as const;
 
@@ -377,9 +377,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
   const cbLoanBalance         = useStore((s) => s.cbLoanBalance);         const setCbLoanBalance         = useStore((s) => s.setCbLoanBalance);
   const cbCollateralBtc       = useStore((s) => s.cbCollateralBtc);       const setCbCollateralBtc       = useStore((s) => s.setCbCollateralBtc);
   const cbAprPct              = useStore((s) => s.cbAprPct);              const setCbAprPct              = useStore((s) => s.setCbAprPct);
-  const cbMonthlyPayment      = useStore((s) => s.cbMonthlyPayment);      const setCbMonthlyPayment      = useStore((s) => s.setCbMonthlyPayment);
   const cbLiquidationPrice    = useStore((s) => s.cbLiquidationPrice);    const setCbLiquidationPrice    = useStore((s) => s.setCbLiquidationPrice);
-  const cbPaymentStrategy     = useStore((s) => s.cbPaymentStrategy);     const setCbPaymentStrategy     = useStore((s) => s.setCbPaymentStrategy);
   const cbLtvTriggerPct       = useStore((s) => s.cbLtvTriggerPct);       const setCbLtvTriggerPct       = useStore((s) => s.setCbLtvTriggerPct);
   const cbLtvTargetPct        = useStore((s) => s.cbLtvTargetPct);        const setCbLtvTargetPct        = useStore((s) => s.setCbLtvTargetPct);
   const cbLtvAction           = useStore((s) => s.cbLtvAction);           const setCbLtvAction           = useStore((s) => s.setCbLtvAction);
@@ -495,7 +493,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                 <span className={styles.settingsRowIcon}>🏦</span>
                 <div className={styles.settingsRowBody}>
                   <span className={styles.settingsRowTitle}>Coinbase Loan</span>
-                  <span className={styles.settingsRowSubtitle}>{hasCbLoan ? 'Balance, collateral, APR, payment strategy' : 'Turn on if you have a Coinbase/Morpho loan'}</span>
+                  <span className={styles.settingsRowSubtitle}>{hasCbLoan ? 'Balance, collateral, APR, crash-day trigger' : 'Turn on if you have a Coinbase/Morpho loan'}</span>
                 </div>
                 {/* the toggle is the only interactive element when the loan is off; stopPropagation so toggling never navigates */}
                 <span className={styles.settingsRowToggle} onClick={(e) => e.stopPropagation()}>
@@ -734,7 +732,7 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
               min={0}
               step={0.001}
             />
-            <span className={styles.fieldHint}>Your current BTC in Strike. Edits log a balance reading that re-anchors your collateral — feeds Advisor projections and Liq Sim.</span>
+            <span className={styles.fieldHint}>Your current BTC in Strike. Edits log a balance reading that re-anchors your collateral — your plan, the Safety card and the Emergency Console read it.</span>
           </div>
           {strikeApiConnected && strikeBtcAvailable !== null && (
             <div className={styles.setupFieldGroup}>
@@ -876,19 +874,8 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
           <div className={styles.setupGroupLabel}>COINBASE LOAN</div>
           {hasCbLoan && (
             <>
-              <div className={styles.setupFieldGroup}>
-                <span className={styles.setupFieldLabel}>CB PAYMENT STRATEGY</span>
-                <div className={styles.strategyPills}>
-                  <button
-                    className={`${styles.strategyPill} ${cbPaymentStrategy === 'monthly' ? styles.strategyPillActive : ''}`}
-                    onClick={() => setCbPaymentStrategy('monthly')}
-                  >Monthly</button>
-                  <button
-                    className={`${styles.strategyPill} ${cbPaymentStrategy === 'ltvTriggered' ? styles.strategyPillActive : ''}`}
-                    onClick={() => setCbPaymentStrategy('ltvTriggered')}
-                  >LTV-Triggered</button>
-                </div>
-              </div>
+              {/* Run 4 (D3) — no payment strategy: the plan of record repays Coinbase (the support policy), and the
+                  crash-day thresholds below — the Emergency Console's — apply to every Coinbase loan. */}
               <NumberInput label="Loan balance"   value={cbLoanBalance}   onChange={setCbLoanBalance}   prefix="$" min={0} step={1000} />
               <div className={styles.setupFieldGroup}>
                 <NumberInput label="BTC collateral" value={cbCollateralBtc} onChange={setCbCollateralBtc} prefix="₿" min={0} step={0.001} />
@@ -914,43 +901,38 @@ export function SettingsMain({ hideHeader = false, registerBack }: SettingsMainP
                   </span>
                 )}
               </div>
-              {cbPaymentStrategy === 'monthly' && (
-                <NumberInput label="Monthly payment" value={cbMonthlyPayment} onChange={setCbMonthlyPayment} prefix="$" min={0} step={100} />
-              )}
-              {cbPaymentStrategy === 'ltvTriggered' && (
-                <>
-                  <div className={styles.setupFieldGroup}>
-                    <span className={styles.setupFieldLabel}>ACTION AT TRIGGER</span>
-                    <div className={styles.strategyPills}>
-                      <button
-                        className={`${styles.strategyPill} ${cbLtvAction === 'paydown' ? styles.strategyPillActive : ''}`}
-                        onClick={() => setCbLtvAction('paydown')}
-                      >Paydown</button>
-                      <button
-                        className={`${styles.strategyPill} ${cbLtvAction === 'addCollateral' ? styles.strategyPillActive : ''}`}
-                        onClick={() => setCbLtvAction('addCollateral')}
-                      >Add collateral</button>
-                    </div>
-                    {cbLtvAction === 'addCollateral' && (
-                      <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now.</span>
-                    )}
-                  </div>
-                  <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} max={85} step={1} />
-                  <NumberInput
-                    label={cbLtvAction === 'addCollateral' ? 'Reduce to LTV' : 'Pay down to LTV'}
-                    value={cbLtvTargetPct}
-                    onChange={setCbLtvTargetPct}
-                    min={0}
-                    max={85}
-                    step={1}
-                  />
-                  {/* Run 3 — the rotate-back level left with its last reader (the Advisor's refill, off every screen). */}
-                  {!(cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
-                    <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
-                      Thresholds must satisfy target &lt; trigger &lt; 86% (Morpho liquidation).
-                    </span>
-                  )}
-                </>
+              {/* The crash day (D3 keeps the trigger and the target for it): the console's waiting card and restore target,
+                  the price alert, the suggested line and Safety's marker. */}
+              <div className={styles.setupFieldGroup}>
+                <span className={styles.setupFieldLabel}>ACTION AT TRIGGER</span>
+                <div className={styles.strategyPills}>
+                  <button
+                    className={`${styles.strategyPill} ${cbLtvAction === 'paydown' ? styles.strategyPillActive : ''}`}
+                    onClick={() => setCbLtvAction('paydown')}
+                  >Paydown</button>
+                  <button
+                    className={`${styles.strategyPill} ${cbLtvAction === 'addCollateral' ? styles.strategyPillActive : ''}`}
+                    onClick={() => setCbLtvAction('addCollateral')}
+                  >Add collateral</button>
+                </div>
+                {cbLtvAction === 'addCollateral' && (
+                  <span className={styles.fieldHint}>Add-collateral shapes logging and guidance only for now.</span>
+                )}
+              </div>
+              <NumberInput label="Draw trigger LTV" value={cbLtvTriggerPct} onChange={setCbLtvTriggerPct} min={0} max={85} step={1} />
+              <NumberInput
+                label={cbLtvAction === 'addCollateral' ? 'Reduce to LTV' : 'Pay down to LTV'}
+                value={cbLtvTargetPct}
+                onChange={setCbLtvTargetPct}
+                min={0}
+                max={85}
+                step={1}
+              />
+              {/* Run 3 — the rotate-back level left with its last reader (the Advisor's refill, off every screen). */}
+              {!(cbLtvTargetPct < cbLtvTriggerPct && cbLtvTriggerPct < 86) && (
+                <span className={styles.fieldHint} style={{ color: 'var(--amber)' }}>
+                  Thresholds must satisfy target &lt; trigger &lt; 86% (Morpho liquidation).
+                </span>
               )}
               <div className={styles.setupFieldGroup}>
                 <NumberInput label="Liquidation price" value={cbLiquidationPrice} onChange={setCbLiquidationPrice} prefix="$" min={0} step={100} />

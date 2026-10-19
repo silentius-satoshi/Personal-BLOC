@@ -1,11 +1,11 @@
 import { useState, useMemo } from 'react';
 import { useStore } from '../../store/useStore';
+import { useShallow } from 'zustand/react/shallow';
 import {
-  getTier,
-  getTierColor,
   getCurrentStrategyMonth,
   isStrategyComplete,
 } from '../../simulation/runAdvisor';
+import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
 import { deriveCurrentPosition } from '../../simulation/logUtils';
 import { strikeAvailableCredit } from '../../simulation/strikeCredit';
 import { fmtUSD, fmtLtvPct } from '../../utils/format';
@@ -15,7 +15,6 @@ import { usePlanCardInputs } from '../SimpleMode/usePlanCardInputs';
 import { MonthlyLogSection } from './MonthlyLogSection';
 import { MonthlyLogOverlay } from './MonthlyLogOverlay';
 import styles from './AdvisorMain.module.css';
-import { accruedCbBalance } from '../../simulation/cbMetrics';
 
 interface AdvisorMainProps {
   /** The Ledger — Simple mode's Daily view, where a month is signed off. */
@@ -34,9 +33,7 @@ export function AdvisorMain({ onOpenLedger, onOpenPlanPaths }: AdvisorMainProps)
   const creditLine        = useStore((s) => s.creditLine);
   const btcPrice          = useStore((s) => s.btcPrice);
   const cbLoanBalance     = useStore((s) => s.cbLoanBalance);
-  const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
-  const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
   const advisorStartDate         = useStore((s) => s.advisorStartDate);
   const advisorActualBlocBalance = useStore((s) => s.advisorActualBlocBalance);
   const currentBtcHeld           = useStore((s) => s.getCurrentBtcHeld());   // reading-anchored current Strike collateral (v20)
@@ -50,9 +47,9 @@ export function AdvisorMain({ onOpenLedger, onOpenPlanPaths }: AdvisorMainProps)
   const availCredit   = strikeAvailableCredit(creditLine, position.btcHeld, btcPrice, position.blocBalance);
   const currentMonth  = getCurrentStrategyMonth(advisorStartDate);
   const strategyDone  = isStrategyComplete(advisorStartDate);
-  const effectiveCbBalance = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
-  const currentCbLtv  = cbCollateralBtc * btcPrice > 0 ? effectiveCbBalance / (cbCollateralBtc * btcPrice) : 0;
-  const currentTier   = getTier(currentCbLtv);
+  // Run 4 — today's Coinbase LTV and its colour are Safety's (one classifier, the trigger's), no longer the Advisor's
+  // tiers (55 / 65 / 70).
+  const safety = deriveSafetyView(useStore(useShallow(selectSafetyViewInputs)));
 
   // Run 3 — this tab's ONE run of the plan of record: the card, the monthly log's planned figures and the overlay's.
   const { pm, crashLine, ndp, ndpActionActive } = usePlanCardInputs();
@@ -126,8 +123,8 @@ export function AdvisorMain({ onOpenLedger, onOpenPlanPaths }: AdvisorMainProps)
                 </div>
                 <div className={styles.positionStat}>
                   <span className={styles.positionLabel}>Current LTV</span>
-                  <span className={styles.positionValue} style={{ color: getTierColor(currentTier) }}>
-                    {fmtLtvPct(currentCbLtv, 1)}
+                  <span className={styles.positionValue} style={{ color: LEVEL_COLOR[safety.cbLevel] }}>
+                    {fmtLtvPct(safety.cbLtv, 1)}
                   </span>
                 </div>
                 <div className={styles.positionStat}>

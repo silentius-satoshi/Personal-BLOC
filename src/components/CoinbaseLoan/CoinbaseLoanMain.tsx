@@ -1,21 +1,16 @@
 import { useMemo } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../../store/useStore';
-import { runCoinbaseLoan, classifyLtv, type CbLtvStatus } from '../../simulation/runCoinbaseLoan';
-import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice } from '../../simulation/cbMetrics';
+import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice, type SafetyLevel } from '../../simulation/cbMetrics';
+import { deriveSafetyView, selectSafetyViewInputs, LEVEL_COLOR } from '../../simulation/safetyView';
+import { isCrashDay, atTriggerLine, cbTabCrashDayLine, CONSOLE_LINK } from '../Tools/crashPlaybookView';
+import { PLAN_PATHS_LINK } from '../Almanac/planMonthView';
 import { LiquidationModeler } from './LiquidationModeler';
-import { fmtUSD, fmtLtvPct } from '../../utils/format';
+import { fmtLtvPct, shownUsd } from '../../utils/format';
 import styles from './CoinbaseLoanMain.module.css';
 
-function ltvColor(status: CbLtvStatus): string {
-  switch (status) {
-    case 'safe':       return 'var(--green)';
-    case 'watch':      return 'var(--amber)';
-    case 'warning':    return 'var(--orange)';
-    case 'emergency':  return 'var(--orange)';
-    case 'critical':   return 'var(--red)';
-    case 'liquidated': return 'var(--red)';
-  }
-}
+/** Safety's badge words for today's level — the CB Loan tab reads Safety's classifier (Run 4), so its words too. */
+const LEVEL_WORD: Record<SafetyLevel, string> = { safe: 'SAFE', watch: 'FAIR', act: 'POOR' };
 
 interface StatCardProps { label: string; value: string; valueColor: string; sub: string; }
 
@@ -29,20 +24,16 @@ function StatCard({ label, value, valueColor, sub }: StatCardProps) {
   );
 }
 
-function LtvSafetyBar({ currentLtv }: { currentLtv: number }) {
+/** Run 4 — today's LTV on the 0–100% track, in Safety's colour; the marker is the owner's trigger (the crash day's line,
+ *  the console's), where a typed 70% "Emergency" stood. */
+function LtvSafetyBar({ currentLtv, level, triggerPct }: { currentLtv: number; level: SafetyLevel; triggerPct: number }) {
   const pct = Math.min(currentLtv * 100, 100);
-  const fillColor =
-    currentLtv < 0.55 ? 'var(--green)'
-    : currentLtv < 0.65 ? 'var(--amber)'
-    : currentLtv < 0.70 ? 'var(--orange)'
-    : 'var(--red)';
-
   return (
     <div className={styles.ltvBarWrapper}>
       <div className={styles.ltvBarTrack}>
-        <div className={styles.ltvBarFill} style={{ width: `${pct}%`, background: fillColor }} />
-        <div className={styles.ltvMarker} style={{ left: '70%' }}>
-          <span className={styles.ltvMarkerLabel}>70%</span>
+        <div className={styles.ltvBarFill} style={{ width: `${pct}%`, background: LEVEL_COLOR[level] }} />
+        <div className={styles.ltvMarker} style={{ left: `${triggerPct}%` }}>
+          <span className={styles.ltvMarkerLabel}>{triggerPct}%</span>
         </div>
         <div className={styles.ltvMarker} style={{ left: '86%' }}>
           <span className={styles.ltvMarkerLabel}>86%</span>
@@ -51,7 +42,7 @@ function LtvSafetyBar({ currentLtv }: { currentLtv: number }) {
       <div className={styles.ltvBarLabels}>
         <span className={styles.ltvBarCurrent}>{fmtLtvPct(currentLtv, 2)} LTV</span>
         <div className={styles.ltvBarLegend}>
-          <span style={{ color: 'var(--amber)' }}>↑70% Emergency</span>
+          <span style={{ color: 'var(--amber)' }}>↑{triggerPct}% your trigger</span>
           <span style={{ color: 'var(--red)' }}>↑86% Liquidation</span>
         </div>
       </div>
@@ -59,12 +50,19 @@ function LtvSafetyBar({ currentLtv }: { currentLtv: number }) {
   );
 }
 
-export function CoinbaseLoanMain() {
+interface CoinbaseLoanMainProps {
+  /** Run 4 — the Emergency Console (the `liqsim` tab): the crash day is the console's; null when that tab is hidden. */
+  onOpenConsole: (() => void) | null;
+  /** Run 4 — the plan's year on the price paths, the Almanac's Decision face; null when the Almanac tab is hidden. */
+  onOpenPlanPaths: (() => void) | null;
+}
+
+export function CoinbaseLoanMain({ onOpenConsole, onOpenPlanPaths }: CoinbaseLoanMainProps) {
   const btcPrice         = useStore((s) => s.btcPrice);
   const cbLoanBalance    = useStore((s) => s.cbLoanBalance);
   const cbCollateralBtc  = useStore((s) => s.cbCollateralBtc);
   const cbAprPct         = useStore((s) => s.cbAprPct);
-  const cbMonthlyPayment   = useStore((s) => s.cbMonthlyPayment);
+  const hasCbLoan          = useStore((s) => s.hasCbLoan);
   const cbLiquidationPrice = useStore((s) => s.cbLiquidationPrice);
   const cbLiquidationPriceAsOf = useStore((s) => s.cbLiquidationPriceAsOf);
   const cbLtvTriggerPct    = useStore((s) => s.cbLtvTriggerPct);
@@ -81,19 +79,17 @@ export function CoinbaseLoanMain() {
     ? accruedCbLiquidationPrice(cbLiquidationPrice, cbAprPct, cbLiquidationPriceAsOf)
     : m.liqPrice;
   const dropToLiqPct    = Math.max(0, (1 - autoLiqPrice / btcPrice) * 100);
-  const currentStatus   = classifyLtv(currentLtv);
+  // Run 4 — today's level is Safety's (one classifier for today's Coinbase LTV: Safety, the Advisor tab and this tab).
+  const safety          = deriveSafetyView(useStore(useShallow(selectSafetyViewInputs)));
+  // The crash day is the console's (D13's one rule, the console's gate): at or past the trigger at today's price.
+  const crashDay        = isCrashDay({ hasCbLoan, cbDebt: accruedBalance, cbCollateralBtc, price: btcPrice, triggerPct: cbLtvTriggerPct });
 
+  // Run 4 — the price alerts: the owner's trigger (where the console takes over) and Coinbase's 86% line. The typed
+  // 70% "Emergency Protocol", 76% "Critical" and 84% "Danger" rows — a fourth crash-day answer — went with it.
   const thresholds = useMemo(() => [
-    { label: 'Emergency Protocol', ltvPct: 70, price: accruedBalance / (cbCollateralBtc * 0.70), action: 'Stop BLOC buying · Redirect all income to CB paydown' },
-    { label: 'Critical',           ltvPct: 76, price: accruedBalance / (cbCollateralBtc * 0.76), action: 'Aggressive paydown — 10 pts from auto-liquidation' },
-    { label: 'Danger',             ltvPct: 84, price: accruedBalance / (cbCollateralBtc * 0.84), action: 'Pay down or add collateral immediately' },
-    { label: 'Auto-Liquidation',   ltvPct: 86, price: accruedBalance / (cbCollateralBtc * 0.86), action: 'Position liquidated + 4.38% penalty · possible full wipeout' },
-  ], [accruedBalance, cbCollateralBtc]);
-
-  const projection = useMemo(
-    () => runCoinbaseLoan({ loanBalance: accruedBalance, collateralBtc: cbCollateralBtc, aprPct: cbAprPct, monthlyPayment: cbMonthlyPayment, btcPrice }),
-    [accruedBalance, cbCollateralBtc, cbAprPct, cbMonthlyPayment, btcPrice],
-  );
+    { label: 'Your trigger',     key: 'trigger', badge: styles.alert70, ltvPct: cbLtvTriggerPct, price: m.triggerPrice, action: 'Work from the Emergency Console' },
+    { label: 'Auto-Liquidation', key: 'lltv',    badge: styles.alert86, ltvPct: 86,              price: autoLiqPrice,   action: 'Position liquidated + 4.38% penalty · possible full wipeout' },
+  ], [cbLtvTriggerPct, m.triggerPrice, autoLiqPrice]);
 
   return (
     <div className={styles.main}>
@@ -106,11 +102,14 @@ export function CoinbaseLoanMain() {
         </p>
       </div>
 
-      {/* Emergency Banner */}
-      {currentLtv >= 0.70 && (
+      {/* The crash day — the console's (Run 4): at or past the owner's trigger, a pointer to it, never a fourth answer */}
+      {crashDay && (
         <div className={styles.emergencyBanner}>
           <span className={styles.emergencyIcon}>⚠</span>
-          <span>Emergency Protocol Active — LTV {fmtLtvPct(currentLtv)} · Redirect all income to Coinbase paydown immediately</span>
+          <span>{atTriggerLine(cbLtvTriggerPct, true)}</span>
+          {onOpenConsole && (
+            <button className={styles.consoleLink} onClick={onOpenConsole}>{CONSOLE_LINK} →</button>
+          )}
         </div>
       )}
 
@@ -119,8 +118,8 @@ export function CoinbaseLoanMain() {
         <StatCard
           label="CURRENT LTV"
           value={fmtLtvPct(currentLtv, 2)}
-          valueColor={ltvColor(currentStatus)}
-          sub={currentStatus.toUpperCase()}
+          valueColor={LEVEL_COLOR[safety.cbLevel]}
+          sub={LEVEL_WORD[safety.cbLevel]}
         />
         <StatCard
           label="AUTO-LIQ PRICE"
@@ -145,7 +144,7 @@ export function CoinbaseLoanMain() {
       {/* Section 3 — LTV Safety Bar */}
       <div className={styles.card}>
         <h3 className={styles.cardTitle}>LTV Risk Position</h3>
-        <LtvSafetyBar currentLtv={currentLtv} />
+        <LtvSafetyBar currentLtv={currentLtv} level={safety.cbLevel} triggerPct={cbLtvTriggerPct} />
       </div>
 
       {/* Section 4 — Alert Thresholds */}
@@ -166,11 +165,11 @@ export function CoinbaseLoanMain() {
               {thresholds.map((t) => {
                 const isBreach = btcPrice <= t.price;
                 return (
-                  <tr key={t.ltvPct} className={isBreach ? styles.alertRowActive : ''}>
-                    <td className={styles.alertPrice}>${Math.round(t.price).toLocaleString()}</td>
+                  <tr key={t.key} className={isBreach ? styles.alertRowActive : ''}>
+                    <td className={styles.alertPrice}>{shownUsd(t.price) ? `$${Math.round(t.price).toLocaleString()}` : '—'}</td>
                     <td className={styles.alertLtv}>{t.ltvPct}%</td>
                     <td>
-                      <span className={`${styles.alertBadge} ${styles[`alert${t.ltvPct}`]}`}>{t.label}</span>
+                      <span className={`${styles.alertBadge} ${t.badge}`}>{t.label}</span>
                     </td>
                     <td className={styles.alertAction}>{t.action}</td>
                   </tr>
@@ -197,104 +196,20 @@ export function CoinbaseLoanMain() {
         isEstimated={cbLiquidationPrice <= 0}
       />
 
-      {/* Section 5 — 12-Month Projection */}
-      <div className={styles.card}>
-        <div className={styles.projectionHeader}>
-          <div>
-            <h3 className={styles.cardTitle}>12-Month Projection</h3>
-            <p className={styles.cardSubtitle}>
-              Flat BTC @ ${btcPrice.toLocaleString()} · {cbMonthlyPayment > 0 ? `$${cbMonthlyPayment.toLocaleString()}/mo payment` : 'No payments (interest-only)'}
-            </p>
-          </div>
-          <div className={styles.projectionSummary}>
-            <span className={styles.projSumLabel}>Year-end balance</span>
-            <span className={styles.projSumValue}>{fmtUSD(projection.finalBalance)}</span>
-            <span className={styles.projSumLabel}>Year-end LTV</span>
-            <span className={`${styles.projSumValue} ${styles[`ltvColor_${classifyLtv(projection.finalLtv)}`]}`}>
-              {fmtLtvPct(projection.finalLtv, 2)}
-            </span>
-          </div>
-        </div>
-        <div className={styles.tableWrapper}>
-          <table className={styles.projTable}>
-            <thead>
-              <tr>
-                <th>Month</th>
-                <th>Balance</th>
-                <th>Interest</th>
-                <th>Payment</th>
-                <th>Net Change</th>
-                <th>LTV</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {projection.rows.map((row) => (
-                <tr key={row.month} className={styles[`status_${row.status}`]}>
-                  <td className={styles.moCell}>Mo {row.month}</td>
-                  <td>{fmtUSD(row.balance)}</td>
-                  <td className={styles.interestCell}>{fmtUSD(row.interest)}</td>
-                  <td className={row.payment > 0 ? styles.paymentCell : styles.mutedCell}>
-                    {row.payment > 0 ? fmtUSD(row.payment) : '—'}
-                  </td>
-                  <td className={row.netChange >= 0 ? styles.negCell : styles.posCell}>
-                    {row.netChange >= 0 ? '+' : '−'}{fmtUSD(Math.abs(row.netChange))}
-                  </td>
-                  <td className={styles[`ltvColor_${row.status}`]}>{fmtLtvPct(row.ltv, 2)}</td>
-                  <td>
-                    <span className={`${styles.statusBadge} ${styles[`badge_${row.status}`]}`}>{row.status}</span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-            <tfoot>
-              <tr>
-                <td>Total</td>
-                <td>{fmtUSD(projection.finalBalance)}</td>
-                <td className={styles.interestCell}>{fmtUSD(projection.totalInterest)}</td>
-                <td className={projection.totalPayments > 0 ? styles.paymentCell : styles.mutedCell}>
-                  {projection.totalPayments > 0 ? fmtUSD(projection.totalPayments) : '—'}
-                </td>
-                <td />
-                <td className={styles[`ltvColor_${classifyLtv(projection.finalLtv)}`]}>
-                  {fmtLtvPct(projection.finalLtv, 2)}
-                </td>
-                <td />
-              </tr>
-            </tfoot>
-          </table>
-        </div>
-      </div>
+      {/* Run 4 — the 12-month projection read the retired monthly payment (D3): the plan's year is the Advisor tab's card,
+          month by month, and the Decision face's, on the price paths. */}
+      {onOpenPlanPaths && (
+        <button className={styles.pathsLink} onClick={onOpenPlanPaths}>{PLAN_PATHS_LINK} →</button>
+      )}
 
-      {/* Section 6 — Emergency Protocol */}
-      <div className={`${styles.card} ${currentLtv >= 0.70 ? styles.cardUrgent : ''}`}>
-        <h3 className={styles.cardTitle}>Emergency Protocol</h3>
-        <p className={styles.cardSubtitle}>
-          Activates when CB LTV ≥ 70% (BTC at ${Math.round(cbLoanBalance / (cbCollateralBtc * 0.70)).toLocaleString()})
-        </p>
-        <ol className={styles.protocolList}>
-          <li className={styles.protocolStep}>
-            <span className={styles.stepNum}>1</span>
-            <div>
-              <strong>Stop all Smart BLOC BTC buying</strong>
-              <p>Redirect 100% of monthly income to Coinbase loan paydown. BLOC interest continues rolling into balance silently (~${Math.round(monthlyInterest)}/mo).</p>
-            </div>
-          </li>
-          <li className={styles.protocolStep}>
-            <span className={styles.stepNum}>2</span>
-            <div>
-              <strong>Monitor daily</strong>
-              <p>Morpho has no warning system. You must self-monitor. Auto-liquidation fires instantly at 86% LLTV with no grace period.</p>
-            </div>
-          </li>
-          <li className={styles.protocolStep}>
-            <span className={styles.stepNum}>3</span>
-            <div>
-              <strong>Resume Smart BLOC when CB LTV &lt; 60%</strong>
-              <p>Once Coinbase LTV is safely below 60%, redirect income back to Smart BLOC paydown and BTC accumulation.</p>
-            </div>
-          </li>
-        </ol>
+      {/* Section 6 — the crash day (Run 4): the console's, at the owner's trigger. Replaced the typed "Emergency Protocol"
+          (income to Coinbase at 70%, back to Smart BLOC under 60%) — a fourth crash-day answer. */}
+      <div className={`${styles.card} ${crashDay ? styles.cardUrgent : ''}`}>
+        <h3 className={styles.cardTitle}>On a crash day</h3>
+        <p className={styles.cardSubtitle}>{cbTabCrashDayLine(cbLtvTriggerPct, m.triggerPrice)}</p>
+        {onOpenConsole && (
+          <button className={styles.consoleLink} onClick={onOpenConsole}>{CONSOLE_LINK} →</button>
+        )}
       </div>
 
       {/* Section 7 — Strike vs Coinbase Comparison */}

@@ -5,7 +5,7 @@ import { usePlanMonth } from '../Almanac/usePlanMonth';
 import {
   planMonthSummary, planMonthActions, planStatus, planRowDot, planRowNoteColor, planRowAmountColor, planMinimumOwed,
   planMinimumLine, planInterestRollsNote, planLedgerTargets, planBars, planBarsCaption, planNdpEstimateUsd, planNdpBalance, VENUE_COLOR,
-  PLAN_CRASH_TITLE,
+  PLAN_CRASH_TITLE, planMoveBringsCbWithin,
 } from '../Almanac/planMonthView';
 import { VenueText } from '../SimpleMode/PlanMonthCard';
 import { bucketEventToMonth } from '../../simulation/logUtils';
@@ -88,7 +88,6 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
   const cbCollateralBtc   = useStore((s) => s.cbCollateralBtc);
   const cbAprPct          = useStore((s) => s.cbAprPct);
-  const cbPaymentStrategy = useStore((s) => s.cbPaymentStrategy);
   const cbLtvTriggerPct   = useStore((s) => s.cbLtvTriggerPct);
   const blocMinPaymentSource = useStore((s) => s.blocMinPaymentSource);
   const effectiveCbBalance = hasCbLoan ? accruedCbBalance(cbLoanBalance, cbAprPct, cbLoanBalanceAsOf) : 0;
@@ -142,7 +141,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
   const pmRows = planMonthActions(pm.run.sim, pm.run.placement, 1);
   // D13 — a crash day outranks the month's status, as on THIS MONTH (the console's gate and inputs).
   const crashDay = isCrashDay({
-    hasCbLoan, ltvTriggered: cbPaymentStrategy === 'ltvTriggered', cbDebt: effectiveCbBalance, cbCollateralBtc,
+    hasCbLoan, cbDebt: effectiveCbBalance, cbCollateralBtc,
     price: btcPrice, triggerPct: cbLtvTriggerPct,
   });
   const pmStatus = crashDay
@@ -241,7 +240,7 @@ export function DailyModeView({ onOpenSettings, onOpenAlmanac, simpleView, setSi
 
         <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />
 
-        <SafetyDashboard />
+        <SafetyDashboard moveBringsCbWithin={planMoveBringsCbWithin(pm.run.placement)} />
 
         <div className={styles.cards}>
 

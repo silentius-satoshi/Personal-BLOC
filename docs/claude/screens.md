@@ -12,7 +12,7 @@ const ALL_TABS_META = [
   { key: 'converter', fullLabel: 'Sats',              shortLabel: '丰'        },
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'    },
   { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'        },
-  { key: 'liqsim',   fullLabel: 'Liq Sim',           shortLabel: 'Liq'      },
+  { key: 'liqsim',   fullLabel: 'Emergency',         shortLabel: 'Emerg'    },   // the Emergency Console (D3, Run 4); key kept for saved layouts
   { key: 'almanac',  fullLabel: 'Almanac',            shortLabel: 'Almanac'  },
   { key: 'advisor',  fullLabel: 'Advisor',            shortLabel: 'Adv'      },
 ];
@@ -20,7 +20,7 @@ const ALL_TABS_META = [
 
 Visible tabs = `tabOrder` ordered → filtered by `hiddenTabs`. Tab bar uses `DndContext` + `SortableContext` (horizontal, 5px activation threshold). Settings page uses vertical sortable with ⠿ handles. New keys not in `tabOrder` auto-append to end.
 
-**`SettingsMain.tsx` has its own local `ALL_TABS` constant** — must be kept in sync with `ALL_TABS_META` when adding new tabs.
+**`SettingsMain.tsx` has its own local `ALL_TABS` constant** — must be kept in sync with `ALL_TABS_META` when adding new tabs. (The plan of record's Run 4 relabelled the `liqsim` tab "Emergency" in both.)
 
 ---
 
@@ -29,7 +29,7 @@ Visible tabs = `tabOrder` ordered → filtered by `hiddenTabs`. Tab bar uses `Dn
 Flex-column panel with two sections:
 - **`.scrollArea`** — scrollable inputs (income, expenses, BTC price, credit line, collateral, APR)
 - **`.recommendations`** — sticky bottom panel:
-  - Recommended min credit line: `Math.ceil(peakBalance × 1.10 / 500) × 500` where `peakBalance = max(uncapped runBlocYearOne rows)`. Green ✓ / orange ↑.
+  - Your plan's suggested line (the plan of record's Run 4): `suggestedLineUsd` (placement — THE MOVE's figure) on the plan's Coinbase leg (`planCbLoanBalanceOf` / `planCbCollateralOf`, accrued with `accruedCbBalance`) at `btcPrice`, and under it `decisionView`'s `suggestedLineWords` — one copy with THE MOVE's line. Green ✓ when the credit line already covers it, orange ↑ otherwise. It replaced "Recommended min credit line" (`Math.ceil(peakBalance × 1.10 / 500) × 500`, `peakBalance` the max of uncapped `runBlocYearOne` rows at a typed 0.15 ceiling).
   - Break-even draw: `income / (1 + blocApr/100/12)`. Green ✓ when `expenses ≤ breakEven`.
 
 Collateral input reads `getCollateralForTier(activeTier, expenses, btcPrice, sandboxBtc)` where
@@ -68,7 +68,7 @@ interface BlocMonthRow {
 
 **BTC growth:** `btcPriceThisMonth = btcPrice × (1 + btcGrowthRate)^((month-1)/12)`
 
-**Recommended credit line:** run with `creditLine: Infinity` → `peakBalance × 1.10` rounded up to $500.
+**Recommended credit line:** run with `creditLine: Infinity` → `peakBalance × 1.10` rounded up to $500. (InputsPanel's "Recommended min" until the plan of record's Run 4; no screen shows it now — the sidebar shows the plan's suggested line.)
 
 ### Growth Scenario Toggle (local state)
 Bear (−30%) / Flat (0%) / Power Law (dynamic) / Bull (+80%)

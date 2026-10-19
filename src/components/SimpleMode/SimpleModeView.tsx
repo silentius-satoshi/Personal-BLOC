@@ -3,7 +3,7 @@ import { useStore } from '../../store/useStore';
 import { getCurrentStrategyMonth, isStrategyComplete } from '../../simulation/runAdvisor';
 import { computeExpenseReanchor } from '../../simulation/logUtils';
 import { fmtUSDCents, shownUsd, toCents } from '../../utils/format';
-import { planLogRows, planReanchorLine, PLAN_PATHS_LINK } from '../Almanac/planMonthView';
+import { planLogRows, planReanchorWords, planMoveBringsCbWithin, PLAN_PATHS_LINK } from '../Almanac/planMonthView';
 import { MonthlyLogOverlay } from '../Advisor/MonthlyLogOverlay';
 import { SafetyDashboard } from './SafetyDashboard';
 import { ViewToggle } from '../Layout/ViewToggle';
@@ -90,7 +90,11 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, onOpenPlanPaths,
   // rows left every screen with the Outlook).
   const { pm, crashLine, ndp, ndpEstimate, ndpActionActive } = usePlanCardInputs();
   const overlayRows = useMemo(() => planLogRows(pm.run.sim, currentMonth), [pm.run.sim, currentMonth]);
-  const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(monthlyLog, expenses, expenseReanchorDismissedAt);
+  // F-R4-1 — the month in progress is still being logged, so only the months before it count. Once the year is done
+  // currentMonth stays 12, and month 12 keeps every later draw (bucketEventToMonth clamps), so it never counts.
+  const { show: showReanchor, avg: reanchorAvg } = computeExpenseReanchor(
+    monthlyLog, expenses, expenseReanchorDismissedAt, currentMonth);
+  const reanchor = planReanchorWords(reanchorAvg, expenses);
 
   const isDefaultSetup = income === 5000 && expenses === 4000 && advisorActualBlocBalance === 0;
 
@@ -140,7 +144,7 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, onOpenPlanPaths,
 
       <ViewToggle simpleView={simpleView} setSimpleView={setSimpleView} />
 
-      <SafetyDashboard />
+      <SafetyDashboard moveBringsCbWithin={planMoveBringsCbWithin(pm.run.placement)} />
 
       <div className={styles.cards}>
 
@@ -181,19 +185,19 @@ export function SimpleModeView({ onOpenSettings, onOpenAlmanac, onOpenPlanPaths,
         <button className={styles.pathsLink} onClick={onOpenPlanPaths}>{PLAN_PATHS_LINK} →</button>
 
         {/* The expenses prompt (on the Outlook until Run 3) — to the cent, like THIS MONTH (BL19); owner-only: Update
-            writes the plan. */}
+            writes the plan. Its words and buttons are planMonthView's (BL26). */}
         {showReanchor && !viewerMode && (
           <div className={styles.reanchorBanner}>
-            <span className={styles.reanchorText}>{planReanchorLine(reanchorAvg, expenses)}</span>
+            <span className={styles.reanchorText}>{reanchor.line}</span>
             <div className={styles.reanchorBtns}>
               <button
                 className={`${styles.reanchorBtn} ${styles.reanchorBtnPrimary}`}
                 onClick={() => setExpenses(toCents(reanchorAvg))}
-              >Update</button>
+              >{reanchor.update}</button>
               <button
                 className={styles.reanchorBtn}
                 onClick={() => setExpenseReanchorDismissedAt(Math.round(reanchorAvg))}
-              >Dismiss</button>
+              >{reanchor.keep}</button>
             </div>
           </div>
         )}

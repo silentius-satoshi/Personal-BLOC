@@ -58,7 +58,8 @@ const CHECKLIST = [
 ];
 
 /**
- * The crash-day page for `ltvTriggered` CB mode — READ-ONLY (no dayLog writes). Its card is `crashPlaybook` on the live
+ * The crash-day page for a Coinbase loan (D3, the plan of record's Run 4 — the `ltvTriggered` strategy's until then) —
+ * READ-ONLY (no dayLog writes). Its card is `crashPlaybook` on the live
  * position and the owner's real cold, at the effective price, built through crashPlaybookView — so the console and the
  * engine give ONE answer. The power-law support crossing stays here; the model and the view module stay belief-free.
  */

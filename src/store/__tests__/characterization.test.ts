@@ -189,12 +189,14 @@ describe('characterization · viewer snapshot (buildViewerSnapshotPayload)', () 
     delete safe.asOf;
     expect(safe).toEqual({
       snapshotVersion: 2, privacyMode: 'safe', hasCbLoan: false, btcPriceAtSnapshot: 82000,
-      thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 75, cbLiqFrac: 0.86 },
-      // The 9 safety values are COMPUTED from seeds by deriveSafetyView/buildSafeSafety — frozen from a
-      // one-time run against the seed store (all zero/safe because the seed has no drawn debt).
+      // Run 4 (D9): + the plan's Coinbase limit at support (C1's 45%).
+      thresholds: { strikeLiqLtv: 0.85, cbLtvTriggerPct: 75, cbLiqFrac: 0.86, cbLimitAtSupport: 0.45 },
+      // The 11 safety values are COMPUTED from seeds by deriveSafetyView/buildSafeSafety — frozen from a
+      // one-time run against the seed store (all zero/safe because the seed has no drawn debt; no Coinbase loan, so no
+      // reading at support — Run 4, D9).
       safety: {
         capacityUsed: 0, creditLevel: 'safe', strikeLtv: 0, strikeLevel: 'safe', crashLtv: 0,
-        cbLtv: 0, cbLevel: 'safe', cbLiqFrac: 0.86, overall: 'safe',
+        cbLtv: 0, cbLevel: 'safe', cbLiqFrac: 0.86, cbLtvAtSupport: null, cbAtSupportLevel: 'safe', overall: 'safe',
       },
     });
   });

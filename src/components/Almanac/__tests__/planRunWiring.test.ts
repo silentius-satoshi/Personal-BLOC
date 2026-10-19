@@ -264,8 +264,13 @@ describe('⭐ CARD — D-R2-2 / D-R2-8: the main screens read the plan, not the 
     // Run 3 — the expenses prompt moved onto THIS MONTH with the Outlook gone: its words are planMonthView's, to the
     // cent, and its Update stores the average to the cent. THIS MONTH has no whole-dollar figure left.
     expect(SIMPLE, 'CENTS no whole-dollar formatter on THIS MONTH').not.toMatch(/\bfmtUSD\(|toLocaleString\(/);
-    expect(SIMPLE, 'CENTS the expenses prompt').toMatch(/\{planReanchorLine\(reanchorAvg, expenses\)\}/);
-    expect(SIMPLE, 'CENTS its Update to the cent').toMatch(/onClick=\{\(\) => setExpenses\(toCents\(reanchorAvg\)\)\}/);
+    // Run 4 (BL26): the words and both buttons' labels are planMonthView's; the months before this one only (F-R4-1).
+    expect(SIMPLE, 'CENTS the expenses prompt').toMatch(/const reanchor = planReanchorWords\(reanchorAvg, expenses\);/);
+    expect(SIMPLE, 'CENTS the prompt prints its words').toMatch(/\{reanchor\.line\}/);
+    expect(SIMPLE, 'CENTS its Update to the cent').toMatch(/onClick=\{\(\) => setExpenses\(toCents\(reanchorAvg\)\)\}\s*>\{reanchor\.update\}<\/button>/);
+    expect(SIMPLE, 'CENTS its Keep dismisses').toMatch(/onClick=\{\(\) => setExpenseReanchorDismissedAt\(Math\.round\(reanchorAvg\)\)\}\s*>\{reanchor\.keep\}<\/button>/);
+    expect(SIMPLE, 'REANCHOR the month in progress stays out').toMatch(
+      /computeExpenseReanchor\(\s*monthlyLog, expenses, expenseReanchorDismissedAt, currentMonth\)/);
     // The month log overlay: whole in full mode (its default), cents when THIS MONTH passes them.
     expect(OVERLAY, 'CENTS the month log prints through its money prop').toMatch(/money = fmtUSD \}: MonthlyLogOverlayProps\)/);
     expect(OVERLAY, 'CENTS the month log has no fixed whole-dollar value').not.toMatch(/value=\{fmtUSD\(/);

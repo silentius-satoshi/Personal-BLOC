@@ -1,8 +1,12 @@
-import { useMemo } from 'react';
 import { useStore } from '../../store/useStore';
 import { useBtcPrice } from '../../hooks/useBtcPrice';
 import { NumberInput } from '../ui/NumberInput';
-import { runBlocYearOne, getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { getCollateralForTier } from '../../simulation/runBlocYearOne';
+import { suggestedLineUsd } from '../../simulation/placement';
+import { accruedCbBalance } from '../../simulation/cbMetrics';
+import { shownUsd } from '../../utils/format';
+import { planCbCollateralOf, planCbLoanBalanceOf } from '../Almanac/planRun';
+import { suggestedLineWords } from '../Almanac/decisionView';
 import { getNdpStatus } from '../../simulation/runAdvisor';
 import { fmtUSD, todayLocalISO } from '../../utils/format';
 import styles from './InputsPanel.module.css';
@@ -33,6 +37,14 @@ export function InputsPanel() {
   const strikeRate         = useStore((s) => s.strikeRate);
   const strikeApiConnected = useStore((s) => s.strikeApiConnected);
   const strikeLastFetched  = useStore((s) => s.strikeLastFetched);
+  // Run 4 — the plan's suggested line reads the plan's Coinbase leg (D-R2-4: none with the loan switched off).
+  const hasCbLoan         = useStore((s) => s.hasCbLoan);
+  const planCbBalance     = useStore((s) => planCbLoanBalanceOf(s));
+  const planCbCollateral  = useStore((s) => planCbCollateralOf(s));
+  const cbAprPct          = useStore((s) => s.cbAprPct);
+  const cbLoanBalanceAsOf = useStore((s) => s.cbLoanBalanceAsOf);
+  const cbLtvTriggerPct   = useStore((s) => s.cbLtvTriggerPct);
+  const cbLtvTargetPct    = useStore((s) => s.cbLtvTargetPct);
 
   const effectiveCollateral = getCollateralForTier(activeTier, expenses, btcPrice, sandboxBtc);
 
@@ -40,17 +52,14 @@ export function InputsPanel() {
 
   const isSynced = livePrice !== null && Math.abs(btcPrice - livePrice) < 1;
 
-  const ltvCeiling = 0.15;
-  const collateralBtc = effectiveCollateral;
-
-  const uncappedResult = useMemo(
-    () => runBlocYearOne({ collateralBtc, btcPrice, income, expenses, apr: blocApr / 100, ltvCeiling, creditLine: Infinity, btcGrowthRate: 0 }),
-    [collateralBtc, btcPrice, income, expenses, blocApr],
-  );
-
-  const peakBalance = Math.max(...uncappedResult.rows.map((r) => r.strikeBalance));
-  const recommendedCreditLine = Math.ceil((peakBalance * 1.10) / 500) * 500;
-  const creditLineIsAdequate = creditLine >= recommendedCreditLine;
+  // Run 4 — the plan's suggested line, where the year-one model's "Recommended min" (its peak × 1.10, at a typed 15%
+  // ceiling) stood: the Decision face's figure — two months of bills or one Coinbase paydown, with 25% spare — on the
+  // plan's real position, at today's price, and its words, one copy.
+  const planCbDebt = accruedCbBalance(planCbBalance, cbAprPct, cbLoanBalanceAsOf);
+  const suggestedLine = suggestedLineUsd({
+    expenses, cbDebt: planCbDebt, cbCollateralBtc: planCbCollateral, price: btcPrice, cbLtvTriggerPct, cbLtvTargetPct,
+  });
+  const lineWords = suggestedLineWords(creditLine, suggestedLine, hasCbLoan && shownUsd(planCbDebt), cbLtvTriggerPct, cbLtvTargetPct);
 
   const breakEven = income / (1 + (blocApr / 100) / 12);
   const isSustainable = expenses <= breakEven;
@@ -222,18 +231,16 @@ export function InputsPanel() {
           <span className={styles.recValue}>{fmtUSD(creditLine)}</span>
         </div>
         <div className={styles.recRow}>
-          <span className={styles.recLabel}>Recommended min</span>
-          <span className={`${styles.recValue} ${creditLineIsAdequate ? styles.recGreen : styles.recOrange}`}>
-            {fmtUSD(recommendedCreditLine)}
-            {creditLineIsAdequate
+          <span className={styles.recLabel}>Your plan's suggested line</span>
+          <span className={`${styles.recValue} ${lineWords.covers ? styles.recGreen : styles.recOrange}`}>
+            {fmtUSD(suggestedLine)}
+            {lineWords.covers
               ? <span className={styles.recBadgeGreen}> ✓</span>
               : <span className={styles.recBadgeOrange}> ↑</span>
             }
           </span>
         </div>
-        {!creditLineIsAdequate && (
-          <div className={styles.recHint}>Increase credit line before starting</div>
-        )}
+        <div className={styles.recHint}>{lineWords.text}</div>
 
         <div className={styles.recDivider} />
 

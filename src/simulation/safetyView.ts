@@ -1,6 +1,9 @@
 import { cbMetrics, accruedCbBalance, accruedCbLiquidationPrice, barLevel, cbBarLevel, worseLevel, type SafetyLevel } from './cbMetrics';
 import { computeStrikeLtv, strikeAvailableCredit } from './strikeCredit';
 import { CB_LLTV } from './runCoinbaseLoan';
+import { ceilingHeadroomUsd } from './supportPolicy';
+import { planCbLimitOf } from '../lib/planPolicy';
+import { fmtUSD, fmtUSDCents, fmtLtvPct, shownUsd } from '../utils/format';
 import type { StoreState } from '../store/useStore'; // TYPE-only → erased at compile → no runtime cycle
 
 /**
@@ -13,7 +16,9 @@ import type { StoreState } from '../store/useStore'; // TYPE-only → erased at 
  * mapping shared by both call sites (and Viewer V2's safe-snapshot builder next).
  *
  * Reuses the already-shared primitives: cbMetrics/accruedCbBalance/barLevel/worseLevel (cbMetrics.ts),
- * computeStrikeLtv (strikeCredit.ts), CB_LLTV (runCoinbaseLoan.ts). No store/UI/price VALUE imports
+ * computeStrikeLtv (strikeCredit.ts), CB_LLTV (runCoinbaseLoan.ts) — and since the plan of record's Run 4,
+ * ceilingHeadroomUsd (supportPolicy.ts), planCbLimitOf (lib/planPolicy.ts) and the formatters (utils/format.ts). Today's
+ * support arrives as an input (powerLaw's supportToday), so no belief is imported. No store/UI/price VALUE imports
  * (the StoreState import is type-only — the selector takes state as an argument, keeping this pure).
  *
  * The overall pill composition is left to each CONSUMER (one line) so the owner's `state` can stay
@@ -51,6 +56,73 @@ export interface SafetyViewInputs {
   cbLtvTriggerPct: number;
   cbLiquidationPrice: number;
   cbLiquidationPriceAsOf?: string | null;
+  /** D7 (the plan of record's Run 4) — the plan's Coinbase limit at support, a fraction (`planCbLimitOf`). */
+  cbLimitAtSupport?: number;
+  /** D7 — today's support price (powerLaw's `supportToday`); a clock read, so the CALLER supplies it. Absent → no at-support
+   *  reading. */
+  supportToday?: number;
+}
+
+/**
+ * D7 — Safety's at-support reading: Coinbase's debt against its collateral's value at today's support, beside the plan's
+ * limit. On Safety's own inputs (the bar's accrued balance and collateral), by THIS MONTH's rule for "over" — the debt past
+ * the limit at support by at least the dust floor (`placement`'s over-limit fact) — and amber, never red: red stays the
+ * today's-price danger. A fact about the position as it stands: THIS MONTH's status reads it after the month's move.
+ */
+export interface CbAtSupport {
+  /** Today's support price. */
+  support: number;
+  /** Debt ÷ (collateral × support). */
+  ltv: number;
+  /** The plan's limit, a fraction. */
+  limit: number;
+  over: boolean;
+  level: SafetyLevel;
+}
+export function cbAtSupportOf(f: {
+  hasCbLoan: boolean; debt: number; collateralBtc: number; support: number | undefined; limit: number | undefined;
+}): CbAtSupport | null {
+  const { support, limit } = f;
+  if (!f.hasCbLoan || !shownUsd(f.debt) || !(f.collateralBtc > 0) || support === undefined || !(support > 0)
+    || limit === undefined || !(limit > 0) || !Number.isFinite(f.debt) || !Number.isFinite(f.collateralBtc)) return null;
+  const over = shownUsd(Math.max(0, -ceilingHeadroomUsd(f.debt, f.collateralBtc, support, limit)));
+  return { support, ltv: f.debt / (f.collateralBtc * support), limit, over, level: over ? 'watch' : 'safe' };
+}
+
+/** D7 (D-R4-1) — the owner's line when Coinbase is over now and this month's move brings it within (THIS MONTH's card
+ *  then reads "within", after the move): the position as it stands, and the fix the card's to-do names. */
+export const CB_MOVE_BRINGS_WITHIN = " — this month's move brings it within";
+export function ownerAtSupportLine(r: CbAtSupport, moveBringsWithin: boolean): string {
+  return cbAtSupportLine(r, fmtUSDCents) + (r.over && moveBringsWithin ? CB_MOVE_BRINGS_WITHIN : '');
+}
+
+/** D7 — the Safety card's eyebrow when only the at-support reading is amber. */
+export const CB_AT_SUPPORT_WATCH = "Watch — Coinbase is over the plan's limit at support";
+
+/**
+ * The owner's Safety verdict (the card's eyebrow) — CREDIT-EXCLUDED, unlike deriveViewerOverall: the nearer of the bars
+ * shown (Strike, + Coinbase with a loan), and — D7, the plan of record's Run 4 — Coinbase at support against the plan's
+ * limit: the worse reading wins, and the at-support one is amber at most (red stays the today's-price danger). When only
+ * the at-support reading is amber, the words say so.
+ */
+export function ownerSafetyVerdict(view: SafetyView, hasCbLoan: boolean): { state: SafetyLevel; copy: string } {
+  const today: SafetyLevel = hasCbLoan ? worseLevel(view.cbLevel, view.strikeLevel) : view.strikeLevel;
+  const atSupport: SafetyLevel = hasCbLoan && view.cbAtSupport ? view.cbAtSupport.level : 'safe';
+  const state = worseLevel(today, atSupport);
+  const copy = state === 'safe'
+    ? 'Safe — nothing to do today'
+    : state === 'watch'
+      ? (today === 'watch' ? 'Watch — your CB cushion is tightening' : CB_AT_SUPPORT_WATCH)
+      : 'Act — pay down or add collateral now';
+  return { state, copy };
+}
+
+/** D7 — the at-support line under the Coinbase bar (the owner's Safety card, to the cent; the trusted Dashboard, whole).
+ *  "The plan's limit", never "safe" (§4.7). With no support price (the safe viewer's snapshot carries none) it leaves the
+ *  price out. */
+export function cbAtSupportLine(r: { support: number | null; ltv: number; limit: number }, money: (n: number) => string = fmtUSD): string {
+  const at = r.support !== null ? `At support (${money(r.support)})` : 'At support';
+  return `${at}: Coinbase ${fmtLtvPct(r.ltv)} of its collateral's value — the plan's limit is ${Math.round(r.limit * 100)}%`;
 }
 
 export interface SafetyView {
@@ -65,6 +137,8 @@ export interface SafetyView {
   accruedBalance: number; // accrued CB debt (0 when !hasCbLoan)
   cbLiqPrice: number; // effective liquidation price: entered cbLiquidationPrice, else computed m.liqPrice (0 when !hasCbLoan)
   cbLiqFrac: number; // effective liquidation LTV fraction (CB_LLTV when !hasCbLoan)
+  /** D7 (Run 4) — Coinbase at today's support against the plan's limit; null with no loan, no debt or no support. */
+  cbAtSupport: CbAtSupport | null;
 }
 
 export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
@@ -82,6 +156,8 @@ export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
     cbLtvTriggerPct,
     cbLiquidationPrice,
     cbLiquidationPriceAsOf = null,
+    cbLimitAtSupport,
+    supportToday: support,
   } = inputs;
 
   // ── Strike credit (capacity utilization) ──
@@ -115,10 +191,13 @@ export function deriveSafetyView(inputs: SafetyViewInputs): SafetyView {
         : CB_LLTV;
     cbLevel = cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac);
   }
+  const cbAtSupport = cbAtSupportOf({
+    hasCbLoan, debt: accruedBalance, collateralBtc: cbCollateralBtc, support, limit: cbLimitAtSupport,
+  });
 
   return {
     capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel,
-    accruedBalance, cbLiqPrice, cbLiqFrac,
+    accruedBalance, cbLiqPrice, cbLiqFrac, cbAtSupport,
   };
 }
 
@@ -142,15 +221,18 @@ export function selectSafetyViewInputs(s: StoreState): SafetyViewInputs {
     cbLtvTriggerPct: s.cbLtvTriggerPct,
     cbLiquidationPrice: s.cbLiquidationPrice,
     cbLiquidationPriceAsOf: s.cbLiquidationPriceAsOf,
+    cbLimitAtSupport: planCbLimitOf(s),   // D7 — pure: the plan's six fields, through the clamp
   };
 }
 
-/** Viewer overall pill = worst of the gauges SHOWN (credit + strike, + cb when hasCbLoan).
+/** Viewer overall pill = worst of the gauges SHOWN (credit + strike, + cb when hasCbLoan) — and, since the plan of
+ *  record's Run 4, Coinbase at support (amber at most).
  *  Intentionally INCLUDES credit (so no red card sits under a green overall) — differs from the
  *  owner's SafetyDashboard `state`, which excludes the always-green capacity. */
 export function deriveViewerOverall(view: SafetyView, hasCbLoan: boolean): SafetyLevel {
   const base = worseLevel(view.creditLevel, view.strikeLevel);
-  return hasCbLoan ? worseLevel(base, view.cbLevel) : base;
+  // D7 — the verdict takes the worse reading: over the plan's limit at support is amber.
+  return hasCbLoan ? worseLevel(worseLevel(base, view.cbLevel), view.cbAtSupport?.level ?? 'safe') : base;
 }
 
 // ── Viewer V2 — C-safe privacy: ratio/level-only projection + live price-scaler ──────────────────
@@ -158,7 +240,9 @@ export function deriveViewerOverall(view: SafetyView, hasCbLoan: boolean): Safet
  * The ratio/level-only projection of SafetyView that the owner seals into a C-SAFE viewer snapshot.
  * ⚠ Privacy-load-bearing: it deliberately DROPS SafetyView's two $ absolutes (accruedBalance = CB debt,
  * cbLiqPrice = CB liq price). Every field here is a ratio (0..1+) or a level string from which NO
- * absolute is recoverable (2 unknowns, 1 equation) — so "no absolute exists by construction".
+ * absolute is recoverable (2 unknowns, 1 equation) — so "no absolute exists by construction". One edge since the plan
+ * of record's Run 4 (spec v1.20 §16.3): the at-support verdict, and whether a ratio is sealed at all, follow the 50¢
+ * dust floor — an absolute — so within 50¢ of the plan's limit, or on a debt under 50¢, they carry one bit about size.
  */
 export interface ViewerSafeSafety {
   capacityUsed: number;
@@ -169,6 +253,11 @@ export interface ViewerSafeSafety {
   cbLtv: number;
   cbLevel: SafetyLevel;
   cbLiqFrac: number; // ratio (effective liquidation LTV) — safe to share
+  /** D9 (Run 4) — Coinbase's LTV at the snapshot day's support, a ratio (null with no reading). Absent on older snapshots. */
+  cbLtvAtSupport?: number | null;
+  /** D9 — the owner's at-support verdict on it, by the owner's rule — whose 50¢ dust floor makes it one bit about size
+   *  within 50¢ of the limit (above). */
+  cbAtSupportLevel?: SafetyLevel;
   overall: SafetyLevel;
 }
 
@@ -177,6 +266,8 @@ export function buildSafeSafety(view: SafetyView, hasCbLoan: boolean): ViewerSaf
   const { capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac } = view;
   return {
     capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac,
+    cbLtvAtSupport: view.cbAtSupport?.ltv ?? null,
+    cbAtSupportLevel: view.cbAtSupport?.level ?? 'safe',
     overall: deriveViewerOverall(view, hasCbLoan),
   };
 }
@@ -184,7 +275,8 @@ export function buildSafeSafety(view: SafetyView, hasCbLoan: boolean): ViewerSaf
 /** What the viewer stores from a C-safe snapshot (mirrors the payload's safe branch). */
 export interface SafeSnapshot {
   safety: ViewerSafeSafety;
-  thresholds: { strikeLiqLtv: number; cbLtvTriggerPct: number; cbLiqFrac: number };
+  /** `cbLimitAtSupport` — D9 (Run 4): the plan's Coinbase limit at support, a ratio. Absent on older snapshots. */
+  thresholds: { strikeLiqLtv: number; cbLtvTriggerPct: number; cbLiqFrac: number; cbLimitAtSupport?: number };
   btcPriceAtSnapshot: number;
   hasCbLoan: boolean;
 }
@@ -197,6 +289,8 @@ export interface SafeSnapshot {
  * livePrice unavailable (offline / feed down) → factor 1 → returns the at-snapshot levels (fallback).
  */
 export function scaleSafetyView(snap: SafeSnapshot, livePrice: number): ViewerSafeSafety & { strikeDropPct: number } {
+  // D9 — the at-support reading isn't price-scaled: it is the snapshot day's (support moves a little each day, and the
+  // owner republishes on every change); its verdict is the owner's.
   const f = livePrice > 0 && snap.btcPriceAtSnapshot > 0 ? snap.btcPriceAtSnapshot / livePrice : 1;
   const { strikeLiqLtv, cbLtvTriggerPct, cbLiqFrac } = snap.thresholds;
   const capacityUsed = snap.safety.capacityUsed; // price-free
@@ -207,9 +301,14 @@ export function scaleSafetyView(snap: SafeSnapshot, livePrice: number): ViewerSa
   const strikeLevel = barLevel(strikeLtv, strikeLiqLtv * 0.76, strikeLiqLtv * 0.82);
   const cbLevel: SafetyLevel = snap.hasCbLoan ? cbBarLevel(cbLtv, cbLtvTriggerPct, cbLiqFrac) : 'safe';
   const base = worseLevel(creditLevel, strikeLevel);
-  const overall = snap.hasCbLoan ? worseLevel(base, cbLevel) : base;
+  const cbLtvAtSupport = snap.hasCbLoan ? snap.safety.cbLtvAtSupport ?? null : null;
+  const cbAtSupportLevel: SafetyLevel = cbLtvAtSupport !== null ? snap.safety.cbAtSupportLevel ?? 'safe' : 'safe';
+  const overall = snap.hasCbLoan ? worseLevel(worseLevel(base, cbLevel), cbAtSupportLevel) : base;
   const strikeDropPct = strikeLiqLtv > 0 ? Math.max(0, 1 - strikeLtv / strikeLiqLtv) : 0;
-  return { capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac, overall, strikeDropPct };
+  return {
+    capacityUsed, creditLevel, strikeLtv, strikeLevel, crashLtv, cbLtv, cbLevel, cbLiqFrac,
+    cbLtvAtSupport, cbAtSupportLevel, overall, strikeDropPct,
+  };
 }
 
 // ── The render-ready viewer-safety shape + the one seam that unifies C-safe vs C-trusted ──────────
@@ -221,6 +320,9 @@ export interface ViewerSafetyResult {
   cbLtv: number;        cbLevel: SafetyLevel;
   hasCbLoan: boolean;   overall: SafetyLevel;
   strikeDropPct: number;
+  /** D7 / D9 (Run 4) — the at-support reading: live on the trusted path (with today's support price), the snapshot's on
+   *  the safe path (no price, no absolute); null with none. */
+  cbAtSupport: null | { support: number | null; ltv: number; limit: number; level: SafetyLevel };
   figures: null | {
     credit: { used: number; total: number; avail: number };
     strike: { liqPrice: number; balance: number };
@@ -246,7 +348,11 @@ export function computeViewerSafety(
       strikeLtv: v.strikeLtv, strikeLevel: v.strikeLevel,
       cbLtv: v.cbLtv, cbLevel: v.cbLevel,
       hasCbLoan: safeSnap.hasCbLoan, overall: v.overall,
-      strikeDropPct: v.strikeDropPct, figures: null,
+      strikeDropPct: v.strikeDropPct,
+      cbAtSupport: v.cbLtvAtSupport != null && safeSnap.thresholds.cbLimitAtSupport !== undefined
+        ? { support: null, ltv: v.cbLtvAtSupport, limit: safeSnap.thresholds.cbLimitAtSupport, level: v.cbAtSupportLevel ?? 'safe' }
+        : null,
+      figures: null,
     };
   }
   const view = deriveSafetyView(inputs);
@@ -265,6 +371,9 @@ export function computeViewerSafety(
     strikeLtv: view.strikeLtv, strikeLevel: view.strikeLevel,
     cbLtv: view.cbLtv, cbLevel: view.cbLevel,
     hasCbLoan: inputs.hasCbLoan, overall, strikeDropPct,
+    cbAtSupport: view.cbAtSupport
+      ? { support: view.cbAtSupport.support, ltv: view.cbAtSupport.ltv, limit: view.cbAtSupport.limit, level: view.cbAtSupport.level }
+      : null,
     figures: {
       credit: { used: inputs.advisorActualBlocBalance, total: cap.limit, avail: cap.available },
       strike: { liqPrice: strikeLiqPrice, balance: inputs.advisorActualBlocBalance },

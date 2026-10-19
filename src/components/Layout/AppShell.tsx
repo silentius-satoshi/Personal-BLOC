@@ -68,7 +68,7 @@ const ALL_TABS_META = [
   { key: 'converter', fullLabel: 'Sats',              shortLabel: '丰'        },
   { key: 'mining',    fullLabel: 'Miners',            shortLabel: 'Miners'   },
   { key: 'coinbase',  fullLabel: 'CB Loan',           shortLabel: 'CB'       },
-  { key: 'liqsim',   fullLabel: 'Liq Sim',           shortLabel: 'Liq'      },
+  { key: 'liqsim',   fullLabel: 'Emergency',         shortLabel: 'Emerg'    },   // the Emergency Console (D3, Run 4); key kept for saved layouts
   { key: 'almanac',  fullLabel: 'Almanac',            shortLabel: 'Almanac'  },
   { key: 'advisor',  fullLabel: 'Advisor',            shortLabel: 'Adv'      },
 ] as const;
@@ -184,7 +184,6 @@ export function AppShell() {
   const setTabOrder  = useStore((s) => s.setTabOrder);
   const toolTabs     = useStore((s) => s.toolTabs);
   const hasCbLoan    = useStore((s) => s.hasCbLoan);
-  const cbPaymentStrategy = useStore((s) => s.cbPaymentStrategy);   // liqsim → Emergency Console gate + tab label
 
   const simpleMode            = useStore((s) => s.simpleMode);
   const simpleView            = useStore((s) => s.simpleView);        // Monthly Playbook vs Daily journal (device-local)
@@ -254,19 +253,12 @@ export function AppShell() {
 
   const effectiveToolKeys: readonly string[] = isMobile ? TOOL_KEYS : toolTabs;
 
-  // Emergency Console: the liqsim tab reads "Emergency" in ltvTriggered mode (label-only; key stays 'liqsim').
-  const withEmergencyLabel = (t: typeof ALL_TABS_META[number]) =>
-    t.key === 'liqsim' && cbPaymentStrategy === 'ltvTriggered'
-      ? { ...t, fullLabel: 'Emergency', shortLabel: 'Emerg' }
-      : t;
-
-  const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key)).map(withEmergencyLabel);
+  const mainTabs = visibleTabs.filter((t) => !effectiveToolKeys.includes(t.key));
 
   const toolTabsList = orderedKeys
     .filter((k) => effectiveToolKeys.includes(k) && !hiddenTabs.includes(k) && (k !== 'coinbase' || hasCbLoan) && (k !== 'liqsim' || hasCbLoan))
     .map((k) => ALL_TABS_META.find((t) => t.key === k))
-    .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined)
-    .map(withEmergencyLabel);
+    .filter((t): t is typeof ALL_TABS_META[number] => t !== undefined);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } })
@@ -283,11 +275,15 @@ export function AppShell() {
 
   useEffect(() => {
     if (activeTab === 'settings') return;
-    if (hiddenTabs.includes(activeTab)) {
-      const first = ALL_TABS_META.find((t) => !hiddenTabs.includes(t.key));
+    // A tab the bar doesn't show can't stay open: one the owner hid, or — with the Coinbase loan switched off — the CB
+    // Loan tab and the Emergency Console's (the plan of record's Run 4: the console's gate is the loan, so without one
+    // its tab would open on an empty page).
+    const shut = (k: string): boolean => hiddenTabs.includes(k) || (!hasCbLoan && (k === 'coinbase' || k === 'liqsim'));
+    if (shut(activeTab)) {
+      const first = ALL_TABS_META.find((t) => !shut(t.key));
       if (first) setActiveTab(first.key);
     }
-  }, [hiddenTabs, activeTab]);
+  }, [hiddenTabs, activeTab, hasCbLoan]);
 
   const goSettings = () => { setPreviousTab(activeTab as Exclude<ActiveTab, 'settings'>); setActiveTab('settings'); };
   // The face the Almanac opens on (Run 3): the Decision face from the plan's link — the Outlook's place — and the
@@ -301,6 +297,9 @@ export function AppShell() {
   useEffect(() => { if (activeTab !== 'almanac') setAlmanacFace(undefined); }, [activeTab]);
   // Full mode: the link shows only while the Almanac tab can open (a hidden tab bounces to the first visible one).
   const planPathsInFullMode = hiddenTabs.includes('almanac') ? null : goPlanPaths;
+  // …and the CB Loan tab's console link only while the Emergency tab can open — Settings can hide it, and a hidden tab
+  // bounces to the first one (the plan of record's Run 4). The Almanac's defense face still opens the console.
+  const consoleInFullMode = hiddenTabs.includes('liqsim') ? null : () => setActiveTab('liqsim');
 
   // P3.1 nested settings back-chain: SettingsMain reports its one-level-back handler here (null on the list).
   // The Branch-H edge gesture chains subpage→list first, else exits Settings — mirroring the visible ← Back.
@@ -463,7 +462,7 @@ export function AppShell() {
 
           <main className={styles.main}>
             {activeTab === 'settings'   ? <SettingsMain />      :
-             activeTab === 'coinbase'   ? <CoinbaseLoanMain />  :
+             activeTab === 'coinbase'   ? <CoinbaseLoanMain onOpenConsole={consoleInFullMode} onOpenPlanPaths={planPathsInFullMode} /> :
              activeTab === 'advisor'    ? <AdvisorMain onOpenLedger={() => { setSimpleMode(true); setSimpleView('daily'); }} onOpenPlanPaths={planPathsInFullMode} /> :
              activeTab === 'living'     ? <LivingOnBitcoin />   :
              activeTab === 'powerlaw'   ? <PowerLawFace />      :

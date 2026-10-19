@@ -137,7 +137,8 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
 
 - **§8 toolContainer adoption is now CLOSED** — every tool shares one `src/components/Tools/toolShell.module.css`
   `.toolContainer` (structural tokens: centering, iOS-safe overflow, horizontal/bottom padding + a 600px
-  DEFAULT max-width): `EmergencyConsole`/`LiqSimulator` adopted it in Phase 1; **this change closes the
+  DEFAULT max-width): `EmergencyConsole`/`LiqSimulator` (deleted since — the plan of record's Run 4) adopted it in
+  Phase 1; **this change closes the
   deferred follow-up** for `MiningMain.module.css`, `PowerLawMain.module.css` (deleted since — the Power Law face
   composes CyclingFace's `.face`), `ConverterMain.module.css` (each `.main` now `composes: toolContainer from '../Tools/toolShell.module.css'`, dropping its own
   width/margin/base-horizontal-padding — Mining also drops its now-redundant
@@ -155,7 +156,7 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
     see it: it runs 390px wide, and the dev server orders the CSS differently.
   - `composedOverrides.test.ts` pins the rule (§ Critical Constraints).
   - `EmergencyConsole`/`LiqSimulator`/`AlmanacView`'s own `.container` keep the 600px default unmodified (always
-    their intended width).
+    their intended width; the plan of record's Run 4 deleted `LiqSimulator`).
   - Mobile is unaffected either way: every viewport under the relevant max-width hits `width:100%`, whichever value
     is set.
 - **Render restructure:** the root wraps in a full-width `.shell` (`width:100%`, no max-width/padding); the
@@ -195,11 +196,14 @@ local `useState`, default `'halving'`, nothing persisted/synced — unchanged §
   inline ternary that used to live in `AppShell.tsx`'s `liqsim` render branch. **Both mount points** — the
   `liqsim` tab (`AppShell.tsx`) AND the Almanac's `defense` face — render `<CbDefenseTool/>`, so they can
   never disagree on which tool is showing. Tab label logic (`withEmergencyLabel` in `AppShell.tsx`) is
-  UNCHANGED — it still computes the `liqsim` tab's label independently of this component.
+  UNCHANGED — it still computes the `liqsim` tab's label independently of this component. (The plan of record's Run 4,
+  D3: the ONE gate is the Coinbase loan — `hasCbLoan ? <EmergencyConsole/> : null`; `LiqSimulator` and
+  `withEmergencyLabel` are deleted, and the tab is always `Emergency`/`Emerg` — § Emergency Console.)
 - **Sub-nav:** Mining/Power Law buttons set `face` like Halving/Cycle (no disabled/soon treatment). A new
   **Sats button (`丰 Sats`, mirroring the `converter` tab's own shortLabel/fullLabel) is ALWAYS visible** —
   not gated. A **defense button renders ONLY when `hasCbLoan`**, labeled `🚨 Emergency` / `Liq Sim` by
-  `cbPaymentStrategy`, mirroring the `liqsim` tab's own label rule. A guard `useEffect` falls back to
+  `cbPaymentStrategy`, mirroring the `liqsim` tab's own label rule (always `🚨 Emergency` since the plan of record's
+  Run 4). A guard `useEffect` falls back to
   `'halving'` if the defense face is showing and `hasCbLoan` flips false mid-session. `.subnav` already had
   `overflow-x:auto` + hidden scrollbar + `flex:none` buttons (pre-existing) — scrolls gracefully at 6 buttons
   with no CSS change needed.
@@ -1166,7 +1170,9 @@ seizure price, `cbSeizurePrice`. The counts below are the report's PV2-3 / PV2-4
     plain.
   - T at or above today's price → "Coinbase is at or past your t% trigger at today's price — work from the Emergency
     Console" (+ " (it runs when your Coinbase strategy is LTV-triggered)" when it isn't). "At or past" (D8): at exactly the
-    trigger, "past" is false. Tone warn.
+    trigger, "past" is false. Tone warn. (The plan of record's Run 4, D3: the console runs with any Coinbase loan, so
+    this clause and `consoleTail`'s read " (it runs once your Coinbase loan is switched on)", and the sentence is
+    crashPlaybookView's `atTriggerLine(t, consoleRuns)` — one copy with the CB Loan tab's banner.)
   - A trigger counts only when it is finite, above 0, and its price is above the cliff. A 0% trigger puts T at ∞; 86% or
     more puts it at or under the cliff.
   - **R11:** no alert on a sliver of a loan — none when the cliff is 99.5% or more below today.
@@ -1546,12 +1552,14 @@ THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of reco
     `validOpeningBreaker`, dated `yyyy-mm-dd` — Δ6), so a cache the run would discard can never steer THE MOVE. The cached
     line — "Price history hasn't loaded — the breaker as of …, this device's last reading." — shows only once the fetch
     has FAILED (Δ12: `'cached'` carries `settled`; while the history is still loading the cache runs the month with no
-    line, so the card doesn't jump on every open). With neither, the card says the month assumes the model isn't
+    line, so the card doesn't jump on every open; since the plan of record's Run 4, BL23, a fetch that never answers
+    fails at the 15 s limit instead of loading for good). With neither, the card says the month assumes the model isn't
     treated as broken — never silent. Daily's plan card runs the same fold, cache or assumption with no breaker line, by
     design (spec Appendix W §0 item 12).
   - **The offline split (invariant 2's exception).** With no fresh history THIS MONTH runs on the cached breaker, while
     the Decision face assumes "not broken" (it never reads the cache). So a cached BROKEN breaker makes THIS MONTH's move
-    inert while the face names one. Recorded, not fixed: the face reading the cache is a Run 4 option (Run 3 left it).
+    inert while the face names one. Recorded, not fixed: the face reading the cache is a Run 4 option (Run 3 left it,
+    and so did Run 4).
 - **D-R2-4 — the Coinbase switch.** Every plan reader (the four faces, THIS MONTH, Daily) reads Coinbase's collateral
   and balance only through `planCbCollateralOf` / `planCbLoanBalanceOf`. With the loan switched off the plan starts with
   no Coinbase loan — never the fresh install's seed $60,000 on 1.48 ₿. The crash gate (`isCrashDay`, the Emergency
@@ -1568,13 +1576,14 @@ THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of reco
 - **The cards (D-R2-2, D-R2-8).** `PlanMonthCard` is one card, one month, each fact once: the status, "To do this month"
   and "After this month" (both loans, Coinbase at the month's own support on a meter). Behind a tap sit "To be within it
   today" (the catch-up) and "Why this plan?". The scrubber's track is the year. One status colour per card — no Advisor
-  tier border (Δ10; the Advisor tab keeps its tiers). **Daily's plan card** reads the same month 1: the status (or the
+  tier border (Δ10; the Advisor tab keeps its tiers — until Run 4: Safety's colour on its Coinbase LTV, the plan's rules
+  in its sidebar). **Daily's plan card** reads the same month 1: the status (or the
   crash title), the rows, the minimum and "Why this plan?". Its bars compare the Ledger with the plan in the Ledger's own
   streams (`planLedgerTargets`, Δ4) — since Run 2.1 the month so far in Week and in Month, with no target for a past
   month (F13, below) — and "Interest capitalized" is the interest less the minimum paid, for the current month only
-  (Δ5). On a crash day (D13 — `isCrashDay`, still `ltvTriggered` until Run 4, D3) THIS MONTH's status is the
-  Emergency Console's line — `PLAN_CRASH_TITLE` over `monthPlaybookLine`'s items — with `crashNote(true)` as a foot
-  under the rows; Daily's status is the title alone.
+  (Δ5). On a crash day (D13 — `isCrashDay`, still `ltvTriggered` until Run 4, D3 — done in Run 4: the Coinbase loan
+  alone) THIS MONTH's status is the Emergency Console's line — `PLAN_CRASH_TITLE` over `monthPlaybookLine`'s items —
+  with `crashNote(true)` as a foot under the rows; Daily's status is the title alone.
 - **The status (§4.5).** Month 1 reads TODAY's fact — THE MOVE's `cbOverCeilingUsd` at S₀ — with the time back
   (`firstMonthUnderLimit`) and the catch-up as arithmetic on the run's numbers ("Your limit: 45% of what Coinbase's
   collateral is worth at support ($X per ₿ today)."). Later months read their own month-end through ONE rule,
@@ -1606,11 +1615,11 @@ THIS MONTH's log overlay kept it until Run 3 (gone since — § The plan of reco
   the split rule equals the rule as it stood at `3580f92`). A viewer never sees THIS MONTH or Daily — it has its own
   home — so the Almanac's face and console are where D9's date matters.
 - **Not in Run 2** (spec §13.11):
-  - The crash gate stays `ltvTriggered` until Run 4 (D3).
+  - The crash gate stays `ltvTriggered` until Run 4 (D3). Done — § The plan of record (Run 4).
   - Run 3: THIS MONTH's log overlay keeps `runAdvisor`, as do the Advisor tab's plan rows and the Outlook's link; the
     `simpleModePlan` helpers Run 2 left with no screen go with them (`deriveForMonth`, `composeMonthSummary`,
     `isOperatingMonth`, `displaySettledLtv`, `isLtvFigureStressed`). Done — § The plan of record (Run 3).
-  - Run 4: Safety's at-support line and the safe snapshot's two ratios.
+  - Run 4: Safety's at-support line and the safe snapshot's two ratios. Done — § The plan of record (Run 4).
   - The statement minimum's inline editor left THIS MONTH; the figure is entered in Settings → Strike Strategy.
   - The engine's month-0 seizure leaves an unsecured Coinbase balance (the engine's model, unchanged — Policy v2's
     seizure on the way down repays the loan in full): the after box says "no collateral", and the status names what
@@ -1715,7 +1724,8 @@ Outlook became a link to the Decision face.
   projection's `CB_PAYDOWN_LABEL` / `IF_YOU_SHIFT_DEBT` and the legend's `playbookDepthFor`.
 - **The expenses prompt moved onto THIS MONTH**, under the card and the link, to the cent (`planReanchorLine`); Update
   stores the average to the cent (`setExpenses(toCents(avg))`); owner-only (its Update writes the plan). THIS MONTH has
-  no whole-dollar figure left.
+  no whole-dollar figure left. (The plan of record's Run 4: `planReanchorWords` — BL26's words and buttons — on the
+  months before this one, F-R4-1.)
 - **Inert, never removed (invariant 6):** `advisorSkip*`; `cbRotateBackPct` (Settings' Rotate-back LTV input left with
   its last reader — the order hint checks target < trigger < 86%); `advisorMonthStartBalance` (the projection's base —
   "Balance at start of this month" left Settings and Quick Setup; the month review's sign-off still carries it, which
@@ -1732,8 +1742,93 @@ Outlook became a link to the Decision face.
 - **Not in Run 3:** the crash gate stays `ltvTriggered` (Run 4, D3); the sidebar's PRIORITY RULES, InputsPanel's
   "Recommended min" and the CB Loan tab's rows (Run 4); `cbMonthlyPayment` and `cbPaymentStrategy` keep their readers
   (the CB Loan tab, the gates); Daily's breaker marker and the Decision face reading the breaker cache (Run 4 options);
-  one price-history fetch per screen visit (5e, F12).
+  one price-history fetch per screen visit (5e, F12). Done in Run 4 (§ The plan of record (Run 4)): the gate, the
+  PRIORITY RULES, "Recommended min", the CB Loan tab's rows and the two fields (retired, inert); neither option was
+  taken.
 - Tests: § Test Suite → "The plan of record (Run 3)".
+
+#### The plan of record (Run 4 — Safety and the edges; store unchanged, NO bump)
+
+Spec: `pbloc-spec-plan-of-record-v1.md` (v1.20 — §16). The Emergency Console runs with any Coinbase loan, and the screens
+that kept their own crash-day answer or typed rules now read the console, Safety or the plan; Safety reads Coinbase at
+support, for the owner and the safe viewer; the price history ends as failed past a time limit; the expenses prompt says
+what its buttons do.
+- **D3 — the console's gate is the Coinbase loan** (§ Emergency Console). `CbDefenseTool` renders `EmergencyConsole`
+  with a loan (`hasCbLoan`), nothing without; the Liq Sim (`LiqSimulator`, its `.module.css`, `liqSimulatorView` and
+  its test) is deleted — it had no other screen. The `liqsim` tab is always "Emergency" / "Emerg" (`ALL_TABS_META`;
+  `withEmergencyLabel` is gone; the key stays `liqsim`) and the Almanac's defense face always "🚨 Emergency"; Settings'
+  own tab list (SettingsMain's `ALL_TABS`, kept in step — ui.md) names it "Emergency" too, and its Strike collateral
+  hint names what reads the figure now (the plan, the Safety card, the Emergency Console). The crash day, `isCrashDay({ hasCbLoan,
+  cbDebt, cbCollateralBtc, price, triggerPct })`, has no `ltvTriggered`: THIS MONTH and the Advisor tab (both through
+  `usePlanCardInputs`), Daily and the CB Loan tab read it. The Decision face's `consoleRuns = s.hasCbLoan`;
+  `MoveCardContext.ltvTriggered` became `consoleRuns`, and the console's gate words read "(it runs once your Coinbase
+  loan is switched on)".
+- **D3 — `cbPaymentStrategy` and `cbMonthlyPayment` retire, inert** (invariant 6 now covers seven fields — Run 3's five
+  and these two): no component reads or writes them; their keys stay in `SETTINGS_FIELDS`, the backup whitelist and the
+  payload, so an older backup restores (the demo seed still writes `cbPaymentStrategy`). Settings' Coinbase page lost
+  the payment-strategy pills and "Monthly payment"; its crash-day thresholds (ACTION AT TRIGGER, the trigger, the target,
+  the order hint) show whenever a loan is switched on, and its Coinbase Loan row reads "Balance, collateral, APR,
+  crash-day trigger". The CB Loan sidebar lost MONTHLY PAYMENT; the Advisor sidebar lost "Min. payment". With the loan
+  off, the bar shows neither the CB Loan tab nor the console's, and neither stays open (AppShell's bounce effect).
+- **The CB Loan tab (`CoinbaseLoanMain`)** takes `onOpenConsole` and `onOpenPlanPaths` (AppShell passes
+  `consoleInFullMode` — none while the Emergency tab is hidden — and `planPathsInFullMode`). Its crash-day banner shows on `isCrashDay`, with
+  `atTriggerLine(trigger, true)` and an "Open the Emergency Console →" button. Its price alerts are two rows — "Your
+  trigger" (the owner's `cbLtvTriggerPct` at `cbMetrics`' trigger price: "Work from the Emergency Console") and
+  "Auto-Liquidation" (86%); the typed 70% "Emergency Protocol", 76% "Critical" and 84% "Danger" rows are gone.
+  `LtvSafetyBar` colours today's LTV by Safety's level and marks the trigger ("↑N% your trigger"); the CURRENT LTV card
+  wears Safety's colour and words (SAFE / FAIR / POOR). The 12-month projection (it read the retired monthly payment)
+  gave way to `PLAN_PATHS_LINK`; Section 6 is "On a crash day" (`cbTabCrashDayLine`) with the console link. A paid-off or
+  unbacked loan has no trigger or seizure price: the card names the trigger alone and the two rows read — (`shownUsd`).
+  `runCoinbaseLoan()` and `classifyLtv()` have no screen reader now (they stay; `aprAnchors.test.ts` still runs
+  `runCoinbaseLoan`); 39 dead CSS rules went.
+- **The console's words where another screen points to it — `crashPlaybookView`:** `CONSOLE_LINK`,
+  `atTriggerLine(triggerPct, consoleRuns)` (the Decision face's at-trigger alert reads it too — one copy) and
+  `cbTabCrashDayLine(triggerPct, triggerPriceUsd)`.
+- **The Advisor tab (`AdvisorMain`)** — its Coinbase card's Current LTV figure and colour are Safety's
+  (`deriveSafetyView(selectSafetyViewInputs)`), no longer `getTier` / `getTierColor` (no screen reads them; they stay in
+  `runAdvisor.ts` until it goes). **Its sidebar's YOUR PLAN** — `planRuleRows(planPolicySettingsOf(usePlanPolicy()),
+  expenses)`, always shown — replaced the typed PRIORITY RULES (55 / 65 / 70): the six settings in the sliders' words
+  (`PLAN_RULE_LABEL`, supportPolicyView — one copy; `SupportPolicyCard` reads it), each as the plan runs it, a limit held
+  to its defense line showing that line. `planPolicySettingsOf(plan)` (planRun) is the saved plan as every plan reader
+  runs it (`planMonthRun` uses it).
+- **The Smart BLOC sidebar (`InputsPanel`)** — "Your plan's suggested line": `suggestedLineUsd` on the plan's Coinbase
+  leg (`planCbLoanBalanceOf` / `planCbCollateralOf`, accrued) at today's price, with `decisionView`'s
+  `suggestedLineWords` under it (one copy with THE MOVE's line) — replaced "Recommended min" (`runBlocYearOne`'s peak ×
+  1.10 at a typed 0.15 ceiling).
+- **D7 — Safety reads Coinbase at support (`safetyView`).** `SafetyViewInputs` gains `cbLimitAtSupport`
+  (`selectSafetyViewInputs` sets `planCbLimitOf(s)` — lib/planPolicy: the plan's Coinbase limit at support as the plan
+  runs it, held to `PLAN_CB_DEFENSE_PCT` 70, the constant planClamp's `PLAN_CB_LTV_CAP_PCT` reads; a test pins it equal
+  to `planPolicySettingsOf(…).cbStopEffPct / 100`) and `supportToday` — a clock read the CALLER passes
+  (`supportToday(todayISO)`, the plan's S₀). `SafetyView.cbAtSupport` (`cbAtSupportOf`): accrued debt ÷ (collateral ×
+  S₀), the limit, and `over` by the placement's own rule with the dust floor — level watch or safe: amber, never red.
+  `SafetyDashboard` (THIS MONTH and Daily) prints `ownerAtSupportLine` under the Coinbase cushion row — `cbAtSupportLine`
+  to the cent, amber when over. Safety reads the position as it stands and THIS MONTH's card reads it after the
+  month's move, so when this month's move tops Coinbase up from Strike and brings it within (planMonthView's
+  `planMoveBringsCbWithin(placement)`, which THIS MONTH and Daily pass from their own run as `moveBringsCbWithin`) the
+  line adds " — this month's move brings it within" (`CB_MOVE_BRINGS_WITHIN`, D-R4-1), still amber until the coins
+  move. Its eyebrow is `ownerSafetyVerdict` — the worse reading wins, and "Watch — Coinbase is over the plan's
+  limit at support" (`CB_AT_SUPPORT_WATCH`) when only the at-support reading is amber. `deriveViewerOverall` folds the
+  at-support level.
+- **D9 — the safe viewer** (§ Viewer V2): the safe snapshot carries Coinbase's LTV at support and the owner's verdict on
+  it (`safety.cbLtvAtSupport`, `safety.cbAtSupportLevel`) and the plan's limit (`thresholds.cbLimitAtSupport`) — no new
+  top-level key; the viewer home's Coinbase sub-line (the owner's Dashboard too) adds `cbAtSupportLine`. Older snapshots
+  carry none and show none.
+- **BL23 — the price history's time limit** (`utils/timeLimit.ts`: `HISTORY_TIMEOUT_MS` = 15 s,
+  `withTimeLimit(ms, run, outer?)`). `usePowerLawData` and `useBtcHistory` fetch AND read the body inside it; an unmount
+  aborts. A stall now ends as failed: THIS MONTH shows its cached breaker's line, the Decision face says the history
+  didn't load, the Power Law face and the price chart say it is unavailable. `useBtcHistory` keeps the candles already
+  drawn for the same range when a refresh fails (`shownRange`), for as long as the page stays in view, so the chart
+  says "unavailable" only when a first load fails — and a page back in view starts with a first load.
+- **BL26 / F-R4-1 — THIS MONTH's expenses prompt.** `planReanchorWords(avg, expenses)` (it replaced `planReanchorLine`):
+  "Monthly expenses: your last 3 logged months averaged $X; your plan uses $Y.", with [Update plan to $X] [Keep $Y]. One
+  figure: `toCents(avg)` is what the line prints, Update names and Update stores; Keep does what Dismiss did.
+  `computeExpenseReanchor(monthlyLog, expenses, dismissedAt, beforeMonth = ∞)` counts only months before `beforeMonth`
+  that record expenses (> 0); THIS MONTH passes `currentMonth` — 12 once the year is done, and month 12, which keeps
+  every later draw (`bucketEventToMonth` clamps), never counts. The month in progress, which Daily
+  rolls draws into as they happen, used to pull the average down, and three empty months averaged $0.
+- **Still open (not in Run 4's code):** Daily's breaker marker and the Decision face reading the breaker cache; one
+  price-history fetch per screen visit (5e, F12).
+- Tests: § Test Suite → "The plan of record (Run 4)".
 
 ### Unified Strategy face (ELEVENTH Almanac face; store unchanged, NO bump)
 
@@ -1845,7 +1940,8 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   WHOLE row is the button (`<tr role="button" tabIndex={0}>`, Enter / Space → the inspected month, the dock's Month); a crash row's note
   (`crashNote`, D13 — the SAME sentence the printout carries) and its "→ Emergency Console" link go on a SIBLING row
   beneath, never inside the button; the link appears only when `hasCbLoan && ltvTriggered` (the only time the defense
-  face exists and the console runs) and its accessible name carries the month (`consoleLinkLabel`). ⚠ A 60-month plan
+  face exists and the console runs — `consoleRuns`, which is `hasCbLoan` alone since the plan of record's Run 4, D3)
+  and its accessible name carries the month (`consoleLinkLabel`). ⚠ A 60-month plan
   of wrapped moves runs to ~20,000 px on a phone, so the table scrolls in a 460px box of its own (sticky header,
   every row kept) and the outcome and the what-ifs stay within reach.
 - **The paths (D2–D4).** Support · Fair · Resistance · 4-yr cycle · **Worst (stitched)** · **Worst (modeled)** — the
@@ -1903,7 +1999,9 @@ sentences (D12), no milestone table, no cycle-timing control (the 4-yr path runs
   `engineInputs.strikeCreditLine` and `placementInput.creditLine`. The card's **Try $L / Back to $X** button is
   `MoveLine.action` (the face composes it from nothing). ⚠ The **suggested line** (`suggestedLineUsd`: two months of
   bills or one Coinbase paydown, × 1.25, rounded to $500) is NOT InputsPanel's "Recommended min" — that is a different
-  strategy's figure (the year-one BLOC peak × 1.10); unifying them is deferred. The slider's "Suggested" chip appears
+  strategy's figure (the year-one BLOC peak × 1.10); unifying them is deferred. (Done in the plan of record's Run 4:
+  the Smart BLOC sidebar shows this figure as "Your plan's suggested line", on the plan's Coinbase leg, in THE MOVE's
+  words — `suggestedLineWords`.) The slider's "Suggested" chip appears
   only while the run's line is BELOW the suggestion (above it, "Suggested" would read as advice to lower the line).
 - **The print doctrine (D7) — execute = print, never act.** ONE text artifact (`scheduleToText`: the header, THE MOVE
   as text, every month's moves, the crash notes, the disclaimer) for **Copy** (the reliable iOS-PWA path), **Download

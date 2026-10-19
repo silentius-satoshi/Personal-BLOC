@@ -87,6 +87,15 @@ export function plBandAt(band: PlBand, startDate: Date, months: number): number 
 }
 
 /**
+ * D7 (the plan of record's Run 4) — today's support price: the plan's S₀ (`buildSupportPath(new Date(todayISO), …)[0]`),
+ * the same band, the same day. It lives here, beside plBandAt, so Safety's view stays belief-free: a caller reads the
+ * clock, asks this for the figure and passes it in (SafetyViewInputs.supportToday). Zero imports preserved.
+ */
+export function supportToday(todayISO: string): number {
+  return plBandAt('floor', new Date(todayISO), 0);
+}
+
+/**
  * Calendar month arithmetic, UTC, day-of-month clamped (31 Jan + 1mo → 28/29 Feb). UTC accessors match
  * GENESIS (…T00:00:00Z) and daysSinceGenesis. Callers normalise their start date to UTC midnight — a
  * local-midnight start west of UTC would land on the previous UTC day and shift every band value by one day.

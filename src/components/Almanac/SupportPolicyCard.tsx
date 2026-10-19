@@ -3,7 +3,7 @@ import { SliderInput } from '../ui/SliderInput';
 import { InfoTip } from '../ui/InfoTip';
 import {
   policyReading, policyHeadline, policyDetails, policyIgnoredNote, policyTip, settingReadouts, zoneStrip,
-  zoneStripLabel, policyCardState, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, ZONE_ORDER, SUPPORT_POLICY_RANGES,
+  zoneStripLabel, policyCardState, ZONE_COLOR, ZONE_LABEL, ZONE_LETTER, ZONE_ORDER, SUPPORT_POLICY_RANGES, PLAN_RULE_LABEL,
   type EffectivePolicySettings, type PolicyCardState, type PolicyTone, type SupportPolicySettings,
 } from './supportPolicyView';
 import styles from './SupportPolicyCard.module.css';
@@ -115,7 +115,7 @@ export function SupportPolicySliders({
     <div className={layout === 'grid' ? styles.settingsGrid : styles.settings}>
       <div>
         <SliderInput
-          label="Coinbase limit at support" value={raw.cbStopAtSupportPct}
+          label={PLAN_RULE_LABEL.cbStopAtSupportPct} value={raw.cbStopAtSupportPct}
           onChange={(v) => onChange({ cbStopAtSupportPct: v })}
           min={R.cbStopAtSupportPct.min} max={R.cbStopAtSupportPct.max} step={R.cbStopAtSupportPct.step}
           display={r.cbStop.value}
@@ -125,7 +125,7 @@ export function SupportPolicySliders({
       </div>
       <div>
         <SliderInput
-          label="Strike limit at support" value={raw.strikeStopAtSupportPct}
+          label={PLAN_RULE_LABEL.strikeStopAtSupportPct} value={raw.strikeStopAtSupportPct}
           onChange={(v) => onChange({ strikeStopAtSupportPct: v })}
           min={R.strikeStopAtSupportPct.min} max={R.strikeStopAtSupportPct.max} step={R.strikeStopAtSupportPct.step}
           display={r.skStop.value}
@@ -134,7 +134,7 @@ export function SupportPolicySliders({
         <p className={styles.readout}>{r.skStop.clause}</p>
       </div>
       <SliderInput
-        label="Buy with the line up to" value={raw.accumulateBelow}
+        label={PLAN_RULE_LABEL.accumulateBelow} value={raw.accumulateBelow}
         onChange={(v) => onChange({ accumulateBelow: v })}
         min={R.accumulateBelow.min} max={R.accumulateBelow.max} step={R.accumulateBelow.step}
         display={r.accumulateBelow.value}
@@ -142,7 +142,7 @@ export function SupportPolicySliders({
       />
       <div>
         <SliderInput
-          label="Pay down above" value={raw.payDownAbove}
+          label={PLAN_RULE_LABEL.payDownAbove} value={raw.payDownAbove}
           onChange={(v) => onChange({ payDownAbove: v })}
           min={R.payDownAbove.min} max={R.payDownAbove.max} step={R.payDownAbove.step}
           display={r.payDownAbove.value}
@@ -152,7 +152,7 @@ export function SupportPolicySliders({
       </div>
       <div>
         <SliderInput
-          label="Borrowing room kept" value={raw.bearBufferMonths}
+          label={PLAN_RULE_LABEL.bearBufferMonths} value={raw.bearBufferMonths}
           onChange={(v) => onChange({ bearBufferMonths: v })}
           min={R.bearBufferMonths.min} max={R.bearBufferMonths.max} step={R.bearBufferMonths.step}
           display={r.bearBuffer.value}
@@ -162,7 +162,7 @@ export function SupportPolicySliders({
       </div>
       <div>
         <SliderInput
-          label="Cash reserve" value={raw.cashReserveMonths}
+          label={PLAN_RULE_LABEL.cashReserveMonths} value={raw.cashReserveMonths}
           onChange={(v) => onChange({ cashReserveMonths: v })}
           min={R.cashReserveMonths.min} max={R.cashReserveMonths.max} step={R.cashReserveMonths.step}
           display={r.cashReserve.value}

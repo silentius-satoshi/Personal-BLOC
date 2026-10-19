@@ -306,7 +306,6 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     creditLine: st.creditLine,
     cbLtvTriggerPct: st.cbLtvTriggerPct,
     cbLtvTargetPct: st.cbLtvTargetPct,
-    cbPaymentStrategy: st.cbPaymentStrategy,
     hasCbLoan: st.hasCbLoan,
     strikeLiquidationLtvPct: st.strikeLiquidationLtvPct,
     strikeCollateralBtc: st.getCurrentBtcHeld(),   // reading-anchored, Strike-only (v20)
@@ -330,7 +329,7 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
   const convergeMonths = overlay.convergeMonths ?? DEFAULT_CONVERGE_MONTHS;
   const months = overlay.months ?? DEFAULT_HORIZON_MONTHS;
   const onTheLine = convergeMonths === PL_ON_THE_LINE;
-  const consoleRuns = s.hasCbLoan && s.cbPaymentStrategy === 'ltvTriggered';
+  const consoleRuns = s.hasCbLoan;   // D3 (Run 4) — the console runs whenever a Coinbase loan is switched on
 
   // ONE frozen "today" — the start date, the hold and the breaker seed all read it (UTC-midnight of the LOCAL day,
   // the repo's date-only convention).
@@ -527,10 +526,10 @@ export default function DecisionFace({ onNavigate }: DecisionFaceProps) {
     cbLtvTriggerPct: s.cbLtvTriggerPct,
     cbLtvTargetPct: s.cbLtvTargetPct,
     hasCbLoan: s.hasCbLoan,
-    ltvTriggered: s.cbPaymentStrategy === 'ltvTriggered',
+    consoleRuns,
   }), [
     sim.policyApplied, policySettings, sim.policyIgnoredReason, placement, hold, breakerRead, runLine, s.creditLine,
-    suggested, s.expenses, placementInput, s.cbLtvTriggerPct, s.cbLtvTargetPct, s.hasCbLoan, s.cbPaymentStrategy,
+    suggested, s.expenses, placementInput, s.cbLtvTriggerPct, s.cbLtvTargetPct, s.hasCbLoan, consoleRuns,
     moveWhatIf,
   ]);
   const onLineAction = (a: LineAction) => {

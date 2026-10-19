@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { daysSinceGenesis, plFairValue, plFloor, plCeiling, GENESIS } from '../simulation/powerLaw';
+import { HISTORY_TIMEOUT_MS, withTimeLimit } from '../utils/timeLimit';
 
 const BLOCKCHAIN_URL = import.meta.env.DEV
   ? 'https://api.blockchain.info/charts/market-price?timespan=all&format=json&cors=true'
@@ -32,21 +33,29 @@ export function usePowerLawData(): PowerLawData {
   const [error, setError]           = useState<string | null>(null);
 
   useEffect(() => {
+    // BL23 — the request and its body inside the time limit, so a stall ends as failed (THIS MONTH then says its breaker
+    // is this device's last reading); an unmount aborts it.
+    const outer = new AbortController();
     async function fetchData() {
       try {
-        const res = await fetch(BLOCKCHAIN_URL);
-        if (!res.ok) throw new Error(`Blockchain.com ${res.status}`);
-        const json = await res.json() as { values: { x: number; y: number }[] };
+        const json = await withTimeLimit(HISTORY_TIMEOUT_MS, async (signal) => {
+          const res = await fetch(BLOCKCHAIN_URL, { signal });
+          if (!res.ok) throw new Error(`Blockchain.com ${res.status}`);
+          return await res.json() as { values: { x: number; y: number }[] };
+        }, outer.signal);
+        if (outer.signal.aborted) return;
         setHistorical(
           json.values.map((d) => ({ timestamp: d.x * 1000, price: d.y }))
         );
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Unknown error');
+        if (outer.signal.aborted) return;   // unmounted — nothing to say
+        setError(e instanceof Error && e.name !== 'AbortError' ? e.message : 'Blockchain.com timed out');
       } finally {
-        setLoading(false);
+        if (!outer.signal.aborted) setLoading(false);
       }
     }
     void fetchData();
+    return () => outer.abort();
   }, []);
 
   const bands = useMemo<BandPoint[]>(() => {
