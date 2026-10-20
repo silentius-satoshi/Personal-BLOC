@@ -9,7 +9,7 @@ import {
 import { supportToday } from '../powerLaw';
 import { placementPlan } from '../placement';
 import { ceilingHeadroomUsd } from '../supportPolicy';
-import { DUST_USD, fmtUSD, fmtUSDCents } from '../../utils/format';
+import { DUST_USD, fmtUSD, fmtUSDCents, fmtLtvPct } from '../../utils/format';
 import { PLAN_POLICY_DEFAULTS, PLAN_POLICY_FIELD, PLAN_POLICY_KEYS, planCbLimitOf, planPolicyOf, type PlanPolicyField } from '../../lib/planPolicy';
 import { planPolicySettingsOf, placementInputOf } from '../../components/Almanac/planRun';
 import { buildSupportPath } from '../../components/Almanac/supportPolicyInputs';
@@ -134,17 +134,78 @@ describe('⭐ ATS — Coinbase at today\'s support, against the plan\'s limit', 
     }
   });
 
-  it('⭐ ATS — the words: the price to the cent or whole, the reading, the limit; no price on the safe path; never "safe"', () => {
-    const r = { support: 64_699.79, ltv: 50_000 / 64_699.79, limit: 0.45 };
+  it('⭐ ATS — the words: a what-if in the bar\'s terms, over or within in words, the price to the cent or whole; no price on the safe path; never "safe"', () => {
+    // Run 4.1 (BL29, F-R4-2): "If BTC were at support ($S): X% LTV — over the plan's L% limit" (or "within").
+    const r = { support: 64_699.79, ltv: 50_000 / 64_699.79, limit: 0.45, level: 'watch' as const };
     expect(cbAtSupportLine(r, fmtUSDCents), 'ATS cents (Safety)')
-      .toBe("At support ($64,699.79): Coinbase 77.3% of its collateral's value — the plan's limit is 45%");
+      .toBe("If BTC were at support ($64,699.79): 77.3% LTV — over the plan's 45% limit");
     expect(cbAtSupportLine(r), 'ATS whole (the Dashboard)')
-      .toBe("At support ($64,700): Coinbase 77.3% of its collateral's value — the plan's limit is 45%");
+      .toBe("If BTC were at support ($64,700): 77.3% LTV — over the plan's 45% limit");
     expect(cbAtSupportLine({ ...r, support: null }), 'ATS the safe viewer')
-      .toBe("At support: Coinbase 77.3% of its collateral's value — the plan's limit is 45%");
-    for (const w of [cbAtSupportLine(r, fmtUSD), cbAtSupportLine({ ...r, support: null }), CB_AT_SUPPORT_WATCH]) {
+      .toBe("If BTC were at support: 77.3% LTV — over the plan's 45% limit");
+    const within = { ...r, ltv: 20_000 / 64_699.79, level: 'safe' as const };
+    expect(cbAtSupportLine(within, fmtUSDCents), 'ATS within, in words')
+      .toBe("If BTC were at support ($64,699.79): 30.9% LTV — within the plan's 45% limit");
+    for (const w of [cbAtSupportLine(r, fmtUSD), cbAtSupportLine({ ...r, support: null }), cbAtSupportLine(within), CB_AT_SUPPORT_WATCH]) {
       expect(w, 'ATS banned').not.toMatch(BANNED);
     }
+  });
+
+  it('⭐ ATS — the figure agrees with the word: over never prints at or below the limit, within never above it; a limit\'s own decimal', () => {
+    // Run 4.1 (BL29). Round synthetic figures: support $64,699.79, a 45% limit.
+    const S = 64_699.79;
+    const at = (debt: number, btc = 1, limit = 0.45) => cbAtSupportOf({ hasCbLoan: true, debt, collateralBtc: btc, support: S, limit })!;
+    // $10 past the limit on 1 ₿: over by the plan's rule, and one decimal alone would print the limit itself.
+    const justOver = at(0.45 * S + 10);
+    expect([justOver.over, fmtLtvPct(justOver.ltv)], 'ATS agrees premise: over, one decimal reads the limit').toEqual([true, '45.0%']);
+    expect(cbAtSupportLine(justOver, fmtUSDCents), 'ATS agrees over')
+      .toBe("If BTC were at support ($64,699.79): 45.1% LTV — over the plan's 45% limit");
+    // $10 under: within, and the limit's own figure is within.
+    const justUnder = at(0.45 * S - 10);
+    expect([justUnder.over, fmtLtvPct(justUnder.ltv)], 'ATS agrees premise: within, one decimal reads the limit').toEqual([false, '45.0%']);
+    expect(cbAtSupportLine(justUnder, fmtUSDCents), 'ATS agrees within at the limit')
+      .toBe("If BTC were at support ($64,699.79): 45.0% LTV — within the plan's 45% limit");
+    // Tiny collateral: 45¢ past the limit is under the 50¢ rule — within — though one decimal alone would print 45.1%.
+    const tiny = at(0.45 * 0.01 * S + 0.45, 0.01);
+    expect([tiny.over, fmtLtvPct(tiny.ltv)], 'ATS agrees premise: tiny collateral, within past the rounding').toEqual([false, '45.1%']);
+    expect(cbAtSupportLine(tiny, fmtUSDCents), 'ATS agrees within never above')
+      .toBe("If BTC were at support ($64,699.79): 45.0% LTV — within the plan's 45% limit");
+    // A restored limit with a decimal (§16.11) prints it, and over it still never prints at or below it.
+    const half = at(0.455 * S + 10, 1, 0.455);
+    expect([half.over, fmtLtvPct(half.ltv)], 'ATS agrees premise: a 45.5% limit').toEqual([true, '45.5%']);
+    expect(cbAtSupportLine(half, fmtUSDCents), 'ATS agrees the limit\'s decimal')
+      .toBe("If BTC were at support ($64,699.79): 45.6% LTV — over the plan's 45.5% limit");
+    // A two-decimal limit (45.25%) prints both decimals; over it the figure is past it, within it never above it.
+    const q = (debt: number) => cbAtSupportOf({ hasCbLoan: true, debt, collateralBtc: 1, support: S, limit: 0.4525 })!;
+    const qOver = q(0.4525 * S + 10);
+    expect([qOver.over, fmtLtvPct(qOver.ltv)], 'ATS agrees premise: a 45.25% limit, over').toEqual([true, '45.3%']);
+    expect(cbAtSupportLine(qOver, fmtUSDCents), 'ATS agrees a two-decimal limit')
+      .toBe("If BTC were at support ($64,699.79): 45.3% LTV — over the plan's 45.25% limit");
+    const qIn = q(0.4525 * S + 0.3);
+    expect([qIn.over, fmtLtvPct(qIn.ltv)], 'ATS agrees premise: a 45.25% limit, within past the rounding').toEqual([false, '45.3%']);
+    expect(cbAtSupportLine(qIn, fmtUSDCents), 'ATS agrees within under a two-decimal limit')
+      .toBe("If BTC were at support ($64,699.79): 45.2% LTV — within the plan's 45.25% limit");
+    // Smaller collateral (0.004 ₿, $258.80 at support): 49¢ past the limit is still within by the 50¢ rule, and one decimal
+    // alone would print two tenths past it — the figure moves to the limit's own tenth, not one tenth down.
+    const smaller = at(0.45 * 0.004 * S + 0.49, 0.004);
+    expect([smaller.over, fmtLtvPct(smaller.ltv)], 'ATS agrees premise: smaller collateral, two tenths past the rounding').toEqual([false, '45.2%']);
+    expect(cbAtSupportLine(smaller, fmtUSDCents), 'ATS agrees within, the nearest tenth')
+      .toBe("If BTC were at support ($64,699.79): 45.0% LTV — within the plan's 45% limit");
+    // $10 past a 45.21% limit: one decimal alone reads 45.2%, under it; the figure moves to the nearest tenth past it.
+    const q21 = at(0.4521 * S + 10, 1, 0.4521);
+    expect([q21.over, fmtLtvPct(q21.ltv)], 'ATS agrees premise: a 45.21% limit, one decimal under it').toEqual([true, '45.2%']);
+    expect(cbAtSupportLine(q21, fmtUSDCents), 'ATS agrees over a two-decimal limit, the nearest tenth')
+      .toBe("If BTC were at support ($64,699.79): 45.3% LTV — over the plan's 45.21% limit");
+    // A limit with more decimals (only a restored backup carries one) prints the hundredths the figure is held against.
+    const odd = at(0.464 * S, 1, 0.40305);
+    expect([Math.round(odd.limit * 10_000), fmtLtvPct(odd.limit, 2)], 'ATS agrees premise: a 40.305% limit').toEqual([4031, '40.30%']);
+    expect(cbAtSupportLine(odd, fmtUSDCents), 'ATS agrees a limit\'s hundredths')
+      .toBe("If BTC were at support ($64,699.79): 46.4% LTV — over the plan's 40.31% limit");
+    // Away from the limit nothing moves.
+    const far = at(50_000);
+    expect([far.over, fmtLtvPct(far.ltv)], 'ATS agrees premise: far from the limit').toEqual([true, '77.3%']);
+    expect(cbAtSupportLine(far, fmtUSDCents), 'ATS agrees far from the limit')
+      .toBe("If BTC were at support ($64,699.79): 77.3% LTV — over the plan's 45% limit");
   });
 });
 
@@ -200,8 +261,8 @@ describe('⭐ MOVE — Safety reads the position as it stands; when this month\'
   it('⭐ MOVE — the owner\'s line: the reading, then the move only when it is the fix', () => {
     const over = cbAtSupportOf({ hasCbLoan: true, debt: 50_000, collateralBtc: 1, support: 64_699.79, limit: 0.45 })!;
     expect(ownerAtSupportLine(over, true), 'MOVE named')
-      .toBe("At support ($64,699.79): Coinbase 77.3% of its collateral's value — the plan's limit is 45% — this month's move brings it within");
-    expect(ownerAtSupportLine(over, false), 'MOVE not the fix').toBe("At support ($64,699.79): Coinbase 77.3% of its collateral's value — the plan's limit is 45%");
+      .toBe("If BTC were at support ($64,699.79): 77.3% LTV — over the plan's 45% limit; this month's move brings it within");
+    expect(ownerAtSupportLine(over, false), 'MOVE not the fix').toBe("If BTC were at support ($64,699.79): 77.3% LTV — over the plan's 45% limit");
     const within = cbAtSupportOf({ hasCbLoan: true, debt: 20_000, collateralBtc: 1, support: 64_699.79, limit: 0.45 })!;
     expect(ownerAtSupportLine(within, true), 'MOVE never when within').not.toContain(CB_MOVE_BRINGS_WITHIN);
     expect(CB_MOVE_BRINGS_WITHIN, 'MOVE banned').not.toMatch(BANNED);
@@ -263,6 +324,22 @@ describe('⭐ VIEWER — the safe snapshot\'s two ratios; the trusted path reads
     }
     const r = computeViewerSafety(snap, 150_000, BASE);
     expect(r.cbAtSupport, 'VIEWER the safe line: no price').toEqual({ support: null, ltv: snap.safety.cbLtvAtSupport, limit: 0.45, level: 'watch' });
+  });
+
+  it('⭐ VIEWER — the safe line says over or within by the owner\'s verdict, the trusted line by the live reading — never the ratio', () => {
+    // Run 4.1 (BL29): 45¢ past the limit on 0.01 ₿ is within by the plan's 50¢ rule, though its ratio is past 45%.
+    const tiny: SafetyViewInputs = { ...BASE, cbCollateralBtc: 0.01, cbLoanBalance: 0.45 * 0.01 * 64_000 + 0.45 };
+    const snap = snapOf(tiny);
+    expect([snap.safety.cbAtSupportLevel, (snap.safety.cbLtvAtSupport ?? 0) > 0.45], 'VIEWER premise: within by the rule, past by the ratio')
+      .toEqual(['safe', true]);
+    const r = computeViewerSafety(snap, 100_000, tiny);
+    expect(cbAtSupportLine(r.cbAtSupport!), 'VIEWER the safe line\'s word')
+      .toBe("If BTC were at support: 45.0% LTV — within the plan's 45% limit");
+    // The trusted path (a trusted viewer, the owner's Dashboard) reads the same position live, with the support price.
+    const live = deriveSafetyView(tiny).cbAtSupport!;
+    expect([live.level, live.ltv > 0.45], 'VIEWER premise: the live reading, within by the rule, past by the ratio').toEqual(['safe', true]);
+    expect(cbAtSupportLine(computeViewerSafety(null, 100_000, tiny).cbAtSupport!), 'VIEWER the trusted line\'s word')
+      .toBe("If BTC were at support ($64,000): 45.0% LTV — within the plan's 45% limit");
   });
 
   it('⭐ VIEWER — an older snapshot (no ratios) shows no reading and leaves the overall as it was', () => {

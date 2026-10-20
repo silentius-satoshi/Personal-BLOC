@@ -156,7 +156,8 @@ The owner→viewer snapshot is now **MODE-SHAPED**, default **C-safe** (privacy-
   `supportToday(todayLocalISO())`, the clock read kept out of the pure core — and `computeViewerSafety` returns
   `cbAtSupport`: live, with the support price, on the trusted path; the snapshot's ratio, with no price, on the safe
   path; null with none. The CB card's sub-line — here and on the owner's Dashboard — adds `cbAtSupportLine`: whole
-  dollars on the trusted path, no price on the safe one, nothing from an older snapshot.)
+  dollars on the trusted path, no price on the safe one, nothing from an older snapshot — and, since Run 4.1 (BL29),
+  "over" or "within" in words, by the level: the snapshot's `cbAtSupportLevel`, the owner's verdict, on the safe path.)
 - **Owner "Preview as viewer" (`viewerPreview`, transient/NEVER persisted — partialize-stripped, so the app
   can't boot into preview):** the trigger sets `viewerPreview`; AppShell's owner simple-mode branch (J) renders
   `<ViewerPreview/>` instead of the Dashboard/Daily/Monthly fork. **Owner IA — the trigger RELOCATED** from the

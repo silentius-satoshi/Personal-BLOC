@@ -1415,6 +1415,22 @@ goes red.)
     never an empty page) · CBTAB (the "On a crash day" card and its words; no Emergency Protocol and no
     projection; the "Your trigger" row; the link opens the console). Run 3's REANCHOR reads BL26's words, with a month in
     progress that stays out of the average; `navigation.spec.ts`'s MOVE-ALERT reads the alert with no strategy clause.
+- **The plan of record (Run 4.1 — the at-support line's words)** (spec `pbloc-spec-plan-of-record-v1` v1.24 §17 — the
+  owner's F-R4-2, BL29; the suite 2,764 → 2,766 (+6 skipped), 175 files; e2e 89 (+2 skipped), unchanged. The mutations
+  are spec v1.24 §17's — no counts here):
+  - `src/simulation/__tests__/safetyAtSupport.test.ts` (+2): ATS's words — "If BTC were at support ($S): X% LTV — over
+    the plan's L% limit", or "within" by the reading's level, to the cent, whole, with no price on the safe path, never
+    "safe" · ⭐ ATS — the figure agrees with the word: $10 past a 45% limit on 1 ₿ prints 45.1% over, $10 under 45.0%
+    within, 45¢ past it on 0.01 ₿ (within by the 50¢ rule) 45.0% within, a 45.5% limit prints its decimal (45.6% over),
+    a 45.25% limit both of its decimals (45.3% over; 30¢ past it, within, 45.2%), the nearest tenth on either side (49¢
+    past a 45% limit on 0.004 ₿, within, 45.0% where one decimal alone reads 45.2%; $10 past a 45.21% limit, 45.3% over
+    where it reads 45.2%), a 40.305% limit printed as the hundredths the figure is held against (40.31%), and a figure
+    far from the limit doesn't move — ten cases, each with its premise · ⭐ VIEWER — the safe line says over or within
+    by the owner's verdict, the trusted line by the live reading — never the ratio (45¢ past the limit on 0.01 ₿: sealed
+    and read on the safe path, "within", 45.0%; read live on the trusted path, the same with the support price) ·
+    MOVE's two lines, the move clause after a semicolon.
+  - e2e, `planOfRecord.spec.ts` — Run 4's SAFETY ×3 and VIEWER read the new words: over and within on THIS MONTH and
+    Daily, the move clause, the Dashboard in whole dollars.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s

@@ -1802,10 +1802,14 @@ what its buttons do.
   (`supportToday(todayISO)`, the plan's S₀). `SafetyView.cbAtSupport` (`cbAtSupportOf`): accrued debt ÷ (collateral ×
   S₀), the limit, and `over` by the placement's own rule with the dust floor — level watch or safe: amber, never red.
   `SafetyDashboard` (THIS MONTH and Daily) prints `ownerAtSupportLine` under the Coinbase cushion row — `cbAtSupportLine`
-  to the cent, amber when over. Safety reads the position as it stands and THIS MONTH's card reads it after the
+  to the cent, amber when over. Its words (Run 4.1, BL29 — the owner found the first ones too complex, F-R4-2) are a
+  what-if in the bar's own terms that says which side of the limit it is: "If BTC were at support ($S): X% LTV — over
+  the plan's L% limit", or "within" — by the reading's level, never the ratios; "were at" holds above support or below
+  it. The figure agrees with the word (over, never at or below the limit; within, never above it), and a limit with a
+  decimal prints it. Safety reads the position as it stands and THIS MONTH's card reads it after the
   month's move, so when this month's move tops Coinbase up from Strike and brings it within (planMonthView's
   `planMoveBringsCbWithin(placement)`, which THIS MONTH and Daily pass from their own run as `moveBringsCbWithin`) the
-  line adds " — this month's move brings it within" (`CB_MOVE_BRINGS_WITHIN`, D-R4-1), still amber until the coins
+  line adds "; this month's move brings it within" (`CB_MOVE_BRINGS_WITHIN`, D-R4-1), still amber until the coins
   move. Its eyebrow is `ownerSafetyVerdict` — the worse reading wins, and "Watch — Coinbase is over the plan's
   limit at support" (`CB_AT_SUPPORT_WATCH`) when only the at-support reading is amber. `deriveViewerOverall` folds the
   at-support level.

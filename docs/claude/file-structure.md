@@ -376,7 +376,9 @@ src/
                                 # (collateral × S₀), the limit, `over` by the placement's rule — ceilingHeadroomUsd past
                                 # the dust floor — and level watch / safe: amber, never red; null with no loan, no debt or
                                 # no support) · cbAtSupportLine(r, money) (the line under the Coinbase bar; no price when
-                                # r.support is null) · CB_AT_SUPPORT_WATCH · ownerSafetyVerdict(view, hasCbLoan) (the
+                                # r.support is null; Run 4.1, BL29: "If BTC were at support ($S): X% LTV — over the
+                                # plan's L% limit", or "within", by r.level; the figure agrees with the word, and a limit
+                                # with a decimal prints it) · CB_AT_SUPPORT_WATCH · ownerSafetyVerdict(view, hasCbLoan) (the
                                 # owner's eyebrow: the worse of today's bars and the at-support reading) ·
                                 # deriveViewerOverall folds the at-support level. D9: ViewerSafeSafety gains
                                 # cbLtvAtSupport / cbAtSupportLevel and SafeSnapshot.thresholds cbLimitAtSupport (absent
@@ -387,7 +389,7 @@ src/
                                 # an input, so scenarioDiff, which imports only safetyView, still reaches no model (pinned
                                 # in ATS). D-R4-1:
                                 # ownerAtSupportLine(r, moveBringsWithin) — the owner's line: cbAtSupportLine to the cent, +
-                                # CB_MOVE_BRINGS_WITHIN (" — this month's move brings it within") when over and this month's
+                                # CB_MOVE_BRINGS_WITHIN ("; this month's move brings it within") when over and this month's
                                 # move is the fix (Safety reads the position as it stands, THIS MONTH's card after the move).
                                 # Tested in __tests__/safetyAtSupport.test.ts (ATS, MOVE, VERDICT, VIEWER)
     scenarioDiff.ts             # Phase 3a — Scenario Diff/Pin PURE model (UI is 3b). PinnedScenario {label,
@@ -2074,7 +2076,7 @@ src/
                                 # todayLocalISO(), memoised on the day), beside the plan's limit, to the cent; amber
                                 # (LEVEL_COLOR.watch) when over, never red (.atSupport in SafetyDashboard.module.css). Its
                                 # prop moveBringsCbWithin (default false; D-R4-1): THIS MONTH and Daily pass
-                                # planMoveBringsCbWithin on their own run, and the line then adds " — this month's move
+                                # planMoveBringsCbWithin on their own run, and the line then adds "; this month's move
                                 # brings it within"
       SimpleModeView.tsx        # Simple Mode full-screen view (global simpleMode flag): header + HeaderNavCluster,
                                 # BackupNagCard, ViewToggle, <SafetyDashboard/> (the plan of record's Run 4, D-R4-1:

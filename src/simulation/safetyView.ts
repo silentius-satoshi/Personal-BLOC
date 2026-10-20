@@ -90,8 +90,9 @@ export function cbAtSupportOf(f: {
 }
 
 /** D7 (D-R4-1) — the owner's line when Coinbase is over now and this month's move brings it within (THIS MONTH's card
- *  then reads "within", after the move): the position as it stands, and the fix the card's to-do names. */
-export const CB_MOVE_BRINGS_WITHIN = " — this month's move brings it within";
+ *  then reads "within", after the move): the position as it stands, and the fix the card's to-do names. Run 4.1 (BL29):
+ *  after the line's own dash, a semicolon. */
+export const CB_MOVE_BRINGS_WITHIN = "; this month's move brings it within";
 export function ownerAtSupportLine(r: CbAtSupport, moveBringsWithin: boolean): string {
   return cbAtSupportLine(r, fmtUSDCents) + (r.over && moveBringsWithin ? CB_MOVE_BRINGS_WITHIN : '');
 }
@@ -117,12 +118,41 @@ export function ownerSafetyVerdict(view: SafetyView, hasCbLoan: boolean): { stat
   return { state, copy };
 }
 
-/** D7 — the at-support line under the Coinbase bar (the owner's Safety card, to the cent; the trusted Dashboard, whole).
- *  "The plan's limit", never "safe" (§4.7). With no support price (the safe viewer's snapshot carries none) it leaves the
- *  price out. */
-export function cbAtSupportLine(r: { support: number | null; ltv: number; limit: number }, money: (n: number) => string = fmtUSD): string {
-  const at = r.support !== null ? `At support (${money(r.support)})` : 'At support';
-  return `${at}: Coinbase ${fmtLtvPct(r.ltv)} of its collateral's value — the plan's limit is ${Math.round(r.limit * 100)}%`;
+/** D7 — the at-support line under the Coinbase bar (the owner's Safety card, to the cent; the Dashboard and a trusted
+ *  viewer, whole). Run 4.1 (BL29, F-R4-2) — a what-if, in the bar's own terms, that says which side of the limit it is:
+ *  "If BTC were at support ($S): X% LTV — over the plan's L% limit" (or "within"). "Were at" holds whether BTC is above
+ *  support or below it. Over or within is the reading's level (the plan's 50¢ rule — `cbAtSupportOf`, or the owner's
+ *  verdict in a viewer's snapshot), never the ratios; "the plan's limit", never "safe" (§4.7). With no support price
+ *  (the safe viewer's snapshot carries none) it leaves the price out. */
+export function cbAtSupportLine(
+  r: { support: number | null; ltv: number; limit: number; level: SafetyLevel }, money: (n: number) => string = fmtUSD,
+): string {
+  const at = r.support !== null ? `If BTC were at support (${money(r.support)})` : 'If BTC were at support';
+  const over = r.level !== 'safe';
+  return `${at}: ${atSupportLtvText(r.ltv, r.limit, over)} LTV — ${over ? 'over' : 'within'} the plan's ${limitText(r.limit)} limit`;
+}
+
+/** Run 4.1 (BL29) — the plan's limit as a percentage, with its own decimals when it has them, at most two (a restored
+ *  setting can be 45.5; §16.11): "45%", "45.5%", "45.25%" — and a 45.0951% limit, "45.1%". Printed from the hundredths
+ *  the figure is held against (`atSupportLtvText`), so the line reads one limit: a 40.305% limit prints "40.31%". */
+function limitText(limit: number): string {
+  const hundredths = Math.round(limit * 10_000);
+  return fmtLtvPct(hundredths / 10_000, hundredths % 100 === 0 ? 0 : hundredths % 10 === 0 ? 1 : 2);
+}
+
+/** Run 4.1 (BL29) — the figure agrees with the word, against the limit as `limitText` prints it: over, it never prints
+ *  at or below it; within, never above it. One decimal, as `fmtLtvPct` prints it, moved to the nearest tenth on the
+ *  word's side whenever one decimal would put it on the other — near the limit by rounding (over: a debt up to about $32
+ *  past a 45% limit on 1 ₿ at a $64,699.79 support; within, too, under a two-decimal limit), or by the 50¢ rule on
+ *  collateral worth under about $1,000 at support, where a reading within past the limit prints the limit itself (under
+ *  a two-decimal limit, the tenth below). */
+function atSupportLtvText(ltv: number, limit: number, over: boolean): string {
+  if (!Number.isFinite(ltv)) return fmtLtvPct(ltv);
+  const limitHundredths = Math.round(limit * 10_000);
+  let tenths = Math.round(parseFloat(fmtLtvPct(ltv)) * 10);
+  if (over && tenths * 10 <= limitHundredths) tenths = Math.floor(limitHundredths / 10) + 1;
+  if (!over && tenths * 10 > limitHundredths) tenths = Math.floor(limitHundredths / 10);
+  return fmtLtvPct(tenths / 1000);
 }
 
 export interface SafetyView {

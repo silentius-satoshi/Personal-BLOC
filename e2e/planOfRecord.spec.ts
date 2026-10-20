@@ -352,14 +352,15 @@ test.describe('the plan of record — Run 4', () => {
   });
 
   // The round synthetic loan: $50,000 on 1 ₿ at a manual $100,000, no as-of date (nothing accrues). On 2026-10-12 support is
-  // $64,699.79, so Coinbase is at 77.3% of its collateral's value at support — over the plan's 45% — while today's bar
+  // $64,699.79, so at support Coinbase is at 77.3% LTV — over the plan's 45% — while today's bar
   // (50%, under the 75% trigger) is green.
   const LOAN = "hasCbLoan: true, cbLoanBalance: 50000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1";
   const hermetic4 = async (page: Page): Promise<void> => {
     await page.route(/api\.coinbase\.com\/v2\/prices/, (r) => r.abort());
     await page.route(/blockchain\.info/, (r) => r.fulfill({ contentType: 'application/json', body: HISTORY }));
   };
-  const AT_SUPPORT = "At support ($64,699.79): Coinbase 77.3% of its collateral's value — the plan's limit is 45%";
+  // Run 4.1 (BL29, F-R4-2): a what-if in the bar's terms, over or within in words.
+  const AT_SUPPORT = "If BTC were at support ($64,699.79): 77.3% LTV — over the plan's 45% limit";
 
   test('SAFETY — the Safety card reads Coinbase at support: the line under the bar, amber over the limit, and the verdict', async ({ page }) => {
     await page.clock.setFixedTime(new Date('2026-10-12T12:00:00'));
@@ -383,7 +384,7 @@ test.describe('the plan of record — Run 4', () => {
     await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'daily', advisorStartDate: '2026-10-01',
       hasCbLoan: true, cbLoanBalance: 20000, cbLoanBalanceAsOf: null, cbCollateralBtc: 1`));
     await page.goto('/');
-    const line = page.getByText("At support ($64,699.79): Coinbase 30.9% of its collateral's value — the plan's limit is 45%", { exact: true });
+    const line = page.getByText("If BTC were at support ($64,699.79): 30.9% LTV — within the plan's 45% limit", { exact: true });
     await expect(line, 'SAFETY the line on Daily').toBeVisible({ timeout: 15_000 });
     await expect(line, 'SAFETY no tone within').not.toHaveAttribute('style', /var\(--amber\)/);
     await expect(page.getByText('Safe — nothing to do today', { exact: true }), 'SAFETY today\'s verdict').toBeVisible();
@@ -397,7 +398,7 @@ test.describe('the plan of record — Run 4', () => {
     // at support to Coinbase — enough to bring it within.
     await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'monthly', advisorStartDate: '2026-10-01', ${LOAN}, strikeCollateralBtc: 2`));
     await page.goto('/');
-    const line = page.getByText(`${AT_SUPPORT} — this month's move brings it within`, { exact: true });
+    const line = page.getByText(`${AT_SUPPORT}; this month's move brings it within`, { exact: true });
     await expect(line, 'MOVE the line names the move').toBeVisible({ timeout: 15_000 });
     await expect(line, 'MOVE still amber: the position as it stands').toHaveAttribute('style', /var\(--amber\)/);
     // The card reads after the move: within — and its to-do is the move.
@@ -410,7 +411,7 @@ test.describe('the plan of record — Run 4', () => {
     await hermetic4(page);
     await page.addInitScript(seedOf(`simpleMode: true, simpleView: 'dashboard', advisorStartDate: '2026-10-01', ${LOAN}`));
     await page.goto('/');
-    await expect(page.getByText("At support ($64,700): Coinbase 77.3% of its collateral's value — the plan's limit is 45%"), 'VIEWER the Dashboard')
+    await expect(page.getByText("If BTC were at support ($64,700): 77.3% LTV — over the plan's 45% limit"), 'VIEWER the Dashboard')
       .toBeVisible({ timeout: 15_000 });
     await expect(page.getByText('Worth keeping an eye', { exact: true }), 'VIEWER the overall folds it').toBeVisible();
     await expect(page.getByText('Something crashed')).toHaveCount(0);
