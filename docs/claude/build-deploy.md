@@ -17,8 +17,8 @@ TS-aware `no-unused-vars` (`_`-prefix ignored — the `persistConfig`/`payloads`
 three of those exclusions carry a written reason in the config rather than being silently absent:
 `no-explicit-any` (137 sites, deliberate at the parse/validate boundary — `migrateState`,
 `validatePlanBackup`), `no-undef` (TS already resolves identifiers; the core rule only false-positives
-in a TS project), and `prefer-const` (one site in `runAdvisor.ts`'s engine — ESLint reports the shape
-but cannot autofix it; verified by enabling the rule and running `--fix`: empty diff, error persists).
+in a TS project), and `prefer-const` (its one site, `runAdvisor.ts`'s engine, left with the engine in 5e — D5-A; measured
+then, the rule reports nothing on the tree, and turning it on waits for the next widening pass).
 **`react-hooks/exhaustive-deps` is the named next candidate** — 6 of the repo's `eslint-disable`
 comments already suppressed it before this commit, so enabling it is the highest-value next widening
 (its own mission: re-enable, then read each surfaced dep array).
@@ -35,8 +35,8 @@ that fails in isolation is a bug, not a retry) + `e2e/*.spec.ts` + `e2e/helpers.
 ['e2e/**', …]` keeps `vitest run` from collecting the `.spec.ts` files (vitest's default include globs
 `*.spec.ts`). **Reach:** the dev server bypasses every auth/viewer gate via `import.meta.env.DEV`, so a
 3-field `addInitScript` localStorage seed (`onboardingComplete/simpleMode/simpleView:'daily'` + the
-`personal-bloc-onboarded` GATE key + `window.__APP_BOOTED=true` to suppress index.html's 6s boot-watchdog
-overlay) lands on DailyModeView; the FAB (`getByLabel('Log an event')`) opens EventSheet, a seeded `dayLog`
+`personal-bloc-onboarded` GATE key + `window.__APP_BOOTED=true` to suppress index.html's boot-watchdog
+overlay — 15 s since 5e, and it removes itself once the app starts) lands on DailyModeView; the FAB (`getByLabel('Log an event')`) opens EventSheet, a seeded `dayLog`
 draw event + `data-testid="log-row"` tap opens EDIT mode, `getByLabel('Almanac')` → the live-height badge
 opens the consent sheet; each opener returns only once the sheet is at rest (`waitForSheetAtRest`, the sheet-entry
 race below). Gestures drive `page.mouse` (real pointer events, capture-capable) from the grabber.
@@ -115,7 +115,7 @@ network answer is HELD or aborted:
 
 Its checks:
 - STEADY (Z22): the loaded `powerlaw-chart-box`'s page top (`rect.top + scrollY`) equals the loading box's. The first
-  reading waits for `document.fonts.ready`: IBM Plex Mono swaps in (`display=swap`) and the sub-nav pills above grow
+  reading waits for `document.fonts.ready`: IBM Plex Mono swaps in (`font-display: swap`) and the sub-nav pills above grow
   33 → 34px with it (`line-height: normal`), so a reading taken before the swap was 1px off one taken after — a flake,
   measured, never the layout;
 - TOP (R1): `window.scrollY` plus the `scrollTop` of every ancestor of the box is 0. The app scrolls `<body>`, not the
@@ -194,7 +194,8 @@ low as the screen's bottom edge (y ≈ 844 against a settled 457) — and a drag
   threshold dismisses" failed 5 of 20, every one at `toHaveCount(0)`; eventSheet's tests failed 0 of 180. The cloud
   never failed.
 - **AT-REST** pins it on any machine (§ Test Suite → "The sheet-entry race"). Its `beforeEach` slows the slide to 1 s (an
-  author `!important` beats the inline 280 ms) and aborts the Google Fonts requests: a late `display=swap` swap moves a
+  author `!important` beats the inline 280 ms) and aborts the app's own font files (self-hosted since 5e, E1 —
+  `APP_FONT_FILES`, the dev server's URLs and a build's alike): a late `font-display: swap` swap moves a
   bottom-anchored sheet by a pixel. Never loosen AT-REST to a tolerance — that would also hide an opener that returns a
   frame or two early.
 - **The rule:** a new spec that measures or drags a sheet right after opening it goes through the helpers, or calls
@@ -227,13 +228,15 @@ asset (index/js/css/svg) is precached, **per-deploy versioned + atomically activ
 hand-rolled `sw.js` precached only `/` + `/index.html` and network-first'd the rest). On first activation of
 the new SW the legacy `personal-bloc-v1` cache is deleted. **Cross-origin APIs (price/candles/relays) are
 intentionally network-only** — no runtime caching; the stores carry last-known values and a failed poll is
-handled gracefully. Registration is `registerSW({ immediate: true })` in `main.tsx` (autoUpdate; the inline
+handled gracefully. (5e, F12: the price chart keeps its own copy of the candles in localStorage — `lib/btcCandlesCache`,
+never the SW — and draws it at once, labeled once it is more than 5 minutes old.) Since 5e (E1) the six IBM Plex Mono
+woff2 files are precached with the build, so the font works offline. Registration is `registerSW({ immediate: true })` in `main.tsx` (autoUpdate; the inline
 `index.html` script is gone), with `injectRegister: null` in the plugin config to avoid a double injection.
 `src/sw.ts` typechecks under a dedicated **`tsconfig.worker.json`** (WebWorker lib, no DOM; referenced from
 the root tsconfig, excluded from `tsconfig.app.json`) so `tsc -b` stays clean. The two module workers sit in the same
 project — `src/lib/crypto/crypto.worker.ts` and `src/components/Almanac/futures.worker.ts` (Policy v2 — the lenses):
 `tsconfig.worker.json` includes them and `tsconfig.app.json` excludes them; each is a hashed chunk in the precache, which
-is **8 entries** since the futures worker (7 before). **Vercel builds it via its
+is **14 entries** since 5e's six font files (8 after the futures worker, 7 before it). **Vercel builds it via its
 `vite build` buildCommand** (the plugin runs in `vite build`, not `tsc -b`). Note for the parked
 security-hardening batch: SW response-caching policy now lives in `src/sw.ts`.
 
@@ -241,6 +244,16 @@ security-hardening batch: SW response-caching policy now lives in `src/sw.ts`.
 wrapped around `<NostrProvider><App/></NostrProvider>` in `main.tsx`) — white-screen crashes now render
 on-device diagnostics (message/stack/component-stack, copy + reload) instead of a blank page; built for
 offline-boot debugging, kept permanently (not a temp probe).
+
+**The start-up diagnostic (the SW DIAG panel — `index.html`'s inline script; 5e, F2):** it runs before, and without, the
+bundle. It listens from its first line — runtime errors, rejections, and (capture phase) a script, chunk or stylesheet
+that fails to load — keeping the first 50 lines and counting the rest. It paints on `?swdebug` at once, and that panel
+stays (it was asked for); otherwise only after a 15 s watchdog if the app hasn't started (`window.__APP_BOOTED`, set by
+`main.tsx` once the whole bundle has run — ESM runs its imports first), re-checking at paint time. A watchdog panel
+checks the flag every 250 ms and removes itself the moment the app starts, so it never stays over a healthy start
+(before 5e it never left, and the window was 6 s). ES5 only, and it never sets the flag (the e2e seeds pre-set it).
+Pinned by `src/__tests__/swDiag.test.ts` (the real script in `node:vm`, a fake window, document and clock) and
+`e2e/startup.spec.ts` (F2 GONE, SWDEBUG).
 
 **Build-version display:** `__BUILD_SHA__` / `__BUILD_TIME__` vite `define` constants (vite.config.ts:
 Vercel `VERCEL_GIT_COMMIT_SHA` → local `git rev-parse --short HEAD` fallback → `'dev'`), ambient

@@ -17,7 +17,7 @@ Morpho/Coinbase: 86% LLTV instant liquidation, no grace period, 4.38% penalty.
 
 ⚠ **The plan of record's Run 4:** no screen calls `runCoinbaseLoan()` or `classifyLtv()` — the CB Loan tab's 12-month
 projection (it read the retired `cbMonthlyPayment`) is gone, and the tab colours today's LTV by Safety's level. Both
-stay (`aprAnchors.test.ts` still runs `runCoinbaseLoan`, which calls `classifyLtv`). The tab's alert table (`isBreach`)
+left the code in 5e (batch 1, D5-A), with `aprAnchors.test.ts`'s projection test; the type block above is their history. The tab's alert table (`isBreach`)
 has two rows: the owner's trigger and 86% (§ The plan of record (Run 4)).
 
 ### Platform fee — `CB_PLATFORM_FEE_PCT` / `cbNetApr` 🔴 THE APR IS NOT MORPHO'S APR
@@ -125,7 +125,7 @@ sweeps to save on fees" is the obvious wrong intuition and someone will have it.
 **Two borrow sites, both wired:**
 - `cyclingSim.ts` — the refinance sweep. `cbDebt += strikeBal + fee`; `CyclingResult` gained
   `totalCbFees` / `cbFeeCount`, which both faces print for the run in front of the owner.
-- `runAdvisor.ts` — the **reverse rotation** (`strikeRepayDraw`, drawing cheap CB debt to repay
+- `runAdvisor.ts` (its engine gone at 5e, D5-A — this is history) — the **reverse rotation** (`strikeRepayDraw`, drawing cheap CB debt to repay
   expensive Strike). Same real-world action, same real fee. New row field `strikeRepayFee`.
   ⚠ **The rotation is NO LONGER DEBT-NEUTRAL** and the test that asserted it was renamed rather than
   relaxed: Strike falls by the CASH (`strikeRepayDraw`), Coinbase rises by cash **+ fee**. The fee buys
@@ -160,6 +160,12 @@ computed `cbMetrics.liqPrice`) as its `liquidationPrice` prop. Imports `CB_LLTV`
 ---
 
 ## Advisor (`runAdvisor.ts`)
+
+⚠ **5e (batch 1, D5-A): `runAdvisor` left the code** — with its tests, its tier helpers (`getTier`, `getTierColor`,
+`getTierLabel`), `deriveAdvisorStart`, `runCoinbaseLoan`'s projection and `classifyLtv`: the comparison engine kept one
+release after the plan of record's Run 3, when it left every screen. This section is its history. `runAdvisor.ts`
+keeps the helpers that stay — `getCurrentStrategyMonth`, `isStrategyComplete` and `getNdpStatus` — and invariant 3
+(`advisorPricePath.test.ts`, GONE) pins that nothing defines or calls what left.
 
 ### Priority Tiers (based on CB LTV start of month)
 | Tier | CB LTV | BLOC Draw | Extra CB | BTC |

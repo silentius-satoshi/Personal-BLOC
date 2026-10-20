@@ -11,9 +11,17 @@ import { expect, type Page, type Locator } from '@playwright/test';
 // assertion fails loudly (rather than every spec timing out on a hidden onboarding modal).
 export const STORE_VERSION = 21;
 
+/**
+ * The app's own font files (5e, E1 — IBM Plex Mono is self-hosted, src/styles/fonts.css). One pattern for both URL shapes:
+ * the dev server's `/node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2` and a build's
+ * hashed `/assets/ibm-plex-mono-latin-400-normal-<hash>.woff2`. A spec that needs a settled fallback font aborts these;
+ * startup.spec.ts checks the page asks for them, and never for Google's.
+ */
+export const APP_FONT_FILES = /\/ibm-plex-mono-[a-z-]+-(400|600|700)-normal[^/]*\.woff2/;
+
 const SEED = `
-  // Suppress index.html's 6s boot-watchdog overlay (#sw-diag-panel) — a cold vite dev start can boot
-  // slower than 6s and the panel would intercept clicks. main.tsx sets this too; we set it pre-load.
+  // Suppress index.html's boot watchdog (#sw-diag-panel, 15 s) — a cold vite dev start can be slow, and the panel would
+  // intercept clicks until the app starts (it removes itself then, 5e). main.tsx sets this too; we set it pre-load.
   window.__APP_BOOTED = true;
   localStorage.setItem('personal-bloc-store', JSON.stringify({
     state: { onboardingComplete: true, simpleMode: true, simpleView: 'daily' },

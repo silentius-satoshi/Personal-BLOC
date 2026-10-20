@@ -1,4 +1,5 @@
 @import './tokens.css';
+@import './fonts.css';   /* IBM Plex Mono, self-hosted (5e, E1) */
 
 *, *::before, *::after {
   box-sizing: border-box;

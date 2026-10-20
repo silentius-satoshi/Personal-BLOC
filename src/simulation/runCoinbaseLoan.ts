@@ -1,6 +1,6 @@
 import { ltvOfUsd } from './ltv';
 export const CB_LLTV = 0.86;
-export const CB_WARN_LTV = 0.65;  // Coinbase/Morpho warning band start (watch→warning boundary; see classifyLtv)
+export const CB_WARN_LTV = 0.65;  // Coinbase/Morpho warning level — the Safety card's "Warn · liquidate" figure
 export const CB_LIF  = 1 / (0.3 * CB_LLTV + 0.7);  // ≈ 1.04384
 
 /**
@@ -100,89 +100,6 @@ export function cbMaxDrawForHeadroom(headroom: number, balance: number): number 
   const tier1Cost = tier1Room * (1 + CB_FEE_TIER1_PCT);      // what that cash costs, fee included
   if (headroom <= tier1Cost) return headroom / (1 + CB_FEE_TIER1_PCT);
   return tier1Room + (headroom - tier1Cost) / (1 + CB_FEE_TIER2_PCT);
-}
-
-export interface CbLoanInputs {
-  loanBalance:   number;
-  collateralBtc: number;
-  aprPct:        number;
-  monthlyPayment: number;
-  btcPrice:      number;
-}
-
-export type CbLtvStatus =
-  | 'safe'
-  | 'watch'
-  | 'warning'
-  | 'emergency'
-  | 'critical'
-  | 'liquidated';
-
-export interface CbMonthRow {
-  month:     number;
-  balance:   number;
-  interest:  number;
-  payment:   number;
-  netChange: number;
-  ltv:       number;
-  status:    CbLtvStatus;
-}
-
-export interface CbLoanProjection {
-  rows:           CbMonthRow[];
-  finalBalance:   number;
-  finalLtv:       number;
-  totalInterest:  number;
-  totalPayments:  number;
-}
-
-export function classifyLtv(ltv: number): CbLtvStatus {
-  if (ltv < 0.55) return 'safe';
-  if (ltv < CB_WARN_LTV) return 'watch';
-  if (ltv < 0.70) return 'warning';
-  if (ltv < 0.84) return 'emergency';
-  if (ltv < 0.86) return 'critical';
-  return 'liquidated';
-}
-
-export function runCoinbaseLoan(inputs: CbLoanInputs): CbLoanProjection {
-  const { loanBalance, collateralBtc, aprPct, monthlyPayment, btcPrice } = inputs;
-  const monthlyRate = aprPct / 100 / 12;
-
-  let balance = loanBalance;
-  const rows: CbMonthRow[] = [];
-  let totalInterest = 0;
-  let totalPayments = 0;
-
-  for (let month = 1; month <= 12; month++) {
-    const prevBalance = balance;
-
-    const interest = balance * monthlyRate;
-    balance += interest;
-
-    const payment = Math.min(monthlyPayment, balance);
-    balance -= payment;
-
-    const netChange = balance - prevBalance;
-    const ltv = balance / (collateralBtc * btcPrice);
-
-    totalInterest += interest;
-    totalPayments += payment;
-
-    const status = classifyLtv(ltv);
-    rows.push({ month, balance, interest, payment, netChange, ltv, status });
-    // Liquidation is terminal. Continuing to accrue/pay a seized position creates a fictitious recovery
-    // path in the 12-month table and understates the fact that the facility has already been closed out.
-    if (status === 'liquidated') break;
-  }
-
-  return {
-    rows,
-    finalBalance:  balance,
-    finalLtv:      rows.at(-1)?.ltv ?? 0,
-    totalInterest,
-    totalPayments,
-  };
 }
 
 export interface LiquidationScenario {

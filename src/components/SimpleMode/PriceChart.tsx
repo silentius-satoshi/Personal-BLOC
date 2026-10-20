@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, ResponsiveContainer, Tooltip } from 'recharts';
 import { useBtcHistory, type ChartRange } from '../../hooks/useBtcHistory';
+import { useCountTo } from '../../hooks/useCountTo';
+import { asOfLabel } from '../../lib/btcCandlesCache';
 import { fmtUSD } from '../../utils/format';
 import styles from './PriceChart.module.css';
 
@@ -13,29 +15,39 @@ function fmtTime(t: number, range: ChartRange): string {
     : d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-/** `money` prints the price and its tooltip: whole by default (the Dashboard, the trusted viewer's home); the Safety
- *  card on THIS MONTH and Daily passes `fmtUSDCents` (Run 2.1, BL19). */
+/** `money` prints the price — the counting one too — and its tooltip: whole by default (the Dashboard, the trusted
+ *  viewer's home); the Safety card on THIS MONTH and Daily passes `fmtUSDCents` (Run 2.1, BL19).
+ *
+ *  5e (F12): the history is drawn at once from this device's copy. Once it is more than 5 minutes old (`asOf`), it is
+ *  drawn muted, with its time in place of the % change ("as of 2:05 PM"), until a fresh one lands; then the label goes
+ *  and the headline counts to the new figure. */
 export function PriceChart({ money = fmtUSD }: { money?: (n: number) => string } = {}) {
   const [range, setRange] = useState<ChartRange>('1D');
-  const { candles, loading, error } = useBtcHistory(range);
+  const { candles, loading, error, asOf } = useBtcHistory(range);
 
   const hasData  = candles.length >= 2;
   const first    = hasData ? candles[0].price : 0;
   const last     = hasData ? candles[candles.length - 1].price : 0;
+  const shown    = useCountTo(hasData ? last : null);
   const changePct = hasData && first > 0 ? ((last - first) / first) * 100 : 0;
   const up       = changePct >= 0;
-  const color    = up ? 'var(--green)' : 'var(--red)';
+  const old      = asOf !== null;
+  const color    = old ? 'var(--text-muted)' : up ? 'var(--green)' : 'var(--red)';
 
   return (
-    <div className={styles.wrap}>
+    <div className={`${styles.wrap} ${old ? styles.old : ''}`} data-old={old ? 'true' : 'false'}>
       <div className={styles.head}>
         <div className={styles.readout}>
           {hasData ? (
             <>
-              <span className={styles.price}>{money(last)}</span>
-              <span className={styles.change} style={{ color }}>
-                {up ? '+' : ''}{changePct.toFixed(2)}% ({range})
-              </span>
+              <span className={styles.price}>{money(shown ?? last)}</span>
+              {asOf !== null ? (
+                <span className={styles.asOf}>{asOfLabel(asOf, Date.now())}</span>
+              ) : (
+                <span className={styles.change} style={{ color }}>
+                  {up ? '+' : ''}{changePct.toFixed(2)}% ({range})
+                </span>
+              )}
             </>
           ) : (
             <span className={styles.price}>BTC</span>

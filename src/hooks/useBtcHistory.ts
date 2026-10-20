@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState, useSyncExternalStore } from 'react';
 import { usePageVisibility } from './usePageVisibility';
 import { HISTORY_TIMEOUT_MS, withTimeLimit } from '../utils/timeLimit';
+import {
+  historyTime, isDrawable, isOld, isWellFormed, msUntilOld, readHistory, subscribeHistory, writeHistory,
+} from '../lib/btcCandlesCache';
 
 export type ChartRange = '1H' | '1D' | '1W';
 
@@ -32,23 +35,39 @@ export function parseCandles(raw: number[][], count: number): Candle[] {
 }
 
 /**
- * BTC price history for a timeframe, via the same-origin `/api/btc-candles` proxy (avoids CORS).
- * Ephemeral/display-only — never written to the store (like the spot price's chart, not the store value).
+ * BTC price history for a timeframe, via the same-origin `/api/btc-candles` proxy (avoids CORS). Display-only — never
+ * written to the store.
+ *
+ * 5e (F12): the chart draws this device's copy of the range's history at once (lib/btcCandlesCache — its own localStorage
+ * key, shared by every mounted chart), at any age, and refreshes it behind. `asOf` is the history's time once it is more
+ * than 5 minutes old: the chart draws it muted with "as of …" until a fresh one lands — and a timer labels a history on
+ * screen the moment it crosses, so one the refreshes can't renew (offline) is labeled on time. A range draws only its own
+ * history. A load that fails keeps whatever history the chart can draw; with nothing to draw, it says so.
  */
-export function useBtcHistory(range: ChartRange): { candles: Candle[]; loading: boolean; error: boolean } {
+export function useBtcHistory(range: ChartRange): { candles: Candle[]; loading: boolean; error: boolean; asOf: number | null } {
   const isVisible = usePageVisibility();
-  const [candles, setCandles] = useState<Candle[]>([]);
+  const entry = useSyncExternalStore(subscribeHistory, () => readHistory(range), () => readHistory(range));
   const [loading, setLoading] = useState(false);
-  const [error, setError]     = useState(false);
-  // The range whose candles are on screen (null: none yet, or the page was hidden). A refresh that fails keeps them while
-  // the page stays in view; a first load that fails says so.
-  const shownRange = useRef<ChartRange | null>(null);
+  const [failed, setFailed]   = useState(false);   // this range's last load brought nothing it could draw
+  const [, setTick]           = useState(0);       // a re-render at the moment the history on screen turns old
+
+  const granularityMs = RANGE_CFG[range].granularity * 1000;
+  const now   = Date.now();
+  const drawn = isDrawable(entry, granularityMs, now) ? entry : null;
+  const old   = drawn !== null && isOld(drawn, granularityMs, now);
+
+  useEffect(() => {
+    if (!drawn || old) return;
+    const id = setTimeout(() => setTick((n) => n + 1), msUntilOld(drawn, granularityMs, Date.now()));
+    return () => clearTimeout(id);
+  }, [drawn, old, granularityMs]);
 
   useEffect(() => {
     if (!isVisible) return;
     let cancelled = false;
     const outer = new AbortController();   // the unmount (or a range change) aborts the request in flight
     const { granularity, count } = RANGE_CFG[range];
+    setFailed(false);
 
     async function fetchCandles() {
       setLoading(true);
@@ -61,17 +80,15 @@ export function useBtcHistory(range: ChartRange): { candles: Candle[]; loading: 
         }, outer.signal);
         const parsed = parseCandles(raw, count);
         if (!cancelled) {
-          setCandles(parsed);
-          setError(parsed.length === 0);
-          shownRange.current = parsed.length > 0 ? range : null;
+          const landed = Date.now();
+          // The cache keeps it unless it is older than the history it holds (an edge-cached copy): never newer → older.
+          writeHistory(range, parsed, landed, granularity * 1000, landed);
+          setFailed(!isWellFormed({ at: landed, candles: parsed }));
         }
       } catch {
-        // BL23 — a refresh that fails (past the time limit too) keeps the chart already drawn for this range: before the
-        // limit, a stalled refresh kept it by never ending, and the limit must not blank it. A first load that fails says so.
-        if (!cancelled && shownRange.current !== range) {
-          setCandles([]);
-          setError(true);
-        }
+        // BL23 — a load that fails (past the time limit too) keeps whatever history the chart can draw, labeled once it is
+        // old; with nothing to draw, the chart says so.
+        if (!cancelled) setFailed(true);
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -79,10 +96,13 @@ export function useBtcHistory(range: ChartRange): { candles: Candle[]; loading: 
 
     void fetchCandles();
     const id = setInterval(() => void fetchCandles(), REFRESH_MS);   // slow refresh, not a tight poll
-    // A page back in view (or a new range) starts again: the candles on screen may be hours old, so its first refresh is a
-    // first load — and a failed one says so.
-    return () => { cancelled = true; clearInterval(id); outer.abort(); shownRange.current = null; };
+    return () => { cancelled = true; clearInterval(id); outer.abort(); };
   }, [range, isVisible]);
 
-  return { candles, loading, error };
+  return {
+    candles: drawn ? drawn.candles : [],
+    loading,
+    error:   failed && !drawn,
+    asOf:    drawn && old ? historyTime(drawn, granularityMs) : null,
+  };
 }

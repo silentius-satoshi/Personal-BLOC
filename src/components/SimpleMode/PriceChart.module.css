@@ -13,8 +13,9 @@
 
 .readout {
   display: flex;
+  flex-wrap: wrap;   /* 5e: a long "as of Oct 18, 2:05 PM" goes under the price on a narrow phone, never past the edge */
   align-items: baseline;
-  gap: 8px;
+  column-gap: 8px;
   min-width: 0;
 }
 
@@ -29,6 +30,19 @@
   font-size: 12px;
   font-weight: 600;
   font-family: 'IBM Plex Mono', monospace;
+  white-space: nowrap;
+}
+
+/* 5e (F12) — a history more than 5 minutes old: drawn muted, its time in place of the % change, until a fresh one lands. */
+.old .price {
+  color: var(--text-muted);
+}
+
+.asOf {
+  font-size: 12px;
+  font-weight: 600;
+  font-family: 'IBM Plex Mono', monospace;
+  color: var(--text-muted);
   white-space: nowrap;
 }
 

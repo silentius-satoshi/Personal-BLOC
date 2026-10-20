@@ -1,43 +1,28 @@
 import { describe, it, expect } from 'vitest';
 import { classifyPaydownState, paydownReadout } from '../simpleModePlan';
-import { runAdvisor, type AdvisorInputs } from '../runAdvisor';
 
 // ⚠ SYNTHETIC round figures — this repo is public; never a real position.
 const C = 0.15;
 
-// $100k BTC, 1 ₿ collateral, $15k Strike balance, $4k expenses — the spec's headline fixture. Income varies per state.
-const BASE: AdvisorInputs = {
-  btcPrice: 100000, income: 6000, expenses: 4000, blocApr: 13, creditLine: 100000, blocLtvCeiling: C,
-  cbBalance: 0, cbCollateralBtc: 0, cbAprPct: 0, cbMonthlyPayment: 0, cbPaymentStrategy: 'monthly',
-  cbLtvTriggerPct: 75, cbLtvTargetPct: 65, cbRotateBackPct: 55,
-  startingBlocBalance: 15000, startingBtcHeld: 1, startingMonth: 1, btcGrowthRate: 0,
-};
-const stateOf = (inp: AdvisorInputs) =>
-  runAdvisor(inp).rows.map((r) => classifyPaydownState(r.blocLtvPeak, r.blocPaydown, r.blocLtv, C));
-
-describe('classifyPaydownState — four states, each reachable through the real engine', () => {
+// The engine half of these blocks — each state reached through runAdvisor — left with the engine in 5e (D5-A); the
+// classifier's own checks stay.
+describe('classifyPaydownState — four states', () => {
   it('quiet — no paydown, peak never crossed', () => {
     expect(classifyPaydownState(0.128, 0, 0.128, C)).toBe('quiet');
-    expect(stateOf({ ...BASE, startingBlocBalance: 0, expenses: 1000 })[0]).toBe('quiet');
   });
 
-  it('defended — a paydown settled the LTV at or below the ceiling (routine: the headline fixture, every month)', () => {
+  it('defended — a paydown settled the LTV at or below the ceiling', () => {
     expect(classifyPaydownState(0.189, 3900, 0.147, C)).toBe('defended');
-    expect(stateOf(BASE).every((s) => s === 'defended')).toBe(true);
   });
 
   it('⭐ partial — a paydown fired but the income ran out, and the LTV SETTLED ABOVE the ceiling', () => {
     // Collapse partial into defended and this goes red — the state most likely to be "simplified" away.
     expect(classifyPaydownState(0.239, 500, 0.18, C)).toBe('partial');
-    const row = runAdvisor({ ...BASE, income: 500 }).rows[0];
-    expect(row.blocPaydown).toBe(500);   // the WHOLE income budget
-    expect(classifyPaydownState(row.blocLtvPeak, row.blocPaydown, row.blocLtv, C)).toBe('partial');
   });
 
   it('⭐ undefended — above the ceiling with NO paydown (no income left to fund one)', () => {
     // Drop the undefended branch and this reads "quiet" → red.
     expect(classifyPaydownState(0.192, 0, 0.192, C)).toBe('undefended');
-    expect(stateOf({ ...BASE, income: 0 }).every((s) => s === 'undefended')).toBe(true);
   });
 
   it('a paydown sized exactly to the gap lands ON the ceiling as a float — that is defended, not partial', () => {
@@ -81,31 +66,11 @@ describe('paydownReadout — one source for the header', () => {
 // deriveForMonth, displaySettledLtv and isLtvFigureStressed left with the Advisor's rows (plan of record, Run 3).
 
 describe('noCollateral — the fifth state (the draw landed with nothing behind it)', () => {
-  // A2 fixture — month 1 of a fresh install (synthetic): $100k BTC, 13% APR, roll, balance $0, Strike collateral 0,
-  // $4k expenses, $6k income.
-  const FRESH: AdvisorInputs = { ...BASE, startingBlocBalance: 0, startingBtcHeld: 0, income: 6000, expenses: 4000 };
-  const stateOfRow = (r: ReturnType<typeof runAdvisor>['rows'][number]) =>
-    classifyPaydownState(r.blocLtvPeak, r.blocPaydown, r.blocLtv, C);
+  // (Its two cases through runAdvisor — A2 and the stuck case — left with the engine in 5e, D5-A.)
 
   it('⭐ the guard runs FIRST — a paydown against zero collateral is noCollateral, not defended', () => {
     // Mutation: move the !isFinite(peak) guard below `paydown > 0` → 'defended' → red.
     expect(classifyPaydownState(Infinity, 6000, 0, C)).toBe('noCollateral');
-  });
-
-  it('⭐ A2 through the real engine: month 1 draws unbacked and pays the balance OFF; month 2 is routine', () => {
-    const rows = runAdvisor(FRESH).rows;
-    expect(stateOfRow(rows[0])).toBe('noCollateral');
-    expect(rows[0].blocPaydown).toBeCloseTo(4043.33, 1);
-    expect(rows[0].btcHeld).toBeCloseTo(0.0196, 3);
-    expect(stateOfRow(rows[1])).toBe('defended');
-    expect(rows[1].blocBalance).toBeCloseTo(293.5, 0);
-  });
-
-  it('⭐ the stuck case through the engine: debt remains with no collateral → noCollateral', () => {
-    const row = runAdvisor({ ...FRESH, startingBlocBalance: 20000 }).rows[0];
-    expect(stateOfRow(row)).toBe('noCollateral');
-    expect(row.blocBalance).toBeGreaterThan(0);
-    expect(row.blocLtv).toBe(0);                    // the engine value stays put (DO NOT TOUCH)
   });
 
   it('peak === 0 stays quiet — no debt and no collateral is not the alarm', () => {

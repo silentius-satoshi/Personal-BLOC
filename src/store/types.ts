@@ -119,7 +119,7 @@ export interface StoreState {
   advisorStartDate:         string;
   advisorActualBlocBalance: number;   // LIVE drawn BLOC balance right now (CURRENT box, Advisor, SafetyDashboard, NDP)
   advisorActualBlocBalanceAsOf: string | null;   // §5b — ISO date the Strike balance was last set (manual=today, reading=reading.date); the deriveReadingAnchors freshness guard
-  advisorMonthStartBalance: number;   // BLOC balance at the START of the current month — projection base ONLY (deriveAdvisorStart month-1)
+  advisorMonthStartBalance: number;   // BLOC balance at the START of the current month — was the Advisor projection's base (deriveAdvisorStart, gone at 5e); inert since the plan of record's Run 3, the key stays
   advisorActualBtcHeld:     number;   // DEPRECATED — feeds no computation (monthly btcHeld is recorded, not chained). Kept for sync compatibility (Fix D's seed sentinel, its other reader, retired with the bridge at 4e). LEAVE IT ALONE — never zero or "tidy" it
   sandboxCollateralBtc:     number | null;   // Smart BLOC what-if collateral — in-memory ONLY (not persisted/synced); null = tracks current
   setSandboxCollateralBtc:  (v: number | null) => void;

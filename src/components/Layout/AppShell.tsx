@@ -35,6 +35,8 @@ import { useNostrAutoRestore }    from '../../hooks/useNostrAutoRestore';
 import { useNostrSync }           from '../../hooks/useNostrSync';
 import { useSyncBlocked, TOO_LARGE_COPY } from '../../hooks/useSyncBlocked';
 import { usePlanMissing, usePlanNotLoadedWhy, PLAN_NOT_LOADED_BODY } from '../../hooks/usePlanLoad';
+import { usePlanLoading }         from '../../hooks/usePlanLoading';
+import { markAppOnScreen }        from '../../lib/nostr/firstPull';
 import { useViewerSync }          from '../../hooks/useViewerSync';
 import { useMonthBucketReconcile } from '../../hooks/useMonthBucketReconcile';
 import { NostrAuthGate }     from '../Auth/NostrAuthGate';
@@ -42,6 +44,7 @@ import { LocalUnlockGate }   from '../Auth/LocalUnlockGate';
 import { ViewerUnlockGate }  from '../Auth/ViewerUnlockGate';
 import { ViewerWaitingGate } from '../Auth/ViewerWaitingGate';
 import { PrivateAppNotice }  from '../Auth/PrivateAppNotice';
+import { PlanLoadingGate }   from '../Auth/PlanLoadingGate';
 import { resetViewerSession } from '../../lib/nostr/viewerSync';
 import { isOwnerPubkey }     from '../../lib/nostr/ownerGate';
 import { BrandingDropdown }  from './BrandingDropdown';
@@ -214,6 +217,12 @@ export function AppShell() {
   const viewerUnlocked   = useStore((s) => s.viewerUnlocked);     // in-memory holder populated?
   const viewerSecretKey  = useStore((s) => s.viewerSecretKey);    // v17 migrant plaintext (pre-wrap)
   const viewerDataLoaded = useStore((s) => s.viewerDataLoaded);   // true only after a VALID snapshot decrypt
+  const planLoading      = usePlanLoading();   // 5e (F1) — "Loading your plan…": the session's first pull, on a device without its plan
+
+  // 5e (F1) — the signed-in owner's app. Once it has been on screen, a first pull that starts later (an unlock path that
+  // doesn't sync, Reconnect, the backup ceremony's wake) never raises the loading screen over it (lib/nostr/firstPull).
+  const signedInApp = onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && isOwner;
+  useEffect(() => { if (signedInApp && !planLoading.up) markAppOnScreen(); }, [signedInApp, planLoading.up]);
 
   // Reset viewing key (gate escape / recovery) — delegates to the SINGLE shared teardown
   // (resetViewerSession, viewerSync.ts — Viewer V4) so the gate escapes and the Settings Sign-out
@@ -368,6 +377,11 @@ export function AppShell() {
         <NostrAuthGate onSuccess={() => setIsAuthenticated(true)} onBack={() => setUnlockEscape(false)} backLabel="← Back to Face ID unlock" />
       ) : onboardingComplete && !viewerMode && nostrAuthEnabled && isAuthenticated && !isOwner && !import.meta.env.DEV ? (
         <PrivateAppNotice />
+      ) : signedInApp && planLoading.up && !import.meta.env.DEV ? (
+        // 5e (F1) — the one whole-app branch by design (identity.md's gate-ternary rule names it): "Loading your plan…" in
+        // place of the red flash while the session's first pull brings the plan and then the journal; it goes when the pull
+        // lands, offers "Open the app" after 15 s, and holds no write — 5c refuses them until the plan loads.
+        <PlanLoadingGate slow={planLoading.slow} />
       ) : viewerMode && viewerDataLoaded && activeTab !== 'settings' && activeTab !== 'almanac' ? (
         // Viewer Experience Revamp V1 — the dedicated read-only viewer home REPLACES Daily/Monthly for
         // the viewer. Settings/Almanac fall through to their simple-mode branches below.

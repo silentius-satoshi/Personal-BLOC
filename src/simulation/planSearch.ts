@@ -4,7 +4,7 @@ import { cbSeizurePrice } from './cbMetrics';
 
 /**
  * Path evaluation for the Decision face: run the SAME inputs across several modelled price futures and say which
- * one is worst. It is a CONSUMER of `runCyclingSim`, like `runAdvisor` — the paths arrive from the view as plain
+ * one is worst. It is a CONSUMER of `runCyclingSim` — the paths arrive from the view as plain
  * `number[]`, so no belief crosses into the engine here.
  *
  * ⚠ These extra runs are a SELECTOR ONLY — they pick the "Worst (modeled)" crown. Every lens on the face reads

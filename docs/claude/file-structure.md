@@ -91,8 +91,8 @@ src/
                                 # "Your plan's suggested line").
                                 # PURE LEAF: supportPolicy + cbDefense + cbMetrics + strikeCredit + runCoinbaseLoan
                                 # + emergencyModel + ltv. No belief, no store, no React, no components/
-    planSearch.ts               # Path evaluation for the Decision face (§4.3) — a CONSUMER of runCyclingSim, like
-                                # runAdvisor; paths arrive as plain number[]. evaluatePaths → per-path outcome +
+    planSearch.ts               # Path evaluation for the Decision face (§4.3) — a CONSUMER of runCyclingSim (runAdvisor,
+                                # the other, left in 5e); paths arrive as plain number[]. evaluatePaths → per-path outcome +
                                 # worstIndex + worstBy. WORST = CLOSEST TO A FORCED SALE (W1): any liquidation >
                                 # none; earlier > later; then the smallest cushion (minCushionOf: min over months 1
                                 # to the horizon before a liquidation — T1: month 0 is today, the same on every path,
@@ -301,16 +301,17 @@ src/
     runMaxLeverage.ts
     runBLOC.ts                  # Smart BLOC 5-year simulation (respects creditLine ?? Infinity)
     runBlocYearOne.ts           # Month-by-Month 12-month simulation + getCollateralForTier
-    runCoinbaseLoan.ts          # CB Loan simulation + classifyLtv + CbLtvStatus + CB_LLTV/CB_LIF + computeLiquidationAnalysis
-                                # (the simulation and classifyLtv have no screen since the plan of record's Run 4 — the CB
-                                # Loan tab's projection left and its colours are Safety's; aprAnchors.test.ts runs it)
+    runCoinbaseLoan.ts          # CB facts: CB_LLTV/CB_LIF/CB_WARN_LTV + computeLiquidationAnalysis. (The 12-month
+                                # simulation runCoinbaseLoan(), its CbLtvStatus/CbMonthRow types and classifyLtv left the
+                                # code in 5e, D5-A — no screen had run them since the plan of record's Run 4, when the CB
+                                # Loan tab's projection left and its colours became Safety's)
                                 # + CB_PLATFORM_FEE_PCT 1.5 + cbNetApr() — Coinbase's spread ON TOP of Morpho's
                                 # market rate; `cbAprPct` everywhere means the NET all-in rate
                                 # + the ORIGINATION-FEE brackets: CB_FEE_TIER1_PCT 2% / CB_FEE_TIER2_PCT 1% /
                                 # CB_FEE_TIER_BREAK $250k, `cbBorrowFee(amount, balance)` (marginal, like tax)
                                 # and `cbMaxDrawForHeadroom(headroom, balance)` (its exact inverse). Still a
-                                # LEAF — imports only the zero-import ./ltv — which is why cyclingSim/runAdvisor/
-                                # cbMetrics/emergencyModel can all import the CB facts from it with no cycle
+                                # LEAF — imports only the zero-import ./ltv — which is why cyclingSim/cbMetrics/
+                                # emergencyModel (and runAdvisor, until 5e) import the CB facts from it with no cycle
                                 # + cbLiquidationPrice(balance, collateralBtc) (Policy v2) — 🔴 THE liquidation price,
                                 # balance ÷ (collateral × CB_LLTV), 0 with no collateral: cbMetrics' liqPriceOf and the
                                 # engine's seizure on the way down both read it. It lives HERE, not in cbMetrics: the
@@ -323,10 +324,10 @@ src/
                                 # strikeCredit, cbMetrics, runCoinbaseLoan) + a 6th drifted copy in LiqSimulator
                                 # that printed 0.0% for an unbacked loan. __tests__/ltv.test.ts greps src/
                                 # (excluding __tests__) and FAILS if a new copy appears. emergencyModel's LTV
-                                # (classifyStage) routes through it too. ⚠ NAMED FOLLOW-UP: runAdvisor (4 copies) +
-                                # AdvisorMain (1 — gone in the plan of record's Run 4, Safety's cbLtv) still open-code the flattering
-                                # `x > 0 ? a/b : 0` shape (the
-                                # grep doesn't see it — it is deliberately NOT widened yet)
+                                # (classifyStage) routes through it too. The NAMED FOLLOW-UP is closed: the flattering
+                                # open-coded `x > 0 ? a/b : 0` copies left with their code — AdvisorMain's in the plan of
+                                # record's Run 4 (Safety's cbLtv), runAdvisor's four in 5e (D5-A). The grep still matches
+                                # only the `<= 0 ? Infinity` shape
     cbMetrics.ts                # SHARED CB LTV/liq-price source of truth: cbMetrics, accruedCbBalance,
                                 # barLevel/worseLevel (Safe/Watch/Act). Consumed by SafetyDashboard +
                                 # CoinbaseLoanMain/Sidebar (inline formulas removed). Imports cbLiquidationPrice from
@@ -339,14 +340,13 @@ src/
                                 # read it too. null on a postLiquidation row, when the debt OR the price is under the
                                 # dust floor (shownUsd, from utils/format — the price floor is Run B's R9: 60¢ on 2 ₿
                                 # seizes at 35¢) and with no collateral
-    runAdvisor.ts               # Advisor simulation + tier helpers + strategy month calc. ⚠ NO LONGER
-                                # standalone: imports cbBorrowFee/cbMaxDrawForHeadroom (runCoinbaseLoan, a
-                                # leaf) so the REVERSE ROTATION pays the same origination fee the real move does.
-                                # ⚠ The plan of record's Run 3: the COMPARISON ENGINE only — no screen calls runAdvisor
-                                # (invariant 3, a grep in __tests__/advisorPricePath.test.ts); it and its tests stay one
-                                # release, then go. Its helpers stay (getCurrentStrategyMonth, isStrategyComplete,
-                                # getTier / getTierColor — the Advisor tab's position card until the plan of record's
-                                # Run 4, which reads Safety's level; no screen reads them now — getNdpStatus, NdpInfo)
+    runAdvisor.ts               # The Advisor's helpers: getCurrentStrategyMonth / isStrategyComplete (on logUtils' month
+                                # clock) and getNdpStatus / NdpStatus / NdpInfo. The engine itself — runAdvisor, its tier
+                                # helpers (getTier / getTierColor / getTierLabel) and its projection's types — left the
+                                # code in 5e (batch 1, D5-A): the comparison engine kept one release after the plan of
+                                # record, no screen having called it since Run 3. Invariant 3
+                                # (__tests__/advisorPricePath.test.ts) now pins that it, and what left with it, is gone.
+                                # The file keeps its name, so its 11 importers keep theirs
     strikeCredit.ts             # + STRIKE_CURE_LTV (0.65 — a call must be cured back to it) and STRIKE_RETRIEVE_MAX_LTV
                                 # (0.40 — collateral leaves Strike only at or below it); the support policy's
                                 # inputs, passed in by the view — the engine imports neither.
@@ -405,8 +405,8 @@ src/
                                 # safetyView ONLY (§2/§7 walls — nothing from cycleModel/powerLaw/emergency
                                 # Model/store). Tested in __tests__/scenarioDiff.test.ts
     logUtils.ts                 # (recomputeBtcHeld DELETED, spec v3 — monthly btcHeld is RECORDED by rollupMonth),
-                                # deriveAdvisorStart/deriveCurrentPosition (v20: take currentStrikeCollateral, NOT
-                                # pending/baseBtcHeld) + deriveStrikeCollateral (v20 Collateral-Truth — reading-anchored
+                                # deriveCurrentPosition (v20: takes currentStrikeCollateral, NOT pending/baseBtcHeld;
+                                # deriveAdvisorStart left with runAdvisor in 5e) + deriveStrikeCollateral (v20 Collateral-Truth — reading-anchored
                                 # current Strike collateral: strikeCollateral-bearing balanceReading latest by (date,ts) +
                                 # target:'strike' moves strictly after; = getCurrentBtcHeld),
                                 # upsertEntry — standalone, no cross-sim imports. Daily Mode P1: strategyMonthIndex
@@ -438,7 +438,8 @@ src/
   hooks/
     useBtcPrice.ts              # Coinbase API, 60s interval; syncs store on every fetch (gated by btcPriceMode); returns isStale (5-min threshold, 30s self-tick). Each store push goes through setBtcPrice, which now ALSO stamps btcPriceUpdatedAt (per-device staleness clock — DevPanel readout). Poll gated on the now-self-correcting usePageVisibility. MOUNTED AT AppShell ROOT so the poll runs for the whole session (Simple Mode mounts no price-consuming sidebar — without this, btcPrice froze at its last persisted value in Simple Mode); per-tab sidebar calls remain (harmless co-mounts)
     usePageVisibility.ts        # !document.hidden, SELF-CORRECTING (iOS-PWA resume fix): updates on visibilitychange + window focus/pageshow + a 20s interval re-read (one shared sync = setIsVisible(!document.hidden); the primitive bail-out adds no re-renders). visibilitychange ALONE misfires on iOS PWA launch/resume → isVisible could stick false → consumer polls (useBtcPrice/useBtcHistory) died forever; the extra signals recover it. Still genuinely pauses when backgrounded (NOT hardcoded true)
-    useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); ephemeral, NEVER written to store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG. BL23 (the plan of record's Run 4): the request AND its body run inside utils/timeLimit's withTimeLimit (15 s), so a stall ends as failed; a range change or an unmount aborts the request in flight; a refresh that fails keeps the candles already drawn for the same range while the page stays in view (the `shownRange` ref — the effect's cleanup forgets it, so a page back in view starts with a first load), and only a first load that fails clears them and sets `error` (the chart's "price history unavailable")
+    useBtcHistory.ts            # BTC candle history (1H/1D/1W) via same-origin /api/btc-candles proxy; usePageVisibility gate + slow 60s refresh (NOT a tight poll); NEVER written to the store; pure parseCandles (Coinbase [t,low,high,open,close,vol] newest-first → asc close series, s→ms) + RANGE_CFG. BL23 (the plan of record's Run 4): the request AND its body run inside utils/timeLimit's withTimeLimit (15 s), so a stall ends as failed; a range change or an unmount aborts the request in flight. 5e (F12): it draws the range's history from this device's copy (lib/btcCandlesCache, through useSyncExternalStore — every mounted chart redraws when any fetch lands) at ANY age and refreshes behind it; `asOf` is the history's time once it is more than 5 minutes old (the chart labels it), and a timer labels a history on screen the moment it crosses (offline, nothing renews it); a landing goes through the cache's newer-wins rule; a range draws only its own history; a load that fails keeps whatever it can draw, and only with nothing to draw sets `error` (the chart's "price history unavailable"). Run 4's `shownRange` is gone
+    useCountTo.ts               # 5e (F12) — the chart's headline counts to a new figure over COUNT_MS (400 ms), easing out (pure countFrame, + − ×): the device's copy handing over to the live history, and every refresh that moves the price. Never on the first draw, from no figure (the "BTC" placeholder) or with reduced motion (useReducedMotion); frames on requestAnimationFrame's timestamps, never Date.now (the e2e fixes Date.now); the figure on screen in a ref (StrictMode-safe). Tested in src/hooks/__tests__/useCountTo.test.ts (COUNT)
     useSimulation.ts            # Smart BLOC tab simulation hook
     useLivingSimulation.ts      # Living on Bitcoin tab hook
     usePowerLawData.ts          # Blockchain.com historical price (via Vercel proxy in prod). BL23 (the plan of record's Run 4): the request AND its body run inside utils/timeLimit's withTimeLimit (15 s), so a stall ends as failed (error "Blockchain.com timed out") — THIS MONTH then shows its cached breaker's line, the Decision face says the history didn't load, the Power Law face says it is unavailable; an unmount aborts it and sets nothing
@@ -454,6 +455,9 @@ src/
                                 # keyed on the STABLE urls.join(',') (no re-subscribe thrash); functional setState
                                 # early-returns on no-change. Probes ONLY the urls passed in (SettingsMain gates on
                                 # settingsPage==='network' ? nostrRelays : EMPTY_RELAYS — no sockets unless viewing it)
+    usePlanLoading.ts           # 5e (F1) — the "Loading your plan…" screen's state for AppShell ({ up, slow }), from
+                                # lib/nostr/firstPull through useSyncExternalStore (the server snapshot too, so a static
+                                # render works). Tested in src/lib/nostr/__tests__/firstPull.test.ts (GATE)
     usePlanLoad.ts              # 5c — the plan-load state for the screens: usePlanMissing (lib/nostr/planLoad's
                                 # planMissing over the store) · usePlanPull (the last plan pull, useSyncExternalStore) ·
                                 # planNotLoadedWhy / usePlanNotLoadedWhy (the reason in plain words; null until a pull
@@ -700,6 +704,20 @@ src/
                                 # positive tick reads as zero, Z3b) · isDoubleTap/zoomBackNote(pointerType, outward —
                                 # "…to reset the view" once the view left home). MIN_SPAN_TIME_LOG =
                                 # { 90 days, ln 1.1 }. Tested in src/lib/__tests__/chartZoom.test.ts
+    btcCandlesCache.ts          # 5e (F12) — the price chart's history kept on this device: ONE localStorage key of its
+                                # own, 'bloc-btc-candles' ({ v: 1, ranges: { 1H|1D|1W: { at, candles } } }), outside the
+                                # persisted store — no store version, never synced, never in a backup; read lazily into
+                                # memory, with listeners for every mounted chart. A history's time = the EARLIER of `at`
+                                # (when this device's fetch landed) and its newest candle's close (t + granularity), so an
+                                # edge-cached copy is dated by its own candles. Drawn at ANY age unless future-dated or
+                                # malformed; isOld past HISTORY_FRESH_MS (5 min — useBtcPrice's stale line) → the chart
+                                # draws it muted with asOfLabel ("as of 2:05 PM" / "as of Oct 18, 2:05 PM", local, the day
+                                # by toLocalISO); msUntilOld drives the label timer; writeHistory never lets a history
+                                # replace a newer one (one held from the future gives way). Imports no store, and never
+                                # usePowerLawData's history (the breaker's — that would be a Safety change). Device-level
+                                # in wipeLocalPlanData's inventory: kept on "Remove local key". Tested in
+                                # src/lib/__tests__/btcCandlesCache.test.ts (OLD, EDGE, NEWER, FUTURE, SHAPE, LABEL, STORE,
+                                # OWN KEY, RANGE, MONEY)
 
   utils/
     format.ts                   # fmtUSD, fmtMining (sats-aware) + DUST_USD / shownUsd — THE one $0.50 dust floor
@@ -761,7 +779,13 @@ src/
                                 # <CbDefenseTool/>; CoinbaseLoanMain gets onOpenConsole (consoleInFullMode — none
                                 # while the Emergency tab is hidden) and onOpenPlanPaths (planPathsInFullMode). A tab the bar doesn't show can't stay open: the bounce effect
                                 # moves off a hidden tab, and — with hasCbLoan off — off `coinbase` and `liqsim` too (the console's
-                                # gate would leave an empty page), to the first tab that shows.
+                                # gate would leave an empty page), to the first tab that shows. 5e (F1): between gates F
+                                # and G (no new letter), one owner branch — `signedInApp && planLoading.up &&
+                                # !import.meta.env.DEV` → <PlanLoadingGate/> ("Loading your plan…") while the session's
+                                # first pull runs on a device without its plan (lib/nostr/firstPull — the plan, then the
+                                # journal); it offers "Open the app" after 15 s, and an effect records the app on screen
+                                # (markAppOnScreen), after which a later first pull never raises it. Display only — 5c
+                                # refuses the writes. The one whole-app branch by design (identity.md's gate-ternary row).
       AppShell.module.css
       ViewToggle.tsx            # Shared Daily|Monthly segmented-control pill — JOURNAL's INNER control,
                                 # rendered inside BOTH DailyModeView and SimpleModeView (between header +
@@ -2012,7 +2036,12 @@ src/
                                 # "price history unavailable" states. Owns its own range state + useBtcHistory. One prop
                                 # since the plan of record's Run 2.1 (BL19): `money`, for the price and its tooltip, whole
                                 # (fmtUSD) by default — ViewerHomeView (the Dashboard, every viewer's home, ViewerPreview)
-                                # passes none; the Safety card passes fmtUSDCents. Data ephemeral (never stored).
+                                # passes none; the Safety card passes fmtUSDCents. Data never in the store. 5e (F12): the
+                                # history is drawn at once from this device's copy (useBtcHistory → lib/btcCandlesCache);
+                                # one more than 5 minutes old is drawn muted (`data-old`, `.old`) with its time in place
+                                # of the %Δ ("as of 2:05 PM", asOfLabel) until a fresh one lands; the headline counts to a
+                                # new figure (useCountTo) and prints `money(shown ?? last)` — cents on THIS MONTH and
+                                # Daily. The readout wraps on a narrow phone, never past the edge.
                                 # PriceChart.module.css alongside
       SafetyDashboard.tsx       # Top-of-SimpleMode safety read (reads store directly, recomputes on price tick):
                                 # the Safe/Watch/Act .stateLine VERDICT is the FIRST child — a prominent 15px/700

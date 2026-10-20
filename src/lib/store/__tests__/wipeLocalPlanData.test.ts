@@ -30,7 +30,7 @@ const PLAN_LOCAL_KEYS = [
   'personal-bloc-provenance',                 // identity — keyProvenance (standalone; survives the escape hatch)
 ];
 const PLAN_SESSION_KEYS = ['bloc-nostr-log'];
-const DEVICE_LOCAL_KEYS = ['bloc-device-tag'];
+const DEVICE_LOCAL_KEYS = ['bloc-device-tag', 'bloc-btc-candles'];   // the chart's public prices (5e, F12) survive too
 
 beforeEach(() => {
   local.clear();
@@ -65,7 +65,7 @@ describe('wipeLocalPlanData — the key inventory is the contract', () => {
     expect(local.get('personal-bloc-onboarded')).toBeUndefined();
   });
 
-  it('leaves nothing behind but the device tag', () => {
+  it('leaves nothing behind but the device-level keys (the device tag and the chart\'s prices)', () => {
     wipeLocalPlanData();
     expect([...local.keys()]).toEqual(DEVICE_LOCAL_KEYS);
     expect([...session.keys()]).toEqual([]);

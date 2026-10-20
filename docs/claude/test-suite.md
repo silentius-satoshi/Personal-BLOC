@@ -53,12 +53,11 @@ is exactly how LiqSimulator drifted. ⚠ `runCoinbaseLoan` was the one OUTLIER o
 it omitted the `collateral <= 0` term, so a zero *price* reported ∞ where every other surface reports
 0. Normalising it is inert only because `LiquidationModeler` returns early on
 `liquidationPrice === 0 || btcPrice === 0` — if that early return is ever removed, this becomes
-load-bearing. ⚠ **Named follow-up:** `emergencyModel`'s LTV now routes through `ltvOf`, but
-`runAdvisor` (4 copies) and `AdvisorMain` (1) still open-code the flattering `x > 0 ? a / b : 0` shape (AdvisorMain's
-went in the plan of record's Run 4 — its Coinbase card reads Safety's `cbLtv` — so the four left are `runAdvisor`'s,
-which goes a release after the merge). The
-computation grep only matches the `<= 0 ? Number.POSITIVE_INFINITY` shape, so it cannot see them — and it is
-deliberately NOT widened until those are migrated.
+load-bearing. ✅ **The named follow-up is closed:** `emergencyModel`'s LTV routes through `ltvOf`, and the last copies
+of the flattering `x > 0 ? a / b : 0` shape left with their code — `AdvisorMain`'s in the plan of record's Run 4 (its
+Coinbase card reads Safety's `cbLtv`), `runAdvisor`'s four in 5e (batch 1, D5-A). The computation grep still matches
+only the `<= 0 ? Number.POSITIVE_INFINITY` shape; widening it to the flattering one is now free, and left for a later
+pass.
 
 ⚠ **`deriveOwnership`'s `coldBtc` has TWO caller conventions.** It is ADDED to `btcHeld`, which is right
 only when the caller's `btcHeld` EXCLUDES cold: the **viewer** passes strike+cb plus cold separately
@@ -899,7 +898,8 @@ goes red.)
 - **The sheet-entry race** (spec `pbloc-spec-e2e-sheet-race-v1`, v1.2; tests and docs only. Every count is from
   `--retries=0` on this Mac, and every mutation was restored and md5-checked — see § Build & Deploy → E2E):
   - e2e (`eventSheet.spec.ts`, "the sheet openers") — one test per opener: `openConsentSheet`, `openEventSheet`,
-    `openEventSheetEdit`. Its `beforeEach` aborts the Google Fonts requests (R6), then slows the slide to 1 s with an
+    `openEventSheetEdit`. Its `beforeEach` aborts the app's own font files (R6; self-hosted since 5e — `APP_FONT_FILES`, the dev server's URLs
+    and a build's alike), then slows the slide to 1 s with an
     author `!important` on `[data-testid="draggable-sheet"]`. Each test reads the box top the instant the opener returns,
     then again 1.2 s later:
     - PREMISE: the sheet's inline transform is `translateY(0px)` (the CSSOM adds the unit, R5). The test id sits on the
@@ -1356,7 +1356,9 @@ goes red.)
       an error inside the limit passes through unchanged;
     - ⭐ STALL — read off the source (no render harness): both hooks fetch AND read the body inside the limit, one fetch
       each; `usePowerLawData` ends its loading and aborts on unmount; `useBtcHistory` keeps the chart drawn for its range
-      when a refresh fails (`shownRange`) and aborts on unmount.
+      when a refresh fails (`shownRange`) and aborts on unmount. *(5e, F12, moved these pins: the chart draws from this
+      device's copy, so a failed load keeps whatever history it can draw and says so only with nothing to draw —
+      `error: failed && !drawn`, no `setCandles` left; the unmount still aborts. Still 7 tests.)*
   - `src/simulation/__tests__/safetyAtSupport.test.ts` (17, new; round synthetic figures):
     - ⭐ ATS — debt ÷ (collateral × support) beside the plan's limit; none without a reading (no loan, dust, no
       collateral, no or zero support, no limit, junk); "over" is THIS MONTH's rule — a sweep against `placementPlan`'s
@@ -1431,6 +1433,53 @@ goes red.)
     MOVE's two lines, the move clause after a semicolon.
   - e2e, `planOfRecord.spec.ts` — Run 4's SAFETY ×3 and VIEWER read the new words: over and within on THIS MONTH and
     Daily, the move clause, the Dashboard in whole dollars.
+- **5e — start-up and offline** (spec `pbloc-spec-batch-1-v1` v0.3 §2.1, batch 1 build 1 — F1, F2, F12, E1, with
+  `runAdvisor`'s removal, D5-A; six new unit files, one deleted (`cbLtvTrigger.test.ts`), nine changed; the suite
+  2,766 → 2,770 (+6 skipped), 175 → 180 files; e2e 89 → 94 (+2 skipped), one new spec. Twelve planted bugs, each an
+  exact-once edit, red at its tag, the file restored and md5-checked — `Claude outputs/batch-1/build-1-report.md`):
+  - `src/lib/nostr/__tests__/firstPull.test.ts` (12, new; the pull and the publish engine mocked so each can be held
+    open, the store and syncNow real): ⭐ F1 SHOWN — a fresh sign-in's sync raises "Loading your plan…" in the same
+    tick, before any await · ⭐ F1 LANDS ×2 — still up after the plan applies (planLoaded true mid-pull), down when the
+    pull returns, settled while the publish is still in flight; down on nothing, on a failure and on a throw, and a pull
+    that found nothing never sets planLoaded · ⭐ F1 ONCE · ⭐ F1 HOLDS — a device holding its plan, a viewer, an
+    unbacked-up key and a missing signer never see it · ⭐ F1 LATE — a first pull that starts once the app is on screen
+    never raises it · ⭐ F1 ESCAPE ×3 — "Open the app" at 15 s, not before (fake timers); pressing it ends the screen
+    and the pull's end still settles; the limit; the words (`renderToStaticMarkup`) · ⭐ F1 GATE ×3 — AppShell's branch
+    after F and before G, its hook alone on its line, the app-on-screen effect; syncNow's three marker calls, the start
+    first in the `try`; no F1 file sets planLoaded or touches the store.
+  - `src/lib/nostr/__tests__/firstPullFresh.test.ts` (5, new; the store, syncNow and the publish engine real, only the
+    relays mocked): ⭐ F1 5c FRESH ×3 — a fresh sign-in whose first pull brings the journal and no plan ('absent'),
+    nothing ('none'), or no relay ('unreachable'): through the screen and after it, a day event, a sign-off, a reopen,
+    a manual log, the reconcile and a plan edit are all refused; the monthly log is the pulled array itself; signed
+    months stay signed; no plan event · non-vacuity (a pull that applies the plan: the same writes land) · 5c untouched.
+  - `src/__tests__/swDiag.test.ts` (8, new — index.html's inline script, run in `node:vm` with a fake window, document
+    and clock): ⭐ F2 QUIET · ⭐ F2 WINDOW (15 s, not 14,999 ms) · ⭐ F2 GONE ×2 (the panel removes itself when the app
+    starts; the paint-time re-check) · ⭐ F2 FIRST MOMENT ×2 (errors, a failed load and a rejection heard before the
+    panel; the first 50 kept, the rest counted) · ⭐ F2 SWDEBUG · ⭐ F2 ES5.
+  - `src/styles/__tests__/fonts.test.ts` (5, new): ⭐ E1 FACES ×2 (six faces, each range the package's unicode.json's;
+    ₿ is extended Latin's) · ⭐ E1 PIN (exactly 5.3.0, the lock, OFL-1.1) · ⭐ E1 NO-GOOGLE (index.html; no source
+    imports the package's CSS) · ⭐ E1 CSP (no Google host; `'self'` for styles and fonts).
+  - `src/lib/__tests__/btcCandlesCache.test.ts` (18, new): ⭐ F12 OLD ×4 (5:00 drawn unlabeled, 5:00.001 drawn labeled; a
+    day-old copy drawn, labeled; the timer) · ⭐ F12 EDGE ×2 (an edge-cached copy dated by its candles, labeled at once)
+    · ⭐ F12 NEWER ×4 (never newer → older; a newer or equal replaces; a future-held copy gives way; ranges apart) · ⭐
+    F12 FUTURE · ⭐ F12 SHAPE · ⭐ F12 LABEL ("as of 2:05 PM", "as of Oct 18, 2:05 PM", local midnight) · ⭐ F12 STORE ×2
+    · ⭐ F12 OWN KEY (one module; no store, backup, sync or usePowerLawData file imports it) · ⭐ F12 RANGE · ⭐ F12
+    MONEY (the counting price prints through `money`; the label in place of the change; muted).
+  - `src/hooks/__tests__/useCountTo.test.ts` (4, new): ⭐ F12 COUNT ×3 (starts on screen, ends exactly, monotone,
+    eases out; the hook jumps on the first draw, from no figure and with reduced motion; rAF's clock, never Date.now).
+  - Changed: `timeLimit.test.ts` (STALL's chart pins moved to the new source, 7 → 7); `wipeLocalPlanData.test.ts` (a
+    second device-level key); and D5-A's seven files — `cbLtvTrigger` 18 → deleted, `simpleModePlan` 9 → 3,
+    `paydownState` 14 → 12, `paydownPeak` 10 → 4, `advisorPricePath` 12 → 4 (invariant 3 turned around: GONE),
+    `monthlyLog` 25 → 17, `aprAnchors` 2 → 1.
+  - e2e, `startup.spec.ts` (5, new): ⭐ E1 FONTS (the app's own woff2 files, ₿'s included, nothing from Google) · ⭐ F12
+    AT ONCE (a minute-old copy drawn at once while the request is held, then the live history, to the cent) · ⭐ F12 OLD
+    (a copy 5:01 old drawn at once, muted, "as of …"; the live history removes the label) · ⭐ F2 GONE (~16 s of real
+    time) · ⭐ F2 SWDEBUG. `eventSheet.spec.ts`'s AT-REST aborts the app's own font files (`APP_FONT_FILES`).
+  - The planted bugs: MF1a/MF1b (the two ends of the marker) → F1 LANDS · MF1c → F1 ESCAPE · MF1d → F1 LATE · M5c (the
+    reconcile's guard) → planLoadGuard INCIDENT · M5c-b (the monthly-log guard) and M5c-c (the day-event guard) → F1 5c
+    FRESH and GUARD · MF2a → F2 GONE · MF2b (the listeners back inside the panel) → F2 FIRST MOMENT · MF12a (the label
+    dropped) → F12 OLD and EDGE · MF12b → F12 FUTURE · MF12c → F12 NEWER. M5c alone left FRESH green: the reconcile's
+    own writes still pass the monthly-log guard, so 5c held — the reason M5c-b exists.
 - **Crash playbook (Run 1)** (every ⭐ proven red by a temporary edit):
   - `cbDefense.test.ts` — the leaves: `strikeReleasableBtc` (⭐ exactly 40% releases to just UNDER 50%; ⭐ 40.01% → 0, the
     hold → 0; a balance of 0 → all of it; junk → 0); `ceilingLiquidationMultiple` (stop ÷ lltv; junk → +∞); `topUpToCbLtv`'s
@@ -1713,6 +1762,9 @@ goes red.)
     - The plan of record's Run 3 deleted `displaySettledLtv` and `isLtvFigureStressed` (no screen since Run 2) with their
       table, identity and figure-rule tests; A2 and the stuck case keep their engine assertions (the state, the balance,
       the engine's own 0).
+    - 5e (batch 1, D5-A): `runAdvisor` left the code, and with it every engine half here. `paydownPeak.test.ts` keeps
+      runBLOC's sweep and its zero-collateral month (10 → 4); `paydownState.test.ts` keeps the four states' own
+      classifier checks — their "through the real engine" lines went — and drops A2 and the stuck case (14 → 12).
     - `playbookView.test.ts`:
       - ⭐ a projected `LTV ∞ · drawn with no collateral behind it` (dropping the substitution → red);
       - ⭐ in progress keeps the LEDGER figure + `now · plan:` (substituting in progress → red);
@@ -1740,7 +1792,12 @@ goes red.)
     - the old field-by-field `streams` assertions are now one whole-object `toEqual`;
     - ⭐ mixed-venue `buildMonthRollup`.
   - `src/lib/backup/__tests__/validateCbFlows.test.ts`.
-- `src/simulation/__tests__/advisorPricePath.test.ts` — Advisor price path (12). It opens with the operating-plan
+- `src/simulation/__tests__/advisorPricePath.test.ts` — 4 since 5e (batch 1, D5-A): the three month-1-step tests below
+  (`cycleConvergencePath`'s own, nothing else pins them) and ⭐ invariant 3 — GONE, turned around: every non-test
+  .ts/.tsx under `src/` (more than 200, the engine's old file among them) is read, and none defines or calls
+  `runAdvisor`, `deriveAdvisorStart`, `getTier`, `getTierColor`, `getTierLabel`, `runCoinbaseLoan` or `classifyLtv`;
+  `runAdvisor.ts` still exports `getCurrentStrategyMonth`, `isStrategyComplete` and `getNdpStatus`. Its history, (12)
+  until 5e: It opened with the operating-plan
   GOLDEN, captured at HEAD 07ab7a2 BEFORE the engine edit (monthly + ltvTriggered mid-year inline snapshots), and the
   equivalence no-path ≡ explicit-CAGR path (full rows). Then:
   - a path overrides the CAGR and reaches the LTV math;
@@ -1752,7 +1809,8 @@ goes red.)
   - ⭐ invariant 3 (the plan of record's Run 3; it replaced the grep guard that only OutlookProjection hands runAdvisor a
     pricePath): every non-test .ts/.tsx under `src/` — more than 200 files, a non-vacuity floor — is read, and only
     `runAdvisor.ts`'s own definition contains `runAdvisor(`; no screen calls the engine, which stays one release as the
-    comparison engine.
+    comparison engine. *(The goldens, the pricePath tests, the engine step and this form of invariant 3 left with the
+    engine in 5e.)*
 - `src/components/Advisor/__tests__/outlookView.test.ts` — DELETED in the plan of record's Run 3 with `outlookView.ts` and
   the Outlook (it held 7: the subtitle Record, the signed `lineStep`, `footerCbLtv`)
 - `src/simulation/__tests__/coldStorage.test.ts` — `deriveColdStorage` (8):
@@ -1793,7 +1851,7 @@ goes red.)
   `engineInputsOf`, pinned by decisionWiring)
 - `src/lib/crypto/__tests__/cryptoClient.test.ts` — Phase 2a crypto worker. In node `typeof Worker === 'undefined'`, so every op takes the SYNCHRONOUS in-thread FALLBACK (byte-identical to pre-2a). Fallback round-trip encrypt→decrypt at `logn:1` returns the original sk; wrong passphrase → `CryptoError` `kind:'passphrase'`; malformed input → `kind:'malformed'`; **caller-buffer safety** (after `nip49Encrypt(sk,…)` the caller's `sk` is NOT zeroed — the internal-copy contract); pure helpers `encode{Encrypt,Decrypt}Request` (op/field names + transfer list) and `classifyWorkerFailure` (known kinds passthrough, unknown → `'generic'`). The worker itself (real Worker + WebKit) is device-gated, not unit-tested
 - `src/lib/nostr/__tests__/disconnect.test.ts` — R2c-6b, the three teardowns as a contrast set (6 cases; `escapeHatch.test.ts`'s `window.location.reload` + localStorage shims, installed before the store import). Seeds a VERIFIED local owner, then: **`signOutLocal`** retains the identity (`nostrPubkey`/`nostrSigningMethod`/`nostrAuthEnabled` → lands on `LocalUnlockGate`, not the login screen), retains `writerKeyWrapped`/`writerKeyWrapMeta` (something is left to unlock), ⭐ **retains `keyProvenance` + `backupVerifiedAt`** (a verified key stays verified across sign-out — no backup ladder, no nag), and clears only `nostrSigner`/`isAuthenticated`/`nostrLogin` + reloads once. **`reconnectNostr`** shows the SAME retention (proving `signOutLocal` added its flag without altering the shared teardown NIP-46 depends on). **`disconnectNostr`** CLEARS pubkey/method/`keyProvenance`/`backupVerifiedAt` — the contrast that gives "Sign out" and "Remove local key" their different weights; if a future edit collapses the two teardowns, this fails. **`signOut(method)` dispatch** — the three teardowns are same-module siblings (un-spyable from `signOut`), so each arm is pinned by its unique store fingerprint, with `nostrAuthEnabled` seeded FALSE as the discriminator (only `signOutLocal` sets it): `'local'` → auth true + pubkey/key/provenance retained; `'nip46'` → pubkey + provenance retained, auth still false, `nostrLogin` cleared; ⭐ `'nip07'` → pubkey/method/provenance/`backupVerifiedAt` all **null**, i.e. **NOT `reconnectNostr`** (whose retained pubkey would let `useNostrAutoRestore` silently re-authenticate through the extension — the regression this test names); `null` → no-op, no `reload()`. Plus `signOutConfirmMessage` copy-truth: a PIN key is never promised a biometric, and the nip07 string makes no identity-retention claim. **R2c-6b remanence contrast** (seeds `personal-bloc-store` + `personal-bloc-onboarded` + `bloc-device-tag` on the shim): ⭐ `disconnectNostr` WIPES the blob AND the onboarded flag (the latter is what shows the fresh entry fork — blob-only would be a half-fix) while retaining the device tag; `signOut('nip07')` wipes too (it IS disconnectNostr); `signOutLocal` + `reconnectNostr` RETAIN both — the pin that fails if anyone unifies the teardowns. All three wipe assertions go red with the `wipeLocalPlanData()` call removed (verified). Plus `identityForgetConfirmMessage`: both normal branches name the local-data removal + the unsynced-changes loss; ⭐ the `neverSynced` branch NEVER says "stays on the relay" (a generated + unverified key has no relay copy) and names the action it warns about
-- `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 1 device-level key (retained); `leaves nothing behind but the device tag` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
+- `src/lib/store/__tests__/wipeLocalPlanData.test.ts` — R2c-6b, **the key inventory as an executable contract** (in-memory `localStorage` + `sessionStorage` shims, installed before the import): `it.each` over the 9 plan-scoped localStorage keys + the 1 sessionStorage key (all removed) and the 2 device-level keys (retained — `bloc-device-tag`, and since 5e `bloc-btc-candles`, the price chart's public prices); `leaves nothing behind but the device-level keys` (a whole-map equality — a NEW app storage key that nobody classified fails HERE); ⭐ `removes personal-bloc-onboarded, not just the blob` (the half-fix pin); idempotent + never throws on an already-clean device
 - `src/lib/__tests__/bufferAliasing.test.ts` — R2c-7b, the executable form of the R2c-7a **`.slice()` Critical Constraints row** (3 cases, pure, no React). Reconstructs the hazard: a `Uint8Array` in a struct (React state) + a consumer that PERSISTS its argument then zeros it in a `finally` before throwing (`establishLocalOwner`'s real ordering — wrap+persist BEFORE deriving the pubkey). **ALIASED** → the throw zeros `state.sk` in place, and the retry persists 32 ZERO bytes (a corrupted credential for an identity that never existed). **COPIED** → `.slice()` sacrifices the copy, `state.sk` survives, the retry persists the real key. Plus `.slice()` is a copy not a view. ⚠ It does NOT exercise NostrAuthGate's retry (no render harness — house rule); it makes "copy a buffer you're about to zero" fail loudly if a refactor deletes the copy as redundant
 - `src/lib/backup/__tests__/recoveryFile.test.ts` — R2c-7b pure file builder (10 cases): plaintext-words body, plaintext-nsec body, encrypted-ncryptsec body (`(ENCRYPTED)` + names the passphrase, and does NOT say "never share it" — a different mitigation); a `PERSONAL BLOC RECOVERY KEY` header precedes a blank line + the artifact for ALL THREE kinds (the header is the honest mitigation for a plaintext artifact — never droppable by kind); exactly one trailing newline; filenames per kind (plaintext → `DO-NOT-SHARE`, encrypted → `-encrypted` and NOT `DO-NOT-SHARE`, `qr` → `.png` keeping the marker)
 - `src/lib/nostr/__tests__/ncryptsec.test.ts` — R2c-7a-fix, the two layers that let the Recovery-key tab tell a malformed payload from a wrong passphrase (15 cases, real `nip49` output, `logn:1` so scrypt stays fast). **Layer 1 `isWellFormedNcryptsec`:** a real encrypt output → true; **a full handoff token (`ncryptsec + ':' + npub`) → false** (the exact input R2c-7a misreported as "Wrong passphrase" — it still prefix-matches as `encrypted`, so only the shape gate catches it); truncated / bare nsec / trailing newline / uppercase / garbage → false; **a 1-char typo PASSES** (documented hole — length + charset intact → Layer 2 owns it); `NCRYPTSEC_LENGTH === 162` pinned across `logn` 1/8/16 (a silent length change would disable the gate; `logn:20` is omitted — 2²⁰ scrypt rounds blow the 5s timeout for zero extra coverage, and `logn` is one payload byte so it cannot affect length). **Layer 2 `classifyNcryptsecError`:** `decrypt(valid, wrongPass)` → `'passphrase'`; broken checksum / wrong prefix / full token → `'malformed'`; a non-Error throw → `'malformed'` (safe default); discriminates on `'invalid tag'` specifically
@@ -1808,7 +1866,7 @@ goes red.)
 - `src/store/__tests__/settingsClobber.test.ts` — Fresh-install seed-clobber — the pull gate (4e: the successor to Fix C/D, both retired with the bridge, and to Fix B, retired with the settings branch): with `!initialSettingsPullDone` both `publishPlanEventsNow` and `publishPrefsNow` refuse at the gate, before `setNostrSyncing`, and the edit waits (`planDirty` stays true); after the pull the plan publish passes the gate (publishing not broken)
 - `src/simulation/__tests__/safetyView.test.ts` — Viewer Revamp V1 `deriveSafetyView`/`deriveViewerOverall` (19 cases): credit bands at the new 0.75/0.90 edges + creditLine-0 guard; Strike LTV bands (0.646/0.697 at 85% liq) + crashLtv (20%-of-price) + zero-collateral guard; CB LTV gating (!hasCbLoan → cbLtv 0/safe even with cb inputs) + bands + cbCollateral-0 guard; overall = worst of gauges SHOWN, credit INCLUDED, cb folded only when hasCbLoan. The plan of record's Run 4 (D7): the selector test also maps the plan's Coinbase limit at support (`cbLimitAtSupport`, through its clamp); the at-support reading's own tests are `safetyAtSupport.test.ts` (ATS, VERDICT, VIEWER)
 - `smartBloc.test.ts` — uses `runBLOC` (not `runBlocYearOne`)
-- `simpleModePlan.test.ts` — `minPaymentStatus` (§2b: roll → ROLLS; income PAID / DUE / MISSED) and runAdvisor's own behaviour (the comparison engine, kept one release): **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run); a monthly CB payment lowers the row's LTV below the start-of-month figure and is reserved from income once. The plan of record's Run 3 deleted `deriveForMonth`, `isOperatingMonth` and `composeMonthSummary` (no screen since Run 2) with their tests
+- `simpleModePlan.test.ts` — `minPaymentStatus` (§2b: roll → ROLLS; income PAID / DUE / MISSED) — 3 since 5e (D5-A), when runAdvisor's own behaviour tests (6) left with the engine. Until then, runAdvisor's own behaviour (the comparison engine, kept one release): **Simple Mode Corrections:** income source ends month 12 with a LOWER BLOC balance than roll (+ roll === omitted-input default); shortfall path (min > income → pay income, capitalize the rest); **mis-ordered thresholds guard** (target ≥ trigger → cbPaydownDraw/cbLtvTriggered suppressed, draw/interest still run); a monthly CB payment lowers the row's LTV below the start-of-month figure and is reserved from income once. The plan of record's Run 3 deleted `deriveForMonth`, `isOperatingMonth` and `composeMonthSummary` (no screen since Run 2) with their tests
 - `src/store/__tests__/strikeMinPayment.test.ts` — Simple Mode Corrections A synced settings: `blocMinPaymentSource`/`blocStatementMinimum` default roll/null, appear in `buildSettingsPayload`, a folded plan event applies both (cross-device — 4e: the plan channel), and a fold lacking them doesn't clobber (absent = not set, §6)
 - `src/components/Daily/__tests__/dailyView.test.ts` — Daily Mode P4a pure helpers: `selectMonthEvents` (bucketEventToMonth filter, asc-by-ts sort, empty-month) + `describeDayEvent` per kind (draw/paydown USD — to the cent since the plan of record's Run 2.1, as are a buy's dollars, a minimum and a reading's balances; buy BTC ±usd; deposit/withdraw target labels; cbCollateralReading BTC; balanceReading Strike-always + CB-when-present)
 - `src/components/Daily/__tests__/calendarModel.test.ts` — Daily Mode P4c-1a pure calendar model (15 cases): `monthDateRange` (every date buckets back to its strategy month via bucketEventToMonth — load-bearing; contiguous+ascending; month 1 starts at advisorStartDate; boundary last-of-N/first-of-N+1 adjacency), `weekDates` (7 dates Mon→Sun, Monday-first incl. Sunday-input), `buildDayCells` (draw→[logged]; balanceReading→[reading]; both→both; cb-deposit→[logged,cbCollateral]; strike-deposit→[logged]; empty→[]; weekday Mon=0..Sun=6), timezone no-drift (exact yyyy-mm-dd near a month boundary)
@@ -1821,7 +1879,7 @@ goes red.)
 - `src/simulation/__tests__/cycleModel.test.ts` — Almanac CycleClock P1 (12 cases): `epochFromHeight` epoch-5 classification + 2028 rollover (Epoch 6/1.5625, no code change); `epochProgress.fraction` 0..1 single-source (half-open — ~1 just below endBlock, 0 at rollover) + `blocksRemaining === 1_050_000 − h` exactness; `dateAtBlock` 144-blocks≈1-day; `blockAtDate(H4.date)===H4.block`; `CYCLE_TURNS` IMG_7080 premise (14 turns, anchor high @ 6 Oct 2025, first low Mon 5 Oct 2026 @ +364d, every turn `getUTCDay()===1`, strictly increasing, strict high/low alternation); `nextTurnAfter` selection + null past end
 - `living.test.ts`
 - `mining.test.ts`
-- `monthlyLog.test.ts` — deriveAdvisorStart/deriveCurrentPosition/upsertEntry + the persistConfig v20 backfill replica + 4 badge status tests (the recomputeBtcHeld chain tests were DELETED with the function — spec v3) + `computeExpenseReanchor` (spec §9; the plan of record's Run 4 added ⭐ F-R4-1 ×2 — the month in progress and a month that records no expenses stay out of the average)
+- `monthlyLog.test.ts` — deriveCurrentPosition/upsertEntry (deriveAdvisorStart's 8 left with it in 5e, D5-A: 25 → 17) + the persistConfig v20 backfill replica + 4 badge status tests (the recomputeBtcHeld chain tests were DELETED with the function — spec v3) + `computeExpenseReanchor` (spec §9; the plan of record's Run 4 added ⭐ F-R4-1 ×2 — the month in progress and a month that records no expenses stay out of the average)
 - **Recorded Strike collateral (spec v3)** — `src/simulation/__tests__/recordedCollateral.test.ts` (pure): ⭐ each month records its OWN reading's `strikeCollateral`; ⭐ a reading without it leaves `btcHeld` ABSENT and the reroll bridge keeps the stored value (mutation `?? 0` → red); zero records 0 (truthiness mutation → red); carry-forward + provisional; ⭐ a cold-destined buy doesn't move `btcHeld`; grep guard `recomputeBtcHeld` absent from `src/` (non-vacuous walker); onboarding source-order guard (`emitBalanceReading` after `setAdvisorStartDate`, baseline write kept). `src/store/__tests__/recordedCollateralStore.test.ts` (real store): cold-destined buy; ⭐ B1 a Strike-only re-anchor records NOTHING, not 0; §9 onboarding anchor; ⭐ B2 a joining device's reconcile reopens no confirmed month (mutation: `btcHeld` in `ROLLUP_NUM_KEYS` → red); ⭐ A4 a `btcHeld`-less entry end to end (CSV → buildPlanBackup → validatePlanBackup → applyPlanBackup; mutation: `btcHeld` back in the validator's required list → red) + the validator both ways. `src/lib/__tests__/ledgerCold.test.ts` (`coldMovedByMonth`, `hasColdColumn`, the CSV column + empty Strike col). `src/components/Advisor/__tests__/monthlyLogForm.test.ts` (`strikeColFragment`: blank → omitted, "0" → 0). `viewerSync.test.ts` S4 + `sync.test.ts`: entries apply VERBATIM (recompute mutation → red). `dailyModeStore.test.ts`: a reading without `strikeCollateral` / a buy records no `btcHeld`
 - `dailyMode.test.ts` — Daily Mode P1: `bucketEventToMonth` (date→month 1–12, clamp) + `rollupMonth` (flows draw/buy±usd/paydown; `target:'strike'` deposit/withdraw signed into `collateralDelta`, `target:'cb'` + `cbCollateralReading` journal-only/ignored; latest-`balanceReading`-by-ts stocks, `cbCollateral` never in entry; carry-forward `provisional` w/ priorStocks; empty→`{}`; entry never has collateralAdjustment/btcHeld/cbCollateral/source/confirmed; date-boundary isolation). P2a: `deriveCbCollateral` (latest cbCollateral-bearing event by ts across both kinds; cache fallback; ignores readings w/o cbCollateral)
 - `src/store/__tests__/dailyModeStore.test.ts` — Daily Mode P2a store: add(draw+balanceReading)→entry flows+stocks/source:daily/btcHeld intact; buy→btcHeld; **C1 double-count** (two strike deposits + edit-one + delete-one each net once via getCurrentBtcHeld); target:cb journal-only (no collateral change; cb-only month creates NO entry / doesn't flip a manual month to daily; mixed cb+draw month is daily via the draw) + cbCollateral feeds the clock; **BUG1** (cbCollateralReading creates no monthlyLog entry); Partial→Full preserves miningSats/ndpPaid/loggedAt; **C2** (setCbCollateralBtc emits a cbCollateralReading, absent from buildSettingsPayload); **M2** guard (non-daily upsert vs a daily month blocked); confirmMonth + reopen-on-edit; date-change re-rolls both months; `migrateState` v19 backfill (source/confirmed, cbCollateralReading seed for hasCbLoan, cbLtvAction default, cbCollateralBtc reproduced); `partializeState` includes dayLog+cbLtvAction. **P3:** `deleteDayEvent` writes a numeric `deletedDayEvents[id]` + removes the event; a journal-only `addDayEvent(cbCollateralReading)` sets `recordsDirty` + leaves `monthlyLog` empty (publish trigger for the no-month path); raw `setDayLog([cbColl@ts1, cbColl@ts2])` derives `cbCollateralBtc` to the newest (the fold) WITHOUT rerolling monthlyLog; `setDeletedDayEvents` raw-set; `partializeState` includes `deletedDayEvents`
@@ -1832,7 +1890,7 @@ goes red.)
 - `src/store/__tests__/writerKeyStandalone.test.ts` — the wrap credential is standalone-backed: `setWriterKeyWrapped`/`setWriterKeyWrapMeta` write through to `personal-bloc-writer-key-wrapped`/`-meta` (NOT the persist blob); setting null clears them
 - `src/lib/store/__tests__/escapeHatch.test.ts` — escape hatch: `resetPlanToSeeds` (plan/records/strike → seeds; writer credential + nostr identity/relays PRESERVED; 5c: the case marks its signed-in store loaded first — a store without the plan refuses the setters, and the case then proved nothing about income, expenses, credit line and cold; MC64); `resetAndResync` is now RELOAD-BASED — clears all four (enc flag + pending-decrypt marker + on-disk `personal-bloc-store` blob + in-memory key via `clearStoreEncryptionState`) then `window.location.reload()` (node `window`/`localStorage` shims; `reloadMock`); idempotent (no flag/blob/key → still reloads, no throw); + **THE STRUCTURAL GUARANTEE — the module references NO publish symbol** (source-read assertion — a push is impossible by construction, relay data can never be erased; 4e widened the regex to `/\bpublish\w*\(|syncEngine|schedule\w*Publish/`, so the plan and prefs publishers are covered too — F8)
 - `mergeRecords.test.ts` — per-month entries merge table: union, newest-wins, loggedAt fallback, tie rule, tombstones, 90-day GC, string-key coercion. P3 dayLog block: union-by-id, higher-ts-wins (edit in place), exact-ts tie→local, tombstone-newer→suppressed, edit-after-delete→survives + stale tombstone dropped, >90d GC, idempotent
-- `aprAnchors.test.ts` — pins APR unit conventions (runCoinbaseLoan=percentage, runBlocYearOne=decimal)
+- `aprAnchors.test.ts` — pins APR unit conventions: runBlocYearOne=decimal (runCoinbaseLoan=percentage left with its projection in 5e, D5-A: 2 → 1)
 - `strikeCredit.test.ts` — strikeAvailableCredit = min(line, collateral×50%) − drawn; computeStrikeLtv (value + zero-collateral/price guards)
 - `src/hooks/__tests__/useBtcHistory.test.ts` — pure `parseCandles` (newest-first → asc, close index 4, s→ms, slice newest `count`, empty/malformed guards) + `RANGE_CFG` (1H/1D/1W granularity/count ≤300)
 - `src/lib/nostr/__tests__/keyVault.test.ts` — PIN-path wrap→unwrap round-trip (PBKDF2→HKDF→AES-GCM), wrong-PIN rejects, malformed-meta throws, PIN-required guards, fresh salt/iv per wrap (the PRF/Face-ID path needs WebAuthn — verified on-device, not jsdom); + Phase-A store-key suite: deriveStoreKey round-trips encryptBlob/decryptBlob, is independent of the nsec-wrap key (same pin+salt, different HKDF info → can't cross-decrypt) while the wrap path still unwraps, wrong-pin blob rejects, random IV per encrypt; + 3a.1 `deriveStoreKeyFromNsec` suite: deterministic (same nsec+pubkey round-trips), nsec-dependent + pubkey-salted (cross-decrypt throws), independent from the nsec-wrap key (can't decrypt the wrap ciphertext), and does not mutate the caller sk; + R2a-2 `payloadKind` suite: wrapping entropy records the kind and `unwrapSecretKey` returns a **32-byte** sk (not the 16-byte payload — that length assertion is what proves derivation rather than passthrough) whose pubkey matches `deriveSkFromEntropy`; a new `'sk'` wrap records `payloadKind:'sk'`; **LEGACY** — meta with the field stripped AND JSON round-tripped (exactly how `WK_META_KEY` persists it) unwraps byte-identically as `'sk'`; `unwrapRecoveryPayload` returns the payload AS STORED (entropy stays 16 bytes, it must NOT derive) and reports `'sk'` for absent; a made-up FUTURE `payloadKind` falls through the legacy path rather than becoming unreadable; the malformed-meta + PIN-required guards still fire through the new reader

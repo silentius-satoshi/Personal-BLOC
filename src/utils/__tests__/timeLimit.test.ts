@@ -78,13 +78,16 @@ describe('⭐ STALL — both history fetches run inside the limit (read off the 
     expect(HISTORY.match(/\bfetch\(/g)?.length, 'STALL history: one fetch').toBe(1);
   });
 
-  it('⭐ STALL — the chart: the request and its body inside the limit; a failed refresh keeps the chart drawn for its range while the page stays in view', () => {
+  // 5e (F12) moved these pins: the chart now draws its history from this device's copy (lib/btcCandlesCache) at any age,
+  // labeled once it is old, so a failed load keeps whatever it can draw — Run 4's "a failed refresh keeps the chart",
+  // widened — and says so only with nothing to draw. The rules pinned are BL23's, unchanged.
+  it('⭐ STALL — the chart: the request and its body inside the limit; a failed load keeps the history it can draw, and with none says so', () => {
     expect(CANDLES, 'STALL candles in the limit').toMatch(/await withTimeLimit\(HISTORY_TIMEOUT_MS, async \(signal\) => \{\s*const res = await fetch\(`\/api\/btc-candles\?granularity=\$\{granularity\}`, \{ signal \}\);/);
     expect(CANDLES, 'STALL candles body in the limit').toMatch(/return await res\.json\(\) as number\[\]\[\];\s*\}, outer\.signal\);/);
-    expect(CANDLES, 'STALL a refresh keeps the chart').toMatch(/catch \{[\s\S]*?if \(!cancelled && shownRange\.current !== range\) \{\s*setCandles\(\[\]\);\s*setError\(true\);/);
-    expect(CANDLES, 'STALL the chart remembers its range').toMatch(/shownRange\.current = parsed\.length > 0 \? range : null;/);
-    expect(CANDLES, 'STALL candles unmount').toMatch(/return \(\) => \{ cancelled = true; clearInterval\(id\); outer\.abort\(\);/);
-    expect(CANDLES, 'STALL a page back in view forgets what it drew').toMatch(/outer\.abort\(\); shownRange\.current = null; \};/);
+    expect(CANDLES, 'STALL a failed load is recorded').toMatch(/\} catch \{[\s\S]*?if \(!cancelled\) setFailed\(true\);\s*\}/);
+    expect(CANDLES, 'STALL a failed load keeps what the chart can draw; with nothing, it says so').toMatch(/error:\s+failed && !drawn,/);
+    expect(CANDLES, 'STALL the chart draws from the cache, never from state a load cleared').not.toMatch(/setCandles\(/);
+    expect(CANDLES, 'STALL candles unmount').toMatch(/return \(\) => \{ cancelled = true; clearInterval\(id\); outer\.abort\(\); \};/);
     expect(CANDLES.match(/\bfetch\(/g)?.length, 'STALL candles: one fetch').toBe(1);
   });
 });

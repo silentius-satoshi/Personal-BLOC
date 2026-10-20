@@ -140,7 +140,7 @@ test.describe('Navigation gestures (P3)', () => {
     // either way; at 390 "Price and the bands" fits on one line beside the toolbar (the 360px test below pins the row).
     const loading = page.getByText('Loading price history…');
     await expect(loading).toBeVisible();
-    // The web font first: IBM Plex Mono swaps in (display=swap) and the sub-nav pills above grow 33 → 34px with it
+    // The web font first: IBM Plex Mono swaps in (font-display: swap) and the sub-nav pills above grow 33 → 34px with it
     // (line-height: normal), so a reading taken before the swap is 1px off one taken after — a flake, not the layout.
     await page.evaluate(() => document.fonts.ready);
     const before = await loading.evaluate((el) => el.getBoundingClientRect().top + window.scrollY);

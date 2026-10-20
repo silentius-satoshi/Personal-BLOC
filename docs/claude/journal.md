@@ -186,7 +186,7 @@ and the NDP clause is re-scoped to roll-mode only.
   into the plan backup + trusted snapshot automatically; the safe snapshot (ratios-only) is untouched. ⚠ Run 2 (the
   plan of record): on THIS MONTH and Daily the owed figure is the statement's, else the PLAN's month-1 interest
   (`planMinimumOwed` — what Strike bills); with nothing owed there is no minimum line, so never a "MISSED".
-- **Engine (`runAdvisor.ts`):** optional input `blocMinPaymentSource?` (defaults `'roll'` inside → every existing
+- **Engine (`runAdvisor.ts` — the engine left in 5e, D5-A; this bullet and the next are its history):** optional input `blocMinPaymentSource?` (defaults `'roll'` inside → every existing
   call site is byte-identical unless it threads the real value). After `blocInterest = blocBalance ×
   blocMonthlyRate` in BOTH branches: `roll` capitalizes (`blocBalance += blocInterest`, unchanged); `income` pays
   `blocMinPayment = min(income, interest)` from income (does NOT capitalize), re-capitalizes only the
@@ -230,7 +230,7 @@ and the NDP clause is re-scoped to roll-mode only.
 
 The three CB threshold `NumberInput`s (SettingsMain cbloan subpage) gain `max={85}` bounds; the ordering warning
 extends to `rotate-back < target < trigger < 86% (Morpho liquidation)` (the plan of record's Run 3: `target < trigger <
-86%` — the Rotate-back input left with runAdvisor's last screen). In `runAdvisor` a `thresholdsOrdered`
+86%` — the Rotate-back input left with runAdvisor's last screen). In `runAdvisor` (gone at 5e, D5-A) a `thresholdsOrdered`
 guard (`cbRotateBackPct < cbLtvTargetPct < cbLtvTriggerPct`) leads BOTH the forward-paydown `if` and the
 reverse-rotation `else if` — mis-ordered config suspends rotation for the month (no churn) while draw/interest/BTC
 still run. Simple Mode's plan card surfaces an amber `.misorderNotice` "⚠ CB thresholds mis-ordered — rotation

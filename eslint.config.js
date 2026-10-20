@@ -34,11 +34,9 @@ export default tseslint.config(
       '@typescript-eslint/no-unused-expressions': ['error', { allowTernary: true }],
       'react-hooks/rules-of-hooks': 'error',
       'no-constant-condition': 'error',
-      // OFF for now: exactly one site — runAdvisor declares `let btcBought: number;` (:153) and assigns it
-      // once at :316, siblings in the same block. ⚠ ESLint reports this shape but CANNOT autofix it
-      // (fixableErrors: 0, no `fix` on the message), so enabling the rule means hand-restructuring the
-      // advisor engine or carrying a permanent error. Verified by turning it on and running --fix: empty
-      // diff, error unchanged. A candidate for the next widening pass, with the restructure done by hand.
+      // OFF for now. Its one site was runAdvisor's `let btcBought` (declared, then assigned once — a shape ESLint reports
+      // but can't autofix), and it left with the engine in 5e (D5-A): measured then, the rule reports nothing on the
+      // tree. Turning it on is a gate change, so it waits for the next widening pass.
       'prefer-const': 'off',
       eqeqeq: ['error', 'smart'],
     },

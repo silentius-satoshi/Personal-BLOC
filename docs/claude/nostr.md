@@ -347,6 +347,12 @@ src/
                                     # Presentational, never logs the key; reused by Access P2's Reveal-recovery-key
     ViewerUnlockGate.tsx            # Phase 3 viewer-key gate — unlock (wrapped) / one-time wrap-setup (v17 migrant);
                                     # populates viewerSync's in-memory holder. Reuses NostrAuthGate.module.css
+    PlanLoadingGate.tsx            # 5e (F1) — the owner's twin of ViewerWaitingGate: "Loading your plan…" in place of the
+                                    # red flash while the session's first pull brings the plan and then the journal (AppShell's
+                                    # branch between gates F and G, `signedInApp && planLoading.up`). At 15 s (`slow`) it adds
+                                    # "Still loading — your relays or signer are slow." and "Open the app" (openTheApp —
+                                    # the screen goes for the session; the pull carries on). Display only: 5c refuses the
+                                    # writes. Reuses NostrAuthGate.module.css. Tested in firstPull.test.ts (ESCAPE, GATE)
     ViewerWaitingGate.tsx          # Data-remanence guard — "Waiting for the owner's data…" until viewerDataLoaded
                                     # (valid decrypt) + "Reset viewing key" escape (a revoked/rotated-out viewer
                                     # isn't trapped → reset re-enters the onboarding fork → reconnect with a new
@@ -469,6 +475,18 @@ src/
                                     # payload that fits clears it) · PayloadTooLargeError · channelOf · the blocked-channel
                                     # registry (getBlockedChannels — stable for useSyncExternalStore, subscribeBlocked,
                                     # pruneBlocked, getBlockedDTags)
+    firstPull.ts                    # 5e (F1) — store-free: the session's first plan pull for the "Loading your plan…"
+                                    # screen. 'idle' → 'running' (firstPullStarts(s), only when planMissing(s) holds at the
+                                    # pull) → 'settled' (firstPullLands — the pull returned, with a plan, nothing or failed,
+                                    # or threw), one way, once a session. Its own state, not 5c's: planLoaded and the pull's
+                                    # status settle when the PLAN applies, before the journal — and the red flash lived in
+                                    # between. The screen is up while 'running' && !released && !appOnScreen; a 15 s timer
+                                    # adds `slow` ("Open the app" → openTheApp releases it); markAppOnScreen (AppShell) keeps
+                                    # a first pull that starts later (an unlock path that doesn't sync, Reconnect, the
+                                    # ceremony's wake) from ever raising it. getPlanScreen / subscribePlanScreen for
+                                    # usePlanLoading; resetFirstPull for tests. Writes nothing; 5c untouched. Tested in
+                                    # firstPull.test.ts (SHOWN, LANDS, ONCE, HOLDS, LATE, ESCAPE, GATE) and
+                                    # firstPullFresh.test.ts (5c FRESH)
     planLoad.ts                     # 5c — store-free. THE RULE: a signed-in owner device writes nothing that depends on
                                     # the plan — no day event, no monthly-log write, no plan edit, no plan, journal, viewer
                                     # or relay-list publish — until it holds the plan: it applied the relays' plan, a
@@ -690,7 +708,7 @@ src/
                                     # pre-Run-2 snapshot reads no hold) from snap via ONE useStore.setState — NEVER
                                     # setCbCollateralBtc/emitBalanceReading (they'd inject a reading into the viewer's OWN dayLog);
                                     # the viewer's dayLog stays []. useViewerSync (hook) mounts it on foreground; gated on viewerMode
-    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push. 5b: a channel refused for its size (`refusedForSize`) doesn't raise Reconnect. 5c: nor does a publish HELD because this device hasn't loaded the plan (`heldWithoutPlan`) — the log says "held until the plan loads here, not a signer problem".
+    syncNow.ts                      # THE single unified sync sequence — all entry points call this (restore-if-needed → relays-if-empty → fetch+merge → initialSettingsPullDone → publish-if-dirty: records, plan, prefs, revocations); honest result (true only if pull AND push-if-dirty succeeded); concurrent calls deduped to one in-flight run. Phase 4e RETIRED genesis (pickPlanFields + the synthesize block) and the settings push. 5b: a channel refused for its size (`refusedForSize`) doesn't raise Reconnect. 5c: nor does a publish HELD because this device hasn't loaded the plan (`heldWithoutPlan`) — the log says "held until the plan loads here, not a signer problem". 5e (F1): it marks the session's first pull for the loading screen — `firstPullStarts` first in the `try`, `firstPullLands` right after `fetchAndSync` returns (before any publish) and in the `finally` — and nothing else changed.
     relays.ts                       # fetchUserRelays; NIP-65 kind:10002 discovery. DEFAULT_RELAYS = the SINGLE
                                     # source for the default relay list (store nostrRelays default + Network "Restore
                                     # defaults" + publish.ts FALLBACK_RELAYS + BOOTSTRAP_RELAYS all reference it — no
@@ -777,8 +795,8 @@ src/
                                     # clearStoreEncryptionState() (blob + enc flag + pending-decrypt + in-memory key),
                                     # then removes WK_* + personal-bloc-onboarded + the 3 GATE_* identity keys +
                                     # personal-bloc-provenance (R2c-6-final) + sessionStorage 'bloc-nostr-log'.
-                                    # RETAINS 'bloc-device-tag' (the only device-level
-                                    # key). ⚠ THE CLASSIFIED KEY INVENTORY IN ITS DOC COMMENT IS THE CONTRACT — a new
+                                    # RETAINS the two device-level keys, 'bloc-device-tag' and 'bloc-btc-candles'
+                                    # (the price chart's public prices, 5e). ⚠ THE CLASSIFIED KEY INVENTORY IN ITS DOC COMMENT IS THE CONTRACT — a new
                                     # storage key must be classified there; wipeLocalPlanData.test.ts asserts it
                                     # exhaustively. ⚠ personal-bloc-onboarded is standalone, NOT blob-resident: wiping
                                     # only the blob leaves onboardingComplete true → the fresh entry fork never renders

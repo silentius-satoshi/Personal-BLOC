@@ -16,8 +16,8 @@ export const STRIKE_LINE_MIN_USD = 3_500;
 export const STRIKE_LINE_MAX_USD = 250_000;
 
 // The 15% Strike/BLOC operating ceiling — the LTV the advisor keeps the Strike BLOC at in steady state
-// (blocTarget = btcHeld × price × this). SINGLE definition for the advisor path (runAdvisor's blocLtvCeiling
-// param): every view passes this instead of a bare 0.15 literal. (The separate tier-minimum 0.15 in
+// (blocTarget = btcHeld × price × this). SINGLE definition: every view passes this instead of a bare 0.15 literal —
+// the Smart BLOC tab's Playbook today; runAdvisor's blocLtvCeiling took it until 5e. (The separate tier-minimum 0.15 in
 // runBLOC/runBlocYearOne/TierCards is a different concept and stays local.)
 export const BLOC_OPERATING_CEILING = 0.15;
 

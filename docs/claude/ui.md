@@ -121,6 +121,16 @@ only — no layout property is animated. A global `@media (prefers-reduced-motio
 collapses all CSS transitions to 80ms cross-fades (was 1-of-78 modules; now one global policy); the JS side reads
 `useReducedMotion` to snap finger-tracking motion between rest states. Gestures still FUNCTION under reduced motion.
 
+**The web font — IBM Plex Mono, self-hosted (5e, E1, called A):** `src/styles/fonts.css`, imported by `global.css`, holds
+six `@font-face` rules of our own — extended Latin and Latin, each at 400, 600 and 700, woff2 only, `font-display: swap` —
+pointing at `@fontsource/ibm-plex-mono`'s files (pinned at exactly 5.3.0; SIL OFL 1.1). Each face carries its subset's
+`unicode-range`, copied from the package's `unicode.json`, so a face is fetched only for what it draws: the app's only
+extended-Latin character is ₿ (U+20BF). Never the package's ready-made CSS (its per-subset files carry no range; its
+per-weight files bring every subset, about 65 KiB more). The build emits the six files with hashed names and the
+precache takes them (`vite.config.ts`' woff2 glob), so the font works offline; no request goes to Google, and Google's
+hosts left `vercel.json`'s CSP. Characters in no subset (→ ⚠ ∞ Σ Δ) fall back to the system font, as they did with
+Google. Pinned by `src/styles/__tests__/fonts.test.ts` and e2e `startup.spec.ts` (E1 FONTS).
+
 ---
 
 ## Gesture & Motion System (P0 — foundation layer; no consumer surfaces changed)

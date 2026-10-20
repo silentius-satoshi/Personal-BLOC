@@ -1,6 +1,6 @@
 import { test, expect } from '@playwright/test';
 import {
-  openConsentSheet, openEventSheet, openEventSheetEdit, dragDown, dragDownFrom, sheetTransform, translateYpx,
+  openConsentSheet, openEventSheet, openEventSheetEdit, dragDown, dragDownFrom, sheetTransform, translateYpx, APP_FONT_FILES,
 } from './helpers';
 
 test.describe('EventSheet gesture behavior', () => {
@@ -143,11 +143,12 @@ test.describe('EventSheet gesture behavior', () => {
 // mid-slide is red every time.
 test.describe('the sheet openers', () => {
   test.beforeEach(async ({ page }) => {
-    // R6: AT-REST compares exact pixels over 1.2 s. The app font loads from Google with display=swap, and a late swap
-    // moves a bottom-anchored sheet by a pixel (it moved chart zoom's STEADY by 1 px). So remove the cause: with the
-    // font requests aborted, the fallback font is final from the start. Never loosen AT-REST to a tolerance instead —
-    // a tolerance would also hide an opener that returns a frame or two before the sheet is at rest.
-    await page.route(/fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+    // R6: AT-REST compares exact pixels over 1.2 s. The app font loads with font-display: swap, and a late swap moves a
+    // bottom-anchored sheet by a pixel (it moved chart zoom's STEADY by 1 px). So remove the cause: with the app's own font
+    // files aborted (self-hosted since 5e — the dev server's URLs and a build's alike), the fallback font is final from
+    // the start. Never loosen AT-REST to a tolerance instead — a tolerance would also hide an opener that returns a frame
+    // or two before the sheet is at rest.
+    await page.route(APP_FONT_FILES, (r) => r.abort());
     await page.addInitScript(() => {
       document.addEventListener('DOMContentLoaded', () => {
         const style = document.createElement('style');

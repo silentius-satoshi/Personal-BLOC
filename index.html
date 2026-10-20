@@ -21,15 +21,49 @@
     <link rel="apple-touch-icon" href="/icon.svg" />
     <link rel="manifest" href="/manifest.json" />
 
-    <!-- SW diagnostic — dependency-free, runs before/without the app bundle. Activates on ?swdebug or a
-         6s watchdog if the app never sets window.__APP_BOOTED (main.tsx sets it as its first line), so it
-         never paints on a normal boot. Decisive signal: a 'personal-bloc-v1' cache key means the OLD
-         hand-rolled SW is still active; a 'workbox-precache-*' key means the new Workbox SW installed. -->
+    <!-- SW diagnostic (start-up) — dependency-free, runs before/without the app bundle (5e, F2). It listens from its first
+         line — runtime errors, rejections, and a script, chunk or stylesheet that fails to load — and keeps the first 50
+         lines. It paints on ?swdebug at once (and stays: it was asked for), or after a 15 s watchdog if the app hasn't
+         started: window.__APP_BOOTED, which main.tsx sets once the whole bundle has run. A watchdog panel removes itself
+         the moment the app starts, so it never stays over a healthy start. Decisive signal: a 'personal-bloc-v1' cache key
+         means the OLD hand-rolled SW is still active; a 'workbox-precache-*' key means the new Workbox SW installed.
+         ES5 only: it must run where the bundle can't. Pinned by src/__tests__/swDiag.test.ts. -->
     <script>
     (function () {
-      function activateNow() {
-        if (document.getElementById('sw-diag-panel')) return;
-        var panel = document.createElement('div');
+      var WATCHDOG_MS = 15000;   // BL23's time limit (5e, F2; it was 6 s)
+      var KEEP = 50;             // the first lines heard: a failed start's first error comes first
+      var heard = [];
+      var dropped = 0;
+      var panel = null;
+
+      function appendLine(text) {
+        if (!panel) return;      // a watchdog panel the app's start removed: its late probes have nowhere to go
+        var el = document.createElement('div');
+        el.textContent = text;
+        panel.appendChild(el);
+      }
+
+      function note(text) {
+        if (panel) { appendLine(text); return; }
+        if (heard.length < KEEP) heard.push(text); else dropped++;
+      }
+
+      // From the first moment, not from the panel's: an error while the bundle loads or runs is the one that matters.
+      // The capture phase hears a script, chunk or stylesheet that fails to load (those events don't bubble).
+      window.addEventListener('error', function (e) {
+        var t = e && e.target;
+        if (t && t !== window && (t.src || t.href)) note('failed to load: ' + (t.src || t.href));
+        else note('window.onerror: ' + (e && e.message ? e.message : 'unknown error'));
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        var reason = e && e.reason;
+        note('unhandledrejection: ' + (reason && reason.message ? reason.message : String(reason)));
+      });
+
+      function activateNow(byWatchdog) {
+        if (panel || document.getElementById('sw-diag-panel')) return;
+        if (byWatchdog && window.__APP_BOOTED) return;   // the app started while the page settled: never paint over it
+        panel = document.createElement('div');
         panel.id = 'sw-diag-panel';
         panel.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:#0d0d0d;color:#e5e5e5;' +
           'font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;line-height:1.5;padding:16px;' +
@@ -40,10 +74,13 @@
         panel.appendChild(header);
         document.body.appendChild(panel);
 
-        function appendLine(text) {
-          var el = document.createElement('div');
-          el.textContent = text;
-          panel.appendChild(el);
+        var i;
+        if (heard.length || dropped) {
+          appendLine('heard before the panel:');
+          for (i = 0; i < heard.length; i++) appendLine('  ' + heard[i]);
+          if (dropped) appendLine('  … and ' + dropped + ' more');
+          heard = [];
+          dropped = 0;
         }
 
         appendLine('navigator.onLine: ' + navigator.onLine);
@@ -70,10 +107,10 @@
           caches.keys().then(function (keys) {
             appendLine('caches.keys(): ' + (keys.length ? keys.join(', ') : '(none)'));
 
-            var hasOld = false, workboxCache = null, i;
-            for (i = 0; i < keys.length; i++) {
-              if (keys[i] === 'personal-bloc-v1') hasOld = true;
-              if (keys[i].indexOf('workbox-precache') === 0) workboxCache = keys[i];
+            var hasOld = false, workboxCache = null, k;
+            for (k = 0; k < keys.length; k++) {
+              if (keys[k] === 'personal-bloc-v1') hasOld = true;
+              if (keys[k].indexOf('workbox-precache') === 0) workboxCache = keys[k];
             }
             if (hasOld) appendLine('WARNING: legacy personal-bloc-v1 cache present (old hand-rolled SW)');
             if (workboxCache) {
@@ -106,13 +143,17 @@
           appendLine('caches API: not supported');
         }
 
-        window.addEventListener('error', function (e) {
-          appendLine('window.onerror: ' + e.message);
-        });
-        window.addEventListener('unhandledrejection', function (e) {
-          var reason = e.reason;
-          appendLine('unhandledrejection: ' + (reason && reason.message ? reason.message : String(reason)));
-        });
+        // A watchdog panel goes the moment the app starts (a slow network, not a broken install). Only the panel it
+        // painted — never a ?swdebug one.
+        if (byWatchdog) {
+          var shown = panel;
+          var poll = setInterval(function () {
+            if (!window.__APP_BOOTED) return;
+            clearInterval(poll);
+            if (shown.parentNode) shown.parentNode.removeChild(shown);
+            if (panel === shown) panel = null;
+          }, 250);
+        }
       }
 
       function whenBodyReady(cb) {
@@ -121,14 +162,14 @@
       }
 
       if (location.search.indexOf('swdebug') !== -1) {
-        whenBodyReady(activateNow);
+        whenBodyReady(function () { activateNow(false); });
       }
 
       setTimeout(function () {
         if (!window.__APP_BOOTED) {
-          whenBodyReady(activateNow);
+          whenBodyReady(function () { activateNow(true); });
         }
-      }, 6000);
+      }, WATCHDOG_MS);
     })();
     </script>
 
@@ -145,8 +186,7 @@
     <meta property="og:description" content="Bitcoin accumulation strategy modeler — BLOC, Power Law, Mining, and Sats converter." />
     <meta property="og:image"       content="/icon.svg" />
 
-    <!-- Fonts -->
-    <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Fonts: IBM Plex Mono is self-hosted (src/styles/fonts.css, 5e) — no request leaves for Google. -->
 
     <!-- Service Worker is registered from src/main.tsx via vite-plugin-pwa (registerSW). -->
   </head>

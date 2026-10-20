@@ -1,16 +1,9 @@
 import { describe, it, expect } from 'vitest';
-import { runCoinbaseLoan } from '../runCoinbaseLoan';
 import { runBlocYearOne } from '../runBlocYearOne';
 
+// (runCoinbaseLoan's projection and its percentage anchor left the code in 5e, D5-A — no screen had run it since the plan
+// of record's Run 4.)
 describe('APR unit convention anchors', () => {
-  it('runCoinbaseLoan: aprPct is percentage (4.77 → divided /100/12 internally)', () => {
-    // WHY: if aprPct were accidentally 0.0477 (decimal), month-1 interest ≈ $0.24 not $238.50
-    const { rows } = runCoinbaseLoan({
-      loanBalance: 60_000, collateralBtc: 1.48, aprPct: 4.77, monthlyPayment: 0, btcPrice: 100_000,
-    });
-    expect(rows[0].interest).toBeCloseTo(238.50, 2);  // 60000 × 4.77/100/12
-  });
-
   it('runBlocYearOne: apr is decimal (0.13 → divided /12 internally)', () => {
     // WHY: if apr were accidentally 13 (percent), month-1 interest ≈ $10833 not $108.33
     // BlocMonthRow has no interest field; infer: month-1 draws $10000 then adds interest

@@ -1686,8 +1686,8 @@ sign-offs and logged minimums keep their cents — never a number the plan compu
   - F14, the iPhone's offline white screen, stays parked (BL18).
   - `fmtUSD`'s slowness on Node 26 (`toLocaleString`, in the backlog) is unchanged; `fmtUSDCents` avoids it by
     construction.
-  - 5e builds on `main`, where `PriceChart.tsx:90` holds (:92 on this branch); once the branches meet, its counting
-    price prints through the chart's `money` prop (A5).
+  - 5e's counting price prints through the chart's `money` prop (A5): to the cent on THIS MONTH and Daily, whole on
+    the Dashboard (batch 1, build 1).
 - Tests: § Test Suite → "The plan of record (Run 2.1)".
 
 #### The plan of record (Run 3 — the year: the Advisor tab and the Outlook; store unchanged, NO bump)
@@ -1738,7 +1738,8 @@ Outlook became a link to the Decision face.
   comments and whitespace aside), and the one rule left that named no dead class — `@keyframes fadeIn` — went with
   its only user.
 - **`runAdvisor` stays one release as the comparison engine** — its tests, `deriveAdvisorStart` and its helpers stay;
-  no screen calls it (a sweep of every non-test source file pins it).
+  no screen calls it (a sweep of every non-test source file pins it). *(It left the code in 5e, batch 1 — D5-A; the
+  sweep now pins that it is gone.)*
 - **Not in Run 3:** the crash gate stays `ltvTriggered` (Run 4, D3); the sidebar's PRIORITY RULES, InputsPanel's
   "Recommended min" and the CB Loan tab's rows (Run 4); `cbMonthlyPayment` and `cbPaymentStrategy` keep their readers
   (the CB Loan tab, the gates); Daily's breaker marker and the Decision face reading the breaker cache (Run 4 options);
@@ -1779,14 +1780,14 @@ what its buttons do.
   wears Safety's colour and words (SAFE / FAIR / POOR). The 12-month projection (it read the retired monthly payment)
   gave way to `PLAN_PATHS_LINK`; Section 6 is "On a crash day" (`cbTabCrashDayLine`) with the console link. A paid-off or
   unbacked loan has no trigger or seizure price: the card names the trigger alone and the two rows read — (`shownUsd`).
-  `runCoinbaseLoan()` and `classifyLtv()` have no screen reader now (they stay; `aprAnchors.test.ts` still runs
-  `runCoinbaseLoan`); 39 dead CSS rules went.
+  `runCoinbaseLoan()` and `classifyLtv()` have no screen reader now (they left the code in 5e, D5-A); 39 dead CSS rules
+  went.
 - **The console's words where another screen points to it — `crashPlaybookView`:** `CONSOLE_LINK`,
   `atTriggerLine(triggerPct, consoleRuns)` (the Decision face's at-trigger alert reads it too — one copy) and
   `cbTabCrashDayLine(triggerPct, triggerPriceUsd)`.
 - **The Advisor tab (`AdvisorMain`)** — its Coinbase card's Current LTV figure and colour are Safety's
-  (`deriveSafetyView(selectSafetyViewInputs)`), no longer `getTier` / `getTierColor` (no screen reads them; they stay in
-  `runAdvisor.ts` until it goes). **Its sidebar's YOUR PLAN** — `planRuleRows(planPolicySettingsOf(usePlanPolicy()),
+  (`deriveSafetyView(selectSafetyViewInputs)`), no longer `getTier` / `getTierColor` (no screen reads them; they left with
+  `runAdvisor` in 5e, D5-A). **Its sidebar's YOUR PLAN** — `planRuleRows(planPolicySettingsOf(usePlanPolicy()),
   expenses)`, always shown — replaced the typed PRIORITY RULES (55 / 65 / 70): the six settings in the sliders' words
   (`PLAN_RULE_LABEL`, supportPolicyView — one copy; `SupportPolicyCard` reads it), each as the plan runs it, a limit held
   to its defense line showing that line. `planPolicySettingsOf(plan)` (planRun) is the saved plan as every plan reader
@@ -1822,7 +1823,10 @@ what its buttons do.
   aborts. A stall now ends as failed: THIS MONTH shows its cached breaker's line, the Decision face says the history
   didn't load, the Power Law face and the price chart say it is unavailable. `useBtcHistory` keeps the candles already
   drawn for the same range when a refresh fails (`shownRange`), for as long as the page stays in view, so the chart
-  says "unavailable" only when a first load fails — and a page back in view starts with a first load.
+  says "unavailable" only when a first load fails — and a page back in view starts with a first load. *(5e, F12,
+  superseded the chart's half: it now draws this device's copy of the range's history at once, at any age — muted with
+  "as of …" once more than 5 minutes old — keeps whatever it can draw through a failed load, and says "unavailable"
+  only with nothing to draw; `shownRange` is gone. The time limit is unchanged.)*
 - **BL26 / F-R4-1 — THIS MONTH's expenses prompt.** `planReanchorWords(avg, expenses)` (it replaced `planReanchorLine`):
   "Monthly expenses: your last 3 logged months averaged $X; your plan uses $Y.", with [Update plan to $X] [Keep $Y]. One
   figure: `toCents(avg)` is what the line prints, Update names and Update stores; Keep does what Dismiss did.

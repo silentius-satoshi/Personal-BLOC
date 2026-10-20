@@ -24,8 +24,10 @@ import { clearStoreEncryptionState } from './storeCrypto';
  *     personal-bloc-provenance                  identity — keyProvenance (standalone; survives the escape hatch)
  *     bloc-nostr-log             (sessionStorage) relay/sync metadata for the departing identity
  *
- *   DEVICE-LEVEL — retained (the only one):
+ *   DEVICE-LEVEL — retained (these two only):
  *     bloc-device-tag                           per-device tag; survives every identity, never synced
+ *     bloc-btc-candles                          the price chart's history (5e, F12) — public prices, the same for every
+ *                                               identity, never synced, never in a backup (lib/btcCandlesCache)
  *
  * ⚠ `personal-bloc-onboarded` is NOT blob-resident. It is a standalone key (GATE_ONBOARDED_KEY) seeded into the
  * store's INITIAL state at module init, so removing only `personal-bloc-store` would leave onboardingComplete true

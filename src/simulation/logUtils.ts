@@ -16,48 +16,11 @@ export function flowVenue(ev: Extract<DayEvent, { kind: 'draw' | 'paydown' }>): 
   return (ev.target ?? 'strike') === 'strike' ? 'strike' : 'cb';
 }
 
-// Collateral-Truth v20 — btcHeld (current Strike collateral) is READING-ANCHORED: callers pass the value
-// from getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc). The derives no longer chain
-// it (pending/graduation retired). startingBtcHeld = the passed currentStrikeCollateral so the advisor seed and
-// the SafetyDashboard collateral can never disagree (ONE definition of current position, via
-// deriveCurrentPosition). startingBlocBalance/startingMonth stay anchored on the last CONFIRMED entry (so a
-// living unconfirmed month doesn't advance the projection start).
-export function deriveAdvisorStart(
-  monthlyLog: MonthlyLogEntry[],
-  currentStrikeCollateral: number,    // = getCurrentBtcHeld() (reading-anchored current Strike collateral)
-  advisorActualBlocBalance: number,   // forwarded to deriveCurrentPosition (position base only — startingBlocBalance still comes from monthStartBalance / last confirmed strikeBal)
-  currentStrategyMonth: number,
-  monthStartBalance: number,   // BLOC balance at the START of the current month — projection base (NOT live drawn)
-): {
-  startingBlocBalance: number;
-  startingBtcHeld:     number;
-  startingMonth:       number;
-} {
-  // ONE definition of current position (shared with the safety anchors).
-  const position = deriveCurrentPosition(monthlyLog, currentStrikeCollateral, advisorActualBlocBalance);
-
-  // Anchor bloc/month on CONFIRMED entries only — under one-ledger the current month is a LIVING unconfirmed daily
-  // rollup (confirmed===false); it must NOT advance the projection start past itself. `confirmed !== false` keeps
-  // legacy/undefined (=confirmed) + signed-off (true) entries and excludes only the living unconfirmed month.
-  const confirmed = monthlyLog.filter((e) => e.confirmed !== false);
-  if (confirmed.length === 0) {
-    return {
-      startingBlocBalance: monthStartBalance,   // start-of-month base; live-drawn (advisorActualBlocBalance) is a separate concept
-      startingBtcHeld:     position.btcHeld,
-      startingMonth:       currentStrategyMonth,
-    };
-  }
-  const sorted = [...confirmed].sort((a, b) => a.month - b.month);
-  const last = sorted[sorted.length - 1];
-  return {
-    startingBlocBalance: last.strikeBal,
-    startingBtcHeld:     position.btcHeld,
-    startingMonth:       Math.min(last.month + 1, 12),
-  };
-}
-
-// btcHeld = the passed currentStrikeCollateral (reading-anchored — see deriveStrikeCollateral); blocBalance /
-// lastLoggedMonth come from the last logged entry (or the base when the log is empty).
+// Collateral-Truth v20 — btcHeld (current Strike collateral) is READING-ANCHORED: callers pass the value from
+// getCurrentBtcHeld() = deriveStrikeCollateral(dayLog, strikeCollateralBtc), so this position and the SafetyDashboard's
+// collateral can never disagree (ONE definition of current position). blocBalance / lastLoggedMonth come from the last
+// logged entry (or the base when the log is empty). (deriveAdvisorStart, which seeded the Advisor's projection from it,
+// left with runAdvisor in 5e, D5-A.)
 export function deriveCurrentPosition(
   monthlyLog: MonthlyLogEntry[],
   currentStrikeCollateral: number,
@@ -303,7 +266,7 @@ export const legacyBucketEventToMonth = (date: string, advisorStartDate: string)
  * Single derived clock for cbCollateralBtc (Daily Mode P2a, Seam 2). Returns the cbCollateral of the MOST-RECENT event
  * by ts that carries one — across BOTH balanceReading (reading.cbCollateral, when present) AND cbCollateralReading
  * (cbCollateral). If none exists, falls back to the persisted cache `currentCbCollateralBtc` — NEVER undefined
- * (consumers like runAdvisor require a number).
+ * (its consumers need a number).
  */
 export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: number): number {
   let best: { ts: number; v: number } | null = null;
@@ -324,7 +287,7 @@ export function deriveCbCollateral(dayLog: DayEvent[], currentCbCollateralBtc?: 
  *            deriveReadingAnchors; result = anchor.strikeCollateral + Σ of target:'strike' deposit/withdraw
  *            moves STRICTLY AFTER the anchor (e.date > anchor.date, or e.date === anchor.date && e.ts >
  *            anchor.ts), signed by kind (deposit +, withdraw −; amount = magnitude — same convention as
- *            strikeCollateralDelta). No anchor → fallback ?? 0 (never undefined — runAdvisor needs a number).
+ *            strikeCollateralDelta). No anchor → fallback ?? 0 (never undefined — its callers need a number).
  *
  * ⚠ Ordering differs from deriveCbCollateral's pure-ts on PURPOSE. A backfilled (past-dated) strike move
  * dated BEFORE the anchor is already reflected in that reading's stated total and must NOT be re-summed;

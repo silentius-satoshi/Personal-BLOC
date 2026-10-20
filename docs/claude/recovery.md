@@ -49,7 +49,7 @@ one" — an empty answer is also what relays that don't show the plan give, so t
   site that passes it, and it sits after gates D/E/F (`isAuthenticated && isOwner` guaranteed). The real viewer,
   the edge-back under-layer, and `ViewerPreview` pass neither `ownerNav` nor `notice` → the notice cannot leak
   into a viewer surface or corrupt Preview-as-viewer fidelity. **Never add a branch to AppShell's gate ternary**
-  — anything there replaces the whole app. Accepted scope: an owner on Journal or in full mode sees it on their
+  — anything there replaces the whole app — except F1's 'Loading your plan…' (5e): a whole-app screen by design that ends with the first pull and offers 'Open the app' after 15 s. Accepted scope: an owner on Journal or in full mode sees it on their
   next Dashboard visit (Dashboard is the default `simpleView`, so a fresh sign-in lands there).
 
 ---
@@ -416,7 +416,8 @@ it exhaustively — a new storage key added without classifying it here fails th
 | `personal-bloc-nostr-pubkey` / `-auth` / `-method` | local | PLAN (identity) — also removed by the setters; wiped here too so the fn is correct STANDALONE |
 | `personal-bloc-provenance` | local | PLAN (identity) — `keyProvenance` standalone (R2c-6-final; survives the escape hatch) |
 | `bloc-nostr-log` | **session** | PLAN — relay/sync metadata for the departing identity |
-| `bloc-device-tag` | local | **DEVICE — RETAIN** (the only retained key) |
+| `bloc-device-tag` | local | **DEVICE — RETAIN** (one of the two retained keys) |
+| `bloc-btc-candles` | local | **DEVICE — RETAIN** — the price chart's history (5e, F12): public prices, the same for every identity, never synced, never in a backup |
 
 - ⚠ **`personal-bloc-onboarded` is NOT blob-resident.** It's the standalone `GATE_ONBOARDED_KEY`, seeded into the
   store's INITIAL state at module init. **Wiping only `personal-bloc-store` leaves `onboardingComplete: true` → the

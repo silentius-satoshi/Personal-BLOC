@@ -17,9 +17,9 @@
  * partial, undefended and noCollateral are the genuine alarms. ⚠ Keep partial distinct from defended: both have a
  * paydown, and collapsing them makes a losing month look identical to a healthy one.
  * `stillAbove` carries a 1e-9 tolerance: a paydown sized exactly to the gap lands ON the ceiling as a float.
- * ⚠ The noCollateral guard runs FIRST: a paydown CAN fire at zero collateral (runAdvisor pays the whole balance down
- * against a 0 target), and the settled blocLtv there is a pre-existing 0 (pinned in paydownPeak.test — LTVSafetyChart
- * needs it), so below the `paydown > 0` line it would classify the worst state as routine 'defended'.
+ * ⚠ The noCollateral guard runs FIRST: a paydown CAN fire at zero collateral (runAdvisor paid the whole balance down
+ * against a 0 target, until it left in 5e), and the settled blocLtv there is 0, so below the `paydown > 0` line it would
+ * classify the worst state as routine 'defended'.
  * ⚠ `peak === 0` stays 'quiet' — ∞ is debt with nothing behind it; 0 is nothing at all. Don't "simplify" to `peak > 0`.
  */
 export type PaydownState = 'quiet' | 'defended' | 'partial' | 'undefended' | 'noCollateral';

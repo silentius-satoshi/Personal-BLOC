@@ -4,6 +4,7 @@ import { nostrLog } from './log';
 import { useStore } from '../../store/useStore';
 import { publishRecordsNowImmediate, publishPlanEventsNow, publishPrefsNow, flushViewerRevocations, refusedForSize, heldWithoutPlan } from './syncEngine';
 import { isBackupGateSatisfied } from '../backupGate';
+import { firstPullStarts, firstPullLands } from './firstPull';
 
 let lastReconnectAt = 0;   // NIP-46 signer-rebuild throttle (moved here from useNostrSync)
 
@@ -23,12 +24,14 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
   if (!signer) { useStore.getState().setNostrReconnectNeeded(true); return false; }
   useStore.getState().setNostrSyncing(true);
   try {
+    firstPullStarts(useStore.getState());   // 5e (F1) — "Loading your plan…" for this pull, if it's the session's first on a device without its plan
     if (!useStore.getState().nostrRelays.length) {
       const { fetchUserRelays } = await import('./relays');
       const relays = await fetchUserRelays(nostrPubkey);
       useStore.getState().setNostrRelays(relays);
     }
     const { ok: pullOk, planFound } = await fetchAndSync(signer, nostrPubkey, useStore.getState().nostrRelays);
+    firstPullLands();   // 5e (F1) — the pull has landed (the plan, then the journal): the screen goes, before any publish
     // R2b-2: record whether this key has a plan on the relays — set EXACTLY ONCE per session (the store action
     // holds a module-level latch), so the notice's Dismiss (which writes null) can never be re-opened by the
     // next foreground sync. Viewer installs never reach doSyncNow, and a backup-gated key returns above.
@@ -68,6 +71,7 @@ async function doSyncNow(nostr: NostrParam): Promise<boolean> {
     useStore.getState().setNostrReconnectNeeded(true);
     return false;
   } finally {
+    firstPullLands();   // 5e (F1) — …and on every other way out (a throw): never longer than the pull
     useStore.getState().setNostrSyncing(false);
   }
 }

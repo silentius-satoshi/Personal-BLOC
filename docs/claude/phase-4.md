@@ -279,7 +279,7 @@ Phase 4 replaces whole-object LWW settings sync with an append-only **plan event
     other than a buy older than the entry's last save (spec §7) — the month's next other edit puts it right. No
     dollars-only edit re-anchors the balances (a buy feeds no reading); every other edit still does.
   - **Display (D3-A):** the implied price under the field ("≈ $102,880.00 per ₿ · today $100,000.00"); Daily's log row reads
-    "₿ 0.012 · $1,234.56", without the "~" (to the cent on this branch, Run 2.1).
+    "₿ 0.012 · $1,234.56", without the "~" (to the cent since the plan of record's Run 2.1).
   - **What doesn't change:** no stored field, no store bump, no sync change; the backup; every engine and safety figure;
     "+$X stacked" (today's value of the month's buys, by design).
   - **The pledged pair (older than 5d, spec §12):** editing a pledged buy bumps its ts, so its Strike deposit shows as a

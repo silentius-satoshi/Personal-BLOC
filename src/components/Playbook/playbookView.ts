@@ -81,8 +81,8 @@ export function buildNarrative(
     case 'quiet':
       return `Month ${month}: LTV is ${pct(ltv)}% — well below the ${ceil} ceiling. All ${fmtUSD(income)} income goes straight into Bitcoin. ${fmtUSD(expenses)} in expenses drawn from LoC. Interest of ${fmtUSD(interest)} capitalizes onto the balance.`;
     case 'noCollateral':
-      // Describes the DRAW; never prints a percentage and never claims "back to 15%". True in both engines: runBLOC never
-      // pays down without collateral (income buys BTC), runAdvisor can pay the whole balance off.
+      // Describes the DRAW; never prints a percentage and never claims "back to 15%". runBLOC never pays down without
+      // collateral (income buys BTC); the paydown branch is the one runAdvisor reached (it paid the balance off) until 5e.
       return `Month ${month}: the expense draw landed with NO collateral behind it — LTV was undefined. ${
         paydown > 0 ? `${fmtUSD(paydown)} of income pays it down and ${fmtUSD(buyAmt)} buys Bitcoin.` : `${fmtUSD(buyAmt)} of income buys Bitcoin.`
       } ${fmtUSD(expenses)} in expenses drawn from LoC. Interest of ${fmtUSD(interest)} capitalizes onto the balance.`;

@@ -1,5 +1,6 @@
-// Read by the inline SW-diagnostic watchdog in index.html: a normal boot sets this well within its
-// 6s window, so the diagnostic panel never paints unless something is actually blocking the app.
+// Read by the inline SW-diagnostic watchdog in index.html: "the app has started". ESM runs every import below before this
+// line, so the flag means the whole bundle has loaded and run. A normal boot sets it well within the 15 s window, so the
+// panel never paints; a slow one that the watchdog painted over removes the panel the moment this runs (5e, F2).
 (window as unknown as { __APP_BOOTED?: boolean }).__APP_BOOTED = true;
 
 // C0 — MUST be the FIRST import: on the VITE_DEMO deploy this seeds localStorage, and useStore's module-init IIFEs
